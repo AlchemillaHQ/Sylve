@@ -1,174 +1,210 @@
 ---
 title: Jellyfin in a Jail
-description: A guide on how to run Jellyfin in a FreeBSD jail using Sylve.
+description: Install Jellyfin in a Sylve jail with optional Intel GPU transcoding and shared media storage.
 ---
 
-## Introduction
+import jellyfinTranscoding from "./jellyfin-transcoding.webp";
+import jellyfinCreateHardware from "./jellyfin-create-hardware.png";
+import jellyfinDatasetFinal from "./jellyfin-dataset-final.png";
 
-Jellyfin is a free and open-source media server that allows you to organize and stream your media collection. Running it in a FreeBSD jail is a breeze and Sylve makes it even easier. In this guide, we will walk you through the steps to set up Jellyfin in a FreeBSD jail using Sylve, with support for Intel GPU transcoding.
+This guide builds on [Simple Jail](/guides/one-shot-guides/simple-jail/). It covers only the settings and installation steps that differ when the jail will run Jellyfin instead of AdGuard Home.
 
-## Prerequisites
+Follow the Simple Jail guide through [Start and verify the jail](/guides/one-shot-guides/simple-jail/#start-and-verify-the-jail), applying the changes below while creating the jail. Stop before **Install AdGuard Home**. Do not install AdGuard Home in the Jellyfin jail.
 
-Before we begin, make sure you have the following:
+The Intel GPU steps are optional. They require a supported Intel integrated GPU, a working graphics driver on the FreeBSD host, and visible `dri` or `drm` device nodes. Jellyfin can run without a GPU, but video that the client cannot play directly will be transcoded by the CPU.
 
-**-** FreeBSD system with Sylve installed (see [Getting Started](/getting-started)).  
-**-** Network access to download packages.  
-**-** A machine with an intel iGPU, in this case we're using an **Intel(R) Xeon(R) E-2176G CPU @ 3.70GHz**, that we got from [Hetzner](https://hetzner.cloud/?ref=uD5CjfBFJSR9). you can google your CPU model to check if it has an iGPU. You can use the command `sysctl hw.model` to check your CPU model. Also make sure you have the drivers installed on the host system and that the iGPU is working properly.
+## Changes from Simple Jail
 
-## Downloading a Jail Base
+Use the same host networking, FreeBSD 15.x base, storage, network, startup behavior, and lifecycle hooks described in Simple Jail, except for the changes in this section.
 
-Now you can skip this step entirely if you already have downloaded a jail base using the downloader in sylve, but if you haven't, you can do so by navigating to `Utilities > Downloader` in your node's context menu and filling in the following details:
+### Basic
 
-![Download Modal](downloader.webp)
+On the **Basic** tab, use these Jellyfin-specific values:
 
-| Field | Value |
-|------|------|
-| **HTTP URL** | `https://download.freebsd.org/releases/amd64/amd64/15.0-RELEASE/base.txz` |
-| **Optional File Name** | `freebsd-15R-base.txz` |
-| **Download Type** | Base / RootFS |
-| **Extract Automatically** | Enable this option so the jail base is extracted after downloading. |
+- **Jail Name:** `Jellyfin`
+- **Hostname:** `jellyfin`
+- **Description:** `Jellyfin media server`
 
+Choose an unused **Jail ID**. Leave the other fields as described in [Simple Jail: Basic](/guides/one-shot-guides/simple-jail/#basic).
 
-:::note
-You don't need to specify a name but I like to do it so that I can easily identify which jail base is which, especially if I have multiple versions downloaded.
-:::
+### Hardware
 
-## Creating the Jail
+Jellyfin needs more headroom than the AdGuard Home example. A reasonable starting point for a small library is:
 
-1. Click on **Create Jail** on the top right and let's fill out some basic details:
+1. Set **CPU Cores** to at least `2`.
+2. Set **Memory Size** to at least `2 GiB`.
+3. Keep **Boot Order** set to `1`.
+4. Keep **Start On Boot** enabled.
+5. Keep **Resource Limits** enabled initially.
 
-![Jail - Basics](create-1.webp)
+Library size, concurrent streams, subtitles, and software transcoding can increase CPU and memory use substantially. Monitor the jail and adjust its [Hardware](/guides/node/jails/hardware/) limits when necessary. Disabling limits lets Jellyfin compete for all host CPU and memory, which can affect Sylve and other guests.
 
-2. In the next `Storage` step, we pick `zroot` as our pool (you can pick any) and the FreeBSD 15 Release base we just downloaded as our base:
+#### Optional Intel GPU access
 
-![Jail - Storage](create-2.webp)
+First confirm on the FreeBSD host that the graphics driver is loaded and device nodes exist:
 
-We **don't** need FSTab additions for this jail so we can keep it unchecked.
-
-3. In the `Network` step, we highly recommend you use a a Standard or Manual switch, but for simplicity's sake you could just use the `Inherit` option which will use the host's network. If you choose to use a Standard or Manual switch, make sure to assign an IP address to the jail (or use DHCP/SLAAC). In our case, we're going to use our `LAN` standard switch:
-
-![Jail - Network - Switch Selection](create-3.1.webp)
-
-We also used the `Populate DNS Resolver Configuration` option which will let us specify custom DNS servers for the jail, but you can skip this if your upstream gateway (or switch) provides DNS addresses in the DHCP offer.
-
-![Jail - Network - Address/DHCP](create-3.2.webp)
-
-4. In the **Hardware** step, things get a bit more interesting. Sylve uses `rctl` to cap the jail's CPU and RAM usage if resource limits are enabled. However, for a media server like Jellyfin it's usually best to leave these limits disabled so the jail can use the resources it needs.
-
-We also need a custom `devfs ruleset` to allow the jail to access the iGPU for hardware transcoding. You can click on the `Custom Devfs Ruleset` checkbox and fillout the form as follows:
-
-![Jail - Hardware](create-4.webp)
-
-Here's the configuration we used for the custom devfs ruleset so you can copy and paste it:
-
+```sh
+ls -l /dev/dri /dev/drm
 ```
-add include $devfsrules_jail
+
+If neither path exists, configure the supported Intel graphics driver on the host before continuing. The jail cannot use a GPU device that the host has not created.
+
+To expose the Intel GPU to the jail, enable **Custom Devfs Ruleset** and enter:
+
+```text
+add path 'dri' unhide
 add path 'dri/*' unhide
+add path 'drm' unhide
 add path 'drm/*' unhide
-add path 'drm/*' mode 0666
-add path 'dri/*' mode 0666
 ```
 
-5. Now in the last step `Advanced` you can keep most of the defaults but make sure to enable `Memory Locking (allow.mlock)` under the allowed options:
+Sylve automatically includes its standard jail DevFS rules before adding these custom rules. These rules make the GPU device nodes visible inside the jail while retaining their host-defined ownership and permissions. Do not expose unrelated devices. Device access weakens isolation and allows software in the jail to interact with host hardware.
 
-![Jail - Advanced](create-5.webp)
+<img
+  src={jellyfinCreateHardware.src}
+  alt="Create Jail Hardware tab with two CPU cores, 2 GiB memory, Boot Order 1, startup and resource limits enabled, and custom DevFS rules exposing Intel GPU device paths"
+/>
 
-Now once that's all done you should be good to go and you can click on `Create Jail` to setup your jail! If everything went well you should see your new jail in the sidebar list and once you navigate to it you should see something like this:
+If you do not want hardware transcoding, leave **Custom Devfs Ruleset** disabled.
 
-![Jail - Summary](jail-summary.webp)
+### Advanced
 
-You can start the jail and then access it's console so we can start installing and configuring Jellyfin!
+Keep every default allowed option and lifecycle hook from [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). Additionally select **Memory Locking (`allow.mlock`)**, which permits the .NET runtime used by Jellyfin to lock memory.
 
-## Setting up Jellyfin
+Finish creating and starting the jail, then note its assigned IP address. The remaining commands run as `root` inside the Jellyfin jail.
 
-The first thing you can do when you're inside your jail console is to update the package repository catalog and then install Jellyfin:
+## Install Jellyfin
 
-:::note
-`pkg` will ask you to let it bootstrap itself since this is a new jail and it doesn't have `pkg` installed yet, just type `y` and hit enter to let it do it's thing.
-:::
+Update the package catalog and install Jellyfin:
 
-```bash
+```sh
 pkg update
-pkg install jellyfin libva libva-utils libva-intel-media-driver gmmlib
+pkg install -y jellyfin
 ```
 
-The install may take a few minutes depending on your network speed since it has to download the jellyfin package and all of its dependencies (it's a dotNET app!). libva, libva-utils, etc. are needed for hardware transcoding support, you can test if the iGPU is working properly by running `vainfo` after installing those packages, if you see a list of supported codecs then you're good to go!
+For Intel GPU transcoding, also install the VA-API tools and Intel media driver:
 
-Once it's done you can run the following command to enable the jellyfin service so it starts on boot:
+```sh
+pkg install -y libva libva-utils libva-intel-media-driver gmmlib
+```
 
-```bash
+Add the Jellyfin service account to the `video` group so it can open GPU device nodes:
+
+```sh
+pw groupmod video -m jellyfin
+```
+
+Skip the GPU packages and group change if you are using CPU transcoding only.
+
+Enable and start Jellyfin:
+
+```sh
 service jellyfin enable
+service jellyfin start
+service jellyfin status
 ```
 
-Now that's about it! You can access the web interface by navigating to `http://<jail-ip>:8096` in your web browser and you should see the Jellyfin setup page where you can create your admin account and start adding media libraries.
+Confirm that the web interface is listening:
 
-For the media I like to keep it a part of the jail rootfs, so I just created a `jellyfin` folder inside `/media/`:
-
-```bash
-mkdir -p /media/jellyfin/movies
-mkdir -p /media/jellyfin/tv
-mkdir -p /media/jellyfin/music
+```sh
+sockstat -4 -6 -l | grep ':8096'
 ```
 
-And then I added that folder as a media library in the Jellyfin web interface. You can also use external storage if you want, just make sure to mount it inside the jail and give the jail access to it.
+If the service does not remain running, inspect its recent messages:
 
-For purposes of demonstration I populated the movies directory with [sintel](https://www.peach.themazzone.com/durian/movies/sintel-1024-surround.mp4) which is a free movie provided by the Blender Foundation, you can use it for testing transcoding and streaming performance.
+```sh
+tail -n 100 /var/db/jellyfin/log/log_*.log
+```
 
-### Setting up Hardware Transcoding
+## Complete the setup wizard
 
-On jellifin's web interface, navigate to `Dashboard > Playback > Transcoding` and make sure to select `VAAPI` as the hardware acceleration method. You can also adjust the transcoding settings here if you want, but the defaults should be fine for most use cases.
+From another device on the same network, open:
 
-![Jellyfin - Transcoding setup](jellyfin-transcoding.webp)
+```text
+http://<jail-ip>:8096/
+```
 
-That should be pretty much it! You can now enjoy your media server with hardware-accelerated transcoding.
+Replace `<jail-ip>` with the address noted earlier. The setup wizard asks you to create the first administrator, choose a language, and add media libraries. Use a strong password because this account controls the server and its media.
 
-## Sharing data storage with other jails
+Before other devices begin relying on Jellyfin, reserve the jail's DHCP lease on your router or configure an appropriate static address. A stable address also makes bookmarks and client connections reliable.
 
-After configuring Jellyfin, maybe you also want to integrate it with other software stack, like [*arr](https://wiki.servarr.com/), to have a fully fledged media library. Thanks to Sylve's integration with ZFS, doing it is quite simple!
+## Verify Intel hardware acceleration
 
-The following steps assume your other services are configured in different jails.
+Skip this section if you did not expose an Intel GPU.
 
-To begin, we should create a new ZFS dataset. A ZFS dataset acts as a separate filesystem, similar to BTRFS volumes. You can specify different options to a dataset, e.g., you can enable compression, configure record sizes, disable access time modification and you can even create complex access control lists to restrict access to your files.
+Inside the jail, confirm that the devices are visible and VA-API can query the driver:
 
-Let's get started with creating our ZFS dataset where we will store the media files used by our services and where Jellyfin can access this media.
+```sh
+ls -l /dev/dri /dev/drm
+vainfo
+```
 
-1. Go to your node and select `Storage > ZFS > Datasets > File Systems`. Click **New** to create a new dataset.
+`vainfo` should identify an Intel driver and list supported codec profiles. A permission error usually means the device ownership does not match the jail's `video` group or the Jellyfin service needs to be restarted after its group membership changed. A missing device means the host driver or custom DevFS ruleset is incomplete.
 
-![Storage - ZFS - Datasets - File Systems](jellyfin-dataset-1.webp)
+In Jellyfin, open **Dashboard → Playback → Transcoding**, select **Video Acceleration API (VA-API)**, and use the render device reported by the system, commonly `/dev/dri/renderD128`. Enable only the codecs that `vainfo` reports as supported.
 
-:::note
-You can configure the dataset based on your own needs. It's recommended to disable **atime** and to set record size to 1M, as we are mostly dealing with media files, which are considered large files. 
+<img
+  src={jellyfinTranscoding.src}
+  alt="Jellyfin transcoding settings with Video Acceleration API selected and an Intel render device configured"
+/>
 
-For the mount point, I chose **/media/jellyfin**, the path you can access your dataset in the host system. I also chose a 256GiB quota for it, but you're free to choose any value you want (setting that field to empty disables quotas).
+Play a video that requires transcoding and inspect its playback information. Confirm that Jellyfin reports hardware transcoding before depending on GPU acceleration.
+
+## Create and mount media storage
+
+After the jail has been created, open **Storage → ZFS → Datasets → File Systems** and select **New**. First create a parent dataset named `media`. Then create a child dataset named `jellyfin` beneath it. The resulting hierarchy is `<pool>/media/jellyfin`.
+
+The parent groups media-related datasets together and leaves room for sibling datasets used by other applications. Store Jellyfin's library in the `jellyfin` child and apply any Jellyfin-specific quota or storage properties there. The screenshot keeps the default properties. Adjust them only when you have a specific storage requirement.
+
+<img
+  src={jellyfinDatasetFinal.src}
+  alt="Create Filesystem dialog with jellyfin as the dataset name and zroot/media selected as its parent"
+/>
+
+The example below assumes that the parent is mounted on the host at `/media` and the child at `/media/jellyfin`. Substitute the actual child mountpoint shown by ZFS.
+
+### Mount the dataset in the jail
+
+Create the destination directory inside the running jail if it does not already exist:
+
+```sh
+mkdir -p /media/jellyfin
+```
+
+Stop the jail. Open **Options → FSTab Entries**, select **Edit FSTab Entries**, and add a nullfs entry:
+
+```text
+/media/jellyfin /zroot/sylve/jails/<jail-id>/media/jellyfin nullfs rw 0 0
+```
+
+Replace the first path with the dataset's host mountpoint. Replace the second path with the real host path to `/media/jellyfin` inside the jail root. The example assumes the jail dataset is mounted below `/zroot/sylve/jails/<jail-id>`.
+
+Start the jail and confirm that the mount is present:
+
+```sh
+root@jellyfin:~ # mount | grep '/media/jellyfin'
+/media/jellyfin on /media/jellyfin (nullfs, local)
+root@jellyfin:~ #
+```
+
+:::caution
+An invalid source path, destination path, or missing destination directory can prevent the jail from starting. If startup fails after this change, remove or correct the fstab entry from the jail's Options page.
 :::
 
-2. Now we need to mount the filesystem to our jails. You can add the dataset to a new jail directly through the UI, but I advise against it because you need to create the mount point before the jail is created, otherwise it won't turn on.
+### Grant media access
 
-In my case, I want to mount the new filesystem in `/media/jellyfin`, so this directory was already created on the jail itself.
+Jellyfin normally runs with UID `868` on FreeBSD. Confirm the actual identity inside the jail:
 
-Select an existing jail on your node (e.g. the newly created jail), go to `Options > FSTab Entries` and click **Edit FSTab Entries**.
-
-![Jail - Options - FSTab Entries](jellyfin-dataset-2.webp)
-
-You can check the snippet for the fstab entry below. Make sure to replace `<jail-id>` with the ID of your jail. 
-
-:::note
-We are mounting the ZFS dataset as a nullfs. It's the most recommended filesystem type for sharing data between jails in FreeBSD. You can read more information about it [on FreeBSD's website](https://man.freebsd.org/cgi/man.cgi?query=nullfs&manpath=FreeBSD+15.0-RELEASE+and+Ports.quarterly).
-:::
-
-```bash
-# <device> <dir> <type> <options> <dump> <fsck>
-zroot/jellyfin /zroot/sylve/jails/<jail-id>/media/jellyfin nullfs rw 0 0
+```sh
+id jellyfin
 ```
 
-3. We have created the shared directory, now we need to setup the permissions for it, so that our different services can read and write to it. 
+Then grant that UID access from the FreeBSD host. For an NFSv4 ACL dataset and UID `868`, the existing example uses:
 
-One thing to keep in mind is that the user ID for the user account of your services might not be the same depending on your setup. That is, two different services may not share the same UID. Thankfully with ZFS ACLs, we can simply allow read-write access to overcome this issue.
-
-Open a shell in your node and type the following command to add read, write and execute permissions for the Jellyfin user in our newly created filesystem. Jellyfin typically uses UID 868 in FreeBSD:
-
-```bash
-setfacl -m u:868:rwx:fd:allow /zroot/jellyfin
+```sh
+setfacl -m u:868:rwx:fd:allow /media/jellyfin
 ```
 
-And that's it! If you have more jails you want to share the directory with, just repeat these simple steps, and make sure to add permissions for the new UIDs.
+Use the UID reported by `id jellyfin` and the actual dataset mountpoint. When sharing the dataset with other jails, grant each service only the access it needs. Avoid making the complete media tree writable by every user.
+
+Your Jellyfin server is now running in a jail and will start automatically whenever Sylve starts the jail. Before package upgrades or major configuration changes, create a jail [Snapshot](/guides/node/jails/snapshots/) or [Backup](/guides/node/jails/backups/).
