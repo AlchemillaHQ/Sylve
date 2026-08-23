@@ -1036,8 +1036,6 @@ msgstr "重置"
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
@@ -1081,6 +1079,7 @@ msgstr "这是一条笔记"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -5172,7 +5171,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -15340,6 +15339,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -16655,10 +16655,6 @@ msgid "Delete network"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
-msgid "Stop the jail to change networking."
-msgstr ""
-
-#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 msgid "Unable to load this jail's network configuration."
 msgstr ""
 
@@ -17522,4 +17518,35 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Applying…"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Execution Timeout"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+msgid "Execution Timeout"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Failed to modify execution timeout"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution timeout modified"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Applies to each exec.* command, including jail startup and shutdown."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution timeout must be a whole number greater than zero"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution Timeout (Seconds)"
 msgstr ""

@@ -30,6 +30,10 @@ type ModifyWakeOnLanRequest struct {
 	Enabled *bool `json:"enabled" binding:"required"`
 }
 
+type ModifyExecutionTimeoutRequest struct {
+	ExecTimeout *int `json:"execTimeout" binding:"required"`
+}
+
 type ModifyFstabRequest struct {
 	Fstab *string `json:"fstab" binding:"required"`
 }
@@ -76,6 +80,7 @@ type ModifyLifecycleHooksRequest struct {
 type jailOptionsService interface {
 	ModifyBootOrder(ctID uint, startAtBoot bool, bootOrder int) error
 	ModifyWakeOnLan(ctID uint, enabled bool) error
+	ModifyExecutionTimeout(ctID uint, execTimeout int) error
 	ModifyFstab(ctID uint, fstab string) error
 	ModifyResolvConf(ctID uint, resolvConf string) error
 	ModifyDevfsRuleset(ctID uint, rules string) error
@@ -135,7 +140,8 @@ func classifyJailOptionError(err error) (int, string) {
 	switch {
 	case jailOptionHasErrorCode(codes,
 		"invalid_request", "invalid_ct_id", "ctid_must_be_positive",
-		"start_order_must_be_greater_than_or_equal_to_0", "invalid_jail_allowed_options",
+		"start_order_must_be_greater_than_or_equal_to_0", "exec_timeout_out_of_range",
+		"invalid_jail_allowed_options",
 		"invalid_jail_metadata", "invalid_lifecycle_hooks", "lifecycle_hook_script_required",
 		"reserved_jail_option_marker"):
 		return http.StatusBadRequest, firstJailOptionErrorCode(err)
@@ -223,6 +229,41 @@ func ModifyBootOrder(service jailOptionsService) gin.HandlerFunc {
 			return
 		}
 		writeJailOptionSuccess(c, "boot_order_modified")
+	}
+}
+
+// @Summary Replace jail execution timeout
+// @Description Set the per-command exec.timeout used by jail lifecycle commands, including startup and shutdown
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Param request body ModifyExecutionTimeoutRequest true "Execution timeout configuration"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/{ctid}/options/execution-timeout [put]
+func ModifyExecutionTimeout(service jailOptionsService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctID, ok := bindJailOptionCTID(c)
+		if !ok {
+			return
+		}
+		var req ModifyExecutionTimeoutRequest
+		if !bindJailOptionJSON(c, &req) {
+			return
+		}
+		if err := service.ModifyExecutionTimeout(ctID, *req.ExecTimeout); err != nil {
+			writeJailOptionError(c, err)
+			return
+		}
+		writeJailOptionSuccess(c, "execution_timeout_modified")
 	}
 }
 

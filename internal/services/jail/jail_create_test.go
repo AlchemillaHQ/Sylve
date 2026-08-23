@@ -426,6 +426,7 @@ func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
 	for _, expected := range []string{
 		"exec.start = \"/bin/sh /etc/rc\";",
 		"exec.stop = \"/bin/sh /etc/rc.shutdown\";",
+		"exec.timeout = 120;",
 	} {
 		if !strings.Contains(config, expected) {
 			t.Fatalf("jail config missing %q:\n%s", expected, config)

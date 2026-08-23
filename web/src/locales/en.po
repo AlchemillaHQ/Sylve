@@ -1036,8 +1036,6 @@ msgstr "Reset"
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
-#: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
@@ -1081,6 +1079,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -5172,8 +5171,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -15343,6 +15342,7 @@ msgstr "Partition limit reached"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Options/AllowedOptions.svelte
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
 #: src/lib/components/custom/Jail/Options/LifecycleHooks.svelte
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
@@ -16658,10 +16658,6 @@ msgid "Delete network"
 msgstr "Delete network"
 
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
-msgid "Stop the jail to change networking."
-msgstr "Stop the jail to change networking."
-
-#: src/routes/[node]/jail/[ctid]/network/+page.svelte
 msgid "Unable to load this jail's network configuration."
 msgstr "Unable to load this jail's network configuration."
 
@@ -17526,3 +17522,34 @@ msgstr "The selected {0} {1} currently {2} IP addresses assigned. Continuing wil
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Applying…"
 msgstr "Applying…"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Options - Execution Timeout"
+msgstr "Jail Options - Execution Timeout"
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/options/+page.svelte
+msgid "Execution Timeout"
+msgstr "Execution Timeout"
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Failed to modify execution timeout"
+msgstr "Failed to modify execution timeout"
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution timeout modified"
+msgstr "Execution timeout modified"
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Applies to each exec.* command, including jail startup and shutdown."
+msgstr "Applies to each exec.* command, including jail startup and shutdown."
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution timeout must be a whole number greater than zero"
+msgstr "Execution timeout must be a whole number greater than zero"
+
+#: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
+msgid "Execution Timeout (Seconds)"
+msgstr "Execution Timeout (Seconds)"

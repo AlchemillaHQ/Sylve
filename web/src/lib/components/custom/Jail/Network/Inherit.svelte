@@ -70,24 +70,13 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content>
+	<Dialog.Content showCloseButton={!saving}>
 		<Dialog.Header class="p-0">
-			<Dialog.Title class="flex items-center justify-between text-left">
+			<Dialog.Title class="text-left">
 				<div class="flex items-center">
 					<span class="icon-[mdi--network] mr-2 h-5 w-5"></span>
 					Network Inheritance
 				</div>
-				<Button
-					size="sm"
-					variant="link"
-					class="h-4"
-					title="Close"
-					disabled={saving}
-					onclick={() => (open = false)}
-				>
-					<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-					<span class="sr-only">Close</span>
-				</Button>
 			</Dialog.Title>
 		</Dialog.Header>
 

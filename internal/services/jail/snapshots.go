@@ -724,6 +724,9 @@ func (s *Service) preflightJailSnapshotRestore(
 			restored.CTID,
 		)
 	}
+	if restored.ExecTimeout == 0 {
+		restored.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
+	}
 
 	// CTID, database identity, display name, and the current root storage are
 	// live resource identity. Snapshot rollback restores configuration without
@@ -895,6 +898,7 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 		Fstab:             restored.Fstab,
 		ResolvConf:        restored.ResolvConf,
 		CleanEnvironment:  restored.CleanEnvironment,
+		ExecTimeout:       restored.ExecTimeout,
 		AdditionalOptions: restored.AdditionalOptions,
 		AllowedOptions:    restored.AllowedOptions,
 		MetadataMeta:      restored.MetadataMeta,
@@ -921,6 +925,7 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 			"Fstab",
 			"ResolvConf",
 			"CleanEnvironment",
+			"ExecTimeout",
 			"AdditionalOptions",
 			"AllowedOptions",
 			"MetadataMeta",

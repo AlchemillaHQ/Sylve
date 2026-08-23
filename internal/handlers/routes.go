@@ -694,6 +694,7 @@ func RegisterRoutes(r *gin.Engine,
 
 		jail.PUT("/:ctid/options/wol", jailHandlers.ModifyWakeOnLan(jailService))
 		jail.PUT("/:ctid/options/boot-order", jailHandlers.ModifyBootOrder(jailService))
+		jail.PUT("/:ctid/options/execution-timeout", jailHandlers.ModifyExecutionTimeout(jailService))
 		jail.PUT("/:ctid/options/fstab", jailHandlers.ModifyFstab(jailService))
 		jail.PUT("/:ctid/options/resolv-conf", jailHandlers.ModifyResolvConf(jailService))
 		jail.PUT("/:ctid/options/devfs-rules", jailHandlers.ModifyDevFSRules(jailService))

@@ -1076,6 +1076,10 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	if mountPoint == "" {
 		return "", fmt.Errorf("mount_point_not_found")
 	}
+	execTimeout, err := effectiveJailExecTimeout(data.ExecTimeout)
+	if err != nil {
+		return "", err
+	}
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
@@ -1314,6 +1318,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 		cfg += "\n" + block + "\n"
 	}
 
+	cfg += fmt.Sprintf("\n\texec.timeout = %d;\n", execTimeout)
 	cfg += "\n\tpersist;\n"
 	cfg += "}\n"
 
@@ -1467,6 +1472,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	jail.Description = data.Description
 	jail.StartAtBoot = data.StartAtBoot
 	jail.StartOrder = data.StartOrder
+	jail.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
 	jail.ResourceLimits = data.ResourceLimits
 	jail.AdditionalOptions = data.AdditionalOptions
 	jail.Fstab = data.Fstab

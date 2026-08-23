@@ -398,6 +398,7 @@
 			'/api/jail/:id/hardware/resource-limits': 'Jail Hardware - Resource Limits',
 			'/api/jail/:id/options/wol': 'Jail Options - Wake-on-LAN',
 			'/api/jail/:id/options/boot-order': 'Jail Options - Boot Order',
+			'/api/jail/:id/options/execution-timeout': 'Jail Options - Execution Timeout',
 			'/api/jail/:id/options/fstab': 'Jail Options - FSTab',
 			'/api/jail/:id/options/resolv-conf': 'Jail Options - Resolv.conf',
 			'/api/jail/:id/options/devfs-rules': 'Jail Options - DevFS Rules',
@@ -741,6 +742,7 @@
 	const jailOptionLabels = new Map([
 		['wol', 'Wake-on-LAN'],
 		['boot-order', 'Boot Order'],
+		['execution-timeout', 'Execution Timeout'],
 		['fstab', 'FSTab'],
 		['resolv-conf', 'Resolv.conf'],
 		['devfs-rules', 'DevFS Rules'],

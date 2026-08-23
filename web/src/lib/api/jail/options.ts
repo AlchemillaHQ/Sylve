@@ -31,6 +31,14 @@ export function modifyWoL(
 	return jailOptionRequest(ctId, 'wol', { enabled }, options);
 }
 
+export function modifyExecutionTimeout(
+	ctId: number,
+	execTimeout: number,
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse> {
+	return jailOptionRequest(ctId, 'execution-timeout', { execTimeout }, options);
+}
+
 export function modifyFstab(
 	ctId: number,
 	fstab: string,

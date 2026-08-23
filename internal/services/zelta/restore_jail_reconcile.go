@@ -210,6 +210,9 @@ func (s *Service) upsertRestoredJailState(
 	if restored.Type == "" {
 		restored.Type = jailModels.JailTypeFreeBSD
 	}
+	if restored.ExecTimeout == 0 {
+		restored.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
+	}
 	if restored.StartAtBoot == nil {
 		v := false
 		restored.StartAtBoot = &v
@@ -263,6 +266,7 @@ func (s *Service) upsertRestoredJailState(
 			DevFSRuleset:      restored.DevFSRuleset,
 			Fstab:             restored.Fstab,
 			CleanEnvironment:  restored.CleanEnvironment,
+			ExecTimeout:       restored.ExecTimeout,
 			AdditionalOptions: restored.AdditionalOptions,
 			AllowedOptions:    append([]string(nil), restored.AllowedOptions...),
 			MetadataMeta:      restored.MetadataMeta,
@@ -294,6 +298,7 @@ func (s *Service) upsertRestoredJailState(
 				"DevFSRuleset",
 				"Fstab",
 				"CleanEnvironment",
+				"ExecTimeout",
 				"AdditionalOptions",
 				"AllowedOptions",
 				"MetadataMeta",

@@ -100,6 +100,9 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		if err := s.SyncNetwork(uint(ctId), jailWithNetworks); err != nil {
 			return fmt.Errorf("failed to sync jail network before start: %w", err)
 		}
+		if err := s.syncJailExecTimeoutConfig(&jail); err != nil {
+			return fmt.Errorf("failed to sync jail execution timeout before start: %w", err)
+		}
 		if err := s.ensureJailEpairs(jail); err != nil {
 			return fmt.Errorf("failed to prepare jail network before start: %w", err)
 		}
@@ -160,6 +163,9 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		return nil
 
 	case "stop":
+		if err := s.syncJailExecTimeoutConfig(&jail); err != nil {
+			return fmt.Errorf("failed to sync jail execution timeout before stop: %w", err)
+		}
 		if out, err := run("-f", jailConf, "-r", jailName); err != nil {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
@@ -175,6 +181,9 @@ func (s *Service) jailAction(ctId int, action, transitionRunID string) error {
 		return nil
 
 	case "restart":
+		if err := s.syncJailExecTimeoutConfig(&jail); err != nil {
+			return fmt.Errorf("failed to sync jail execution timeout before restart: %w", err)
+		}
 		if out, err := run("-f", jailConf, "-r", jailName); err != nil {
 			if !strings.Contains(out, "not found") && !strings.Contains(out, "No such process") {
 				return fmt.Errorf("failed to stop jail %s: %v\n%s", jailName, err, out)
@@ -256,6 +265,9 @@ func (s *Service) ForceStopJail(ctID uint) error {
 	}
 
 	jailName := s.GetCTIDHash(jail.CTID)
+	if err := s.syncJailExecTimeoutConfig(&jail); err != nil {
+		return fmt.Errorf("failed to sync jail execution timeout before force stop: %w", err)
+	}
 
 	run := func(args ...string) (string, error) {
 		cmd := exec.Command("jail", args...)

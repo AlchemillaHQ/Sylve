@@ -170,6 +170,85 @@ func TestJailBootOrderPersistsExplicitFalseAndZero(t *testing.T) {
 	}
 }
 
+func TestJailExecutionTimeoutPersistsManagedConfig(t *testing.T) {
+	service, _, configPath, mountPoint := newJailOptionsTestService(t, 910, nil)
+
+	if err := service.ModifyExecutionTimeout(910, 300); err != nil {
+		t.Fatalf("ModifyExecutionTimeout failed: %v", err)
+	}
+	record := loadJailOptionRecord(t, service.DB, 910)
+	if record.ExecTimeout != 300 {
+		t.Fatalf("execution timeout = %d, want 300", record.ExecTimeout)
+	}
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(configData), "exec.timeout = 300;"); got != 1 {
+		t.Fatalf("managed exec.timeout count = %d\n%s", got, configData)
+	}
+	metadata, err := os.ReadFile(filepath.Join(mountPoint, ".sylve", "jail.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(metadata), `"execTimeout": 300`) {
+		t.Fatalf("jail metadata missing execution timeout: %s", metadata)
+	}
+}
+
+func TestJailExecutionTimeoutValidation(t *testing.T) {
+	service, _, _, _ := newJailOptionsTestService(t, 911, nil)
+	for _, value := range []int{-1, 0, jailModels.MaximumExecTimeoutSeconds + 1} {
+		err := service.ModifyExecutionTimeout(911, value)
+		if err == nil || !strings.Contains(err.Error(), "exec_timeout_out_of_range") {
+			t.Fatalf("timeout %d: expected range error, got %v", value, err)
+		}
+	}
+}
+
+func TestSyncJailExecutionTimeoutAddsDefaultToExistingConfig(t *testing.T) {
+	service, jail, configPath, _ := newJailOptionsTestService(t, 912, nil)
+	jail.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
+
+	if err := service.syncJailExecTimeoutConfig(jail); err != nil {
+		t.Fatalf("syncJailExecTimeoutConfig failed: %v", err)
+	}
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(configData), "exec.timeout = 120;"); got != 1 {
+		t.Fatalf("managed default timeout count = %d\n%s", got, configData)
+	}
+}
+
+func TestReconcileJailExecutionTimeoutAcceptsTrailingComments(t *testing.T) {
+	comments := []string{
+		"# legacy setting",
+		"// legacy setting",
+		"/* legacy setting */",
+		"/* first comment */ # second comment",
+	}
+	for _, comment := range comments {
+		t.Run(comment, func(t *testing.T) {
+			config := fmt.Sprintf(
+				"jail {\n\texec.timeout = 30; %s\n\tpersist;\n}\n",
+				comment,
+			)
+			next, err := reconcileJailExecTimeoutConfig(config, jailModels.DefaultExecTimeoutSeconds)
+			if err != nil {
+				t.Fatalf("reconcileJailExecTimeoutConfig failed: %v", err)
+			}
+			if got := strings.Count(next, "exec.timeout = 120;"); got != 1 {
+				t.Fatalf("managed timeout count = %d\n%s", got, next)
+			}
+			if strings.Contains(next, comment) {
+				t.Fatalf("legacy commented timeout was not replaced:\n%s", next)
+			}
+		})
+	}
+}
+
 func TestJailOptionDatabaseFailureIsReturnedAndFilesAreRestored(t *testing.T) {
 	service, _, configPath, _ := newJailOptionsTestService(t, 902, func(record *jailModels.Jail) {
 		record.MetadataMeta = "before"

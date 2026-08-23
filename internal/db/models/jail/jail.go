@@ -10,6 +10,7 @@ package jailModels
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -194,6 +195,7 @@ type JailTemplate struct {
 	ResolvConf        string                `json:"resolvConf"`
 	DevFSRuleset      string                `json:"devfsRuleset"`
 	CleanEnvironment  bool                  `json:"cleanEnvironment"`
+	ExecTimeout       int                   `json:"execTimeout" gorm:"not null;default:120"`
 	AdditionalOptions string                `json:"additionalOptions"`
 	AllowedOptions    []string              `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	MetadataMeta      string                `json:"metadataMeta"`
@@ -232,6 +234,10 @@ type JailType string
 const (
 	JailTypeFreeBSD JailType = "freebsd"
 	JailTypeLinux   JailType = "linux"
+
+	DefaultExecTimeoutSeconds = 120
+	MinimumExecTimeoutSeconds = 1
+	MaximumExecTimeoutSeconds = math.MaxInt32
 )
 
 type Jail struct {
@@ -258,6 +264,7 @@ type Jail struct {
 	Fstab             string      `json:"fstab"`
 	ResolvConf        string      `json:"resolvConf"`
 	CleanEnvironment  bool        `json:"cleanEnvironment"`
+	ExecTimeout       int         `json:"execTimeout" gorm:"not null;default:120"`
 	AdditionalOptions string      `json:"additionalOptions"`
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	JailHooks         []JailHooks `json:"jailHooks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`

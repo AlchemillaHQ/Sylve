@@ -11374,6 +11374,95 @@ const docTemplate = `{
                 }
             }
         },
+        "/jail/{ctid}/options/execution-timeout": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Set the per-command exec.timeout used by jail lifecycle commands, including startup and shutdown",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Replace jail execution timeout",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Jail CTID",
+                        "name": "ctid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Execution timeout configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_jail.ModifyExecutionTimeoutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/{ctid}/options/fstab": {
             "put": {
                 "security": [
@@ -31300,6 +31389,9 @@ const docTemplate = `{
                 "devfsRuleset": {
                     "type": "string"
                 },
+                "execTimeout": {
+                    "type": "integer"
+                },
                 "fstab": {
                     "type": "string"
                 },
@@ -31506,6 +31598,9 @@ const docTemplate = `{
                 },
                 "devfsRuleset": {
                     "type": "string"
+                },
+                "execTimeout": {
+                    "type": "integer"
                 },
                 "fstab": {
                     "type": "string"
@@ -37847,10 +37942,22 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_services_libvirt.VMRemovalResult": {
             "type": "object",
             "properties": {
+                "deletedMacObjectIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "retainedDatasets": {
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "retainedMacObjectIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
                     }
                 },
                 "warnings": {
@@ -40398,6 +40505,17 @@ const docTemplate = `{
             "properties": {
                 "devFSRules": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_jail.ModifyExecutionTimeoutRequest": {
+            "type": "object",
+            "required": [
+                "execTimeout"
+            ],
+            "properties": {
+                "execTimeout": {
+                    "type": "integer"
                 }
             }
         },

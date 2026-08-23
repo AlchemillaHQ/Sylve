@@ -283,10 +283,6 @@
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 			</Button>
 		{/if}
-
-		{#if currentJail && !inactive}
-			<span class="text-muted-foreground ml-auto text-xs">Stop the jail to change networking.</span>
-		{/if}
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">

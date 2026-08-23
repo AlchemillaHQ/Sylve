@@ -583,12 +583,16 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		ResolvConf:        jail.ResolvConf,
 		DevFSRuleset:      jail.DevFSRuleset,
 		CleanEnvironment:  jail.CleanEnvironment,
+		ExecTimeout:       jail.ExecTimeout,
 		AdditionalOptions: jail.AdditionalOptions,
 		AllowedOptions:    append([]string{}, jail.AllowedOptions...),
 		MetadataMeta:      jail.MetadataMeta,
 		MetadataEnv:       jail.MetadataEnv,
 		Networks:          s.buildTemplateNetworks(jail.Networks),
 		Hooks:             s.buildTemplateHooks(jail.JailHooks),
+	}
+	if template.ExecTimeout == 0 {
+		template.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
 	}
 
 	if err := s.DB.Create(&template).Error; err != nil {
@@ -937,10 +941,14 @@ func (s *Service) createJailFromTemplateTarget(
 			Fstab:             template.Fstab,
 			ResolvConf:        template.ResolvConf,
 			CleanEnvironment:  template.CleanEnvironment,
+			ExecTimeout:       template.ExecTimeout,
 			AdditionalOptions: template.AdditionalOptions,
 			AllowedOptions:    append([]string{}, template.AllowedOptions...),
 			MetadataMeta:      template.MetadataMeta,
 			MetadataEnv:       template.MetadataEnv,
+		}
+		if createdJail.ExecTimeout == 0 {
+			createdJail.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
 		}
 		if createdJail.ResourceLimits != nil && !*createdJail.ResourceLimits {
 			createdJail.Cores = 0

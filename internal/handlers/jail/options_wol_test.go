@@ -18,6 +18,7 @@ type jailOptionsHandlerStub struct {
 	ctID              uint
 	startAtBoot       bool
 	bootOrder         int
+	execTimeout       int
 	enabled           bool
 	text              string
 	allowedOptions    []string
@@ -41,6 +42,11 @@ func (s *jailOptionsHandlerStub) ModifyBootOrder(ctID uint, startAtBoot bool, bo
 func (s *jailOptionsHandlerStub) ModifyWakeOnLan(ctID uint, enabled bool) error {
 	s.enabled = enabled
 	return s.record("wol", ctID)
+}
+
+func (s *jailOptionsHandlerStub) ModifyExecutionTimeout(ctID uint, execTimeout int) error {
+	s.execTimeout = execTimeout
+	return s.record("execution-timeout", ctID)
 }
 
 func (s *jailOptionsHandlerStub) ModifyFstab(ctID uint, fstab string) error {
@@ -86,6 +92,7 @@ func jailOptionsTestRouter(service jailOptionsService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.PUT("/jail/:ctid/options/boot-order", ModifyBootOrder(service))
+	router.PUT("/jail/:ctid/options/execution-timeout", ModifyExecutionTimeout(service))
 	router.PUT("/jail/:ctid/options/wol", ModifyWakeOnLan(service))
 	router.PUT("/jail/:ctid/options/fstab", ModifyFstab(service))
 	router.PUT("/jail/:ctid/options/resolv-conf", ModifyResolvConf(service))
@@ -107,6 +114,7 @@ func TestJailOptionHandlersPreserveExplicitZeroValues(t *testing.T) {
 		call string
 	}{
 		{path: "/jail/101/options/boot-order", body: `{"startAtBoot":false,"bootOrder":0}`, call: "boot-order"},
+		{path: "/jail/101/options/execution-timeout", body: `{"execTimeout":120}`, call: "execution-timeout"},
 		{path: "/jail/101/options/wol", body: `{"enabled":false}`, call: "wol"},
 		{path: "/jail/101/options/fstab", body: `{"fstab":""}`, call: "fstab"},
 		{path: "/jail/101/options/resolv-conf", body: `{"resolvConf":""}`, call: "resolv-conf"},
@@ -136,6 +144,9 @@ func TestJailOptionHandlersPreserveExplicitZeroValues(t *testing.T) {
 	if stub.startAtBoot || stub.bootOrder != 0 || stub.enabled || stub.text != "" {
 		t.Fatalf("explicit false/zero/empty values changed: %+v", stub)
 	}
+	if stub.execTimeout != 120 {
+		t.Fatalf("execution timeout changed: %d", stub.execTimeout)
+	}
 	if len(stub.allowedOptions) != 0 {
 		t.Fatalf("explicit empty allowed-options list changed: %#v", stub.allowedOptions)
 	}
@@ -152,6 +163,7 @@ func TestJailOptionHandlersRejectOmittedRequiredFields(t *testing.T) {
 		body string
 	}{
 		{path: "/jail/101/options/boot-order", body: `{}`},
+		{path: "/jail/101/options/execution-timeout", body: `{}`},
 		{path: "/jail/101/options/wol", body: `{}`},
 		{path: "/jail/101/options/fstab", body: `{}`},
 		{path: "/jail/101/options/resolv-conf", body: `{}`},
@@ -195,6 +207,7 @@ func TestJailOptionErrorClassification(t *testing.T) {
 		message string
 	}{
 		{err: errors.New("invalid_jail_metadata"), status: http.StatusBadRequest, message: "invalid_jail_metadata"},
+		{err: errors.New("exec_timeout_out_of_range"), status: http.StatusBadRequest, message: "exec_timeout_out_of_range"},
 		{err: errors.New("replication_lease_not_owned"), status: http.StatusForbidden, message: "replication_lease_not_owned"},
 		{err: errors.New("jail_not_found"), status: http.StatusNotFound, message: "jail_not_found"},
 		{err: errors.New("restore_in_progress"), status: http.StatusConflict, message: "restore_in_progress"},

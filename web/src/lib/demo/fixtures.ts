@@ -79,6 +79,7 @@ type DemoJail = {
 	fstab?: string;
 	resolvConf?: string;
 	devfsRuleset?: string;
+	execTimeout?: number;
 	additionalOptions?: string;
 	allowedOptions?: string[];
 	metadataMeta?: string;
@@ -1125,6 +1126,7 @@ function fullJail(jail: DemoJail) {
 		fstab: jail.fstab ?? '',
 		resolvConf: jail.resolvConf ?? 'nameserver 1.1.1.1',
 		devfsRuleset: jail.devfsRuleset ?? '4',
+		execTimeout: jail.execTimeout ?? 120,
 		additionalOptions: jail.additionalOptions ?? '',
 		allowedOptions: jail.allowedOptions ?? [],
 		jailHooks: jail.jailHooks ?? [],
@@ -1944,6 +1946,7 @@ function createDemoJail(config: DemoRequestConfig, hostname: string): DemoClient
 		fstab: stringField(payload, 'fstab'),
 		resolvConf: stringField(payload, 'resolvConf'),
 		devfsRuleset: stringField(payload, 'devfsRuleset'),
+		execTimeout: 120,
 		additionalOptions: stringField(payload, 'additionalOptions'),
 		allowedOptions,
 		metadataMeta: stringField(payload, 'metadataMeta'),
@@ -1993,7 +1996,12 @@ function updateDemoJailDetails(jail: DemoJail, path: string, payload: Record<str
 			Math.trunc(numberField(payload, 'bootOrder', jail.startOrder ?? 0))
 		);
 	} else if (path === 'options/wol') jail.wol = booleanField(payload, 'enabled', jail.wol ?? true);
-	else if (path === 'options/fstab') jail.fstab = stringField(payload, 'fstab');
+	else if (path === 'options/execution-timeout') {
+		jail.execTimeout = Math.max(
+			1,
+			Math.trunc(numberField(payload, 'execTimeout', jail.execTimeout ?? 120))
+		);
+	} else if (path === 'options/fstab') jail.fstab = stringField(payload, 'fstab');
 	else if (path === 'options/resolv-conf') jail.resolvConf = stringField(payload, 'resolvConf');
 	else if (path === 'options/devfs-rules') jail.devfsRuleset = stringField(payload, 'devFSRules');
 	else if (path === 'options/additional-options') {

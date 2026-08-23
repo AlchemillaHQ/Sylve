@@ -256,6 +256,87 @@ func normalizeJailConfigContent(content string) string {
 	return content
 }
 
+func validateJailExecTimeout(execTimeout int) error {
+	if execTimeout < jailModels.MinimumExecTimeoutSeconds ||
+		execTimeout > jailModels.MaximumExecTimeoutSeconds {
+		return fmt.Errorf(
+			"exec_timeout_out_of_range: must be between %d and %d",
+			jailModels.MinimumExecTimeoutSeconds,
+			jailModels.MaximumExecTimeoutSeconds,
+		)
+	}
+	return nil
+}
+
+func effectiveJailExecTimeout(execTimeout int) (int, error) {
+	if execTimeout == 0 {
+		execTimeout = jailModels.DefaultExecTimeoutSeconds
+	}
+	if err := validateJailExecTimeout(execTimeout); err != nil {
+		return 0, err
+	}
+	return execTimeout, nil
+}
+
+func reconcileJailExecTimeoutConfig(content string, execTimeout int) (string, error) {
+	execTimeout, err := effectiveJailExecTimeout(execTimeout)
+	if err != nil {
+		return "", err
+	}
+
+	lines := utils.SplitLines(content)
+	result := make([]string, 0, len(lines))
+	inAdditional := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == jailAdditionalOptionsStart {
+			inAdditional = true
+			result = append(result, line)
+			continue
+		}
+		if trimmed == jailAdditionalOptionsEnd {
+			inAdditional = false
+			result = append(result, line)
+			continue
+		}
+		if !inAdditional && strings.HasPrefix(trimmed, "exec.timeout") {
+			if _, ok := jailConfigAssignmentValueWithTrailingComment(line, "exec.timeout"); !ok {
+				return "", fmt.Errorf("jail_option_config_conflict: malformed exec.timeout assignment")
+			}
+			continue
+		}
+		result = append(result, line)
+	}
+
+	cleaned := normalizeJailConfigContent(strings.Join(result, "\n"))
+	return insertJailConfigBlock(
+		cleaned,
+		fmt.Sprintf("\texec.timeout = %d;", execTimeout),
+		false,
+	)
+}
+
+func (s *Service) syncJailExecTimeoutConfig(jail *jailModels.Jail) error {
+	if jail == nil {
+		return fmt.Errorf("jail_not_found")
+	}
+	configPath, currentConfig, err := s.loadJailOptionConfig(jail.CTID)
+	if err != nil {
+		return err
+	}
+	nextConfig, err := reconcileJailExecTimeoutConfig(currentConfig, jail.ExecTimeout)
+	if err != nil {
+		return err
+	}
+	if nextConfig == currentConfig {
+		return nil
+	}
+	if err := utils.AtomicWriteFile(configPath, []byte(nextConfig), 0o644); err != nil {
+		return fmt.Errorf("failed_to_write_jail_config: %w", err)
+	}
+	return nil
+}
+
 func removeJailConfigRange(content string, start, end int) string {
 	prefix := strings.TrimRight(content[:start], "\r\n")
 	suffix := strings.TrimLeft(content[end:], "\r\n")
@@ -419,6 +500,37 @@ func jailConfigAssignmentValue(line, key string) (string, bool) {
 		}
 	}
 	return value, true
+}
+
+func jailConfigAssignmentValueWithTrailingComment(line, key string) (string, bool) {
+	if value, ok := jailConfigAssignmentValue(line, key); ok {
+		return value, true
+	}
+
+	semicolon := strings.IndexByte(line, ';')
+	if semicolon < 0 || !isJailConfigCommentTail(line[semicolon+1:]) {
+		return "", false
+	}
+	return jailConfigAssignmentValue(line[:semicolon+1], key)
+}
+
+func isJailConfigCommentTail(tail string) bool {
+	tail = strings.TrimSpace(tail)
+	for tail != "" {
+		if strings.HasPrefix(tail, "#") || strings.HasPrefix(tail, "//") {
+			return true
+		}
+		if !strings.HasPrefix(tail, "/*") {
+			return false
+		}
+		block := tail[2:]
+		end := strings.Index(block, "*/")
+		if end < 0 {
+			return false
+		}
+		tail = strings.TrimSpace(block[end+2:])
+	}
+	return true
 }
 
 func reconcileJailFstabConfig(content, fstabPath string, enabled bool) (string, error) {
@@ -849,6 +961,42 @@ func lifecycleHookRows(jailID uint, hooks jailServiceInterfaces.Hooks) []jailMod
 		{JailID: jailID, Phase: jailModels.JailHookPhaseStop, Enabled: hooks.Stop.Enabled, Script: hooks.Stop.Script},
 		{JailID: jailID, Phase: jailModels.JailHookPhasePostStop, Enabled: hooks.Poststop.Enabled, Script: hooks.Poststop.Script},
 	}
+}
+
+func (s *Service) ModifyExecutionTimeout(ctID uint, execTimeout int) error {
+	if err := validateJailExecTimeout(execTimeout); err != nil {
+		return err
+	}
+	return s.mutateJailOption(ctID, func(jail *jailModels.Jail) error {
+		configPath, currentConfig, err := s.loadJailOptionConfig(ctID)
+		if err != nil {
+			return err
+		}
+		currentConfig, err = canonicalizeJailAdditionalOptions(currentConfig, jail)
+		if err != nil {
+			return err
+		}
+		nextConfig, err := reconcileJailExecTimeoutConfig(currentConfig, execTimeout)
+		if err != nil {
+			return err
+		}
+		prior := jail.ExecTimeout
+		return s.persistJailOptionMutation(jail, jailOptionPersistence{
+			paths: []string{configPath},
+			writeFiles: func() error {
+				if err := utils.AtomicWriteFile(configPath, []byte(nextConfig), 0o644); err != nil {
+					return fmt.Errorf("failed_to_write_jail_config: %w", err)
+				}
+				return nil
+			},
+			updateDatabase: func() error {
+				return updateJailOptionColumns(s.DB, ctID, map[string]any{"exec_timeout": execTimeout})
+			},
+			restoreDatabase: func() error {
+				return updateJailOptionColumns(s.DB, ctID, map[string]any{"exec_timeout": prior})
+			},
+		})
+	})
 }
 
 func (s *Service) ModifyBootOrder(ctID uint, startAtBoot bool, bootOrder int) error {

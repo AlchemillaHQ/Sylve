@@ -290,6 +290,7 @@ func TestRestoreJailDatabaseFromSnapshotRestoresConfigAndKeepsNormalizedIdentity
 		Hostname:    "snapshot-host",
 		Description: "restored description",
 		ResolvConf:  "nameserver 198.51.100.53\n",
+		ExecTimeout: 240,
 		Storages: []jailModels.Storage{{
 			Pool:   "zroot",
 			GUID:   "root-guid",
@@ -313,7 +314,8 @@ func TestRestoreJailDatabaseFromSnapshotRestoresConfigAndKeepsNormalizedIdentity
 	if got.CTID != current.CTID || got.Name != current.Name {
 		t.Fatalf("identity changed to name=%q ctid=%d", got.Name, got.CTID)
 	}
-	if got.Hostname != restored.Hostname || got.Description != restored.Description || got.ResolvConf != restored.ResolvConf {
+	if got.Hostname != restored.Hostname || got.Description != restored.Description ||
+		got.ResolvConf != restored.ResolvConf || got.ExecTimeout != restored.ExecTimeout {
 		t.Fatalf("snapshot config was not restored: %+v", got)
 	}
 

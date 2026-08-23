@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getJailByCTID } from '$lib/api/jail/jail';
 	import AllowedOptions from '$lib/components/custom/Jail/Options/AllowedOptions.svelte';
+	import ExecutionTimeout from '$lib/components/custom/Jail/Options/ExecutionTimeout.svelte';
 	import LifecycleHooks from '$lib/components/custom/Jail/Options/LifecycleHooks.svelte';
 	import StartOrder from '$lib/components/custom/Jail/Options/StartOrder.svelte';
 	import TextEdit from '$lib/components/custom/Jail/Options/TextEdit.svelte';
@@ -21,6 +22,7 @@
 
 	type OptionDialog =
 		| 'startOrder'
+		| 'executionTimeout'
 		| 'wol'
 		| 'fstab'
 		| 'resolvConf'
@@ -119,6 +121,11 @@
 						property: 'Start At Boot / Start Order',
 						value: `${currentJail.startAtBoot ? 'Yes' : 'No'} / ${currentJail.startOrder ?? 0}`
 					},
+					{
+						id: 'executionTimeout',
+						property: 'Execution Timeout',
+						value: `${currentJail.execTimeout} seconds`
+					},
 					{ id: 'wol', property: 'Wake on LAN', value: currentJail.wol ?? false },
 					{
 						id: 'fstab',
@@ -172,6 +179,7 @@
 	let query = $state('');
 	let properties = $state<Record<OptionDialog, { open: boolean }>>({
 		startOrder: { open: false },
+		executionTimeout: { open: false },
 		wol: { open: false },
 		fstab: { open: false },
 		resolvConf: { open: false },
@@ -242,6 +250,8 @@
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow.id === 'startOrder'}
 				{@render editButton('startOrder', 'Start At Boot / Start Order')}
+			{:else if activeRow.id === 'executionTimeout'}
+				{@render editButton('executionTimeout', 'Execution Timeout')}
 			{:else if activeRow.id === 'wol'}
 				{@render editButton('wol', 'Wake on LAN')}
 			{:else if activeRow.id === 'fstab'}
@@ -282,6 +292,15 @@
 {#if properties.startOrder.open && currentJail}
 	<StartOrder
 		bind:open={properties.startOrder.open}
+		jail={currentJail}
+		node={data.node}
+		onSaved={reloadJail}
+	/>
+{/if}
+
+{#if properties.executionTimeout.open && currentJail}
+	<ExecutionTimeout
+		bind:open={properties.executionTimeout.open}
 		jail={currentJail}
 		node={data.node}
 		onSaved={reloadJail}

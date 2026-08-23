@@ -2745,6 +2745,8 @@ definitions:
         type: string
       devfsRuleset:
         type: string
+      execTimeout:
+        type: integer
       fstab:
         type: string
       hostname:
@@ -2885,6 +2887,8 @@ definitions:
         type: string
       devfsRuleset:
         type: string
+      execTimeout:
+        type: integer
       fstab:
         type: string
       hooks:
@@ -7140,9 +7144,17 @@ definitions:
     type: object
   github_com_alchemillahq_sylve_internal_services_libvirt.VMRemovalResult:
     properties:
+      deletedMacObjectIds:
+        items:
+          type: integer
+        type: array
       retainedDatasets:
         items:
           type: string
+        type: array
+      retainedMacObjectIds:
+        items:
+          type: integer
         type: array
       warnings:
         items:
@@ -8842,6 +8854,13 @@ definitions:
         type: string
     required:
     - devFSRules
+    type: object
+  internal_handlers_jail.ModifyExecutionTimeoutRequest:
+    properties:
+      execTimeout:
+        type: integer
+    required:
+    - execTimeout
     type: object
   internal_handlers_jail.ModifyFstabRequest:
     properties:
@@ -16729,6 +16748,65 @@ paths:
       security:
       - BearerAuth: []
       summary: Replace jail DevFS rules
+      tags:
+      - Jail
+  /jail/{ctid}/options/execution-timeout:
+    put:
+      consumes:
+      - application/json
+      description: Set the per-command exec.timeout used by jail lifecycle commands,
+        including startup and shutdown
+      parameters:
+      - description: Jail CTID
+        in: path
+        minimum: 1
+        name: ctid
+        required: true
+        type: integer
+      - description: Execution timeout configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_jail.ModifyExecutionTimeoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Replace jail execution timeout
       tags:
       - Jail
   /jail/{ctid}/options/fstab:
