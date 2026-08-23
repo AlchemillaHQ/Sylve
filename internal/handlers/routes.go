@@ -663,6 +663,7 @@ func RegisterRoutes(r *gin.Engine,
 			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
 			jailHandlers.DeleteJailSnapshot(jailService),
 		)
+		jail.GET("/:ctid/root-mountpoint", jailHandlers.GetJailRootMountPoint(jailService))
 		jail.GET("/:ctid", jailHandlers.GetJailByCTID(jailService))
 		jail.POST("/:ctid/migrations", migrationHandlers.MigrateJail(migrationService, lifecycleService))
 		jail.POST("/:ctid/actions/:action", jailHandlers.JailAction(jailService, lifecycleService))

@@ -1782,6 +1782,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailRootMountPointResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_jail.JailRootMountPointResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailTemplateCaptureTaskResponse:
     properties:
       data:
@@ -8777,6 +8788,11 @@ definitions:
   internal_handlers_jail.JailLogsResponse:
     properties:
       logs:
+        type: string
+    type: object
+  internal_handlers_jail.JailRootMountPointResponse:
+    properties:
+      mountPoint:
         type: string
     type: object
   internal_handlers_jail.JailTemplateCaptureTaskResponse:
@@ -17103,6 +17119,55 @@ paths:
       security:
       - BearerAuth: []
       summary: Replace jail Wake-on-LAN configuration
+      tags:
+      - Jail
+  /jail/{ctid}/root-mountpoint:
+    get:
+      consumes:
+      - application/json
+      description: Resolve and validate the host-side mountpoint for a jail's root
+        ZFS dataset
+      parameters:
+      - description: Jail CTID
+        in: path
+        minimum: 1
+        name: ctid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailRootMountPointResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Resolve a jail root mountpoint
       tags:
       - Jail
   /jail/{ctid}/snapshots:

@@ -62,6 +62,10 @@ export const JailStorageSchema = z.object({
 	isBase: z.boolean()
 });
 
+export const JailRootMountPointSchema = z.object({
+	mountPoint: z.string().min(1)
+});
+
 export const SimpleJailSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
@@ -277,6 +281,7 @@ export type SimpleJail = z.infer<typeof SimpleJailSchema>;
 export type SimpleJailTemplate = z.infer<typeof SimpleJailTemplateSchema>;
 export type Jail = z.infer<typeof JailSchema>;
 export type JailStorage = z.infer<typeof JailStorageSchema>;
+export type JailRootMountPoint = z.infer<typeof JailRootMountPointSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
 export type JailNetworkInheritanceResult = z.infer<typeof JailNetworkInheritanceResultSchema>;
 export type JailHook = z.infer<typeof JailHookSchema>;

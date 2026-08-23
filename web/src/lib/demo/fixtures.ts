@@ -2975,6 +2975,29 @@ export async function handleDemoRequest<T = unknown>(
 			logs: 'jail: created VNET stack\njail: started /etc/rc\njail: ready'
 		}) as DemoClientResponse<T>;
 	}
+	match = path.match(/^\/jail\/(\d+)\/root-mountpoint$/);
+	if (match && method === 'GET') {
+		const found = findJail(Number(match[1]));
+		if (!found) return missing(path) as DemoClientResponse<T>;
+		const jail = fullJail(found.jail);
+		const baseStorage = jail.storages.find((storage) => storage.isBase);
+		if (!baseStorage) {
+			return failure(
+				'jail_base_storage_not_found',
+				'jail_base_storage_not_found'
+			) as DemoClientResponse<T>;
+		}
+		const pool = typeof baseStorage.pool === 'string' ? baseStorage.pool.trim() : '';
+		if (!pool) {
+			return failure(
+				'jail_base_pool_not_found',
+				'jail_base_pool_not_found'
+			) as DemoClientResponse<T>;
+		}
+		return success({
+			mountPoint: `/${pool}/sylve/jails/${jail.ctId}`
+		}) as DemoClientResponse<T>;
+	}
 	match = path.match(/^\/jail\/(\d+)\/migrations$/);
 	if (match && method === 'POST') {
 		return createDemoMigration(

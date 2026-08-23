@@ -7,6 +7,7 @@ import {
 import {
 	JailActionResponseSchema,
 	JailLogsSchema,
+	JailRootMountPointSchema,
 	JailSchema,
 	JailStateSchema,
 	JailStatSchema,
@@ -19,6 +20,7 @@ import {
 	type JailActionResponse,
 	type JailLifecycleAction,
 	type JailLogs,
+	type JailRootMountPoint,
 	type JailStat,
 	type JailStatsBootstrap,
 	type JailNetwork,
@@ -138,6 +140,19 @@ export async function getJailByCTID(
 	options?: NodeAPIDataRequestOptions
 ): Promise<Jail | APIResponse> {
 	return await apiRequestResult(`/jail/${ctId}`, JailSchema, 'GET', undefined, options);
+}
+
+export async function getJailRootMountPoint(
+	ctId: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<JailRootMountPoint | APIResponse> {
+	return await apiRequestResult(
+		`/jail/${ctId}/root-mountpoint`,
+		JailRootMountPointSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getSimpleJailByCTID(
