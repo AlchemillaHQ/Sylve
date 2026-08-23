@@ -21,27 +21,19 @@
 
 struct group {
     bool     found;
-    uint8_t  error;
     uint16_t family_id;
     uint32_t group_id;
 };
 
 static inline struct group get_group_id(struct snl_state *state, const char *family_name, const char *group_name) {
-    struct _getfamily_attrs attrs;
-    if (!_snl_get_genl_family_info(state, family_name, &attrs)) {
-        return (struct group){ .error = 1 };
-    }
+    uint16_t family_id = 0;
+    uint32_t group_id = snl_get_genl_mcast_group(state, family_name, group_name, &family_id);
 
-    for (size_t i = 0; i < attrs.mcast_groups.num_groups; i++) {
-        if (!strcmp(group_name, attrs.mcast_groups.groups[i]->mcast_grp_name)) {
-            return (struct group){
-                .found = true,
-                .family_id = attrs.family_id,
-                .group_id = attrs.mcast_groups.groups[i]->mcast_grp_id
-            };
-        }
-    }
-    return (struct group){ .found = false };
+    return (struct group){
+        .found = group_id != 0,
+        .family_id = family_id,
+        .group_id = group_id
+    };
 }
 
 int start_netlink_watcher(void) {
@@ -51,7 +43,7 @@ int start_netlink_watcher(void) {
     }
 
     struct group grp = get_group_id(state, "nlsysevent", "ZFS");
-    if (grp.error || !grp.found) return -2;
+    if (!grp.found) return -2;
 
     uint32_t group_id = grp.group_id;
     if (setsockopt(state->fd, SOL_NETLINK, NETLINK_ADD_MEMBERSHIP, &group_id, sizeof(group_id))) {
