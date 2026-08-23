@@ -7,41 +7,60 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import type { User } from '$lib/types/auth';
-	import { handleAPIError } from '$lib/utils/http';
+	import type { ImportableUnixUser } from '$lib/types/auth';
+	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
 
 	interface Props {
 		open: boolean;
 		reload?: boolean;
+		hostname: string;
 	}
 
-	let { open = $bindable(), reload = $bindable() }: Props = $props();
+	let { open = $bindable(), reload = $bindable(), hostname }: Props = $props();
 
-	let importableUsers: User[] = $state([]);
+	let importableUsers: ImportableUnixUser[] = $state([]);
 	let loadingUsers = $state(false);
 	let selectedUsername = $state({ open: false, value: '' });
 	let password = $state('');
 	let admin = $state(false);
 	let submitting = $state(false);
+	let listController: AbortController | null = null;
+	let componentActive = true;
 
 	let userOptions = $derived(
-		importableUsers.map((u) => ({
-			value: u.username,
-			label: `${u.username} (UID: ${u.uid}, ${u.homeDirectory})`
+		importableUsers.map((user) => ({
+			value: user.username,
+			label: `${user.username} (UID: ${user.uid}, ${user.homeDirectory})`
 		}))
 	);
 
 	async function loadImportableUsers() {
+		listController?.abort();
+		const controller = new AbortController();
+		listController = controller;
 		loadingUsers = true;
 		try {
-			importableUsers = await listImportableUsers();
-		} catch {
+			const response = await listImportableUsers({ hostname, signal: controller.signal });
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to load importable users', { position: 'bottom-center' });
+				importableUsers = [];
+				return;
+			}
+			importableUsers = response;
+		} catch (error) {
+			if (isRequestCancellation(error)) return;
 			toast.error('Failed to load importable users', { position: 'bottom-center' });
 			importableUsers = [];
 		} finally {
-			loadingUsers = false;
+			if (listController === controller) {
+				listController = null;
+				loadingUsers = false;
+			}
 		}
 	}
 
@@ -49,13 +68,25 @@
 		selectedUsername = { open: false, value: '' };
 		password = '';
 		admin = false;
-		submitting = false;
 	}
 
+	function closeDialog() {
+		listController?.abort();
+		reset();
+		open = false;
+	}
+
+	onDestroy(() => {
+		componentActive = false;
+		listController?.abort();
+	});
+
 	watch(
-		() => open,
-		(value) => {
-			if (value) {
+		() => `${open}:${hostname}`,
+		() => {
+			listController?.abort();
+			if (open) {
+				reset();
 				loadImportableUsers();
 			}
 		}
@@ -68,32 +99,37 @@
 	}
 
 	async function submit() {
+		if (submitting) return;
 		const error = validate();
 		if (error) {
 			toast.error(error, { position: 'bottom-center' });
 			return;
 		}
 
+		const username = selectedUsername.value;
+		const requestHostname = hostname;
+		const payload = {
+			username,
+			password: password || undefined,
+			admin
+		};
 		submitting = true;
 		try {
-			const response = await importUser({
-				username: selectedUsername.value,
-				password: password || undefined,
-				admin
-			});
-
-			reload = true;
-
-			if (response.error) {
+			const response = await importUser(payload, { hostname: requestHostname });
+			if (!componentActive || hostname !== requestHostname || selectedUsername.value !== username)
+				return;
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to import user', { position: 'bottom-center' });
-			} else {
-				toast.success(`User "${selectedUsername.value}" imported`, {
-					position: 'bottom-center'
-				});
-				open = false;
-				reset();
+				return;
 			}
+
+			reload = true;
+			toast.success(`User "${response.username}" imported`, { position: 'bottom-center' });
+			closeDialog();
+		} catch {
+			if (!componentActive || hostname !== requestHostname) return;
+			toast.error('Failed to import user', { position: 'bottom-center' });
 		} finally {
 			submitting = false;
 		}
@@ -102,16 +138,10 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		onInteractOutside={() => {
-			reset();
-			open = false;
-		}}
+		onInteractOutside={closeDialog}
 		class="lg:max-w-lg w-[92%] gap-4 p-5"
 		showCloseButton={true}
-		onClose={() => {
-			reset();
-			open = false;
-		}}
+		onClose={closeDialog}
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
@@ -134,7 +164,9 @@
 			>
 				<span class="icon-[mdi--account-off] h-8 w-8"></span>
 				<p>No importable Unix users found</p>
-				<p class="text-xs">All Unix users are either already registered in Sylve or reserved by the system.</p>
+				<p class="text-xs">
+					All Unix users are either already registered in Sylve or reserved by the system.
+				</p>
 			</div>
 		{:else}
 			<div class="space-y-4">
@@ -148,12 +180,12 @@
 				/>
 
 				{#if selectedUsername.value}
-					{@const info = importableUsers.find((u) => u.username === selectedUsername.value)}
+					{@const info = importableUsers.find((user) => user.username === selectedUsername.value)}
 					{#if info}
 						<div class="bg-muted rounded-md p-3 text-sm space-y-1">
 							<div class="flex justify-between">
-								<span class="text-muted-foreground">UID:</span>
-								<span>{info.uid || '-'}</span>
+								<span class="text-muted-foreground">UID / GID:</span>
+								<span>{info.uid} / {info.gid}</span>
 							</div>
 							<div class="flex justify-between">
 								<span class="text-muted-foreground">Shell:</span>
@@ -184,9 +216,9 @@
 						</div>
 
 						<p class="text-muted-foreground text-xs text-justify">
-							Importing registers the existing Unix user in Sylve. The Unix user, its groups, and
-							home directory are left untouched. If you set a password, the user can log in with
-							Sylve credentials; otherwise they must use System Auth (PAM).
+							Importing registers the existing Unix user in Sylve. The Unix password, groups, and
+							home directory are left untouched. If you set a password, it is used only for Sylve
+							authentication; otherwise the user must use System Auth (PAM).
 						</p>
 					</div>
 				{/if}
@@ -194,15 +226,12 @@
 		{/if}
 
 		<div class="flex justify-end gap-2 pt-1">
+			<Button variant="outline" onclick={closeDialog}>Cancel</Button>
 			<Button
-				variant="outline"
-				onclick={() => {
-					reset();
-					open = false;
-				}}>Cancel</Button
-			>
-			<Button
-				disabled={!selectedUsername.value || submitting || importableUsers.length === 0}
+				disabled={!selectedUsername.value ||
+					submitting ||
+					loadingUsers ||
+					importableUsers.length === 0}
 				onclick={submit}>{submitting ? 'Importing…' : 'Import'}</Button
 			>
 		</div>

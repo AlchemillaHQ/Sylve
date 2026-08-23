@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/pkg"
+	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
@@ -37,7 +38,6 @@ func (s *Service) CheckVirtualization() error {
 		"bhyve-firmware",
 		"u-boot-bhyve-arm64",
 		"swtpm",
-		"qemu-tools",
 	}
 
 	for _, p := range requiredPackages {
@@ -58,7 +58,11 @@ func (s *Service) CheckVirtualization() error {
 		}
 	}
 
-	if _,err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
+	if err := qemuimg.CheckTools(); err != nil {
+		return fmt.Errorf("virt_required_command_qemu-img_unavailable: %w", err)
+	}
+
+	if _, err := utils.RunCommand("/sbin/kldstat", "-m", "vmm"); err == nil {
 		return nil
 	}
 
@@ -91,7 +95,7 @@ func (s *Service) CheckJails() error {
 		return fmt.Errorf("jails_failed_to_check_enforce_statfs: %w", err)
 	}
 
-	if val != 2 {
+	if val != 1 {
 		return fmt.Errorf("jails_enforce_statfs_not_enabled")
 	}
 
@@ -124,10 +128,6 @@ func (s *Service) CheckSambaServer() error {
 
 	if !sambaInstalled {
 		return fmt.Errorf("samba4XX_erquired_package_not_installed")
-	}
-
-	if !pkg.IsPackageInstalled("avahi-app") {
-		return fmt.Errorf("avahi_required_package_avahi-app_not_installed")
 	}
 
 	return nil

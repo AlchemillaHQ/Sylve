@@ -17,27 +17,20 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/disk"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"gorm.io/gorm"
 )
-
-func (s *Service) IsPoolAllowed(pool string) bool {
-	var basicSettings models.BasicSettings
-
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return false
-	}
-
-	return slices.Contains(basicSettings.Pools, pool)
-}
 
 func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolStatusPool, error) {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
-		return nil, fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return nil, poolLookupError(err, "pool_not_found")
 	}
 
 	status, err := pool.Status(ctx)
@@ -50,8 +43,8 @@ func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolSt
 
 func (s *Service) ScrubPool(ctx context.Context, guid string) error {
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
 	err = pool.Scrub(ctx)
@@ -67,7 +60,12 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	defer s.syncMutex.Unlock()
 
 	if !utils.IsValidZFSPoolName(req.Name) {
-		return fmt.Errorf("invalid_pool_name")
+		return classifyError(ErrInvalidRequest, "invalid_pool_name")
+	}
+
+	mountpoint, err := normalizePoolMountpoint(req.Mountpoint, req.Properties)
+	if err != nil {
+		return err
 	}
 
 	names, err := s.GZFS.Zpool.GetPoolNames(ctx)
@@ -77,62 +75,102 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 
 	for _, existingName := range names {
 		if strings.EqualFold(existingName, req.Name) {
-			return fmt.Errorf("pool_name_taken")
+			return classifyError(ErrConflict, "pool_name_taken")
 		}
 	}
 
-	raidKeyword := ""
-	if req.RaidType != "" && req.RaidType != zfsServiceInterfaces.RaidTypeStripe {
-		validRaidTypes := map[zfsServiceInterfaces.RaidType]int{
-			zfsServiceInterfaces.RaidTypeMirror: 2,
-			zfsServiceInterfaces.RaidTypeRaidZ:  3,
-			zfsServiceInterfaces.RaidTypeRaidZ2: 4,
-			zfsServiceInterfaces.RaidTypeRaidZ3: 5,
-		}
-
-		minDevices, ok := validRaidTypes[req.RaidType]
-		if !ok {
-			return fmt.Errorf("invalid_raidz_type")
-		}
-
-		for _, vdev := range req.Vdevs {
-			if len(vdev.VdevDevices) < minDevices {
-				return fmt.Errorf("vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, req.RaidType, minDevices)
-			}
-		}
-
-		raidKeyword = string(req.RaidType)
-	} else {
-		for _, vdev := range req.Vdevs {
-			if len(vdev.VdevDevices) == 0 {
-				return fmt.Errorf("vdev %s has no devices", vdev.Name)
-			}
-		}
+	validRaidMinDisks := map[zfsServiceInterfaces.RaidType]int{
+		zfsServiceInterfaces.RaidTypeStripe: 1,
+		zfsServiceInterfaces.RaidTypeMirror: 2,
+		zfsServiceInterfaces.RaidTypeRaidZ:  3,
+		zfsServiceInterfaces.RaidTypeRaidZ2: 4,
+		zfsServiceInterfaces.RaidTypeRaidZ3: 5,
 	}
 
-	var vdevArgs []string
+	if len(req.Vdevs) == 0 {
+		return classifyError(ErrInvalidRequest, "at_least_one_vdev_required")
+	}
+
 	for _, vdev := range req.Vdevs {
-		if raidKeyword != "" {
-			vdevArgs = append(vdevArgs, raidKeyword)
+		raidType := vdev.RaidType
+		if raidType == "" {
+			raidType = zfsServiceInterfaces.RaidTypeStripe
 		}
-		vdevArgs = append(vdevArgs, vdev.VdevDevices...)
+		minDisks, ok := validRaidMinDisks[raidType]
+		if !ok {
+			return classifyError(ErrInvalidRequest, "vdev %s has invalid raid type: %s", vdev.Name, raidType)
+		}
+		if len(vdev.VdevDevices) < minDisks {
+			return classifyError(ErrInvalidRequest, "vdev %s has insufficient devices for %s (minimum %d)", vdev.Name, raidType, minDisks)
+		}
 	}
-	var args []string
 
-	args = append(args, vdevArgs...)
+	var dataVdevs, logVdevs, cacheVdevs, specialVdevs, dedupVdevs []zfsServiceInterfaces.Vdev
+	for _, vdev := range req.Vdevs {
+		t := vdev.Type
+		if t == "" {
+			t = zfsServiceInterfaces.VdevTypeData
+		}
+		switch t {
+		case zfsServiceInterfaces.VdevTypeData:
+			dataVdevs = append(dataVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeLog:
+			logVdevs = append(logVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeCache:
+			cacheVdevs = append(cacheVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeSpecial:
+			specialVdevs = append(specialVdevs, vdev)
+		case zfsServiceInterfaces.VdevTypeDedup:
+			dedupVdevs = append(dedupVdevs, vdev)
+		default:
+			return classifyError(ErrInvalidRequest, "vdev %s has invalid type: %s", vdev.Name, t)
+		}
+	}
+
+	if len(dataVdevs) == 0 {
+		return classifyError(ErrInvalidRequest, "at_least_one_data_vdev_required")
+	}
+
+	var args []string
+	args = append(args, buildVdevArgs(dataVdevs)...)
+
+	if len(logVdevs) > 0 {
+		args = append(args, "log")
+		args = append(args, buildVdevArgs(logVdevs)...)
+	}
+
+	if len(cacheVdevs) > 0 {
+		args = append(args, "cache")
+		args = append(args, buildVdevArgs(cacheVdevs)...)
+	}
+
+	if len(specialVdevs) > 0 {
+		args = append(args, "special")
+		args = append(args, buildVdevArgs(specialVdevs)...)
+	}
+
+	if len(dedupVdevs) > 0 {
+		args = append(args, "dedup")
+		args = append(args, buildVdevArgs(dedupVdevs)...)
+	}
 
 	if len(req.Spares) > 0 {
 		args = append(args, "spare")
 		args = append(args, req.Spares...)
 	}
 
-	err = s.GZFS.Zpool.Create(ctx, req.Name, req.CreateForce, req.Properties, args...)
+	err = s.GZFS.Zpool.CreateWithOptions(ctx, req.Name, gzfs.ZPoolCreateOptions{
+		Force:      req.CreateForce,
+		Mountpoint: mountpoint,
+		Properties: req.Properties,
+	}, args...)
 	if err != nil {
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
-	if err := s.ensureSylveDatasetsOnPool(ctx, req.Name); err != nil {
-		return err
+	_, err = zfsutil.EnsureSylveNamespace(ctx, s.GZFS, req.Name)
+	if err != nil {
+		return fmt.Errorf("failed_to_prepare_sylve_datasets: %w", err)
 	}
 
 	var basicSettings models.BasicSettings
@@ -144,97 +182,100 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		basicSettings.Pools = append(basicSettings.Pools, req.Name)
 	}
 
-	if err := s.DB.Save(&basicSettings).Error; err != nil {
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(&basicSettings).Error; err != nil {
+			return err
+		}
+		return db.InvalidateZFSCaches(tx)
+	}); err != nil {
 		return fmt.Errorf("failed_to_update_basic_settings: %v", err)
 	}
 
 	return nil
 }
 
-func (s *Service) ensureSylveDatasetsOnPool(ctx context.Context, poolName string) error {
-	requiredDatasets := []string{
-		"sylve",
-		"sylve/virtual-machines",
-		"sylve/jails",
-	}
-
-	for _, dataset := range requiredDatasets {
-		fullDatasetName := fmt.Sprintf("%s/%s", poolName, dataset)
-		found, err := s.GZFS.ZFS.Get(ctx, fullDatasetName, false)
-		if err != nil && !strings.Contains(strings.ToLower(err.Error()), "does not exist") {
-			return fmt.Errorf("failed_to_check_dataset_%s: %w", fullDatasetName, err)
-		}
-
-		if found != nil {
-			continue
-		}
-
-		if _, err := s.GZFS.ZFS.CreateFilesystem(ctx, fullDatasetName, nil); err != nil {
-			return fmt.Errorf("failed_to_create_dataset_%s: %w", fullDatasetName, err)
+func normalizePoolMountpoint(raw string, properties map[string]string) (string, error) {
+	mountpoint := strings.TrimSpace(raw)
+	for property, value := range properties {
+		if strings.EqualFold(strings.TrimSpace(property), "altroot") {
+			value = strings.TrimSpace(value)
+			if value != "" && value != "-" {
+				return "", classifyError(ErrInvalidRequest, "pool_altroot_not_supported")
+			}
 		}
 	}
 
-	return nil
+	if mountpoint == "" {
+		return "", nil
+	}
+
+	mountpoint, err := zfsutil.NormalizeMountpoint(raw)
+	if err != nil {
+		return "", classifyError(ErrInvalidRequest, "invalid_pool_mountpoint")
+	}
+
+	return mountpoint, nil
 }
 
-func (s *Service) EditPool(ctx context.Context, name string, props map[string]string, spares []string) error {
+func buildVdevArgs(vdevs []zfsServiceInterfaces.Vdev) []string {
+	var args []string
+	for _, vdev := range vdevs {
+		if vdev.RaidType != "" && vdev.RaidType != zfsServiceInterfaces.RaidTypeStripe {
+			args = append(args, string(vdev.RaidType))
+		}
+		args = append(args, vdev.VdevDevices...)
+	}
+	return args
+}
+
+func (s *Service) EditPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
-
-	seen := make(map[string]struct{})
-
-	for i, dev := range spares {
-		dev = filepath.Clean(dev)
-
-		if dev == "" || dev == "." || dev == "/" {
-			return fmt.Errorf("invalid_spare_device %q", dev)
-		}
-
-		if !strings.HasPrefix(dev, "/dev/") {
-			return fmt.Errorf("invalid_spare_device %s: must be under /dev", dev)
-		}
-
-		if _, ok := seen[dev]; ok {
-			return fmt.Errorf("duplicate_spare_device %s", dev)
-		}
-		seen[dev] = struct{}{}
-
-		spares[i] = dev
+	if len(props) == 0 && spares == nil {
+		return classifyError(ErrInvalidRequest, "no_pool_changes_provided")
 	}
 
-	pool, err := s.GZFS.Zpool.Get(ctx, name)
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
-	}
-
-	currentByPath := make(map[string]struct{})
-	currentByBase := make(map[string]string)
-
-	for _, dev := range pool.Spares {
-		if dev == nil || dev.Path == "" {
-			continue
+	requestedSpares := make([]string, 0)
+	if spares != nil {
+		requestedSpares = append(requestedSpares, (*spares)...)
+		seen := make(map[string]struct{}, len(requestedSpares))
+		for i, dev := range requestedSpares {
+			dev = filepath.Clean(dev)
+			if dev == "" || dev == "." || dev == "/" {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %q", dev)
+			}
+			if !strings.HasPrefix(dev, "/dev/") {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: must be under /dev", dev)
+			}
+			if _, ok := seen[dev]; ok {
+				return classifyError(ErrInvalidRequest, "duplicate_spare_device %s", dev)
+			}
+			seen[dev] = struct{}{}
+			requestedSpares[i] = dev
 		}
-		currentByPath[dev.Path] = struct{}{}
-		currentByBase[filepath.Base(dev.Path)] = dev.Path
 	}
 
-	minSize, err := pool.RequiredSpareSize(ctx)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_minimum_spare_size: %v", err)
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
-	for _, dev := range spares {
-		sz, err := disk.GetDiskSize(dev)
+	if len(requestedSpares) > 0 {
+		minSize, err := pool.RequiredSpareSize(ctx)
 		if err != nil {
-			return fmt.Errorf("invalid_spare_device %s: %v", dev, err)
+			return fmt.Errorf("failed_to_get_minimum_spare_size: %v", err)
 		}
-
-		if sz == 0 {
-			return fmt.Errorf("invalid_spare_device %s: size is zero", dev)
-		}
-
-		if sz < minSize {
-			return fmt.Errorf("spare_device %s is too small, minimum size is %d bytes", dev, minSize)
+		for _, dev := range requestedSpares {
+			sz, err := disk.GetDiskSize(dev)
+			if err != nil {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: %v", dev, err)
+			}
+			if sz == 0 {
+				return classifyError(ErrInvalidRequest, "invalid_spare_device %s: size is zero", dev)
+			}
+			if sz < minSize {
+				return classifyError(ErrInvalidRequest, "spare_device %s is too small, minimum size is %d bytes", dev, minSize)
+			}
 		}
 	}
 
@@ -242,6 +283,19 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 		if err := pool.SetProperty(ctx, prop, val); err != nil {
 			return fmt.Errorf("failed_to_set_property %s: %v", prop, err)
 		}
+	}
+	if spares == nil {
+		return nil
+	}
+
+	currentByPath := make(map[string]struct{})
+	currentByBase := make(map[string]string)
+	for _, dev := range pool.Spares {
+		if dev == nil || dev.Path == "" {
+			continue
+		}
+		currentByPath[dev.Path] = struct{}{}
+		currentByBase[filepath.Base(dev.Path)] = dev.Path
 	}
 
 	currentSet := make(map[string]string)
@@ -254,7 +308,7 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 	}
 
 	newSet := make(map[string]struct{})
-	for _, dev := range spares {
+	for _, dev := range requestedSpares {
 		newSet[filepath.Base(dev)] = struct{}{}
 	}
 
@@ -268,7 +322,7 @@ func (s *Service) EditPool(ctx context.Context, name string, props map[string]st
 
 	time.Sleep(500 * time.Millisecond)
 
-	for _, dev := range spares {
+	for _, dev := range requestedSpares {
 		if _, ok := currentByPath[dev]; ok {
 			continue
 		}
@@ -293,8 +347,8 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
 
-	if err != nil {
-		return fmt.Errorf("pool_not_found")
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
 	}
 
 	datasets, err := pool.Datasets(ctx, gzfs.DatasetTypeAll)
@@ -307,7 +361,7 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 			inUse := s.IsDatasetInUse(ds.GUID, true)
 
 			if inUse {
-				return fmt.Errorf("dataset %s is in use and cannot be deleted", ds.Name)
+				return classifyError(ErrConflict, "dataset %s is in use and cannot be deleted", ds.Name)
 			}
 		}
 	}
@@ -318,7 +372,7 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 		return err
 	}
 
-	result := s.DB.Where("guid = ?", guid).Delete(&infoModels.ZPoolHistorical{})
+	result := s.TelemetryDB.Where("guid = ?", guid).Delete(&infoModels.ZPoolHistorical{})
 	if result.Error != nil {
 		return fmt.Errorf("failed_to_delete_historical_data: %v", result.Error)
 	}
@@ -344,7 +398,11 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 	s.SignalDSChange(pool.Name, "", "snapshot", "delete")
 	s.SignalDSChange(pool.Name, "", "generic-dataset", "delete")
 
-	return nil
+	deletedGUIDs := make([]string, 0, len(datasets))
+	for _, dataset := range datasets {
+		deletedGUIDs = append(deletedGUIDs, dataset.GUID)
+	}
+	return s.notifyDatasetsDeleted(ctx, deletedGUIDs)
 }
 
 func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) error {
@@ -352,13 +410,16 @@ func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) e
 	defer s.syncMutex.Unlock()
 
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
+	}
 
 	if err := pool.ReplaceDevice(ctx, old, latest, false); err != nil {
-		return fmt.Errorf("failed_to_replace_device %s: %v", old, err)
+		return classifyError(ErrConflict, "failed_to_replace_device %s: %v", old, err)
 	}
 
 	pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil {
+	if err != nil || pool == nil {
 		return fmt.Errorf("pool_not_found_after_replace")
 	}
 
@@ -366,59 +427,51 @@ func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) e
 }
 
 func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]zfsServiceInterfaces.PoolStatPoint, int, error) {
-	// if intervalMinutes <= 0 {
-	// 	return nil, 0, fmt.Errorf("invalid interval: must be > 0")
-	// }
+	if intervalMinutes <= 0 || intervalMinutes > 525600 {
+		return nil, 0, fmt.Errorf("invalid_interval: must be between 1 and 525600 minutes")
+	}
+	if limit < 0 || limit > 10000 {
+		return nil, 0, fmt.Errorf("invalid_limit: must be between 0 and 10000")
+	}
+	if s.TelemetryDB == nil {
+		return nil, 0, fmt.Errorf("telemetry_database_unavailable")
+	}
 
-	// var records []infoModels.ZPoolHistorical
-	// if err := s.DB.
-	// 	Order("created_at ASC").
-	// 	Find(&records).Error; err != nil {
-	// 	return nil, 0, err
-	// }
+	var records []infoModels.ZPoolHistorical
+	if err := s.TelemetryDB.Order("guid ASC, created_at ASC").Find(&records).Error; err != nil {
+		return nil, 0, fmt.Errorf("load_zpool_history: %w", err)
+	}
 
-	// count := len(records)
-	// intervalMs := int64(intervalMinutes) * 60 * 1000
+	series := downsamplePoolRows(records, time.Duration(intervalMinutes)*time.Minute)
+	result := make(map[string][]zfsServiceInterfaces.PoolStatPoint, len(series))
+	for _, history := range series {
+		points := history.Points
+		if limit > 0 && len(points) > limit {
+			points = points[len(points)-limit:]
+		}
+		// A destroyed pool can briefly overlap a newly-created pool with the
+		// same name until the cleanup cron runs. Expose the newest identity.
+		existing := result[history.Name]
+		if len(existing) == 0 || (len(points) > 0 && points[len(points)-1].Time > existing[len(existing)-1].Time) {
+			result[history.Name] = points
+		}
+	}
 
-	// buckets := make(map[string]map[int64]zfsServiceInterfaces.PoolStatPoint)
-	// for _, rec := range records {
-	// 	bucketTime := (rec.CreatedAt / intervalMs) * intervalMs
-	// 	name := zfs.Zpool(rec.Pools).Name
+	return result, len(records), nil
+}
 
-	// 	if buckets[name] == nil {
-	// 		buckets[name] = make(map[int64]zfsServiceInterfaces.PoolStatPoint)
-	// 	}
+func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
+	s.syncMutex.Lock()
+	defer s.syncMutex.Unlock()
 
-	// 	if _, seen := buckets[name][bucketTime]; !seen {
-	// 		p := zfs.Zpool(rec.Pools)
-	// 		buckets[name][bucketTime] = zfsServiceInterfaces.PoolStatPoint{
-	// 			Time:       bucketTime,
-	// 			Allocated:  p.Allocated,
-	// 			Free:       p.Free,
-	// 			Size:       p.Size,
-	// 			DedupRatio: p.DedupRatio,
-	// 		}
-	// 	}
-	// }
+	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+	if err != nil || pool == nil {
+		return poolLookupError(err, "pool_not_found")
+	}
 
-	// result := make(map[string][]zfsServiceInterfaces.PoolStatPoint, len(buckets))
-	// for name, mp := range buckets {
-	// 	pts := make([]zfsServiceInterfaces.PoolStatPoint, 0, len(mp))
-	// 	for _, pt := range mp {
-	// 		pts = append(pts, pt)
-	// 	}
-	// 	sort.Slice(pts, func(i, j int) bool {
-	// 		return pts[i].Time < pts[j].Time
-	// 	})
+	if err := pool.Detach(ctx, device); err != nil {
+		return classifyError(ErrConflict, "detach_failed: %v", err)
+	}
 
-	// 	if limit > 0 && len(pts) > limit {
-	// 		pts = pts[len(pts)-limit:]
-	// 	}
-
-	// 	result[name] = pts
-	// }
-
-	// return result, count, nil
-
-	return nil, 0, fmt.Errorf("zpool_historical_stats_not_implemented")
+	return nil
 }

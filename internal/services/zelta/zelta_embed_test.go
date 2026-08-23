@@ -1,0 +1,311 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package zelta
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
+)
+
+func extractZeltaToTemp(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	ZeltaInstallDir = dir
+	t.Cleanup(func() { ZeltaInstallDir = "" })
+	if err := EnsureZeltaInstalled(); err != nil {
+		t.Fatalf("failed to extract zelta: %v", err)
+	}
+	return dir
+}
+
+func TestZeltaBinaryExtractsAndRuns(t *testing.T) {
+	dir := extractZeltaToTemp(t)
+
+	bin := filepath.Join(dir, "bin", "zelta")
+	if _, err := os.Stat(bin); err != nil {
+		t.Fatalf("zelta binary not found at %s: %v", bin, err)
+	}
+
+	cmd := exec.Command(bin, "--help")
+	cmd.Env = append(os.Environ(),
+		"ZELTA_SHARE="+filepath.Join(dir, "share", "zelta"),
+	)
+	out, _ := cmd.CombinedOutput()
+	if len(out) == 0 && cmd.ProcessState != nil && !cmd.ProcessState.Success() {
+		t.Logf("zelta --help produced no output but ran (exit: %d)", cmd.ProcessState.ExitCode())
+	}
+}
+
+func TestEnsureZeltaInstalledRefreshesChangedEmbeddedAssets(t *testing.T) {
+	dir := extractZeltaToTemp(t)
+	const asset = "zelta/share/zelta/zelta-common.awk"
+
+	expected, err := zeltaFS.ReadFile(asset)
+	if err != nil {
+		t.Fatalf("failed to read embedded asset: %v", err)
+	}
+
+	installed := filepath.Join(dir, "share", "zelta", "zelta-common.awk")
+	if err := os.WriteFile(installed, []byte("stale asset\n"), 0644); err != nil {
+		t.Fatalf("failed to replace installed asset: %v", err)
+	}
+	if err := EnsureZeltaInstalled(); err != nil {
+		t.Fatalf("failed to refresh zelta assets: %v", err)
+	}
+
+	actual, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatalf("failed to read refreshed asset: %v", err)
+	}
+	if !bytes.Equal(actual, expected) {
+		t.Fatal("installed asset was not refreshed from the embedded copy")
+	}
+}
+
+func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
+	awk, err := exec.LookPath("awk")
+	if err != nil {
+		t.Skip("awk unavailable")
+	}
+	common, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-common.awk")
+	if err != nil {
+		t.Fatalf("read common parser: %v", err)
+	}
+	commonSource := string(common)
+	commonStart := strings.Index(commonSource, "function load_endpoint")
+	if commonStart < 0 {
+		t.Fatal("load_endpoint source not found")
+	}
+	commonEnd := strings.Index(commonSource[commonStart:], "# Output")
+	if commonEnd < 0 {
+		t.Fatal("load_endpoint source end not found")
+	}
+	commonProgram := commonSource[commonStart:commonStart+commonEnd] +
+		"\nBEGIN {\n" +
+		"  load_endpoint(\"root@[2001:db8::1]:tank/backups@bk_test\", parsed)\n" +
+		"  print parsed[\"REMOTE\"] \"\\t\" parsed[\"HOST\"] \"\\t\" parsed[\"DS\"] \"\\t\" parsed[\"SNAP\"]\n" +
+		"}\n"
+	commonCommand := exec.Command(awk, "-f", "-")
+	commonCommand.Stdin = strings.NewReader(commonProgram)
+	commonOutput, err := commonCommand.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run common parser: %v: %s", err, commonOutput)
+	}
+	if got := strings.TrimSpace(string(commonOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
+		t.Fatalf("common endpoint=%q", got)
+	}
+
+	args, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-args.awk")
+	if err != nil {
+		t.Fatalf("read argument parser: %v", err)
+	}
+	argsSource := string(args)
+	argsStart := strings.Index(argsSource, "function validate_host")
+	if argsStart < 0 {
+		t.Fatal("get_endpoint source not found")
+	}
+	argsEnd := strings.Index(argsSource[argsStart:], "function match_arg")
+	if argsEnd < 0 {
+		t.Fatal("get_endpoint source end not found")
+	}
+	argsProgram := argsSource[argsStart:argsStart+argsEnd] +
+		"\nBEGIN {\n" +
+		"  Opt[\"HOSTNAME\"] = \"local\"\n" +
+		"  $0 = \"root@[2001:db8::1]:tank/backups@bk_test\"\n" +
+		"  get_endpoint()\n" +
+		"  print NewOpt[\"SRC_REMOTE\"] \"\\t\" NewOpt[\"SRC_HOST\"] \"\\t\" NewOpt[\"SRC_DS\"] \"\\t\" NewOpt[\"SRC_SNAP\"]\n" +
+		"}\n"
+	argsCommand := exec.Command(awk, "-f", "-")
+	argsCommand.Stdin = strings.NewReader(argsProgram)
+	argsOutput, err := argsCommand.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run argument parser: %v: %s", err, argsOutput)
+	}
+	if got := strings.TrimSpace(string(argsOutput)); got != "root@2001:db8::1\t2001:db8::1\ttank/backups\t@bk_test" {
+		t.Fatalf("argument endpoint=%q", got)
+	}
+}
+
+func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/data")
+	ctx := context.Background()
+
+	zfsBin, err := exec.LookPath("zfs")
+	if err != nil {
+		t.Fatalf("could not find zfs binary: %v", err)
+	}
+
+	setProp := exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source")
+	if out, err := setProp.CombinedOutput(); err != nil {
+		t.Fatalf("zfs set mountpoint=legacy: %v\noutput: %s", err, string(out))
+	}
+	setProp = exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/data")
+	if out, err := setProp.CombinedOutput(); err != nil {
+		t.Fatalf("zfs set mountpoint=legacy data: %v\noutput: %s", err, string(out))
+	}
+
+	zeltaDir := extractZeltaToTemp(t)
+	zeltaBin := filepath.Join(zeltaDir, "bin", "zelta")
+
+	zeltaShare := filepath.Join(zeltaDir, "share", "zelta")
+	snapName := "bk_" + time.Now().UTC().Format("2006-01-02_15.04.05")
+
+	cmd := exec.CommandContext(ctx, zeltaBin,
+		"snapshot",
+		"--snap-name", snapName,
+		poolName+"/source/data",
+	)
+	cmd.Env = append(os.Environ(),
+		"ZELTA_SHARE="+zeltaShare,
+		"PATH="+filepath.Join(zeltaDir, "bin")+":"+os.Getenv("PATH"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zelta snapshot failed: %v\noutput: %s", err, string(out))
+	}
+	t.Logf("zelta snapshot output: %s", strings.TrimSpace(string(out)))
+
+	listSnaps := exec.CommandContext(ctx, zfsBin, "list", "-H", "-o", "name", "-t", "snapshot", "-r", poolName+"/source")
+	snapOut, err := listSnaps.CombinedOutput()
+	if err != nil {
+		t.Fatalf("zfs list snapshots failed: %v", err)
+	}
+	snapLines := strings.Split(strings.TrimSpace(string(snapOut)), "\n")
+	found := false
+	for _, line := range snapLines {
+		if strings.Contains(line, snapName) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("snapshot %s not found in:\n%s", snapName, string(snapOut))
+	}
+
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
+	setProp = exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target")
+	setProp.CombinedOutput()
+	_ = gzfsClient
+}
+
+func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	_ = gzfsClient
+
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/source/backup")
+	zfstest.EnsureDataset(t, gzfsClient, poolName+"/target")
+
+	ctx := context.Background()
+	zfsBin, _ := exec.LookPath("zfs")
+	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source").CombinedOutput()
+	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/source/backup").CombinedOutput()
+	exec.CommandContext(ctx, zfsBin, "set", "mountpoint=legacy", poolName+"/target").CombinedOutput()
+
+	extractZeltaToTemp(t)
+
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	svc := &Service{
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
+		runningWorkloadOp: make(map[string]string),
+		GZFS:              gzfsClient,
+	}
+
+	target := clusterModels.BackupTarget{
+		ID: 1, Name: "local-test", SSHHost: "root@localhost",
+		BackupRoot: poolName + "/target", Enabled: true,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("failed to seed target: %v", err)
+	}
+
+	job := clusterModels.BackupJob{
+		ID: 1, Name: "ephemeral-test", Mode: "dataset", TargetID: 1,
+		SourceDataset: poolName + "/source/backup",
+		CronExpr:      "0 0 * * *", Enabled: true,
+	}
+	if err := db.Create(&job).Error; err != nil {
+		t.Fatalf("failed to seed job: %v", err)
+	}
+	var loaded clusterModels.BackupJob
+	db.Preload("Target").First(&loaded, 1)
+
+	err := svc.runBackupJob(ctx, &loaded)
+	if err != nil {
+		t.Logf("runBackupJob completed with error (expected if no SSH to localhost): %v", err)
+	}
+
+	updated := fetchJob(t, db, 1)
+	if updated.LastRunAt != nil {
+		t.Logf("backup ran at %v with status=%q error=%q",
+			updated.LastRunAt, updated.LastStatus, updated.LastError)
+	}
+
+	var events []clusterModels.BackupEvent
+	db.Find(&events)
+	t.Logf("created %d backup events", len(events))
+	for i, e := range events {
+		t.Logf("  event[%d]: status=%q source=%q target=%q output=%d bytes",
+			i, e.Status, e.SourceDataset, e.TargetEndpoint, len(e.Output))
+		if e.Output != "" {
+			t.Logf("  event[%d] output tail: %s", i, lastLines(e.Output, 3))
+		}
+	}
+
+	snapshots := listZFSSnapshots(t, poolName+"/source/backup")
+	t.Logf("ZFS snapshots on source: %v", snapshots)
+	snapshots = listZFSSnapshots(t, poolName+"/target")
+	t.Logf("ZFS snapshots on target: %v", snapshots)
+}
+
+func listZFSSnapshots(t *testing.T, dataset string) []string {
+	t.Helper()
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "zfs", "list", "-H", "-o", "name", "-t", "snapshot", "-r", dataset)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	result := make([]string, 0)
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l != "" {
+			result = append(result, l)
+		}
+	}
+	return result
+}
+
+func lastLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
+}

@@ -35,9 +35,10 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="overflow-hidden sm:max-w-[425px]"
+		class="overflow-hidden sm:max-w-106.25"
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={(e) => e.preventDefault()}
+		showCloseButton={false}
 	>
 		<Dialog.Header class="flex w-full min-w-0 flex-col items-center justify-center text-center">
 			<Dialog.Title class="mb-2 text-lg font-semibold">{title}</Dialog.Title>
@@ -57,12 +58,13 @@
 				</Card.Content>
 			</Card.Root>
 		{:else}
-			<div class="flex w-full items-center justify-center py-3">
-				<span class="icon-[mdi--loading] animate-spin text-4xl {iconColor}"></span>
+			<div class="flex w-full items-center justify-center py-3 animate-spin">
+				<span class="icon-[mdi--loading] text-4xl overflow-hidden {iconColor}"></span>
 			</div>
 		{/if}
 
 		<div class="text-muted-foreground mt-1 justify-center text-center text-sm">
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			{@html description}
 		</div>
 	</Dialog.Content>

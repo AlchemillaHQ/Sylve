@@ -26,6 +26,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -37,6 +39,11 @@ const (
 	firewallLiveLogRestartDelay   = 5 * time.Second
 	firewallLiveDefaultLimit      = 200
 	firewallLiveMaxLimit          = 2000
+	pflogInterfaceName            = "pflog0"
+	pflogKernelModuleName         = "pflog"
+	pflogTapCountOID              = "net.pflog.if_count"
+	pflogInterfaceVerifyAttempts  = 10
+	pflogInterfaceVerifyDelay     = 100 * time.Millisecond
 )
 
 var (
@@ -45,12 +52,31 @@ var (
 	firewallLogIfacePattern    = regexp.MustCompile(`\bon\s+([^:\s]+):`)
 	firewallLogActionPattern   = regexp.MustCompile(`\):\s*([a-z]+)(?:\s+([a-z]+))?\s+on\s+`)
 	firewallLogLengthPattern   = regexp.MustCompile(`\blength\s+([0-9]+)\b`)
+	firewallPFLogRetryWait     = func(ctx context.Context, delay time.Duration) error {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+			return nil
+		}
+	}
 )
 
 type firewallCounterKey struct {
 	RuleType string
 	RuleID   uint
 }
+
+type pfLogCaptureBackend uint8
+
+const (
+	pfLogCaptureBackendUnknown pfLogCaptureBackend = iota
+	pfLogCaptureBackendIfnet
+	pfLogCaptureBackendBPFTap
+)
 
 type firewallTelemetryRuntime struct {
 	mu sync.RWMutex
@@ -69,10 +95,11 @@ type firewallTelemetryRuntime struct {
 	trafficRuleNumbers map[int]uint
 	natRuleNumbers     map[int]uint
 
-	countersUpdatedAt time.Time
-	countersAvailable bool
-	countersError     string
-	countersLastWarn  string
+	countersUpdatedAt  time.Time
+	countersAvailable  bool
+	countersError      string
+	countersLastWarn   string
+	counterStateLoaded bool
 
 	liveHits         []networkServiceInterfaces.FirewallLiveHitEvent
 	liveCursor       int64
@@ -112,6 +139,101 @@ func (s *Service) getFirewallTelemetryRuntime() *firewallTelemetryRuntime {
 		}
 	})
 	return s.firewallTelemetry
+}
+
+func (s *Service) loadFirewallCounterState() {
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	loaded := rt.counterStateLoaded
+	rt.mu.RUnlock()
+	if loaded {
+		return
+	}
+
+	s.firewallCounterStateMutex.Lock()
+	defer s.firewallCounterStateMutex.Unlock()
+
+	rt.mu.RLock()
+	loaded = rt.counterStateLoaded
+	rt.mu.RUnlock()
+	if loaded {
+		return
+	}
+
+	if s.TelemetryDB == nil {
+		rt.mu.Lock()
+		rt.counterStateLoaded = true
+		rt.mu.Unlock()
+		return
+	}
+
+	var persisted []infoModels.FirewallRuleCounterTotal
+	if err := s.TelemetryDB.Find(&persisted).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("failed to load persisted firewall counters")
+		return
+	}
+
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.counterStateLoaded {
+		return
+	}
+	for _, counter := range persisted {
+		key := firewallCounterKey{RuleType: counter.RuleType, RuleID: counter.RuleID}
+		rt.totals[key] = trafficRuleCounterTotals{
+			Packets: counter.Packets,
+			Bytes:   counter.Bytes,
+		}
+		rt.lastPF[key] = trafficRuleCounterTotals{
+			Packets: counter.LastPFPackets,
+			Bytes:   counter.LastPFBytes,
+		}
+		rt.lastFlushed[key] = trafficRuleCounterTotals{
+			Packets: counter.Packets,
+			Bytes:   counter.Bytes,
+		}
+	}
+	rt.counterStateLoaded = true
+}
+
+func accumulateFirewallCounterTotal(rt *firewallTelemetryRuntime, key firewallCounterKey, current trafficRuleCounterTotals) {
+	last := rt.lastPF[key]
+	delta := trafficRuleCounterTotals{}
+	if current.Packets >= last.Packets {
+		delta.Packets = current.Packets - last.Packets
+	} else {
+		// PF reloaded and replaced the rule counters.
+		delta.Packets = current.Packets
+	}
+	if current.Bytes >= last.Bytes {
+		delta.Bytes = current.Bytes - last.Bytes
+	} else {
+		delta.Bytes = current.Bytes
+	}
+
+	total := rt.totals[key]
+	rt.totals[key] = trafficRuleCounterTotals{
+		Packets: total.Packets + delta.Packets,
+		Bytes:   total.Bytes + delta.Bytes,
+	}
+	rt.lastPF[key] = current
+}
+
+func (s *Service) resetFirewallCounterBaselines() {
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.Lock()
+	for key := range rt.lastPF {
+		rt.lastPF[key] = trafficRuleCounterTotals{}
+	}
+	rt.mu.Unlock()
+
+	if s.TelemetryDB == nil {
+		return
+	}
+	if err := s.TelemetryDB.Model(&infoModels.FirewallRuleCounterTotal{}).Where("1 = 1").
+		Updates(map[string]any{"last_pf_packets": 0, "last_pf_bytes": 0}).Error; err != nil {
+		logger.L.Warn().Err(err).Msg("failed to reset persisted PF counter baselines")
+	}
 }
 
 func (s *Service) SetFirewallServiceEnabledForTelemetry(enabled bool) {
@@ -248,6 +370,13 @@ func (s *Service) updateFirewallRuleNames() {
 }
 
 func (s *Service) sampleFirewallCounters() {
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+	s.sampleFirewallCountersLocked()
+}
+
+func (s *Service) sampleFirewallCountersLocked() {
+	s.loadFirewallCounterState()
 	rt := s.getFirewallTelemetryRuntime()
 
 	now := time.Now().UTC()
@@ -304,25 +433,7 @@ func (s *Service) sampleFirewallCounters() {
 
 	rt.mu.Lock()
 	for key, newAbs := range combined {
-		last := rt.lastPF[key]
-		var d trafficRuleCounterTotals
-		if newAbs.Packets >= last.Packets {
-			d.Packets = newAbs.Packets - last.Packets
-		} else {
-			// PF counter reset (reload): treat new absolute as delta
-			d.Packets = newAbs.Packets
-		}
-		if newAbs.Bytes >= last.Bytes {
-			d.Bytes = newAbs.Bytes - last.Bytes
-		} else {
-			d.Bytes = newAbs.Bytes
-		}
-		existing := rt.totals[key]
-		rt.totals[key] = trafficRuleCounterTotals{
-			Packets: existing.Packets + d.Packets,
-			Bytes:   existing.Bytes + d.Bytes,
-		}
-		rt.lastPF[key] = newAbs
+		accumulateFirewallCounterTotal(rt, key, newAbs)
 	}
 	if trafficRuleNumbers != nil {
 		rt.trafficRuleNumbers = trafficRuleNumbers
@@ -370,10 +481,29 @@ func (s *Service) cumulativeCounterTotalsByType(ruleType string) (map[uint]traff
 	return out, updatedAt
 }
 
+func (s *Service) ensureFirewallCountersFresh() {
+	s.loadFirewallCounterState()
+	rt := s.getFirewallTelemetryRuntime()
+	rt.mu.RLock()
+	updatedAt := rt.countersUpdatedAt
+	rt.mu.RUnlock()
+	if !updatedAt.IsZero() && time.Since(updatedAt) < firewallCounterSampleInterval {
+		return
+	}
+	s.sampleFirewallCounters()
+}
+
 func (s *Service) flushFirewallCounterDeltas() {
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+	s.flushFirewallCounterDeltasLocked()
+}
+
+func (s *Service) flushFirewallCounterDeltasLocked() {
 	if s.TelemetryDB == nil {
 		return
 	}
+	s.loadFirewallCounterState()
 
 	rt := s.getFirewallTelemetryRuntime()
 
@@ -385,6 +515,10 @@ func (s *Service) flushFirewallCounterDeltas() {
 	lastFlushed := make(map[firewallCounterKey]trafficRuleCounterTotals, len(rt.lastFlushed))
 	for k, v := range rt.lastFlushed {
 		lastFlushed[k] = v
+	}
+	lastPF := make(map[firewallCounterKey]trafficRuleCounterTotals, len(rt.lastPF))
+	for k, v := range rt.lastPF {
+		lastPF[k] = v
 	}
 	rt.mu.RUnlock()
 
@@ -409,16 +543,44 @@ func (s *Service) flushFirewallCounterDeltas() {
 		}
 	}
 
-	if len(rows) > 0 {
-		if err := s.TelemetryDB.CreateInBatches(&rows, 200).Error; err != nil {
-			logger.L.Warn().Err(err).Msg("failed to persist firewall counter deltas")
-			return
-		}
+	totals := make([]infoModels.FirewallRuleCounterTotal, 0, len(currentTotals))
+	for key, total := range currentTotals {
+		raw := lastPF[key]
+		totals = append(totals, infoModels.FirewallRuleCounterTotal{
+			RuleType:      key.RuleType,
+			RuleID:        key.RuleID,
+			Packets:       total.Packets,
+			Bytes:         total.Bytes,
+			LastPFPackets: raw.Packets,
+			LastPFBytes:   raw.Bytes,
+		})
 	}
 
 	cutoff := time.Now().UTC().Add(-firewallTelemetryRetention)
-	if err := s.TelemetryDB.Where("created_at < ?", cutoff).Delete(&infoModels.FirewallRuleDelta{}).Error; err != nil {
-		logger.L.Warn().Err(err).Msg("failed to prune firewall telemetry deltas")
+	if err := s.TelemetryDB.Transaction(func(tx *gorm.DB) error {
+		if len(rows) > 0 {
+			if err := tx.CreateInBatches(&rows, 200).Error; err != nil {
+				return err
+			}
+		}
+		if len(totals) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "rule_type"}, {Name: "rule_id"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"packets",
+					"bytes",
+					"last_pf_packets",
+					"last_pf_bytes",
+					"updated_at",
+				}),
+			}).CreateInBatches(&totals, 200).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Where("created_at < ?", cutoff).Delete(&infoModels.FirewallRuleDelta{}).Error
+	}); err != nil {
+		logger.L.Warn().Err(err).Msg("failed to persist firewall counters")
+		return
 	}
 
 	rt.mu.Lock()
@@ -724,27 +886,183 @@ func isPflogAlreadyExistsError(err error) bool {
 	}
 	lowered := strings.ToLower(err.Error())
 	return strings.Contains(lowered, "file exists") ||
-		strings.Contains(lowered, "already exists") ||
-		strings.Contains(lowered, "exists")
+		strings.Contains(lowered, "already exists")
 }
 
-func (s *Service) ensurePFLogInterfaceReady() error {
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0"); err == nil {
+func ensurePFLogKernelModuleLoaded() error {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err == nil {
 		return nil
 	}
 
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0", "create"); err != nil && !isPflogAlreadyExistsError(err) {
-		if _, checkErr := firewallRunCommand("/sbin/ifconfig", "pflog0"); checkErr == nil {
-			return nil
-		}
-		return fmt.Errorf("failed_to_prepare_pflog_interface: %w", err)
+	if _, err := firewallRunCommand("/sbin/kldload", "-n", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("failed_to_load_pflog_kernel_module: %w", err)
 	}
 
-	if _, err := firewallRunCommand("/sbin/ifconfig", "pflog0"); err != nil {
-		return fmt.Errorf("failed_to_verify_pflog_interface: %w", err)
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("failed_to_verify_pflog_kernel_module: %w", err)
 	}
 
 	return nil
+}
+
+func waitForPFLogInterface(ctx context.Context) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < pflogInterfaceVerifyAttempts; attempt++ {
+		output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+		if err == nil {
+			return output, nil
+		}
+		lastErr = err
+
+		if attempt == pflogInterfaceVerifyAttempts-1 {
+			break
+		}
+		if err := firewallPFLogRetryWait(ctx, pflogInterfaceVerifyDelay); err != nil {
+			return "", err
+		}
+	}
+	return "", lastErr
+}
+
+func isPFLogInterfaceUp(output string) bool {
+	firstLine := output
+	if newline := strings.IndexByte(firstLine, '\n'); newline >= 0 {
+		firstLine = firstLine[:newline]
+	}
+	start := strings.IndexByte(firstLine, '<')
+	end := strings.IndexByte(firstLine, '>')
+	if start < 0 || end <= start {
+		return false
+	}
+
+	for _, flag := range strings.Split(firstLine[start+1:end], ",") {
+		if strings.TrimSpace(flag) == "UP" {
+			return true
+		}
+	}
+	return false
+}
+
+func readPFLogTapCount() (int, error) {
+	output, err := firewallRunCommand("/sbin/sysctl", "-n", pflogTapCountOID)
+	if err != nil {
+		return 0, err
+	}
+
+	trimmed := strings.TrimSpace(output)
+	count, err := strconv.Atoi(trimmed)
+	if err != nil || count < 0 {
+		return 0, fmt.Errorf("invalid_pflog_bpf_tap_count: %q", trimmed)
+	}
+
+	return count, nil
+}
+
+func isUnknownPFLogTapCountOIDError(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "unknown oid")
+}
+
+func ensurePFLogBPFTapReady(currentCount int) error {
+	if currentCount > 0 {
+		return nil
+	}
+
+	if _, err := firewallRunCommand("/sbin/sysctl", pflogTapCountOID+"=1"); err != nil {
+		return fmt.Errorf("failed_to_enable_pflog_bpf_tap: %w", err)
+	}
+
+	verifiedCount, err := readPFLogTapCount()
+	if err != nil {
+		return fmt.Errorf("failed_to_verify_pflog_bpf_tap: %w", err)
+	}
+	if verifiedCount < 1 {
+		return fmt.Errorf("failed_to_verify_pflog_bpf_tap: tap count is %d", verifiedCount)
+	}
+
+	return nil
+}
+
+func verifyPFLogCapturePrerequisites(backend pfLogCaptureBackend) error {
+	if _, err := firewallRunCommand("/sbin/kldstat", "-m", pflogKernelModuleName); err != nil {
+		return fmt.Errorf("pflog_kernel_module_missing: %w", err)
+	}
+
+	switch backend {
+	case pfLogCaptureBackendBPFTap:
+		count, err := readPFLogTapCount()
+		if err != nil {
+			return fmt.Errorf("pflog_bpf_tap_unavailable: %w", err)
+		}
+		if count < 1 {
+			return fmt.Errorf("pflog_bpf_tap_missing")
+		}
+	case pfLogCaptureBackendIfnet:
+		output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+		if err != nil {
+			return fmt.Errorf("pflog_interface_missing: %w", err)
+		}
+		if !isPFLogInterfaceUp(output) {
+			return fmt.Errorf("pflog_interface_down")
+		}
+	default:
+		return fmt.Errorf("pflog_capture_backend_unknown")
+	}
+
+	return nil
+}
+
+func ensurePFLogIfnetReady(ctx context.Context) error {
+	_, interfaceErr := waitForPFLogInterface(ctx)
+	if interfaceErr != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("failed_to_wait_for_pflog_interface: %w", ctx.Err())
+		}
+
+		_, createErr := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName, "create")
+		if createErr != nil && !isPflogAlreadyExistsError(createErr) {
+			if _, verifyErr := waitForPFLogInterface(ctx); verifyErr != nil {
+				return fmt.Errorf("failed_to_prepare_pflog_interface: create: %v; verify: %w", createErr, verifyErr)
+			}
+		} else if _, verifyErr := waitForPFLogInterface(ctx); verifyErr != nil {
+			return fmt.Errorf("failed_to_verify_pflog_interface: %w", verifyErr)
+		}
+	}
+
+	if _, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName, "up"); err != nil {
+		return fmt.Errorf("failed_to_bring_up_pflog_interface: %w", err)
+	}
+
+	output, err := firewallRunCommand("/sbin/ifconfig", pflogInterfaceName)
+	if err != nil {
+		return fmt.Errorf("failed_to_verify_pflog_interface: %w", err)
+	}
+	if !isPFLogInterfaceUp(output) {
+		return fmt.Errorf("failed_to_verify_pflog_interface_up")
+	}
+
+	return nil
+}
+
+func (s *Service) ensurePFLogCaptureReady(ctx context.Context) (pfLogCaptureBackend, error) {
+	if err := ensurePFLogKernelModuleLoaded(); err != nil {
+		return pfLogCaptureBackendUnknown, err
+	}
+
+	tapCount, err := readPFLogTapCount()
+	if err == nil {
+		if err := ensurePFLogBPFTapReady(tapCount); err != nil {
+			return pfLogCaptureBackendUnknown, err
+		}
+		return pfLogCaptureBackendBPFTap, nil
+	}
+	if !isUnknownPFLogTapCountOIDError(err) {
+		return pfLogCaptureBackendUnknown, fmt.Errorf("failed_to_detect_pflog_capture_backend: %w", err)
+	}
+
+	if err := ensurePFLogIfnetReady(ctx); err != nil {
+		return pfLogCaptureBackendUnknown, err
+	}
+	return pfLogCaptureBackendIfnet, nil
 }
 
 func (s *Service) runFirewallLogWatcher(ctx context.Context) {
@@ -765,9 +1083,10 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			continue
 		}
 
-		if err := s.ensurePFLogInterfaceReady(); err != nil {
+		backend, err := s.ensurePFLogCaptureReady(ctx)
+		if err != nil {
 			if s.setFirewallLiveSourceUnavailable(err.Error()) {
-				logger.L.Warn().Err(err).Msg("failed to prepare pflog interface for capture")
+				logger.L.Warn().Err(err).Msg("failed to prepare pflog capture source")
 			}
 			select {
 			case <-ctx.Done():
@@ -777,7 +1096,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 			continue
 		}
 
-		ih, err := pcap.NewInactiveHandle("pflog0")
+		ih, err := pcap.NewInactiveHandle(pflogInterfaceName)
 		if err != nil {
 			if s.setFirewallLiveSourceUnavailable(err.Error()) {
 				logger.L.Warn().Err(err).Msg("failed to create pflog capture handle")
@@ -815,14 +1134,21 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 		packetSource.Lazy = true
 		packetSource.NoCopy = true
 		packetCh := packetSource.Packets()
+		healthTicker := time.NewTicker(firewallLiveLogRestartDelay)
 
 		errText := "pflog_capture_closed"
 	captureLoop:
 		for {
 			select {
 			case <-ctx.Done():
+				healthTicker.Stop()
 				handle.Close()
 				return
+			case <-healthTicker.C:
+				if err := verifyPFLogCapturePrerequisites(backend); err != nil {
+					errText = err.Error()
+					break captureLoop
+				}
 			case packet, ok := <-packetCh:
 				if !ok {
 					break captureLoop
@@ -830,6 +1156,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 				s.ingestFirewallLivePacket(packet)
 			}
 		}
+		healthTicker.Stop()
 		handle.Close()
 		if ctx.Err() != nil {
 			return
@@ -879,6 +1206,7 @@ func (s *Service) runFirewallCounterFlusher(ctx context.Context) {
 
 func (s *Service) StartFirewallMonitor(ctx context.Context) {
 	_ = s.getFirewallTelemetryRuntime()
+	s.loadFirewallCounterState()
 	s.SetFirewallServiceEnabledForTelemetry(s.IsFirewallServiceEnabled())
 
 	s.firewallMonOnce.Do(func() {
@@ -899,14 +1227,8 @@ func (s *Service) GetFirewallNATRuleCounters() ([]networkServiceInterfaces.Firew
 		return []networkServiceInterfaces.FirewallNATRuleCounter{}, nil
 	}
 
-	updatedAt := time.Now().UTC()
-	totalsByRuleID := make(map[uint]trafficRuleCounterTotals)
-
-	if s.isPFEnabled() {
-		if totals, _, pfErr := s.collectNATCountersFromPF(); pfErr == nil {
-			totalsByRuleID = totals
-		}
-	}
+	s.ensureFirewallCountersFresh()
+	totalsByRuleID, updatedAt := s.cumulativeCounterTotalsByType("nat")
 
 	counters := make([]networkServiceInterfaces.FirewallNATRuleCounter, 0, len(rules))
 	for _, rule := range rules {

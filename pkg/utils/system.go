@@ -9,7 +9,9 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strings"
@@ -27,6 +29,10 @@ var getSysctlString = sysctl.GetString
 var getHostname = os.Hostname
 var getUptime = uptime.Get
 var getLoadAvg = loadavg.Get
+var stat = os.Stat
+
+// ErrSystemHostnameNotConfigured indicates that the operating system returned no usable hostname.
+var ErrSystemHostnameNotConfigured = errors.New("system_hostname_not_configured")
 
 var cachedHostname string
 var hostnameOnce sync.Once
@@ -45,6 +51,14 @@ func GetSystemUUID() (string, error) {
 func GetSystemHostname() (string, error) {
 	hostnameOnce.Do(func() {
 		cachedHostname, hostnameErr = getHostname()
+		if hostnameErr != nil {
+			return
+		}
+
+		cachedHostname = strings.TrimSpace(cachedHostname)
+		if cachedHostname == "" {
+			hostnameErr = ErrSystemHostnameNotConfigured
+		}
 	})
 
 	return cachedHostname, hostnameErr
@@ -86,30 +100,48 @@ func GetLoadAvg() (string, error) {
 
 func BootMode() string {
 	v, err := getSysctlString("machdep.bootmethod")
-	if err != nil {
-		return "Unknown"
+	if err == nil {
+		if strings.Contains(v, "BIOS") {
+			return "BIOS"
+		}
+		if strings.Contains(v, "UEFI") {
+			return "UEFI"
+		}
 	}
 
-	if strings.Contains(v, "BIOS") {
-		return "BIOS"
-	} else if strings.Contains(v, "UEFI") {
+	if _, err := getSysctlString("machdep.efi_rt_handle_faults"); err == nil {
 		return "UEFI"
-	} else {
-		return "Unknown"
 	}
+	if _, err := stat("/dev/efi"); err == nil {
+		return "UEFI"
+	}
+
+	return "Unknown"
 }
 
-func ReadDiskSector(disk string, sector int64) ([]byte, error) {
+func ReadDiskSector(disk string, lba, sectorSize int64) ([]byte, error) {
+	if lba < 0 {
+		return nil, fmt.Errorf("logical block address must be non-negative: %d", lba)
+	}
+	if sectorSize <= 0 {
+		return nil, fmt.Errorf("logical sector size must be positive: %d", sectorSize)
+	}
+	if sectorSize > int64(math.MaxInt) {
+		return nil, fmt.Errorf("logical sector size exceeds supported range: %d", sectorSize)
+	}
+	if lba > math.MaxInt64/sectorSize {
+		return nil, fmt.Errorf("logical block offset exceeds supported range")
+	}
+
 	file, err := os.Open(disk)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	sectorSize := int64(512)
 	buf := make([]byte, sectorSize)
 
-	_, err = file.ReadAt(buf, sector*sectorSize)
+	_, err = file.ReadAt(buf, lba*sectorSize)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +198,14 @@ func GetSystemMemoryBytes() (int64, error) {
 	}
 
 	return memBytes, nil
+}
+
+func GetCPUModel() string {
+	model, err := getSysctlString("hw.model")
+	if err != nil {
+		return ""
+	}
+	return model
 }
 
 func GetLogicalCores() int {

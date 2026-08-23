@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		connectInitiator,
 		createInitiator,
 		deleteInitiator,
 		getInitiators,
@@ -20,7 +21,7 @@
 	import { handleAPIError, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { resource, watch } from 'runed';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
@@ -52,19 +53,6 @@
 		{ initialValue: data.status }
 	);
 
-	let reload = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				initiators.refetch();
-				status.refetch();
-				reload = false;
-			}
-		}
-	);
-
 	let activeRows: Row[] | null = $state(null);
 	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
 
@@ -88,8 +76,25 @@
 		delete: { open: false }
 	});
 
+	let isConnecting = $state(false);
+
 	let loading = $state(false);
 	let query = $state('');
+	let visible = new IsDocumentVisible();
+
+	async function refreshInitiators() {
+		await Promise.allSettled([initiators.refetch(), status.refetch()]);
+	}
+
+	function notifyMutation(response: { message?: string }, successMessage: string) {
+		if (response.message === 'iscsi_configuration_saved_apply_pending') {
+			toast.warning('Saved, but the iSCSI runtime could not apply the change', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		toast.success(successMessage, { position: 'bottom-center' });
+	}
 
 	function openCreate() {
 		form = blankForm();
@@ -113,9 +118,15 @@
 		properties.edit.open = true;
 	}
 
-	function validateChapSecrets(): boolean {
+	function validateChapSecrets(existingAuthMethod?: string): boolean {
 		if (form.authMethod === 'CHAP' || form.authMethod === 'MutualCHAP') {
-			if (form.chapSecret.length < 12 || form.chapSecret.length > 16) {
+			const preservesExistingSecret =
+				form.chapSecret.length === 0 &&
+				(existingAuthMethod === 'CHAP' || existingAuthMethod === 'MutualCHAP');
+			if (
+				!preservesExistingSecret &&
+				(form.chapSecret.length < 12 || form.chapSecret.length > 16)
+			) {
 				toast.error('CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -123,7 +134,12 @@
 			}
 		}
 		if (form.authMethod === 'MutualCHAP') {
-			if (form.tgtChapSecret.length < 12 || form.tgtChapSecret.length > 16) {
+			const preservesExistingTargetSecret =
+				form.tgtChapSecret.length === 0 && existingAuthMethod === 'MutualCHAP';
+			if (
+				!preservesExistingTargetSecret &&
+				(form.tgtChapSecret.length < 12 || form.tgtChapSecret.length > 16)
+			) {
 				toast.error('Target CHAP Secret must be 12-16 characters (RFC 3720)', {
 					position: 'bottom-center'
 				});
@@ -148,19 +164,20 @@
 			form.tgtChapSecret
 		);
 		loading = false;
+		await refreshInitiators();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to create initiator', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Initiator created', { position: 'bottom-center' });
+		notifyMutation(response, 'Initiator created');
 		properties.create.open = false;
-		reload = true;
 	}
 
 	async function submitEdit() {
 		if (!activeRow) return;
-		if (!validateChapSecrets()) return;
+		const initiator = initiators.current.find((item) => item.id === Number(activeRow?.id));
+		if (!initiator || !validateChapSecrets(initiator.authMethod)) return;
 		loading = true;
 		const response = await updateInitiator(
 			Number(activeRow.id),
@@ -175,14 +192,28 @@
 			form.tgtChapSecret
 		);
 		loading = false;
+		await refreshInitiators();
 		if (response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to update initiator', { position: 'bottom-center' });
 			return;
 		}
-		toast.success('Initiator updated', { position: 'bottom-center' });
+		notifyMutation(response, 'Initiator updated');
 		properties.edit.open = false;
-		reload = true;
+	}
+
+	async function submitConnect() {
+		if (!activeRow) return;
+		isConnecting = true;
+		const response = await connectInitiator(Number(activeRow.id));
+		isConnecting = false;
+		await refreshInitiators();
+		if (response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to connect initiator', { position: 'bottom-center' });
+			return;
+		}
+		toast.success('Initiator connected', { position: 'bottom-center' });
 	}
 
 	function generateTableData(
@@ -230,13 +261,21 @@
 	}
 
 	let tableData = $derived(generateTableData(initiators.current, status.current));
+
+	useInterval(3000, {
+		callback: () => {
+			if (visible.current) {
+				status.refetch();
+			}
+		}
+	});
 </script>
 
 {#snippet initiatorForm(
 	title: string,
 	onSubmit: () => void,
 	submitLabel: string,
-	onClose: () => void
+	_onClose: () => void
 )}
 	<Dialog.Header>
 		<Dialog.Title>
@@ -341,7 +380,6 @@
 		</div>
 
 		<Dialog.Footer class="mt-4">
-			<Button type="button" variant="outline" onclick={onClose} disabled={loading}>Cancel</Button>
 			<Button type="submit" disabled={loading}>{submitLabel}</Button>
 		</Dialog.Footer>
 	</form>
@@ -356,8 +394,23 @@
 		</Button>
 
 		{#if activeRows !== null && activeRows.length === 1}
+			<Button
+				onclick={submitConnect}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={isConnecting}
+			>
+				<SpanWithIcon
+					icon={isConnecting ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--lan-connect]'}
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Reconnect"
+				/>
+			</Button>
+
 			<Button onclick={openEdit} size="sm" variant="outline" class="h-6.5">
-				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit Initiator" />
+				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 
 			<Button
@@ -366,12 +419,7 @@
 				variant="outline"
 				class="h-6.5"
 			>
-				<SpanWithIcon
-					icon="icon-[mdi--delete]"
-					size="h-4 w-4"
-					gap="gap-2"
-					title="Delete Initiator"
-				/>
+				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 	</div>
@@ -424,15 +472,15 @@
 		onConfirm: async () => {
 			if (activeRow) {
 				const response = await deleteInitiator(Number(activeRow.id));
+				await refreshInitiators();
 				if (response.status === 'error') {
 					handleAPIError(response);
 					toast.error('Failed to delete initiator', { position: 'bottom-center' });
 					return;
 				}
-				toast.success('Initiator deleted', { position: 'bottom-center' });
+				notifyMutation(response, 'Initiator deleted');
 				properties.delete.open = false;
 				activeRows = null;
-				reload = true;
 			}
 		},
 		onCancel: () => {

@@ -1,23 +1,27 @@
 {
-    "environment": "development",
+    "environment": "production",
     "proxyToVite": false,
+    "profile": false,
+    "ip": "0.0.0.0",
+    "port": 8181,
+    "httpPort": 8182,
+    "logLevel": 3,
+    "dataPath": "/var/db/sylve",
     "auth": {
         "enablePAM": true
     },
     "admin": {
         "email": "admin@sylve.local",
-        "password": "admin"
+        "password": "admin",
+        "forcePasswordReset": false
     },
-    "logLevel": 0,
-    "port": 8181,
-    "httpPort": 8182,
     "raft": {
         "reset": false
     },
     "btt": {
         "rpc": {
             "enabled": false,
-            "host": "127.0.0.1",
+            "address": "127.0.0.1",
             "port": 6890
         },
         "dht": {
@@ -27,5 +31,13 @@
     },
     "jails": {
         "disableDevFS": false
-    }
+    },
+    "zfs": {
+        "tune": true
+    },
+    "uploads": {
+        "maxFileBytes": 68719476736,
+        "maxConcurrentTransfers": 2
+    },
+    "trustedProxies": []
 }

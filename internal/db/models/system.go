@@ -39,16 +39,28 @@ type Triggers struct {
 	CompletedAt time.Time `json:"completedAt" gorm:"autoUpdateTime"`
 }
 
-type NetlinkEvent struct {
-	ID        uint              `json:"id" gorm:"primaryKey"`
-	System    string            `json:"system" gorm:"index"`
-	Subsystem string            `json:"subsystem"`
-	Type      string            `json:"type" gorm:"index"`
-	Attrs     map[string]string `json:"attrs" gorm:"serializer:json"`
+type ZFSCacheInvalidation struct {
+	ID         uint   `json:"id" gorm:"primaryKey"`
+	Kind       string `json:"kind" gorm:"uniqueIndex;not null"`
+	Generation uint64 `json:"generation" gorm:"not null"`
 
-	Raw       string `json:"raw" gorm:"type:text"`
-	Processed bool   `json:"processed" gorm:"index"`
+	FirstDirtyAt time.Time `json:"firstDirtyAt" gorm:"not null"`
+	LastDirtyAt  time.Time `json:"lastDirtyAt" gorm:"not null"`
+}
 
-	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime;index"`
+func (ZFSCacheInvalidation) TableName() string {
+	return "zfs_cache_invalidations"
+}
+
+const (
+	SystemTunableARCMaxOID       = "vfs.zfs.arc.max"
+	SystemTunableLegacyARCMaxOID = "vfs.zfs.arc_max"
+)
+
+type SystemTunable struct {
+	ID        uint      `json:"id" gorm:"primaryKey"`
+	Name      string    `json:"name" gorm:"uniqueIndex;not null"`
+	Value     string    `json:"value"`
+	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }

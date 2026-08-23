@@ -1,0 +1,42 @@
+<div class="ports-table not-content">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Port</th><th>Scope</th><th>Purpose</th><th>Configuration</th></tr></thead>
+      <tbody>
+        <tr class="group"><th colspan="4">Public listeners</th></tr>
+        <tr><th><code>8181/tcp</code></th><td><span class="scope public">Public</span></td><td><strong>HTTPS API and web UI</strong><small>Primary browser and API endpoint.</small></td><td><code>port</code></td></tr>
+        <tr><th><code>8182/tcp</code></th><td><span class="scope public">Public</span></td><td><strong>HTTP API and web UI</strong><small>Insecure on untrusted networks; intended for controlled reverse-proxy setups.</small></td><td><code>httpPort</code></td></tr>
+
+        <tr class="group"><th colspan="4">Cluster transport</th></tr>
+        <tr><th><code>8180/tcp</code></th><td><span class="scope internal">Internal</span></td><td><strong>Raft</strong><small>Cluster membership and replicated control-plane state.</small></td><td><span class="not-configurable">Not configurable</span></td></tr>
+        <tr><th><code>8183/tcp</code></th><td><span class="scope internal">Internal</span></td><td><strong>Cluster SSH</strong><small>Secure channel for node-to-node operations.</small></td><td><span class="not-configurable">Not configurable</span></td></tr>
+        <tr><th><code>8184/tcp</code></th><td><span class="scope internal">Internal</span></td><td><strong>Cluster HTTPS</strong><small>Node control-plane traffic, including cluster joins.</small></td><td><span class="not-configurable">Not configurable</span></td></tr>
+
+        <tr class="group"><th colspan="4">Peer discovery</th></tr>
+        <tr><th><code>7246/udp</code></th><td><span class="scope optional">Optional</span></td><td><strong>BitTorrent DHT</strong><small>Peer discovery for magnet downloads when DHT is enabled.</small></td><td><code>btt.dht.port</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .ports-table { --line:color-mix(in oklab,var(--sl-color-white) 14%,transparent); --line-strong:color-mix(in oklab,var(--sl-color-white) 24%,transparent); margin:1.25rem 0 1.75rem; }
+  .table-wrap { overflow-x:auto; border:1px solid var(--line-strong); border-radius:.35rem; }
+  table { width:100%; min-width:38rem; border-collapse:collapse; table-layout:fixed; background:var(--sl-color-bg); font-size:.73rem; }
+  th,td { padding:.75rem .85rem; border-right:1px solid var(--line); border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  tr > :last-child { border-right:0; }
+  tbody tr:last-child > * { border-bottom:0; }
+  thead th { color:var(--sl-color-white); font-size:.67rem; }
+  thead th:first-child { width:16%; } thead th:nth-child(2) { width:16%; } thead th:nth-child(3) { width:48%; } thead th:last-child { width:20%; }
+  .group th { padding:.58rem .85rem; border-right:0; border-top:1px solid var(--line-strong); background:color-mix(in oklab,var(--sl-color-white) 4%,transparent); color:var(--sl-color-gray-3); font:600 .6rem var(--sl-font-mono); letter-spacing:.08em; text-transform:uppercase; }
+  tbody .group:first-child th { border-top:0; }
+  code { padding:.09rem .3rem; border:1px solid var(--line); border-radius:.2rem; background:color-mix(in oklab,var(--sl-color-white) 4%,transparent); color:var(--sl-color-white); font:.64rem var(--sl-font-mono); white-space:nowrap; }
+  td strong,td small { display:block; }
+  td strong { color:var(--sl-color-white); font-size:.73rem; font-weight:600; }
+  td small { margin-top:.22rem; color:var(--sl-color-gray-3); font-size:.65rem; line-height:1.45; }
+  .scope,.not-configurable { display:inline-block; padding:.14rem .38rem; border:1px solid var(--line); border-radius:999px; color:var(--sl-color-gray-2); font:600 .56rem var(--sl-font-mono); text-transform:uppercase; letter-spacing:.04em; }
+  .public { border-color:color-mix(in oklab,var(--sl-color-white) 30%,transparent); color:var(--sl-color-white); }
+  .optional { border-style:dashed; }
+  .not-configurable { border:0; border-radius:0; padding:.14rem 0; color:var(--sl-color-gray-2); }
+  @media (max-width:40rem) { .table-wrap { margin-inline:-.5rem; } }
+</style>

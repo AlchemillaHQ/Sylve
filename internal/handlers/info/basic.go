@@ -22,7 +22,6 @@ import (
 // @Summary Get Basic Info
 // @Description Get the basic information about the system
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[infoServiceInterfaces.BasicInfo] "Success"

@@ -1,44 +1,79 @@
 ---
 title: Volumes
-description: Manage your ZFS volumes, view their details, and perform various actions.
+description: Create and manage ZFS volumes, also known as zvols, in Sylve.
 ---
 
-In the ZFS Volumes section, you can manage all your ZFS volumes in one place. Let's go over the various actions you can perform on your volumes.
+import volumesOverview from './volumes-overview.png';
+import volumesCreate from './volumes-create.png';
+import volumesEdit from './volumes-edit.png';
+import volumesSnapshot from './volumes-snapshot.png';
+import volumesFlashFile from './volumes-flash-file.png';
+import volumesDelete from './volumes-delete.png';
 
-## Create Volume
+A ZFS volume, or zvol, is a dataset exposed by ZFS as a block device. Use a zvol where software expects a disk rather than a directory, such as a VM disk or a bootable image. The Volumes page groups volumes by pool and shows their **Size**, **Used**, **Available**, and **Referenced** space.
 
-Creating a ZFS volume is a straightforward process. You can create a new volume by clicking on the "New" button in the context menu and filling out the form:
+Select one volume to reveal **Snapshot**, **Flash File**, **Edit**, and **Delete**. Select several volumes to delete them together.
 
-![Create Volume Form](./form.png)
+<img src={volumesOverview.src} alt="Sylve Volumes page showing a pool with several zvols, storage columns, and the actions available for one selected volume" />
 
-Let's go over the options:
+## Create a volume
 
-- **Name**: This is the name of your volume. It should be unique within the pool and can be used to identify the volume later.
+Select **New**, choose the pool, supply a size, configure the zvol properties, then select **Create**. A volume is created directly under the chosen pool as `pool/name`.
 
-- **Size**: This is the size of the volume. You can specify the size in various units such as bytes, kilobytes, megabytes, gigabytes, etc.
+<img src={volumesCreate.src} alt="Create Volume dialog in Sylve with a pool selected, a volume size, and zvol properties populated" />
 
-- **Pool**: This is the pool where the volume will be created. You can choose from the available pools in your system.
+| Option | What it controls | Available values or behavior |
+| --- | --- | --- |
+| Name | The final path component of the zvol. | Required. It must be a valid ZFS dataset name and be unique in the selected pool. |
+| Size | Logical size exposed by the block device. | Required size such as `64G`. Sylve prevents a size larger than the pool's currently free space. |
+| Referenced Reservation | Space reserved for the zvol's referenced data. | Optional size such as `10G`. Leave empty for the ZFS default. This is particularly useful with sparse volumes when you need to guarantee part of their capacity. |
+| Pool | Filesystem dataset that contains the zvol. | Required. The form presents available pools. |
+| Block Size | Zvol block size. | Presets from 512B through 128K, including 4K for SSDs and VMs, 32K for sequential workloads, and 128K for media or backups. Custom byte values are accepted. Default: 16K. |
+| Checksum | Integrity algorithm for data blocks. | **Yes** (`on`), **No** (`off`), `fletcher2`, `fletcher4`, `sha256`, or `noparity`. Default: Yes. |
+| Compression | Per-volume compression setting. | **Yes** (`on`), **No** (`off`), `gzip`, `lz4`, `lzjb`, `zle`, `zstd`, or `zstd-fast`. Default: Yes. |
+| Deduplication | Block-level deduplication mode. | **No** (`off`), **Yes** (`on`), or **Verify**. Default: No. |
+| Encryption | Encryption for this volume. | **No** (`off`), **Yes** (`on`), or an AES-CCM/AES-GCM cipher: 128, 192, or 256 bit. Default: No. |
+| Passphrase | Key material for a newly encrypted zvol. | Required when Encryption is enabled. Sylve can generate a value. Store it safely before creation. |
+| Primary Cache | What ZFS may retain in ARC for this zvol. | **All**, **Metadata**, or **None**. Default: **Metadata**, a good default for many VM disks. |
+| Volume Mode | How ZFS exposes the volume device. | `default`, `full`, `geom`, `dev`, or `none`. Default: `dev`. |
+| Sparse | Whether the zvol is thin-provisioned. | **Yes** (`on`) or **No** (`off`). Default: Yes. A sparse zvol does not reserve its full logical size upfront. |
 
-:::note
-When you create a volume, if it's for a VM it's highly recommended to set the Primary Cache property to "Metadata" to improve performance
+:::caution
+Thin provisioning can overcommit a pool. Monitor pool free space and use a referenced reservation when a workload needs guaranteed capacity. Deduplication also has substantial memory requirements and should not be enabled casually.
 :::
 
-## Editing Volumes
+## Edit a volume
 
-You can edit the properties of an existing volume by selecting it and clicking on the "Edit" button in the context menu. This will open a form similar to the one used for creating a volume, where you can modify the properties as needed.
+Select a volume and choose **Edit**. Its name, pool, encryption, sparse setting, and block size cannot be changed in this dialog.
 
-## Deleting Volumes
+<img src={volumesEdit.src} alt="Edit Volume dialog in Sylve showing volume size, reservation, disabled block size, and editable ZFS properties" />
 
-You can delete a volume by selecting it and clicking on the "Delete" button in the context menu. A confirmation dialog will appear to ensure you want to proceed with the deletion.
+| Option | Edit behavior |
+| --- | --- |
+| Volume Size | Change the logical zvol size. The new value must be an exact multiple of the existing block size. Sylve displays an adjustment control when it is not. |
+| Referenced Reservation | Set a reservation size. Leaving the field empty keeps the current reservation value. |
+| Block Size | Displayed for reference but disabled. ZFS block size is fixed when the zvol is created. |
+| Checksum, Compression, Deduplication | Use the same values as the creation form. Compression accepts a custom ZFS value. |
+| Read Only | **No** (`off`) or **Yes** (`on`). Set to Yes before handing a volume to a consumer that must not write to it. |
+| Primary Cache | **All**, **Metadata**, or **None**. |
+| Volume Mode | `default`, `full`, `geom`, `dev`, or `none`. |
 
-![Delete Volume](./delete.png)
+## Snapshot a volume
 
-You can also choose to delete multiple volume datasets at once by selecting them and clicking on the "Delete Volumes" button.
+With one zvol selected, choose **Snapshot** to open the detailed snapshot form with the pool and zvol preselected. The form supports both one-time snapshots and periodic snapshot jobs. See [Snapshots](/guides/node/storage/zfs/datasets/snapshots/) for the schedule and retention options.
 
-## Flashing Volumes
+<img src={volumesSnapshot.src} alt="Sylve Volumes page with a selected zvol and the Snapshot toolbar action visible" />
 
-Since ZVOLs are essentially block devices, you can flash an image file on top of them just like you would with a physical disk, this is especially useful for VMs, you can flash an ISO file on top of a ZVOL and then use that ZVOL as the boot disk for a VM.
+## Flash a downloaded file to a volume
 
-![Flash Volume](./flash.png)
+Choose **Flash File** for a selected volume, choose an ISO or image already downloaded through Sylve's Downloader, then confirm the write. Sylve writes the selected file to the zvol's `/dev/zvol/...` block device.
 
-Any ISO/IMG file downloaded using the **downloader** can be used to flash a ZVOL.
+The source file must fit inside the volume. Flashing is refused when the zvol is in use by a VM, and the operation overwrites its existing contents.
+
+<img src={volumesFlashFile.src} alt="Flash File dialog in Sylve listing downloaded ISO or image files for a selected ZFS volume" />
+
+## Delete volumes
+
+Choose **Delete** for one volume or select several volumes and choose **Delete Volumes**. Deletion is permanent. Sylve refuses to delete a zvol referenced by a VM.
+
+<img src={volumesDelete.src} alt="Sylve confirmation dialog warning that a selected ZFS volume will be permanently deleted" />

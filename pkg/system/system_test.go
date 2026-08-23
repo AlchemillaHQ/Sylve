@@ -8,12 +8,16 @@ import (
 
 func resetTestHooks() {
 	runCommand = nil
+	runCommandWithInput = nil
 	unixUserExists = nil
 	unixGroupExists = nil
 	isUserInGroup = nil
 	getEUID = nil
 
 	runCommand = func(command string, args ...string) (string, error) {
+		return "", nil
+	}
+	runCommandWithInput = func(command, input string, args ...string) (string, error) {
 		return "", nil
 	}
 	unixUserExists = UnixUserExists
@@ -928,7 +932,7 @@ func TestCreateUnixUserFullNonexistent(t *testing.T) {
 }
 
 func TestGetNextUnixUID(t *testing.T) {
-	t.Run("returns 1000 on pw failure", func(t *testing.T) {
+	t.Run("returns discovery error on pw failure", func(t *testing.T) {
 		defer resetTestHooks()
 
 		runCommand = func(command string, args ...string) (string, error) {
@@ -936,11 +940,11 @@ func TestGetNextUnixUID(t *testing.T) {
 		}
 
 		uid, err := GetNextUnixUID()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("expected discovery error")
 		}
-		if uid != 1000 {
-			t.Fatalf("expected 1000, got: %d", uid)
+		if uid != 0 {
+			t.Fatalf("expected zero UID on failure, got: %d", uid)
 		}
 	})
 
@@ -975,6 +979,32 @@ func TestGetNextUnixUID(t *testing.T) {
 			t.Fatalf("expected 1000, got: %d", uid)
 		}
 	})
+}
+
+func TestSetUnixUserPassword(t *testing.T) {
+	defer resetTestHooks()
+
+	var gotCommand, gotInput string
+	var gotArgs []string
+	runCommandWithInput = func(command, input string, args ...string) (string, error) {
+		gotCommand = command
+		gotInput = input
+		gotArgs = append([]string(nil), args...)
+		return "", nil
+	}
+
+	if err := SetUnixUserPassword("alice", "secret-password"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotCommand != "/usr/sbin/pw" {
+		t.Fatalf("unexpected command: %s", gotCommand)
+	}
+	if !reflect.DeepEqual(gotArgs, []string{"usermod", "alice", "-h", "0"}) {
+		t.Fatalf("unexpected args: %#v", gotArgs)
+	}
+	if gotInput != "secret-password\n" {
+		t.Fatalf("password was not passed through stdin as expected")
+	}
 }
 
 func TestChangeUnixUserUID(t *testing.T) {

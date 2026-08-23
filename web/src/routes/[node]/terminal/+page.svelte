@@ -3,31 +3,43 @@
 	import { sha256, toHex } from '$lib/utils/string';
 	import { useResizeObserver, PersistedState, useDebounce } from 'runed';
 	import { onMount } from 'svelte';
-	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
+	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
+	import type {
+		ITerminalOptions,
+		ITerminalInitOnlyOptions,
+		Terminal
+	} from '@battlefieldduck/xterm-svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
 	import { page } from '$app/state';
+	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import type { DemoHostTerminalStatus } from '$lib/demo/host-terminal';
 
-	let terminal = $state<GhosttyTerminal | null>(null);
+	type DemoHostTerminalRuntime = (typeof import('$lib/demo/host-terminal'))['demoHostTerminal'];
+
+	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
+
+	let terminal = $state<Terminal>();
+	let fitAddon: FitAddonInstance | null = null;
 	let ws = $state<WebSocket | null>(null);
-	let terminalContainer = $state<HTMLElement | null>(null);
-	let lastWidth = 0;
-	let lastHeight = 0;
+	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
-	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
+	let destroyed = false;
+	let demoHostTerminal: DemoHostTerminalRuntime | null = null;
+	let detachDemoTerminal: (() => void) | null = null;
+	let unsubscribeDemoStatus: (() => void) | null = null;
+	let demoStatus = $state<DemoHostTerminalStatus>('idle');
+	let demoStatusText = $state('');
+	let demoProgress = $state(0);
 
-	function loadGhostty() {
-		if (!ghosttyModulePromise) {
-			ghosttyModulePromise = import('ghostty-web');
-		}
-
-		return ghosttyModulePromise;
-	}
-
-	let cState = new PersistedState(`host-console-state`, false);
+	let cState = new PersistedState(
+		isDemoMode ? `demo-host-console-state` : `host-console-state`,
+		false
+	);
 	let theme = new PersistedState(`host-console-theme`, {
 		background: '#282c34',
 		foreground: '#FFFFFF',
@@ -39,11 +51,50 @@
 	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
 	let openSettings = $state(false);
 
-	const applyFontSize = useDebounce(() => {
+	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
+		cursorBlink: true,
+		cursorStyle: 'bar',
+		scrollback: 10000,
+		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+		fontSize: theme.current.fontSize || 14,
+		theme: {
+			background: theme.current.background,
+			foreground: theme.current.foreground
+		}
+	};
+
+	function sendSize(cols: number, rows: number) {
+		if (isDemoMode) return;
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
+	}
+
+	function fitAndSend() {
+		if (!terminal || !fitAddon) return;
+		try {
+			fitAddon.fit();
+		} catch {
+			return;
+		}
+		sendSize(terminal.cols, terminal.rows);
+		if (isDemoMode) demoHostTerminal?.resize(terminal.cols, terminal.rows);
+	}
+
+	function setFontSize(size: number) {
 		if (!terminal) return;
-		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
-		terminal.options.fontSize = theme.current.fontSize;
-		resizeTerminal(lastWidth, lastHeight);
+		const clamped = Math.max(8, Math.min(24, Math.round(size)));
+		fontSizeBindable = clamped;
+		theme.current.fontSize = clamped;
+		terminal.options.fontSize = clamped;
+		fitAndSend();
+	}
+
+	function changeFontSize(delta: number) {
+		setFontSize((theme.current.fontSize || 14) + delta);
+	}
+
+	const applyFontSize = useDebounce(() => {
+		setFontSize(fontSizeBindable);
 	}, 200);
 
 	const applyThemeDebounced = useDebounce(() => {
@@ -62,18 +113,17 @@
 			background: theme.current.background,
 			foreground: theme.current.foreground
 		};
-		disconnect();
-		reconnect();
 	}, 300);
-
-	function sendSize(cols: number, rows: number) {
-		if (!ws || ws.readyState !== WebSocket.OPEN) return;
-		ws.send(new TextEncoder().encode('\x01' + JSON.stringify({ rows, cols })));
-	}
 
 	function disconnect() {
 		cState.current = true;
 		connectionToken += 1;
+
+		if (isDemoMode) {
+			detachDemoTerminal?.();
+			detachDemoTerminal = null;
+			return;
+		}
 
 		const socket = ws;
 		ws = null;
@@ -94,85 +144,28 @@
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
 		}
-
-		terminal?.dispose?.();
-		terminal = null;
-		ws = null;
 	}
 
 	function reconnect() {
 		cState.current = false;
-		setup();
-	}
-
-	function resizeTerminal(width: number, height: number) {
-		if (!terminal) return;
-		const root = terminal.element as HTMLElement | undefined;
-		if (!root) return;
-		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
-		if (!canvas) return;
-
-		const currentCols = terminal.cols || 80;
-		const currentRows = terminal.rows || 24;
-		const cellWidth = canvas.clientWidth / currentCols || 8;
-		const cellHeight = canvas.clientHeight / currentRows || 16;
-		if (!cellWidth || !cellHeight) return;
-
-		const cols = Math.max(2, Math.floor(width / cellWidth));
-		const rows = Math.max(2, Math.floor(height / cellHeight));
-		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
-
-		terminal.resize(cols, rows);
-		sendSize(cols, rows);
-	}
-
-	function syncTerminalSizeAfterOpen() {
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
-				if (!terminalContainer) return;
-				const rect = terminalContainer.getBoundingClientRect();
-				if (!rect.width || !rect.height) return;
-				lastWidth = rect.width;
-				lastHeight = rect.height;
-				resizeTerminal(rect.width, rect.height);
+				fitAndSend();
+				if (isDemoMode) connectDemoHost();
+				else void connect();
 			});
 		});
 	}
 
 	useResizeObserver(
-		() => terminalContainer,
-		(entries) => {
-			const entry = entries[0];
-			if (!entry) return;
-			const { width, height } = entry.contentRect;
-			lastWidth = width;
-			lastHeight = height;
-			resizeTerminal(width, height);
+		() => wrapper,
+		() => {
+			fitAndSend();
 		}
 	);
 
-	let destroyed = $state(false);
-	const setup = async () => {
-		cState.current = false;
-
-		if (!terminalContainer) return;
-
-		const ghostty = await loadGhostty();
-		await ghostty.init();
-		if (destroyed) return;
-
-		terminal = new ghostty.Terminal({
-			cursorBlink: true,
-			cursorStyle: 'bar',
-			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-			fontSize: theme.current.fontSize || 14,
-			theme: {
-				background: theme.current.background,
-				foreground: theme.current.foreground
-			}
-		});
-
-		terminal.open(terminalContainer);
+	const connect = async () => {
+		if (isDemoMode || destroyed || !terminal) return;
 
 		const hash = await sha256(storage.token || '', 1);
 		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
@@ -180,8 +173,7 @@
 		const wsAuth = toHex(
 			JSON.stringify({
 				hash,
-				hostname: selectedHostname,
-				token: storage.clusterToken || ''
+				hostname: selectedHostname
 			})
 		);
 
@@ -196,14 +188,9 @@
 				return;
 
 			console.log(`Host console connected`);
-			if (lastWidth && lastHeight) {
-				resizeTerminal(lastWidth, lastHeight);
-			} else if (terminalContainer) {
-				const rect = terminalContainer.getBoundingClientRect();
-				resizeTerminal(rect.width, rect.height);
-			}
-
-			syncTerminalSizeAfterOpen();
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => fitAndSend());
+			});
 		};
 
 		socket.onmessage = (e) => {
@@ -224,19 +211,90 @@
 				}
 			}
 		};
-
-		terminal.onData((data: string) => {
-			if (socket.readyState !== WebSocket.OPEN) return;
-			socket.send(new TextEncoder().encode('\x00' + data));
-		});
 	};
 
+	function connectDemoHost() {
+		const runtime = demoHostTerminal;
+		if (!isDemoMode || destroyed || !terminal || !runtime) return;
+
+		connectionToken += 1;
+		detachDemoTerminal?.();
+		runtime.setHostname(page.params.node || storage.hostname || 'leto');
+		detachDemoTerminal = runtime.attach(terminal);
+	}
+
+	async function onLoad(t: Terminal) {
+		terminal = t;
+		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
+		t.loadAddon(fitAddon);
+
+		t.attachCustomKeyEventHandler((e) => {
+			const zoomModifier = isMac ? e.metaKey : e.ctrlKey;
+			const otherModifier = isMac ? e.ctrlKey : e.metaKey;
+			if (e.type === 'keydown' && zoomModifier && !e.altKey && !otherModifier) {
+				if (e.key === '+' || e.key === '=') {
+					e.preventDefault();
+					changeFontSize(1);
+					return false;
+				}
+				if (e.key === '-' || e.key === '_') {
+					e.preventDefault();
+					changeFontSize(-1);
+					return false;
+				}
+			}
+			return true;
+		});
+
+		if (destroyed) return;
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				fitAndSend();
+				if (!cState.current) {
+					if (isDemoMode) connectDemoHost();
+					else void connect();
+				}
+			});
+		});
+	}
+
+	function onData(data: string) {
+		if (isDemoMode) {
+			if (detachDemoTerminal) demoHostTerminal?.send(data);
+			return;
+		}
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x00' + data));
+	}
+
+	function handleBeforeUnload(event: BeforeUnloadEvent) {
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}
+
 	onMount(() => {
-		if (!cState.current) {
-			setup();
+		let cancelled = false;
+		window.addEventListener('beforeunload', handleBeforeUnload);
+		if (isDemoMode) {
+			void import('$lib/demo/host-terminal').then(({ demoHostTerminal: runtime }) => {
+				if (cancelled || destroyed) return;
+				demoHostTerminal = runtime;
+				unsubscribeDemoStatus = runtime.subscribe(({ status, text, progress }) => {
+					demoStatus = status;
+					demoStatusText = text;
+					demoProgress = progress;
+				});
+				runtime.setHostname(page.params.node || storage.hostname || 'leto');
+				if (terminal && !cState.current) connectDemoHost();
+			});
 		}
 
 		return () => {
+			cancelled = true;
+			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
 
@@ -249,20 +307,22 @@
 				ws = null;
 			}
 
-			if (terminal) {
-				terminal.clear?.();
-				terminal.reset?.();
-			}
+			detachDemoTerminal?.();
+			detachDemoTerminal = null;
+			unsubscribeDemoStatus?.();
+			unsubscribeDemoStatus = null;
+			demoHostTerminal = null;
 
-			terminal?.dispose?.();
-			terminal = null;
+			terminal?.clear();
+			terminal?.dispose();
+			terminal = undefined;
 		};
 	});
 </script>
 
 <div class="flex h-full w-full flex-col">
-	<div class="flex h-10 w-full items-center gap-2 border p-4 bg-background">
-		{#if ws?.readyState === WebSocket.OPEN}
+	<div class="bg-background flex h-10 w-full items-center gap-2 border p-4">
+		{#if isDemoMode ? !cState.current : ws?.readyState === WebSocket.OPEN}
 			<Button
 				size="sm"
 				class="bg-muted-foreground/40 dark:bg-muted h-6 text-black hover:bg-yellow-600 dark:text-white"
@@ -286,14 +346,31 @@
 			</Button>
 		{/if}
 
+		{#if isDemoMode}
+			<div class="text-muted-foreground flex min-w-0 items-center gap-2 text-xs">
+				<span
+					class="h-2 w-2 shrink-0 rounded-full"
+					class:bg-emerald-500={demoStatus === 'running'}
+					class:bg-amber-500={demoStatus === 'loading'}
+					class:bg-red-500={demoStatus === 'error'}
+					class:bg-muted-foreground={demoStatus === 'idle'}
+				></span>
+				<span class="truncate">{demoStatus === 'idle' ? 'FreeBSD demo host' : demoStatusText}</span>
+				{#if demoStatus === 'loading' && demoProgress > 0}
+					<span class="tabular-nums">{demoProgress}%</span>
+				{/if}
+			</div>
+		{/if}
+
 		<div class="ml-auto">
 			<Button
 				variant="outline"
 				size="sm"
 				class="ml-auto h-6"
 				onclick={() => {
-					terminal?.clear?.();
-					terminal?.focus?.();
+					terminal?.clear();
+					if (isDemoMode) demoHostTerminal?.refresh();
+					terminal?.focus();
 				}}
 			>
 				<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
@@ -319,21 +396,30 @@
 			<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
 			<div class="max-w-md">
 				The host console has been disconnected.<br />
-				Click the "Reconnect" button to start a new session.
+				Click the "Reconnect" button to attach to the session again.
 			</div>
 		</div>
 	{/if}
 
 	<div
-		class="terminal-wrapper h-full w-full bg-black focus:outline-none caret-transparent"
+		bind:this={wrapper}
+		class="terminal-wrapper w-full min-h-0 flex-1 overflow-hidden"
 		class:hidden={cState.current}
-		role="application"
-		aria-label="Host terminal"
-		tabindex="-1"
-		style="outline: none;"
-		bind:this={terminalContainer}
-		onpointerdown={() => terminal?.focus()}
-	></div>
+		style="background-color: {theme.current.background};"
+	>
+		<Xterm
+			class="h-full w-full caret-transparent focus:outline-none"
+			style="outline: none;"
+			role="application"
+			aria-label="Host terminal"
+			tabindex={-1}
+			{options}
+			bind:terminal
+			{onLoad}
+			{onData}
+			onpointerdown={() => terminal?.focus()}
+		/>
+	</div>
 </div>
 
 <Dialog.Root bind:open={openSettings}>
@@ -341,7 +427,7 @@
 		<Dialog.Header class="p-0">
 			<Dialog.Title>Host Console Settings</Dialog.Title>
 		</Dialog.Header>
-		<div class="grid grid-cols-1 gap-4 py-2">
+		<div class="grid grid-cols-1 gap-4">
 			<CustomValueInput
 				label="Font Size"
 				type="number"
@@ -350,7 +436,7 @@
 				placeholder="14"
 				classes=""
 			/>
-			<div class="grid grid-cols-2 gap-2">
+			<div class="color-pickers grid grid-cols-2 gap-2">
 				<ColorPicker
 					bind:hex={bgThemeBindable}
 					{swatches}
@@ -369,7 +455,25 @@
 </Dialog.Root>
 
 <style>
-	:global(.terminal-wrapper canvas) {
-		display: block;
+	:global(.terminal-wrapper .xterm) {
+		height: 100%;
+		padding: 0;
+	}
+
+	:global(.terminal-wrapper .xterm-viewport) {
+		background-color: transparent !important;
+	}
+
+	:global(.color-pickers .alpha) {
+		display: none;
+	}
+
+	:global(.color-pickers .color) {
+		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+	}
+
+	:global(.color-pickers .color:focus-visible),
+	:global(.color-pickers input:focus-visible ~ .color) {
+		outline-color: var(--ring);
 	}
 </style>

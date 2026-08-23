@@ -4,7 +4,6 @@
 		getBackupTargetJailMetadata,
 		getBackupTargetVMMetadata,
 		getTargetRunningJobIds,
-		listBackupJobs,
 		listBackupTargetDatasets,
 		listBackupTargetDatasetSnapshots,
 		restoreBackupFromTarget
@@ -19,7 +18,6 @@
 	import type {
 		BackupGuestRef,
 		BackupJailMetadataInfo,
-		BackupJob,
 		BackupTarget,
 		BackupTargetDatasetInfo,
 		BackupVMMetadataInfo,
@@ -59,7 +57,9 @@
 	let loadingCluster = $state(false);
 	let restoring = $state(false);
 	let runningJobIds = new SvelteSet<number>();
-	let allTargetJobs = $state<BackupJob[]>([]);
+	let runningJobStatusAvailable = $state(false);
+	let checkingRunningJobStatus = $state(false);
+	let targetLoadRevision = 0;
 
 	let targetId = $state('');
 	let restoreNodeId = $state('');
@@ -68,6 +68,10 @@
 	let snapshot = $state('');
 	let destinationDataset = $state('');
 	let restoreNetwork = $state(true);
+	let encryptionKey = $state('');
+	let restoreOperationId = $state('');
+	let restoreOperationRequestKey = $state('');
+	let showActiveOnly = $state(true);
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
 	let snapshots = $state<SnapshotInfo[]>([]);
@@ -98,6 +102,17 @@
 		const match = baseSuffix.match(/(?:^|\/)(job-[0-9]+|j-[0-9a-z]+)(?:\/|$)/i);
 		if (!match) return '';
 		return match[1];
+	}
+
+	function jobIdFromLabel(label: string): number {
+		const normalized = label.trim().toLowerCase();
+		let parsed = 0;
+		if (/^j-[0-9a-z]+$/.test(normalized)) {
+			parsed = Number.parseInt(normalized.slice(2), 36);
+		} else if (/^job-[0-9]+$/.test(normalized)) {
+			parsed = Number.parseInt(normalized.slice(4), 10);
+		}
+		return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
 	}
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
@@ -142,6 +157,7 @@
 				jailCtId: number;
 				vmRid: number;
 				totalSnapshots: number;
+				encrypted: boolean;
 			}
 		>();
 
@@ -155,12 +171,14 @@
 					kind: item.kind || 'dataset',
 					jailCtId: item.jailCtId || 0,
 					vmRid: item.vmRid || 0,
-					totalSnapshots: item.snapshotCount || 0
+					totalSnapshots: item.snapshotCount || 0,
+					encrypted: item.encrypted
 				});
 				continue;
 			}
 			existing.datasets.push(item);
 			existing.totalSnapshots += item.snapshotCount || 0;
+			existing.encrypted ||= item.encrypted;
 			if (existing.kind !== 'jail' && item.kind === 'jail') existing.kind = 'jail';
 			if (!existing.jailCtId && item.jailCtId) existing.jailCtId = item.jailCtId;
 			if (existing.kind !== 'vm' && item.kind === 'vm') existing.kind = 'vm';
@@ -192,15 +210,28 @@
 				kind: entry.kind,
 				jailCtId: entry.jailCtId,
 				vmRid: entry.vmRid,
-				totalSnapshots
+				totalSnapshots,
+				encrypted: entry.encrypted
 			});
 		}
 
 		return out.sort((left, right) => left.baseSuffix.localeCompare(right.baseSuffix));
 	});
 
+	let filteredDatasetGroups = $derived(
+		showActiveOnly
+			? restoreTargetDatasetGroups.filter((g) => {
+					// Include groups that contain at least one active-lineage dataset.
+					const groupDatasets = datasets.filter(
+						(d) => (d.baseSuffix || d.suffix || d.name) === g.baseSuffix
+					);
+					return groupDatasets.some((d) => d.lineage === 'active');
+				})
+			: restoreTargetDatasetGroups
+	);
+
 	let restoreTargetDatasetOptions = $derived(
-		restoreTargetDatasetGroups.map((entry) => ({
+		filteredDatasetGroups.map((entry) => ({
 			value: entry.representativeDataset,
 			label: formatRestoreTargetDatasetLabel(entry)
 		}))
@@ -220,14 +251,16 @@
 	);
 
 	let jobRunning = $derived.by(() => {
-		if (runningJobIds.size === 0) return false;
+		if (!runningJobStatusAvailable || runningJobIds.size === 0) return false;
 		const group = selectedRestoreTargetDatasetGroup;
 		if (!group || !group.jobLabel) return false;
-		const matchingJob = allTargetJobs.find(
-			(j) => extractJobLabel(j.destSuffix || '') === group.jobLabel
-		);
-		return matchingJob ? runningJobIds.has(matchingJob.id) : false;
+		const encodedJobId = jobIdFromLabel(group.jobLabel);
+		return encodedJobId > 0 && runningJobIds.has(encodedJobId);
 	});
+
+	let runningJobStatusUnavailable = $derived(
+		!loadingDatasets && !checkingRunningJobStatus && !!targetId && !runningJobStatusAvailable
+	);
 
 	let generationAliasByTag = $derived(buildGenerationAliasMap(snapshots));
 	let generationOptions = $derived(buildGenerationOptions(snapshots, generationAliasByTag));
@@ -250,14 +283,22 @@
 	let selectedSnapshotInfo = $derived(
 		snapshots.find((entry) => (entry.name || entry.shortName) === snapshot) || null
 	);
+	let legacyVMRestoreBlocked = $derived(
+		selectedRestoreTargetDatasetKind === 'vm' && !!selectedSnapshotInfo?.legacy
+	);
+	let restoreDisabledTitle = $derived(
+		runningJobStatusUnavailable
+			? 'Could not verify active backup operations'
+			: jobRunning
+				? 'A backup for this lineage is currently in progress'
+				: legacyVMRestoreBlocked
+					? 'Legacy VM restore points cannot prove that every disk root is complete'
+					: ''
+	);
 
 	let hasOutOfBandSnapshots = $derived(
 		snapshots.some((entry) => !!entry.outOfBand || (entry.lineage || 'active') !== 'active')
 	);
-
-	function nodeLabelByID(nodeId: string): string {
-		return nodeNameById[nodeId] || nodeId;
-	}
 
 	async function loadRestoreClusterDetails(): Promise<ClusterDetails | null> {
 		loadingCluster = true;
@@ -276,52 +317,15 @@
 		}
 	}
 
-	async function ensureGuestIDPlacementForRestore(
-		guestID: number,
-		restoreNodeID: string,
-		kind: 'jail' | 'vm'
-	): Promise<boolean> {
-		if (guestID <= 0) return true;
-		let details: ClusterDetails;
-		try {
-			const loaded = await loadRestoreClusterDetails();
-			if (!loaded) throw new Error('Failed to load cluster details');
-			details = loaded;
-		} catch (e: unknown) {
-			toast.error(
-				(e as { message?: string })?.message || 'Failed to validate cluster guest placement',
-				{ position: 'bottom-center' }
-			);
-			return false;
-		}
-
-		const registeredOn = details.nodes.filter((node) => (node.guestIDs || []).includes(guestID));
-		if (registeredOn.length === 0) return true;
-
-		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
-		if (conflicts.length === 0 && registeredOn.length === 1) return true;
-
-		const conflictLabels =
-			conflicts.length > 0
-				? conflicts.map((node) => nodeLabelByID(node.id)).join(', ')
-				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
-
-		toast.error(
-			`${kind === 'vm' ? 'VM' : 'Jail'} ${guestID} already exists on ${conflictLabels}.`,
-			{
-				position: 'bottom-center'
-			}
-		);
-		return false;
-	}
-
 	function resetState(close: boolean = true) {
+		targetLoadRevision += 1;
 		loadingDatasets = false;
 		loadingSnapshots = false;
 		loadingCluster = false;
 		restoring = false;
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = false;
 		targetId = '';
 		restoreNodeId = '';
 		dataset = '';
@@ -329,6 +333,10 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		encryptionKey = '';
+		restoreOperationId = '';
+		restoreOperationRequestKey = '';
+		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		jailMetadata = null;
@@ -341,7 +349,8 @@
 	async function initializeModal() {
 		error = '';
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
 		targetId = targetOptions[0]?.value || '';
 		restoreNodeId = '';
 		dataset = '';
@@ -349,6 +358,10 @@
 		snapshot = '';
 		destinationDataset = '';
 		restoreNetwork = true;
+		encryptionKey = '';
+		restoreOperationId = '';
+		restoreOperationRequestKey = '';
+		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
 		jailMetadata = null;
@@ -359,6 +372,7 @@
 		restoreNodeId = details?.nodeId || nodes[0]?.nodeUUID || '';
 
 		if (!targetId) {
+			checkingRunningJobStatus = false;
 			error = 'No backup targets available';
 			return;
 		}
@@ -367,12 +381,18 @@
 	}
 
 	async function onTargetChange() {
+		const loadRevision = ++targetLoadRevision;
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
-		if (!parsedTargetId) return;
+		if (!parsedTargetId) {
+			runningJobStatusAvailable = false;
+			checkingRunningJobStatus = false;
+			return;
+		}
 
 		loadingDatasets = true;
 		runningJobIds.clear();
-		allTargetJobs = [];
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
 		error = '';
 		dataset = '';
 		selectedGeneration = '';
@@ -384,20 +404,17 @@
 		vmMetadata = null;
 
 		try {
-			const [targetDatasets, targetJobs] = await Promise.all([
+			const runningStatus = getTargetRunningJobIds(parsedTargetId).catch(() => null);
+			const [targetDatasets, runningIds] = await Promise.all([
 				listBackupTargetDatasets(parsedTargetId),
-				listBackupJobs(parsedTargetId)
+				runningStatus
 			]);
+			if (loadRevision !== targetLoadRevision) return;
 
-			allTargetJobs = targetJobs;
 			datasets = targetDatasets;
-
-			// Non-fatal: running-job detection is informational only; never block the UI
-			try {
-				const runningIds = await getTargetRunningJobIds(parsedTargetId);
+			if (runningIds !== null) {
 				for (const id of runningIds) runningJobIds.add(id);
-			} catch {
-				// ignore — restore remains fully available
+				runningJobStatusAvailable = true;
 			}
 
 			const groupedByBase = new SvelteMap<string, BackupTargetDatasetInfo[]>();
@@ -424,15 +441,24 @@
 				await onDatasetChange();
 			}
 		} catch (e: unknown) {
-			error = (e as { message?: string })?.message || 'Failed to load target datasets';
+			if (loadRevision === targetLoadRevision) {
+				error = (e as { message?: string })?.message || 'Failed to load target datasets';
+			}
 		} finally {
-			loadingDatasets = false;
+			if (loadRevision === targetLoadRevision) {
+				checkingRunningJobStatus = false;
+				loadingDatasets = false;
+			}
 		}
 	}
 
 	async function onDatasetChange() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset) return;
+		const selectedGroup = restoreTargetDatasetGroups.find(
+			(entry) => entry.representativeDataset === dataset
+		);
+		if (!selectedGroup?.encrypted) encryptionKey = '';
 
 		loadingSnapshots = true;
 		error = '';
@@ -497,6 +523,58 @@
 		snapshot = latest.name || latest.shortName;
 	}
 
+	function restoreFailureMessage(response: {
+		message?: string;
+		error?: string | string[];
+	}): string {
+		const error = Array.isArray(response.error) ? response.error.join(' ') : response.error || '';
+		const text = `${response.message || ''} ${error}`.toLowerCase();
+
+		if (
+			text.includes('restore_guest_destination_conflict') ||
+			text.includes('guest_id_already_in_use') ||
+			text.includes('guest_identity_inventory_conflict') ||
+			text.includes('restore_destination_guest_dataset_exists')
+		) {
+			return 'That RID/CTID or its destination artifacts already exist. Choose an unused ID or clean up the old guest first';
+		}
+		if (
+			text.includes('restore_guest_identity_unavailable') ||
+			text.includes('guest_identity_inventory_unavailable')
+		) {
+			return 'Could not verify the guest ID on every cluster node. Check node health and retry';
+		}
+		if (
+			text.includes('guest_identity_inventory_scan_failed') ||
+			text.includes('restore_destination_dataset_check_failed') ||
+			text.includes('restore_precheck_failed')
+		) {
+			return 'Could not safely validate the restore destination. Check server logs and retry';
+		}
+		if (
+			text.includes('restore_guest_destination_kind_mismatch') ||
+			text.includes('restore_guest_destination_must_be_canonical_root') ||
+			text.includes('restore_guest_destination_invalid')
+		) {
+			return 'Guest restores require an exact destination such as pool/sylve/virtual-machines/108 or pool/sylve/jails/108';
+		}
+		if (
+			text.includes('backup_job_already_running') ||
+			text.includes('restore_destination_already_running') ||
+			text.includes('restore_destination_reserved')
+		) {
+			return 'A restore for this destination is already queued or running';
+		}
+		if (text.includes('restore_reservation_unavailable')) {
+			return 'Could not durably reserve the destination. Check cluster health and retry';
+		}
+		if (text.includes('restore_vm_legacy_snapshot_unsupported')) {
+			return 'Legacy VM restore points cannot prove that every disk root is complete';
+		}
+
+		return error || 'Failed to start restore';
+	}
+
 	async function triggerRestoreFromTarget() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset || !snapshot) return;
@@ -515,34 +593,66 @@
 			return;
 		}
 
+		// Re-read durable cluster operation state immediately before submission.
+		// A failed status read is unavailable, never evidence that the lineage is idle.
+		const statusTarget = targetId;
+		const statusDataset = dataset;
+		runningJobIds.clear();
+		runningJobStatusAvailable = false;
+		checkingRunningJobStatus = true;
+		let selectedLineageRunning = false;
+		try {
+			const runningIds = await getTargetRunningJobIds(parsedTargetId);
+			if (targetId !== statusTarget || dataset !== statusDataset) {
+				toast.error('Restore selection changed while checking cluster status. Retry the restore', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			for (const id of runningIds) runningJobIds.add(id);
+			const selectedJobId = jobIdFromLabel(selectedRestoreTargetDatasetGroup?.jobLabel || '');
+			selectedLineageRunning = selectedJobId > 0 && runningIds.includes(selectedJobId);
+			runningJobStatusAvailable = true;
+		} catch {
+			toast.error('Could not verify active backup operations. Restore remains unavailable', {
+				position: 'bottom-center'
+			});
+			return;
+		} finally {
+			checkingRunningJobStatus = false;
+		}
+		if (selectedLineageRunning) {
+			toast.error('A backup for this lineage is currently in progress', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		const requestKey = JSON.stringify({
+			targetId: parsedTargetId,
+			remoteDataset: dataset,
+			snapshot,
+			destinationDataset: destinationDataset.trim(),
+			restoreNodeId: restoreNodeId.trim(),
+			restoreNetwork
+		});
+		// Keep one idempotency ID across transport retries of the same restore intent.
+		if (!restoreOperationId || restoreOperationRequestKey !== requestKey) {
+			restoreOperationId = crypto.randomUUID();
+			restoreOperationRequestKey = requestKey;
+		}
+
 		restoring = true;
 		try {
-			const destinationGuest = parseGuestFromDatasetPath(destinationDataset);
-			const metadataGuest = jailMetadata?.ctId || vmMetadata?.rid || 0;
-			const guestID = destinationGuest.id || metadataGuest;
-			const guestKind: 'jail' | 'vm' =
-				destinationGuest.kind === 'vm' || (destinationGuest.kind === 'dataset' && !!vmMetadata?.rid)
-					? 'vm'
-					: 'jail';
-
-			if (guestID > 0) {
-				const allowed = await ensureGuestIDPlacementForRestore(
-					guestID,
-					restoreNodeId.trim(),
-					guestKind
-				);
-				if (!allowed) {
-					restoring = false;
-					return;
-				}
-			}
-
 			const response = await restoreBackupFromTarget(parsedTargetId, {
 				remoteDataset: dataset,
 				snapshot,
 				destinationDataset: destinationDataset.trim(),
 				restoreNodeId: restoreNodeId.trim(),
-				restoreNetwork
+				restoreNetwork,
+				operationId: restoreOperationId,
+				encryptionKey,
+				encryptionKeyFormat: 'passphrase'
 			});
 
 			if (response.status === 'success') {
@@ -555,7 +665,7 @@
 			}
 
 			handleAPIError(response);
-			toast.error('Failed to start restore', { position: 'bottom-center' });
+			toast.error(restoreFailureMessage(response), { position: 'bottom-center' });
 		} catch (e: unknown) {
 			toast.error((e as { message?: string })?.message || 'Failed to start restore', {
 				position: 'bottom-center'
@@ -575,7 +685,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-5" showCloseButton={true}>
+	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-6" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
@@ -614,21 +724,39 @@
 					label="Dataset on Target"
 					placeholder={loadingDatasets
 						? 'Loading datasets...'
-						: restoreTargetDatasetGroups.length === 0
+						: filteredDatasetGroups.length === 0
 							? 'No restorable datasets found'
 							: 'Select dataset'}
 					options={restoreTargetDatasetOptions}
 					bind:value={dataset}
 					onChange={onDatasetChange}
-					disabled={loadingDatasets || restoreTargetDatasetGroups.length === 0}
+					disabled={loadingDatasets || filteredDatasetGroups.length === 0}
 				/>
 			</div>
 
-			{#if jobRunning}
+			<CustomCheckbox
+				label="Show only active lineage"
+				bind:checked={showActiveOnly}
+				classes="flex items-center gap-2"
+			/>
+
+			{#if runningJobStatusUnavailable}
+				<div
+					class="space-y-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-600 dark:text-red-400"
+				>
+					<p>
+						Active backup operations could not be verified. Restore remains unavailable until
+						cluster status recovers.
+					</p>
+					<Button size="sm" variant="outline" onclick={() => void onTargetChange()}>
+						Retry Status
+					</Button>
+				</div>
+			{:else if jobRunning}
 				<div
 					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-center text-sm text-yellow-700 dark:text-yellow-400"
 				>
-					A backup for this target is currently in progress. Restore is unavailable until it
+					A backup for this lineage is currently in progress. Restore is unavailable until it
 					completes.
 				</div>
 			{/if}
@@ -691,6 +819,21 @@
 				classes="space-y-1"
 			/>
 
+			{#if selectedSnapshotInfo?.encrypted || selectedRestoreTargetDatasetGroup?.encrypted}
+				<div class="space-y-1">
+					<CustomValueInput
+						label="Encryption Passphrase (Optional)"
+						placeholder="Required only when the key is not already registered"
+						type="password"
+						bind:value={encryptionKey}
+						classes="space-y-1"
+					/>
+					<p class="text-xs text-muted-foreground">
+						A supplied passphrase is saved in the cluster key store for automated recovery.
+					</p>
+				</div>
+			{/if}
+
 			{#if restoreTargetSupportsNetworkRestore}
 				<CustomCheckbox
 					label={selectedRestoreTargetDatasetKind === 'vm'
@@ -752,7 +895,20 @@
 					<span>Restore Warning</span>
 				</div>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
-					<li>The destination dataset will be replaced if it already exists.</li>
+					{#if selectedRestoreTargetDatasetKind === 'vm' || selectedRestoreTargetDatasetKind === 'jail'}
+						<li>
+							Guest restores are create-only. The RID/CTID and canonical destination dataset must
+							not already exist.
+						</li>
+						{#if selectedRestoreTargetDatasetKind === 'vm'}
+							<li>
+								The selected VM root uses the destination pool. Any additional VM storage pools keep
+								their original pool names and must exist on the restore node.
+							</li>
+						{/if}
+					{:else}
+						<li>The destination dataset will be replaced if it already exists.</li>
+					{/if}
 					{#if selectedSnapshotInfo}
 						<li>
 							Selected backup date:
@@ -768,25 +924,33 @@
 								>
 							</li>
 						{/if}
+						{#if selectedSnapshotInfo.legacy}
+							<li>
+								This restore point predates manifest commits. Legacy VM restore is blocked because
+								the complete disk-root set cannot be verified.
+							</li>
+						{/if}
 					{/if}
 				</ul>
 			</div>
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestoreFromTarget}
 				disabled={restoring ||
 					loadingDatasets ||
 					loadingSnapshots ||
 					loadingCluster ||
+					!runningJobStatusAvailable ||
 					jobRunning ||
 					!targetId ||
 					!restoreNodeId ||
 					!dataset ||
 					!snapshot ||
-					!destinationDataset.trim()}
+					!destinationDataset.trim() ||
+					legacyVMRestoreBlocked}
+				title={restoreDisabledTitle}
 				variant="destructive"
 			>
 				{#if restoring}

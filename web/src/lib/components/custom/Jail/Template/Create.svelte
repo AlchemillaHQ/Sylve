@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { createJailFromTemplate } from '$lib/api/jail/jail';
-	import { getPools } from '$lib/api/zfs/pool';
+	import { createJailFromTemplate, getJailTemplateById } from '$lib/api/jail/jail';
+	import { getPoolsResult } from '$lib/api/zfs/pool';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { reload } from '$lib/stores/api.svelte';
-	import { updateCache } from '$lib/utils/http';
-	import { resource, watch } from 'runed';
+	import type { JailTemplate } from '$lib/types/jail/jail';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -34,22 +35,13 @@
 	let multipleCount = $state(1);
 	let multipleNamePrefix = $state('');
 	let actionLoading = $state(false);
+	let loadingDependencies = $state(false);
+	let template = $state<JailTemplate | null>(null);
+	let availablePools = $state<{ name: string }[]>([]);
 	let selectedPool = $state('');
 
-	let pools = resource(
-		() => `pool-list-${hostname || 'local'}`,
-		async (key) => {
-			const results = await getPools(false, hostname);
-			updateCache(key, results);
-			return results;
-		},
-		{
-			initialValue: []
-		}
-	);
-
 	let poolOptions = $derived.by(() => {
-		return pools.current.map((pool) => ({
+		return availablePools.map((pool) => ({
 			label: pool.name,
 			value: pool.name
 		}));
@@ -76,36 +68,65 @@
 		singleName = '';
 		multipleStartCTID = nextGuestId || 0;
 		multipleCount = 1;
-		multipleNamePrefix = templateName;
-		selectedPool = pools.current[0]?.name || '';
+		multipleNamePrefix = '';
+		selectedPool = '';
+	}
+
+	async function loadDependencies() {
+		loadingDependencies = true;
+		template = null;
+		availablePools = [];
+		try {
+			const [poolsResult, templateResult] = await Promise.all([
+				getPoolsResult(false, { hostname }),
+				getJailTemplateById(templateId, hostname)
+			]);
+
+			if (isAPIResponse(poolsResult)) {
+				handleAPIError(poolsResult);
+				throw new Error('Failed to load available pools');
+			}
+			if (isAPIResponse(templateResult)) {
+				handleAPIError(templateResult);
+				throw new Error('Failed to load template details');
+			}
+
+			availablePools = poolsResult;
+			template = templateResult;
+			const availablePoolNames = new Set(poolsResult.map((pool) => pool.name));
+			selectedPool = availablePoolNames.has(templateResult.pool)
+				? templateResult.pool
+				: poolsResult[0]?.name || '';
+		} catch (error) {
+			availablePools = [];
+			template = null;
+			selectedPool = '';
+			toast.error(error instanceof Error ? error.message : 'Failed to load template data', {
+				position: 'bottom-center'
+			});
+		} finally {
+			loadingDependencies = false;
+		}
 	}
 
 	watch(
 		() => open,
 		(isOpen) => {
 			if (isOpen) {
-				pools.refetch();
 				resetForm();
-			}
-		}
-	);
-
-	watch(
-		() => pools.current,
-		(loadedPools) => {
-			if (open && !selectedPool && loadedPools.length > 0) {
-				selectedPool = loadedPools[0].name;
+				void loadDependencies();
 			}
 		}
 	);
 
 	function validateCreate(): string | null {
+		if (!template) return 'Template details are not loaded yet';
 		if (!selectedPool) return 'Select a ZFS pool';
 
 		if (createMode === 'single') {
 			const ctid = Number(singleCTID);
 
-			if (ctid < 1 || ctid > 9999) return 'Invalid CTID';
+			if (!Number.isSafeInteger(ctid) || ctid < 1 || ctid > 9999) return 'Invalid CTID';
 			if (singleName && !isValidVMName(singleName)) return 'Invalid Jail Name';
 		}
 
@@ -114,8 +135,10 @@
 			const count = Number(multipleCount);
 			const endCTID = startCTID + count - 1;
 
-			if (count < 1) return 'Count must be positive';
-			if (startCTID < 1 || endCTID > 9999) return 'Invalid CTID range';
+			if (!Number.isSafeInteger(count) || count < 1) return 'Count must be positive';
+			if (count > 200) return 'Count cannot exceed 200';
+			if (!Number.isSafeInteger(startCTID) || startCTID < 1 || endCTID > 9999)
+				return 'Invalid CTID range';
 
 			if (multipleNamePrefix) {
 				if (multipleNamePrefix.length > 15 || !isValidVMName(multipleNamePrefix)) {
@@ -133,6 +156,14 @@
 		if (err.includes('insufficient_pool_space')) return 'Not enough space in selected pool';
 		if (err.includes('ctid_range_contains_used_values'))
 			return 'One or more CTIDs are already in use';
+		if (err.includes('guest_id_already_in_use'))
+			return 'One or more guest IDs are already used by a VM or jail';
+		if (err.includes('guest_identity_inventory_conflict'))
+			return 'Existing VM/jail ID conflicts must be resolved before creating a jail';
+		if (err.includes('guest_identity_inventory_unavailable'))
+			return 'Could not verify guest IDs on every cluster node. Check node health and retry';
+		if (err.includes('guest_identity_inventory_scan_failed'))
+			return 'Could not check VM and jail IDs. Check the server logs and retry';
 		if (err.includes('duplicate_ctids_requested')) return 'Duplicate CTIDs in request';
 		if (err.includes('invalid_ctid_range') || err.includes('invalid_ctid'))
 			return 'Invalid CTID range';
@@ -146,20 +177,23 @@
 		if (err.includes('pool_not_found')) return 'Selected pool is not available';
 		if (err.includes('target_dataset_already_exists')) return 'Target jail dataset already exists';
 		if (err.includes('template_dataset_not_found')) return 'Template dataset not found';
+		if (err.includes('template_network_switch_not_found'))
+			return 'One or more template switches do not exist';
 
 		return 'Failed to create jail from template';
 	}
 
 	async function create() {
+		if (actionLoading || loadingDependencies) return;
+
+		const validationError = validateCreate();
+		if (validationError) {
+			toast.error(validationError, { position: 'bottom-center' });
+			return;
+		}
+
 		actionLoading = true;
-
 		try {
-			const validationError = validateCreate();
-			if (validationError) {
-				toast.error(validationError, { position: 'bottom-center' });
-				return;
-			}
-
 			const result =
 				createMode === 'single'
 					? await createJailFromTemplate(
@@ -184,20 +218,20 @@
 							hostname
 						);
 
-			if (result.error) {
-				if (Array.isArray(result.error)) {
-					toast.error(result.error.map(templateCreateErrorMessage).join(', '), {
-						position: 'bottom-center'
-					});
-				} else {
-					toast.error(templateCreateErrorMessage(result.error), { position: 'bottom-center' });
-				}
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				toast.error(templateCreateErrorMessage(error), { position: 'bottom-center' });
 				return;
 			}
 
 			open = false;
 			reload.leftPanel = true;
 			toast.success('Create jail request queued', { position: 'bottom-center' });
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to create jail from template', {
+				position: 'bottom-center'
+			});
 		} finally {
 			actionLoading = false;
 		}
@@ -221,6 +255,14 @@
 				/>
 			</Dialog.Title>
 		</Dialog.Header>
+		{#if loadingDependencies}
+			<div class="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+				<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+				Loading template details...
+			</div>
+		{:else if !template}
+			<div class="py-4 text-center text-sm text-muted-foreground">Template data unavailable</div>
+		{/if}
 		<div class="grid gap-4 py-0">
 			<CustomComboBox
 				bind:open={comboBoxes.pool.open}
@@ -229,6 +271,7 @@
 				data={poolOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Select ZFS pool"
+				disabled={loadingDependencies || !template || actionLoading}
 				triggerWidth="w-full"
 				width="w-full"
 			/>
@@ -237,11 +280,13 @@
 				<Button
 					size="sm"
 					variant={createMode === 'single' ? 'default' : 'outline'}
+					disabled={loadingDependencies || !template || actionLoading}
 					onclick={() => (createMode = 'single')}>Single</Button
 				>
 				<Button
 					size="sm"
 					variant={createMode === 'multiple' ? 'default' : 'outline'}
+					disabled={loadingDependencies || !template || actionLoading}
 					onclick={() => (createMode = 'multiple')}>Multiple</Button
 				>
 			</div>
@@ -252,6 +297,7 @@
 						type="number"
 						bind:value={singleCTID}
 						label="CTID"
+						disabled={loadingDependencies || !template || actionLoading}
 						placeholder="100"
 						classes="w-full space-y-1"
 					/>
@@ -261,6 +307,7 @@
 						type="text"
 						bind:value={singleName}
 						label="Name"
+						disabled={loadingDependencies || !template || actionLoading}
 						placeholder="Name"
 						classes="w-full space-y-1"
 					/>
@@ -271,6 +318,7 @@
 						type="number"
 						bind:value={multipleStartCTID}
 						label="Starting CTID"
+						disabled={loadingDependencies || !template || actionLoading}
 						placeholder="100"
 						classes="w-full space-y-1"
 					/>
@@ -279,6 +327,7 @@
 						type="number"
 						bind:value={multipleCount}
 						label="Count"
+						disabled={loadingDependencies || !template || actionLoading}
 						placeholder="100"
 						classes="w-full space-y-1"
 					/>
@@ -288,6 +337,7 @@
 						type="text"
 						bind:value={multipleNamePrefix}
 						label="Name Prefix"
+						disabled={loadingDependencies || !template || actionLoading}
 						placeholder="LB"
 						classes="w-full space-y-1"
 					/>
@@ -295,7 +345,11 @@
 			{/if}
 		</div>
 		<Dialog.Footer>
-			<Button size="sm" disabled={actionLoading} onclick={() => void create()}>
+			<Button
+				size="sm"
+				disabled={actionLoading || loadingDependencies || !template || !selectedPool}
+				onclick={() => void create()}
+			>
 				{#if actionLoading}
 					<div class="flex items-center gap-2">
 						<span class="icon-[mdi--loading] animate-spin h-4 w-4"></span>

@@ -14,6 +14,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 )
 
 func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
@@ -27,7 +28,8 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	for _, name := range basicSettings.Pools {
 		pool, err := s.GZFS.Zpool.Get(ctx, name)
 		if err != nil {
-			return pools, err
+			logger.L.Warn().Err(err).Str("pool", name).Msg("skipping missing pool")
+			continue
 		}
 
 		pools = append(pools, pool)

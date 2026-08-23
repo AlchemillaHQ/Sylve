@@ -12,14 +12,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
-	"github.com/alchemillahq/sylve/internal/logger"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system/pciconf"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -27,11 +28,15 @@ import (
 )
 
 const (
-	loaderConfPath = "/boot/loader.conf"
-	loaderConfKey  = "pptdevs"
+	loaderConfKey = "pptdevs"
 )
 
-var validPPTID = regexp.MustCompile(`^\d+/\d+/\d+$`)
+var (
+	loaderConfPath         = "/boot/loader.conf"
+	validPPTID             = regexp.MustCompile(`^\d+/\d+/\d+$`)
+	getPCIDevicesOperation = pciconf.GetPCIDevices
+	runPPTCommand          = utils.RunCommand
+)
 
 func parseLoaderConfAssignment(line string) (string, string, bool) {
 	trimmed := strings.TrimSpace(line)
@@ -157,6 +162,47 @@ func readLoaderConf() ([]string, os.FileMode, error) {
 	return lines, perm, nil
 }
 
+func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".sylve-*")
+	if err != nil {
+		return err
+	}
+
+	temporaryPath := temporary.Name()
+	closed := false
+	committed := false
+	defer func() {
+		if !closed {
+			_ = temporary.Close()
+		}
+		if !committed {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+
+	if err := temporary.Chmod(perm); err != nil {
+		return err
+	}
+	if _, err := temporary.Write(data); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		closed = true
+		return err
+	}
+	closed = true
+
+	if err := os.Rename(temporaryPath, path); err != nil {
+		return err
+	}
+	committed = true
+
+	return nil
+}
+
 func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
 	settings, err := s.GetBasicSettings()
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -221,7 +267,7 @@ func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
 		out = strings.Join(lines, "\n") + "\n"
 	}
 
-	if err := os.WriteFile(loaderConfPath, []byte(out), perm); err != nil {
+	if err := writeFileAtomically(loaderConfPath, []byte(out), perm); err != nil {
 		return fmt.Errorf("writing %s: %w", loaderConfPath, err)
 	}
 
@@ -230,35 +276,44 @@ func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
 
 func parsePPTAddress(id string) ([3]int, error) {
 	var parts [3]int
+	id = strings.TrimSpace(id)
 
 	if !validPPTID.MatchString(id) {
-		return parts, fmt.Errorf("invalid device ID format: must be 'number/number/number'")
+		return parts, fmt.Errorf("%w: device ID must use bus/device/function", ErrInvalidPassthroughDevice)
 	}
 
 	p := strings.Split(id, "/")
 	if len(p) != 3 {
-		return parts, fmt.Errorf("invalid format: expected 'num/num/num'")
+		return parts, fmt.Errorf("%w: device ID must use bus/device/function", ErrInvalidPassthroughDevice)
 	}
 
 	for i, part := range p {
 		n, err := strconv.Atoi(part)
 		if err != nil {
-			return parts, fmt.Errorf("invalid number in device ID: %v", err)
+			return parts, fmt.Errorf("%w: invalid device ID component: %v", ErrInvalidPassthroughDevice, err)
 		}
 		parts[i] = n
+	}
+
+	if parts[0] > 255 || parts[1] > 31 || parts[2] > 7 {
+		return parts, fmt.Errorf("%w: PCI address is outside bus/device/function bounds", ErrInvalidPassthroughDevice)
 	}
 
 	return parts, nil
 }
 
 func parseDomain(domain string) (int, error) {
-	intDomain, err := strconv.Atoi(domain)
+	intDomain, err := strconv.Atoi(strings.TrimSpace(domain))
 	if err != nil {
-		return 0, fmt.Errorf("invalid domain number: %v", err)
+		return 0, fmt.Errorf("%w: invalid domain number", ErrInvalidPassthroughDevice)
 	}
 
 	if intDomain < 0 || intDomain > 255 {
-		return 0, fmt.Errorf("domain number must be between 0 and 255")
+		return 0, fmt.Errorf("%w: domain number must be between 0 and 255", ErrInvalidPassthroughDevice)
+	}
+
+	if intDomain != 0 {
+		return 0, fmt.Errorf("%w: only PCI domain 0 is supported", ErrUnsupportedPassthroughDomain)
 	}
 
 	return intDomain, nil
@@ -276,6 +331,78 @@ func findPCIDeviceByDomainAndAddress(pciDevices []pciconf.PCIDevice, domain int,
 
 func pciAddress(domain int, parts [3]int) string {
 	return fmt.Sprintf("pci%d:%d:%d:%d", domain, parts[0], parts[1], parts[2])
+}
+
+func normalizedHostDriver(driver string) string {
+	driver = strings.TrimSpace(driver)
+	if driver == "" || strings.EqualFold(driver, "none") || strings.EqualFold(driver, "ppt") {
+		return ""
+	}
+	return driver
+}
+
+func detachPCIDevice(pciAddr string) error {
+	output, err := runPPTCommand("/usr/sbin/devctl", "detach", "-f", pciAddr)
+	if err == nil {
+		return nil
+	}
+
+	detail := strings.TrimSpace(output + " " + err.Error())
+	if strings.Contains(detail, "Device not configured") {
+		return nil
+	}
+
+	return fmt.Errorf("detaching %s failed (%s): %w", pciAddr, strings.TrimSpace(output), err)
+}
+
+func clearPCIDeviceDriver(pciAddr string) error {
+	output, err := runPPTCommand("/usr/sbin/devctl", "clear", "driver", "-f", pciAddr)
+	if err != nil {
+		return fmt.Errorf("clearing driver for %s failed (%s): %w", pciAddr, strings.TrimSpace(output), err)
+	}
+	return nil
+}
+
+func setPCIDeviceDriver(pciAddr, driver string) error {
+	output, err := runPPTCommand("/usr/sbin/devctl", "set", "driver", pciAddr, driver)
+	if err != nil {
+		return fmt.Errorf("setting driver %s for %s failed (%s): %w", driver, pciAddr, strings.TrimSpace(output), err)
+	}
+	return nil
+}
+
+func restorePCIDeviceDriver(pciAddr, oldDriver string) error {
+	var restoreErrors []error
+	if err := detachPCIDevice(pciAddr); err != nil {
+		restoreErrors = append(restoreErrors, err)
+	}
+	if err := clearPCIDeviceDriver(pciAddr); err != nil {
+		restoreErrors = append(restoreErrors, err)
+	}
+
+	oldDriver = normalizedHostDriver(oldDriver)
+	if oldDriver == "" {
+		output, err := runPPTCommand("/usr/sbin/devctl", "rescan", pciAddr)
+		if err != nil {
+			restoreErrors = append(restoreErrors, fmt.Errorf("rescanning %s failed (%s): %w", pciAddr, strings.TrimSpace(output), err))
+		}
+	} else if err := setPCIDeviceDriver(pciAddr, oldDriver); err != nil {
+		restoreErrors = append(restoreErrors, err)
+	}
+
+	return errors.Join(restoreErrors...)
+}
+
+func (s *Service) getPPTDeviceByAddress(id string) (*models.PassedThroughIDs, error) {
+	var existing models.PassedThroughIDs
+	err := s.DB.Where("device_id = ?", id).First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("checking passthrough mapping for %s: %w", id, err)
+	}
+	return &existing, nil
 }
 
 func (s *Service) addLoaderPPTDevice(id string) error {
@@ -358,8 +485,10 @@ func (s *Service) SyncPPTDevices() error {
 			parts = append(parts, rec.DeviceID)
 			known[rec.DeviceID] = struct{}{}
 		} else {
-			// Todo: Please do MANUAL SYNC!
-			fmt.Printf("Warning: Device %s is on domain %d. Skipping loader.conf sync.\n", rec.DeviceID, rec.Domain)
+			logger.L.Warn().
+				Int("domain", rec.Domain).
+				Str("device_id", rec.DeviceID).
+				Msg("Skipping loader.conf sync for unsupported PCI domain")
 		}
 	}
 
@@ -387,7 +516,7 @@ func (s *Service) ReconcilePreparedPPTDevices() error {
 		existingMap[item.DeviceID] = struct{}{}
 	}
 
-	pciDevices, err := pciconf.GetPCIDevices()
+	pciDevices, err := getPCIDevicesOperation()
 	if err != nil {
 		return fmt.Errorf("getting PCI devices: %w", err)
 	}
@@ -434,93 +563,95 @@ func (s *Service) ReconcilePreparedPPTDevices() error {
 
 func (s *Service) GetPPTDevices() ([]models.PassedThroughIDs, error) {
 	var ids []models.PassedThroughIDs
-	if err := s.DB.Find(&ids).Error; err != nil {
+	if err := s.DB.Order("id ASC").Find(&ids).Error; err != nil {
 		return nil, fmt.Errorf("loading PassedThroughIDs: %w", err)
 	}
 	return ids, nil
 }
 
-func (s *Service) AddPPTDevice(domain string, id string) error {
+func (s *Service) AddPPTDevice(domain string, id string) (*models.PassedThroughIDs, error) {
 	s.achMutex.Lock()
 	defer s.achMutex.Unlock()
 
 	intDomain, err := parseDomain(domain)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	parts, err := parsePPTAddress(id)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	id = fmt.Sprintf("%d/%d/%d", parts[0], parts[1], parts[2])
+
+	existing, err := s.getPPTDeviceByAddress(id)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, fmt.Errorf("%w: %s", ErrPassthroughDeviceAlreadyAdded, id)
 	}
 
-	pciDevices, err := pciconf.GetPCIDevices()
+	pciDevices, err := getPCIDevicesOperation()
 	if err != nil {
-		return fmt.Errorf("getting PCI devices: %w", err)
+		return nil, fmt.Errorf("getting PCI devices: %w", err)
 	}
 
 	device, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts)
 	if !found {
-		return fmt.Errorf("device ID %s not found in PCI devices", id)
+		return nil, fmt.Errorf("%w: %s", ErrPassthroughDeviceNotFound, id)
+	}
+	if strings.HasPrefix(strings.ToLower(device.Name), "ppt") {
+		return nil, fmt.Errorf("%w: %s", ErrPassthroughDeviceNeedsImport, id)
 	}
 
-	driver := device.Name
+	oldDriver := normalizedHostDriver(device.Name)
 	pciAddr := pciAddress(intDomain, parts)
 
-	detach, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"detach",
-		"-f",
-		pciAddr,
-	)
-
-	if err != nil {
-		if !strings.HasSuffix(strings.TrimSpace(detach), "Device not configured") {
-			return fmt.Errorf("detaching device %s on root bus %s failed %s: %w", id, domain, detach, err)
+	if err := detachPCIDevice(pciAddr); err != nil {
+		return nil, err
+	}
+	if err := clearPCIDeviceDriver(pciAddr); err != nil {
+		if rollbackErr := restorePCIDeviceDriver(pciAddr, oldDriver); rollbackErr != nil {
+			return nil, fmt.Errorf("clearing the original driver failed (%v); restoring it also failed: %w", err, rollbackErr)
 		}
+		return nil, err
+	}
+	if err := setPCIDeviceDriver(pciAddr, "ppt"); err != nil {
+		if rollbackErr := restorePCIDeviceDriver(pciAddr, oldDriver); rollbackErr != nil {
+			return nil, fmt.Errorf("attaching ppt failed (%v); restoring the original driver also failed: %w", err, rollbackErr)
+		}
+		return nil, err
 	}
 
-	clearDriver, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"clear",
-		"driver",
-		"-f",
-		pciAddr,
-	)
-
-	if err != nil {
-		return fmt.Errorf("clearing driver for device %s on root bus %s failed %s: %w", id, domain, clearDriver, err)
-	}
-
-	setDriver, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"set",
-		"driver",
-		pciAddr,
-		"ppt",
-	)
-
-	if err != nil {
-		return fmt.Errorf("setting driver for device %s on root bus %s failed %s: %w", id, domain, setDriver, err)
-	}
-
-	newID := models.PassedThroughIDs{
+	record := models.PassedThroughIDs{
 		DeviceID:  id,
 		Domain:    intDomain,
-		OldDriver: driver,
+		OldDriver: oldDriver,
 	}
 
-	if err := s.DB.Create(&newID).Error; err != nil {
-		_, rollbackErr := utils.RunCommand("/usr/sbin/devctl", "set", "driver", pciAddr, driver)
-
+	if err := s.DB.Create(&record).Error; err != nil {
+		rollbackErr := restorePCIDeviceDriver(pciAddr, oldDriver)
 		if rollbackErr != nil {
-			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to save to DB (%v), and failed to revert device %s back to %s (%v)", err, pciAddr, driver, rollbackErr)
+			return nil, fmt.Errorf("saving the passthrough mapping failed (%v); restoring the original driver also failed: %w", err, rollbackErr)
 		}
-
-		return fmt.Errorf("database insert failed, hardware state reverted: %w", err)
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return nil, fmt.Errorf("%w: %s", ErrPassthroughDeviceAlreadyAdded, id)
+		}
+		return nil, fmt.Errorf("saving passthrough mapping for %s: %w", id, err)
 	}
 
-	return s.SyncPPTDevices()
+	if err := s.addLoaderPPTDevice(id); err != nil {
+		if rollbackErr := s.DB.Delete(&record).Error; rollbackErr != nil {
+			return nil, fmt.Errorf("updating loader.conf failed (%v); removing the new database mapping also failed: %w", err, rollbackErr)
+		}
+		if rollbackErr := restorePCIDeviceDriver(pciAddr, oldDriver); rollbackErr != nil {
+			return nil, fmt.Errorf("updating loader.conf failed (%v); restoring the original driver also failed: %w", err, rollbackErr)
+		}
+		return nil, fmt.Errorf("updating loader.conf for %s: %w", id, err)
+	}
+
+	return &record, nil
 }
 
 func (s *Service) PreparePPTDevice(domain string, id string) error {
@@ -532,60 +663,62 @@ func (s *Service) PreparePPTDevice(domain string, id string) error {
 		return err
 	}
 
-	if intDomain != 0 {
-		return fmt.Errorf("prepare passthrough supports domain 0 only")
-	}
-
 	parts, err := parsePPTAddress(id)
 	if err != nil {
 		return err
 	}
+	id = fmt.Sprintf("%d/%d/%d", parts[0], parts[1], parts[2])
 
-	pciDevices, err := pciconf.GetPCIDevices()
+	pciDevices, err := getPCIDevicesOperation()
 	if err != nil {
 		return fmt.Errorf("getting PCI devices: %w", err)
 	}
 
 	if _, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts); !found {
-		return fmt.Errorf("device ID %s not found in PCI devices", id)
+		return fmt.Errorf("%w: %s", ErrPassthroughDeviceNotFound, id)
 	}
 
 	return s.addLoaderPPTDevice(id)
 }
 
-func (s *Service) ImportPPTDevice(domain string, id string) error {
+func (s *Service) ImportPPTDevice(domain string, id string) (*models.PassedThroughIDs, bool, error) {
 	s.achMutex.Lock()
 	defer s.achMutex.Unlock()
 
 	intDomain, err := parseDomain(domain)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 
 	parts, err := parsePPTAddress(id)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
+	id = fmt.Sprintf("%d/%d/%d", parts[0], parts[1], parts[2])
 
-	pciDevices, err := pciconf.GetPCIDevices()
+	pciDevices, err := getPCIDevicesOperation()
 	if err != nil {
-		return fmt.Errorf("getting PCI devices: %w", err)
+		return nil, false, fmt.Errorf("getting PCI devices: %w", err)
 	}
 
 	device, found := findPCIDeviceByDomainAndAddress(pciDevices, intDomain, parts)
 	if !found {
-		return fmt.Errorf("device ID %s not found in PCI devices", id)
+		return nil, false, fmt.Errorf("%w: %s", ErrPassthroughDeviceNotFound, id)
 	}
 
 	if !strings.HasPrefix(device.Name, "ppt") {
-		return fmt.Errorf("device ID %s is not currently attached to ppt", id)
+		return nil, false, fmt.Errorf("%w: %s", ErrPassthroughDeviceNotAttached, id)
 	}
 
-	var existing models.PassedThroughIDs
-	if err := s.DB.Where("device_id = ?", id).First(&existing).Error; err == nil {
-		return nil
-	} else if err != nil && err != gorm.ErrRecordNotFound {
-		return fmt.Errorf("checking PassedThroughIDs: %w", err)
+	existing, err := s.getPPTDeviceByAddress(id)
+	if err != nil {
+		return nil, false, err
+	}
+	if existing != nil {
+		if existing.Domain != intDomain {
+			return nil, false, fmt.Errorf("%w: %s", ErrPassthroughDeviceAlreadyAdded, id)
+		}
+		return existing, false, nil
 	}
 
 	record := models.PassedThroughIDs{
@@ -595,138 +728,78 @@ func (s *Service) ImportPPTDevice(domain string, id string) error {
 	}
 
 	if err := s.DB.Create(&record).Error; err != nil {
-		return fmt.Errorf("creating PassedThroughIDs: %w", err)
-	}
-
-	if intDomain == 0 {
-		if err := s.addLoaderPPTDevice(id); err != nil {
-			if rollbackErr := s.DB.Delete(&record).Error; rollbackErr != nil {
-				return fmt.Errorf("CRITICAL STATE MISMATCH: failed to update loader.conf (%v), and failed to revert DB insert for %s (%v)", err, id, rollbackErr)
-			}
-
-			return err
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return nil, false, fmt.Errorf("%w: %s", ErrPassthroughDeviceAlreadyAdded, id)
 		}
+		return nil, false, fmt.Errorf("creating passthrough mapping for %s: %w", id, err)
 	}
 
-	return s.SyncPPTDevices()
+	if err := s.addLoaderPPTDevice(id); err != nil {
+		if rollbackErr := s.DB.Delete(&record).Error; rollbackErr != nil {
+			return nil, false, fmt.Errorf("updating loader.conf failed (%v); removing the imported database mapping also failed: %w", err, rollbackErr)
+		}
+		return nil, false, fmt.Errorf("updating loader.conf for %s: %w", id, err)
+	}
+
+	return &record, true, nil
 }
 
-func (s *Service) RemovePPTDevice(id string) error {
+func (s *Service) RemovePPTDevice(id uint) (bool, error) {
 	s.achMutex.Lock()
 	defer s.achMutex.Unlock()
 
-	if id == "" {
-		return fmt.Errorf("device ID cannot be empty")
+	if id == 0 {
+		return false, fmt.Errorf("%w: mapping ID must be positive", ErrInvalidPassthroughDevice)
 	}
 
 	var existing models.PassedThroughIDs
 	if err := s.DB.Where("id = ?", id).First(&existing).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("device ID %s not found", id)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, fmt.Errorf("%w: mapping %d", ErrPassthroughDeviceNotFound, id)
 		}
-		return fmt.Errorf("checking PassedThroughIDs: %w", err)
+		return false, fmt.Errorf("checking passthrough mapping %d: %w", id, err)
 	}
 
 	var vms []vmModels.VM
-	_ = s.DB.Find(&vms)
-
-	var result []vmModels.VM
-	for _, vm := range vms {
-		if slices.Contains(vm.PCIDevices, existing.ID) {
-			result = append(result, vm)
-		}
+	if err := s.DB.Find(&vms).Error; err != nil {
+		return false, fmt.Errorf("checking VM passthrough assignments: %w", err)
 	}
 
-	if len(result) > 0 {
-		return fmt.Errorf("device_%d_in_use_by_vm", existing.ID)
+	for _, vm := range vms {
+		if slices.Contains(vm.PCIDevices, existing.ID) {
+			return false, fmt.Errorf("%w: mapping %d is assigned to VM %d", ErrPassthroughDeviceInUse, existing.ID, vm.RID)
+		}
 	}
 
 	parts, err := parsePPTAddress(existing.DeviceID)
 	if err != nil {
-		return err
+		return false, fmt.Errorf("stored passthrough mapping %d has an invalid device ID: %v", existing.ID, err)
 	}
 
 	pciAddr := pciAddress(existing.Domain, parts)
 
 	if err := s.DB.Delete(&existing).Error; err != nil {
-		return fmt.Errorf("failed to delete passthrough mapping for %s: %w", existing.DeviceID, err)
+		return false, fmt.Errorf("deleting passthrough mapping for %s: %w", existing.DeviceID, err)
 	}
 
 	if err := s.removeLoaderPPTDevice(existing.DeviceID); err != nil {
 		if rollbackErr := s.DB.Create(&existing).Error; rollbackErr != nil {
-			return fmt.Errorf("CRITICAL STATE MISMATCH: failed to remove %s from loader.conf (%v), and failed to restore DB row (%v)", existing.DeviceID, err, rollbackErr)
+			return false, fmt.Errorf("removing %s from loader.conf failed (%v); restoring its database mapping also failed: %w", existing.DeviceID, err, rollbackErr)
 		}
 
-		return err
+		return false, fmt.Errorf("removing %s from loader.conf: %w", existing.DeviceID, err)
 	}
 
-	detach, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"detach",
-		"-f",
-		pciAddr,
-	)
-	if err != nil {
+	if err := restorePCIDeviceDriver(pciAddr, existing.OldDriver); err != nil {
 		logger.L.Warn().
 			Err(err).
-			Str("device_id", existing.DeviceID).
-			Str("pci_addr", pciAddr).
-			Str("output", strings.TrimSpace(detach)).
-			Msg("Passthrough mapping removed from DB/loader.conf, but runtime detach failed; reboot may be required")
-		return nil
-	}
-
-	clearDriver, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"clear",
-		"driver",
-		"-f",
-		pciAddr,
-	)
-	if err != nil {
-		logger.L.Warn().
-			Err(err).
-			Str("device_id", existing.DeviceID).
-			Str("pci_addr", pciAddr).
-			Str("output", strings.TrimSpace(clearDriver)).
-			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver clear failed; reboot may be required")
-		return nil
-	}
-
-	if strings.TrimSpace(existing.OldDriver) == "" {
-		rescanOutput, err := utils.RunCommand(
-			"/usr/sbin/devctl",
-			"rescan",
-			pciAddr,
-		)
-		if err != nil {
-			logger.L.Warn().
-				Err(err).
-				Str("device_id", existing.DeviceID).
-				Str("pci_addr", pciAddr).
-				Str("output", strings.TrimSpace(rescanOutput)).
-				Msg("Passthrough mapping removed from DB/loader.conf, but runtime PCI rescan failed; reboot may be required")
-		}
-
-		return nil
-	}
-
-	setDriver, err := utils.RunCommand(
-		"/usr/sbin/devctl",
-		"set",
-		"driver",
-		pciAddr,
-		existing.OldDriver,
-	)
-	if err != nil {
-		logger.L.Warn().
-			Err(err).
+			Int("mapping_id", existing.ID).
 			Str("device_id", existing.DeviceID).
 			Str("pci_addr", pciAddr).
 			Str("driver", existing.OldDriver).
-			Str("output", strings.TrimSpace(setDriver)).
-			Msg("Passthrough mapping removed from DB/loader.conf, but runtime driver restore failed; reboot may be required")
+			Msg("Passthrough mapping was removed persistently, but runtime driver restoration failed")
+		return true, nil
 	}
 
-	return nil
+	return false, nil
 }

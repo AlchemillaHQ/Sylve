@@ -21,7 +21,7 @@ type FirewallTrafficRule struct {
 	Priority          int       `json:"priority" gorm:"index;default:1"`
 	Action            string    `json:"action" gorm:"not null"` // pass|block
 	Direction         string    `json:"direction" gorm:"not null;default:in"`
-	Protocol          string    `json:"protocol" gorm:"not null;default:any"` // any|tcp|udp|icmp
+	Protocol          string    `json:"protocol" gorm:"not null;default:any"` // any|tcp|udp|tcp_udp|icmp
 	IngressInterfaces []string  `json:"ingressInterfaces" gorm:"serializer:json;type:json"`
 	EgressInterfaces  []string  `json:"egressInterfaces" gorm:"serializer:json;type:json"`
 	Family            string    `json:"family" gorm:"not null;default:any"` // any|inet|inet6
@@ -80,9 +80,13 @@ type FirewallNATRule struct {
 }
 
 type FirewallAdvancedSettings struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	PreRules  string    `json:"preRules"`
-	PostRules string    `json:"postRules"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID                uint      `json:"id" gorm:"primaryKey"`
+	PreRules          string    `json:"preRules"`
+	PreNatDecl        string    `json:"preNatDecl"`
+	PostNatDecl       string    `json:"postNatDecl"`
+	PreTrafficAnchor  string    `json:"preTrafficAnchor"`
+	PostTrafficAnchor string    `json:"postTrafficAnchor"`
+	PostRules         string    `json:"postRules"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }

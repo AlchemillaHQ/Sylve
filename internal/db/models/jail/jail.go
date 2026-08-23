@@ -10,6 +10,7 @@ package jailModels
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -50,6 +51,8 @@ type Network struct {
 
 	DHCP  bool `json:"dhcp" gorm:"default:false"`
 	SLAAC bool `json:"slaac" gorm:"default:false"`
+
+	VLAN *int `json:"vlan" gorm:"default:0"`
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
@@ -192,6 +195,7 @@ type JailTemplate struct {
 	ResolvConf        string                `json:"resolvConf"`
 	DevFSRuleset      string                `json:"devfsRuleset"`
 	CleanEnvironment  bool                  `json:"cleanEnvironment"`
+	ExecTimeout       int                   `json:"execTimeout" gorm:"not null;default:120"`
 	AdditionalOptions string                `json:"additionalOptions"`
 	AllowedOptions    []string              `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	MetadataMeta      string                `json:"metadataMeta"`
@@ -230,6 +234,10 @@ type JailType string
 const (
 	JailTypeFreeBSD JailType = "freebsd"
 	JailTypeLinux   JailType = "linux"
+
+	DefaultExecTimeoutSeconds = 120
+	MinimumExecTimeoutSeconds = 1
+	MaximumExecTimeoutSeconds = math.MaxInt32
 )
 
 type Jail struct {
@@ -256,6 +264,7 @@ type Jail struct {
 	Fstab             string      `json:"fstab"`
 	ResolvConf        string      `json:"resolvConf"`
 	CleanEnvironment  bool        `json:"cleanEnvironment"`
+	ExecTimeout       int         `json:"execTimeout" gorm:"not null;default:120"`
 	AdditionalOptions string      `json:"additionalOptions"`
 	AllowedOptions    []string    `json:"allowedOptions" gorm:"serializer:json;type:json"`
 	JailHooks         []JailHooks `json:"jailHooks" gorm:"foreignKey:JailID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
@@ -271,10 +280,11 @@ type Jail struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 
-	StartLogs string     `json:"startLogs" gorm:"default:''"`
-	StopLogs  string     `json:"stopLogs" gorm:"default:''"`
-	StartedAt *time.Time `json:"startedAt" gorm:"default:null"`
-	StoppedAt *time.Time `json:"stoppedAt" gorm:"default:null"`
+	StartLogs            string     `json:"startLogs" gorm:"default:''"`
+	StopLogs             string     `json:"stopLogs" gorm:"default:''"`
+	StartedAt            *time.Time `json:"startedAt" gorm:"default:null"`
+	StoppedAt            *time.Time `json:"stoppedAt" gorm:"default:null"`
+	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
 }
 
 type JailBootstrap struct {

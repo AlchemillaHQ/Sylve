@@ -7,33 +7,42 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
-	let wol = $state(vm.wol);
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
+	let wol = $state(untrack(() => vm.wol));
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-		const response = await modifyWoL(vm.rid, wol);
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify WoL setting', {
-				position: 'bottom-center'
-			});
-			return;
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifyWoL(vm.rid, wol, { hostname: node });
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify WoL setting', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No WoL changes needed'
+					: 'Modified WoL setting',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified WoL setting', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -64,12 +73,23 @@
 			Setting this option to be <b>on</b> will enable Wake on LAN for this VM for all MAC addresses attached
 			to it
 		</span>
-		<CustomCheckbox label="WoL" bind:checked={wol} classes="flex items-center gap-2"
+		<CustomCheckbox
+			label="WoL"
+			bind:checked={wol}
+			classes="flex items-center gap-2"
+			disabled={saving}
 		></CustomCheckbox>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

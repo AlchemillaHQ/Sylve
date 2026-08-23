@@ -16,6 +16,14 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
+func TestAuditRecordCreatedAtIndex(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+
+	if !db.Migrator().HasIndex(&infoModels.AuditRecord{}, "CreatedAt") {
+		t.Fatal("expected audit record created_at index")
+	}
+}
+
 func TestEnforceAuditRecordRetentionHardCapKeepsNewest(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
 
@@ -27,6 +35,11 @@ func TestEnforceAuditRecordRetentionHardCapKeepsNewest(t *testing.T) {
 		createdAt := now.Add(-time.Duration(total-i) * time.Minute)
 		rows = append(rows, auditRecordAt(createdAt, "user"))
 	}
+	pending := auditRecordAt(now.Add(-time.Hour), "pending-user")
+	pending.Status = "pending"
+	started := auditRecordAt(now.Add(-time.Hour), "started-user")
+	started.Status = "started"
+	rows = append(rows, pending, started)
 
 	if err := db.CreateInBatches(rows, 200).Error; err != nil {
 		t.Fatalf("failed_to_seed_audit_records: %v", err)
@@ -44,20 +57,29 @@ func TestEnforceAuditRecordRetentionHardCapKeepsNewest(t *testing.T) {
 		t.Fatalf("expected_%d_rows_after_cap_got_%d", AuditRecordMaxRows, count)
 	}
 
+	var activeCount int64
+	if err := db.Model(&infoModels.AuditRecord{}).
+		Where("status = ?", "pending").
+		Count(&activeCount).Error; err != nil || activeCount != 1 {
+		t.Fatalf("active_audit_count_%d_error_%v", activeCount, err)
+	}
+
 	var oldestRemaining infoModels.AuditRecord
-	if err := db.Order("created_at ASC, id ASC").First(&oldestRemaining).Error; err != nil {
+	if err := db.Where("status != ?", "pending").
+		Order("created_at ASC, id ASC").First(&oldestRemaining).Error; err != nil {
 		t.Fatalf("failed_to_fetch_oldest_remaining_record: %v", err)
 	}
-	if !oldestRemaining.CreatedAt.Equal(rows[10].CreatedAt) {
-		t.Fatalf("expected_oldest_remaining_created_at_%s_got_%s", rows[10].CreatedAt, oldestRemaining.CreatedAt)
+	if !oldestRemaining.CreatedAt.Equal(rows[12].CreatedAt) {
+		t.Fatalf("expected_oldest_remaining_created_at_%s_got_%s", rows[12].CreatedAt, oldestRemaining.CreatedAt)
 	}
 
 	var newestRemaining infoModels.AuditRecord
-	if err := db.Order("created_at DESC, id DESC").First(&newestRemaining).Error; err != nil {
+	if err := db.Where("status != ?", "pending").
+		Order("created_at DESC, id DESC").First(&newestRemaining).Error; err != nil {
 		t.Fatalf("failed_to_fetch_newest_remaining_record: %v", err)
 	}
-	if !newestRemaining.CreatedAt.Equal(rows[len(rows)-1].CreatedAt) {
-		t.Fatalf("expected_newest_remaining_created_at_%s_got_%s", rows[len(rows)-1].CreatedAt, newestRemaining.CreatedAt)
+	if !newestRemaining.CreatedAt.Equal(rows[total-1].CreatedAt) {
+		t.Fatalf("expected_newest_remaining_created_at_%s_got_%s", rows[total-1].CreatedAt, newestRemaining.CreatedAt)
 	}
 }
 
@@ -68,8 +90,14 @@ func TestEnforceAuditRecordRetentionDeletesExpiredRows(t *testing.T) {
 	expired := now.Add(-(AuditRecordRetentionDays*24*time.Hour + time.Hour))
 	fresh := now.Add(-24 * time.Hour)
 
+	pending := auditRecordAt(expired, "pending-user")
+	pending.Status = "pending"
+	started := auditRecordAt(expired, "started-user")
+	started.Status = "started"
 	rows := []infoModels.AuditRecord{
 		auditRecordAt(expired, "expired-user"),
+		pending,
+		started,
 		auditRecordAt(fresh, "fresh-user"),
 	}
 
@@ -86,11 +114,20 @@ func TestEnforceAuditRecordRetentionDeletesExpiredRows(t *testing.T) {
 		t.Fatalf("failed_to_fetch_kept_audit_records: %v", err)
 	}
 
-	if len(kept) != 1 {
-		t.Fatalf("expected_1_audit_record_after_retention_got_%d", len(kept))
+	if len(kept) != 2 {
+		t.Fatalf("expected_2_audit_records_after_retention_got_%d", len(kept))
 	}
-	if kept[0].User != "fresh-user" {
-		t.Fatalf("expected_fresh_record_to_remain_got_%q", kept[0].User)
+	keptUsers := make(map[string]bool, len(kept))
+	for i := range kept {
+		keptUsers[kept[i].User] = true
+	}
+	for _, user := range []string{"pending-user", "fresh-user"} {
+		if !keptUsers[user] {
+			t.Fatalf("expected_%s_to_remain_got_%v", user, keptUsers)
+		}
+	}
+	if keptUsers["expired-user"] || keptUsers["started-user"] {
+		t.Fatalf("expired_nonpending_audit_was_retained: %v", keptUsers)
 	}
 }
 

@@ -3,12 +3,14 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import { generateNanoId } from '$lib/utils/string';
 	import { cn } from '$lib/utils.js';
 	import { watch } from 'runed';
 
 	interface Props {
 		open: boolean;
 		label?: string;
+		labelStatus?: { text: string; className?: string };
 		value: string | string[];
 		data: { value: string; label: string }[];
 		onValueChange?: (value: string | string[]) => void;
@@ -35,6 +37,7 @@
 	let {
 		open = $bindable(false),
 		label = '',
+		labelStatus,
 		data = [],
 		onValueChange = () => {},
 		placeholder = '',
@@ -55,16 +58,22 @@
 	}: Props = $props();
 
 	let search = $state('');
+	let suppressCustomInData = $state(false);
+	// svelte-ignore state_referenced_locally
+	let nanoId = $state(generateNanoId(label));
 
 	watch(
 		() => open,
 		(val) => {
-			if (val) search = '';
+			if (val) {
+				search = '';
+				suppressCustomInData = false;
+			}
 		}
 	);
 
 	const effectiveData = $derived.by(() => {
-		if (allowCustom) {
+		if (allowCustom && !suppressCustomInData) {
 			if (!multiple && typeof value === 'string' && value && !data.some((d) => d.value === value)) {
 				return [{ value: value, label: value }, ...data];
 			}
@@ -98,6 +107,7 @@
 			value = arr;
 			onValueChange(arr);
 		} else {
+			suppressCustomInData = true;
 			if (value === val && !disallowEmpty) {
 				value = '';
 				onValueChange('');
@@ -111,9 +121,10 @@
 
 	const selectedLabels = $derived.by(() => {
 		const vals = multiple ? (Array.isArray(value) ? value : []) : value ? [value] : [];
-
-		const matched = effectiveData.filter((d) => vals.includes(d.value)).map((d) => d.label);
-		return matched;
+		return vals.map((v) => {
+			const found = data.find((d) => d.value === v);
+			return found ? found.label : v;
+		});
 	});
 
 	function formatLabel(lbl: string): string {
@@ -125,8 +136,13 @@
 <div class="{classes} min-w-0 overflow-hidden">
 	{#if label}
 		<div class="flex h-7 items-center justify-between w-full">
-			<Label class="whitespace-nowrap text-sm" for={label.toLowerCase()}>
-				{label}
+			<Label class="min-w-0 gap-1 whitespace-nowrap text-sm" for={nanoId}>
+				<span class="shrink-0">{label}</span>
+				{#if labelStatus}
+					<span class={cn('min-w-0 truncate text-xs font-normal', labelStatus.className)}>
+						- {labelStatus.text}
+					</span>
+				{/if}
 			</Label>
 			{#if topRightButton}
 				<Button
@@ -144,9 +160,11 @@
 			{/if}
 		</div>
 	{/if}
+
 	<Popover.Root bind:open>
 		<Popover.Trigger class="{triggerWidth} min-w-0" {disabled}>
 			<Button
+				id={nanoId}
 				variant="outline"
 				role="combobox"
 				aria-expanded={open}
@@ -169,7 +187,7 @@
 									class={multiple
 										? 'bg-secondary = max-w-full whitespace-break-spaces rounded px-2 text-left text-sm'
 										: 'min-w-0 max-w-full truncate rounded px-2 text-sm'}
-									title={lbl}
+									title={Array.isArray(lbl) ? lbl.join(', ') : lbl}
 								>
 									{lbl}
 								</p>
@@ -184,7 +202,10 @@
 			</Button>
 		</Popover.Trigger>
 
-		<Popover.Content class="{width} mx-auto p-0">
+		<Popover.Content
+			class="{width} mx-auto p-0"
+			onCloseAutoFocus={(e: Event) => e.preventDefault()}
+		>
 			<Command.Root shouldFilter={false}>
 				<Command.Input
 					bind:value={search}
@@ -197,8 +218,9 @@
 							!data.some((d) => d.value === search.trim())
 						) {
 							e.preventDefault();
+							e.stopPropagation();
 							selectItem(search.trim());
-							if (!multiple) open = false;
+							(e.target as HTMLInputElement)?.blur();
 						}
 					}}
 				/>
@@ -230,13 +252,7 @@
 							</Command.Item>
 						{/each}
 						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim()) && !(multiple && Array.isArray(value) && value.includes(search.trim()))}
-							<Command.Item
-								value={search.trim()}
-								onSelect={() => {
-									selectItem(search.trim());
-									if (!multiple) open = false;
-								}}
-							>
+							<Command.Item value={search.trim()} onSelect={() => selectItem(search.trim())}>
 								<span class="icon-[lucide--check] mr-2 h-4 w-4 opacity-0"></span>
 								Use "{search.trim()}"
 							</Command.Item>

@@ -15,15 +15,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify-ci:
+    if: github.ref_name != 'tip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag_name: ${{ steps.vars.outputs.tag_name }}
+      target_sha: ${{ steps.vars.outputs.target_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Resolve tagged commit
+        id: vars
+        run: |
+          set -euo pipefail
+          TARGET_SHA="$(git rev-list -n 1 "refs/tags/${GITHUB_REF_NAME}")"
+          test -n "$TARGET_SHA"
+          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Require successful CI for tagged master commit
+        uses: actions/github-script@v9
+        env:
+          TARGET_SHA: ${{ steps.vars.outputs.target_sha }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const targetSha = process.env.TARGET_SHA;
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: "ci.yaml",
+              branch: "master",
+              event: "push",
+              status: "completed",
+              head_sha: targetSha,
+              per_page: 100,
+            });
+
+            const matches = response.data.workflow_runs.filter((run) =>
+              run.name === "CI" &&
+              run.head_sha === targetSha &&
+              run.head_branch === "master" &&
+              run.event === "push" &&
+              run.status === "completed" &&
+              run.conclusion === "success"
+            );
+
+            if (matches.length !== 1) {
+              core.setFailed(
+                `Expected exactly one successful master CI run for ${targetSha}; found ${matches.length}.`,
+              );
+              return;
+            }
+
+            core.info(`Trusted CI run: ${matches[0].html_url}`);
+
   select-runner:
     if: github.ref_name != 'tip'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       linux_runner: ${{ steps.pick.outputs.linux_runner }}
     steps:
       - name: Pick self-hosted runner when available
         id: pick
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
           script: |
@@ -67,22 +127,25 @@ jobs:
             core.setOutput("linux_runner", JSON.stringify(selected));
 
   prepare-release:
-    needs: select-runner
+    needs:
+      - verify-ci
+      - select-runner
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 10
     outputs:
       tag_name: ${{ steps.vars.outputs.tag_name }}
       target_sha: ${{ steps.vars.outputs.target_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.verify-ci.outputs.tag_name }}
 
       - name: Capture release metadata
         id: vars
         run: |
           set -euo pipefail
-          echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          echo "target_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${{ needs.verify-ci.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${{ needs.verify-ci.outputs.target_sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Ensure release exists
         env:
@@ -109,37 +172,48 @@ jobs:
       - select-runner
       - prepare-release
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: Build Web Assets
+      - name: Check and Build Web Assets
         run: |
           make frontend
 
+      - name: Build Demo Web Assets
+        run: |
+          npm run build:demo --prefix web
+
       - name: Upload Web Assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-web-assets
           path: internal/assets/web-files/
+          retention-days: 1
 
       - name: Package Web Assets
         run: |
           set -euo pipefail
           tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
+          tar -czf sylve-web-demo-assets.tar.gz -C web/build .
 
       - name: Upload web assets to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "sylve-web-assets.tar.gz" --clobber
+          for ASSET_NAME in sylve-web-assets.tar.gz sylve-web-demo-assets.tar.gz; do
+            gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "${ASSET_NAME}" --clobber
+          done
 
   build-freebsd:
     needs:
@@ -147,8 +221,9 @@ jobs:
       - prepare-release
       - build-web
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 30
     env:
-      FREEBSD_VERSION: 15.0-RELEASE
+      FREEBSD_VERSION: "15"
     strategy:
       fail-fast: false
       matrix:
@@ -156,12 +231,12 @@ jobs:
           - arch: amd64
           - arch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.tag_name }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
 
@@ -171,20 +246,29 @@ jobs:
           sudo apt-get install -y clang lld xz-utils tar file
 
       - name: Download Web Assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-web-assets
           path: internal/assets/web-files
 
+      - name: Resolve FreeBSD release
+        id: freebsd
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Cache FreeBSD sysroot
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: .cache/freebsd/${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
-          key: freebsd-sysroot-${{ runner.os }}-${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
+          path: .cache/freebsd/${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}
+          key: freebsd-sysroot-v2-${{ runner.os }}-${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
 
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
+        env:
+          FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
         run: |
-          make cross-build-${{ matrix.arch }} FREEBSD_VERSION=${{ env.FREEBSD_VERSION }}
+          make cross-build-${{ matrix.arch }}
 
       - name: Verify binary format
         run: |

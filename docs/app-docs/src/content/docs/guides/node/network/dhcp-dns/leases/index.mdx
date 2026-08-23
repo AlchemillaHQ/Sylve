@@ -1,22 +1,45 @@
 ---
-title:  Leases
-description: DHCP Leases given out by DHCP capable switches in Sylve
+title: Leases
+description: Inspect dynamic clients and reserve fixed addresses with DHCP static leases.
 ---
 
-DHCP Leases are the IP addresses that have been given out by DHCP capable switches in Sylve to clients that have requested them, you can view all the leases including dynamic and static ones.
+import staticLease from "./static-lease.webp";
+import leasesTable from "./table.webp";
 
-## Creating a Static Lease
+A lease records the address assigned to a DHCP client. This page brings together two sources:
 
-Creating a static lease is pretty straightforward, a valid hostname and range is required, and you also need to specify a MAC address or a DUID for the client that you want to give the static lease to.
+- **Dynamic** leases are the clients currently recorded by the DHCP service. Their expiry is the timestamp reported by the service; an expiry of `0` is shown as **Never**.
+- **Static** leases are persistent reservations managed by Sylve. They always display **Never** and take precedence when the matching client requests an address.
 
-![DHCP - Create Static Lease](./add.png)
+The table identifies each client, its hostname and address, the pool and switch for static leases, and the lease expiry. Select one row to edit or delete a static reservation. A selected dynamic row can be deleted to remove its active lease; the client can request another one afterwards.
 
-The IP Address here must be created in the Network Objects section as a Host object, and it must be in the same network as the switch that you are creating the lease for.
+<img
+  src={leasesTable.src}
+  alt="The Leases table with a static LAN reservation"
+/>
 
-## Viewing Leases
+## Create a static lease
 
-Leases both static and dynamic will show up in the table like this:
+Create the client identifier and reserved address as [Network Objects](/guides/node/network/objects/) first. A static lease deliberately references those objects instead of duplicating the values in the form, so the reservation is clear and reusable elsewhere.
 
-![DHCP - View Leases](./table.png)
+For an IPv4 DHCP range, provide:
 
-The last column also shows it's expiry time, if it's a static lease it will show "Never" instead of an expiry time, and if it's a dynamic lease it will show the time remaining until it expires.
+- A **single-value MAC(s)** object for the client identifier.
+- A **single-value Host(s)** object containing an IPv4 address.
+
+For an IPv6 DHCP range, replace the MAC object with a **single-value DUID(s)** object, and select a Host(s) object containing an IPv6 address. A DUID is the DHCPv6 client identifier; it is not a MAC address.
+
+Choose the **Range** first. Sylve then limits the Identifier and IP Address pickers to the object kinds and address family that the range accepts. The hostname must be a valid DHCP hostname: it starts and ends with a letter or digit, may contain single `-` or `_` characters, and cannot contain doubled separators. **Comments** are optional and are kept with the reservation.
+
+In this IPv4 example, `LAN Caddy MAC` identifies the client and `LAN Caddy Address` reserves `192.168.12.60` for `caddy` from the LAN pool (`192.168.12.50` to `192.168.12.200`).
+
+<img
+  src={staticLease.src}
+  alt="A complete IPv4 static DHCP lease form for caddy"
+/>
+
+### Reservation rules
+
+Each reservation belongs to one DHCP range. Within that range, Sylve prevents duplicate hostnames, reserved IP objects, MAC objects, and DUID objects. Keep the chosen Host(s) object in the same address family as the range; IPv4 ranges accept MAC identifiers only, while IPv6 ranges accept DUID identifiers only.
+
+Static reservations are useful for services that need a stable address, such as Caddy, a printer, or a monitoring target. They do not turn DHCP into a server for addresses outside the selected range: configure the relevant DHCP range and attach its switch in [DHCP configuration](/guides/node/network/dhcp-dns/config/) first.

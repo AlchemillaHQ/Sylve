@@ -1,0 +1,116 @@
+---
+title: Migration
+description: Move a VM and its managed ZFS storage safely between nodes in the same Sylve cluster.
+---
+
+import vmMigrationWalkthrough from './vm-migration.mp4';
+
+VM migration moves a VM from its current cluster node to another online node. Sylve transfers the VM's managed ZFS dataset roots, recreates the VM on the destination, moves workload ownership, then cleans up the source only after a successful cutover.
+
+:::caution
+This is not live migration, but it is designed to keep the interruption small. Sylve sends the bulk of the VM's native ZFS data while the source remains online, then transfers only the final changes during cutover. On a healthy cluster with a fast link and a workload that has not changed heavily since the initial transfer, downtime can be measured in seconds.
+
+Sylve uses native recursive ZFS send and receive with an incremental final sync, coordinated directly by its Go control plane. This keeps the move focused on the VM's actual managed datasets instead of routing it through an extra storage abstraction. The VM is stopped only for the final sync and, when it was previously running, started automatically on the target.
+:::
+
+## What moves with the VM
+
+Migration preserves the VM's managed ZFS storage roots as a coordinated set. A VM with disks on several pools moves every root instead of flattening its storage into one pool. The resulting VM retains supported configuration such as its CPU topology, RAM, storage layout, supported options, network configuration, and Cloud-Init settings.
+
+The following items are deliberately not copied to the target because they are host-specific or local to the source:
+
+| Item | What happens on the target |
+| --- | --- |
+| **PCI passthrough devices** | Removed from the migrated VM. Prepare equivalent hardware and attach it again if required. |
+| **CPU pinning** | Cleared. Reconfigure pinning for the target host's CPU topology. |
+| **ISO and CD images** | Not transferred. A missing image is detached, so download it on the target and reattach it if needed. |
+| **VirtIO 9P shares** | Not transferred when the shared dataset is unavailable on the target. Recreate the share after the required filesystem is present. |
+| **VNC port** | Reassigned when the configured target port is already in use. |
+
+## Open the migration dialog
+
+Open the VM's [Summary](/guides/node/virtual-machines/summary/) page and select **Migrate**. The dialog lists the other online cluster nodes, so the source node cannot be selected accidentally. Selecting a target runs validation automatically.
+
+The dialog uses three outcomes:
+
+| Outcome | Meaning |
+| --- | --- |
+| **Migration not allowed** | A blocking requirement is missing. Resolve every listed reason before the Migrate action becomes available. |
+| **Ready to migrate** | All hard checks passed. |
+| **Warnings** | Migration can continue, but one or more target-specific settings will be changed, skipped, or need attention afterward. |
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Home Assistant VM migration walkthrough">
+  <source src={vmMigrationWalkthrough} type="video/mp4" />
+</video>
+
+### Walkthrough result
+
+The walkthrough migrates a Home Assistant VM with a 32 GiB ZFS volume in **1 minute 6 seconds**. The VM is powered off only for the final **12 seconds** of the move.
+
+ZFS reports **22.8 GiB used** and **3.5 GiB referenced** for the volume. These are different ZFS accounting values, not the volume's provisioned size or the exact number of bytes sent over the network:
+
+- **Used** includes space that ZFS accounts to the dataset, including space retained by snapshots and, on a parent dataset, its descendants.
+- **Referenced** is the data reachable from the dataset's current state. It does not include every byte retained by its snapshots or child datasets.
+
+For this reason, a 32 GiB zvol can show a much smaller referenced value while ZFS still accounts for substantially more used space. The migration transfer size and duration also depend on compression, snapshots, the amount of data changed during the initial transfer, and the network link.
+
+## Before you migrate
+
+Migration is available from the VM [Summary](/guides/node/virtual-machines/summary/) page when another eligible online cluster node exists. It is intended for moving a normal, Sylve-managed VM between nodes in the same cluster.
+
+Prepare the destination before beginning:
+
+| Requirement | Why it matters |
+| --- | --- |
+| **An online target node** | The target must be a different online cluster member. |
+| **Matching ZFS pool names** | Every pool used by the VM's managed storage must exist on the target with the same name. Sylve transfers the dataset into its existing pool namespace rather than choosing a replacement pool. See [ZFS Pools](/guides/node/storage/zfs/pools/). |
+| **No guest-ID collision** | The VM ID must not already be used on the target by either a VM or a jail. VM and jail IDs share one cluster-wide namespace. |
+| **Working cluster connectivity** | Sylve uses the cluster's authenticated node-to-node access to check pools and transfer storage. The target must be reachable and support the current migration checks. |
+| **No competing work** | A running lifecycle task, backup event, replication event, HA transition, or another migration for this VM blocks the move. Wait for it to finish. |
+| **Replication fully disabled** | A VM protected by a replication policy cannot be migrated. Disable its policy and wait until its policy removal and replication lease are fully cleared before retrying. |
+
+The target selector lists only other online nodes. Selecting one automatically runs preflight validation. The **Migrate** button remains disabled until validation allows the move.
+
+## Review validation warnings
+
+Some target differences are warnings, not blocks. Sylve shows them before you start and again if they are encountered during the move. Read each warning carefully because the VM configuration on the destination can differ from the source.
+
+| Warning | Destination behaviour |
+| --- | --- |
+| **PCI passthrough** | Host-specific PCI devices are dropped. Prepare and attach equivalent hardware on the target later if required. |
+| **CPU pinning** | Host CPU pins are cleared because they are specific to the source topology. Reconfigure them after migration if needed. |
+| **Low free memory** | Migration can proceed, but the target may not have enough available memory for the VM's configured allocation. |
+| **Missing ISO or CD image** | The VM starts without that attachment. Add the image to [Downloader](/guides/node/utilities/downloader/) on the target and attach it again if needed. |
+| **Missing network switch** | The affected NIC is omitted. Create the appropriate [Standard Switch](/guides/node/network/switches/standard/) or [Manual Switch](/guides/node/network/switches/manual/) on the target, then add the NIC again. |
+| **Missing VirtIO 9P shared dataset** | The shared folder is skipped. Make the required filesystem available on the target before re-adding the share. |
+| **VNC port in use** | Sylve assigns a free VNC port on the target. Review the VM's console configuration after migration. |
+| **Stale VM dataset on target** | A leftover dataset with the same VM path is replaced by the migrated data. Investigate it before continuing if it could contain data you need. |
+
+## Start the migration
+
+1. Open the VM's **Summary** page and select **Migrate**.
+2. Select the target node.
+3. Wait for validation to finish. Resolve every blocking reason and review every warning.
+4. Select **Migrate** to queue the operation.
+5. Follow the progress dialog. You can close it while the migration continues in the background, then return to the VM Summary page to see its lifecycle state.
+
+The progress dialog reports these phases:
+
+| Phase | What Sylve does |
+| --- | --- |
+| **Preflight check** | Rechecks target readiness and the VM configuration. |
+| **Initial replication** | Creates migration snapshots and transfers the VM's managed dataset roots to the target while the source can still be running. |
+| **Stop source** | Records whether the VM was running and stops it when necessary. |
+| **Final sync** | Transfers the changes made since the initial replication. This is part of the outage window. |
+| **Start on target** | Imports the VM on the target. A VM that was running on the source is started; a VM that was already stopped remains stopped. |
+| **Policy adjustment** | Moves the cluster's workload ownership to the target. |
+| **Cleanup source** | Removes the migrated VM datasets and local VM metadata from the source. |
+| **Finalize** | Confirms that the migration guard has been released and marks the task complete. |
+
+## Cancellation and recovery
+
+You can request cancellation only during **Preflight check** or **Initial replication**. Once cutover starts, cancellation is intentionally unavailable because the source may already be stopped and the target state is being committed.
+
+If the dialog is closed, the task continues and can be reopened. If a failure occurs after cutover, Sylve keeps the migration protected and retries recovery safely instead of allowing conflicting VM, backup, or replication actions. Let the task reach a terminal state before making manual changes to either copy of the VM or its datasets.
+
+After a successful move, open the VM on the target node and verify its console, networking, storage attachments, and any target-specific settings called out in the validation warnings.

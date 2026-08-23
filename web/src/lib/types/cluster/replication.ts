@@ -10,6 +10,15 @@ export const ReplicationPolicyTargetSchema = z.object({
 	policyId: z.number().int(),
 	nodeId: z.string(),
 	weight: z.number().int().default(100),
+	ready: z.boolean().optional().default(false),
+	generationId: z.string().optional().default(''),
+	ownerEpoch: z.number().int().optional().default(0),
+	manifestHash: z.string().optional().default(''),
+	requiredDatasetCount: z.number().int().optional().default(0),
+	completedDatasetCount: z.number().int().optional().default(0),
+	lastVerifiedAt: z.string().nullable().optional(),
+	readyUntil: z.string().nullable().optional(),
+	lastError: z.string().optional().default(''),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });
@@ -27,6 +36,11 @@ export const ReplicationPolicySchema = z.object({
 	failoverMode: ReplicationFailoverModeSchema.default('manual'),
 	cronExpr: z.string().default(''),
 	enabled: z.boolean().default(true),
+	crashRecovery: z.boolean().optional().default(true),
+	crashRestartMax: z.number().int().optional().default(3),
+	poolHealthCheck: z.boolean().optional().default(true),
+	poolCapacityPct: z.number().int().optional().default(90),
+	protectionState: z.string().optional().default(''),
 	lastRunAt: z.string().nullable().optional(),
 	nextRunAt: z.string().nullable().optional(),
 	lastStatus: z.string().optional().default(''),
@@ -35,13 +49,29 @@ export const ReplicationPolicySchema = z.object({
 	haDegraded: z.boolean().optional().default(false),
 	haReasons: z.array(z.string()).optional().default([]),
 	targets: z.array(ReplicationPolicyTargetSchema).default([]),
+	ownerEpoch: z.number().optional().default(1),
+	transitionState: z.string().optional().default('none'),
+	transitionRunId: z.string().optional().default(''),
+	transitionReason: z.string().optional().default(''),
+	transitionSourceNodeId: z.string().optional().default(''),
+	transitionTargetNodeId: z.string().optional().default(''),
+	transitionOwnerEpoch: z.number().optional().default(0),
+	transitionRequestedAt: z.string().nullable().optional(),
+	transitionDemotedAt: z.string().nullable().optional(),
+	transitionCatchupAt: z.string().nullable().optional(),
+	transitionPromotedAt: z.string().nullable().optional(),
+	transitionRecoveryDeadlineAt: z.string().nullable().optional(),
+	transitionCompletedAt: z.string().nullable().optional(),
+	transitionError: z.string().optional().default(''),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });
 
 export const ReplicationEventSchema = z.object({
 	id: z.number().int(),
+	scope: z.enum(['local', 'transition']).optional().default('local'),
 	policyId: z.number().int().nullable().optional(),
+	transitionRunId: z.string().optional().default(''),
 	eventType: z.string(),
 	status: z.string(),
 	message: z.string().optional().default(''),
@@ -53,25 +83,6 @@ export const ReplicationEventSchema = z.object({
 	guestId: z.number().int().optional(),
 	startedAt: z.string(),
 	completedAt: z.string().nullable().optional(),
-	createdAt: z.string().optional(),
-	updatedAt: z.string().optional()
-});
-
-export const ReplicationReceiptSchema = z.object({
-	id: z.number().int(),
-	policyId: z.number().int(),
-	guestType: ReplicationGuestTypeSchema,
-	guestId: z.number().int(),
-	sourceNodeId: z.string().optional().default(''),
-	targetNodeId: z.string().optional().default(''),
-	status: z.string().optional().default(''),
-	message: z.string().optional().default(''),
-	error: z.string().optional().default(''),
-	lastAttemptAt: z.string(),
-	lastSuccessAt: z.string().nullable().optional(),
-	lastSourceDataset: z.string().optional().default(''),
-	lastTargetDataset: z.string().optional().default(''),
-	freshnessWindowSeconds: z.number().int().nullable().optional(),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });
@@ -90,5 +101,4 @@ export type ReplicationFailoverMode = z.infer<typeof ReplicationFailoverModeSche
 export type ReplicationPolicyTarget = z.infer<typeof ReplicationPolicyTargetSchema>;
 export type ReplicationPolicy = z.infer<typeof ReplicationPolicySchema>;
 export type ReplicationEvent = z.infer<typeof ReplicationEventSchema>;
-export type ReplicationReceipt = z.infer<typeof ReplicationReceiptSchema>;
 export type ReplicationEventProgress = z.infer<typeof ReplicationEventProgressSchema>;

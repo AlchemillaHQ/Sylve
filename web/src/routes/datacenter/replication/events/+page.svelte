@@ -2,9 +2,10 @@
 	import {
 		getReplicationEventProgress,
 		listReplicationEvents,
-		listReplicationPolicies,
-		listReplicationReceipts
+		listReplicationPolicies
 	} from '$lib/api/cluster/replication';
+	import { getJails } from '$lib/api/jail/jail';
+	import { getVMs } from '$lib/api/vm/vm';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -15,31 +16,32 @@
 	import type {
 		ReplicationEvent,
 		ReplicationEventProgress,
-		ReplicationPolicy,
-		ReplicationReceipt
+		ReplicationPolicy
 	} from '$lib/types/cluster/replication';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
+	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		policies: ReplicationPolicy[];
 		events: ReplicationEvent[];
-		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
 	}
 
 	let { data }: { data: Data } = $props();
-	let nodes = $state(data.nodes);
+	let nodes = $derived(data.nodes);
 
 	let query = $state('');
 	let reload = $state(false);
 	let filterPolicyId = $state('');
+	let selectedNodeId = $state('');
 	let activeRows: Row[] | null = $state(null);
 
 	let errorModal = $state({
@@ -67,29 +69,16 @@
 
 	// svelte-ignore state_referenced_locally
 	let events = resource(
-		() => `replication-events-${filterPolicyId || 'all'}`,
+		() => `replication-events-${filterPolicyId || 'all'}-${selectedNodeId || 'auto'}`,
 		async () => {
 			const policyId = Number.parseInt(filterPolicyId, 10);
-			const res = await listReplicationEvents(
-				200,
-				Number.isFinite(policyId) ? policyId : undefined
-			);
+			const numeric = Number.isFinite(policyId) ? policyId : undefined;
+			const nodeId = selectedNodeId || (numeric ? policyNodeIDByID[numeric] : undefined);
+			const res = await listReplicationEvents(200, numeric, nodeId);
 			updateCache('replication-events', res);
 			return res;
 		},
 		{ initialValue: data.events }
-	);
-
-	// svelte-ignore state_referenced_locally
-	let receipts = resource(
-		() => `replication-receipts-${filterPolicyId || 'all'}`,
-		async () => {
-			const policyId = Number.parseInt(filterPolicyId, 10);
-			const res = await listReplicationReceipts(Number.isFinite(policyId) ? policyId : undefined);
-			updateCache('replication-receipts', res);
-			return res;
-		},
-		{ initialValue: data.receipts || [] }
 	);
 
 	watch(
@@ -98,7 +87,6 @@
 			if (!value) return;
 			policies.refetch();
 			events.refetch();
-			receipts.refetch();
 			reload = false;
 		}
 	);
@@ -107,6 +95,25 @@
 		const out: Record<number, string> = {};
 		for (const policy of policies.current) {
 			out[policy.id] = policy.name;
+		}
+		return out;
+	});
+
+	let policyByID = $derived.by(() => {
+		const out: Record<number, ReplicationPolicy> = {};
+		for (const policy of policies.current) {
+			out[policy.id] = policy;
+		}
+		return out;
+	});
+
+	let policyNodeIDByID = $derived.by(() => {
+		const out: Record<number, string> = {};
+		for (const policy of policies.current) {
+			const nodeId = (policy.activeNodeId || policy.sourceNodeId || '').trim();
+			if (nodeId) {
+				out[policy.id] = nodeId;
+			}
 		}
 		return out;
 	});
@@ -127,21 +134,288 @@
 		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
 	}
 
+	function workloadKey(guestType: string, guestId: number): string {
+		return `${guestType}:${guestId}`;
+	}
+
+	let workloadNames = resource(
+		() =>
+			policies.current
+				.map((policy) => {
+					const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+					return `${policy.guestType}:${policy.guestId}:${nodeNameByID[nodeId] || ''}`;
+				})
+				.sort()
+				.join('|'),
+		async () => {
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
+			const workloadsByNode = new Map<string, { guestType: string; guestId: number }[]>();
+			for (const policy of policies.current) {
+				const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+				const hostname = nodeNameByID[nodeId];
+				if (!hostname) continue;
+				const workloads = workloadsByNode.get(hostname) || [];
+				workloads.push({ guestType: policy.guestType, guestId: policy.guestId });
+				workloadsByNode.set(hostname, workloads);
+			}
+
+			const names: Record<string, string> = {};
+			await Promise.all(
+				Array.from(workloadsByNode.entries()).map(async ([hostname, workloads]) => {
+					const needsVMs = workloads.some((workload) => workload.guestType === 'vm');
+					const needsJails = workloads.some((workload) => workload.guestType === 'jail');
+					if (needsVMs) {
+						try {
+							for (const vm of await getVMs(hostname)) {
+								names[workloadKey('vm', vm.rid)] = vm.name;
+							}
+						} catch {
+							// Keep ID-only labels when this node cannot be reached.
+						}
+					}
+					if (needsJails) {
+						try {
+							for (const jail of await getJails(hostname)) {
+								names[workloadKey('jail', jail.ctId)] = jail.name;
+							}
+						} catch {
+							// Keep ID-only labels when this node cannot be reached.
+						}
+					}
+				})
+			);
+			return names;
+		},
+		{ initialValue: {} as Record<string, string> }
+	);
+
+	function workloadLabel(guestType: string, guestId: number): string {
+		const idPrefix = guestType === 'jail' ? 'CTID' : 'RID';
+		const name = workloadNames.current[workloadKey(guestType, guestId)];
+		return name ? `${name} (${idPrefix} ${guestId})` : `${idPrefix} ${guestId}`;
+	}
+
+	function eventPath(event: ReplicationEvent): string {
+		const policy = event.policyId ? policyByID[event.policyId] : undefined;
+		const sourceNodeId = String(
+			event.sourceNodeId || policy?.activeNodeId || policy?.sourceNodeId || ''
+		).trim();
+		const directTargetNodeId = String(event.targetNodeId || '').trim();
+
+		let targetNodeIds: string[] = [];
+		if (directTargetNodeId) {
+			targetNodeIds = [directTargetNodeId];
+		} else if (event.eventType === 'replication' && policy) {
+			targetNodeIds = policy.targets
+				.slice()
+				.sort((a, b) => b.weight - a.weight || a.nodeId.localeCompare(b.nodeId))
+				.map((target) => String(target.nodeId || '').trim());
+		}
+
+		const destinations = Array.from(
+			new Set(targetNodeIds.filter((nodeId) => nodeId && nodeId !== sourceNodeId))
+		).map(compactNodeLabel);
+
+		const destinationLabel =
+			destinations.length > 0
+				? destinations.join(', ')
+				: event.eventType === 'replication' && !directTargetNodeId
+					? 'policy targets'
+					: '-';
+
+		return `${compactNodeLabel(sourceNodeId)} → ${destinationLabel}`;
+	}
+
+	function eventMessageLabel(value: string): string {
+		const message = String(value || '')
+			.trim()
+			.replace(/[_-]+/g, ' ')
+			.replace(/\s+/g, ' ');
+		if (!message) return '-';
+		return message.charAt(0).toUpperCase() + message.slice(1);
+	}
+
+	function iconClass(icon: string): string {
+		const [set, name] = icon.split(':');
+		return set && name ? `icon-[${set}--${name}]` : '';
+	}
+
+	type TargetReasonPresentation = {
+		label: string;
+		readiness?: boolean;
+	};
+
+	const targetReasonPresentations: Record<string, TargetReasonPresentation> = {
+		replication_generation_attempt_in_progress: { label: 'Syncing', readiness: true },
+		replication_generation_commit_in_progress: { label: 'Syncing', readiness: true },
+		awaiting_post_transition_validation: { label: 'Validating', readiness: true },
+		replication_target_offline: { label: 'Target is offline' },
+		replication_target_ssh_identity_missing: { label: 'Cluster SSH identity is missing' },
+		replication_target_invalidated: { label: 'Target readiness was invalidated' },
+		replication_vm_filesystem_storage_not_supported: {
+			label: 'VM filesystem storage is not supported'
+		},
+		replication_vm_metadata_refresh_failed: { label: 'VM metadata refresh failed' },
+		replication_target_pre_transfer_readiness_invalidation_failed: {
+			label: 'Could not prepare target for replication'
+		},
+		clear_replication_target_readiness_before_commit_failed: {
+			label: 'Could not prepare target commit'
+		},
+		publish_replication_target_readiness_failed: { label: 'Could not update target readiness' },
+		replication_target_readonly_hardening_required: {
+			label: 'Target read-only protection is required'
+		},
+		replication_target_readonly_hardening_failed: {
+			label: 'Could not apply target read-only protection'
+		},
+		replication_target_diverged_requires_staged_reseed: {
+			label: 'Target diverged and requires reseeding'
+		},
+		replication_source_snapshot_clone_dependency: {
+			label:
+				'Replication is blocked by a cloned source snapshot; remove or promote the listed clone, then retry'
+		},
+		replication_target_dataset_lookup_failed: { label: 'Could not inspect target dataset' }
+	};
+
+	function targetReasonPresentation(value: string): TargetReasonPresentation {
+		const reason = String(value || '').trim();
+		if (!reason) return { label: '' };
+
+		// Dataset staging adds context ahead of the underlying transfer error.
+		// Preserve the actionable presentation when this preflight code is nested.
+		const cloneDependencyMarker = 'replication_source_snapshot_clone_dependency:';
+		const cloneDependencyIndex = reason.toLowerCase().indexOf(cloneDependencyMarker);
+		if (cloneDependencyIndex >= 0) {
+			const detail = reason.slice(cloneDependencyIndex + cloneDependencyMarker.length).trim();
+			const label = targetReasonPresentations.replication_source_snapshot_clone_dependency.label;
+			return { label: detail ? `${label}: ${detail}` : label };
+		}
+
+		const separator = reason.indexOf(':');
+		const code = (separator === -1 ? reason : reason.slice(0, separator)).trim().toLowerCase();
+		const detail = separator === -1 ? '' : reason.slice(separator + 1).trim();
+		const presentation = targetReasonPresentations[code];
+		if (presentation) {
+			return {
+				...presentation,
+				label: detail ? `${presentation.label}: ${detail}` : presentation.label
+			};
+		}
+		if (code.endsWith('_in_progress')) return { label: 'Syncing', readiness: true };
+		if (code.startsWith('awaiting_') && code.endsWith('_validation')) {
+			return { label: 'Validating', readiness: true };
+		}
+		if (code.endsWith('_requires_validation')) return { label: 'Needs sync', readiness: true };
+		return { label: eventMessageLabel(reason) };
+	}
+
+	function targetReadinessLabel(value: string): string {
+		const presentation = targetReasonPresentation(value);
+		return presentation.readiness ? presentation.label : '';
+	}
+
+	function targetErrorLabel(value: string): string {
+		const presentation = targetReasonPresentation(value);
+		return presentation.readiness ? '-' : presentation.label || '-';
+	}
+
+	function targetStatusMeta(target: ReplicationPolicy['targets'][number]): {
+		icon: string;
+		label: string;
+		className: string;
+	} {
+		if (target.ready) {
+			const readyUntil = target.readyUntil ? Date.parse(target.readyUntil) : Number.NaN;
+			if (Number.isFinite(readyUntil) && readyUntil <= Date.now()) {
+				return { icon: 'mdi:clock-alert-outline', label: 'Stale', className: 'text-amber-500' };
+			}
+			return { icon: 'mdi:check-circle', label: 'Ready', className: 'text-green-500' };
+		}
+		const readinessLabel = targetReadinessLabel(target.lastError || '');
+		if (readinessLabel === 'Syncing') {
+			return { icon: 'mdi:sync', label: 'Syncing', className: 'text-blue-500' };
+		}
+		if (readinessLabel === 'Validating') {
+			return { icon: 'mdi:shield-sync-outline', label: 'Validating', className: 'text-blue-500' };
+		}
+		if (readinessLabel === 'Needs sync') {
+			return { icon: 'mdi:sync-alert', label: 'Needs sync', className: 'text-amber-500' };
+		}
+		const reason = String(target.lastError || '')
+			.trim()
+			.toLowerCase();
+		if (reason) {
+			return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
+		}
+		if ((target.completedDatasetCount || 0) > 0) {
+			return {
+				icon: 'mdi:progress-clock',
+				label: 'Incomplete',
+				className: 'text-amber-500'
+			};
+		}
+		return {
+			icon: 'mdi:clock-outline',
+			label: 'Pending',
+			className: 'text-muted-foreground'
+		};
+	}
+
+	let targetRows = $derived.by(() => {
+		const parsedPolicyId = Number.parseInt(filterPolicyId, 10);
+		const selectedPolicyId = Number.isFinite(parsedPolicyId) ? parsedPolicyId : 0;
+		return policies.current
+			.filter((policy) => selectedPolicyId === 0 || policy.id === selectedPolicyId)
+			.flatMap((policy) => {
+				const sourceNodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+				return policy.targets.map((target) => ({ policy, target, sourceNodeId }));
+			})
+			.filter(({ target, sourceNodeId }) => {
+				if (!selectedNodeId) return true;
+				return sourceNodeId === selectedNodeId || target.nodeId === selectedNodeId;
+			})
+			.sort(
+				(a, b) =>
+					a.policy.name.localeCompare(b.policy.name) ||
+					b.target.weight - a.target.weight ||
+					a.target.nodeId.localeCompare(b.target.nodeId)
+			);
+	});
+
 	let policyFilterOptions = $derived.by(() => [
 		{ value: '', label: 'All policies' },
 		...policies.current.map((policy) => ({ value: String(policy.id), label: policy.name }))
 	]);
 
+	let nodeFilterOptions = $derived.by(() => [
+		{ value: '', label: 'Auto-detect node' },
+		...nodes.map((node) => ({
+			value: node.nodeUUID,
+			label: node.hostname || node.nodeUUID
+		}))
+	]);
+
 	let selectedEventId = $derived.by(() => {
 		if (!activeRows || activeRows.length !== 1) return 0;
-		const parsed = Number(activeRows[0].id);
+		const parsed = Number(activeRows[0].eventId);
 		if (!Number.isFinite(parsed) || parsed <= 0) return 0;
 		return parsed;
 	});
 
+	let selectedEventScope = $derived.by(() => {
+		if (!activeRows || activeRows.length !== 1) return 'local';
+		return String(activeRows[0].scope || 'local');
+	});
+
 	let selectedEvent = $derived.by(() => {
 		if (selectedEventId <= 0) return null;
-		return events.current.find((event) => event.id === selectedEventId) || null;
+		return (
+			events.current.find(
+				(event) => event.id === selectedEventId && event.scope === selectedEventScope
+			) || null
+		);
 	});
 
 	let progressEventId = $state(0);
@@ -150,18 +424,19 @@
 		error: ''
 	});
 
-	// svelte-ignore state_referenced_locally
 	let progressEvent = resource(
 		[() => progressModal.open, () => progressEventId],
 		async ([open, eventId]) => {
 			if (!open || eventId <= 0) return null;
 
 			try {
-				const res = await getReplicationEventProgress(eventId);
+				const nodeId = selectedEvent ? (selectedEvent.sourceNodeId || '').trim() : undefined;
+				const res = await getReplicationEventProgress(eventId, nodeId || undefined);
 				progressModal.error = '';
 				return res;
-			} catch (error: any) {
-				progressModal.error = error?.message || 'Failed to load progress';
+			} catch (error: unknown) {
+				const err = error as { message?: string } | null | undefined;
+				progressModal.error = err?.message || 'Failed to load progress';
 				return null;
 			}
 		},
@@ -189,6 +464,7 @@
 
 	useInterval(2000, {
 		callback: () => {
+			if (!storage.visible) return;
 			if (!progressModal.open || progressEventId <= 0) return;
 			const status = progressEvent.current?.event?.status || '';
 			if (status === '' || isInProgressStatus(status)) {
@@ -201,6 +477,7 @@
 		switch ((status || '').toLowerCase()) {
 			case 'running':
 			case 'demoting':
+			case 'catchup':
 			case 'promoting':
 				return true;
 			default:
@@ -214,6 +491,8 @@
 				return { icon: 'mdi:progress-clock', label: 'Running', className: 'text-yellow-500' };
 			case 'demoting':
 				return { icon: 'mdi:arrow-collapse-right', label: 'Demoting', className: 'text-amber-500' };
+			case 'catchup':
+				return { icon: 'mdi:sync', label: 'Catching Up', className: 'text-indigo-500' };
 			case 'promoting':
 				return { icon: 'mdi:arrow-expand-right', label: 'Promoting', className: 'text-sky-500' };
 			case 'active':
@@ -222,6 +501,8 @@
 				return { icon: 'mdi:check-circle', label: 'Success', className: 'text-green-500' };
 			case 'failed':
 				return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
+			case 'degraded':
+				return { icon: 'mdi:alert-circle-outline', label: 'Degraded', className: 'text-amber-500' };
 			default:
 				return {
 					icon: 'mdi:help-circle-outline',
@@ -231,26 +512,13 @@
 		}
 	}
 
-	function receiptStatusMeta(status: string): { icon: string; label: string; className: string } {
-		switch ((status || '').toLowerCase()) {
-			case 'success':
-				return { icon: 'mdi:check-circle', label: 'Success', className: 'text-green-500' };
-			case 'failed':
-				return { icon: 'mdi:close-circle', label: 'Failed', className: 'text-red-500' };
-			default:
-				return {
-					icon: 'mdi:help-circle-outline',
-					label: status || '-',
-					className: 'text-muted-foreground'
-				};
-		}
+	function eventTypeLabel(value: string): string {
+		if (value === 'failover') return 'Failover';
+		if (value === 'replication') return 'Replication';
+		if (value === 'failback') return 'Failback';
+		if (value === 'demotion') return 'Demotion';
+		return value || 'Event';
 	}
-
-	let receiptRows = $derived.by(() =>
-		(receipts.current || [])
-			.slice()
-			.sort((a, b) => Date.parse(b.lastAttemptAt || '') - Date.parse(a.lastAttemptAt || ''))
-	);
 
 	function openProgress() {
 		if (!selectedEvent || selectedEventId <= 0) return;
@@ -299,20 +567,26 @@
 		{
 			field: 'status',
 			title: 'Status',
-			width: 130,
-			minWidth: 110,
 			formatter: (cell: CellComponent) => {
-				const meta = statusMeta(String(cell.getValue() || ''));
+				const row = cell.getRow().getData();
+				const rawStatus = String(cell.getValue() || '');
+				if (rawStatus === 'active' && row.eventType === 'failover' && row.finishedAt) {
+					const completed = statusMeta('success');
+					return renderWithIcon(completed.icon, 'Completed', completed.className);
+				}
+				const meta = statusMeta(rawStatus);
 				return renderWithIcon(meta.icon, meta.label, meta.className);
 			}
 		},
-		{ field: 'eventType', title: 'Type', width: 110, minWidth: 100 },
-		{ field: 'policy', title: 'Policy', width: 170, minWidth: 130 },
+		{
+			field: 'eventType',
+			title: 'Type',
+			formatter: (cell: CellComponent) => eventTypeLabel(String(cell.getValue() || ''))
+		},
+		{ field: 'policy', title: 'Policy' },
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 130,
-			minWidth: 115,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData();
 				const icon =
@@ -320,20 +594,16 @@
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'path', title: 'Path', width: 220, minWidth: 170 },
-		{ field: 'message', title: 'Message', width: 250, minWidth: 180 },
+		{ field: 'path', title: 'Path' },
+		{ field: 'message', title: 'Message' },
 		{
 			field: 'startedAt',
 			title: 'Started',
-			width: 165,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => convertDbTime(cell.getValue())
 		},
 		{
 			field: 'finishedAt',
 			title: 'Finished',
-			width: 165,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -343,14 +613,16 @@
 
 	let tableData = $derived.by(() => ({
 		rows: events.current.map((event) => ({
-			id: event.id,
+			id: `${event.scope}:${event.id}`,
+			eventId: event.id,
+			scope: event.scope,
 			status: event.status,
 			eventType: event.eventType,
 			policy: event.policyId ? (policyNameByID[event.policyId] ?? `Policy ${event.policyId}`) : '-',
 			guestType: event.guestType,
-			workload: `${event.guestType || 'guest'} ${event.guestId || 0}`,
-			path: `${compactNodeLabel(event.sourceNodeId || '')} -> ${compactNodeLabel(event.targetNodeId || '')}`,
-			message: event.message || '-',
+			workload: workloadLabel(event.guestType || '', event.guestId || 0),
+			path: eventPath(event),
+			message: eventMessageLabel(event.message || ''),
 			startedAt: event.startedAt,
 			finishedAt: event.completedAt || null,
 			error: event.error || '',
@@ -382,12 +654,22 @@
 			value={filterPolicyId}
 			options={policyFilterOptions}
 			classes={{
-				parent: 'w-[320px] space-y-0',
-				trigger: 'h-6 w-full px-2',
-				label: 'hidden'
+				trigger: '!h-6 text-sm'
 			}}
 			onChange={(value) => {
 				filterPolicyId = value;
+				activeRows = null;
+			}}
+		/>
+
+		<SimpleSelect
+			value={selectedNodeId}
+			options={nodeFilterOptions}
+			classes={{
+				trigger: '!h-6 text-sm'
+			}}
+			onChange={(value) => {
+				selectedNodeId = value;
 				activeRows = null;
 			}}
 		/>
@@ -397,7 +679,7 @@
 			variant="outline"
 			class="h-6"
 			onclick={openProgress}
-			disabled={selectedEventId <= 0}
+			disabled={selectedEventId <= 0 || selectedEvent?.scope === 'transition'}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--progress-clock] mr-1 h-4 w-4"></span>
@@ -432,58 +714,55 @@
 		</Button>
 
 		<Button size="sm" variant="outline" class="ml-auto h-6" onclick={() => (reload = true)}>
-			<div class="flex items-center">
-				<span class="icon-[mdi--refresh] mr-1 h-4 w-4"></span>
-				<span>Refresh</span>
-			</div>
+			<span class="icon-[mdi--refresh] h-4 w-4"></span>
 		</Button>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
 		<div class="border-b p-2">
 			<div class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-				Target Receipts
+				Target Results
 			</div>
-			{#if receiptRows.length === 0}
-				<div class="text-xs text-muted-foreground">No target-side receipts yet.</div>
+			{#if targetRows.length === 0}
+				<div class="text-xs text-muted-foreground">No replication targets match this filter.</div>
 			{:else}
-				<div class="max-h-40 overflow-auto rounded-md border">
+				<div class="max-h-44 overflow-auto rounded-md border">
 					<table class="w-full text-xs">
 						<thead class="bg-muted/40 text-muted-foreground">
 							<tr>
 								<th class="p-2 text-left">Policy</th>
 								<th class="p-2 text-left">Path</th>
 								<th class="p-2 text-left">Status</th>
-								<th class="p-2 text-left">Last Attempt</th>
-								<th class="p-2 text-left">Last Success</th>
+								<th class="p-2 text-left">Datasets</th>
+								<th class="p-2 text-left">Last Verified</th>
 								<th class="p-2 text-left">Error</th>
 							</tr>
 						</thead>
 						<tbody>
-							{#each receiptRows as receipt (`${receipt.policyId}-${receipt.targetNodeId}`)}
-								{@const status = receiptStatusMeta(receipt.status || '')}
+							{#each targetRows as row (`${row.policy.id}-${row.target.nodeId}`)}
+								{@const status = targetStatusMeta(row.target)}
 								<tr class="border-t align-top">
+									<td class="p-2">{row.policy.name || `Policy ${row.policy.id}`}</td>
 									<td class="p-2">
-										{policyNameByID[receipt.policyId] ?? `Policy ${receipt.policyId}`}
-									</td>
-									<td class="p-2">
-										{compactNodeLabel(receipt.sourceNodeId || '')} ->
-										{compactNodeLabel(receipt.targetNodeId || '')}
+										{compactNodeLabel(row.sourceNodeId)} → {compactNodeLabel(row.target.nodeId)}
 									</td>
 									<td class="p-2">
 										<span class={`inline-flex items-center gap-1 ${status.className}`}>
-											<span class={status.icon + ' h-4 w-4'}></span>
+											<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
 											<span>{status.label}</span>
 										</span>
 									</td>
 									<td class="p-2">
-										{receipt.lastAttemptAt ? convertDbTime(receipt.lastAttemptAt) : '-'}
+										{row.target.completedDatasetCount || 0}/{row.target.requiredDatasetCount || 0}
 									</td>
 									<td class="p-2">
-										{receipt.lastSuccessAt ? convertDbTime(receipt.lastSuccessAt) : '-'}
+										{row.target.lastVerifiedAt ? convertDbTime(row.target.lastVerifiedAt) : '-'}
 									</td>
-									<td class="max-w-[300px] truncate p-2" title={receipt.error || ''}>
-										{receipt.error || '-'}
+									<td
+										class="max-w-[320px] truncate p-2"
+										title={targetErrorLabel(row.target.lastError || '')}
+									>
+										{targetErrorLabel(row.target.lastError || '')}
 									</td>
 								</tr>
 							{/each}
@@ -504,9 +783,16 @@
 </div>
 
 <Dialog.Root bind:open={progressModal.open}>
-	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-5">
+	<Dialog.Content class="w-[90%] max-w-xl overflow-hidden p-6">
 		<Dialog.Header>
-			<Dialog.Title>Replication Progress</Dialog.Title>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--progress-clock]"
+					title="Replication Progress"
+					size="w-4 h-4"
+					gap="gap-2"
+				/>
+			</Dialog.Title>
 		</Dialog.Header>
 
 		{#if progressModal.error}
@@ -514,44 +800,53 @@
 				{progressModal.error}
 			</div>
 		{:else if progressEvent.current}
+			{@const ev = progressEvent.current.event}
+			{@const sm = statusMeta(ev.status === 'active' && ev.completedAt ? 'success' : ev.status)}
+			{@const terminated = ev.completedAt !== null && ev.completedAt !== undefined}
+			{@const showBytes =
+				(progressEvent.current.movedBytes !== null &&
+					progressEvent.current.movedBytes !== undefined) ||
+				(progressEvent.current.totalBytes !== null &&
+					progressEvent.current.totalBytes !== undefined)}
 			<div class="space-y-3">
-				<div class="space-y-1 text-sm">
+				<div class="space-y-2 text-sm">
 					<div class="flex justify-between">
 						<span>Status</span>
-						<span>{progressEvent.current.event.status}</span>
+						<span class="inline-flex items-center gap-1">
+							<span class={iconClass(sm.icon) + ' h-4 w-4'}></span>
+							<span class={sm.className}>{terminated ? 'Completed' : sm.label}</span>
+						</span>
 					</div>
-					<div class="flex justify-between">
-						<span>Moved</span>
-						<span
-							>{progressEvent.current.movedBytes !== null &&
-							progressEvent.current.movedBytes !== undefined
-								? formatBytesBinary(progressEvent.current.movedBytes)
-								: '-'}</span
-						>
-					</div>
-					<div class="flex justify-between">
-						<span>Total</span>
-						<span
-							>{progressEvent.current.totalBytes !== null &&
-							progressEvent.current.totalBytes !== undefined
-								? formatBytesBinary(progressEvent.current.totalBytes)
-								: '-'}</span
-						>
-					</div>
+					{#if showBytes}
+						<div class="flex justify-between">
+							<span>Moved</span>
+							<span
+								>{progressEvent.current.movedBytes !== null &&
+								progressEvent.current.movedBytes !== undefined
+									? formatBytesBinary(progressEvent.current.movedBytes)
+									: '-'}</span
+							>
+						</div>
+						<div class="flex justify-between">
+							<span>Total</span>
+							<span
+								>{progressEvent.current.totalBytes !== null &&
+								progressEvent.current.totalBytes !== undefined
+									? formatBytesBinary(progressEvent.current.totalBytes)
+									: '-'}</span
+							>
+						</div>
+					{/if}
 				</div>
 
-				<div class="space-y-1">
-					<div class="text-sm">{Math.round(progressPercent)}%</div>
-					<Progress value={progressPercent} />
+				<div class="space-y-2">
+					<div class="text-sm">{terminated ? 100 : Math.round(progressPercent)}%</div>
+					<Progress value={terminated ? 100 : progressPercent} />
 				</div>
 			</div>
 		{:else}
 			<div class="text-sm text-muted-foreground">Loading progress...</div>
 		{/if}
-
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (progressModal.open = false)}>Close</Button>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
 

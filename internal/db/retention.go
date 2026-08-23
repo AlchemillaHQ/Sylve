@@ -20,7 +20,7 @@ type TimeSeriesRow interface {
 }
 
 const (
-	day  = 24 * time.Hour
+	day = 24 * time.Hour
 )
 
 type GFSStep string

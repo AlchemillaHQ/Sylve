@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { api } from '$lib/api/common';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
-	import { sha256 } from '$lib/utils/string';
+	import { resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
 	import { watch, Debounced } from 'runed';
-	import { onMount, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import {
 		TabulatorFull as Tabulator,
@@ -27,7 +29,7 @@
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
-		extraParams?: Record<string, string | number>;
+		extraParams?: Record<string, string | number | undefined>;
 		customPlaceholder?: string;
 		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
 		reload: boolean;
@@ -79,10 +81,51 @@
 		tableState.current = { ...tableState.current, hiddenColumns };
 	}
 
-	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let scroll = $state([0, 0]);
-	let hash = $state('');
+	const ajaxHeaders: Record<string, string> = {};
+
+	const MIN_PAGE_SIZE = 10;
+	const MAX_PAGE_SIZE = 100;
+	const DEFAULT_ROW_HEIGHT = 42;
+	const HEADER_FOOTER_OVERHEAD = 80;
+
+	let currentPageSize = 25;
+	let resizeObserver: ResizeObserver | null = null;
+	let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+	let observerPrimed = false;
+	let lastObservedHeight = 0;
+
+	function clampPageSize(value: number): number {
+		return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, value));
+	}
+
+	function estimateInitialPageSize(): number {
+		const height = tableComponent?.clientHeight ?? 0;
+		const usable = height - HEADER_FOOTER_OVERHEAD;
+		if (usable <= 0) return 25;
+		return clampPageSize(Math.floor(usable / DEFAULT_ROW_HEIGHT));
+	}
+
+	function adaptPageSize() {
+		if (!table || !tableInitialized) return;
+
+		const holder = tableComponent?.querySelector('.tabulator-tableholder') as HTMLElement | null;
+		if (!holder) return;
+
+		const holderHeight = holder.clientHeight;
+		if (holderHeight <= 0) return;
+
+		const rowEl = tableComponent?.querySelector('.tabulator-row') as HTMLElement | null;
+		const rowHeight = rowEl?.offsetHeight || DEFAULT_ROW_HEIGHT;
+		if (rowHeight <= 0) return;
+
+		const size = clampPageSize(Math.floor(holderHeight / rowHeight));
+		if (size !== currentPageSize) {
+			currentPageSize = size;
+			table.setPageSize(size);
+		}
+	}
 
 	function updateParentActiveRows() {
 		if (tableInitialized) {
@@ -96,7 +139,7 @@
 				if (query && query !== '') return;
 
 				if (data.rows.length === 0) {
-					table?.clearData();
+					if (!ajaxURL) table?.clearData();
 					return;
 				}
 
@@ -127,18 +170,72 @@
 		}
 	});
 
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
+	function refreshAjaxHeaders() {
+		delete ajaxHeaders.Authorization;
+		delete ajaxHeaders['X-Current-Hostname'];
 
+		const token = storage.token?.trim();
+		const hostname = resolveNodeHostname(window.location.pathname);
+		if (token) ajaxHeaders.Authorization = `Bearer ${token}`;
+		if (hostname) ajaxHeaders['X-Current-Hostname'] = hostname;
+	}
+
+	function appendAjaxParam(search: URLSearchParams, key: string, value: unknown) {
+		if (value === undefined || value === null || value === '') return;
+		if (Array.isArray(value)) {
+			value.forEach((entry, index) => {
+				if (typeof entry === 'object' && entry !== null) {
+					Object.entries(entry).forEach(([childKey, childValue]) => {
+						appendAjaxParam(search, `${key}[${index}][${childKey}]`, childValue);
+					});
+					return;
+				}
+				appendAjaxParam(search, `${key}[${index}]`, entry);
+			});
+			return;
+		}
+		search.set(key, String(value));
+	}
+
+	async function requestDemoTable(url: string, params: Record<string, unknown>): Promise<unknown> {
+		const requestURL = new URL(url, window.location.origin);
+		Object.entries(params).forEach(([key, value]) => {
+			appendAjaxParam(requestURL.searchParams, key, value);
+		});
+		const response = await api.request({
+			url: `${requestURL.pathname}${requestURL.search}`,
+			method: 'GET',
+			headers: ajaxHeaders
+		});
+		return response.data;
+	}
+
+	onMount(() => {
 		if (tableComponent) {
+			const initialPageSize = estimateInitialPageSize();
+			currentPageSize = initialPageSize;
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
+				ajaxRequestFunc:
+					isDemoMode && ajaxURL
+						? async (url, _config, params) =>
+								requestDemoTable(url, params as Record<string, unknown>)
+						: undefined,
+				height: '100%',
 				ajaxResponse: function (url, params, response) {
 					return response.data;
 				},
-				ajaxParams: {
-					hash,
-					...extraParams
+				ajaxParams: () => ({
+					...extraParams,
+					search: query || ''
+				}),
+				ajaxConfig: {
+					method: 'GET',
+					headers: ajaxHeaders
+				},
+				ajaxRequesting: () => {
+					refreshAjaxHeaders();
+					return true;
 				},
 				reactiveData: true,
 				columns: data.columns as ColumnDefinition[],
@@ -157,7 +254,7 @@
 				},
 				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
-				paginationSize: 25,
+				paginationSize: initialPageSize,
 				paginationCounter: 'pages',
 				sortMode: 'remote',
 				filterMode: 'remote',
@@ -174,10 +271,7 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
-			tableHolder = tableComponent?.querySelector(
-				'.tabulator-tableholder'
-			) as HTMLDivElement | null;
-
+			if (reload) reload = false;
 			const widths = tableState.current.columnWidths || {};
 			const persistedHidden = tableState.current.hiddenColumns || {};
 			table?.getColumns().forEach((col) => {
@@ -194,6 +288,24 @@
 					}
 				}
 			});
+
+			resizeObserver = new ResizeObserver((entries) => {
+				const newHeight = entries[0]?.contentRect.height ?? 0;
+				if (!observerPrimed) {
+					observerPrimed = true;
+					lastObservedHeight = newHeight;
+					return;
+				}
+				if (Math.abs(newHeight - lastObservedHeight) < DEFAULT_ROW_HEIGHT / 2) return;
+				lastObservedHeight = newHeight;
+				if (resizeTimer) {
+					clearTimeout(resizeTimer);
+				}
+				resizeTimer = setTimeout(adaptPageSize, 200);
+			});
+			if (tableComponent) {
+				resizeObserver.observe(tableComponent);
+			}
 		});
 
 		table?.on('scrollVertical', (top) => {
@@ -241,17 +353,32 @@
 		});
 	});
 
+	onDestroy(() => {
+		if (resizeTimer) {
+			clearTimeout(resizeTimer);
+		}
+		resizeObserver?.disconnect();
+		resizeObserver = null;
+	});
+
 	const debouncedQuery = new Debounced(() => query, 300);
 
 	watch(
 		() => debouncedQuery.current,
-		(newQuery) => {
+		() => {
 			if (table && tableInitialized) {
-				table.setData(ajaxURL!, {
-					hash,
-					...extraParams,
-					search: newQuery || ''
-				});
+				table.setData(ajaxURL!);
+			}
+		}
+	);
+
+	watch(
+		() => parentActiveRow,
+		(rows) => {
+			if (!table || !tableInitialized) return;
+			const selected = table.getSelectedRows();
+			if ((!rows || rows.length === 0) && selected.length > 0) {
+				table.deselectRow();
 			}
 		}
 	);
@@ -259,12 +386,8 @@
 	watch(
 		() => reload,
 		(newReload) => {
-			if (newReload) {
-				table?.setData(ajaxURL!, {
-					hash,
-					...extraParams,
-					search: query || ''
-				});
+			if (newReload && table && tableInitialized) {
+				table?.setData(ajaxURL!);
 				reload = false;
 			}
 		}
@@ -295,6 +418,11 @@
 </ContextMenu.Root>
 
 <style>
+	.s-tree-table-container {
+		display: flex;
+		flex-direction: column;
+	}
+
 	:global(.s-tree-table-container > .tabulator) {
 		flex: 1;
 		min-height: 0;

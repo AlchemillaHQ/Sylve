@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -25,6 +26,13 @@ type handlerAPIResponse[T any] struct {
 }
 
 func newClusterHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
+	migrateModels = append(
+		migrateModels,
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.ReplicationTransitionEvent{},
+	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 

@@ -1,40 +1,48 @@
 ---
 title: Targets
-description: Setting up backup targets for your node(s)
+description: Configure and validate SSH and ZFS destinations for Data Center backups.
 ---
 
-:::note
-Backups are currently in early beta, so some features may not be available yet and the UI may change in the future. We are actively working on improving the backup experience, so stay tuned for updates!
+A backup target is the remote ZFS destination that receives data from a backup job. Sylve connects to it over SSH, so the target needs a reachable SSH service, ZFS, and an account whose key can create and write the configured ZFS path.
+
+## Add a target
+
+Open **Data Center → Backups → Targets** and select **New**.
+
+![Backup target table with target status, selected validation node, and New and Validate actions](./backups-targets-overview.png)
+
+| Field | Description |
+| --- | --- |
+| **Name** | A recognizable name for this destination. |
+| **SSH Host** | The target's hostname or IP address. Enter the host only, not `user@host` or a port. |
+| **SSH Port** | SSH port on the target. The default is `22`. |
+| **SSH Private Key** | Private key Sylve uses to authenticate. A new target requires a key. When editing, leave it empty to retain the already stored key. |
+| **Backup Root** | ZFS dataset path that contains backed-up datasets, such as `tank/sylve-backups`. |
+| **Description** | Optional operator-facing context for the target. |
+| **Create Backup Root** | Create the configured root dataset if it does not already exist. |
+| **Enabled** | Allows jobs to use the target. Disable it before deleting it. |
+
+![New backup target form with SSH connection details, private key, and remote ZFS backup root](./backups-target-create.png)
+
+## Validate connectivity per node
+
+In a cluster, each participating node needs to be able to reach the target with the configured credentials. Select the node in the validation selector, choose a target, then select **Validate**. The target table shows the selected node's readiness state.
+
+| Readiness | Meaning |
+| --- | --- |
+| **Ready** | The selected voter recently connected and validated the current target configuration. |
+| **Not validated** | No successful validation has been recorded for that node. |
+| **Failed** | The last validation attempt failed. Inspect the target, network reachability, account permissions, and key. |
+| **Configuration changed** | The target changed after its last validation. Validate again with the current settings. |
+
+Validation does not send a backup. It is a safe way to check the selected node's path to the remote ZFS target before assigning or running a job.
+
+![Backup target validation showing the selected cluster node and a Ready connectivity result](./backups-target-validate.png)
+
+## Edit, disable, and delete
+
+Select one row to reveal **Edit** and **Delete**. Changes to host, port, key, or root invalidate previous readiness, so validate again afterwards. Sylve requires a target to be disabled before it can be deleted. This prevents an active destination from disappearing by accident.
+
+:::caution
+Deleting a target removes its Sylve configuration, not the datasets already stored on the remote ZFS server. Manage retained remote backup data deliberately.
 :::
-
-In this section, you will learn how to set up backup targets for your node(s). Backup targets are the destinations where your backup data will be stored. 
-
-Right now we only support targets that support both SSH and ZFS, but we are working on adding support for more types of targets in the future. They don't need to have any special software running on them, just SSH and ZFS. This means that you can even use Proxmox Backup Server as a backup target for your nodes, which is a great option if you already have it set up in your environment.
-
-## Adding a Backup Target
-
-You can go to the Backups -> Targets page to add a new backup target. Once you're in that page you can click on the "New" context button to open up this modal:
-
-![Create Target Form](form.png)
-
-Let's go over the options:
-
-- **Name**: This is the name of the backup target. It can be anything you want, but it should be something that helps you identify the target later on.
-
-- **SSH Host**: This is the username@port combo for the node you will be connecting to.
-
-- **SSH Port**: This is the port number for SSH connections. The default is usually 22, but if your target uses a different port, you can specify it here.
-
-- **SSH Private Key**: This is the private key that will be used to authenticate with the target. The key must be valid OpenSSH format and should have the appropriate permissions set on the target node.
-
-- **Backup Root**: This is the ZFS root on the target side, if you have a pool named tank on your target node, you can specify it here as **tank/sylve-backups**. This is where your backup data will be stored on the target node.
-
-- **Description**: This is an optional field where you can add any additional information about the backup target.
-
-- **Create Backup Root**: If this option is enabled, the system will attempt to create the specified backup root on the target node if it doesn't already exist. This can be useful if you want to ensure that the backup root is set up correctly without having to manually create it beforehand.
-
-- **Enabled**: This option allows you to enable or disable the backup target. If a target is disabled, it will not be used for backups until it is enabled again.
-
-## Editing a Backup Target
-
-You can edit a backup target by clicking on the "Edit" context button for the target you want to modify. This will open up the same form as when you create a new target, but it will be pre-filled with the existing information for that target. You can make any necessary changes and then save the updated target.

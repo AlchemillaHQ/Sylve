@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		bulkDeleteFirewallNATRules,
 		deleteFirewallNATRule,
 		getFirewallNATRuleCounters,
 		getFirewallNATRules,
@@ -10,7 +11,6 @@
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { suggestStaticRoutesFromNATRule } from '$lib/api/network/route';
 	import { getSwitches } from '$lib/api/network/switch';
-	import { getWireGuardClients } from '$lib/api/network/wireguard';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import NATForm from '$lib/components/custom/Network/Firewall/NAT/Form.svelte';
 	import RouteForm from '$lib/components/custom/Network/Routes/Form.svelte';
@@ -24,7 +24,7 @@
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { StaticRoute, StaticRouteSuggestion } from '$lib/types/network/route';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { convertDbTime } from '$lib/utils/time';
 	import { formatBytesBinary } from '$lib/utils/bytes';
@@ -39,7 +39,7 @@
 	interface Data {
 		natRules: FirewallNATRule[] | APIResponse;
 		objects: NetworkObject[] | APIResponse;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList | APIResponse;
 		wgClients: WireGuardClient[] | APIResponse;
 	}
@@ -47,16 +47,22 @@
 	let { data }: { data: Data } = $props();
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodNATRules = Array.isArray(data.natRules) ? data.natRules : ([] as FirewallNATRule[]);
+
 	const natRulesResource = resource(
 		() => 'firewall-nat-rules',
 		async (key) => {
 			const result = await getFirewallNATRules();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodNATRules;
+			}
+
+			lastGoodNATRules = result;
 			updateCache(key, result);
 			return result;
 		},
-		{
-			initialValue: Array.isArray(data.natRules) ? data.natRules : []
-		}
+		{ initialValue: lastGoodNATRules }
 	);
 
 	const natRules = $derived(
@@ -65,6 +71,10 @@
 
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
+	let reordering = $state(false);
+	let deleting = $state(false);
+	let mutationBusy = $derived(reordering || deleting);
+	let suggestingRoute = $state(false);
 	let lastGoodCounters: FirewallNATRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -100,53 +110,67 @@
 		}
 		return out;
 	});
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+
 	const objectsResource = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodObjects;
+			}
+
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.objects as NetworkObject[] }
+		{ initialValue: lastGoodObjects }
 	);
 	const objects = $derived(
 		Array.isArray(objectsResource.current) ? (objectsResource.current as NetworkObject[]) : []
 	);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	const interfacesResource = resource(
-		() => 'network-ifaces',
+		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 	const interfaces = $derived(
 		Array.isArray(interfacesResource.current) ? (interfacesResource.current as Iface[]) : []
 	);
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	const switchesResource = resource(
 		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.switches as SwitchList }
+		{ initialValue: lastGoodSwitches }
 	);
-	const switches = $derived(
-		switchesResource.current &&
-			typeof switchesResource.current === 'object' &&
-			!Array.isArray(switchesResource.current) &&
-			'status' in switchesResource.current
-			? { standard: [], manual: [] }
-			: ((switchesResource.current as SwitchList) ?? { standard: [], manual: [] })
-	);
+	const switches = $derived(switchesResource.current);
 
 	const wgClients = $derived(
 		Array.isArray(data.wgClients) ? (data.wgClients as WireGuardClient[]) : []
@@ -158,18 +182,13 @@
 	let modals = $state({
 		create: { open: false },
 		edit: { open: false, id: 0 },
-		delete: { open: false },
+		delete: { open: false, id: 0, name: '' },
+		bulkDelete: { open: false, ids: [] as number[] },
 		routeSuggestion: {
 			open: false,
 			prefill: null as Partial<StaticRoute> | null,
 			suggestions: [] as Partial<StaticRoute>[]
 		}
-	});
-
-	$effect(() => {
-		if (modals.routeSuggestion.open) return;
-		modals.routeSuggestion.prefill = null;
-		modals.routeSuggestion.suggestions = [];
 	});
 
 	function resolveInterfaceName(name: string): string {
@@ -291,6 +310,8 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
+		if (mutationBusy) return;
+
 		const visibleRows = rows.filter((row) => row.visible !== false);
 		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
 			id: Number(row.id),
@@ -302,64 +323,135 @@
 			return;
 		}
 
-		const result = await reorderFirewallNATRules(payload);
-		if (result.status === 'success') {
+		reordering = true;
+		try {
+			const result = await reorderFirewallNATRules(payload);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to reorder NAT rules', { position: 'bottom-center' });
+			}
 			await natRulesResource.refetch();
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to reorder NAT rules', { position: 'bottom-center' });
-			await natRulesResource.refetch();
+		} finally {
+			reordering = false;
 		}
 	}
 
-	async function confirmDelete() {
-		if (!activeRow || activeRow.length !== 1) return;
-		const id = Number(activeRow[0]?.id);
-		const result = await deleteFirewallNATRule(id);
+	function openSingleDelete() {
+		if (!activeRow || activeRow.length !== 1 || activeRow[0]?.visible === false) return;
+		modals.delete = {
+			open: true,
+			id: Number(activeRow[0].id),
+			name: String(activeRow[0].name ?? '')
+		};
+	}
 
-		if (result.status === 'success') {
+	function openBulkDelete() {
+		if (!activeRow || activeRow.length < 2 || activeRow.some((row) => row.visible === false)) {
+			return;
+		}
+
+		const ids = [...new Set(activeRow.map((row) => Number(row.id)))].filter(
+			(id) => Number.isSafeInteger(id) && id > 0
+		);
+		if (ids.length !== activeRow.length || ids.length < 2) return;
+		if (ids.length > 1024) {
+			toast.error('Select no more than 1024 NAT rules', { position: 'bottom-center' });
+			return;
+		}
+
+		modals.bulkDelete = { open: true, ids };
+	}
+
+	async function confirmDelete() {
+		if (deleting || modals.delete.id <= 0) return;
+
+		deleting = true;
+		try {
+			const result = await deleteFirewallNATRule(modals.delete.id);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete NAT rule', { position: 'bottom-center' });
+				return;
+			}
+
 			toast.success('NAT rule deleted', { position: 'bottom-center' });
 			await natRulesResource.refetch();
 			activeRow = null;
-			modals.delete.open = false;
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to delete NAT rule', { position: 'bottom-center' });
+			modals.delete = { open: false, id: 0, name: '' };
+		} finally {
+			deleting = false;
+		}
+	}
+
+	async function confirmBulkDelete() {
+		if (deleting || modals.bulkDelete.ids.length < 2) return;
+
+		const ids = [...modals.bulkDelete.ids];
+		deleting = true;
+		try {
+			const result = await bulkDeleteFirewallNATRules(ids);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete NAT rules', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(`${ids.length} NAT rules deleted`, { position: 'bottom-center' });
+			await natRulesResource.refetch();
+			activeRow = null;
+			modals.bulkDelete = { open: false, ids: [] };
+		} finally {
+			deleting = false;
 		}
 	}
 
 	async function openRouteSuggestionHelper() {
+		if (mutationBusy || suggestingRoute) return;
 		if (!activeRow || activeRow.length !== 1) return;
 		const selected = activeRow[0];
 		const natID = Number(selected?.id ?? 0);
 		if (!natID) return;
 
-		const response = await suggestStaticRoutesFromNATRule(natID);
-		if (!Array.isArray(response) || response.length === 0) {
+		modals.routeSuggestion.prefill = null;
+		modals.routeSuggestion.suggestions = [];
+		suggestingRoute = true;
+		try {
+			const response = await suggestStaticRoutesFromNATRule(natID);
 			if (!Array.isArray(response)) {
 				handleAPIError(response);
+				return;
 			}
-			toast.error('No route suggestion available for this NAT rule', { position: 'bottom-center' });
-			return;
-		}
+			if (response.length === 0) {
+				toast.error('No route suggestion available for this NAT rule', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		modals.routeSuggestion.suggestions = response.map((item) => {
-			const suggestion = item as StaticRouteSuggestion;
-			return {
-				name: suggestion.name,
-				description: suggestion.description,
-				enabled: suggestion.enabled,
-				fib: suggestion.fib,
-				destinationType: suggestion.destinationType,
-				destination: suggestion.destination,
-				family: suggestion.family,
-				nextHopMode: suggestion.nextHopMode,
-				gateway: suggestion.gateway,
-				interface: suggestion.interface
-			} as Partial<StaticRoute>;
-		});
-		modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
-		modals.routeSuggestion.open = true;
+			modals.routeSuggestion.suggestions = response.map((item) => {
+				const suggestion = item as StaticRouteSuggestion;
+				return {
+					name: suggestion.name,
+					description: suggestion.description,
+					enabled: suggestion.enabled,
+					fib: suggestion.fib,
+					destinationType: suggestion.destinationType,
+					destination: suggestion.destination,
+					family: suggestion.family,
+					nextHopMode: suggestion.nextHopMode,
+					gateway: suggestion.gateway,
+					gatewayZone: suggestion.gatewayZone,
+					interface: suggestion.interface
+				} as Partial<StaticRoute>;
+			});
+			modals.routeSuggestion.prefill = modals.routeSuggestion.suggestions[0] ?? null;
+			modals.routeSuggestion.open = true;
+		} catch (error) {
+			console.error('Failed to load static route suggestions', error);
+			toast.error('Failed to load route suggestions', { position: 'bottom-center' });
+		} finally {
+			suggestingRoute = false;
+		}
 	}
 
 	let columns: Column[] = $derived([
@@ -523,50 +615,97 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={mutationBusy}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
-			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={openSingleDelete}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={mutationBusy}
+			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
 		{#if type === 'suggest-route'}
 			{#if ['snat', 'binat'].includes(String(activeRow[0]?.natType ?? '').toLowerCase()) && Boolean(activeRow[0]?.policyRouting)}
-				<Button onclick={openRouteSuggestionHelper} size="sm" variant="outline" class="h-6.5">
+				<Button
+					onclick={openRouteSuggestionHelper}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+					disabled={mutationBusy || suggestingRoute}
+				>
 					<SpanWithIcon
-						icon="icon-[mdi--routes-clock]"
+						icon={suggestingRoute ? 'icon-[mdi--loading] animate-spin' : 'icon-[mdi--routes-clock]'}
 						size="h-4 w-4"
 						gap="gap-2"
-						title="Route Helper"
+						title={suggestingRoute ? 'Finding Route...' : 'Route Helper'}
 					/>
 				</Button>
 			{/if}
 		{/if}
+	{:else if type === 'bulk-delete' && activeRow !== null && activeRow.length > 1 && activeRow.every((row) => row.visible !== false)}
+		<Button
+			onclick={openBulkDelete}
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			disabled={mutationBusy}
+		>
+			<SpanWithIcon
+				icon="icon-[material-symbols--delete-sweep]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Bulk Delete"
+			/>
+		</Button>
 	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6">
+		<Button
+			onclick={() => (modals.create.open = true)}
+			size="sm"
+			class="h-6"
+			disabled={mutationBusy}
+		>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
+		{@render button('bulk-delete')}
 		{@render button('suggest-route')}
 
-		<Button
-			onclick={() => refreshCounters('manual')}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6"
-			title="Refresh Counters"
-		>
-			<span class="icon-[mdi--refresh] h-4 w-4"></span>
-		</Button>
+		<div class="ml-auto flex items-center gap-2">
+			{#if reordering}
+				<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Saving order...
+				</span>
+			{/if}
+			<Button
+				onclick={() => refreshCounters('manual')}
+				size="sm"
+				variant="outline"
+				class="h-6"
+				title="Refresh Counters"
+				disabled={countersUpdating || deleting}
+			>
+				<span
+					class={countersUpdating
+						? 'icon-[mdi--loading] h-4 w-4 animate-spin'
+						: 'icon-[mdi--refresh] h-4 w-4'}
+				></span>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
@@ -598,7 +737,9 @@
 		{switches}
 		{wgClients}
 		edit={false}
-		afterChange={() => natRulesResource.refetch()}
+		afterChange={async () => {
+			await natRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -612,7 +753,9 @@
 		{wgClients}
 		edit={true}
 		id={modals.edit.id}
-		afterChange={() => natRulesResource.refetch()}
+		afterChange={async () => {
+			await natRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -635,14 +778,29 @@
 	open={modals.delete.open}
 	names={{
 		parent: 'nat rule',
-		element: activeRow && activeRow.length === 1 ? String(activeRow[0]?.name ?? '') : ''
+		element: modals.delete.name
 	}}
+	loading={deleting}
+	keepOpenOnConfirm={true}
 	actions={{
 		onConfirm: async () => {
 			await confirmDelete();
 		},
 		onCancel: () => {
-			modals.delete.open = false;
+			modals.delete = { open: false, id: 0, name: '' };
+		}
+	}}
+/>
+
+<AlertDialog
+	open={modals.bulkDelete.open}
+	customTitle={`This will permanently delete <b>${modals.bulkDelete.ids.length}</b> NAT rules.`}
+	loading={deleting}
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: confirmBulkDelete,
+		onCancel: () => {
+			modals.bulkDelete = { open: false, ids: [] };
 		}
 	}}
 />

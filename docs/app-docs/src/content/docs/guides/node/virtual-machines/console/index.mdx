@@ -1,18 +1,77 @@
 ---
 title: Console
-description: This is where you'll find both Serial and VNC consoles for your VM
+description: Access a running VM through its graphical VNC or text-based serial console.
 ---
 
-:::caution
-The terminal requires a secure context (HTTPS) to function. Sylve automatically configures HTTPS for your nodes, so no additional setup is needed. However, if you access Sylve over HTTP, the terminal will not work. Ensure you are using HTTPS when accessing Sylve.
+import vncConsole from "./vm-console-vnc.png";
+import serialConsole from "./vm-console-serial.png";
+import serialControl from "./vm-console-serial-control.png";
+import consoleSettings from "./vm-console-settings.png";
+
+The **Console** page provides browser-based access to a running VM. It shows VNC, serial, or both, depending on the VM's hardware configuration. When both are enabled, use the toolbar to switch between them.
+
+:::note
+The VM must be running before its console is available. A powered-off VM shows a status message instead of a console.
 :::
 
-The Serial console is a text-based interface that allows you to interact with your VM's operating system directly. It's useful for troubleshooting and performing tasks that require command-line access. It also supports copy-pasting, making it easier to execute commands without typing them out.
+## Choose a console type
 
-![Serial Console](./console_serial.png)
+| Console | Best for | What to configure |
+| --- | --- | --- |
+| **VNC** | Installers, desktop guests, UEFI setup, and any guest that needs a graphical display. | Enable and configure **VNC** from [VM Hardware](/guides/node/virtual-machines/hardware/). |
+| **Serial** | Server guests, boot troubleshooting, recovery work, and terminal-based administration. | Enable **Serial Console** from [VM Hardware](/guides/node/virtual-machines/hardware/) and configure the guest operating system to use its serial port. |
 
-VNC on the other hand provides a graphical interface to your VM, allowing you to interact with it as if you were sitting in front of it. This is particularly useful for operating systems that have a graphical user interface (GUI) or for tasks that are easier to perform with a mouse and keyboard.
+When both are enabled, Sylve remembers your last selected console separately for each VM on each node. If only one is enabled, that console opens automatically. If neither is enabled, the page explains that no console is configured.
 
-![VNC Console](./console_vnc.png)
+### VNC
 
-You can seemlessly switch between the Serial and VNC consoles, with a single click, allowing you to choose the best interface for your current task. Whether you need to troubleshoot a boot issue with the Serial console or manage your VM's GUI with VNC, the Console section provides you with the tools you need to effectively manage your virtual machine.
+The VNC console opens the VM's graphical framebuffer in the page. It is the right choice for interactive operating-system installers and graphical desktops. Configure the VNC bind address, port, password, and resolution in **VM Hardware** before using it.
+
+If the VM is running but VNC cannot connect, first confirm that VNC is enabled and that the VM has started successfully. Review [VM Summary](/guides/node/virtual-machines/summary/) logs for startup errors.
+
+<img
+  src={vncConsole.src}
+  alt="Graphical VNC console for a running virtual machine with the console toolbar visible"
+/>
+
+### Serial
+
+The serial console is an in-browser terminal connected to the guest's serial device. Enable a serial console in VM Hardware and configure the guest bootloader and operating system to send a login prompt or console output to that device. Enabling the VM setting alone does not make every guest use serial output automatically.
+
+The toolbar provides **Disconnect** and **Reconnect** actions, a button to clear only the local terminal display, and console settings. A dropped connection shows a reconnect notice without changing the VM's state.
+
+<img
+  src={serialConsole.src}
+  alt="Connected serial console showing guest output and controls to disconnect, clear the terminal, and open settings"
+/>
+
+## Serial-console control
+
+Multiple administrators can observe the same serial output, but only one browser has keyboard input control at a time. The toolbar identifies whether you have control, who currently controls it, and the number of connected observers.
+
+If another administrator has control, your terminal is view-only. Select **Take Control** and confirm the prompt to make your browser the active input controller. The previous controller becomes an observer, while everyone continues to see the same output.
+
+Coordinate with other operators before taking control, especially during recovery work or an operating-system installation.
+
+<img
+  src={serialControl.src}
+  alt="View-only serial console session identifying the active controller and offering the Take Control action"
+/>
+
+## Terminal settings
+
+Select the settings button in the serial-console toolbar to adjust the local terminal only:
+
+| Setting | Effect |
+| --- | --- |
+| **Font Size** | Changes the terminal font size from 8 to 24 pixels. You can also use the platform zoom modifier with `+` or `-`. |
+| **Background** | Changes the local terminal background colour. |
+| **Foreground** | Changes the local terminal text colour. |
+| **Reset** | Restores the default background and foreground colours while retaining the selected font size. |
+
+These preferences are stored in the browser for that VM and node. They do not change the guest, its serial settings, or any other administrator's terminal.
+
+<img
+  src={consoleSettings.src}
+  alt="Serial-console settings dialog with font-size, background-colour, and foreground-colour controls"
+/>

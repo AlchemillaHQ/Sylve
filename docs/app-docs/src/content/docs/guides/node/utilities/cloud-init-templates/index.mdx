@@ -1,82 +1,122 @@
 ---
-title: Cloud Init Templates
-description: Learn how to use cloud-init templates to automate the configuration of your VMs.
+title: Cloud-Init Templates
+description: Save reusable cloud-init documents and apply them while creating virtual machines.
 ---
 
-Cloud-init is a powerful tool that allows you to automate the configuration of your virtual machines (VMs) during the initial boot process. By using cloud-init templates, you can define a set of instructions that will be executed when the VM is created, making it easier to set up and manage your infrastructure.
+import overview from "./cloud-init-templates-overview.png";
+import create from "./cloud-init-template-create.png";
+import presets from "./cloud-init-template-presets.png";
+import vmUseTemplate from "./cloud-init-vm-use-template.png";
 
-## Creating a Cloud-Init Template
+Cloud-init configures a compatible virtual machine on its first boot. A template stores three cloud-init documents that you can copy into a new VM: **User Data**, **Meta Data**, and optional **Network Config**. Use it to consistently create users, install packages, add SSH keys, set hostnames, or configure a static network address.
 
-To create a cloud-init template, you can click on the "New" button in the context menu and it should open a modal like this:
+Templates are stored on the selected node. They are reusable starting points, not a live link: when you select a template during VM creation, Sylve copies its content into that VM. Editing or deleting the template later does not change VMs that already used it.
 
-![New Cloud-Init Template](./form.png)
+## What to prepare
 
-You can click on the button above **User Data** to select from a preset but nonetheless the configs more or less look like this:
+Cloud-init must be supported by the guest image. Cloud images for Debian, Ubuntu, Rocky Linux, and many FreeBSD images normally include it. When creating the VM, the selected installation media must be a Downloader entry whose **Type** is **Cloud-Init**. Sylve rejects regular `Base RootFS` and `Uncategorized` downloads for this workflow, even if their contents might otherwise be bootable.
 
-User Data:
+Choose **Cloud-Init** as the type when downloading, importing, or uploading the cloud image in **Utilities → Downloader**. This marks the media as cloud-init capable so Sylve can use it during VM creation.
 
-```yaml
+Keep secrets out of general-purpose templates where possible. A template can contain users, password hashes, SSH public keys, and application configuration. Treat the page and its audit history as administrative data.
+
+## Create a template
+
+Choose **New** to open the template editor. **Name**, **User Data**, and **Meta Data** are required. **Network Config** is optional, but its field is always saved, even when it is empty.
+
+<img
+  src={overview.src}
+  alt="Cloud-Init Templates table showing reusable templates and previews of their User Data, Meta Data, and Network Config documents"
+/>
+
+<img
+  src={create.src}
+  alt="Create Cloud-Init Template dialog with a template name and editable User Data, Meta Data, and Network Config documents"
+/>
+
+| Field | What it controls |
+| --- | --- |
+| **Name** | Required display name for choosing the template later. Names are trimmed, support up to 255 characters, and must be unique without regard to case. |
+| **User Data** | Required cloud-config document. This is where you define users, SSH keys, packages, commands, hostname behavior, and other first-boot actions. Start it with `#cloud-config`. |
+| **Meta Data** | Required instance identity document. It commonly contains `instance-id` and `local-hostname`. |
+| **Network Config** | Optional cloud-init network document. Leave it empty when the guest should use its normal DHCP behavior. |
+
+The template library checks that these required documents are present, but it stores their content as text. Sylve validates cloud-init YAML when the configuration is applied to a VM, so test a new template with a disposable VM before using it broadly.
+
+### Minimal DHCP template
+
+Use a distinct `instance-id` for each independent VM. The following template lets the guest obtain networking through DHCP:
+
+```yaml title="User Data"
 #cloud-config
-hostname: demo-vm
-timezone: UTC
-
 users:
-  - name: hayzam
-    gecos: User
+  - name: admin
+    groups: wheel
     sudo: ALL=(ALL) NOPASSWD:ALL
-    shell: /bin/bash
-    ssh_import_id:
-      - gh:hayzamjs
-    lock_passwd: true
-
-package_update: true
-package_upgrade: false
-
-packages:
-  - tmux
-  - nano
-  - vim
-  - curl
-  - wget
-  - git
-  - htop
-  - qemu-guest-agent
-
+    shell: /bin/sh
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA... replace-with-your-public-key
 ssh_pwauth: false
 disable_root: true
-
-final_message: |
-  Cloud-init finished.
-  User: dev
-  SSH keys imported from GitHub.
 ```
 
-Meta Data:
-
-```yaml
-instance-id: sylve-vm-TPvtU5rYWR
-local-hostname: sylve-vm
+```yaml title="Meta Data"
+instance-id: web-01
+local-hostname: web-01
 ```
 
-You can optionally specify networking config as well:
+Leave **Network Config** empty for this example.
 
-```yaml
+### Static-network example
+
+For a guest that uses cloud-init networking, add a document matching its interface name. Debian-style guests commonly use names such as `ens3` or `enp0s3`; FreeBSD examples in the built-in presets use `em0`.
+
+```yaml title="Network Config"
 version: 2
 ethernets:
-  enp0s3:
+  ens3:
     dhcp4: false
     addresses:
-      - 192.168.0.12/24
-    gateway4: 192.168.0.1
+      - 192.168.50.20/24
+    routes:
+      - to: default
+        via: 192.168.50.1
     nameservers:
       addresses:
         - 1.1.1.1
+        - 1.0.0.1
 ```
 
-Leaving the network config empty will default to DHCP.
+Do not reuse this example unchanged. Select an unused address and the interface name that exists in the guest.
 
-## Managing Cloud-Init Templates
+## Start from a built-in preset
 
-Once you have created a cloud-init template, you can view and manage it from the table using the context menu. You can edit the template, delete it, or use it when creating a new VM.
+The button beside **User Data** opens a preset picker. The available presets are **Simple**, **FreeBSD with Static IP**, **Debian with Static IP**, and **Docker**. Selecting one fills all three documents and sets the template name. Review and edit the generated hostname, instance ID, usernames, SSH identity, network addresses, and package choices before saving.
 
-![Cloud-Init Table](./table.png)
+<img
+  src={presets.src}
+  alt="Cloud-Init Template preset selector offering Simple, FreeBSD with Static IP, Debian with Static IP, and Docker templates"
+/>
+
+The presets are convenience starting points. They do not discover guest interfaces, reserve an IP address, create a DHCP lease, or verify that a referenced GitHub account or SSH key is correct.
+
+## Use a template for a new VM
+
+While creating a VM, open **Advanced**, enable **Cloud-Init**, then use the template button beside **Cloud-Init User Data**. Choose a template and Sylve fills the VM's User Data, Meta Data, and Network Config fields. Review the copied values before creating the VM.
+
+<img
+  src={vmUseTemplate.src}
+  alt="Virtual machine creation Advanced section with Cloud-Init enabled and an existing Cloud-Init template selected to populate the three configuration fields"
+/>
+
+Sylve creates a `cidata` ISO containing the cloud-init documents for the VM. You can later open the VM's Cloud Init option to change or clear the three documents, but the VM must be shut off for that operation. User Data and Meta Data must either both be provided or both be empty; Network Config may be present by itself when needed.
+
+## Edit and delete templates
+
+Select one row to reveal **Edit** and **Delete**. Editing replaces all three stored documents. In particular, clearing Network Config is an explicit change, so a template can be switched back to DHCP behavior.
+
+Deleting a template removes only the reusable library entry. It does not remove a cloud-init ISO or configuration already copied to a VM.
+
+:::note
+Cloud-init normally runs only during a guest's first boot for a given instance identity. To provision another VM from the same starting content, give it a new `instance-id` and hostname. For changes to an existing guest, use its normal configuration-management workflow unless that guest is deliberately configured to re-run cloud-init modules.
+:::

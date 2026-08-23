@@ -9,28 +9,37 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
+	let saving = $state(false);
 
 	async function setSerial(enable: boolean) {
-		const response = await modifySerialConsole(vm.rid, enable);
-		reload = true;
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify serial console', {
-				position: 'bottom-center'
-			});
-			return;
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifySerialConsole(vm.rid, enable, { hostname: node });
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify serial console', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No serial-console changes needed'
+					: 'Modified serial console',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified serial console', {
-			position: 'bottom-center'
-		});
-
-		open = false;
 	}
 </script>
 
@@ -52,23 +61,37 @@
 		</Dialog.Header>
 
 		{#if vm?.serial}
-			<span class="text-sm">
+			<span class="text-sm text-justify">
 				This VM currently has serial console access enabled. You can disable it using the button
 				below.
 			</span>
 		{:else}
-			<span class="text-sm">
+			<span class="text-sm text-justify">
 				This VM currently has serial console access disabled. You can enable it using the button
 				below.
 			</span>
 		{/if}
 
 		<Dialog.Footer class="flex justify-end">
-			<div class="flex w-full items-center justify-end gap-2">
+			<div class="flex w-full items-center justify-end gap-0">
 				{#if !vm?.serial}
-					<Button onclick={() => setSerial(true)} type="submit" size="sm">Enable</Button>
+					<Button onclick={() => setSerial(true)} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+							Enabling...
+						{:else}
+							Enable
+						{/if}
+					</Button>
 				{:else}
-					<Button onclick={() => setSerial(false)} type="submit" size="sm">Disable</Button>
+					<Button onclick={() => setSerial(false)} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+							Disabling...
+						{:else}
+							Disable
+						{/if}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>

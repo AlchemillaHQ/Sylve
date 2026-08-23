@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package mdnsHandlers
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/alchemillahq/sylve/internal"
+	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
+	mdnsServicePkg "github.com/alchemillahq/sylve/internal/services/mdns"
+
+	"github.com/gin-gonic/gin"
+
+	_ "github.com/alchemillahq/sylve/internal/db/models/mdns"
+)
+
+type MdnsSettingsRequest struct {
+	Interfaces string `json:"interfaces"`
+	Hostname   string `json:"hostname"`
+}
+
+// @Summary Get mDNS settings
+// @Description Retrieve the mDNS service discovery settings
+// @Tags mDNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[mdnsModels.MdnsSettings] "Success"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /mdns/config [get]
+func GetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		settings, err := mdnsService.GetSettings()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_get_mdns_settings",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "mdns_settings_retrieved",
+			Error:   "",
+			Data:    settings,
+		})
+	}
+}
+
+// @Summary Update mDNS settings
+// @Description Update the mDNS service discovery settings
+// @Tags mDNS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body MdnsSettingsRequest true "mDNS Settings"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /mdns/config [put]
+func SetSettings(mdnsService mdnsInterfaces.MdnsServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req MdnsSettingsRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := mdnsService.SetSettings(req.Interfaces, req.Hostname); err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, mdnsServicePkg.ErrInvalidSettings) {
+				status = http.StatusBadRequest
+			}
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_set_mdns_settings",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "mdns_settings_updated",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}

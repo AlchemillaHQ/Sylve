@@ -1,20 +1,25 @@
 <script lang="ts">
-	import { logOut } from '$lib/api/auth';
-	import { getDetails, resetCluster } from '$lib/api/cluster/cluster';
+	import {
+		getDetails,
+		getNodes,
+		refreshClusterAfterLifecycleChange,
+		resetCluster
+	} from '$lib/api/cluster/cluster';
 	import Create from '$lib/components/custom/Cluster/Create.svelte';
 	import Join from '$lib/components/custom/Cluster/Join.svelte';
 	import JoinInformation from '$lib/components/custom/Cluster/JoinInformation.svelte';
+	import RemovePeer from '$lib/components/custom/Cluster/RemovePeer.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { storage } from '$lib';
-	import type { ClusterDetails } from '$lib/types/cluster/cluster';
+	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { renderWithIcon } from '$lib/utils/table';
+	import { reload } from '$lib/stores/api.svelte';
+	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
+	import { onMount } from 'svelte';
 	import { resource, watch } from 'runed';
 
 	interface Data {
@@ -22,7 +27,7 @@
 	}
 
 	let { data }: { data: Data } = $props();
-	let reload = $state(false);
+	let reloadFlag = $state(false);
 
 	// svelte-ignore state_referenced_locally
 	const datacenter = resource(
@@ -39,15 +44,92 @@
 		{ initialValue: data.cluster }
 	);
 
+	let pendingRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+	let recoveryAttempts = 0;
+	let recoveryActive = false;
+
+	function hasCompleteClusterNodeSnapshot(
+		details: ClusterDetails | null | undefined,
+		clusterNodes: ClusterNode[]
+	): boolean {
+		if (!details?.cluster?.enabled) return true;
+
+		const raftNodes = details.nodes ?? [];
+		return (
+			raftNodes.length > 0 &&
+			raftNodes.every((raftNode) =>
+				clusterNodes.some((clusterNode) => clusterNode.nodeUUID === raftNode.id)
+			)
+		);
+	}
+
+	async function recoverClusterSnapshot() {
+		if (!recoveryActive || hasCompleteClusterNodeSnapshot(datacenter.current, nodes.current)) {
+			return;
+		}
+
+		recoveryAttempts += 1;
+		await Promise.allSettled([datacenter.refetch(), nodes.refetch()]);
+
+		if (
+			!recoveryActive ||
+			hasCompleteClusterNodeSnapshot(datacenter.current, nodes.current) ||
+			recoveryAttempts >= 8
+		) {
+			return;
+		}
+
+		pendingRecoveryTimer = setTimeout(() => {
+			void recoverClusterSnapshot();
+		}, 1000);
+	}
+
+	function startRecovery() {
+		stopRecovery();
+		recoveryActive = true;
+		recoveryAttempts = 0;
+		void recoverClusterSnapshot();
+	}
+
+	function stopRecovery() {
+		recoveryActive = false;
+		if (pendingRecoveryTimer) {
+			clearTimeout(pendingRecoveryTimer);
+			pendingRecoveryTimer = null;
+		}
+	}
+
 	watch(
-		() => reload,
+		() => reloadFlag,
 		() => {
-			if (reload) {
+			if (reloadFlag) {
 				datacenter.refetch();
-				reload = false;
+				void nodes.refetch();
+				reloadFlag = false;
+				startRecovery();
 			}
 		}
 	);
+
+	watch(
+		() => reload.datacenterDetailsPulse,
+		() => {
+			datacenter.refetch();
+			void nodes.refetch();
+			startRecovery();
+		}
+	);
+
+	watch(
+		() => reload.datacenterNodesPulse,
+		() => {
+			void nodes.refetch();
+		}
+	);
+
+	onMount(() => {
+		return () => stopRecovery();
+	});
 
 	let canReset = $derived(datacenter.current.cluster.enabled === true);
 	let canCreate = $derived(
@@ -59,6 +141,40 @@
 		datacenter.current.cluster.raftBootstrap !== true &&
 			datacenter.current.cluster.enabled === false
 	);
+
+	let isLeaderUi = $derived(datacenter.current.leaderId === datacenter.current.nodeId);
+	let activeRows = $state<Array<Row & { leader: boolean }> | null>(null);
+	let selectedPeerRow = $derived<(Row & { leader: boolean }) | null>(activeRows?.[0] ?? null);
+
+	let canRemovePeer = $derived(isLeaderUi && selectedPeerRow !== null && !selectedPeerRow.leader);
+
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const result = await getNodes(signal);
+			if (hasCompleteClusterNodeSnapshot(datacenter.current, result)) {
+				await updateCache('cluster-nodes', result);
+			} else {
+				await removeCache('cluster-nodes');
+			}
+			return result;
+		},
+		{ initialValue: [] as ClusterNode[] }
+	);
+
+	function esc(value: unknown): string {
+		return String(value ?? '')
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	function usageCell(cell: CellComponent): string {
+		const percent = Math.min(100, Math.max(0, Number(cell.getValue()) || 0));
+		return `<div class="flex items-center gap-1.5"><div class="h-1.5 w-12 overflow-hidden rounded bg-muted"><div class="h-full rounded bg-primary" style="width:${Math.round(percent)}%"></div></div><span class="text-muted-foreground text-xs">${Math.round(percent)}%</span></div>`;
+	}
 
 	let modals = $state({
 		create: {
@@ -72,32 +188,61 @@
 		},
 		reset: {
 			open: false
+		},
+		remove: {
+			open: false
 		}
 	});
 
 	let query = $state('');
-	let activeRows: Row[] | null = $state(null);
 
 	let table = $derived.by(() => {
 		const rows: Row[] = [];
 		const columns: Column[] = [
 			{
+				field: 'hostname',
+				title: 'Hostname',
+				formatter: (cell: CellComponent) => {
+					const data = cell.getRow().getData() as Row & {
+						leader?: boolean;
+						status?: string;
+						hostname?: string;
+					};
+
+					const online = data.status === 'online';
+					const icon = online ? 'mdi--server' : 'mdi--server-off';
+					const iconCls = online ? 'text-green-500' : 'text-muted-foreground';
+					const name = data.hostname || String(data.id ?? '');
+					const nameHtml = data.leader
+						? `<span class="inline-flex items-center gap-1"><span class="icon-[mdi--crown] h-3.5 w-3.5 text-muted-foreground"></span><span>${esc(name)}</span></span>`
+						: esc(name);
+					return `<span class="inline-flex items-center gap-1.5"><span class="icon-[${icon}] h-4 w-4 ${iconCls}"></span><span>${nameHtml}</span></span>`;
+				}
+			},
+			{
 				field: 'id',
 				title: 'Node ID',
 				formatter: (cell: CellComponent) => {
-					const row = cell.getRow();
-					const data = row.getData();
-
-					if (data.leader) {
-						return renderWithIcon('fluent-mdl2:party-leader', cell.getValue());
-					} else {
-						return cell.getValue();
-					}
+					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
 				}
 			},
 			{
 				field: 'address',
-				title: 'Address'
+				title: 'Address',
+				formatter: (cell: CellComponent) => {
+					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
+				}
+			},
+			{
+				field: 'status',
+				title: 'Status',
+				formatter: (cell: CellComponent) => {
+					const data = cell.getRow().getData() as Row;
+					const online = data.status === 'online';
+					const icon = online ? 'mdi--check-circle' : 'mdi--close-circle';
+					const iconCls = online ? 'text-green-500' : 'text-muted-foreground';
+					return `<span class="inline-flex items-center gap-1"><span class="icon-[${icon}] h-4 w-4 ${iconCls}"></span><span class="text-muted-foreground">${online ? 'Online' : 'Offline'}</span></span>`;
+				}
 			},
 			{
 				field: 'suffrage',
@@ -120,18 +265,48 @@
 
 					return value;
 				}
+			},
+			{
+				field: 'guestCount',
+				title: 'Guests',
+				formatter: (cell: CellComponent) => {
+					return String(cell.getValue() ?? 0);
+				}
+			},
+			{
+				field: 'cpuUsage',
+				title: 'CPU',
+				formatter: usageCell
+			},
+			{
+				field: 'memoryUsage',
+				title: 'RAM',
+				formatter: usageCell
+			},
+			{
+				field: 'diskUsage',
+				title: 'Disk',
+				formatter: usageCell
 			}
 		];
 
-		if (datacenter.current.nodes) {
-			for (const node of datacenter.current.nodes) {
-				rows.push({
-					id: node.id,
-					leader: node.isLeader,
-					address: node.address,
-					suffrage: node.suffrage
-				});
-			}
+		const nodesById = new Map(nodes.current.map((node) => [node.nodeUUID, node]));
+
+		for (const node of datacenter.current.nodes ?? []) {
+			const health = nodesById.get(node.id);
+
+			rows.push({
+				id: node.id,
+				leader: node.isLeader,
+				address: node.address,
+				suffrage: node.suffrage,
+				hostname: health?.hostname ?? '',
+				status: health?.status ?? 'offline',
+				guestCount: node.guestIDs?.length ?? health?.guestIDs?.length ?? 0,
+				cpuUsage: health?.cpuUsage ?? 0,
+				memoryUsage: health?.memoryUsage ?? 0,
+				diskUsage: health?.diskUsage ?? 0
+			});
 		}
 
 		return {
@@ -153,6 +328,9 @@
 					break;
 				case 'reset':
 					modals.reset.open = true;
+					break;
+				case 'remove':
+					modals.remove.open = true;
 					break;
 			}
 		}}
@@ -191,7 +369,11 @@
 		{/if}
 
 		{#if canReset}
-			{@render button('reset', 'mdi--refresh', 'Reset Cluster', !canReset)}
+			{@render button('reset', 'mdi--refresh', 'Reset Cluster State', !canReset)}
+		{/if}
+
+		{#if isLeaderUi && canRemovePeer}
+			{@render button('remove', 'mdi--account-remove-outline', 'Remove Peer', false)}
 		{/if}
 	</div>
 
@@ -204,20 +386,21 @@
 	/>
 </div>
 
-<Create bind:open={modals.create.open} bind:reload />
+<Create bind:open={modals.create.open} bind:reload={reloadFlag} />
 
 <JoinInformation bind:open={modals.view.open} cluster={datacenter.current} />
 
-<Join bind:open={modals.join.open} bind:reload />
+<Join bind:open={modals.join.open} bind:reload={reloadFlag} />
+
+<RemovePeer bind:open={modals.remove.open} bind:reload={reloadFlag} node={selectedPeerRow} />
 
 <AlertDialog
 	open={modals.reset.open}
-	customTitle="This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
+	customTitle="This will reset all clustered data and configuration on THIS node, including all notes, backup targets, jobs and events. This action cannot be undone."
 	actions={{
 		onConfirm: async () => {
 			const response = await resetCluster();
-			storage.clusterToken = '';
-			reload = true;
+			reloadFlag = true;
 			if (response.error) {
 				if (response.error.includes('leader_cannot_reset_while_other_nodes_exist')) {
 					toast.error('Leader cannot exit when followers are present', {
@@ -235,8 +418,11 @@
 				return;
 			}
 
+			await refreshClusterAfterLifecycleChange();
 			modals.reset.open = false;
-			await logOut('Login required after cluster reset');
+			toast.success('Cluster reset', {
+				position: 'bottom-center'
+			});
 		},
 		onCancel: () => {
 			modals.reset.open = false;

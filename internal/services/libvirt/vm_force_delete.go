@@ -29,6 +29,18 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}
+
+	isOrphan, err := s.isLocalVMOrphan(rid)
+	if err != nil {
+		return nil, err
+	}
+	if isOrphan {
+		logger.L.Warn().
+			Uint("rid", rid).
+			Msg("force_remove_vm_no_local_domain_purging_registration_only")
+		return s.PurgeVMRegistration(rid, cleanUpMacs)
+	}
+
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return nil, err
 	}
@@ -45,6 +57,62 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 
 	s.forceRemoveVMRuntimeArtifacts(rid, &warnings)
 	s.forceRemoveVMZFSDatasets(ctx, rid, &warnings)
+	s.forceRemoveVMDBRecords(rid, cleanUpMacs, &warnings)
+
+	return warnings, nil
+}
+
+func (s *Service) isLocalVMOrphan(rid uint) (bool, error) {
+	if rid == 0 {
+		return false, fmt.Errorf("invalid_vm_rid")
+	}
+	if _, err := s.ensureConnection(); err != nil {
+		return false, fmt.Errorf("vm_orphan_check_unavailable: %w", err)
+	}
+	if _, err := s.GetLvDomain(rid); err != nil {
+		if isVMDomainNotFoundError(err) {
+			return true, nil
+		}
+		return false, fmt.Errorf("failed_to_check_vm_orphan_state: %w", err)
+	}
+	return false, nil
+}
+
+func (s *Service) PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, error) {
+	if rid == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("libvirt_service_not_initialized")
+	}
+
+	var registrationCount int64
+	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&registrationCount).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_check_vm_registration: %w", err)
+	}
+	if registrationCount == 0 {
+		return nil, fmt.Errorf("vm_not_found: %d", rid)
+	}
+
+	isOrphan, err := s.isLocalVMOrphan(rid)
+	if err != nil {
+		return nil, err
+	}
+	if !isOrphan {
+		return nil, fmt.Errorf("vm_not_orphaned")
+	}
+
+	warnings := make([]string, 0)
+
+	if _, err := s.ensureConnection(); err == nil {
+		if err := s.RemoveLvVm(rid); err != nil {
+			appendForceRemoveWarning(&warnings, rid, "failed_to_remove_vm_domain", err)
+		}
+	} else {
+		appendForceRemoveWarning(&warnings, rid, "libvirt_connection_not_available", err)
+	}
+
+	s.forceRemoveVMRuntimeArtifacts(rid, &warnings)
 	s.forceRemoveVMDBRecords(rid, cleanUpMacs, &warnings)
 
 	return warnings, nil
@@ -226,7 +294,7 @@ func (s *Service) forceRemoveVMDBRecords(rid uint, cleanUpMacs bool, warnings *[
 			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
-			fmt.Sprintf("%%/sylve/virtual-machines/%d_%%", rid)).
+			fmt.Sprintf("%%/sylve/virtual-machines/%d\\_%%", rid)).
 		Pluck("id", &patternDatasetIDs).Error; err != nil {
 		appendForceRemoveWarning(warnings, rid, "failed_to_lookup_vm_storage_dataset_rows_by_name", err)
 	} else {

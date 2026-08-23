@@ -11,8 +11,10 @@ package authHandlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -43,7 +45,7 @@ func newTestAuthService(t *testing.T) *authService.Service {
 		return "", nil
 	}))
 
-	return &authService.Service{DB: db}
+	return authService.NewAuthService(db).(*authService.Service)
 }
 
 func setupRouter(svc *authService.Service) *gin.Engine {
@@ -51,10 +53,13 @@ func setupRouter(svc *authService.Service) *gin.Engine {
 	r := gin.New()
 	r.GET("/auth/users", ListUsersHandler(svc))
 	r.POST("/auth/users", CreateUserHandler(svc))
-	r.PUT("/auth/users", EditUserHandler(svc))
-	r.DELETE("/auth/users/:id", DeleteUserHandler(svc))
+	r.POST("/auth/users/pam", CreatePamUserHandler(svc))
+	r.PUT("/auth/users/:userId", EditUserHandler(svc))
+	r.DELETE("/auth/users/:userId", DeleteUserHandler(svc))
 	r.GET("/auth/users/uid/next", GetNextUIDHandler(svc))
 	r.GET("/auth/users/capabilities", UserCapabilitiesHandler())
+	r.POST("/auth/users/import", ImportUserHandler(svc))
+	r.GET("/auth/users/importable", ListImportableUsersHandler(svc))
 	return r
 }
 
@@ -115,12 +120,56 @@ func TestListUsersHandlerWithUsers(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp internal.APIResponse[[]models.User]
+	var resp internal.APIResponse[[]PublicUser]
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
 	if len(resp.Data) != 2 {
 		t.Fatalf("expected 2 users, got: %d", len(resp.Data))
+	}
+}
+
+func TestListUsersHandlerUsesPublicRepresentation(t *testing.T) {
+	svc := newTestAuthService(t)
+	if err := svc.DB.Create(&models.User{
+		Username: "user1",
+		Password: "hashed",
+		TOTP:     "private-seed",
+		Admin:    true,
+		Source:   "local",
+	}).Error; err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "GET", "/auth/users", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "private-seed") || strings.Contains(w.Body.String(), `"totp"`) {
+		t.Fatalf("public user response exposed database-only authentication state: %s", w.Body.String())
+	}
+
+	var resp internal.APIResponse[[]PublicUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Data) != 1 || !resp.Data[0].PasskeyEligible {
+		t.Fatalf("expected a password-backed public user, got: %+v", resp.Data)
+	}
+}
+
+func TestListUsersHandlerRejectsUnknownSource(t *testing.T) {
+	svc := newTestAuthService(t)
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "GET", "/auth/users?source=bogus", nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Error != "invalid_user_source" {
+		t.Fatalf("expected invalid_user_source, got: %s", resp.Error)
 	}
 }
 
@@ -167,7 +216,25 @@ func TestCreateUserHandlerShortUsername(t *testing.T) {
 	}
 }
 
-func TestEditUserHandlerMissingID(t *testing.T) {
+func TestCreateUserHandlerDoesNotReturnSubmittedPassword(t *testing.T) {
+	svc := newTestAuthService(t)
+	router := setupRouter(svc)
+
+	const submittedPassword = "leaky"
+	w := performJSON(t, router, "POST", "/auth/users", map[string]any{
+		"username": "testuser",
+		"password": submittedPassword,
+		"admin":    false,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), submittedPassword) {
+		t.Fatalf("response exposed submitted password: %s", w.Body.String())
+	}
+}
+
+func TestEditUserHandlerInvalidID(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)
 
@@ -175,7 +242,7 @@ func TestEditUserHandlerMissingID(t *testing.T) {
 		"username": "testuser",
 		"admin":    false,
 	}
-	w := performJSON(t, router, "PUT", "/auth/users", body)
+	w := performJSON(t, router, "PUT", "/auth/users/0", body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
@@ -186,10 +253,9 @@ func TestEditUserHandlerMissingAdmin(t *testing.T) {
 	router := setupRouter(svc)
 
 	body := map[string]any{
-		"id":       1,
 		"username": "testuser",
 	}
-	w := performJSON(t, router, "PUT", "/auth/users", body)
+	w := performJSON(t, router, "PUT", "/auth/users/1", body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
@@ -200,17 +266,16 @@ func TestEditUserHandlerNonExistentUser(t *testing.T) {
 	router := setupRouter(svc)
 
 	body := map[string]any{
-		"id":       999,
 		"username": "testuser",
 		"admin":    false,
 	}
-	w := performJSON(t, router, "PUT", "/auth/users", body)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	w := performJSON(t, router, "PUT", "/auth/users/999", body)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 	resp := decodeResponse(t, w)
-	if resp.Message != "failed_to_edit_user" {
-		t.Fatalf("expected failed_to_edit_user, got: %s", resp.Message)
+	if resp.Message != "user_not_found" {
+		t.Fatalf("expected user_not_found, got: %s", resp.Message)
 	}
 }
 
@@ -220,12 +285,11 @@ func TestEditUserHandlerNewPrimaryGroupField(t *testing.T) {
 	router := setupRouter(svc)
 
 	body := map[string]any{
-		"id":              1,
 		"username":        "testuser",
 		"admin":           false,
 		"newPrimaryGroup": true,
 	}
-	w := performJSON(t, router, "PUT", "/auth/users", body)
+	w := performJSON(t, router, "PUT", "/auth/users/1", body)
 
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("newPrimaryGroup should be accepted in request body, got 400: %s", w.Body.String())
@@ -239,12 +303,11 @@ func TestEditUserHandlerAuxGroupIDs(t *testing.T) {
 	router := setupRouter(svc)
 
 	body := map[string]any{
-		"id":          1,
 		"username":    "testuser",
 		"admin":       false,
 		"auxGroupIds": []uint{1},
 	}
-	w := performJSON(t, router, "PUT", "/auth/users", body)
+	w := performJSON(t, router, "PUT", "/auth/users/1", body)
 	if w.Code == http.StatusBadRequest {
 		t.Fatalf("auxGroupIds should be accepted, got 400: %s", w.Body.String())
 	}
@@ -275,8 +338,8 @@ func TestDeleteUserHandlerNonExistentUser(t *testing.T) {
 	router := setupRouter(svc)
 
 	w := performJSON(t, router, "DELETE", "/auth/users/999", nil)
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -340,7 +403,6 @@ func TestCreateUserRequestFields(t *testing.T) {
 
 func TestEditUserRequestFields(t *testing.T) {
 	raw := `{
-		"id": 1,
 		"username": "testuser",
 		"fullName": "Test User",
 		"password": "password123",
@@ -356,15 +418,13 @@ func TestEditUserRequestFields(t *testing.T) {
 		"doasEnabled": true,
 		"newPrimaryGroup": true,
 		"primaryGroupId": 1,
-		"auxGroupIds": [1, 2]
+		"auxGroupIds": [1, 2],
+		"sambaAction": "upsert"
 	}`
 
 	var req EditUserRequest
 	if err := json.Unmarshal([]byte(raw), &req); err != nil {
 		t.Fatalf("failed to unmarshal EditUserRequest: %v", err)
-	}
-	if req.ID != 1 {
-		t.Fatalf("expected ID 1, got: %d", req.ID)
 	}
 	if !req.NewPrimaryGroup {
 		t.Fatalf("expected NewPrimaryGroup=true")
@@ -374,5 +434,214 @@ func TestEditUserRequestFields(t *testing.T) {
 	}
 	if req.PrimaryGroupID == nil || *req.PrimaryGroupID != 1 {
 		t.Fatalf("expected PrimaryGroupID=1")
+	}
+	if req.SambaAction != authService.SambaActionUpsert {
+		t.Fatalf("expected SambaAction=upsert, got %q", req.SambaAction)
+	}
+}
+
+func TestCreateUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"username": "newuser",
+		"password": "password123",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "POST", "/auth/users", body)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp internal.APIResponse[UserMutationResult]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != "success" || resp.Data.ID == 0 || resp.Data.Username != "newuser" {
+		t.Fatalf("unexpected create result: %+v", resp)
+	}
+}
+
+func TestCreateUserHandlerDuplicateWithPAM(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "pamuser", Password: "hashed", Source: "pam"})
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"username": "pamuser",
+		"password": "password123",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "POST", "/auth/users", body)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Error != "user_source_conflict" {
+		t.Fatalf("expected user_source_conflict, got: %s", resp.Error)
+	}
+}
+
+func TestEditUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "editme", Password: "hashed", Source: "local"})
+	router := setupRouter(svc)
+
+	body := map[string]any{
+		"username": "editme",
+		"fullName": "New Name",
+		"admin":    false,
+	}
+	w := performJSON(t, router, "PUT", "/auth/users/1", body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	resp := decodeResponse(t, w)
+	if resp.Status != "success" {
+		t.Fatalf("expected status 'success', got: %s", resp.Status)
+	}
+}
+
+func TestListUsersHandlerFilterBySource(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "local1", Password: "hashed", Source: "local"})
+	svc.DB.Create(&models.User{Username: "local2", Password: "hashed", Source: "local"})
+	svc.DB.Create(&models.User{Username: "pam1", Password: "hashed", Source: "pam"})
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "GET", "/auth/users?source=local", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp1 internal.APIResponse[[]PublicUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(resp1.Data) != 2 {
+		t.Fatalf("expected 2 local users, got: %d", len(resp1.Data))
+	}
+
+	w = performJSON(t, router, "GET", "/auth/users?source=pam", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var resp2 internal.APIResponse[[]PublicUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if len(resp2.Data) != 1 {
+		t.Fatalf("expected 1 PAM user, got: %d", len(resp2.Data))
+	}
+}
+
+func TestDeleteUserHandlerSuccess(t *testing.T) {
+	svc := newTestAuthService(t)
+	svc.DB.Create(&models.User{Username: "delete_me", Password: "hashed", Source: "local"})
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, "DELETE", "/auth/users/1", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp internal.APIResponse[UserMutationResult]
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Status != "success" || resp.Data.ID != 1 || resp.Data.Username != "delete_me" {
+		t.Fatalf("unexpected delete result: %+v", resp)
+	}
+
+	var count int64
+	svc.DB.Model(&models.User{}).Where("username = ?", "delete_me").Count(&count)
+	if count != 0 {
+		t.Fatalf("expected user to be deleted, got: %d rows", count)
+	}
+}
+
+func TestCreatePamUserHandlerRequiresPassword(t *testing.T) {
+	svc := newTestAuthService(t)
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, http.MethodPost, "/auth/users/pam", map[string]any{
+		"username":     "pamuser",
+		"admin":        false,
+		"uid":          1001,
+		"homeDirPerms": 493,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "Password") {
+		t.Fatalf("binding response exposed request internals: %s", w.Body.String())
+	}
+}
+
+func TestImportUserHandlerMapsSourceConflict(t *testing.T) {
+	svc := newTestAuthService(t)
+	if err := svc.DB.Create(&models.User{
+		Username: "existing",
+		Password: "hashed",
+		Source:   "local",
+	}).Error; err != nil {
+		t.Fatalf("seed local user: %v", err)
+	}
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, http.MethodPost, "/auth/users/import", map[string]any{
+		"username": "existing",
+		"admin":    false,
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	response := decodeResponse(t, w)
+	if response.Error != "user_source_conflict" {
+		t.Fatalf("expected user_source_conflict, got %q", response.Error)
+	}
+}
+
+func TestListImportableUsersHandlerReturnsUnixCandidateDTO(t *testing.T) {
+	svc := newTestAuthService(t)
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		if command == "/usr/sbin/pw" {
+			return "alice:*:1001:1001::0:0:Alice Example:/home/alice:/bin/sh\n", nil
+		}
+		return "", nil
+	}))
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, http.MethodGet, "/auth/users/importable", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var response internal.APIResponse[[]authService.ImportableUnixUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].GID != 1001 {
+		t.Fatalf("unexpected importable users: %+v", response.Data)
+	}
+	if strings.Contains(w.Body.String(), `"id"`) || strings.Contains(w.Body.String(), `"source"`) {
+		t.Fatalf("response fabricated database-user fields: %s", w.Body.String())
+	}
+}
+
+func TestGetNextUIDHandlerReportsDiscoveryFailure(t *testing.T) {
+	svc := newTestAuthService(t)
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		return "", errors.New("pw unavailable")
+	}))
+	router := setupRouter(svc)
+
+	w := performJSON(t, router, http.MethodGet, "/auth/users/uid/next", nil)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
+	}
+	response := decodeResponse(t, w)
+	if response.Error != "unix_user_discovery_failed" {
+		t.Fatalf("expected unix_user_discovery_failed, got %q", response.Error)
+	}
+	if strings.Contains(w.Body.String(), "pw unavailable") {
+		t.Fatalf("response exposed dependency details: %s", w.Body.String())
 	}
 }

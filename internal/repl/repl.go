@@ -9,59 +9,54 @@
 package repl
 
 import (
-	"fmt"
 	"io"
 	"os"
-	"strings"
 
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/auth"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 	"github.com/alchemillahq/sylve/internal/services/network"
-	"github.com/chzyer/readline"
 )
-
-const replHistoryFile = "/tmp/sylve.repl.history"
 
 type Context struct {
 	Auth           *auth.Service
+	Cluster        *cluster.Service
+	Info           *info.Service
 	Jail           *jail.Service
 	VirtualMachine *libvirt.Service
 	Lifecycle      *lifecycle.Service
 	Network        *network.Service
+	Utilities      utilitiesServiceInterfaces.UtilitiesServiceInterface
+	Status         *StatusProvider
+	HistoryPath    string
 	QuitChan       chan os.Signal
 	Out            io.Writer
+
+	pendingSerialConsole *consoleprotocol.VMSerialConsoleLaunch
+}
+
+func (ctx *Context) queueSerialConsole(launch consoleprotocol.VMSerialConsoleLaunch) {
+	if ctx == nil {
+		return
+	}
+	copy := launch
+	ctx.pendingSerialConsole = &copy
+}
+
+func (ctx *Context) takeSerialConsole() *consoleprotocol.VMSerialConsoleLaunch {
+	if ctx == nil {
+		return nil
+	}
+	launch := ctx.pendingSerialConsole
+	ctx.pendingSerialConsole = nil
+	return launch
 }
 
 func Start(ctx *Context) {
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          "sylve> ",
-		HistoryFile:     replHistoryFile,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-	})
-	if err != nil {
-		fmt.Fprintln(outputWriter(ctx), "REPL init failed:", err)
-		return
-	}
-	defer rl.Close()
-
-	fmt.Fprintln(outputWriter(ctx), "Sylve REPL ready. Type `help`.")
-
-	for {
-		line, err := rl.Readline()
-		if err != nil {
-			return
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if !ExecuteLine(ctx, line) {
-			return
-		}
-	}
+	startTUI(ctx)
 }

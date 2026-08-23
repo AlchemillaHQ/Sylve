@@ -11,7 +11,6 @@ package libvirt
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +22,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -93,20 +93,21 @@ func (s *Service) ListVMs() ([]vmModels.VM, error) {
 		logger.L.Err(err).Msg("Error fetching domain states")
 	}
 
-	for _, vm := range vms {
-		idx := slices.IndexFunc(states, func(s libvirtServiceInterfaces.DomainState) bool {
-			return s.Domain == strconv.Itoa(int(vm.RID))
-		})
-
-		if idx == -1 {
-			vm.State = 0
-			continue
-		}
-
-		vm.State = states[idx].State
-	}
+	applyDomainStates(vms, states)
 
 	return vms, nil
+}
+
+func applyDomainStates(vms []vmModels.VM, states []libvirtServiceInterfaces.DomainState) {
+	for i := range vms {
+		vms[i].State = 0
+		for _, state := range states {
+			if state.Domain == strconv.Itoa(int(vms[i].RID)) {
+				vms[i].State = state.State
+				break
+			}
+		}
+	}
 }
 
 func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) {
@@ -118,6 +119,7 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 	if err := s.DB.
 		Model(&vmModels.VM{}).
 		Preload("CPUPinning").
+		Preload("Storages").
 		Select("id", "name", "rid", "vnc_port").
 		Find(&vms).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_list_vms: %w", err)
@@ -144,36 +146,36 @@ func (s *Service) SimpleListVM() ([]libvirtServiceInterfaces.SimpleList, error) 
 		}
 
 		list = append(list, libvirtServiceInterfaces.SimpleList{
-			ID:         vm.ID,
-			RID:        vm.RID,
-			Name:       vm.Name,
-			VNCPort:    uint(vm.VNCPort),
-			State:      state,
-			CPUPinning: vm.CPUPinning,
+			ID:                          vm.ID,
+			RID:                         vm.RID,
+			Name:                        vm.Name,
+			VNCPort:                     uint(vm.VNCPort),
+			State:                       state,
+			CPUPinning:                  vm.CPUPinning,
+			HasEnabledFilesystemStorage: hasEnabledVMFilesystemStorage(vm.Storages),
 		})
 	}
 
 	return list, nil
 }
 
-func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfaces.SimpleList, error) {
+func (s *Service) GetSimpleVMByRID(rid uint) (libvirtServiceInterfaces.SimpleList, error) {
 	if !s.IsVirtualizationEnabled() {
-		return libvirtServiceInterfaces.SimpleList{}, nil
+		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("vm_not_found: %d", rid)
 	}
 
 	var vm vmModels.VM
-	query := s.DB.
+	err := s.DB.
 		Model(&vmModels.VM{}).
 		Preload("CPUPinning").
-		Select("id", "name", "rid", "vnc_port")
-
-	if byRID {
-		query = query.Where("rid = ?", identifier)
-	} else {
-		query = query.Where("id = ?", identifier)
-	}
-
-	if err := query.First(&vm).Error; err != nil {
+		Preload("Storages").
+		Select("id", "name", "rid", "vnc_port").
+		Where("rid = ?", rid).
+		First(&vm).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("vm_not_found: %d", rid)
+		}
 		return libvirtServiceInterfaces.SimpleList{}, fmt.Errorf("failed_to_get_simple_vm: %w", err)
 	}
 
@@ -183,12 +185,13 @@ func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfa
 	}
 
 	simple := libvirtServiceInterfaces.SimpleList{
-		ID:         vm.ID,
-		RID:        vm.RID,
-		Name:       vm.Name,
-		State:      state,
-		VNCPort:    uint(vm.VNCPort),
-		CPUPinning: vm.CPUPinning,
+		ID:                          vm.ID,
+		RID:                         vm.RID,
+		Name:                        vm.Name,
+		State:                       state,
+		VNCPort:                     uint(vm.VNCPort),
+		CPUPinning:                  vm.CPUPinning,
+		HasEnabledFilesystemStorage: hasEnabledVMFilesystemStorage(vm.Storages),
 	}
 
 	if simple.CPUPinning == nil {
@@ -196,6 +199,15 @@ func (s *Service) GetSimpleVM(identifier int, byRID bool) (libvirtServiceInterfa
 	}
 
 	return simple, nil
+}
+
+func hasEnabledVMFilesystemStorage(storages []vmModels.Storage) bool {
+	for _, storage := range storages {
+		if storage.Enable && storage.Type == vmModels.VMStorageTypeFilesystem {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) GetVMByVNCPort(vncPort int) (vmModels.VM, error) {
@@ -519,7 +531,7 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 				return fmt.Errorf("vnc_port_already_in_use_by_another_vm")
 			}
 
-			if utils.IsPortInUse(data.VNCPort) {
+			if utils.IsTCPPortInUse(data.VNCPort) {
 				return fmt.Errorf("vnc_port_already_in_use_by_another_service")
 			}
 		}
@@ -610,6 +622,12 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 		if !utils.IsValidYAML(data.CloudInitData) ||
 			!utils.IsValidYAML(data.CloudInitMetaData) {
 			return fmt.Errorf("invalid_cloud_init_yaml")
+		}
+	}
+
+	if s.guestIdentityAvailabilityChecker != nil {
+		if err := s.guestIdentityAvailabilityChecker.RequireGuestIDAvailable(ctx, *data.RID); err != nil {
+			return err
 		}
 	}
 
@@ -731,7 +749,7 @@ func (s *Service) countStaleVMStorageDatasetRowsForCreate(rid uint) (int64, erro
 			fmt.Sprintf("%%/sylve/virtual-machines/%d", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d/%%", rid),
 			fmt.Sprintf("%%/sylve/virtual-machines/%d.%%", rid),
-			fmt.Sprintf("%%/sylve/virtual-machines/%d_%%", rid)).
+			fmt.Sprintf("%%/sylve/virtual-machines/%d\\_%%", rid)).
 		Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("failed_to_check_stale_vm_storage_dataset_rows: %w", err)
 	}
@@ -863,6 +881,11 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	}
 
 	rid := *data.RID
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		if err := s.requireVMMutationOwnership(rid); err != nil {
+			return err
+		}
+	}
 	autoCreatedMACIDs := make([]uint, 0, 1)
 	cleanupRIDArtifacts := false
 
@@ -1058,6 +1081,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			SwitchID:   switchId,
 			SwitchType: swType,
 			Emulation:  data.SwitchEmulationType,
+			Enable:     true,
 		})
 	}
 
@@ -1146,214 +1170,8 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 }
 
 func (s *Service) RemoveVM(rid uint, cleanUpMacs bool, deleteRawDisks bool, deleteVolumes bool, ctx context.Context) error {
-	if err := s.requireVMMutationOwnership(rid); err != nil {
-		return err
-	}
-
-	var vm vmModels.VM
-	if err := s.DB.
-		Preload("Stats").
-		Preload("Networks").
-		Preload("CPUPinning").
-		Preload("Storages").
-		Preload("Storages.Dataset").
-		First(&vm, "rid = ?", rid).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("vm_not_found: %d", rid)
-		}
-		return fmt.Errorf("failed_to_find_vm: %w", err)
-	}
-
-	vmRootDatasets := make(map[string]struct{})
-	preserveVMRootDatasets := make(map[string]struct{})
-
-	for _, storage := range vm.Storages {
-		rootDataset := ""
-		if storage.Pool != "" {
-			rootDataset = fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Pool, vm.RID)
-			vmRootDatasets[rootDataset] = struct{}{}
-		} else if storage.Dataset.Pool != "" {
-			rootDataset = fmt.Sprintf("%s/sylve/virtual-machines/%d", storage.Dataset.Pool, vm.RID)
-			vmRootDatasets[rootDataset] = struct{}{}
-		}
-
-		if rootDataset != "" {
-			if shouldPreserveVMStorageRootDataset(storage.Type, deleteRawDisks, deleteVolumes) {
-				preserveVMRootDatasets[rootDataset] = struct{}{}
-			}
-		}
-
-		if storage.Type == vmModels.VMStorageTypeDiskImage {
-			if err := s.DB.Delete(&storage).Error; err != nil {
-				return fmt.Errorf("failed_to_delete_storage: %w", err)
-			}
-
-			continue
-		}
-
-		var datasets []*gzfs.Dataset
-		var cSets []*gzfs.Dataset
-
-		var err error
-
-		switch storage.Type {
-		case vmModels.VMStorageTypeRaw:
-			if deleteRawDisks {
-				cSets, err = s.GZFS.ZFS.ListByType(
-					ctx,
-					gzfs.DatasetTypeFilesystem,
-					false,
-					fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d",
-						storage.Dataset.Pool,
-						vm.RID,
-						storage.ID,
-					),
-				)
-			}
-		case vmModels.VMStorageTypeZVol:
-			if deleteVolumes {
-				cSets, err = s.GZFS.ZFS.ListByType(
-					ctx,
-					gzfs.DatasetTypeVolume,
-					false,
-					fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-						storage.Dataset.Pool,
-						vm.RID,
-						storage.ID,
-					),
-				)
-			}
-		}
-
-		if err != nil {
-			if !strings.Contains(err.Error(), "dataset does not exist") {
-				logger.L.Error().Err(err).Msg("RemoveVM: failed to get zfs datasets for storage removal")
-			}
-		}
-
-		datasets = make([]*gzfs.Dataset, 0, len(cSets))
-		for _, ds := range cSets {
-			datasets = append(datasets, ds)
-		}
-
-		if storage.DatasetID != nil {
-			if err := s.DB.Delete(&storage.Dataset).Error; err != nil {
-				return fmt.Errorf("failed_to_delete_storage_dataset: %w", err)
-			}
-		}
-
-		if err := s.DB.Delete(&storage).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_storage: %w", err)
-		}
-
-		if len(datasets) > 0 {
-			for _, ds := range datasets {
-				err := ds.Destroy(ctx, true, false)
-				if err != nil {
-					logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy dataset %s", ds.Name)
-				}
-			}
-		}
-	}
-
-	for rootDataset := range vmRootDatasets {
-		if _, shouldPreserve := preserveVMRootDatasets[rootDataset]; shouldPreserve {
-			continue
-		}
-
-		hasChildren := false
-
-		fsSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeFilesystem, false, rootDataset)
-		if err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
-				logger.L.Error().Err(err).Msgf("RemoveVM: failed to list filesystem datasets under %s", rootDataset)
-			}
-		} else {
-			for _, ds := range fsSets {
-				if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
-					hasChildren = true
-					break
-				}
-			}
-		}
-
-		if !hasChildren {
-			volSets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false, rootDataset)
-			if err != nil {
-				if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
-					logger.L.Error().Err(err).Msgf("RemoveVM: failed to list volume datasets under %s", rootDataset)
-				}
-			} else {
-				for _, ds := range volSets {
-					if ds != nil && strings.HasPrefix(ds.Name, rootDataset+"/") {
-						hasChildren = true
-						break
-					}
-				}
-			}
-		}
-
-		if hasChildren {
-			continue
-		}
-
-		rootDS, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
-		if err != nil {
-			if !strings.Contains(strings.ToLower(err.Error()), "dataset does not exist") {
-				logger.L.Error().Err(err).Msgf("RemoveVM: failed to fetch root dataset %s", rootDataset)
-			}
-			continue
-		}
-
-		if err := rootDS.Destroy(ctx, true, false); err != nil {
-			logger.L.Error().Err(err).Msgf("RemoveVM: failed to destroy empty root dataset %s", rootDataset)
-		}
-	}
-
-	err := s.RemoveLvVm(rid)
-	if err != nil {
-		return fmt.Errorf("failed_to_remove_lv_vm: %w", err)
-	}
-
-	var usedMACS []uint
-
-	for _, network := range vm.Networks {
-		if network.MacID != nil {
-			usedMACS = append(usedMACS, *network.MacID)
-		}
-
-		if err := s.DB.Delete(&network).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_network: %w", err)
-		}
-	}
-
-	for _, stat := range vm.Stats {
-		if err := s.DB.Delete(&stat).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_vm_stat: %w", err)
-		}
-	}
-
-	if err := s.DB.Delete(&vm).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_vm: %w", err)
-	}
-
-	if err := s.cleanupVMMACObjects(cleanUpMacs, usedMACS); err != nil {
-		return err
-	}
-
-	for _, p := range vm.CPUPinning {
-		if err := s.DB.Delete(&p).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_cpupinning: %w", err)
-		}
-	}
-
-	logPath := fmt.Sprintf("/var/log/libvirt/bhyve/%d.log", rid)
-	err = utils.DeleteFileIfExists(logPath)
-	if err != nil {
-		logger.L.Error().Err(err).Msgf("RemoveVM: failed to remove log file %s", logPath)
-	}
-
-	return nil
+	_, err := s.RemoveVMWithWarnings(rid, cleanUpMacs, deleteRawDisks, deleteVolumes, ctx)
+	return err
 }
 
 func shouldPreserveVMStorageRootDataset(storageType vmModels.VMStorageType, deleteRawDisks bool, deleteVolumes bool) bool {
@@ -1402,10 +1220,6 @@ func (s *Service) cleanupVMMACObjects(cleanUpMacs bool, usedMACS []uint) error {
 }
 
 func (s *Service) PerformAction(rid uint, action string) error {
-	if err := s.requireVMMutationOwnership(rid); err != nil {
-		return err
-	}
-
 	var vm vmModels.VM
 
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {

@@ -9,25 +9,38 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
-	"github.com/alchemillahq/sylve/pkg/system/samba"
-	sambaUtils "github.com/alchemillahq/sylve/pkg/system/samba"
 	"github.com/alchemillahq/sylve/pkg/utils"
+
+	"gorm.io/gorm"
 )
 
 // Re-export opts types so handlers can use auth.CreateUserOpts without importing the interface package.
 type CreateUserOpts = serviceInterfaces.CreateUserOpts
 type EditUserOpts = serviceInterfaces.EditUserOpts
+
+func (s *Service) findUsernameConflict(username string, excludeUserID uint) (*models.User, error) {
+	query := s.DB.Where("username = ?", username)
+	if excludeUserID > 0 {
+		query = query.Where("id != ?", excludeUserID)
+	}
+
+	var existing models.User
+	if err := query.First(&existing).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed_to_check_username: %w", err)
+	}
+
+	return &existing, nil
+}
 
 func (s *Service) GetUserByUsername(username string) (*models.User, error) {
 	var user models.User
@@ -45,6 +58,22 @@ func (s *Service) ListUsers() ([]models.User, error) {
 	return users, nil
 }
 
+func (s *Service) ListUsersBySource(source string) ([]models.User, error) {
+	if source != "" && source != "local" && source != "pam" {
+		return nil, fmt.Errorf("invalid_user_source")
+	}
+
+	var users []models.User
+	query := s.DB.Preload("Groups")
+	if source != "" {
+		query = query.Where("source = ?", source)
+	}
+	if err := query.Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_list_users_by_source: %w", err)
+	}
+	return users, nil
+}
+
 func (s *Service) GetUserByID(id uint) (*models.User, error) {
 	var user models.User
 	if err := s.DB.Preload("Groups").First(&user, id).Error; err != nil {
@@ -54,11 +83,6 @@ func (s *Service) GetUserByID(id uint) (*models.User, error) {
 }
 
 func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
-	var basicSettings models.BasicSettings
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return fmt.Errorf("failed_to_get_basic_settings: %w", err)
-	}
-
 	if user.Email != "" && !utils.IsValidEmail(user.Email) {
 		return fmt.Errorf("invalid_email_format: %s", user.Email)
 	}
@@ -67,692 +91,209 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 		return fmt.Errorf("invalid_username_length: %s", user.Username)
 	}
 
-	if !user.DisablePassword {
-		if user.Password == "" || len(user.Password) < 8 || len(user.Password) > 128 {
-			return fmt.Errorf("invalid_password_length: %s", user.Password)
-		}
-	}
-
 	if !utils.IsValidUsername(user.Username) {
 		return fmt.Errorf("invalid_username_format: %s", user.Username)
 	}
 
-	// Validate UID uniqueness if specified
-	if user.UID > 0 {
-		var count int64
-		if err := s.DB.Model(&models.User{}).Where("uid = ?", user.UID).Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_check_uid_uniqueness: %w", err)
-		}
-		if count > 0 {
-			return fmt.Errorf("uid_already_in_use: %d", user.UID)
-		}
+	if user.Password == "" || len(user.Password) < 8 || len(user.Password) > 128 {
+		return fmt.Errorf("invalid_password_length")
 	}
 
-	var pwCopy string
-	if user.Password != "" {
-		pwCopy = user.Password
-		hashed, err := utils.HashPassword(user.Password)
-		if err != nil {
-			return fmt.Errorf("failed_to_hash_password: %w", err)
-		}
-		user.Password = hashed
-	}
-
-	exists, err := system.UnixUserExists(user.Username)
+	hashed, err := s.passwordHasher.Hash(user.Password)
 	if err != nil {
-		return fmt.Errorf("failed_to_check_unix_user: %w", err)
+		return fmt.Errorf("failed_to_hash_password: %w", err)
 	}
-	if exists {
-		return fmt.Errorf("user_already_exists: %s", user.Username)
-	}
+	user.Password = hashed
 
-	// Resolve primary group
-	primaryGroupName := "sylve_g"
-	if opts.NewPrimaryGroup {
-		if err := system.CreateUnixGroup(user.Username); err != nil {
-			return fmt.Errorf("failed_to_create_primary_group: %w", err)
+	user.Source = "local"
+	user.UID = 0
+	user.Shell = ""
+	user.HomeDirectory = ""
+	user.HomeDirPerms = 0
+	user.SSHPublicKey = ""
+	user.DisablePassword = false
+	user.Locked = false
+	user.DoasEnabled = false
+	user.PrimaryGroupID = nil
+
+	existing, err := s.findUsernameConflict(user.Username, 0)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		if existing.Source == "pam" {
+			return fmt.Errorf("a_pam_user_with_this_username_already_exists: %s", user.Username)
 		}
-		primaryGroupName = user.Username
-	} else if user.PrimaryGroupID != nil {
-		var pg models.Group
-		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err != nil {
-			return fmt.Errorf("primary_group_not_found: %d", *user.PrimaryGroupID)
-		}
-		primaryGroupName = pg.Name
-	}
-
-	// Apply defaults
-	if user.Shell == "" {
-		user.Shell = "/usr/sbin/nologin"
-	}
-	if user.HomeDirectory == "" {
-		user.HomeDirectory = "/nonexistent"
-	}
-	if user.HomeDirPerms == 0 {
-		user.HomeDirPerms = 493
-	}
-
-	createHome := user.HomeDirectory != "/nonexistent"
-
-	if err := system.CreateUnixUserFull(system.UnixUserCreateOpts{
-		Name:       user.Username,
-		Shell:      user.Shell,
-		Dir:        user.HomeDirectory,
-		Group:      primaryGroupName,
-		UID:        user.UID,
-		CreateHome: createHome,
-	}); err != nil {
-		return fmt.Errorf("failed_to_create_unix_user: %w", err)
-	}
-
-	// chmod home directory if it was created
-	if createHome {
-		if err := os.Chmod(user.HomeDirectory, os.FileMode(user.HomeDirPerms)); err != nil {
-			logger.L.Warn().Msgf("failed to chmod home directory %s: %v", user.HomeDirectory, err)
-		}
-	}
-
-	// Record new primary group in DB if created
-	if opts.NewPrimaryGroup {
-		newGroup := models.Group{Name: user.Username}
-		if err := s.DB.Create(&newGroup).Error; err != nil {
-			logger.L.Warn().Msgf("failed to create primary group record: %v", err)
-		} else {
-			user.PrimaryGroupID = &newGroup.ID
-		}
-	}
-
-	if slices.Contains(basicSettings.Services, models.SambaServer) && pwCopy != "" {
-		if err := samba.CreateSambaUser(user.Username, pwCopy); err != nil {
-			return fmt.Errorf("failed_to_create_samba_user: %w", err)
-		}
+		return fmt.Errorf("username_already_exists: %s", user.Username)
 	}
 
 	if err := s.DB.Create(user).Error; err != nil {
 		return fmt.Errorf("failed_to_create_user: %w", err)
 	}
 
-	// Associate user with new primary group in the many-to-many table
-	if opts.NewPrimaryGroup && user.PrimaryGroupID != nil {
-		var pg models.Group
-		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err == nil {
-			if err := s.DB.Model(&pg).Association("Users").Append(user); err != nil {
-				logger.L.Warn().Msgf("failed to associate user with primary group: %v", err)
-			}
-		}
-	}
-
-	// Add to sylve_g (always, unless primary group is sylve_g which handles it via pw)
-	var sylveGroup models.Group
-	if err := s.DB.Where("name = ?", "sylve_g").First(&sylveGroup).Error; err == nil {
-		if err := s.DB.Model(&sylveGroup).Association("Users").Append(user); err != nil {
-			return fmt.Errorf("failed_to_add_user_to_sylve_g_group: %w", err)
-		}
-	}
-
-	// Add aux groups
-	for _, gid := range opts.AuxGroupIDs {
-		var ag models.Group
-		if err := s.DB.First(&ag, gid).Error; err != nil {
-			logger.L.Warn().Msgf("auxiliary group %d not found, skipping", gid)
-			continue
-		}
-		if err := system.AddUserToGroup(user.Username, ag.Name); err != nil {
-			logger.L.Warn().Msgf("failed to add user to aux group %s: %v", ag.Name, err)
-		}
-		if err := s.DB.Model(&ag).Association("Users").Append(user); err != nil {
-			logger.L.Warn().Msgf("failed to add aux group association for %s: %v", ag.Name, err)
-		}
-	}
-
-	// Post-creation system actions
-	if user.SSHPublicKey != "" && createHome {
-		if err := system.WriteSSHAuthorizedKey(user.HomeDirectory, user.SSHPublicKey); err != nil {
-			logger.L.Warn().Msgf("failed to write SSH authorized key: %v", err)
-		}
-	}
-
-	if user.DoasEnabled {
-		if err := system.AddDoasPerm(user.Username); err != nil {
-			logger.L.Warn().Msgf("failed to add doas perm: %v", err)
-		}
-	}
-
-	if user.Locked {
-		if err := system.LockUnixUser(user.Username); err != nil {
-			logger.L.Warn().Msgf("failed to lock user: %v", err)
-		}
-	}
-
-	if user.DisablePassword {
-		if err := system.DisableUnixUserPassword(user.Username); err != nil {
-			logger.L.Warn().Msgf("failed to disable unix password: %v", err)
-		}
-	}
-
 	return nil
 }
 
 func (s *Service) GetNextUID() (int, error) {
-	return system.GetNextUnixUID()
+	uid, err := system.GetNextUnixUID()
+	if err != nil {
+		return 0, userDependencyError("unix_user_discovery_failed", err)
+	}
+	return uid, nil
 }
 
-func (s *Service) ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error) {
-	if isProtectedSystemUser(username) {
-		return nil, fmt.Errorf("cannot_import_system_user: %s", username)
-	}
-
-	var basicSettings models.BasicSettings
-	if err := s.DB.First(&basicSettings).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_get_basic_settings: %w", err)
-	}
-
-	// Verify the Unix user exists
-	info, err := system.GetUnixUserInfoFull(username)
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_get_unix_user_info: %w", err)
-	}
-
-	// Verify no DB user exists with this username
-	var existing models.User
-	if err := s.DB.Where("username = ?", username).First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("user_already_exists: %s", username)
-	}
-
-	// Validate password if provided
-	if password != "" && (len(password) < 8 || len(password) > 128) {
-		return nil, fmt.Errorf("invalid_password_length")
-	}
-
-	// Build the user model from Unix metadata
-	user := &models.User{
-		Username:      username,
-		FullName:      info.FullName,
-		UID:           info.UID,
-		Shell:         info.Shell,
-		HomeDirectory: info.HomeDir,
-		HomeDirPerms:  493,
-		Admin:         admin,
-	}
-
-	// Hash password if provided
-	var pwCopy string
-	if password != "" {
-		pwCopy = password
-		hashed, err := utils.HashPassword(password)
-		if err != nil {
-			return nil, fmt.Errorf("failed_to_hash_password: %w", err)
-		}
-		user.Password = hashed
-	}
-
-	// Resolve primary group by GID
-	primaryGroupName := "sylve_g"
-	if info.GID > 0 {
-		gidStr := strconv.Itoa(info.GID)
-		output, err := utils.RunCommand("/usr/bin/getent", "group", gidStr)
-		if err == nil {
-			parts := strings.Split(strings.TrimSpace(output), ":")
-			if len(parts) >= 1 && parts[0] != "" {
-				primaryGroupName = parts[0]
-			}
-		}
-		// Ensure primary group exists in DB
-		var pg models.Group
-		if err := s.DB.Where("name = ?", primaryGroupName).First(&pg).Error; err != nil {
-			pg = models.Group{Name: primaryGroupName}
-			if err := s.DB.Create(&pg).Error; err != nil {
-				logger.L.Warn().Msgf("failed to create primary group record: %v", err)
-			}
-		}
-		user.PrimaryGroupID = &pg.ID
-	}
-
-	// Create DB user record
-	if err := s.DB.Create(user).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_create_user_record: %w", err)
-	}
-
-	// Associate with primary group in many-to-many
-	if user.PrimaryGroupID != nil {
-		var pg models.Group
-		if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err == nil {
-			if err := s.DB.Model(&pg).Association("Users").Append(user); err != nil {
-				logger.L.Warn().Msgf("failed to associate user with primary group: %v", err)
-			}
-		}
-	}
-
-	// Read Unix group memberships
-	unixGroups, err := system.GetUnixUserGroups(username)
-	if err != nil {
-		logger.L.Warn().Msgf("failed to get unix groups for %s: %v", username, err)
-	} else {
-		for _, groupName := range unixGroups {
-			// Ensure group exists in DB
-			var ag models.Group
-			if err := s.DB.Where("name = ?", groupName).First(&ag).Error; err != nil {
-				ag = models.Group{Name: groupName}
-				if err := s.DB.Create(&ag).Error; err != nil {
-					logger.L.Warn().Msgf("failed to create group record for %s: %v", groupName, err)
-					continue
-				}
-			}
-			// Associate user with group
-			if err := s.DB.Model(&ag).Association("Users").Append(user); err != nil {
-				logger.L.Warn().Msgf("failed to associate user with group %s: %v", groupName, err)
-			}
-		}
-	}
-
-	// Add to sylve_g if not already associated
-	var sylveGroup models.Group
-	if err := s.DB.Where("name = ?", "sylve_g").First(&sylveGroup).Error; err == nil {
-		inSylveG := false
-		for _, g := range user.Groups {
-			if g.ID == sylveGroup.ID {
-				inSylveG = true
-				break
-			}
-		}
-		if !inSylveG {
-			if err := system.AddUserToGroup(user.Username, "sylve_g"); err != nil {
-				logger.L.Warn().Msgf("failed to add user to sylve_g unix group: %v", err)
-			}
-			if err := s.DB.Model(&sylveGroup).Association("Users").Append(user); err != nil {
-				logger.L.Warn().Msgf("failed to add user to sylve_g group association: %v", err)
-			}
-		}
-	}
-
-	// Post-import actions
-	if opts.NewPrimaryGroup {
-		if err := system.CreateUnixGroup(user.Username); err != nil {
-			logger.L.Warn().Msgf("failed to create new primary group: %v", err)
-		} else {
-			newGroup := models.Group{Name: user.Username}
-			if err := s.DB.Where("name = ?", user.Username).FirstOrCreate(&newGroup).Error; err != nil {
-				logger.L.Warn().Msgf("failed to create primary group record: %v", err)
-			} else {
-				if err := system.ChangeUnixUserPrimaryGroup(user.Username, user.Username); err != nil {
-					logger.L.Warn().Msgf("failed to change primary group: %v", err)
-				}
-				user.PrimaryGroupID = &newGroup.ID
-				if err := s.DB.Model(&newGroup).Association("Users").Append(user); err != nil {
-					logger.L.Warn().Msgf("failed to associate with new primary group: %v", err)
-				}
-				s.DB.Model(user).Update("primary_group_id", user.PrimaryGroupID)
-			}
-		}
-	}
-
-	if pwCopy != "" && slices.Contains(basicSettings.Services, models.SambaServer) {
-		if err := sambaUtils.CreateSambaUser(user.Username, pwCopy); err != nil {
-			logger.L.Warn().Msgf("failed to create samba user: %v", err)
-		}
-	}
-
-	return user, nil
+func (s *Service) CreatePamUser(user *models.User, opts CreateUserOpts) error {
+	return s.createPamUser(user, opts)
 }
 
-func (s *Service) ListImportableUnixUsers() ([]models.User, error) {
-	allUnix, err := system.ListAllUnixUsers()
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_list_unix_users: %w", err)
-	}
+func (s *Service) ImportUser(username, password string, admin bool) (*models.User, error) {
+	return s.importPamUser(username, password, admin)
+}
 
-	var dbUsernames []string
-	if err := s.DB.Model(&models.User{}).Pluck("username", &dbUsernames).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_list_db_users: %w", err)
-	}
-	dbSet := make(map[string]bool)
-	for _, name := range dbUsernames {
-		dbSet[name] = true
-	}
-
-	var importable []models.User
-	for _, u := range allUnix {
-		if u.UID < 1000 {
-			continue
-		}
-		if dbSet[u.Username] {
-			continue
-		}
-		if isProtectedSystemUser(u.Username) {
-			continue
-		}
-		importable = append(importable, models.User{
-			Username:      u.Username,
-			FullName:      u.FullName,
-			UID:           u.UID,
-			Shell:         u.Shell,
-			HomeDirectory: u.HomeDir,
-		})
-	}
-
-	return importable, nil
+func (s *Service) ListImportableUnixUsers() ([]ImportableUnixUser, error) {
+	return s.listImportablePamUsers()
 }
 
 func isProtectedSystemUser(username string) bool {
 	switch username {
-	case "nobody":
+	case "root", "nobody":
 		return true
+	default:
+		return false
 	}
-	return false
+}
+
+func (s *Service) revokeUserTokens(db *gorm.DB, userID uint) error {
+	return db.Where("user_id = ?", userID).Delete(&models.Token{}).Error
 }
 
 func (s *Service) DeleteUser(userID uint) error {
 	user, err := s.GetUserByID(userID)
 	if err != nil {
-		return fmt.Errorf("failed_to_get_user: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return userNotFoundError("user_not_found")
+		}
+		return userInternalError("user_lookup_failed", err)
 	}
 
-	if user.Username == "" {
-		return fmt.Errorf("user_not_found: %d", userID)
+	switch user.Username {
+	case "admin":
+		return userConflictError("cannot_delete_admin_user")
+	case "root":
+		return userConflictError("cannot_delete_root_user")
 	}
 
-	if user.Username == "admin" {
-		return fmt.Errorf("cannot_delete_admin_user")
+	if user.Source == "pam" {
+		if err := s.deletePamUser(user); err != nil {
+			return err
+		}
+	} else {
+		if err := s.deleteUserDatabaseState(user.ID); err != nil {
+			return userInternalError("user_delete_failed", err)
+		}
 	}
-
-	if user.Username == "root" {
-		return fmt.Errorf("cannot_delete_root_user")
-	}
-
-	if err := samba.DeleteSambaUser(user.Username); err != nil {
-		return fmt.Errorf("failed_to_delete_samba_user: %w", err)
-	}
-
-	if err := system.DeleteUnixUser(user.Username, true); err != nil {
-		return fmt.Errorf("failed_to_delete_unix_user: %w", err)
-	}
-
-	if err := s.DB.Where("user_id = ?", userID).Delete(&models.Token{}).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_user_tokens: %w", err)
-	}
-
-	if err := s.DB.Where("user_id = ?", userID).Delete(&models.WebAuthnCredential{}).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_user_passkeys: %w", err)
-	}
-
-	if err := s.DB.Where("user_id = ?", userID).Delete(&models.WebAuthnChallenge{}).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_user_passkey_challenges: %w", err)
-	}
-
-	if err := s.DB.Delete(user).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_user: %w", err)
-	}
-
+	s.loginMu.Lock()
+	delete(s.loginAttempts, user.Username)
+	s.loginMu.Unlock()
 	return nil
 }
 
 func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 	user, err := s.GetUserByID(userID)
 	if err != nil {
-		return fmt.Errorf("failed_to_get_user: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return userNotFoundError("user_not_found")
+		}
+		return userInternalError("user_lookup_failed", err)
 	}
 
 	if user.Username == "admin" {
 		if opts.Username != user.Username {
-			return fmt.Errorf("cannot_change_admin_username")
+			return userConflictError("cannot_change_admin_username")
+		}
+		if !opts.Admin {
+			return userConflictError("cannot_demote_admin_user")
+		}
+		if opts.Locked {
+			return userConflictError("cannot_lock_admin_user")
 		}
 	}
 
+	if user.Source == "pam" {
+		return s.editPamUser(user, opts)
+	}
+
+	if len(opts.Username) < 3 || len(opts.Username) > 128 {
+		return userValidationError("invalid_username_length")
+	}
 	if !utils.IsValidUsername(opts.Username) {
-		return fmt.Errorf("invalid_username_format: %s", opts.Username)
+		return userValidationError("invalid_username_format")
+	}
+	if opts.Email != "" && !utils.IsValidEmail(opts.Email) {
+		return userValidationError("invalid_email_format")
+	}
+	if opts.Password != "" && (len(opts.Password) < 8 || len(opts.Password) > 128) {
+		return userValidationError("invalid_password_length")
 	}
 
-	if user.Username != opts.Username {
-		if err := system.ChangeUsername(user.Username, opts.Username); err != nil {
-			return fmt.Errorf("failed_to_change_username: %w", err)
+	if opts.Username != user.Username {
+		existing, err := s.findUsernameConflict(opts.Username, userID)
+		if err != nil {
+			return userInternalError("username_check_failed", err)
 		}
-		user.Username = opts.Username
+		if existing != nil {
+			if existing.Source != user.Source {
+				return userConflictError("user_source_conflict")
+			}
+			return userConflictError("username_already_exists")
+		}
+	}
+
+	hashedPassword := ""
+	if opts.Password != "" {
+		hashedPassword, err = s.passwordHasher.Hash(opts.Password)
+		if err != nil {
+			return userInternalError("password_hash_failed", err)
+		}
+	}
+
+	updates := map[string]any{
+		"full_name": opts.FullName,
+		"username":  opts.Username,
+		"email":     opts.Email,
+		"admin":     opts.Admin,
+	}
+	if hashedPassword != "" {
+		updates["password"] = hashedPassword
+	}
+	revokeSessions := opts.Username != user.Username || opts.Admin != user.Admin || opts.Password != ""
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.User{}).Where("id = ?", user.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		if revokeSessions {
+			return s.revokeUserTokens(tx, user.ID)
+		}
+		return nil
+	}); err != nil {
+		return userInternalError("user_update_failed", err)
 	}
 
 	if opts.Password != "" {
-		if len(opts.Password) < 8 || len(opts.Password) > 128 {
-			return fmt.Errorf("invalid_password_length")
+		s.loginMu.Lock()
+		delete(s.loginAttempts, user.Username)
+		if opts.Username != user.Username {
+			delete(s.loginAttempts, opts.Username)
 		}
-		// Fix: hash the password before storing
-		hashed, err := utils.HashPassword(opts.Password)
-		if err != nil {
-			return fmt.Errorf("failed_to_hash_password: %w", err)
-		}
-		user.Password = hashed
-
-		err = sambaUtils.EditSambaUser(user.Username, opts.Password)
-		if err != nil {
-			logger.L.Error().Msgf("Failed to update Samba user '%s': %v", user.Username, err)
-		}
+		s.loginMu.Unlock()
 	}
-
-	if opts.Email != "" {
-		if !utils.IsValidEmail(opts.Email) {
-			return fmt.Errorf("invalid_email_format: %s", opts.Email)
-		}
-		user.Email = opts.Email
-	}
-
-	user.FullName = opts.FullName
-	user.Admin = opts.Admin
-
-	// UID
-	if opts.UID > 0 && opts.UID != user.UID {
-		if user.Username == "root" {
-			return fmt.Errorf("cannot_change_root_uid")
-		}
-		var count int64
-		if err := s.DB.Model(&models.User{}).Where("uid = ? AND id != ?", opts.UID, userID).Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_check_uid_uniqueness: %w", err)
-		}
-		if count > 0 {
-			return fmt.Errorf("uid_already_in_use: %d", opts.UID)
-		}
-		if err := system.ChangeUnixUserUID(user.Username, opts.UID); err != nil {
-			return fmt.Errorf("failed_to_change_uid: %w", err)
-		}
-		user.UID = opts.UID
-	}
-
-	// Shell
-	if opts.Shell != "" && opts.Shell != user.Shell {
-		if err := system.SetUnixUserShell(user.Username, opts.Shell); err != nil {
-			return fmt.Errorf("failed_to_set_shell: %w", err)
-		}
-		user.Shell = opts.Shell
-	}
-
-	// Home directory change
-	if opts.HomeDirectory != "" && opts.HomeDirectory != user.HomeDirectory {
-		createHome := opts.HomeDirectory != "/nonexistent"
-		if err := system.ChangeUnixUserHomeDir(user.Username, opts.HomeDirectory, createHome); err != nil {
-			return fmt.Errorf("failed_to_change_home_directory: %w", err)
-		}
-		user.HomeDirectory = opts.HomeDirectory
-	}
-
-	// Home directory permissions (only if home dir exists and is not /nonexistent)
-	if opts.HomeDirPerms > 0 && opts.HomeDirPerms != user.HomeDirPerms {
-		if user.HomeDirectory != "/nonexistent" && user.HomeDirectory != "" {
-			if err := os.Chmod(user.HomeDirectory, os.FileMode(opts.HomeDirPerms)); err != nil {
-				logger.L.Warn().Msgf("failed to chmod home directory %s: %v", user.HomeDirectory, err)
-			}
-		}
-		user.HomeDirPerms = opts.HomeDirPerms
-	}
-
-	// SSH Public Key
-	if opts.SSHPublicKey != user.SSHPublicKey {
-		if opts.SSHPublicKey != "" && user.HomeDirectory != "/nonexistent" && user.HomeDirectory != "" {
-			if err := system.WriteSSHAuthorizedKey(user.HomeDirectory, opts.SSHPublicKey); err != nil {
-				logger.L.Warn().Msgf("failed to write SSH key: %v", err)
-			}
-		} else if opts.SSHPublicKey == "" && user.HomeDirectory != "/nonexistent" {
-			if err := system.RemoveSSHAuthorizedKey(user.HomeDirectory); err != nil {
-				logger.L.Warn().Msgf("failed to remove SSH key: %v", err)
-			}
-		}
-		user.SSHPublicKey = opts.SSHPublicKey
-	}
-
-	// Disable password toggle
-	if opts.DisablePassword != user.DisablePassword {
-		if opts.DisablePassword {
-			if err := system.DisableUnixUserPassword(user.Username); err != nil {
-				logger.L.Warn().Msgf("failed to disable unix password: %v", err)
-			}
-		}
-		user.DisablePassword = opts.DisablePassword
-	}
-
-	// Locked toggle
-	if opts.Locked != user.Locked {
-		if opts.Locked {
-			if err := system.LockUnixUser(user.Username); err != nil {
-				return fmt.Errorf("failed_to_lock_user: %w", err)
-			}
-		} else {
-			if err := system.UnlockUnixUser(user.Username); err != nil {
-				return fmt.Errorf("failed_to_unlock_user: %w", err)
-			}
-		}
-		user.Locked = opts.Locked
-	}
-
-	// Doas toggle
-	if opts.DoasEnabled != user.DoasEnabled {
-		if opts.DoasEnabled {
-			if err := system.AddDoasPerm(user.Username); err != nil {
-				logger.L.Warn().Msgf("failed to add doas perm: %v", err)
-			}
-		} else {
-			if err := system.RemoveDoasPerm(user.Username); err != nil {
-				logger.L.Warn().Msgf("failed to remove doas perm: %v", err)
-			}
-		}
-		user.DoasEnabled = opts.DoasEnabled
-	}
-
-	// Primary group change
-	if opts.NewPrimaryGroup {
-		// Create a new group named after the user and set it as primary
-		groupName := user.Username
-		if !system.UnixGroupExists(groupName) {
-			if err := system.CreateUnixGroup(groupName); err != nil {
-				return fmt.Errorf("failed_to_create_primary_group: %w", err)
-			}
-		}
-		newGroup := models.Group{Name: groupName}
-		if err := s.DB.Where("name = ?", groupName).FirstOrCreate(&newGroup).Error; err != nil {
-			return fmt.Errorf("failed_to_create_primary_group_record: %w", err)
-		}
-		if err := system.ChangeUnixUserPrimaryGroup(user.Username, groupName); err != nil {
-			return fmt.Errorf("failed_to_change_primary_group: %w", err)
-		}
-		user.PrimaryGroupID = &newGroup.ID
-		// Associate the user with the new primary group in the many-to-many table
-		if err := s.DB.Model(&newGroup).Association("Users").Append(user); err != nil {
-			logger.L.Warn().Msgf("failed to associate user with new primary group: %v", err)
-		}
-	} else if opts.PrimaryGroupID != nil && (user.PrimaryGroupID == nil || *opts.PrimaryGroupID != *user.PrimaryGroupID) {
-		var pg models.Group
-		if err := s.DB.First(&pg, *opts.PrimaryGroupID).Error; err != nil {
-			return fmt.Errorf("primary_group_not_found: %d", *opts.PrimaryGroupID)
-		}
-		if err := system.ChangeUnixUserPrimaryGroup(user.Username, pg.Name); err != nil {
-			return fmt.Errorf("failed_to_change_primary_group: %w", err)
-		}
-		user.PrimaryGroupID = opts.PrimaryGroupID
-	} else if opts.PrimaryGroupID == nil && !opts.NewPrimaryGroup && user.PrimaryGroupID != nil {
-		// Clear primary group — revert to default (sylve_g)
-		if err := system.ChangeUnixUserPrimaryGroup(user.Username, "sylve_g"); err != nil {
-			logger.L.Warn().Msgf("failed to revert primary group to sylve_g: %v", err)
-		}
-		user.PrimaryGroupID = nil
-	}
-
-	// Sync auxiliary groups
-	if opts.AuxGroupIDs != nil {
-		// Build desired set (exclude primary group)
-		desiredAux := make(map[uint]bool)
-		for _, gid := range opts.AuxGroupIDs {
-			if user.PrimaryGroupID == nil || gid != *user.PrimaryGroupID {
-				desiredAux[gid] = true
-			}
-		}
-
-		currentAux := make(map[uint]bool)
-		for _, g := range user.Groups {
-			if user.PrimaryGroupID != nil && g.ID == *user.PrimaryGroupID {
-				continue
-			}
-			currentAux[g.ID] = true
-		}
-
-		// Remove from groups no longer desired
-		for gid := range currentAux {
-			if !desiredAux[gid] {
-				var ag models.Group
-				if err := s.DB.First(&ag, gid).Error; err != nil {
-					continue
-				}
-				if user.Username == "root" && ag.Name == "wheel" {
-					continue
-				}
-				if err := system.RemoveUserFromGroup(user.Username, ag.Name); err != nil {
-					logger.L.Warn().Msgf("failed to remove user from aux group %s: %v", ag.Name, err)
-				}
-				if err := s.DB.Model(&ag).Association("Users").Delete(user); err != nil {
-					logger.L.Warn().Msgf("failed to remove aux group association for %s: %v", ag.Name, err)
-				}
-			}
-		}
-
-		// Add to new groups
-		for gid := range desiredAux {
-			if !currentAux[gid] {
-				var ag models.Group
-				if err := s.DB.First(&ag, gid).Error; err != nil {
-					logger.L.Warn().Msgf("auxiliary group %d not found, skipping", gid)
-					continue
-				}
-				if err := system.AddUserToGroup(user.Username, ag.Name); err != nil {
-					logger.L.Warn().Msgf("failed to add user to aux group %s: %v", ag.Name, err)
-				}
-				if err := s.DB.Model(&ag).Association("Users").Append(user); err != nil {
-					logger.L.Warn().Msgf("failed to add aux group association for %s: %v", ag.Name, err)
-				}
-			}
-		}
-	}
-
-	// Chown home directory to user + primary group after all changes
-	if user.HomeDirectory != "" && user.HomeDirectory != "/nonexistent" {
-		primaryGroupName := "sylve_g"
-		if user.PrimaryGroupID != nil {
-			var pg models.Group
-			if err := s.DB.First(&pg, *user.PrimaryGroupID).Error; err == nil {
-				primaryGroupName = pg.Name
-			}
-		}
-		if err := system.ChownHome(user.HomeDirectory, user.UID, primaryGroupName); err != nil {
-			logger.L.Warn().Msgf("failed to chown home directory: %v", err)
-		}
-	}
-
-	// Omit Groups so GORM does not re-sync the stale in-memory many2many slice
-	// (associations are managed explicitly via the Association API above).
-	if err := s.DB.Omit("Groups").Save(user).Error; err != nil {
-		return fmt.Errorf("failed_to_edit_user: %w", err)
-	}
-
 	return nil
 }
 
 func (s *Service) UpdateLastUsageTime(userID uint) error {
 	now := time.Now()
 
-	// Try to update only if last_login_time < now - 30s
+	// Try to update only if last_login_time < now - 30s.
 	result := s.DB.
 		Model(&models.User{}).
 		Where("id = ? AND last_login_time < ?", userID, now.Add(-30*time.Second)).

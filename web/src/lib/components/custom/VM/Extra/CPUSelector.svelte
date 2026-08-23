@@ -7,12 +7,15 @@
 	import { toast } from 'svelte-sonner';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Progress from '$lib/components/ui/progress/progress.svelte';
-	import { resource, watch, watchOnce } from 'runed';
+	import { resource } from 'runed';
 	import { plural } from '$lib/utils';
-	import { getCPUInfo } from '$lib/api/info/cpu';
+	import { getCPUInfoResult } from '$lib/api/info/cpu';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm?: VM | null;
 		vms: SimpleVm[];
 		pinnedCPUs: CPUPin[];
@@ -34,6 +37,7 @@
 
 	let {
 		open = $bindable(),
+		node,
 		vm,
 		vms,
 		pinnedCPUs = $bindable(),
@@ -41,54 +45,22 @@
 	}: Props = $props();
 
 	let selectedSocket = $state<string | null>(null);
-	let selectedCores = $state<Set<string>>(new Set());
+	const selectedCores = new SvelteSet<string>();
 	let step = $state<'socket' | 'cores'>('socket');
-	let allSelections = $state<Map<number, number[]>>(new Map());
+	const allSelections = new SvelteMap<number, number[]>();
 	let selectedSocketData = $state<SocketData | undefined>(undefined);
-	let currentVmId = $state<number | null>(vm?.id ?? null);
-	let initialPinnedCount = $derived.by(() => {
-		if (pinnedCPUs && pinnedCPUs.length > 0) {
-			return pinnedCPUs.reduce((total, pin) => total + pin.cores.length, 0);
-		}
-
-		if (vm?.cpuPinning && vm.cpuPinning.length > 0) {
-			return vm.cpuPinning.reduce((total, pin) => total + pin.hostCpu.length, 0);
-		}
-		return 0;
-	});
-
-	let lastConfirmedPinnedCount = $state<number>(initialPinnedCount);
-	let hasPinnedOverride = $state<boolean>(false);
+	let displayPinnedCount = $derived(pinnedCPUs.reduce((total, pin) => total + pin.cores.length, 0));
 
 	let cpuInfo = resource(
-		() => 'cpu-info',
-		async () => {
-			const result = await getCPUInfo('current');
+		() => node,
+		async (hostname) => {
+			const result = await getCPUInfoResult({ hostname });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return null;
+			}
 			return result;
 		}
-	);
-
-	watch(
-		() => hasPinnedOverride,
-		(newHasPinnedOverride) => {
-			if (!newHasPinnedOverride) {
-				lastConfirmedPinnedCount = initialPinnedCount;
-			}
-		}
-	);
-
-	watch(
-		() => vm?.id ?? null,
-		(newVmId) => {
-			if (newVmId !== currentVmId) {
-				currentVmId = newVmId;
-				hasPinnedOverride = false;
-			}
-		}
-	);
-
-	let displayPinnedCount = $derived.by(() =>
-		hasPinnedOverride ? lastConfirmedPinnedCount : initialPinnedCount
 	);
 
 	let usedPins = $derived.by(() => {
@@ -106,26 +78,6 @@
 		}
 		return pins;
 	});
-
-	watch([() => allSelections.size, () => pinnedCPUs.length], ([selectedSize], [pinnedSize]) => {
-		if (selectedSize === 0) return;
-		if (pinnedSize && pinnedSize > 0) {
-			for (const pin of pinnedCPUs) {
-				allSelections.set(pin.socket, pin.cores);
-			}
-		}
-	});
-
-	watchOnce(
-		() => vm?.cpuPinning,
-		(cpuPinning) => {
-			if (cpuPinning) {
-				for (const pin of cpuPinning) {
-					allSelections.set(pin.hostSocket, pin.hostCpu);
-				}
-			}
-		}
-	);
 
 	let sockets = $derived.by<SocketData[]>(() => {
 		if (!cpuInfo || !cpuInfo.current) return [];
@@ -174,6 +126,26 @@
 		) || []
 	);
 
+	let selectedElsewhereCount = $derived.by(() => {
+		const currentSocket = selectedSocket === null ? null : parseInt(selectedSocket);
+		return Array.from(allSelections.entries()).reduce(
+			(total, [socket, cores]) => (socket === currentSocket ? total : total + cores.length),
+			0
+		);
+	});
+
+	const handleOpen = () => {
+		allSelections.clear();
+		for (const pin of pinnedCPUs) {
+			allSelections.set(pin.socket, [...pin.cores]);
+		}
+		step = 'socket';
+		selectedSocket = null;
+		selectedSocketData = undefined;
+		selectedCores.clear();
+		open = true;
+	};
+
 	const handleSocketSelect = (socketId: string) => {
 		selectedSocket = socketId;
 		step = 'cores';
@@ -184,43 +156,27 @@
 
 		selectedSocketData = socketData;
 
-		const currentVmId = vm ? vm.id : null;
-
-		let currentCoreIds: string[] = [];
-		if (currentVmId && vm?.cpuPinning) {
-			const pinForSocket = vm.cpuPinning.find((p) => p.hostSocket === socketIndex);
-			if (pinForSocket) {
-				currentCoreIds = pinForSocket.hostCpu.map((c) => `${socketIndex}-core-${c}`);
-			}
-		}
-
 		const savedSelection =
 			allSelections.get(socketIndex)?.map((c) => `${socketIndex}-core-${c}`) || [];
-
-		if (currentVmId && savedSelection.length === 0) {
-			selectedCores = new Set(currentCoreIds);
-		} else {
-			selectedCores = new Set(savedSelection);
-		}
+		selectedCores.clear();
+		for (const coreID of savedSelection) selectedCores.add(coreID);
 	};
 
 	const handleCoreToggle = (coreId: string) => {
 		if (
 			coreSelectionLimit !== undefined &&
-			selectedCores.size >= coreSelectionLimit &&
+			selectedElsewhereCount + selectedCores.size >= coreSelectionLimit &&
 			!selectedCores.has(coreId)
 		) {
 			toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
 			return;
 		}
 
-		const newSelection = new Set(selectedCores);
-		if (newSelection.has(coreId)) {
-			newSelection.delete(coreId);
+		if (selectedCores.has(coreId)) {
+			selectedCores.delete(coreId);
 		} else {
-			newSelection.add(coreId);
+			selectedCores.add(coreId);
 		}
-		selectedCores = newSelection;
 	};
 
 	const persistSocketSelection = () => {
@@ -228,15 +184,11 @@
 
 		const socketId = parseInt(selectedSocket);
 		const coreIds = Array.from(selectedCores).map((coreId) => parseInt(coreId.split('-core-')[1]));
-		const newSelections = new Map(allSelections);
-
 		if (coreIds.length > 0) {
-			newSelections.set(socketId, coreIds);
+			allSelections.set(socketId, coreIds);
 		} else {
-			newSelections.delete(socketId);
+			allSelections.delete(socketId);
 		}
-
-		allSelections = newSelections;
 	};
 
 	const handleBack = () => {
@@ -246,7 +198,7 @@
 
 		step = 'socket';
 		selectedSocket = null;
-		selectedCores = new Set();
+		selectedCores.clear();
 		selectedSocketData = undefined;
 	};
 
@@ -256,8 +208,8 @@
 			step = 'socket';
 			selectedSocket = null;
 			selectedSocketData = undefined;
-			selectedCores = new Set();
-			allSelections = new Map();
+			selectedCores.clear();
+			allSelections.clear();
 		}, 200);
 	};
 
@@ -270,13 +222,19 @@
 			persistSocketSelection();
 		}
 
+		const totalSelected = Array.from(allSelections.values()).reduce(
+			(total, cores) => total + cores.length,
+			0
+		);
+		if (coreSelectionLimit !== undefined && totalSelected > coreSelectionLimit) {
+			toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
+			return;
+		}
+
 		pinnedCPUs = Array.from(allSelections.entries()).map(([socket, cores]) => ({
 			socket,
 			cores
 		}));
-
-		lastConfirmedPinnedCount = pinnedCPUs.reduce((sum, pin) => sum + pin.cores.length, 0);
-		hasPinnedOverride = true;
 
 		handleClose();
 	};
@@ -290,7 +248,7 @@
 		size="sm"
 		variant="outline"
 		class="flex h-9 w-full justify-start"
-		onclick={() => (open = true)}
+		onclick={handleOpen}
 		disabled={cpuInfo.loading || !cpuInfo.current}
 	>
 		{#if cpuInfo.loading}
@@ -405,7 +363,7 @@
 
 				<div class="space-y-3">
 					<div class="flex flex-row gap-1 text-sm">
-						<p>Selected: {selectedCores.size},</p>
+						<p>Selected: {selectedElsewhereCount + selectedCores.size},</p>
 						<p>Limit: {coreSelectionLimit}</p>
 					</div>
 				</div>
@@ -419,7 +377,7 @@
 						{@const disableSelect =
 							!isAvailable ||
 							(coreSelectionLimit !== undefined &&
-								selectedCores.size >= coreSelectionLimit &&
+								selectedElsewhereCount + selectedCores.size >= coreSelectionLimit &&
 								!isSelected)}
 
 						<button
@@ -464,11 +422,14 @@
 						size="sm"
 						onclick={() => {
 							const max =
-								coreSelectionLimit !== undefined ? coreSelectionLimit : availableCores.length;
-							if (coreSelectionLimit !== undefined && availableCores.length > coreSelectionLimit) {
+								coreSelectionLimit !== undefined
+									? Math.max(0, coreSelectionLimit - selectedElsewhereCount)
+									: availableCores.length;
+							if (coreSelectionLimit !== undefined && availableCores.length > max) {
 								toast.warning(`You can only select up to ${coreSelectionLimit} cores.`);
 							}
-							selectedCores = new Set(availableCores.map((core) => core.id).slice(0, max));
+							selectedCores.clear();
+							for (const core of availableCores.slice(0, max)) selectedCores.add(core.id);
 						}}
 					>
 						Select All Available
@@ -477,7 +438,7 @@
 						variant="outline"
 						size="sm"
 						onclick={() => {
-							selectedCores = new Set();
+							selectedCores.clear();
 						}}
 					>
 						Clear Selection
@@ -499,10 +460,8 @@
 					)}
 					<Button onclick={handleConfirm}>
 						{vm ? 'Update ' : 'Apply '}
-						{totalCores}{' '}
-						{plural(totalCores, ['Core', 'Core #'])}
-						{' from '}
-						{allSelections.size}{' '}
+						{totalCores}
+						{plural(totalCores, ['Core', 'Core #'])} from {allSelections.size}
 						{plural(allSelections.size, ['Socket', 'Socket #'])}
 					</Button>
 				{:else if pinnedCPUs.length > 0 || (vm?.cpuPinning && vm.cpuPinning.length > 0)}

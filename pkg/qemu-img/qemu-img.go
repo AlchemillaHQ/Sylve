@@ -1,5 +1,7 @@
 package qemuimg
 
+const qemuImgPath = "/usr/local/bin/qemu-img"
+
 type QemuImg interface {
 	CheckTools() error
 	Info(path string) (*ImageInfo, error)
@@ -8,6 +10,6 @@ type QemuImg interface {
 }
 
 func (q *qimg) CheckTools() error {
-	_, err := q.run(nil, nil, "qemu-img", "--version")
+	_, err := q.run(nil, nil, qemuImgPath, "--version")
 	return err
 }

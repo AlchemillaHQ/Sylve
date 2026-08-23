@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -243,10 +244,6 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
-func (s *Service) getClusterToken(hostname string) (string, error) {
-	return s.AuthService.CreateClusterJWT(0, hostname, "", "")
-}
-
 func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoServiceInterfaces.NodeInfo, error) {
 	var nodeInfo infoServiceInterfaces.NodeInfo
 
@@ -418,7 +415,11 @@ func (s *Service) PopulateClusterNodes() error {
 		return err
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	serviceReadToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
+	if err != nil {
+		return err
+	}
+	internalControlToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
 	if err != nil {
 		return err
 	}
@@ -429,7 +430,7 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 	cfg := cfgFuture.Configuration()
 
-	current := s.collectCurrentClusterInfo(cfg, clusterToken)
+	current := s.collectCurrentClusterInfo(cfg, serviceReadToken)
 
 	changed, err := s.persistCurrentClusterNodes(current)
 	if err != nil {
@@ -490,37 +491,7 @@ func (s *Service) PopulateClusterNodes() error {
 		}
 	}
 
-	payloadBytes, _ := json.Marshal(syncPayload)
-	headers := map[string]string{
-		"Content-Type":    "application/json",
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	for _, server := range cfg.Servers {
-		if server.Address == s.Raft.Leader() {
-			continue
-		}
-
-		go func(addr string) {
-			host := raftAddressHost(addr)
-			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
-
-			_, statusCode, err := utils.HTTPPostJSONWithTimeout(
-				url,
-				payloadBytes,
-				headers,
-				5*time.Second,
-			)
-			if err != nil {
-				logger.L.Debug().
-					Err(err).
-					Str("peer_addr", addr).
-					Str("url", url).
-					Int("status_code", statusCode).
-					Msg("PopulateClusterNodes: failed to sync health payload to peer")
-			}
-		}(string(server.Address))
-	}
+	s.fanOutHealthSync(syncPayload, internalControlToken, cfg, "PopulateClusterNodes")
 
 	return nil
 }
@@ -639,7 +610,7 @@ func (s *Service) fastStatusCheckFollower(leaderID raft.ServerID, peerIDs []stri
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: non-leader failed to get cluster token")
 		return
@@ -735,7 +706,7 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
 		s.setPeersOfflineWithHysteresis(peerIDs, now)
@@ -762,6 +733,8 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 		Int64("offline_rows", offlineRows).
 		Msg("FastStatusCheck: applied leader peer status updates")
 	publishLeftPanelRefresh()
+
+	go s.syncClusterHealthToFollowers()
 }
 
 func (s *Service) FastStatusCheck() {
@@ -811,7 +784,81 @@ func (s *Service) FastStatusCheck() {
 	s.fastStatusCheckLeader(peerIDs, peerAddrs, now)
 }
 
-func (s *Service) StartClusterMonitors() {
+func (s *Service) syncClusterHealthToFollowers() {
+	if s.Raft == nil || s.Raft.State() != raft.Leader || s.AuthService == nil {
+		return
+	}
+
+	selfHostname, err := utils.GetSystemHostname()
+	if err != nil {
+		return
+	}
+
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
+	if err != nil {
+		return
+	}
+
+	var nodes []clusterModels.ClusterNode
+	if err := s.DB.Find(&nodes).Error; err != nil || len(nodes) == 0 {
+		return
+	}
+
+	syncPayload := make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
+	for _, node := range nodes {
+		syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
+			NodeUUID:    node.NodeUUID,
+			Hostname:    node.Hostname,
+			API:         node.API,
+			Status:      node.Status,
+			CPU:         node.CPU,
+			CPUUsage:    node.CPUUsage,
+			Memory:      node.Memory,
+			MemoryUsage: node.MemoryUsage,
+			Disk:        node.Disk,
+			DiskUsage:   node.DiskUsage,
+			GuestIDs:    node.GuestIDs,
+		})
+	}
+
+	cfgFuture := s.Raft.GetConfiguration()
+	if err := cfgFuture.Error(); err != nil {
+		return
+	}
+	cfg := cfgFuture.Configuration()
+
+	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "syncClusterHealthToFollowers")
+}
+
+func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealthSync, clusterToken string, cfg raft.Configuration, callerName string) {
+	payloadBytes, _ := json.Marshal(payload)
+	headers := map[string]string{
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	}
+
+	for _, server := range cfg.Servers {
+		if server.Address == s.Raft.Leader() {
+			continue
+		}
+
+		go func(addr string) {
+			host := raftAddressHost(addr)
+			url := fmt.Sprintf("https://%s:%d/api/intra-cluster/sync-health", host, ClusterEmbeddedHTTPSPort)
+			_, statusCode, err := utils.HTTPPostJSONWithTimeout(url, payloadBytes, headers, 5*time.Second)
+			if err != nil {
+				logger.L.Debug().
+					Err(err).
+					Str("peer_addr", addr).
+					Str("url", url).
+					Int("status_code", statusCode).
+					Msgf("%s: failed to sync health payload to peer", callerName)
+			}
+		}(string(server.Address))
+	}
+}
+
+func (s *Service) StartClusterMonitors(ctx context.Context) {
 	s.monitorOnce.Do(func() {
 		runPopulateClusterNodes := func() {
 			if err := s.PopulateClusterNodes(); err != nil {
@@ -827,17 +874,44 @@ func (s *Service) StartClusterMonitors() {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				s.FastStatusCheck()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.FastStatusCheck()
+				}
 			}
 		}()
 
 		go func() {
-			ticker := time.NewTicker(60 * time.Second)
+			ticker := time.NewTicker(clusterNodePopulateInterval)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				runPopulateClusterNodes()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runPopulateClusterNodes()
+				}
+			}
+		}()
+
+		go func() {
+			timer := time.NewTimer(replicatedRetentionInitialDelay)
+			defer timer.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
+						logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+					}
+					timer.Reset(replicatedRetentionInterval)
+				}
 			}
 		}()
 	})

@@ -18,9 +18,9 @@ type ISCSIInitiator struct {
 	InitiatorName string    `json:"initiatorName"`
 	AuthMethod    string    `json:"authMethod" gorm:"default:'None'"`
 	CHAPName      string    `json:"chapName"`
-	CHAPSecret    string    `json:"chapSecret"`
+	CHAPSecret    string    `json:"-"`
 	TgtCHAPName   string    `json:"tgtChapName"`
-	TgtCHAPSecret string    `json:"tgtChapSecret"`
+	TgtCHAPSecret string    `json:"-"`
 	CreatedAt     time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt     time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
@@ -49,9 +49,9 @@ type ISCSITarget struct {
 	Alias            string              `json:"alias"`
 	AuthMethod       string              `json:"authMethod" gorm:"default:'None'"`
 	CHAPName         string              `json:"chapName"`
-	CHAPSecret       string              `json:"chapSecret"`
+	CHAPSecret       string              `json:"-"`
 	MutualCHAPName   string              `json:"mutualChapName"`
-	MutualCHAPSecret string              `json:"mutualChapSecret"`
+	MutualCHAPSecret string              `json:"-"`
 	Portals          []ISCSITargetPortal `json:"portals" gorm:"foreignKey:TargetID"`
 	LUNs             []ISCSITargetLUN    `json:"luns" gorm:"foreignKey:TargetID"`
 	CreatedAt        time.Time           `json:"createdAt" gorm:"autoCreateTime"`

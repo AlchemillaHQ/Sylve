@@ -10,9 +10,11 @@ package cluster
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
@@ -25,8 +27,64 @@ import (
 	raftboltdb "github.com/hashicorp/raft-boltdb/v2"
 )
 
+func (s *Service) initRaftStores(dataDir string, rw io.Writer) (raft.LogStore, raft.StableStore, raft.SnapshotStore, error) {
+	logStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-log.db", dataDir))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_log_store")
+	}
+
+	stableStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-stable.db", dataDir))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_stable_store")
+	}
+
+	snapStore, err := raft.NewFileSnapshotStore(dataDir, 2, rw)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed_to_create_snap_store")
+	}
+
+	return logStore, stableStore, snapStore, nil
+}
+
+func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, error) {
+	bindAddr := RaftServerAddress(raftIP)
+	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+	if err != nil {
+		return nil, fmt.Errorf("Could not resolve address: %s", err)
+	}
+
+	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, raftTransportMaxPool, raftTransportTimeout, os.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
+	}
+
+	return t, nil
+}
+
 func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
-	if config.ParsedConfig.Raft.Reset {
+	return s.setupRaft(bootstrap, fsm)
+}
+
+func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
+	var c clusterModels.Cluster
+	if err := s.DB.First(&c).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
+	}
+	return s.setupRaftAtIP(bootstrap, fsm, c.RaftIP)
+}
+
+func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*raft.Raft, error) {
+	if fsm == nil {
+		return nil, fmt.Errorf("raft_fsm_required")
+	}
+	s.raftFSM = fsm
+	if dispatcher, ok := fsm.(*clusterModels.FSMDispatcher); ok {
+		s.stateFSM = dispatcher
+	} else {
+		s.stateFSM = nil
+	}
+
+	if config.ParsedConfig != nil && config.ParsedConfig.Raft.Reset {
 		if err := s.CleanRaftDir(); err != nil {
 			return nil, fmt.Errorf("failed_to_clean_raft_dir: %w", err)
 		}
@@ -44,81 +102,58 @@ func (s *Service) SetupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 		return nil, fmt.Errorf("unable_to_get_node_detail")
 	}
 
-	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
-		return nil, fmt.Errorf("failed_to_get_cluster_info: %v", err)
-	}
-
-	port := ClusterRaftPort
-
-	err := network.TryBindToPort(c.RaftIP, port, "tcp")
-	if err != nil {
+	if err := network.TryBindToPort(raftIP, ClusterRaftPort, "tcp"); err != nil {
 		return nil, fmt.Errorf("failed_to_bind_raft_port: %v", err)
 	}
 
 	cfg := raft.DefaultConfig()
 	cfg.LocalID = raft.ServerID(detail.NodeID)
-	cfg.SnapshotThreshold = 1024
+	cfg.SnapshotThreshold = raftSnapshotThreshold
 
 	raftLog := logger.NewZerologHCLog(logger.L, "raft")
 	raftLog.SetLevel(hclog.Error)
 	cfg.Logger = raftLog
-
-	rw := logger.StandardWriterAdapter(logger.L)
 
 	dataDir, err := config.GetRaftPath()
 	if err != nil {
 		return nil, fmt.Errorf("no_raft_path")
 	}
 
-	logStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-log.db", dataDir))
+	rw := logger.StandardWriterAdapter(logger.L)
+	logStore, stableStore, snapStore, err := s.initRaftStores(dataDir, rw)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_log_store")
+		return nil, err
 	}
 
-	stableStore, err := raftboltdb.NewBoltStore(fmt.Sprintf("%s/raft-stable.db", dataDir))
+	t, err := s.initRaftTransport(raftIP)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_stable_store")
+		return nil, err
 	}
 
-	snapStore, err := raft.NewFileSnapshotStore(dataDir, 2, rw)
+	raftAddr := raft.ServerAddress(RaftServerAddress(raftIP))
+	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, t)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_snap_store")
-	}
-
-	bindAddr := RaftServerAddress(c.RaftIP)
-	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
-	if err != nil {
-		return nil, fmt.Errorf("Could not resolve address: %s", err)
-	}
-
-	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, 3, 10*time.Second, os.Stdout)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
-	}
-
-	raftAddr := raft.ServerAddress(bindAddr)
-	s.RaftID = &raftAddr
-	s.NodeID = detail.NodeID
-
-	s.Transport = t
-
-	r, err := raft.NewRaft(cfg, fsm, logStore, stableStore, snapStore, s.Transport)
-	if err != nil {
+		_ = t.Close()
 		return nil, fmt.Errorf("failed_to_create_raft: %v", err)
 	}
 
 	if bootstrap {
-		cfg := raft.Configuration{
+		bootstrapConfig := raft.Configuration{
 			Servers: []raft.Server{{
 				ID:      raft.ServerID(detail.NodeID),
-				Address: s.Transport.LocalAddr(),
+				Address: t.LocalAddr(),
 			}},
 		}
-		r.BootstrapCluster(cfg)
+		if err := r.BootstrapCluster(bootstrapConfig).Error(); err != nil {
+			_ = r.Shutdown().Error()
+			_ = t.Close()
+			return nil, fmt.Errorf("failed_to_bootstrap_raft: %w", err)
+		}
 	}
 
+	s.RaftID = &raftAddr
+	s.NodeID = detail.NodeID
+	s.Transport = t
 	s.Raft = r
 
 	return r, nil
@@ -156,7 +191,7 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	raftDir, _ := config.GetRaftPath()
 	if hasExistingRaftState(raftDir) {
 		logger.L.Info().Msg("Found existing Raft state; starting Raft (non-bootstrap restore).")
-		_, err := s.SetupRaft(false, fsm)
+		_, err := s.setupRaft(false, fsm)
 		if err != nil {
 			return err
 		}
@@ -170,7 +205,7 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 		logger.L.Info().Msg("Starting Raft in non-bootstrap mode (clustered follower).")
 	}
 
-	_, err := s.SetupRaft(bootstrap, fsm)
+	_, err := s.setupRaft(bootstrap, fsm)
 	if err != nil {
 		return err
 	}
@@ -179,8 +214,48 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 }
 
 func (s *Service) RemovePeer(id raft.ServerID) error {
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+
+	if s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("not_leader")
+	}
+
+	nodeID := strings.TrimSpace(string(id))
+	if nodeID == "" {
+		return fmt.Errorf("peer_node_id_required")
+	}
+	configurationFuture := s.Raft.GetConfiguration()
+	if err := configurationFuture.Error(); err != nil {
+		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
+	}
+	currentMember := false
+	for _, server := range configurationFuture.Configuration().Servers {
+		if strings.TrimSpace(string(server.ID)) == nodeID {
+			currentMember = true
+			break
+		}
+	}
+	if !currentMember {
+		return nil
+	}
+	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		return fmt.Errorf("peer_removal_leader_barrier_failed: %w", err)
+	}
+	dependencies, err := s.peerRemovalDependencies(nodeID)
+	if err != nil {
+		return err
+	}
+	if len(dependencies) != 0 {
+		return &PeerRemovalBlockedError{
+			Conflict: PeerRemovalConflict{
+				NodeID:       nodeID,
+				Dependencies: dependencies,
+			},
+		}
 	}
 
 	fut := s.Raft.RemoveServer(id, 0, 8*time.Second)
@@ -238,7 +313,7 @@ func (s *Service) ResetRaftNode() error {
 			return fmt.Errorf("failed_to_get_system_hostname: %v", err)
 		}
 
-		clusterToken, err := s.getClusterToken(hostname)
+		clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
 		if err != nil {
 			return fmt.Errorf("failed_to_get_cluster_token: %v", err)
 		}
@@ -254,7 +329,7 @@ func (s *Service) ResetRaftNode() error {
 		}
 
 		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s/api/cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
+			fmt.Sprintf("https://%s/api/intra-cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
 
 		if err != nil {
 			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)

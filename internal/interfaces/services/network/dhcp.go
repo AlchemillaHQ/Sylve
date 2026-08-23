@@ -24,19 +24,18 @@ type CreateDHCPRangeRequest struct {
 	EndIP          string `json:"endIp"`
 	StandardSwitch *uint  `json:"standardSwitch"`
 	ManualSwitch   *uint  `json:"manualSwitch"`
-	Expiry         *uint  `json:"expiry"`
+	Expiry         *uint  `json:"expiry" binding:"required"`
 	RAOnly         *bool  `json:"raOnly"`
 	SLAAC          *bool  `json:"slaac"`
 }
 
 type ModifyDHCPRangeRequest struct {
-	ID             uint   `json:"id"`
 	Type           string `json:"type" binding:"required,oneof=ipv4 ipv6"`
 	StartIP        string `json:"startIp"`
 	EndIP          string `json:"endIp"`
 	StandardSwitch *uint  `json:"standardSwitch"`
 	ManualSwitch   *uint  `json:"manualSwitch"`
-	Expiry         *uint  `json:"expiry"`
+	Expiry         *uint  `json:"expiry" binding:"required"`
 	RAOnly         *bool  `json:"raOnly"`
 	SLAAC          *bool  `json:"slaac"`
 }
@@ -66,7 +65,6 @@ type CreateStaticMapRequest struct {
 }
 
 type ModifyStaticMapRequest struct {
-	ID           uint   `json:"id" binding:"required"`
 	Hostname     string `json:"hostname"`
 	IPObjectID   *uint  `json:"ipId"`
 	MACObjectID  *uint  `json:"macId"`

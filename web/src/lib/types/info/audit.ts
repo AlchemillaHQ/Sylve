@@ -22,12 +22,15 @@ export const AuditRecordSchema = z.object({
 		z.object({
 			method: z.string(),
 			path: z.string(),
+			query: z.string().optional(),
 			body: z.any().optional(),
 			response: z.any().optional()
 		})
 	),
-
 	status: z.string(),
+	asyncJobId: z.number().nullable().optional(),
+	asyncJobType: z.string().optional(),
+	error: z.string().optional(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

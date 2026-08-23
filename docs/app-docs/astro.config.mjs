@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import svelte from '@astrojs/svelte';
 
@@ -11,6 +12,7 @@ export default defineConfig({
     output: 'static',
     site,
     integrations: [
+        sitemap(),
         starlight({
             title: 'Sylve',
             defaultLocale: 'root',
@@ -20,11 +22,11 @@ export default defineConfig({
                     lang: 'en',
                 },
             },
+            favicon: '/favicon.svg',
             logo: {
                 light: './src/assets/logo-black.svg',
                 dark: './src/assets/logo-white.svg',
             },
-            favicon: '/white.svg',
             social: [
                 {
                     icon: 'github',
@@ -43,15 +45,15 @@ export default defineConfig({
                     items: [
                         'docs',
                         'getting-started',
-                        {
-                            label: 'Contributing',
-                            collapsed: false,
-                            items: [
-                                'guides/contributing/code-contributions',
-                                'guides/contributing/docs-contributions',
-                                'guides/contributing/translations',
-                            ],
-                        },
+                    ],
+                },
+                {
+                    label: 'Contributing',
+                    collapsed: false,
+                    items: [
+                        'guides/contributing/code-contributions',
+                        'guides/contributing/docs-contributions',
+                        'guides/contributing/translations',
                     ],
                 },
                 {
@@ -59,6 +61,33 @@ export default defineConfig({
                     collapsed: false,
                     items: [
                         'guides',
+                        {
+                            label: 'Data Center',
+                            collapsed: true,
+                            items: [
+                                'guides/data-center/summary',
+                                'guides/data-center/notes',
+                                'guides/data-center/cluster',
+                                {
+                                    label: 'Backups',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/backups/targets',
+                                        'guides/data-center/backups/jobs',
+                                        'guides/data-center/backups/events',
+                                    ],
+                                },
+                                {
+                                    label: 'Replication',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/data-center/replication',
+                                        'guides/data-center/replication/policies',
+                                        'guides/data-center/replication/events',
+                                    ],
+                                },
+                            ],
+                        },
                         {
                             label: 'Node',
                             collapsed: true,
@@ -80,6 +109,7 @@ export default defineConfig({
                                                 'guides/node/network/switches/standard',
                                             ],
                                         },
+                                        'guides/node/network/routes',
                                         {
                                             label: 'DHCP & DNS',
                                             collapsed: true,
@@ -87,6 +117,32 @@ export default defineConfig({
                                                 'guides/node/network/dhcp-dns/ranges',
                                                 'guides/node/network/dhcp-dns/leases',
                                                 'guides/node/network/dhcp-dns/config',
+                                            ],
+                                        },
+                                        {
+                                            label: 'Firewall',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/firewall/logs',
+                                                'guides/node/network/firewall/traffic',
+                                                'guides/node/network/firewall/nat',
+                                                'guides/node/network/firewall/advanced',
+                                            ],
+                                        },
+                                        {
+                                            label: 'mDNS',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/mdns/records',
+                                                'guides/node/network/mdns/settings',
+                                            ],
+                                        },
+                                        {
+                                            label: 'WireGuard',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/network/wireguard/server',
+                                                'guides/node/network/wireguard/clients',
                                             ],
                                         },
                                     ],
@@ -101,10 +157,17 @@ export default defineConfig({
                                             label: 'ZFS',
                                             collapsed: true,
                                             items: [
+                                                'guides/node/storage/zfs/dashboard',
                                                 'guides/node/storage/zfs/pools',
-                                                'guides/node/storage/zfs/datasets/filesystems',
-                                                'guides/node/storage/zfs/datasets/volumes',
-                                                'guides/node/storage/zfs/datasets/snapshots',
+                                                {
+                                                    label: 'Datasets',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/storage/zfs/datasets/filesystems',
+                                                        'guides/node/storage/zfs/datasets/volumes',
+                                                        'guides/node/storage/zfs/datasets/snapshots',
+                                                    ],
+                                                },
                                             ],
                                         },
                                         {
@@ -114,6 +177,14 @@ export default defineConfig({
                                                 'guides/node/storage/samba/shares',
                                                 'guides/node/storage/samba/settings',
                                                 'guides/node/storage/samba/audit-logs',
+                                            ],
+                                        },
+                                        {
+                                            label: 'iSCSI',
+                                            collapsed: true,
+                                            items: [
+                                                'guides/node/storage/iscsi/initiators',
+                                                'guides/node/storage/iscsi/targets',
                                             ],
                                         },
                                     ],
@@ -127,17 +198,47 @@ export default defineConfig({
                                     ],
                                 },
                                 {
+                                    label: 'Services',
+                                    collapsed: true,
+                                    items: [
+                                        'guides/node/services/certificates',
+                                        'guides/node/services/dynamic-dns',
+                                    ],
+                                },
+                                {
                                     label: 'Settings',
                                     collapsed: true,
                                     items: [
-                                        'guides/node/settings/system',
-                                        'guides/node/settings/pci-passthrough',
                                         {
                                             label: 'Authentication',
                                             collapsed: true,
                                             items: [
-                                                'guides/node/settings/authentication/users',
+                                                {
+                                                    label: 'Users',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/settings/authentication/users/local',
+                                                        'guides/node/settings/authentication/users/pam',
+                                                    ],
+                                                },
                                                 'guides/node/settings/authentication/groups',
+                                            ],
+                                        },
+                                        {
+                                            label: 'System',
+                                            collapsed: true,
+                                            items: [
+                                                {
+                                                    label: 'Notifications',
+                                                    collapsed: true,
+                                                    items: [
+                                                        'guides/node/settings/system/notifications/transports',
+                                                        'guides/node/settings/system/notifications/rules',
+                                                    ],
+                                                },
+                                                'guides/node/settings/system/services',
+                                                'guides/node/settings/system/tunables',
+                                                'guides/node/settings/pci-passthrough',
                                             ],
                                         },
                                     ],
@@ -147,14 +248,16 @@ export default defineConfig({
                                     collapsed: true,
                                     items: [
                                         'guides/node/virtual-machines/creation',
-                                        'guides/node/virtual-machines/templates',
                                         'guides/node/virtual-machines/summary',
-                                        'guides/node/virtual-machines/hardware',
-                                        'guides/node/virtual-machines/storage',
-                                        'guides/node/virtual-machines/network',
                                         'guides/node/virtual-machines/console',
+                                        'guides/node/virtual-machines/storage',
+                                        'guides/node/virtual-machines/hardware',
+                                        'guides/node/virtual-machines/network',
                                         'guides/node/virtual-machines/snapshots',
+                                        'guides/node/virtual-machines/backups',
                                         'guides/node/virtual-machines/options',
+                                        'guides/node/virtual-machines/templates',
+                                        'guides/node/virtual-machines/migration',
                                     ],
                                 },
                                 {
@@ -170,21 +273,6 @@ export default defineConfig({
                                         'guides/node/jails/options',
                                     ],
                                 }
-                            ],
-                        },
-                        {
-                            label: 'Data Center',
-                            collapsed: true,
-                            items: [
-                                'guides/data-center/clustering',
-                                {
-                                    label: 'Backups',
-                                    collapsed: true,
-                                    items: [
-                                        'guides/data-center/backups/targets',
-                                        'guides/data-center/backups/jobs',
-                                    ],
-                                },
                             ],
                         },
                         {

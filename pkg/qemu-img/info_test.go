@@ -7,7 +7,7 @@ import (
 
 func TestInfoSuccess(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:    "qemu-img",
+		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--output=json", "/tmp/a.qcow2"},
 		stdout: `{"filename":"/tmp/a.qcow2","format":"qcow2","virtual-size":1024}`,
 	}}}
@@ -25,7 +25,7 @@ func TestInfoSuccess(t *testing.T) {
 
 func TestInfoParseError(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:    "qemu-img",
+		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--output=json", "/tmp/a.qcow2"},
 		stdout: `not-json`,
 	}}}
@@ -43,7 +43,7 @@ func TestInfoParseError(t *testing.T) {
 
 func TestInfoBackingChainSuccess(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:  "qemu-img",
+		cmd:  "/usr/local/bin/qemu-img",
 		args: []string{"info", "--backing-chain", "--output=json", "/tmp/top.qcow2"},
 		stdout: `[
 			{"filename":"/tmp/top.qcow2","format":"qcow2"},
@@ -67,7 +67,7 @@ func TestInfoBackingChainSuccess(t *testing.T) {
 
 func TestInfoBackingChainParseError(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:    "qemu-img",
+		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--backing-chain", "--output=json", "/tmp/top.qcow2"},
 		stdout: `nope`,
 	}}}

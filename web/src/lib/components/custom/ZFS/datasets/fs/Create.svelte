@@ -14,8 +14,7 @@
 		toZfsBytesString
 	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-	import { generatePassword } from '$lib/utils/string';
-	import { isValidDatasetName } from '$lib/utils/zfs';
+	import { generateZFSEncryptionKey, isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -78,6 +77,24 @@
 		return Number(parent?.available || 0);
 	}
 
+	function getParentEncryption(parentName: string): string {
+		const parent = datasets.find((dataset) => dataset.name === parentName);
+		return parent?.properties?.encryption || 'off';
+	}
+
+	let parentEncrypted = $derived.by(() => {
+		const enc = getParentEncryption(properties.parent.value);
+		return enc !== 'off' && enc !== '-' && enc !== 'none' && enc !== '';
+	});
+
+	let encryptionOptions = $derived.by(() => {
+		const opts = [...zfsProperties.encryption];
+		if (parentEncrypted) {
+			opts.unshift({ label: 'Inherit', value: 'inherit' });
+		}
+		return opts;
+	});
+
 	watch([() => properties.parent.value, () => properties.quota], ([parentValue, quotaValue]) => {
 		const hasParent = parentValue.trim() !== '';
 		remainingSpace = hasParent ? getParentAvailable(parentValue) : 0;
@@ -99,6 +116,13 @@
 		}
 	});
 
+	watch([() => properties.parent.value], ([_parentValue]) => {
+		if (!parentEncrypted && properties.encryption === 'inherit') {
+			properties.encryption = 'off';
+			properties.encryptionKey = '';
+		}
+	});
+
 	async function create() {
 		if (!isValidDatasetName(properties.name)) {
 			toast.error('Invalid name', {
@@ -114,7 +138,7 @@
 			return;
 		}
 
-		if (properties.encryption !== 'off') {
+		if (properties.encryption !== 'off' && properties.encryption !== 'inherit') {
 			if (properties.encryptionKey === '') {
 				toast.error('Encryption key is required', {
 					position: 'bottom-center'
@@ -136,20 +160,26 @@
 			quota = toZfsBytesString(parsed);
 		}
 
-		const response = await createFileSystem(properties.name, properties.parent.value, {
-			parent: properties.parent.value,
+		const isInheriting = properties.encryption === 'inherit';
+
+		const props: Record<string, string | undefined> = {
 			atime: properties.atime,
 			checksum: properties.checksum,
 			compression: properties.compression,
 			dedup: properties.dedup,
-			encryption: properties.encryption,
-			encryptionKey: properties.encryptionKey,
 			quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
 			recordsize: properties.recordsize,
 			mountpoint: properties.mountpoint || undefined
-		});
+		};
+
+		if (!isInheriting) {
+			props.encryption = properties.encryption;
+			props.encryptionKey = properties.encryptionKey;
+		}
+
+		const response = await createFileSystem(properties.name, properties.parent.value, props);
 
 		reload = true;
 
@@ -279,7 +309,7 @@
 				<SimpleSelect
 					label="Encryption"
 					placeholder="Select Encryption"
-					options={zfsProperties.encryption}
+					options={encryptionOptions}
 					bind:value={properties.encryption}
 					onChange={(value) => (properties.encryption = value)}
 					classes={{
@@ -290,7 +320,7 @@
 					}}
 				/>
 
-				{#if properties.encryption !== 'off'}
+				{#if properties.encryption !== 'off' && properties.encryption !== 'inherit'}
 					<div class="space-y-1">
 						<Label class="flex h-7 items-center whitespace-nowrap text-sm">Passphrase</Label>
 						<div class="flex w-full max-w-sm items-center space-x-2">
@@ -306,7 +336,7 @@
 
 							<Button
 								onclick={() => {
-									properties.encryptionKey = generatePassword();
+									properties.encryptionKey = generateZFSEncryptionKey();
 								}}
 							>
 								<span
@@ -314,11 +344,11 @@
 									tabindex="0"
 									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
-										properties.encryptionKey = generatePassword();
+										properties.encryptionKey = generateZFSEncryptionKey();
 									}}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
-											properties.encryptionKey = generatePassword();
+											properties.encryptionKey = generateZFSEncryptionKey();
 										}
 									}}
 								></span>

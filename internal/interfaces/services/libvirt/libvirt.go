@@ -11,6 +11,7 @@ package libvirtServiceInterfaces
 import (
 	"context"
 	"encoding/xml"
+	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -23,9 +24,9 @@ type LibvirtServiceInterface interface {
 	ModifyVNC(rid uint, req ModifyVNCRequest) error
 	ModifyPassthrough(rid uint, pciDevices []int) error
 
-	NetworkDetach(rid uint, networkId uint) error
-	NetworkAttach(req NetworkAttachRequest) error
-	NetworkUpdate(req NetworkUpdateRequest) error
+	NetworkDetach(req NetworkDetachRequest, ctx context.Context) error
+	NetworkAttach(req NetworkAttachRequest, ctx context.Context) (*vmModels.Network, error)
+	NetworkUpdate(req NetworkUpdateRequest, ctx context.Context) (*vmModels.Network, error)
 	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
 	FindVmByMac(mac string) (vmModels.VM, error)
 
@@ -39,23 +40,24 @@ type LibvirtServiceInterface interface {
 	ModifyExtraBhyveOptions(rid uint, options []string) error
 	ModifyIgnoreUMSRs(rid uint, ignore bool) error
 	ModifyQemuGuestAgent(rid uint, enabled bool) error
+	ModifyTPMEmulation(rid uint, enabled bool) error
 	GetQemuGuestAgentInfo(rid uint) (QemuGuestAgentInfo, error)
+	InspectQemuGuestAgent(rid uint) (QemuGuestAgentStatus, error)
 
 	PruneOrphanedVMStats() error
 	ApplyVMStatsRetention() error
 	StoreVMUsage() error
 	GetVMUsage(vmId int, step db.GFSStep) ([]vmModels.VMStats, error)
+	GetVMUsageBootstrap(vmId int) (db.StatsBootstrap[vmModels.VMStats], error)
 
 	CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error
 	SyncVMDisks(rid uint) error
 	RemoveStorageXML(rid uint, storage vmModels.Storage) error
-	StorageDetach(req StorageDetachRequest) error
+	StorageDetach(req StorageDetachRequest, ctx context.Context) error
 	GetNextBootOrderIndex(vmId int) (int, error)
 	ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error)
-	StorageImport(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
-	StorageNew(req StorageAttachRequest, vm vmModels.VM, ctx context.Context) error
-	StorageAttach(req StorageAttachRequest, ctx context.Context) error
-	StorageUpdate(req StorageUpdateRequest, ctx context.Context) error
+	StorageAttach(req StorageAttachRequest, ctx context.Context) (*vmModels.Storage, error)
+	StorageUpdate(req StorageUpdateRequest, ctx context.Context) (*vmModels.Storage, error)
 	CreateStorageParent(rid uint, poolName string, ctx context.Context) error
 
 	FindISOByUUID(uuid string, includeImg bool) (string, error)
@@ -75,12 +77,14 @@ type LibvirtServiceInterface interface {
 	CreateLvVm(id int, ctx context.Context) error
 	RemoveLvVm(rid uint) error
 	RetireVMLocalMetadata(rid uint, cleanUpMacs bool) error
+	PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, error)
 	GetLvDomain(rid uint) (*LvDomain, error)
 	GetVMLogs(rid uint) (string, error)
 	StartTPM() error
 	StopTPM(rid uint) error
 	CheckPCIDevicesInUse(vm vmModels.VM) error
 	LvVMAction(vm vmModels.VM, action string) error
+	ForceStopVM(rid uint) error
 	SetActionDate(vm vmModels.VM, action string) error
 	GetVMXML(rid uint) (string, error)
 	IsDomainInactive(rid uint) (bool, error)
@@ -97,22 +101,29 @@ type LibvirtServiceInterface interface {
 
 	CheckVersion() error
 	IsVirtualizationEnabled() bool
+
+	MigrateVNCToNativeFormat() error
+	MigrateIgnoreUMSRToNativeFormat() error
+	MigrateVirtio9PToNativeFormat() error
 }
 
 type LvDomain struct {
-	ID     int32  `json:"id"`
-	UUID   string `json:"uuid"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+	ID                int32  `json:"id"`
+	UUID              string `json:"uuid"`
+	Name              string `json:"name"`
+	Status            string `json:"status"`
+	PendingAction     string `json:"pendingAction,omitempty"`
+	OverrideRequested bool   `json:"overrideRequested"`
 }
 
 type SimpleList struct {
-	ID         uint                    `json:"id"`
-	RID        uint                    `json:"rid"`
-	Name       string                  `json:"name"`
-	State      libvirt.DomainState     `json:"state"`
-	VNCPort    uint                    `json:"vncPort"`
-	CPUPinning []vmModels.VMCPUPinning `json:"cpuPinning"`
+	ID                          uint                    `json:"id"`
+	RID                         uint                    `json:"rid"`
+	Name                        string                  `json:"name"`
+	State                       libvirt.DomainState     `json:"state"`
+	VNCPort                     uint                    `json:"vncPort"`
+	CPUPinning                  []vmModels.VMCPUPinning `json:"cpuPinning"`
+	HasEnabledFilesystemStorage bool                    `json:"hasEnabledFilesystemStorage"`
 }
 
 type SimpleTemplateList struct {
@@ -126,7 +137,6 @@ type DomainStateReason string
 const (
 	DomainReasonUnknown DomainStateReason = "unknown"
 
-	// --- Running state reasons ---
 	DomainReasonRunningBooted            DomainStateReason = "booted"
 	DomainReasonRunningMigrated          DomainStateReason = "migrated"
 	DomainReasonRunningRestored          DomainStateReason = "restored"
@@ -137,7 +147,6 @@ const (
 	DomainReasonRunningWakeup            DomainStateReason = "wakeup"
 	DomainReasonRunningCrashed           DomainStateReason = "crashed"
 
-	// --- Shutoff state reasons ---
 	DomainReasonShutoffShutdown     DomainStateReason = "shutdown"
 	DomainReasonShutoffDestroyed    DomainStateReason = "destroyed"
 	DomainReasonShutoffCrashed      DomainStateReason = "crashed"
@@ -145,7 +154,6 @@ const (
 	DomainReasonShutoffFailed       DomainStateReason = "failed"
 	DomainReasonShutoffFromSnapshot DomainStateReason = "from_snapshot"
 
-	// --- Paused state reasons ---
 	DomainReasonPausedUser         DomainStateReason = "user"
 	DomainReasonPausedMigration    DomainStateReason = "migration"
 	DomainReasonPausedSave         DomainStateReason = "save"
@@ -202,9 +210,14 @@ type OS struct {
 	Loader *Loader `xml:"loader,omitempty"`
 }
 
+type MSRs struct {
+	Unknown string `xml:"unknown,attr"`
+}
+
 type Features struct {
 	APIC struct{} `xml:"apic"`
 	ACPI struct{} `xml:"acpi"`
+	MSRs *MSRs    `xml:"msrs,omitempty"`
 }
 
 type Clock struct {
@@ -274,18 +287,38 @@ type Serial struct {
 }
 
 type Address struct {
-	Type     string `xml:"type,attr,omitempty"`
-	Domain   string `xml:"domain,attr,omitempty"`
-	Bus      string `xml:"bus,attr,omitempty"`
-	Slot     string `xml:"slot,attr,omitempty"`
-	Function string `xml:"function,attr,omitempty"`
+	Type       string `xml:"type,attr,omitempty"`
+	Domain     string `xml:"domain,attr,omitempty"`
+	Bus        string `xml:"bus,attr,omitempty"`
+	Slot       string `xml:"slot,attr,omitempty"`
+	Function   string `xml:"function,attr,omitempty"`
+	Controller string `xml:"controller,attr,omitempty"`
+	Port       string `xml:"port,attr,omitempty"`
 }
 
 type Controller struct {
 	Type    string   `xml:"type,attr"`
 	Index   *int     `xml:"index,attr,omitempty"`
 	Model   string   `xml:"model,attr,omitempty"`
+	Ports   int      `xml:"ports,attr,omitempty"`
 	Address *Address `xml:"address,omitempty"`
+}
+
+type ChannelSource struct {
+	Mode string `xml:"mode,attr"`
+	Path string `xml:"path,attr"`
+}
+
+type ChannelTarget struct {
+	Type string `xml:"type,attr"`
+	Name string `xml:"name,attr"`
+}
+
+type Channel struct {
+	Type    string        `xml:"type,attr"`
+	Source  ChannelSource `xml:"source"`
+	Target  ChannelTarget `xml:"target"`
+	Address Address       `xml:"address"`
 }
 
 type GraphicsListen struct {
@@ -297,6 +330,7 @@ type Graphics struct {
 	Type     string         `xml:"type,attr"`
 	Port     string         `xml:"port,attr"`
 	Password string         `xml:"passwd,attr,omitempty"`
+	Wait     string         `xml:"wait,attr,omitempty"`
 	Listen   GraphicsListen `xml:"listen"`
 }
 
@@ -316,12 +350,29 @@ type Video struct {
 	Model VideoModel `xml:"model"`
 }
 
+type FilesystemSource struct {
+	Dir string `xml:"dir,attr"`
+}
+
+type FilesystemTarget struct {
+	Dir string `xml:"dir,attr"`
+}
+
+type Filesystem struct {
+	Type     string           `xml:"type,attr"`
+	Source   FilesystemSource `xml:"source"`
+	Target   FilesystemTarget `xml:"target"`
+	ReadOnly *struct{}        `xml:"readonly,omitempty"`
+}
+
 type Devices struct {
 	Disks       []Disk       `xml:"disk,omitempty"`
 	Interfaces  []Interface  `xml:"interface,omitempty"`
 	Controllers []Controller `xml:"controller,omitempty"`
 	Inputs      []Input      `xml:"input,omitempty"`
 	Serials     []Serial     `xml:"serial,omitempty"`
+	Channels    []Channel    `xml:"channel,omitempty"`
+	Filesystems []Filesystem `xml:"filesystem,omitempty"`
 	Graphics    *Graphics    `xml:"graphics,omitempty"`
 	Video       *Video       `xml:"video,omitempty"`
 }
@@ -354,4 +405,16 @@ type Domain struct {
 	Devices Devices `xml:"devices"`
 
 	BhyveCommandline *BhyveCommandline `xml:"bhyve:commandline,omitempty"`
+}
+
+func IsDomainNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if libvirt.IsNotFound(err) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "domain") &&
+		(strings.Contains(msg, "not found") || strings.Contains(msg, "no domain"))
 }

@@ -19,6 +19,12 @@ import (
 var execCommand = exec.Command
 var execCommandContext = exec.CommandContext
 
+func SetCommandForTest(fn func(string, ...string) *exec.Cmd) func() {
+	original := execCommand
+	execCommand = fn
+	return func() { execCommand = original }
+}
+
 func RunCommand(command string, args ...string) (string, error) {
 	cmd := execCommand(command, args...)
 

@@ -3,17 +3,18 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
+	import { buildPassablePCI, getPCIDeviceId } from '$lib/utils/system/pci';
 	import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
-	import type { CPUPin, SimpleVm, VM } from '$lib/types/vm/vm';
+	import type { CPUPin, SimpleVm } from '$lib/types/vm/vm';
 	import {
 		formatBytesBinary,
 		normalizeSizeInputExact,
 		parseSizeInputToBytes
 	} from '$lib/utils/bytes';
-	import { getPCIDeviceId } from '$lib/utils/system/pci';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 
 	interface Props {
+		node: string;
 		sockets: number;
 		cores: number;
 		threads: number;
@@ -27,6 +28,7 @@
 	}
 
 	let {
+		node,
 		sockets = $bindable(),
 		cores = $bindable(),
 		threads = $bindable(),
@@ -42,26 +44,23 @@
 	let humanSize = $state(formatBytesBinary(memory || 1024 * 1024 * 1024));
 	let coreSelectionLimit = $derived.by(() => sockets * cores * threads);
 
-	$effect(() => {
-		const bytes = parseSizeInputToBytes(humanSize);
+	function updateMemory(value: string | number) {
+		const bytes = parseSizeInputToBytes(String(value));
 		memory = bytes ?? 1024 * 1024 * 1024;
-	});
+	}
 
 	let checkboxItems = $derived.by(() =>
-		devices.map((device) => {
-			const raw = getPCIDeviceId(device)
-				.replace(/pci\d+:/, '')
-				.replace(/:/g, '/');
-			const existing = pptDevices.find((p) => p.deviceID === raw);
-			return { device, pptId: existing?.id.toString() ?? raw, deviceId: raw };
-		})
+		buildPassablePCI(devices, pptDevices).map(({ device, pptId }) => ({
+			device,
+			pptId: pptId.toString()
+		}))
 	);
 
 	let selectedPptIds = $state<string[]>([]);
 
 	function toggle(id: string, on: boolean) {
 		selectedPptIds = on ? [...selectedPptIds, id] : selectedPptIds.filter((x) => x !== id);
-		passthroughIds = selectedPptIds.map((x) => parseInt(x));
+		passthroughIds = selectedPptIds.map(Number).filter((mappingID) => mappingID > 0);
 	}
 </script>
 
@@ -93,7 +92,7 @@
 
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
 			<div>
-				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {vms} {coreSelectionLimit} />
+				<CPUSelector bind:open={isPinningOpen} bind:pinnedCPUs {node} {vms} {coreSelectionLimit} />
 			</div>
 
 			<CustomValueInput
@@ -101,6 +100,7 @@
 				placeholder="10G"
 				bind:value={humanSize}
 				classes="flex-1 space-y-1.5"
+				onChange={updateMemory}
 				onBlur={() => {
 					const normalized = normalizeSizeInputExact(humanSize);
 					if (normalized !== null) {
@@ -111,7 +111,7 @@
 		</div>
 	</div>
 
-	{#if pptDevices && pptDevices.length > 0}
+	{#if checkboxItems.length > 0}
 		<p class="font-medium">PCI Passthrough</p>
 		<div class="border p-4">
 			<ScrollArea orientation="vertical" class="h-full w-full">
@@ -127,14 +127,11 @@
 								}}
 							/>
 							<div class="grid gap-1.5 leading-none">
-								<Label for={item.pptId} class="text-sm font-medium">
-									<!-- {item.device.names.device} — {item.device.names.vendor} -->
+								<Label for={item.pptId} class="text-sm leading-4 font-medium">
 									{`${item.device.names.device} — ${item.device.names.vendor}`}
 								</Label>
 								<p class="text-muted-foreground text-sm">
-									<!-- pci{item.device.domain}:{item.device.bus}:{item.device.device}:{item.device
-										.function} -->
-									{`pci${item.device.domain}:${item.device.bus}:${item.device.device}:${item.device.function}`}
+									{getPCIDeviceId(item.device)}
 								</p>
 							</div>
 						</div>

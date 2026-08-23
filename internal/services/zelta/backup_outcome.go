@@ -15,6 +15,7 @@ type backupOutputKind string
 const (
 	backupErrorSourceMissing         = "backup_source_missing"
 	backupErrorSourceSnapshotMissing = "backup_source_snapshot_missing"
+	backupErrorSourceSnapshotFailed  = "backup_source_snapshot_failed"
 	backupErrorTargetLocalWrites     = "backup_target_has_local_writes"
 	backupErrorTargetDiverged        = "backup_target_diverged"
 
@@ -22,6 +23,7 @@ const (
 	backupOutputUpToDate                  backupOutputKind = "up_to_date"
 	backupOutputBlockedNoSource           backupOutputKind = "blocked_no_source"
 	backupOutputBlockedNoSourceSnapshot   backupOutputKind = "blocked_no_source_snapshot"
+	backupOutputBlockedSourceSnapshot     backupOutputKind = "blocked_source_snapshot"
 	backupOutputBlockedNoSnapshotDiverged backupOutputKind = "blocked_no_snapshot_diverged"
 	backupOutputBlockedNoCommonSnapshot   backupOutputKind = "blocked_no_common_snapshot"
 	backupOutputBlockedTargetLocalWrites  backupOutputKind = "blocked_target_local_writes"
@@ -42,6 +44,9 @@ func classifyBackupOutput(output string) backupOutputKind {
 		return backupOutputBlockedTargetDiverged
 	case strings.Contains(lower, "no source snapshot"):
 		return backupOutputBlockedNoSourceSnapshot
+	case strings.Contains(lower, "source_snapshot_creation_failed"),
+		strings.Contains(lower, "source_snapshot_verification_failed"):
+		return backupOutputBlockedSourceSnapshot
 	case strings.Contains(lower, "no source:"):
 		return backupOutputBlockedNoSource
 	case strings.Contains(lower, "up-to-date"):
@@ -57,6 +62,8 @@ func (k backupOutputKind) errorCode() string {
 		return backupErrorSourceMissing
 	case backupOutputBlockedNoSourceSnapshot:
 		return backupErrorSourceSnapshotMissing
+	case backupOutputBlockedSourceSnapshot:
+		return backupErrorSourceSnapshotFailed
 	case backupOutputBlockedTargetLocalWrites:
 		return backupErrorTargetLocalWrites
 	case backupOutputBlockedNoSnapshotDiverged,

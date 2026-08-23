@@ -12,16 +12,29 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func (s *Service) CreateVolume(ctx context.Context, name string, parent string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	name = strings.TrimSpace(name)
+	parent = strings.Trim(strings.TrimSpace(parent), "/")
+	if name == "" || parent == "" {
+		return classifyError(ErrInvalidRequest, "volume_name_and_parent_required")
+	}
+	parentDataset, err := s.GZFS.ZFS.Get(ctx, parent, false)
+	if err != nil || parentDataset == nil {
+		return datasetLookupError(err, "parent_dataset_%s_not_found", parent)
+	}
+	if parentDataset.Type != gzfs.DatasetTypeFilesystem {
+		return classifyError(ErrInvalidRequest, "parent_dataset_must_be_a_filesystem")
+	}
 
 	datasets, err := s.GZFS.ZFS.ListByType(
 		ctx,
@@ -36,20 +49,26 @@ func (s *Service) CreateVolume(ctx context.Context, name string, parent string, 
 
 	for _, dataset := range datasets {
 		if dataset.Name == fmt.Sprintf("%s/%s", parent, name) {
-			return fmt.Errorf("volume_already_exists")
+			return classifyError(ErrConflict, "volume_already_exists")
 		}
 	}
 
 	name = fmt.Sprintf("%s/%s", parent, name)
 
 	if _, ok := props["size"]; !ok {
-		return fmt.Errorf("size property not found")
+		return classifyError(ErrInvalidRequest, "size property not found")
 	}
 
 	pSize := utils.HumanFormatToSize(props["size"])
+	if pSize == 0 {
+		return classifyError(ErrInvalidRequest, "invalid_volume_size")
+	}
 	zvol, err := s.GZFS.ZFS.CreateVolume(ctx, name, pSize, props)
 
 	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
+			return classifyError(ErrConflict, "%v", err)
+		}
 		return err
 	}
 
@@ -63,26 +82,30 @@ func (s *Service) CreateVolume(ctx context.Context, name string, parent string, 
 
 	s.SignalDSChange(zvol.Pool, zvol.Name, "generic-dataset", "create")
 
+	if isEncryptionRequested(props) {
+		if err := registerEncryptionKey(ctx, zvol); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", zvol.Name).Msg("register_encryption_key_failed")
+		}
+	}
+
 	return nil
 }
 
-func (s *Service) EditVolume(ctx context.Context, req zfsServiceInterfaces.EditVolumeRequest) error {
+func (s *Service) EditVolume(ctx context.Context, guid string, props map[string]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, req.GUID, false)
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 
-	if err != nil {
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeVolume {
+		return datasetLookupError(err, "volume_with_guid_%s_not_found", guid)
+	}
+
+	if err := s.GZFS.ZFS.EditVolume(ctx, dataset.Name, props); err != nil {
 		return err
 	}
-
-	if dataset.Type == gzfs.DatasetTypeVolume {
-		return s.GZFS.ZFS.EditVolume(ctx, dataset.Name, req.Properties)
-	}
-
 	s.SignalDSChange(dataset.Pool, dataset.Name, "generic-dataset", "edit")
-
-	return fmt.Errorf("volume_with_guid_%s_not_found", req.GUID)
+	return nil
 }
 
 func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
@@ -98,46 +121,56 @@ func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 	}
 
 	if count > 0 {
-		return fmt.Errorf("dataset_in_use_by_vm")
+		return classifyError(ErrConflict, "dataset_in_use_by_vm")
 	}
 
 	volume, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 	if err != nil {
-		return err
+		return datasetLookupError(err, "volume_with_guid_%s_not_found", guid)
 	}
 
 	if volume != nil && volume.Type == gzfs.DatasetTypeVolume {
+		wasEncrypted := volume.IsEncrypted()
+
 		if err := volume.Destroy(ctx, true, false); err != nil {
 			return err
 		}
-		return nil
+
+		if wasEncrypted {
+			cleanupEncryptionKeyForDataset(volume)
+		}
+
+		s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "delete")
+		return s.notifyDatasetsDeleted(ctx, []string{guid})
 	}
 
-	s.SignalDSChange(volume.Pool, volume.Name, "generic-dataset", "delete")
-
-	return fmt.Errorf("volume_with_guid_%s_not_found", guid)
+	return classifyError(ErrDatasetNotFound, "volume_with_guid_%s_not_found", guid)
 }
 
 func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
+	uuid = strings.TrimSpace(uuid)
+	if uuid == "" {
+		return classifyError(ErrInvalidRequest, "source_uuid_required")
+	}
 
 	volume, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
 	if err != nil {
-		return err
+		return datasetLookupError(err, "volume with guid %s not found", guid)
 	}
 
 	if volume != nil && volume.Type == gzfs.DatasetTypeVolume {
 		if s.IsDatasetInUse(guid, false) {
-			return fmt.Errorf("dataset_in_use_by_vm")
+			return classifyError(ErrConflict, "dataset_in_use_by_vm")
 		}
 		if volume.Properties == nil {
-			return fmt.Errorf("volume_properties_not_found")
+			return classifyError(ErrConflict, "volume_properties_not_found")
 		}
 
 		volSizeProp, ok := volume.Properties["volsize"]
 		if !ok {
-			return fmt.Errorf("volume_size_property_not_found")
+			return classifyError(ErrConflict, "volume_size_property_not_found")
 		}
 
 		pSize := utils.HumanFormatToSize(volSizeProp.Value)
@@ -145,18 +178,20 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 		if pSize > 0 {
 			file, err := s.Libvirt.FindISOByUUID(uuid, true)
 			if file == "" || err != nil {
-				fmt.Println(file, err)
-				return fmt.Errorf("source_not_found")
+				return classifyError(ErrSourceNotFound, "source_not_found")
 			}
 
 			fileInfo, err := os.Stat(file)
 			if err != nil {
+				if os.IsNotExist(err) {
+					return classifyError(ErrSourceNotFound, "source_not_found")
+				}
 				return fmt.Errorf("failed_to_get_source_file_info: %w", err)
 			}
 
 			if fileInfo.Size() > 0 && pSize >= uint64(fileInfo.Size()) {
 				if _, err := os.Stat(fmt.Sprintf("/dev/zvol/%s", volume.Name)); err != nil {
-					return fmt.Errorf("zvol_not_found: %w", err)
+					return classifyError(ErrConflict, "zvol_not_found: %v", err)
 				} else {
 					output, err := utils.RunCommand(
 						"/usr/sbin/camdd",
@@ -174,12 +209,12 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 					return nil
 				}
 			} else {
-				return fmt.Errorf("source_size_exceeds_volume_size")
+				return classifyError(ErrConflict, "source_size_exceeds_volume_size")
 			}
 		} else {
-			return fmt.Errorf("invalid_volume_size")
+			return classifyError(ErrConflict, "invalid_volume_size")
 		}
 	}
 
-	return fmt.Errorf("volume with guid %s not found", guid)
+	return classifyError(ErrDatasetNotFound, "volume with guid %s not found", guid)
 }

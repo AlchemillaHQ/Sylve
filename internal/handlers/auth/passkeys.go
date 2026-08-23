@@ -10,15 +10,16 @@ package authHandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -63,8 +64,27 @@ func isTrustedForwardingSource(c *gin.Context) bool {
 		return false
 	}
 
-	// Only trust forwarded headers from a local reverse proxy.
-	return ip.IsLoopback()
+	if ip.IsLoopback() {
+		return true
+	}
+
+	if config.ParsedConfig != nil {
+		for _, proxy := range config.ParsedConfig.TrustedProxies {
+			trimmed := strings.TrimSpace(proxy)
+			if trimmed == "" {
+				continue
+			}
+			if _, cidr, err := net.ParseCIDR(trimmed); err == nil {
+				if cidr.Contains(ip) {
+					return true
+				}
+			} else if parsed := net.ParseIP(trimmed); parsed != nil && parsed.Equal(ip) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func firstForwardedHeaderValue(value string) string {
@@ -127,88 +147,27 @@ func getPasskeyRelyingParty(c *gin.Context) (rpID string, origin string, err err
 	return rpID, originURL.String(), nil
 }
 
-func parseUserIDParam(c *gin.Context) (uint, error) {
-	rawID := strings.TrimSpace(c.Param("id"))
-	if rawID == "" {
-		return 0, http.ErrMissingFile
-	}
-
-	parsedID, err := strconv.ParseUint(rawID, 10, 32)
-	if err != nil {
-		return 0, err
-	}
-
-	return uint(parsedID), nil
-}
-
-func requirePasskeyManagementAccess(c *gin.Context, authService *auth.Service) bool {
-	authType := strings.TrimSpace(c.GetString("AuthType"))
-	if authType != "sylve" && authType != auth.AuthTypeSylvePasskey {
-		c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "passkey_management_for_sylve_only",
-			Error:   "passkey_management_for_sylve_only",
-			Data:    nil,
-		})
-		return false
-	}
-
-	currentUserID := c.GetUint("UserID")
-	if currentUserID == 0 {
-		c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "invalid_credentials",
-			Error:   "invalid_credentials",
-			Data:    nil,
-		})
-		return false
-	}
-
-	currentUser, err := authService.GetUserByID(currentUserID)
-	if err != nil || currentUser == nil {
-		c.JSON(http.StatusUnauthorized, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "invalid_credentials",
-			Error:   "invalid_credentials",
-			Data:    nil,
-		})
-		return false
-	}
-
-	if !currentUser.Admin {
-		c.JSON(http.StatusForbidden, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "only_admin_allowed",
-			Error:   "only_admin_allowed",
-			Data:    nil,
-		})
-		return false
-	}
-
-	return true
-}
-
+// @Summary Begin passkey login
+// @Description Start a discoverable WebAuthn login ceremony
+// @Tags Authentication
+// @Produce json
+// @Success 200 {object} internal.APIResponse[PasskeyChallengeResponse] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /auth/passkeys/login/begin [post]
 func BeginPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		setSensitiveAuthResponseHeaders(c)
+
 		rpID, origin, err := getPasskeyRelyingParty(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "passkey_requires_https",
-				Error:   "passkey_requires_https",
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusBadRequest, "passkey_requires_https")
 			return
 		}
 
 		requestID, publicKey, err := authService.BeginPasskeyLogin(rpID, origin)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_begin_passkey_login",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusInternalServerError, "failed_to_begin_passkey_login")
 			return
 		}
 
@@ -224,131 +183,133 @@ func BeginPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+func writePasskeyLoginError(c *gin.Context, err error) {
+	switch err.Error() {
+	case "invalid_credentials", "user_not_found", "credential_not_found", "blank_user_handle", "invalid_user_handle":
+		writeAuthCodeError(c, http.StatusUnauthorized, "invalid_credentials")
+	case "only_admin_allowed", "account_locked":
+		writeAuthCodeError(c, http.StatusForbidden, err.Error())
+	case "challenge_not_found", "challenge_used", "challenge_expired", "credential_required":
+		writeAuthCodeError(c, http.StatusBadRequest, "invalid_passkey_request")
+	default:
+		writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
+	}
+}
+
+func writePasskeyBindingError(c *gin.Context, err error) {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		writeAuthCodeError(c, http.StatusRequestEntityTooLarge, "request_body_too_large")
+		return
+	}
+	writeAuthCodeError(c, http.StatusBadRequest, "invalid_request_payload")
+}
+
+func classifyPasskeyManagementError(err error) (int, string) {
+	switch err.Error() {
+	case "invalid_user_id", "invalid_credential_id", "passkey_label_required", "passkey_label_too_long",
+		"challenge_not_found", "challenge_expired", "credential_required", "invalid_passkey_registration":
+		return http.StatusBadRequest, err.Error()
+	case "passkey_registration_not_allowed":
+		return http.StatusForbidden, err.Error()
+	case "user_not_found", "credential_not_found":
+		return http.StatusNotFound, err.Error()
+	case "challenge_used", "credential_already_registered", "passkey_limit_reached":
+		return http.StatusConflict, err.Error()
+	default:
+		return http.StatusInternalServerError, "internal_server_error"
+	}
+}
+
+func writePasskeyManagementError(c *gin.Context, operation string, err error) {
+	status, code := classifyPasskeyManagementError(err)
+	if status >= http.StatusInternalServerError {
+		logger.L.Error().Err(err).Str("operation", operation).Msg("passkey_operation_failed")
+	}
+	writeAuthCodeError(c, status, code)
+}
+
+// @Summary Finish passkey login
+// @Description Verify a WebAuthn assertion and create a local administrator session
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param request body FinishPasskeyLoginRequest true "Passkey login completion request"
+// @Success 200 {object} internal.APIResponse[SuccessfulLogin] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /auth/passkeys/login/finish [post]
 func FinishPasskeyLoginHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		setSensitiveAuthResponseHeaders(c)
+
 		var req FinishPasskeyLoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   "validation_error",
-				Data:    nil,
-			})
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				writeAuthCodeError(c, http.StatusRequestEntityTooLarge, "request_body_too_large")
+				return
+			}
+			writeAuthCodeError(c, http.StatusBadRequest, "invalid_request_payload")
 			return
 		}
 
 		rpID, origin, err := getPasskeyRelyingParty(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "passkey_requires_https",
-				Error:   "passkey_requires_https",
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusBadRequest, "passkey_requires_https")
 			return
 		}
 
 		user, token, err := authService.FinishPasskeyLogin(req.RequestID, req.Credential, req.Remember, rpID, origin)
 		if err != nil {
-			status := http.StatusBadRequest
-			if strings.Contains(err.Error(), "invalid_credentials") || strings.Contains(err.Error(), "only_admin_allowed") {
-				status = http.StatusUnauthorized
-			}
-
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_credentials",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writePasskeyLoginError(c, err)
 			return
 		}
 
-		clusterToken, _ := authService.CreateClusterJWT(user.ID, user.Username, auth.AuthTypeSylvePasskey, "")
-		hostname, err := utils.GetSystemHostname()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		nodeID, err := utils.GetSystemUUID()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		basicSettings, err := authService.GetBasicSettings()
-		if err != nil && err.Error() != "basic_settings_not_found" {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "login_successful",
-			Error:   "",
-			Data: SuccessfulLogin{
-				Token:         token,
-				ClusterToken:  clusterToken,
-				Hostname:      hostname,
-				NodeID:        nodeID,
-				BasicSettings: basicSettings,
-			},
-		})
+		completeLogin(c, authService, user.ID, token)
 	}
 }
 
+// @Summary Begin passkey registration
+// @Description Start a WebAuthn registration ceremony for an eligible administrator
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body BeginPasskeyRegistrationRequest true "Passkey registration request"
+// @Success 200 {object} internal.APIResponse[PasskeyChallengeResponse] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /auth/passkeys/register/begin [post]
 func BeginPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !requirePasskeyManagementAccess(c, authService) {
-			return
-		}
+		setSensitiveAuthResponseHeaders(c)
 
 		var req BeginPasskeyRegistrationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   "validation_error",
-				Data:    nil,
-			})
+			writePasskeyBindingError(c, err)
 			return
 		}
 
 		rpID, origin, err := getPasskeyRelyingParty(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "passkey_requires_https",
-				Error:   "passkey_requires_https",
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusBadRequest, "passkey_requires_https")
 			return
 		}
 
 		requestID, publicKey, err := authService.BeginPasskeyRegistration(req.UserID, rpID, origin)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_begin_passkey_registration",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writePasskeyManagementError(c, "failed_to_begin_passkey_registration", err)
 			return
 		}
 
@@ -364,78 +325,78 @@ func BeginPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc 
 	}
 }
 
+// @Summary Finish passkey registration
+// @Description Verify a WebAuthn attestation and save the credential bound to its registration challenge
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body FinishPasskeyRegistrationRequest true "Passkey registration completion request"
+// @Success 200 {object} internal.APIResponse[auth.PasskeyCredentialInfo] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /auth/passkeys/register/finish [post]
 func FinishPasskeyRegistrationHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !requirePasskeyManagementAccess(c, authService) {
-			return
-		}
+		setSensitiveAuthResponseHeaders(c)
 
 		var req FinishPasskeyRegistrationRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_payload",
-				Error:   "validation_error",
-				Data:    nil,
-			})
+			writePasskeyBindingError(c, err)
 			return
 		}
 
 		rpID, origin, err := getPasskeyRelyingParty(c)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "passkey_requires_https",
-				Error:   "passkey_requires_https",
-				Data:    nil,
-			})
+			writeAuthCodeError(c, http.StatusBadRequest, "passkey_requires_https")
 			return
 		}
 
-		if err := authService.FinishPasskeyRegistration(req.RequestID, req.Credential, req.Label, rpID, origin); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_finish_passkey_registration",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		passkey, err := authService.FinishPasskeyRegistration(req.RequestID, req.Credential, req.Label, rpID, origin)
+		if err != nil {
+			writePasskeyManagementError(c, "failed_to_finish_passkey_registration", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[auth.PasskeyCredentialInfo]{
 			Status:  "success",
 			Message: "passkey_registered_successfully",
 			Error:   "",
-			Data:    nil,
+			Data:    passkey,
 		})
 	}
 }
 
+// @Summary List user passkeys
+// @Description List safe passkey metadata for a user, including users no longer eligible for registration; returns an empty list when none are registered
+// @Tags Authentication
+// @Produce json
+// @Security BearerAuth
+// @Param userId path int true "Positive User ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[[]auth.PasskeyCredentialInfo] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /auth/users/{userId}/passkeys [get]
 func ListUserPasskeysHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !requirePasskeyManagementAccess(c, authService) {
-			return
-		}
-
-		userID, err := parseUserIDParam(c)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_user_id",
-				Error:   "invalid_user_id_format",
-				Data:    nil,
-			})
+		userID, ok := positiveUserIDParam(c)
+		if !ok {
 			return
 		}
 
 		passkeys, err := authService.ListUserPasskeys(userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_list_passkeys",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writePasskeyManagementError(c, "failed_to_list_passkeys", err)
 			return
 		}
 
@@ -448,65 +409,45 @@ func ListUserPasskeysHandler(authService *auth.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete user passkey
+// @Description Delete one passkey credential owned by a user
+// @Tags Authentication
+// @Produce json
+// @Security BearerAuth
+// @Param userId path int true "Positive User ID" minimum(1)
+// @Param credentialId path string true "URL-encoded passkey credential ID"
+// @Success 200 {object} internal.APIResponse[auth.PasskeyCredentialInfo] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /auth/users/{userId}/passkeys/{credentialId} [delete]
 func DeleteUserPasskeyHandler(authService *auth.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !requirePasskeyManagementAccess(c, authService) {
+		userID, ok := positiveUserIDParam(c)
+		if !ok {
 			return
 		}
 
-		userID, err := parseUserIDParam(c)
+		credentialID := strings.TrimSpace(c.Param("credentialId"))
+		if credentialID == "" {
+			writeAuthCodeError(c, http.StatusBadRequest, "invalid_credential_id")
+			return
+		}
+
+		passkey, err := authService.DeleteUserPasskey(userID, credentialID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_user_id",
-				Error:   "invalid_user_id_format",
-				Data:    nil,
-			})
+			writePasskeyManagementError(c, "failed_to_delete_passkey", err)
 			return
 		}
 
-		rawCredentialID := strings.TrimSpace(c.Param("credentialId"))
-		if rawCredentialID == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_credential_id",
-				Error:   "credential_id_required",
-				Data:    nil,
-			})
-			return
-		}
-
-		credentialID, decodeErr := url.PathUnescape(rawCredentialID)
-		if decodeErr != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_credential_id",
-				Error:   "invalid_credential_id_format",
-				Data:    nil,
-			})
-			return
-		}
-
-		if err := authService.DeleteUserPasskey(userID, credentialID); err != nil {
-			status := http.StatusBadRequest
-			if strings.Contains(err.Error(), "credential_not_found") {
-				status = http.StatusNotFound
-			}
-
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_passkey",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[auth.PasskeyCredentialInfo]{
 			Status:  "success",
 			Message: "passkey_deleted_successfully",
 			Error:   "",
-			Data:    nil,
+			Data:    passkey,
 		})
 	}
 }

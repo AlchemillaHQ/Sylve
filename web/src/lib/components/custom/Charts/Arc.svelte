@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Chart } from 'svelte-echarts';
+	import { Chart } from '@alchemilla/svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { GaugeChart } from 'echarts/charts';
 	import { GraphicComponent } from 'echarts/components';

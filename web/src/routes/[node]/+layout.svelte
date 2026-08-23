@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
@@ -15,7 +14,7 @@
 	} from '$lib/utils/enabled-services';
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
-	import { fade } from 'svelte/transition';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -50,6 +49,7 @@
 		const hasFirewall = enabledServices.includes('firewall');
 		const hasWireGuard = enabledServices.includes('wireguard');
 		const hasIscsi = enabledServices.includes('iscsi');
+		const hasMdns = enabledServices.includes('mdns');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
 			const vmName = page.url.pathname.split('/')[3];
@@ -67,6 +67,11 @@
 					label: 'Snapshots',
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
 					href: `/${node}/vm/${vmName}/snapshots`
+				},
+				{
+					label: 'Backups',
+					icon: 'mdi--backup-restore',
+					href: `/${node}/vm/${vmName}/backups`
 				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/vm/${vmName}/options` }
 			];
@@ -91,6 +96,11 @@
 					label: 'Snapshots',
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
 					href: `/${node}/jail/${jailName}/snapshots`
+				},
+				{
+					label: 'Backups',
+					icon: 'mdi--backup-restore',
+					href: `/${node}/jail/${jailName}/backups`
 				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
@@ -170,6 +180,22 @@
 							}
 						]
 					},
+					hasMdns && {
+						label: 'mDNS',
+						icon: 'mdi--broadcast',
+						children: [
+							{
+								label: 'Records',
+								icon: 'mdi--format-list-bulleted',
+								href: `/${node}/network/mdns/records`
+							},
+							{
+								label: 'Settings',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/network/mdns/settings`
+							}
+						]
+					},
 					hasWireGuard && {
 						label: 'VPN',
 						icon: 'mdi--vpn',
@@ -205,12 +231,11 @@
 						label: 'ZFS',
 						icon: 'file-icons--openzfs',
 						children: [
-							// Turned off dashboard for now
-							// {
-							// 	label: 'Dashboard',
-							// 	icon: 'mdi--monitor-dashboard',
-							// 	href: `/${node}/storage/zfs/dashboard`
-							// },
+							{
+								label: 'Dashboard',
+								icon: 'mdi--monitor-dashboard',
+								href: `/${node}/storage/zfs/dashboard`
+							},
 							{ label: 'Pools', icon: 'bi--hdd-stack-fill', href: `/${node}/storage/zfs/pools` },
 							{
 								label: 'Datasets',
@@ -290,6 +315,22 @@
 					}
 				]
 			},
+			{
+				label: 'Services',
+				icon: 'material-symbols--design-services-outline-rounded',
+				children: [
+					{
+						label: 'Certificates',
+						icon: 'mdi--certificate-outline',
+						href: `/${node}/services/certificates`
+					},
+					{
+						label: 'Dynamic DNS',
+						icon: 'mdi--dns',
+						href: `/${node}/services/dynamic-dns`
+					}
+				]
+			},
 
 			{
 				label: 'Settings',
@@ -302,7 +343,18 @@
 							{
 								label: 'Users',
 								icon: 'mdi--account',
-								href: `/${node}/settings/authentication/users`
+								children: [
+									{
+										label: 'Local',
+										icon: 'mdi--account-box',
+										href: `/${node}/settings/authentication/users/local`
+									},
+									{
+										label: 'PAM',
+										icon: 'mdi--account-arrow-right',
+										href: `/${node}/settings/authentication/users/pam`
+									}
+								]
 							},
 							{
 								label: 'Groups',
@@ -335,13 +387,18 @@
 								label: 'Services',
 								icon: 'material-symbols--design-services-outline-rounded',
 								href: `/${node}/settings/system/services`
+							},
+							{
+								label: 'Tunables',
+								icon: 'mdi--tune-variant',
+								href: `/${node}/settings/system/tunables`
+							},
+							{
+								label: 'PCI Passthrough',
+								icon: 'eos-icons--hardware-circuit',
+								href: `/${node}/settings/device-passthrough`
 							}
 						]
-					},
-					{
-						label: 'PCI Passthrough',
-						icon: 'eos-icons--hardware-circuit',
-						href: `/${node}/settings/device-passthrough`
 					}
 				]
 			}
@@ -356,7 +413,7 @@
 
 	watch([() => page.url.pathname], ([pathName]) => {
 		if (pathName === `/${node}`) {
-			goto(
+			useSafeGoto(
 				resolve('/[node]/summary', {
 					node: node
 				})
@@ -364,14 +421,12 @@
 		} else if (pathName.startsWith(`/${node}/vm`)) {
 			const rid = pathName.split('/')[3];
 			if (pathName === `/${node}/vm/${rid}`) {
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				goto(`/${node}/vm/${rid}/summary`, { replaceState: true });
+				useSafeGoto(`/${node}/vm/${rid}/summary`, { replaceState: true });
 			}
 		} else if (pathName.startsWith(`/${node}/jail`)) {
 			const ctId = pathName.split('/')[3];
 			if (pathName === `/${node}/jail/${ctId}`) {
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				goto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
+				useSafeGoto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
 			}
 		}
 	});
@@ -422,7 +477,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item (item.label)}
+								{#each nodeItems as item (item.href ?? item.icon)}
 									<NodeTreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
 								{/each}
 							</ScrollArea>
@@ -434,11 +489,11 @@
 		<Resizable.Handle withHandle />
 		<Resizable.Pane>
 			{#if isConsoleRoute}
-				<div class="h-full w-full overflow-hidden" transition:fade>
+				<div class="h-full w-full overflow-hidden">
 					{@render children?.()}
 				</div>
 			{:else}
-				<div class="h-full w-full overflow-y-auto" transition:fade>
+				<div class="h-full w-full overflow-y-auto">
 					{@render children?.()}
 				</div>
 			{/if}

@@ -12,6 +12,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -42,6 +44,17 @@ func newSambaServiceWithMockRunner(t *testing.T) (*Service, *gzfstest.MockRunner
 	client := gzfs.NewClient(gzfs.Options{
 		Runner: runner,
 	})
+
+	settings := sambaModels.SambaSettings{
+		UnixCharset:        "UTF-8",
+		Workgroup:          "WORKGROUP",
+		ServerString:       "Sylve SMB Server",
+		Interfaces:         "lo0",
+		BindInterfacesOnly: true,
+	}
+	if err := dbConn.Create(&settings).Error; err != nil {
+		t.Fatalf("failed creating default samba settings: %v", err)
+	}
 
 	return &Service{
 		DB:   dbConn,
@@ -102,7 +115,7 @@ func addDatasetLookupMocks(t *testing.T, runner *gzfstest.MockRunner, datasets [
 
 	resp := makeResp()
 	runner.AddCommand("zfs get -p -H -o name,value guid -j", resp, "", nil)
-	runner.AddCommand("zfs list -o name,origin,used,available,recordsize,mountpoint,compression,type,volsize,quota,referenced,written,logicalused,usedbydataset,guid,mounted,checksum,aclmode,aclinherit,primarycache,volmode,compressratio,atime,dedup,volblocksize,encryption,encryptionroot,keyformat,keylocation -p", resp, "", nil)
+	runner.AddCommand("zfs list -o name,origin,used,available,recordsize,mountpoint,compression,type,volsize,quota,referenced,written,logicalused,usedbydataset,guid,mounted,checksum,aclmode,aclinherit,primarycache,volmode,compressratio,atime,dedup,volblocksize,encryption,encryptionroot,keyformat,keylocation,refreservation,readonly -p", resp, "", nil)
 }
 
 func TestGlobalConfigMapToGuestIsConditional(t *testing.T) {
@@ -296,6 +309,82 @@ func TestShareConfigBestEffortWhenACLPropertySetFails(t *testing.T) {
 	}
 }
 
+func TestShareConfigAppleExtensionsDoNotConvertAppleDoubleFiles(t *testing.T) {
+	svc, runner := newSambaServiceWithMockRunner(t)
+	ctx := context.Background()
+
+	var settings sambaModels.SambaSettings
+	if err := svc.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed loading samba settings: %v", err)
+	}
+	settings.AppleExtensions = true
+	if err := svc.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed enabling Apple extensions: %v", err)
+	}
+
+	share := sambaModels.SambaShare{
+		Name:          "backups",
+		Dataset:       "guid-backups",
+		GuestOk:       true,
+		CreateMask:    "0664",
+		DirectoryMask: "2775",
+	}
+	if err := svc.DB.Create(&share).Error; err != nil {
+		t.Fatalf("failed creating share: %v", err)
+	}
+
+	addDatasetLookupMocks(t, runner, []mockDataset{
+		{Name: "tank/backups", GUID: "guid-backups", Mountpoint: "/mnt/backups"},
+	})
+	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/backups", "", "", nil)
+
+	cfg, err := svc.ShareConfig(ctx)
+	if err != nil {
+		t.Fatalf("ShareConfig failed: %v", err)
+	}
+	if !strings.Contains(cfg, "\tfruit:veto_appledouble = yes\n") {
+		t.Fatalf("expected AppleDouble sidecars to be vetoed, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "\tfruit:convert_adouble = no\n") {
+		t.Fatalf("expected AppleDouble conversion to be disabled, got:\n%s", cfg)
+	}
+}
+
+func TestShareConfigUsesSyslogForFullAudit(t *testing.T) {
+	svc, runner := newSambaServiceWithMockRunner(t)
+	share := sambaModels.SambaShare{
+		Name:              "audited",
+		Dataset:           "guid-audited",
+		GuestOk:           true,
+		CreateMask:        "0664",
+		DirectoryMask:     "2775",
+		AuditEnabled:      true,
+		AuditedOperations: []string{"write"},
+	}
+	if err := svc.DB.Create(&share).Error; err != nil {
+		t.Fatalf("create audited share: %v", err)
+	}
+	addDatasetLookupMocks(t, runner, []mockDataset{{Name: "tank/audited", GUID: "guid-audited", Mountpoint: "/mnt/audited"}})
+	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/audited", "", "", nil)
+
+	cfg, err := svc.ShareConfig(context.Background())
+	if err != nil {
+		t.Fatalf("ShareConfig failed: %v", err)
+	}
+	for _, line := range []string{
+		"full_audit:syslog = true",
+		"full_audit:facility = LOCAL5",
+		"full_audit:priority = NOTICE",
+	} {
+		if !strings.Contains(cfg, line) {
+			t.Fatalf("missing %q in:\n%s", line, cfg)
+		}
+	}
+	if strings.Contains(cfg, "full_audit:log =") {
+		t.Fatalf("unsupported full_audit:log emitted in:\n%s", cfg)
+	}
+}
+
 func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
 
@@ -313,6 +402,10 @@ func TestCreateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		70,
+		nil,
+		true,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -351,6 +444,10 @@ func TestUpdateShareRejectsGuestOnlyWithPrincipals(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		70,
+		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected error for guest-only share with principals")
@@ -383,6 +480,10 @@ func TestCreateShareFailsWhenACLPropertyEnforcementFails(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		70,
+		nil,
+		true,
 	)
 	if err == nil {
 		t.Fatal("expected ACL enforcement failure")
@@ -436,6 +537,10 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 		"2775",
 		false,
 		0,
+		false,
+		70,
+		nil,
+		true,
 	)
 	if err != nil {
 		t.Fatalf("CreateShare failed: %v", err)
@@ -451,5 +556,89 @@ func TestCreateShareWriteWinsForOverlappingGroupPermissions(t *testing.T) {
 	}
 	if len(share.WriteableGroups) != 1 || share.WriteableGroups[0].ID != group.ID {
 		t.Fatalf("expected write group to be retained after normalization")
+	}
+}
+
+func TestValidateSambaShareInputRejectsConfigurationInjection(t *testing.T) {
+	tests := []struct {
+		name          string
+		shareName     string
+		createMask    string
+		directoryMask string
+		operations    []string
+		wantError     string
+	}{
+		{
+			name:          "share section injection",
+			shareName:     "share]\n[global",
+			createMask:    "0664",
+			directoryMask: "2775",
+			wantError:     "invalid_share_name",
+		},
+		{
+			name:          "invalid create mask",
+			shareName:     "documents",
+			createMask:    "0668",
+			directoryMask: "2775",
+			wantError:     "invalid_create_mask",
+		},
+		{
+			name:          "invalid audit operation",
+			shareName:     "documents",
+			createMask:    "0664",
+			directoryMask: "2775",
+			operations:    []string{"openat\ninclude = /tmp/unsafe"},
+			wantError:     "invalid_audit_operation",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateSambaShareInput(test.shareName, test.createMask, test.directoryMask, test.operations)
+			if err == nil || !strings.HasPrefix(err.Error(), test.wantError) {
+				t.Fatalf("expected %q, got %v", test.wantError, err)
+			}
+		})
+	}
+}
+
+func TestWriteConfigValidatesBeforeReplacingActiveConfig(t *testing.T) {
+	svc, _ := newSambaServiceWithMockRunner(t)
+
+	originalConfigPath := sambaConfigFilePath
+	originalTestparmPath := sambaTestparmPath
+	originalRunCommand := sambaRunCommand
+	originalAtomicWriteFile := sambaAtomicWriteFile
+	t.Cleanup(func() {
+		sambaConfigFilePath = originalConfigPath
+		sambaTestparmPath = originalTestparmPath
+		sambaRunCommand = originalRunCommand
+		sambaAtomicWriteFile = originalAtomicWriteFile
+	})
+
+	sambaConfigFilePath = filepath.Join(t.TempDir(), "smb4.conf")
+	sambaTestparmPath = "/usr/local/bin/testparm"
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		if command != sambaTestparmPath {
+			t.Fatalf("expected testparm command, got %q", command)
+		}
+		if len(args) != 2 || args[0] != "-s" {
+			t.Fatalf("unexpected testparm args: %v", args)
+		}
+		return "invalid parameter", errors.New("testparm failed")
+	}
+
+	wroteActiveConfig := false
+	sambaAtomicWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		wroteActiveConfig = true
+		return nil
+	}
+
+	err := svc.WriteConfig(context.Background(), false)
+	if err == nil || !strings.Contains(err.Error(), "configuration validation failed") {
+		t.Fatalf("expected testparm validation error, got %v", err)
+	}
+	if wroteActiveConfig {
+		t.Fatal("active Samba configuration was replaced after testparm failure")
 	}
 }

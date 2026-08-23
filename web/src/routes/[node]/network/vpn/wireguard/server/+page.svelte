@@ -5,9 +5,10 @@
 		editWireGuardServer,
 		getWireGuardServer,
 		initWireGuardServer,
-		toggleWireGuardServer,
+		setWireGuardServerEnabled,
 		wireGuardServerPeers
 	} from '$lib/api/network/wireguard';
+	import { getDynamicDNSEntries } from '$lib/api/services/dynamic-dns';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import ExportModal from '$lib/components/custom/Network/WireGuard/Server/Export.svelte';
 	import PeerList from '$lib/components/custom/Network/WireGuard/Server/PeerList.svelte';
@@ -19,10 +20,12 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
+	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { randomPrivateIPv4Range, randomPrivateIPv6Range } from '$lib/utils/inet';
-	import { generateKeypair } from '$lib/utils/network/wireguard';
+	import { generateKeypair, isValidWireGuardKey } from '$lib/utils/network/wireguard';
+	import { sleep } from '$lib/utils';
 	import { convertDbTime, formatUptime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -51,6 +54,8 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	const initialServer = isAPIResponse(data.server) ? null : (data.server as WireGuardServer);
 
 	// svelte-ignore state_referenced_locally
 	const serverResource = resource(
@@ -67,16 +72,27 @@
 
 	useInterval(2000, {
 		callback: async () => {
+			if (!storage.visible) return;
 			await serverResource.refetch();
 		}
 	});
 
-	let server = $derived.by(() => {
-		if (isAPIResponse(serverResource.current)) {
-			return null;
+	let lastGoodServer = $state.raw<WireGuardServer | null>(initialServer);
+
+	watch(
+		() => serverResource.current,
+		(current) => {
+			if (!isAPIResponse(current)) {
+				lastGoodServer = current as WireGuardServer;
+				return;
+			}
+			if (current.message === 'wireguard_server_not_initialized') {
+				lastGoodServer = null;
+			}
 		}
-		return serverResource.current as WireGuardServer;
-	});
+	);
+
+	let server = $derived(lastGoodServer);
 
 	let serviceDisabled = $derived.by(() => {
 		return (
@@ -85,11 +101,15 @@
 		);
 	});
 
-	let notInitialized = $derived.by(() => {
-		return (
-			isAPIResponse(serverResource.current) &&
+	let serverLoadError = $derived.by(() => {
+		if (!isAPIResponse(serverResource.current)) return null;
+		if (
+			serverResource.current.message === 'wireguard_service_disabled' ||
 			serverResource.current.message === 'wireguard_server_not_initialized'
-		);
+		) {
+			return null;
+		}
+		return serverResource.current;
 	});
 
 	let firewallDisabled = $derived.by(() => {
@@ -106,13 +126,15 @@
 	});
 
 	let serverForm = $state({
-		port: 61820,
-		addresses: `${randomPrivateIPv4Range()}\n${randomPrivateIPv6Range()}`,
-		mtu: 1280,
-		privateKey: '',
-		allowWireGuardPort: false,
-		masqueradeIPv4Interface: '',
-		masqueradeIPv6Interface: ''
+		port: initialServer?.port ?? 61820,
+		addresses:
+			initialServer?.addresses.join('\n') ??
+			`${randomPrivateIPv4Range()}\n${randomPrivateIPv6Range()}`,
+		mtu: initialServer?.mtu ?? 1280,
+		privateKey: initialServer?.privateKey ?? '',
+		allowWireGuardPort: initialServer?.allowWireGuardPort ?? false,
+		masqueradeIPv4Interface: initialServer?.masqueradeIPv4Interface ?? '',
+		masqueradeIPv6Interface: initialServer?.masqueradeIPv6Interface ?? ''
 	});
 
 	const interfaces = $derived(Array.isArray(data.interfaces) ? (data.interfaces as Iface[]) : []);
@@ -164,14 +186,29 @@
 		deletePeer: false
 	});
 
+	let saving = $state(false);
+	let deiniting = $state(false);
+	let toggling = $state(false);
+	let serverMutating = $derived(saving || deiniting || toggling);
+	let peerTogglingID = $state<number | null>(null);
+	let mutationInProgress = $derived(serverMutating || peerTogglingID !== null);
+
 	let targetPeerID = $state(0);
 	let exportPeerID = $state<number | null>(null);
 	let exportModalOpen = $state(false);
+	let dynamicDNSEntries = $state<DynamicDNSEntry[]>([]);
 
 	let exportPeer = $derived.by(() => {
 		if (!server || exportPeerID === null) return null;
 		return server.peers.find((p) => p.id === exportPeerID) ?? null;
 	});
+
+	async function refreshDynamicDNSEntries() {
+		const result = await getDynamicDNSEntries();
+		if (!Array.isArray(result)) return;
+		dynamicDNSEntries = result;
+		updateCache('dynamic-dns-entries', result);
+	}
 
 	function splitLines(value: string): string[] {
 		return value
@@ -181,23 +218,21 @@
 	}
 
 	function openPeerEditor(peer?: WireGuardServerPeer) {
+		if (serverLoadError || mutationInProgress || serviceDisabled) return;
 		peerModalId = peer ? peer.id : null;
 		peerModalOpen = true;
 	}
 
-	function isValidWireGuardKey(key: string): boolean {
-		if (!key) return false;
-		try {
-			const binary = atob(key);
-			return binary.length === 32;
-		} catch {
-			return false;
-		}
-	}
-
 	async function saveServer() {
+		if (mutationInProgress) return;
 		if (serviceDisabled) {
 			toast.error('WireGuard service is disabled', { position: 'bottom-center' });
+			return;
+		}
+		if (serverLoadError) {
+			toast.error('The current WireGuard server state could not be loaded', {
+				position: 'bottom-center'
+			});
 			return;
 		}
 
@@ -218,64 +253,99 @@
 			masqueradeIPv4Interface: serverForm.masqueradeIPv4Interface || '',
 			masqueradeIPv6Interface: serverForm.masqueradeIPv6Interface || ''
 		};
+		const initializing = server === null;
 
-		const response = notInitialized
-			? await initWireGuardServer(payload)
-			: await editWireGuardServer(payload);
+		saving = true;
+		try {
+			const [response] = await Promise.all([
+				initializing ? initWireGuardServer(payload) : editWireGuardServer(payload),
+				sleep(800)
+			]);
 
-		if (response.status === 'success') {
-			toast.success(notInitialized ? 'WireGuard server initialized' : 'WireGuard server updated', {
+			if (response.status === 'success') {
+				toast.success(initializing ? 'WireGuard server initialized' : 'WireGuard server updated', {
+					position: 'bottom-center'
+				});
+				await serverResource.refetch();
+				return;
+			}
+
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to save WireGuard server', {
 				position: 'bottom-center'
 			});
-			await serverResource.refetch();
-			return;
+		} finally {
+			saving = false;
 		}
-
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to save WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function toggleServer() {
-		const response = await toggleWireGuardServer();
-		if (response.status === 'success') {
-			toast.success('WireGuard server toggled', { position: 'bottom-center' });
-			await serverResource.refetch();
-			return;
+		if (!server || serverLoadError || serviceDisabled || mutationInProgress) return;
+		const enabled = !server.enabled;
+		toggling = true;
+		try {
+			const [response] = await Promise.all([setWireGuardServerEnabled(enabled), sleep(800)]);
+			if (response.status === 'success') {
+				toast.success(`WireGuard server ${enabled ? 'enabled' : 'disabled'}`, {
+					position: 'bottom-center'
+				});
+				await serverResource.refetch();
+				return;
+			}
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to toggle WireGuard server', {
+				position: 'bottom-center'
+			});
+		} finally {
+			toggling = false;
 		}
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to toggle WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function confirmDeinitServer() {
-		const response = await deinitWireGuardServer();
-		if (response.status === 'success') {
-			toast.success('WireGuard server deinitialized', { position: 'bottom-center' });
-			modals.deinit = false;
-			await serverResource.refetch();
-			return;
+		if (!server || serverLoadError || serviceDisabled || mutationInProgress) return;
+		deiniting = true;
+		try {
+			const [response] = await Promise.all([deinitWireGuardServer(), sleep(800)]);
+			if (response.status === 'success') {
+				toast.success('WireGuard server deinitialized', { position: 'bottom-center' });
+				modals.deinit = false;
+				await serverResource.refetch();
+				return;
+			}
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to deinitialize WireGuard server', {
+				position: 'bottom-center'
+			});
+		} finally {
+			deiniting = false;
 		}
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to deinitialize WireGuard server', {
-			position: 'bottom-center'
-		});
 	}
 
 	async function togglePeer(peerID: number) {
-		const response = await wireGuardServerPeers.toggle(peerID);
-		if (response.status === 'success') {
-			toast.success('Peer toggled', { position: 'bottom-center' });
-			await serverResource.refetch();
-			return;
+		if (!server || serverLoadError || mutationInProgress || serviceDisabled) return;
+		const peer = server.peers.find((candidate) => candidate.id === peerID);
+		if (!peer) return;
+		const enabled = !peer.enabled;
+
+		peerTogglingID = peerID;
+		try {
+			const response = await wireGuardServerPeers.setEnabled(peerID, enabled);
+			if (response.status === 'success') {
+				toast.success(`Peer ${enabled ? 'enabled' : 'disabled'}`, { position: 'bottom-center' });
+				await serverResource.refetch();
+				return;
+			}
+			handleAPIError(response);
+			toast.error(response.message || `Failed to ${enabled ? 'enable' : 'disable'} peer`, {
+				position: 'bottom-center'
+			});
+		} finally {
+			peerTogglingID = null;
 		}
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to toggle peer', { position: 'bottom-center' });
 	}
 
 	async function deletePeer() {
+		if (serverLoadError || mutationInProgress || serviceDisabled) return;
 		const response = await wireGuardServerPeers.remove(targetPeerID);
 		if (response.status === 'success') {
 			toast.success('Peer removed', { position: 'bottom-center' });
@@ -297,6 +367,14 @@
 		</div>
 	{/if}
 
+	{#if serverLoadError}
+		<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">
+			{server
+				? 'Unable to refresh the WireGuard server. Displaying the last known state; changes are disabled until the connection recovers.'
+				: 'Unable to load the WireGuard server. Changes are disabled until the connection recovers.'}
+		</div>
+	{/if}
+
 	{#if firewallWarning}
 		<div in:fade={{ duration: 200 }}>
 			<Card.Root class="border-yellow-500/30 bg-yellow-500/10 p-0!">
@@ -314,7 +392,7 @@
 		</div>
 	{/if}
 
-	{#if !notInitialized}
+	{#if server}
 		<div in:fade={{ duration: 200 }} out:slideAndFade={{ duration: 300, gap: 16 }}>
 			<Card.Root>
 				<Card.Header class="flex flex-row items-center justify-between">
@@ -328,31 +406,32 @@
 							</div>
 						</Card.Title>
 					</div>
-					<Button size="sm" onclick={() => openPeerEditor()} disabled={!server || serviceDisabled}>
+					<Button
+						size="sm"
+						onclick={() => openPeerEditor()}
+						disabled={serviceDisabled || serverLoadError !== null || mutationInProgress}
+					>
 						<span class="icon-[mdi--plus] mr-1 h-4 w-4"></span>
 						Add Peer
 					</Button>
 				</Card.Header>
 				<Card.Content class="space-y-4">
-					{#if !server}
-						<p class="text-sm text-muted-foreground">
-							Initialize the server first to manage peers.
-						</p>
-					{:else}
-						<PeerList
-							peers={server.peers}
-							onEdit={openPeerEditor}
-							onToggle={(id) => void togglePeer(id)}
-							onExport={(id) => {
-								exportPeerID = id;
-								exportModalOpen = true;
-							}}
-							onDelete={(id) => {
-								targetPeerID = id;
-								modals.deletePeer = true;
-							}}
-						/>
-					{/if}
+					<PeerList
+						peers={server.peers}
+						disabled={serviceDisabled || serverLoadError !== null || mutationInProgress}
+						togglingPeerID={peerTogglingID}
+						onEdit={openPeerEditor}
+						onToggle={(id) => void togglePeer(id)}
+						onExport={(id) => {
+							exportPeerID = id;
+							exportModalOpen = true;
+							void refreshDynamicDNSEntries();
+						}}
+						onDelete={(id) => {
+							targetPeerID = id;
+							modals.deletePeer = true;
+						}}
+					/>
 				</Card.Content>
 			</Card.Root>
 		</div>
@@ -443,10 +522,19 @@
 
 			<div class="flex items-center justify-between gap-2">
 				<div>
-					{#if !notInitialized}
+					{#if server}
 						<div class="flex gap-2">
-							<Button size="sm" variant="outline" onclick={toggleServer} disabled={serviceDisabled}>
-								<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+							<Button
+								size="sm"
+								variant="outline"
+								onclick={toggleServer}
+								disabled={serviceDisabled || serverLoadError !== null || mutationInProgress}
+							>
+								{#if toggling}
+									<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+								{:else}
+									<span class="icon-[ri--toggle-line] mr-1 h-4 w-4"></span>
+								{/if}
 								{server?.enabled ? 'Disable Server' : 'Enable Server'}
 							</Button>
 							<Button
@@ -456,7 +544,7 @@
 								onclick={() => {
 									modals.deinit = true;
 								}}
-								disabled={serviceDisabled}
+								disabled={serviceDisabled || serverLoadError !== null || mutationInProgress}
 							>
 								<span class="icon-[mdi--trash-can-outline] mr-1 h-4 w-4"></span>
 								Deinitialize
@@ -464,9 +552,17 @@
 						</div>
 					{/if}
 				</div>
-				<Button size="sm" onclick={saveServer} disabled={serviceDisabled}>
-					<span class="icon-[mdi--content-save-outline] mr-1 h-4 w-4"></span>
-					{notInitialized ? 'Initialize' : 'Save'}
+				<Button
+					size="sm"
+					onclick={saveServer}
+					disabled={serviceDisabled || serverLoadError !== null || mutationInProgress}
+				>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{:else}
+						<span class="icon-[mdi--content-save-outline] mr-1 h-4 w-4"></span>
+					{/if}
+					{server ? 'Save' : 'Initialize'}
 				</Button>
 			</div>
 
@@ -499,7 +595,10 @@
 <AlertDialog
 	bind:open={modals.deinit}
 	names={{ parent: 'WireGuard Server', element: '' }}
-	customTitle="This will remove the WireGuard server runtime state and peer records. Continue?"
+	customTitle="This will remove the WireGuard server state and associated peer records."
+	loading={deiniting}
+	confirmLabel="Deinitialize"
+	loadingLabel="Deinitializing..."
 	actions={{
 		onConfirm: async () => {
 			await confirmDeinitServer();
@@ -513,7 +612,7 @@
 <AlertDialog
 	bind:open={modals.deletePeer}
 	names={{ parent: 'WireGuard Peer', element: targetPeerID ? String(targetPeerID) : '' }}
-	customTitle="This action removes the selected peer. Continue?"
+	customTitle="This action permanently removes the selected peer."
 	actions={{
 		onConfirm: async () => {
 			await deletePeer();
@@ -524,7 +623,7 @@
 	}}
 />
 
-{#if server}
+{#if server && !serviceDisabled && !serverLoadError && !mutationInProgress}
 	<PeerModal
 		{server}
 		bind:open={peerModalOpen}
@@ -536,5 +635,5 @@
 {/if}
 
 {#if server && exportPeer}
-	<ExportModal {server} peer={exportPeer} bind:open={exportModalOpen} />
+	<ExportModal {server} peer={exportPeer} {dynamicDNSEntries} bind:open={exportModalOpen} />
 {/if}

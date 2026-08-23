@@ -1,5 +1,19 @@
 import { z } from 'zod/v4';
 
+export const BackupTargetNodeReadinessSchema = z.object({
+	targetId: z.number(),
+	nodeId: z.string(),
+	validationSucceeded: z.boolean().default(false),
+	lastVerifiedAt: z.string().nullable().optional(),
+	readyUntil: z.string().nullable().optional(),
+	lastError: z.string().optional().default(''),
+	revision: z.number().int().nonnegative().default(0),
+	ready: z.boolean().default(false),
+	currentVoter: z.boolean().default(false),
+	expired: z.boolean().default(false),
+	configurationCurrent: z.boolean().default(true)
+});
+
 export const BackupTargetSchema = z.object({
 	id: z.number(),
 	name: z.string(),
@@ -10,6 +24,7 @@ export const BackupTargetSchema = z.object({
 	createBackupRoot: z.boolean().default(false),
 	description: z.string().optional().default(''),
 	enabled: z.boolean().default(true),
+	readiness: z.array(BackupTargetNodeReadinessSchema).optional().default([]),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });
@@ -28,6 +43,8 @@ export const BackupJobSchema = z.object({
 	pruneKeepLast: z.number().int().nonnegative().default(0),
 	pruneTarget: z.boolean().default(false),
 	stopBeforeBackup: z.boolean().default(false),
+	recursive: z.boolean().default(false),
+	encrypted: z.boolean().default(false),
 	cronExpr: z.string(),
 	enabled: z.boolean().default(true),
 	lastRunAt: z.string().nullable().optional(),
@@ -54,6 +71,7 @@ export const BackupEventSchema = z.object({
 export const BackupEventProgressSchema = z.object({
 	event: BackupEventSchema,
 	progressDataset: z.string().optional().default(''),
+	phase: z.string().optional().default(''),
 	movedBytes: z.number().nullable().optional(),
 	totalBytes: z.number().nullable().optional(),
 	progressPercent: z.number().nullable().optional()
@@ -63,15 +81,20 @@ export const SnapshotInfoSchema = z.object({
 	name: z.string(),
 	shortName: z.string(),
 	dataset: z.string().optional().default(''),
+	encrypted: z.boolean().default(false),
 	creation: z.string(),
 	used: z.string(),
 	refer: z.string(),
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
-	outOfBand: z.boolean().optional().default(false)
+	outOfBand: z.boolean().optional().default(false),
+	committed: z.boolean().optional().default(false),
+	legacy: z.boolean().optional().default(false),
+	childCount: z.number().int().nonnegative().default(0)
 });
 
 export const BackupTargetDatasetInfoSchema = z.object({
 	name: z.string(),
+	encrypted: z.boolean().default(false),
 	suffix: z.string().default(''),
 	baseSuffix: z.string().optional().default(''),
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
@@ -94,6 +117,7 @@ export const BackupVMMetadataInfoSchema = z.object({
 	pools: z.array(z.string()).default([])
 });
 
+export type BackupTargetNodeReadiness = z.infer<typeof BackupTargetNodeReadinessSchema>;
 export type BackupTarget = z.infer<typeof BackupTargetSchema>;
 export type BackupJob = z.infer<typeof BackupJobSchema>;
 export type BackupEvent = z.infer<typeof BackupEventSchema>;
@@ -104,11 +128,21 @@ export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema
 export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
 export type BackupJobMode = BackupJob['mode'];
 export type BackupGuestKind = 'dataset' | 'jail' | 'vm';
+export type BackupScopedGuestKind = Exclude<BackupGuestKind, 'dataset'>;
 export type BackupSnapshotLineageMarker = 'CURR' | 'OOB' | 'INT';
 
 export interface BackupGuestRef {
 	kind: BackupGuestKind;
 	id: number;
+}
+
+export interface BackupGuestFilter {
+	kind: BackupScopedGuestKind;
+	id: number;
+}
+
+export interface BackupGuestScope extends BackupGuestFilter {
+	hostname: string;
 }
 
 export interface BackupRestoreGenerationOption {
@@ -125,4 +159,5 @@ export interface RestoreTargetDatasetGroup {
 	jailCtId: number;
 	vmRid: number;
 	totalSnapshots: number;
+	encrypted: boolean;
 }

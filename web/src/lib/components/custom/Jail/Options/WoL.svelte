@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { modifyWoL } from '$lib/api/jail/jail';
+	import { modifyWoL } from '$lib/api/jail/options';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { Jail } from '$lib/types/jail/jail';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -11,45 +11,56 @@
 	interface Props {
 		open: boolean;
 		jail: Jail;
-		reload: boolean;
+		node: string;
+		onSaved: () => void | Promise<void>;
 	}
 
-	let { open = $bindable(), jail, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), jail, node, onSaved }: Props = $props();
+	// svelte-ignore state_referenced_locally
 	let wol = $state(jail.wol);
+	let saving = $state(false);
+
+	function reset() {
+		wol = jail.wol;
+	}
 
 	async function modify() {
-		if (!jail) return;
-		const response = await modifyWoL(jail.ctId, wol);
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify WoL setting', {
-				position: 'bottom-center'
-			});
-			return;
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifyWoL(jail.ctId, wol, { hostname: node });
+			if (response.status === 'error') {
+				handleAPIError(response);
+				toast.error('Failed to modify WoL setting', { position: 'bottom-center' });
+				return;
+			}
+
+			await onSaved();
+			toast.success('WoL setting modified', { position: 'bottom-center' });
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified WoL setting', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-1/3 overflow-hidden p-6 lg:max-w-2xl"
-		showResetButton={true}
-		onReset={() => {
-			wol = jail.wol;
-		}}
+		showCloseButton={!saving}
+		showResetButton={!saving}
+		onReset={reset}
 		onClose={() => {
-			wol = jail.wol;
+			if (saving) return;
+			reset();
 			open = false;
 		}}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
+		aria-busy={saving}
 	>
-		<Dialog.Header class="">
+		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
 					icon="icon-[arcticons--wakeonlan]"
@@ -61,16 +72,19 @@
 		</Dialog.Header>
 
 		<span class="text-muted-foreground text-justify text-sm">
-			Setting this option to be <b>on</b> will enable Wake on LAN for this jail for all MAC addresses
-			attached to it
+			Enabling this setting turns on Wake on LAN for every MAC address attached to this jail.
 		</span>
-		<CustomCheckbox label="WoL" bind:checked={wol} classes="flex items-center gap-2"
-		></CustomCheckbox>
+		<CustomCheckbox label="WoL" bind:checked={wol} classes="flex items-center gap-2" />
 
 		<Dialog.Footer class="flex justify-end">
-			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">Save</Button>
-			</div>
+			<Button onclick={modify} type="submit" size="sm" disabled={saving} aria-busy={saving}>
+				{#if saving}
+					<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					Saving...
+				{:else}
+					Save
+				{/if}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

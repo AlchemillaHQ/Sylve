@@ -3,26 +3,26 @@
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import {
-		getJailById,
+		getJailByCTID,
 		getJailLogs,
 		getStats,
+		getStatsBootstrap,
 		updateDescription,
 		updateName
 	} from '$lib/api/jail/jail';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CPUInfo } from '$lib/types/info/cpu';
 	import type { RAMInfo } from '$lib/types/info/ram';
-	import type { Jail, JailStat, JailState } from '$lib/types/jail/jail';
-	import { updateCache } from '$lib/utils/http';
+	import type { Jail, JailState, JailStatsBootstrap } from '$lib/types/jail/jail';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { dateToAgo } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import { resource, useInterval, IsDocumentVisible, Debounced, watch } from 'runed';
-	import { getContext } from 'svelte';
+	import { getContext, onMount, untrack } from 'svelte';
 	import type { GFSStep } from '$lib/types/common';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -31,14 +31,15 @@
 		logsLength: number;
 		showLogsCallback: () => void;
 		gfsStep: GFSStep;
-		refetchStats: () => void;
+		refetchStats: (step?: GFSStep) => void;
 		active: boolean;
 	}
 
 	interface Data {
+		node: string;
 		ctId: number;
 		jail: Jail;
-		stats: JailStat[];
+		stats: JailStatsBootstrap | null;
 		ramInfo: RAMInfo;
 		cpuInfo: CPUInfo;
 	}
@@ -49,28 +50,87 @@
 
 	let ctId = $derived(data.ctId);
 
+	type JailStatsSnapshot = JailStatsBootstrap & {
+		identity: string;
+	};
+
+	type StatsRefetchRequest = { step: GFSStep | null };
+
+	function initialStatsSnapshot(): JailStatsSnapshot | null {
+		const identity = `${data.node}:jail:${data.ctId}`;
+		return data.stats
+			? {
+					identity,
+					...data.stats
+				}
+			: null;
+	}
+
+	let statsIdentity = $derived(`${data.node}:jail:${data.ctId}`);
+	let manualStatsSelection = $state<{ identity: string; step: GFSStep } | null>(null);
+	let requestedStatsStep = $derived(
+		manualStatsSelection?.identity === statsIdentity ? manualStatsSelection.step : null
+	);
+
+	function getStatsRefetchStep(refetching: unknown): GFSStep | null {
+		if (typeof refetching !== 'object' || refetching === null || !('step' in refetching)) {
+			return null;
+		}
+
+		return (refetching as StatsRefetchRequest).step;
+	}
+
+	function ensureCurrentStatsRequest(identity: string, signal: AbortSignal): void {
+		if (signal.aborted || statsIdentity !== identity) {
+			throw new DOMException('Obsolete jail statistics request', 'AbortError');
+		}
+	}
+
 	const barExtras = getContext<SummaryBarExtras>('jailSummaryBarExtras');
 
-	// svelte-ignore state_referenced_locally
-	const jail = resource(
-		() => `jail-${ctId}`,
-		async (key) => {
-			const result = await getJailById(ctId, 'ctid');
-			updateCache(key, result);
-			return result;
+	type JailSnapshot = { identity: string; value: Jail };
+	const initialJailData = untrack(() => data);
+	let jailIdentity = $derived(`${data.node}\u0000${ctId}`);
+	const jailResource = resource(
+		[() => data.node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }): Promise<JailSnapshot> => {
+			const result = await getJailByCTID(currentCtID, {
+				hostname,
+				signal
+			});
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`jail-${currentCtID}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentCtID}`, value: result };
 		},
 		{
-			initialValue: data.jail
+			initialValue: {
+				identity: `${initialJailData.node}\u0000${initialJailData.ctId}`,
+				value: initialJailData.jail
+			}
 		}
 	);
+
+	const jail = {
+		get current(): Jail {
+			return jailResource.current.identity === jailIdentity
+				? jailResource.current.value
+				: data.jail;
+		},
+		refetch: () => jailResource.refetch()
+	};
 
 	const jState = getContext<{ current: JailState | null; refetch(): void }>('jailState');
 
 	const logs = resource(
-		() => `jail-${ctId}-logs`,
-		async (key) => {
-			const result = await getJailLogs(jail.current.ctId);
-			updateCache(key, result);
+		[() => data.node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }) => {
+			const result = await getJailLogs(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail logs');
+			}
+			updateCache(`jail-${currentCtID}-logs`, result, hostname);
 			return result;
 		},
 		{
@@ -78,24 +138,110 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	let lastAutomaticStatsResolution = 0;
+
 	const stats = resource(
-		[() => barExtras.gfsStep],
-		async ([gfsStep]) => {
-			const result = await getStats(Number(data.jail.ctId), gfsStep);
-			const key = `jail-stats-${gfsStep}-${data.jail.ctId}`;
-			updateCache(key, result);
-			return result;
+		[() => data.node, () => ctId],
+		async (
+			[hostname, currentCtID],
+			_,
+			{ data: previousSnapshot, refetching, signal }
+		): Promise<JailStatsSnapshot | null> => {
+			const identity = `${hostname}:jail:${currentCtID}`;
+			const requestedStep = getStatsRefetchStep(refetching);
+
+			if (!requestedStep) {
+				const result = await getStatsBootstrap(currentCtID, { hostname, signal });
+				if (isAPIResponse(result)) {
+					throw new Error(
+						result.message || result.error?.toString() || 'Failed to load jail statistics'
+					);
+				}
+
+				ensureCurrentStatsRequest(identity, signal);
+
+				const snapshot: JailStatsSnapshot = {
+					identity,
+					...result
+				};
+				await updateCache(`guest-stats-v2:jail:${currentCtID}:bootstrap`, result, hostname);
+				ensureCurrentStatsRequest(identity, signal);
+				lastAutomaticStatsResolution = Date.now();
+				return snapshot;
+			}
+
+			const result = await getStats(currentCtID, requestedStep, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(
+					result.message || result.error?.toString() || 'Failed to load jail statistics'
+				);
+			}
+			ensureCurrentStatsRequest(identity, signal);
+
+			const previous = previousSnapshot?.identity === identity ? previousSnapshot : null;
+			const snapshot: JailStatsSnapshot = {
+				identity,
+				points: result,
+				resolvedStep: requestedStep,
+				lastSampleAt: result.at(-1)?.createdAt ?? previous?.lastSampleAt ?? null,
+				historyState: result.length > 0 ? 'available' : (previous?.historyState ?? 'available')
+			};
+			return snapshot;
 		},
-		{ initialValue: data.stats }
+		{ initialValue: initialStatsSnapshot() }
 	);
+
+	let activeStats = $derived.by(() =>
+		stats.current?.identity === statsIdentity ? stats.current : null
+	);
+	let statsPoints = $derived(activeStats?.points ?? []);
+	let displayedStatsStep = $derived(activeStats?.resolvedStep ?? null);
+	let statsEmptyMessage = $derived.by(() => {
+		if (!activeStats) {
+			return stats.error ? 'Unable to load telemetry. Retrying…' : 'Loading telemetry…';
+		}
+		if (
+			requestedStatsStep &&
+			displayedStatsStep === requestedStatsStep &&
+			statsPoints.length === 0
+		) {
+			return 'No samples exist in the selected time range.';
+		}
+		if (activeStats.historyState === 'never-recorded') {
+			return 'No data has been recorded for this jail.';
+		}
+		if (activeStats.historyState === 'outside-supported-range') {
+			return activeStats.lastSampleAt
+				? `Last telemetry was recorded ${dateToAgo(activeStats.lastSampleAt)}; graph history is available for 70 days.`
+				: 'The last telemetry is outside the supported 70-day graph range.';
+		}
+		if (statsPoints.length === 0) return 'No samples exist in the selected time range.';
+		return '';
+	});
+
+	watch(
+		() => displayedStatsStep,
+		(step) => {
+			if (step) barExtras.gfsStep = step;
+		}
+	);
+
+	function refetchCurrentStats() {
+		return stats.refetch({ step: requestedStatsStep ?? displayedStatsStep });
+	}
+
+	function selectStatsStep(step: GFSStep) {
+		manualStatsSelection = { identity: statsIdentity, step };
+		if (displayedStatsStep) barExtras.gfsStep = displayedStatsStep;
+		void stats.refetch({ step });
+	}
 
 	// svelte-ignore state_referenced_locally
 	const cpuInfo = resource(
-		() => `cpu-info`,
-		async (key) => {
-			const result = await getCPUInfo('current');
-			updateCache(key, result as CPUInfo);
+		() => data.node,
+		async (hostname, _, { signal }) => {
+			const result = await getCPUInfo('current', { hostname, signal });
+			updateCache('system-cpu-info', result as CPUInfo, hostname);
 			return result;
 		},
 		{
@@ -105,10 +251,10 @@
 
 	// svelte-ignore state_referenced_locally
 	const ramInfo = resource(
-		() => `ram-info`,
-		async (key) => {
-			const result = await getRAMInfo('current');
-			updateCache(key, result);
+		() => data.node,
+		async (hostname, _, { signal }) => {
+			const result = await getRAMInfo('current', { hostname, signal });
+			updateCache('system-ram-info', result, hostname);
 			return result;
 		},
 		{
@@ -128,23 +274,42 @@
 			if (visible.current) {
 				jail.refetch();
 
-				if (barExtras.gfsStep === 'hourly') {
-					stats.refetch();
-				}
-
-				if (showLogs) {
-					logs.refetch();
+				const pollingStep = requestedStatsStep ?? displayedStatsStep;
+				const shouldReResolve =
+					requestedStatsStep === null &&
+					jState.current?.state === 'ACTIVE' &&
+					Date.now() - lastAutomaticStatsResolution >= 60000;
+				if (!stats.loading && (stats.error || pollingStep === 'hourly' || shouldReResolve)) {
+					if (shouldReResolve) void stats.refetch({ step: null });
+					else void refetchCurrentStats();
 				}
 			}
 		}
 	});
+
+	useInterval(3000, {
+		callback: () => {
+			if (visible.current && showLogs) {
+				logs.refetch();
+			}
+		}
+	});
+
+	watch(
+		() => jState.current?.state,
+		(currentState, previousState) => {
+			if (previousState && previousState !== currentState && requestedStatsStep === null) {
+				void stats.refetch({ step: null });
+			}
+		}
+	);
 
 	watch(
 		() => visible.current,
 		(isVisible) => {
 			if (isVisible) {
 				jail.refetch();
-				stats.refetch();
+				if (!stats.loading) void refetchCurrentStats();
 
 				if (showLogs) {
 					logs.refetch();
@@ -162,6 +327,9 @@
 	let jailDesc = $state(jail.current.description || '');
 	let debouncedDesc = new Debounced(() => jailDesc, 500);
 	let isDescInitialized = false;
+	type PendingDescriptionSave = { ctId: number; hostname: string; description: string };
+	let pendingDescriptionSave: PendingDescriptionSave | null = null;
+	let descriptionSaveRunning = false;
 	let jailName = $state(jail.current.name || '');
 	let syncedJailName = $state(jail.current.name || '');
 	let isRenameInFlight = $state(false);
@@ -190,6 +358,69 @@
 		followLogs = isNearLogsBottom(logsContainerElement);
 	}
 
+	async function flushDescriptionSaves() {
+		if (descriptionSaveRunning) return;
+		descriptionSaveRunning = true;
+		let lastSuccessfulSave: PendingDescriptionSave | null = null;
+
+		try {
+			while (pendingDescriptionSave || lastSuccessfulSave) {
+				if (!pendingDescriptionSave && lastSuccessfulSave) {
+					const saved = lastSuccessfulSave;
+					lastSuccessfulSave = null;
+					if (data.ctId === saved.ctId && data.node === saved.hostname) {
+						await jail.refetch();
+					}
+					continue;
+				}
+
+				const pending = pendingDescriptionSave;
+				pendingDescriptionSave = null;
+				if (!pending) continue;
+
+				let result: Awaited<ReturnType<typeof updateDescription>>;
+				try {
+					result = await updateDescription(pending.ctId, pending.description, pending.hostname);
+				} catch {
+					if (data.ctId === pending.ctId && data.node === pending.hostname) {
+						toast.error('Error updating jail description', {
+							duration: 5000,
+							position: 'bottom-center'
+						});
+					}
+					continue;
+				}
+				if (result.status === 'success') {
+					lastSuccessfulSave = pending;
+					continue;
+				}
+
+				if (data.ctId === pending.ctId && data.node === pending.hostname) {
+					toast.error(
+						result.message === 'replication_lease_not_owned'
+							? 'This jail is owned by another node right now'
+							: result.message === 'invalid_description'
+								? 'Jail description must be 1024 characters or fewer'
+								: 'Error updating jail description',
+						{ duration: 5000, position: 'bottom-center' }
+					);
+				}
+			}
+		} finally {
+			descriptionSaveRunning = false;
+			if (pendingDescriptionSave) void flushDescriptionSaves();
+		}
+	}
+
+	function queueDescriptionSave(description: string) {
+		pendingDescriptionSave = {
+			ctId: data.ctId,
+			hostname: data.node,
+			description
+		};
+		void flushDescriptionSaves();
+	}
+
 	watch(
 		() => debouncedDesc.current,
 		(curr, prev) => {
@@ -200,7 +431,7 @@
 
 			if (curr !== undefined && prev !== undefined) {
 				if (curr !== prev) {
-					updateDescription(jail.current.id, curr);
+					queueDescriptionSave(curr);
 				}
 			}
 		}
@@ -247,18 +478,21 @@
 		}
 
 		isRenameInFlight = true;
-		const result = await updateName(jail.current.id, nextName);
-		if (result.status === 'success') {
-			isEditingName = false;
-			reload.leftPanel = true;
-			await jail.refetch();
-			jailName = jail.current.name || nextName;
-			syncedJailName = jailName;
-			toast.success('Jail name updated', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} else {
+		try {
+			const result = await updateName(jail.current.ctId, nextName, data.node);
+			if (result.status === 'success') {
+				isEditingName = false;
+				reload.leftPanel = true;
+				await jail.refetch();
+				jailName = jail.current.name || nextName;
+				syncedJailName = jailName;
+				toast.success('Jail name updated', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			let errorMessage = 'Error updating jail name';
 			if (result.message === 'invalid_vm_name') {
 				errorMessage = 'Invalid jail name. Use letters, numbers, - or _.';
@@ -272,29 +506,42 @@
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch {
+			toast.error('Error updating jail name', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			isRenameInFlight = false;
 		}
-
-		isRenameInFlight = false;
 	}
 
 	// Register with the layout's toolbar bar on mount; clean up on unmount
-	$effect(() => {
-		barExtras.active = true;
+	onMount(() => {
 		barExtras.showLogsCallback = () => {
 			followLogs = true;
 			showLogs = true;
 		};
-		barExtras.refetchStats = () => stats.refetch();
+		barExtras.refetchStats = (step) => {
+			if (step) {
+				selectStatsStep(step);
+				return;
+			}
+			void refetchCurrentStats();
+		};
 		return () => {
-			barExtras.active = false;
 			barExtras.logsLength = 0;
+			barExtras.refetchStats = () => {};
 		};
 	});
 
 	// Keep logsLength in the shared bar state in sync
-	$effect(() => {
-		barExtras.logsLength = logs.current.logs.length;
-	});
+	watch(
+		() => logs.current.logs.length,
+		(length) => {
+			barExtras.logsLength = length;
+		}
+	);
 
 	watch(
 		() => logs.current.logs,
@@ -447,31 +694,43 @@
 		</Card.Root>
 	</div>
 
-	<div class="space-y-4 px-4 pb-4">
-		<LineBrush
-			title="CPU Usage"
-			points={stats.current.map((data) => ({
-				date: new Date(data.createdAt).getTime(),
-				value: Number(data.cpuUsage)
-			}))}
-			percentage={true}
-			color="one"
-			containerContentHeight="h-64"
-			titleIconClass="icon-[solar--cpu-bold]"
-		/>
+	{#key `${statsIdentity}:${displayedStatsStep ?? 'none'}`}
+		<div class="space-y-4 px-4 pb-4">
+			<LineBrush
+				title="CPU Usage"
+				points={statsPoints.map((data) => ({
+					date: new Date(data.createdAt).getTime(),
+					value: Number(data.cpuUsage)
+				}))}
+				emptyMessage={statsEmptyMessage}
+				loading={stats.loading && !activeStats}
+				error={Boolean(stats.error)}
+				onRetry={() => void refetchCurrentStats()}
+				percentage={true}
+				color="one"
+				animateOnMount={true}
+				containerContentHeight="h-64"
+				titleIconClass="icon-[solar--cpu-bold]"
+			/>
 
-		<LineBrush
-			title="Memory Usage"
-			points={stats.current.map((data) => ({
-				date: new Date(data.createdAt).getTime(),
-				value: Number(data.memoryUsage)
-			}))}
-			percentage={true}
-			color="two"
-			containerContentHeight="h-64"
-			titleIconClass="icon-[ph--memory]"
-		/>
-	</div>
+			<LineBrush
+				title="Memory Usage"
+				points={statsPoints.map((data) => ({
+					date: new Date(data.createdAt).getTime(),
+					value: Number(data.memoryUsage)
+				}))}
+				emptyMessage={statsEmptyMessage}
+				loading={stats.loading && !activeStats}
+				error={Boolean(stats.error)}
+				onRetry={() => void refetchCurrentStats()}
+				percentage={true}
+				color="two"
+				animateOnMount={true}
+				containerContentHeight="h-64"
+				titleIconClass="icon-[ph--memory]"
+			/>
+		</div>
+	{/key}
 </div>
 
 <Dialog.Root bind:open={showLogs}>
@@ -497,6 +756,11 @@
 
 		<Card.Root class="w-full min-w-0 gap-0 bg-black p-4 dark:bg-black">
 			<Card.Content class="mt-3 w-full min-w-0 max-w-full p-0">
+				{#if logs.loading && !logs.current.logs}
+					<div class="text-muted-foreground pb-2 text-xs">Loading jail logs…</div>
+				{:else if logs.error}
+					<div class="pb-2 text-xs text-red-400">Unable to refresh jail logs. Retrying…</div>
+				{/if}
 				<div
 					class="logs-container max-h-64 w-full overflow-x-auto overflow-y-auto"
 					bind:this={logsContainerElement}

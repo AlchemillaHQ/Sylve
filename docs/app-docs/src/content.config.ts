@@ -17,6 +17,9 @@ export const collections = {
 			pubDate: z.coerce.date(),
 			author: z.string(),
 			draft: z.boolean().default(false),
+			category: z.enum(['Engineering', 'Releases', 'Guides', 'Community']).default('Engineering'),
+			image: z.string().optional(),
+			featured: z.boolean().default(false),
 			layout: z.string().optional(),
 			// Add dummy sidebar to prevent Starlight crashes if it scans this collection
 			sidebar: z.object({

@@ -1,211 +1,128 @@
 <script lang="ts">
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
-	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import { goto } from '$app/navigation';
 	import { setContext } from 'svelte';
 	import { page } from '$app/state';
-	import { actionVm, deleteVM, getSimpleVMById, getVMDomain } from '$lib/api/vm/vm';
+	import {
+		actionVm,
+		deleteVM,
+		forceDeleteVM,
+		getSimpleVMByIdResult,
+		getVMDomain,
+		purgeVMRegistration
+	} from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { storage } from '$lib';
 	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
-	import { sleep } from '$lib/utils';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import { fade } from 'svelte/transition';
-	import type { SimpleVm, VMDomain, VMLifecycleAction } from '$lib/types/vm/vm';
+	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
+	import { parseGuestDeletionData } from '$lib/types/common';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import {
-		createVMPendingLifecycleSnapshot,
-		getEffectiveVMLifecycleAction,
-		getVMLifecyclePendingTimeoutMs,
-		getVMLifecycleBadgeStyle,
-		isVMPendingLifecycleActionSettled,
-		isVMLifecycleTransitionPending,
-		markVMPendingSnapshotNonRunning,
-		shouldHideVMLifecycleButtons,
-		removeStaleCacheByRID,
-		type VMPendingLifecycleSnapshot
-	} from '$lib/utils/vm/vm';
-	import type { APIResponse } from '$lib/types/common';
+	import { removeStaleCacheByRID, getVMLifecycleBadgeStyle } from '$lib/utils/vm/vm';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
 
 	let { children }: Props = $props();
-	let pendingLifecycleAction = $state<VMLifecycleAction | ''>('');
-	let pendingLifecycleSnapshot = $state<VMPendingLifecycleSnapshot | null>(null);
-	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
-	const NON_RUNNING_ACTION_SUPPRESS_MS = 1800;
-	let suppressNonRunningActions = $state(false);
-	let suppressNonRunningActionsTimer: ReturnType<typeof setTimeout> | null = null;
-	let isDeleteInFlight = $state(false);
 
 	let rid = $derived.by(() => {
-		const value = Number(page.url.pathname.split('/')[3]);
-		return Number.isFinite(value) ? value : 0;
+		const value = Number(page.params.rid);
+		return Number.isSafeInteger(value) && value > 0 ? value : 0;
 	});
+	let node = $derived(String(page.params.node || ''));
+	let vmIdentity = $derived(`${node}\u0000${rid}`);
 
-	const vm = resource(
-		() => `simple-vm-${rid}`,
-		async (key: string): Promise<SimpleVm | null> => {
-			if (!rid) return null;
-			const result = await getSimpleVMById(rid, 'rid');
+	type SimpleVMSnapshot = { identity: string; vm: SimpleVm };
+	type VMDomainSnapshot = { identity: string; domain: VMDomain };
+	const initialPageData = page.data as {
+		node?: string;
+		rid?: number;
+		vm?: SimpleVm | null;
+		domain?: VMDomain | null;
+	};
+	const initialIdentity = `${String(initialPageData.node || '')}\u0000${Number(initialPageData.rid || 0)}`;
+
+	const vmResource = resource(
+		[() => node, () => rid],
+		async ([hostname, currentRid], _, { signal }): Promise<SimpleVMSnapshot | null> => {
+			if (!currentRid || !hostname) return null;
+			const result = await getSimpleVMByIdResult(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
-				return null;
+				throw new Error(result.message || result.error?.toString() || 'Unable to load VM');
 			}
-
-			updateCache(key, result);
-			return result;
+			await updateCache(`simple-vm-${currentRid}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentRid}`, vm: result };
 		},
-		{ initialValue: null as SimpleVm | null }
+		{
+			initialValue: initialPageData.vm
+				? { identity: initialIdentity, vm: initialPageData.vm }
+				: null
+		}
 	);
 
-	const domain = resource(
-		() => `vm-domain-${rid}`,
-		async (key: string): Promise<VMDomain | null> => {
-			if (!rid) return null;
-			const result = await getVMDomain(rid);
+	const domainResource = resource(
+		[() => node, () => rid],
+		async ([hostname, currentRid], _, { signal }): Promise<VMDomainSnapshot | null> => {
+			if (!currentRid || !hostname) return null;
+			const result = await getVMDomain(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
-				return null;
+				throw new Error(result.message || result.error?.toString() || 'Unable to load VM domain');
 			}
-
-			updateCache(key, result);
-			return result;
+			await updateCache(`vm-domain-${currentRid}`, result, hostname);
+			return { identity: `${hostname}\u0000${currentRid}`, domain: result };
 		},
-		{ initialValue: (page.data as { domain?: VMDomain | null }).domain ?? null }
+		{
+			initialValue: initialPageData.domain
+				? { identity: initialIdentity, domain: initialPageData.domain }
+				: null
+		}
 	);
 
-	const lifecycleTask = resource(
-		() => `vm-lifecycle-task-${rid}`,
-		async (): Promise<LifecycleTask | null | APIResponse> => {
-			if (!rid) return null;
-			const result = await getActiveLifecycleTaskForGuest('vm', rid);
-			if (isAPIResponse(result)) {
-				return null;
-			}
-			return result;
+	const vm = {
+		get current(): SimpleVm | null {
+			if (vmResource.error || vmResource.current?.identity !== vmIdentity) return null;
+			return vmResource.current.vm;
 		},
-		{ initialValue: null as LifecycleTask | null }
-	);
+		refetch: () => vmResource.refetch()
+	};
+
+	const domain = {
+		get current(): VMDomain | null {
+			if (domainResource.error || domainResource.current?.identity !== vmIdentity) return null;
+			return domainResource.current.domain;
+		},
+		refetch: () => domainResource.refetch()
+	};
 
 	setContext('vmDomain', domain);
-	setContext('vmLifecycleTask', lifecycleTask);
 
 	let normalizedDomainStatus = $derived.by(() =>
 		String(domain.current?.status || '')
 			.trim()
 			.toLowerCase()
 	);
-
-	let isDomainErrorState = $derived.by(() => normalizedDomainStatus === 'error');
-	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
-	let activeLifecycleAction = $derived.by(() => {
-		if (lifecycleTask.current && !isAPIResponse(lifecycleTask.current)) {
-			return lifecycleTask.current.action;
-		}
-
-		return '';
-	});
-	let isActiveLifecycleActionSettled = $derived.by(() => {
-		if (
-			activeLifecycleAction !== 'start' &&
-			activeLifecycleAction !== 'stop' &&
-			activeLifecycleAction !== 'shutdown' &&
-			activeLifecycleAction !== 'reboot'
-		) {
-			return false;
-		}
-
-		const snapshot =
-			activeLifecycleAction === pendingLifecycleAction && pendingLifecycleSnapshot
-				? pendingLifecycleSnapshot
-				: createVMPendingLifecycleSnapshot(String(domain.current?.status || ''));
-
-		return isVMPendingLifecycleActionSettled(
-			activeLifecycleAction,
-			snapshot,
-			normalizedDomainStatus,
-			isDomainErrorState
-		);
-	});
-	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
-
-	let effectiveLifecycleAction = $derived(
-		getEffectiveVMLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
+	let isDomainErrorState = $derived(normalizedDomainStatus === 'error');
+	let isOrphanState = $derived(normalizedDomainStatus === 'orphan');
+	let hasActiveLifecycleTask = $derived(!!domain.current?.pendingAction);
+	let lifecycleActionBadge = $derived(
+		getVMLifecycleBadgeStyle(domain.current?.pendingAction || '')
 	);
-	let isLifecycleTransitionPending = $derived(
-		isVMLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
-	);
-	let shouldHideActionButtons = $derived(
-		shouldHideVMLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
-	);
+	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
 	let isDomainRunningForActions = $derived.by(() => {
-		if (normalizedDomainStatus === 'running') {
-			return true;
-		}
-
-		if (!suppressNonRunningActions || isDomainErrorState) {
-			return false;
-		}
-
-		if (
-			pendingLifecycleAction === 'stop' ||
-			pendingLifecycleAction === 'shutdown' ||
-			activeLifecycleAction === 'stop' ||
-			activeLifecycleAction === 'shutdown'
-		) {
-			return false;
-		}
-
-		return true;
+		if (normalizedDomainStatus === 'running') return true;
+		if (isDomainErrorState) return false;
+		const pending = domain.current?.pendingAction;
+		if (pending === 'start' || pending === 'reboot') return true;
+		return false;
 	});
-	let lifecycleActionBadge = $derived(getVMLifecycleBadgeStyle(effectiveLifecycleAction));
-	let isShutdownTaskActive = $derived.by(() => {
-		if (!lifecycleTask.current || isAPIResponse(lifecycleTask.current)) return false;
-		return lifecycleTask.current.action === 'shutdown' && !lifecycleTask.current.overrideRequested;
-	});
-
-	watch(
-		() => [pendingLifecycleAction, normalizedDomainStatus] as const,
-		([pendingAction, currentStatus]) => {
-			if (pendingAction !== 'reboot' || !pendingLifecycleSnapshot) {
-				return;
-			}
-
-			const updatedSnapshot = markVMPendingSnapshotNonRunning(
-				pendingLifecycleSnapshot,
-				currentStatus,
-				isDomainErrorState
-			);
-			if (updatedSnapshot !== pendingLifecycleSnapshot) {
-				pendingLifecycleSnapshot = updatedSnapshot;
-			}
-		}
-	);
-
-	watch(
-		() => [pendingLifecycleAction, hasLifecycleTaskRecord, normalizedDomainStatus] as const,
-		([pendingAction, hasTask]) => {
-			if (!pendingAction || hasTask) {
-				return;
-			}
-
-			if (
-				isVMPendingLifecycleActionSettled(
-					pendingAction,
-					pendingLifecycleSnapshot,
-					normalizedDomainStatus,
-					isDomainErrorState
-				)
-			) {
-				clearPendingLifecycleAction();
-			}
-		}
+	let isShutdownTaskActive = $derived(
+		domain.current?.pendingAction === 'shutdown' && !domain.current?.overrideRequested
 	);
 
 	let vmChildRoute = $derived.by(() => {
@@ -219,9 +136,12 @@
 
 	const visible = new IsDocumentVisible();
 
+	let isDeleteInFlight = $state(false);
+
 	let modalState = $state({
 		isDeleteOpen: false,
 		forceDelete: false,
+		purgeOnly: false,
 		deleteMACs: true,
 		deleteRAWDisks: false,
 		deleteVolumes: false,
@@ -236,13 +156,12 @@
 
 	async function refreshVmDomain() {
 		if (!rid || isDeleteInFlight) return;
-		await Promise.all([vm.refetch(), domain.refetch(), lifecycleTask.refetch()]);
+		await Promise.all([vm.refetch(), domain.refetch()]);
 	}
 
 	watch(
 		() => rid,
 		(newRid) => {
-			clearNonRunningActionsSuppression();
 			if (newRid) {
 				refreshVmDomain();
 			}
@@ -253,14 +172,6 @@
 		callback: () => {
 			if (visible.current && rid && !isDeleteInFlight) {
 				domain.refetch();
-			}
-		}
-	});
-
-	useInterval(() => 1500, {
-		callback: () => {
-			if (visible.current && rid && !isDeleteInFlight) {
-				lifecycleTask.refetch();
 			}
 		}
 	});
@@ -276,6 +187,7 @@
 
 	function openDeleteModal(forceDelete: boolean = false) {
 		if (!vm.current) return;
+		modalState.purgeOnly = false;
 		modalState.forceDelete = forceDelete;
 		modalState.deleteMACs = true;
 		modalState.deleteRAWDisks = forceDelete;
@@ -284,96 +196,102 @@
 		modalState.isDeleteOpen = true;
 	}
 
-	function beginNonRunningActionsSuppression() {
-		suppressNonRunningActions = true;
-		if (suppressNonRunningActionsTimer) {
-			clearTimeout(suppressNonRunningActionsTimer);
-		}
-
-		suppressNonRunningActionsTimer = setTimeout(() => {
-			suppressNonRunningActions = false;
-			suppressNonRunningActionsTimer = null;
-		}, NON_RUNNING_ACTION_SUPPRESS_MS);
-	}
-
-	function clearNonRunningActionsSuppression() {
-		suppressNonRunningActions = false;
-		if (suppressNonRunningActionsTimer) {
-			clearTimeout(suppressNonRunningActionsTimer);
-			suppressNonRunningActionsTimer = null;
-		}
-	}
-
-	function beginPendingLifecycleAction(action: VMLifecycleAction) {
-		pendingLifecycleAction = action;
-		pendingLifecycleSnapshot = createVMPendingLifecycleSnapshot(
-			String(domain.current?.status || '')
-		);
-		if (action === 'start' || action === 'reboot') {
-			beginNonRunningActionsSuppression();
-		} else {
-			clearNonRunningActionsSuppression();
-		}
-
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-		}
-
-		// Safety net: never keep UI locked indefinitely if lifecycle polling misses an update.
-		pendingLifecycleTimer = setTimeout(() => {
-			pendingLifecycleAction = '';
-			pendingLifecycleSnapshot = null;
-			pendingLifecycleTimer = null;
-		}, getVMLifecyclePendingTimeoutMs(action));
-	}
-
-	function clearPendingLifecycleAction() {
-		pendingLifecycleAction = '';
-		pendingLifecycleSnapshot = null;
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-			pendingLifecycleTimer = null;
-		}
+	function openRemoveModal() {
+		if (!vm.current) return;
+		modalState.purgeOnly = true;
+		modalState.forceDelete = false;
+		modalState.deleteMACs = true;
+		modalState.deleteRAWDisks = false;
+		modalState.deleteVolumes = false;
+		modalState.title = `${vm.current.name} (${vm.current.rid})`;
+		modalState.isDeleteOpen = true;
 	}
 
 	async function handleDelete() {
-		if (!vm.current) return;
+		if (!vm.current || isDeleteInFlight) return;
+		const target = {
+			rid: vm.current.rid,
+			name: vm.current.name,
+			hostname: node
+		};
+		const wasForceDelete = modalState.forceDelete;
+		const wasPurgeOnly = modalState.purgeOnly;
+
 		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
-		modalState.loading.title = modalState.forceDelete
-			? 'Force Deleting Virtual Machine'
-			: 'Deleting Virtual Machine';
-		modalState.loading.description = modalState.forceDelete
-			? `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being force deleted with best-effort cleanup`
-			: `Please wait while VM <b>${vm.current.name} (${vm.current.rid})</b> is being deleted`;
+		modalState.loading.title = wasPurgeOnly
+			? 'Removing Stale VM Entry'
+			: wasForceDelete
+				? 'Force Deleting Virtual Machine'
+				: 'Deleting Virtual Machine';
+		modalState.loading.description = wasPurgeOnly
+			? `Removing stale registration for VM <b>${target.name} (${target.rid})</b>; datasets are preserved`
+			: wasForceDelete
+				? `Please wait while VM <b>${target.name} (${target.rid})</b> is being force deleted with best-effort cleanup`
+				: `Please wait while VM <b>${target.name} (${target.rid})</b> is being deleted`;
 
-		await sleep(1000);
-		const result = await deleteVM(
-			vm.current.rid,
-			modalState.deleteMACs,
-			modalState.deleteRAWDisks,
-			modalState.deleteVolumes,
-			modalState.forceDelete
-		);
-		modalState.loading.open = false;
-		reload.leftPanel = true;
-		const wasForceDelete = modalState.forceDelete;
-		modalState.forceDelete = false;
+		try {
+			const result = wasPurgeOnly
+				? await purgeVMRegistration(target.rid, modalState.deleteMACs, target.hostname)
+				: wasForceDelete
+					? await forceDeleteVM(target.rid, modalState.deleteMACs, target.hostname)
+					: await deleteVM(
+							target.rid,
+							modalState.deleteMACs,
+							modalState.deleteRAWDisks,
+							modalState.deleteVolumes,
+							target.hostname
+						);
 
-		if (result.status === 'error') {
-			isDeleteInFlight = false;
-			await refreshVmDomain();
-			toast.error(wasForceDelete ? 'Error force deleting VM' : 'Error deleting VM', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} else if (result.status === 'success') {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(`/${storage.hostname}/summary`);
-			if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
+			if (result.status === 'error') {
+				await Promise.all([vm.refetch(), domain.refetch()]);
+				toast.error(
+					result.message === 'guest_delete_requires_replication_policy_removed'
+						? 'Remove the replication policy before deleting this VM'
+						: wasPurgeOnly
+							? 'Error removing VM entry'
+							: wasForceDelete
+								? 'Error force deleting VM'
+								: 'Error deleting VM',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
+			const deletionData = parseGuestDeletionData(result.data);
+			const cleanupWarnings = deletionData.warnings;
+			const retainedDatasets = deletionData.retainedDatasets;
+			await removeStaleCacheByRID(target.rid, target.hostname);
+			await useSafeGoto(`/${target.hostname}/summary`);
+
+			if (wasPurgeOnly && result.message === 'vm_registration_purged_with_warnings') {
+				toast.warning('VM entry removed with warnings; datasets preserved', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (wasPurgeOnly) {
+				toast.success('VM entry removed (datasets preserved)', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (wasForceDelete && result.message === 'vm_force_removed_with_warnings') {
 				toast.warning('VM force deleted with warnings', {
 					duration: 5000,
+					position: 'bottom-center'
+				});
+			} else if (!wasForceDelete && cleanupWarnings.length > 0) {
+				toast.warning(
+					`VM deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
+					{ duration: 8000, position: 'bottom-center' }
+				);
+			} else if (!wasForceDelete && retainedDatasets.length > 0) {
+				toast.warning(`VM deleted; storage retained at ${retainedDatasets.join(', ')}`, {
+					duration: 8000,
 					position: 'bottom-center'
 				});
 			} else {
@@ -382,22 +300,22 @@
 					position: 'bottom-center'
 				});
 			}
-
-			removeStaleCacheByRID(vm.current.rid);
+		} finally {
+			modalState.loading.open = false;
+			modalState.forceDelete = false;
+			modalState.purgeOnly = false;
+			isDeleteInFlight = false;
 		}
 	}
 
 	async function handleStart() {
 		if (!vm.current) return;
-		beginPendingLifecycleAction('start');
-		const result = await actionVm(vm.current.rid, 'start');
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'start', node);
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			clearNonRunningActionsSuppression();
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error starting VM',
 				{
@@ -405,7 +323,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'start';
@@ -421,15 +340,12 @@
 
 	async function handleStop() {
 		if (!vm.current) return;
-		beginPendingLifecycleAction('stop');
-		const result = await actionVm(vm.current.rid, 'stop');
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'stop', node);
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			clearNonRunningActionsSuppression();
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error stopping VM',
 				{
@@ -437,12 +353,13 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'stop';
 
-			if (result.message === 'vm_force_stop_requested') {
+			if (result.outcome === 'force_stop_requested') {
 				toast.warning('Force stop requested', {
 					duration: 5000,
 					position: 'bottom-center'
@@ -460,14 +377,12 @@
 
 	async function handleForceStop() {
 		if (!vm.current) return;
-		beginPendingLifecycleAction('stop');
-		const result = await actionVm(vm.current.rid, 'stop');
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'stop', node);
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error requesting force stop',
 				{
@@ -476,6 +391,7 @@
 				}
 			);
 		} else {
+			reload.leftPanel = true;
 			toast.warning('Force stop requested', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -487,14 +403,12 @@
 
 	async function handleShutdown() {
 		if (!vm.current) return;
-		beginPendingLifecycleAction('shutdown');
-		const result = await actionVm(vm.current.rid, 'shutdown');
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'shutdown', node);
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error shutting down VM',
 				{
@@ -502,7 +416,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'shutdown';
@@ -518,14 +433,12 @@
 
 	async function handleReboot() {
 		if (!vm.current) return;
-		beginPendingLifecycleAction('reboot');
-		const result = await actionVm(vm.current.rid, 'reboot');
-		reload.leftPanel = true;
+		const result = await actionVm(vm.current.rid, 'reboot', node);
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
+		if (isAPIResponse(result)) {
 			toast.error(
-				result.message === 'lifecycle_task_in_progress'
+				result.message === 'lifecycle_task_in_progress' ||
+					result.message === 'migration_in_progress'
 					? 'VM action already in progress'
 					: 'Error rebooting VM',
 				{
@@ -533,7 +446,8 @@
 					position: 'bottom-center'
 				}
 			);
-		} else if (result.status === 'success') {
+		} else {
+			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = vm.current.rid;
 			vmPowerSignal.action = 'reboot';
@@ -567,7 +481,7 @@
 						{/if}
 					</Badge>
 					<p class="truncate text-sm font-semibold">{vm.current.name} ({vm.current.rid})</p>
-					{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+					{#if hasActiveLifecycleTask}
 						<Badge
 							variant={lifecycleActionBadge.variant}
 							class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
@@ -579,17 +493,16 @@
 				{/if}
 			</div>
 
-			{#key rid}
-				<div class="flex items-center gap-1" in:fade={{ delay: 140, duration: 220 }}>
+			{#key `${node}:${rid}`}
+				<div class="flex items-center gap-1">
 					{#if vm.current && domain.current}
-						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState}
+						{#if !shouldHideActionButtons && domain.current.id === -1 && !isDomainRunningForActions && !isDomainErrorState && !isOrphanState}
 							<Button
 								onclick={() => handleStart()}
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
-								<span>Start</span>
+								<SpanWithIcon icon="icon-[mdi--play]" size="h-4 w-4" gap="gap-1" title="Start" />
 							</Button>
 
 							<Button
@@ -597,8 +510,7 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
-								<span>Delete</span>
+								<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 							</Button>
 						{/if}
 
@@ -608,22 +520,28 @@
 								size="sm"
 								class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-700 disabled:hover:bg-neutral-600 dark:text-white"
 							>
-								<span class="icon-[mdi--alert-octagon] mr-1 h-4 w-4"></span>
-								<span>Force Delete</span>
+								<SpanWithIcon
+									icon="icon-[mdi--alert-octagon]"
+									size="h-4 w-4"
+									gap="gap-1"
+									title="Force Delete"
+								/>
 							</Button>
 						{/if}
 
-						{#if (domain.current.id !== -1 || suppressNonRunningActions) && isDomainRunningForActions}
+						{#if (domain.current.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions}
 							{#if isShutdownTaskActive}
 								<Button
 									onclick={() => handleForceStop()}
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--alert] mr-1 h-4 w-4"></span>
-										<span>Force Stop</span>
-									</div>
+									<SpanWithIcon
+										icon="icon-[mdi--alert]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Force Stop"
+									/>
 								</Button>
 							{/if}
 
@@ -633,10 +551,12 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--restart] mr-1 h-4 w-4"></span>
-										<span>Reboot</span>
-									</div>
+									<SpanWithIcon
+										icon="icon-[mdi--restart]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Reboot"
+									/>
 								</Button>
 
 								<Button
@@ -644,10 +564,12 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--power] mr-1 h-4 w-4"></span>
-										<span>Shutdown</span>
-									</div>
+									<SpanWithIcon
+										icon="icon-[mdi--power]"
+										size="h-4 w-4"
+										gap="gap-1"
+										title="Shutdown"
+									/>
 								</Button>
 
 								<Button
@@ -655,13 +577,25 @@
 									size="sm"
 									class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 								>
-									<div class="flex items-center">
-										<span class="icon-[mdi--stop] mr-1 h-4 w-4"></span>
-										<span>Stop</span>
-									</div>
+									<SpanWithIcon icon="icon-[mdi--stop]" size="h-4 w-4" gap="gap-1" title="Stop" />
 								</Button>
 							{/if}
 						{/if}
+					{/if}
+
+					{#if isOrphanState && !shouldHideActionButtons}
+						<Button
+							onclick={() => openRemoveModal()}
+							size="sm"
+							class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! ml-2 h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
+						>
+							<SpanWithIcon
+								icon="icon-[mdi--delete-sweep]"
+								size="h-4 w-4"
+								gap="gap-1"
+								title="Remove stale entry"
+							/>
+						</Button>
 					{/if}
 				</div>
 			{/key}
@@ -673,7 +607,9 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{@render children?.()}
+		{#key `${node}:${rid}`}
+			{@render children?.()}
+		{/key}
 	</div>
 </div>
 
@@ -681,36 +617,66 @@
 	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5 max-w-xl!">
 		<AlertDialogRaw.Header>
 			<AlertDialogRaw.Title
-				>{modalState.forceDelete ? 'Force Delete VM?' : 'Are you sure?'}</AlertDialogRaw.Title
+				>{modalState.purgeOnly
+					? 'Remove stale VM entry?'
+					: modalState.forceDelete
+						? 'Force Delete VM?'
+						: 'Are you sure?'}</AlertDialogRaw.Title
 			>
 			<AlertDialogRaw.Description>
-				{modalState.forceDelete ? `This will force delete VM` : `This will permanently delete VM`}
-				<span class="font-semibold">{modalState?.title}.</span>
-				{#if modalState.forceDelete}
+				{#if modalState.purgeOnly}
+					This will remove the stale inventory entry for VM
+					<span class="font-semibold">{modalState?.title}</span> on this node.
 					<div class="mt-2 text-sm">
-						Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and
-						VM network objects. Partial failures will be tolerated.
+						Only the local VM record and any local libvirt domain are removed. ZFS datasets are
+						preserved and nothing is deleted on other nodes.
 					</div>
 				{:else}
-					<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
-						<CustomCheckbox
-							label="Delete MAC Object(s)"
-							bind:checked={modalState.deleteMACs}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
+					{modalState.forceDelete ? `This will force delete VM` : `This will permanently delete VM`}
+					<span class="font-semibold">{modalState?.title}.</span>
+					{#if modalState.forceDelete}
+						<div class="mt-2 text-sm">
+							Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records,
+							and VM network objects. Partial failures will be tolerated.
+						</div>
+					{:else}
+						<div class="flex flex-row items-center gap-6 mt-1 whitespace-nowrap">
+							<CustomCheckbox
+								label="Delete MAC Object(s)"
+								bind:checked={modalState.deleteMACs}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
 
-						<CustomCheckbox
-							label="Delete RAW Disk(s)"
-							bind:checked={modalState.deleteRAWDisks}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
+							<CustomCheckbox
+								label="Delete RAW Disk(s)"
+								bind:checked={modalState.deleteRAWDisks}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
 
-						<CustomCheckbox
-							label="Delete Volume(s)"
-							bind:checked={modalState.deleteVolumes}
-							classes="flex items-center gap-2 mt-3"
-						></CustomCheckbox>
-					</div>
+							<CustomCheckbox
+								label="Delete Volume(s)"
+								bind:checked={modalState.deleteVolumes}
+								classes="flex items-center gap-2 mt-3"
+							></CustomCheckbox>
+						</div>
+						{#if !modalState.deleteRAWDisks || !modalState.deleteVolumes}
+							<div
+								class="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+							>
+								<span
+									class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+									aria-hidden="true"
+								></span>
+								<div>
+									<p class="font-medium text-amber-600 dark:text-amber-400">Storage retained</p>
+									<p class="mt-0.5 text-muted-foreground">
+										Unselected storage will remain as unmanaged ZFS data. Remove it before reusing
+										this RID.
+									</p>
+								</div>
+							</div>
+						{/if}
+					{/if}
 				{/if}
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
@@ -719,10 +685,15 @@
 				onclick={() => {
 					modalState.isDeleteOpen = false;
 					modalState.forceDelete = false;
+					modalState.purgeOnly = false;
 				}}>Cancel</AlertDialogRaw.Cancel
 			>
 			<AlertDialogRaw.Action onclick={handleDelete}
-				>{modalState.forceDelete ? 'Force Delete' : 'Continue'}</AlertDialogRaw.Action
+				>{modalState.purgeOnly
+					? 'Remove'
+					: modalState.forceDelete
+						? 'Force Delete'
+						: 'Continue'}</AlertDialogRaw.Action
 			>
 		</AlertDialogRaw.Footer>
 	</AlertDialogRaw.Content>

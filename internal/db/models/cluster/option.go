@@ -26,11 +26,18 @@ func upsertOption(db *gorm.DB, o *ClusterOption) error {
 	if o.ID == 0 {
 		o.ID = 1
 	}
+	updatedAt := o.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = replicatedCommandTime(db)
+	} else {
+		updatedAt = NormalizeCommandTime(updatedAt)
+	}
+	o.UpdatedAt = updatedAt
 	return db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"keyboard_layout": o.KeyboardLayout,
-			"updated_at":      time.Now(),
+			"updated_at":      updatedAt,
 		}),
 	}).Create(o).Error
 }

@@ -5,8 +5,9 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
+	import { isValidSwitchName } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -17,50 +18,77 @@
 
 	let { open = $bindable(), bridges, reload = $bindable() }: Props = $props();
 
-	// svelte-ignore state_referenced_locally
-	let options = {
+	let properties = $state({
 		name: '',
 		bridge: {
 			open: false,
-			options: generateComboboxOptions(bridges),
 			selected: ''
 		}
-	};
+	});
+	let bridgeOptions = $derived(generateComboboxOptions(bridges));
+	let saving = $state(false);
 
-	let properties = $state(options);
+	function reset() {
+		properties.name = '';
+		properties.bridge.open = false;
+		properties.bridge.selected = '';
+	}
 
 	async function create() {
-		if (!/^[a-zA-Z0-9]+$/.test(properties.name)) {
+		if (saving) return;
+
+		const name = properties.name.trim();
+		const bridge = properties.bridge.selected.trim();
+		if (!name || name.length > 128 || !isValidSwitchName(name)) {
 			toast.error('Invalid name', {
 				position: 'bottom-center'
 			});
 			return;
 		}
-
-		const response = await createManualSwitch(properties.name, properties.bridge.selected);
-		reload = true;
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to create manual switch', {
+		if (!bridge) {
+			toast.error('Select a bridge', {
 				position: 'bottom-center'
 			});
-		} else {
+			return;
+		}
+
+		saving = true;
+		try {
+			const response = await createManualSwitch(name, bridge);
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to create manual switch', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			toast.success('Manual switch created', {
 				position: 'bottom-center'
 			});
-
+			reload = true;
+			reset();
 			open = false;
-			properties = options;
+		} catch (error) {
+			console.error('Failed to create manual switch', error);
+			toast.error('Failed to create manual switch', {
+				position: 'bottom-center'
+			});
+		} finally {
+			saving = false;
 		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		showCloseButton={true}
-		showResetButton={true}
-		onReset={() => (properties = options)}
-		onClose={() => (open = false)}
+		showCloseButton={!saving}
+		showResetButton={!saving}
+		onReset={reset}
+		onClose={() => {
+			if (!saving) open = false;
+		}}
+		aria-busy={saving}
 	>
 		<Dialog.Header>
 			<Dialog.Title>
@@ -86,7 +114,7 @@
 				bind:open={properties.bridge.open}
 				label="Bridge"
 				bind:value={properties.bridge.selected}
-				data={properties.bridge.options}
+				data={bridgeOptions}
 				classes="space-y-1"
 				placeholder="Select bridge"
 				width="w-3/4"
@@ -95,7 +123,14 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={create} type="submit" size="sm">Create</Button>
+				<Button onclick={create} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Creating...
+					{:else}
+						Create
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

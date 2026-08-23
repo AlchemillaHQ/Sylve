@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import {
 		default as ComboBox,
@@ -10,13 +9,21 @@
 	import { cloudInitPlaceholders } from '$lib/utils/utilities/cloud-init';
 	import { onMount } from 'svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import SimpleSelect from '../../SimpleSelect.svelte';
 	import { resource, watch } from 'runed';
 	import { getTemplates } from '$lib/api/utilities/cloud-init';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
 	import { resolutions } from '$lib/utils/vm/vnc';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 
 	interface Props {
+		node: string;
 		vncEnabled: boolean;
 		serial: boolean;
 		vncPort: number;
@@ -42,6 +49,7 @@
 	}
 
 	let {
+		node,
 		vncEnabled = $bindable(),
 		serial = $bindable(),
 		vncPort = $bindable(),
@@ -109,10 +117,26 @@
 		current: ''
 	});
 
-	let cloudInitTemplates = resource(
-		() => 'cloud-init-templates',
-		async (key, prevKey, { signal }) => {
-			return await getTemplates();
+	const lastCloudInitTemplatesByNode: Record<string, CloudInitTemplate[]> = Object.create(null);
+	const cloudInitTemplates = resource(
+		() => node || '__default__',
+		async (selectedNode, _previousNode, { signal }) => {
+			const hostname = selectedNode === '__default__' ? undefined : selectedNode;
+			try {
+				const result = await getTemplates({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastCloudInitTemplatesByNode[selectedNode] ?? [];
+				}
+				lastCloudInitTemplatesByNode[selectedNode] = result;
+				await updateCache('cloud-init-templates', result, hostname);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) {
+					return lastCloudInitTemplatesByNode[selectedNode] ?? [];
+				}
+				throw error;
+			}
 		},
 		{ initialValue: [] as CloudInitTemplate[] }
 	);
@@ -268,6 +292,7 @@
 			bind:value={cloudInit.data}
 			classes="flex-1 space-y-1.5"
 			type="textarea"
+			textAreaClasses="min-h-32 max-h-64"
 			topRightButton={{
 				icon: 'icon-[mingcute--ai-line]',
 				tooltip: 'Use Existing Template',
@@ -278,21 +303,25 @@
 			}}
 		/>
 
-		<CustomValueInput
-			label="Cloud-Init Meta Data"
-			placeholder={cloudInitPlaceholders.metadata}
-			bind:value={cloudInit.metadata}
-			classes="flex-1 space-y-1.5"
-			type="textarea"
-		/>
+		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+			<CustomValueInput
+				label="Cloud-Init Meta Data"
+				placeholder={cloudInitPlaceholders.metadata}
+				bind:value={cloudInit.metadata}
+				classes="flex-1 space-y-1.5"
+				type="textarea"
+				textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+			/>
 
-		<CustomValueInput
-			label="Cloud-Init Network Config"
-			placeholder={cloudInitPlaceholders.networkConfig}
-			bind:value={cloudInit.networkConfig}
-			classes="flex-1 space-y-1.5"
-			type="textarea"
-		/>
+			<CustomValueInput
+				label="Cloud-Init Network Config"
+				placeholder={cloudInitPlaceholders.networkConfig}
+				bind:value={cloudInit.networkConfig}
+				classes="flex-1 space-y-1.5"
+				type="textarea"
+				textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+			/>
+		</div>
 	{/if}
 
 	{#if extraBhyveOptionsEnabled}
@@ -309,27 +338,32 @@
 
 {#if templateSelector.open}
 	<Dialog.Root bind:open={templateSelector.open}>
-		<Dialog.Content class="overflow-hidden p-5 max-w-[320px]!">
-			<Dialog.Header>
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-2">
-						<span class="icon-[mdi--cloud-upload-outline] h-5 w-5"></span>
-						<span>Select a Template</span>
-					</div>
-					<Button
-						size="sm"
-						variant="link"
-						class="h-4"
-						title="Close"
-						onclick={() => {
-							templateSelector.open = false;
-						}}
-					>
-						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
-						<span class="sr-only">Close</span>
-					</Button>
-				</div>
-			</Dialog.Header>
+		<Dialog.Content
+			class="overflow-hidden p-5 max-w-[320px]!"
+			showCloseButton={false}
+			onClose={() => {
+				templateSelector.open = false;
+			}}
+		>
+			<div class="flex items-center justify-between">
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[mdi--cloud-upload-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Select a Template"
+					/>
+				</Dialog.Title>
+				<Dialog.Close
+					onclick={() => {
+						templateSelector.open = false;
+					}}
+				>
+					<span class="icon-[lucide--x] h-5 w-5 opacity-50 transition-opacity hover:opacity-100"
+					></span>
+					<span class="sr-only">Close</span>
+				</Dialog.Close>
+			</div>
 
 			<SimpleSelect
 				options={cloudInitTemplates.current.map((template) => ({

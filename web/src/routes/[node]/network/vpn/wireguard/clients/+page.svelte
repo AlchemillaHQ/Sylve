@@ -9,6 +9,7 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
+	import { storage } from '$lib';
 	import { resource, useInterval } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -33,6 +34,7 @@
 
 	useInterval(2000, {
 		callback: async () => {
+			if (!storage.visible) return;
 			await clientsResource.refetch();
 		}
 	});
@@ -55,7 +57,7 @@
 		create: false,
 		edit: false,
 		delete: false,
-		toggle: false,
+		state: false,
 		data: null as WireGuardClient | null
 	});
 
@@ -74,21 +76,24 @@
 		}
 	}
 
-	async function confirmToggle() {
+	async function confirmStateChange() {
 		if (!modals.data?.id) return;
 		const name = modals.data.name;
 		const status = wireGuardClientStatus(modals.data);
-		const response = await wireGuardClients.toggle(modals.data.id);
+		const enable = status === 'disabled';
+		const response = await wireGuardClients.setEnabled(modals.data.id, enable);
 		await clientsResource.refetch();
 		if (response.status === 'success') {
-			toast.success(`Client "${name}" ${status === 'disabled' ? 'enabled' : 'disabled'}`, {
+			toast.success(`Client "${name}" ${enable ? 'enabled' : 'disabled'}`, {
 				position: 'bottom-center'
 			});
-			modals.toggle = false;
+			modals.state = false;
 			modals.data = null;
 		} else {
 			handleAPIError(response);
-			toast.error(response.message || 'Failed to toggle client', { position: 'bottom-center' });
+			toast.error(response.message || `Failed to ${enable ? 'enable' : 'disable'} client`, {
+				position: 'bottom-center'
+			});
 		}
 	}
 
@@ -118,12 +123,12 @@
 		return convertDbTime(time);
 	}
 
-	let toggleLabel = $derived.by(() => {
+	let stateLabel = $derived.by(() => {
 		if (!modals.data) return 'Continue';
 		return wireGuardClientStatus(modals.data) === 'disabled' ? 'Enable' : 'Disable';
 	});
 
-	let toggleTitle = $derived.by(() => {
+	let stateTitle = $derived.by(() => {
 		if (!modals.data) return '';
 		const status = wireGuardClientStatus(modals.data);
 		return status === 'disabled'
@@ -243,7 +248,7 @@
 							disabled={serviceDisabled}
 							onclick={() => {
 								modals.data = client;
-								modals.toggle = true;
+								modals.state = true;
 							}}
 						>
 							{#if status === 'disabled'}
@@ -309,6 +314,7 @@
 <AlertDialog
 	bind:open={modals.delete}
 	customTitle={`This will permanently delete WireGuard client <b>${modals.data?.name ?? ''}</b>, are you absolutely sure?`}
+	loadingLabel="Deleting Client..."
 	actions={{
 		onConfirm: confirmDelete,
 		onCancel: () => {
@@ -319,13 +325,14 @@
 />
 
 <AlertDialog
-	bind:open={modals.toggle}
-	customTitle={toggleTitle}
-	confirmLabel={toggleLabel}
+	bind:open={modals.state}
+	customTitle={stateTitle}
+	confirmLabel={stateLabel}
+	loadingLabel={stateLabel === 'Enable' ? 'Enabling Client...' : 'Disabling Client...'}
 	actions={{
-		onConfirm: confirmToggle,
+		onConfirm: confirmStateChange,
 		onCancel: () => {
-			modals.toggle = false;
+			modals.state = false;
 			modals.data = null;
 		}
 	}}

@@ -13,9 +13,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -28,6 +31,8 @@ import (
 
 const defaultObjectRefreshInterval = 5 * time.Minute
 const objectResolutionInsertBatchSize = 100
+const networkObjectRefreshTimeout = 60 * time.Second
+const maxNetworkObjectRedirects = 3
 
 func uniqueStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
@@ -48,10 +53,31 @@ func uniqueStrings(values []string) []string {
 }
 
 func parseListPayloadToValues(payload string) ([]string, error) {
+	return parseListPayloadToValuesContext(context.Background(), payload)
+}
+
+func resolveNetworkObjectFQDN(ctx context.Context, name string) ([]string, error) {
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	values := make([]string, 0, len(addresses))
+	for _, address := range addresses {
+		values = append(values, address.IP.String())
+	}
+	return values, nil
+}
+
+func parseListPayloadToValuesContext(ctx context.Context, payload string) ([]string, error) {
 	out := []string{}
 	scanner := bufio.NewScanner(strings.NewReader(payload))
 
 	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
@@ -62,7 +88,7 @@ func parseListPayloadToValues(payload string) ([]string, error) {
 		case utils.IsValidIPv4(value), utils.IsValidIPv6(value), utils.IsValidIPv4CIDR(value), utils.IsValidIPv6CIDR(value):
 			out = append(out, value)
 		case utils.IsValidFQDN(value):
-			resolved, err := resolveFQDNValues(value)
+			resolved, err := resolveNetworkObjectFQDN(ctx, value)
 			if err != nil {
 				return nil, err
 			}
@@ -79,21 +105,74 @@ func parseListPayloadToValues(payload string) ([]string, error) {
 	return uniqueStrings(out), nil
 }
 
-func fetchListPayload(entry string) (string, error) {
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Get(entry)
-	if err != nil {
+func validateNetworkObjectListURL(value string) error {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(value))
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return invalidNetworkObject("invalid_network_object_list_url", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return invalidNetworkObject("invalid_network_object_list_url_scheme", nil)
+	}
+	if parsed.User != nil {
+		return invalidNetworkObject("network_object_list_credentials_not_allowed", nil)
+	}
+	return nil
+}
+
+func fetchListPayload(ctx context.Context, entry string, maxBytes int64) (string, error) {
+	if maxBytes <= 0 {
+		return "", networkObjectUpstream("network_object_source_too_large", nil)
+	}
+	entry = strings.TrimSpace(entry)
+	if err := validateNetworkObjectListURL(entry); err != nil {
 		return "", err
+	}
+
+	client := &http.Client{
+		Timeout: 20 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) > maxNetworkObjectRedirects {
+				return networkObjectUpstream("network_object_source_redirect_limit", nil)
+			}
+			if err := validateNetworkObjectListURL(req.URL.String()); err != nil {
+				return networkObjectUpstream("network_object_source_redirect_invalid", nil)
+			}
+			return nil
+		},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, entry, nil)
+	if err != nil {
+		return "", invalidNetworkObject("invalid_network_object_list_url", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		if errors.Is(err, ErrNetworkObjectUpstream) {
+			return "", err
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", networkObjectUpstream("network_object_refresh_timeout", err)
+		}
+		return "", networkObjectUpstream("network_object_source_unavailable", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("http_status_%d", resp.StatusCode)
+		return "", networkObjectUpstream("network_object_source_unavailable", fmt.Errorf("http_status_%d", resp.StatusCode))
+	}
+	if resp.ContentLength > maxBytes {
+		return "", networkObjectUpstream("network_object_source_too_large", nil)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
-		return "", err
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", networkObjectUpstream("network_object_refresh_timeout", err)
+		}
+		return "", networkObjectUpstream("network_object_source_unavailable", err)
+	}
+	if int64(len(body)) > maxBytes {
+		return "", networkObjectUpstream("network_object_source_too_large", nil)
 	}
 
 	return string(body), nil
@@ -168,6 +247,9 @@ func (s *Service) refreshObjectResolutions(object *networkModels.Object) (bool, 
 		return false, nil
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), networkObjectRefreshTimeout)
+	defer cancel()
+
 	values := []string{}
 	incomingSourceChecksum := ""
 	switch object.Type {
@@ -177,27 +259,32 @@ func (s *Service) refreshObjectResolutions(object *networkModels.Object) (bool, 
 			if fqdn == "" {
 				continue
 			}
-			resolved, err := resolveFQDNValues(fqdn)
+			resolved, err := resolveNetworkObjectFQDN(ctx, fqdn)
 			if err != nil {
-				return false, err
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return false, networkObjectUpstream("network_object_refresh_timeout", err)
+				}
+				return false, networkObjectUpstream("network_object_source_unavailable", err)
 			}
 			values = append(values, resolved...)
 		}
 	case "List":
 		listPayloads := make([]string, 0, len(object.Entries))
 		sourceTokens := make([]string, 0, len(object.Entries))
+		var totalPayloadBytes int64
 		for _, entry := range object.Entries {
-			url := strings.TrimSpace(entry.Value)
-			if url == "" {
+			entryURL := strings.TrimSpace(entry.Value)
+			if entryURL == "" {
 				continue
 			}
-			payload, err := fetchListPayload(url)
+			payload, err := fetchListPayload(ctx, entryURL, maxNetworkObjectListPayloadBytes-totalPayloadBytes)
 			if err != nil {
 				return false, err
 			}
+			totalPayloadBytes += int64(len(payload))
 
 			listPayloads = append(listPayloads, payload)
-			sourceTokens = append(sourceTokens, listSourceToken(url, payload))
+			sourceTokens = append(sourceTokens, listSourceToken(entryURL, payload))
 		}
 
 		incomingSourceChecksum = listSourceChecksum(sourceTokens)
@@ -215,9 +302,12 @@ func (s *Service) refreshObjectResolutions(object *networkModels.Object) (bool, 
 		}
 
 		for _, payload := range listPayloads {
-			fetched, err := parseListPayloadToValues(payload)
+			fetched, err := parseListPayloadToValuesContext(ctx, payload)
 			if err != nil {
-				return false, err
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return false, networkObjectUpstream("network_object_refresh_timeout", err)
+				}
+				return false, networkObjectUpstream("network_object_source_invalid", err)
 			}
 			values = append(values, fetched...)
 		}

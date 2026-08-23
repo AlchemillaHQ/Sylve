@@ -1,10 +1,218 @@
 ---
 import DefaultHead from "@astrojs/starlight/components/Head.astro";
+import { ClientRouter } from "astro:transitions";
 
 const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 ---
 
+<style is:inline>
+  html[data-starlight-loading] body {
+    visibility: hidden;
+  }
+</style>
+<script is:inline>
+  (() => {
+    const root = document.documentElement;
+    root.dataset.starlightLoading = "";
+    let revealFallback;
+
+    const reveal = () => {
+      window.clearTimeout(revealFallback);
+      requestAnimationFrame(() => {
+        root.removeAttribute("data-starlight-loading");
+      });
+    };
+
+    const revealWhenStyled = () => {
+      const pendingStylesheets = Array.from(
+        document.querySelectorAll('link[rel="stylesheet"]'),
+      ).filter(
+        (link) =>
+          (!link.media || window.matchMedia(link.media).matches) && !link.sheet,
+      );
+
+      if (pendingStylesheets.length === 0) {
+        reveal();
+        return;
+      }
+
+      Promise.all(
+        pendingStylesheets.map(
+          (link) =>
+            new Promise((resolve) => {
+              link.addEventListener("load", resolve, { once: true });
+              link.addEventListener("error", resolve, { once: true });
+            }),
+        ),
+      ).then(reveal);
+    };
+
+    revealFallback = window.setTimeout(reveal, 5000);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", revealWhenStyled, { once: true });
+    } else {
+      revealWhenStyled();
+    }
+
+    const stored = localStorage.getItem("starlight-theme") || localStorage.getItem("sylve_theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme = stored === "light" ? "light" : stored === "dark" ? "dark" : prefersDark ? "dark" : "light";
+    root.style.setProperty("background-color", theme === "dark" ? "#0f0f0f" : "#fff");
+  })();
+</script>
+<script is:inline>
+  (() => {
+    const viewerId = "sylve-doc-image-viewer";
+
+    const bindImages = () => {
+      document
+        .querySelectorAll(".sl-markdown-content img:not([data-doc-image-viewer])")
+        .forEach((image) => {
+          if (image.closest("a")) return;
+
+          image.dataset.docImageViewer = "";
+          image.tabIndex = 0;
+          image.setAttribute("role", "button");
+          image.setAttribute("aria-label", `Expand image: ${image.alt || "documentation image"}`);
+          image.title = "Click to expand";
+          image.addEventListener("click", () => openViewer(image));
+          image.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              openViewer(image);
+            }
+          });
+        });
+    };
+
+    const getViewer = () => {
+      let dialog = document.getElementById(viewerId);
+      if (dialog) return dialog;
+
+      dialog = document.createElement("dialog");
+      dialog.id = viewerId;
+      dialog.className = "docs-image-viewer";
+      dialog.innerHTML = `
+        <div class="docs-image-viewer-bar">
+          <p class="docs-image-viewer-label">Image viewer</p>
+          <div class="docs-image-viewer-actions">
+            <button type="button" data-doc-image-action="out" aria-label="Zoom out">−</button>
+            <button type="button" data-doc-image-action="reset" aria-label="Reset zoom">100%</button>
+            <button type="button" data-doc-image-action="in" aria-label="Zoom in">+</button>
+            <button type="button" data-doc-image-action="close" aria-label="Close image viewer">Close</button>
+          </div>
+        </div>
+        <div class="docs-image-viewer-stage">
+          <img alt="" />
+        </div>
+      `;
+
+      let zoom = 1;
+      let offsetX = 0;
+      let offsetY = 0;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let dragging = false;
+      const image = dialog.querySelector("img");
+      const stage = dialog.querySelector(".docs-image-viewer-stage");
+      const updateZoom = () => {
+        image.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoom})`;
+        dialog.querySelector('[data-doc-image-action="reset"]').textContent = `${Math.round(zoom * 100)}%`;
+      };
+      const resetZoom = () => {
+        zoom = 1;
+        offsetX = 0;
+        offsetY = 0;
+        updateZoom();
+      };
+
+      dialog.querySelector(".docs-image-viewer-actions").addEventListener("click", (event) => {
+        const action = event.target.closest("button")?.dataset.docImageAction;
+        if (action === "in") zoom = Math.min(zoom + 0.25, 3);
+        if (action === "out") zoom = Math.max(zoom - 0.25, 0.5);
+        if (action === "reset") resetZoom();
+        if (action === "close") dialog.close();
+        if (action === "in" || action === "out") updateZoom();
+      });
+      stage.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        zoom = Math.min(3, Math.max(0.5, zoom + (event.deltaY < 0 ? 0.15 : -0.15)));
+        updateZoom();
+      }, { passive: false });
+      stage.addEventListener("pointerdown", (event) => {
+        if (event.target !== image || event.button !== 0) return;
+
+        dragging = true;
+        dragStartX = event.clientX - offsetX;
+        dragStartY = event.clientY - offsetY;
+        stage.setPointerCapture(event.pointerId);
+        stage.classList.add("is-dragging");
+        event.preventDefault();
+      });
+      stage.addEventListener("pointermove", (event) => {
+        if (!dragging) return;
+
+        offsetX = event.clientX - dragStartX;
+        offsetY = event.clientY - dragStartY;
+        updateZoom();
+      });
+      const endDrag = (event) => {
+        if (!dragging) return;
+
+        dragging = false;
+        stage.classList.remove("is-dragging");
+        if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+      };
+      stage.addEventListener("pointerup", endDrag);
+      stage.addEventListener("pointercancel", endDrag);
+      dialog.addEventListener("close", resetZoom);
+      document.body.append(dialog);
+      return dialog;
+    };
+
+    const openViewer = (source) => {
+      const dialog = getViewer();
+      const image = dialog.querySelector("img");
+      image.src = source.currentSrc || source.src;
+      image.alt = source.alt;
+      dialog.querySelector(".docs-image-viewer-label").textContent = source.alt || "Documentation image";
+      dialog.showModal();
+    };
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", bindImages, { once: true });
+    } else {
+      bindImages();
+    }
+    document.addEventListener("astro:page-load", bindImages);
+  })();
+</script>
+<script is:inline>
+  (() => {
+    const initializeWalkthroughVideos = () => {
+      document.querySelectorAll('video.docs-walkthrough-video').forEach((video) => {
+        video.load();
+        const playback = video.play();
+        if (playback) playback.catch(() => {});
+      });
+    };
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeWalkthroughVideos, { once: true });
+    } else {
+      initializeWalkthroughVideos();
+    }
+    document.addEventListener('astro:page-load', initializeWalkthroughVideos);
+  })();
+</script>
+<ClientRouter />
 <DefaultHead />
+
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
 
 <meta property="og:image" content={ogImage} />
 <meta property="og:image:width" content="1200" />
@@ -12,34 +220,3 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
 <meta property="og:image:alt" content="Sylve" />
 <meta name="twitter:image" content={ogImage} />
 <meta name="twitter:card" content="summary_large_image" />
-
-<link id="favicon" rel="icon" type="image/svg+xml" href="/white.svg" />
-
-<script is:inline>
-  (() => {
-    const setFavicon = () => {
-      const faviconEl = document.getElementById("favicon");
-      if (!(faviconEl instanceof HTMLLinkElement)) {
-        return;
-      }
-
-      const theme = document.documentElement.dataset.theme;
-      const isDark =
-        theme === "dark" ||
-        (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
-
-      faviconEl.href = isDark ? "/white.svg" : "/black.svg";
-    };
-
-    setFavicon();
-
-    const observer = new MutationObserver(setFavicon);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    media.addEventListener("change", setFavicon);
-  })();
-</script>

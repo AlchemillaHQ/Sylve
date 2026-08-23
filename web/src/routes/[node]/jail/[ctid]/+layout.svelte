@@ -2,45 +2,37 @@
 	import * as AlertDialogRaw from '$lib/components/ui/alert-dialog/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import { Badge } from '$lib/components/ui/badge/index.js';
-	import { goto } from '$app/navigation';
-	import { setContext } from 'svelte';
+	import { resolve } from '$app/paths';
+	import { setContext, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { getActiveLifecycleTaskForGuest } from '$lib/api/task/lifecycle';
-	import { deleteJail, getSimpleJailById, getJailStateById, jailAction } from '$lib/api/jail/jail';
+	import { deleteJail, getJailState, getSimpleJailByCTID, jailAction } from '$lib/api/jail/jail';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
-	import type { JailLifecycleAction, JailState, SimpleJail } from '$lib/types/jail/jail';
-	import {
-		getEffectiveJailLifecycleAction,
-		getJailLifecycleBadgeStyle,
-		getJailLifecyclePendingTimeoutMs,
-		isJailPendingLifecycleActionSettled,
-		isJailLifecycleTransitionPending,
-		shouldHideJailLifecycleButtons
-	} from '$lib/utils/jail/jail';
-	import { sleep } from '$lib/utils';
+	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
+	import { getJailLifecycleBadgeStyle, removeStaleJailCacheByCTID } from '$lib/utils/jail/jail';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-	import type { GFSStep } from '$lib/types/common';
+	import { parseGuestDeletionData, type GFSStep } from '$lib/types/common';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import MigrateModal from '$lib/components/custom/VM/MigrateModal.svelte';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
 
 	interface Props {
 		children?: import('svelte').Snippet;
 	}
 
 	let { children }: Props = $props();
-	let pendingLifecycleAction = $state<JailLifecycleAction | ''>('');
-	let pendingLifecycleTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let ctId = $derived.by(() => {
 		const value = Number(page.url.pathname.split('/')[3]);
 		return Number.isFinite(value) ? value : 0;
 	});
+	let node = $derived(String(page.params.node || ''));
 
 	let jailChildRoute = $derived.by(() => {
 		const segments = page.url.pathname.split('/').filter(Boolean);
@@ -49,49 +41,120 @@
 		return segments[jailIndex + 2] ?? '';
 	});
 	let isConsolePage = $derived.by(() => jailChildRoute === 'console');
+	let isSummaryPage = $derived.by(() => jailChildRoute === '' || jailChildRoute === 'summary');
 
-	const jail = resource(
-		() => `simple-jail-${ctId}`,
-		async (key: string): Promise<SimpleJail | null> => {
-			if (!ctId) return null;
-			const result = await getSimpleJailById(ctId, 'ctid');
-			updateCache(key, result);
-			return result;
+	type SimpleJailSnapshot = { identity: string; value: SimpleJail | null };
+	type JailStateSnapshot = { identity: string; value: JailState | null };
+	type JailLayoutData = {
+		node?: string;
+		ctId?: number;
+		jail?: SimpleJail | null;
+		state?: JailState | null;
+	};
+
+	const initialLayoutData = untrack(() => page.data as JailLayoutData);
+	const initialLayoutIdentity = `${initialLayoutData.node || ''}\u0000${initialLayoutData.ctId || 0}`;
+	let jailIdentity = $derived(`${node}\u0000${ctId}`);
+
+	const jailResource = resource(
+		[() => node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }): Promise<SimpleJailSnapshot> => {
+			const identity = `${hostname}\u0000${currentCtID}`;
+			if (!currentCtID) return { identity, value: null };
+			const result = await getSimpleJailByCTID(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`simple-jail-${currentCtID}`, result, hostname);
+			return { identity, value: result };
 		},
-		{ initialValue: null as SimpleJail | null }
+		{
+			initialValue: {
+				identity: initialLayoutIdentity,
+				value: initialLayoutData.jail ?? null
+			}
+		}
 	);
 
-	const jState = resource(
-		() => `jail-${ctId}-state`,
-		async (key: string): Promise<JailState | null> => {
-			if (!ctId) return null;
-			const result = await getJailStateById(ctId);
-			updateCache(key, result);
-			return result;
+	const stateResource = resource(
+		[() => node, () => ctId],
+		async ([hostname, currentCtID], _, { signal }): Promise<JailStateSnapshot> => {
+			const identity = `${hostname}\u0000${currentCtID}`;
+			if (!currentCtID) return { identity, value: null };
+			const result = await getJailState(currentCtID, { hostname, signal });
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail state');
+			}
+			await updateCache(`jail-${currentCtID}-state`, result, hostname);
+			return { identity, value: result };
 		},
-		{ initialValue: (page.data as { state?: JailState | null }).state ?? null }
+		{
+			initialValue: {
+				identity: initialLayoutIdentity,
+				value: initialLayoutData.state ?? null
+			}
+		}
 	);
 
-	const lifecycleTask = resource(
-		() => `jail-lifecycle-task-${ctId}`,
-		async (): Promise<LifecycleTask | null> => {
-			if (!ctId) return null;
-			const task = await getActiveLifecycleTaskForGuest('jail', ctId);
-			if (isAPIResponse(task) || task === null) return null;
-			return task;
+	const jail = {
+		get current(): SimpleJail | null {
+			return jailResource.current.identity === jailIdentity
+				? jailResource.current.value
+				: ((page.data as JailLayoutData).jail ?? null);
 		},
-		{ initialValue: null as LifecycleTask | null }
-	);
+		refetch: () => jailResource.refetch()
+	};
+
+	const jState = {
+		get current(): JailState | null {
+			return stateResource.current.identity === jailIdentity
+				? stateResource.current.value
+				: ((page.data as JailLayoutData).state ?? null);
+		},
+		refetch: () => stateResource.refetch()
+	};
 
 	setContext('jailState', jState);
-	setContext('jailLifecycleTask', lifecycleTask);
 
-	// Reactive state that the summary page writes into to inject toolbar extras
+	let hasActiveLifecycleTask = $derived(!!jState.current?.pendingAction);
+	let isMigrationActive = $derived(jState.current?.pendingAction === 'migrate');
+	let lifecycleActionBadge = $derived(
+		getJailLifecycleBadgeStyle(jState.current?.pendingAction || '')
+	);
+	let shouldHideActionButtons = $derived(hasActiveLifecycleTask);
+	let showMigrateModal = $state(false);
+	let actionRequestInFlight = $state(false);
+
+	let sourceNodeUuid = $derived.by(() => {
+		const nds = (page.data as Record<string, unknown>).nodes;
+		if (!nds || !Array.isArray(nds)) return '';
+		const self = (nds as ClusterNode[]).find((n) => n.guestIDs?.includes(ctId));
+		if (self) return self.nodeUUID;
+		const selfNode = (page.params.node || '').toLowerCase();
+		const byName = (nds as ClusterNode[]).find((n) => n.hostname.toLowerCase() === selfNode);
+		return byName?.nodeUUID ?? '';
+	});
+
+	let availableNodeCount = $derived.by(() => {
+		const nds = (page.data as Record<string, unknown>).nodes;
+		if (!nds || !Array.isArray(nds)) return 1;
+		const selfUuid = sourceNodeUuid;
+		const selfHostname = (page.params.node || '').toLowerCase();
+		let count = 0;
+		for (const n of nds as ClusterNode[]) {
+			if (n.nodeUUID === '' || n.status !== 'online') continue;
+			if (n.nodeUUID === selfUuid) continue;
+			if (!selfUuid && n.hostname.toLowerCase() === selfHostname) continue;
+			count++;
+		}
+		return count;
+	});
+
 	class SummaryBarExtras {
 		logsLength = $state(0);
 		showLogsCallback = $state<() => void>(() => {});
 		gfsStep = $state<GFSStep>('hourly');
-		refetchStats = $state<() => void>(() => {});
+		refetchStats = $state<(step?: GFSStep) => void>(() => {});
 		active = $state(false);
 	}
 
@@ -99,6 +162,7 @@
 	setContext('jailSummaryBarExtras', summaryBarExtras);
 
 	const visible = new IsDocumentVisible();
+	let isDeleteInFlight = $state(false);
 
 	let modalState = $state({
 		isDeleteOpen: false,
@@ -114,7 +178,7 @@
 	});
 
 	async function refreshJailState() {
-		await Promise.all([jail.refetch(), jState.refetch(), lifecycleTask.refetch()]);
+		await Promise.all([jail.refetch(), jState.refetch()]);
 	}
 
 	watch(
@@ -128,16 +192,8 @@
 
 	useInterval(() => 1000, {
 		callback: () => {
-			if (visible.current && ctId) {
+			if (visible.current && ctId && !isDeleteInFlight) {
 				jState.refetch();
-			}
-		}
-	});
-
-	useInterval(() => 1500, {
-		callback: () => {
-			if (visible.current && ctId) {
-				lifecycleTask.refetch();
 			}
 		}
 	});
@@ -145,7 +201,7 @@
 	watch(
 		() => storage.idle,
 		(idle) => {
-			if (!idle && ctId) {
+			if (!idle && ctId && !isDeleteInFlight) {
 				refreshJailState();
 			}
 		}
@@ -159,159 +215,162 @@
 		modalState.isDeleteOpen = true;
 	}
 
-	function beginPendingLifecycleAction(action: JailLifecycleAction) {
-		pendingLifecycleAction = action;
-
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-		}
-
-		pendingLifecycleTimer = setTimeout(() => {
-			pendingLifecycleAction = '';
-			pendingLifecycleTimer = null;
-		}, getJailLifecyclePendingTimeoutMs(action));
-	}
-
-	function clearPendingLifecycleAction() {
-		pendingLifecycleAction = '';
-		if (pendingLifecycleTimer) {
-			clearTimeout(pendingLifecycleTimer);
-			pendingLifecycleTimer = null;
-		}
-	}
-
 	async function handleDelete() {
-		if (!jail.current) return;
+		if (!jail.current || isDeleteInFlight) return;
+		const target = {
+			ctId: jail.current.ctId,
+			name: jail.current.name,
+			hostname: node
+		};
+		isDeleteInFlight = true;
 		modalState.isDeleteOpen = false;
 		modalState.loading.open = true;
 		modalState.loading.title = 'Deleting Jail';
-		modalState.loading.description = `Please wait while Jail <b>${jail.current.name} (${jail.current.ctId})</b> is being deleted`;
+		modalState.loading.description = `Please wait while Jail <b>${target.name} (${target.ctId})</b> is being deleted`;
 		modalState.loading.iconColor = 'text-red-500';
 
-		await sleep(1000);
-		const result = await deleteJail(
-			jail.current.ctId,
-			modalState.deleteMacs,
-			modalState.deleteRootFS
-		);
-		reload.leftPanel = true;
-		modalState.loading.open = false;
+		try {
+			const result = await deleteJail(
+				target.ctId,
+				modalState.deleteMacs,
+				modalState.deleteRootFS,
+				target.hostname
+			);
 
-		if (result.status === 'error') {
-			toast.error('Error deleting jail', {
+			if (result.status === 'error') {
+				await Promise.allSettled([jail.refetch(), jState.refetch()]);
+				toast.error(
+					result.message === 'guest_delete_requires_replication_policy_removed'
+						? 'Remove the replication policy before deleting this jail'
+						: 'Error deleting jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
+			const deletionData = parseGuestDeletionData(result.data);
+			const cleanupWarnings = deletionData.warnings;
+			const retainedDatasets = deletionData.retainedDatasets;
+			await removeStaleJailCacheByCTID(target.ctId, target.hostname);
+			await useSafeGoto(resolve('/[node]/summary', { node: target.hostname }));
+			if (cleanupWarnings.length > 0) {
+				toast.warning(
+					`Jail deleted, but cleanup was incomplete${retainedDatasets.length > 0 ? `: ${retainedDatasets.join(', ')}` : ''}`,
+					{ duration: 8000, position: 'bottom-center' }
+				);
+			} else if (retainedDatasets.length > 0) {
+				toast.warning(`Jail deleted; root filesystem retained at ${retainedDatasets.join(', ')}`, {
+					duration: 8000,
+					position: 'bottom-center'
+				});
+			} else {
+				toast.success('Jail deleted', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+			}
+		} catch (error) {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			toast.error(error instanceof Error ? error.message : 'Error deleting jail', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
-		} else if (result.status === 'success') {
-			// eslint-disable-next-line svelte/no-navigation-without-resolve
-			await goto(`/${storage.hostname}/summary`);
-			toast.success('Jail deleted', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
+		} finally {
+			modalState.loading.open = false;
+			isDeleteInFlight = false;
 		}
 	}
 
 	async function handleStop() {
-		if (!jail.current) return;
-		beginPendingLifecycleAction('stop');
-		const result = await jailAction(jail.current.ctId, 'stop');
-		reload.leftPanel = true;
+		if (!jail.current || actionRequestInFlight) return;
+		const targetCTID = jail.current.ctId;
+		actionRequestInFlight = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error stopping jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+		try {
+			const result = await jailAction(targetCTID, 'stop', node);
+			if (isAPIResponse(result)) {
+				toast.error(
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
+						? 'Jail action already in progress'
+						: 'Error stopping jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
 			jailPowerSignal.token += 1;
-			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.ctId = targetCTID;
 			jailPowerSignal.action = 'stop';
 
 			toast.success('Jail stop queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Error stopping jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			actionRequestInFlight = false;
 		}
-
-		await refreshJailState();
 	}
 
 	async function handleStart() {
-		if (!jail.current) return;
-		beginPendingLifecycleAction('start');
-		const result = await jailAction(jail.current.ctId, 'start');
-		reload.leftPanel = true;
+		if (!jail.current || actionRequestInFlight) return;
+		const targetCTID = jail.current.ctId;
+		actionRequestInFlight = true;
 
-		if (result.status === 'error') {
-			clearPendingLifecycleAction();
-			toast.error(
-				result.message === 'lifecycle_task_in_progress'
-					? 'Jail action already in progress'
-					: 'Error starting jail',
-				{
-					duration: 5000,
-					position: 'bottom-center'
-				}
-			);
-		} else if (result.status === 'success') {
+		try {
+			const result = await jailAction(targetCTID, 'start', node);
+			if (isAPIResponse(result)) {
+				toast.error(
+					result.message === 'lifecycle_task_in_progress' ||
+						result.message === 'migration_in_progress'
+						? 'Jail action already in progress'
+						: 'Error starting jail',
+					{
+						duration: 5000,
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+
+			reload.leftPanel = true;
 			jailPowerSignal.token += 1;
-			jailPowerSignal.ctId = jail.current.ctId;
+			jailPowerSignal.ctId = targetCTID;
 			jailPowerSignal.action = 'start';
 
 			toast.success('Jail start queued', {
 				duration: 5000,
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Error starting jail', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+		} finally {
+			await Promise.allSettled([jail.refetch(), jState.refetch()]);
+			actionRequestInFlight = false;
 		}
-
-		await refreshJailState();
 	}
-
-	let activeLifecycleAction = $derived(lifecycleTask.current?.action || '');
-	let hasLifecycleTaskRecord = $derived(!!lifecycleTask.current);
-	let isActiveLifecycleActionSettled = $derived.by(() => {
-		if (activeLifecycleAction !== 'start' && activeLifecycleAction !== 'stop') {
-			return false;
-		}
-
-		return isJailPendingLifecycleActionSettled(activeLifecycleAction, jState.current?.state);
-	});
-	let hasActiveLifecycleTask = $derived(hasLifecycleTaskRecord && !isActiveLifecycleActionSettled);
-	let effectiveLifecycleAction = $derived(
-		getEffectiveJailLifecycleAction(activeLifecycleAction, pendingLifecycleAction)
-	);
-	let isLifecycleTransitionPending = $derived(
-		isJailLifecycleTransitionPending(pendingLifecycleAction, hasLifecycleTaskRecord)
-	);
-	let shouldHideActionButtons = $derived(
-		shouldHideJailLifecycleButtons(hasActiveLifecycleTask, pendingLifecycleAction)
-	);
-	let lifecycleActionBadge = $derived(getJailLifecycleBadgeStyle(effectiveLifecycleAction));
-
-	watch(
-		() => [pendingLifecycleAction, hasLifecycleTaskRecord, jState.current?.state] as const,
-		([pendingAction, hasTask]) => {
-			if (!pendingAction || hasTask) {
-				return;
-			}
-
-			if (isJailPendingLifecycleActionSettled(pendingAction, jState.current?.state)) {
-				clearPendingLifecycleAction();
-			}
-		}
-	);
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
 	<div class="flex h-10 w-full shrink-0 items-center justify-between gap-1 border p-4">
-		{#if !summaryBarExtras.active}
+		{#if !isSummaryPage}
 			<div class="min-w-0 flex items-center gap-2">
 				{#if jail.current && jState.current}
 					<Badge
@@ -335,6 +394,7 @@
 				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 					<Button
 						onclick={handleStop}
+						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -343,6 +403,7 @@
 				{:else if !shouldHideActionButtons}
 					<Button
 						onclick={handleStart}
+						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
@@ -358,7 +419,7 @@
 					</Button>
 				{/if}
 
-				{#if hasActiveLifecycleTask || isLifecycleTransitionPending}
+				{#if hasActiveLifecycleTask && !isMigrationActive}
 					<Badge
 						variant={lifecycleActionBadge.variant}
 						class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
@@ -370,7 +431,7 @@
 			{/if}
 		</div>
 
-		{#if summaryBarExtras.active}
+		{#if isSummaryPage}
 			<div class="ml-auto flex items-center gap-2">
 				{#if summaryBarExtras.logsLength > 0}
 					<Button
@@ -386,6 +447,22 @@
 						/>
 					</Button>
 				{/if}
+
+				{#if availableNodeCount > 0}
+					<Button
+						onclick={() => (showMigrateModal = true)}
+						disabled={actionRequestInFlight || (hasActiveLifecycleTask && !isMigrationActive)}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-purple-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						{#if isMigrationActive}
+							<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin text-purple-500"></span>
+						{:else}
+							<span class="icon-[mdi--swap-horizontal] mr-1 h-4 w-4"></span>
+						{/if}
+						<span>Migrate</span>
+					</Button>
+				{/if}
 				<SimpleSelect
 					options={[
 						{ label: 'Hourly', value: 'hourly' },
@@ -395,7 +472,7 @@
 						{ label: 'Yearly', value: 'yearly' }
 					]}
 					bind:value={summaryBarExtras.gfsStep}
-					onChange={() => summaryBarExtras.refetchStats()}
+					onChange={(value) => summaryBarExtras.refetchStats(value as GFSStep)}
 					classes={{ trigger: 'h-6!' }}
 					icon="icon-[mdi--calendar]"
 				/>
@@ -408,7 +485,9 @@
 		class:overflow-hidden={isConsolePage}
 		class:overflow-auto={!isConsolePage}
 	>
-		{@render children?.()}
+		{#key `${node}:${ctId}`}
+			{@render children?.()}
+		{/key}
 	</div>
 </div>
 
@@ -431,6 +510,23 @@
 						classes="flex items-center gap-2 mt-4"
 					></CustomCheckbox>
 				</div>
+				{#if !modalState.deleteRootFS}
+					<div
+						class="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+					>
+						<span
+							class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+							aria-hidden="true"
+						></span>
+						<div>
+							<p class="font-medium text-amber-600 dark:text-amber-400">Root filesystem retained</p>
+							<p class="mt-0.5 text-muted-foreground">
+								The root filesystem will remain as unmanaged ZFS data. Remove it before reusing this
+								CTID.
+							</p>
+						</div>
+					</div>
+				{/if}
 			</AlertDialogRaw.Description>
 		</AlertDialogRaw.Header>
 		<AlertDialogRaw.Footer>
@@ -449,4 +545,23 @@
 	title={modalState.loading.title}
 	description={modalState.loading.description}
 	iconColor={modalState.loading.iconColor}
+/>
+
+<MigrateModal
+	bind:open={showMigrateModal}
+	guestType="jail"
+	guestId={ctId}
+	guestName={jail.current?.name || ''}
+	node={page.params.node || ''}
+	{sourceNodeUuid}
+	onSuccess={(targetHostname: string) => {
+		if (targetHostname) {
+			useSafeGoto(
+				resolve('/[node]/jail/[ctid]/summary', {
+					node: targetHostname,
+					ctid: String(ctId)
+				})
+			);
+		}
+	}}
 />

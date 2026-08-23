@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,6 +24,16 @@ import (
 )
 
 func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
+	migrateModels = append(
+		migrateModels,
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
+		&clusterModels.ReplicationTransitionEvent{},
+		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
+	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
@@ -62,16 +73,26 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		t.Fatalf("failed to create raft node %s: %v", id, err)
 	}
 
-	return &clusterRaftTestNode{
+	node := &clusterRaftTestNode{
 		id:        id,
 		addr:      addr,
 		transport: transport,
 		raft:      r,
 		service: &Service{
-			DB:   db,
-			Raft: r,
+			DB:       db,
+			Raft:     r,
+			NodeID:   id,
+			raftFSM:  fsm,
+			stateFSM: fsm,
+			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
+				return nil
+			},
 		},
 	}
+	t.Cleanup(func() {
+		cleanupClusterRaftTestNodes(t, []*clusterRaftTestNode{node})
+	})
+	return node
 }
 
 func connectClusterRaftTestNodes(nodes []*clusterRaftTestNode) {
@@ -187,6 +208,9 @@ func waitForClusterRaftVoterCount(t *testing.T, nodes []*clusterRaftTestNode, ex
 
 func setupClusterRaftTestNodes(t *testing.T, nodeCount int, migrateModels ...any) []*clusterRaftTestNode {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("requires real in-memory Raft; covered by the native integration lane")
+	}
 
 	if nodeCount < 1 {
 		t.Fatal("nodeCount must be at least 1")

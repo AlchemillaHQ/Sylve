@@ -2,7 +2,11 @@
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { formatBytesBinary, normalizeSizeInputExact, parseSizeInputToBytes } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		normalizeSizeInputExact,
+		parseSizeInputToBytes
+	} from '$lib/utils/bytes';
 	import { resource } from 'runed';
 
 	interface Props {

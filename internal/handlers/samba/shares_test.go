@@ -25,7 +25,7 @@ func newSambaSharesRouter(smbService *samba.Service) *gin.Engine {
 	r := gin.New()
 	r.GET("/samba/shares", GetShares(smbService))
 	r.POST("/samba/shares", CreateShare(smbService))
-	r.PUT("/samba/shares", UpdateShare(smbService))
+	r.PUT("/samba/shares/:id", UpdateShare(smbService))
 	return r
 }
 
@@ -70,7 +70,7 @@ func TestUpdateShareRejectsLegacyV1PayloadFields(t *testing.T) {
 		"guestOk":false
 	}`)
 
-	rr := performSambaJSONRequest(t, router, http.MethodPut, "/samba/shares", body)
+	rr := performSambaJSONRequest(t, router, http.MethodPut, "/samba/shares/1", body)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -247,13 +247,40 @@ func TestCreateShareReturnsBadRequestForInvalidPrincipalMode(t *testing.T) {
 	}
 }
 
+func TestCreateShareReturnsBadRequestForInvalidMask(t *testing.T) {
+	db := newSambaHandlerTestDB(t, &sambaModels.SambaShare{})
+	svc := &samba.Service{DB: db}
+	router := newSambaSharesRouter(svc)
+
+	body := []byte(`{
+		"name":"documents",
+		"dataset":"dataset-guid-2",
+		"permissions":{"read":{"userIds":[],"groupIds":[]},"write":{"userIds":[],"groupIds":[]}},
+		"guest":{"enabled":true,"writeable":false},
+		"createMask":"0668",
+		"directoryMask":"2775"
+	}`)
+
+	rr := performSambaJSONRequest(t, router, http.MethodPost, "/samba/shares", body)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.Error != "invalid_create_mask" {
+		t.Fatalf("expected invalid_create_mask, got %q", resp.Error)
+	}
+}
+
 func TestUpdateShareReturnsNotFoundWhenShareIsMissing(t *testing.T) {
 	db := newSambaHandlerTestDB(t, &sambaModels.SambaShare{})
 	svc := &samba.Service{DB: db}
 	router := newSambaSharesRouter(svc)
 
 	body := []byte(`{
-		"id":999,
 		"name":"missing",
 		"dataset":"dataset-guid",
 		"permissions":{"read":{"userIds":[],"groupIds":[]},"write":{"userIds":[],"groupIds":[]}},
@@ -262,7 +289,7 @@ func TestUpdateShareReturnsNotFoundWhenShareIsMissing(t *testing.T) {
 		"directoryMask":"2775"
 	}`)
 
-	rr := performSambaJSONRequest(t, router, http.MethodPut, "/samba/shares", body)
+	rr := performSambaJSONRequest(t, router, http.MethodPut, "/samba/shares/999", body)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected status 404, got %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -273,5 +300,22 @@ func TestUpdateShareReturnsNotFoundWhenShareIsMissing(t *testing.T) {
 	}
 	if !strings.HasPrefix(resp.Error, "share_not_found") {
 		t.Fatalf("expected share_not_found error, got %q", resp.Error)
+	}
+}
+
+func TestUpdateShareRejectsInvalidPathID(t *testing.T) {
+	router := newSambaSharesRouter(&samba.Service{})
+
+	rr := performSambaJSONRequest(t, router, http.MethodPut, "/samba/shares/not-a-number", []byte(`{}`))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp handlerAPIResponse[any]
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.Message != "invalid_share_id" {
+		t.Fatalf("expected invalid_share_id, got %q", resp.Message)
 	}
 }

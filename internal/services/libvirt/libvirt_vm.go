@@ -14,7 +14,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,6 +33,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
 
 	"github.com/google/uuid"
@@ -105,6 +105,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		})
 	}
 
+	var filesystemEls []libvirtServiceInterfaces.Filesystem
+
 	if vm.Storages != nil && len(vm.Storages) > 0 {
 		sort.Slice(vm.Storages, func(i, j int) bool {
 			return vm.Storages[i].BootOrder < vm.Storages[j].BootOrder
@@ -118,33 +120,57 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 			var disk string
 
 			if storage.Type == vmModels.VMStorageTypeRaw {
-				disk = fmt.Sprintf("/%s/sylve/virtual-machines/%d/raw-%d/%d.img", storage.Pool, vm.RID, storage.ID, storage.ID)
+				var err error
+				disk, err = s.resolveRawStorageImagePath(
+					context.Background(),
+					s.DB,
+					vm.RID,
+					storage,
+				)
+				if err != nil {
+					return "", fmt.Errorf("failed_to_resolve_raw_storage_path: %w", err)
+				}
 			} else if storage.Type == vmModels.VMStorageTypeZVol {
-				disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.RID, storage.ID)
+				if storage.Dataset.Name != "" {
+					disk = "/dev/zvol/" + storage.Dataset.Name
+				} else {
+					disk = fmt.Sprintf("/dev/zvol/%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, vm.RID, storage.ID)
+				}
 			} else if storage.Type == vmModels.VMStorageTypeDiskImage {
 				var err error
 				disk, err = s.FindISOByUUID(storage.DownloadUUID, true)
 				if err != nil {
-					return "", fmt.Errorf("failed_to_find_iso: %w", err)
+					logger.L.Warn().
+						Err(err).
+						Uint("rid", vm.RID).
+						Uint("storage_id", storage.ID).
+						Str("download_uuid", storage.DownloadUUID).
+						Msg("skipping_disk_image_iso_not_found_on_this_node")
+					continue
 				}
 			} else if storage.Type == vmModels.VMStorageTypeFilesystem {
-				sourcePath, err := s.resolveFilesystemSourcePath(context.Background(), storage)
+				sourcePath, err := s.resolveFilesystemSourcePath(
+					context.Background(),
+					storage,
+				)
 				if err != nil {
 					return "", fmt.Errorf("failed_to_resolve_filesystem_share_source: %w", err)
 				}
 
-				bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-					{
-						Value: buildVirtio9PArg(
-							sIndex,
-							strings.TrimSpace(storage.FilesystemTarget),
-							sourcePath,
-							storage.ReadOnly,
-						),
+				fs := libvirtServiceInterfaces.Filesystem{
+					Type: "mount",
+					Source: libvirtServiceInterfaces.FilesystemSource{
+						Dir: sourcePath,
 					},
-				})
+					Target: libvirtServiceInterfaces.FilesystemTarget{
+						Dir: strings.TrimSpace(storage.FilesystemTarget),
+					},
+				}
+				if storage.ReadOnly {
+					fs.ReadOnly = &struct{}{}
+				}
 
-				sIndex++
+				filesystemEls = append(filesystemEls, fs)
 				continue
 			}
 
@@ -182,15 +208,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	if vm.QemuGuestAgent {
-		qgaArg := fmt.Sprintf("-s %d,virtio-console,org.qemu.guest_agent.0=%s",
-			sIndex,
-			filepath.Join(vmPath, "qga.sock"),
-		)
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: qgaArg,
-			},
-		})
+		devices.Controllers = append(devices.Controllers, qgaVirtioSerialController(sIndex))
+		devices.Channels = append(devices.Channels, qgaChannel(filepath.Join(vmPath, "qga.sock")))
 		sIndex++
 	}
 
@@ -198,6 +217,9 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 	if vm.Networks != nil && len(vm.Networks) > 0 {
 		for _, network := range vm.Networks {
+			if !network.Enable {
+				continue
+			}
 			if network.SwitchID != 0 {
 				nType := "bridge"
 				emulation := network.Emulation
@@ -258,6 +280,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	devices.Interfaces = interfaces
+	devices.Filesystems = filesystemEls
 
 	var features libvirtServiceInterfaces.Features
 	if vm.APIC {
@@ -266,6 +289,10 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 	if vm.ACPI {
 		features.ACPI = struct{}{}
+	}
+
+	if vm.IgnoreUMSR {
+		features.MSRs = &libvirtServiceInterfaces.MSRs{Unknown: "ignore"}
 	}
 
 	domain := libvirtServiceInterfaces.Domain{
@@ -341,17 +368,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 
 		vncWait := ""
 		if vm.VNCWait {
-			vncWait = ",wait"
+			vncWait = "yes"
 		}
 
-		/* Libvirt doesn't allow wait yet, so we're going to resort to using bhyve args for now
+		vncBind := NormalizeVNCBindAddress(vm.VNCBind)
+
 		domain.Devices.Graphics = &libvirtServiceInterfaces.Graphics{
 			Type:     "vnc",
 			Port:     fmt.Sprintf("%d", vm.VNCPort),
 			Password: vm.VNCPassword,
+			Wait:     vncWait,
 			Listen: libvirtServiceInterfaces.GraphicsListen{
 				Type:    "address",
-				Address: "127.0.0.1",
+				Address: vncBind,
 			},
 		}
 
@@ -366,31 +395,6 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				},
 			},
 		}
-		*/
-
-		vncHostPort := net.JoinHostPort(NormalizeVNCBindAddress(vm.VNCBind), strconv.Itoa(vm.VNCPort))
-		vncArg := fmt.Sprintf("-s %d:0,fbuf,tcp=%s,w=%s,h=%s,password=%s%s",
-			sIndex,
-			vncHostPort,
-			width,
-			height,
-			vm.VNCPassword,
-			vncWait,
-		)
-
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: vncArg,
-			},
-		})
-	}
-
-	if vm.IgnoreUMSR {
-		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-			{
-				Value: "-w",
-			},
-		})
 	}
 
 	var flatBhyveArgs []libvirtServiceInterfaces.BhyveArg
@@ -507,17 +511,26 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 }
 
 func (s *Service) RemoveLvVm(rid uint) error {
+	s.crudMutex.Lock()
+	defer s.crudMutex.Unlock()
+	return s.removeLvVmWithoutCRUDLock(rid)
+}
+
+// removeLvVmWithoutCRUDLock requires the caller to hold crudMutex. VM deletion
+// uses it to keep runtime retirement and the following identity transaction in
+// the same critical section as snapshot mutations.
+func (s *Service) removeLvVmWithoutCRUDLock(rid uint) error {
 	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
-	s.crudMutex.Lock()
-	defer s.crudMutex.Unlock()
-
 	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
 	domainGone := false
 	if err != nil {
-		logger.L.Warn().Err(err).Msgf("Domain for VM RID %d not found, assuming already removed", rid)
+		if !libvirt.IsNotFound(err) {
+			return fmt.Errorf("failed_to_lookup_domain_for_removal: %w", err)
+		}
+		logger.L.Debug().Uint("rid", rid).Msg("vm_domain_already_absent")
 		domainGone = true
 	}
 
@@ -540,7 +553,11 @@ func (s *Service) RemoveLvVm(rid uint) error {
 
 	err = s.StopTPM(rid)
 	if err != nil {
-		logger.L.Error().Err(err).Msgf("Failed to stop TPM for VM RID %d", rid)
+		lower := strings.ToLower(err.Error())
+		if !strings.Contains(lower, "vm_not_found") && !strings.Contains(lower, "tpm_socket_not_found") {
+			return fmt.Errorf("failed_to_stop_tpm: %w", err)
+		}
+		logger.L.Debug().Err(err).Uint("rid", rid).Msg("vm_tpm_runtime_already_absent")
 	}
 
 	vmPath := filepath.Join(vmDir, strconv.Itoa(int(rid)))
@@ -761,13 +778,37 @@ func (s *Service) CheckPCIDevicesInUse(vm vmModels.VM) error {
 	return nil
 }
 
+func storageIDFromDataset(datasetName, prefix string) int {
+	base := filepath.Base(datasetName)
+	idStr := strings.TrimPrefix(base, prefix+"-")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
+	return s.lvVMAction(vm, action, "")
+}
+
+// LvVMActionForReplication authorizes exactly one persisted transition run.
+// Normal VM actions continue through the non-bypass ownership guard.
+func (s *Service) LvVMActionForReplication(vm vmModels.VM, action, transitionRunID string) error {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if transitionRunID == "" {
+		return fmt.Errorf("replication_transition_run_id_required")
+	}
+	return s.lvVMAction(vm, action, transitionRunID)
+}
+
+func (s *Service) lvVMAction(vm vmModels.VM, action, transitionRunID string) error {
 	if err := s.requireConnection(); err != nil {
 		return err
 	}
 
-	if action == "start" {
-		allowed, err := s.canMutateProtectedVM(vm.RID)
+	if action == "start" || action == "stop" || action == "shutdown" || action == "reboot" {
+		allowed, err := s.canMutateProtectedVMForAction(vm.RID, action, transitionRunID)
 		if err != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", err)
 		}
@@ -778,6 +819,33 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
+
+	return s.lvVMActionLocked(vm, action, transitionRunID)
+}
+
+// lvVMActionLocked performs one lifecycle action while the caller holds
+// actionMutex and a live libvirt connection has already been established.
+// Snapshot rollback uses this helper so no competing lifecycle action can run
+// between stopping the guest, mutating its storage, redefining it, and
+// restoring its prior running state.
+func (s *Service) lvVMActionLocked(vm vmModels.VM, action, transitionRunID string) error {
+	if s.conn() == nil {
+		return fmt.Errorf("libvirt_connection_unavailable")
+	}
+
+	// The first guard can race with a transition that is persisted while this
+	// action waits for the hypervisor mutex. Re-check under the mutex so an
+	// action authorized just before Begin cannot complete after the transition
+	// runtime state has been captured.
+	if action == "start" || action == "stop" || action == "shutdown" || action == "reboot" {
+		allowed, err := s.canMutateProtectedVMForAction(vm.RID, action, transitionRunID)
+		if err != nil {
+			return fmt.Errorf("replication_lease_recheck_failed: %w", err)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
 
 	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
 	if err != nil {
@@ -796,7 +864,7 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	case "shutdown":
 		err = s.shutdownVM(&domain, vm)
 	case "stop":
-		err = s.stopVM(&domain, vm)
+		err = s.destroyVM(&domain, vm)
 	case "reboot":
 		err = s.rebootVM(&domain, vm)
 	default:
@@ -816,14 +884,204 @@ func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
 	return nil
 }
 
-func (s *Service) canStartProtectedVM(rid uint) (bool, error) {
-	return s.canMutateProtectedVM(rid)
+// ReplicationVMRuntimeStateForTransition drains VM actions that were admitted
+// before the durable transition lock, then revalidates the exact run while
+// holding the same mutex used for all start/stop operations.
+func (s *Service) ReplicationVMRuntimeStateForTransition(rid uint, transitionRunID string) (bool, error) {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if rid == 0 || transitionRunID == "" {
+		return false, fmt.Errorf("replication_transition_runtime_state_input_invalid")
+	}
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+	allowed, err := s.canMutateProtectedVMForTransition(rid, transitionRunID)
+	if err != nil {
+		return false, fmt.Errorf("replication_lease_check_failed: %w", err)
+	}
+	if !allowed {
+		return false, fmt.Errorf("replication_lease_not_owned")
+	}
+	shutoff, err := s.IsDomainShutOff(rid)
+	if err != nil {
+		return false, err
+	}
+	return !shutoff, nil
+}
+
+func (s *Service) ForceStopVM(rid uint) error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return fmt.Errorf("failed_to_lookup_domain: %w", err)
+	}
+
+	if err := s.destroyVM(&domain, vmModels.VM{RID: rid}); err != nil {
+		return err
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_stop_%d", rid))
+
+	return nil
+}
+
+const emergencyVMRuntimeFenceMaxPasses = 3
+
+type emergencyVMRuntimeOps interface {
+	ListActiveDomains() ([]libvirt.Domain, error)
+	DestroyDomain(libvirt.Domain) error
+}
+
+type libvirtEmergencyVMRuntimeOps struct {
+	conn *libvirt.Libvirt
+}
+
+func (o libvirtEmergencyVMRuntimeOps) ListActiveDomains() ([]libvirt.Domain, error) {
+	if o.conn == nil {
+		return nil, fmt.Errorf("libvirt_connection_unavailable")
+	}
+	domains, _, err := o.conn.ConnectListAllDomains(1, libvirt.ConnectListDomainsActive)
+	return domains, err
+}
+
+func (o libvirtEmergencyVMRuntimeOps) DestroyDomain(domain libvirt.Domain) error {
+	if o.conn == nil {
+		return fmt.Errorf("libvirt_connection_unavailable")
+	}
+	return o.conn.DomainDestroy(domain)
+}
+
+func managedVMRuntimeRID(domainName string) (uint, bool) {
+	rawName := domainName
+	domainName = strings.TrimSpace(domainName)
+	if rawName != domainName {
+		return 0, false
+	}
+	parsed, err := strconv.ParseUint(domainName, 10, 64)
+	if err != nil || parsed == 0 || parsed > 9999 {
+		return 0, false
+	}
+	if strconv.FormatUint(parsed, 10) != domainName {
+		return 0, false
+	}
+	return uint(parsed), true
+}
+
+func managedActiveVMDomains(domains []libvirt.Domain) []libvirt.Domain {
+	managed := make([]libvirt.Domain, 0, len(domains))
+	seen := make(map[string]struct{}, len(domains))
+	for _, domain := range domains {
+		if _, ok := managedVMRuntimeRID(domain.Name); !ok {
+			continue
+		}
+		if _, ok := seen[domain.Name]; ok {
+			continue
+		}
+		seen[domain.Name] = struct{}{}
+		managed = append(managed, domain)
+	}
+	sort.Slice(managed, func(i, j int) bool { return managed[i].Name < managed[j].Name })
+	return managed
+}
+
+func emergencyStopAllManagedVMsWithOps(ops emergencyVMRuntimeOps) error {
+	if ops == nil {
+		return fmt.Errorf("emergency_vm_runtime_ops_unavailable")
+	}
+
+	var stopErrs []error
+	for pass := 0; pass < emergencyVMRuntimeFenceMaxPasses; pass++ {
+		domains, err := ops.ListActiveDomains()
+		if err != nil {
+			return errors.Join(
+				errors.Join(stopErrs...),
+				fmt.Errorf("list_active_managed_vm_runtimes_failed: %w", err),
+			)
+		}
+		managed := managedActiveVMDomains(domains)
+		if len(managed) == 0 {
+			// Final host-runtime observation is authoritative. A destroy RPC may
+			// have raced a shutdown and returned an error after the domain exited.
+			return nil
+		}
+		for _, domain := range managed {
+			if err := ops.DestroyDomain(domain); err != nil {
+				stopErrs = append(stopErrs, fmt.Errorf("destroy_managed_vm_runtime_%s_failed: %w", domain.Name, err))
+			}
+		}
+	}
+
+	domains, err := ops.ListActiveDomains()
+	if err != nil {
+		return errors.Join(
+			errors.Join(stopErrs...),
+			fmt.Errorf("verify_managed_vm_runtimes_stopped_failed: %w", err),
+		)
+	}
+	remaining := managedActiveVMDomains(domains)
+	if len(remaining) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(remaining))
+	for _, domain := range remaining {
+		names = append(names, domain.Name)
+	}
+	return errors.Join(
+		errors.Join(stopErrs...),
+		fmt.Errorf("managed_vm_runtimes_still_active: %s", strings.Join(names, ",")),
+	)
+}
+
+// EmergencyStopAllManagedVMs is a database-independent host-runtime fail-stop
+// used only when replication policy state cannot be read. It serializes against
+// every normal Sylve VM action and proves that no managed domain remains active.
+// go-libvirt's RPC API has no context-aware variant; ctx is carried for the
+// common watchdog capability and future connection-level cancellation.
+func (s *Service) EmergencyStopAllManagedVMs(ctx context.Context) error {
+	_ = ctx
+	if err := s.requireConnection(); err != nil {
+		return fmt.Errorf("emergency_vm_libvirt_connection_failed: %w", err)
+	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	return emergencyStopAllManagedVMsWithOps(libvirtEmergencyVMRuntimeOps{conn: s.conn()})
 }
 
 func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVMForTransition(rid, "")
+}
+
+func (s *Service) CanMutateProtectedVM(rid uint) (bool, error) {
+	return s.canMutateProtectedVM(rid)
+}
+
+// CanPerformVMAction checks whether this node currently owns the right to
+// request the specified VM lifecycle action. LvVMAction repeats this check
+// immediately before, and again while holding, the hypervisor action mutex.
+func (s *Service) CanPerformVMAction(rid uint, action string) (bool, error) {
+	return s.canMutateProtectedVMForAction(rid, action, "")
+}
+
+func (s *Service) canMutateProtectedVMForTransition(rid uint, transitionRunID string) (bool, error) {
 	nodeID, err := utils.GetSystemUUID()
 	if err != nil {
 		return false, err
+	}
+	if strings.TrimSpace(transitionRunID) != "" {
+		return clusterService.CanNodeMutateProtectedGuestForTransition(
+			s.DB,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			strings.TrimSpace(nodeID),
+			transitionRunID,
+		)
 	}
 	return clusterService.CanNodeMutateProtectedGuest(
 		s.DB,
@@ -833,18 +1091,110 @@ func (s *Service) canMutateProtectedVM(rid uint) (bool, error) {
 	)
 }
 
-func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.RemoveQGASocket(vm); err != nil {
-		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
+// canMutateProtectedVMForAction applies the narrow migration stop/start
+// exceptions to both checks in lvVMAction. The generic mutation guard would
+// otherwise reject every action while the durable guest-operation guard exists.
+func (s *Service) canMutateProtectedVMForAction(rid uint, action, transitionRunID string) (bool, error) {
+	transitionRunID = strings.TrimSpace(transitionRunID)
+	if transitionRunID != "" {
+		return s.canMutateProtectedVMForTransition(rid, transitionRunID)
 	}
 
+	nodeID, err := utils.GetSystemUUID()
+	if err != nil {
+		return false, err
+	}
+	return canNodePerformVMAction(s.DB, rid, action, strings.TrimSpace(nodeID))
+}
+
+func canNodePerformVMAction(db *gorm.DB, rid uint, action, nodeID string) (bool, error) {
+	switch strings.TrimSpace(action) {
+	case "stop":
+		return clusterService.CanNodeStopGuestForMigration(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	case "start":
+		return clusterService.CanNodeStartProtectedGuest(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	default:
+		return clusterService.CanNodeMutateProtectedGuest(
+			db,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			nodeID,
+		)
+	}
+}
+
+func (s *Service) requireVMStorageTopologyMutable(rid uint) error {
+	allowed, err := clusterService.CanMutateProtectedGuestStorageTopology(
+		s.DB,
+		clusterModels.ReplicationGuestTypeVM,
+		rid,
+	)
+	if err != nil {
+		if errors.Is(err, clusterService.ErrReplicationRunInProgress) {
+			return err
+		}
+		return fmt.Errorf("replication_topology_check_failed: %w", err)
+	}
+	if !allowed {
+		return fmt.Errorf("replication_storage_topology_change_requires_policy_disabled")
+	}
+	return nil
+}
+
+// RequireVMStorageTopologyMutable is the API-boundary guard used before any
+// storage operation can mutate ZFS state. Model hooks provide a second line of
+// defence for metadata writes, but they are necessarily too late for resizes
+// and other physical changes.
+func (s *Service) RequireVMStorageTopologyMutable(rid uint) error {
+	return s.requireVMStorageTopologyMutable(rid)
+}
+
+// RequireVMStorageRecordTopologyMutable resolves an update request's storage
+// row to its guest before applying the same protection guard.
+func (s *Service) RequireVMStorageRecordTopologyMutable(storageID int) error {
+	if storageID <= 0 {
+		return fmt.Errorf("invalid_storage_id")
+	}
+	var storage vmModels.Storage
+	if err := s.DB.Select("vm_id").First(&storage, storageID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_storage_record: %w", err)
+	}
+	var vm vmModels.VM
+	if err := s.DB.Select("rid").First(&vm, storage.VMID).Error; err != nil {
+		return fmt.Errorf("failed_to_find_vm_record: %w", err)
+	}
+	return s.requireVMStorageTopologyMutable(vm.RID)
+}
+
+func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {
 		return fmt.Errorf("could_not_get_state: %w", err)
 	}
 
-	if state == 1 {
+	if state == int32(libvirt.DomainRunning) {
 		return nil
+	}
+	if state != int32(libvirt.DomainShutoff) {
+		return fmt.Errorf("domain_not_shutoff_for_start_state_%d", state)
+	}
+
+	if err := s.removeQGASocket(vm); err != nil {
+		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
+	}
+
+	if err := s.ensureQemuGuestAgentNativeXML(*domain, vm); err != nil {
+		return fmt.Errorf("failed_to_ensure_native_qga_xml: %w", err)
 	}
 
 	if err := s.StartTPM(); err != nil {
@@ -866,19 +1216,37 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	return nil
 }
 
-func (s *Service) stopVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.conn().DomainDestroy(*domain); err != nil {
-		return fmt.Errorf("failed_to_force_stop_domain: %w", err)
+func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	logger.L.Debug().Uint("rid", vm.RID).Msg("requesting graceful shutdown via libvirt")
+
+	if err := s.conn().DomainShutdownFlags(*domain, libvirt.DomainShutdownDefault); err != nil {
+		return fmt.Errorf("failed_to_request_graceful_shutdown: %w", err)
 	}
 
-	return s.cleanupResources(vm)
+	shutoff, err := s.pollForShutoff(domain, vm)
+	if err != nil {
+		if errors.Is(err, errShutdownOverridden) {
+			logger.L.Info().Uint("rid", vm.RID).Msg("shutdown overridden, force destroying")
+			return s.destroyVM(domain, vm)
+		}
+		return fmt.Errorf("failed_while_waiting_for_shutdown: %w", err)
+	}
+	if !shutoff {
+		waitTime := vm.ShutdownWaitTime
+		if waitTime <= 0 {
+			waitTime = 30
+		}
+		logger.L.Warn().Int("wait_time", waitTime).Msg("Shutdown timed out, forcing destroy")
+		return s.destroyVM(domain, vm)
+	}
+
+	logger.L.Info().Uint("rid", vm.RID).Msg("VM shut down via libvirt")
+	return nil
 }
 
-func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
-	if err := s.conn().DomainShutdown(*domain); err != nil {
-		logger.L.Warn().Err(err).Msg("Graceful shutdown signal failed, will wait and force stop if needed")
-	}
+var errShutdownOverridden = errors.New("shutdown_overridden")
 
+func (s *Service) pollForShutoff(domain *libvirt.Domain, vm vmModels.VM) (bool, error) {
 	waitTime := vm.ShutdownWaitTime
 	if waitTime <= 0 {
 		waitTime = 30
@@ -891,8 +1259,7 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	for {
 		select {
 		case <-timeout:
-			logger.L.Warn().Msgf("Shutdown timed out after %ds, forcing destroy", waitTime)
-			return s.forceDestroy(domain, vm)
+			return false, nil
 
 		case <-ticker.C:
 			overrideRequested, overrideErr := s.hasShutdownOverrideRequested(vm.RID)
@@ -900,16 +1267,16 @@ func (s *Service) shutdownVM(domain *libvirt.Domain, vm vmModels.VM) error {
 				logger.L.Warn().Err(overrideErr).Uint("rid", vm.RID).Msg("failed_to_check_vm_shutdown_override")
 			} else if overrideRequested {
 				logger.L.Warn().Uint("rid", vm.RID).Msg("vm_shutdown_override_requested_force_stopping")
-				return s.forceDestroy(domain, vm)
+				return false, errShutdownOverridden
 			}
 
 			state, _, err := s.conn().DomainGetState(*domain, 0)
 			if err != nil {
-				return fmt.Errorf("failed_to_get_state: %w", err)
+				return false, fmt.Errorf("failed_to_get_state: %w", err)
 			}
 
 			if state == 5 {
-				return s.cleanupResources(vm)
+				return true, nil
 			}
 		}
 	}
@@ -936,24 +1303,17 @@ func (s *Service) hasShutdownOverrideRequested(rid uint) (bool, error) {
 	return count > 0, nil
 }
 
-func (s *Service) forceDestroy(domain *libvirt.Domain, vm vmModels.VM) error {
+func (s *Service) destroyVM(domain *libvirt.Domain, vm vmModels.VM) error {
+	logger.L.Info().Uint("rid", vm.RID).Msg("force destroying VM via libvirt DomainDestroy")
+
 	if err := s.conn().DomainDestroy(*domain); err != nil {
-		state, _, _ := s.conn().DomainGetState(*domain, 0)
-		if state != 5 {
+		state, _, stateErr := s.conn().DomainGetState(*domain, 0)
+		if stateErr != nil || state != int32(libvirt.DomainShutoff) {
 			return fmt.Errorf("failed_to_force_destroy: %w", err)
 		}
 	}
 
-	state, _, err := s.conn().DomainGetState(*domain, 0)
-	if err != nil {
-		return fmt.Errorf("failed_to_verify_stop: %w", err)
-	}
-
-	if state != 5 {
-		return fmt.Errorf("vm_still_running_after_destroy_state_%d", state)
-	}
-
-	return s.cleanupResources(vm)
+	return nil
 }
 
 func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
@@ -964,6 +1324,28 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	if state != 1 {
 		return fmt.Errorf("domain_not_running_for_reboot")
 	}
+
+	needsColdReboot := false
+	if vm.QemuGuestAgent {
+		domainXML, err := s.conn().DomainGetXMLDesc(*domain, 0)
+		if err != nil {
+			return fmt.Errorf("failed_to_inspect_live_qga_xml: %w", err)
+		}
+		needsColdReboot, err = qgaXMLNeedsUpdate(domainXML, true)
+		if err != nil {
+			return fmt.Errorf("failed_to_inspect_live_qga_xml: %w", err)
+		}
+	}
+
+	if !needsColdReboot {
+		logger.L.Debug().Uint("rid", vm.RID).Msg("requesting reboot via libvirt")
+		if err := s.conn().DomainReboot(*domain, libvirt.DomainRebootDefault); err != nil {
+			return fmt.Errorf("native_libvirt_reboot_failed: %w", err)
+		}
+		return nil
+	}
+
+	logger.L.Debug().Uint("rid", vm.RID).Msg("using one-time cold reboot to migrate legacy QGA XML")
 
 	if err := s.shutdownVM(domain, vm); err != nil {
 		return fmt.Errorf("reboot_failed_during_shutdown: %w", err)
@@ -976,38 +1358,16 @@ func (s *Service) rebootVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	return nil
 }
 
-func (s *Service) cleanupResources(vm vmModels.VM) error {
-	user, err := utils.GetPortUserPID("tcp", vm.VNCPort)
-	if err != nil {
-		if !strings.HasPrefix(err.Error(), "no process found using tcp port") {
-			logger.L.Error().Err(err).Msg("Error checking VNC port usage")
-		}
-	} else if user > 0 {
-		if err := utils.KillProcess(user); err != nil {
-			logger.L.Error().Err(err).Msg("Failed to kill process using VNC port")
-		}
+func (s *Service) removeQGASocket(vm vmModels.VM) error {
+	if !vm.QemuGuestAgent {
+		return nil
 	}
 
-	if err := s.RemoveQGASocket(vm); err != nil {
-		logger.L.Error().Err(err).Msg("Error cleaning up qemu-ga socket")
+	dataPath, err := s.GetVMConfigDirectory(vm.RID)
+	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (s *Service) RemoveQGASocket(vm vmModels.VM) error {
-	if vm.QemuGuestAgent {
-		dataPath, err := s.GetVMConfigDirectory(vm.RID)
-		if err == nil {
-			qgaSocketPath := filepath.Join(dataPath, "qga.sock")
-			err := utils.DeleteFileIfExists(qgaSocketPath)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return utils.DeleteFileIfExists(filepath.Join(dataPath, "qga.sock"))
 }
 
 func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
@@ -1016,12 +1376,18 @@ func (s *Service) SetActionDate(vm vmModels.VM, action string) error {
 	switch action {
 	case "start":
 		vm.StartedAt = &now
+		vm.StoppedAt = nil
+		vm.IntentionallyStopped = false
 	case "reboot":
 		vm.StartedAt = &now
+		vm.StoppedAt = nil
+		vm.IntentionallyStopped = false
 	case "stop":
 		vm.StoppedAt = &now
+		vm.IntentionallyStopped = true
 	case "shutdown":
 		vm.StoppedAt = &now
+		vm.IntentionallyStopped = true
 	default:
 		return fmt.Errorf("invalid_action: %s", action)
 	}
@@ -1099,4 +1465,285 @@ func (s *Service) GetVMIDByRID(rid uint) (uint, error) {
 	}
 
 	return id, nil
+}
+
+func (s *Service) MigrateVNCToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_vnc_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		if !vm.VNCEnabled {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("vnc_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, "fbuf,tcp") {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		newXML, err := updateVNC(xml, vm.VNCPort, vm.VNCBind, vm.VNCResolution, vm.VNCPassword, vm.VNCWait, true)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to update VNC XML")
+			continue
+		}
+
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to lookup domain")
+			continue
+		}
+
+		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to undefine domain")
+			continue
+		}
+
+		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to redefine domain")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("vnc_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("vnc_migration: migrated to native XML format")
+	}
+
+	return nil
+}
+
+func (s *Service) MigrateIgnoreUMSRToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_ignore_umsr_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		if !vm.IgnoreUMSR {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("ignore_umsr_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, `value="-w"`) {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		doc := etree.NewDocument()
+		if err := doc.ReadFromString(xml); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to parse XML")
+			continue
+		}
+
+		root := doc.Root()
+		if root == nil {
+			logger.L.Warn().Uint("rid", vm.RID).Msg("ignore_umsr_migration: XML has no root element")
+			continue
+		}
+
+		featuresEl := root.FindElement("features")
+		if featuresEl == nil {
+			featuresEl = root.CreateElement("features")
+		}
+
+		for _, el := range featuresEl.FindElements("msrs") {
+			featuresEl.RemoveChild(el)
+		}
+
+		if bhyveCL := doc.FindElement("//commandline"); bhyveCL != nil && bhyveCL.Space == "bhyve" {
+			for _, arg := range bhyveCL.ChildElements() {
+				if arg.SelectAttrValue("value", "") == "-w" {
+					bhyveCL.RemoveChild(arg)
+				}
+			}
+		}
+
+		msrsEl := featuresEl.CreateElement("msrs")
+		msrsEl.CreateAttr("unknown", "ignore")
+
+		newXML, err := doc.WriteToString()
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to serialize XML")
+			continue
+		}
+
+		domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(vm.RID)))
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to lookup domain")
+			continue
+		}
+
+		if err := s.conn().DomainUndefineFlags(domain, 0); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to undefine domain")
+			continue
+		}
+
+		if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to redefine domain")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("ignore_umsr_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("ignore_umsr_migration: migrated to native XML format")
+	}
+
+	return nil
+}
+
+func (s *Service) MigrateVirtio9PToNativeFormat() error {
+	if err := s.requireConnection(); err != nil {
+		return err
+	}
+
+	vms, err := s.ListVMs()
+	if err != nil {
+		return fmt.Errorf("failed_to_list_vms_for_virtio9p_migration: %w", err)
+	}
+
+	for _, vm := range vms {
+		hasFilesystem := false
+		for _, storage := range vm.Storages {
+			if storage.Enable && storage.Type == vmModels.VMStorageTypeFilesystem {
+				hasFilesystem = true
+				break
+			}
+		}
+
+		if !hasFilesystem {
+			continue
+		}
+
+		migrationName := fmt.Sprintf("virtio9p_native_xml_format_1_%d", vm.RID)
+
+		var count int64
+		if err := s.DB.
+			Table("migrations").
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to check per-VM migration record")
+			continue
+		}
+
+		if count > 0 {
+			continue
+		}
+
+		shutoff, err := s.IsDomainShutOff(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to check domain state")
+			continue
+		}
+
+		if !shutoff {
+			continue
+		}
+
+		xml, err := s.GetVMXML(vm.RID)
+		if err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to get VM XML")
+			continue
+		}
+
+		if !strings.Contains(xml, "virtio-9p") {
+			if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+				logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to record already-native VM")
+			}
+			continue
+		}
+
+		if err := s.syncVMDisksWithDB(context.Background(), s.DB, vm.RID); err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to sync VM disks")
+			continue
+		}
+
+		if err := s.DB.Table("migrations").Create(map[string]any{"name": migrationName}).Error; err != nil {
+			logger.L.Warn().Uint("rid", vm.RID).Err(err).Msg("virtio9p_migration: failed to record per-VM migration")
+			continue
+		}
+
+		logger.L.Info().Uint("rid", vm.RID).Msg("virtio9p_migration: migrated to native XML format")
+	}
+
+	return nil
 }

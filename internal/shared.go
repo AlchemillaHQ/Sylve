@@ -9,8 +9,9 @@
 package internal
 
 type BaseConfigAdmin struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email              string `json:"email"`
+	Password           string `json:"password"`
+	ForcePasswordReset bool   `json:"forcePasswordReset"`
 }
 
 type TLSConfig struct {
@@ -54,22 +55,34 @@ type JailsConfig struct {
 	DisableDevFS bool `json:"disableDevFS"`
 }
 
+type ZFSConfig struct {
+	Tune bool `json:"tune"`
+}
+
+type UploadsConfig struct {
+	MaxFileBytes           int64 `json:"maxFileBytes"`
+	MaxConcurrentTransfers int64 `json:"maxConcurrentTransfers"`
+}
+
 type SylveConfig struct {
-	Environment   Environment     `json:"environment"`
-	ProxyToVite   bool            `json:"proxyToVite"`
-	Profile       bool            `json:"profile"`
-	IP            string          `json:"ip"`
-	Port          int             `json:"port"`
-	HTTPPort      int             `json:"httpPort"`
-	LogLevel      int8            `json:"logLevel"`
-	WANInterfaces []string        `json:"wanInterfaces"`
-	Admin         BaseConfigAdmin `json:"admin"`
-	DataPath      string          `json:"dataPath"`
-	TLS           TLSConfig       `json:"tlsConfig"`
-	Raft          Raft            `json:"raft"`
-	BTT           BTT             `json:"btt"`
-	Auth          AuthConfig      `json:"auth"`
-	Jails         JailsConfig     `json:"jails"`
+	Environment    Environment     `json:"environment"`
+	ProxyToVite    bool            `json:"proxyToVite"`
+	Profile        bool            `json:"profile"`
+	IP             string          `json:"ip"`
+	Port           int             `json:"port"`
+	HTTPPort       int             `json:"httpPort"`
+	LogLevel       int8            `json:"logLevel"`
+	WANInterfaces  []string        `json:"wanInterfaces"`
+	Admin          BaseConfigAdmin `json:"admin"`
+	DataPath       string          `json:"dataPath"`
+	TLS            *TLSConfig      `json:"tlsConfig,omitempty"`
+	Raft           Raft            `json:"raft"`
+	BTT            BTT             `json:"btt"`
+	Auth           AuthConfig      `json:"auth"`
+	Jails          JailsConfig     `json:"jails"`
+	ZFS            ZFSConfig       `json:"zfs"`
+	Uploads        UploadsConfig   `json:"uploads"`
+	TrustedProxies []string        `json:"trustedProxies"`
 }
 
 type APIResponse[T any] struct {
@@ -80,3 +93,20 @@ type APIResponse[T any] struct {
 }
 
 const MinimumVMStorageSize = 1024 * 1024 * 128
+
+type NoteRequest struct {
+	Title   string `json:"title" binding:"required,min=3,max=128"`
+	Content string `json:"content" binding:"required,min=3"`
+}
+
+type BulkDeleteRequest struct {
+	IDs []int `json:"ids" binding:"required"`
+}
+
+type BulkUpdateRulesRequest struct {
+	IDs            []int `json:"ids" binding:"required"`
+	UIEnabled      *bool `json:"uiEnabled"`
+	NtfyEnabled    *bool `json:"ntfyEnabled"`
+	EmailEnabled   *bool `json:"emailEnabled"`
+	DiscordEnabled *bool `json:"discordEnabled"`
+}

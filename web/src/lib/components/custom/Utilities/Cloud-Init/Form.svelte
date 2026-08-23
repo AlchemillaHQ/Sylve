@@ -2,21 +2,24 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
-	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
+	import type { CloudInitTemplate, CloudInitTemplateInput } from '$lib/types/utilities/cloud-init';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { cloudInitPlaceholders, generateTemplate } from '$lib/utils/utilities/cloud-init';
 	import SimpleSelect from '../../SimpleSelect.svelte';
 	import { toast } from 'svelte-sonner';
 	import { createTemplate, updateTemplate } from '$lib/api/utilities/cloud-init';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 
 	interface Props {
 		open: boolean;
-		reload: boolean;
 		template: CloudInitTemplate | null;
+		node: string;
+		onSaved: (template: CloudInitTemplate) => void | Promise<void>;
 	}
 
-	let { open = $bindable(), reload = $bindable(), template }: Props = $props();
+	let { open = $bindable(), template, node, onSaved }: Props = $props();
 	let isEdit = $derived(!!template);
+	let loading = $state(false);
 
 	// svelte-ignore state_referenced_locally
 	let options = {
@@ -34,6 +37,7 @@
 	});
 
 	async function save() {
+		if (loading) return;
 		if (properties.name.trim() === '') {
 			toast.error('Name is required', {
 				position: 'bottom-center'
@@ -55,40 +59,38 @@
 			return;
 		}
 
-		const payload: Partial<CloudInitTemplate> = {
-			id: template?.id || undefined,
-			name: properties.name,
+		const payload: CloudInitTemplateInput = {
+			name: properties.name.trim(),
 			user: properties.user,
 			meta: properties.meta,
 			networkConfig: properties.networkConfig
 		};
 
-		let response = null;
+		loading = true;
+		try {
+			const result =
+				isEdit && template
+					? await updateTemplate(template.id, payload, { hostname: node })
+					: await createTemplate(payload, { hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return;
+			}
 
-		if (isEdit) {
-			response = await updateTemplate(payload);
-		} else {
-			response = await createTemplate(payload);
-		}
-
-		reload = true;
-
-		if (response.status === 'success') {
+			await onSaved(result);
 			toast.success(`Template ${properties.name} ${isEdit ? 'updated' : 'created'}`, {
 				position: 'bottom-center'
 			});
 			open = false;
-		} else {
-			toast.error(`Failed to ${isEdit ? 'update' : 'create'} template ${properties.name}`, {
-				position: 'bottom-center'
-			});
+		} finally {
+			loading = false;
 		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex max-h-[90vh] flex-col p-5 overflow-hidden"
+		class="flex max-h-[90vh] flex-col p-5 overflow-hidden sm:max-w-2xl"
 		showCloseButton={true}
 		showResetButton={true}
 		onClose={() => {
@@ -101,7 +103,12 @@
 	>
 		<Dialog.Header>
 			<Dialog.Title>
-				<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title={isEdit ? `Edit Template - ${template?.name}` : 'Create Template'} />
+				<SpanWithIcon
+					icon="icon-[mdi--cloud-upload-outline]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title={isEdit ? `Edit Template - ${template?.name}` : 'Create Template'}
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -123,30 +130,33 @@
 					}
 				}}
 			/>
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<CustomValueInput
+					bind:value={properties.meta}
+					placeholder={cloudInitPlaceholders.metadata}
+					classes="space-y-1"
+					label="Meta Data"
+					type="textarea"
+					textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+				/>
+				<CustomValueInput
+					bind:value={properties.networkConfig}
+					placeholder={cloudInitPlaceholders.networkConfig}
+					classes="space-y-1"
+					label="Network Config"
+					type="textarea"
+					textAreaClasses="h-28 [field-sizing:fixed] overflow-y-auto"
+				/>
+			</div>
 		</div>
-
-		<CustomValueInput
-			bind:value={properties.meta}
-			placeholder={cloudInitPlaceholders.metadata}
-			classes="space-y-1"
-			label="Meta Data"
-			type="textarea"
-			textAreaClasses="min-h-32 max-h-64"
-		/>
-
-		<CustomValueInput
-			bind:value={properties.networkConfig}
-			placeholder={cloudInitPlaceholders.networkConfig}
-			classes="space-y-1"
-			label="Network Config"
-			type="textarea"
-			textAreaClasses="min-h-32 max-h-64"
-		/>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={save} type="submit" size="sm">
-					{#if isEdit}
+				<Button onclick={save} type="button" size="sm" disabled={loading}>
+					{#if loading}
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						<span>{isEdit ? 'Saving Changes' : 'Creating Template'}</span>
+					{:else if isEdit}
 						Save Changes
 					{:else}
 						Create Template
@@ -161,16 +171,30 @@
 	<Dialog.Root bind:open={templateSelector.open}>
 		<Dialog.Content
 			class="overflow-hidden p-5 max-w-[320px]!"
-			showCloseButton={true}
+			showCloseButton={false}
 			onClose={() => {
 				templateSelector.open = false;
 			}}
 		>
-			<Dialog.Header>
+			<div class="flex items-center justify-between">
 				<Dialog.Title>
-					<SpanWithIcon icon="icon-[mdi--cloud-upload-outline]" size="h-5 w-5" gap="gap-2" title="Select a Template" />
+					<SpanWithIcon
+						icon="icon-[mdi--cloud-upload-outline]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Select a Template"
+					/>
 				</Dialog.Title>
-			</Dialog.Header>
+				<Dialog.Close
+					onclick={() => {
+						templateSelector.open = false;
+					}}
+				>
+					<span class="icon-[lucide--x] h-5 w-5 opacity-50 transition-opacity hover:opacity-100"
+					></span>
+					<span class="sr-only">Close</span>
+				</Dialog.Close>
+			</div>
 
 			<SimpleSelect
 				options={[

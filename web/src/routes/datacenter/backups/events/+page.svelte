@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getBackupEventProgress, listBackupJobs } from '$lib/api/cluster/backups';
-	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
+	import { getDetails, getNodesResult } from '$lib/api/cluster/cluster';
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
@@ -8,24 +8,22 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { storage } from '$lib';
-	import type { BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
+	import type { BackupEvent, BackupEventProgress, BackupJob } from '$lib/types/cluster/backups';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
-	import { sha256 } from '$lib/utils/string';
 	import { resource, useInterval, watch } from 'runed';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { getJails } from '$lib/api/jail/jail';
+	import { getJailsResult } from '$lib/api/jail/jail';
 	import type { Jail, JailStorage } from '$lib/types/jail/jail';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	let filterJobId = $state('');
 	let reload = $state(false);
-	let hash = $state('');
 
 	let jobs = resource(
 		() => 'backup-jobs-for-filter',
@@ -35,49 +33,44 @@
 		},
 		{ initialValue: [] as BackupJob[] }
 	);
+	let jobsById = $derived.by(() => {
+		const currentJobs: Record<number, BackupJob> = {};
+		for (const job of jobs.current) currentJobs[job.id] = job;
+		return currentJobs;
+	});
+	let jobsLoading = $derived(jobs.loading);
 
-	let clusterDetails = resource(
-		() => 'cluster-details-events',
-		async () => {
-			const res = await getDetails();
-			if (isAPIResponse(res)) {
-				return null;
-			}
+	type NodeContext = {
+		details: ClusterDetails | null;
+		nodes: ClusterNode[];
+	};
+	let nodeContext = resource(
+		() => 'backup-events-node-context',
+		async (): Promise<NodeContext | null> => {
+			const [detailsResult, nodesResult] = await Promise.all([getDetails(), getNodesResult()]);
+			const details = isAPIResponse(detailsResult) ? null : detailsResult;
+			const currentNodes = isAPIResponse(nodesResult) ? [] : nodesResult;
 
-			updateCache('cluster-details', res);
-			return res;
+			if (details) updateCache('cluster-details', details);
+			if (!isAPIResponse(nodesResult)) updateCache('cluster-nodes', currentNodes);
+
+			return { details, nodes: currentNodes };
 		},
-		{ initialValue: null as ClusterDetails | null }
-	);
-
-	let nodes = resource(
-		() => 'cluster-nodes-events',
-		async () => {
-			const res = await getNodes();
-			updateCache('cluster-nodes', res);
-			return res;
-		},
-		{ initialValue: [] as ClusterNode[] }
+		{ initialValue: null as NodeContext | null }
 	);
 
 	let selectedNodeId = $state('');
 	let initialNodeSelectionDone = $state(false);
 
-	watch(
-		[() => initialNodeSelectionDone, () => clusterDetails.current?.nodeId, () => nodes.current],
-		([done, currentNodeIdRaw, currentNodes]) => {
-			if (done) return;
+	watch([() => initialNodeSelectionDone, () => nodeContext.current], ([done, context]) => {
+		if (done || !context) return;
 
-			const currentNodeId = (currentNodeIdRaw || '').trim();
-			const fallbackNodeId = currentNodes[0]?.nodeUUID?.trim() || '';
-			const nextNodeId = currentNodeId || fallbackNodeId;
-			if (!nextNodeId) return;
-
-			selectedNodeId = nextNodeId;
-			initialNodeSelectionDone = true;
-			reload = true;
-		}
-	);
+		const currentNodeId = (context.details?.nodeId || '').trim();
+		const fallbackNodeId = context.nodes[0]?.nodeUUID?.trim() || '';
+		const nextNodeId = currentNodeId || fallbackNodeId;
+		if (nextNodeId) selectedNodeId = nextNodeId;
+		initialNodeSelectionDone = true;
+	});
 
 	function handleNodeSelection(value: string) {
 		if (value === selectedNodeId) {
@@ -85,13 +78,44 @@
 		}
 
 		selectedNodeId = value;
+		initialNodeSelectionDone = true;
 		activeRows = null;
 		progressModal.open = false;
-		reload = true;
 	}
 
-	let jails = $state<Jail[]>([]);
-	let jailsLoading = $state(false);
+	let selectedNodeHostname = $derived(
+		nodeContext.current?.nodes.find((node) => node.nodeUUID === selectedNodeId)?.hostname.trim() ||
+			''
+	);
+	type NodeJails = {
+		nodeId: string;
+		hostname: string;
+		jails: Jail[];
+	};
+	let jailsResource = resource(
+		[() => selectedNodeId, () => selectedNodeHostname],
+		async ([nodeId, hostname], _, { signal }): Promise<NodeJails> => {
+			if (!nodeId || !hostname) return { nodeId, hostname, jails: [] };
+
+			const result = await getJailsResult({ hostname, signal });
+			if (isAPIResponse(result)) return { nodeId, hostname, jails: [] };
+
+			await updateCache('jail-list', result, hostname);
+			return { nodeId, hostname, jails: result };
+		},
+		{ initialValue: { nodeId: '', hostname: '', jails: [] } as NodeJails }
+	);
+	let jails = $derived(jailsResource.current.jails);
+	let jailsLoading = $derived(jailsResource.loading);
+	// Tabulator fetches on mount, so wait for the formatter data it will capture.
+	let eventsTableReady = $derived(
+		initialNodeSelectionDone &&
+			!jobsLoading &&
+			(!selectedNodeId ||
+				(!jailsLoading &&
+					jailsResource.current.nodeId === selectedNodeId &&
+					jailsResource.current.hostname === selectedNodeHostname))
+	);
 	let progressEventId = $state(0);
 	let progressNodeId = $state('');
 	let progressModal = $state({
@@ -120,26 +144,6 @@
 			toast.error('Failed to copy error', { duration: 2000, position: 'bottom-center' });
 		}
 	}
-
-	async function loadJails() {
-		if (jails.length > 0 || jailsLoading) return;
-		jailsLoading = true;
-		try {
-			const res = await getJails();
-			updateCache('jail-list', res);
-			jails = res;
-			if (hash) {
-				reload = true;
-			}
-		} finally {
-			jailsLoading = false;
-		}
-	}
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-		loadJails();
-	});
 
 	function parseEndpoint(raw: string): { host: string; dataset: string; snapshot: string } {
 		const value = (raw || '').trim();
@@ -214,6 +218,16 @@
 		return segments.slice(-2).join('/');
 	}
 
+	function stripBackupLineage(dataset: string): string {
+		const segments = (dataset || '').trim().split('/').filter(Boolean);
+		const lineageIndex = segments.findIndex(
+			(segment, index) =>
+				/^(?:j|job)-[^/]+$/i.test(segment) && segments[index + 1]?.toLowerCase() === 'active'
+		);
+		if (lineageIndex >= 0) segments.splice(lineageIndex, 2);
+		return segments.join('/');
+	}
+
 	function resolveJailName(dataset: string, currentJails: Jail[]): string {
 		for (const jail of currentJails) {
 			const baseStorage = jail.storages?.find((storage: JailStorage) => storage.isBase);
@@ -254,6 +268,170 @@
 		return { icon, label };
 	}
 
+	type EventEndpointDisplay = {
+		icon: string;
+		label: string;
+		title: string;
+	};
+
+	function appendSnapshotLabel(label: string, snapshot: string): string {
+		const formatted = formatSnapshotLabel(snapshot);
+		if (!formatted) return label;
+		return label ? `${label} @ ${formatted}` : `@ ${formatted}`;
+	}
+
+	function backupJobGuestId(job: BackupJob): number {
+		const dataset =
+			job.mode === 'jail'
+				? job.jailRootDataset || job.sourceDataset
+				: job.sourceDataset || job.jailRootDataset;
+		const pattern =
+			job.mode === 'jail'
+				? /(?:^|\/)jails\/(\d+)(?:$|[/.])/
+				: /(?:^|\/)virtual-machines\/(\d+)(?:$|[/.])/;
+		const match = dataset.match(pattern);
+		if (!match) return 0;
+
+		const id = Number.parseInt(match[1], 10);
+		return Number.isNaN(id) ? 0 : id;
+	}
+
+	function backupJobSourceDisplay(
+		job: BackupJob,
+		raw: string,
+		currentJails: Jail[]
+	): EventEndpointDisplay {
+		const endpoint = parseEndpoint(raw);
+		if (job.mode === 'dataset') {
+			return {
+				icon: 'material-symbols:files',
+				label: appendSnapshotLabel(endpoint.dataset || job.sourceDataset, endpoint.snapshot),
+				title: raw
+			};
+		}
+
+		const guestId = backupJobGuestId(job);
+		const idPrefix = job.mode === 'jail' ? 'CT' : 'RID';
+		const fallback = compactEventEndpoint(raw, currentJails, false);
+		const friendlySource = (job.friendlySrc || '').trim();
+		let label = friendlySource || (guestId > 0 ? String(guestId) : fallback.label);
+		if (guestId > 0) {
+			label =
+				label && label !== String(guestId)
+					? `${label} (${idPrefix} ${guestId})`
+					: `${idPrefix} ${guestId}`;
+		}
+
+		return {
+			icon: job.mode === 'jail' ? 'hugeicons:prison' : 'material-symbols:monitor-outline',
+			label: appendSnapshotLabel(label, endpoint.snapshot),
+			title: raw
+		};
+	}
+
+	function backupJobRemoteEndpoint(job: BackupJob): string {
+		const target = job.target;
+		if (!target) return '';
+
+		const root = (target.backupRoot || '').trim().replace(/\/+$/, '');
+		const suffix = (job.destSuffix || '').trim().replace(/^\/+/, '');
+		const dataset = [root, suffix].filter(Boolean).join('/');
+		if (!dataset) return '';
+
+		const host = (target.sshHost || '').trim();
+		return host ? `${host}:${dataset}` : dataset;
+	}
+
+	function backupTargetDisplay(
+		job: BackupJob,
+		rawTarget: string,
+		workloadRaw: string,
+		currentJails: Jail[]
+	): EventEndpointDisplay {
+		const endpoint = parseEndpoint(rawTarget);
+		const targetName = (job.target?.name || '').trim();
+
+		if (job.mode === 'dataset') {
+			const dataset = stripBackupLineage(endpoint.dataset);
+			return {
+				icon: 'material-symbols:files',
+				label: appendSnapshotLabel(
+					[targetName, dataset].filter(Boolean).join(' · '),
+					endpoint.snapshot
+				),
+				title: rawTarget
+			};
+		}
+
+		const workload = backupJobSourceDisplay(job, workloadRaw, currentJails);
+		return {
+			icon: workload.icon,
+			label: appendSnapshotLabel(
+				[targetName, workload.label].filter(Boolean).join(' · '),
+				endpoint.snapshot
+			),
+			title: rawTarget
+		};
+	}
+
+	function rawBackupTargetDisplay(raw: string): EventEndpointDisplay {
+		const endpoint = parseEndpoint(raw);
+		const dataset = stripBackupLineage(endpoint.dataset);
+		const label = endpoint.host && dataset ? `${endpoint.host}:${dataset}` : dataset;
+		let icon = 'material-symbols:files';
+		if (/\/jails\/\d+(?:$|\/)/.test(dataset)) {
+			icon = 'hugeicons:prison';
+		} else if (/\/virtual-machines\/\d+(?:$|\/)/.test(dataset)) {
+			icon = 'material-symbols:monitor-outline';
+		}
+
+		return { icon, label: appendSnapshotLabel(label, endpoint.snapshot), title: raw };
+	}
+
+	function resolveEventEndpoints(
+		event: BackupEvent,
+		currentJobs: Record<number, BackupJob>,
+		currentJails: Jail[]
+	): { source: EventEndpointDisplay; target: EventEndpointDisplay } {
+		const job = event.jobId ? currentJobs[event.jobId] : undefined;
+		if (!job) {
+			const source =
+				event.mode === 'restore'
+					? rawBackupTargetDisplay(event.sourceDataset)
+					: compactEventEndpoint(event.sourceDataset, currentJails, true);
+			const target =
+				event.mode === 'restore'
+					? compactEventEndpoint(event.targetEndpoint, currentJails, false)
+					: rawBackupTargetDisplay(event.targetEndpoint);
+			return {
+				source: { ...source, title: event.sourceDataset },
+				target: { ...target, title: event.targetEndpoint }
+			};
+		}
+
+		if (event.mode === 'restore') {
+			const snapshot = parseEndpoint(event.sourceDataset).snapshot;
+			const remoteEndpoint = backupJobRemoteEndpoint(job);
+			const restoreSource = remoteEndpoint
+				? `${remoteEndpoint}${snapshot ? `@${snapshot}` : ''}`
+				: event.sourceDataset;
+			return {
+				source: backupTargetDisplay(job, restoreSource, event.targetEndpoint, currentJails),
+				target: backupJobSourceDisplay(job, event.targetEndpoint, currentJails)
+			};
+		}
+
+		return {
+			source: backupJobSourceDisplay(job, event.sourceDataset, currentJails),
+			target: backupTargetDisplay(job, event.targetEndpoint, event.sourceDataset, currentJails)
+		};
+	}
+
+	function renderEventEndpoint(cell: CellComponent, endpoint: EventEndpointDisplay): string {
+		cell.getElement().title = endpoint.title;
+		return renderWithIcon(endpoint.icon, endpoint.label);
+	}
+
 	function eventStatusMeta(status: string | null | undefined): {
 		icon: string;
 		label: string;
@@ -278,6 +456,12 @@
 					label: 'Interrupted',
 					className: 'text-orange-500'
 				};
+			case 'queued':
+				return {
+					icon: 'mdi:clock-outline',
+					label: 'Queued',
+					className: 'text-blue-500'
+				};
 			case 'running':
 				return {
 					icon: 'mdi:progress-clock',
@@ -291,6 +475,11 @@
 					className: 'text-muted-foreground'
 				};
 		}
+	}
+
+	function iconClass(icon: string): string {
+		const [set, name] = icon.split(':');
+		return set && name ? `icon-[${set}--${name}]` : '';
 	}
 
 	function selectedRowId(): number {
@@ -313,9 +502,9 @@
 	});
 
 	const progressEvent = resource(
-		[() => progressEventId, () => progressNodeId, () => progressModal.open],
-		async ([eventId, nodeId, open]) => {
-			if (!open || eventId <= 0) return null;
+		[() => progressEventId, () => progressNodeId],
+		async ([eventId, nodeId]) => {
+			if (eventId <= 0) return null;
 
 			try {
 				const res = await getBackupEventProgress(eventId, nodeId);
@@ -406,14 +595,22 @@
 		await progressEvent.refetch();
 	}
 
+	let closeTimeout: ReturnType<typeof setTimeout> | null = null;
+
 	watch(
 		() => progressModal.open,
 		(open) => {
 			if (!open) {
-				progressEventId = 0;
-				progressNodeId = '';
-				progressModal.error = '';
 				activeRows = null;
+				closeTimeout = setTimeout(() => {
+					progressEventId = 0;
+					progressNodeId = '';
+					progressModal.error = '';
+					closeTimeout = null;
+				}, 200);
+			} else if (closeTimeout) {
+				clearTimeout(closeTimeout);
+				closeTimeout = null;
 			}
 		}
 	);
@@ -438,6 +635,7 @@
 
 	let eventColumns = $derived.by((): Column[] => {
 		const currentJails = jails;
+		const currentJobs = jobsById;
 
 		return [
 			{ field: 'id', title: 'ID' },
@@ -454,20 +652,20 @@
 				field: 'sourceDataset',
 				title: 'Source',
 				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					if (!value) return '';
-					const compact = compactEventEndpoint(value, currentJails, true);
-					return renderWithIcon(compact.icon, compact.label);
+					const event = cell.getRow().getData() as BackupEvent;
+					if (!event.sourceDataset) return '';
+					const endpoints = resolveEventEndpoints(event, currentJobs, currentJails);
+					return renderEventEndpoint(cell, endpoints.source);
 				}
 			},
 			{
 				field: 'targetEndpoint',
 				title: 'Target',
 				formatter: (cell: CellComponent) => {
-					const value = cell.getValue();
-					if (!value) return '';
-					const compact = compactEventEndpoint(value, currentJails, false);
-					return renderWithIcon(compact.icon, compact.label);
+					const event = cell.getRow().getData() as BackupEvent;
+					if (!event.targetEndpoint) return '';
+					const endpoints = resolveEventEndpoints(event, currentJobs, currentJails);
+					return renderEventEndpoint(cell, endpoints.target);
 				}
 			},
 			{
@@ -557,8 +755,8 @@
 	]);
 
 	let nodeOptions = $derived.by(() => {
-		const currentNodeId = clusterDetails.current?.nodeId?.trim() || '';
-		return nodes.current.map((node) => ({
+		const currentNodeId = nodeContext.current?.details?.nodeId?.trim() || '';
+		return (nodeContext.current?.nodes || []).map((node) => ({
 			value: node.nodeUUID,
 			label: node.nodeUUID === currentNodeId ? `${node.hostname} (Current)` : node.hostname
 		}));
@@ -574,7 +772,7 @@
 				<SimpleSelect
 					placeholder="Select node"
 					options={nodeOptions}
-					bind:value={selectedNodeId}
+					value={selectedNodeId}
 					onChange={handleNodeSelection}
 					disabled={nodeOptions.length === 0}
 					classes={{
@@ -616,20 +814,18 @@
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash && jailsLoading === false}
-			{#key `${jails.length}-${filterJobId}-${selectedNodeId}`}
-				<TreeTable
-					data={tableData}
-					name="backup-events-tt"
-					ajaxURL="/api/cluster/backups/events/remote?hash={hash}"
-					bind:query
-					bind:parentActiveRow={activeRows}
-					bind:reload
-					multipleSelect={false}
-					{extraParams}
-					initialSort={[{ column: 'startedAt', dir: 'desc' }]}
-				/>
-			{/key}
+		{#if eventsTableReady}
+			<TreeTable
+				data={tableData}
+				name="backup-events-tt"
+				ajaxURL="/api/cluster/backups/events/remote"
+				bind:query
+				bind:parentActiveRow={activeRows}
+				bind:reload
+				multipleSelect={false}
+				{extraParams}
+				initialSort={[{ column: 'startedAt', dir: 'desc' }]}
+			/>
 		{/if}
 	</div>
 </div>
@@ -656,9 +852,13 @@
 			</div>
 		{:else if progressEvent.current?.event}
 			{@const event = progressEvent.current.event}
-			{@const source = compactEventEndpoint(event.sourceDataset, jails, true)}
-			{@const target = compactEventEndpoint(event.targetEndpoint, jails, false)}
-			{@const status = eventStatusMeta(event.status)}
+			{@const endpoints = resolveEventEndpoints(event, jobsById, jails)}
+			{@const source = endpoints.source}
+			{@const target = endpoints.target}
+			{@const finalizing = progressEvent.current.phase === 'finalizing'}
+			{@const status = finalizing
+				? { icon: 'mdi:sync', label: 'Finalizing', className: 'text-blue-500' }
+				: eventStatusMeta(event.status)}
 			<div class="grid gap-4 py-2 text-sm">
 				<div class="overflow-hidden rounded-md border bg-background">
 					<table class="w-full text-sm">
@@ -667,7 +867,7 @@
 								<td class="p-2 text-muted-foreground">Status</td>
 								<td class="p-2 text-right">
 									<span class={`inline-flex items-center gap-1 ${status.className}`}>
-										<span class={status.icon + ' h-4 w-4'}></span>
+										<span class={iconClass(status.icon) + ' h-4 w-4'}></span>
 										<span>{status.label}</span>
 									</span>
 								</td>
@@ -678,11 +878,11 @@
 							</tr>
 							<tr class="border-b">
 								<td class="p-2 text-muted-foreground">Source</td>
-								<td class="p-2 text-right">{source.label || '-'}</td>
+								<td class="p-2 text-right" title={source.title}>{source.label || '-'}</td>
 							</tr>
 							<tr class="border-b">
 								<td class="p-2 text-muted-foreground">Target</td>
-								<td class="p-2 text-right">{target.label || '-'}</td>
+								<td class="p-2 text-right" title={target.title}>{target.label || '-'}</td>
 							</tr>
 							<tr class="border-b">
 								<td class="p-2 text-muted-foreground">Started</td>
@@ -707,7 +907,7 @@
 						<table class="w-full text-sm">
 							<tbody>
 								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Moved</td>
+									<td class="p-2 text-muted-foreground">Transferred</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.movedBytes !== null && progressEvent.current.movedBytes !== undefined}
 											{formatBytesBinary(progressEvent.current.movedBytes)}
@@ -717,7 +917,7 @@
 									</td>
 								</tr>
 								<tr class="border-b">
-									<td class="p-2 text-muted-foreground">Total</td>
+									<td class="p-2 text-muted-foreground">Stream estimate</td>
 									<td class="p-2 text-right">
 										{#if progressEvent.current.totalBytes !== null && progressEvent.current.totalBytes !== undefined}
 											{formatBytesBinary(progressEvent.current.totalBytes)}
@@ -737,6 +937,11 @@
 					</div>
 
 					<Progress value={progressNumber} max={100} class="h-2 w-full" />
+					{#if finalizing}
+						<p class="mt-2 text-xs text-muted-foreground">
+							Transfer complete. Verifying and committing the backup.
+						</p>
+					{/if}
 				</div>
 			</div>
 		{:else}
@@ -746,16 +951,20 @@
 </Dialog.Root>
 
 <Dialog.Root bind:open={errorModal.open}>
-	<Dialog.Content class="w-[min(760px,95vw)] h-[min(60vh,95vh)] p-5" showCloseButton={true}>
+	<Dialog.Content class="p-5" showCloseButton={true}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center gap-2">
-				<span class="icon-[mdi--alert-circle-outline] h-5 w-5 text-red-500"></span>
-				<span>#{errorModal.id} Event - Error Details</span>
+			<Dialog.Title>
+				<SpanWithIcon
+					icon="icon-[mdi--alert-circle-outline]"
+					size="h-5 w-5"
+					title={`#${errorModal.id} Event - Error Details`}
+					gap="gap-2 mt-1"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="mt-3 max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
-			<pre class="whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
+		<div class="max-h-[60vh] overflow-auto rounded-md border bg-muted/20 p-3">
+			<pre class="m-0 whitespace-pre-wrap wrap-break-word text-sm">{errorModal.error || '-'}</pre>
 		</div>
 
 		<Dialog.Footer>

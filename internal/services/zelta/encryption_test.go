@@ -1,0 +1,267 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package zelta
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
+)
+
+func setEncryptionKeyDir(t *testing.T, dir string) {
+	orig := EncryptionKeyDirectory
+	EncryptionKeyDirectory = dir
+	t.Cleanup(func() { EncryptionKeyDirectory = orig })
+}
+
+func TestReconcileEncryptionKeys(t *testing.T) {
+	keyDir := t.TempDir()
+	setEncryptionKeyDir(t, keyDir)
+
+	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
+	clusterSvc := &cluster.Service{DB: db}
+	s := &Service{Cluster: clusterSvc}
+
+	t.Run("empty key store succeeds", func(t *testing.T) {
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			t.Fatalf("ReconcileEncryptionKeys on empty keys failed: %v", err)
+		}
+	})
+
+	t.Run("materializes missing key file", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("reconcile-uuid", "reconcile-key-data-32bytes-ok", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "reconcile-uuid")
+		os.Remove(keyPath)
+
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			t.Fatalf("ReconcileEncryptionKeys failed: %v", err)
+		}
+
+		data, err := os.ReadFile(keyPath)
+		if err != nil {
+			t.Fatalf("key file not materialized: %v", err)
+		}
+		if string(data) != "reconcile-key-data-32bytes-ok" {
+			t.Fatalf("key file content mismatch: %q", string(data))
+		}
+	})
+
+	t.Run("skips when content matches", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("skip-uuid", "skip-key-data-32bytes-longer", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "skip-uuid")
+		os.WriteFile(keyPath, []byte("skip-key-data-32bytes-longer"), 0600)
+
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			t.Fatalf("ReconcileEncryptionKeys failed: %v", err)
+		}
+
+		data, _ := os.ReadFile(keyPath)
+		if string(data) != "skip-key-data-32bytes-longer" {
+			t.Fatalf("matching key file was overwritten: %q", string(data))
+		}
+	})
+
+	t.Run("overwrites when content differs", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("overwrite-uuid", "db-key-data-32bytes-longer!", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "overwrite-uuid")
+		os.WriteFile(keyPath, []byte("stale-content-32bytes-on-dis"), 0600)
+
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			t.Fatalf("ReconcileEncryptionKeys failed: %v", err)
+		}
+
+		data, _ := os.ReadFile(keyPath)
+		if string(data) != "db-key-data-32bytes-longer!" {
+			t.Fatalf("stale key file was not updated: expected %q, got %q", "db-key-data-32bytes-longer!", string(data))
+		}
+	})
+}
+
+func TestEnsureEncryptionKeyFile(t *testing.T) {
+	keyDir := t.TempDir()
+	setEncryptionKeyDir(t, keyDir)
+
+	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
+	clusterSvc := &cluster.Service{DB: db}
+	s := &Service{Cluster: clusterSvc}
+
+	t.Run("empty uuid errors", func(t *testing.T) {
+		if err := s.EnsureEncryptionKeyFile("  "); err == nil {
+			t.Fatal("expected error for empty UUID")
+		}
+	})
+
+	t.Run("key not found in store", func(t *testing.T) {
+		err := s.EnsureEncryptionKeyFile("nonexistent-uuid")
+		if err == nil {
+			t.Fatal("expected error for nonexistent key")
+		}
+		if !strings.Contains(err.Error(), "encryption_key_not_found_in_cluster_store") {
+			t.Fatalf("expected not_found error, got: %v", err)
+		}
+	})
+
+	t.Run("materializes missing key file", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("ensure-me-uuid", "ensure-key-data-32bytes-long", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "ensure-me-uuid")
+		os.Remove(keyPath)
+
+		if err := s.EnsureEncryptionKeyFile("ensure-me-uuid"); err != nil {
+			t.Fatalf("EnsureEncryptionKeyFile failed: %v", err)
+		}
+
+		data, err := os.ReadFile(keyPath)
+		if err != nil {
+			t.Fatalf("failed to read written key file: %v", err)
+		}
+		if string(data) != "ensure-key-data-32bytes-long" {
+			t.Fatalf("key file content mismatch: %q", string(data))
+		}
+	})
+
+	t.Run("already existing file is no-op", func(t *testing.T) {
+		clusterSvc.UpsertEncryptionKeyLocally("exists-uuid", "already-there-key-data-32b", "passphrase")
+
+		keyPath := filepath.Join(keyDir, "exists-uuid")
+		os.WriteFile(keyPath, []byte("already-there-key-data-32b"), 0600)
+
+		if err := s.EnsureEncryptionKeyFile("exists-uuid"); err != nil {
+			t.Fatalf("EnsureEncryptionKeyFile failed for existing file: %v", err)
+		}
+	})
+}
+
+func TestIntegrationEnsureEncryptionKeyForLoadedPromptDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	root := pool + "/encrypted"
+	passphrase := "sylve-encryption-test-passphrase"
+	cmd := exec.Command("zfs", "create",
+		"-o", "encryption=on",
+		"-o", "keyformat=passphrase",
+		"-o", "keylocation=prompt",
+		root,
+	)
+	cmd.Stdin = strings.NewReader(passphrase + "\n" + passphrase + "\n")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create encrypted dataset: %v\noutput: %s", err, output)
+	}
+	if output, err := exec.Command("zfs", "create", root+"/child").CombinedOutput(); err != nil {
+		t.Fatalf("create inherited encrypted child: %v\noutput: %s", err, output)
+	}
+
+	s := &Service{GZFS: client}
+	for _, name := range []string{root, root + "/child"} {
+		ds, err := client.ZFS.Get(ctx, name, false)
+		if err != nil {
+			t.Fatalf("get dataset %s: %v", name, err)
+		}
+		available, err := s.ensureEncryptionKeyForDataset(ctx, ds)
+		if err != nil {
+			t.Fatalf("ensure loaded key for %s: %v", name, err)
+		}
+		if !available {
+			t.Fatalf("expected loaded key to be available for %s", name)
+		}
+	}
+
+	for _, name := range []string{root + "/child", root} {
+		if output, err := exec.Command("zfs", "unmount", "-f", name).CombinedOutput(); err != nil {
+			t.Fatalf("unmount encrypted dataset %s: %v\noutput: %s", name, err, output)
+		}
+	}
+	if output, err := exec.Command("zfs", "unload-key", root).CombinedOutput(); err != nil {
+		t.Fatalf("unload encrypted dataset key: %v\noutput: %s", err, output)
+	}
+
+	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
+	s.Cluster = &cluster.Service{DB: db}
+	err := s.fixRestoredProperties(ctx, root)
+	if err == nil || !strings.Contains(err.Error(), "restore_encryption_key_required_for_") {
+		t.Fatalf("expected locked restore activation to require a key, got: %v", err)
+	}
+
+	setEncryptionKeyDir(t, t.TempDir())
+	if err := s.RegisterRestoreEncryptionKey(passphrase, "passphrase"); err != nil {
+		t.Fatalf("register external restore passphrase: %v", err)
+	}
+	if err := s.fixRestoredProperties(ctx, root); err != nil {
+		t.Fatalf("activate restored dataset with registered passphrase: %v", err)
+	}
+}
+
+func TestIntegrationAutoDiscoverAndRegisterExternalFileKey(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+
+	keyDir := t.TempDir()
+	keyPath := filepath.Join(keyDir, "external-key")
+	passphrase := "external-sylve-test-passphrase"
+	if err := os.WriteFile(keyPath, []byte(passphrase), 0600); err != nil {
+		t.Fatalf("write external key: %v", err)
+	}
+
+	dataset := pool + "/external-encrypted"
+	cmd := exec.Command("zfs", "create",
+		"-o", "encryption=on",
+		"-o", "keyformat=passphrase",
+		"-o", "keylocation=file://"+keyPath,
+		dataset,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create file-key encrypted dataset: %v\noutput: %s", err, output)
+	}
+
+	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
+	clusterSvc := &cluster.Service{DB: db}
+	s := &Service{GZFS: client, Cluster: clusterSvc}
+	s.AutoDiscoverAndRegisterKeys(context.Background())
+
+	key, err := clusterSvc.GetEncryptionKeyByUUID(filepath.Base(keyPath))
+	if err != nil {
+		t.Fatalf("external key was not registered: %v", err)
+	}
+	if key.KeyData != passphrase || key.KeyFormat != "passphrase" {
+		t.Fatalf("registered key mismatch: %+v", key)
+	}
+}
+
+func TestRegisterRestoreEncryptionKey(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &clusterModels.EncryptionKey{})
+	clusterSvc := &cluster.Service{DB: db}
+	s := &Service{Cluster: clusterSvc}
+
+	if err := s.RegisterRestoreEncryptionKey("restore-passphrase", "passphrase"); err != nil {
+		t.Fatalf("register restore key: %v", err)
+	}
+	if err := s.RegisterRestoreEncryptionKey("restore-passphrase", "passphrase"); err != nil {
+		t.Fatalf("register duplicate restore key: %v", err)
+	}
+
+	var keys []clusterModels.EncryptionKey
+	if err := db.Find(&keys).Error; err != nil {
+		t.Fatalf("list restore keys: %v", err)
+	}
+	if len(keys) != 1 || keys[0].KeyData != "restore-passphrase" {
+		t.Fatalf("unexpected registered restore keys: %+v", keys)
+	}
+}

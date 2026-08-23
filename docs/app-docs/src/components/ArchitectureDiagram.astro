@@ -1,0 +1,359 @@
+<figure class="architecture-map not-content" aria-labelledby="architecture-title">
+  <figcaption>
+    <strong id="architecture-title">System architecture</strong>
+    <span>Sylve coordinates native FreeBSD services through one control plane.</span>
+  </figcaption>
+
+  <div class="system-frame">
+    <section class="control-plane">
+      <div class="node-heading">
+        <span>Control plane</span>
+        <span class="status">Go backend</span>
+      </div>
+      <div class="control-copy">
+        <div>
+          <small>ORCHESTRATOR</small>
+          <h4>Sylve</h4>
+        </div>
+        <p>One API and interface coordinates resources across a single host or an entire cluster.</p>
+      </div>
+      <ul aria-label="Control plane components">
+        <li>GO BACKEND</li>
+        <li>REST API</li>
+        <li>RAFT STATE</li>
+        <li>AUDIT EVENTS</li>
+      </ul>
+    </section>
+
+    <div class="system-bus" aria-hidden="true">
+      <span></span>
+      <i></i>
+      <b>RESOURCE BUS</b>
+    </div>
+
+    <div class="domain-grid">
+      <article class="domain-card">
+        <header><span>Compute</span></header>
+        <h4>Workloads</h4>
+        <p><span>Bhyve VMs</span><span>FreeBSD · Linux Jails</span></p>
+        <footer>CONSOLE · SNAPSHOT · MIGRATE</footer>
+      </article>
+
+      <article class="domain-card">
+        <header><span>Storage</span></header>
+        <h4>ZFS</h4>
+        <p><span>Pools · Filesystems · Zvols</span><span>Snapshots · Replication</span></p>
+        <footer>SAMBA · ISCSI · BACKUP</footer>
+      </article>
+
+      <article class="domain-card">
+        <header><span>Network</span></header>
+        <h4>Fabric</h4>
+        <p><span>Interfaces · Switches</span><span>Routes · Firewall</span><span>DHCP · NAT · WireGuard</span></p>
+        <footer>DHCP · NAT · WIREGUARD</footer>
+      </article>
+
+      <article class="domain-card">
+        <header><span>Multi-node</span></header>
+        <h4>Cluster</h4>
+        <p><span>Membership · Policies</span><span>Replication · Failover</span></p>
+        <footer>RAFT · EVENTS · RESTORE</footer>
+      </article>
+    </div>
+
+    <div class="host-layer">
+      <span>HOST FABRIC</span>
+      <strong>FREEBSD</strong>
+      <div aria-label="FreeBSD subsystems">
+        <span>BHYVE</span>
+        <span>JAIL</span>
+        <span>ZFS</span>
+        <span>PF</span>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<style>
+  .architecture-map {
+    --arch-line: color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+    --arch-line-strong: color-mix(in oklab, var(--sl-color-white) 30%, transparent);
+    --arch-panel: color-mix(in oklab, var(--sl-color-white) 2.6%, transparent);
+    --arch-muted: var(--sl-color-gray-3);
+    --arch-signal: oklch(0.7 0.15 254);
+    container-name: architecture;
+    container-type: inline-size;
+    margin: 1.75rem 0 0;
+    color: var(--sl-color-white);
+  }
+
+  :global(:root[data-theme="light"]) .architecture-map {
+    --arch-signal: oklch(0.5 0.17 254);
+  }
+
+  figcaption {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding-bottom: 0.75rem;
+    color: var(--arch-muted);
+    font-size: 0.78rem;
+  }
+
+  figcaption strong {
+    color: var(--sl-color-white);
+    font-size: 0.9rem;
+    font-weight: 650;
+  }
+
+  .system-frame {
+    position: relative;
+    padding: 2rem;
+    overflow: hidden;
+    border: 1px solid var(--arch-line-strong);
+    border-radius: 0.25rem;
+    background: color-mix(in oklab, var(--sl-color-bg) 97%, var(--sl-color-white));
+  }
+
+  .control-plane {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 35rem);
+    margin-inline: auto;
+    border: 1px solid var(--arch-line-strong);
+    background: color-mix(in oklab, var(--sl-color-bg) 93%, var(--sl-color-white));
+  }
+
+  .node-heading,
+  .domain-card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .node-heading {
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--arch-line);
+    color: var(--arch-muted);
+    font-size: 0.7rem;
+  }
+
+  .status { color: var(--arch-muted); }
+
+  .control-copy {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.3fr);
+    gap: 1.5rem;
+    align-items: end;
+    padding: 1.25rem;
+  }
+
+  .control-copy small {
+    color: var(--arch-muted);
+    font: 600 0.57rem var(--sl-font-mono);
+    letter-spacing: 0.1em;
+  }
+
+  .control-copy h4,
+  .domain-card h4 {
+    margin: 0.3rem 0 0;
+    color: var(--sl-color-white);
+    font-family: var(--sl-font);
+    font-weight: 500;
+    letter-spacing: -0.035em;
+  }
+
+  .control-copy h4 { font-size: 2rem; }
+
+  .control-copy p {
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: 0.78rem;
+    line-height: 1.55;
+  }
+
+  .control-plane ul {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--arch-line);
+    list-style: none;
+  }
+
+  .control-plane li {
+    padding: 0.65rem 0.4rem;
+    border-left: 1px solid var(--arch-line);
+    color: var(--arch-muted);
+    font: 0.54rem var(--sl-font-mono);
+    text-align: center;
+  }
+
+  .control-plane li:first-child { border-left: 0; }
+
+  .system-bus {
+    position: relative;
+    z-index: 0;
+    height: 4rem;
+    color: var(--arch-muted);
+  }
+
+  .system-bus::before {
+    position: absolute;
+    top: 0;
+    bottom: 1rem;
+    left: 50%;
+    width: 1px;
+    background: var(--arch-line-strong);
+    content: "";
+  }
+
+  .system-bus span {
+    position: absolute;
+    right: 0;
+    bottom: 1rem;
+    left: 0;
+    height: 1px;
+    background: var(--arch-line-strong);
+  }
+
+  .system-bus i {
+    position: absolute;
+    bottom: 0.73rem;
+    left: calc(50% - 0.3rem);
+    width: 0.6rem;
+    height: 0.6rem;
+    border: 1px solid var(--arch-signal);
+    background: var(--sl-color-bg);
+    transform: rotate(45deg);
+  }
+
+  .system-bus b {
+    position: absolute;
+    right: 0.55rem;
+    bottom: 1.35rem;
+    font: 500 0.5rem var(--sl-font-mono);
+    letter-spacing: 0.08em;
+  }
+
+  .domain-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--arch-line-strong);
+    background: var(--sl-color-bg);
+  }
+
+  .domain-card {
+    position: relative;
+    min-width: 0;
+    padding: 1rem;
+    border-left: 1px solid var(--arch-line-strong);
+    background: var(--arch-panel);
+  }
+
+  .domain-card:first-child { border-left: 0; }
+
+  .domain-card::before {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    width: 1px;
+    height: 1rem;
+    background: var(--arch-line-strong);
+    content: "";
+  }
+
+  .domain-card header {
+    margin-bottom: 0.55rem;
+    color: var(--arch-muted);
+    font: 600 0.62rem var(--sl-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .domain-card h4 { font-size: 1.35rem; }
+
+  .domain-card p {
+    min-height: 3.7rem;
+    margin: 1rem 0 0;
+    color: var(--sl-color-gray-2);
+    font: 0.66rem/1.65 var(--sl-font-mono);
+  }
+
+  .domain-card p span {
+    display: block;
+    white-space: nowrap;
+  }
+
+  @container architecture (min-width: 52.01rem) {
+    .domain-card p { font-size: clamp(0.54rem, 0.72cqi, 0.64rem); }
+    .domain-card footer { font-size: clamp(0.42rem, 0.56cqi, 0.5rem); }
+  }
+
+  .domain-card footer {
+    margin: 1.1rem -1rem -1rem;
+    padding: 0.65rem 1rem;
+    border-top: 1px solid var(--arch-line);
+    color: var(--arch-muted);
+    font: 0.5rem var(--sl-font-mono);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .host-layer {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--arch-line-strong);
+    background: color-mix(in oklab, var(--sl-color-white) 4%, transparent);
+    font-family: var(--sl-font-mono);
+  }
+
+  .host-layer > span {
+    color: var(--arch-muted);
+    font-size: 0.55rem;
+    letter-spacing: 0.09em;
+  }
+
+  .host-layer strong {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+  }
+
+  .host-layer div {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.9rem;
+    color: var(--arch-muted);
+    font-size: 0.52rem;
+  }
+
+  @container architecture (max-width: 52rem) {
+    .system-frame { padding: 1.5rem; }
+    .domain-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .domain-card:nth-child(3) { border-top: 1px solid var(--arch-line-strong); border-left: 0; }
+    .domain-card:nth-child(4) { border-top: 1px solid var(--arch-line-strong); }
+    .domain-card:nth-child(n + 3)::before { display: none; }
+  }
+
+  @container architecture (max-width: 36rem) {
+    figcaption { grid-template-columns: 1fr auto; }
+    figcaption strong { display: none; }
+    .system-frame { padding: 1rem; }
+    .control-copy { grid-template-columns: 1fr; gap: 0.8rem; }
+    .control-plane ul { grid-template-columns: repeat(2, 1fr); }
+    .control-plane li:nth-child(3) { border-top: 1px solid var(--arch-line); border-left: 0; }
+    .control-plane li:nth-child(4) { border-top: 1px solid var(--arch-line); }
+    .domain-grid { grid-template-columns: 1fr; }
+    .domain-card { border-top: 1px solid var(--arch-line-strong); border-left: 0; }
+    .domain-card:first-child { border-top: 0; }
+    .domain-card::before { display: none; }
+    .domain-card p { min-height: 0; }
+    .host-layer { grid-template-columns: 1fr auto; }
+    .host-layer div { display: none; }
+  }
+</style>

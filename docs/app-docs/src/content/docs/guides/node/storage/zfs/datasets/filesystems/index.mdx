@@ -1,33 +1,71 @@
 ---
 title: Filesystems
-description: Manage your ZFS filesystems, view their details, and perform various actions.
+description: Create and manage ZFS filesystem datasets in Sylve.
 ---
 
-In the ZFS Filesystems section, you can manage all your ZFS filesystems in one place. Let's go over the various actions you can perform on your filesystems.
+import filesystemsOverview from './filesystems-overview.png';
+import filesystemsCreate from './filesystems-create.png';
+import filesystemsEdit from './filesystems-edit.png';
+import filesystemsSnapshotAction from './filesystems-snapshot-action.png';
+import filesystemsDelete from './filesystems-delete.png';
 
-## Create Filesystem
+A ZFS filesystem is a dataset that provides a mountable directory tree with its own storage, protection, and access-control properties. Use filesystems to separate workloads within a pool, such as shared files, application data, backups, or VM-related storage.
 
-Creating a ZFS filesystem is a straightforward process. You can create a new filesystem by clicking on the "New" button in the context menu and filling out the form:
+The Filesystems page groups datasets beneath their pool and parent filesystem. It shows **Used**, **Available**, **Referenced**, and **Mount Point** for each entry. Select one filesystem to reveal its actions. Select several non-root filesystems for bulk deletion.
 
-![Create Filesystem Form](./form.png)
+<img src={filesystemsOverview.src} alt="Sylve Filesystems page showing an expanded pool with nested filesystem datasets, their space columns, and the toolbar actions" />
 
-Let's go over the options:
+## Create a filesystem
 
-- **Name**: This is the name of your filesystem. It should be unique within the pool and can be used to identify the filesystem later.
+Select **New**, enter a name, choose a parent filesystem, configure the properties needed for the workload, then select **Create**. The parent can be a pool root or another filesystem. Sylve creates the dataset as `parent/name`.
 
-- **Parent**: This is the parent dataset for the filesystem. You can choose to create the filesystem at the root of the pool or under an existing dataset.
+<img src={filesystemsCreate.src} alt="Create Filesystem dialog in Sylve with a parent dataset selected and filesystem properties populated" />
 
-- **Properties**: You can set various properties for your filesystem, such as compression, deduplication, and more. For more information on the available properties and their usage, check out the [ZFS properties documentation](https://openzfs.github.io/openzfs-docs/man/master/7/zfsprops.7.html).
+| Option | What it controls | Available values or behavior |
+| --- | --- | --- |
+| Name | The final path component of the new filesystem. | Required. It must be a valid ZFS dataset name and be unique under the selected parent. |
+| Parent | The pool-root or filesystem that will contain the new dataset. | Required. Only filesystem datasets can be parents. |
+| ATime | Whether ZFS updates a file's access time when it is read. | **On** or **Off**. Default: **On**. Disable it for workloads where access-time writes are unnecessary. |
+| Checksum | Integrity algorithm for data blocks. | **On**, **Off**, `fletcher2`, `fletcher4`, `sha256`, or `noparity`. Default: **On**. |
+| Compression | Per-dataset compression setting. | **On**, **Off**, `gzip`, `lz4`, `lzjb`, `zle`, `zstd`, `zstd-fast`, or a custom ZFS value. Default: **On**. |
+| Deduplication | Block-level deduplication mode. | **Off**, **On**, or **Verify**. Default: **Off**. Enable only after sizing memory for the deduplication table. |
+| Encryption | Encryption for this dataset. | **Off**, **On**, or an AES-CCM/AES-GCM cipher: 128, 192, or 256 bit. When the parent is encrypted, **Inherit** is also available. Default: **Off**. |
+| Passphrase | Key material used when creating a separately encrypted filesystem. | Required when Encryption is not **Off** or **Inherit**. Sylve can generate a value. Store it securely before creating the dataset. |
+| Quota | Maximum space this filesystem may consume. | Optional size such as `256G`. Leave empty for no quota. The form limits the value to the selected parent's currently available space. |
+| ACL Inherit | How inherited NFSv4 ACL entries are handled on new children. | `discard`, `noallow`, `restricted`, `passthrough`, or `passthrough-x`. Default: `passthrough`. |
+| ACL Mode | How ZFS handles ACL entries when POSIX mode bits are changed. | `discard`, `groupmask`, `passthrough`, `passthrough-x`, or `restricted`. Default: `passthrough`. |
+| Record Size | Maximum block size used for files in the filesystem. | The presets are **8K - Postgres**, **16K - MySQL**, **128K - default**, and **1M - Large Files**. A custom byte value is also accepted. Default: 128K. |
+| Custom Mount Point | Filesystem mount path. | Optional. Leave it empty to use the ZFS default mount point. |
 
-## Editing Filesystems
+:::caution
+Encryption settings are chosen at creation time. If you create a separately encrypted filesystem, keep its passphrase in an external, recoverable secret store. Do not depend on the displayed value remaining available later.
+:::
 
-You can edit the properties of an existing filesystem by selecting it and clicking on the "Edit" button in the context menu. This will open a form similar to the one used for creating a filesystem, where you can modify the properties as needed.
+## Edit a filesystem
 
-## Deleting Filesystems
+Select a non-root filesystem and choose **Edit**. The name, parent, and encryption configuration are not changed by this dialog. The editable fields are listed below.
 
-You can delete a filesystem by selecting it and clicking on the "Delete" button in the context menu. A confirmation dialog will appear to ensure you want to proceed with the deletion.
+<img src={filesystemsEdit.src} alt="Edit Filesystem dialog in Sylve showing compression, quota, ACL settings, record size, and a custom mount point" />
 
-![Delete Filesystem](./delete.png)
+| Option | Edit behavior |
+| --- | --- |
+| ATime, Checksum, Compression, Deduplication | Use the same values as during creation. Compression accepts a custom ZFS value. |
+| Read Only | **No** (`off`) or **Yes** (`on`). Set it to Yes to prevent writes through the mounted filesystem. |
+| Quota | Enter a size to apply a limit. Leave it empty to send a zero quota, which removes the limit. ZFS rejects a quota below data already used or reserved. |
+| ACL Inherit and ACL Mode | Use the same ACL modes as the creation form. |
+| Record Size | Use a preset or a custom byte value. Existing files keep their existing block layout until rewritten. |
+| Custom Mount Point | Set a custom path, or leave it empty to restore the default `/<dataset-name>` path. This field is disabled for Sylve-managed datasets such as `pool/sylve/...`. |
 
-You can also choose to delete multiple filesystem datasets at once by selecting them and clicking on the "Delete Datasets" button, this will delete all selected datasets and their children (if any).
+## Create a snapshot from a filesystem
 
+With one filesystem selected, choose **Snapshot** to open the detailed snapshot form with that pool and dataset already selected. From there, create a one-time snapshot or configure a periodic snapshot job. See [Snapshots](/guides/node/storage/zfs/datasets/snapshots/) for every schedule and retention option.
+
+<img src={filesystemsSnapshotAction.src} alt="Filesystems page with a non-root filesystem selected and the Snapshot toolbar action visible" />
+
+## Delete filesystems
+
+Select **Delete** for one filesystem, or select several filesystems and choose **Delete Datasets**. Deletion is permanent. Deleting a filesystem recursively removes its descendants and snapshots, so select the highest intended dataset only when you mean to remove its entire subtree.
+
+Sylve will not delete a pool root, the critical `sylve`, `sylve/virtual-machines`, or `sylve/jails` filesystems, or a dataset tree that is referenced by a VM.
+
+<img src={filesystemsDelete.src} alt="Sylve confirmation dialog warning that a selected filesystem dataset will be permanently deleted" />

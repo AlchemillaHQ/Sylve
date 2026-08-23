@@ -9,16 +9,22 @@
 package libvirt
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/digitalocean/go-libvirt"
+	"gorm.io/gorm"
 )
+
+const qgaCommandTimeoutSeconds int32 = 2
 
 type qgaRequest struct {
 	Execute   string `json:"execute"`
@@ -33,6 +39,35 @@ type qgaError struct {
 type qgaResponse struct {
 	Return json.RawMessage `json:"return"`
 	Error  *qgaError       `json:"error"`
+}
+
+type qgaGuestInfo struct {
+	Version           string               `json:"version"`
+	SupportedCommands []qgaGuestCapability `json:"supported_commands"`
+}
+
+type qgaGuestCapability struct {
+	Name            string `json:"name"`
+	Enabled         bool   `json:"enabled"`
+	SuccessResponse bool   `json:"success-response"`
+}
+
+func qgaResponseReturn(resp qgaResponse) (json.RawMessage, error) {
+	if resp.Error != nil {
+		return nil, fmt.Errorf("qga_error_%s: %s", resp.Error.Class, resp.Error.Desc)
+	}
+	if len(resp.Return) == 0 {
+		return nil, fmt.Errorf("invalid_qga_response: missing_return_or_error")
+	}
+	return resp.Return, nil
+}
+
+func decodeQGAResponse(payload []byte) (json.RawMessage, error) {
+	var resp qgaResponse
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return nil, fmt.Errorf("failed_to_decode_qga_response: %w", err)
+	}
+	return qgaResponseReturn(resp)
 }
 
 func qgaCallRaw(conn net.Conn, enc *json.Encoder, dec *json.Decoder, cmd string, args any) (json.RawMessage, error) {
@@ -52,38 +87,16 @@ func qgaCallRaw(conn net.Conn, enc *json.Encoder, dec *json.Decoder, cmd string,
 		return nil, fmt.Errorf("failed_to_decode_qga_response: %w", err)
 	}
 
-	if resp.Error != nil {
-		return nil, fmt.Errorf("qga_error_%s: %s", resp.Error.Class, resp.Error.Desc)
-	}
-
-	if len(resp.Return) == 0 {
-		return json.RawMessage("null"), nil
-	}
-
-	return resp.Return, nil
-}
-
-func qgaCall(conn net.Conn, enc *json.Encoder, dec *json.Decoder, cmd string, out any) error {
-	rawReturn, err := qgaCallRaw(conn, enc, dec, cmd, nil)
-	if err != nil {
-		return err
-	}
-
-	if out == nil || len(rawReturn) == 0 {
-		return nil
-	}
-	if bytes.Equal(rawReturn, []byte("null")) {
-		return nil
-	}
-
-	if err := json.Unmarshal(rawReturn, out); err != nil {
-		return fmt.Errorf("failed_to_unmarshal_qga_return: %w", err)
-	}
-
-	return nil
+	return qgaResponseReturn(resp)
 }
 
 func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessage, error) {
+	if rid == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("db_not_initialized")
+	}
 	command := strings.TrimSpace(cmd)
 	if command == "" {
 		return nil, fmt.Errorf("qga_command_required")
@@ -98,7 +111,36 @@ func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessag
 		return nil, fmt.Errorf("qemu_guest_agent_disabled")
 	}
 
-	dataPath, err := s.GetVMConfigDirectory(vm.RID)
+	if err := s.requireConnection(); err != nil {
+		return nil, fmt.Errorf("libvirt_connection_unavailable: %w", err)
+	}
+
+	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_lookup_domain_for_qga: %w", err)
+	}
+
+	request, err := json.Marshal(qgaRequest{Execute: command})
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_encode_qga_command: %w", err)
+	}
+
+	result, err := s.conn().QEMUDomainAgentCommand(domain, string(request), qgaCommandTimeoutSeconds, 0)
+	if err == nil {
+		if len(result) != 1 || strings.TrimSpace(result[0]) == "" {
+			return nil, fmt.Errorf("invalid_qga_response_from_libvirt")
+		}
+		return decodeQGAResponse([]byte(result[0]))
+	}
+	if !isLibvirtErrorNumber(err, libvirt.ErrArgumentUnsupported) {
+		return nil, fmt.Errorf("failed_to_run_qga_command: %w", err)
+	}
+
+	return s.runLegacyQemuGuestAgentCommand(vm.RID, command)
+}
+
+func (s *Service) runLegacyQemuGuestAgentCommand(rid uint, command string) (json.RawMessage, error) {
+	dataPath, err := s.GetVMConfigDirectory(rid)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_vm_data_path: %w", err)
 	}
@@ -118,38 +160,155 @@ func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessag
 
 func (s *Service) GetQemuGuestAgentInfo(rid uint) (libvirtServiceInterfaces.QemuGuestAgentInfo, error) {
 	var info libvirtServiceInterfaces.QemuGuestAgentInfo
+	if rid == 0 {
+		return info, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return info, fmt.Errorf("db_not_initialized")
+	}
 
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return info, fmt.Errorf("vm_not_found: %w", err)
+		}
 		return info, fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
 	}
-
 	if !vm.QemuGuestAgent {
 		return info, fmt.Errorf("qemu_guest_agent_disabled")
 	}
-
-	dataPath, err := s.GetVMConfigDirectory(vm.RID)
+	if err := s.requireConnection(); err != nil {
+		return info, fmt.Errorf("libvirt_connection_unavailable: %w", err)
+	}
+	state, err := s.GetDomainState(int(rid))
 	if err != nil {
-		return info, fmt.Errorf("failed_to_get_vm_data_path: %w", err)
+		return info, fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+	if state != libvirt.DomainRunning {
+		return info, fmt.Errorf("qga_requires_running_vm")
 	}
 
-	socketPath := filepath.Join(dataPath, "qga.sock")
-	conn, err := net.DialTimeout("unix", socketPath, 2*time.Second)
+	osInfo, err := s.RunQemuGuestAgentCommand(rid, "guest-get-osinfo")
 	if err != nil {
-		return info, fmt.Errorf("failed_to_connect_qga_socket: %w", err)
-	}
-	defer conn.Close()
-
-	enc := json.NewEncoder(conn)
-	dec := json.NewDecoder(conn)
-
-	if err := qgaCall(conn, enc, dec, "guest-get-osinfo", &info.OSInfo); err != nil {
 		return info, err
 	}
+	if string(osInfo) != "null" {
+		if err := json.Unmarshal(osInfo, &info.OSInfo); err != nil {
+			return info, fmt.Errorf("failed_to_unmarshal_qga_return: %w", err)
+		}
+	}
 
-	if err := qgaCall(conn, enc, dec, "guest-network-get-interfaces", &info.Interfaces); err != nil {
+	interfaces, err := s.RunQemuGuestAgentCommand(rid, "guest-network-get-interfaces")
+	if err != nil {
 		return info, err
+	}
+	if string(interfaces) != "null" {
+		if err := json.Unmarshal(interfaces, &info.Interfaces); err != nil {
+			return info, fmt.Errorf("failed_to_unmarshal_qga_return: %w", err)
+		}
 	}
 
 	return info, nil
+}
+
+func parseQGAGuestInfo(payload json.RawMessage) (string, []libvirtServiceInterfaces.QGACapability, error) {
+	var info qgaGuestInfo
+	if err := json.Unmarshal(payload, &info); err != nil {
+		return "", nil, fmt.Errorf("failed_to_unmarshal_qga_guest_info: %w", err)
+	}
+	capabilities := make([]libvirtServiceInterfaces.QGACapability, 0, len(info.SupportedCommands))
+	for _, capability := range info.SupportedCommands {
+		capabilities = append(capabilities, libvirtServiceInterfaces.QGACapability{
+			Name: capability.Name, Enabled: capability.Enabled, SuccessResponse: capability.SuccessResponse,
+		})
+	}
+	sort.Slice(capabilities, func(i, j int) bool {
+		return capabilities[i].Name < capabilities[j].Name
+	})
+	return info.Version, capabilities, nil
+}
+
+func (s *Service) InspectQemuGuestAgent(rid uint) (libvirtServiceInterfaces.QemuGuestAgentStatus, error) {
+	status := libvirtServiceInterfaces.QemuGuestAgentStatus{
+		RID: rid, DomainState: "unknown", Capabilities: []libvirtServiceInterfaces.QGACapability{},
+	}
+	if rid == 0 {
+		return status, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return status, fmt.Errorf("db_not_initialized")
+	}
+	vm, err := s.GetVMByRID(rid)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return status, fmt.Errorf("vm_not_found: %w", err)
+		}
+		return status, fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
+	}
+	status.Enabled = vm.QemuGuestAgent
+	if !status.Enabled {
+		status.UnavailableReason = "qemu_guest_agent_disabled"
+		return status, nil
+	}
+	if err := s.requireConnection(); err != nil {
+		return status, fmt.Errorf("libvirt_connection_unavailable: %w", err)
+	}
+	state, err := s.GetDomainState(int(rid))
+	if err != nil {
+		return status, fmt.Errorf("failed_to_get_domain_state: %w", err)
+	}
+	status.DomainState = qgaDomainStateName(state)
+	if state != libvirt.DomainRunning {
+		status.UnavailableReason = "vm_not_running"
+		return status, nil
+	}
+	payload, err := s.RunQemuGuestAgentCommand(rid, "guest-info")
+	if err != nil {
+		if strings.Contains(err.Error(), "qga_error_") {
+			status.Reachable = true
+			status.UnavailableReason = "qga_capabilities_unavailable"
+			return status, nil
+		}
+		status.UnavailableReason = "qga_unreachable"
+		return status, nil
+	}
+	version, capabilities, err := parseQGAGuestInfo(payload)
+	if err != nil {
+		return status, err
+	}
+	status.Reachable = true
+	status.Version = version
+	status.Capabilities = capabilities
+	return status, nil
+}
+
+func qgaDomainStateName(state libvirt.DomainState) string {
+	switch state {
+	case libvirt.DomainRunning:
+		return "running"
+	case libvirt.DomainBlocked:
+		return "blocked"
+	case libvirt.DomainPaused:
+		return "paused"
+	case libvirt.DomainShutdown:
+		return "shutdown"
+	case libvirt.DomainShutoff:
+		return "shut off"
+	case libvirt.DomainCrashed:
+		return "crashed"
+	case libvirt.DomainPmsuspended:
+		return "suspended"
+	default:
+		return "unknown"
+	}
+}
+
+func isLibvirtErrorNumber(err error, number libvirt.ErrorNumber) bool {
+	var value libvirt.Error
+	if errors.As(err, &value) {
+		return value.Code == uint32(number)
+	}
+
+	var pointer *libvirt.Error
+	return errors.As(err, &pointer) && pointer != nil && pointer.Code == uint32(number)
 }

@@ -1,26 +1,23 @@
 import type { NetworkObject } from '$lib/types/network/object';
+import { escapeHTML } from '$lib/utils/string';
+
+function objectLabel(networkObjects: NetworkObject[], objectId: number): string {
+	const object = networkObjects.find((candidate) => candidate.id === objectId);
+	const value = object?.entries?.length === 1 ? object.entries[0]?.value : '';
+	if (!object || !value) return '-';
+	return `${escapeHTML(object.name)} (${escapeHTML(value)})`;
+}
 
 export function ipGatewayFormatter(
 	networkObjects: NetworkObject[],
 	ipId: number,
-	ipGwId: number
+	ipGwId?: number | null
 ): string {
-	const found = networkObjects.find((obj) => obj.entries?.some((entry) => entry.objectId === ipId));
-	const entry = found?.entries?.[0];
-
-	const foundGw = networkObjects.find((obj) =>
-		obj.entries?.some((entry) => entry.objectId === ipGwId)
-	);
-	const gwEntry = foundGw?.entries?.[0];
-
-	return `${found?.name || '0'} (${entry?.value || '0'}) <br> ${foundGw?.name || '0'} (${gwEntry?.value || '0'})`;
+	const address = objectLabel(networkObjects, ipId);
+	if (!ipGwId) return address;
+	return `${address}<br>${objectLabel(networkObjects, ipGwId)}`;
 }
 
-export function macFormtter(networkObjects: NetworkObject[], macId: number): string {
-	const found = networkObjects.find((obj) =>
-		obj.entries?.some((entry) => entry.objectId === macId)
-	);
-	const entry = found?.entries?.[0];
-
-	return `${found?.name || '0'} (${entry?.value || '0'})`;
+export function macFormatter(networkObjects: NetworkObject[], macId: number): string {
+	return objectLabel(networkObjects, macId);
 }

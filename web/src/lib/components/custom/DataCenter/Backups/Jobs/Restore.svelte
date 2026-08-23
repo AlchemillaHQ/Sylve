@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import {
-		getBackupEvents,
+		getTargetRunningJobIds,
 		listBackupJobSnapshots,
 		restoreBackupJob
 	} from '$lib/api/cluster/backups';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -42,6 +43,7 @@
 	let snapshots = $state<SnapshotInfo[]>([]);
 	let selectedGeneration = $state('');
 	let selectedSnapshot = $state('');
+	let encryptionKey = $state('');
 	let error = $state('');
 	let clusterDetails = $state<ClusterDetails | null>(null);
 
@@ -108,29 +110,30 @@
 			clusterDetails = details;
 			return details;
 		} catch (e: unknown) {
-			toast.error((e as { message?: string })?.message || 'Failed to load cluster details', {
-				position: 'bottom-center'
-			});
+			toast.warning(
+				(e as { message?: string })?.message ||
+					'Could not load advisory placement data; the server will verify before restoring.',
+				{ position: 'bottom-center' }
+			);
 			return null;
 		}
 	}
 
-	async function ensureGuestIDPlacementForRestore(
+	function warnGuestIDPlacementForRestore(
 		guestID: number,
 		restoreNodeID: string,
-		kind: 'jail' | 'vm'
-	): Promise<boolean> {
-		if (guestID <= 0) return true;
-
-		const details = clusterDetails || (await loadClusterDetails());
-		if (!details) return false;
+		kind: 'jail' | 'vm',
+		details: ClusterDetails | null
+	): void {
+		if (guestID <= 0) return;
+		if (!details) return;
 
 		const registeredOn = details.nodes.filter((node) => (node.guestIDs || []).includes(guestID));
-		if (registeredOn.length === 0) return true;
+		if (registeredOn.length === 0) return;
 
 		const conflicts = registeredOn.filter((node) => node.id !== restoreNodeID);
 		if (conflicts.length === 0 && registeredOn.length === 1) {
-			return true;
+			return;
 		}
 
 		const conflictLabels =
@@ -139,10 +142,10 @@
 				: registeredOn.map((node) => nodeLabelByID(node.id)).join(', ');
 
 		const guestLabel = kind === 'vm' ? 'VM' : 'Jail';
-		toast.error(`${guestLabel} ${guestID} already exists on ${conflictLabels}.`, {
-			position: 'bottom-center'
-		});
-		return false;
+		toast.warning(
+			`Health data also reports ${guestLabel} ${guestID} on ${conflictLabels}. The server will verify live placement before restoring.`,
+			{ position: 'bottom-center' }
+		);
 	}
 
 	async function loadSnapshots() {
@@ -153,18 +156,23 @@
 		snapshots = [];
 		selectedGeneration = '';
 		selectedSnapshot = '';
+		encryptionKey = '';
 		error = '';
 		restoring = false;
 		clusterDetails = null;
 
 		try {
-			const [items, events] = await Promise.all([
+			const [snapshotResult, runningJobIds] = await Promise.all([
 				listBackupJobSnapshots(selectedJob.id),
-				getBackupEvents(5, selectedJob.id)
+				getTargetRunningJobIds(selectedJob.targetId)
 			]);
-			jobRunning =
-				events.some((e) => e.status === 'running' && !e.completedAt) ||
-				selectedJob.lastStatus === 'running';
+			if (snapshotResult.error) {
+				error = snapshotResult.error;
+				return;
+			}
+
+			const items = snapshotResult.snapshots;
+			jobRunning = runningJobIds.includes(selectedJob.id);
 			if (!jobRunning) {
 				snapshots = items;
 				if (items.length > 0) {
@@ -214,17 +222,13 @@
 						(details?.leaderId || '').trim() ||
 						(details?.nodeId || '').trim();
 
-					if (
-						parsedGuest.kind !== 'dataset' &&
-						!(await ensureGuestIDPlacementForRestore(guestID, restoreNodeID, parsedGuest.kind))
-					) {
-						restoring = false;
-						return;
+					if (parsedGuest.kind !== 'dataset') {
+						warnGuestIDPlacementForRestore(guestID, restoreNodeID, parsedGuest.kind, details);
 					}
 				}
 			}
 
-			const response = await restoreBackupJob(selectedJob.id, selectedSnapshot);
+			const response = await restoreBackupJob(selectedJob.id, selectedSnapshot, encryptionKey);
 			if (response.status === 'success') {
 				toast.success('Restore job started - check events for progress', {
 					position: 'bottom-center'
@@ -262,6 +266,9 @@
 	let selectedSnapshotInfo = $derived.by(
 		() => snapshots.find((snapshot) => snapshot.name === selectedSnapshot) || null
 	);
+	let legacyVMRestoreBlocked = $derived(
+		selectedJob?.mode === 'vm' && !!selectedSnapshotInfo?.legacy
+	);
 
 	let hasOutOfBandSnapshots = $derived.by(() =>
 		snapshots.some(
@@ -276,7 +283,7 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-5" showCloseButton={true}>
+	<Dialog.Content class="w-full max-w-xl! overflow-hidden p-6" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title>
 				<SpanWithIcon
@@ -302,7 +309,12 @@
 				</div>
 			{:else if error}
 				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-500">
-					<p class="font-medium">Failed to load snapshots</p>
+					<SpanWithIcon
+						icon="icon-[mdi--alert-circle-outline]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Failed to load snapshots"
+					/>
 					<p class="mt-1">{error}</p>
 				</div>
 			{:else if snapshots.length === 0}
@@ -396,6 +408,21 @@
 					</div>
 				{/if}
 
+				{#if selectedSnapshotInfo?.encrypted || selectedJob?.encrypted}
+					<div class="space-y-1">
+						<CustomValueInput
+							label="Encryption Passphrase (Optional)"
+							placeholder="Required only when the key is not already registered"
+							type="password"
+							bind:value={encryptionKey}
+							classes="space-y-1"
+						/>
+						<p class="text-xs text-muted-foreground">
+							A supplied passphrase is saved in the cluster key store for automated recovery.
+						</p>
+					</div>
+				{/if}
+
 				<div class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm">
 					<div class="flex items-center gap-1 font-medium text-yellow-600 dark:text-yellow-400">
 						<span class="icon-[mdi--alert] h-4 w-4 text-yellow-600 dark:text-yellow-400"></span>
@@ -403,6 +430,7 @@
 					</div>
 					<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
 						<li>The current dataset is replaced in place with the selected restore point</li>
+						<li>All local snapshots of the replaced dataset are permanently removed</li>
 						<li>
 							Data from <code class="rounded bg-background px-1"
 								>{selectedSnapshotDate || selectedSnapshot}</code
@@ -415,6 +443,30 @@
 								> and may not be counted by active-lineage prune.
 							</li>
 						{/if}
+						{#if selectedSnapshotInfo?.legacy}
+							<li>
+								This is a legacy restore point created before manifest commits. Its complete dataset
+								set cannot be cryptographically verified; legacy VM restore points are blocked.
+							</li>
+							{#if selectedJob?.mode !== 'vm'}
+								<li>
+									Legacy restore points do not record whether the backup was recursive. Before
+									restoring, set "Recursive backup" to the value used when this restore point was
+									created.
+								</li>
+							{/if}
+						{/if}
+						{#if selectedSnapshotInfo?.childCount}
+							<li>
+								{#if selectedJob?.recursive}
+									{selectedSnapshotInfo.childCount} child dataset(s) on target will be restored recursively.
+								{:else}
+									{selectedSnapshotInfo.childCount} child dataset(s) on target. Only the selected dataset
+									will be restored. Enable "Recursive backup" in the job config or use OOB Restore to
+									recover children separately.
+								{/if}
+							</li>
+						{/if}
 						<li>No deletion on target, all snapshots remain available</li>
 					</ul>
 				</div>
@@ -422,10 +474,12 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button
 				onclick={triggerRestore}
-				disabled={!selectedSnapshot || restoring || loading || jobRunning}
+				disabled={!selectedSnapshot || restoring || loading || jobRunning || legacyVMRestoreBlocked}
+				title={legacyVMRestoreBlocked
+					? 'Legacy VM restore points cannot prove that every disk root is complete'
+					: ''}
 				variant="destructive"
 			>
 				{#if restoring}

@@ -30,6 +30,9 @@
 	--chart-3: oklch(0.398 0.07 227.392);
 	--chart-4: oklch(0.828 0.189 84.429);
 	--chart-5: oklch(0.769 0.188 70.08);
+	--zfs-read: #0ea5e9;
+	--zfs-write: #8b5cf6;
+	--zfs-chart-grid: rgba(24, 24, 27, 0.08);
 	--sidebar: oklch(0.955 0.003 90);
 	--sidebar-foreground: oklch(0.25 0 0);
 	--sidebar-primary: oklch(0.3 0 0);
@@ -64,6 +67,9 @@
 	--border: oklch(0.31 0 0);
 	--input: oklch(0.37 0 0);
 	--ring: oklch(0.556 0 0);
+	--zfs-read: #38bdf8;
+	--zfs-write: #a78bfa;
+	--zfs-chart-grid: rgba(255, 255, 255, 0.08);
 	--sidebar: oklch(0.26 0 0);
 	--sidebar-foreground: oklch(0.94 0 0);
 	--sidebar-primary: oklch(0.488 0.243 264.376);
@@ -130,25 +136,10 @@
 		@apply bg-background text-foreground;
 	}
 
-	.filepond--list-scroller {
-		@apply bg-background text-foreground;
-	}
-
-	.filepond--drop-label {
-		@apply bg-muted! text-foreground rounded-lg dark:text-white/90!;
-	}
-
-	.filepond--panel-root {
-		@apply bg-background text-foreground;
-	}
-
-	.filepond--list {
-		margin-top: 12px !important;
-	}
-
-	.filepond--root {
-		max-height: 500px;
-		overflow-y: auto;
+	/* Bits UI disables body pointer events while a modal is open. Keep toast actions usable. */
+	[data-sonner-toaster] {
+		z-index: 2147483647 !important;
+		pointer-events: auto !important;
 	}
 
 	.file-explorer-container.drag-over {
@@ -171,11 +162,32 @@
 	}
 }
 
-@layer components {
-	@import './css/tabulator_simple.css';
-	@import 'filepond/dist/filepond.css';
-	@import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
+@import './css/tabulator_simple.css';
+@import 'filepond/dist/filepond.css';
+@import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css';
 
+.filepond--list-scroller {
+	@apply text-foreground bg-transparent!;
+}
+
+.filepond--drop-label {
+	@apply bg-muted! text-foreground rounded-lg dark:text-white/90!;
+}
+
+.filepond--panel-root {
+	@apply bg-muted! text-foreground;
+}
+
+.filepond--list {
+	margin-top: 12px !important;
+}
+
+.filepond--root {
+	max-height: 500px;
+	overflow-y: auto;
+}
+
+@layer components {
 	.tabulator-popup-container {
 		background: var(--popover);
 		border-color: var(--border);

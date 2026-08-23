@@ -1,9 +1,10 @@
 import { z } from 'zod/v4';
 import { ManualSwitchSchema, StandardSwitchSchema } from './switch';
 import { NetworkObjectSchema } from './object';
+import type { Row } from '../components/tree-table';
 
 export const DHCPConfigSchema = z.object({
-	id: z.number(),
+	id: z.number().int().positive(),
 	standardSwitches: z.array(StandardSwitchSchema),
 	manualSwitches: z.array(ManualSwitchSchema),
 	dnsServers: z.array(z.string()),
@@ -70,3 +71,52 @@ export type DHCPRange = z.infer<typeof DHCPRangeSchema>;
 export type DHCPStaticLease = z.infer<typeof DHCPStaticLeaseSchema>;
 export type FileLease = z.infer<typeof FileLeaseSchema>;
 export type Leases = z.infer<typeof LeasesSchema>;
+
+export function emptyLeases(): Leases {
+	return {
+		file: [],
+		db: []
+	};
+}
+
+export function emptyDHCPConfig(): DHCPConfig {
+	return {
+		id: 0,
+		standardSwitches: [],
+		manualSwitches: [],
+		dnsServers: [],
+		domain: '',
+		expandHosts: true,
+		createdAt: '',
+		updatedAt: ''
+	};
+}
+
+export function isDHCPConfig(value: unknown): value is DHCPConfig {
+	return DHCPConfigSchema.safeParse(value).success;
+}
+
+interface DHCPLeaseRowBase extends Omit<Row, 'id'> {
+	id: string;
+	identifier: string;
+	hostname: string;
+	ip: string;
+	range: string;
+	switch: string;
+	mac: string;
+	duid: string;
+}
+
+export interface DHCPStaticLeaseRow extends DHCPLeaseRowBase {
+	type: 'static';
+	dbId: number;
+	expiry: 'never';
+}
+
+export interface DHCPDynamicLeaseRow extends DHCPLeaseRowBase {
+	type: 'dynamic';
+	dbId?: never;
+	expiry: number | 'never';
+}
+
+export type DHCPLeaseRow = DHCPStaticLeaseRow | DHCPDynamicLeaseRow;

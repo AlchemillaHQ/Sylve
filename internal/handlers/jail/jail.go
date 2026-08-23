@@ -9,7 +9,8 @@
 package jailHandlers
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,22 +21,63 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
-	"github.com/alchemillahq/sylve/internal/services/jail"
-
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type JailEditDescRequest struct {
-	ID          uint   `json:"id" binding:"required"`
-	Description string `json:"description"`
+	Description *string `json:"description" binding:"required"`
 }
 
 type JailEditNameRequest struct {
-	ID   uint   `json:"id" binding:"required"`
 	Name string `json:"name" binding:"required"`
 }
 
+type JailCreateResponse struct {
+	CTID uint   `json:"ctId"`
+	Name string `json:"name"`
+}
+
+type jailListService interface {
+	GetJails() ([]jailModels.Jail, error)
+}
+
+type jailDetailService interface {
+	GetJailByCTID(ctID uint) (*jailModels.Jail, error)
+}
+
+type jailSimpleListService interface {
+	GetJailsSimple() ([]jailServiceInterfaces.SimpleList, error)
+}
+
+type jailSimpleDetailService interface {
+	GetSimpleJailByCTID(ctID uint) (jailServiceInterfaces.SimpleList, error)
+}
+
+type jailCreateService interface {
+	CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error
+}
+
+type jailDescriptionService interface {
+	UpdateDescription(ctID uint, description string) error
+}
+
+type jailNameService interface {
+	UpdateName(ctID uint, name string) error
+}
+
+type jailDeletionService interface {
+	CanMutateProtectedJail(ctID uint) (bool, error)
+	DeleteJailWithWarnings(
+		ctx context.Context,
+		ctID uint,
+		deleteMacs bool,
+		deleteRootFS bool,
+	) (jailServiceInterfaces.DeleteJailResult, error)
+}
+
 var jailCreateConflictCodes = map[string]struct{}{
+	"bootstrap_not_completed":               {},
 	"ipv4_already_used":                     {},
 	"ipv6_already_used":                     {},
 	"jail_base_fs_with_ctid_already_exists": {},
@@ -45,9 +87,16 @@ var jailCreateConflictCodes = map[string]struct{}{
 }
 
 var jailCreateBadRequestCodes = map[string]struct{}{
+	"base_and_bootstrap_name_are_mutually_exclusive": {},
 	"base_is_not_a_directory":                        {},
 	"base_path_does_not_exist":                       {},
+	"bootstrap_dataset_does_not_exist":               {},
+	"bootstrap_mount_does_not_exist":                 {},
+	"bootstrap_not_found":                            {},
+	"bootstrap_version_newer_than_host":              {},
+	"devfs_management_disabled":                      {},
 	"download_is_not_base_or_rootfs":                 {},
+	"download_uuid_or_bootstrap_name_required":       {},
 	"download_uuid_required":                         {},
 	"failed_to_find_download":                        {},
 	"invalid_ct_id":                                  {},
@@ -56,10 +105,19 @@ var jailCreateBadRequestCodes = map[string]struct{}{
 	"invalid_ipv4_gateway":                           {},
 	"invalid_ipv6_gateway":                           {},
 	"invalid_jail_allowed_options":                   {},
+	"invalid_jail_metadata":                          {},
 	"invalid_jail_type":                              {},
+	"invalid_lifecycle_hooks":                        {},
+	"invalid_cores":                                  {},
+	"invalid_memory":                                 {},
 	"invalid_vm_name":                                {},
+	"lifecycle_hook_script_required":                 {},
 	"linux_jails_cannot_use_dhcp_or_slaac":           {},
+	"memory_limit_exceeds_host_capacity":             {},
+	"memory_limit_too_low":                           {},
 	"pool_not_found":                                 {},
+	"resource_limits_require_cores_and_memory":       {},
+	"reserved_jail_option_marker":                    {},
 	"standard_switch_not_found":                      {},
 	"start_order_must_be_greater_than_or_equal_to_0": {},
 	"switch_name_required":                           {},
@@ -113,6 +171,24 @@ func classifyCreateJailError(err error) (int, string) {
 	}
 
 	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
+		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
+	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
+		return http.StatusInternalServerError, "guest_identity_inventory_scan_failed"
+	case strings.Contains(errText, "guest_identity_inventory_conflict"):
+		return http.StatusConflict, "guest_identity_inventory_conflict"
+	case strings.Contains(errText, "guest_id_already_in_use"):
+		return http.StatusConflict, "guest_id_already_in_use"
+	case strings.Contains(errText, "bootstrap_mountpoint_not_usable"):
+		return http.StatusConflict, "bootstrap_mountpoint_not_usable"
+	case strings.Contains(errText, "bootstrap_record_mismatch"):
+		return http.StatusConflict, "bootstrap_record_mismatch"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
+	}
 	if strings.Contains(errText, "jail_with_ctid_") && strings.Contains(errText, "already_exists") {
 		return http.StatusConflict, "jail_with_ctid_already_exists"
 	}
@@ -142,9 +218,15 @@ func classifyCreateJailError(err error) (int, string) {
 		return http.StatusInternalServerError, "jail_create_runtime_failure"
 	case "failed_to_list_usable_pools_for_jail_create_precheck",
 		"failed_to_check_jail_root_dataset_for_create_precheck",
+		"failed_to_get_usable_pools",
+		"failed_to_determine_host_freebsd_version",
+		"failed_to_get_jails_path",
+		"failed_to_get_host_memory",
+		"host_cpu_unavailable",
+		"jails_path_not_found",
 		"system_service_not_initialized",
 		"zfs_client_not_initialized":
-		return http.StatusInternalServerError, "jail_create_dependency_not_ready"
+		return http.StatusServiceUnavailable, "jail_create_dependency_not_ready"
 	}
 
 	if _, ok := jailCreateConflictCodes[code]; ok {
@@ -166,6 +248,78 @@ func classifyCreateJailError(err error) (int, string) {
 	return http.StatusInternalServerError, "failed_to_create_jail"
 }
 
+func isJailNotFoundError(err error) bool {
+	return err != nil && (errors.Is(err, gorm.ErrRecordNotFound) ||
+		strings.Contains(strings.ToLower(err.Error()), "jail_not_found"))
+}
+
+func parseJailCTID(c *gin.Context, parameter string) (uint, bool) {
+	raw := strings.TrimSpace(c.Param(parameter))
+	ctID, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil || ctID == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_ctid",
+			Data:    nil,
+			Error:   "Jail CTID must be a positive integer",
+		})
+		return 0, false
+	}
+
+	return uint(ctID), true
+}
+
+func parseRequiredJailBoolQuery(c *gin.Context, name string) (bool, bool) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "missing_" + name + "_param",
+			Data:    nil,
+			Error:   "missing '" + name + "' query parameter",
+		})
+		return false, false
+	}
+
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_" + name + "_param",
+			Data:    nil,
+			Error:   "invalid '" + name + "' value: " + err.Error(),
+		})
+		return false, false
+	}
+
+	return value, true
+}
+
+func classifyUpdateJailDescriptionError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_update_jail_description"
+	}
+
+	errText := strings.ToLower(err.Error())
+	switch {
+	case isJailNotFoundError(err):
+		return http.StatusNotFound, "jail_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "invalid_ct_id"),
+		strings.Contains(errText, "invalid_description"):
+		return http.StatusBadRequest, extractCreateJailErrorCode(errText)
+	case strings.Contains(errText, "replication_lease_check_failed"):
+		return http.StatusInternalServerError, "replication_lease_check_failed"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
+	case strings.Contains(errText, "failed_to_sync_jail_metadata"):
+		return http.StatusInternalServerError, "failed_to_sync_jail_metadata"
+	default:
+		return http.StatusInternalServerError, "failed_to_update_jail_description"
+	}
+}
+
 func classifyUpdateJailNameError(err error) (int, string) {
 	if err == nil {
 		return http.StatusInternalServerError, "failed_to_update_jail_name"
@@ -174,15 +328,17 @@ func classifyUpdateJailNameError(err error) (int, string) {
 	errText := strings.ToLower(err.Error())
 
 	switch {
-	case strings.Contains(errText, "jail_not_found"):
+	case isJailNotFoundError(err):
 		return http.StatusNotFound, "jail_not_found"
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
+		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
 	}
 
 	code := extractCreateJailErrorCode(errText)
 	switch code {
-	case "invalid_jail_id", "invalid_vm_name":
+	case "invalid_ct_id", "invalid_vm_name":
 		return http.StatusBadRequest, code
 	case "jail_name_already_in_use":
 		return http.StatusConflict, code
@@ -200,25 +356,58 @@ func classifyUpdateJailNameError(err error) (int, string) {
 	return http.StatusInternalServerError, "failed_to_update_jail_name"
 }
 
-// @Summary List all Jails
-// @Description Retrieve a list of all jails
+func classifyDeleteJailError(err error) (int, string) {
+	if err == nil {
+		return http.StatusInternalServerError, "failed_to_delete_jail"
+	}
+
+	errText := strings.ToLower(err.Error())
+	switch {
+	case isJailNotFoundError(err):
+		return http.StatusNotFound, "jail_not_found"
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "guest_delete_requires_replication_policy_removed"):
+		return http.StatusConflict, "guest_delete_requires_replication_policy_removed"
+	case strings.Contains(errText, "replication_storage_topology_change_requires_policy_disabled"):
+		return http.StatusConflict, "replication_storage_topology_change_requires_policy_disabled"
+	case strings.Contains(errText, "jail_failed_to_stop_before_delete"),
+		strings.Contains(errText, "jail_became_active_before_delete"):
+		return http.StatusConflict, "jail_delete_state_conflict"
+	case strings.Contains(errText, "jail_delete_runtime_not_initialized"),
+		strings.Contains(errText, "jail_service_not_initialized"),
+		strings.Contains(errText, "zfs_client_not_initialized"):
+		return http.StatusServiceUnavailable, "jail_delete_dependency_not_ready"
+	default:
+		return http.StatusInternalServerError, "failed_to_delete_jail"
+	}
+}
+
+// @Summary List Jails
+// @Description Retrieve all configured jails
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]jailModels.Jail] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail [get]
-func ListJails(jailService *jail.Service) gin.HandlerFunc {
+func ListJails(jailService jailListService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jails, err := jailService.GetJails()
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_list_jails: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_jails",
+				Data:    nil,
+				Error:   err.Error(),
+			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]jailModels.Jail]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]jailModels.Jail]{
 			Status:  "success",
 			Message: "jail_listed",
 			Data:    jails,
@@ -227,99 +416,90 @@ func ListJails(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Get a Jail by an Identifier
-// @Description Retrieve a jail by its CTID or ID
+// @Summary Get a Jail
+// @Description Retrieve a jail by its CTID
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param identifier path string true "Jail CTID or ID"
-// @Param type query string false "Type of identifier (ctid or id)"  Enums(ctid, id) default(ctid)
+// @Param ctid path int true "Jail CTID" minimum(1)
 // @Success 200 {object} internal.APIResponse[jailModels.Jail] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /jail/:id [get]
-func GetJailByIdentifier(jailService *jail.Service) gin.HandlerFunc {
+// @Router /jail/{ctid} [get]
+func GetJailByCTID(jailService jailDetailService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.Param("id")
-		if id == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_jail_id",
-				Data:    nil,
-				Error:   "Jail ID is required",
-			})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
 			return
 		}
 
-		var t string = c.DefaultQuery("type", "ctid")
-		if t != "ctid" && t != "id" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_type_param",
-				Data:    nil,
-				Error:   "Type parameter must be either 'ctid' or 'id'",
-			})
-			return
-		}
-
-		identifier, err := strconv.Atoi(id)
+		jail, err := jailService.GetJailByCTID(ctID)
 		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_jail_id_format",
-				Data:    nil,
-				Error:   "Jail ID must be a valid integer",
-			})
-			return
-		}
+			if isJailNotFoundError(err) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "jail_not_found",
+					Data:    nil,
+					Error:   "jail_not_found",
+				})
+				return
+			}
 
-		var jail *jailModels.Jail
-		if t == "ctid" {
-			jail, err = jailService.GetJailByCTID(uint(identifier))
-		} else {
-			jail, err = jailService.GetJail(uint(identifier))
-		}
-
-		if err != nil || jail.ID == 0 {
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_jail",
 				Data:    nil,
-				Error:   "failed_to_get_jail: " + err.Error(),
+				Error:   err.Error(),
+			})
+			return
+		}
+		if jail == nil || jail.ID == 0 {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "jail_not_found",
+				Data:    nil,
+				Error:   "jail_not_found",
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[jailModels.Jail]{
+		c.JSON(http.StatusOK, internal.APIResponse[jailModels.Jail]{
 			Status:  "success",
-			Message: "jail_retrieved_by_identifier",
+			Message: "jail_retrieved",
 			Data:    *jail,
 			Error:   "",
 		})
 	}
 }
 
-// @Summary List all Jails (Simple)
-// @Description Retrieve a simple list of all jails
+// @Summary List Jails (Simple)
+// @Description Retrieve the lightweight projection of all configured jails
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]jailServiceInterfaces.SimpleList] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /jail/simple [get]
-func ListJailsSimple(jailService *jail.Service) gin.HandlerFunc {
+func ListJailsSimple(jailService jailSimpleListService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jails, err := jailService.GetJailsSimple()
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{Error: "failed_to_list_jails_simple: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_list_jails_simple",
+				Data:    nil,
+				Error:   err.Error(),
+			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[[]jailServiceInterfaces.SimpleList]{
+		c.JSON(http.StatusOK, internal.APIResponse[[]jailServiceInterfaces.SimpleList]{
 			Status:  "success",
 			Message: "jail_listed_simple",
 			Data:    jails,
@@ -328,69 +508,59 @@ func ListJailsSimple(jailService *jail.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Get a Jail by CTID or ID (Simple)
-// @Description Retrieve a simple jail by its CTID or ID
+// @Summary Get a Jail (Simple)
+// @Description Retrieve the lightweight projection of a jail by its CTID
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param identifier path string true "Jail CTID or ID"
-// @Param type query string false "Type of identifier (ctid or id)"  Enums(ctid, id) default(ctid)
+// @Param ctid path int true "Jail CTID" minimum(1)
 // @Success 200 {object} internal.APIResponse[jailServiceInterfaces.SimpleList] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /jail/simple/:id [get]
-func GetSimpleJailByIdentifier(jailService *jail.Service) gin.HandlerFunc {
+// @Router /jail/simple/{ctid} [get]
+func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.Param("id")
-		if id == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_jail_id",
-				Data:    nil,
-				Error:   "Jail ID is required",
-			})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
 			return
 		}
 
-		var t string = c.DefaultQuery("type", "ctid")
-		if t != "ctid" && t != "id" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_type_param",
-				Data:    nil,
-				Error:   "Type parameter must be either 'ctid' or 'id'",
-			})
-			return
-		}
-
-		identifier, err := strconv.Atoi(id)
+		jail, err := jailService.GetSimpleJailByCTID(ctID)
 		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_jail_id_format",
-				Data:    nil,
-				Error:   "Jail ID must be a valid integer",
-			})
-			return
-		}
+			if isJailNotFoundError(err) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "jail_not_found",
+					Data:    nil,
+					Error:   "jail_not_found",
+				})
+				return
+			}
 
-		jail, err := jailService.GetSimpleJail(identifier, t == "ctid")
-
-		if err != nil || jail.ID == 0 {
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_jail_simple",
 				Data:    nil,
-				Error:   "failed_to_get_jail_simple: " + err.Error(),
+				Error:   err.Error(),
+			})
+			return
+		}
+		if jail.ID == 0 {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "jail_not_found",
+				Data:    nil,
+				Error:   "jail_not_found",
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[jailServiceInterfaces.SimpleList]{
+		c.JSON(http.StatusOK, internal.APIResponse[jailServiceInterfaces.SimpleList]{
 			Status:  "success",
-			Message: "jail_retrieved_by_identifier_simple",
+			Message: "jail_retrieved_simple",
 			Data:    jail,
 			Error:   "",
 		})
@@ -404,21 +574,21 @@ func GetSimpleJailByIdentifier(jailService *jail.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param request body jailServiceInterfaces.CreateJailRequest true "Create Jail Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 201 {object} internal.APIResponse[JailCreateResponse] "Created"
+// @Header 201 {string} Location "/api/jail/{ctid}"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail [post]
-func CreateJail(jailService *jail.Service) gin.HandlerFunc {
+func CreateJail(jailService jailCreateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req jailServiceInterfaces.CreateJailRequest
 
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_data",
-				Data:    nil,
-				Error:   "Invalid request data: " + err.Error(),
-			})
+		if !bindJailJSON(c, &req, "invalid_request_data") {
 			return
 		}
 
@@ -437,100 +607,58 @@ func CreateJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		created := JailCreateResponse{
+			CTID: *req.CTID,
+			Name: req.Name,
+		}
+		c.Header("Location", "/api/jail/"+strconv.FormatUint(uint64(created.CTID), 10))
+		c.JSON(http.StatusCreated, internal.APIResponse[JailCreateResponse]{
 			Status:  "success",
 			Message: "jail_created",
-			Data:    nil,
+			Data:    created,
 			Error:   "",
 		})
 	}
 }
 
 // @Summary Delete a Jail
-// @Description Delete a jail by its CTID
+// @Description Delete a jail by its CTID, optionally deleting unused MAC objects and its root filesystem
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param ctid path int true "CTID of the Jail"
-// @Param deletemacs query bool true "Delete or Keep"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Param deletemacs query bool true "Delete unused jail MAC objects"
+// @Param deleterootfs query bool true "Delete the jail root filesystem"
+// @Success 200 {object} internal.APIResponse[jailServiceInterfaces.DeleteJailResult] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/{ctid} [delete]
-func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
+func DeleteJail(jailService jailDeletionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctid, berr := c.Params.Get("ctid")
-		if !berr || ctid == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_ctid",
-				Data:    nil,
-				Error:   "invalid_ctid: ",
-			})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
 			return
 		}
 
-		var ctidInt int
-		ctidInt, err := strconv.Atoi(ctid)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_ctid_format",
-				Data:    nil,
-				Error:   fmt.Sprintf("invalid_ctid_format: %s", err.Error()),
-			})
+		deleteMacs, ok := parseRequiredJailBoolQuery(c, "deletemacs")
+		if !ok {
 			return
 		}
 
-		deleteMacsStr := c.Query("deletemacs")
-		if deleteMacsStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_deletemacs_param",
-				Error:   "missing 'deletemacs' query parameter",
-				Data:    nil,
-			})
+		deleteRootFS, ok := parseRequiredJailBoolQuery(c, "deleterootfs")
+		if !ok {
 			return
 		}
 
-		deleteMacs, err := strconv.ParseBool(deleteMacsStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_deletemacs_param",
-				Error:   "invalid 'deletemacs' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteRootFsStr := c.Query("deleterootfs")
-		if deleteRootFsStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_deleterootfs_param",
-				Error:   "missing 'deleterootfs' query parameter",
-				Data:    nil,
-			})
-			return
-		}
-
-		deleteRootFs, err := strconv.ParseBool(deleteRootFsStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_deleterootfs_param",
-				Error:   "invalid 'deleterootfs' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctidInt))
+		allowed, leaseErr := jailService.CanMutateProtectedJail(ctID)
 		if leaseErr != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "replication_lease_check_failed",
 				Data:    nil,
@@ -539,9 +667,9 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 			return
 		}
 		if !allowed {
-			c.JSON(403, internal.APIResponse[any]{
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "standby_mode_edit_not_allowed",
+				Message: "replication_lease_not_owned",
 				Data:    nil,
 				Error:   "replication_lease_not_owned",
 			})
@@ -549,62 +677,73 @@ func DeleteJail(jailService *jail.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err = jailService.DeleteJail(ctx, uint(ctidInt), deleteMacs, deleteRootFs)
+		result, err := jailService.DeleteJailWithWarnings(ctx, ctID, deleteMacs, deleteRootFS)
 
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			statusCode, errorCode := classifyDeleteJailError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_delete_jail",
+				Message: errorCode,
 				Data:    nil,
-				Error:   "failed_to_delete_jail: " + err.Error(),
+				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		message := "jail_deleted"
+		if len(result.Warnings) > 0 {
+			message = "jail_deleted_with_warnings"
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[jailServiceInterfaces.DeleteJailResult]{
 			Status:  "success",
-			Message: "jail_deleted",
-			Data:    nil,
+			Message: message,
+			Data:    result,
 			Error:   "",
 		})
 	}
 }
 
 // @Summary Edit a Jail's description
-// @Description Update the description of a jail by its ID
+// @Description Update the description of a jail by its CTID; an empty description clears it
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
 // @Param request body JailEditDescRequest true "Edit Jail Description Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Router /jail/description [put]
-func UpdateJailDescription(jailService *jail.Service) gin.HandlerFunc {
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/{ctid}/description [patch]
+func UpdateJailDescription(jailService jailDescriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
+			return
+		}
+
 		var req JailEditDescRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_data",
-				Data:    nil,
-				Error:   "Invalid request data: " + err.Error(),
-			})
+		if !bindJailJSON(c, &req, "invalid_request_data") {
 			return
 		}
 
-		err := jailService.UpdateDescription(req.ID, req.Description)
+		err := jailService.UpdateDescription(ctID, *req.Description)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			statusCode, errorCode := classifyUpdateJailDescriptionError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_update_description",
+				Message: errorCode,
 				Data:    nil,
-				Error:   "failed_to_update_description: " + err.Error(),
+				Error:   err.Error(),
 			})
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_description_updated",
 			Data:    nil,
@@ -614,29 +753,35 @@ func UpdateJailDescription(jailService *jail.Service) gin.HandlerFunc {
 }
 
 // @Summary Edit a Jail's name
-// @Description Update the name of a jail by its ID
+// @Description Update the name of a jail by its CTID
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param ctid path int true "Jail CTID" minimum(1)
 // @Param request body JailEditNameRequest true "Edit Jail Name Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Router /jail/name [put]
-func UpdateJailName(jailService *jail.Service, clusterService *cluster.Service) gin.HandlerFunc {
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /jail/{ctid}/name [patch]
+func UpdateJailName(jailService jailNameService, clusterService *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req JailEditNameRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request_data",
-				Data:    nil,
-				Error:   "Invalid request data: " + err.Error(),
-			})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
 			return
 		}
 
-		ctID, err := jailService.UpdateName(req.ID, req.Name)
+		var req JailEditNameRequest
+		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+
+		err := jailService.UpdateName(ctID, req.Name)
 		if err != nil {
 			statusCode, errorCode := classifyUpdateJailNameError(err)
 			c.JSON(statusCode, internal.APIResponse[any]{
@@ -648,7 +793,7 @@ func UpdateJailName(jailService *jail.Service, clusterService *cluster.Service) 
 			return
 		}
 
-		if clusterService != nil && ctID > 0 {
+		if clusterService != nil {
 			syncErr := clusterService.SyncBackupJobFriendlySourceByGuestClusterWide(cluster.BackupJobFriendlySourceUpdate{
 				GuestType:   clusterModels.ReplicationGuestTypeJail,
 				GuestID:     ctID,
@@ -665,71 +810,6 @@ func UpdateJailName(jailService *jail.Service, clusterService *cluster.Service) 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "jail_name_updated",
-			Data:    nil,
-			Error:   "",
-		})
-	}
-}
-
-// @Summary Update Resource Limits
-// @Description Enable or disable a Jail's resource limits
-// @Tags jail
-// @Accept json
-// @Produce json
-// @Param ctId path int true "Container ID"
-// @Param enabled query bool true "Enable or Disable"
-// @Success 200 {object} internal.APIResponse[any]
-// @Failure 400 {object} internal.APIResponse[any]
-// @Failure 500 {object} internal.APIResponse[any]
-// @Router /jail/resource-limits/{ctId} [put]
-func UpdateResourceLimits(jailService *jail.Service) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctId, err := strconv.ParseUint(c.Param("ctId"), 10, 32)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_ctid",
-				Error:   "invalid_ctid: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		enabledStr := c.Query("enabled")
-		if enabledStr == "" {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_enabled_param",
-				Error:   "missing 'enabled' query parameter",
-				Data:    nil,
-			})
-			return
-		}
-
-		enabled, err := strconv.ParseBool(enabledStr)
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_enabled_param",
-				Error:   "invalid 'enabled' value: " + err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		if err := jailService.UpdateResourceLimits(uint(ctId), enabled); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_update_resource_limits",
-				Data:    nil,
-				Error:   "failed_to_update_resource_limits: " + err.Error(),
-			})
-			return
-		}
-
-		c.JSON(200, internal.APIResponse[any]{
-			Status:  "success",
-			Message: "jail_resource_limits_updated",
 			Data:    nil,
 			Error:   "",
 		})

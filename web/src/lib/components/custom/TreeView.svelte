@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './TreeView.svelte';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
 	interface SidebarProps {
 		label: string;
@@ -19,8 +19,6 @@
 
 	let { item, onToggle }: Props = $props();
 
-	let isOpen = $state(false);
-
 	const toggle = (e: MouseEvent) => {
 		e.preventDefault();
 
@@ -30,7 +28,7 @@
 		}
 
 		if (item.href) {
-			goto(item.href, { replaceState: false, noScroll: false });
+			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 
@@ -63,14 +61,12 @@
 		return false;
 	}
 
-	$effect(() => {
-		isOpen = isItemOpen(item, activeUrl);
-	});
+	let isOpen = $derived(isItemOpen(item, activeUrl));
 </script>
 
 <li class="w-full">
 	<a
-		class={`my-0.5 flex w-full items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? '!text-primary' : ' '}`}
+		class={`my-0.5 flex w-full items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 		href={item.href}
 		onclick={toggle}
 	>
@@ -105,7 +101,7 @@
 
 {#if isOpen && item.children}
 	<ul class="pl-5" transition:slide={{ duration: 200, easing: (t) => t }} style="overflow: hidden;">
-		{#each item.children as child (child.label)}
+		{#each item.children as child (child.href ?? child.icon)}
 			<SidebarElement item={child} {onToggle} />
 		{/each}
 	</ul>

@@ -1,4 +1,4 @@
-difuse/
+/difuse/
 .gocache/
 data/*
 !data/.gitignore
@@ -36,4 +36,12 @@ Network Trash Folder
 Temporary Items
 .apdisk
 **/.wuchale/
-.scratches/
+/.scratches/
+/gzfs/
+/.cache/
+/libbsmart/
+/dataset.json
+/.idea/
+/SignalInspector.core
+/sylve-ddns/
+/test-results/

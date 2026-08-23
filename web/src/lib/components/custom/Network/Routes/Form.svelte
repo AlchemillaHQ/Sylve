@@ -9,7 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
 	import type { Iface } from '$lib/types/network/iface';
-	import type { StaticRoute } from '$lib/types/network/route';
+	import type { StaticRoute, StaticRouteUpsertRequest } from '$lib/types/network/route';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError } from '$lib/utils/http';
@@ -28,7 +28,7 @@
 		switches?: SwitchList;
 		prefill?: Partial<StaticRoute> | null;
 		suggestions?: Partial<StaticRoute>[];
-		afterChange: () => void;
+		afterChange: () => void | Promise<void>;
 	}
 
 	let {
@@ -54,6 +54,7 @@
 		family: 'inet' | 'inet6';
 		nextHopMode: 'gateway' | 'interface';
 		gateway: string;
+		gatewayZone: string;
 		interface: string;
 	};
 
@@ -68,6 +69,7 @@
 			family: 'inet',
 			nextHopMode: 'interface',
 			gateway: '',
+			gatewayZone: '',
 			interface: ''
 		};
 	}
@@ -83,9 +85,11 @@
 	let cbOpen = $state({
 		iface: false,
 		destination: false,
-		gateway: false
+		gateway: false,
+		gatewayZone: false
 	});
 	let selectedSuggestion = $state('0');
+	let saving = $state(false);
 
 	function applySuggestion(prefillRoute: Partial<StaticRoute>) {
 		form = {
@@ -102,6 +106,7 @@
 				| 'gateway'
 				| 'interface',
 			gateway: String(prefillRoute.gateway ?? ''),
+			gatewayZone: String(prefillRoute.gatewayZone ?? ''),
 			interface: String(prefillRoute.interface ?? '')
 		};
 	}
@@ -110,6 +115,7 @@
 		() => open,
 		(isOpen) => {
 			if (!isOpen) return;
+			selectedSuggestion = '0';
 
 			if (editingRoute) {
 				form = {
@@ -118,10 +124,15 @@
 					enabled: editingRoute.enabled ?? true,
 					fib: editingRoute.fib ?? 0,
 					destinationType: editingRoute.destinationType,
-					destination: editingRoute.destination,
+					destination: editingRoute.destinationObjId
+						? String(editingRoute.destinationObjId)
+						: editingRoute.destinationRaw || editingRoute.destination,
 					family: editingRoute.family,
 					nextHopMode: editingRoute.nextHopMode,
-					gateway: editingRoute.gateway ?? '',
+					gateway: editingRoute.gatewayObjId
+						? String(editingRoute.gatewayObjId)
+						: editingRoute.gatewayRaw || editingRoute.gateway || '',
+					gatewayZone: editingRoute.gatewayZone ?? '',
 					interface: editingRoute.interface ?? ''
 				};
 				return;
@@ -157,6 +168,16 @@
 				form.interface = '';
 			} else {
 				form.gateway = '';
+				form.gatewayZone = '';
+			}
+		}
+	);
+
+	watch(
+		() => form.family,
+		(family) => {
+			if (family !== 'inet6') {
+				form.gatewayZone = '';
 			}
 		}
 	);
@@ -173,6 +194,11 @@
 		{ value: 'interface', label: 'Interface' },
 		{ value: 'gateway', label: 'Gateway' }
 	];
+	const selectClasses = {
+		parent: 'min-w-0 space-y-1.5',
+		label: 'flex h-7 w-full items-center text-sm',
+		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+	};
 	const suggestionOptions = $derived.by(() => {
 		return (suggestions ?? []).map((suggestion, idx) => {
 			const destination = String(suggestion.destination ?? '');
@@ -210,27 +236,35 @@
 
 	const destObjectOptions = $derived(
 		objects
-			.filter((obj) => ['Host', 'Network'].includes(obj.type))
+			.filter(
+				(obj) =>
+					obj.type === (form.destinationType === 'host' ? 'Host' : 'Network') &&
+					obj.entries?.length === 1
+			)
 			.map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
 	const gatewayObjectOptions = $derived(
 		objects
-			.filter((obj) => obj.type === 'Host')
+			.filter((obj) => obj.type === 'Host' && obj.entries?.length === 1)
 			.map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
-	function resolveObjToRaw(val: string): string {
+	function resolveAddr(
+		val: string,
+		allowedType: 'Host' | 'Network'
+	): { raw: string; objId: number | null } {
 		const trimmed = val.trim();
-		if (!trimmed) return '';
+		if (!trimmed) return { raw: '', objId: null };
 		const obj = objects.find((o) => String(o.id) === trimmed);
-		if (obj?.entries && obj.entries.length > 0) {
-			return obj.entries[0].value;
+		if (obj && obj.type === allowedType && obj.entries?.length === 1) {
+			return { raw: '', objId: obj.id };
 		}
-		return trimmed;
+		return { raw: trimmed, objId: null };
 	}
 
 	function resetForm() {
+		if (saving) return;
 		if (editingRoute) {
 			form = {
 				name: editingRoute.name,
@@ -238,28 +272,55 @@
 				enabled: editingRoute.enabled ?? true,
 				fib: editingRoute.fib ?? 0,
 				destinationType: editingRoute.destinationType,
-				destination: editingRoute.destination,
+				destination: editingRoute.destinationObjId
+					? String(editingRoute.destinationObjId)
+					: editingRoute.destinationRaw || editingRoute.destination,
 				family: editingRoute.family,
 				nextHopMode: editingRoute.nextHopMode,
-				gateway: editingRoute.gateway ?? '',
+				gateway: editingRoute.gatewayObjId
+					? String(editingRoute.gatewayObjId)
+					: editingRoute.gatewayRaw || editingRoute.gateway || '',
+				gatewayZone: editingRoute.gatewayZone ?? '',
 				interface: editingRoute.interface ?? ''
 			};
-		} else {
-			form = defaultForm();
+			return;
 		}
+
+		const suggestionIndex = Number.parseInt(selectedSuggestion, 10);
+		const suggestion = suggestions[suggestionIndex] ?? prefill;
+		if (suggestion) {
+			applySuggestion(suggestion);
+			return;
+		}
+		form = defaultForm();
 	}
 
 	async function save() {
-		const payload = {
+		if (saving) return;
+
+		const dest = resolveAddr(
+			form.destination,
+			form.destinationType === 'host' ? 'Host' : 'Network'
+		);
+		const gw =
+			form.nextHopMode === 'gateway' ? resolveAddr(form.gateway, 'Host') : { raw: '', objId: null };
+
+		const payload: StaticRouteUpsertRequest = {
 			name: form.name.trim(),
 			description: form.description.trim(),
 			enabled: form.enabled,
 			fib: Number(form.fib),
 			destinationType: form.destinationType,
-			destination: resolveObjToRaw(form.destination),
+			destination: dest.raw,
+			destinationRaw: dest.raw,
+			destinationObjId: dest.objId,
 			family: form.family,
 			nextHopMode: form.nextHopMode,
-			gateway: form.nextHopMode === 'gateway' ? resolveObjToRaw(form.gateway) : '',
+			gateway: gw.raw,
+			gatewayRaw: gw.raw,
+			gatewayObjId: gw.objId,
+			gatewayZone:
+				form.nextHopMode === 'gateway' && form.family === 'inet6' ? form.gatewayZone.trim() : '',
 			interface: form.nextHopMode === 'interface' ? form.interface.trim() : ''
 		};
 
@@ -269,16 +330,26 @@
 			return;
 		}
 
-		const result =
-			edit && id ? await updateStaticRoute(id, payload) : await createStaticRoute(payload);
-		if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
-			toast.success(`Route ${edit ? 'updated' : 'created'}`, { position: 'bottom-center' });
-			afterChange();
-			open = false;
-			form = defaultForm();
-		} else {
+		saving = true;
+		try {
+			const result =
+				edit && id ? await updateStaticRoute(id, payload) : await createStaticRoute(payload);
+			if (typeof result === 'number' || ('status' in result && result.status === 'success')) {
+				await afterChange();
+				toast.success(`Route ${edit ? 'updated' : 'created'}`, { position: 'bottom-center' });
+				open = false;
+				form = defaultForm();
+				return;
+			}
+
 			handleAPIError(result);
-			toast.error(`Failed to ${edit ? 'update' : 'create'} route`, { position: 'bottom-center' });
+		} catch (error) {
+			console.error('Failed to save static route', error);
+			toast.error(`Failed to ${edit ? 'update' : 'create'} route`, {
+				position: 'bottom-center'
+			});
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -286,10 +357,16 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-[96%] overflow-hidden p-5 lg:max-w-2xl md:max-w-xl"
-		showCloseButton={true}
-		showResetButton={true}
+		showCloseButton={!saving}
+		showResetButton={!saving}
 		onReset={resetForm}
-		onClose={() => (open = false)}
+		onClose={() => {
+			if (!saving) open = false;
+		}}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
+		aria-busy={saving}
 	>
 		<Dialog.Header>
 			<Dialog.Title>
@@ -302,24 +379,25 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
-			<div class="space-y-5">
-				{#if !editingRoute && suggestions.length > 1}
-					<section>
-						<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							Suggestion
-						</p>
-						<SimpleSelect
-							label=""
-							options={suggestionOptions}
-							bind:value={selectedSuggestion}
-							onChange={(v) => (selectedSuggestion = String(v))}
-						/>
-					</section>
-				{/if}
+		<fieldset disabled={saving} class="contents">
+			<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
+				<div class="space-y-4">
+					{#if !editingRoute && suggestions.length > 1}
+						<div>
+							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Suggestion
+							</p>
+							<SimpleSelect
+								label=""
+								options={suggestionOptions}
+								bind:value={selectedSuggestion}
+								classes={selectClasses}
+								onChange={(v) => (selectedSuggestion = String(v))}
+							/>
+						</div>
+					{/if}
 
-				<section>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<CustomValueInput
 							label="Name"
 							placeholder="LAN return route"
@@ -333,10 +411,8 @@
 							classes="space-y-1.5"
 						/>
 					</div>
-				</section>
 
-				<section>
-					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 						<CustomValueInput
 							label="FIB"
 							type="number"
@@ -348,37 +424,37 @@
 							label="Type"
 							options={destinationTypeOptions}
 							bind:value={form.destinationType}
+							classes={selectClasses}
 							onChange={(v) => (form.destinationType = v as Form['destinationType'])}
 						/>
 						<SimpleSelect
 							label="Family"
 							options={familyOptions}
 							bind:value={form.family}
+							classes={selectClasses}
 							onChange={(v) => (form.family = v as Form['family'])}
 						/>
 					</div>
-					<div class="mt-3">
-						<ComboBox
-							bind:open={cbOpen.destination}
-							label="Address"
-							bind:value={form.destination}
-							data={destObjectOptions}
-							classes="space-y-1"
-							placeholder={form.destinationType === 'host'
-								? '192.168.180.102 or object'
-								: '192.168.180.0/24 or object'}
-							width="w-full"
-							allowCustom={true}
-						/>
-					</div>
-				</section>
 
-				<section>
-					<div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+					<ComboBox
+						bind:open={cbOpen.destination}
+						label="Address"
+						bind:value={form.destination}
+						data={destObjectOptions}
+						classes="space-y-1.5"
+						placeholder={form.destinationType === 'host'
+							? '192.168.180.102 or object'
+							: '192.168.180.0/24 or object'}
+						width="w-full"
+						allowCustom={true}
+					/>
+
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<SimpleSelect
 							label="Mode"
 							options={nextHopModeOptions}
 							bind:value={form.nextHopMode}
+							classes={selectClasses}
 							onChange={(v) => (form.nextHopMode = v as Form['nextHopMode'])}
 						/>
 						{#if form.nextHopMode === 'gateway'}
@@ -387,7 +463,7 @@
 								label="Gateway"
 								bind:value={form.gateway}
 								data={gatewayObjectOptions}
-								classes="space-y-1"
+								classes="space-y-1.5"
 								placeholder={form.family === 'inet6'
 									? '2001:db8::1 or object'
 									: '178.63.44.129 or object'}
@@ -400,24 +476,45 @@
 								label="Interface"
 								bind:value={form.interface}
 								data={ifaceOptions}
-								classes="space-y-1"
+								classes="space-y-1.5"
 								placeholder="Select interface"
 								width="w-full"
 								allowCustom={true}
 							/>
 						{/if}
 					</div>
-					<div class="mt-3">
-						<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
-					</div>
-				</section>
-			</div>
-		</ScrollArea>
+
+					{#if form.nextHopMode === 'gateway' && form.family === 'inet6'}
+						<ComboBox
+							bind:open={cbOpen.gatewayZone}
+							label="Scope Interface"
+							bind:value={form.gatewayZone}
+							data={ifaceOptions}
+							classes="space-y-1.5"
+							placeholder="Optional — required for fe80:: link-local gateways"
+							width="w-full"
+							allowCustom={true}
+						/>
+					{/if}
+
+					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+				</div>
+			</ScrollArea>
+		</fieldset>
 
 		<Dialog.Footer>
 			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" onclick={() => (open = false)}>Cancel</Button>
-				<Button size="sm" onclick={save}>{edit ? 'Save' : 'Create'}</Button>
+				<Button size="sm" variant="outline" onclick={() => (open = false)} disabled={saving}
+					>Cancel</Button
+				>
+				<Button size="sm" onclick={save} disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						{edit ? 'Saving...' : 'Creating...'}
+					{:else}
+						{edit ? 'Save' : 'Create'}
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

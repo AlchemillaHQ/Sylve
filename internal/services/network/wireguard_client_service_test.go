@@ -25,7 +25,7 @@ func TestCreateWireGuardClientRequiresPrivateKey(t *testing.T) {
 
 	enabled := false
 	peerKey := mustGenerateWireGuardPrivateKey(t).PublicKey().String()
-	err := svc.CreateWireGuardClient(&WireGuardClientRequest{
+	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
 		Name:          "client-no-private-key",
 		Enabled:       &enabled,
 		EndpointHost:  "198.51.100.10",
@@ -45,7 +45,7 @@ func TestCreateWireGuardClientRejectsInvalidPrivateKey(t *testing.T) {
 	seedWireGuardServiceEnabled(t, db)
 
 	enabled := false
-	err := svc.CreateWireGuardClient(&WireGuardClientRequest{
+	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
 		Name:          "client-invalid-private-key",
 		Enabled:       &enabled,
 		EndpointHost:  "198.51.100.10",
@@ -133,7 +133,7 @@ func TestCreateWireGuardClientUsesProvidedPrivateKey(t *testing.T) {
 	privateKey := mustGenerateWireGuardPrivateKey(t)
 	peerPublicKey := mustGenerateWireGuardPrivateKey(t).PublicKey().String()
 
-	err := svc.CreateWireGuardClient(&WireGuardClientRequest{
+	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
 		Name:          "client-provided-key",
 		Enabled:       &enabled,
 		EndpointHost:  "198.51.100.11",
@@ -170,7 +170,7 @@ func TestCreateWireGuardClientStoresFIB(t *testing.T) {
 	privateKey := mustGenerateWireGuardPrivateKey(t)
 	peerPublicKey := mustGenerateWireGuardPrivateKey(t).PublicKey().String()
 
-	err := svc.CreateWireGuardClient(&WireGuardClientRequest{
+	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
 		Name:          "client-fib-create",
 		Enabled:       &enabled,
 		EndpointHost:  "198.51.100.11",
@@ -208,7 +208,7 @@ func TestEditWireGuardClientUpdatesDerivedPublicKey(t *testing.T) {
 		PrivateKey:    oldPrivateKey.String(),
 		PublicKey:     oldPrivateKey.PublicKey().String(),
 		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
-		AllowedIPs:    []string{},
+		AllowedIPs:    []string{"10.20.0.0/16"},
 		Addresses:     []string{"10.230.1.2/32"},
 	}
 	if err := db.Create(&client).Error; err != nil {
@@ -251,7 +251,7 @@ func TestEditWireGuardClientUpdatesFIB(t *testing.T) {
 		PrivateKey:    privateKey.String(),
 		PublicKey:     privateKey.PublicKey().String(),
 		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
-		AllowedIPs:    []string{},
+		AllowedIPs:    []string{"10.20.0.0/16"},
 		Addresses:     []string{"10.230.1.2/32"},
 		FIB:           1,
 	}
@@ -277,6 +277,206 @@ func TestEditWireGuardClientUpdatesFIB(t *testing.T) {
 	if updated.FIB != fib {
 		t.Fatalf("expected updated fib=%d, got %d", fib, updated.FIB)
 	}
+}
+
+func TestCreateWireGuardClientPreservesDisabledStateAndReturnsID(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+	seedWireGuardServiceEnabled(t, db)
+
+	enabled := false
+	privateKey := mustGenerateWireGuardPrivateKey(t)
+	clientID, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
+		Name:          "disabled-client",
+		Enabled:       &enabled,
+		EndpointHost:  "198.51.100.30",
+		EndpointPort:  51820,
+		PrivateKey:    privateKey.String(),
+		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
+		AllowedIPs:    []string{"10.30.0.0/16"},
+		Addresses:     []string{"10.230.0.2/32"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clientID == 0 {
+		t.Fatal("created client id was zero")
+	}
+
+	var stored networkModels.WireGuardClient
+	if err := db.First(&stored, clientID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Enabled {
+		t.Fatal("disabled client was persisted as enabled")
+	}
+}
+
+func TestWireGuardClientValidationAndNameConflict(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+	seedWireGuardServiceEnabled(t, db)
+	enabled := false
+	privateKey := mustGenerateWireGuardPrivateKey(t)
+	request := WireGuardClientRequest{
+		Name:          "office",
+		Enabled:       &enabled,
+		EndpointHost:  "invalid host",
+		EndpointPort:  51820,
+		PrivateKey:    privateKey.String(),
+		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
+		AllowedIPs:    []string{"10.30.0.0/16"},
+		Addresses:     []string{"10.230.0.2/32"},
+	}
+	if _, err := svc.CreateWireGuardClient(&request); !errors.Is(err, ErrInvalidWireGuardClient) {
+		t.Fatalf("expected invalid endpoint error, got %v", err)
+	}
+
+	request.EndpointHost = "vpn.example.com"
+	if _, err := svc.CreateWireGuardClient(&request); err != nil {
+		t.Fatal(err)
+	}
+	request.PrivateKey = mustGenerateWireGuardPrivateKey(t).String()
+	if _, err := svc.CreateWireGuardClient(&request); !errors.Is(err, ErrWireGuardClientConflict) {
+		t.Fatalf("expected duplicate name conflict, got %v", err)
+	}
+}
+
+func validWireGuardClientRequest(t *testing.T, name string, enabled bool) WireGuardClientRequest {
+	t.Helper()
+	privateKey := mustGenerateWireGuardPrivateKey(t)
+	return WireGuardClientRequest{
+		Name:          name,
+		Enabled:       &enabled,
+		EndpointHost:  "198.51.100.40",
+		EndpointPort:  51820,
+		PrivateKey:    privateKey.String(),
+		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
+		AllowedIPs:    []string{"10.40.0.0/16"},
+		Addresses:     []string{"10.240.0.2/32"},
+	}
+}
+
+func injectNextWireGuardClientApplyFailure(t *testing.T) {
+	t.Helper()
+	previousConfigure := wireGuardConfigureWithWGCtrl
+	previousResolveBinary := wireGuardResolveWGBinaryPath
+	t.Cleanup(func() {
+		wireGuardConfigureWithWGCtrl = previousConfigure
+		wireGuardResolveWGBinaryPath = previousResolveBinary
+	})
+
+	failNext := true
+	wireGuardConfigureWithWGCtrl = func(string, wgtypes.Config) error {
+		if failNext {
+			failNext = false
+			return errors.New("injected wireguard client apply failure")
+		}
+		return nil
+	}
+	wireGuardResolveWGBinaryPath = func() (string, error) {
+		return "", errors.New("wg binary unavailable")
+	}
+}
+
+func TestWireGuardClientRuntimeFailureRestoresDatabaseState(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+		seedWireGuardServiceEnabled(t, db)
+		stubWireGuardClientRuntime(t)
+		injectNextWireGuardClientApplyFailure(t)
+
+		request := validWireGuardClientRequest(t, "create-rollback", true)
+		if _, err := svc.CreateWireGuardClient(&request); err == nil {
+			t.Fatal("expected create runtime failure")
+		}
+		var count int64
+		if err := db.Model(&networkModels.WireGuardClient{}).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("created client remained after rollback: count=%d", count)
+		}
+	})
+
+	t.Run("edit", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+		seedWireGuardServiceEnabled(t, db)
+		stubWireGuardClientRuntime(t)
+		request := validWireGuardClientRequest(t, "before-edit", true)
+		clientID, err := svc.CreateWireGuardClient(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		injectNextWireGuardClientApplyFailure(t)
+
+		request.ID = &clientID
+		request.Name = "after-edit"
+		if err := svc.EditWireGuardClient(&request); err == nil {
+			t.Fatal("expected edit runtime failure")
+		}
+		var stored networkModels.WireGuardClient
+		if err := db.First(&stored, clientID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if stored.Name != "before-edit" {
+			t.Fatalf("client edit was not rolled back: name=%q", stored.Name)
+		}
+	})
+
+	t.Run("enabled state", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+		seedWireGuardServiceEnabled(t, db)
+		stubWireGuardClientRuntime(t)
+		request := validWireGuardClientRequest(t, "state-rollback", false)
+		clientID, err := svc.CreateWireGuardClient(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		injectNextWireGuardClientApplyFailure(t)
+
+		if err := svc.SetWireGuardClientEnabled(clientID, true); err == nil {
+			t.Fatal("expected enabled-state runtime failure")
+		}
+		var stored networkModels.WireGuardClient
+		if err := db.First(&stored, clientID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if stored.Enabled {
+			t.Fatal("client enabled state was not rolled back")
+		}
+	})
+
+	t.Run("delete", func(t *testing.T) {
+		svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+		seedWireGuardServiceEnabled(t, db)
+		stubWireGuardClientRuntime(t)
+		request := validWireGuardClientRequest(t, "delete-rollback", true)
+		clientID, err := svc.CreateWireGuardClient(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		previousRunCommand := wireGuardRunCommand
+		failDestroy := true
+		wireGuardRunCommand = func(command string, args ...string) (string, error) {
+			if failDestroy && command == "/sbin/ifconfig" && len(args) == 2 && args[1] == "destroy" {
+				failDestroy = false
+				return "", errors.New("injected wireguard client teardown failure")
+			}
+			return previousRunCommand(command, args...)
+		}
+		t.Cleanup(func() { wireGuardRunCommand = previousRunCommand })
+
+		if err := svc.DeleteWireGuardClient(clientID); err == nil {
+			t.Fatal("expected delete runtime failure")
+		}
+		var stored networkModels.WireGuardClient
+		if err := db.First(&stored, clientID).Error; err != nil {
+			t.Fatalf("deleted client was not restored: %v", err)
+		}
+		if stored.Name != request.Name || !stored.Enabled {
+			t.Fatalf("restored client changed: %+v", stored)
+		}
+	})
 }
 
 func seedWireGuardServiceEnabled(t *testing.T, db *gorm.DB) {

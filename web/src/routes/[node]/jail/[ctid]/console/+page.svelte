@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { page } from '$app/state';
 	import { storage } from '$lib';
-	import { getSimpleJailById } from '$lib/api/jail/jail';
+	import { getSimpleJailByCTID } from '$lib/api/jail/jail';
 	import { jailPowerSignal } from '$lib/stores/api.svelte';
 	import type { SimpleJail } from '$lib/types/jail/jail';
-	import { updateCache } from '$lib/utils/http';
-	import { sha256, toHex } from '$lib/utils/string';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { toHex } from '$lib/utils/string';
 	import {
 		resource,
 		useResizeObserver,
@@ -14,8 +13,13 @@
 		useInterval,
 		watch
 	} from 'runed';
-	import { onMount } from 'svelte';
-	import type { Terminal as GhosttyTerminal } from 'ghostty-web';
+	import { onMount, untrack, type Component } from 'svelte';
+	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
+	import type {
+		ITerminalOptions,
+		ITerminalInitOnlyOptions,
+		Terminal
+	} from '@battlefieldduck/xterm-svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -23,52 +27,99 @@
 	import { swatches } from '$lib/utils/terminal';
 	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import { isMac } from '$lib/hooks/is-mac.svelte';
+	import { isDemoMode } from '$lib/demo/runtime';
+
+	type FitAddonInstance = InstanceType<Awaited<ReturnType<typeof XtermAddon.FitAddon>>['FitAddon']>;
 
 	interface Data {
+		node: string;
 		jail: SimpleJail;
 		ctId: number;
+		hash: string;
 	}
 
 	let { data }: { data: Data } = $props();
+	let DemoJailConsoleComponent = $state<Component<{
+		node: string;
+		jailName: string;
+	}> | null>(null);
+	const initialData = untrack(() => data);
+	let consoleIdentity = $derived(`${data.node}\u0000${data.ctId}`);
 
-	let terminal = $state<GhosttyTerminal | null>(null);
+	let terminal = $state<Terminal>();
+	let fitAddon: FitAddonInstance | null = null;
 	let ws = $state<WebSocket | null>(null);
-	let terminalContainer = $state<HTMLElement | null>(null);
+	let wrapper = $state<HTMLElement | null>(null);
 	let connectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
-	let lastWidth = 0;
-	let lastHeight = 0;
+	let connectionError = $state('');
 	let connectionToken = 0;
-	let setupToken = 0;
-	let setupPromise: Promise<void> | null = null;
-	let ghosttyModulePromise: Promise<typeof import('ghostty-web')> | null = null;
 
-	function loadGhostty() {
-		if (!ghosttyModulePromise) {
-			ghosttyModulePromise = import('ghostty-web');
+	function consoleStorageKey(suffix: string): string {
+		const scopedKey = `node-${data.node}-jail-${data.ctId}-console-${suffix}`;
+		if (typeof localStorage !== 'undefined' && localStorage.getItem(scopedKey) === null) {
+			const legacyValue = localStorage.getItem(`jail-${data.ctId}-console-${suffix}`);
+			if (legacyValue !== null) localStorage.setItem(scopedKey, legacyValue);
 		}
-
-		return ghosttyModulePromise;
+		return scopedKey;
 	}
 
-	// svelte-ignore state_referenced_locally
-	let cState = new PersistedState(`jail-${data.ctId}-console-state`, false);
+	let cState = $state(new PersistedState(consoleStorageKey('state'), false));
+	let theme = $state(
+		new PersistedState(consoleStorageKey('theme'), {
+			background: '#282c34',
+			foreground: '#FFFFFF',
+			fontSize: 14
+		})
+	);
 
-	// svelte-ignore state_referenced_locally
-	let theme = new PersistedState(`jail-${data.ctId}-console-theme`, {
-		background: '#282c34',
-		foreground: '#FFFFFF',
-		fontSize: 14
-	});
+	const initialTheme = untrack(() => ({
+		background: theme.current.background || '#282c34',
+		foreground: theme.current.foreground || '#FFFFFF',
+		fontSize: theme.current.fontSize || 14
+	}));
+	let fontSizeBindable: number = $state(initialTheme.fontSize);
+	let bgThemeBindable: string = $state(initialTheme.background);
+	let fgThemeBindable: string = $state(initialTheme.foreground);
+	let openSettings = $state(false);
 
-	let fontSizeBindable: number = $state(theme.current.fontSize || 14);
-	let bgThemeBindable: string = $state(theme.current.background || '#282c34');
-	let fgThemeBindable: string = $state(theme.current.foreground || '#FFFFFF');
+	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
+		cursorBlink: true,
+		cursorStyle: 'bar',
+		scrollback: 10000,
+		fontFamily: 'Monaco, Menlo, "Courier New", monospace',
+		fontSize: initialTheme.fontSize,
+		theme: {
+			background: initialTheme.background,
+			foreground: initialTheme.foreground
+		}
+	};
+
+	function fitAndSend() {
+		if (!terminal || !fitAddon) return;
+		try {
+			fitAddon.fit();
+		} catch {
+			return;
+		}
+		sendSize(terminal.cols, terminal.rows);
+	}
+
+	function setFontSize(size: number) {
+		if (!terminal) return;
+		const clamped = Math.max(8, Math.min(24, Math.round(size)));
+		fontSizeBindable = clamped;
+		theme.current.fontSize = clamped;
+		terminal.options.fontSize = clamped;
+		fitAndSend();
+	}
+
+	function changeFontSize(delta: number) {
+		setFontSize((theme.current.fontSize || 14) + delta);
+	}
 
 	const applyFontSize = useDebounce(() => {
-		if (!terminal) return;
-		theme.current.fontSize = Math.max(8, Math.min(24, fontSizeBindable));
-		terminal.options.fontSize = theme.current.fontSize;
-		resizeTerminal(lastWidth, lastHeight);
+		setFontSize(fontSizeBindable);
 	}, 200);
 
 	const applyThemeDebounced = useDebounce(() => {
@@ -88,25 +139,39 @@
 			background: theme.current.background,
 			foreground: theme.current.foreground
 		};
-
-		disconnect();
-		reconnect();
 	}, 300);
 
-	let openSettings = $state(false);
-
-	// svelte-ignore state_referenced_locally
-	const jail = resource(
-		() => `simple-jail-${data.jail.ctId}`,
-		async () => {
-			const jail = await getSimpleJailById(data.jail.ctId, 'ctid');
-			updateCache(`simple-jail-${data.jail.ctId}`, jail);
-			return jail;
+	type JailConsoleSnapshot = { identity: string; jail: SimpleJail };
+	const jailResource = resource(
+		[() => data.node, () => data.ctId],
+		async ([hostname, ctId], _, { signal }): Promise<JailConsoleSnapshot> => {
+			const result = await getSimpleJailByCTID(ctId, {
+				hostname,
+				signal
+			});
+			if (isAPIResponse(result)) {
+				throw new Error(result.message || result.error?.toString() || 'Unable to load jail');
+			}
+			await updateCache(`simple-jail-${ctId}`, result, hostname);
+			return { identity: `${hostname}\u0000${ctId}`, jail: result };
 		},
 		{
-			initialValue: data.jail
+			lazy: true,
+			initialValue: {
+				identity: `${initialData.node}\u0000${initialData.ctId}`,
+				jail: initialData.jail
+			}
 		}
 	);
+
+	const jail = {
+		get current(): SimpleJail {
+			return jailResource.current.identity === consoleIdentity
+				? jailResource.current.jail
+				: data.jail;
+		},
+		refetch: () => jailResource.refetch()
+	};
 
 	function sendSize(cols: number, rows: number) {
 		if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -119,12 +184,11 @@
 
 	function disconnect() {
 		cState.current = true;
-		disconnectSocket(true);
+		connectionError = '';
+		disconnectSocket();
 	}
 
-	function disconnectSocket(forceKill: boolean) {
-		setupToken += 1;
-		setupPromise = null;
+	function disconnectSocket() {
 		connectionToken += 1;
 		connectionState = 'disconnected';
 
@@ -139,30 +203,23 @@
 		}
 
 		if (socket && socket.readyState === WebSocket.OPEN) {
-			if (forceKill) {
-				const payload = JSON.stringify({ kill: '' });
-				const data = new TextEncoder().encode('\x02' + payload);
-				socket.send(data);
-			}
 			socket.close();
 		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
 		}
-
-		terminal?.dispose?.();
-		terminal = null;
-		ws = null;
 	}
 
 	function disconnectForStateChange() {
 		cState.current = false;
-		disconnectSocket(false);
+		connectionError = '';
+		disconnectSocket();
 	}
 
 	function reconnect() {
 		if (isSocketActive()) return;
 		cState.current = false;
-		void setup();
+		if (!terminal) return;
+		void connect();
 	}
 
 	async function refetchUntilState(targetState: 'ACTIVE' | 'INACTIVE', attempts = 8) {
@@ -177,126 +234,51 @@
 		return jail.current?.state === targetState;
 	}
 
-	function resizeTerminal(width: number, height: number) {
-		if (!terminal) return;
-
-		const root = terminal.element as HTMLElement | undefined;
-		if (!root) return;
-
-		const canvas = root.querySelector('canvas') as HTMLCanvasElement | null;
-		if (!canvas) return;
-
-		const currentCols = terminal.cols || 80;
-		const currentRows = terminal.rows || 24;
-
-		const cellWidth = canvas.clientWidth / currentCols || 8;
-		const cellHeight = canvas.clientHeight / currentRows || 16;
-		if (!cellWidth || !cellHeight) return;
-
-		const cols = Math.max(2, Math.floor(width / cellWidth));
-		const rows = Math.max(2, Math.floor(height / cellHeight));
-		if (!Number.isFinite(cols) || !Number.isFinite(rows)) return;
-
-		terminal.resize(cols, rows);
-		sendSize(cols, rows);
-	}
-
-	function syncTerminalSizeAfterOpen() {
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				if (!terminalContainer) return;
-				const rect = terminalContainer.getBoundingClientRect();
-				if (!rect.width || !rect.height) return;
-				lastWidth = rect.width;
-				lastHeight = rect.height;
-				resizeTerminal(rect.width, rect.height);
-			});
-		});
-	}
-
 	useResizeObserver(
-		() => terminalContainer,
-		(entries) => {
-			const entry = entries[0];
-			if (!entry) return;
-			const { width, height } = entry.contentRect;
-			lastWidth = width;
-			lastHeight = height;
-			resizeTerminal(width, height);
+		() => wrapper,
+		() => {
+			fitAndSend();
 		}
 	);
 
 	let destroyed = $state(false);
 
-	const setupInternal = async (activeSetupToken: number) => {
-		cState.current = false;
-
-		if (!jail.current || !jail.current.ctId) return;
-		if (jail.current && jail.current.state === 'INACTIVE') return;
-		if (!terminalContainer) return;
+	const connect = () => {
+		if (destroyed || !terminal) return;
+		if (!jail.current.ctId) return;
+		if (jail.current.state !== 'ACTIVE') return;
 		if (isSocketActive()) return;
 
-		const ghostty = await loadGhostty();
-		await ghostty.init();
-		if (destroyed || activeSetupToken !== setupToken) return;
-
-		terminal?.dispose?.();
-		terminal = null;
-
-		terminal = new ghostty.Terminal({
-			cursorBlink: true,
-			cursorStyle: 'bar',
-			fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-			fontSize: theme.current.fontSize || 14,
-			theme: {
-				background: theme.current.background,
-				foreground: theme.current.foreground
-			}
-		});
-
-		terminal.open(terminalContainer);
-
-		if (destroyed || activeSetupToken !== setupToken) {
-			terminal?.dispose?.();
-			terminal = null;
-			return;
-		}
-
-		const hash = await sha256(storage.token || '', 1);
-		const selectedHostname = page.url.pathname.split('/').filter(Boolean)[0] || '';
-		if (!selectedHostname) return;
-		const wsAuth = toHex(
-			JSON.stringify({
-				hash,
-				hostname: selectedHostname,
-				token: storage.clusterToken || ''
-			})
-		);
+		cState.current = false;
+		connectionState = 'connecting';
+		connectionError = '';
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
+		const wsAuth = toHex(
+			JSON.stringify({
+				hash: data.hash,
+				hostname: data.node
+			})
+		);
+
 		const socket = new WebSocket(
-			`/api/jail/console?ctid=${data.ctId}&auth=${encodeURIComponent(wsAuth)}`
+			`/api/jail/${encodeURIComponent(String(data.ctId))}/console?auth=${encodeURIComponent(wsAuth)}`
 		);
 		socket.binaryType = 'arraybuffer';
 		ws = socket;
-		connectionState = 'connecting';
+		let opened = false;
 
 		socket.onopen = () => {
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
+			opened = true;
 			connectionState = 'connected';
-
-			console.log(`Jail console connected for jail ${data.ctId}`);
-			if (lastWidth && lastHeight) {
-				resizeTerminal(lastWidth, lastHeight);
-			} else if (terminalContainer) {
-				const rect = terminalContainer.getBoundingClientRect();
-				resizeTerminal(rect.width, rect.height);
-			}
-
-			syncTerminalSizeAfterOpen();
+			connectionError = '';
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => fitAndSend());
+			});
 		};
 
 		socket.onmessage = (e) => {
@@ -311,17 +293,14 @@
 				}
 			} else {
 				try {
-					activeTerminal?.write(e.data as string);
+					const message = String(e.data || 'Jail console unavailable');
+					connectionError = message;
+					activeTerminal?.write(message);
 				} catch {
 					return;
 				}
 			}
 		};
-
-		terminal.onData((data: string) => {
-			if (socket.readyState !== WebSocket.OPEN) return;
-			socket.send(new TextEncoder().encode('\x00' + data));
-		});
 
 		socket.onclose = socket.onerror = () => {
 			if (activeConnectionToken !== connectionToken) return;
@@ -329,28 +308,97 @@
 				ws = null;
 			}
 			connectionState = 'disconnected';
+			if (!destroyed && !cState.current && !connectionError) {
+				connectionError = opened
+					? 'The jail console session ended.'
+					: 'Unable to connect to the jail console.';
+			}
 		};
 	};
 
-	const setup = () => {
-		if (setupPromise) return setupPromise;
+	function onData(data: string) {
+		if (!ws || ws.readyState !== WebSocket.OPEN) return;
+		ws.send(new TextEncoder().encode('\x00' + data));
+	}
 
-		const activeSetupToken = ++setupToken;
-		const currentSetup = setupInternal(activeSetupToken).finally(() => {
-			if (setupPromise === currentSetup) {
-				setupPromise = null;
+	async function onLoad(t: Terminal) {
+		terminal = t;
+		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
+		t.loadAddon(fitAddon);
+
+		t.attachCustomKeyEventHandler((e) => {
+			const zoomModifier = isMac ? e.metaKey : e.ctrlKey;
+			const otherModifier = isMac ? e.ctrlKey : e.metaKey;
+			if (e.type === 'keydown' && zoomModifier && !e.altKey && !otherModifier) {
+				if (e.key === '+' || e.key === '=') {
+					e.preventDefault();
+					changeFontSize(1);
+					return false;
+				}
+				if (e.key === '-' || e.key === '_') {
+					e.preventDefault();
+					changeFontSize(-1);
+					return false;
+				}
 			}
+			return true;
 		});
 
-		setupPromise = currentSetup;
-		return currentSetup;
-	};
+		if (destroyed) return;
+
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				fitAndSend();
+				if (jail.current.state === 'ACTIVE' && !cState.current && !isSocketActive()) {
+					void connect();
+				}
+			});
+		});
+	}
+
+	function handleBeforeUnload(event: BeforeUnloadEvent) {
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			event.preventDefault();
+			event.returnValue = '';
+		}
+	}
 
 	useInterval(() => 1000, {
 		callback: () => {
+			if (!storage.visible) return;
 			jail.refetch();
 		}
 	});
+
+	watch(
+		() => consoleIdentity,
+		(identity, previousIdentity) => {
+			if (!previousIdentity || identity === previousIdentity) return;
+
+			disconnectSocket();
+			connectionError = '';
+			terminal?.reset();
+			cState = new PersistedState(consoleStorageKey('state'), false);
+			theme = new PersistedState(consoleStorageKey('theme'), {
+				background: '#282c34',
+				foreground: '#FFFFFF',
+				fontSize: 14
+			});
+			fontSizeBindable = theme.current.fontSize || 14;
+			bgThemeBindable = theme.current.background || '#282c34';
+			fgThemeBindable = theme.current.foreground || '#FFFFFF';
+			if (terminal) {
+				terminal.options.fontSize = fontSizeBindable;
+				terminal.options.theme = {
+					background: bgThemeBindable,
+					foreground: fgThemeBindable
+				};
+			}
+			void jail.refetch();
+			if (terminal && jail.current.state === 'ACTIVE' && !cState.current) reconnect();
+		},
+		{ lazy: true }
+	);
 
 	watch(
 		() => storage.idle,
@@ -362,9 +410,9 @@
 	);
 
 	watch(
-		() => jail.current?.state,
+		() => jail.current.state,
 		(state) => {
-			if (state === 'INACTIVE') {
+			if (state !== 'ACTIVE') {
 				disconnectForStateChange();
 				return;
 			}
@@ -400,11 +448,17 @@
 	);
 
 	onMount(() => {
-		if (!cState.current) {
-			void setup();
+		let cancelled = false;
+		window.addEventListener('beforeunload', handleBeforeUnload);
+		if (isDemoMode) {
+			void import('$lib/components/custom/Jail/DemoJailConsole.svelte').then((module) => {
+				if (!cancelled) DemoJailConsoleComponent = module.default;
+			});
 		}
 
 		return () => {
+			cancelled = true;
+			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
 			connectionToken += 1;
 			connectionState = 'disconnected';
@@ -418,20 +472,23 @@
 				ws = null;
 			}
 
-			if (terminal) {
-				terminal.clear?.();
-				terminal.reset?.();
-			}
-
 			applyFontSize.cancel?.();
 			applyThemeDebounced.cancel?.();
 			terminal?.dispose?.();
-			terminal = null;
+			terminal = undefined;
 		};
 	});
 </script>
 
-{#if jail.current && jail.current.state === 'INACTIVE'}
+{#if isDemoMode && jail.current.state === 'ACTIVE'}
+	{#if DemoJailConsoleComponent}
+		<DemoJailConsoleComponent node={data.node} jailName={jail.current.name} />
+	{:else}
+		<div class="bg-background flex h-full w-full items-center justify-center">
+			<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
+		</div>
+	{/if}
+{:else if jail.current.state === 'INACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
@@ -441,9 +498,16 @@
 			Start the Jail to access its console.
 		</div>
 	</div>
+{:else if jail.current.state !== 'ACTIVE'}
+	<div
+		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
+	>
+		<span class="icon-[mdi--server-network-off] h-14 w-14"></span>
+		<div class="max-w-md">The jail runtime state is currently unavailable.</div>
+	</div>
 {:else}
 	<div class="flex h-full w-full flex-col">
-		<div class="flex h-10 shrink-0 w-full items-center gap-2 border p-4">
+		<div class="flex h-10 w-full shrink-0 items-center gap-2 border p-4">
 			{#if connectionState === 'connected'}
 				<Button
 					size="sm"
@@ -475,8 +539,8 @@
 					size="sm"
 					class="ml-auto h-6"
 					onclick={() => {
-						terminal?.clear?.();
-						terminal?.focus?.();
+						terminal?.clear();
+						terminal?.focus();
 					}}
 				>
 					<span class="icon-[mingcute--broom-line] h-4 w-4"></span>
@@ -495,9 +559,18 @@
 			</div>
 		</div>
 
+		{#if connectionError && connectionState === 'disconnected' && !cState.current}
+			<div
+				class="flex shrink-0 items-center justify-center gap-2 border-x border-b px-3 py-2 text-sm text-red-500"
+			>
+				<span class="icon-[mdi--alert-circle-outline] h-4 w-4"></span>
+				<span>{connectionError}</span>
+			</div>
+		{/if}
+
 		{#if cState.current}
 			<div
-				class="dark:text-secondary text-primary/70 flex flex-1 min-h-0 w-full flex-col items-center justify-center space-y-3 text-center"
+				class="dark:text-secondary text-primary/70 flex min-h-0 w-full flex-1 flex-col items-center justify-center space-y-3 text-center"
 			>
 				<span class="icon-[mdi--lan-disconnect] h-14 w-14"></span>
 
@@ -509,16 +582,24 @@
 		{/if}
 
 		<div
-			class="terminal-wrapper flex-1 min-h-0 w-full focus:outline-none caret-transparent"
+			bind:this={wrapper}
+			class="terminal-wrapper min-h-0 w-full flex-1 overflow-hidden"
 			class:hidden={cState.current}
-			role="application"
-			aria-label="Jail terminal"
-			tabindex="-1"
 			style:background-color={theme.current.background}
-			style="outline: none;"
-			bind:this={terminalContainer}
-			onpointerdown={() => terminal?.focus()}
-		></div>
+		>
+			<Xterm
+				class="h-full w-full caret-transparent focus:outline-none"
+				style="outline: none;"
+				role="application"
+				aria-label="Jail terminal"
+				tabindex={-1}
+				{options}
+				bind:terminal
+				{onLoad}
+				{onData}
+				onpointerdown={() => terminal?.focus()}
+			/>
+		</div>
 	</div>
 {/if}
 
@@ -548,7 +629,7 @@
 			/>
 		</div>
 
-		<div class="grid grid-cols-2">
+		<div class="color-pickers grid grid-cols-2">
 			<ColorPicker
 				bind:hex={bgThemeBindable}
 				{swatches}
@@ -564,3 +645,27 @@
 		</div>
 	</Dialog.Content>
 </Dialog.Root>
+
+<style>
+	:global(.terminal-wrapper .xterm) {
+		height: 100%;
+		padding: 0;
+	}
+
+	:global(.terminal-wrapper .xterm-viewport) {
+		background-color: transparent !important;
+	}
+
+	:global(.color-pickers .alpha) {
+		display: none;
+	}
+
+	:global(.color-pickers .color) {
+		box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+	}
+
+	:global(.color-pickers .color:focus-visible),
+	:global(.color-pickers input:focus-visible ~ .color) {
+		outline-color: var(--ring);
+	}
+</style>

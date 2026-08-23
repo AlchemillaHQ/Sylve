@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getDetails, getNodes } from '$lib/api/cluster/cluster';
+	import { getDetailsData, getNodes } from '$lib/api/cluster/cluster';
 	import { getCPUInfo } from '$lib/api/info/cpu';
 	import { getRAMInfo } from '$lib/api/info/ram';
 	import { getPoolsDiskUsageFull } from '$lib/api/zfs/pool';
@@ -12,11 +12,12 @@
 	import type { PoolsDiskUsage } from '$lib/types/zfs/pool';
 	import { reload } from '$lib/stores/api.svelte';
 	import { getQuorumStatus } from '$lib/utils/cluster';
-	import { updateCache } from '$lib/utils/http';
+	import { removeCache, updateCache } from '$lib/utils/http';
 	import { capitalizeFirstLetter } from '$lib/utils/string';
 	import { dateToAgo } from '$lib/utils/time';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { resource, watch } from 'runed';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import { resource, useInterval, watch } from 'runed';
 	import { onMount } from 'svelte';
 	import { fade } from 'svelte/transition';
 
@@ -33,24 +34,26 @@
 		null
 	);
 
-	// svelte-ignore state_referenced_locally
-	let nodes = resource(
-		() => 'cluster-nodes',
-		async (key, prevKey, { signal }) => {
-			const result = await getNodes();
-			updateCache('cluster-nodes', result);
-			return result;
-		},
-		{
-			initialValue: data.nodes
-		}
-	);
+	function hasCompleteClusterNodeSnapshot(
+		details: ClusterDetails | null | undefined,
+		clusterNodes: ClusterNode[]
+	): boolean {
+		if (!details?.cluster?.enabled) return true;
+
+		const raftNodes = details.nodes ?? [];
+		return (
+			raftNodes.length > 0 &&
+			raftNodes.every((raftNode) =>
+				clusterNodes.some((clusterNode) => clusterNode.nodeUUID === raftNode.id)
+			)
+		);
+	}
 
 	// svelte-ignore state_referenced_locally
 	let clusterDetails = resource(
 		() => 'cluster-details',
 		async (key, prevKey, { signal }) => {
-			const result = await getDetails();
+			const result = await getDetailsData({ signal });
 			updateCache('cluster-details', result);
 			return result;
 		},
@@ -60,10 +63,27 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key, prevKey, { signal }) => {
+			const result = await getNodes(signal);
+			if (hasCompleteClusterNodeSnapshot(clusterDetails.current, result)) {
+				await updateCache('cluster-nodes', result);
+			} else {
+				await removeCache('cluster-nodes');
+			}
+			return result;
+		},
+		{
+			initialValue: data.nodes
+		}
+	);
+
+	// svelte-ignore state_referenced_locally
 	let cpuInfo = resource(
 		() => 'cpu-info',
 		async (key, prevKey, { signal }) => {
-			const result = await getCPUInfo('current');
+			const result = await getCPUInfo('current', { signal });
 			updateCache('cpu-info', result);
 			return result;
 		},
@@ -76,7 +96,7 @@
 	let ramInfo = resource(
 		() => 'ram-info',
 		async (key, prevKey, { signal }) => {
-			const result = await getRAMInfo('current');
+			const result = await getRAMInfo('current', { signal });
 			updateCache('ram-info', result);
 			return result;
 		},
@@ -89,7 +109,7 @@
 	let diskInfo = resource(
 		() => 'total-disk-usage',
 		async (key, prevKey, { signal }) => {
-			const result = await getPoolsDiskUsageFull();
+			const result = await getPoolsDiskUsageFull({ signal });
 			updateCache('total-disk-usage', result);
 			return result;
 		},
@@ -140,14 +160,17 @@
 
 		const totalCPUs = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.cpu ?? 0), 0);
 		const used = normalizedNodes.reduce(
-			(acc, node) =>
-				acc + (Math.max(0, node.cpu ?? 0) * clampPercent(node.cpuUsage ?? 0)) / 100,
+			(acc, node) => acc + (Math.max(0, node.cpu ?? 0) * clampPercent(node.cpuUsage ?? 0)) / 100,
 			0
 		);
 
-		const totalMemory = normalizedNodes.reduce((acc, node) => acc + Math.max(0, node.memory ?? 0), 0);
+		const totalMemory = normalizedNodes.reduce(
+			(acc, node) => acc + Math.max(0, node.memory ?? 0),
+			0
+		);
 		const usedMemory = normalizedNodes.reduce(
-			(acc, node) => acc + (Math.max(0, node.memory ?? 0) * clampPercent(node.memoryUsage ?? 0)) / 100,
+			(acc, node) =>
+				acc + (Math.max(0, node.memory ?? 0) * clampPercent(node.memoryUsage ?? 0)) / 100,
 			0
 		);
 
@@ -185,45 +208,69 @@
 	});
 
 	watch(
-		() => reload.leftPanel,
-		(shouldReload) => {
-			if (!shouldReload) return;
-
+		() => reload.datacenterNodesPulse,
+		() => {
 			nodes.refetch();
 			clusterDetails.refetch();
 		}
 	);
 
 	watch(
-		() => reload.clusterDetails,
-		(shouldReload) => {
-			if (!shouldReload) return;
-
+		() => reload.datacenterDetailsPulse,
+		() => {
 			clusterDetails.refetch();
+			nodes.refetch();
 		}
 	);
 
-	async function refetchSummaryData() {
-		await Promise.all([
-			nodes.refetch(),
-			clusterDetails.refetch(),
-			cpuInfo.refetch(),
-			ramInfo.refetch(),
-			diskInfo.refetch()
-		]);
+	async function refetchClusterSnapshot() {
+		await clusterDetails.refetch();
+		await nodes.refetch();
 	}
+
+	useInterval(() => 1800, {
+		callback: () => {
+			if (!isDemoMode) return;
+			if (!nodes.loading) void nodes.refetch();
+			if (!cpuInfo.loading) void cpuInfo.refetch();
+			if (!ramInfo.loading) void ramInfo.refetch();
+			if (!diskInfo.loading) void diskInfo.refetch();
+		}
+	});
 
 	onMount(() => {
 		lazyArc = import('$lib/components/custom/Charts/Arc.svelte');
 
-		const recoveryTimer = setTimeout(() => {
-			if ((clusterDetails.current?.cluster?.enabled ?? false) && nodes.current.length === 0) {
-				void refetchSummaryData();
+		let active = true;
+		let attempts = 0;
+		let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+
+		const recoverClusterSnapshot = async () => {
+			if (!active || hasCompleteClusterNodeSnapshot(clusterDetails.current, nodes.current)) return;
+
+			attempts += 1;
+			await refetchClusterSnapshot();
+
+			if (
+				!active ||
+				hasCompleteClusterNodeSnapshot(clusterDetails.current, nodes.current) ||
+				attempts >= 8
+			) {
+				return;
 			}
-		}, 1200);
+
+			recoveryTimer = setTimeout(() => {
+				void recoverClusterSnapshot();
+			}, 1000);
+		};
+
+		recoveryTimer = setTimeout(() => {
+			void recoverClusterSnapshot();
+		}, 500);
 
 		return () => {
-			clearTimeout(recoveryTimer);
+			active = false;
+			if (recoveryTimer) clearTimeout(recoveryTimer);
 		};
 	});
 
@@ -303,7 +350,7 @@
 				{#if lazyArc}
 					{#await lazyArc}
 						<div class={resourceGridClass} aria-live="polite">
-							{#each ['CPU', 'RAM', 'Disk'] as metric}
+							{#each ['CPU', 'RAM', 'Disk'] as metric (metric)}
 								<div class={resourceSlotClass}>
 									<div
 										class={`${resourceChartBoxClass} flex flex-col items-center justify-center gap-2`}

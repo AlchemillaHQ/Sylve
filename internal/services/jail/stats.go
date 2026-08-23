@@ -40,7 +40,15 @@ type psUsage struct {
 }
 
 func (s *Service) StartStatsMonitoring(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	s.monitorOnce.Do(func() {
+		go s.networkUpdateWorker(ctx)
+		go s.jailUsagePersistWorker(ctx)
+		go s.jailUsageRetentionWorker(ctx)
+		go s.RecoverInterruptedBootstraps(ctx)
 		go s.liveStateMonitor(ctx)
 		go s.persistScheduler(ctx)
 		go s.retentionScheduler(ctx)
@@ -112,18 +120,34 @@ func (s *Service) enqueueRetention() {
 	}
 }
 
-func (s *Service) jailUsagePersistWorker() {
-	for range s.usagePersistQueue {
-		if err := s.StoreJailUsage(); err != nil {
-			logger.L.Error().Err(err).Msg("failed to store jail usage")
+func (s *Service) jailUsagePersistWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-s.usagePersistQueue:
+			if !ok {
+				return
+			}
+			if err := s.StoreJailUsage(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to store jail usage")
+			}
 		}
 	}
 }
 
-func (s *Service) jailUsageRetentionWorker() {
-	for range s.usageRetentionQueue {
-		if err := s.ApplyJailStatsRetention(); err != nil {
-			logger.L.Error().Err(err).Msg("failed to apply jail stats retention")
+func (s *Service) jailUsageRetentionWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case _, ok := <-s.usageRetentionQueue:
+			if !ok {
+				return
+			}
+			if err := s.ApplyJailStatsRetention(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to apply jail stats retention")
+			}
 		}
 	}
 }
@@ -280,13 +304,7 @@ func (s *Service) refreshLiveStates() ([]jailServiceInterfaces.State, error) {
 	return states, nil
 }
 
-func (s *Service) readJIDsByName() (map[string]int, error) {
-	cmd := exec.Command("/usr/sbin/jls", "--libxo", "json", "jid", "name")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("failed to run jls: %w", err)
-	}
-
+func parseJIDsByNameJSON(out []byte) (map[string]int, error) {
 	var jlsData struct {
 		JailInformation struct {
 			Jail []struct {
@@ -325,6 +343,32 @@ func (s *Service) readJIDsByName() (map[string]int, error) {
 	}
 
 	return jidByName, nil
+}
+
+func (s *Service) readJIDsByNameContext(ctx context.Context) (map[string]int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, "/usr/sbin/jls", "--libxo", "json", "jid", "name")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run jls: %w", err)
+	}
+	return parseJIDsByNameJSON(out)
+}
+
+func (s *Service) readJIDsByName() (map[string]int, error) {
+	return s.readJIDsByNameContext(context.Background())
+}
+
+func (s *Service) IsJailRunning(ctid uint) (bool, error) {
+	jidByName, err := s.readJIDsByName()
+	if err != nil {
+		return false, err
+	}
+	jailName := s.GetCTIDHash(ctid)
+	_, ok := jidByName[jailName]
+	return ok, nil
 }
 
 func (s *Service) readPSUsageByJID() (map[int]psUsage, error) {
@@ -551,7 +595,7 @@ func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailSta
 	if err := s.DB.Model(&jailModels.Jail{}).
 		Where("ct_id = ?", ctId).
 		Select("id").
-		First(&jailId).Error; err != nil {
+		Scan(&jailId).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_get_actual_jail_id: %w", err)
 	}
 
@@ -576,4 +620,63 @@ func (s *Service) GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailSta
 	}
 
 	return jailStats, nil
+}
+
+func (s *Service) GetJailUsageBootstrap(
+	ctID uint,
+) (db.StatsBootstrap[jailModels.JailStats], error) {
+	return s.getJailUsageBootstrapAt(ctID, time.Now())
+}
+
+func (s *Service) getJailUsageBootstrapAt(
+	ctID uint,
+	now time.Time,
+) (db.StatsBootstrap[jailModels.JailStats], error) {
+	empty := db.BuildStatsBootstrap[jailModels.JailStats](now, nil, nil)
+
+	var jailID uint
+	if err := s.DB.Model(&jailModels.Jail{}).
+		Where("ct_id = ?", ctID).
+		Select("id").
+		Scan(&jailID).Error; err != nil {
+		return empty, fmt.Errorf("failed_to_get_actual_jail_id: %w", err)
+	}
+	if jailID == 0 {
+		return empty, fmt.Errorf("jail_not_found")
+	}
+
+	var latestAt *time.Time
+	var latest jailModels.JailStats
+	result := s.DB.
+		Select("created_at").
+		Where("jid = ?", jailID).
+		Order("created_at DESC").
+		Limit(1).
+		Find(&latest)
+	if result.Error != nil {
+		return empty, fmt.Errorf("failed_to_get_latest_jail_usage: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		latestAt = &latest.CreatedAt
+	}
+
+	availability := db.ResolveStatsAvailability(now, latestAt)
+	if availability.ResolvedStep == nil {
+		return db.BuildStatsBootstrap[jailModels.JailStats](now, nil, latestAt), nil
+	}
+
+	window, err := availability.ResolvedStep.Window()
+	if err != nil {
+		return empty, err
+	}
+
+	var points []jailModels.JailStats
+	if err := s.DB.
+		Where("jid = ? AND created_at >= ?", jailID, now.Add(-window)).
+		Order("created_at ASC").
+		Find(&points).Error; err != nil {
+		return empty, fmt.Errorf("failed_to_get_jail_usage_bootstrap: %w", err)
+	}
+
+	return db.BuildStatsBootstrap(now, points, latestAt), nil
 }

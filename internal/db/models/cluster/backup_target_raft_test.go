@@ -43,7 +43,8 @@ func TestFSMDispatcherBackupTargetCommands(t *testing.T) {
 	if err := db.First(&created, 10).Error; err != nil {
 		t.Fatalf("failed to fetch created backup target: %v", err)
 	}
-	if created.Name != "target-a" || created.SSHHost != "user@host-a" || created.BackupRoot != "pool-a/backups" {
+	if created.Name != "target-a" || created.SSHHost != "user@host-a" || created.BackupRoot != "pool-a/backups" ||
+		created.SSHKeyPath != "" || created.SSHKey != "key-a" {
 		t.Fatalf("created backup target mismatch: %+v", created)
 	}
 
@@ -71,7 +72,8 @@ func TestFSMDispatcherBackupTargetCommands(t *testing.T) {
 	if err := db.First(&updated, 10).Error; err != nil {
 		t.Fatalf("failed to fetch updated backup target: %v", err)
 	}
-	if updated.Name != "target-a-updated" || updated.SSHPort != 2222 || updated.Enabled != false {
+	if updated.Name != "target-a-updated" || updated.SSHPort != 2222 || updated.Enabled != false ||
+		updated.SSHKeyPath != "" || updated.SSHKey != "key-b" {
 		t.Fatalf("updated backup target mismatch: %+v", updated)
 	}
 

@@ -9,8 +9,11 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -18,7 +21,10 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"golang.org/x/sync/errgroup"
 )
+
+const clusterResourceNodeTimeout = 3 * time.Second
 
 func (s *Service) Detail() *clusterServiceInterfaces.Detail {
 	nodeId, err := utils.GetSystemUUID()
@@ -47,9 +53,19 @@ func (s *Service) Nodes() ([]clusterModels.ClusterNode, error) {
 }
 
 func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) {
+	return s.ResourcesContext(context.Background())
+}
+
+func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfaces.NodeResources, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	nodes, err := s.Nodes()
 	if err != nil {
 		return nil, err
+	}
+	if len(nodes) == 0 {
+		return []clusterServiceInterfaces.NodeResources{}, nil
 	}
 
 	selfHostname, err := utils.GetSystemHostname()
@@ -57,66 +73,105 @@ func (s *Service) Resources() ([]clusterServiceInterfaces.NodeResources, error) 
 		return nil, fmt.Errorf("failed to get system hostname: %w", err)
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster jwt: %w", err)
 	}
+	selfNodeID, _ := utils.GetSystemUUID()
 
-	var results []clusterServiceInterfaces.NodeResources
+	results := make([]clusterServiceInterfaces.NodeResources, len(nodes))
+	var g errgroup.Group
+	g.SetLimit(4)
 
-	for _, n := range nodes {
-		base := "https://" + n.API
-
-		jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
-		jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates/simple", base)
-		vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
-		vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates/simple", base)
-
-		headers := map[string]string{
-			"Accept":          "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		}
-
-		var jails []jailServiceInterfaces.SimpleList
-		if body, _, err := utils.HTTPGetJSONRead(jailsURL, headers); err == nil {
-			var resp internal.APIResponse[[]jailServiceInterfaces.SimpleList]
-			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
-				jails = resp.Data
+	for i, n := range nodes {
+		i, n := i, n
+		g.Go(func() error {
+			results[i] = clusterServiceInterfaces.NodeResources{
+				NodeUUID: n.NodeUUID,
+				Hostname: n.Hostname,
 			}
-		}
-
-		var vms []libvirtServiceInterfaces.SimpleList
-		if body, _, err := utils.HTTPGetJSONRead(vmsURL, headers); err == nil {
-			var resp internal.APIResponse[[]libvirtServiceInterfaces.SimpleList]
-			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
-				vms = resp.Data
+			if strings.TrimSpace(n.NodeUUID) != strings.TrimSpace(selfNodeID) &&
+				strings.EqualFold(strings.TrimSpace(n.Status), nodeStatusOffline) {
+				return nil
 			}
-		}
 
-		var jailTemplates []jailServiceInterfaces.SimpleTemplateList
-		if body, _, err := utils.HTTPGetJSONRead(jailTemplatesURL, headers); err == nil {
-			var resp internal.APIResponse[[]jailServiceInterfaces.SimpleTemplateList]
-			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
-				jailTemplates = resp.Data
+			nodeCtx, cancel := context.WithTimeout(ctx, clusterResourceNodeTimeout)
+			defer cancel()
+
+			base := "https://" + n.API
+			jailsURL := fmt.Sprintf("%s/api/jail/simple", base)
+			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates", base)
+			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
+			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
+
+			headers := map[string]string{
+				"Accept":          "application/json",
+				"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
 			}
-		}
 
-		var vmTemplates []libvirtServiceInterfaces.SimpleTemplateList
-		if body, _, err := utils.HTTPGetJSONRead(vmTemplatesURL, headers); err == nil {
-			var resp internal.APIResponse[[]libvirtServiceInterfaces.SimpleTemplateList]
-			if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
-				vmTemplates = resp.Data
+			var jails []jailServiceInterfaces.SimpleList
+			var vms []libvirtServiceInterfaces.SimpleList
+			var jailTemplates []jailServiceInterfaces.SimpleTemplateList
+			var vmTemplates []libvirtServiceInterfaces.SimpleTemplateList
+
+			var eg errgroup.Group
+
+			eg.Go(func() error {
+				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, jailsURL, headers); err == nil {
+					var resp internal.APIResponse[[]jailServiceInterfaces.SimpleList]
+					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+						jails = resp.Data
+					}
+				}
+				return nil
+			})
+
+			eg.Go(func() error {
+				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, vmsURL, headers); err == nil {
+					var resp internal.APIResponse[[]libvirtServiceInterfaces.SimpleList]
+					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+						vms = resp.Data
+					}
+				}
+				return nil
+			})
+
+			eg.Go(func() error {
+				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, jailTemplatesURL, headers); err == nil {
+					var resp internal.APIResponse[[]jailServiceInterfaces.SimpleTemplateList]
+					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+						jailTemplates = resp.Data
+					}
+				}
+				return nil
+			})
+
+			eg.Go(func() error {
+				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, vmTemplatesURL, headers); err == nil {
+					var resp internal.APIResponse[[]libvirtServiceInterfaces.SimpleTemplateList]
+					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+						vmTemplates = resp.Data
+					}
+				}
+				return nil
+			})
+
+			_ = eg.Wait()
+
+			results[i] = clusterServiceInterfaces.NodeResources{
+				NodeUUID:      n.NodeUUID,
+				Hostname:      n.Hostname,
+				Jails:         jails,
+				JailTemplates: jailTemplates,
+				VMs:           vms,
+				VMTemplates:   vmTemplates,
 			}
-		}
-
-		results = append(results, clusterServiceInterfaces.NodeResources{
-			NodeUUID:      n.NodeUUID,
-			Hostname:      n.Hostname,
-			Jails:         jails,
-			JailTemplates: jailTemplates,
-			VMs:           vms,
-			VMTemplates:   vmTemplates,
+			return nil
 		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return results, nil

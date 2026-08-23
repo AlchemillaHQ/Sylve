@@ -14,9 +14,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -24,48 +26,280 @@ import (
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
+const bootstrapCleanupTimeout = 2 * time.Minute
+
+type bootstrapIdentity struct {
+	Pool    string
+	Name    string
+	Dataset string
+	Major   int
+	Minor   int
+	Type    string
+}
+
 func bootstrapName(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
 	return fmt.Sprintf(spec.Name, major, minor)
 }
 
-func bootstrapLabel(spec jailServiceInterfaces.BootstrapTypeSpec, major int) string {
-	return fmt.Sprintf(spec.Label, major)
+func bootstrapLabel(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
+	return fmt.Sprintf(spec.Label, major, minor)
+}
+
+func normalizeBootstrapPool(pool string) (string, error) {
+	pool = strings.TrimSpace(pool)
+	if pool == "" || strings.Contains(pool, "/") {
+		return "", fmt.Errorf("invalid_bootstrap_pool")
+	}
+	return pool, nil
+}
+
+func canonicalBootstrapIdentity(pool, name string) (bootstrapIdentity, error) {
+	pool, err := normalizeBootstrapPool(pool)
+	if err != nil {
+		return bootstrapIdentity{}, err
+	}
+
+	name = strings.TrimSpace(name)
+	for _, version := range jailServiceInterfaces.SupportedVersions {
+		for _, bootstrapType := range jailServiceInterfaces.BootstrapTypes {
+			canonicalName := bootstrapName(bootstrapType, version.Major, version.Minor)
+			if name != canonicalName {
+				continue
+			}
+
+			root := pool + "/sylve/bootstraps"
+			dataset := root + "/" + canonicalName
+			if !strings.HasPrefix(dataset, root+"/") || strings.TrimPrefix(dataset, root+"/") != canonicalName {
+				return bootstrapIdentity{}, fmt.Errorf("invalid_bootstrap_name")
+			}
+
+			return bootstrapIdentity{
+				Pool:    pool,
+				Name:    canonicalName,
+				Dataset: dataset,
+				Major:   version.Major,
+				Minor:   version.Minor,
+				Type:    bootstrapType.Type,
+			}, nil
+		}
+	}
+
+	return bootstrapIdentity{}, fmt.Errorf("invalid_bootstrap_name")
+}
+
+func bootstrapRecordMatchesIdentity(record jailModels.JailBootstrap, identity bootstrapIdentity) bool {
+	return record.Pool == identity.Pool &&
+		record.Name == identity.Name &&
+		record.Dataset == identity.Dataset &&
+		record.Major == identity.Major &&
+		record.Minor == identity.Minor &&
+		record.BootstrapType == identity.Type
+}
+
+func bootstrapCleanupContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), bootstrapCleanupTimeout)
+}
+
+func isMissingBootstrapDatasetError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "dataset does not exist") ||
+		strings.Contains(message, "no such dataset")
+}
+
+func (s *Service) requireUsableBootstrapPool(ctx context.Context, pool string) (string, error) {
+	pool, err := normalizeBootstrapPool(pool)
+	if err != nil {
+		return "", err
+	}
+	if s.System == nil {
+		return "", fmt.Errorf("bootstrap_system_service_unavailable")
+	}
+
+	pools, err := s.System.GetUsablePools(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed_to_get_usable_pools: %w", err)
+	}
+	for _, candidate := range pools {
+		if candidate != nil && candidate.Name == pool {
+			return pool, nil
+		}
+	}
+
+	return "", fmt.Errorf("pool_not_found")
+}
+
+func (s *Service) getBootstrapDataset(
+	ctx context.Context,
+	identity bootstrapIdentity,
+) (*gzfs.Dataset, error) {
+	if s.GZFS == nil {
+		return nil, fmt.Errorf("bootstrap_zfs_service_unavailable")
+	}
+	dataset, err := s.GZFS.ZFS.Get(ctx, identity.Dataset, false)
+	if err != nil {
+		if isMissingBootstrapDatasetError(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed_to_get_bootstrap_dataset: %s: %w", identity.Name, err)
+	}
+	if dataset == nil {
+		return nil, nil
+	}
+	if strings.TrimSpace(strings.Trim(dataset.Name, "/")) != identity.Dataset {
+		return nil, fmt.Errorf("invalid_resolved_bootstrap_dataset: %s", dataset.Name)
+	}
+	return dataset, nil
+}
+
+func parseBootstrapHostVersion(release string) (jailServiceInterfaces.SupportedBootstrapVersion, error) {
+	release = strings.TrimSpace(release)
+	version := jailServiceInterfaces.SupportedBootstrapVersion{}
+	if release == "" {
+		return version, fmt.Errorf("host_release_empty")
+	}
+	base := strings.SplitN(release, "-", 2)[0]
+	parts := strings.Split(base, ".")
+	if len(parts) < 2 {
+		return version, fmt.Errorf("unexpected_host_release_format:%s", release)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil || major < 0 {
+		return version, fmt.Errorf("unexpected_host_release_major:%s", release)
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil || minor < 0 {
+		return version, fmt.Errorf("unexpected_host_release_minor:%s", release)
+	}
+	version.Major = major
+	version.Minor = minor
+	return version, nil
+}
+
+func bootstrapVersionAllowedOnHost(requested, host jailServiceInterfaces.SupportedBootstrapVersion) bool {
+	return requested.Major < host.Major ||
+		(requested.Major == host.Major && requested.Minor <= host.Minor)
+}
+
+func (s *Service) bootstrapHostVersion() (jailServiceInterfaces.SupportedBootstrapVersion, error) {
+	var release string
+	var err error
+	if s != nil && s.bootstrapHostReleaseFn != nil {
+		release, err = s.bootstrapHostReleaseFn()
+	} else {
+		release, err = sysctl.GetString("kern.osrelease")
+	}
+	if err != nil {
+		return jailServiceInterfaces.SupportedBootstrapVersion{}, fmt.Errorf("read_kern_osrelease_failed: %w", err)
+	}
+	return parseBootstrapHostVersion(release)
+}
+
+func (s *Service) requireBootstrapVersionCompatible(major, minor int) error {
+	host, err := s.bootstrapHostVersion()
+	if err != nil {
+		return fmt.Errorf("failed_to_determine_host_freebsd_version: %w", err)
+	}
+	requested := jailServiceInterfaces.SupportedBootstrapVersion{Major: major, Minor: minor}
+	if !bootstrapVersionAllowedOnHost(requested, host) {
+		return fmt.Errorf(
+			"bootstrap_version_newer_than_host:requested=%d.%d,host=%d.%d",
+			major, minor, host.Major, host.Minor,
+		)
+	}
+	return nil
 }
 
 func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServiceInterfaces.BootstrapEntry, error) {
-	var entries []jailServiceInterfaces.BootstrapEntry
+	pool, err := s.requireUsableBootstrapPool(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make([]jailServiceInterfaces.BootstrapEntry, 0)
+	hostVersion, err := s.bootstrapHostVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_determine_host_freebsd_version: %w", err)
+	}
+
+	var records []jailModels.JailBootstrap
+	if err := s.DB.Where("pool = ?", pool).Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_list_bootstrap_records: %w", err)
+	}
+	recordsByName := make(map[string]jailModels.JailBootstrap, len(records))
+	for _, record := range records {
+		recordsByName[record.Name] = record
+	}
 
 	for _, ver := range jailServiceInterfaces.SupportedVersions {
+		if !bootstrapVersionAllowedOnHost(ver, hostVersion) {
+			continue
+		}
 		for _, bt := range jailServiceInterfaces.BootstrapTypes {
 			name := bootstrapName(bt, ver.Major, ver.Minor)
-			dataset := fmt.Sprintf("%s/sylve/bootstraps/%s", pool, name)
-			mountPoint := fmt.Sprintf("/%s/sylve/bootstraps/%s", pool, name)
-
-			entry := jailServiceInterfaces.BootstrapEntry{
-				Pool:       pool,
-				Name:       name,
-				Label:      bootstrapLabel(bt, ver.Major),
-				Dataset:    dataset,
-				MountPoint: mountPoint,
-				Major:      ver.Major,
-				Minor:      ver.Minor,
-				Type:       bt.Type,
+			identity, identityErr := canonicalBootstrapIdentity(pool, name)
+			if identityErr != nil {
+				return nil, identityErr
 			}
 
-			ds, _ := s.GZFS.ZFS.Get(ctx, dataset, false)
+			entry := jailServiceInterfaces.BootstrapEntry{
+				Pool:    pool,
+				Name:    name,
+				Label:   bootstrapLabel(bt, ver.Major, ver.Minor),
+				Dataset: identity.Dataset,
+				Major:   ver.Major,
+				Minor:   ver.Minor,
+				Type:    bt.Type,
+			}
+
+			ds, err := s.getBootstrapDataset(ctx, identity)
+			if err != nil {
+				return nil, err
+			}
 			entry.Exists = ds != nil
 
-			var record jailModels.JailBootstrap
-			s.DB.
-				Where("pool = ? AND major = ? AND minor = ? AND bootstrap_type = ?",
-					pool, ver.Major, ver.Minor, bt.Type).
-				Limit(1).Find(&record)
-			if record.ID != 0 {
+			record, hasRecord := recordsByName[name]
+			if ds != nil {
+				mountPoint, resolveErr := validateFilesystemDatasetMountpoint(ds, identity.Dataset, "")
+				if resolveErr != nil {
+					entry.Status = "failed"
+					entry.Error = "bootstrap_mountpoint_not_usable"
+					entry.MountPoint = record.MountPoint
+					entries = append(entries, entry)
+					continue
+				}
+				entry.MountPoint = mountPoint
+			} else if hasRecord {
+				entry.MountPoint = record.MountPoint
+			}
+
+			if hasRecord {
+				if !bootstrapRecordMatchesIdentity(record, identity) {
+					entry.Status = "failed"
+					entry.Error = "bootstrap_record_mismatch"
+					entries = append(entries, entry)
+					continue
+				}
 				entry.Status = record.Status
 				entry.Phase = record.Phase
 				entry.Error = record.Error
+				switch record.Status {
+				case "pending", "running", "completed", "failed":
+				default:
+					entry.Status = "failed"
+					entry.Phase = ""
+					entry.Error = "bootstrap_invalid_status"
+				}
+				if record.Status == "completed" && !entry.Exists {
+					entry.Status = "failed"
+					entry.Phase = ""
+					entry.Error = "bootstrap_dataset_missing"
+				}
 			} else if entry.Exists {
-				entry.Status = "completed"
+				entry.Status = "orphaned"
+				entry.Error = "bootstrap_record_missing"
 			}
 
 			entries = append(entries, entry)
@@ -75,7 +309,13 @@ func (s *Service) ListBootstraps(ctx context.Context, pool string) ([]jailServic
 	return entries, nil
 }
 
-func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces.BootstrapRequest) error {
+func (s *Service) CreateBootstrap(
+	ctx context.Context,
+	req jailServiceInterfaces.BootstrapRequest,
+) (jailServiceInterfaces.BootstrapCreateResult, error) {
+	var result jailServiceInterfaces.BootstrapCreateResult
+	req.Type = strings.TrimSpace(req.Type)
+
 	versionSupported := false
 	for _, v := range jailServiceInterfaces.SupportedVersions {
 		if v.Major == req.Major && v.Minor == req.Minor {
@@ -85,7 +325,10 @@ func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces
 	}
 
 	if !versionSupported {
-		return fmt.Errorf("unsupported_bootstrap_version: %d.%d", req.Major, req.Minor)
+		return result, fmt.Errorf("unsupported_bootstrap_version: %d.%d", req.Major, req.Minor)
+	}
+	if err := s.requireBootstrapVersionCompatible(req.Major, req.Minor); err != nil {
+		return result, err
 	}
 
 	var typeSpec *jailServiceInterfaces.BootstrapTypeSpec
@@ -97,86 +340,128 @@ func (s *Service) CreateBootstrap(ctx context.Context, req jailServiceInterfaces
 		}
 	}
 	if typeSpec == nil {
-		return fmt.Errorf("unsupported_bootstrap_type: %s", req.Type)
+		return result, fmt.Errorf("unsupported_bootstrap_type: %s", req.Type)
 	}
 
-	pools, err := s.System.GetUsablePools(ctx)
+	s.bootstrapUseMu.Lock()
+	defer s.bootstrapUseMu.Unlock()
+
+	pool, err := s.requireUsableBootstrapPool(ctx, req.Pool)
 	if err != nil {
-		return fmt.Errorf("failed_to_get_usable_pools: %w", err)
+		return result, err
 	}
-	poolFound := false
-	for _, p := range pools {
-		if p.Name == req.Pool {
-			poolFound = true
-			break
-		}
-	}
-	if !poolFound {
-		return fmt.Errorf("pool_not_found")
-	}
+	req.Pool = pool
 
-	name := bootstrapName(*typeSpec, req.Major, req.Minor)
-	dataset := fmt.Sprintf("%s/sylve/bootstraps/%s", req.Pool, name)
-	mountPoint := fmt.Sprintf("/%s/sylve/bootstraps/%s", req.Pool, name)
-	lockKey := fmt.Sprintf("%s:%s", req.Pool, name)
+	identity, err := canonicalBootstrapIdentity(
+		pool,
+		bootstrapName(*typeSpec, req.Major, req.Minor),
+	)
+	if err != nil {
+		return result, err
+	}
+	result.Pool = identity.Pool
+	result.Name = identity.Name
 
-	if _, loaded := s.bootstrapActiveMu.LoadOrStore(lockKey, true); loaded {
-		return fmt.Errorf("bootstrap_already_in_progress")
+	lockKey := identity.Pool + ":" + identity.Name
+	if _, active := s.bootstrapActiveMu.Load(lockKey); active {
+		return result, fmt.Errorf("bootstrap_already_in_progress")
 	}
 
 	var record jailModels.JailBootstrap
-	s.DB.Where("pool = ? AND major = ? AND minor = ? AND bootstrap_type = ?",
-		req.Pool, req.Major, req.Minor, req.Type).Limit(1).Find(&record)
+	if err := s.DB.Where("pool = ? AND name = ?", identity.Pool, identity.Name).
+		Limit(1).
+		Find(&record).Error; err != nil {
+		return result, fmt.Errorf("failed_to_get_bootstrap_record: %w", err)
+	}
 
 	if record.ID != 0 {
+		if !bootstrapRecordMatchesIdentity(record, identity) {
+			return result, fmt.Errorf("bootstrap_record_mismatch")
+		}
 		switch record.Status {
 		case "running", "pending":
-			s.bootstrapActiveMu.Delete(lockKey)
-			return fmt.Errorf("bootstrap_already_in_progress")
-		case "completed":
-			s.bootstrapActiveMu.Delete(lockKey)
-			return nil
+			return result, fmt.Errorf("bootstrap_already_in_progress")
+		case "completed", "failed":
+			// Reconciled against the physical dataset below.
+		default:
+			return result, fmt.Errorf("bootstrap_invalid_status: %s", record.Status)
 		}
 	}
 
+	dataset, err := s.getBootstrapDataset(ctx, identity)
+	if err != nil {
+		return result, err
+	}
+	if record.ID == 0 && dataset != nil {
+		return result, fmt.Errorf("bootstrap_dataset_unmanaged")
+	}
+	if record.ID != 0 && record.Status == "completed" && dataset != nil {
+		result.Status = "completed"
+		result.Outcome = "already_completed"
+		return result, nil
+	}
+	if record.ID != 0 && record.Status == "failed" && dataset != nil {
+		return result, fmt.Errorf("bootstrap_cleanup_required")
+	}
+
 	keyDir := fmt.Sprintf("/usr/share/keys/pkgbase-%d/trusted", req.Major)
-	if _, err := os.Stat(keyDir); os.IsNotExist(err) {
-		s.bootstrapActiveMu.Delete(lockKey)
-		return fmt.Errorf("pkgbase_signing_keys_not_found: %s", keyDir)
+	if _, err := os.Stat(keyDir); err != nil {
+		if os.IsNotExist(err) {
+			return result, fmt.Errorf("pkgbase_signing_keys_not_found: %s", keyDir)
+		}
+		return result, fmt.Errorf("failed_to_check_pkgbase_signing_keys: %w", err)
 	}
 	if _, err := exec.LookPath("pkg"); err != nil {
-		s.bootstrapActiveMu.Delete(lockKey)
-		return fmt.Errorf("pkg_not_found")
+		return result, fmt.Errorf("pkg_not_found")
+	}
+
+	if _, loaded := s.bootstrapActiveMu.LoadOrStore(lockKey, true); loaded {
+		return result, fmt.Errorf("bootstrap_already_in_progress")
 	}
 
 	if record.ID != 0 {
 		if err := s.DB.Model(&record).Updates(map[string]interface{}{
-			"status": "pending",
-			"phase":  "",
-			"error":  "",
+			"pool":           identity.Pool,
+			"dataset":        identity.Dataset,
+			"mount_point":    "",
+			"name":           identity.Name,
+			"major":          identity.Major,
+			"minor":          identity.Minor,
+			"bootstrap_type": identity.Type,
+			"status":         "pending",
+			"phase":          "",
+			"error":          "",
 		}).Error; err != nil {
 			s.bootstrapActiveMu.Delete(lockKey)
-			return fmt.Errorf("failed_to_reset_bootstrap_record: %w", err)
+			return result, fmt.Errorf("failed_to_reset_bootstrap_record: %w", err)
 		}
 	} else {
 		record = jailModels.JailBootstrap{
-			Pool:          req.Pool,
-			Dataset:       dataset,
-			MountPoint:    mountPoint,
-			Name:          name,
-			Major:         req.Major,
-			Minor:         req.Minor,
-			BootstrapType: req.Type,
+			Pool:          identity.Pool,
+			Dataset:       identity.Dataset,
+			MountPoint:    "",
+			Name:          identity.Name,
+			Major:         identity.Major,
+			Minor:         identity.Minor,
+			BootstrapType: identity.Type,
 			Status:        "pending",
 		}
 		if err := s.DB.Create(&record).Error; err != nil {
 			s.bootstrapActiveMu.Delete(lockKey)
-			return fmt.Errorf("failed_to_create_bootstrap_record: %w", err)
+			return result, fmt.Errorf("failed_to_create_bootstrap_record: %w", err)
 		}
 	}
 
-	go s.runBootstrap(record.ID, lockKey, req, *typeSpec, dataset, mountPoint, name)
-	return nil
+	go s.runBootstrap(
+		record.ID,
+		lockKey,
+		req,
+		*typeSpec,
+		identity,
+	)
+	result.Status = "pending"
+	result.Outcome = "queued"
+	return result, nil
 }
 
 func (s *Service) updateBootstrapRecord(id uint, status, phase, errMsg string) {
@@ -194,9 +479,10 @@ func (s *Service) runBootstrap(
 	lockKey string,
 	req jailServiceInterfaces.BootstrapRequest,
 	typeSpec jailServiceInterfaces.BootstrapTypeSpec,
-	dataset, mountPoint, name string,
+	identity bootstrapIdentity,
 ) {
 	defer s.bootstrapActiveMu.Delete(lockKey)
+	dataset, name := identity.Dataset, identity.Name
 
 	bCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
@@ -211,14 +497,22 @@ func (s *Service) runBootstrap(
 	datasetCreated := false
 	failStep := func(phase string, err error) {
 		logger.L.Error().Err(err).Msgf("bootstrap %s: failed at phase %s", name, phase)
+		errMessage := err.Error()
 		if datasetCreated {
-			if ds, dErr := s.GZFS.ZFS.Get(bCtx, dataset, false); dErr == nil && ds != nil {
-				if dErr := ds.Destroy(bCtx, true, false); dErr != nil {
+			cleanupCtx, cleanupCancel := bootstrapCleanupContext()
+			defer cleanupCancel()
+			if ds, dErr := s.getBootstrapDataset(cleanupCtx, identity); dErr != nil {
+				logger.L.Warn().Err(dErr).Msgf("bootstrap %s: failed to inspect partial dataset %s", name, dataset)
+				errMessage += ": cleanup_failed: " + dErr.Error()
+			} else if ds != nil {
+				if dErr := ds.Destroy(cleanupCtx, true, false); dErr != nil &&
+					!isMissingBootstrapDatasetError(dErr) {
 					logger.L.Warn().Err(dErr).Msgf("bootstrap %s: failed to destroy partial dataset %s", name, dataset)
+					errMessage += ": cleanup_failed: " + dErr.Error()
 				}
 			}
 		}
-		s.updateBootstrapRecord(recordID, "failed", phase, err.Error())
+		s.updateBootstrapRecord(recordID, "failed", phase, errMessage)
 	}
 
 	arch, err := sysctl.GetString("hw.machine_arch")
@@ -236,18 +530,39 @@ func (s *Service) runBootstrap(
 
 	s.updateBootstrapRecord(recordID, "running", "creating_dataset", "")
 	parentDataset := fmt.Sprintf("%s/sylve/bootstraps", req.Pool)
-	if pds, _ := s.GZFS.ZFS.Get(bCtx, parentDataset, false); pds == nil {
+	pds, parentGetErr := s.GZFS.ZFS.Get(bCtx, parentDataset, false)
+	if parentGetErr != nil && !isMissingBootstrapDatasetError(parentGetErr) {
+		failStep("creating_dataset", fmt.Errorf("failed_to_get_parent_dataset: %w", parentGetErr))
+		return
+	}
+	if pds == nil {
 		if _, err = s.GZFS.ZFS.CreateFilesystem(bCtx, parentDataset, nil); err != nil {
-			failStep("creating_dataset", fmt.Errorf("failed_to_create_parent_dataset: %w", err))
-			return
+			// Different bootstrap types may both encounter a missing fallback
+			// parent. Accept a concurrent creator only after an exact recheck.
+			rechecked, recheckErr := s.GZFS.ZFS.Get(bCtx, parentDataset, false)
+			if recheckErr != nil || rechecked == nil {
+				failStep("creating_dataset", fmt.Errorf("failed_to_create_parent_dataset: %w", err))
+				return
+			}
 		}
 	}
-	_, err = s.GZFS.ZFS.CreateFilesystem(bCtx, dataset, nil)
+	createdDataset, err := s.GZFS.ZFS.CreateFilesystem(bCtx, dataset, nil)
 	if err != nil {
 		failStep("creating_dataset", fmt.Errorf("failed_to_create_dataset: %w", err))
 		return
 	}
 	datasetCreated = true
+	mountPoint, err := validateFilesystemDatasetMountpoint(createdDataset, identity.Dataset, "")
+	if err != nil {
+		failStep("creating_dataset", fmt.Errorf("bootstrap_mountpoint_not_usable: %w", err))
+		return
+	}
+	if err := s.DB.Model(&jailModels.JailBootstrap{}).
+		Where("id = ?", recordID).
+		Update("mount_point", mountPoint).Error; err != nil {
+		failStep("creating_dataset", fmt.Errorf("failed_to_store_bootstrap_mountpoint: %w", err))
+		return
+	}
 
 	s.updateBootstrapRecord(recordID, "running", "copying_keys", "")
 	hostKeyDir := fmt.Sprintf("/usr/share/keys/pkgbase-%d", req.Major)
@@ -360,55 +675,134 @@ func (s *Service) runBootstrap(
 	logger.L.Info().Msgf("bootstrap %s: completed successfully", name)
 }
 
-func (s *Service) DeleteBootstrap(ctx context.Context, pool, name string) error {
+func (s *Service) DeleteBootstrap(
+	ctx context.Context,
+	pool string,
+	name string,
+) (jailServiceInterfaces.BootstrapDeleteResult, error) {
+	var result jailServiceInterfaces.BootstrapDeleteResult
+
+	s.bootstrapUseMu.Lock()
+	defer s.bootstrapUseMu.Unlock()
+
+	pool, err := s.requireUsableBootstrapPool(ctx, pool)
+	if err != nil {
+		return result, err
+	}
+	identity, err := canonicalBootstrapIdentity(pool, name)
+	if err != nil {
+		return result, err
+	}
+	result.Pool = identity.Pool
+	result.Name = identity.Name
+
+	lockKey := identity.Pool + ":" + identity.Name
+	if _, active := s.bootstrapActiveMu.Load(lockKey); active {
+		return result, fmt.Errorf("bootstrap_already_in_progress")
+	}
+
 	var record jailModels.JailBootstrap
-	s.DB.Where("pool = ? AND name = ?", pool, name).Limit(1).Find(&record)
+	if err := s.DB.Where("pool = ? AND name = ?", identity.Pool, identity.Name).
+		Limit(1).
+		Find(&record).Error; err != nil {
+		return result, fmt.Errorf("failed_to_get_bootstrap_record: %w", err)
+	}
 
 	if record.ID != 0 {
+		if !bootstrapRecordMatchesIdentity(record, identity) {
+			return result, fmt.Errorf("bootstrap_record_mismatch")
+		}
 		if record.Status == "running" || record.Status == "pending" {
-			return fmt.Errorf("bootstrap_in_progress")
+			return result, fmt.Errorf("bootstrap_already_in_progress")
 		}
 	}
 
-	dataset := fmt.Sprintf("%s/sylve/bootstraps/%s", pool, name)
-	ds, _ := s.GZFS.ZFS.Get(ctx, dataset, false)
+	ds, err := s.getBootstrapDataset(ctx, identity)
+	if err != nil {
+		return result, err
+	}
 	if ds != nil {
 		if err := ds.Destroy(ctx, true, false); err != nil {
-			return fmt.Errorf("failed_to_destroy_bootstrap_dataset: %w", err)
+			if !isMissingBootstrapDatasetError(err) {
+				return result, fmt.Errorf("failed_to_destroy_bootstrap_dataset: %w", err)
+			}
+		} else {
+			result.DatasetDeleted = true
 		}
 	}
 
 	if record.ID != 0 {
 		if err := s.DB.Delete(&record).Error; err != nil {
-			return fmt.Errorf("failed_to_delete_bootstrap_record: %w", err)
+			return result, fmt.Errorf("failed_to_delete_bootstrap_record: %w", err)
 		}
+		result.RecordDeleted = true
 	}
 
-	return nil
+	result.Outcome = "already_absent"
+	if result.DatasetDeleted || result.RecordDeleted {
+		result.Outcome = "deleted"
+	}
+	return result, nil
 }
 
 func (s *Service) RecoverInterruptedBootstraps(ctx context.Context) {
+	s.bootstrapUseMu.Lock()
+	defer s.bootstrapUseMu.Unlock()
+
 	var stale []jailModels.JailBootstrap
-	if err := s.DB.Where("status IN ?", []string{"running", "pending"}).Find(&stale).Error; err != nil {
+	if err := s.DB.WithContext(ctx).
+		Where("status IN ?", []string{"running", "pending"}).
+		Find(&stale).Error; err != nil {
 		logger.L.Error().Err(err).Msg("bootstrap recovery: failed to query stale records")
 		return
 	}
 
 	for _, b := range stale {
-		logger.L.Warn().Msgf("bootstrap recovery: found interrupted bootstrap %s (pool=%s, status=%s) — cleaning up", b.Name, b.Pool, b.Status)
+		lockKey := strings.TrimSpace(b.Pool) + ":" + strings.TrimSpace(b.Name)
+		if _, active := s.bootstrapActiveMu.Load(lockKey); active {
+			continue
+		}
 
-		if ds, dErr := s.GZFS.ZFS.Get(ctx, b.Dataset, false); dErr == nil && ds != nil {
-			if dErr := ds.Destroy(ctx, true, false); dErr != nil {
-				if !strings.Contains(strings.ToLower(dErr.Error()), "does not exist") {
-					logger.L.Warn().Err(dErr).Msgf("bootstrap recovery: failed to destroy partial dataset %s", b.Dataset)
+		logger.L.Warn().Msgf("bootstrap recovery: found interrupted bootstrap %s (pool=%s, status=%s) — cleaning up", b.Name, b.Pool, b.Status)
+		recoveryError := "interrupted_by_server_restart"
+
+		identity, identityErr := canonicalBootstrapIdentity(b.Pool, b.Name)
+		if identityErr != nil || !bootstrapRecordMatchesIdentity(b, identity) {
+			recoveryError += ": invalid_bootstrap_record"
+			unsafeErr := identityErr
+			if unsafeErr == nil {
+				unsafeErr = fmt.Errorf("bootstrap_record_mismatch")
+			}
+			logger.L.Warn().Err(unsafeErr).Msgf(
+				"bootstrap recovery: refused unsafe dataset target for record %d",
+				b.ID,
+			)
+		} else {
+			cleanupCtx, cleanupCancel := bootstrapCleanupContext()
+			ds, getErr := s.getBootstrapDataset(cleanupCtx, identity)
+			if getErr != nil {
+				recoveryError += ": cleanup_failed: " + getErr.Error()
+				logger.L.Warn().Err(getErr).Msgf(
+					"bootstrap recovery: failed to inspect partial dataset %s",
+					identity.Dataset,
+				)
+			} else if ds != nil {
+				if destroyErr := ds.Destroy(cleanupCtx, true, false); destroyErr != nil &&
+					!isMissingBootstrapDatasetError(destroyErr) {
+					recoveryError += ": cleanup_failed: " + destroyErr.Error()
+					logger.L.Warn().Err(destroyErr).Msgf(
+						"bootstrap recovery: failed to destroy partial dataset %s",
+						identity.Dataset,
+					)
 				}
 			}
+			cleanupCancel()
 		}
 
 		if err := s.DB.Model(&b).Updates(map[string]interface{}{
 			"status": "failed",
 			"phase":  "",
-			"error":  "interrupted_by_server_restart",
+			"error":  recoveryError,
 		}).Error; err != nil {
 			logger.L.Error().Err(err).Msgf("bootstrap recovery: failed to update record %d", b.ID)
 		}

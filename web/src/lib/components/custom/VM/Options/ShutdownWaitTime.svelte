@@ -7,42 +7,57 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
 
-	let shutdownWaitTime = $state(vm.shutdownWaitTime);
+	let shutdownWaitTime = $state(untrack(() => vm.shutdownWaitTime));
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-
-		if (isNaN(Number(shutdownWaitTime)) || Number(shutdownWaitTime) < 0) {
-			toast.error('Shutdown Wait Time must be a non-negative number', {
+		if (saving) return;
+		const normalizedWaitTime = Number(shutdownWaitTime);
+		if (
+			!Number.isSafeInteger(normalizedWaitTime) ||
+			normalizedWaitTime < 1 ||
+			normalizedWaitTime > 3600
+		) {
+			toast.error('Shutdown wait time must be a whole number between 1 and 3600 seconds', {
 				position: 'bottom-center'
 			});
 			return;
 		}
 
-		const response = await modifyShutdownWaitTime(vm.rid, Number(shutdownWaitTime));
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify shutdown wait time', {
-				position: 'bottom-center'
+		saving = true;
+		try {
+			const response = await modifyShutdownWaitTime(vm.rid, normalizedWaitTime, {
+				hostname: node
 			});
-			return;
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify shutdown wait time', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No shutdown wait-time changes needed'
+					: 'Modified shutdown wait time',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified shutdown wait time', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -70,16 +85,24 @@
 		</Dialog.Header>
 
 		<CustomValueInput
-			label={'Start Order'}
-			placeholder="1"
+			label="Shutdown Wait Time"
+			placeholder="10"
 			bind:value={shutdownWaitTime}
 			classes="flex-1 space-y-1.5"
 			type="number"
+			disabled={saving}
 		/>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

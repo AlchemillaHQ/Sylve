@@ -10,22 +10,15 @@ package authHandlers
 
 import (
 	"crypto/tls"
+	"errors"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alchemillahq/sylve/internal/db/models"
-	"github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/gin-gonic/gin"
 )
-
-func newPasskeyHandlerTestAuthService(t *testing.T) *auth.Service {
-	t.Helper()
-
-	db := testutil.NewSQLiteTestDB(t, &models.User{})
-
-	return &auth.Service{DB: db}
-}
 
 func newPasskeyTestContext(remoteAddr string) (*gin.Context, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
@@ -64,6 +57,48 @@ func TestIsSecureRequestAllowsDirectTLS(t *testing.T) {
 	}
 }
 
+func TestIsSecureRequestAllowsConfiguredTrustedProxy(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.0/24"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("10.10.30.103:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if !isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_secure_via_trusted_proxy")
+	}
+}
+
+func TestIsSecureRequestRejectsNonConfiguredTrustedProxy(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.0/24"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("192.168.1.1:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_insecure_from_unknown_proxy")
+	}
+}
+
+func TestIsSecureRequestAllowsTrustedProxySingleIP(t *testing.T) {
+	config.ParsedConfig = &internal.SylveConfig{
+		TrustedProxies: []string{"10.10.30.103"},
+	}
+	defer func() { config.ParsedConfig = nil }()
+
+	c, _ := newPasskeyTestContext("10.10.30.103:44321")
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	if !isSecureRequest(c) {
+		t.Fatalf("expected_request_to_be_secure_via_trusted_proxy_ip")
+	}
+}
+
 func TestGetPasskeyRelyingPartyIgnoresForwardedHostFromUntrustedRemote(t *testing.T) {
 	c, _ := newPasskeyTestContext("8.8.8.8:44321")
 	c.Request.TLS = &tls.ConnectionState{}
@@ -84,69 +119,27 @@ func TestGetPasskeyRelyingPartyIgnoresForwardedHostFromUntrustedRemote(t *testin
 	}
 }
 
-func TestRequirePasskeyManagementAccessRejectsPamRealm(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	authService := newPasskeyHandlerTestAuthService(t)
-	c, rec := newPasskeyTestContext("127.0.0.1:12345")
-	c.Set("AuthType", "pam")
-	c.Set("UserID", uint(1))
-
-	allowed := requirePasskeyManagementAccess(c, authService)
-	if allowed {
-		t.Fatalf("expected_access_denied")
+func TestClassifyPasskeyManagementError(t *testing.T) {
+	tests := []struct {
+		code       string
+		wantStatus int
+		wantCode   string
+	}{
+		{code: "invalid_user_id", wantStatus: http.StatusBadRequest, wantCode: "invalid_user_id"},
+		{code: "passkey_registration_not_allowed", wantStatus: http.StatusForbidden, wantCode: "passkey_registration_not_allowed"},
+		{code: "user_not_found", wantStatus: http.StatusNotFound, wantCode: "user_not_found"},
+		{code: "credential_not_found", wantStatus: http.StatusNotFound, wantCode: "credential_not_found"},
+		{code: "challenge_used", wantStatus: http.StatusConflict, wantCode: "challenge_used"},
+		{code: "credential_already_registered", wantStatus: http.StatusConflict, wantCode: "credential_already_registered"},
+		{code: "failed_to_load_user", wantStatus: http.StatusInternalServerError, wantCode: "internal_server_error"},
 	}
 
-	if rec.Code != 403 {
-		t.Fatalf("expected_403_got: %d", rec.Code)
-	}
-}
-
-func TestRequirePasskeyManagementAccessRejectsNonAdmin(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	authService := newPasskeyHandlerTestAuthService(t)
-	if err := authService.DB.Create(&models.User{
-		ID:       1,
-		Username: "user",
-		Admin:    false,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	c, rec := newPasskeyTestContext("127.0.0.1:12345")
-	c.Set("AuthType", "sylve")
-	c.Set("UserID", uint(1))
-
-	allowed := requirePasskeyManagementAccess(c, authService)
-	if allowed {
-		t.Fatalf("expected_access_denied")
-	}
-
-	if rec.Code != 403 {
-		t.Fatalf("expected_403_got: %d", rec.Code)
-	}
-}
-
-func TestRequirePasskeyManagementAccessAllowsSylveAdmin(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	authService := newPasskeyHandlerTestAuthService(t)
-	if err := authService.DB.Create(&models.User{
-		ID:       1,
-		Username: "admin",
-		Admin:    true,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	c, rec := newPasskeyTestContext("127.0.0.1:12345")
-	c.Set("AuthType", auth.AuthTypeSylvePasskey)
-	c.Set("UserID", uint(1))
-
-	allowed := requirePasskeyManagementAccess(c, authService)
-	if !allowed {
-		t.Fatalf("expected_access_allowed")
-	}
-
-	if rec.Code != 200 {
-		t.Fatalf("expected_200_got: %d", rec.Code)
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			status, code := classifyPasskeyManagementError(errors.New(tt.code))
+			if status != tt.wantStatus || code != tt.wantCode {
+				t.Fatalf("expected (%d, %s), got (%d, %s)", tt.wantStatus, tt.wantCode, status, code)
+			}
+		})
 	}
 }

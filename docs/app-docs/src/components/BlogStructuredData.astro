@@ -1,0 +1,45 @@
+---
+export interface Props {
+  title: string;
+  description: string;
+  author: string;
+  pubDate: Date;
+  image?: string;
+  slug: string;
+}
+
+const { title, description, author, pubDate, image, slug } = Astro.props;
+const siteUrl = Astro.site?.origin ?? "https://sylve.io";
+const url = `${siteUrl}/blog/${slug}`;
+---
+
+<script type="application/ld+json" set:html={JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": title,
+  "description": description,
+  "author": {
+    "@type": "Person",
+    "name": author
+  },
+  "datePublished": new Date(pubDate).toISOString(),
+  "url": url,
+  "image": image
+    ? image.startsWith("http")
+      ? image
+      : new URL(image, siteUrl).toString()
+    : undefined,
+  "isPartOf": {
+    "@type": "Blog",
+    "name": "Sylve Blog",
+    "url": `${siteUrl}/blog`
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Sylve",
+    "logo": {
+      "@type": "ImageObject",
+      "url": `${siteUrl}/favicon.svg`
+    }
+  }
+})} />

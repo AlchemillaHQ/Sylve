@@ -13,16 +13,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
@@ -31,6 +34,25 @@ import (
 )
 
 var invalidVMSnapshotNameChars = regexp.MustCompile(`[^A-Za-z0-9._:-]+`)
+
+const (
+	vmSnapshotCleanupTimeout  = 2 * time.Minute
+	vmSnapshotMutationTimeout = 10 * time.Minute
+)
+
+type VMSnapshotRollbackResult struct {
+	WasRunning              bool     `json:"wasRunning"`
+	Restarted               bool     `json:"restarted"`
+	NewerSnapshotsDestroyed int64    `json:"newerSnapshotsDestroyed"`
+	Warnings                []string `json:"warnings"`
+}
+
+func detachedVMSnapshotContext(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), timeout)
+}
 
 func (s *Service) ListVMSnapshots(rid uint) ([]vmModels.VMSnapshot, error) {
 	if rid == 0 {
@@ -90,6 +112,9 @@ func (s *Service) CreateVMSnapshot(
 	if err != nil {
 		return nil, err
 	}
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, fmt.Errorf("gzfs_not_initialized")
+	}
 
 	if err := s.WriteVMJson(rid); err != nil {
 		return nil, fmt.Errorf("failed_to_write_vm_json_before_snapshot: %w", err)
@@ -102,18 +127,18 @@ func (s *Service) CreateVMSnapshot(
 	for _, rootDataset := range rootDatasets {
 		rootFS, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
 		if err != nil {
-			s.destroyVMSnapshotFromRoots(ctx, createdRoots, snapshotName)
+			s.cleanupCreatedVMSnapshot(ctx, createdRoots, snapshotName)
 			return nil, fmt.Errorf("failed_to_get_vm_root_dataset: %w", err)
 		}
 
 		createdSnapshot, err := rootFS.Snapshot(ctx, snapshotName, true)
 		if err != nil {
-			s.destroyVMSnapshotFromRoots(ctx, createdRoots, snapshotName)
+			s.cleanupCreatedVMSnapshot(ctx, createdRoots, snapshotName)
 			return nil, fmt.Errorf("failed_to_create_vm_snapshot: %w", err)
 		}
 
 		if createdSnapshot == nil {
-			s.destroyVMSnapshotFromRoots(ctx, createdRoots, snapshotName)
+			s.cleanupCreatedVMSnapshot(ctx, createdRoots, snapshotName)
 			return nil, fmt.Errorf("snapshot_creation_returned_nil")
 		}
 
@@ -127,6 +152,9 @@ func (s *Service) CreateVMSnapshot(
 		Order("created_at DESC, id DESC").
 		First(&latest).Error; err == nil {
 		parentID = &latest.ID
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		s.cleanupCreatedVMSnapshot(ctx, rootDatasets, snapshotName)
+		return nil, fmt.Errorf("failed_to_find_latest_vm_snapshot: %w", err)
 	}
 
 	record := vmModels.VMSnapshot{
@@ -140,7 +168,7 @@ func (s *Service) CreateVMSnapshot(
 	}
 
 	if err := s.DB.Create(&record).Error; err != nil {
-		s.destroyVMSnapshotFromRoots(ctx, rootDatasets, snapshotName)
+		s.cleanupCreatedVMSnapshot(ctx, rootDatasets, snapshotName)
 		return nil, fmt.Errorf("failed_to_record_vm_snapshot: %w", err)
 	}
 
@@ -158,164 +186,144 @@ func (s *Service) RollbackVMSnapshot(
 	ctx context.Context,
 	rid uint,
 	snapshotID uint,
-	destroyMoreRecent bool,
-) error {
+) (VMSnapshotRollbackResult, error) {
+	return s.rollbackVMSnapshot(ctx, rid, snapshotID, true)
+}
+
+func (s *Service) RollbackVMSnapshotWithDestroyNewer(
+	ctx context.Context,
+	rid uint,
+	snapshotID uint,
+	destroyNewer bool,
+) (VMSnapshotRollbackResult, error) {
+	return s.rollbackVMSnapshot(ctx, rid, snapshotID, destroyNewer)
+}
+
+func (s *Service) rollbackVMSnapshot(
+	ctx context.Context,
+	rid uint,
+	snapshotID uint,
+	destroyNewer bool,
+) (VMSnapshotRollbackResult, error) {
+	result := VMSnapshotRollbackResult{Warnings: []string{}}
+
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
 	if rid == 0 || snapshotID == 0 {
-		return fmt.Errorf("invalid_request")
+		return result, fmt.Errorf("invalid_request")
 	}
 	if err := s.requireVMMutationOwnership(rid); err != nil {
-		return err
+		return result, err
+	}
+	if err := s.requireVMStorageTopologyMutable(rid); err != nil {
+		return result, err
 	}
 
 	var record vmModels.VMSnapshot
 	if err := s.DB.
 		Where("rid = ? AND id = ?", rid, snapshotID).
 		First(&record).Error; err != nil {
-		return fmt.Errorf("snapshot_not_found: %w", err)
+		return result, fmt.Errorf("snapshot_not_found: %w", err)
+	}
+
+	newerSnapshotCount, err := countNewerVMSnapshotRecords(s.DB, record)
+	if err != nil {
+		return result, err
+	}
+	if newerSnapshotCount > 0 && !destroyNewer {
+		return result, fmt.Errorf(
+			"newer_snapshots_require_acknowledgement: rollback would destroy %d newer snapshot(s); retry with explicit acknowledgement",
+			newerSnapshotCount,
+		)
 	}
 
 	vm, err := s.GetVMByRID(rid)
 	if err != nil {
-		return fmt.Errorf("failed_to_get_vm: %w", err)
+		return result, fmt.Errorf("failed_to_get_vm: %w", err)
 	}
-
-	startAfter := false
-	rollbackSucceeded := false
-	if _, err := s.ensureConnection(); err == nil {
-		isShutOff, err := s.IsDomainShutOff(rid)
-		if err != nil {
-			if !isVMDomainNotFoundError(err) {
-				return fmt.Errorf("failed_to_get_vm_state: %w", err)
-			}
-			isShutOff = true
-		}
-
-		if !isShutOff {
-			if err := s.LvVMAction(vm, "stop"); err != nil {
-				return fmt.Errorf("failed_to_stop_vm_before_snapshot_rollback: %w", err)
-			}
-			if err := s.waitForVMShutOffState(rid, true, 45*time.Second); err != nil {
-				return err
-			}
-			startAfter = true
-		}
-	} else {
-		logger.L.Warn().Uint("rid", rid).Err(err).Msg("libvirt_connection_not_available_during_snapshot_rollback")
-	}
-
-	defer func() {
-		if !startAfter {
-			return
-		}
-		if !rollbackSucceeded {
-			logger.L.Warn().
-				Uint("rid", rid).
-				Msg("skipping_vm_restart_after_snapshot_rollback_due_to_failure")
-			return
-		}
-
-		freshVM, err := s.GetVMByRID(rid)
-		if err != nil {
-			logger.L.Warn().Err(err).Uint("rid", rid).Msg("failed_to_get_vm_after_snapshot_rollback")
-			return
-		}
-
-		if err := s.LvVMAction(freshVM, "start"); err != nil {
-			logger.L.Warn().Err(err).Uint("rid", rid).Msg("failed_to_start_vm_after_snapshot_rollback")
-			return
-		}
-		if err := s.waitForVMShutOffState(rid, false, 60*time.Second); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("rid", rid).
-				Msg("vm_did_not_reach_running_state_after_snapshot_rollback")
-		}
-	}()
 
 	rootDatasets := record.RootDatasets
 	if len(rootDatasets) == 0 {
 		resolvedRoots, err := resolveVMRootDatasets(&vm)
 		if err != nil {
-			return err
+			return result, err
 		}
 		rootDatasets = resolvedRoots
 	}
 
-	rollbackTargets := make([]string, 0, len(rootDatasets))
-	seenTargets := make(map[string]struct{}, len(rootDatasets))
-	for _, rootDataset := range rootDatasets {
-		targets, err := s.listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
-		if err != nil {
-			return err
-		}
-		if len(targets) == 0 {
-			fullSnapshot := fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName)
-			if _, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false); err != nil {
-				return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
-			}
-			targets = []string{fullSnapshot}
-		}
-
-		for _, target := range targets {
-			if _, exists := seenTargets[target]; exists {
-				continue
-			}
-			seenTargets[target] = struct{}{}
-			rollbackTargets = append(rollbackTargets, target)
-		}
+	rollbackTargets, err := s.collectVMSnapshotTargets(ctx, rootDatasets, record.SnapshotName)
+	if err != nil {
+		return result, err
 	}
 
-	slices.SortStableFunc(rollbackTargets, func(left, right string) int {
-		leftDepth := snapshotDatasetDepth(left)
-		rightDepth := snapshotDatasetDepth(right)
-		if leftDepth > rightDepth {
-			return -1
+	restored, warnings, err := s.preflightVMSnapshotRestore(
+		ctx,
+		rid,
+		vm,
+		rootDatasets,
+		record.SnapshotName,
+	)
+	if err != nil {
+		return result, err
+	}
+	result.Warnings = append(result.Warnings, warnings...)
+
+	if _, err := s.ensureConnection(); err != nil {
+		return result, fmt.Errorf("libvirt_connection_unavailable: %w", err)
+	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return result, err
+	}
+	if err := s.requireVMStorageTopologyMutable(rid); err != nil {
+		return result, err
+	}
+
+	isShutOff, err := s.IsDomainShutOff(rid)
+	if err != nil {
+		if !isVMDomainNotFoundError(err) {
+			return result, fmt.Errorf("failed_to_get_vm_state: %w", err)
 		}
-		if leftDepth < rightDepth {
-			return 1
+		isShutOff = true
+	}
+
+	if !isShutOff {
+		if err := s.lvVMActionLocked(vm, "stop", ""); err != nil {
+			return result, fmt.Errorf("failed_to_stop_vm_before_snapshot_rollback: %w", err)
 		}
-		if left < right {
-			return -1
+		if err := s.waitForVMShutOffState(rid, true, 45*time.Second); err != nil {
+			return result, err
 		}
-		if left > right {
-			return 1
-		}
-		return 0
-	})
+		result.WasRunning = true
+	}
+
+	mutationCtx, cancelMutation := detachedVMSnapshotContext(ctx, vmSnapshotMutationTimeout)
+	defer cancelMutation()
 
 	for _, fullSnapshot := range rollbackTargets {
-		if _, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false); err != nil {
-			return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
-		}
-	}
-
-	for _, fullSnapshot := range rollbackTargets {
-		snapshotDataset, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false)
+		snapshotDataset, err := s.GZFS.ZFS.Get(mutationCtx, fullSnapshot, false)
 		if err != nil {
-			return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
+			return result, fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
 		}
-		if err := snapshotDataset.Rollback(ctx, destroyMoreRecent); err != nil {
-			return fmt.Errorf("failed_to_rollback_snapshot: %w", err)
+		if err := snapshotDataset.Rollback(mutationCtx, destroyNewer); err != nil {
+			return result, fmt.Errorf("failed_to_rollback_snapshot: %w", err)
 		}
 	}
 
-	if err := s.restoreVMRuntimeArtifactsFromSnapshot(ctx, rid, rootDatasets); err != nil {
-		return fmt.Errorf("failed_to_restore_vm_runtime_artifacts: %w", err)
+	if err := s.restoreVMRuntimeArtifactsFromSnapshot(mutationCtx, rid, rootDatasets); err != nil {
+		return result, fmt.Errorf("failed_to_restore_vm_runtime_artifacts: %w", err)
 	}
 
-	if err := s.restoreVMDatabaseFromSnapshotJSON(ctx, rid, rootDatasets); err != nil {
-		return fmt.Errorf("failed_to_restore_vm_config_from_snapshot: %w", err)
+	if err := s.restoreVMDatabaseFromSnapshotConfig(rid, restored); err != nil {
+		return result, fmt.Errorf("failed_to_restore_vm_config_from_snapshot: %w", err)
 	}
 
-	if _, err := s.ensureConnection(); err == nil {
-		if err := s.redefineVMDomainFromDatabase(rid); err != nil {
-			return fmt.Errorf("failed_to_redefine_vm_domain_after_snapshot_rollback: %w", err)
-		}
-	} else {
-		logger.L.Warn().Uint("rid", rid).Err(err).Msg("skipping_vm_domain_redefine_after_snapshot_rollback")
+	if err := s.redefineVMDomainFromDatabase(rid); err != nil {
+		return result, fmt.Errorf("failed_to_redefine_vm_domain_after_snapshot_rollback: %w", err)
 	}
 
 	if err := s.DB.
@@ -327,15 +335,62 @@ func (s *Service) RollbackVMSnapshot(
 			record.ID,
 		).
 		Delete(&vmModels.VMSnapshot{}).Error; err != nil {
-		return fmt.Errorf("failed_to_prune_newer_snapshot_records: %w", err)
+		return result, fmt.Errorf("failed_to_prune_newer_snapshot_records: %w", err)
 	}
+	result.NewerSnapshotsDestroyed = newerSnapshotCount
 
 	if err := s.WriteVMJson(rid); err != nil {
-		return fmt.Errorf("failed_to_refresh_vm_json_after_rollback: %w", err)
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"failed_to_refresh_vm_json_after_rollback: %v",
+			err,
+		))
 	}
 
-	rollbackSucceeded = true
-	return nil
+	if result.WasRunning {
+		freshVM, err := s.GetVMByRID(rid)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"failed_to_get_vm_for_restart_after_snapshot_rollback: %v",
+				err,
+			))
+		} else if err := s.lvVMActionLocked(freshVM, "start", ""); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"failed_to_start_vm_after_snapshot_rollback: %v",
+				err,
+			))
+		} else if err := s.waitForVMShutOffState(rid, false, 60*time.Second); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"vm_did_not_reach_running_state_after_snapshot_rollback: %v",
+				err,
+			))
+		} else {
+			result.Restarted = true
+		}
+	}
+
+	s.emitLeftPanelRefresh(fmt.Sprintf("vm_snapshot_rollback_%d", rid))
+	return result, nil
+}
+
+func countNewerVMSnapshotRecords(db *gorm.DB, record vmModels.VMSnapshot) (int64, error) {
+	if db == nil {
+		return 0, fmt.Errorf("snapshot_database_not_initialized")
+	}
+
+	var count int64
+	if err := db.Model(&vmModels.VMSnapshot{}).
+		Where(
+			"vm_id = ? AND (created_at > ? OR (created_at = ? AND id > ?))",
+			record.VMID,
+			record.CreatedAt,
+			record.CreatedAt,
+			record.ID,
+		).
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed_to_count_newer_snapshot_records: %w", err)
+	}
+
+	return count, nil
 }
 
 func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uint) error {
@@ -346,6 +401,9 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 		return fmt.Errorf("invalid_request")
 	}
 	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireVMStorageTopologyMutable(rid); err != nil {
 		return err
 	}
 
@@ -371,48 +429,23 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 		rootDatasets = resolvedRoots
 	}
 
-	deleteTargets := make([]string, 0, len(rootDatasets))
-	seenTargets := make(map[string]struct{}, len(rootDatasets))
-	for _, rootDataset := range rootDatasets {
-		targets, err := s.listRecursiveRollbackTargets(ctx, rootDataset, record.SnapshotName)
-		if err != nil {
-			return err
-		}
-		if len(targets) == 0 {
-			targets = []string{
-				fmt.Sprintf("%s@%s", rootDataset, record.SnapshotName),
-			}
-		}
-
-		for _, target := range targets {
-			if _, exists := seenTargets[target]; exists {
-				continue
-			}
-			seenTargets[target] = struct{}{}
-			deleteTargets = append(deleteTargets, target)
-		}
+	deleteTargets, err := s.collectVMSnapshotTargets(ctx, rootDatasets, record.SnapshotName)
+	if err != nil {
+		return err
 	}
 
-	slices.SortStableFunc(deleteTargets, func(left, right string) int {
-		leftDepth := snapshotDatasetDepth(left)
-		rightDepth := snapshotDatasetDepth(right)
-		if leftDepth > rightDepth {
-			return -1
-		}
-		if leftDepth < rightDepth {
-			return 1
-		}
-		if left < right {
-			return -1
-		}
-		if left > right {
-			return 1
-		}
-		return 0
-	})
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.requireVMStorageTopologyMutable(rid); err != nil {
+		return err
+	}
+
+	mutationCtx, cancelMutation := detachedVMSnapshotContext(ctx, vmSnapshotMutationTimeout)
+	defer cancelMutation()
 
 	for _, fullSnapshot := range deleteTargets {
-		ds, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false)
+		ds, err := s.GZFS.ZFS.Get(mutationCtx, fullSnapshot, false)
 		if err != nil {
 			if !isVMDatasetNotFoundError(err) {
 				return fmt.Errorf("failed_to_get_snapshot_for_deletion: %w", err)
@@ -420,13 +453,13 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 			continue
 		}
 
-		if err := ds.Destroy(ctx, false, false); err != nil {
+		if err := ds.Destroy(mutationCtx, false, false); err != nil {
 			return fmt.Errorf("failed_to_delete_snapshot_dataset: %w", err)
 		}
 	}
 
-	if err := s.DB.Delete(&record).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_snapshot_record: %w", err)
+	if err := reparentAndDeleteVMSnapshotRecord(s.DB, record); err != nil {
+		return err
 	}
 
 	if err := s.WriteVMJson(rid); err != nil {
@@ -434,6 +467,32 @@ func (s *Service) DeleteVMSnapshot(ctx context.Context, rid uint, snapshotID uin
 			Err(err).
 			Uint("rid", rid).
 			Msg("failed_to_refresh_vm_json_after_snapshot_delete")
+	}
+
+	return nil
+}
+
+func reparentAndDeleteVMSnapshotRecord(db *gorm.DB, record vmModels.VMSnapshot) error {
+	if db == nil {
+		return fmt.Errorf("snapshot_database_not_initialized")
+	}
+
+	tx := db.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("failed_to_start_snapshot_delete_transaction: %w", tx.Error)
+	}
+	if err := tx.Model(&vmModels.VMSnapshot{}).
+		Where("parent_snapshot_id = ?", record.ID).
+		Update("parent_snapshot_id", record.ParentSnapshotID).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_reparent_vm_snapshot_children: %w", err)
+	}
+	if err := tx.Delete(&record).Error; err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("failed_to_delete_snapshot_record: %w", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("failed_to_commit_snapshot_delete: %w", err)
 	}
 
 	return nil
@@ -453,6 +512,70 @@ func (s *Service) destroyVMSnapshotFromRoots(ctx context.Context, rootDatasets [
 				Msg("failed_to_cleanup_vm_snapshot_after_error")
 		}
 	}
+}
+
+func (s *Service) cleanupCreatedVMSnapshot(parent context.Context, rootDatasets []string, snapshotName string) {
+	if len(rootDatasets) == 0 {
+		return
+	}
+
+	cleanupCtx, cancelCleanup := detachedVMSnapshotContext(parent, vmSnapshotCleanupTimeout)
+	defer cancelCleanup()
+	s.destroyVMSnapshotFromRoots(cleanupCtx, rootDatasets, snapshotName)
+}
+
+func (s *Service) collectVMSnapshotTargets(
+	ctx context.Context,
+	rootDatasets []string,
+	snapshotName string,
+) ([]string, error) {
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, fmt.Errorf("gzfs_not_initialized")
+	}
+
+	targetsByName := make(map[string]struct{}, len(rootDatasets))
+	for _, rootDataset := range rootDatasets {
+		targets, err := s.listRecursiveRollbackTargets(ctx, rootDataset, snapshotName)
+		if err != nil {
+			if isVMDatasetNotFoundError(err) {
+				return nil, fmt.Errorf("vm_snapshot_dataset_missing: %s@%s: %w", rootDataset, snapshotName, err)
+			}
+			return nil, err
+		}
+		if len(targets) == 0 {
+			targets = []string{fmt.Sprintf("%s@%s", rootDataset, snapshotName)}
+		}
+		for _, target := range targets {
+			targetsByName[target] = struct{}{}
+		}
+	}
+
+	targets := make([]string, 0, len(targetsByName))
+	for target := range targetsByName {
+		targets = append(targets, target)
+	}
+	slices.SortStableFunc(targets, func(left, right string) int {
+		leftDepth := snapshotDatasetDepth(left)
+		rightDepth := snapshotDatasetDepth(right)
+		if leftDepth > rightDepth {
+			return -1
+		}
+		if leftDepth < rightDepth {
+			return 1
+		}
+		return strings.Compare(left, right)
+	})
+
+	for _, target := range targets {
+		if _, err := s.GZFS.ZFS.Get(ctx, target, false); err != nil {
+			if isVMDatasetNotFoundError(err) {
+				return nil, fmt.Errorf("vm_snapshot_dataset_missing: %s: %w", target, err)
+			}
+			return nil, fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
+		}
+	}
+
+	return targets, nil
 }
 
 func resolveVMRootDatasets(vm *vmModels.VM) ([]string, error) {
@@ -584,12 +707,7 @@ func isVMDatasetNotFoundError(err error) bool {
 }
 
 func isVMDomainNotFoundError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "domain") &&
-		(strings.Contains(msg, "not found") || strings.Contains(msg, "no domain"))
+	return libvirtServiceInterfaces.IsDomainNotFoundError(err)
 }
 
 func (s *Service) waitForVMShutOffState(rid uint, shouldBeShutOff bool, timeout time.Duration) error {
@@ -683,63 +801,105 @@ func (s *Service) restoreVMRuntimeArtifactsFromSnapshot(
 	return nil
 }
 
-func (s *Service) restoreVMDatabaseFromSnapshotJSON(
+func (s *Service) preflightVMSnapshotRestore(
 	ctx context.Context,
 	rid uint,
+	current vmModels.VM,
 	rootDatasets []string,
-) error {
+	snapshotName string,
+) (vmModels.VM, []string, error) {
 	if rid == 0 {
-		return fmt.Errorf("invalid_rid")
+		return vmModels.VM{}, nil, fmt.Errorf("invalid_rid")
 	}
 
-	metadataRaw, found, err := s.readVMSnapshotFileFromCandidates(ctx, rootDatasets, ".sylve/vm.json")
+	metadataRaw, found, err := s.readVMSnapshotFileFromCandidatesAtSnapshot(
+		ctx,
+		rootDatasets,
+		snapshotName,
+		".sylve/vm.json",
+	)
 	if err != nil {
-		return fmt.Errorf("failed_to_read_snapshot_vm_json: %w", err)
+		return vmModels.VM{}, nil, fmt.Errorf("failed_to_read_snapshot_vm_json: %w", err)
 	}
 	if !found {
-		return fmt.Errorf("snapshot_vm_json_not_found")
+		return vmModels.VM{}, nil, fmt.Errorf("snapshot_vm_json_not_found")
 	}
 
 	var restored vmModels.VM
 	if err := json.Unmarshal(metadataRaw, &restored); err != nil {
-		return fmt.Errorf("invalid_snapshot_vm_json: %w", err)
+		return vmModels.VM{}, nil, fmt.Errorf("invalid_snapshot_vm_json: %w", err)
 	}
+	if restored.RID != 0 && restored.RID != rid {
+		return vmModels.VM{}, nil, fmt.Errorf(
+			"snapshot_vm_identity_mismatch: expected rid %d, found %d",
+			rid,
+			restored.RID,
+		)
+	}
+
+	warnings := make([]string, 0)
+	restored.ID = current.ID
+	restored.RID = rid
+	restored.Name = current.Name
 
 	normalizedPins, pinWarnings, err := s.normalizeRestoredCPUPinning(rid, restored.CPUPinning)
 	if err != nil {
-		return err
+		return vmModels.VM{}, nil, err
 	}
-	for _, warning := range pinWarnings {
-		logger.L.Warn().
-			Uint("rid", rid).
-			Str("warning", warning).
-			Msg("vm_snapshot_restore_cpu_pinning_warning")
-	}
+	warnings = append(warnings, pinWarnings...)
 	restored.CPUPinning = normalizedPins
 
 	normalizedPCI, pciWarnings, err := s.normalizeRestoredPCIDevices(rid, restored.PCIDevices)
 	if err != nil {
-		return err
+		return vmModels.VM{}, nil, err
 	}
-	for _, warning := range pciWarnings {
-		logger.L.Warn().
-			Uint("rid", rid).
-			Str("warning", warning).
-			Msg("vm_snapshot_restore_pci_warning")
-	}
+	warnings = append(warnings, pciWarnings...)
 	restored.PCIDevices = normalizedPCI
 
-	normalizedNetworks, networkWarnings, err := s.normalizeRestoredVMNetworks(restored.Networks)
+	normalizedNetworks, networkWarnings, err := s.normalizeRestoredVMNetworks(current.ID, restored.Networks)
 	if err != nil {
-		return err
+		return vmModels.VM{}, nil, err
 	}
-	for _, warning := range networkWarnings {
+	warnings = append(warnings, networkWarnings...)
+	restored.Networks = normalizedNetworks
+
+	vncWarnings, err := s.normalizeRestoredVNC(rid, current, &restored)
+	if err != nil {
+		return vmModels.VM{}, nil, err
+	}
+	warnings = append(warnings, vncWarnings...)
+
+	normalizedStorages, storageWarnings, err := s.normalizeRestoredVMStorages(
+		ctx,
+		rid,
+		current.ID,
+		rootDatasets,
+		snapshotName,
+		restored.Storages,
+	)
+	if err != nil {
+		return vmModels.VM{}, nil, err
+	}
+	warnings = append(warnings, storageWarnings...)
+	restored.Storages = normalizedStorages
+
+	for _, warning := range warnings {
 		logger.L.Warn().
 			Uint("rid", rid).
 			Str("warning", warning).
-			Msg("vm_snapshot_restore_network_warning")
+			Msg("vm_snapshot_restore_preflight_warning")
 	}
-	restored.Networks = normalizedNetworks
+
+	return restored, warnings, nil
+}
+
+func (s *Service) restoreVMDatabaseFromSnapshotConfig(
+	rid uint,
+	restored vmModels.VM,
+) error {
+	if rid == 0 {
+		return fmt.Errorf("invalid_rid")
+	}
 
 	current, err := s.GetVMByRID(rid)
 	if err != nil {
@@ -752,7 +912,6 @@ func (s *Service) restoreVMDatabaseFromSnapshotJSON(
 	}
 
 	vmUpdate := vmModels.VM{
-		Name:                   restored.Name,
 		Description:            restored.Description,
 		CPUSockets:             restored.CPUSockets,
 		CPUCores:               restored.CPUCores,
@@ -786,7 +945,6 @@ func (s *Service) restoreVMDatabaseFromSnapshotJSON(
 	if err := tx.Model(&vmModels.VM{}).
 		Where("id = ?", current.ID).
 		Select(
-			"Name",
 			"Description",
 			"CPUSockets",
 			"CPUCores",
@@ -1054,7 +1212,7 @@ func (s *Service) normalizeRestoredPCIDevices(rid uint, pciDevices []int) ([]int
 	}
 
 	var otherVMs []vmModels.VM
-	if err := s.DB.Select("rid", "pci_devices").Where("rid <> ?", rid).Find(&otherVMs).Error; err != nil {
+	if err := s.DB.Select("rid", vmPCIDevicesColumn).Where("rid <> ?", rid).Find(&otherVMs).Error; err != nil {
 		return nil, nil, fmt.Errorf("failed_to_list_vm_pci_assignments_for_snapshot_restore: %w", err)
 	}
 
@@ -1100,6 +1258,7 @@ func (s *Service) normalizeRestoredPCIDevices(rid uint, pciDevices []int) ([]int
 }
 
 func (s *Service) normalizeRestoredVMNetworks(
+	currentVMID uint,
 	networks []vmModels.Network,
 ) ([]vmModels.Network, []string, error) {
 	if len(networks) == 0 {
@@ -1108,6 +1267,8 @@ func (s *Service) normalizeRestoredVMNetworks(
 
 	warnings := make([]string, 0)
 	out := make([]vmModels.Network, 0, len(networks))
+	seenMACObjects := make(map[uint]struct{}, len(networks))
+	seenRawMACs := make(map[string]struct{}, len(networks))
 
 	for _, network := range networks {
 		switchType := strings.ToLower(strings.TrimSpace(network.SwitchType))
@@ -1125,7 +1286,6 @@ func (s *Service) normalizeRestoredVMNetworks(
 				return nil, nil, fmt.Errorf("failed_to_lookup_standard_switch_for_snapshot_restore: %w", err)
 			}
 			network.SwitchType = "standard"
-			out = append(out, network)
 		case "manual":
 			var sw networkModels.ManualSwitch
 			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
@@ -1139,11 +1299,336 @@ func (s *Service) normalizeRestoredVMNetworks(
 				return nil, nil, fmt.Errorf("failed_to_lookup_manual_switch_for_snapshot_restore: %w", err)
 			}
 			network.SwitchType = "manual"
-			out = append(out, network)
 		default:
 			warnings = append(warnings, fmt.Sprintf(
 				"switch_type_%q_invalid_for_network_restore; skipped",
 				network.SwitchType,
+			))
+			continue
+		}
+
+		if network.MacID != nil && *network.MacID != 0 {
+			macID := *network.MacID
+			if _, duplicate := seenMACObjects[macID]; duplicate {
+				warnings = append(warnings, fmt.Sprintf(
+					"mac_object_%d_duplicated_in_restored_config; skipped network restore",
+					macID,
+				))
+				continue
+			}
+
+			var macObject networkModels.Object
+			if err := s.DB.Preload("Entries").Where("id = ? AND type = ?", macID, "Mac").First(&macObject).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					warnings = append(warnings, fmt.Sprintf(
+						"mac_object_%d_not_found; skipped network restore",
+						macID,
+					))
+					continue
+				}
+				return nil, nil, fmt.Errorf("failed_to_lookup_mac_object_for_snapshot_restore: %w", err)
+			}
+			if len(macObject.Entries) == 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"mac_object_%d_has_no_entries; skipped network restore",
+					macID,
+				))
+				continue
+			}
+			macAddress := strings.ToLower(strings.TrimSpace(macObject.Entries[0].Value))
+			if _, err := net.ParseMAC(macAddress); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"mac_object_%d_has_invalid_address; skipped network restore",
+					macID,
+				))
+				continue
+			}
+
+			var otherVMReferences int64
+			if err := s.DB.Model(&vmModels.Network{}).
+				Where("mac_id = ? AND vm_id <> ?", macID, currentVMID).
+				Count(&otherVMReferences).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_check_restored_mac_vm_usage: %w", err)
+			}
+			var jailReferences int64
+			if err := s.DB.Table("jail_networks").
+				Where("mac_id = ?", macID).
+				Count(&jailReferences).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_check_restored_mac_jail_usage: %w", err)
+			}
+			if otherVMReferences > 0 || jailReferences > 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"mac_object_%d_already_in_use; skipped network restore",
+					macID,
+				))
+				continue
+			}
+
+			seenMACObjects[macID] = struct{}{}
+			network.MAC = ""
+		} else if rawMAC := strings.ToLower(strings.TrimSpace(network.MAC)); rawMAC != "" {
+			if _, err := net.ParseMAC(rawMAC); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"raw_mac_%q_invalid; skipped network restore",
+					network.MAC,
+				))
+				continue
+			}
+			if _, duplicate := seenRawMACs[rawMAC]; duplicate {
+				warnings = append(warnings, fmt.Sprintf(
+					"raw_mac_%s_duplicated_in_restored_config; skipped network restore",
+					rawMAC,
+				))
+				continue
+			}
+
+			var otherVMReferences int64
+			if err := s.DB.Table("vm_networks").
+				Joins("LEFT JOIN object_entries ON object_entries.object_id = vm_networks.mac_id").
+				Where("vm_networks.vm_id <> ?", currentVMID).
+				Where("LOWER(vm_networks.mac) = ? OR LOWER(object_entries.value) = ?", rawMAC, rawMAC).
+				Count(&otherVMReferences).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_check_restored_raw_mac_vm_usage: %w", err)
+			}
+			var jailReferences int64
+			if err := s.DB.Table("jail_networks").
+				Joins("LEFT JOIN object_entries ON object_entries.object_id = jail_networks.mac_id").
+				Where("LOWER(object_entries.value) = ?", rawMAC).
+				Count(&jailReferences).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_check_restored_raw_mac_jail_usage: %w", err)
+			}
+			if otherVMReferences > 0 || jailReferences > 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"raw_mac_%s_already_in_use; skipped network restore",
+					rawMAC,
+				))
+				continue
+			}
+			seenRawMACs[rawMAC] = struct{}{}
+			network.MAC = rawMAC
+		}
+
+		out = append(out, network)
+	}
+
+	return out, warnings, nil
+}
+
+func copyVNCSettings(dst *vmModels.VM, src vmModels.VM) {
+	dst.VNCEnabled = src.VNCEnabled
+	dst.VNCBind = src.VNCBind
+	dst.VNCPort = src.VNCPort
+	dst.VNCPassword = src.VNCPassword
+	dst.VNCResolution = src.VNCResolution
+	dst.VNCWait = src.VNCWait
+}
+
+func (s *Service) normalizeRestoredVNC(
+	rid uint,
+	current vmModels.VM,
+	restored *vmModels.VM,
+) ([]string, error) {
+	if restored == nil {
+		return nil, fmt.Errorf("invalid_snapshot_vm_json")
+	}
+	if !restored.VNCEnabled {
+		restored.VNCPort = 0
+		restored.VNCBind = NormalizeVNCBindAddress(restored.VNCBind)
+		return nil, nil
+	}
+
+	preserveCurrent := func(reason string) ([]string, error) {
+		copyVNCSettings(restored, current)
+		return []string{reason + "; preserved current vnc settings"}, nil
+	}
+
+	restored.VNCBind = NormalizeVNCBindAddress(restored.VNCBind)
+	if err := ValidateVNCBindAddress(restored.VNCBind); err != nil {
+		return preserveCurrent("restored vnc bind address is invalid")
+	}
+	if restored.VNCPort < 1 || restored.VNCPort > 65535 {
+		return preserveCurrent("restored vnc port is outside 1-65535")
+	}
+
+	widthRaw, heightRaw, found := strings.Cut(strings.TrimSpace(restored.VNCResolution), "x")
+	width, widthErr := strconv.Atoi(widthRaw)
+	height, heightErr := strconv.Atoi(heightRaw)
+	if !found || widthErr != nil || heightErr != nil || width <= 0 || height <= 0 {
+		return preserveCurrent("restored vnc resolution is invalid")
+	}
+
+	var otherVMs int64
+	if err := s.DB.Model(&vmModels.VM{}).
+		Where("vnc_enabled = ? AND vnc_port = ? AND rid <> ?", true, restored.VNCPort, rid).
+		Count(&otherVMs).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_check_restored_vnc_port_usage: %w", err)
+	}
+	if otherVMs > 0 {
+		return preserveCurrent("restored vnc port is assigned to another vm")
+	}
+
+	if (restored.VNCPort != current.VNCPort || !current.VNCEnabled) && utils.IsTCPPortInUse(restored.VNCPort) {
+		return preserveCurrent("restored vnc port is used by another service")
+	}
+
+	return nil, nil
+}
+
+func datasetBelongsToVMRoots(datasetName string, rootDatasets []string) bool {
+	datasetName = strings.TrimSpace(datasetName)
+	for _, rootDataset := range rootDatasets {
+		rootDataset = strings.TrimSuffix(strings.TrimSpace(rootDataset), "/")
+		if datasetName == rootDataset || strings.HasPrefix(datasetName, rootDataset+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func restoredVMStorageDatasetName(rid uint, storage vmModels.Storage) string {
+	datasetName := strings.TrimSpace(storage.Dataset.Name)
+	if datasetName != "" {
+		return datasetName
+	}
+
+	pool := strings.TrimSpace(storage.Pool)
+	if pool == "" {
+		pool = strings.TrimSpace(storage.Dataset.Pool)
+	}
+	if pool == "" || storage.ID == 0 {
+		return ""
+	}
+
+	prefix := "raw"
+	if storage.Type == vmModels.VMStorageTypeZVol {
+		prefix = "zvol"
+	}
+	return fmt.Sprintf("%s/sylve/virtual-machines/%d/%s-%d", pool, rid, prefix, storage.ID)
+}
+
+func (s *Service) normalizeRestoredVMStorages(
+	ctx context.Context,
+	rid uint,
+	currentVMID uint,
+	rootDatasets []string,
+	snapshotName string,
+	storages []vmModels.Storage,
+) ([]vmModels.Storage, []string, error) {
+	if len(storages) == 0 {
+		return []vmModels.Storage{}, nil, nil
+	}
+
+	if len(rootDatasets) == 0 {
+		return nil, nil, fmt.Errorf("vm_snapshot_root_dataset_not_found")
+	}
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, nil, fmt.Errorf("gzfs_not_initialized")
+	}
+
+	warnings := make([]string, 0)
+	out := make([]vmModels.Storage, 0, len(storages))
+	seenStorageIDs := make(map[uint]struct{}, len(storages))
+	seenDatasets := make(map[string]struct{}, len(storages))
+
+	for _, storage := range storages {
+		if storage.ID != 0 {
+			if _, duplicate := seenStorageIDs[storage.ID]; duplicate {
+				return nil, nil, fmt.Errorf("restored_vm_storage_id_conflict: %d", storage.ID)
+			}
+			seenStorageIDs[storage.ID] = struct{}{}
+
+			var conflictingStorage int64
+			if err := s.DB.Model(&vmModels.Storage{}).
+				Where("id = ? AND vm_id <> ?", storage.ID, currentVMID).
+				Count(&conflictingStorage).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_validate_restored_vm_storage_id: %w", err)
+			}
+			if conflictingStorage > 0 {
+				return nil, nil, fmt.Errorf("restored_vm_storage_id_conflict: %d", storage.ID)
+			}
+		}
+
+		switch storage.Type {
+		case vmModels.VMStorageTypeRaw, vmModels.VMStorageTypeZVol:
+			if storage.ID == 0 {
+				return nil, nil, fmt.Errorf("invalid_restored_storage_id")
+			}
+			datasetName := restoredVMStorageDatasetName(rid, storage)
+			if datasetName == "" {
+				return nil, nil, fmt.Errorf("invalid_restored_vm_storage_dataset_name")
+			}
+			if !datasetBelongsToVMRoots(datasetName, rootDatasets) {
+				return nil, nil, fmt.Errorf("restored_storage_dataset_outside_vm_roots: %s", datasetName)
+			}
+			if _, duplicate := seenDatasets[datasetName]; duplicate {
+				return nil, nil, fmt.Errorf("restored_vm_storage_dataset_in_use: %s", datasetName)
+			}
+			seenDatasets[datasetName] = struct{}{}
+
+			if _, err := s.GZFS.ZFS.Get(ctx, datasetName, false); err != nil {
+				return nil, nil, fmt.Errorf("restored_storage_dataset_missing: %s: %w", datasetName, err)
+			}
+			fullSnapshot := fmt.Sprintf("%s@%s", datasetName, snapshotName)
+			if _, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false); err != nil {
+				return nil, nil, fmt.Errorf("restored_storage_snapshot_missing: %s: %w", fullSnapshot, err)
+			}
+
+			var otherVMReferences int64
+			if err := s.DB.Table("vm_storages").
+				Joins("JOIN vm_storage_datasets ON vm_storage_datasets.id = vm_storages.dataset_id").
+				Where("vm_storage_datasets.name = ? AND vm_storages.vm_id <> ?", datasetName, currentVMID).
+				Count(&otherVMReferences).Error; err != nil {
+				return nil, nil, fmt.Errorf("failed_to_check_restored_vm_storage_dataset_usage: %w", err)
+			}
+			if otherVMReferences > 0 {
+				return nil, nil, fmt.Errorf("restored_vm_storage_dataset_in_use: %s", datasetName)
+			}
+
+			storage.Dataset.Name = datasetName
+			if storage.Pool == "" {
+				storage.Pool = poolFromDatasetName(datasetName)
+			}
+			storage.Dataset.Pool = storage.Pool
+			out = append(out, storage)
+		case vmModels.VMStorageTypeDiskImage:
+			if storage.Enable {
+				if strings.TrimSpace(storage.DownloadUUID) == "" {
+					warnings = append(warnings, "restored disk image has no uuid; skipped storage restore")
+					continue
+				}
+				if _, err := s.FindISOByUUID(storage.DownloadUUID, true); err != nil {
+					warnings = append(warnings, fmt.Sprintf(
+						"restored disk image %s is unavailable; skipped storage restore",
+						storage.DownloadUUID,
+					))
+					continue
+				}
+			}
+			storage.DatasetID = nil
+			storage.Dataset = vmModels.VMStorageDataset{}
+			out = append(out, storage)
+		case vmModels.VMStorageTypeFilesystem:
+			datasetName := strings.TrimSpace(storage.Dataset.Name)
+			if datasetName == "" || !isValidFilesystemTargetName(storage.FilesystemTarget) {
+				warnings = append(warnings, fmt.Sprintf(
+					"restored filesystem storage %d is incomplete; skipped storage restore",
+					storage.ID,
+				))
+				continue
+			}
+			if _, err := s.GZFS.ZFS.Get(ctx, datasetName, false); err != nil {
+				warnings = append(warnings, fmt.Sprintf(
+					"restored filesystem dataset %s is unavailable; skipped storage restore",
+					datasetName,
+				))
+				continue
+			}
+			out = append(out, storage)
+		default:
+			warnings = append(warnings, fmt.Sprintf(
+				"restored storage %d has unsupported type %q; skipped storage restore",
+				storage.ID,
+				storage.Type,
 			))
 		}
 	}
@@ -1193,6 +1678,22 @@ func prepareRestoredVMStorages(tx *gorm.DB, rid uint, vmID uint, storages []vmMo
 				cleaned.Pool = poolFromDatasetName(datasetName)
 			}
 
+			datasetRecord, err := ensureVMStorageDatasetRecord(tx, datasetName, cleaned.Pool, storage.Dataset.GUID)
+			if err != nil {
+				return nil, err
+			}
+			cleaned.DatasetID = &datasetRecord.ID
+		case vmModels.VMStorageTypeFilesystem:
+			datasetName := strings.TrimSpace(storage.Dataset.Name)
+			if datasetName == "" {
+				return nil, fmt.Errorf("invalid_restored_vm_storage_dataset_name")
+			}
+			if cleaned.Pool == "" {
+				cleaned.Pool = strings.TrimSpace(storage.Dataset.Pool)
+			}
+			if cleaned.Pool == "" {
+				cleaned.Pool = poolFromDatasetName(datasetName)
+			}
 			datasetRecord, err := ensureVMStorageDatasetRecord(tx, datasetName, cleaned.Pool, storage.Dataset.GUID)
 			if err != nil {
 				return nil, err
@@ -1332,6 +1833,29 @@ func (s *Service) readVMSnapshotFileFromCandidates(
 	}
 
 	return nil, false, nil
+}
+
+func (s *Service) readVMSnapshotFileFromCandidatesAtSnapshot(
+	ctx context.Context,
+	rootDatasets []string,
+	snapshotName string,
+	relativePath string,
+) ([]byte, bool, error) {
+	snapshotName = strings.TrimSpace(snapshotName)
+	if snapshotName == "" ||
+		snapshotName == "." ||
+		snapshotName == ".." ||
+		strings.ContainsAny(snapshotName, "/\\") {
+		return nil, false, fmt.Errorf("invalid_snapshot_name")
+	}
+
+	snapshotRelativePath := filepath.Join(
+		".zfs",
+		"snapshot",
+		snapshotName,
+		strings.TrimLeft(relativePath, "/"),
+	)
+	return s.readVMSnapshotFileFromCandidates(ctx, rootDatasets, snapshotRelativePath)
 }
 
 func (s *Service) readVMSnapshotFileFromDataset(

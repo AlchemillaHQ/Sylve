@@ -31,7 +31,9 @@
 		movable?: boolean;
 		onRowMoved?: (rows: Row[]) => void;
 		persistSort?: boolean;
+		dataTree?: boolean;
 		rowFormatter?: (row: RowComponent) => void;
+		selectableRowCheck?: (row: RowComponent) => boolean;
 	}
 
 	let {
@@ -45,7 +47,9 @@
 		movable = false,
 		onRowMoved,
 		persistSort = true,
-		rowFormatter
+		dataTree = true,
+		rowFormatter,
+		selectableRowCheck
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
@@ -83,7 +87,7 @@
 		tableState.current = { ...tableState.current, hiddenColumns };
 	}
 
-	let tableHolder: HTMLDivElement | null = null;
+	let _tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let restoringState = false;
 	let restoringSelection = false;
@@ -229,8 +233,9 @@
 				columns: data.columns as ColumnDefinition[],
 				layout: 'fitDataStretch',
 				selectableRows: multipleSelect ? true : 1,
-				dataTreeChildIndent: 16,
-				dataTree: true,
+				...(selectableRowCheck ? { selectableRow: selectableRowCheck } : {}),
+				dataTreeChildIndent: dataTree ? 16 : 0,
+				dataTree,
 				dataTreeChildField: 'children',
 				dataTreeStartExpanded: false,
 				persistenceID: name,
@@ -279,7 +284,7 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
-			tableHolder = tableComponent?.querySelector(
+			_tableHolder = tableComponent?.querySelector(
 				'.tabulator-tableholder'
 			) as HTMLDivElement | null;
 
@@ -400,6 +405,16 @@
 		() => debouncedQuery.current,
 		(newQuery) => {
 			tableFilter(newQuery || '');
+		}
+	);
+
+	watch(
+		() => parentActiveRow,
+		(rows) => {
+			if (!table || !tableInitialized) return;
+			if ((!rows || rows.length === 0) && table.getSelectedRows().length > 0) {
+				table.deselectRow();
+			}
 		}
 	);
 </script>

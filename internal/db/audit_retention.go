@@ -28,8 +28,9 @@ func EnforceAuditRecordRetention(db *gorm.DB, now time.Time) error {
 
 	cutoff := now.Add(-AuditRecordRetentionDays * 24 * time.Hour)
 
+	activeStatuses := []string{"pending"}
 	if err := db.
-		Where("created_at < ?", cutoff).
+		Where("created_at < ? AND status NOT IN ?", cutoff, activeStatuses).
 		Delete(&infoModels.AuditRecord{}).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_prune_expired_audit_records: %w", err)
@@ -44,14 +45,25 @@ func EnforceAuditRecordRetention(db *gorm.DB, now time.Time) error {
 		return nil
 	}
 
-	keepNewest := db.
+	var activeCount int64
+	if err := db.Model(&infoModels.AuditRecord{}).
+		Where("status IN ?", activeStatuses).
+		Count(&activeCount).Error; err != nil {
+		return fmt.Errorf("failed_to_count_active_audit_records: %w", err)
+	}
+	if activeCount >= int64(AuditRecordMaxRows) {
+		return nil
+	}
+	terminalBudget := AuditRecordMaxRows - int(activeCount)
+	keepNewestTerminal := db.
 		Model(&infoModels.AuditRecord{}).
 		Select("id").
+		Where("status NOT IN ?", activeStatuses).
 		Order("created_at DESC, id DESC").
-		Limit(AuditRecordMaxRows)
+		Limit(terminalBudget)
 
 	if err := db.
-		Where("id NOT IN (?)", keepNewest).
+		Where("status NOT IN ? AND id NOT IN (?)", activeStatuses, keepNewestTerminal).
 		Delete(&infoModels.AuditRecord{}).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_enforce_audit_record_hard_cap: %w", err)

@@ -1,0 +1,97 @@
+<div class="quorum-calculator not-content" data-quorum-calculator>
+  <div class="quorum-controls">
+    <label for="voter-count">
+      <span>Voting nodes</span>
+      <span class="stepper">
+        <button type="button" data-adjust="-1" aria-label="Decrease voting node count">−</button>
+        <output data-voter-count>3</output>
+        <button type="button" data-adjust="1" aria-label="Increase voting node count">+</button>
+      </span>
+    </label>
+    <input id="voter-count" data-voters type="range" min="1" max="15" value="3" step="1" aria-label="Number of voting nodes" />
+  </div>
+
+  <div class="quorum-results" aria-live="polite">
+    <div><span>Quorum required</span><strong data-quorum>2 voters</strong><small>Must remain online</small></div>
+    <div><span>Failures tolerated</span><strong data-failures>1 node</strong><small>Without losing quorum</small></div>
+    <div><span>Recommended</span><strong data-recommendation>Yes</strong><small data-recommendation-detail>Odd voter count</small></div>
+  </div>
+
+  <p data-guidance>A three-voter cluster can lose one voter and remain quorate.</p>
+</div>
+
+<script>
+  document.querySelectorAll('[data-quorum-calculator]').forEach((calculator) => {
+    const input = calculator.querySelector('[data-voters]');
+    const count = calculator.querySelector('[data-voter-count]');
+    const quorum = calculator.querySelector('[data-quorum]');
+    const failures = calculator.querySelector('[data-failures]');
+    const recommendation = calculator.querySelector('[data-recommendation]');
+    const recommendationDetail = calculator.querySelector('[data-recommendation-detail]');
+    const guidance = calculator.querySelector('[data-guidance]');
+    if (!(input instanceof HTMLInputElement)) return;
+
+    const pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
+    const update = () => {
+      const voters = Number(input.value);
+      const required = Math.floor(voters / 2) + 1;
+      const tolerated = voters - required;
+      const isOdd = voters % 2 === 1;
+
+      if (count) count.textContent = String(voters);
+      if (quorum) quorum.textContent = pluralize(required, 'voter', 'voters');
+      if (failures) failures.textContent = pluralize(tolerated, 'node', 'nodes');
+      if (recommendation) recommendation.textContent = isOdd ? 'Yes' : 'No';
+      if (recommendationDetail) recommendationDetail.textContent = isOdd ? 'Odd voter count' : 'Same tolerance as one fewer voter';
+      if (guidance) {
+        guidance.textContent = isOdd
+          ? `A ${voters}-voter cluster can lose ${pluralize(tolerated, 'voter', 'voters')} and remain quorate.`
+          : `A ${voters}-voter cluster tolerates the same ${pluralize(tolerated, 'failure', 'failures')} as a ${voters - 1}-voter cluster. Prefer an odd voter count.`;
+      }
+      input.style.setProperty('--progress', `${((voters - 1) / 14) * 100}%`);
+    };
+
+    input.addEventListener('input', update);
+    calculator.querySelectorAll('[data-adjust]').forEach((button) => {
+      button.addEventListener('click', () => {
+        button.getAttribute('data-adjust') === '1' ? input.stepUp() : input.stepDown();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
+    update();
+  });
+</script>
+
+<style>
+  .quorum-calculator {
+    --line: color-mix(in oklab, var(--sl-color-white) 18%, transparent);
+    margin: 1.5rem 0 2rem;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 0.35rem;
+    background: color-mix(in oklab, var(--sl-color-bg) 97%, var(--sl-color-white));
+  }
+
+  .quorum-controls { padding: 1rem 1.25rem; }
+  .quorum-controls label { display: flex; align-items: center; justify-content: space-between; color: var(--sl-color-white); font-size: 0.78rem; font-weight: 600; }
+  .stepper { display: inline-flex; align-items: stretch; }
+  output { min-width: 2.35rem; padding: 0.2rem 0.45rem; border: 1px solid var(--line); border-right: 0; border-left: 0; color: var(--sl-color-white); font: 600 0.72rem var(--sl-font-mono); text-align: center; }
+  .stepper button { width: 1.35rem; min-height: 1.5rem; padding: 0; border: 1px solid var(--line); background: transparent; color: var(--sl-color-gray-2); font: 500 0.82rem var(--sl-font); cursor: pointer; }
+  .stepper button:first-child { border-radius: 0.25rem 0 0 0.25rem; }
+  .stepper button:last-child { border-radius: 0 0.25rem 0.25rem 0; }
+  .stepper button:hover { background: color-mix(in oklab, var(--sl-color-white) 7%, transparent); color: var(--sl-color-white); }
+  input[type='range'] { --progress: 0%; width: 100%; height: 1.6rem; margin: 0.4rem 0 0; background: transparent; cursor: pointer; appearance: none; }
+  input[type='range']::-webkit-slider-runnable-track { height: 2px; background: linear-gradient(90deg, var(--sl-color-white) var(--progress), var(--line) var(--progress)); }
+  input[type='range']::-moz-range-track { height: 2px; background: var(--line); }
+  input[type='range']::-moz-range-progress { height: 2px; background: var(--sl-color-white); }
+  input[type='range']::-webkit-slider-thumb { width: 0.85rem; height: 0.85rem; margin-top: -0.38rem; border: 2px solid var(--sl-color-bg); border-radius: 50%; background: var(--sl-color-white); box-shadow: 0 0 0 1px var(--sl-color-white); appearance: none; }
+  input[type='range']::-moz-range-thumb { width: 0.7rem; height: 0.7rem; border: 2px solid var(--sl-color-bg); border-radius: 50%; background: var(--sl-color-white); box-shadow: 0 0 0 1px var(--sl-color-white); }
+  .quorum-results { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .quorum-results div { padding: 1rem 1.25rem; border-left: 1px solid var(--line); }
+  .quorum-results div:first-child { border-left: 0; }
+  .quorum-results span, .quorum-results small { display: block; color: var(--sl-color-gray-3); font-size: 0.62rem; }
+  .quorum-results span { font-family: var(--sl-font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+  .quorum-results strong { display: block; margin: 0.35rem 0 0.2rem; color: var(--sl-color-white); font-size: 1rem; font-weight: 600; }
+  .quorum-calculator > p { margin: 0; padding: 0.85rem 1.25rem; color: var(--sl-color-gray-3); font-size: 0.75rem; line-height: 1.5; }
+  @media (max-width: 35rem) { .quorum-results { grid-template-columns: 1fr; } .quorum-results div { border-top: 1px solid var(--line); border-left: 0; } .quorum-results div:first-child { border-top: 0; } }
+</style>

@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		goto('/datacenter/summary', { replaceState: true });
+		useSafeGoto('/datacenter/summary', { replaceState: true });
 	});
 </script>

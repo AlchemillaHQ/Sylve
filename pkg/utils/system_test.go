@@ -10,6 +10,7 @@ package utils
 
 import (
 	"errors"
+	"math"
 	"os"
 	"sync"
 	"testing"
@@ -93,6 +94,27 @@ func TestGetSystemHostname_Error(t *testing.T) {
 	}
 }
 
+func TestGetSystemHostname_NotConfigured(t *testing.T) {
+	original := getHostname
+	defer resetHostnameCacheForTest()
+	defer func() { getHostname = original }()
+
+	for _, value := range []string{"", " \t\n"} {
+		resetHostnameCacheForTest()
+		getHostname = func() (string, error) {
+			return value, nil
+		}
+
+		hostname, err := GetSystemHostname()
+		if !errors.Is(err, ErrSystemHostnameNotConfigured) {
+			t.Fatalf("expected ErrSystemHostnameNotConfigured for %q, got %v", value, err)
+		}
+		if hostname != "" {
+			t.Fatalf("expected empty hostname for %q, got %q", value, hostname)
+		}
+	}
+}
+
 func TestGetUptime_Success(t *testing.T) {
 	original := getUptime
 	defer func() { getUptime = original }()
@@ -162,45 +184,85 @@ func TestGetLoadAvg_Error(t *testing.T) {
 }
 
 func TestBootMode(t *testing.T) {
-	original := getSysctlString
-	defer func() { getSysctlString = original }()
+	originalSysctl := getSysctlString
+	originalStat := stat
+	defer func() {
+		getSysctlString = originalSysctl
+		stat = originalStat
+	}()
 
 	tests := []struct {
-		name         string
-		mockReturn   string
-		mockError    error
-		expectedMode string
+		name             string
+		bootMethodReturn string
+		bootMethodError  error
+		efiRtReturn      string
+		efiRtError       error
+		efiDevExists     bool
+		expectedMode     string
 	}{
 		{
-			name:         "BIOS mode",
-			mockReturn:   "BIOS",
-			mockError:    nil,
-			expectedMode: "BIOS",
+			name:             "BIOS mode",
+			bootMethodReturn: "BIOS",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "BIOS",
 		},
 		{
-			name:         "UEFI mode",
-			mockReturn:   "UEFI Firmware",
-			mockError:    nil,
-			expectedMode: "UEFI",
+			name:             "UEFI mode from bootmethod",
+			bootMethodReturn: "UEFI Firmware",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "UEFI",
 		},
 		{
-			name:         "Unknown mode string",
-			mockReturn:   "SomeOtherBoot",
-			mockError:    nil,
-			expectedMode: "Unknown",
+			name:             "Unknown mode string, no fallback",
+			bootMethodReturn: "SomeOtherBoot",
+			bootMethodError:  nil,
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "Unknown",
 		},
 		{
-			name:         "Error from sysctl",
-			mockReturn:   "",
-			mockError:    errors.New("sysctl error"),
-			expectedMode: "Unknown",
+			name:             "Error from sysctl, no fallback",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtError:       errors.New("not found"),
+			expectedMode:     "Unknown",
+		},
+		{
+			name:             "EFI runtime fallback detects UEFI",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtReturn:      "1",
+			efiRtError:       nil,
+			expectedMode:     "UEFI",
+		},
+		{
+			name:             "EFI dev fallback detects UEFI",
+			bootMethodReturn: "",
+			bootMethodError:  errors.New("sysctl error"),
+			efiRtError:       errors.New("not found"),
+			efiDevExists:     true,
+			expectedMode:     "UEFI",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			getSysctlString = func(key string) (string, error) {
-				return tt.mockReturn, tt.mockError
+				if key == "machdep.bootmethod" {
+					return tt.bootMethodReturn, tt.bootMethodError
+				}
+				if key == "machdep.efi_rt_handle_faults" {
+					return tt.efiRtReturn, tt.efiRtError
+				}
+				return "", errors.New("unexpected key")
+			}
+
+			stat = func(name string) (os.FileInfo, error) {
+				if name == "/dev/efi" && tt.efiDevExists {
+					return nil, nil
+				}
+				return nil, os.ErrNotExist
 			}
 
 			result := BootMode()
@@ -212,26 +274,63 @@ func TestBootMode(t *testing.T) {
 }
 
 func TestReadDiskSector(t *testing.T) {
-	tmp, err := os.CreateTemp("", "diskmock")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.Remove(tmp.Name())
-	defer tmp.Close()
-
-	data := make([]byte, 1024)
-	copy(data[512:], []byte("SECTOR1DATA"))
-	if _, err := tmp.Write(data); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name       string
+		sectorSize int64
+	}{
+		{name: "512-byte logical sector", sectorSize: 512},
+		{name: "4096-byte logical sector", sectorSize: 4096},
 	}
 
-	buf, err := ReadDiskSector(tmp.Name(), 1)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp, err := os.CreateTemp(t.TempDir(), "diskmock")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			data := make([]byte, 2*tt.sectorSize)
+			copy(data[tt.sectorSize:], []byte("SECTOR1DATA"))
+			if _, err := tmp.Write(data); err != nil {
+				tmp.Close()
+				t.Fatal(err)
+			}
+			if err := tmp.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			buf, err := ReadDiskSector(tmp.Name(), 1, tt.sectorSize)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if int64(len(buf)) != tt.sectorSize {
+				t.Fatalf("sector length = %d; want %d", len(buf), tt.sectorSize)
+			}
+			if string(buf[:11]) != "SECTOR1DATA" {
+				t.Errorf("expected 'SECTOR1DATA', got %q", string(buf[:11]))
+			}
+		})
+	}
+}
+
+func TestReadDiskSectorRejectsInvalidGeometry(t *testing.T) {
+	tests := []struct {
+		name       string
+		lba        int64
+		sectorSize int64
+	}{
+		{name: "negative LBA", lba: -1, sectorSize: 512},
+		{name: "zero sector size", lba: 1, sectorSize: 0},
+		{name: "negative sector size", lba: 1, sectorSize: -512},
+		{name: "offset overflow", lba: math.MaxInt64, sectorSize: 2},
 	}
 
-	if string(buf[:11]) != "SECTOR1DATA" {
-		t.Errorf("expected 'SECTOR1DATA', got %q", string(buf[:11]))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := ReadDiskSector("unused", tt.lba, tt.sectorSize); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
 	}
 }
 

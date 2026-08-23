@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getBasicSettings } from '$lib/api/system/settings';
-	import { getDownloads } from '$lib/api/utilities/downloader';
+	import { getDownloadsResult } from '$lib/api/utilities/downloader';
 	import { bulkDelete, deleteVolume, getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialogModal from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -13,21 +13,31 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { BasicSettings } from '$lib/types/system/settings';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Download } from '$lib/types/utilities/downloader';
 	import { GZFSDatasetTypeSchema, type Dataset, type GroupedByPool } from '$lib/types/zfs/dataset';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { groupByPoolNames } from '$lib/utils/zfs/dataset/dataset';
 	import { generateTableData } from '$lib/utils/zfs/dataset/volume';
 	import { resource, watch } from 'runed';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Data {
+		node: string;
 		datasets: Dataset[];
 		downloads: Download[];
 		settings: BasicSettings;
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 	let tableName = 'tt-zfsVolumes';
 
 	// svelte-ignore state_referenced_locally
@@ -43,18 +53,33 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	lastDownloadsByNode[initialData.node] = initialData.downloads;
 	const downloads = resource(
-		() => 'downloads',
-		async () => {
-			const downloads = await getDownloads();
-			updateCache('downloads', downloads);
-			return downloads;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await getDownloadsResult({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastDownloadsByNode[node] ?? [];
+				}
+				lastDownloadsByNode[node] = result;
+				await updateCache('download-list', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastDownloadsByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.downloads
+			initialValue: initialData.downloads
 		}
 	);
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	// svelte-ignore state_referenced_locally
 	const pools = resource(
@@ -132,7 +157,7 @@
 		const volumes = datasets.current.filter(
 			(volume) => volume.type === GZFSDatasetTypeSchema.enum.VOLUME
 		);
-		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name));
+		const volume = volumes.find((volume) => volume.name.endsWith(activeRow?.name as string));
 		return volume ?? null;
 	});
 
@@ -401,7 +426,7 @@
 
 <!-- Create Volume -->
 {#if modals.volume.create.open}
-	<CreateVolume bind:open={modals.volume.create.open} {grouped} bind:reload />
+	<CreateVolume bind:open={modals.volume.create.open} bind:reload />
 {/if}
 
 <!-- Edit Volume -->

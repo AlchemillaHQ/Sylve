@@ -1,8 +1,12 @@
 <script lang="ts">
-	import { Chart } from 'svelte-echarts';
+	import { Chart } from '@alchemilla/svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
-	import { formatBytesBinary, formatBytesPerSecondBinary } from '$lib/utils/bytes';
+	import {
+		formatBytesBinary,
+		formatBytesPerSecondBinary,
+		formatBitsPerSecondDecimal
+	} from '$lib/utils/bytes';
 	import {
 		GridComponent,
 		TitleComponent,
@@ -17,6 +21,7 @@
 	import { mode } from 'mode-watcher';
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { watch } from 'runed';
+	import { onDestroy, untrack } from 'svelte';
 
 	use([
 		LineChart,
@@ -36,7 +41,7 @@
 		color: 'one' | 'two' | 'three' | 'four';
 	}
 
-	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond';
+	type ValueType = 'auto' | 'number' | 'bytes' | 'bytesPerSecond' | 'bitsPerSecond';
 
 	interface Props {
 		title: string;
@@ -48,6 +53,7 @@
 		smooth?: boolean;
 		containerClass?: string;
 		containerContentHeight?: string;
+		animateOnMount?: boolean;
 	}
 
 	let {
@@ -59,11 +65,19 @@
 		types = 'auto',
 		smooth = true,
 		containerClass = 'p-5',
-		containerContentHeight = 'h-[360px]'
+		containerContentHeight = 'h-[360px]',
+		animateOnMount = false
 	}: Props = $props();
 
+	const mountAnimationDuration = 1400;
+	const mountAnimationEnabled = untrack(() => animateOnMount);
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
+	let restoreRafId: number | null = null;
+	let mountAnimatedChart: EChartsType | undefined;
+	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationReady = !mountAnimationEnabled;
 
 	const titleColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
 	const legendTextColor = $derived(mode.current === 'dark' ? '#ffffff' : '#000000');
@@ -104,21 +118,20 @@
 						color: 'rgb(170, 170, 170)',
 						borderColor: 'rgb(170, 170, 170)',
 						soft: 'rgb(200, 200, 200, 0.6)',
-						filler: 'rgb(200, 200, 200, 0.01)'
+						filler: 'rgb(200, 200, 200, 0.1)'
 					}
 				: {
 						color: 'rgb(165, 165, 165)',
 						borderColor: 'rgb(165, 165, 165)',
 						soft: 'rgb(195, 195, 195, 0.6)',
-						filler: 'rgb(195, 195, 195, 0.01)'
+						filler: 'rgb(195, 195, 195, 0.1)'
 					}
 	});
 
-	const primaryColor = $derived(series.length > 0 ? series[0].color : 'one');
 	const seriesColors = $derived(series.map((s) => colors[s.color].main));
 	const gridColor = $derived(mode.current === 'dark' ? colors.grid.dark : colors.grid.light);
 
-	function cleanPoints(src?: { date: any; value: any }[]) {
+	function cleanPoints(src?: { date: unknown; value: unknown }[]) {
 		if (!Array.isArray(src)) return [];
 		return src
 			.map((p) => {
@@ -130,11 +143,7 @@
 			.filter(Boolean) as [number, number | null][];
 	}
 
-	function getEffectiveValueType():
-		| 'percentage'
-		| 'number'
-		| 'human'
-		| Exclude<ValueType, 'auto'> {
+	function getEffectiveValueType(): 'percentage' | 'number' | 'human' | Exclude<ValueType, 'auto'> {
 		if (types !== 'auto') return types;
 		if (percentage) return 'percentage';
 		if (data) return 'human';
@@ -153,13 +162,55 @@
 				return formatBytesBinary(value);
 			case 'bytesPerSecond':
 				return formatBytesPerSecondBinary(value);
+			case 'bitsPerSecond':
+				return formatBitsPerSecondDecimal(value);
 			default:
 				return axis ? value.toString() : Number(value).toFixed(2);
 		}
 	}
 
-	function getOptions(): EChartsOption {
+	function buildSeries() {
+		const mainSeries = series.map((s, index) => ({
+			id: `main-${index}`,
+			name: s.name,
+			type: 'line' as const,
+			xAxisIndex: 0,
+			yAxisIndex: 0,
+			showSymbol: false,
+			smooth,
+			lineStyle: {
+				color: colors[s.color].main
+			},
+			data: cleanPoints(s.points)
+		}));
+
+		const previewSeries = series.map((s, index) => ({
+			id: `preview-${index}`,
+			type: 'line' as const,
+			xAxisIndex: 1,
+			yAxisIndex: 1,
+			showSymbol: false,
+			smooth: false,
+			silent: true,
+			animation: false,
+			lineStyle: {
+				color: colors[s.color].main,
+				width: 1
+			},
+			tooltip: {
+				show: false
+			},
+			data: cleanPoints(s.points)
+		}));
+
+		return [...mainSeries, ...previewSeries];
+	}
+
+	function getOptions(includeSeries = true): EChartsOption {
 		return {
+			animation: mountAnimationEnabled ? true : undefined,
+			animationDuration: mountAnimationEnabled ? mountAnimationDuration : undefined,
+			animationEasing: mountAnimationEnabled ? 'cubicInOut' : undefined,
 			title: {
 				show: false,
 				textStyle: {
@@ -219,54 +270,77 @@
 				},
 				borderWidth: 1
 			},
-			grid: {
-				left: 10,
-				right: 10,
-				top: 70,
-				bottom: 56,
-				containLabel: true
-			},
-			xAxis: {
-				type: 'time',
-				axisLine: {
-					lineStyle: {
-						color: gridColor,
-						width: 1
-					}
+			grid: [
+				{
+					left: 10,
+					right: 10,
+					top: 70,
+					bottom: 64,
+					outerBoundsMode: 'same',
+					outerBoundsContain: 'axisLabel'
+				},
+				{
+					left: 10,
+					right: 10,
+					bottom: 8,
+					height: 30
 				}
-			},
-			yAxis: {
-				type: 'value',
-				max: percentage ? 100 : undefined,
-				min: percentage ? 0 : undefined,
-				axisLabel: {
-					formatter: function (value: number) {
-						return formatValue(value, true);
+			],
+			xAxis: [
+				{
+					type: 'time',
+					gridIndex: 0,
+					axisLine: {
+						lineStyle: {
+							color: gridColor,
+							width: 1
+						}
 					}
 				},
-				splitLine: {
-					show: true,
-					lineStyle: {
-						color: gridColor,
-						width: 1
-					}
+				{
+					type: 'time',
+					gridIndex: 1,
+					show: false
 				}
-			},
+			],
+			yAxis: [
+				{
+					type: 'value',
+					gridIndex: 0,
+					max: percentage ? 100 : undefined,
+					min: percentage ? 0 : undefined,
+					axisLabel: {
+						formatter: function (value: number) {
+							return formatValue(value, true);
+						}
+					},
+					splitLine: {
+						show: true,
+						lineStyle: {
+							color: gridColor,
+							width: 1
+						}
+					}
+				},
+				{
+					type: 'value',
+					gridIndex: 1,
+					min: 0,
+					show: false
+				}
+			],
 			dataZoom: [
 				{
 					type: 'slider',
 					xAxisIndex: 0,
+					showDataShadow: false,
+					left: 10,
+					right: 10,
+					bottom: 8,
+					height: 30,
 					backgroundColor: 'rgba(0,0,0,0)',
 					borderColor: 'rgba(0,0,0,0)',
-					dataBackground: {
-						lineStyle: { color: 'rgba(255,255,255,0.15)' },
-						areaStyle: { color: 'rgba(0,0,0,0.35)' }
-					},
-					selectedDataBackground: {
-						lineStyle: { color: colors.moveHandle.color },
-						areaStyle: { color: colors.moveHandle.soft }
-					},
-					fillerColor: colors.moveHandle.filler,
+					fillerColor: 'rgba(0,0,0,0)',
 					handleStyle: {
 						color: colors.moveHandle.color,
 						borderColor: colors.moveHandle.color
@@ -290,13 +364,7 @@
 					}
 				}
 			],
-			series: series.map((s) => ({
-				name: s.name,
-				type: 'line',
-				showSymbol: false,
-				smooth,
-				data: cleanPoints(s.points)
-			})),
+			series: includeSeries ? buildSeries() : [],
 			toolbox: {
 				feature: {
 					saveAsImage: {
@@ -312,7 +380,53 @@
 		};
 	}
 
-	let mouseIn = $state(false);
+	const mountOptions = mountAnimationEnabled ? getOptions(false) : undefined;
+	let _mouseIn = $state(false);
+
+	function handleRestore() {
+		if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
+
+		restoreRafId = requestAnimationFrame(() => {
+			restoreRafId = null;
+			if (!chart || chart.isDisposed?.()) return;
+
+			chart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+		});
+	}
+
+	function startMountAnimation(currentChart: EChartsType) {
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+
+		mountAnimatedChart = currentChart;
+		mountAnimationReady = false;
+		mountAnimationRevealTimer = setTimeout(() => {
+			mountAnimationRevealTimer = null;
+			if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+			const revealedSeries = series;
+			const revealedMode = mode.current;
+			currentChart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+
+			mountAnimationSyncTimer = setTimeout(() => {
+				mountAnimationSyncTimer = null;
+				if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+				mountAnimationReady = true;
+				if (series !== revealedSeries || mode.current !== revealedMode) {
+					currentChart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+				}
+			}, mountAnimationDuration);
+		}, 100);
+	}
+
+	watch(
+		() => chart,
+		(currentChart) => {
+			if (!mountAnimationEnabled || !currentChart || currentChart === mountAnimatedChart) return;
+			startMountAnimation(currentChart);
+		}
+	);
 
 	watch(
 		[
@@ -327,6 +441,7 @@
 		],
 		() => {
 			if (!chart || chart.isDisposed?.()) return;
+			if (mountAnimationEnabled && !mountAnimationReady) return;
 
 			if (optionRafId !== null) {
 				cancelAnimationFrame(optionRafId);
@@ -334,11 +449,19 @@
 
 			optionRafId = requestAnimationFrame(() => {
 				if (!chart || chart.isDisposed?.()) return;
-				chart.setOption(getOptions(), { notMerge: true, lazyUpdate: false });
+				chart.setOption(getOptions(), { notMerge: false, lazyUpdate: false });
 				optionRafId = null;
 			});
-		}
+		},
+		{ lazy: mountAnimationEnabled }
 	);
+
+	onDestroy(() => {
+		if (optionRafId !== null) cancelAnimationFrame(optionRafId);
+		if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+	});
 </script>
 
 <Card.Root class={containerClass}>
@@ -346,8 +469,8 @@
 		<div
 			role="region"
 			class="relative h-full w-full overflow-visible"
-			onmouseenter={() => (mouseIn = true)}
-			onmouseleave={() => (mouseIn = false)}
+			onmouseenter={() => (_mouseIn = true)}
+			onmouseleave={() => (_mouseIn = false)}
 		>
 			<div
 				class="pointer-events-none absolute top-1 left-2 z-10 flex items-center gap-1 whitespace-nowrap"
@@ -362,7 +485,7 @@
 				>
 			</div>
 			{#key mode.current}
-				<Chart {init} options={getOptions()} bind:chart />
+				<Chart {init} options={mountOptions ?? getOptions()} bind:chart onrestore={handleRestore} />
 			{/key}
 		</div>
 	</Card.Content>

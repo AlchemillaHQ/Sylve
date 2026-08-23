@@ -10,6 +10,7 @@ package startup
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -60,19 +61,12 @@ func (s *Service) InitSamba(ctx context.Context) error {
 		}
 	}
 
-	if err := s.Samba.WriteConfig(ctx, false); err != nil {
-		return err
+	if err := s.Samba.DisableMissingShares(ctx); err != nil {
+		return fmt.Errorf("failed to reconcile Samba shares: %w", err)
 	}
 
-	if exists, err := utils.FileExists("/var/log/samba4/audit.log"); err != nil {
+	if err := s.Samba.WriteConfig(ctx, false); err != nil {
 		return err
-	} else if !exists {
-		if err := os.MkdirAll("/var/log/samba4", 0755); err != nil {
-			return err
-		}
-		if _, err := os.Create("/var/log/samba4/audit.log"); err != nil {
-			return err
-		}
 	}
 
 	return nil

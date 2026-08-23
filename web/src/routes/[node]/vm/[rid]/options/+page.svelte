@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getVmById } from '$lib/api/vm/vm';
+	import { getVmByIdResult } from '$lib/api/vm/vm';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import BootRom from '$lib/components/custom/VM/Options/BootRom.svelte';
 	import Clock from '$lib/components/custom/VM/Options/Clock.svelte';
@@ -12,61 +12,65 @@
 	import WoL from '$lib/components/custom/VM/Options/WoL.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
+	import type { Architecture } from '$lib/types/info/cpu';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
-	import { updateCache } from '$lib/utils/http';
-	import { generateNanoId, isBoolean } from '$lib/utils/string';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { isBoolean } from '$lib/utils/string';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval, watch } from 'runed';
-	import { storage } from '$lib';
-	import { getContext } from 'svelte';
-	import type { LifecycleTask } from '$lib/types/task/lifecycle';
+	import { resource, watch } from 'runed';
+	import { getContext, onMount, untrack } from 'svelte';
 
 	interface Data {
+		node: string;
 		rid: number;
 		vm: VM;
+		architecture: Architecture;
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
-	const lifecycleTask = getContext<{ current: LifecycleTask | null; refetch(): void }>(
-		'vmLifecycleTask'
-	);
+	const vmIdentity = (node: string, rid: number) => `${node}\u0000${rid}`;
+	const lastVMByIdentity: Record<string, VM> = Object.create(null);
+	lastVMByIdentity[vmIdentity(initialData.node, initialData.rid)] = initialData.vm;
 
-	// svelte-ignore state_referenced_locally
 	const vm = resource(
-		() => `vm-${data.rid}`,
-		async (key) => {
-			const result = await getVmById(data.rid, 'rid');
-			updateCache(key, result);
+		() => [data.node, data.rid] as const,
+		async ([node, rid], _, { signal }) => {
+			const result = await getVmByIdResult(rid, { hostname: node, signal });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVMByIdentity[vmIdentity(node, rid)] ?? data.vm;
+			}
+			lastVMByIdentity[vmIdentity(node, rid)] = result;
+			await updateCache(`vm-${rid}`, result, node);
 			return result;
 		},
 		{
-			lazy: true,
-			initialValue: data.vm
+			initialValue: initialData.vm
 		}
 	);
 
 	let reload = $state(false);
-
-	useInterval(() => 1000, {
-		callback: () => {
-			if (storage.visible) {
+	watch(
+		() => reload,
+		(shouldReload) => {
+			if (shouldReload) {
+				reload = false;
 				vm.refetch();
 			}
 		}
-	});
-
-	watch([() => storage.visible, () => reload], ([newVisible], [newReload]) => {
-		if (newVisible || newReload) {
-			vm.refetch();
-		}
-	});
-
-	let isLifecycleActive = $derived(
-		!!lifecycleTask.current && !!(lifecycleTask.current as LifecycleTask).action
 	);
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
+
+	let isLifecycleActive = $derived(!!domain.current?.pendingAction);
 	let isDomainShutoff = $derived(
 		!isLifecycleActive &&
 			String(domain.current?.status || '')
@@ -74,9 +78,20 @@
 				.toLowerCase() === 'shutoff'
 	);
 
-	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeRows: Row[] = $state([]);
+	let activeRow: Row | null = $derived(activeRows[0] ?? null);
 	let query = $state('');
+
+	function bootROMLabel(bootROM: VM['bootRom']): string {
+		switch (bootROM) {
+			case 'none':
+				return 'None';
+			case 'uboot':
+				return 'U-Boot (Default)';
+			default:
+				return 'UEFI (Default)';
+		}
+	}
 
 	let table = $derived({
 		columns: [
@@ -87,68 +102,66 @@
 				formatter: (cell: CellComponent) => {
 					const value = cell.getValue();
 					if (isBoolean(value)) {
-						if (value === true || value === 'true') {
-							return 'Yes';
-						} else if (value === false || value === 'false') {
-							return 'No';
-						}
+						if (value === true || value === 'true') return 'Yes';
+						if (value === false || value === 'false') return 'No';
 					}
-
 					return value;
 				}
 			}
 		],
 		rows: [
 			{
-				id: generateNanoId('startOrder'),
+				id: 'vm-option-start-order',
 				property: 'Start At Boot / Start Order',
-				value: `${vm?.current.startAtBoot ? 'Yes' : 'No'} / ${vm?.current.startOrder || 0}`
+				value: `${vm.current.startAtBoot ? 'Yes' : 'No'} / ${vm.current.startOrder}`
 			},
 			{
-				id: generateNanoId('wol'),
+				id: 'vm-option-wol',
 				property: 'Wake on LAN',
-				value: vm?.current.wol || false
+				value: vm.current.wol
 			},
 			{
-				id: generateNanoId('timeOffset'),
+				id: 'vm-option-time-offset',
 				property: 'Clock Offset',
-				value: vm ? (vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time') : 'N/A'
+				value: vm.current.timeOffset === 'utc' ? 'UTC' : 'Local Time'
 			},
 			{
-				id: generateNanoId('bootRom'),
+				id: 'vm-option-boot-rom',
 				property: 'Boot ROM',
-				value: vm ? (vm.current.bootRom === 'none' ? 'None' : 'UEFI (Default)') : 'N/A'
+				value: bootROMLabel(vm.current.bootRom)
 			},
 			{
-				id: generateNanoId('shutdownWaitTime'),
+				id: 'vm-option-shutdown-wait-time',
 				property: 'Shutdown Wait Time',
-				value: vm ? `${vm.current.shutdownWaitTime} seconds` : 'N/A'
+				value: `${vm.current.shutdownWaitTime} seconds`
 			},
 			{
-				id: generateNanoId('cloudInit'),
+				id: 'vm-option-cloud-init',
 				property: 'Cloud Init',
 				value:
-					vm && (vm.current.cloudInitData || vm.current.cloudInitMetaData)
+					vm.current.cloudInitData ||
+					vm.current.cloudInitMetaData ||
+					vm.current.cloudInitNetworkConfig
 						? 'Configured'
 						: 'Not Configured'
 			},
 			{
-				id: generateNanoId('extraBhyveOptions'),
+				id: 'vm-option-extra-bhyve-options',
 				property: 'Extra Bhyve Options',
 				value:
-					vm && vm.current.extraBhyveOptions && vm.current.extraBhyveOptions.length > 0
+					vm.current.extraBhyveOptions && vm.current.extraBhyveOptions.length > 0
 						? `${vm.current.extraBhyveOptions.length} configured`
 						: 'Not Configured'
 			},
 			{
-				id: generateNanoId('ignoreUMSRs'),
+				id: 'vm-option-ignore-umsrs',
 				property: 'Ignore Unimplemented MSRs Accesses',
-				value: vm ? (vm.current.ignoreUMSR ? 'Yes' : 'No') : 'N/A'
+				value: vm.current.ignoreUMSR
 			},
 			{
-				id: generateNanoId('qemuGuestAgent'),
+				id: 'vm-option-qemu-guest-agent',
 				property: 'QEMU Guest Agent',
-				value: vm ? (vm.current.qemuGuestAgent ? 'Yes' : 'No') : 'N/A'
+				value: vm.current.qemuGuestAgent
 			}
 		]
 	});
@@ -197,7 +210,7 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if activeRows && activeRows?.length !== 0}
+	{#if activeRow}
 		<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 			{#if activeRow.property === 'Start At Boot / Start Order'}
 				{@render button('startOrder', 'Start At Boot / Start Order', false)}
@@ -232,38 +245,59 @@
 	</div>
 </div>
 
-{#if properties.wol.open && vm}
-	<WoL bind:open={properties.wol.open} vm={vm.current} bind:reload />
+{#if properties.wol.open}
+	<WoL bind:open={properties.wol.open} node={data.node} vm={vm.current} bind:reload />
 {/if}
 
-{#if properties.startOrder.open && vm}
-	<StartOrder bind:open={properties.startOrder.open} vm={vm.current} bind:reload />
+{#if properties.startOrder.open}
+	<StartOrder bind:open={properties.startOrder.open} node={data.node} vm={vm.current} bind:reload />
 {/if}
 
-{#if properties.timeOffset.open && vm}
-	<Clock bind:open={properties.timeOffset.open} vm={vm.current} bind:reload />
+{#if properties.timeOffset.open}
+	<Clock bind:open={properties.timeOffset.open} node={data.node} vm={vm.current} bind:reload />
 {/if}
 
-{#if properties.bootRom.open && vm}
-	<BootRom bind:open={properties.bootRom.open} vm={vm.current} bind:reload />
+{#if properties.bootRom.open}
+	<BootRom
+		bind:open={properties.bootRom.open}
+		node={data.node}
+		architecture={data.architecture}
+		vm={vm.current}
+		bind:reload
+	/>
 {/if}
 
-{#if properties.shutdownWaitTime.open && vm}
-	<ShutdownWaitTime bind:open={properties.shutdownWaitTime.open} vm={vm.current} bind:reload />
+{#if properties.shutdownWaitTime.open}
+	<ShutdownWaitTime
+		bind:open={properties.shutdownWaitTime.open}
+		node={data.node}
+		vm={vm.current}
+		bind:reload
+	/>
 {/if}
 
-{#if properties.cloudInit.open && vm}
-	<CloudInit bind:open={properties.cloudInit.open} vm={vm.current} bind:reload />
+{#if properties.cloudInit.open}
+	<CloudInit bind:open={properties.cloudInit.open} node={data.node} vm={vm.current} bind:reload />
 {/if}
 
-{#if properties.extraBhyveOptions.open && vm}
-	<ExtraBhyveOptions bind:open={properties.extraBhyveOptions.open} vm={vm.current} bind:reload />
+{#if properties.extraBhyveOptions.open}
+	<ExtraBhyveOptions
+		bind:open={properties.extraBhyveOptions.open}
+		node={data.node}
+		vm={vm.current}
+		bind:reload
+	/>
 {/if}
 
-{#if properties.ignoreUMSR.open && vm}
-	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} vm={vm.current} bind:reload />
+{#if properties.ignoreUMSR.open}
+	<IgnoreUMSR bind:open={properties.ignoreUMSR.open} node={data.node} vm={vm.current} bind:reload />
 {/if}
 
-{#if properties.qemuGuestAgent.open && vm}
-	<QemuGuestAgent bind:open={properties.qemuGuestAgent.open} vm={vm.current} bind:reload />
+{#if properties.qemuGuestAgent.open}
+	<QemuGuestAgent
+		bind:open={properties.qemuGuestAgent.open}
+		node={data.node}
+		vm={vm.current}
+		bind:reload
+	/>
 {/if}

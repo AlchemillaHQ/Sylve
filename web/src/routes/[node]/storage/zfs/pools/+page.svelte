@@ -1,7 +1,17 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { handleAPIResponse } from '$lib/api/common';
 	import { listDisks } from '$lib/api/disk/disk';
-	import { deletePool, getPools, scrubPool } from '$lib/api/zfs/pool';
+	import { deletePool, detachDevice, getPools, scrubPool } from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -16,13 +26,14 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
 	import { zpoolUseableDisks, zpoolUseablePartitions } from '$lib/utils/disk';
-	import { updateCache } from '$lib/utils/http';
+	import { getAPIErrorText, updateCache } from '$lib/utils/http';
 	import {
 		generateTableData,
 		getPoolByDevice,
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
@@ -46,19 +57,19 @@
 			return pools;
 		},
 		{
-			initialValue: data.pools
+			initialValue: untrack(() => data.pools)
 		}
 	);
 
 	const disks = resource(
-		() => 'disk-list',
+		() => 'disk-list-inventory',
 		async () => {
-			const disks = await listDisks();
-			updateCache('disk-list', disks);
+			const disks = await listDisks('none');
+			updateCache('disk-list-inventory', disks);
 			return disks;
 		},
 		{
-			initialValue: data.disks
+			initialValue: untrack(() => data.disks)
 		}
 	);
 
@@ -70,7 +81,7 @@
 		}
 	});
 
-	useInterval(5000, {
+	useInterval(60000, {
 		callback: async () => {
 			if (visible.current && !storage.idle) {
 				disks.refetch();
@@ -96,7 +107,7 @@
 	);
 
 	let activePool: Zpool | null = $derived.by(() => {
-		if (activeRow && isPool(pools.current, activeRow.name)) {
+		if (activeRow && typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)) {
 			return pools.current.find((p) => p.pool_guid === activeRow.guid) || null;
 		} else {
 			return null;
@@ -106,10 +117,12 @@
 	let replacing = $derived.by(() => {
 		if (tableData.rows.length > 0) {
 			const names = deepSearchKey(tableData.rows, 'name');
-			if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
-				return true;
-			} else {
-				return false;
+			if (names.every((name) => typeof name === 'string')) {
+				if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
+					return true;
+				} else {
+					return false;
+				}
 			}
 		}
 
@@ -126,7 +139,7 @@
 
 	let usable = $derived.by(() => {
 		return {
-			disks: zpoolUseableDisks(disks.current, pools.current),
+			disks: zpoolUseableDisks(disks.current),
 			partitions: zpoolUseablePartitions(disks.current, pools.current)
 		};
 	});
@@ -152,13 +165,16 @@
 				old: '',
 				latest: ''
 			}
+		},
+		detach: {
+			open: false
 		}
 	});
 </script>
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
-		{#if isPool(pools.current, activeRow.name)}
+		{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 			{#if type === 'pool-status'}
 				<Button
 					onclick={() => {
@@ -173,10 +189,10 @@
 			{/if}
 
 			{#if type === 'pool-scrub'}
-				{#if isPool(pools.current, activeRow.name)}
+				{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 					<Button
 						onclick={async () => {
-							const response = await scrubPool(activeRow?.guid);
+							const response = await scrubPool(activeRow?.guid as string);
 							if (response.status === 'error') {
 								toast.error(parsePoolActionError(response), {
 									position: 'bottom-center'
@@ -232,10 +248,10 @@
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
 				<Button
 					onclick={() => {
-						let pool = getPoolByDevice(pools.current, activeRow.name);
+						let pool = getPoolByDevice(pools.current, activeRow.name as string);
 						modals.replace.open = true;
 						modals.replace.data = {
 							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
@@ -254,6 +270,28 @@
 						size="h-4 w-4"
 						gap="gap-1"
 						title="Replace Device"
+					/>
+				</Button>
+			{/if}
+		{/if}
+
+		{#if type === 'pool-detach'}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name)}
+				<Button
+					onclick={() => {
+						modals.detach.open = true;
+					}}
+					variant="outline"
+					size="sm"
+					class="h-6.5"
+					disabled={replacing}
+					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
+				>
+					<SpanWithIcon
+						icon="icon-[mdi--link-variant-off]"
+						size="h-4 w-4"
+						gap="gap-1"
+						title="Detach Device"
 					/>
 				</Button>
 			{/if}
@@ -279,6 +317,7 @@
 		{@render button('pool-edit')}
 		{@render button('pool-delete')}
 		{@render button('pool-replace')}
+		{@render button('pool-detach')}
 	</div>
 
 	<TreeTable
@@ -303,10 +342,10 @@
 	}}
 	actions={{
 		onConfirm: async () => {
-			modals.delete.open = false;
-			let pool = $state.snapshot(activePool);
-			let response = await deletePool(pool?.guid as string);
+			const pool = $state.snapshot(activePool);
+			const response = await deletePool(pool?.guid as string);
 			reload = true;
+			if (response.status === 'success') modals.delete.open = false;
 			handleAPIResponse(response, {
 				success: `Pool ${pool?.name} deleted`,
 				error: parsePoolActionError(response)
@@ -314,6 +353,36 @@
 		},
 		onCancel: () => {
 			modals.delete.open = false;
+		}
+	}}
+/>
+
+<!-- Detach -->
+<AlertDialog
+	open={modals.detach.open}
+	names={{
+		parent: 'ZFS Pool',
+		element: activeRow ? (activeRow.name as string) : ''
+	}}
+	customTitle={`This will detach <span class='font-semibold'>${activeRow?.name}</span> from the pool.`}
+	confirmLabel="Detach"
+	actions={{
+		onConfirm: async () => {
+			const device = String(activeRow?.name || '');
+			const pool = getPoolByDevice(pools.current, device);
+			if (!pool) return;
+			const poolObj = pools.current.find((p) => p.name === pool);
+			if (!poolObj) return;
+			const response = await detachDevice(poolObj.guid, device);
+			if (response.status === 'error') {
+				toast.error(getAPIErrorText(response, 'Detach failed'), { position: 'bottom-center' });
+			} else {
+				modals.detach.open = false;
+				toast.success(`Detached ${device}`, { position: 'bottom-center' });
+			}
+		},
+		onCancel: () => {
+			modals.detach.open = false;
 		}
 	}}
 />

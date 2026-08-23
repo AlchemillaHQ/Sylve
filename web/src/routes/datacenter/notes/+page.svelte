@@ -14,7 +14,7 @@
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
-	import { resource, watch } from 'runed';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
@@ -39,18 +39,6 @@
 		},
 		{
 			initialValue: isAPIResponse(data) ? [] : data.notes
-		}
-	);
-
-	let reload = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				notes.refetch();
-				reload = false;
-			}
 		}
 	);
 
@@ -96,7 +84,7 @@
 		if (!modalState.title.trim() || !modalState.content.trim()) return;
 		if (modalState.isEditMode && selectedId !== null) {
 			const response = await editNote(selectedId, modalState.title, modalState.content);
-			reload = true;
+			notes.refetch();
 			if (response.status === 'success') {
 				toast.success('Note updated', { position: 'bottom-center' });
 				handleNote(undefined, false, true, false);
@@ -108,7 +96,7 @@
 			}
 		} else {
 			const response = await createNote(modalState.title, modalState.content);
-			reload = true;
+			notes.refetch();
 			if (response.status === 'success') {
 				toast.success('Note created', { position: 'bottom-center' });
 				handleNote(undefined, false, true, false);
@@ -362,7 +350,7 @@
 			onConfirm: async () => {
 				const id = activeRow ? activeRow[0]?.id : null;
 				const result = await deleteNote(id as number);
-				reload = true;
+				notes.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Note deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);
@@ -388,7 +376,7 @@
 					? activeRow.map((row) => (typeof row.id === 'number' ? row.id : parseInt(row.id)))
 					: [];
 				const result = await deleteNotes(ids);
-				reload = true;
+				notes.refetch();
 				if (isAPIResponse(result) && result.status === 'success') {
 					toast.success('Notes deleted', { position: 'bottom-center' });
 					handleNote(undefined, false, true);

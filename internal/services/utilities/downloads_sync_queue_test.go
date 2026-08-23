@@ -10,9 +10,12 @@ package utilities
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -21,7 +24,8 @@ func TestListDownloads_EnqueueSyncOnceWhileQueued(t *testing.T) {
 
 	enqueueCalls := 0
 	service := &Service{
-		DB: db,
+		DB:            db,
+		torrentClient: &fakeTorrentRuntime{},
 		enqueueNoPayloadFn: func(ctx context.Context, name string) error {
 			if name != "utils-download-sync" {
 				t.Fatalf("unexpected queue job name: %s", name)
@@ -97,5 +101,116 @@ func TestListDownloads_DoesNotEnqueueSyncWhenNoPending(t *testing.T) {
 
 	if enqueueCalls != 0 {
 		t.Fatalf("expected no enqueue calls for done downloads, got %d", enqueueCalls)
+	}
+}
+
+func TestListDownloadsEnqueuesSyncForProcessingDownloadAtFullTransferProgress(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	enqueueCalls := 0
+	service := &Service{
+		DB:            database,
+		torrentClient: &fakeTorrentRuntime{},
+		enqueueNoPayloadFn: func(context.Context, string) error {
+			enqueueCalls++
+			return nil
+		},
+	}
+	download := utilitiesModels.Downloads{
+		UUID:     "processing-post-download",
+		Path:     "/tmp/processing-post-download.img",
+		Name:     "processing-post-download.img",
+		Type:     utilitiesModels.DownloadTypePath,
+		URL:      "/tmp/processing-post-source.img",
+		Progress: 100,
+		Status:   utilitiesModels.DownloadStatusProcessing,
+	}
+	if err := database.Create(&download).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.ListDownloads(); err != nil {
+		t.Fatal(err)
+	}
+	if enqueueCalls != 1 {
+		t.Fatalf("sync enqueue calls=%d want 1", enqueueCalls)
+	}
+}
+
+func TestSyncPathLeavesStalePendingDownloadRetryableWhenQueueFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	service := &Service{
+		DB: db,
+		enqueueDownloadStartFn: func(
+			_ context.Context,
+			_ utilitiesServiceInterfaces.DownloadStartPayload,
+		) error {
+			return errors.New("queue offline")
+		},
+	}
+	staleAt := time.Now().Add(-3 * time.Minute)
+	pending := utilitiesModels.Downloads{
+		UUID:      "stale-path-uuid",
+		Path:      "/tmp/stale-path-destination",
+		Name:      "stale.img",
+		Type:      utilitiesModels.DownloadTypePath,
+		URL:       "/tmp/stale-path-source",
+		Progress:  0,
+		Status:    utilitiesModels.DownloadStatusPending,
+		CreatedAt: staleAt,
+		UpdatedAt: staleAt,
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service.syncPath(&pending)
+
+	var stored utilitiesModels.Downloads
+	if err := db.First(&stored, pending.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != utilitiesModels.DownloadStatusPending {
+		t.Fatalf("status=%q want pending", stored.Status)
+	}
+	if stored.Error != ErrDownloadQueueUnavailable.Error() {
+		t.Fatalf("error=%q", stored.Error)
+	}
+}
+
+func TestSyncPathDoesNotRequeueRunningPathDownload(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	enqueueCalls := 0
+	service := &Service{
+		DB: db,
+		enqueueDownloadStartFn: func(
+			_ context.Context,
+			_ utilitiesServiceInterfaces.DownloadStartPayload,
+		) error {
+			enqueueCalls++
+			return nil
+		},
+	}
+	pending := utilitiesModels.Downloads{
+		UUID:      "running-path-uuid",
+		Path:      "/tmp/running-path-destination",
+		Name:      "running.img",
+		Type:      utilitiesModels.DownloadTypePath,
+		URL:       "/tmp/running-path-source",
+		Progress:  0,
+		Status:    utilitiesModels.DownloadStatusPending,
+		CreatedAt: time.Now().Add(-3 * time.Minute),
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !service.beginDownloadStart(pending.ID) {
+		t.Fatal("failed to mark download start as running")
+	}
+	defer service.endDownloadStart(pending.ID)
+
+	service.syncPath(&pending)
+
+	if enqueueCalls != 0 {
+		t.Fatalf("running path download was requeued %d times", enqueueCalls)
 	}
 }

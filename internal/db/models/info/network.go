@@ -11,25 +11,13 @@ package infoModels
 import "time"
 
 type NetworkInterface struct {
-	ID    uint   `gorm:"primaryKey" json:"id"`
-	Name  string `gorm:"index" json:"name"`
-	Flags string `json:"flags"`
-	IsDelta bool   `json:"isDelta"`
-
-	Network string `json:"network"`
-	Address string `json:"address"`
-
-	ReceivedPackets int64 `gorm:"default:0" json:"receivedPackets"`
-	ReceivedErrors  int64 `gorm:"default:0" json:"receivedErrors"`
-	DroppedPackets  int64 `gorm:"default:0" json:"droppedPackets"`
-	ReceivedBytes   int64 `gorm:"default:0" json:"receivedBytes"`
-
-	SentPackets int64 `gorm:"default:0" json:"sentPackets"`
-	SendErrors  int64 `gorm:"default:0" json:"sendErrors"`
-	SentBytes   int64 `gorm:"default:0" json:"sentBytes"`
-
-	Collisions int64 `gorm:"default:0" json:"collisions"`
-
-	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID            uint      `gorm:"primaryKey" json:"id"`
+	IsDelta       bool      `json:"isDelta"`
+	ReceivedBytes int64     `gorm:"default:0" json:"receivedBytes"`
+	SentBytes     int64     `gorm:"default:0" json:"sentBytes"`
+	CreatedAt     time.Time `gorm:"autoCreateTime;index" json:"createdAt"`
+	UpdatedAt     time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
+
+func (n NetworkInterface) GetID() uint             { return n.ID }
+func (n NetworkInterface) GetCreatedAt() time.Time { return n.CreatedAt }

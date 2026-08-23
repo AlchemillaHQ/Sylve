@@ -9,6 +9,7 @@
  */
 
 import { getIcon, loadIcon } from '@iconify/svelte';
+import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
 import { decode as magnetDecode, encode as magnetEncode } from 'magnet-uri';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
@@ -29,9 +30,9 @@ export function capitalizeFirstLetter(str: string, firstOnly: boolean = false): 
 }
 
 export function parseJwt(token: string) {
-    let base64Url = token.split('.')[1];
-    let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    let jsonPayload = decodeURIComponent(
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
         window
             .atob(base64)
             .split('')
@@ -80,6 +81,10 @@ function seedRandom(seed: string): () => number {
     };
 }
 
+export function generateCHAPSecret(): string {
+    return nanoid(16);
+}
+
 export function generateNanoId(seed?: string): string {
     if (seed) {
         const rng = seedRandom(seed);
@@ -94,8 +99,8 @@ export function generateNanoId(seed?: string): string {
 }
 
 export function isValidSwitchName(name: string): boolean {
-    const regex = /^[a-zA-Z0-9-_]+$/;
-    return regex.test(name);
+    const normalized = name.trim();
+    return normalized.length > 0 && normalized.length <= 128 && /^[A-Za-z0-9_-]+$/.test(normalized);
 }
 
 export function isValidIPv4(ip: string, cidr = false): boolean {
@@ -119,6 +124,16 @@ export function isValidIPv6(ip: string, cidr = false): boolean {
         const parsed = new Address6(ip);
         const hasCidr = parsed.parsedSubnet !== '';
         return cidr ? hasCidr : !hasCidr;
+    } catch {
+        return false;
+    }
+}
+
+export function isLinkLocalIPv6(ip: string): boolean {
+    try {
+        const parsed = new Address6(ip);
+        if (parsed.parsedSubnet !== '') return false;
+        return parsed.isLinkLocal();
     } catch {
         return false;
     }
@@ -159,7 +174,7 @@ export function isDownloadURL(url: string): boolean {
 
         // Also accept signed/token-based download URLs (CDN presigned URLs, file sharing
         // services, etc.) where the path ends in a long opaque token with no file extension.
-        if (lastSegment.length > 20 && /^[a-zA-Z0-9_\-]+$/.test(lastSegment)) {
+        if (lastSegment.length > 20 && /^[a-zA-Z0-9_-]+$/.test(lastSegment)) {
             return true;
         }
 
@@ -216,8 +231,7 @@ export async function sha256(str: string, rounds: number = 1): Promise<string> {
     let data = encoder.encode(str);
 
     for (let i = 0; i < rounds; i++) {
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        data = new Uint8Array(hashBuffer);
+        data = nobleSha256(data);
     }
 
     const hashArray = Array.from(data);
@@ -245,19 +259,23 @@ export function isValidEmail(email: string): boolean {
 export function addTrackersToMagnet(uri: string): string {
     try {
         const parsed = magnetDecode(uri);
-        if (!parsed.tr || parsed.tr.length === 0) {
-            const trackers = [
-                'udp://tracker.opentrackr.org:1337/announce',
-                'udp://tracker.coppersurfer.tk:6969/announce',
-                'udp://tracker.internetwarriors.net:1337/announce',
-                'udp://tracker.openbittorrent.com:80/announce',
-                'udp://tracker.publicbt.com:80/announce'
-            ];
+        const knownTrackers = [
+            'udp://tracker.opentrackr.org:1337/announce',
+            'udp://open.demonii.com:1337/announce',
+            'udp://tracker.torrent.eu.org:451/announce',
+            'udp://explodie.org:6969/announce',
+            'udp://open.stealth.si:80/announce',
+            'udp://tracker.moeking.me:6969/announce',
+            'udp://tracker1.bt.moack.co.kr:80/announce',
+            'udp://tracker.bitsearch.to:1337/announce',
+            'udp://tracker-udp.gbitt.info:80/announce',
+            'udp://new-line.net:6969/announce'
+        ];
 
-            parsed.tr = trackers;
-            parsed.announce = trackers;
-        }
-
+        const existing = parsed.tr && Array.isArray(parsed.tr) ? parsed.tr : [];
+        const merged = [...new Set([...existing, ...knownTrackers])];
+        parsed.tr = merged;
+        parsed.announce = merged;
         return magnetEncode(parsed);
     } catch (e) {
         console.error('Invalid magnet URI:', e);
@@ -270,7 +288,7 @@ export function isValidFileName(name: string): boolean {
     if (!name || name.trim().length === 0) return false;
     if (name.length > 255) return false;
 
-    const invalidChars = /[\\\/:*?"<>|]/;
+    const invalidChars = /[\\/:*?"<>|]/;
     return !invalidChars.test(name);
 }
 
@@ -286,7 +304,7 @@ export function generateUnicastMAC() {
         .join(':');
 }
 
-export function isBoolean(value: any): boolean {
+export function isBoolean(value: unknown): boolean {
     return (
         typeof value === 'boolean' ||
         (typeof value === 'string' && (value === 'true' || value === 'false'))
@@ -354,8 +372,13 @@ export function parseBoolean(value: string | boolean): boolean {
 }
 
 export function isValidDHCPDomain(domain: string): boolean {
-    const domainRegex = /^[a-zA-Z0-9]([\.a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-    return domainRegex.test(domain);
+    const normalized = domain.trim();
+    if (normalized === '') return true;
+    if (normalized.length > 253) return false;
+
+    // const labelRegex = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+    const labelRegex = /^[a-zA-Z0-9]([\.a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+    return normalized.split('.').every((label) => labelRegex.test(label));
 }
 
 function ipToNumber(ip: string): number {
@@ -516,7 +539,7 @@ export function dnsmasqToSeconds(value: string): number {
 
     const val = value.trim().toLowerCase();
 
-    if (val === 'infinite') return Infinity;
+    if (val === 'infinite') return 0;
 
     const match = val.match(/^(\d+)([smhd]?)$/);
     if (!match) throw new Error(`Invalid dnsmasq time format: ${value}`);

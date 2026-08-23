@@ -1,0 +1,380 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+package system
+
+import (
+	"errors"
+	"reflect"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
+	"gorm.io/gorm"
+)
+
+func newTunablesTestService(t *testing.T, tunables []sysctl.Tunable, stored []models.SystemTunable) *Service {
+	t.Helper()
+
+	db := testutil.NewSQLiteTestDB(t, &models.SystemTunable{})
+	if len(stored) > 0 {
+		if err := db.Create(&stored).Error; err != nil {
+			t.Fatalf("failed to create stored tunables: %v", err)
+		}
+	}
+
+	byName := make(map[string]sysctl.Tunable, len(tunables))
+	for _, tunable := range tunables {
+		byName[tunable.Name] = tunable
+	}
+
+	return &Service{
+		DB:          db,
+		tunCache:    tunables,
+		tunCachedAt: time.Now(),
+		tunList: func() ([]sysctl.Tunable, error) {
+			return tunables, nil
+		},
+		tunDescribe: func(name string) (sysctl.Tunable, bool, error) {
+			tunable, found := byName[name]
+			return tunable, found, nil
+		},
+	}
+}
+
+func TestListTunablesPaginatedConfiguredOnly(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "runtime-alpha", Type: "string", Writable: true},
+		{Name: "kern.beta", Value: "same-value", Type: "string", Writable: true},
+		{Name: "kern.empty", Value: "runtime-empty", Type: "string", Writable: true},
+	}, []models.SystemTunable{
+		{Name: "kern.alpha", Value: "configured-alpha"},
+		{Name: "kern.beta", Value: "same-value"},
+		{Name: "kern.empty", Value: ""},
+		{Name: "kern.stale", Value: "configured-stale"},
+	})
+
+	all, err := service.ListTunablesPaginated(1, 25, "name", "asc", "", false)
+	if err != nil {
+		t.Fatalf("listing all tunables failed: %v", err)
+	}
+	if len(all.Data) != 3 {
+		t.Fatalf("expected all 3 current tunables, got %d", len(all.Data))
+	}
+	if all.Data[0].Value != "configured-alpha" || all.Data[2].Value != "" {
+		t.Fatalf("expected stored values to overlay runtime values, got %+v", all.Data)
+	}
+
+	configured, err := service.ListTunablesPaginated(1, 25, "name", "asc", "", true)
+	if err != nil {
+		t.Fatalf("listing configured tunables failed: %v", err)
+	}
+	if len(configured.Data) != 3 {
+		t.Fatalf("expected 3 configured current tunables, got %d", len(configured.Data))
+	}
+	if configured.Data[1].Name != "kern.beta" || configured.Data[2].Name != "kern.empty" {
+		t.Fatalf("expected same-value and empty-value tunables to be included, got %+v", configured.Data)
+	}
+}
+
+func TestListTunablesPaginatedFiltersBeforePagination(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "1"},
+		{Name: "kern.beta", Value: "2"},
+		{Name: "kern.delta", Value: "3"},
+		{Name: "kern.gamma", Value: "4"},
+	}, []models.SystemTunable{
+		{Name: "kern.alpha", Value: "10"},
+		{Name: "kern.delta", Value: "30"},
+		{Name: "kern.gamma", Value: "40"},
+	})
+
+	response, err := service.ListTunablesPaginated(1, 2, "name", "desc", "a", true)
+	if err != nil {
+		t.Fatalf("listing filtered tunables failed: %v", err)
+	}
+	if response.LastPage != 2 {
+		t.Fatalf("expected 2 pages after filtering, got %d", response.LastPage)
+	}
+	if len(response.Data) != 2 || response.Data[0].Name != "kern.gamma" || response.Data[1].Name != "kern.delta" {
+		t.Fatalf("unexpected first page: %+v", response.Data)
+	}
+
+	empty, err := service.ListTunablesPaginated(1, 2, "name", "asc", "missing", true)
+	if err != nil {
+		t.Fatalf("listing empty filtered result failed: %v", err)
+	}
+	if empty.LastPage != 1 || len(empty.Data) != 0 {
+		t.Fatalf("expected an empty result with last_page 1, got %+v", empty)
+	}
+}
+
+func TestListTunablesPaginatedConfiguredOnlyDoesNotWalkMIB(t *testing.T) {
+	service := newTunablesTestService(t, nil, []models.SystemTunable{
+		{Name: "kern.alpha", Value: "configured-alpha"},
+	})
+	service.tunList = func() ([]sysctl.Tunable, error) {
+		t.Fatal("configured-only listing called the bulk MIB walker")
+		return nil, nil
+	}
+	service.tunDescribe = func(name string) (sysctl.Tunable, bool, error) {
+		return sysctl.Tunable{Name: name, Type: "string", Writable: true}, true, nil
+	}
+
+	response, err := service.ListTunablesPaginated(1, 25, "name", "asc", "", true)
+	if err != nil {
+		t.Fatalf("listing configured tunables failed: %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Value != "configured-alpha" {
+		t.Fatalf("unexpected configured-only response: %+v", response.Data)
+	}
+}
+
+func TestListTunablesPaginatedClampsOutOfRangePage(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "1"},
+	}, nil)
+
+	response, err := service.ListTunablesPaginated(int(^uint(0)>>1), 100, "name", "asc", "", false)
+	if err != nil {
+		t.Fatalf("listing an out-of-range page failed: %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Name != "kern.alpha" {
+		t.Fatalf("expected the out-of-range page to clamp to the last page, got %+v", response.Data)
+	}
+}
+
+func TestSetTunablePersistsDesiredRuntimeValue(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "old", Type: "string", Writable: true},
+	}, nil)
+
+	runtimeValue := "old"
+	var applied []string
+	service.tunRead = func(string) (string, error) {
+		return runtimeValue, nil
+	}
+	service.tunApply = func(_ string, value string) error {
+		applied = append(applied, value)
+		runtimeValue = value
+		return nil
+	}
+
+	if err := service.SetTunable(" kern.alpha ", "new"); err != nil {
+		t.Fatalf("setting tunable failed: %v", err)
+	}
+	if runtimeValue != "new" || !reflect.DeepEqual(applied, []string{"new"}) {
+		t.Fatalf("runtime value = %q, applied = %v; want new and [new]", runtimeValue, applied)
+	}
+
+	var stored models.SystemTunable
+	if err := service.DB.Where("name = ?", "kern.alpha").First(&stored).Error; err != nil {
+		t.Fatalf("loading persisted tunable failed: %v", err)
+	}
+	if stored.Value != "new" {
+		t.Fatalf("persisted value = %q; want new", stored.Value)
+	}
+}
+
+func TestSetTunableSkipsUnchangedRuntimeApply(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "same", Type: "string", Writable: true},
+	}, nil)
+	service.tunRead = func(string) (string, error) {
+		return "same", nil
+	}
+	service.tunApply = func(string, string) error {
+		t.Fatal("unchanged runtime value was applied again")
+		return nil
+	}
+
+	if err := service.SetTunable("kern.alpha", "same"); err != nil {
+		t.Fatalf("setting unchanged tunable failed: %v", err)
+	}
+
+	var stored models.SystemTunable
+	if err := service.DB.Where("name = ?", "kern.alpha").First(&stored).Error; err != nil {
+		t.Fatalf("loading persisted tunable failed: %v", err)
+	}
+	if stored.Value != "same" {
+		t.Fatalf("persisted value = %q; want same", stored.Value)
+	}
+}
+
+func TestSetTunableRestoresRuntimeWhenPersistenceFails(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "old", Type: "string", Writable: true},
+	}, []models.SystemTunable{{Name: "kern.alpha", Value: "old"}})
+	if err := service.DB.Callback().Update().Before("gorm:update").Register(
+		"force_tunable_update_failure",
+		func(tx *gorm.DB) {
+			if tx.Statement.Schema != nil && tx.Statement.Schema.Table == "system_tunables" {
+				tx.AddError(errors.New("forced tunable persistence failure"))
+			}
+		},
+	); err != nil {
+		t.Fatalf("installing update callback failed: %v", err)
+	}
+
+	runtimeValue := "old"
+	var applied []string
+	service.tunRead = func(string) (string, error) {
+		return runtimeValue, nil
+	}
+	service.tunApply = func(_ string, value string) error {
+		applied = append(applied, value)
+		runtimeValue = value
+		return nil
+	}
+
+	err := service.SetTunable("kern.alpha", "new")
+	if code := TunableErrorCode(err); code != ErrTunablePersistenceFailed.Error() {
+		t.Fatalf("error = %v, code = %q; want %q", err, code, ErrTunablePersistenceFailed)
+	}
+	if runtimeValue != "old" || !reflect.DeepEqual(applied, []string{"new", "old"}) {
+		t.Fatalf("runtime value = %q, applied = %v; want old and [new old]", runtimeValue, applied)
+	}
+
+	var stored models.SystemTunable
+	if err := service.DB.Where("name = ?", "kern.alpha").First(&stored).Error; err != nil {
+		t.Fatalf("loading persisted tunable failed: %v", err)
+	}
+	if stored.Value != "old" {
+		t.Fatalf("persisted value = %q; want old", stored.Value)
+	}
+}
+
+func TestSetTunableClassifiesValidationAndRuntimeFailures(t *testing.T) {
+	tests := []struct {
+		name        string
+		tunables    []sysctl.Tunable
+		tunableName string
+		apply       func(string, string) error
+		wantCode    string
+	}{
+		{
+			name:        "missing name",
+			tunables:    []sysctl.Tunable{},
+			tunableName: " ",
+			wantCode:    ErrTunableNameRequired.Error(),
+		},
+		{
+			name:        "unknown tunable",
+			tunables:    []sysctl.Tunable{},
+			tunableName: "kern.missing",
+			wantCode:    ErrTunableNotFound.Error(),
+		},
+		{
+			name: "read only",
+			tunables: []sysctl.Tunable{
+				{Name: "kern.readonly", Writable: false},
+			},
+			tunableName: "kern.readonly",
+			wantCode:    ErrTunableNotWritable.Error(),
+		},
+		{
+			name: "invalid runtime value",
+			tunables: []sysctl.Tunable{
+				{Name: "kern.alpha", Writable: true},
+			},
+			tunableName: "kern.alpha",
+			apply: func(string, string) error {
+				return errors.New("rejected")
+			},
+			wantCode: ErrInvalidTunableValue.Error(),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := newTunablesTestService(t, test.tunables, nil)
+			service.tunRead = func(string) (string, error) { return "old", nil }
+			service.tunApply = test.apply
+
+			err := service.SetTunable(test.tunableName, "new")
+			if code := TunableErrorCode(err); code != test.wantCode {
+				t.Fatalf("error = %v, code = %q; want %q", err, code, test.wantCode)
+			}
+		})
+	}
+}
+
+func TestSetTunableSerializesConcurrentRuntimeAndPersistenceUpdates(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: "kern.alpha", Value: "0", Type: "string", Writable: true},
+	}, nil)
+
+	var stateMutex sync.Mutex
+	runtimeValue := "0"
+	readCount := 0
+	secondRead := make(chan struct{}, 1)
+	firstApplyStarted := make(chan struct{})
+	releaseFirstApply := make(chan struct{})
+
+	service.tunRead = func(string) (string, error) {
+		stateMutex.Lock()
+		defer stateMutex.Unlock()
+		readCount++
+		if readCount == 2 {
+			secondRead <- struct{}{}
+		}
+		return runtimeValue, nil
+	}
+	service.tunApply = func(_ string, value string) error {
+		if value == "1" {
+			close(firstApplyStarted)
+			<-releaseFirstApply
+		}
+		stateMutex.Lock()
+		runtimeValue = value
+		stateMutex.Unlock()
+		return nil
+	}
+
+	errorsCh := make(chan error, 2)
+	go func() { errorsCh <- service.SetTunable("kern.alpha", "1") }()
+	<-firstApplyStarted
+
+	secondStarted := make(chan struct{})
+	go func() {
+		close(secondStarted)
+		errorsCh <- service.SetTunable("kern.alpha", "2")
+	}()
+	<-secondStarted
+
+	select {
+	case <-secondRead:
+		t.Fatal("second update read runtime state before the first update completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseFirstApply)
+	for range 2 {
+		if err := <-errorsCh; err != nil {
+			t.Fatalf("concurrent update failed: %v", err)
+		}
+	}
+
+	stateMutex.Lock()
+	finalRuntimeValue := runtimeValue
+	stateMutex.Unlock()
+	if finalRuntimeValue != "2" {
+		t.Fatalf("runtime value = %q; want 2", finalRuntimeValue)
+	}
+
+	var stored models.SystemTunable
+	if err := service.DB.Where("name = ?", "kern.alpha").First(&stored).Error; err != nil {
+		t.Fatalf("loading persisted tunable failed: %v", err)
+	}
+	if stored.Value != "2" {
+		t.Fatalf("persisted value = %q; want 2", stored.Value)
+	}
+}

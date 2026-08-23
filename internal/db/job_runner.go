@@ -11,7 +11,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/gob"
 	"errors"
 	"fmt"
@@ -27,6 +26,7 @@ type jobRunnerOpts struct {
 	Extend       time.Duration
 	Limit        int
 	Log          jobLogger
+	Name         string
 	PollInterval time.Duration
 	Queue        *goqite.Queue
 }
@@ -36,13 +36,19 @@ type jobRunner struct {
 	jobCount      int
 	jobCountLimit int
 	jobCountLock  sync.RWMutex
-	jobs          map[string]jobFunc
+	jobs          map[string]registeredJob
 	log           jobLogger
+	name          string
 	pollInterval  time.Duration
 	queue         *goqite.Queue
 }
 
 type jobFunc func(ctx context.Context, m []byte) error
+
+type registeredJob struct {
+	fn                 jobFunc
+	handlerErrorPolicy QueueHandlerErrorPolicy
+}
 
 type jobLogger interface {
 	Info(msg string, args ...any)
@@ -74,18 +80,26 @@ func newJobRunner(opts jobRunnerOpts) *jobRunner {
 	return &jobRunner{
 		extend:        opts.Extend,
 		jobCountLimit: opts.Limit,
-		jobs:          make(map[string]jobFunc),
+		jobs:          make(map[string]registeredJob),
 		log:           opts.Log,
+		name:          opts.Name,
 		pollInterval:  opts.PollInterval,
 		queue:         opts.Queue,
 	}
 }
 
 func (r *jobRunner) Register(name string, job jobFunc) {
+	r.RegisterWithPolicy(name, QueueHandlerErrorRetry, job)
+}
+
+func (r *jobRunner) RegisterWithPolicy(name string, policy QueueHandlerErrorPolicy, job jobFunc) {
 	if _, ok := r.jobs[name]; ok {
 		panic(fmt.Sprintf(`job "%v" already registered`, name))
 	}
-	r.jobs[name] = job
+	if policy != QueueHandlerErrorRetry && policy != QueueHandlerErrorConsume {
+		panic(fmt.Sprintf(`job "%v" has invalid handler error policy %d`, name, policy))
+	}
+	r.jobs[name] = registeredJob{fn: job, handlerErrorPolicy: policy}
 }
 
 func (r *jobRunner) Start(ctx context.Context) {
@@ -95,15 +109,15 @@ func (r *jobRunner) Start(ctx context.Context) {
 	}
 	sort.Strings(names)
 
-	r.log.Info("Starting job runner", "jobs", names)
+	r.log.Info("Starting job runner", "name", r.name, "jobs", names)
 
 	var wg sync.WaitGroup
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.Info("Stopping job runner")
+			r.log.Info("Stopping job runner", "name", r.name)
 			wg.Wait()
-			r.log.Info("Stopped job runner")
+			r.log.Info("Stopped job runner", "name", r.name)
 			return
 		default:
 			r.receiveAndRun(ctx, &wg)
@@ -136,12 +150,28 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 	var qm queueJobMessage
 	if err := gob.NewDecoder(bytes.NewReader(m.Body)).Decode(&qm); err != nil {
 		r.log.Info("Error decoding job message body", "error", err)
+		if deleteErr := r.deleteMessage(m.ID); deleteErr != nil {
+			r.log.Info(
+				"Error deleting corrupt job message from queue, it will be retried",
+				"id", m.ID,
+				"error", deleteErr,
+			)
+		}
 		return
 	}
 
 	job, ok := r.jobs[qm.Name]
 	if !ok {
-		panic(fmt.Sprintf(`job "%v" not registered`, qm.Name))
+		r.log.Info("Discarding job with unregistered name", "name", qm.Name, "id", m.ID)
+		if deleteErr := r.deleteMessage(m.ID); deleteErr != nil {
+			r.log.Info(
+				"Error deleting unregistered job message from queue, it will be retried",
+				"name", qm.Name,
+				"id", m.ID,
+				"error", deleteErr,
+			)
+		}
+		return
 	}
 
 	r.jobCountLock.Lock()
@@ -159,6 +189,16 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 		defer func() {
 			if rec := recover(); rec != nil {
 				r.log.Info("Recovered from panic in job", "name", qm.Name, "id", m.ID, "error", rec)
+				if job.handlerErrorPolicy == QueueHandlerErrorConsume {
+					if deleteErr := r.deleteMessage(m.ID); deleteErr != nil {
+						r.log.Info(
+							"Error deleting consumed panicked job from queue, it will be retried",
+							"name", qm.Name,
+							"id", m.ID,
+							"error", deleteErr,
+						)
+					}
+				}
 			}
 		}()
 
@@ -183,19 +223,33 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 
 		r.log.Info("Running job", "name", qm.Name, "id", m.ID)
 		before := time.Now()
-		if err := job(jobCtx, qm.Message); err != nil {
+		if err := job.fn(jobCtx, qm.Message); err != nil {
 			r.log.Info("Error running job", "name", qm.Name, "id", m.ID, "error", err)
+			if job.handlerErrorPolicy == QueueHandlerErrorConsume {
+				if deleteErr := r.deleteMessage(m.ID); deleteErr != nil {
+					r.log.Info(
+						"Error deleting consumed failed job from queue, it will be retried",
+						"name", qm.Name,
+						"id", m.ID,
+						"error", deleteErr,
+					)
+				}
+			}
 			return
 		}
 		duration := time.Since(before)
-		r.log.Info("Ran job", "name", qm.Name, "id", m.ID, "duration", duration)
+		r.log.Info("Ran job", "name", qm.Name, "id", m.ID, "duration", duration.String())
 
-		deleteCtx, deleteCancel := context.WithTimeout(context.Background(), time.Second)
-		defer deleteCancel()
-		if err := r.queue.Delete(deleteCtx, m.ID); err != nil {
+		if err := r.deleteMessage(m.ID); err != nil {
 			r.log.Info("Error deleting job from queue, it will be retried", "name", qm.Name, "id", m.ID, "error", err)
 		}
 	}()
+}
+
+func (r *jobRunner) deleteMessage(id goqite.ID) error {
+	deleteCtx, deleteCancel := context.WithTimeout(context.Background(), time.Second)
+	defer deleteCancel()
+	return r.queue.Delete(deleteCtx, id)
 }
 
 func createJobMessage(ctx context.Context, q *goqite.Queue, name string, m []byte) error {
@@ -204,12 +258,4 @@ func createJobMessage(ctx context.Context, q *goqite.Queue, name string, m []byt
 		return err
 	}
 	return q.Send(ctx, goqite.Message{Body: buf.Bytes()})
-}
-
-func createJobMessageTx(ctx context.Context, tx *sql.Tx, q *goqite.Queue, name string, m []byte) error {
-	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(queueJobMessage{Name: name, Message: m}); err != nil {
-		return err
-	}
-	return q.SendTx(ctx, tx, goqite.Message{Body: buf.Bytes()})
 }

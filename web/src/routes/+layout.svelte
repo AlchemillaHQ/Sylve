@@ -4,22 +4,16 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { IsDocumentVisible, IsIdle, watch } from 'runed';
 	import { fade } from 'svelte/transition';
-	import { goto, preloadData } from '$app/navigation';
-	import {
-		isClusterTokenValid,
-		isTokenValid,
-		login,
-		loginWithPasskey,
-		isInitialized
-	} from '$lib/api/auth';
+	import { preloadData, onNavigate } from '$app/navigation';
+	import { isTokenValid, login, loginWithPasskey, isInitialized } from '$lib/api/auth';
 	import Login from '$lib/components/custom/Login.svelte';
 	import Throbber from '$lib/components/custom/Throbber.svelte';
 	import Shell from '$lib/components/skeleton/Shell.svelte';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import '$lib/utils/i18n';
 	import { addTabulatorFilters } from '$lib/utils/table';
-	import { mode, ModeWatcher } from 'mode-watcher';
-	import { onMount } from 'svelte';
+	import { mode, ModeWatcher, setMode } from 'mode-watcher';
+	import { onMount, type Component } from 'svelte';
 	import '../locales/main.loader.svelte.js';
 	import Initialize from '$lib/components/custom/Initialization/Initialize.svelte';
 	import { sleep } from '$lib/utils';
@@ -42,10 +36,17 @@
 		setEnabledServicesForHostname,
 		syncActiveEnabledServices
 	} from '$lib/utils/enabled-services';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import { isAPIResponse } from '$lib/utils/http.js';
+	import ErrorDetailModal from '$lib/components/custom/Dialog/ErrorDetailModal.svelte';
+	import { initializeDemoRuntime, isDemoMode } from '$lib/demo/runtime';
 
 	let { children } = $props();
-	let initialized = $state<boolean | null>(null);
-	let rebooted = $state<boolean>(false);
+	initializeDemoRuntime();
+	let DemoHostRuntimeComponent = $state<Component<{ hostname?: string }> | null>(null);
+
+	let initialized = $state<boolean | null>(isDemoMode ? true : null);
+	let rebooted = $state<boolean>(isDemoMode);
 
 	let loading = $state({
 		throbber: false,
@@ -54,16 +55,47 @@
 		initialization: false
 	});
 
+	function handleDemoMessage(event: MessageEvent) {
+		if (
+			!isDemoMode ||
+			event.source !== window.parent ||
+			event.data?.type !== 'sylve-demo-theme' ||
+			(event.data.theme !== 'light' && event.data.theme !== 'dark')
+		) {
+			return;
+		}
+
+		setMode(event.data.theme);
+	}
+
 	onMount(async () => {
 		loadLocale((storage.language || 'en') as Locales);
 		addTabulatorFilters();
 
-		const [validToken, validClusterToken] = await Promise.all([
-			isTokenValid(),
-			isClusterTokenValid()
-		]);
+		if (isDemoMode) {
+			void import('$lib/components/custom/Terminal/DemoHostRuntime.svelte').then(
+				(module) => (DemoHostRuntimeComponent = module.default)
+			);
+			window.addEventListener('message', handleDemoMessage);
+			initialized = true;
+			rebooted = true;
 
-		if (validToken && validClusterToken) {
+			if (page.url.pathname === '/') {
+				await preloadData('/datacenter/summary');
+				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
+			}
+
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					window.parent.postMessage({ type: 'sylve-demo-ready' }, '*');
+				});
+			});
+			return;
+		}
+
+		const validToken = await isTokenValid();
+
+		if (validToken) {
 			void startSSEEvents();
 
 			loading.initialization = true;
@@ -84,18 +116,31 @@
 
 			if (initialized && rebooted && page.url.pathname === '/') {
 				await preloadData('/datacenter/summary');
-				await goto(resolve('/datacenter/summary'), { replaceState: true });
+				await useSafeGoto(resolve('/datacenter/summary'), { replaceState: true });
 			}
 
-			await sleep(1500);
-			loading.throbber = false;
+			const minimumThrobberDelay = sleep(1500);
 
-			const basicSettings = await getLocalBasicSettings();
-			setEnabledServicesForHostname(
-				storage.localHostname || storage.hostname,
-				basicSettings.services
-			);
-			syncActiveEnabledServices(page.url.pathname);
+			try {
+				if (initialized && rebooted) {
+					const basicSettings = await getLocalBasicSettings();
+
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+					} else {
+						setEnabledServicesForHostname(
+							storage.localHostname || storage.hostname,
+							basicSettings.services
+						);
+						syncActiveEnabledServices(page.url.pathname);
+					}
+				}
+			} catch (error) {
+				console.error('Failed to fetch basic settings:', error);
+			} finally {
+				await minimumThrobberDelay;
+				loading.throbber = false;
+			}
 		} else {
 			stopSSEEvents();
 			storage.token = '';
@@ -108,7 +153,8 @@
 	});
 
 	onDestroy(() => {
-		stopSSEEvents();
+		if (isDemoMode) window.removeEventListener('message', handleDemoMessage);
+		if (!isDemoMode) stopSSEEvents();
 	});
 
 	async function handleLogin(
@@ -128,41 +174,49 @@
 				loading.initialization = true;
 
 				try {
-					[initialized, rebooted] = await isInitialized();
-				} catch (error) {
-					console.error('Initialization check error:', error);
-					initialized = false;
-					rebooted = false;
+					try {
+						[initialized, rebooted] = await isInitialized();
+					} catch (error) {
+						console.error('Initialization check error:', error);
+						initialized = false;
+						rebooted = false;
+					}
+
+					await useSafeGoto(resolve('/'));
+
+					if (!initialized || !rebooted) {
+						return;
+					}
+
+					const basicSettings = await getLocalBasicSettings();
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+						return;
+					}
+
+					setEnabledServicesForHostname(
+						storage.localHostname || storage.hostname,
+						basicSettings.services
+					);
+					syncActiveEnabledServices(page.url.pathname);
+
+					let target = toLoginPath;
+
+					if (!target) {
+						target = page.url.pathname;
+					}
+
+					if (target === '/') {
+						target = resolve('/datacenter/summary');
+					}
+
+					await preloadData(target);
+					await useSafeGoto(target, { replaceState: true });
+				} finally {
+					loading.initialization = false;
+					await sleep(1500);
+					loading.throbber = false;
 				}
-
-				await goto(resolve('/'));
-
-				loading.initialization = false;
-
-				const basicSettings = await getLocalBasicSettings();
-				setEnabledServicesForHostname(
-					storage.localHostname || storage.hostname,
-					basicSettings.services
-				);
-				syncActiveEnabledServices(page.url.pathname);
-
-				let target = toLoginPath;
-
-				if (!target) {
-					target = page.url.pathname;
-				}
-
-				if (target === '/') {
-					target = resolve('/datacenter/summary');
-				}
-
-				await preloadData(target);
-
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				await goto(target, { replaceState: true });
-
-				await sleep(1500);
-				loading.throbber = false;
 				return;
 			} else {
 				isError = true;
@@ -194,39 +248,47 @@
 				loading.initialization = true;
 
 				try {
-					[initialized, rebooted] = await isInitialized();
-				} catch (error) {
-					console.error('Initialization check error:', error);
-					initialized = false;
-					rebooted = false;
+					try {
+						[initialized, rebooted] = await isInitialized();
+					} catch (error) {
+						console.error('Initialization check error:', error);
+						initialized = false;
+						rebooted = false;
+					}
+
+					await useSafeGoto(resolve('/'));
+
+					if (!initialized || !rebooted) {
+						return;
+					}
+
+					const basicSettings = await getLocalBasicSettings();
+					if (isAPIResponse(basicSettings)) {
+						console.error('Failed to fetch basic settings:', basicSettings);
+						return;
+					}
+
+					setEnabledServicesForHostname(
+						storage.localHostname || storage.hostname,
+						basicSettings.services
+					);
+					syncActiveEnabledServices(page.url.pathname);
+
+					let target = toLoginPath;
+					if (!target) {
+						target = page.url.pathname;
+					}
+					if (target === '/') {
+						target = resolve('/datacenter/summary');
+					}
+
+					await preloadData(target);
+					await useSafeGoto(target, { replaceState: true });
+				} finally {
+					loading.initialization = false;
+					await sleep(1500);
+					loading.throbber = false;
 				}
-
-				await goto(resolve('/'));
-
-				loading.initialization = false;
-
-				const basicSettings = await getLocalBasicSettings();
-				setEnabledServicesForHostname(
-					storage.localHostname || storage.hostname,
-					basicSettings.services
-				);
-				syncActiveEnabledServices(page.url.pathname);
-
-				let target = toLoginPath;
-				if (!target) {
-					target = page.url.pathname;
-				}
-				if (target === '/') {
-					target = resolve('/datacenter/summary');
-				}
-
-				await preloadData(target);
-
-				// eslint-disable-next-line svelte/no-navigation-without-resolve
-				await goto(target, { replaceState: true });
-
-				await sleep(1500);
-				loading.throbber = false;
 				return;
 			} else {
 				isError = true;
@@ -252,7 +314,6 @@
 	watch(
 		() => visible.current,
 		(current) => {
-			console.log(storage.visible, 'FFF');
 			storage.visible = current;
 		}
 	);
@@ -267,6 +328,7 @@
 	watch(
 		() => storage.token,
 		(token) => {
+			if (isDemoMode) return;
 			if (token) {
 				void startSSEEvents();
 			} else {
@@ -274,6 +336,18 @@
 			}
 		}
 	);
+
+	onNavigate((navigation) => {
+		if (!document.startViewTransition) return;
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+		return new Promise((resolve) => {
+			document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+		});
+	});
 
 	let busy = $state(false);
 </script>
@@ -286,7 +360,11 @@
 <svelte:document onkeydown={handleCommandKeydown} />
 
 <Toaster />
+<ErrorDetailModal />
 <ModeWatcher />
+{#if isDemoMode && DemoHostRuntimeComponent}
+	<DemoHostRuntimeComponent hostname={storage.hostname || 'leto'} />
+{/if}
 
 <Tooltip.Provider>
 	{#if loading.throbber}
@@ -308,6 +386,7 @@
 			<div transition:fade|global={{ duration: 400 }}>
 				<ProgressBar
 					id="top-loader"
+					viewTransitionName="top-loader"
 					class={mode.current === 'dark' ? 'text-white' : 'text-green-500'}
 					zIndex={9999}
 					bind:busy
@@ -360,5 +439,29 @@
 <style>
 	:global(#top-loader) {
 		height: 0.5px !important;
+	}
+
+	:global(#top-loader .svelte-progress-bar-leader) {
+		display: none;
+	}
+
+	:global(::view-transition-group(top-loader-bar)),
+	:global(::view-transition-old(top-loader-bar)),
+	:global(::view-transition-new(top-loader-bar)) {
+		animation: none;
+	}
+
+	:global(::view-transition-old(top-loader-bar)),
+	:global(::view-transition-new(top-loader-bar)) {
+		width: 100%;
+		height: 100%;
+		object-fit: fill;
+		overflow: clip;
+		mix-blend-mode: normal;
+	}
+
+	:global(::view-transition-old(root)),
+	:global(::view-transition-new(root)) {
+		animation-duration: 150ms;
 	}
 </style>

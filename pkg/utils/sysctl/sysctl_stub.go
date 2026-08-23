@@ -15,7 +15,9 @@ import "fmt"
 var errUnsupported = fmt.Errorf("sysctl is not supported on this platform")
 
 func GetInt64(name string) (int64, error)     { return 0, errUnsupported }
+func GetUint64(name string) (uint64, error)   { return 0, errUnsupported }
 func GetString(name string) (string, error)   { return "", errUnsupported }
 func GetBytes(name string) ([]byte, error)    { return nil, errUnsupported }
 func Set(name string, value []byte) error     { return errUnsupported }
 func SetInt32(name string, value int32) error { return errUnsupported }
+func SetInt64(name string, value int64) error { return errUnsupported }

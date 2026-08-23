@@ -1,17 +1,27 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails, newJail } from '$lib/api/jail/jail';
 	import { getBootstraps } from '$lib/api/jail/bootstrap';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
-	import { getDownloads } from '$lib/api/utilities/downloader';
+	import { getDownloadsResult } from '$lib/api/utilities/downloader';
 	import { getSimpleVMs } from '$lib/api/vm/vm';
+	import { getDatasetsResult } from '$lib/api/zfs/datasets';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { CreateData } from '$lib/types/jail/jail';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import type { Download } from '$lib/types/utilities/downloader';
+	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { getJailCreateErrorMessage, isValidCreateData } from '$lib/utils/jail/jail';
 	import { getNextGuestId, getNextId } from '$lib/utils/vm/vm';
 	import { fade } from 'svelte/transition';
@@ -25,6 +35,7 @@
 	import { getPools } from '$lib/api/zfs/pool';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
+	import { emptySwitchList, isSwitchList } from '$lib/types/network/switch';
 
 	interface Props {
 		open: boolean;
@@ -41,142 +52,12 @@
 		{ value: 'advanced', label: 'Advanced' }
 	];
 
-	let downloads = resource(
-		() => 'downloads',
-		async (key) => {
-			const downloads = await getDownloads();
-			updateCache(key, downloads);
-			return downloads;
-		}
-	);
-
-	let networkSwitches = resource(
-		() => 'network-switches',
-		async (key) => {
-			const switches = await getSwitches();
-			updateCache(key, switches);
-			return switches;
-		}
-	);
-
-	let networkObjects = resource(
-		() => 'network-objects',
-		async (key) => {
-			const objects = await getNetworkObjects();
-			updateCache(key, objects);
-			return objects;
-		}
-	);
-
-	let networkRefetch = $state(false);
-
-	watch(
-		() => networkRefetch,
-		(value) => {
-			if (value) {
-				networkObjects.refetch();
-				networkRefetch = false;
-			}
-		}
-	);
-
-	let vms = resource(
-		() => 'simple-vm-list',
-		async (key) => {
-			const vms = await getSimpleVMs();
-			updateCache(key, vms);
-			return vms;
-		}
-	);
-
-	let jails = resource(
-		() => 'simple-jail-list',
-		async (key) => {
-			const jails = await getSimpleJails();
-			updateCache(key, jails);
-			return jails;
-		}
-	);
-
-	let nodes = resource(
-		() => 'cluster-nodes',
-		async (key) => {
-			const nodes = await getNodes();
-			updateCache(key, nodes);
-			return nodes;
-		}
-	);
-
-	let pools = resource(
-		() => 'pool-list',
-		async (key) => {
-			const pools = await getPools();
-			updateCache(key, pools);
-			return pools;
-		}
-	);
-
-	const clusterNodes = resource(
-		() => 'cluster-nodes',
-		async (key) => {
-			const result = await getNodes();
-			updateCache(key, result);
-			return result;
-		}
-	);
-
-	let bootstrapRefetch = $state(false);
-
-	let bootstraps = resource(
-		() => (open && modal.storage.pool ? `bootstraps-${modal.storage.pool}` : null),
-		async (key) => {
-			if (!modal.storage.pool) return [] as BootstrapEntry[];
-			const result = await getBootstraps(modal.storage.pool);
-			if (key !== null) {
-				updateCache(key, result);
-			}
-			return result;
-		},
-		{ initialValue: [] as BootstrapEntry[] }
-	);
-
-	watch(
-		() => bootstrapRefetch,
-		(value) => {
-			if (value) {
-				bootstraps.refetch();
-				bootstrapRefetch = false;
-			}
-		}
-	);
-
-	let refetch = $state(false);
-
-	watch(
-		() => refetch,
-		(value) => {
-			if (value) {
-				downloads.refetch();
-				networkSwitches.refetch();
-				networkObjects.refetch();
-				vms.refetch();
-				jails.refetch();
-				nodes.refetch();
-				pools.refetch();
-				bootstraps.refetch();
-
-				refetch = false;
-			}
-		}
-	);
-
-	let creating: boolean = $state(false);
-
+	// @wc-ignore
 	let options = {
 		name: '',
 		hostname: '',
 		id: 0,
-		node: '',
+		node: String(page.params.node || storage.localHostname || storage.hostname || ''),
 		description: '',
 		storage: {
 			pool: '',
@@ -187,15 +68,21 @@
 		network: {
 			switch: 'None',
 			mac: 0,
+			macRaw: '',
 			inheritIPv4: true,
 			inheritIPv6: true,
 			ipv4: 0,
+			ipv4Raw: '',
 			ipv4Gateway: 0,
+			ipv4GatewayRaw: '',
 			ipv6: 0,
+			ipv6Raw: '',
 			ipv6Gateway: 0,
+			ipv6GatewayRaw: '',
 			dhcp: false,
 			slaac: false,
-			resolvConf: ''
+			resolvConf: '',
+			vlan: 0
 		},
 		hardware: {
 			cpuCores: 1,
@@ -225,21 +112,205 @@
 		}
 	};
 
+	let modal: CreateData = $state(structuredClone(options));
+	let lastGoodNetworkSwitches = emptySwitchList();
+	const lastGoodDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	const lastGoodFilesystemsByNode: Record<string, Dataset[]> = Object.create(null);
+
+	let downloads = resource(
+		() => modal.node || '__default__',
+		async (node, _previousNode, { signal }) => {
+			const hostname = node === '__default__' ? undefined : node;
+			try {
+				const result = await getDownloadsResult({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGoodDownloadsByNode[node] ?? [];
+				}
+				lastGoodDownloadsByNode[node] = result;
+				await updateCache('download-list', result, hostname);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGoodDownloadsByNode[node] ?? [];
+				throw error;
+			}
+		}
+	);
+
+	let networkSwitches = resource(
+		() => `network-switches-${modal.node || '__default__'}`,
+		async (key) => {
+			const switches = await getSwitches(modal.node || undefined);
+			if (!isSwitchList(switches)) {
+				handleAPIError(switches);
+				return lastGoodNetworkSwitches;
+			}
+
+			lastGoodNetworkSwitches = switches;
+			updateCache(key, switches);
+			return switches;
+		},
+		{ initialValue: lastGoodNetworkSwitches }
+	);
+
+	let networkObjects = resource(
+		() => `network-objects-${modal.node || '__default__'}`,
+		async (key) => {
+			const objects = await getNetworkObjects(modal.node || undefined);
+			if (isAPIResponse(objects)) {
+				handleAPIError(objects);
+				return [] as NetworkObject[];
+			}
+
+			updateCache(key, objects);
+			return objects;
+		}
+	);
+
+	let networkRefetch = $state(false);
+
+	watch(
+		() => networkRefetch,
+		(value) => {
+			if (value) {
+				networkObjects.refetch();
+				networkRefetch = false;
+			}
+		}
+	);
+
+	let vms = resource(
+		() => `simple-vm-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const vms = await getSimpleVMs(modal.node || undefined);
+			updateCache(key, vms);
+			return vms;
+		}
+	);
+
+	let jails = resource(
+		() => `simple-jail-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const jails = await getSimpleJails(modal.node || undefined);
+			updateCache(key, jails);
+			return jails;
+		}
+	);
+
+	let nodes = resource(
+		() => 'cluster-nodes',
+		async (key) => {
+			const nodes = await getNodes();
+			updateCache(key, nodes);
+			return nodes;
+		}
+	);
+
+	let pools = resource(
+		() => `pool-list-${modal.node || '__default__'}`,
+		async (key) => {
+			const pools = await getPools(false, modal.node || undefined);
+			updateCache(key, pools);
+			return pools;
+		}
+	);
+
+	let filesystems = resource(
+		() => modal.node || '__default__',
+		async (node, _previousNode, { signal }) => {
+			const hostname = node === '__default__' ? '' : node;
+			try {
+				const result = await getDatasetsResult(
+					GZFSDatasetTypeSchema.enum.FILESYSTEM,
+					hostname,
+					signal
+				);
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGoodFilesystemsByNode[node] ?? [];
+				}
+				lastGoodFilesystemsByNode[node] = result;
+				await updateCache('zfs-filesystems', result, hostname || undefined);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGoodFilesystemsByNode[node] ?? [];
+				throw error;
+			}
+		},
+		{ initialValue: [] as Dataset[] }
+	);
+
+	let bootstrapRefetch = $state(false);
+
+	let bootstraps = resource(
+		() =>
+			open && modal.storage.pool
+				? `${modal.node || '__default__'}:bootstraps-${modal.storage.pool}`
+				: null,
+		async (key) => {
+			if (!modal.storage.pool) return [] as BootstrapEntry[];
+			const result = await getBootstraps(modal.storage.pool, {
+				hostname: modal.node || undefined
+			});
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return [] as BootstrapEntry[];
+			}
+			if (key !== null) {
+				updateCache(`bootstraps-${modal.storage.pool}`, result, modal.node || undefined);
+			}
+			return result;
+		},
+		{ initialValue: [] as BootstrapEntry[] }
+	);
+
+	watch(
+		() => bootstrapRefetch,
+		(value) => {
+			if (value) {
+				bootstraps.refetch();
+				bootstrapRefetch = false;
+			}
+		}
+	);
+
+	watch([() => open, () => minimize], ([open, minimize]) => {
+		if (open && !minimize) {
+			downloads.refetch();
+			networkSwitches.refetch();
+			networkObjects.refetch();
+			vms.refetch();
+			jails.refetch();
+			nodes.refetch();
+			pools.refetch();
+			filesystems.refetch();
+			bootstraps.refetch();
+		}
+	});
+
+	watch(
+		() => modal.node,
+		(node) => {
+			if (!node || node.trim() === '') return;
+			modal.storage.pool = '';
+			modal.storage.base = '';
+			modal.storage.fstab = '';
+			modal.network.switch = 'None';
+			modal.network.mac = 0;
+		}
+	);
+
+	let creating: boolean = $state(false);
+
 	let nextId = $derived.by(() => {
 		if (open) {
-			if (
-				clusterNodes.current &&
-				Array.isArray(clusterNodes.current) &&
-				clusterNodes.current.length > 0
-			) {
-				return getNextGuestId(clusterNodes.current);
+			if (nodes.current && Array.isArray(nodes.current) && nodes.current.length > 0) {
+				return getNextGuestId(nodes.current);
 			}
 
 			return getNextId(vms.current || [], jails.current || []);
 		}
 	});
-
-	let modal: CreateData = $state(options);
 
 	watch(
 		() => nextId,
@@ -251,10 +322,11 @@
 	);
 
 	function resetModal() {
-		modal = options;
+		modal = structuredClone(options);
 	}
 
 	async function create() {
+		if (creating) return;
 		const data = $state.snapshot(modal);
 
 		if (data.hardware.resourceLimits === false) {
@@ -270,17 +342,14 @@
 			data.storage.bootstrapName = '';
 		}
 
-		if (!(await isValidCreateData(data))) {
-			return;
-		} else {
-			creating = true;
-			const response = await newJail(data);
-			creating = false;
+		if (!(await isValidCreateData(data))) return;
 
-			if (response.error) {
+		creating = true;
+		try {
+			const response = await newJail(data, data.node || undefined);
+
+			if (response.status !== 'success') {
 				handleAPIError(response);
-
-				reload.leftPanel = true;
 				toast.error(getJailCreateErrorMessage(response), {
 					position: 'bottom-center'
 				});
@@ -289,26 +358,33 @@
 
 			open = false;
 			reload.leftPanel = true;
+			resetModal();
 
 			toast.success(`Jail ${data.name} created`, {
 				position: 'bottom-center'
 			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to create jail', {
+				position: 'bottom-center'
+			});
+		} finally {
+			creating = false;
 		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-5 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
+		class="fixed left-1/2 top-1/2 flex h-[85vh] w-[80%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0  overflow-auto p-6 transition-all duration-300 ease-in-out lg:h-[72vh] lg:max-w-2xl"
 		showCloseButton={false}
 	>
-		<Dialog.Header class="p-0">
+		<Dialog.Header>
 			<Dialog.Title class="flex  justify-between gap-1 text-left">
 				<div class="flex items-center gap-2">
 					<span class="icon-[hugeicons--prison] h-5 w-5"></span>
 					<span>Create Jail</span>
 				</div>
-				<div class="flex items-center gap-0.5">
+				<div class="flex items-center gap-0.5 -mr-3">
 					<Button size="sm" variant="link" class="h-4" onclick={() => resetModal()} title="Reset">
 						<span class="icon-[radix-icons--reset] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Reset</span>
@@ -326,7 +402,17 @@
 						<span class="icon-[mdi--window-minimize] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Minimize</span>
 					</Button>
-					<Button size="sm" variant="link" class="h-4" onclick={() => (open = false)} title="Close">
+					<Button
+						size="sm"
+						variant="link"
+						class="h-4"
+						onclick={() => {
+							open = false;
+							minimize = false;
+							resetModal();
+						}}
+						title="Close"
+					>
 						<span class="icon-[material-symbols--close-rounded] pointer-events-none h-4 w-4"></span>
 						<span class="sr-only">Close</span>
 					</Button>
@@ -352,7 +438,6 @@
 										bind:id={modal.id}
 										bind:hostname={modal.hostname}
 										bind:description={modal.description}
-										bind:refetch
 										bind:node={modal.node}
 										nodes={nodes.current}
 									/>
@@ -360,8 +445,10 @@
 							{:else if value === 'storage' && pools.current && downloads.current && jails.current}
 								<div in:fade={{ duration: 200 }}>
 									<Storage
+										hostname={modal.node || undefined}
 										downloads={downloads.current}
 										pools={pools.current}
+										datasets={filesystems.current}
 										bootstraps={bootstraps.current}
 										bind:bootstrapRefetch
 										ctId={modal.id}
@@ -370,26 +457,32 @@
 										bind:fstab={modal.storage.fstab}
 									/>
 								</div>
-							{:else if value === 'network' && networkSwitches.current && networkObjects.current}
+							{:else if value === 'network' && networkSwitches.current && Array.isArray(networkObjects.current)}
 								<div in:fade={{ duration: 200 }}>
 									<Network
 										name={modal.name}
 										ctId={modal.id}
 										bind:switch={modal.network.switch}
 										bind:mac={modal.network.mac}
+										bind:macRaw={modal.network.macRaw}
 										bind:inheritIPv4={modal.network.inheritIPv4}
 										bind:inheritIPv6={modal.network.inheritIPv6}
 										bind:ipv4={modal.network.ipv4}
+										bind:ipv4Raw={modal.network.ipv4Raw}
 										bind:ipv4Gateway={modal.network.ipv4Gateway}
+										bind:ipv4GatewayRaw={modal.network.ipv4GatewayRaw}
 										bind:ipv6={modal.network.ipv6}
+										bind:ipv6Raw={modal.network.ipv6Raw}
 										bind:ipv6Gateway={modal.network.ipv6Gateway}
+										bind:ipv6GatewayRaw={modal.network.ipv6GatewayRaw}
 										bind:dhcp={modal.network.dhcp}
 										bind:slaac={modal.network.slaac}
 										bind:resolvConf={modal.network.resolvConf}
+										bind:vlan={modal.network.vlan}
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}
-										networkObjects={networkObjects.current as NetworkObject[]}
+										networkObjects={networkObjects.current}
 									/>
 								</div>
 							{:else if value === 'hardware'}

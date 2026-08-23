@@ -9,21 +9,65 @@
 package clusterHandlers
 
 import (
+	"errors"
+	"net/http"
+
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
 )
 
-type NoteRequest struct {
-	Title   string `json:"title" binding:"required,min=3"`
-	Content string `json:"content" binding:"required,min=3"`
+func writeNoteMutationError(c *gin.Context, operation string, err error) {
+	status := http.StatusInternalServerError
+	message := operation
+	detail := operation
+
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		status = http.StatusNotFound
+		message = "note_not_found"
+		detail = "note_not_found"
+	case errors.Is(err, raft.ErrNotLeader), errors.Is(err, raft.ErrLeadershipLost):
+		status = http.StatusConflict
+		message = "cluster_leadership_changed"
+		detail = "cluster_leadership_changed"
+	case errors.Is(err, raft.ErrRaftShutdown), errors.Is(err, raft.ErrEnqueueTimeout):
+		status = http.StatusServiceUnavailable
+		message = "cluster_consensus_unavailable"
+		detail = "cluster_consensus_unavailable"
+	default:
+		logger.L.Error().Err(err).Str("operation", operation).Msg("cluster_note_mutation_failed")
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   detail,
+		Data:    nil,
+	})
 }
 
-type BulkDeleteRequest struct {
-	IDs []int `json:"ids" binding:"required"`
+func validNoteBulkIDs(ids []int) bool {
+	if len(ids) == 0 {
+		return false
+	}
+
+	seen := make(map[int]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return false
+		}
+		if _, exists := seen[id]; exists {
+			return false
+		}
+		seen[id] = struct{}{}
+	}
+	return true
 }
 
 // @Summary Get All Cluster Notes
@@ -33,16 +77,19 @@ type BulkDeleteRequest struct {
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]clusterModels.ClusterNote] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes [get]
+// @Router /cluster/notes [get]
 func Notes(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		notes, err := cS.ListNotes()
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			logger.L.Error().Err(err).Msg("cluster_note_list_failed")
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "list_notes_failed",
-				Error:   err.Error(),
+				Error:   "list_notes_failed",
 				Data:    nil,
 			})
 			return
@@ -58,16 +105,21 @@ func Notes(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Create a New Cluster Note
-// @Description Create a new note in the cluster
+// @Description Create a new note with a 3-128 character title and content of at least 3 characters
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body NoteRequest true "Create Note Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param request body internal.NoteRequest true "Create Note Request"
+// @Success 201 {object} internal.APIResponse[any] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Cluster leadership changed"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes [post]
+// @Failure 503 {object} internal.APIResponse[any] "Cluster consensus unavailable"
+// @Router /cluster/notes [post]
 func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -75,29 +127,19 @@ func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req NoteRequest
+		var req internal.NoteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request")
 			return
 		}
 
 		err := cS.ProposeNoteCreate(req.Title, req.Content, cS.Raft == nil)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "note_create_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeNoteMutationError(c, "note_create_failed", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusCreated, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "note_created",
 			Error:   "",
@@ -107,17 +149,23 @@ func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Update a Cluster Note
-// @Description Update an existing note in the cluster
+// @Description Update an existing note by positive ID
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Note ID"
-// @Param request body NoteRequest true "Update Note Request"
+// @Param id path int true "Positive note ID" minimum(1)
+// @Param request body internal.NoteRequest true "Update Note Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Note Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Cluster leadership changed"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/{id} [put]
+// @Failure 503 {object} internal.APIResponse[any] "Cluster consensus unavailable"
+// @Router /cluster/notes/{id} [put]
 func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -126,8 +174,8 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		id, err := utils.GetIdFromParam(c)
-		if err != nil || id == 0 {
-			c.JSON(400, internal.APIResponse[any]{
+		if err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_id",
 				Error:   "id must be a positive integer",
@@ -136,29 +184,19 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req NoteRequest
+		var req internal.NoteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeClusterJSONBindError(c, err, "invalid_request")
 			return
 		}
 
 		err = cS.ProposeNoteUpdate(id, req.Title, req.Content, cS.Raft == nil)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "note_update_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeNoteMutationError(c, "note_update_failed", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "note_updated",
 			Error:   "",
@@ -173,16 +211,21 @@ func UpdateNote(cS *cluster.Service) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Note ID"
+// @Param id path int true "Positive note ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Note Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Cluster leadership changed"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/{id} [delete]
+// @Failure 503 {object} internal.APIResponse[any] "Cluster consensus unavailable"
+// @Router /cluster/notes/{id} [delete]
 func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := utils.GetIdFromParam(c)
 		if err != nil || id <= 0 {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_id",
 				Error:   "id must be a positive integer",
@@ -191,43 +234,17 @@ func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if cS.Raft == nil {
-			err := cS.ProposeNoteDelete(id, true)
-			if err != nil {
-				c.JSON(500, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "note_delete_failed",
-					Error:   err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-
-			c.JSON(200, internal.APIResponse[any]{
-				Status:  "success",
-				Message: "note_deleted",
-				Error:   "",
-				Data:    nil,
-			})
-			return
-		}
-
-		if cS.Raft.State() != raft.Leader {
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
 			forwardToLeader(c, cS)
 			return
 		}
 
-		if err := cS.ProposeNoteDelete(id, false); err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "note_delete_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := cS.ProposeNoteDelete(id, cS.Raft == nil); err != nil {
+			writeNoteMutationError(c, "note_delete_failed", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "note_deleted",
 			Error:   "",
@@ -237,16 +254,22 @@ func DeleteNote(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Bulk Delete Cluster Notes
-// @Description Bulk delete notes from the cluster by IDs
+// @Description Delete the exact requested non-empty set of unique positive note IDs
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param request body BulkDeleteRequest true "Bulk Delete Notes Request"
+// @Param request body internal.BulkDeleteRequest true "Bulk Delete Notes Request"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "One or more notes not found"
+// @Failure 409 {object} internal.APIResponse[any] "Cluster leadership changed"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/bulk-delete [post]
+// @Failure 503 {object} internal.APIResponse[any] "Cluster consensus unavailable"
+// @Router /cluster/notes/bulk-delete [post]
 func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
@@ -254,12 +277,16 @@ func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		var req BulkDeleteRequest
+		var req internal.BulkDeleteRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(400, internal.APIResponse[any]{
+			writeClusterJSONBindError(c, err, "invalid_request")
+			return
+		}
+		if !validNoteBulkIDs(req.IDs) {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
+				Message: "invalid_ids",
+				Error:   "ids must be a non-empty list of unique positive integers",
 				Data:    nil,
 			})
 			return
@@ -267,16 +294,11 @@ func BulkDeleteNotes(cS *cluster.Service) gin.HandlerFunc {
 
 		err := cS.ProposeNoteBulkDelete(req.IDs, cS.Raft == nil)
 		if err != nil {
-			c.JSON(500, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "bulk_note_delete_failed",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeNoteMutationError(c, "bulk_note_delete_failed", err)
 			return
 		}
 
-		c.JSON(200, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
 			Message: "notes_deleted",
 			Error:   "",

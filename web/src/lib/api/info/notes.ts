@@ -1,5 +1,5 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { NoteSchema, NotesSchema, type Note, type Notes } from '$lib/types/info/notes';
+import { NoteSchema, type Note, type Notes } from '$lib/types/info/notes';
 import { apiRequest } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
@@ -37,5 +37,8 @@ export const updateNote = async (
 };
 
 export const deleteNotes = async (ids: number[]): Promise<APIResponse> => {
-	return (await notesRequest('/info/notes/bulk-delete', 'POST', { ids })) as APIResponse;
+	const query = new URLSearchParams();
+	for (const id of ids) query.append('ids', String(id));
+
+	return (await notesRequest(`/info/notes?${query.toString()}`, 'DELETE')) as APIResponse;
 };

@@ -12,7 +12,7 @@
 		generateMACOptions
 	} from '$lib/utils/network/object';
 	import { toast } from 'svelte-sonner';
-	import { isValidIPv4, validateDnsmasqHostname } from '$lib/utils/string';
+	import { isValidIPv4, isValidIPv6, validateDnsmasqHostname } from '$lib/utils/string';
 	import { createDHCPLease, modifyDHCPLease } from '$lib/api/network/dhcp';
 	import { handleAPIError } from '$lib/utils/http';
 
@@ -25,6 +25,19 @@
 		networkObjects: NetworkObject[];
 	}
 
+	interface ComboBoxState {
+		value: string;
+		open: boolean;
+	}
+
+	interface LeaseFormState {
+		hostname: string;
+		comments: string;
+		dhcpRange: { combobox: ComboBoxState };
+		identifier: { combobox: ComboBoxState };
+		ip: { combobox: ComboBoxState };
+	}
+
 	let {
 		open = $bindable(),
 		reload = $bindable(),
@@ -34,231 +47,217 @@
 		networkObjects
 	}: Props = $props();
 
-	let editing = $derived({
-		lease: selectedLease
-			? dhcpLeases.db.find((lease) => lease.id === Number(selectedLease)) || null
-			: null
+	function editingLease() {
+		if (selectedLease === null) return null;
+		return dhcpLeases.db.find((lease) => lease.id === Number(selectedLease)) ?? null;
+	}
+
+	function initialFormState(): LeaseFormState {
+		const lease = editingLease();
+		return {
+			hostname: lease?.hostname ?? '',
+			comments: lease?.comments ?? '',
+			dhcpRange: {
+				combobox: {
+					value: lease?.dhcpRangeId.toString() ?? '',
+					open: false
+				}
+			},
+			identifier: {
+				combobox: {
+					value: lease?.macObjectId
+						? `mac-${lease.macObjectId}`
+						: lease?.duidObjectId
+							? `duid-${lease.duidObjectId}`
+							: '',
+					open: false
+				}
+			},
+			ip: {
+				combobox: {
+					value: lease?.ipObjectId ? `ip-${lease.ipObjectId}` : '',
+					open: false
+				}
+			}
+		};
+	}
+
+	let properties = $state(initialFormState());
+	let saving = $state(false);
+
+	let singleValueObjects = $derived(
+		networkObjects.filter((object) => object.entries?.length === 1)
+	);
+	let rangeOptions = $derived(
+		dhcpRanges.map((range) => ({
+			value: range.id.toString(),
+			label: `${range.startIp} - ${range.endIp} (${range.manualSwitch ? range.manualSwitch.bridge : range.standardSwitch?.name})`
+		}))
+	);
+	let selectedRange = $derived(
+		dhcpRanges.find((range) => range.id.toString() === properties.dhcpRange.combobox.value)
+	);
+	let identifierOptions = $derived.by(() => {
+		if (selectedRange?.type === 'ipv4') {
+			return generateMACOptions(singleValueObjects, true);
+		}
+		if (selectedRange?.type === 'ipv6') {
+			return generateDUIDOptions(singleValueObjects, true);
+		}
+		return [];
+	});
+	let ipOptions = $derived.by(() => {
+		if (!selectedRange) return [];
+		const requiredPrefix = selectedRange.type === 'ipv4' ? 'mac-' : 'duid-';
+		if (!properties.identifier.combobox.value.startsWith(requiredPrefix)) return [];
+		return generateIPOptions(singleValueObjects, selectedRange.type, true);
 	});
 
-	let options = $derived({
-		hostname: editing.lease ? editing.lease.hostname : '',
-		dhcpRange: {
-			combobox: {
-				value: editing.lease ? editing.lease.dhcpRangeId.toString() : '',
-				options: dhcpRanges.map((range) => ({
-					value: range.id.toString(),
-					label: `${range.startIp} - ${range.endIp} (${range.manualSwitch ? range.manualSwitch.bridge : range.standardSwitch?.name})`
-				})),
-				open: false
-			}
-		},
-		identifier: {
-			combobox: {
-				value: selectedLease
-					? editing.lease?.macObjectId
-						? `mac-${editing.lease.macObjectId}`
-						: editing.lease?.duidObjectId
-							? `duid-${editing.lease.duidObjectId}`
-							: ''
-					: '',
-				options: [
-					...generateMACOptions(networkObjects, true),
-					...generateDUIDOptions(networkObjects, true)
-				],
-				open: false
-			}
-		},
-		ip: {
-			combobox: {
-				value: selectedLease
-					? editing.lease?.ipObjectId
-						? `ip-${editing.lease.ipObjectId}`
-						: ''
-					: '',
-				options: [] as { value: string; label: string }[],
-				open: false
-			}
-		},
-		comments: selectedLease ? editing.lease?.comments || '' : ''
-	});
+	function handleRangeChange(value: string | string[]) {
+		if (typeof value !== 'string') return;
+		const nextRange = dhcpRanges.find((range) => range.id.toString() === value);
+		if (!nextRange) {
+			properties.identifier.combobox.value = '';
+			properties.ip.combobox.value = '';
+			return;
+		}
 
-	// svelte-ignore state_referenced_locally
-	let properties = $state(options);
+		const requiredPrefix = nextRange.type === 'ipv4' ? 'mac-' : 'duid-';
+		if (!properties.identifier.combobox.value.startsWith(requiredPrefix)) {
+			properties.identifier.combobox.value = '';
+			properties.ip.combobox.value = '';
+			return;
+		}
 
-	$effect(() => {
-		if (properties.identifier.combobox.value.startsWith('mac')) {
-			properties.ip.combobox.options = generateIPOptions(networkObjects, 'ipv4', true);
-			properties.ip.combobox.value = selectedLease
-				? editing.lease?.ipObjectId
-					? `ip-${editing.lease.ipObjectId}`
-					: ''
-				: '';
-		} else if (properties.identifier.combobox.value.startsWith('duid')) {
-			properties.ip.combobox.options = generateIPOptions(networkObjects, 'ipv6', true);
-			properties.ip.combobox.value = selectedLease
-				? editing.lease?.ipObjectId
-					? `ip-${editing.lease.ipObjectId}`
-					: ''
-				: '';
-		} else {
-			properties.ip.combobox.options = [];
+		const validIPOptions = generateIPOptions(singleValueObjects, nextRange.type, true);
+		if (!validIPOptions.some((option) => option.value === properties.ip.combobox.value)) {
 			properties.ip.combobox.value = '';
 		}
-	});
+	}
+
+	function handleIdentifierChange(value: string | string[]) {
+		if (typeof value !== 'string') return;
+		properties.ip.combobox.value = '';
+	}
+
+	function selectedObject(value: string): NetworkObject | undefined {
+		const id = Number(value.split('-')[1]);
+		return networkObjects.find((object) => object.id === id);
+	}
 
 	function basicTests(): boolean {
 		if (!validateDnsmasqHostname(properties.hostname)) {
-			toast.error('Invalid hostname', {
+			toast.error('Invalid hostname', { position: 'bottom-center' });
+			return false;
+		}
+
+		if (properties.comments.length > 4096) {
+			toast.error('Comments must be 4096 characters or fewer', {
 				position: 'bottom-center'
 			});
 			return false;
 		}
 
-		if (!properties.dhcpRange.combobox.value) {
-			toast.error('Range is required', {
-				position: 'bottom-center'
-			});
+		if (!selectedRange) {
+			toast.error('Range is required', { position: 'bottom-center' });
 			return false;
 		}
 
 		if (!properties.identifier.combobox.value) {
-			toast.error('Identifier is required', {
-				position: 'bottom-center'
-			});
+			toast.error('Identifier is required', { position: 'bottom-center' });
 			return false;
 		}
 
 		if (!properties.ip.combobox.value) {
-			toast.error('IP Address is required', {
+			toast.error('IP Address is required', { position: 'bottom-center' });
+			return false;
+		}
+
+		const identifier = selectedObject(properties.identifier.combobox.value);
+		const ip = selectedObject(properties.ip.combobox.value);
+		if (!identifier || identifier.entries?.length !== 1 || !ip || ip.entries?.length !== 1) {
+			toast.error('Selected objects must contain exactly one value', {
 				position: 'bottom-center'
 			});
 			return false;
 		}
 
-		let range = dhcpRanges.find((r) => r.id.toString() === properties.dhcpRange.combobox.value);
-		let identifier = networkObjects.find(
-			(obj) => obj.id.toString() === properties.identifier.combobox.value.split('-')[1]
-		);
-		let ip = networkObjects.find(
-			(obj) => obj.id.toString() === properties.ip.combobox.value.split('-')[1]
-		);
-
-		if (!range || !identifier || !ip) {
-			toast.error('Invalid selection', {
-				position: 'bottom-center'
-			});
-			return false;
-		}
-
-		if (range.type === 'ipv4') {
-			if (!properties.identifier.combobox.value.startsWith('mac')) {
+		const ipValue = ip.entries[0].value;
+		if (selectedRange.type === 'ipv4') {
+			if (identifier.type !== 'Mac' || !properties.identifier.combobox.value.startsWith('mac-')) {
 				toast.error('Identifier must be a MAC for IPv4 ranges', {
 					position: 'bottom-center'
 				});
-
 				return false;
 			}
-
-			if (ip.type === 'Host') {
-				const entries = ip.entries || [];
-				const hasIPv4 = entries.length === 1 && entries.every((entry) => isValidIPv4(entry.value));
-				if (!hasIPv4) {
-					toast.error('IP Address must be an IPv4 address for IPv4 ranges', {
-						position: 'bottom-center'
-					});
-					return false;
-				}
+			if (ip.type !== 'Host' || !isValidIPv4(ipValue)) {
+				toast.error('IP Address must be an IPv4 address for IPv4 ranges', {
+					position: 'bottom-center'
+				});
+				return false;
 			}
 		}
 
-		if (range.type === 'ipv6') {
-			if (!properties.identifier.combobox.value.startsWith('duid')) {
+		if (selectedRange.type === 'ipv6') {
+			if (identifier.type !== 'DUID' || !properties.identifier.combobox.value.startsWith('duid-')) {
 				toast.error('Identifier must be a DUID for IPv6 ranges', {
 					position: 'bottom-center'
 				});
 				return false;
 			}
-
-			if (ip.type === 'Host') {
-				const entries = ip.entries || [];
-				const hasIPv6 = entries.length === 1 && entries.every((entry) => !isValidIPv4(entry.value));
-				if (!hasIPv6) {
-					toast.error('IP Address must be an IPv6 address for IPv6 ranges', {
-						position: 'bottom-center'
-					});
-					return false;
-				}
+			if (ip.type !== 'Host' || !isValidIPv6(ipValue)) {
+				toast.error('IP Address must be an IPv6 address for IPv6 ranges', {
+					position: 'bottom-center'
+				});
+				return false;
 			}
 		}
 
 		return true;
 	}
 
-	async function create() {
-		if (basicTests() === false) return;
+	async function save() {
+		if (saving || !basicTests() || !selectedRange) return;
 
-		const response = await createDHCPLease(
-			properties.hostname,
-			properties.comments,
-			properties.ip.combobox.value ? parseInt(properties.ip.combobox.value.split('-')[1]) : null,
-			properties.identifier.combobox.value.startsWith('mac')
-				? parseInt(properties.identifier.combobox.value.split('-')[1])
-				: null,
-			properties.identifier.combobox.value.startsWith('duid')
-				? parseInt(properties.identifier.combobox.value.split('-')[1])
-				: null,
-			parseInt(properties.dhcpRange.combobox.value)
-		);
+		saving = true;
+		try {
+			const ipObjectId = Number(properties.ip.combobox.value.split('-')[1]);
+			const identifierObjectId = Number(properties.identifier.combobox.value.split('-')[1]);
+			const response = selectedLease
+				? await modifyDHCPLease(
+						Number(selectedLease),
+						properties.hostname,
+						properties.comments,
+						ipObjectId,
+						selectedRange.type === 'ipv4' ? identifierObjectId : null,
+						selectedRange.type === 'ipv6' ? identifierObjectId : null,
+						selectedRange.id
+					)
+				: await createDHCPLease(
+						properties.hostname,
+						properties.comments,
+						ipObjectId,
+						selectedRange.type === 'ipv4' ? identifierObjectId : null,
+						selectedRange.type === 'ipv6' ? identifierObjectId : null,
+						selectedRange.id
+					);
 
-		reload = true;
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error(selectedLease ? 'Failed to save lease' : 'Failed to create lease', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to create lease', {
+			toast.success(selectedLease ? 'Lease saved' : 'Lease created', {
 				position: 'bottom-center'
 			});
-			return;
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Lease created', {
-			position: 'bottom-center'
-		});
-
-		open = false;
-		reload = true;
-	}
-
-	async function edit() {
-		if (basicTests() === false) return;
-		const response = await modifyDHCPLease(
-			Number(selectedLease),
-			properties.hostname,
-			properties.comments,
-			properties.ip.combobox.value ? parseInt(properties.ip.combobox.value.split('-')[1]) : null,
-			properties.identifier.combobox.value.startsWith('mac')
-				? parseInt(properties.identifier.combobox.value.split('-')[1])
-				: null,
-			properties.identifier.combobox.value.startsWith('duid')
-				? parseInt(properties.identifier.combobox.value.split('-')[1])
-				: null,
-			parseInt(properties.dhcpRange.combobox.value)
-		);
-
-		reload = true;
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to edit lease', {
-				position: 'bottom-center'
-			});
-			return;
-		}
-
-		toast.success('Lease edited', {
-			position: 'bottom-center'
-		});
-
-		open = false;
-		reload = true;
 	}
 </script>
 
@@ -266,7 +265,7 @@
 	<Dialog.Content
 		showCloseButton={true}
 		showResetButton={true}
-		onReset={() => (properties = options)}
+		onReset={() => (properties = initialFormState())}
 		onClose={() => (open = false)}
 	>
 		<Dialog.Header>
@@ -292,7 +291,8 @@
 				bind:open={properties.dhcpRange.combobox.open}
 				label="Range"
 				bind:value={properties.dhcpRange.combobox.value}
-				data={properties.dhcpRange.combobox.options}
+				data={rangeOptions}
+				onValueChange={handleRangeChange}
 				classes="flex-1 min-w-0 max-w-[360px] space-y-1"
 				placeholder="Select Range"
 				triggerWidth="w-full"
@@ -305,7 +305,9 @@
 				bind:open={properties.identifier.combobox.open}
 				label="Identifier"
 				bind:value={properties.identifier.combobox.value}
-				data={properties.identifier.combobox.options}
+				data={identifierOptions}
+				onValueChange={handleIdentifierChange}
+				disabled={!selectedRange}
 				classes="basis-0 flex-1 min-w-0 space-y-1"
 				placeholder="Select Identifier"
 				triggerWidth="w-full"
@@ -316,7 +318,8 @@
 				bind:open={properties.ip.combobox.open}
 				label="IP Address"
 				bind:value={properties.ip.combobox.value}
-				data={properties.ip.combobox.options}
+				data={ipOptions}
+				disabled={!properties.identifier.combobox.value}
 				classes="basis-0 flex-1 min-w-0 space-y-1"
 				placeholder="Select IP Address"
 				triggerWidth="w-full"
@@ -335,11 +338,14 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				{#if selectedLease}
-					<Button onclick={edit} type="submit" size="sm">Edit</Button>
-				{:else}
-					<Button onclick={create} type="submit" size="sm">Create</Button>
-				{/if}
+				<Button onclick={save} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						{selectedLease ? 'Saving…' : 'Creating…'}
+					{:else}
+						{selectedLease ? 'Save' : 'Create'}
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

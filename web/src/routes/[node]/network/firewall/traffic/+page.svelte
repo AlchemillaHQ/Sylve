@@ -1,5 +1,6 @@
 <script lang="ts">
 	import {
+		bulkDeleteFirewallTrafficRules,
 		deleteFirewallTrafficRule,
 		getFirewallTrafficRuleCounters,
 		getFirewallTrafficRules,
@@ -23,7 +24,7 @@
 	} from '$lib/types/network/firewall';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
@@ -38,7 +39,7 @@
 	interface Data {
 		trafficRules: FirewallTrafficRule[] | APIResponse;
 		objects: NetworkObject[] | APIResponse;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		switches: SwitchList | APIResponse;
 		wgClients: WireGuardClient[] | APIResponse;
 	}
@@ -50,14 +51,24 @@
 	} = $props();
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodTrafficRules = Array.isArray(data.trafficRules)
+		? data.trafficRules
+		: ([] as FirewallTrafficRule[]);
+
 	const trafficRulesResource = resource(
 		() => 'firewall-traffic-rules',
 		async (key) => {
 			const result = await getFirewallTrafficRules();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodTrafficRules;
+			}
+
+			lastGoodTrafficRules = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.trafficRules as FirewallTrafficRule[] }
+		{ initialValue: lastGoodTrafficRules }
 	);
 
 	const trafficRules = $derived(
@@ -68,6 +79,9 @@
 
 	let counterFetchIntent: 'auto' | 'manual' = 'auto';
 	let countersUpdating = $state(false);
+	let reordering = $state(false);
+	let deleting = $state(false);
+	let mutationBusy = $derived(reordering || deleting);
 	let lastGoodCounters: FirewallTrafficRuleCounter[] = [];
 
 	const countersResource = resource(
@@ -103,31 +117,45 @@
 		}
 		return out;
 	});
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
+
 	const objectsResource = resource(
 		() => 'network-objects',
 		async (key) => {
 			const result = await getNetworkObjects();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodObjects;
+			}
+
+			lastGoodObjects = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.objects as NetworkObject[] }
+		{ initialValue: lastGoodObjects }
 	);
 
 	const objects = $derived(
 		Array.isArray(objectsResource.current) ? (objectsResource.current as NetworkObject[]) : []
 	);
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+
 	const interfacesResource = resource(
-		() => 'network-ifaces',
+		() => 'network-interfaces',
 		async (key) => {
 			const result = await getInterfaces();
+			if (!Array.isArray(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	const interfaces = $derived(
@@ -135,24 +163,24 @@
 	);
 
 	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
 	const switchesResource = resource(
 		() => 'network-switches',
 		async (key) => {
 			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
 			updateCache(key, result);
 			return result;
 		},
-		{ initialValue: data.switches as SwitchList }
+		{ initialValue: lastGoodSwitches }
 	);
 
-	const switches = $derived(
-		switchesResource.current &&
-			typeof switchesResource.current === 'object' &&
-			!Array.isArray(switchesResource.current) &&
-			'status' in switchesResource.current
-			? { standard: [], manual: [] }
-			: ((switchesResource.current as SwitchList) ?? { standard: [], manual: [] })
-	);
+	const switches = $derived(switchesResource.current);
 
 	const wgClients = $derived(
 		Array.isArray(data.wgClients) ? (data.wgClients as WireGuardClient[]) : []
@@ -164,7 +192,8 @@
 	let modals = $state({
 		create: { open: false },
 		edit: { open: false, id: 0 },
-		delete: { open: false }
+		delete: { open: false, id: 0, name: '' },
+		bulkDelete: { open: false, ids: [] as number[] }
 	});
 
 	function resolveInterfaceName(name: string): string {
@@ -242,10 +271,12 @@
 		const colors: Record<string, string> = {
 			tcp: 'text-cyan-400 border-cyan-400/50',
 			udp: 'text-amber-400 border-amber-400/50',
+			tcp_udp: 'text-teal-400 border-teal-400/50',
 			icmp: 'text-pink-400 border-pink-400/50'
 		};
 		const color = colors[protocol] || 'text-muted-foreground border-muted-foreground/50';
-		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${protocol.toUpperCase()}</span>`;
+		const label = protocol === 'tcp_udp' ? 'TCP/UDP' : protocol.toUpperCase();
+		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${label}</span>`;
 	}
 
 	function formatEndpointParts(addr: string, isObj: boolean): string {
@@ -288,6 +319,8 @@
 	}
 
 	async function handleRowMoved(rows: Row[]) {
+		if (mutationBusy) return;
+
 		const visibleRows = rows.filter((row) => row.visible !== false);
 		const payload: FirewallReorderRequest[] = visibleRows.map((row, index) => ({
 			id: Number(row.id),
@@ -297,29 +330,86 @@
 			await trafficRulesResource.refetch();
 			return;
 		}
-		const result = await reorderFirewallTrafficRules(payload);
-		if (result.status === 'success') {
+
+		reordering = true;
+		try {
+			const result = await reorderFirewallTrafficRules(payload);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to reorder traffic rules', { position: 'bottom-center' });
+			}
 			await trafficRulesResource.refetch();
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to reorder traffic rules', { position: 'bottom-center' });
-			await trafficRulesResource.refetch();
+		} finally {
+			reordering = false;
 		}
 	}
 
-	async function confirmDelete() {
-		if (!activeRow || activeRow.length !== 1) return;
-		const id = Number(activeRow[0]?.id);
-		const result = await deleteFirewallTrafficRule(id);
+	function openSingleDelete() {
+		if (!activeRow || activeRow.length !== 1 || activeRow[0]?.visible === false) return;
+		modals.delete = {
+			open: true,
+			id: Number(activeRow[0].id),
+			name: String(activeRow[0].name ?? '')
+		};
+	}
 
-		if (result.status === 'success') {
+	function openBulkDelete() {
+		if (!activeRow || activeRow.length < 2 || activeRow.some((row) => row.visible === false)) {
+			return;
+		}
+
+		const ids = [...new Set(activeRow.map((row) => Number(row.id)))].filter(
+			(id) => Number.isSafeInteger(id) && id > 0
+		);
+		if (ids.length !== activeRow.length || ids.length < 2) return;
+		if (ids.length > 1024) {
+			toast.error('Select no more than 1024 traffic rules', { position: 'bottom-center' });
+			return;
+		}
+
+		modals.bulkDelete = { open: true, ids };
+	}
+
+	async function confirmDelete() {
+		if (deleting || modals.delete.id <= 0) return;
+
+		deleting = true;
+		try {
+			const result = await deleteFirewallTrafficRule(modals.delete.id);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete traffic rule', { position: 'bottom-center' });
+				return;
+			}
+
 			toast.success('Traffic rule deleted', { position: 'bottom-center' });
 			await trafficRulesResource.refetch();
 			activeRow = null;
-			modals.delete.open = false;
-		} else {
-			handleAPIError(result);
-			toast.error('Failed to delete traffic rule', { position: 'bottom-center' });
+			modals.delete = { open: false, id: 0, name: '' };
+		} finally {
+			deleting = false;
+		}
+	}
+
+	async function confirmBulkDelete() {
+		if (deleting || modals.bulkDelete.ids.length < 2) return;
+
+		const ids = [...modals.bulkDelete.ids];
+		deleting = true;
+		try {
+			const result = await bulkDeleteFirewallTrafficRules(ids);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error('Failed to delete traffic rules', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(`${ids.length} traffic rules deleted`, { position: 'bottom-center' });
+			await trafficRulesResource.refetch();
+			activeRow = null;
+			modals.bulkDelete = { open: false, ids: [] };
+		} finally {
+			deleting = false;
 		}
 	}
 
@@ -477,37 +567,78 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={mutationBusy}
 			>
 				<SpanWithIcon icon="icon-[mdi--pencil]" size="h-4 w-4" gap="gap-2" title="Edit" />
 			</Button>
 		{/if}
 
 		{#if type === 'delete-rule' && activeRow[0]?.visible !== false}
-			<Button onclick={() => (modals.delete.open = true)} size="sm" variant="outline" class="h-6.5">
+			<Button
+				onclick={openSingleDelete}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={mutationBusy}
+			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
 		{/if}
+	{:else if type === 'bulk-delete' && activeRow !== null && activeRow.length > 1 && activeRow.every((row) => row.visible !== false)}
+		<Button
+			onclick={openBulkDelete}
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			disabled={mutationBusy}
+		>
+			<SpanWithIcon
+				icon="icon-[material-symbols--delete-sweep]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Bulk Delete"
+			/>
+		</Button>
 	{/if}
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
-		<Button onclick={() => (modals.create.open = true)} size="sm" class="h-6">
+		<Button
+			onclick={() => (modals.create.open = true)}
+			size="sm"
+			class="h-6"
+			disabled={mutationBusy}
+		>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
 		{@render button('edit-rule')}
 		{@render button('delete-rule')}
+		{@render button('bulk-delete')}
 
-		<Button
-			onclick={() => refreshCounters('manual')}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6"
-			title="Refresh Counters"
-		>
-			<span class="icon-[mdi--refresh] h-4 w-4"></span>
-		</Button>
+		<div class="ml-auto flex items-center gap-2">
+			{#if reordering}
+				<span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Saving order...
+				</span>
+			{/if}
+			<Button
+				onclick={() => refreshCounters('manual')}
+				size="sm"
+				variant="outline"
+				class="h-6"
+				title="Refresh Counters"
+				disabled={countersUpdating || deleting}
+			>
+				<span
+					class={countersUpdating
+						? 'icon-[mdi--loading] h-4 w-4 animate-spin'
+						: 'icon-[mdi--refresh] h-4 w-4'}
+				></span>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
@@ -539,7 +670,9 @@
 		{switches}
 		{wgClients}
 		edit={false}
-		afterChange={() => trafficRulesResource.refetch()}
+		afterChange={async () => {
+			await trafficRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -553,7 +686,9 @@
 		{wgClients}
 		edit={true}
 		id={modals.edit.id}
-		afterChange={() => trafficRulesResource.refetch()}
+		afterChange={async () => {
+			await trafficRulesResource.refetch();
+		}}
 	/>
 {/if}
 
@@ -561,14 +696,29 @@
 	open={modals.delete.open}
 	names={{
 		parent: 'traffic rule',
-		element: activeRow && activeRow.length === 1 ? String(activeRow[0]?.name ?? '') : ''
+		element: modals.delete.name
 	}}
+	loading={deleting}
+	keepOpenOnConfirm={true}
 	actions={{
 		onConfirm: async () => {
 			await confirmDelete();
 		},
 		onCancel: () => {
-			modals.delete.open = false;
+			modals.delete = { open: false, id: 0, name: '' };
+		}
+	}}
+/>
+
+<AlertDialog
+	open={modals.bulkDelete.open}
+	customTitle={`This will permanently delete <b>${modals.bulkDelete.ids.length}</b> traffic rules.`}
+	loading={deleting}
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: confirmBulkDelete,
+		onCancel: () => {
+			modals.bulkDelete = { open: false, ids: [] };
 		}
 	}}
 />

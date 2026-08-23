@@ -1,37 +1,56 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { apiRequest } from '$lib/utils/http';
+import { VMNetworkSchema, type VMNetwork } from '$lib/types/vm/vm';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 
-export async function detachNetwork(rid: number, switchId: number): Promise<APIResponse> {
-	return await apiRequest(`/vm/network/detach`, APIResponseSchema, 'POST', {
-		rid,
-		networkId: switchId
-	});
+export type NetworkAttachRequest = {
+	switchName: string;
+	emulation: 'virtio' | 'e1000';
+	macId?: number;
+};
+
+export type NetworkUpdateRequest = {
+	switchName?: string;
+	emulation?: 'virtio' | 'e1000';
+	macId?: number;
+	enable?: boolean;
+};
+
+export async function detachNetwork(
+	rid: number,
+	networkId: number,
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/vm/${rid}/networks/${networkId}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }
 
 export async function attachNetwork(
 	rid: number,
-	switchName: string,
-	emulation: string,
-	macId: number
-): Promise<APIResponse> {
-	return await apiRequest(`/vm/network/attach`, APIResponseSchema, 'POST', {
-		rid,
-		switchName,
-		emulation,
-		macId
+	request: NetworkAttachRequest,
+	options?: NodeAPIRequestOptions
+): Promise<VMNetwork | APIResponse> {
+	return await apiRequest(`/vm/${rid}/networks`, VMNetworkSchema, 'POST', request, {
+		...options,
+		preserveErrors: true
 	});
 }
 
 export async function updateNetwork(
+	rid: number,
 	networkId: number,
-	switchName: string,
-	emulation: string,
-	macId: number
-): Promise<APIResponse> {
-	return await apiRequest(`/vm/network/update`, APIResponseSchema, 'PUT', {
-		networkId,
-		switchName,
-		emulation,
-		macId
+	request: NetworkUpdateRequest,
+	options?: NodeAPIRequestOptions
+): Promise<VMNetwork | APIResponse> {
+	return await apiRequest(`/vm/${rid}/networks/${networkId}`, VMNetworkSchema, 'PATCH', request, {
+		...options,
+		preserveErrors: true
 	});
 }

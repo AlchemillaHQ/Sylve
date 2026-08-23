@@ -9,24 +9,27 @@
  */
 
 export const reload = $state({
-    leftPanel: false,
-    auditLog: false,
-    clusterDetails: false,
-    notifications: false
+	leftPanel: false,
+	auditLog: false,
+	auditLogHostname: null as string | null,
+	clusterDetails: false,
+	notifications: false,
+	datacenterNodesPulse: 0,
+	datacenterDetailsPulse: 0
 });
 
 export const connection = $state({
-    sseConnected: null as boolean | null
+	sseConnected: null as boolean | null
 });
 
 export const jailPowerSignal = $state({
-    token: 0,
-    ctId: 0,
-    action: '' as '' | 'start' | 'stop'
+	token: 0,
+	ctId: 0,
+	action: '' as '' | 'start' | 'stop'
 });
 
 export const vmPowerSignal = $state({
-    token: 0,
-    rid: 0,
-    action: '' as '' | 'start' | 'stop' | 'shutdown' | 'reboot'
+	token: 0,
+	rid: 0,
+	action: '' as '' | 'start' | 'stop' | 'shutdown' | 'reboot'
 });

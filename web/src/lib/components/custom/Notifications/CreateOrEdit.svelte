@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { updateNotificationTransports } from '$lib/api/notifications';
+	import { createNotificationTransport, updateNotificationTransport } from '$lib/api/notifications';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -8,14 +8,14 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { User } from '$lib/types/auth';
-	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
+	import type { NotificationConfig, NotificationTransportInput } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
 	import { generatePassword } from '$lib/utils/string';
 
-	type TransportType = 'ntfy' | 'smtp';
+	type TransportType = 'ntfy' | 'smtp' | 'discord';
 	type TransportForm = {
 		id?: number;
 		name: string;
@@ -33,6 +33,7 @@
 		smtpRecipients: string[];
 		smtpPassword: string;
 		smtpHasPassword: boolean;
+		discordWebhookUrl: string;
 	};
 
 	interface Props {
@@ -65,7 +66,8 @@
 			smtpUseTls: true,
 			smtpRecipients: [],
 			smtpPassword: '',
-			smtpHasPassword: false
+			smtpHasPassword: false,
+			discordWebhookUrl: ''
 		};
 	}
 
@@ -99,7 +101,8 @@
 						smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
 						smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 						smtpPassword: '',
-						smtpHasPassword: editingTransport.email?.hasPassword ?? false
+						smtpHasPassword: editingTransport.email?.hasPassword ?? false,
+						discordWebhookUrl: editingTransport.discord?.webhookUrl ?? ''
 					};
 				} else {
 					form = defaultForm();
@@ -145,9 +148,8 @@
 		return normalized;
 	}
 
-	function buildEntry(f: TransportForm): UpdateNotificationConfigInput['transports'][number] {
+	function buildEntry(f: TransportForm): NotificationTransportInput {
 		return {
-			...(f.id ? { id: f.id } : {}),
 			name: f.name.trim(),
 			type: f.type,
 			enabled: f.enabled,
@@ -170,29 +172,15 @@
 							recipients: normalizeRecipients(f.smtpRecipients),
 							...(f.smtpPassword.trim().length > 0 ? { smtpPassword: f.smtpPassword.trim() } : {})
 						}
+					: null,
+			discord:
+				f.type === 'discord'
+					? {
+							...(f.discordWebhookUrl.trim().length > 0
+								? { webhookUrl: f.discordWebhookUrl.trim() }
+								: {})
+						}
 					: null
-		};
-	}
-
-	function asPayloadTransport(
-		t: NotificationConfig['transports'][number]
-	): UpdateNotificationConfigInput['transports'][number] {
-		return {
-			id: t.id,
-			name: t.name,
-			type: t.type,
-			enabled: t.enabled,
-			ntfy: t.ntfy ? { baseUrl: t.ntfy.baseUrl, topic: t.ntfy.topic } : null,
-			email: t.email
-				? {
-						smtpHost: t.email.smtpHost,
-						smtpPort: t.email.smtpPort,
-						smtpUsername: t.email.smtpUsername,
-						smtpFrom: t.email.smtpFrom,
-						smtpUseTls: t.email.smtpUseTls,
-						recipients: t.email.recipients
-					}
-				: null
 		};
 	}
 
@@ -214,12 +202,21 @@
 				smtpUseTls: editingTransport.email?.smtpUseTls ?? true,
 				smtpRecipients: [...(editingTransport.email?.recipients ?? [])],
 				smtpPassword: '',
-				smtpHasPassword: editingTransport.email?.hasPassword ?? false
+				smtpHasPassword: editingTransport.email?.hasPassword ?? false,
+				discordWebhookUrl: editingTransport.discord?.webhookUrl ?? ''
 			};
 		}
 	}
 
 	async function save() {
+		if (edit && !form.id) {
+			toast.error('Transport is no longer available', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		if (form.name.trim().length === 0) {
 			toast.error('Transport name is required', {
 				duration: 5000,
@@ -228,15 +225,40 @@
 			return;
 		}
 
+		if (form.type === 'smtp') {
+			if (form.smtpFrom.trim().length === 0) {
+				toast.error('From Email is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+			if (form.smtpHost.trim().length === 0) {
+				toast.error('SMTP Host is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+			if (form.smtpRecipients.length === 0) {
+				toast.error('At least one recipient is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+		} else if (form.type === 'ntfy') {
+			if (form.ntfyTopic.trim().length === 0) {
+				toast.error('Topic is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+		} else if (form.type === 'discord') {
+			if (form.discordWebhookUrl.trim().length === 0) {
+				toast.error('Webhook URL is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+		}
+
 		loading = true;
 
 		const entry = buildEntry(form);
-
-		const updatedTransports: UpdateNotificationConfigInput['transports'] = edit
-			? transports.map((t) => (t.id === form.id ? entry : asPayloadTransport(t)))
-			: [...transports.map(asPayloadTransport), entry];
-
-		const response = await updateNotificationTransports({ transports: updatedTransports });
+		const response = edit
+			? await updateNotificationTransport(form.id as number, entry)
+			: await createNotificationTransport(entry);
 		loading = false;
 
 		if (isAPIResponse(response) && response.status === 'error') {
@@ -279,7 +301,7 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="space-y-4 py-2">
+		<div class="space-y-4">
 			<div class="grid gap-3 sm:grid-cols-2">
 				<CustomValueInput
 					label="Transport Name"
@@ -290,13 +312,14 @@
 					label="Type"
 					options={[
 						{ value: 'ntfy', label: 'ntfy' },
-						{ value: 'smtp', label: 'SMTP' }
+						{ value: 'smtp', label: 'SMTP' },
+						{ value: 'discord', label: 'Discord' }
 					]}
 					bind:value={form.type}
-					onChange={(v) => (form.type = v as 'ntfy' | 'smtp')}
+					onChange={(v) => (form.type = v as TransportType)}
 					classes={{
 						parent: 'flex-1 min-w-0 space-y-1.5',
-						label: 'text-sm font-medium whitespace-nowrap',
+						label: 'text-sm font-medium whitespace-nowrap h-7',
 						trigger:
 							'inline-flex h-8 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
 					}}
@@ -328,6 +351,15 @@
 						bind:value={form.ntfyToken}
 						placeholder={form.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
 						revealOnFocus={true}
+					/>
+					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+				</div>
+			{:else if form.type === 'discord'}
+				<div class="space-y-3">
+					<CustomValueInput
+						label="Webhook URL"
+						bind:value={form.discordWebhookUrl}
+						placeholder="https://discord.com/api/webhooks/..."
 					/>
 					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
 				</div>
@@ -387,7 +419,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
 			<Button onclick={save} disabled={loading}>
 				{#if loading}
 					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>

@@ -9,6 +9,7 @@
 package info
 
 import (
+	"sync"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
@@ -22,10 +23,19 @@ import (
 
 var _ infoServiceInterfaces.InfoServiceInterface = (*Service)(nil)
 
+type netCounter struct {
+	receivedBytes int64
+	sentBytes     int64
+}
+
 type Service struct {
 	DB          *gorm.DB
 	TelemetryDB *gorm.DB
 	GZFS        *gzfs.Client
+
+	lastNet           map[string]netCounter
+	lastNetSampleTime time.Time
+	netMu             sync.Mutex
 }
 
 func NewInfoService(db *gorm.DB, telemetryDB *gorm.DB, gzfs *gzfs.Client) infoServiceInterfaces.InfoServiceInterface {

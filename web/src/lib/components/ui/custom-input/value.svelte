@@ -76,9 +76,7 @@
 						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
 					</Tooltip.Trigger>
 
-					<Tooltip.Content
-						class="w-fit max-w-62.5 min-w-0 text-balance wrap-break-word whitespace-normal"
-					>
+					<Tooltip.Content class="text-pretty break-words" style="max-width: 250px">
 						{hint}
 					</Tooltip.Content>
 				</Tooltip.Root>
@@ -130,7 +128,8 @@
 			bind:value
 			{disabled}
 			oninput={(e) => {
-				value = (e.currentTarget as HTMLInputElement).value;
+				const raw = (e.currentTarget as HTMLInputElement).value;
+				value = type === 'number' ? Number(raw) : raw;
 				if (onChange) onChange(value);
 			}}
 			onblur={() => {

@@ -12,6 +12,7 @@
 		normalizeSizeInputExact,
 		parseSizeInputToBytes
 	} from '$lib/utils/bytes';
+	import { handleAPIError } from '$lib/utils/http';
 	import { watch } from 'runed';
 	import { tick } from 'svelte';
 	import { toast } from 'svelte-sonner';
@@ -24,6 +25,9 @@
 		reload?: boolean;
 	}
 
+	const minimumPartitionSize = 1024 * 1024;
+	const maximumPartitionsPerRequest = 128;
+
 	let { open = $bindable(), disk, onCancel, reload = $bindable() }: Data = $props();
 
 	let newPartitions: { name: string; size: number }[] = $state([]);
@@ -31,6 +35,7 @@
 	let currentTextPartition = $state(0);
 
 	let currentPartitionSlider = $state(0);
+	let saving = $state(false);
 
 	function removePartition(index: number) {
 		const removedPartition = newPartitions.splice(index, 1)[0];
@@ -38,32 +43,37 @@
 	}
 
 	async function savePartitions() {
-		if (disk) {
-			const sizes = newPartitions.map((partition) => Math.floor(partition.size));
-			const result = await createPartitions(`/dev/${disk.device}`, sizes);
-			let message = '';
+		if (saving || !disk || newPartitions.length === 0) return;
 
-			if (result.status === 'success') {
-				message = `Partition${sizes.length > 1 ? 's' : ''} created`;
-			} else {
-				message = `Error creating ${sizes.length > 1 ? 'partitions' : 'partition'}`;
+		saving = true;
+		const sizes = newPartitions.map((partition) => Math.floor(partition.size));
+		try {
+			const result = await createPartitions(disk.device, sizes);
+			if (result.status !== 'success') {
+				handleAPIError(result);
+				toast.error(`Error creating ${sizes.length > 1 ? 'partitions' : 'partition'}`, {
+					position: 'bottom-center'
+				});
+				return;
 			}
 
-			if (reload !== undefined) {
-				reload = true;
-			}
-
-			toast.success(message, {
+			toast.success(`Partition${sizes.length > 1 ? 's' : ''} created`, {
 				position: 'bottom-center'
 			});
 
+			if (reload !== undefined) reload = true;
 			newPartitions = [];
+			onCancel();
+		} finally {
+			saving = false;
 		}
-		onCancel();
 	}
 
 	async function addPartition() {
-		if (currentTextPartition > 0) {
+		if (
+			currentTextPartition >= minimumPartitionSize &&
+			newPartitions.length < maximumPartitionsPerRequest
+		) {
 			if (remainingSpace - currentTextPartition < 0) {
 				currentTextPartition = remainingSpace;
 			}
@@ -90,6 +100,7 @@
 	}
 
 	function close() {
+		if (saving) return;
 		newPartitions = [];
 		remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
 		currentTextPartition = 0;
@@ -97,6 +108,7 @@
 	}
 
 	function reset() {
+		if (saving) return;
 		newPartitions = [];
 		remainingSpace = disk ? calculateRemainingSpace(disk) : 0;
 		currentTextPartition = 0;
@@ -162,10 +174,11 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-4 overflow-hidden p-6 lg:max-w-3xl"
-		showCloseButton={true}
-		showResetButton={true}
+		showCloseButton={!saving}
+		showResetButton={!saving}
 		onClose={close}
 		onReset={reset}
+		aria-busy={saving}
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
@@ -209,7 +222,12 @@
 								<Table.Cell class="text-right">{formatBytesBinary(partition.size)}</Table.Cell>
 								<Table.Cell class="text-right">-</Table.Cell>
 								<Table.Cell class="text-right">
-									<Button variant="ghost" class="h-8" onclick={() => removePartition(index)}>
+									<Button
+										variant="ghost"
+										class="h-8"
+										onclick={() => removePartition(index)}
+										disabled={saving}
+									>
 										<span class="icon-[gg--trash] h-4 w-4"></span>
 									</Button>
 								</Table.Cell>
@@ -251,6 +269,7 @@
 					min="0"
 					max={remainingSpace}
 					bind:value={currentPartitionInput}
+					disabled={saving}
 					onblur={() => {
 						const normalized = normalizeSizeInputExact(currentPartitionInput);
 						if (normalized !== null) {
@@ -263,9 +282,13 @@
 					<Button
 						class="h-8 whitespace-nowrap"
 						onclick={addPartition}
-						disabled={currentTextPartition <= 0}
+						disabled={saving ||
+							currentTextPartition < minimumPartitionSize ||
+							newPartitions.length >= maximumPartitionsPerRequest}
 					>
-						{#if remainingSpace > 0}
+						{#if newPartitions.length >= maximumPartitionsPerRequest}
+							Partition limit reached
+						{:else if remainingSpace >= minimumPartitionSize}
 							Add Partition
 						{:else}
 							No space left
@@ -286,7 +309,14 @@
 			<div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
 				<Dialog.Footer class="flex justify-between gap-2 border-t py-4">
 					<div class="flex gap-2">
-						<Button size="sm" class="h-8" onclick={savePartitions}>Save Partitions</Button>
+						<Button size="sm" class="h-8" onclick={savePartitions} disabled={saving}>
+							{#if saving}
+								<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+								Saving...
+							{:else}
+								Save Partitions
+							{/if}
+						</Button>
 					</div>
 				</Dialog.Footer>
 			</div>

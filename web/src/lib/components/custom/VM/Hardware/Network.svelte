@@ -1,189 +1,246 @@
 <script lang="ts">
-	import { attachNetwork, updateNetwork as updateNetworkAPI } from '$lib/api/vm/network';
+	import {
+		attachNetwork,
+		updateNetwork as updateNetworkAPI,
+		type NetworkAttachRequest,
+		type NetworkUpdateRequest
+	} from '$lib/api/vm/network';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { VM } from '$lib/types/vm/vm';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { generateMACOptions } from '$lib/utils/network/object';
 	import { toast } from 'svelte-sonner';
 
+	type NetworkEmulation = NetworkAttachRequest['emulation'];
+
 	interface Props {
 		open: boolean;
+		node: string;
 		switches: SwitchList;
 		vm: VM | null;
 		networkObjects: NetworkObject[];
 		networkId: number | null;
+		reload: boolean;
 	}
 
-	let { open = $bindable(), switches, vm, networkObjects, networkId }: Props = $props();
-	let networks = $derived.by(() => vm?.networks ?? []);
-	let selectedNetwork = $derived.by(() => {
-		if (networkId === null) return null;
-		return networks.find((n) => n.id === networkId) || null;
-	});
+	let {
+		open = $bindable(),
+		node,
+		switches,
+		vm,
+		networkObjects,
+		networkId,
+		reload = $bindable(false)
+	}: Props = $props();
+	let networks = $derived(vm?.networks ?? []);
+	let selectedNetwork = $derived(
+		networkId === null ? null : (networks.find((network) => network.id === networkId) ?? null)
+	);
 	let selectedSwitchName = $derived.by(() => {
 		if (!selectedNetwork) return '';
 		if (selectedNetwork.switchType === 'standard') {
-			return switches.standard?.find((s) => s.id === selectedNetwork.switchId)?.name ?? '';
+			return (
+				switches.standard.find((networkSwitch) => networkSwitch.id === selectedNetwork.switchId)
+					?.name ?? ''
+			);
 		}
-
 		if (selectedNetwork.switchType === 'manual') {
-			return switches.manual?.find((s) => s.id === selectedNetwork.switchId)?.name ?? '';
+			return (
+				switches.manual.find((networkSwitch) => networkSwitch.id === selectedNetwork.switchId)
+					?.name ?? ''
+			);
 		}
-
 		return '';
 	});
-	let selectedMacId = $derived.by(() => selectedNetwork?.macId ?? null);
-	let usable = $derived.by(() => {
-		return [
-			...(switches.standard ?? []).map((s) => ({
-				...s,
-				uid: `standard-${s.id}`
-			})),
-			...(switches.manual ?? []).map((s) => ({
-				...s,
-				uid: `manual-${s.id}`
-			}))
-		];
-	});
+	let selectedMacId = $derived(selectedNetwork?.macId ?? null);
+	let usable = $derived([
+		...switches.standard.map((networkSwitch) => ({
+			...networkSwitch,
+			uid: `standard-${networkSwitch.id}`
+		})),
+		...switches.manual.map((networkSwitch) => ({
+			...networkSwitch,
+			uid: `manual-${networkSwitch.id}`
+		}))
+	]);
 
-	let usableMacs = $derived.by(() => {
-		return networkObjects.filter(
-			(obj) =>
-				obj.type === 'Mac' &&
-				obj.entries?.length === 1 &&
-				(obj.isUsed === false ||
-					obj.isUsedBy === 'dhcp' ||
-					(selectedMacId !== null && obj.id === selectedMacId))
-		);
-	});
+	let usableMacs = $derived(
+		networkObjects.filter(
+			(object) =>
+				object.type === 'Mac' &&
+				object.entries?.length === 1 &&
+				(object.isUsed === false ||
+					object.isUsedBy === 'dhcp' ||
+					(selectedMacId !== null && object.id === selectedMacId))
+		)
+	);
 
-	let options = {
-		emulation: '',
-		mac: {
-			open: false,
-			value: '0'
-		},
-		switchId: ''
-	};
+	function createAttachOptions() {
+		return {
+			emulation: '',
+			mac: {
+				open: false,
+				value: ''
+			},
+			switchId: '',
+			loading: false
+		};
+	}
 
-	let properties = $state(options);
+	function createEditOptions() {
+		return {
+			emulation: selectedNetwork?.emulation ?? '',
+			mac: {
+				open: false,
+				value: selectedNetwork?.macId ? selectedNetwork.macId.toString() : '0'
+			},
+			switchId: selectedSwitchName,
+			enable: selectedNetwork?.enable ?? true,
+			loading: false
+		};
+	}
 
-	// svelte-ignore state_referenced_locally
-	let editOptions = {
-		emulation: selectedNetwork ? (selectedNetwork.emulation ?? '') : '',
-		mac: {
-			open: false,
-			value: selectedNetwork?.macId ? selectedNetwork.macId.toString() : '0'
-		},
-		switchId: selectedSwitchName || ''
-	};
-
-	let editProperties = $state(editOptions);
+	let properties = $state(createAttachOptions());
+	let editProperties = $state(createEditOptions());
+	let loading = $derived(properties.loading || editProperties.loading);
 
 	const toastOptions = {
 		position: 'bottom-center' as const
 	};
 
-	async function addNetwork() {
-		let error = '';
+	function isNetworkEmulation(value: string): value is NetworkEmulation {
+		return value === 'virtio' || value === 'e1000';
+	}
 
-		if (!properties.switchId) {
-			error = 'Switch is required';
-		} else if (!properties.emulation) {
-			error = 'Emulation is required';
-		}
+	function parseMacId(value: string): number | null {
+		const id = Number(value);
+		if (!Number.isSafeInteger(id) || id < 0) return null;
+		return id;
+	}
 
-		if (error) {
-			toast.error(error, toastOptions);
-			return;
-		}
+	function validVMRID(): number | null {
+		const rid = vm?.rid ?? 0;
+		return Number.isSafeInteger(rid) && rid > 0 ? rid : null;
+	}
 
-		const response = await attachNetwork(
-			vm?.rid ?? 0,
-			properties.switchId,
-			properties.emulation,
-			properties.mac.value !== '0' ? Number(properties.mac.value) : 0
-		);
-
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Error attaching VM to switch', {
-				position: 'bottom-center'
-			});
-			return;
+	function resetForm() {
+		if (selectedNetwork) {
+			editProperties = createEditOptions();
 		} else {
-			toast.success('VM attached to switch', {
-				position: 'bottom-center'
-			});
+			properties = createAttachOptions();
+		}
+	}
+
+	async function addNetwork() {
+		const rid = validVMRID();
+		const macId = parseMacId(properties.mac.value);
+		if (rid === null) {
+			toast.error('Invalid virtual machine', toastOptions);
+			return;
+		}
+		if (!properties.switchId) {
+			toast.error('Switch is required', toastOptions);
+			return;
+		}
+		if (!isNetworkEmulation(properties.emulation)) {
+			toast.error('Emulation is required', toastOptions);
+			return;
+		}
+		if (macId === null) {
+			toast.error('Invalid MAC selection', toastOptions);
+			return;
+		}
+
+		const request: NetworkAttachRequest = {
+			switchName: properties.switchId,
+			emulation: properties.emulation,
+			macId
+		};
+		properties.loading = true;
+		try {
+			const response = await attachNetwork(rid, request, { hostname: node });
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Error attaching VM to switch', toastOptions);
+				return;
+			}
+
+			toast.success('VM attached to switch', toastOptions);
+			reload = true;
+			properties = createAttachOptions();
 			open = false;
-			properties = options;
+		} catch {
+			toast.error('Error attaching VM to switch', toastOptions);
+		} finally {
+			properties.loading = false;
 		}
 	}
 
 	async function updateNetwork() {
-		if (!selectedNetwork) {
+		const rid = validVMRID();
+		const macId = parseMacId(editProperties.mac.value);
+		if (!selectedNetwork || rid === null) {
+			toast.error('Invalid virtual machine network', toastOptions);
 			return;
 		}
-
-		let error = '';
-
 		if (!editProperties.switchId) {
-			error = 'Switch is required';
-		} else if (!editProperties.emulation) {
-			error = 'Emulation is required';
+			toast.error('Switch is required', toastOptions);
+			return;
 		}
-
-		if (error) {
-			toast.error(error, toastOptions);
+		if (!isNetworkEmulation(editProperties.emulation)) {
+			toast.error('Emulation is required', toastOptions);
+			return;
+		}
+		if (macId === null) {
+			toast.error('Invalid MAC selection', toastOptions);
 			return;
 		}
 
-		const response = await updateNetworkAPI(
-			selectedNetwork.id,
-			editProperties.switchId,
-			editProperties.emulation,
-			editProperties.mac.value !== '0' ? Number(editProperties.mac.value) : 0
-		);
-
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Error updating VM network', {
-				position: 'bottom-center'
+		const request: NetworkUpdateRequest = {
+			switchName: editProperties.switchId,
+			emulation: editProperties.emulation,
+			macId,
+			enable: editProperties.enable
+		};
+		editProperties.loading = true;
+		try {
+			const response = await updateNetworkAPI(rid, selectedNetwork.id, request, {
+				hostname: node
 			});
-			return;
-		}
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Error updating VM network', toastOptions);
+				return;
+			}
 
-		toast.success('VM network updated', {
-			position: 'bottom-center'
-		});
-		open = false;
-		editProperties = editOptions;
+			toast.success('VM network updated', toastOptions);
+			reload = true;
+			editProperties = createEditOptions();
+			open = false;
+		} catch {
+			toast.error('Error updating VM network', toastOptions);
+		} finally {
+			editProperties.loading = false;
+		}
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-md overflow-hidden p-5 lg:max-w-2xl"
-		showResetButton={true}
-		onReset={() => {
-			if (selectedNetwork) {
-				editProperties = editOptions;
-			} else {
-				properties = options;
-			}
-		}}
+		showResetButton={!loading}
+		showCloseButton={!loading}
+		onReset={resetForm}
 		onClose={() => {
-			if (selectedNetwork) {
-				editProperties = editOptions;
-			} else {
-				properties = options;
-			}
+			if (loading) return;
+			resetForm();
 			open = false;
 		}}
 	>
@@ -202,12 +259,19 @@
 			<SimpleSelect
 				label="Switch"
 				placeholder="Select Switch"
-				options={usable?.map((s) => ({
-					value: s.name,
-					label: s.name
-				})) || []}
+				options={usable.map((networkSwitch) => ({
+					value: networkSwitch.name,
+					label: networkSwitch.name
+				}))}
 				bind:value={properties.switchId}
 				onChange={(value) => (properties.switchId = value)}
+				disabled={loading}
+				classes={{
+					parent: 'flex-1 space-y-1',
+					label: 'flex h-7 items-center whitespace-nowrap text-sm',
+					trigger:
+						'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+				}}
 			/>
 
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -220,6 +284,13 @@
 					]}
 					bind:value={properties.emulation}
 					onChange={(value) => (properties.emulation = value)}
+					disabled={loading}
+					classes={{
+						parent: 'flex-1 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -231,18 +302,26 @@
 					placeholder="Select MAC"
 					width="w-3/4"
 					multiple={false}
+					disabled={loading}
 				></CustomComboBox>
 			</div>
 		{:else}
 			<SimpleSelect
 				label="Switch"
 				placeholder="Select Switch"
-				options={usable?.map((s) => ({
-					value: s.name,
-					label: s.name
-				})) || []}
+				options={usable.map((networkSwitch) => ({
+					value: networkSwitch.name,
+					label: networkSwitch.name
+				}))}
 				bind:value={editProperties.switchId}
 				onChange={(value) => (editProperties.switchId = value)}
+				disabled={loading}
+				classes={{
+					parent: 'flex-1 space-y-1',
+					label: 'flex h-7 items-center whitespace-nowrap text-sm',
+					trigger:
+						'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+				}}
 			/>
 
 			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -255,6 +334,13 @@
 					]}
 					bind:value={editProperties.emulation}
 					onChange={(value) => (editProperties.emulation = value)}
+					disabled={loading}
+					classes={{
+						parent: 'flex-1 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
 				/>
 
 				<CustomComboBox
@@ -266,7 +352,16 @@
 					placeholder="Select MAC"
 					width="w-3/4"
 					multiple={false}
+					disabled={loading}
 				></CustomComboBox>
+			</div>
+			<div class="mt-1">
+				<CustomCheckbox
+					label="Enabled (Available to VM)"
+					bind:checked={editProperties.enable}
+					classes="flex items-center gap-2"
+					disabled={loading}
+				/>
 			</div>
 		{/if}
 		<Dialog.Footer class="flex justify-end">
@@ -279,10 +374,16 @@
 							addNetwork();
 						}
 					}}
-					type="submit"
+					type="button"
 					size="sm"
+					disabled={loading}
 				>
-					{selectedNetwork ? 'Save Changes' : 'Save'}
+					{#if loading}
+						<span class="icon-[eos-icons--loading] mr-2 h-4 w-4 animate-spin"></span>
+						<span>{selectedNetwork ? 'Saving...' : 'Attaching...'}</span>
+					{:else}
+						<span>{selectedNetwork ? 'Save Changes' : 'Attach Network'}</span>
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

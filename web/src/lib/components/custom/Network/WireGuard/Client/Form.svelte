@@ -8,6 +8,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
+	import { isValidWireGuardKey } from '$lib/utils/network/wireguard';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -33,7 +34,7 @@
 			addresses: (client?.addresses ?? []).join('\n'),
 			routeAllowedIPs: client?.routeAllowedIPs ?? true,
 			persistentKeepalive: client?.persistentKeepalive ?? false,
-			mtu: client?.mtu ?? 1420,
+			mtu: client?.mtu ?? 1280,
 			metric: client?.metric ?? 0,
 			fib: client?.fib ?? 0,
 			importedFileName: ''
@@ -44,6 +45,7 @@
 	let fileInput: HTMLInputElement | undefined = $state();
 	let importMode = $state<'upload' | 'paste'>('upload');
 	let pastedConfig = $state('');
+	let saving = $state(false);
 
 	watch(
 		() => open,
@@ -99,7 +101,9 @@
 					if (key === 'Endpoint') {
 						const lastColon = value.lastIndexOf(':');
 						if (lastColon !== -1) {
-							form.endpointHost = value.slice(0, lastColon);
+							const host = value.slice(0, lastColon).trim();
+							form.endpointHost =
+								host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
 							form.endpointPort = Number(value.slice(lastColon + 1));
 						}
 					}
@@ -151,57 +155,91 @@
 			toast.error('Remote endpoint host is required', { position: 'bottom-center' });
 			return false;
 		}
+		if (
+			!Number.isInteger(Number(form.endpointPort)) ||
+			Number(form.endpointPort) < 1 ||
+			Number(form.endpointPort) > 65535
+		) {
+			toast.error('Remote endpoint port must be between 1 and 65535', {
+				position: 'bottom-center'
+			});
+			return false;
+		}
 		if (!form.peerPublicKey.trim()) {
 			toast.error('Peer public key is required', { position: 'bottom-center' });
+			return false;
+		}
+		if (!isValidWireGuardKey(form.peerPublicKey.trim())) {
+			toast.error('Peer public key must be a valid WireGuard key', {
+				position: 'bottom-center'
+			});
 			return false;
 		}
 		if (!form.privateKey.trim()) {
 			toast.error('Private key is required', { position: 'bottom-center' });
 			return false;
 		}
+		if (!isValidWireGuardKey(form.privateKey.trim())) {
+			toast.error('Private key must be a valid WireGuard key', { position: 'bottom-center' });
+			return false;
+		}
+		if (form.preSharedKey.trim() && !isValidWireGuardKey(form.preSharedKey.trim())) {
+			toast.error('Pre-shared key must be a valid WireGuard key', {
+				position: 'bottom-center'
+			});
+			return false;
+		}
 		if (!form.allowedIPs.trim()) {
 			toast.error('At least one allowed IP is required', { position: 'bottom-center' });
+			return false;
+		}
+		if (!form.addresses.trim()) {
+			toast.error('At least one client address is required', { position: 'bottom-center' });
 			return false;
 		}
 		return true;
 	}
 
 	async function save() {
-		if (!validate()) return;
+		if (saving || !validate()) return;
 
 		const payload: WireGuardClientRequest = {
-			id: client?.id,
 			name: form.name.trim(),
 			endpointHost: form.endpointHost.trim(),
 			endpointPort: Number(form.endpointPort),
-			listenPort: Number(form.listenPort) || undefined,
+			listenPort: Number(form.listenPort),
 			privateKey: form.privateKey.trim(),
 			peerPublicKey: form.peerPublicKey.trim(),
-			preSharedKey: form.preSharedKey.trim() || undefined,
+			preSharedKey: form.preSharedKey.trim(),
 			allowedIPs: splitLines(form.allowedIPs),
 			addresses: splitLines(form.addresses),
 			routeAllowedIPs: form.routeAllowedIPs,
 			persistentKeepalive: form.persistentKeepalive,
-			mtu: Number(form.mtu) || undefined,
-			metric: Number(form.metric) || undefined,
-			fib: Number(form.fib) || undefined
+			mtu: Number(form.mtu) || 1280,
+			metric: Number(form.metric),
+			fib: Number(form.fib)
 		};
 
-		const response = client
-			? await wireGuardClients.edit(payload)
-			: await wireGuardClients.create(payload);
+		saving = true;
+		try {
+			const response = client
+				? await wireGuardClients.edit(client.id, payload)
+				: await wireGuardClients.create(payload);
 
-		if (response.status === 'success') {
-			toast.success(client ? `Client "${form.name}" updated` : `Client "${form.name}" created`, {
-				position: 'bottom-center'
-			});
-			close();
-			await onSaved();
-			return;
+			if (response.status === 'success') {
+				toast.success(client ? `Client "${form.name}" updated` : `Client "${form.name}" created`, {
+					position: 'bottom-center'
+				});
+				close();
+				await onSaved();
+				return;
+			}
+
+			handleAPIError(response);
+			toast.error(response.message || 'Failed to save client', { position: 'bottom-center' });
+		} finally {
+			saving = false;
 		}
-
-		handleAPIError(response);
-		toast.error(response.message || 'Failed to save client', { position: 'bottom-center' });
 	}
 
 	const ROUTE_ALL_IPS = ['0.0.0.0/0', '::/0'];
@@ -473,7 +511,7 @@
 								<div class="space-y-1">
 									<CustomValueInput
 										label="MTU"
-										placeholder="1420"
+										placeholder="1280"
 										type="number"
 										bind:value={form.mtu}
 										classes="space-y-1"
@@ -518,9 +556,13 @@
 
 		<Dialog.Footer>
 			<div class="flex w-full justify-end gap-2 pt-1">
-				<Button variant="secondary" size="sm" class="h-8" onclick={close}>Cancel</Button>
-				<Button size="sm" class="h-8" onclick={save}>
-					{client ? 'Save Changes' : 'Initialize Client'}
+				<Button size="sm" class="h-8" onclick={save} disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+						{client ? 'Saving Changes...' : 'Creating Client...'}
+					{:else}
+						{client ? 'Save Changes' : 'Initialize Client'}
+					{/if}
 				</Button>
 			</div>
 		</Dialog.Footer>

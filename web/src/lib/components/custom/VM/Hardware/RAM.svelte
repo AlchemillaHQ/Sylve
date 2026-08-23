@@ -16,12 +16,13 @@
 
 	interface Props {
 		open: boolean;
+		node: string;
 		ram: RAMInfo;
 		vm: VM | null;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), ram, vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, ram, vm, reload = $bindable(false) }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let options = {
@@ -29,8 +30,11 @@
 	};
 
 	let properties = $state(options);
+	let saving = $state(false);
 
 	async function modify() {
+		if (saving) return;
+
 		let bytes: number = 0;
 		let error: string = '';
 
@@ -41,8 +45,8 @@
 			bytes = parsed;
 		}
 
-		if (bytes <= 0) {
-			error = 'RAM value must be greater than 0';
+		if (bytes < 128 * 1024 * 1024) {
+			error = 'RAM value must be at least 128 MiB';
 		}
 
 		if (bytes > ram.total - 1024 * 1024 * 1024 || bytes > ram.total) {
@@ -61,20 +65,26 @@
 		}
 
 		if (vm) {
-			const response = await modifyRAM(vm.rid, bytes);
+			saving = true;
+			try {
+				const response = await modifyRAM(vm.rid, bytes, { hostname: node });
 
-			reload = true;
+				if (response.status !== 'success') {
+					handleAPIError(response);
+					toast.error('Failed to modify RAM', {
+						position: 'bottom-center'
+					});
+					return;
+				}
 
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to modify RAM', {
-					position: 'bottom-center'
-				});
-			} else {
-				toast.success('RAM modified', {
-					position: 'bottom-center'
-				});
+				reload = true;
+				toast.success(
+					response.message === 'no_changes_detected' ? 'No RAM changes needed' : 'RAM modified',
+					{ position: 'bottom-center' }
+				);
 				open = false;
+			} finally {
+				saving = false;
 			}
 		} else {
 			toast.error('VM not found', {
@@ -103,7 +113,7 @@
 		</Dialog.Header>
 
 		<CustomValueInput
-			label={''}
+			label=""
 			placeholder="1.0 GiB"
 			bind:value={properties.ram}
 			classes="flex-1 space-y-1"
@@ -117,7 +127,14 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

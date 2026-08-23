@@ -1,4 +1,5 @@
 import { z } from 'zod/v4';
+import type { Row } from '../components/tree-table';
 
 export const PCIDeviceSchema = z.object({
 	name: z.string(),
@@ -22,9 +23,18 @@ export const PCIDeviceSchema = z.object({
 });
 
 export const PPTDeviceSchema = z.object({
-	id: z.number().int(),
+	id: z.number().int().positive(),
+	domain: z.number().int(),
+	oldDriver: z.string(),
 	deviceID: z.string()
 });
+
+export type DeviceRow = Row & {
+	name: string;
+	domain: number;
+	deviceId: string;
+	pptId?: number | string;
+};
 
 export type PCIDevice = z.infer<typeof PCIDeviceSchema>;
 export type PPTDevice = z.infer<typeof PPTDeviceSchema>;

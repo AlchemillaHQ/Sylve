@@ -47,6 +47,29 @@ func (s *Service) localDatasetExists(ctx context.Context, name string) (bool, er
 	return ds != nil, nil
 }
 
+// requireRestoreStagingDatasetAvailable fails closed when a deterministic
+// restore staging path already exists. A name alone is not proof that the
+// dataset belongs to an abandoned Sylve operation, so callers must never
+// destroy it automatically.
+func (s *Service) requireRestoreStagingDatasetAvailable(ctx context.Context, name string) error {
+	name = normalizeDatasetPath(name)
+	if name == "" {
+		return fmt.Errorf("restore_staging_dataset_required")
+	}
+
+	exists, err := s.localDatasetExists(ctx, name)
+	if err != nil {
+		return fmt.Errorf("restore_staging_dataset_check_failed: %w", err)
+	}
+	if exists {
+		return fmt.Errorf(
+			"restore_staging_dataset_exists_requires_manual_cleanup: dataset=%s",
+			name,
+		)
+	}
+	return nil
+}
+
 func (s *Service) destroyLocalDataset(ctx context.Context, name string, recursive bool) error {
 	ds, err := s.getLocalDataset(ctx, name)
 	if err != nil {
@@ -241,6 +264,34 @@ func (s *Service) promoteRestoredDataset(ctx context.Context, restorePath, desti
 	return backupDataset, nil
 }
 
+// promoteRestoredDatasetAsNew performs a create-only cutover. The ZFS rename
+// remains the final atomic guard: an existing or concurrently created
+// destination is never archived, replaced, or destroyed.
+func (s *Service) promoteRestoredDatasetAsNew(ctx context.Context, restorePath, destination string) error {
+	restorePath = normalizeRestoreDestinationDataset(restorePath)
+	destination = normalizeRestoreDestinationDataset(destination)
+	if restorePath == "" || destination == "" {
+		return fmt.Errorf("destination_dataset_required")
+	}
+
+	destinationExists, err := s.localDatasetExists(ctx, destination)
+	if err != nil {
+		return fmt.Errorf("restore_destination_dataset_check_failed: %w", err)
+	}
+	if destinationExists {
+		return fmt.Errorf("restore_destination_guest_dataset_exists: dataset=%s", destination)
+	}
+
+	if err := s.renameLocalDataset(ctx, restorePath, destination); err != nil {
+		if exists, existsErr := s.localDatasetExists(ctx, destination); existsErr == nil && exists {
+			return fmt.Errorf("restore_destination_guest_dataset_exists: dataset=%s", destination)
+		}
+		return fmt.Errorf("failed_to_promote_restored_guest_dataset: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, backupDataset string) error {
 	destination = normalizeRestoreDestinationDataset(destination)
 	backupDataset = normalizeRestoreDestinationDataset(backupDataset)
@@ -248,22 +299,26 @@ func (s *Service) rollbackPromotedDataset(ctx context.Context, destination, back
 		return nil
 	}
 
-	destinationExists, err := s.localDatasetExists(ctx, destination)
-	if err != nil {
-		return err
-	}
-	if destinationExists {
-		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
-			return fmt.Errorf("failed_to_remove_failed_restored_dataset: %w", err)
-		}
-	}
-
+	// Prove the rollback archive still exists before removing the promoted
+	// destination. If the archive was externally moved or deleted, retain the
+	// only known-good dataset and fail closed for manual recovery.
 	backupExists, err := s.localDatasetExists(ctx, backupDataset)
 	if err != nil {
 		return err
 	}
 	if !backupExists {
 		return fmt.Errorf("restore_backup_dataset_missing: %s", backupDataset)
+	}
+
+	destinationExists, err := s.localDatasetExists(ctx, destination)
+	if err != nil {
+		return err
+	}
+	if destinationExists {
+		_ = s.unmountLocalDataset(ctx, destination)
+		if err := s.destroyLocalDatasetWithRetry(ctx, destination, true, 20, 500*time.Millisecond); err != nil {
+			return fmt.Errorf("failed_to_remove_failed_restored_dataset: %w", err)
+		}
 	}
 
 	if err := s.renameLocalDataset(ctx, backupDataset, destination); err != nil {
@@ -282,7 +337,35 @@ func (s *Service) cleanupRestoreBackupDataset(ctx context.Context, backupDataset
 	return s.destroyLocalDatasetWithRetry(ctx, backupDataset, true, 20, 500*time.Millisecond)
 }
 
+func (s *Service) unmountLocalDataset(ctx context.Context, name string) error {
+	return s.unmountLocalDatasetWithForce(ctx, name, true)
+}
+
+func (s *Service) unmountLocalDatasetNormally(ctx context.Context, name string) error {
+	return s.unmountLocalDatasetWithForce(ctx, name, false)
+}
+
+func (s *Service) unmountLocalDatasetWithForce(ctx context.Context, name string, force bool) error {
+	if s != nil && s.localDatasetUnmounter != nil {
+		return s.localDatasetUnmounter(ctx, name, force)
+	}
+
+	ds, err := s.getLocalDataset(ctx, name)
+	if err != nil {
+		return err
+	}
+	if ds == nil {
+		return nil
+	}
+
+	return ds.Unmount(ctx, force)
+}
+
 func (s *Service) mountLocalDataset(ctx context.Context, name string) error {
+	if s != nil && s.localDatasetMounter != nil {
+		return s.localDatasetMounter(ctx, name)
+	}
+
 	ds, err := s.getLocalDataset(ctx, name)
 	if err != nil {
 		return err
@@ -373,7 +456,38 @@ func (s *Service) ensureLocalFilesystemPath(ctx context.Context, dataset string)
 	return nil
 }
 
+func (s *Service) listLocalVolumeDatasets(ctx context.Context) ([]string, error) {
+	if s != nil && s.localVolumeDatasetLister != nil {
+		return s.localVolumeDatasetLister(ctx)
+	}
+	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
+		return nil, fmt.Errorf("gzfs_not_initialized")
+	}
+
+	sets, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeVolume, false)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]string, 0, len(sets))
+	for _, ds := range sets {
+		if ds == nil {
+			continue
+		}
+		name := normalizeDatasetPath(ds.Name)
+		if name == "" {
+			continue
+		}
+		out = append(out, name)
+	}
+
+	return out, nil
+}
+
 func (s *Service) listLocalFilesystemDatasets(ctx context.Context) ([]string, error) {
+	if s != nil && s.localFilesystemDatasetLister != nil {
+		return s.localFilesystemDatasetLister(ctx)
+	}
 	if s == nil || s.GZFS == nil || s.GZFS.ZFS == nil {
 		return nil, fmt.Errorf("gzfs_not_initialized")
 	}
@@ -428,6 +542,16 @@ func isLocalDatasetBusyError(err error) bool {
 	lower := strings.ToLower(err.Error())
 	return strings.Contains(lower, "dataset is busy") ||
 		strings.Contains(lower, "resource busy")
+}
+
+func isLocalDatasetNotMountedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "not currently mounted") ||
+		strings.Contains(lower, "not mounted")
 }
 
 func isLocalDatasetHasDependentClonesError(err error) bool {

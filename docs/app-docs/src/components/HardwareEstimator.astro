@@ -1,0 +1,307 @@
+<div class="estimator not-content" data-hardware-estimator>
+  <div class="controls">
+    <fieldset class="workload-fields">
+      <legend>Workload allocations</legend>
+      <div class="range-control"><label><span>Jails</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease Jails">−</button><output data-jail-count>5</output><button type="button" data-adjust="1" aria-label="Increase Jails">+</button></span></label><input data-jails type="range" min="0" max="50" value="5" step="1" aria-label="Number of Jails" /></div>
+      <div class="range-control"><label><span>VM vCPUs</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease VM vCPUs">−</button><output data-vm-cpu-count>4</output><button type="button" data-adjust="1" aria-label="Increase VM vCPUs">+</button></span></label><input data-vm-cpu type="range" min="0" max="64" value="4" aria-label="Total Bhyve guest vCPUs" /></div>
+      <div class="range-control"><label><span>VM RAM</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease VM RAM">−</button><output data-vm-memory-count>8 GB</output><button type="button" data-adjust="1" aria-label="Increase VM RAM">+</button></span></label><input data-vm-memory type="range" min="0" max="256" value="8" step="1" aria-label="Total Bhyve guest RAM" /></div>
+      <div class="range-control"><label><span>VM disks</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease VM disk capacity">−</button><output data-vm-storage-count>100 GB</output><button type="button" data-adjust="1" aria-label="Increase VM disk capacity">+</button></span></label><input data-vm-storage type="range" min="0" max="2000" value="100" step="10" aria-label="Total Bhyve virtual disk capacity" /></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Storage planning</legend>
+      <div class="range-control"><label><span>Data to replicate</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease replicated data">−</button><output data-replicated-data-count>100 GB</output><button type="button" data-adjust="1" aria-label="Increase replicated data">+</button></span></label><input data-replicated-data type="range" min="0" max="2000" value="100" step="10" aria-label="Data to replicate" /></div>
+      <div class="range-control"><label><span>Replica copies</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease replica copies">−</button><output data-replica-count>1</output><button type="button" data-adjust="1" aria-label="Increase replica copies">+</button></span></label><input data-replicas type="range" min="0" max="3" value="1" aria-label="Additional replica copies" /></div>
+      <div class="range-control"><label><span>ZFS headroom</span><span class="stepper"><button type="button" data-adjust="-1" aria-label="Decrease ZFS headroom">−</button><output data-headroom-count>25%</output><button type="button" data-adjust="1" aria-label="Increase ZFS headroom">+</button></span></label><input data-headroom type="range" min="0" max="3" value="1" step="1" aria-label="ZFS free-space headroom" /></div>
+    </fieldset>
+  </div>
+
+  <div class="recommendations" aria-live="polite">
+    <div><span>CPU</span><strong data-cpu>7 threads</strong><small>Without overcommit</small></div>
+    <div><span>Memory</span><strong data-memory>14.5 GB</strong><small>Includes host + ARC reserve</small></div>
+    <div><span>Primary ZFS</span><strong data-storage>227 GB</strong><small>Includes selected headroom</small></div>
+    <div><span>Replica targets</span><strong data-replica-storage>134 GB</strong><small>Data × copies, with headroom</small></div>
+  </div>
+
+  <p>Planning baseline, not a performance guarantee. CPU overcommit, thin provisioning, compression, deduplication, snapshot retention, and workload peaks can materially change the result.</p>
+  <details>
+    <summary>How this estimate is calculated</summary>
+    <p>The host reserve is one CPU thread plus 4 GB of memory for FreeBSD, Sylve, and a modest ARC. VM allocations are added directly. Each Jail contributes a planning allowance of 0.5 GB of memory, 10 GB of storage, and one quarter of a CPU thread. Storage totals preserve the selected percentage as free ZFS headroom.</p>
+  </details>
+</div>
+
+<script>
+  const jailBaseline = { memoryPerJail: 0.5, storagePerJail: 10, jailsPerCpu: 4 };
+
+  document.querySelectorAll('[data-hardware-estimator]').forEach((estimator) => {
+    const slider = estimator.querySelector('[data-jails]');
+    const vmCpuInput = estimator.querySelector('[data-vm-cpu]');
+    const vmMemoryInput = estimator.querySelector('[data-vm-memory]');
+    const vmStorageInput = estimator.querySelector('[data-vm-storage]');
+    const replicatedDataInput = estimator.querySelector('[data-replicated-data]');
+    const replicaInput = estimator.querySelector('[data-replicas]');
+    const headroomInput = estimator.querySelector('[data-headroom]');
+    const count = estimator.querySelector('[data-jail-count]');
+    const vmCpuCount = estimator.querySelector('[data-vm-cpu-count]');
+    const vmMemoryCount = estimator.querySelector('[data-vm-memory-count]');
+    const vmStorageCount = estimator.querySelector('[data-vm-storage-count]');
+    const replicatedDataCount = estimator.querySelector('[data-replicated-data-count]');
+    const replicaCount = estimator.querySelector('[data-replica-count]');
+    const headroomCount = estimator.querySelector('[data-headroom-count]');
+    const cpu = estimator.querySelector('[data-cpu]');
+    const memory = estimator.querySelector('[data-memory]');
+    const storage = estimator.querySelector('[data-storage]');
+    const replicaStorage = estimator.querySelector('[data-replica-storage]');
+
+    const rangeInputs = [vmCpuInput, vmMemoryInput, vmStorageInput, replicatedDataInput, replicaInput, headroomInput];
+    if (!(slider instanceof HTMLInputElement) || !rangeInputs.every((input) => input instanceof HTMLInputElement)) return;
+
+    const update = () => {
+      const jails = Number(slider.value);
+      const vmCpu = Number((vmCpuInput as HTMLInputElement).value) || 0;
+      const vmMemory = Number((vmMemoryInput as HTMLInputElement).value) || 0;
+      const vmStorage = Number((vmStorageInput as HTMLInputElement).value) || 0;
+      const replicatedData = Number((replicatedDataInput as HTMLInputElement).value) || 0;
+      const replicas = Number((replicaInput as HTMLInputElement).value) || 0;
+      const headroomOptions = [0.2, 0.25, 0.3, 0.4];
+      const headroomIndex = Number((headroomInput as HTMLInputElement).value);
+      const headroom = headroomOptions[headroomIndex];
+      const hasLocalWorkloads = jails > 0 || vmCpu > 0 || vmMemory > 0 || vmStorage > 0;
+      const cpuTotal = hasLocalWorkloads ? Math.max(2, Math.ceil(1 + jails / jailBaseline.jailsPerCpu + vmCpu)) : 0;
+      const memoryTotal = hasLocalWorkloads ? Math.ceil((4 + jails * jailBaseline.memoryPerJail + vmMemory) * 2) / 2 : 0;
+      const primaryRaw = hasLocalWorkloads ? 20 + jails * jailBaseline.storagePerJail + vmStorage : 0;
+      const storageTotal = primaryRaw ? Math.ceil(primaryRaw / (1 - headroom)) : 0;
+      const replicaTotal = Math.ceil((replicatedData * replicas) / (1 - headroom));
+
+      if (count) count.textContent = String(jails);
+      if (vmCpuCount) vmCpuCount.textContent = String(vmCpu);
+      if (vmMemoryCount) vmMemoryCount.textContent = `${vmMemory} GB`;
+      if (vmStorageCount) vmStorageCount.textContent = `${vmStorage} GB`;
+      if (replicatedDataCount) replicatedDataCount.textContent = `${replicatedData} GB`;
+      if (replicaCount) replicaCount.textContent = String(replicas);
+      if (headroomCount) headroomCount.textContent = `${Math.round(headroom * 100)}%`;
+      if (cpu) cpu.textContent = `${cpuTotal} thread${cpuTotal === 1 ? '' : 's'}`;
+      if (memory) memory.textContent = `${memoryTotal} GB`;
+      if (storage) storage.textContent = `${storageTotal} GB`;
+      if (replicaStorage) replicaStorage.textContent = `${replicaTotal} GB`;
+      slider.style.setProperty('--progress', `${(jails / 50) * 100}%`);
+      (vmCpuInput as HTMLInputElement).style.setProperty('--progress', `${(vmCpu / 64) * 100}%`);
+      (vmMemoryInput as HTMLInputElement).style.setProperty('--progress', `${(vmMemory / 256) * 100}%`);
+      (vmStorageInput as HTMLInputElement).style.setProperty('--progress', `${(vmStorage / 2000) * 100}%`);
+      (replicatedDataInput as HTMLInputElement).style.setProperty('--progress', `${(replicatedData / 2000) * 100}%`);
+      (replicaInput as HTMLInputElement).style.setProperty('--progress', `${(replicas / 3) * 100}%`);
+      (headroomInput as HTMLInputElement).style.setProperty('--progress', `${(headroomIndex / 3) * 100}%`);
+    };
+
+    slider.addEventListener('input', update);
+    rangeInputs.forEach((input) => input?.addEventListener('input', update));
+    estimator.querySelectorAll('[data-adjust]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const input = button.closest('.range-control')?.querySelector('input[type="range"]');
+        if (!(input instanceof HTMLInputElement)) return;
+        button.getAttribute('data-adjust') === '1' ? input.stepUp() : input.stepDown();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    });
+    update();
+  });
+</script>
+
+<style>
+  .estimator {
+    --line: color-mix(in oklab, var(--sl-color-white) 18%, transparent);
+    margin: 1.5rem 0 2rem;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 0.35rem;
+    background: color-mix(in oklab, var(--sl-color-bg) 97%, var(--sl-color-white));
+    container-type: inline-size;
+  }
+
+  .controls { padding: 1rem 1.25rem; }
+
+  fieldset {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .workload-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--sl-color-white);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  output {
+    min-width: 2.35rem;
+    padding: 0.2rem 0.45rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+    font: 600 0.72rem var(--sl-font-mono);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .range-control > label {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .range-control > label > span:first-child { white-space: nowrap; }
+
+  .stepper {
+    display: inline-flex;
+    align-items: stretch;
+  }
+
+  .stepper output {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .stepper button {
+    width: 1.35rem;
+    min-height: 1.5rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--sl-color-gray-2);
+    font: 500 0.82rem var(--sl-font);
+    cursor: pointer;
+  }
+
+  .stepper button:first-child { border-radius: 0.25rem 0 0 0.25rem; }
+  .stepper button:last-child { border-radius: 0 0.25rem 0.25rem 0; }
+  .stepper button:hover { background: color-mix(in oklab, var(--sl-color-white) 7%, transparent); color: var(--sl-color-white); }
+
+  input[type="range"] {
+    --progress: 0%;
+    width: 100%;
+    height: 1.6rem;
+    margin: 0.4rem 0 0;
+    background: transparent;
+    cursor: pointer;
+    appearance: none;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: linear-gradient(90deg, var(--sl-color-white) var(--progress), var(--line) var(--progress));
+  }
+
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--line); }
+  input[type="range"]::-moz-range-progress { height: 2px; background: var(--sl-color-white); }
+
+  input[type="range"]::-webkit-slider-thumb {
+    width: 0.85rem;
+    height: 0.85rem;
+    margin-top: -0.38rem;
+    border: 2px solid var(--sl-color-bg);
+    border-radius: 50%;
+    background: var(--sl-color-white);
+    box-shadow: 0 0 0 1px var(--sl-color-white);
+    appearance: none;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 0.7rem;
+    height: 0.7rem;
+    border: 2px solid var(--sl-color-bg);
+    border-radius: 50%;
+    background: var(--sl-color-white);
+    box-shadow: 0 0 0 1px var(--sl-color-white);
+  }
+
+  .profile-label { margin-bottom: 0.4rem; }
+
+  select {
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 0.3rem;
+    background: var(--sl-color-bg);
+    color: var(--sl-color-white);
+    font: 0.72rem var(--sl-font);
+  }
+
+  fieldset {
+    margin: 0.8rem 0 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-bottom: 0.45rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--sl-color-gray-3);
+    font: 600 0.61rem var(--sl-font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .recommendations {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .recommendations div {
+    padding: 1rem 1.25rem;
+    border-left: 1px solid var(--line);
+  }
+
+  .recommendations div:first-child { border-left: 0; }
+  .recommendations span,
+  .recommendations small { display: block; color: var(--sl-color-gray-3); font-size: 0.62rem; }
+  .recommendations span { font-family: var(--sl-font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+  .recommendations strong { display: block; margin: 0.35rem 0 0.2rem; color: var(--sl-color-white); font-size: 1rem; font-weight: 600; }
+
+  .estimator > p {
+    margin: 0;
+    padding: 0.85rem 1.25rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.68rem;
+    line-height: 1.5;
+  }
+
+  details {
+    padding: 0 1.25rem 0.9rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.68rem;
+  }
+
+  summary {
+    width: fit-content;
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+  }
+
+  details p { margin: 0.65rem 0 0; line-height: 1.55; }
+
+  @media (max-width: 35rem) {
+    .recommendations { grid-template-columns: 1fr; }
+    .recommendations div { border-top: 1px solid var(--line); border-left: 0; }
+    .recommendations div:first-child { border-top: 0; }
+  }
+
+  @container (max-width: 38rem) {
+    fieldset,
+    .workload-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  @container (max-width: 25rem) {
+    fieldset,
+    .workload-fields { grid-template-columns: 1fr; }
+  }
+</style>

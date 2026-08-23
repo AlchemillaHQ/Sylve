@@ -1,26 +1,35 @@
-import { getBasicSettings } from '$lib/api/system/settings';
-import { getDownloads } from '$lib/api/utilities/downloader';
+import { basicSettingsOrFallback, getBasicSettings } from '$lib/api/system/settings';
+import { getDownloadsResult } from '$lib/api/utilities/downloader';
 import { getDatasets } from '$lib/api/zfs/datasets';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
-export async function load() {
+export async function load({ params }) {
 	const cacheDuration = SEVEN_DAYS;
+	const node = params.node;
 
-	const [datasets, downloads, settings] = await Promise.all([
+	const [datasets, downloadsResult, settings] = await Promise.all([
 		cachedFetch(
 			'zfs-volumes',
 			async () => await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME),
 			cacheDuration
 		),
-		cachedFetch('downloads', async () => getDownloads(), cacheDuration),
+		cachedFetch(
+			'download-list',
+			async () => getDownloadsResult({ hostname: node }),
+			cacheDuration,
+			false,
+			node
+		),
 		cachedFetch('basic-settings', async () => getBasicSettings(), cacheDuration)
 	]);
 
 	return {
+		node,
 		datasets: datasets,
-		downloads: downloads,
-		settings: settings
+		downloads: isAPIResponse(downloadsResult) ? [] : downloadsResult,
+		settings: basicSettingsOrFallback(settings),
+		loadErrors: isAPIResponse(downloadsResult) ? [downloadsResult] : []
 	};
 }

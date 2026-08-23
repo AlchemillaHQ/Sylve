@@ -14,17 +14,27 @@ type ReplicationPolicyTargetReq struct {
 }
 
 type ReplicationPolicyReq struct {
-	Name         string                       `json:"name" binding:"required,min=2"`
-	Description  string                       `json:"description"`
-	GuestType    string                       `json:"guestType" binding:"required"`
-	GuestID      uint                         `json:"guestId" binding:"required"`
-	SourceNodeID string                       `json:"sourceNodeId"`
-	ActiveNodeID string                       `json:"-"`
-	OwnerEpoch   uint64                       `json:"-"`
-	SourceMode   string                       `json:"sourceMode"`
-	FailbackMode string                       `json:"failbackMode"`
-	FailoverMode string                       `json:"failoverMode"`
-	CronExpr     string                       `json:"cronExpr"`
-	Enabled      *bool                        `json:"enabled"`
-	Targets      []ReplicationPolicyTargetReq `json:"targets" binding:"required"`
+	Name            string                       `json:"name" binding:"required,min=2"`
+	Description     string                       `json:"description"`
+	GuestType       string                       `json:"guestType" binding:"required"`
+	GuestID         uint                         `json:"guestId" binding:"required"`
+	SourceNodeID    string                       `json:"sourceNodeId"`
+	ActiveNodeID    string                       `json:"-"`
+	OwnerEpoch      uint64                       `json:"-"`
+	SourceMode      string                       `json:"sourceMode"`
+	FailbackMode    string                       `json:"failbackMode"`
+	FailoverMode    string                       `json:"failoverMode"`
+	CronExpr        string                       `json:"cronExpr"`
+	CrashRecovery   *bool                        `json:"crashRecovery"`
+	CrashRestartMax *int                         `json:"crashRestartMax"`
+	PoolHealthCheck *bool                        `json:"poolHealthCheck"`
+	PoolCapacityPct *int                         `json:"poolCapacityPct"`
+	Enabled         *bool                        `json:"enabled"`
+	Targets         []ReplicationPolicyTargetReq `json:"targets" binding:"required"`
+}
+
+type ReplicationPolicyDeleteCleanupRequest struct {
+	PolicyID                uint   `json:"policyId"`
+	ExpectedOwnerEpoch      uint64 `json:"expectedOwnerEpoch"`
+	MinimumRaftAppliedIndex uint64 `json:"minimumRaftAppliedIndex"`
 }

@@ -1,24 +1,36 @@
 <script lang="ts">
 	import {
+		dismissAllNotifications,
 		dismissNotification,
 		getNotificationsCount,
 		listNotifications
 	} from '$lib/api/notifications';
+	import ModalTable from '$lib/components/custom/ModalTable.svelte';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Table from '$lib/components/ui/table/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { Notification } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
+	import { storage } from '$lib';
 	import { resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import type { CellComponent, ColumnDefinition } from 'tabulator-tables';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
+
+	type NotificationRow = Record<string, unknown> & {
+		notification: Notification;
+		dismissedAt: string | null | undefined;
+		dismissing: boolean;
+	};
 
 	let open = $state(false);
 	let showDismissed = $state(false);
 	let dismissing = $state<number | null>(null);
+	let dismissAllOpen = $state(false);
+	let dismissingAll = $state(false);
 
 	const notificationCount = resource(
 		() => 'notification-bell-count',
@@ -72,6 +84,7 @@
 
 	useInterval(10000, {
 		callback: () => {
+			if (!storage.visible) return;
 			notificationCount.refetch();
 			if (open) {
 				notifications.refetch();
@@ -80,7 +93,7 @@
 	});
 
 	async function dismiss(item: Notification) {
-		if (!item?.id || dismissing !== null) {
+		if (!item?.id || dismissing !== null || dismissingAll) {
 			return;
 		}
 
@@ -104,7 +117,53 @@
 		});
 	}
 
-	function severityClass(severity: string) {
+	async function dismissAll() {
+		if (dismissingAll || count === 0) {
+			return;
+		}
+
+		dismissingAll = true;
+		const response = await dismissAllNotifications();
+		dismissingAll = false;
+
+		if (isAPIResponse(response)) {
+			handleAPIError(response);
+			toast.error('Failed to dismiss notifications', {
+				duration: 4000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		dismissAllOpen = false;
+		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
+		toast.success(
+			`${response.dismissed} notification${response.dismissed === 1 ? '' : 's'} dismissed`,
+			{
+				duration: 3000,
+				position: 'bottom-center'
+			}
+		);
+	}
+
+	function preventDismissEscape(event: KeyboardEvent) {
+		if (dismissingAll) event.preventDefault();
+	}
+
+	function severityIcon(severity: string) {
+		switch (severity) {
+			case 'critical':
+				return 'icon-[mdi--alert-octagon-outline]';
+			case 'error':
+				return 'icon-[mdi--alert-circle-outline]';
+			case 'warning':
+				return 'icon-[mdi--alert-outline]';
+			default:
+				return 'icon-[mdi--information-outline]';
+		}
+	}
+
+	function severityColor(severity: string) {
 		switch (severity) {
 			case 'critical':
 				return 'text-red-600';
@@ -116,6 +175,116 @@
 				return 'text-blue-600';
 		}
 	}
+
+	function capitalize(s: string) {
+		return s.charAt(0).toUpperCase() + s.slice(1);
+	}
+
+	function severityFormatter(cell: CellComponent): HTMLElement {
+		const severity = String(cell.getValue());
+		const container = document.createElement('span');
+		container.className = `flex items-center gap-1.5 ${severityColor(severity)}`;
+
+		const icon = document.createElement('span');
+		icon.className = `${severityIcon(severity)} h-4 w-4`;
+		container.append(icon, capitalize(severity));
+
+		return container;
+	}
+
+	function notificationFormatter(cell: CellComponent): HTMLElement {
+		const notification = cell.getValue() as Notification;
+		const container = document.createElement('div');
+		container.className = 'space-y-0.5 whitespace-normal';
+
+		const title = document.createElement('p');
+		title.className = 'font-medium';
+		title.textContent = notification.title;
+		container.append(title);
+
+		if (notification.body) {
+			const body = document.createElement('p');
+			body.className = 'text-muted-foreground text-xs';
+			body.textContent = notification.body;
+			container.append(body);
+		}
+
+		return container;
+	}
+
+	function dismissFormatter(cell: CellComponent): HTMLElement {
+		const row = cell.getRow().getData() as NotificationRow;
+		const icon = document.createElement('span');
+		icon.className = 'h-4 w-4';
+
+		if (row.dismissedAt) {
+			icon.classList.add('icon-[lucide--bell-off]', 'text-muted-foreground/50');
+			icon.title = 'Dismissed';
+			return icon;
+		}
+
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.disabled = row.dismissing;
+		button.className =
+			'inline-flex items-center justify-center opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none disabled:opacity-30';
+		button.title = 'Dismiss';
+		icon.classList.add('icon-[lucide--x]');
+		button.append(icon);
+		button.addEventListener('click', () => void dismiss(row.notification));
+
+		return button;
+	}
+
+	const notificationColumns: ColumnDefinition[] = [
+		{
+			title: 'Action',
+			field: 'dismissedAt',
+			minWidth: 90,
+			frozen: true,
+			hozAlign: 'center',
+			headerHozAlign: 'center',
+			vertAlign: 'top',
+			formatter: dismissFormatter
+		},
+		{
+			title: 'Count',
+			field: 'occurrenceCount',
+			minWidth: 75,
+			hozAlign: 'left',
+			headerHozAlign: 'left'
+		},
+		{ title: 'Severity', field: 'severity', minWidth: 120, formatter: severityFormatter },
+		{
+			title: 'Notification',
+			field: 'notification',
+			minWidth: 420,
+			widthGrow: 3,
+			variableHeight: true,
+			formatter: notificationFormatter
+		},
+		{ title: 'Source', field: 'source', minWidth: 120, cssClass: 'text-xs' },
+		{
+			title: 'Last Seen',
+			field: 'lastOccurredAt',
+			minWidth: 170,
+			cssClass: 'text-xs',
+			formatter: (cell: CellComponent) => convertDbTime(String(cell.getValue()))
+		}
+	];
+
+	let tableRows = $derived(
+		items.map((item) => ({
+			id: item.id,
+			severity: item.severity,
+			notification: item,
+			source: item.source || '-',
+			lastOccurredAt: item.lastOccurredAt,
+			occurrenceCount: item.occurrenceCount,
+			dismissedAt: item.dismissedAt,
+			dismissing: dismissing !== null || dismissingAll
+		}))
+	);
 </script>
 
 <Button
@@ -139,85 +308,110 @@
 </Button>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="w-[95%] max-w-5xl p-5" showCloseButton={false}>
+	<Dialog.Content class="w-[95%] !max-w-[50vw] p-5" showCloseButton={false}>
 		<Dialog.Header>
-			<Dialog.Title class="flex items-center justify-between gap-4">
+			<Dialog.Title class="flex items-center justify-between">
 				<SpanWithIcon
 					icon="icon-[mdi--bell-outline]"
 					size="h-5 w-5"
 					gap="gap-2"
 					title="Notifications"
 				/>
-				<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
+				<button
+					onclick={() => (open = false)}
+					class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+				>
+					<span class="icon-[lucide--x] h-5 w-5"></span>
+					<span class="sr-only">Close</span>
+				</button>
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="max-h-[55vh] overflow-auto rounded-md border">
-			<Table.Root class="w-full">
-				<Table.Header class="bg-muted/50 sticky top-0">
-					<Table.Row>
-						<Table.Head class="w-28">Severity</Table.Head>
-						<Table.Head>Notification</Table.Head>
-						<Table.Head class="w-32">Source</Table.Head>
-						<Table.Head class="w-48">Last Seen</Table.Head>
-						<Table.Head class="w-20 text-right">Count</Table.Head>
-						<Table.Head class="w-28 text-right">Action</Table.Head>
-					</Table.Row>
-				</Table.Header>
-				<Table.Body>
-					{#if items.length === 0}
-						<Table.Row>
-							<Table.Cell colspan={6} class="text-muted-foreground h-24 text-center">
-								No notifications found.
-							</Table.Cell>
-						</Table.Row>
-					{:else}
-						{#each items as item (item.id)}
-							<Table.Row>
-								<Table.Cell>
-									<span class={severityClass(item.severity)}>{item.severity}</span>
-								</Table.Cell>
-								<Table.Cell>
-									<div class="space-y-0.5">
-										<p class="font-medium">{item.title}</p>
-										{#if item.body}
-											<p class="text-muted-foreground text-xs">{item.body}</p>
-										{/if}
-									</div>
-								</Table.Cell>
-								<Table.Cell class="text-xs">{item.source || '-'}</Table.Cell>
-								<Table.Cell class="text-xs">{convertDbTime(item.lastOccurredAt)}</Table.Cell>
-								<Table.Cell class="text-right">{item.occurrenceCount}</Table.Cell>
-								<Table.Cell class="text-right">
-									{#if !item.dismissedAt}
-										<Button
-											size="sm"
-											variant="outline"
-											class="h-6"
-											onclick={() => dismiss(item)}
-											disabled={dismissing !== null}
-										>
-											Dismiss
-										</Button>
-									{:else}
-										<span class="text-muted-foreground text-xs">Dismissed</span>
-									{/if}
-								</Table.Cell>
-							</Table.Row>
-						{/each}
-					{/if}
-				</Table.Body>
-			</Table.Root>
+		<div class="flex h-[40vh] min-h-0 min-w-0 flex-col overflow-hidden">
+			<ModalTable
+				rows={tableRows}
+				columns={notificationColumns}
+				pageSize={10}
+				placeholder="No notifications found."
+			/>
 		</div>
 
-		<Dialog.Footer>
-			<Button variant="outline" class="h-7" onclick={() => notificationCount.refetch()}
-				>Refresh Count</Button
+		<Dialog.Footer class="flex items-center !justify-between">
+			<CustomCheckbox label="Show Dismissed" bind:checked={showDismissed} />
+			<Button
+				variant="destructive"
+				class="h-7"
+				disabled={count === 0 || dismissingAll}
+				onclick={() => (dismissAllOpen = true)}
 			>
-			<Button variant="outline" class="h-7" onclick={() => notifications.refetch()}
-				>Refresh List</Button
-			>
-			<Button variant="outline" class="h-7" onclick={() => (open = false)}>Close</Button>
+				Dismiss All
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<AlertDialog.Root bind:open={dismissAllOpen}>
+	<AlertDialog.Content
+		onInteractOutside={(event) => event.preventDefault()}
+		onEscapeKeydown={preventDismissEscape}
+		aria-busy={dismissingAll}
+		class="p-5"
+	>
+		<AlertDialog.Header>
+			<AlertDialog.Title>Dismiss all notifications?</AlertDialog.Title>
+			<AlertDialog.Description>
+				This will dismiss all {count} active notification{count === 1 ? '' : 's'}.
+			</AlertDialog.Description>
+		</AlertDialog.Header>
+		<AlertDialog.Footer>
+			<AlertDialog.Cancel disabled={dismissingAll}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action
+				class="bg-destructive text-white hover:bg-destructive/90"
+				disabled={count === 0 || dismissingAll}
+				onclick={dismissAll}
+			>
+				{#if dismissingAll}
+					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+					Dismissing
+				{:else}
+					Dismiss All
+				{/if}
+			</AlertDialog.Action>
+		</AlertDialog.Footer>
+	</AlertDialog.Content>
+</AlertDialog.Root>
+
+<style>
+	:global(
+		html:not(.dark) .s-modal-table-container .tabulator-placeholder .tabulator-placeholder-contents
+	) {
+		color: var(--muted-foreground);
+	}
+
+	:global(.s-modal-table-container .tabulator-header .tabulator-col.tabulator-frozen-left) {
+		border-right: none;
+		background-color: var(--muted) !important;
+	}
+
+	:global(
+		.s-modal-table-container
+			.tabulator-table
+			.tabulator-row
+			.tabulator-cell.tabulator-frozen.tabulator-frozen-left
+	) {
+		background-color: var(--background) !important;
+	}
+
+	:global(
+		.s-modal-table-container
+			.tabulator-table
+			.tabulator-row:hover
+			.tabulator-cell.tabulator-frozen.tabulator-frozen-left
+	) {
+		background-color: var(--background) !important;
+	}
+
+	:global(.s-modal-table-container.tabulator .tabulator-table .tabulator-row:hover) {
+		background-color: var(--background) !important;
+	}
+</style>

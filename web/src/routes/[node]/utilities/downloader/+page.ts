@@ -1,16 +1,21 @@
-import { getDownloadPaths, getDownloads } from '$lib/api/utilities/downloader';
+import { getDownloadsResult } from '$lib/api/utilities/downloader';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 
-export async function load() {
+export async function load({ params }) {
 	const cacheDuration = SEVEN_DAYS;
-	const [downloads, downloadPaths] = await Promise.all([
-		cachedFetch('downloads', async () => getDownloads(), cacheDuration),
-		getDownloadPaths()
-	]);
+	const node = params.node;
+	const result = await cachedFetch(
+		'download-list',
+		async () => getDownloadsResult({ hostname: node }),
+		cacheDuration,
+		false,
+		node
+	);
 
 	return {
-		downloads,
-		downloadPaths
+		node,
+		downloads: isAPIResponse(result) ? [] : result,
+		loadErrors: isAPIResponse(result) ? [result] : []
 	};
 }

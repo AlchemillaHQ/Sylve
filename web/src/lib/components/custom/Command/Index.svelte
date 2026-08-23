@@ -4,13 +4,10 @@
 
 	import { mode, toggleMode } from 'mode-watcher';
 	import { logOut } from '$lib/api/auth';
-	import { goto } from '$app/navigation';
+	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 </script>
 
-<Command.Dialog
-	bind:open={storage.openCommands}
-	class="rounded-lg border shadow-md md:min-w-[450px]"
->
+<Command.Dialog bind:open={storage.openCommands} class="rounded-lg border shadow-md md:min-w-112.5">
 	<Command.Input placeholder="Type a command..." />
 
 	<Command.List>
@@ -20,7 +17,7 @@
 				value="host-terminal"
 				onSelect={() => {
 					storage.openCommands = false;
-					goto(`/${storage.hostname}/terminal`);
+					useSafeGoto(`/${storage.hostname}/terminal`);
 				}}
 			>
 				<span class="icon-[mdi--console] size-5"></span>

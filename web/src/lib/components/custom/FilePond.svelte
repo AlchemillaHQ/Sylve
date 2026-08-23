@@ -7,7 +7,6 @@
 	export const isSupported = FilePond.supported();
 
 	let root = $state<HTMLInputElement | null>(null);
-	let instance = $state<FilePond.FilePond | undefined>(undefined);
 
 	let {
 		class: klass = undefined,
@@ -30,6 +29,7 @@
 		removeFile = $bindable(() => {}),
 		removeFiles = $bindable(() => {}),
 		sort = $bindable(() => {}),
+		instance = $bindable<FilePond.FilePond | undefined>(undefined),
 		...options
 	} = $props();
 

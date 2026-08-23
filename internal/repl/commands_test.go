@@ -11,6 +11,7 @@ package repl
 import (
 	"bytes"
 	"os"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -80,5 +81,70 @@ func TestExecuteLineUnknownCommand(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "Unknown command: 'wat'. Type 'help'.") {
 		t.Fatalf("unexpected unknown command output: %q", out.String())
+	}
+}
+
+func TestExecuteLineSwitchesIsRegistered(t *testing.T) {
+	var out bytes.Buffer
+	ctx := &Context{Out: &out}
+
+	shouldContinue := ExecuteLine(ctx, "switches list")
+	if !shouldContinue {
+		t.Fatal("expected switches command to keep session running")
+	}
+	if !strings.Contains(out.String(), "Error fetching switches: network_service_unavailable") {
+		t.Fatalf("unexpected switches output: %q", out.String())
+	}
+}
+
+func TestExecuteLineObjectsIsRegistered(t *testing.T) {
+	var out bytes.Buffer
+	ctx := &Context{Out: &out}
+
+	shouldContinue := ExecuteLine(ctx, "objects list network")
+	if !shouldContinue {
+		t.Fatal("expected objects command to keep session running")
+	}
+	if !strings.Contains(out.String(), "Error fetching objects: network_service_unavailable") {
+		t.Fatalf("unexpected objects output: %q", out.String())
+	}
+}
+
+func TestExecuteLineDownloadsIsRegistered(t *testing.T) {
+	var out bytes.Buffer
+	ctx := &Context{Out: &out}
+
+	shouldContinue := ExecuteLine(ctx, "downloads list")
+	if !shouldContinue {
+		t.Fatal("expected downloads command to keep session running")
+	}
+	if !strings.Contains(out.String(), "Error fetching downloads: utilities_service_unavailable") {
+		t.Fatalf("unexpected downloads output: %q", out.String())
+	}
+}
+
+func TestSplitCommandLineHandlesQuotedArguments(t *testing.T) {
+	parts, err := splitCommandLine(`downloads start "https://download.freebsd.org/releases/amd64/15.1-RELEASE/base.txz" --type base-rootfs --extract`)
+	if err != nil {
+		t.Fatalf("split command line: %v", err)
+	}
+
+	want := []string{
+		"downloads",
+		"start",
+		"https://download.freebsd.org/releases/amd64/15.1-RELEASE/base.txz",
+		"--type",
+		"base-rootfs",
+		"--extract",
+	}
+	if !reflect.DeepEqual(parts, want) {
+		t.Fatalf("parts = %#v, want %#v", parts, want)
+	}
+}
+
+func TestSplitCommandLineRejectsUnterminatedQuote(t *testing.T) {
+	_, err := splitCommandLine(`downloads start "https://example.test/base.txz`)
+	if err == nil || err.Error() != "unterminated quote" {
+		t.Fatalf("expected unterminated quote error, got %v", err)
 	}
 }

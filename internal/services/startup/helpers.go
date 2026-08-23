@@ -9,6 +9,8 @@
 package startup
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,12 +25,35 @@ import (
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
+	"gorm.io/gorm"
 )
 
 var (
-	startupGetSysctlInt64 = sysctl.GetInt64
-	startupSetSysctlInt32 = sysctl.SetInt32
+	startupGetSysctlInt64        = sysctl.GetInt64
+	startupSetSysctlInt32        = sysctl.SetInt32
+	startupSetSysctlInt64        = sysctl.SetInt64
+	startupGetSystemMemoryBytes  = utils.GetSystemMemoryBytes
+	startupRunCommand            = utils.RunCommand
+	sambaSyslogDropInPath        = "/etc/syslog.d/sylve-samba-audit.conf"
+	sambaAuditLogPath            = "/var/log/samba4/audit.log"
+	sambaAuditRotationConfigPath = "/usr/local/etc/newsyslog.conf.d/sylve-samba-audit.conf"
 )
+
+const (
+	arcMaxOID                 = models.SystemTunableARCMaxOID
+	jailLogRotationConfigPath = "/usr/local/etc/newsyslog.conf.d/sylve.conf"
+)
+
+// computeARCMax returns 10% of host memory, capped at 16 GiB.
+func computeARCMax(memBytes int64) int64 {
+	arcMax := memBytes / 10
+	capBytes := int64(16) * 1024 * 1024 * 1024
+	if arcMax > capBytes {
+		arcMax = capBytes
+	}
+
+	return arcMax
+}
 
 func (s *Service) SysctlSync() error {
 	intVals := map[string]int32{
@@ -38,6 +63,7 @@ func (s *Service) SysctlSync() error {
 		"kern.geom.label.disk_ident.enable": 0,
 		"kern.geom.label.gptid.enable":      0,
 		"net.inet6.ip6.dad_count":           0,
+		"security.jail.enforce_statfs":      1,
 	}
 
 	for k, v := range intVals {
@@ -71,30 +97,65 @@ func (s *Service) SysctlSync() error {
 	return nil
 }
 
+// ZFSTune sets the ZFS ARC max to 10% of host memory (capped at 16 GiB) when
+// zfs.tune is enabled in the config. A user-stored vfs.zfs.arc.max tunable takes
+// precedence and disables the auto-tune.
+func (s *Service) ZFSTune() error {
+	if config.ParsedConfig == nil || !config.ParsedConfig.ZFS.Tune {
+		return nil
+	}
+
+	if s.DB != nil {
+		var existing models.SystemTunable
+		err := s.DB.Where("name = ?", arcMaxOID).First(&existing).Error
+		if err == nil {
+			logger.L.Info().Msgf("%s user override present, skipping ZFS ARC auto-tune", arcMaxOID)
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
+
+	mem, err := startupGetSystemMemoryBytes()
+	if err != nil {
+		logger.L.Error().Msgf("Error getting system memory for ZFS ARC tuning: %v, skipping!", err)
+		return nil
+	}
+
+	arcMax := computeARCMax(mem)
+	if arcMax <= 0 {
+		return nil
+	}
+
+	if err := startupSetSysctlInt64(arcMaxOID, arcMax); err != nil {
+		logger.L.Error().Msgf("Error setting %s: %v", arcMaxOID, err)
+		return nil
+	}
+
+	logger.L.Info().Msgf("Set %s to %d bytes (10%% of host memory, capped at 16G)", arcMaxOID, arcMax)
+
+	return nil
+}
+
 func (s *Service) InitFirewall() error {
 	return nil
 }
 
 func loadKernelModule(module string) error {
-	if _, err := utils.RunCommand("kldstat", "-m", module); err == nil {
+	if _, err := startupRunCommand("/sbin/kldstat", "-m", module); err == nil {
 		return nil
 	}
 
-	if _, err := utils.RunCommand("kldload", "-n", module); err != nil {
+	if _, err := startupRunCommand("/sbin/kldload", "-n", module); err != nil {
 		return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 	}
 
-	return nil
-}
-
-func ensureAnyKernelModuleLoaded(modules []string) error {
-	for _, module := range modules {
-		if err := loadKernelModule(module); err == nil {
-			return nil
-		}
+	if _, err := startupRunCommand("/sbin/kldstat", "-m", module); err != nil {
+		return fmt.Errorf("failed to verify kernel module %s after loading: %w", module, err)
 	}
 
-	return fmt.Errorf("failed to load any of kernel modules [%s]", strings.Join(modules, ", "))
+	return nil
 }
 
 func (s *Service) FreeBSDCheck() error {
@@ -167,8 +228,6 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 			if !sambaInstalled {
 				requiredPackages = append(requiredPackages, "samba4XX")
 			}
-
-			requiredPackages = append(requiredPackages, "avahi-app")
 		}
 	}
 
@@ -202,6 +261,10 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 
 func (s *Service) EnableLinux() error {
 	loadKLD := func(module string) error {
+		// already loaded? -n matches by filename and works inside a jail
+		if _, err := utils.RunCommand("/sbin/kldstat", "-q", "-n", module); err == nil {
+			return nil
+		}
 		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
@@ -346,9 +409,8 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	}
 
 	if slices.Contains(basicSettings.Services, models.Firewall) {
-		if err := ensureAnyKernelModuleLoaded([]string{"if_pflog", "pflog"}); err != nil {
-			// Different FreeBSD builds can expose pflog support under either module name.
-			return err
+		if err := loadKernelModule("pflog"); err != nil {
+			logger.L.Warn().Err(err).Msg("pflog kernel module unavailable; packet-log capture will retry in the background")
 		}
 	}
 
@@ -367,36 +429,120 @@ func (s *Service) CheckSambaSyslogConfig(basicSettings models.BasicSettings) err
 		return nil
 	}
 
-	const syslogConfPath = "/etc/syslog.conf"
-	const sylveLine = "LOCAL7.* /var/log/samba4/audit.log"
-
-	exists, err := utils.FileExists(syslogConfPath)
+	changed, err := syncSambaAuditSyslogConfig(sambaSyslogDropInPath, sambaAuditLogPath)
 	if err != nil {
-		return fmt.Errorf("failed to check syslog config file: %w", err)
+		return err
 	}
-
-	if !exists {
-		if err := os.WriteFile(syslogConfPath, []byte(sylveLine+"\n"), 0644); err != nil {
-			return fmt.Errorf("failed to create syslog config file: %w", err)
-		}
+	if err := syncSambaAuditRotationConfig(sambaAuditRotationConfigPath, sambaAuditLogPath); err != nil {
+		return err
+	}
+	if !changed {
 		return nil
 	}
 
-	data, err := os.ReadFile(syslogConfPath)
-	if err != nil {
-		return fmt.Errorf("failed to read syslog config file: %w", err)
+	if output, err := startupRunCommand("/usr/sbin/service", "syslogd", "reload"); err != nil {
+		return fmt.Errorf("failed to reload syslogd: %w (output: %s)", err, strings.TrimSpace(output))
+	}
+	return nil
+}
+
+func syncSambaAuditRotationConfig(configPath, auditPath string) error {
+	auditPath = filepath.Clean(auditPath)
+	if !filepath.IsAbs(auditPath) || strings.ContainsAny(auditPath, " \t\r\n#*?[\\") {
+		return fmt.Errorf("unsupported Samba audit path for newsyslog: %q", auditPath)
+	}
+	content := []byte(fmt.Sprintf(
+		"# Managed by Sylve; changes will be overwritten.\n%s\t0600\t7\t100M\t*\tJCE\n",
+		auditPath,
+	))
+	if current, err := os.ReadFile(configPath); err == nil {
+		if bytes.Equal(current, content) {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read Samba newsyslog drop-in: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create Samba newsyslog drop-in directory: %w", err)
+	}
+	if err := utils.AtomicWriteFile(configPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write Samba newsyslog drop-in: %w", err)
+	}
+	return nil
+}
+
+func syncSambaAuditSyslogConfig(dropInPath, auditPath string) (bool, error) {
+	if err := os.MkdirAll(filepath.Dir(auditPath), 0755); err != nil {
+		return false, fmt.Errorf("failed to create Samba audit log directory: %w", err)
 	}
 
-	if !strings.Contains(string(data), sylveLine) {
-		f, err := os.OpenFile(syslogConfPath, os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			return fmt.Errorf("failed to open syslog config for appending: %w", err)
-		}
-		defer f.Close()
+	_, statErr := os.Stat(auditPath)
+	fileCreated := os.IsNotExist(statErr)
+	if statErr != nil && !fileCreated {
+		return false, fmt.Errorf("failed to inspect Samba audit log: %w", statErr)
+	}
+	f, err := os.OpenFile(auditPath, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return false, fmt.Errorf("failed to create Samba audit log: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return false, fmt.Errorf("failed to close Samba audit log: %w", err)
+	}
+	if err := os.Chmod(auditPath, 0600); err != nil {
+		return false, fmt.Errorf("failed to secure Samba audit log: %w", err)
+	}
 
-		if _, err := f.WriteString("\n" + sylveLine + "\n"); err != nil {
-			return fmt.Errorf("failed to append to syslog config: %w", err)
+	if err := os.MkdirAll(filepath.Dir(dropInPath), 0755); err != nil {
+		return false, fmt.Errorf("failed to create syslog drop-in directory: %w", err)
+	}
+	content := []byte("# Sylve-managed Samba full_audit log\n!smbd_audit\nlocal5.notice\t" + auditPath + "\n!*\n")
+	existing, err := os.ReadFile(dropInPath)
+	if err == nil && bytes.Equal(existing, content) {
+		return fileCreated, nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("failed to read Samba syslog drop-in: %w", err)
+	}
+	if err := utils.AtomicWriteFile(dropInPath, content, 0644); err != nil {
+		return false, fmt.Errorf("failed to write Samba syslog drop-in: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Service) SyncJailLogRotation() error {
+	jailsPath, err := config.GetJailsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get jails path: %w", err)
+	}
+
+	return writeJailLogRotationConfig(jailLogRotationConfigPath, jailsPath)
+}
+
+func writeJailLogRotationConfig(configPath, jailsPath string) error {
+	jailsPath = filepath.Clean(jailsPath)
+	if !filepath.IsAbs(jailsPath) || strings.ContainsAny(jailsPath, " \t\r\n#*?[\\") {
+		return fmt.Errorf("unsupported jails path for newsyslog: %q", jailsPath)
+	}
+
+	content := []byte(fmt.Sprintf(
+		"# Managed by Sylve; changes will be overwritten.\n%s\t0644\t5\t1M\t*\tBEGNZ\n",
+		filepath.Join(jailsPath, "*", "*.log"),
+	))
+
+	if current, err := os.ReadFile(configPath); err == nil {
+		if bytes.Equal(current, content) {
+			return nil
 		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read jail log rotation config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create newsyslog config directory: %w", err)
+	}
+
+	if err := utils.AtomicWriteFile(configPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write jail log rotation config: %w", err)
 	}
 
 	return nil

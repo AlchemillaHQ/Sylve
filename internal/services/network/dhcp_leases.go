@@ -12,127 +12,120 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"net"
+	"net/netip"
 	"os"
-	"strconv"
 	"strings"
+	"unicode"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error) {
-	const path = "/var/db/dnsmasq.leases"
+func parseDHCPFileLeases(data []byte) ([]networkServiceInterfaces.FileLeases, error) {
+	leases := make([]networkServiceInterfaces.FileLeases, 0, 16)
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	const maxLine = 64 * 1024
+	scanner.Buffer(make([]byte, 0, 4*1024), maxLine)
 
-	f, err := os.Open(path)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		// This is the dnsmasq server DUID, not a client lease.
+		if len(fields) >= 2 && strings.EqualFold(fields[0], "duid") {
+			continue
+		}
+		if len(fields) < 4 {
+			continue
+		}
+
+		expiry, err := parseDHCPLeaseExpiry(fields[0])
+		if err != nil {
+			continue
+		}
+		address, err := netip.ParseAddr(fields[2])
+		if err != nil || address.Zone() != "" {
+			continue
+		}
+
+		lease := networkServiceInterfaces.FileLeases{
+			Expiry: expiry,
+			IP:     address.String(),
+		}
+		if fields[3] != "*" {
+			lease.Hostname = fields[3]
+		}
+
+		if address.Is4() {
+			lease.MAC = strings.ToLower(fields[1])
+			if len(fields) > 4 && fields[4] != "*" {
+				lease.ClientID = strings.ToLower(fields[4])
+			}
+		} else if address.Is6() && !address.Is4In6() {
+			lease.IAID = fields[1]
+			if len(fields) > 4 && fields[4] != "*" {
+				lease.DUID = strings.ToLower(fields[4])
+			}
+		} else {
+			continue
+		}
+
+		leases = append(leases, lease)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return leases, nil
+}
+
+func parseDHCPLeaseExpiry(value string) (uint64, error) {
+	var expiry uint64
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return 0, fmt.Errorf("invalid DHCP lease expiry")
+		}
+		if expiry > (^uint64(0)-uint64(char-'0'))/10 {
+			return 0, fmt.Errorf("DHCP lease expiry overflow")
+		}
+		expiry = expiry*10 + uint64(char-'0')
+	}
+	if value == "" {
+		return 0, fmt.Errorf("empty DHCP lease expiry")
+	}
+	return expiry, nil
+}
+
+func (s *Service) getFileLeases() ([]networkServiceInterfaces.FileLeases, error) {
+	data, err := s.readDHCPLeaseFile()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []networkServiceInterfaces.FileLeases{}, nil
 		}
 		return nil, err
 	}
-	defer f.Close()
-
-	leases := make([]networkServiceInterfaces.FileLeases, 0, 16)
-
-	// Cache "duid <MAC>" mapping lines so we can backfill IPv6 MACs.
-	duidToMAC := make(map[string]string)
-
-	sc := bufio.NewScanner(f)
-	const maxLine = 64 * 1024
-	sc.Buffer(make([]byte, 0, 4*1024), maxLine)
-
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.Fields(line)
-
-		// Handle the special "duid <mac>" line dnsmasq writes.
-		if len(parts) >= 2 && parts[0] == "duid" {
-			duid := strings.ToLower(parts[1])
-			duidToMAC[duid] = duid // sometimes this is already a MAC-like string
-			// Some dnsmasq builds write "duid <DUID>" and elsewhere provide MAC.
-			// If you keep a separate map DUID->MAC from another source, merge here.
-			continue
-		}
-
-		// Normal lease lines need at least 4 fields.
-		if len(parts) < 4 {
-			continue
-		}
-
-		expiry, err := strconv.ParseUint(parts[0], 10, 64)
-		if err != nil {
-			// fmt.Printf("lease: bad expiry %q in line: %s\n", parts[0], line)
-			continue
-		}
-
-		ipStr := parts[2]
-		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			// fmt.Printf("lease: bad IP %q in line: %s\n", ipStr, line)
-			continue
-		}
-
-		var l networkServiceInterfaces.FileLeases
-		l.Expiry = expiry
-		l.IP = ipStr
-
-		if parts[3] != "*" {
-			l.Hostname = parts[3]
-		}
-
-		if ip.To4() != nil {
-			// IPv4: expiry, MAC, IP, hostname, [clientid], [duid]
-			l.MAC = parts[1]
-			if len(parts) > 4 && parts[4] != "*" {
-				l.ClientID = parts[4]
-			}
-			if len(parts) > 5 && parts[5] != "*" {
-				l.DUID = strings.ToLower(parts[5])
-			}
-		} else {
-			// IPv6: expiry, IAID, IP, hostname, [DUID], [MAC]
-			l.IAID = parts[1]
-			if len(parts) > 4 && parts[4] != "*" {
-				l.DUID = strings.ToLower(parts[4])
-			}
-			// Some dnsmasq builds include MAC as a 6th field; many don't.
-			if len(parts) > 5 && parts[5] != "*" {
-				l.MAC = parts[5]
-			}
-			// Backfill MAC from the "duid ..." line if we have it and MAC missing.
-			if l.MAC == "" && l.DUID != "" {
-				if mac, ok := duidToMAC[l.DUID]; ok {
-					l.MAC = mac
-				}
-			}
-		}
-
-		leases = append(leases, l)
-	}
-
-	if err := sc.Err(); err != nil {
-		return nil, err
-	}
-	return leases, nil
+	return parseDHCPFileLeases(data)
 }
 
 func (s *Service) GetLeases() (networkServiceInterfaces.Leases, error) {
+	s.dhcpRuntimeMutex.Lock()
 	fileLeases, err := s.getFileLeases()
+	s.dhcpRuntimeMutex.Unlock()
 	if err != nil {
 		return networkServiceInterfaces.Leases{}, err
 	}
 
-	var dbLeases []networkModels.DHCPStaticLease
+	dbLeases := make([]networkModels.DHCPStaticLease, 0)
 	if err := s.DB.
 		Preload("DHCPRange.StandardSwitch").
+		Preload("DHCPRange.StandardSwitch.Ports").
 		Preload("DHCPRange.ManualSwitch").
 		Preload("IPObject.Entries").
 		Preload("MACObject.Entries").
@@ -140,401 +133,450 @@ func (s *Service) GetLeases() (networkServiceInterfaces.Leases, error) {
 		Find(&dbLeases).Error; err != nil {
 		return networkServiceInterfaces.Leases{}, err
 	}
+	for i := range dbLeases {
+		if dbLeases[i].DHCPRange != nil {
+			ensureStandardSwitchPortCollection(dbLeases[i].DHCPRange.StandardSwitch)
+		}
+	}
 
 	return networkServiceInterfaces.Leases{File: fileLeases, DB: dbLeases}, nil
 }
 
-type objWant string
+type normalizedStaticMapRequest struct {
+	hostname     string
+	comments     string
+	rangeID      uint
+	ipObjectID   uint
+	macObjectID  uint
+	duidObjectID uint
+}
 
-const (
-	wantMAC  objWant = "Mac"
-	wantDUID objWant = "DUID"
-	wantIPv4 objWant = "Host"
-	wantIPv6 objWant = "Host"
-)
-
-func loadAndRequireType(db *gorm.DB, id *uint, want objWant) (uint, error) {
-	if id == nil {
-		return 0, nil
+func normalizeStaticMapRequest(
+	tx *gorm.DB,
+	hostname string,
+	comments string,
+	ipObjectID *uint,
+	macObjectID *uint,
+	duidObjectID *uint,
+	dhcpRangeID uint,
+) (*normalizedStaticMapRequest, error) {
+	hostname = strings.TrimSpace(hostname)
+	if !isValidDHCPLeaseHostname(hostname) {
+		return nil, invalidDHCPLease("invalid_dhcp_lease_hostname", nil)
 	}
-	var o networkModels.Object
-	if err := db.Select("id,type").First(&o, *id).Error; err != nil {
+	if len(comments) > MaxDHCPLeaseCommentsBytes {
+		return nil, invalidDHCPLease("dhcp_lease_comments_too_long", nil)
+	}
+	if dhcpRangeID == 0 {
+		return nil, invalidDHCPLease("invalid_dhcp_range_id", nil)
+	}
+
+	var dhcpRange networkModels.DHCPRange
+	if err := tx.Select("id", "type").First(&dhcpRange, "id = ?", dhcpRangeID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, fmt.Errorf("object_not_found")
+			return nil, dhcpLeaseNotFound("dhcp_range_not_found", err)
 		}
-		return 0, err
+		return nil, fmt.Errorf("load_dhcp_lease_range: %w", err)
 	}
-	if o.Type != string(want) {
-		return 0, fmt.Errorf("object_wrong_type: want=%s got=%s", want, o.Type)
+	if dhcpRange.Type != "ipv4" && dhcpRange.Type != "ipv6" {
+		return nil, invalidDHCPLease("invalid_dhcp_range_type", nil)
 	}
-	return o.ID, nil
+
+	ipID := optionalRequestID(ipObjectID)
+	macID := optionalRequestID(macObjectID)
+	duidID := optionalRequestID(duidObjectID)
+	if ipID == 0 {
+		return nil, invalidDHCPLease("dhcp_ip_object_required", nil)
+	}
+
+	ipObject, err := loadDHCPLeaseObject(tx, ipID, "Host", "ip")
+	if err != nil {
+		return nil, err
+	}
+	ipAddress, err := netip.ParseAddr(strings.TrimSpace(ipObject.Entries[0].Value))
+	if err != nil || ipAddress.Zone() != "" || ipAddress.Is4In6() ||
+		(dhcpRange.Type == "ipv4" && !ipAddress.Is4()) ||
+		(dhcpRange.Type == "ipv6" && !ipAddress.Is6()) {
+		return nil, invalidDHCPLease("dhcp_ip_object_family_mismatch", err)
+	}
+
+	switch dhcpRange.Type {
+	case "ipv4":
+		if macID == 0 {
+			return nil, invalidDHCPLease("dhcp_ipv4_mac_required", nil)
+		}
+		if duidID != 0 {
+			return nil, invalidDHCPLease("dhcp_ipv4_duid_not_allowed", nil)
+		}
+		macObject, err := loadDHCPLeaseObject(tx, macID, "Mac", "mac")
+		if err != nil {
+			return nil, err
+		}
+		if !utils.IsValidMAC(strings.TrimSpace(macObject.Entries[0].Value)) {
+			return nil, invalidDHCPLease("invalid_dhcp_mac_object_value", nil)
+		}
+	case "ipv6":
+		if duidID == 0 {
+			return nil, invalidDHCPLease("dhcp_ipv6_duid_required", nil)
+		}
+		if macID != 0 {
+			return nil, invalidDHCPLease("dhcp_ipv6_mac_not_allowed", nil)
+		}
+		duidObject, err := loadDHCPLeaseObject(tx, duidID, "DUID", "duid")
+		if err != nil {
+			return nil, err
+		}
+		if !utils.IsValidDUID(strings.TrimSpace(duidObject.Entries[0].Value)) {
+			return nil, invalidDHCPLease("invalid_dhcp_duid_object_value", nil)
+		}
+	}
+
+	return &normalizedStaticMapRequest{
+		hostname:     hostname,
+		comments:     comments,
+		rangeID:      dhcpRangeID,
+		ipObjectID:   ipID,
+		macObjectID:  macID,
+		duidObjectID: duidID,
+	}, nil
+}
+
+func optionalRequestID(id *uint) uint {
+	if id == nil {
+		return 0
+	}
+	return *id
+}
+
+func isValidDHCPLeaseHostname(hostname string) bool {
+	if len(hostname) == 0 || len(hostname) > MaxDHCPLeaseHostnameBytes {
+		return false
+	}
+	isAlphaNumeric := func(char byte) bool {
+		return char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9'
+	}
+	if !isAlphaNumeric(hostname[0]) || !isAlphaNumeric(hostname[len(hostname)-1]) {
+		return false
+	}
+	for i := range len(hostname) {
+		char := hostname[i]
+		if !isAlphaNumeric(char) && char != '-' && char != '_' {
+			return false
+		}
+	}
+	return !strings.Contains(hostname, "--") && !strings.Contains(hostname, "__")
+}
+
+func loadDHCPLeaseObject(tx *gorm.DB, id uint, expectedType string, role string) (*networkModels.Object, error) {
+	var object networkModels.Object
+	if err := tx.Preload("Entries").First(&object, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, dhcpLeaseNotFound("dhcp_"+role+"_object_not_found", err)
+		}
+		return nil, fmt.Errorf("load_dhcp_%s_object: %w", role, err)
+	}
+	if object.Type != expectedType {
+		return nil, invalidDHCPLease("invalid_dhcp_"+role+"_object_type", nil)
+	}
+	if len(object.Entries) != 1 {
+		return nil, invalidDHCPLease("dhcp_"+role+"_object_requires_one_value", nil)
+	}
+	return &object, nil
+}
+
+func checkStaticMapConflicts(tx *gorm.DB, candidate *normalizedStaticMapRequest, excludeID uint) error {
+	query := tx.Model(&networkModels.DHCPStaticLease{}).
+		Where("dhcp_range_id = ? AND lower(hostname) = lower(?)", candidate.rangeID, candidate.hostname)
+	if excludeID != 0 {
+		query = query.Where("id <> ?", excludeID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return fmt.Errorf("check_dhcp_hostname_conflict: %w", err)
+	}
+	if count > 0 {
+		return conflictingDHCPLease("duplicate_hostname", nil)
+	}
+
+	checks := []struct {
+		column string
+		id     uint
+		code   string
+	}{
+		{column: "ip_object_id", id: candidate.ipObjectID, code: "duplicate_ip_in_range"},
+		{column: "mac_object_id", id: candidate.macObjectID, code: "duplicate_mac_in_range"},
+		{column: "d_uid_object_id", id: candidate.duidObjectID, code: "duplicate_duid_in_range"},
+	}
+	for _, check := range checks {
+		if check.id == 0 {
+			continue
+		}
+		query := tx.Model(&networkModels.DHCPStaticLease{}).
+			Where("dhcp_range_id = ? AND "+check.column+" = ?", candidate.rangeID, check.id)
+		if excludeID != 0 {
+			query = query.Where("id <> ?", excludeID)
+		}
+		count = 0
+		if err := query.Count(&count).Error; err != nil {
+			return fmt.Errorf("check_%s_conflict: %w", check.column, err)
+		}
+		if count > 0 {
+			return conflictingDHCPLease(check.code, nil)
+		}
+	}
+	return nil
 }
 
 func mapDBErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := strings.ToLower(err.Error())
-	isUnique := strings.Contains(msg, "unique constraint failed")
+	message := strings.ToLower(err.Error())
+	isUnique := strings.Contains(message, "unique constraint failed")
 	switch {
-	case strings.Contains(msg, "uniq_l_ip_per_range"),
-		strings.Contains(msg, "uniq_ip_per_range"),
-		(isUnique && strings.Contains(msg, "ip_object_id") && strings.Contains(msg, "dhcp_range_id")):
-		return fmt.Errorf("duplicate_ip_in_range")
-	case strings.Contains(msg, "uniq_l_mac_per_range"),
-		strings.Contains(msg, "uniq_mac_per_range"),
-		(isUnique && strings.Contains(msg, "mac_object_id") && strings.Contains(msg, "dhcp_range_id")):
-		return fmt.Errorf("duplicate_mac_in_range")
-	case strings.Contains(msg, "uniq_l_duid_per_range"),
-		strings.Contains(msg, "uniq_duid_per_range"),
-		(isUnique && strings.Contains(msg, "duid_object_id") && strings.Contains(msg, "dhcp_range_id")):
-		return fmt.Errorf("duplicate_duid_in_range")
+	case strings.Contains(message, "uniq_l_ip_per_range"),
+		strings.Contains(message, "uniq_ip_per_range"),
+		(isUnique && strings.Contains(message, "ip_object_id") && strings.Contains(message, "dhcp_range_id")):
+		return conflictingDHCPLease("duplicate_ip_in_range", err)
+	case strings.Contains(message, "uniq_l_mac_per_range"),
+		strings.Contains(message, "uniq_mac_per_range"),
+		(isUnique && strings.Contains(message, "mac_object_id") && strings.Contains(message, "dhcp_range_id")):
+		return conflictingDHCPLease("duplicate_mac_in_range", err)
+	case strings.Contains(message, "uniq_l_duid_per_range"),
+		strings.Contains(message, "uniq_duid_per_range"),
+		(isUnique && (strings.Contains(message, "d_uid_object_id") || strings.Contains(message, "duid_object_id")) && strings.Contains(message, "dhcp_range_id")):
+		return conflictingDHCPLease("duplicate_duid_in_range", err)
 	default:
 		return err
 	}
 }
 
-func validateHostObjectFamily(db *gorm.DB, objectID uint, rangeType string) error {
-	var o networkModels.Object
-	if err := db.Preload("Entries").First(&o, objectID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fmt.Errorf("object_not_found")
-		}
-		return err
+func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapRequest) (uint, error) {
+	if req == nil {
+		return 0, invalidDHCPLease("invalid_dhcp_lease_request", nil)
 	}
 
-	if len(o.Entries) == 0 {
-		return fmt.Errorf("object_has_no_entries")
-	}
-
-	for _, entry := range o.Entries {
-		switch rangeType {
-		case "ipv4":
-			if !utils.IsValidIPv4(entry.Value) {
-				return fmt.Errorf("invalid_ip_object_family: expected_ipv4")
-			}
-		case "ipv6":
-			if !utils.IsValidIPv6(entry.Value) {
-				return fmt.Errorf("invalid_ip_object_family: expected_ipv6")
-			}
+	var createdID uint
+	err := s.applyDHCPMutation("create_dhcp_lease", func(tx *gorm.DB) (bool, error) {
+		candidate, err := normalizeStaticMapRequest(
+			tx,
+			req.Hostname,
+			req.Comments,
+			req.IPObjectID,
+			req.MACObjectID,
+			req.DUIDObjectID,
+			req.DHCPRangeID,
+		)
+		if err != nil {
+			return false, err
 		}
-	}
-
-	return nil
-}
-
-func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapRequest) error {
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if strings.TrimSpace(req.Hostname) == "" {
-			return fmt.Errorf("hostname_required")
+		if err := checkStaticMapConflicts(tx, candidate, 0); err != nil {
+			return false, err
 		}
 
-		var dhcpRange networkModels.DHCPRange
-		if err := tx.Select("id,type,start_ip,end_ip").First(&dhcpRange, "id = ?", req.DHCPRangeID).Error; err != nil {
-			return fmt.Errorf("invalid_dhcp_range_id: %w", err)
+		lease := networkModels.DHCPStaticLease{
+			Hostname:     candidate.hostname,
+			Comments:     candidate.comments,
+			IPObjectID:   utils.PtrIfNonZero(candidate.ipObjectID),
+			MACObjectID:  utils.PtrIfNonZero(candidate.macObjectID),
+			DUIDObjectID: utils.PtrIfNonZero(candidate.duidObjectID),
+			DHCPRangeID:  candidate.rangeID,
 		}
-
-		// validate and resolve IDs (respecting family and range)
-		var ipID, macID, duidID uint
-		var err error
-
-		if req.IPObjectID != nil && *req.IPObjectID != 0 {
-			ipID, err = loadAndRequireType(tx, req.IPObjectID, wantIPv4)
-			if err != nil {
-				return fmt.Errorf("invalid_ip_object: %w", err)
-			}
-
-			if err := validateHostObjectFamily(tx, ipID, dhcpRange.Type); err != nil {
-				return fmt.Errorf("invalid_ip_object: %w", err)
-			}
+		if err := tx.Create(&lease).Error; err != nil {
+			return false, mapDBErr(fmt.Errorf("create_static_dhcp_lease: %w", err))
 		}
-
-		if req.MACObjectID != nil && *req.MACObjectID != 0 {
-			macID, err = loadAndRequireType(tx, req.MACObjectID, wantMAC)
-			if err != nil {
-				return fmt.Errorf("invalid_mac_object: %w", err)
-			}
-		}
-
-		if req.DUIDObjectID != nil && *req.DUIDObjectID != 0 {
-			duidID, err = loadAndRequireType(tx, req.DUIDObjectID, wantDUID)
-			if err != nil {
-				return fmt.Errorf("invalid_duid_object: %w", err)
-			}
-		}
-
-		// required identifiers
-		if macID == 0 && duidID == 0 {
-			return fmt.Errorf("at_least_one_identifier_required")
-		}
-		if dhcpRange.Type == "ipv4" && macID == 0 {
-			return fmt.Errorf("mac_required_for_ipv4")
-		}
-		if dhcpRange.Type == "ipv6" && duidID == 0 {
-			return fmt.Errorf("duid_required_for_ipv6")
-		}
-
-		// (Optional) hostname uniqueness scoped to range:
-		var hcount int64
-		if err := tx.Model(&networkModels.DHCPStaticLease{}).
-			Where("dhcp_range_id = ? AND hostname = ?", req.DHCPRangeID, req.Hostname).Count(&hcount).Error; err != nil {
-			return fmt.Errorf("failed_to_check_hostname_uniqueness: %w", err)
-		}
-		if hcount > 0 {
-			return fmt.Errorf("duplicate_hostname")
-		}
-
-		newMap := &networkModels.DHCPStaticLease{
-			Hostname:     req.Hostname,
-			IPObjectID:   utils.PtrIfNonZero(ipID),
-			MACObjectID:  utils.PtrIfNonZero(macID),
-			DUIDObjectID: utils.PtrIfNonZero(duidID),
-			DHCPRangeID:  req.DHCPRangeID,
-			Comments:     req.Comments,
-		}
-
-		if err := tx.Create(newMap).Error; err != nil {
-			return mapDBErr(fmt.Errorf("failed_to_create_static_map: %w", err))
-		}
-
-		return nil
+		createdID = lease.ID
+		return true, nil
 	})
-
 	if err != nil {
-		return err
+		return 0, err
 	}
-
-	if err := s.WriteDHCPConfig(); err != nil {
-		return fmt.Errorf("failed_to_apply_created_static_map: %w", err)
-	}
-
-	return nil
+	return createdID, nil
 }
 
-func (s *Service) ModifyStaticMap(req *networkServiceInterfaces.ModifyStaticMapRequest) error {
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if strings.TrimSpace(req.Hostname) == "" {
-			return fmt.Errorf("hostname_required")
-		}
+func (s *Service) ModifyStaticMap(id uint, req *networkServiceInterfaces.ModifyStaticMapRequest) error {
+	if id == 0 {
+		return invalidDHCPLease("invalid_dhcp_lease_id", nil)
+	}
+	if req == nil {
+		return invalidDHCPLease("invalid_dhcp_lease_request", nil)
+	}
 
-		var dhcpRange networkModels.DHCPRange
-		if err := tx.Select("id,type,start_ip,end_ip").First(&dhcpRange, "id = ?", req.DHCPRangeID).Error; err != nil {
-			return fmt.Errorf("invalid_dhcp_range_id: %w", err)
-		}
-
+	return s.applyDHCPMutation("modify_dhcp_lease", func(tx *gorm.DB) (bool, error) {
 		var current networkModels.DHCPStaticLease
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Preload("IPObject.Entries").Preload("MACObject.Entries").Preload("DUIDObject.Entries").
-			First(&current, "id = ?", req.ID).Error; err != nil {
-			return fmt.Errorf("invalid_static_map_id: %w", err)
-		}
-
-		// hostname uniqueness (choose global or per-range)
-		var count int64
-		if err := tx.Model(&networkModels.DHCPStaticLease{}).
-			Where("dhcp_range_id = ? AND hostname = ? AND id != ?", req.DHCPRangeID, req.Hostname, req.ID).
-			Count(&count).Error; err != nil {
-			return fmt.Errorf("failed_to_check_hostname_uniqueness: %w", err)
-		}
-		if count > 0 {
-			return fmt.Errorf("duplicate_hostname")
-		}
-
-		// Apply tri-state mutations
-		current.Hostname = req.Hostname
-		current.DHCPRangeID = req.DHCPRangeID
-
-		// IP
-		if req.IPObjectID != nil {
-			if *req.IPObjectID == 0 {
-				current.IPObjectID = nil
-			} else {
-				id, err := loadAndRequireType(tx, req.IPObjectID, wantIPv4)
-				if err != nil {
-					return fmt.Errorf("invalid_ip_object: %w", err)
-				}
-				current.IPObjectID = utils.PtrIfNonZero(id)
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return false, dhcpLeaseNotFound("dhcp_lease_not_found", err)
 			}
-		}
-		// MAC
-		if req.MACObjectID != nil {
-			if *req.MACObjectID == 0 {
-				current.MACObjectID = nil
-			} else {
-				id, err := loadAndRequireType(tx, req.MACObjectID, wantMAC)
-				if err != nil {
-					return fmt.Errorf("invalid_mac_object: %w", err)
-				}
-				current.MACObjectID = utils.PtrIfNonZero(id)
-			}
-		}
-		// DUID
-		if req.DUIDObjectID != nil {
-			if *req.DUIDObjectID == 0 {
-				current.DUIDObjectID = nil
-			} else {
-				id, err := loadAndRequireType(tx, req.DUIDObjectID, wantDUID)
-				if err != nil {
-					return fmt.Errorf("invalid_duid_object: %w", err)
-				}
-				current.DUIDObjectID = utils.PtrIfNonZero(id)
-			}
+			return false, fmt.Errorf("load_static_dhcp_lease: %w", err)
 		}
 
-		// Re-check identifier requirements after mutations
-		if current.MACObjectID == nil && current.DUIDObjectID == nil {
-			return fmt.Errorf("at_least_one_identifier_required")
+		candidate, err := normalizeStaticMapRequest(
+			tx,
+			req.Hostname,
+			req.Comments,
+			req.IPObjectID,
+			req.MACObjectID,
+			req.DUIDObjectID,
+			req.DHCPRangeID,
+		)
+		if err != nil {
+			return false, err
+		}
+		if err := checkStaticMapConflicts(tx, candidate, id); err != nil {
+			return false, err
+		}
+		if staticMapMatches(&current, candidate) {
+			return false, nil
 		}
 
-		if current.IPObjectID != nil {
-			if err := validateHostObjectFamily(tx, *current.IPObjectID, dhcpRange.Type); err != nil {
-				return fmt.Errorf("invalid_ip_object: %w", err)
-			}
+		updates := map[string]any{
+			"hostname":        candidate.hostname,
+			"comments":        candidate.comments,
+			"ip_object_id":    nullableStaticMapID(candidate.ipObjectID),
+			"mac_object_id":   nullableStaticMapID(candidate.macObjectID),
+			"d_uid_object_id": nullableStaticMapID(candidate.duidObjectID),
+			"dhcp_range_id":   candidate.rangeID,
 		}
-
-		if dhcpRange.Type == "ipv4" && current.MACObjectID == nil {
-			return fmt.Errorf("mac_required_for_ipv4")
+		if err := tx.Model(&current).Updates(updates).Error; err != nil {
+			return false, mapDBErr(fmt.Errorf("modify_static_dhcp_lease: %w", err))
 		}
-		if dhcpRange.Type == "ipv6" && current.DUIDObjectID == nil {
-			return fmt.Errorf("duid_required_for_ipv6")
-		}
-
-		// Friendly uniqueness prechecks (only when field is explicitly set & non-zero)
-		var ipCount, macCount, duidCount int64
-		if current.IPObjectID != nil {
-			if err := tx.Model(&networkModels.DHCPStaticLease{}).
-				Where("dhcp_range_id = ? AND id != ? AND ip_object_id = ?", current.DHCPRangeID, current.ID, *current.IPObjectID).
-				Count(&ipCount).Error; err != nil {
-				return fmt.Errorf("failed_to_check_ip_uniqueness: %w", err)
-			}
-			if ipCount > 0 {
-				return fmt.Errorf("duplicate_ip_in_range")
-			}
-		}
-		if current.MACObjectID != nil {
-			if err := tx.Model(&networkModels.DHCPStaticLease{}).
-				Where("dhcp_range_id = ? AND id != ? AND mac_object_id = ?", current.DHCPRangeID, current.ID, *current.MACObjectID).
-				Count(&macCount).Error; err != nil {
-				return fmt.Errorf("failed_to_check_mac_uniqueness: %w", err)
-			}
-			if macCount > 0 {
-				return fmt.Errorf("duplicate_mac_in_range")
-			}
-		}
-
-		if current.DUIDObjectID != nil {
-			if err := tx.Model(&networkModels.DHCPStaticLease{}).
-				Where("dhcp_range_id = ? AND id != ? AND d_uid_object_id = ?", current.DHCPRangeID, current.ID, *current.DUIDObjectID).
-				Count(&duidCount).Error; err != nil {
-				return fmt.Errorf("failed_to_check_duid_uniqueness: %w", err)
-			}
-			if duidCount > 0 {
-				return fmt.Errorf("duplicate_duid_in_range")
-			}
-		}
-
-		current.Comments = req.Comments
-
-		if err := tx.Save(&current).Error; err != nil {
-			return mapDBErr(fmt.Errorf("failed_to_modify_static_map: %w", err))
-		}
-
-		return nil
+		return true, nil
 	})
+}
 
-	if err != nil {
-		return err
+func staticMapMatches(current *networkModels.DHCPStaticLease, candidate *normalizedStaticMapRequest) bool {
+	return current.Hostname == candidate.hostname &&
+		current.Comments == candidate.comments &&
+		current.DHCPRangeID == candidate.rangeID &&
+		staticMapIDEquals(current.IPObjectID, candidate.ipObjectID) &&
+		staticMapIDEquals(current.MACObjectID, candidate.macObjectID) &&
+		staticMapIDEquals(current.DUIDObjectID, candidate.duidObjectID)
+}
+
+func staticMapIDEquals(current *uint, requested uint) bool {
+	if requested == 0 {
+		return current == nil
 	}
+	return current != nil && *current == requested
+}
 
-	if err := s.WriteDHCPConfig(); err != nil {
-		return fmt.Errorf("failed_to_apply_modified_static_map: %w", err)
+func nullableStaticMapID(id uint) any {
+	if id == 0 {
+		return nil
 	}
-
-	return nil
+	return id
 }
 
 func (s *Service) DeleteStaticMap(id uint) error {
-	var current networkModels.DHCPStaticLease
-	if err := s.DB.
-		Clauses(clause.Locking{Strength: "UPDATE"}).
-		First(&current, "id = ?", id).Error; err != nil {
-		return fmt.Errorf("invalid_static_map_id: %w", err)
+	if id == 0 {
+		return invalidDHCPLease("invalid_dhcp_lease_id", nil)
 	}
 
-	if err := s.DB.Delete(&networkModels.DHCPStaticLease{}, id).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_static_map: %w", err)
-	}
+	return s.applyDHCPMutation("delete_dhcp_lease", func(tx *gorm.DB) (bool, error) {
+		var current networkModels.DHCPStaticLease
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return false, dhcpLeaseNotFound("dhcp_lease_not_found", err)
+			}
+			return false, fmt.Errorf("load_static_dhcp_lease: %w", err)
+		}
+		if err := tx.Delete(&current).Error; err != nil {
+			return false, fmt.Errorf("delete_static_dhcp_lease: %w", err)
+		}
+		return true, nil
+	})
+}
 
-	if err := s.WriteDHCPConfig(); err != nil {
-		_ = s.DB.Create(&current).Error
-		return fmt.Errorf("failed_to_apply_deleted_static_map: %w", err)
+func normalizeDynamicLeaseRequest(req *networkServiceInterfaces.DeleteDynamicLeaseRequest) (string, netip.Addr, error) {
+	if req == nil {
+		return "", netip.Addr{}, invalidDHCPLease("invalid_dynamic_dhcp_lease_request", nil)
 	}
-
-	return nil
+	identifier := strings.ToLower(strings.TrimSpace(req.Identifier))
+	ip := strings.TrimSpace(req.IP)
+	if identifier == "" || len(identifier) > MaxDynamicDHCPLeaseIdentifierBytes ||
+		strings.IndexFunc(identifier, unicode.IsSpace) >= 0 {
+		return "", netip.Addr{}, invalidDHCPLease("invalid_dynamic_dhcp_lease_identifier", nil)
+	}
+	address, err := netip.ParseAddr(ip)
+	if err != nil || address.Zone() != "" || address.Is4In6() {
+		return "", netip.Addr{}, invalidDHCPLease("invalid_dynamic_dhcp_lease_ip", err)
+	}
+	if address.Is4() {
+		if !utils.IsValidMAC(identifier) {
+			return "", netip.Addr{}, invalidDHCPLease("invalid_dynamic_dhcp_lease_identifier", nil)
+		}
+	} else if !utils.IsValidDUID(identifier) {
+		return "", netip.Addr{}, invalidDHCPLease("invalid_dynamic_dhcp_lease_identifier", nil)
+	}
+	return identifier, address, nil
 }
 
 func (s *Service) DeleteDynamicLease(req *networkServiceInterfaces.DeleteDynamicLeaseRequest) error {
-	const leaseFile = "/var/db/dnsmasq.leases"
-
-	if req == nil {
-		return fmt.Errorf("request is nil")
-	}
-
-	identifier := strings.ToLower(strings.TrimSpace(req.Identifier))
-	ip := strings.ToLower(strings.TrimSpace(req.IP))
-
-	if identifier == "" && ip == "" {
-		return fmt.Errorf("either identifier or ip must be provided")
-	}
-
-	data, err := os.ReadFile(leaseFile)
+	identifier, address, err := normalizeDynamicLeaseRequest(req)
 	if err != nil {
-		return fmt.Errorf("read leases: %w", err)
+		return err
 	}
 
-	lines := strings.Split(string(data), "\n")
-	out := make([]string, 0, len(lines))
+	s.dhcpRuntimeMutex.Lock()
+	defer s.dhcpRuntimeMutex.Unlock()
+
+	original, err := s.readDHCPLeaseFile()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return dhcpLeaseNotFound("dynamic_dhcp_lease_not_found", err)
+		}
+		return fmt.Errorf("read_dynamic_dhcp_leases: %w", err)
+	}
+
+	lines := strings.Split(string(original), "\n")
+	remaining := make([]string, 0, len(lines))
 	removed := false
-
 	for _, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if line == "" {
-			out = append(out, raw)
-			continue
-		}
-
-		lowerLine := strings.ToLower(line)
-		fields := strings.Fields(lowerLine)
-
-		match := false
-
-		if identifier != "" && strings.Contains(lowerLine, identifier) {
-			match = true
-		}
-
-		if !match && ip != "" && len(fields) >= 3 && fields[0] != "duid" && fields[2] == ip {
-			match = true
-		}
-
-		if match {
+		fields := strings.Fields(strings.TrimSpace(raw))
+		if dynamicLeaseLineMatches(fields, identifier, address) {
 			removed = true
 			continue
 		}
-
-		out = append(out, raw)
+		remaining = append(remaining, raw)
 	}
-
 	if !removed {
-		return fmt.Errorf("no matching lease found")
+		return dhcpLeaseNotFound("dynamic_dhcp_lease_not_found", nil)
 	}
 
-	if err := utils.AtomicWriteFile(leaseFile, []byte(strings.Join(out, "\n")), 0o644); err != nil {
-		return fmt.Errorf("write leases file: %w", err)
+	if err := s.writeDHCPLeaseFile([]byte(strings.Join(remaining, "\n"))); err != nil {
+		return fmt.Errorf("write_dynamic_dhcp_leases: %w", err)
 	}
-
-	if err := s.RestartDNSMasq(); err != nil {
-		return fmt.Errorf("restart dnsmasq: %w", err)
+	if err := s.restartDNSMasq(); err != nil {
+		s.restoreDHCPLeaseRuntimeAfterFailure(original, "delete_dynamic_dhcp_lease")
+		return fmt.Errorf("restart_dnsmasq_after_dynamic_lease_delete: %w", err)
 	}
-
 	return nil
+}
+
+func dynamicLeaseLineMatches(fields []string, identifier string, address netip.Addr) bool {
+	if len(fields) < 4 || strings.HasPrefix(fields[0], "#") || strings.EqualFold(fields[0], "duid") {
+		return false
+	}
+	rowAddress, err := netip.ParseAddr(fields[2])
+	if err != nil || rowAddress != address {
+		return false
+	}
+	rowIdentifier := ""
+	if rowAddress.Is4() {
+		rowIdentifier = fields[1]
+	} else if rowAddress.Is6() && !rowAddress.Is4In6() && len(fields) > 4 {
+		rowIdentifier = fields[4]
+	}
+	return strings.EqualFold(rowIdentifier, identifier)
+}
+
+func (s *Service) restoreDHCPLeaseRuntimeAfterFailure(snapshot []byte, operation string) {
+	if err := s.writeDHCPLeaseFile(snapshot); err != nil {
+		logger.L.Error().Err(err).Str("operation", operation).Msg("dhcp_lease_file_restore_failed")
+		return
+	}
+	if err := s.restartDNSMasq(); err != nil {
+		logger.L.Error().Err(err).Str("operation", operation).Msg("dhcp_runtime_restore_failed")
+	}
 }

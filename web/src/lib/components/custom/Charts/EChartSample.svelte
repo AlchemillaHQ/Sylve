@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Chart } from 'svelte-echarts';
+	import { Chart } from '@alchemilla/svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
 	import {
@@ -143,7 +143,8 @@
 			right: 10,
 			top: 56,
 			bottom: 56,
-			containLabel: true
+			outerBoundsMode: 'same',
+			outerBoundsContain: 'axisLabel'
 		},
 		xAxis: {
 			type: 'time',
@@ -241,13 +242,10 @@
 	});
 
 	let containerClass = 'p-5';
-	let label = 'Usage';
-	let icon = '';
-	let description = '';
 </script>
 
 <Card.Root class={containerClass}>
-	<Card.Content class="h-[360px] w-full overflow-hidden rounded-sm p-0">
+	<Card.Content class="h-90 w-full overflow-hidden rounded-sm p-0">
 		<Chart {init} {options} class="h-full w-full" />
 	</Card.Content>
 </Card.Root>

@@ -14,14 +14,14 @@
 // addMessages('en', en);
 // addMessages('mal', mal);
 
-let savedLang: string = 'en';
+export let savedLang: string = 'en';
 
 if (typeof window !== 'undefined') {
 	const stored = window.localStorage.getItem('language');
 	try {
 		const parsed = JSON.parse(stored || '');
 		savedLang = parsed.value;
-	} catch (e) {
+	} catch (_e) {
 		savedLang = 'en';
 	}
 }

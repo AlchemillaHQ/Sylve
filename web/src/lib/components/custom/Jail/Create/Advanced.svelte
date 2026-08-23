@@ -31,16 +31,20 @@
 	}: Props = $props();
 	let allowed = [
 		{
-			value: 'allow.set_hostname',
-			label: 'Set Hostname (allow.set_hostname)'
-		},
-		{
-			value: 'allow.raw_sockets',
-			label: 'Raw Sockets (allow.raw_sockets)'
+			value: 'allow.adjtime',
+			label: 'Adjust Time (allow.adjtime)'
 		},
 		{
 			value: 'allow.chflags',
 			label: 'Change File Flags (allow.chflags)'
+		},
+		{
+			value: 'allow.extattr',
+			label: 'Extended Attributes (allow.extattr)'
+		},
+		{
+			value: 'allow.mlock',
+			label: 'Memory Locking (allow.mlock)'
 		},
 		{
 			value: 'allow.mount',
@@ -51,48 +55,12 @@
 			label: 'Mount devfs (allow.mount.devfs)'
 		},
 		{
-			value: 'allow.quotas',
-			label: 'FS Quotas (allow.quotas)'
-		},
-		{
-			value: 'allow.read_msgbuf',
-			label: 'Read Kernel Message Buffer (allow.read_msgbuf)'
-		},
-		{
-			value: 'allow.socket_af',
-			label: 'Socket Address Families (allow.socket_af)'
-		},
-		{
-			value: 'allow.mlock',
-			label: 'Memory Locking (allow.mlock)'
-		},
-		{
-			value: 'allow.nfsd',
-			label: 'NFS Daemon (allow.nfsd)'
-		},
-		{
-			value: 'allow.reserved_ports',
-			label: 'Reserved Ports (allow.reserved_ports)'
-		},
-		{
-			value: 'allow.unprivileged_proc_debug',
-			label: 'Unprivileged Process Debugging (allow.unprivileged_proc_debug)'
-		},
-		{
 			value: 'allow.mount.fdescfs',
 			label: 'Mount fdescfs (allow.mount.fdescfs)'
 		},
 		{
 			value: 'allow.mount.fusefs',
 			label: 'Mount fusefs (allow.mount.fusefs)'
-		},
-		{
-			value: 'allow.mount.nullfs',
-			label: 'Mount nullfs (allow.mount.nullfs)'
-		},
-		{
-			value: 'allow.mount.procfs',
-			label: 'Mount procfs (allow.mount.procfs)'
 		},
 		{
 			value: 'allow.mount.linprocfs',
@@ -103,12 +71,76 @@
 			label: 'Mount linsysfs (allow.mount.linsysfs)'
 		},
 		{
+			value: 'allow.mount.nullfs',
+			label: 'Mount nullfs (allow.mount.nullfs)'
+		},
+		{
+			value: 'allow.mount.procfs',
+			label: 'Mount procfs (allow.mount.procfs)'
+		},
+		{
 			value: 'allow.mount.tmpfs',
 			label: 'Mount tmpfs (allow.mount.tmpfs)'
 		},
 		{
 			value: 'allow.mount.zfs',
 			label: 'Mount ZFS (allow.mount.zfs)'
+		},
+		{
+			value: 'allow.nfsd',
+			label: 'NFS Daemon (allow.nfsd)'
+		},
+		{
+			value: 'allow.quotas',
+			label: 'FS Quotas (allow.quotas)'
+		},
+		{
+			value: 'allow.raw_sockets',
+			label: 'Raw Sockets (allow.raw_sockets)'
+		},
+		{
+			value: 'allow.read_msgbuf',
+			label: 'Read Kernel Message Buffer (allow.read_msgbuf)'
+		},
+		{
+			value: 'allow.reserved_ports',
+			label: 'Reserved Ports (allow.reserved_ports)'
+		},
+		{
+			value: 'allow.routing',
+			label: 'Routing (allow.routing)'
+		},
+		{
+			value: 'allow.set_hostname',
+			label: 'Set Hostname (allow.set_hostname)'
+		},
+		{
+			value: 'allow.setaudit',
+			label: 'Set Audit (allow.setaudit)'
+		},
+		{
+			value: 'allow.settime',
+			label: 'Set Time (allow.settime)'
+		},
+		{
+			value: 'allow.socket_af',
+			label: 'Socket Address Families (allow.socket_af)'
+		},
+		{
+			value: 'allow.suser',
+			label: 'Super User Privileges (allow.suser)'
+		},
+		{
+			value: 'allow.sysvipc',
+			label: 'SysV IPC (allow.sysvipc)'
+		},
+		{
+			value: 'allow.unprivileged_parent_tampering',
+			label: 'Unprivileged Parent Tampering (allow.unprivileged_parent_tampering)'
+		},
+		{
+			value: 'allow.unprivileged_proc_debug',
+			label: 'Unprivileged Process Debugging (allow.unprivileged_proc_debug)'
 		},
 		{
 			value: 'allow.vmm',
@@ -122,13 +154,8 @@
 
 	let comboBoxes = $state({
 		allowed: {
-			open: false,
-			options: allowed
+			open: false
 		}
-	});
-
-	$effect(() => {
-		comboBoxes.allowed.options = filteredAllowed;
 	});
 
 	let checkBoxes = $state({
@@ -145,6 +172,8 @@
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
+				'allow.suser',
+				'allow.sysvipc',
 				'allow.reserved_ports'
 			];
 
@@ -161,6 +190,8 @@
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
+				'allow.suser',
+				'allow.sysvipc',
 				'allow.mount.tmpfs',
 				'allow.mount.linprocfs',
 				'allow.mount.linsysfs'
@@ -180,10 +211,6 @@
 	onMount(() => {
 		templateSelect();
 	});
-
-	function logClean(x: boolean) {
-		console.log('Clean Environment:', x);
-	}
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -207,7 +234,7 @@
 			label="Allowed Options"
 			placeholder="Select Allowed Options"
 			bind:value={allowedOptions}
-			data={comboBoxes.allowed.options}
+			data={filteredAllowed}
 			multiple={true}
 			classes="w-full"
 			width="w-3/4"
@@ -245,7 +272,7 @@
 	{#if checkBoxes.additionalOptions}
 		<CustomValueInput
 			label="Custom Options"
-			placeholder={'### This will be pasted as is into jail config ###'}
+			placeholder="### This will be pasted as is into jail config ###"
 			bind:value={additionalOptions}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -257,7 +284,7 @@
 	{#if checkBoxes.metadata.meta}
 		<CustomValueInput
 			label="Metadata (Meta)"
-			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			placeholder="### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2"
 			bind:value={metadata.meta}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -269,7 +296,7 @@
 	{#if checkBoxes.metadata.env}
 		<CustomValueInput
 			label="Metadata (Environment Variables)"
-			placeholder={'### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2'}
+			placeholder="### KEY=VALUE pairs, one per line ###\nKEY=VALUE\nKEY2=VALUE2"
 			bind:value={metadata.env}
 			classes="flex-1 space-y-1.5"
 			textAreaClasses="h-12"
@@ -281,7 +308,7 @@
 	<div class="mt-2 space-y-3">
 		<Label>Custom Jail Lifecycle Hooks (exec.* scripts)</Label>
 
-		{#each ExecPhaseDefs as phase}
+		{#each ExecPhaseDefs as phase (phase.key)}
 			<div class="space-y-2 rounded-xl border p-3 md:p-4">
 				<div class="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
 					<div>
@@ -302,7 +329,7 @@
 				{#if execScripts[phase.key].enabled}
 					<CustomValueInput
 						label=""
-						placeholder={`echo "hello-world"`}
+						placeholder="echo 'hello-world'"
 						bind:value={execScripts[phase.key].script}
 						classes="flex-1 space-y-1.5"
 						textAreaClasses="h-24 text-xs font-mono"

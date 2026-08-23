@@ -64,7 +64,9 @@
 				if (
 					download.uType === 'cloud-init' ||
 					(download.uType === 'uncategorized' &&
-						(download.label.endsWith('.iso') || download.label.endsWith('.img')))
+						(download.label.endsWith('.iso') ||
+							download.label.endsWith('.img') ||
+							download.label.endsWith('.raw')))
 				) {
 					options.push({ label: download.label.replace('@@@', ' → '), value: download.uuid });
 				}
@@ -74,6 +76,12 @@
 		options.push({ label: 'None', value: 'none' });
 		return options;
 	});
+	// @wc-ignore
+	const emulationOptions = [
+		{ label: 'VirtIO', value: 'virtio-blk' },
+		{ label: 'AHCI-HD', value: 'ahci-hd' },
+		{ label: 'NVMe', value: 'nvme' }
+	];
 
 	let comboBoxes = $state({
 		pool: {
@@ -82,18 +90,7 @@
 		},
 		emulationType: {
 			open: false,
-			value: 'virtio',
-			options: [
-				{ label: 'VirtIO', value: 'virtio-blk' },
-				{
-					label: 'AHCI-HD',
-					value: 'ahci-hd'
-				},
-				{
-					label: 'NVMe',
-					value: 'nvme'
-				}
-			]
+			value: 'virtio'
 		},
 		isos: {
 			open: false
@@ -187,7 +184,7 @@
 				bind:open={comboBoxes.emulationType.open}
 				label="Emulation Type"
 				bind:value={emulation}
-				data={comboBoxes.emulationType.options}
+				data={emulationOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Select emulation type"
 				triggerWidth="w-full"

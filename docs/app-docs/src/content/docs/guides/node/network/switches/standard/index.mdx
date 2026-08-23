@@ -1,54 +1,86 @@
 ---
-title:  Standard Switches
-description: Standard Switches are bridges that you create from scratch using Sylve
+title: Standard Switches
+description: Create and manage a FreeBSD bridge with Sylve.
 ---
 
-Standard Switches are basically bridges that you create from scratch using Sylve, they are useful if you want to build a new network configuration without relying on an existing one.
+import objects from "./objects-table.webp";
+import createSwitch from "./add.webp";
+import switchTable from "./table.webp";
 
-This is where the Network Objects we created in the previous section come in handy, as they allow us to reference them in our Switch configuration.
+A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one when you want Sylve; not `rc.conf` or another configuration system; to own the bridge, its selected physical ports, host addresses, VLAN handling, and lifecycle.
 
-## Creating a Standard Switch
+If an upstream router or gateway is connected through a physical NIC on the node, add that NIC to the switch as a **Port**. Put the node's address configuration on the Standard Switch itself: either select or type static addresses and gateways, or enable **DHCP** and let the bridge obtain IPv4 configuration from the upstream network. The physical port remains unaddressed as a bridge member.
 
-We're going to create a Standard Switch for our LAN network, which we will use for our Jails to get access to the internet and to each other.
+An existing DHCP or static `ifconfig_<port>` entry may remain in `/etc/rc.conf`. FreeBSD can use it to configure the bare NIC during early boot; after networking is up, Sylve stops any DHCP client on the selected bridge member, clears its live addresses, and applies the Standard Switch configuration to the bridge. Sylve does not rewrite the `rc.conf` entry. Do not also configure the Sylve-generated bridge in `rc.conf`.
 
-After filling out the details of the form, it should look something like this:
+:::danger
+Adding an interface as a Standard Switch **Port clears every IPv4 and IPv6 address from that underlying interface, including aliases**, before it is attached to the bridge. Sylve does not copy its current address configuration to the bridge automatically.
 
-![Standard Switch Form](./add.png)
-
-Now a few things to note here, the **MTU** field and the **VLAN** field are optional, if you don't need them you can just leave them blank.
-
-In the IPv4 Network and Host sections, you can select the Network objects we created in the previous section, and the same goes for the IPv6 Network and Host sections.
-
-Now coming to ports, think of a Standard Switch as a physical Layer 2 switch, it has ports that you can connect devices to. In this case, we will be connecting our Jails to these ports, but if you have a router on another interface on your machine you can also connect it to the switch to provide internet access or DHCP or whatever you need.
-
-:::caution
-It is extremely important to note that if you are connecting a physical interface to the switch, you should not have any IP configuration on that interface, otherwise you will have network issues. This is because the switch will take over that interface and all traffic will go through it, so if you have an IP configuration on it, it will cause conflicts and connectivity issues.
-
-There are ways to get around this limitation, but it is not recommended and we will not discuss them here.
+If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's live IP configuration on the bridge; an `rc.conf` entry for the physical port serves only as the early-boot or fallback configuration described above.
 :::
 
-Now at the bottom of the form you can see a bunch of checkboxes, lets go over each of them:
+## Address objects first
 
-- **Private**: If this is enabled, no traffic will be allowed between guests on the same
-switch, however then will all be able to communicate with any physical
-interfaces added to the switch.
+For a dual-stack LAN, create four one-entry objects before opening the switch modal:
 
-- **DHCP**: Instead of giving a Network Object above, you can enable this and Sylve will try to get IPv4 configuration from a DHCP server on the network. This is useful if you have a router connected to the switch that provides DHCP, or if you have a DHCP server running on another machine on the switch (as a VM or a Jail).
+| Object             | Type    | Example value     | Used for                                            |
+| ------------------ | ------- | ----------------- | --------------------------------------------------- |
+| `LAN Network`      | Network | `192.168.12.1/24` | The IPv4 address and prefix assigned to the bridge. |
+| `LAN Gateway`      | Host    | `192.168.12.1`    | The IPv4 next-hop gateway.                          |
+| `LAN IPv6 Network` | Network | `fd12::1/64`      | The IPv6 address and prefix assigned to the bridge. |
+| `LAN IPv6 Gateway` | Host    | `fd12::1`         | The IPv6 next-hop gateway.                          |
 
-- **SLAAC**: Instead of giving a Network Object above, you can enable this and Sylve will try to get IPv6 configuration from a router on the network using SLAAC. This is useful if you have a router connected to the switch that provides SLAAC, or if you have a router running on another machine on the switch (as a VM or a Jail).
+<img
+  src={objects.src}
+  alt="Network Objects table containing example LAN IPv4 and IPv6 network and gateway objects"
+/>
 
-:::caution
-It is **never** a good idea to disable IPv6 on a switch, even if you don't have any need for it, because it can cause issues with some applications and services that expect IPv6 to be available. It is better to just leave it enabled and not use it if you don't need it.
+Use a **Network** object for the address _on the bridge_, expressed in CIDR notation; not the bare subnet base such as `10.20.30.0/24`. Use a **Host** object for each gateway. The switch form also accepts a typed CIDR for Network and a typed IP address for Gateway, but objects are preferred: they provide one reusable, inspectable source of truth for addresses used elsewhere in Sylve.
+
+## Create the switch
+
+Open **Network → Switches → Standard** and select **New**. The modal creates the bridge and applies its configuration. This example creates an isolated `LAN` bridge with object-backed IPv4 and IPv6 addressing and no physical ports.
+
+<img
+  src={createSwitch.src}
+  alt="Create Standard Switch modal with LAN name, address object selections, and Disable Bridge Offloads enabled"
+/>
+
+### Fields
+
+| Field                   | Meaning                                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                | A unique Sylve switch name. Sylve derives a bridge name from it; do not rely on that generated bridge name as a user-facing identifier.      |
+| **MTU**                 | The bridge MTU. Leave the default unless every link in the path is configured for a different value.                                         |
+| **VLAN**                | Optional VLAN tag applied when Sylve creates member interfaces for the selected ports.                                                       |
+| **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                           |
+| **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                    |
+| **Ports**               | Interfaces that Sylve will attach to the bridge. **Sylve clears all IPv4 and IPv6 addresses from each selected port before attachment.** Configure the address on the bridge instead. |
+
+### Checkboxes
+
+| Checkbox                    | Effect                                                                                                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Private**                 | Prevents traffic between guests attached to the same switch while retaining communication with physical interfaces attached to it.                                                                                                                                                                                                   |
+| **DHCP**                    | Makes the **bridge a DHCP client** for IPv4. Sylve requests IPv4 configuration from an external DHCP server and clears static IPv4 network/gateway selections. It does not start a DHCP server.                                                                                                                                      |
+| **SLAAC**                   | Makes the **bridge an IPv6 SLAAC client**. Sylve accepts router advertisements from an external IPv6 router and clears static IPv6 selections. It does not provide router advertisements or act as a DHCPv6 server.                                                                                                                  |
+| **Disable IPv6**            | Disables IPv6 on the bridge and turns off SLAAC. Use only when IPv6 truly must not be present.                                                                                                                                                                                                                                       |
+| **Disable Bridge Offloads** | Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. This is enabled by default and recommended: it avoids link flaps while VM `tap` and jail `epair` ports come and go. Turning it off stops enforcement; it does not re-enable capabilities already disabled. |
+| **Default Route**           | Installs this switch's static IPv4 gateway as the node's default route. It requires an IPv4 address and gateway, is unavailable with DHCP, and only one Standard Switch may own it.                                                                                                                                                  |
+
+:::note
+DHCP and SLAAC here are host-side client modes for the bridge. To serve leases or DNS to guests, configure the separate **DHCP & DNS** features after creating the switch.
 :::
 
-- **Disable IPv6**: If you don't want to use IPv6 on this switch, you can enable this and it will disable all IPv6 functionality on the switch. This is useful if you don't have any need for IPv6.
+## Verify and use it
 
-- **Default Route**: This checkbox tells Sylve whether that bridge should install the system-wide IPv4 default gateway when the switch is brought up. When defaultRoute is true, the backend runs basically runs `/sbin/route add default "gateway"` for the switch's IPv4 gateway (and keeps it in sync on edits). The UI also enforces that only one standard switch can have defaultRoute enabled at a time so you don't end up with conflicting default gateways on the same node.
+After creation the switch appears in the table with its ports, MTU, VLAN, and assigned IPv4/IPv6 configuration. It can then be selected for jail and VM network interfaces; Sylve attaches each workload's virtual port to the managed bridge.
 
-## Viewing the Switch
+<img
+  src={switchTable.src}
+  alt="Standard Switches table showing the LAN switch"
+/>
 
-Now after creating the switch, it should show up in the table like this:
-
-![Standard Switch Table](./table.png)
-
-Since we don't have any ports connected to it, this bridge is pretty much going to act as our router after we configure DHCP/Router Advertisements on it and connect our Jails/VMs to it, but we will get to that in the next sections of the guide.
+:::caution
+Do not use a Standard Switch to adopt an existing bridge managed by `rc.conf` or custom scripts. Use a [Manual Switch](/guides/node/network/switches/manual/) for that case; two systems must not manage the same bridge or physical port.
+:::

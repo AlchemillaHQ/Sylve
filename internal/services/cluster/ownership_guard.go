@@ -9,19 +9,139 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"gorm.io/gorm"
 )
 
+// ErrReplicationRunInProgress prevents destructive storage mutations from
+// racing the final transfer or cleanup of a disabled replication policy.
+var ErrReplicationRunInProgress = errors.New("replication_run_in_progress")
+
 func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "")
+}
+
+// CanMutateProtectedGuestStorageTopology fails closed while replication is
+// enabled, a replication run is still finishing, or a durable guest operation
+// is active. Storage changes require disabling protection, waiting for an
+// active run to finish, changing topology, then re-enabling/reseeding.
+func CanMutateProtectedGuestStorageTopology(db *gorm.DB, guestType string, guestID uint) (bool, error) {
+	if db == nil || guestID == 0 {
+		return false, fmt.Errorf("replication_topology_guard_input_invalid")
+	}
+	guestType = strings.TrimSpace(strings.ToLower(guestType))
+	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+		return false, fmt.Errorf("invalid_guest_type")
+	}
+	if replicationguard.GuestOperationSchemaReady(db) {
+		var operation clusterModels.ReplicationGuestOperation
+		result := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).Limit(1).Find(&operation)
+		if result.Error != nil {
+			return false, result.Error
+		}
+		if result.RowsAffected != 0 {
+			return false, nil
+		}
+	}
+	var policy clusterModels.ReplicationPolicy
+	result := db.Select("id", "enabled").
+		Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+		Limit(1).
+		Find(&policy)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return true, nil
+	}
+	if policy.Enabled {
+		return false, nil
+	}
+
+	var running int64
+	if err := db.Model(&clusterModels.ReplicationRunOperation{}).
+		Where("policy_id = ? AND state = ?", policy.ID, clusterModels.ReplicationRunOperationRunning).
+		Count(&running).Error; err != nil {
+		return false, err
+	}
+	if running != 0 {
+		return false, ErrReplicationRunInProgress
+	}
+
+	return true, nil
+}
+
+// CanNodeMutateProtectedGuestForTransition is the narrowly scoped bypass for
+// the transition engine. The caller must propagate the persisted run ID all
+// the way to the guest operation; merely running on the owner node is not
+// enough to bypass the durable policy lock.
+func CanNodeMutateProtectedGuestForTransition(
+	db *gorm.DB,
+	guestType string,
+	guestID uint,
+	localNodeID string,
+	transitionRunID string,
+) (bool, error) {
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, transitionRunID, "")
+}
+
+func canNodeMutateProtectedGuest(
+	db *gorm.DB,
+	guestType string,
+	guestID uint,
+	localNodeID string,
+	transitionRunID string,
+	action string,
+) (bool, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
 	localNodeID = strings.TrimSpace(localNodeID)
+	transitionRunID = strings.TrimSpace(transitionRunID)
 
+	if (guestType == "" || guestID == 0) && action == "" {
+		return true, nil
+	}
+	if replicationguard.GuestOperationSchemaReady(db) {
+		var operation clusterModels.ReplicationGuestOperation
+		result := db.Where("guest_type = ? AND guest_id = ?", guestType, guestID).Limit(1).Find(&operation)
+		if result.Error != nil {
+			return false, result.Error
+		}
+		if result.RowsAffected != 0 {
+			if operation.Operation != clusterModels.ReplicationGuestOperationMigration ||
+				operation.State != clusterModels.ReplicationGuestOperationCutover ||
+				localNodeID == "" {
+				return false, nil
+			}
+			switch action {
+			case "stop":
+				return localNodeID == strings.TrimSpace(operation.OwnerNodeID), nil
+			case "start":
+				return localNodeID == strings.TrimSpace(operation.TargetNodeID), nil
+			default:
+				return false, nil
+			}
+		}
+	}
 	if guestType == "" || guestID == 0 {
+		return true, nil
+	}
+	var policy clusterModels.ReplicationPolicy
+	res := db.
+		Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).
+		Limit(1).
+		Find(&policy)
+
+	if res.Error != nil {
+		return false, res.Error
+	}
+
+	if res.RowsAffected == 0 {
 		return true, nil
 	}
 
@@ -29,38 +149,50 @@ func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, lo
 		return false, fmt.Errorf("local_node_id_unavailable")
 	}
 
-	var policy clusterModels.ReplicationPolicy
-	err := db.Where("guest_type = ? AND guest_id = ? AND enabled = ?", guestType, guestID, true).First(&policy).Error
-	if err == gorm.ErrRecordNotFound {
-		return true, nil
-	}
-
-	if err != nil {
-		return false, err
+	if replicationPolicyTransitionInProgress(policy.TransitionState) {
+		if transitionRunID == "" || transitionRunID != strings.TrimSpace(policy.TransitionRunID) {
+			return false, nil
+		}
+	} else if transitionRunID != "" {
+		// A stale internal request must not gain privileges after its run has
+		// completed and a later operation may have taken ownership.
+		return false, nil
 	}
 
 	expectedOwner := strings.TrimSpace(policy.ActiveNodeID)
 	if expectedOwner == "" {
 		expectedOwner = strings.TrimSpace(policy.SourceNodeID)
 	}
+
 	if expectedOwner == "" || expectedOwner != localNodeID {
 		return false, nil
 	}
+
 	if policy.OwnerEpoch == 0 {
 		return false, fmt.Errorf("replication_policy_owner_epoch_missing")
 	}
 
 	var lease clusterModels.ReplicationLease
-	if err := db.Where("policy_id = ?", policy.ID).First(&lease).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return false, nil
-		}
-		return false, err
+	res = db.
+		Where("policy_id = ?", policy.ID).
+		Limit(1).
+		Find(&lease)
+
+	if res.Error != nil {
+		return false, res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return false, nil
 	}
 
 	if lease.OwnerEpoch == 0 {
 		return false, fmt.Errorf("replication_lease_owner_epoch_missing")
 	}
+	if strings.TrimSpace(strings.ToLower(lease.GuestType)) != policy.GuestType || lease.GuestID != policy.GuestID {
+		return false, fmt.Errorf("replication_lease_guest_mismatch")
+	}
+
 	if time.Now().UTC().After(lease.ExpiresAt) {
 		return false, nil
 	}
@@ -69,6 +201,35 @@ func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, lo
 		lease.OwnerEpoch == policy.OwnerEpoch, nil
 }
 
+// CanNodeStopGuestForMigration permits only a stop on the exact source of a
+// sealed migration guard. It exists so cutover can quiesce the source while
+// every other ordinary source mutation remains blocked by the durable guard.
+func CanNodeStopGuestForMigration(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "stop")
+}
+
+func replicationPolicyTransitionInProgress(state string) bool {
+	switch strings.TrimSpace(strings.ToLower(state)) {
+	case clusterModels.ReplicationTransitionStateDemoting,
+		clusterModels.ReplicationTransitionStateCatchup,
+		clusterModels.ReplicationTransitionStatePromoting,
+		clusterModels.ReplicationTransitionStateRollingBack:
+		return true
+	default:
+		return false
+	}
+}
+
 func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
-	return CanNodeMutateProtectedGuest(db, guestType, guestID, localNodeID)
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "start")
+}
+
+func CanNodeStartProtectedGuestForTransition(
+	db *gorm.DB,
+	guestType string,
+	guestID uint,
+	localNodeID string,
+	transitionRunID string,
+) (bool, error) {
+	return CanNodeMutateProtectedGuestForTransition(db, guestType, guestID, localNodeID, transitionRunID)
 }

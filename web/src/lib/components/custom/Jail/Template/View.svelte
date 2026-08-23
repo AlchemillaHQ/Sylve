@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getJailTemplateById } from '$lib/api/jail/jail';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
@@ -8,11 +7,10 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import type { JailTemplate } from '$lib/types/jail/jail';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { isAPIResponse } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
@@ -56,12 +54,13 @@
 
 	async function loadTemplate() {
 		loading = true;
-		await sleep(500);
 		try {
 			const result = await getJailTemplateById(templateId, hostname);
-			if (isAPIResponse(result) && result.status === 'error') {
+			if (isAPIResponse(result)) {
 				template = null;
-				toast.error(result.error?.[0] || 'Failed to load template details', {
+				handleAPIError(result);
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				toast.error(error || 'Failed to load template details', {
 					position: 'bottom-center'
 				});
 				return;
@@ -447,21 +446,18 @@
 		<div class="mt-4">
 			{#if selectedHook?.script}
 				<Textarea
-					class="font-mono text-xs h-[40vh] w-full resize-none p-4"
+					class="font-mono text-xs min-h-48 w-full resize-none p-4"
 					value={selectedHook.script}
 					readonly
 					spellcheck={false}
 				/>
 			{:else}
 				<div
-					class="flex h-[20vh] items-center justify-center rounded-md border border-dashed text-muted-foreground text-sm"
+					class="flex min-h-48 items-center justify-center rounded-md border border-dashed text-muted-foreground text-sm"
 				>
 					No script content found for this hook
 				</div>
 			{/if}
 		</div>
-		<Dialog.Footer>
-			<Button variant="secondary" onclick={() => (hookModalOpen = false)}>Close</Button>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

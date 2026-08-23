@@ -17,11 +17,13 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -31,6 +33,8 @@ import (
 )
 
 var _ libvirtServiceInterfaces.LibvirtServiceInterface = (*Service)(nil)
+
+const minimumLibvirtVersion uint64 = 12_005_000
 
 type Service struct {
 	DB *gorm.DB
@@ -42,11 +46,14 @@ type Service struct {
 	Conn        *libvirt.Libvirt
 	uri         string
 
-	actionMutex sync.Mutex
-	crudMutex   sync.Mutex
+	actionMutex              sync.Mutex
+	crudMutex                sync.Mutex
+	vmTemplateTargetCreateMu sync.Mutex
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
+
+	guestIdentityAvailabilityChecker clusterServiceInterfaces.GuestIdentityAvailabilityChecker
 
 	preflightCreateVMTemplateFn func(
 		ctx context.Context,
@@ -60,8 +67,15 @@ type Service struct {
 		poolByStorageID map[uint]string,
 		req libvirtServiceInterfaces.CreateFromTemplateRequest,
 	) error
+	cleanupVMTemplateTargetFn func(ctx context.Context, rid uint)
 
 	GZFS *gzfs.Client
+}
+
+func (s *Service) SetGuestIdentityAvailabilityChecker(
+	checker clusterServiceInterfaces.GuestIdentityAvailabilityChecker,
+) {
+	s.guestIdentityAvailabilityChecker = checker
 }
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
@@ -97,13 +111,23 @@ func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemService
 }
 
 func (s *Service) CheckVersion() error {
-	conn, err := s.ensureConnection()
-	if err != nil {
-		return err
-	}
-
-	_, err = conn.ConnectGetLibVersion()
+	_, err := s.ensureConnection()
 	return err
+}
+
+func validateLibvirtVersion(version uint64) error {
+	if version >= minimumLibvirtVersion {
+		return nil
+	}
+	return fmt.Errorf(
+		"unsupported_libvirt_version: requires >= %s, found %s",
+		formatLibvirtVersion(minimumLibvirtVersion),
+		formatLibvirtVersion(version),
+	)
+}
+
+func formatLibvirtVersion(version uint64) string {
+	return fmt.Sprintf("%d.%d.%d", version/1_000_000, (version/1_000)%1_000, version%1_000)
 }
 
 func (s *Service) IsVirtualizationEnabled() bool {
@@ -168,6 +192,10 @@ func (s *Service) connect() (*libvirt.Libvirt, uint64, error) {
 		_ = conn.Disconnect()
 		return nil, 0, fmt.Errorf("failed_to_retrieve_libvirt_version: %w", err)
 	}
+	if err := validateLibvirtVersion(version); err != nil {
+		_ = conn.Disconnect()
+		return nil, 0, err
+	}
 
 	return conn, version, nil
 }
@@ -179,7 +207,10 @@ func (s *Service) ensureConnection() (*libvirt.Libvirt, error) {
 
 	conn := s.conn()
 	if conn != nil {
-		if _, err := conn.ConnectGetLibVersion(); err == nil {
+		if version, err := conn.ConnectGetLibVersion(); err == nil {
+			if err := validateLibvirtVersion(version); err != nil {
+				return nil, err
+			}
 			return conn, nil
 		}
 	}
@@ -193,7 +224,10 @@ func (s *Service) reconnect() (*libvirt.Libvirt, error) {
 
 	current := s.conn()
 	if current != nil {
-		if _, err := current.ConnectGetLibVersion(); err == nil {
+		if version, err := current.ConnectGetLibVersion(); err == nil {
+			if err := validateLibvirtVersion(version); err != nil {
+				return nil, err
+			}
 			return current, nil
 		}
 	}
@@ -216,13 +250,56 @@ func (s *Service) reconnect() (*libvirt.Libvirt, error) {
 }
 
 func (s *Service) WriteVMJson(rid uint) error {
+	return s.writeVMJsonWithDB(s.DB, rid)
+}
+
+func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 	if rid == 0 {
 		return fmt.Errorf("invalid_resource_id")
 	}
+	if db == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
 
-	vm, err := s.GetVMByRID(rid)
-	if err != nil {
-		return err
+	var vm vmModels.VM
+	if err := db.
+		Preload("CPUPinning").
+		Preload("Storages").
+		Preload("Storages.Dataset").
+		Preload("Networks").
+		Preload("Networks.AddressObj").
+		Preload("Networks.AddressObj.Entries").
+		Preload("Networks.AddressObj.Resolutions").
+		Preload("Snapshots", func(query *gorm.DB) *gorm.DB {
+			return query.Order("created_at ASC, id ASC")
+		}).
+		Where("rid = ?", rid).
+		First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
+	}
+
+	for i := range vm.Storages {
+		if vm.Storages[i].Type == vmModels.VMStorageTypeDiskImage {
+			// Removable media is replicated as metadata inside vm.json, but a
+			// legacy pool hint must never make it a ZFS output root.
+			vm.Storages[i].Pool = ""
+			vm.Storages[i].DatasetID = nil
+			vm.Storages[i].Dataset = vmModels.VMStorageDataset{}
+			continue
+		}
+		if vm.Storages[i].Dataset.Name == "" {
+			continue
+		}
+		switch vm.Storages[i].Type {
+		case vmModels.VMStorageTypeRaw:
+			if id := storageIDFromDataset(vm.Storages[i].Dataset.Name, "raw"); id != 0 {
+				vm.Storages[i].ID = uint(id)
+			}
+		case vmModels.VMStorageTypeZVol:
+			if id := storageIDFromDataset(vm.Storages[i].Dataset.Name, "zvol"); id != 0 {
+				vm.Storages[i].ID = uint(id)
+			}
+		}
 	}
 
 	vmJsonData, err := json.MarshalIndent(vm, "", "  ")
@@ -261,14 +338,11 @@ func (s *Service) WriteVMJson(rid uint) error {
 		return err
 	}
 
-	processedPools := make(map[string]bool)
-
-	for _, storage := range vm.Storages {
-		if storage.Pool == "" || processedPools[storage.Pool] {
-			continue
-		}
-
-		sylveDir := fmt.Sprintf("/%s/sylve/virtual-machines/%d/.sylve", storage.Pool, rid)
+	outputDirectories, err := s.resolveVMJSONOutputDirectories(context.Background(), vm)
+	if err != nil {
+		return err
+	}
+	for _, sylveDir := range outputDirectories {
 		vmJsonPath := filepath.Join(sylveDir, "vm.json")
 
 		if err := os.MkdirAll(sylveDir, 0755); err != nil {
@@ -288,8 +362,86 @@ func (s *Service) WriteVMJson(rid uint) error {
 			}
 		}
 
-		processedPools[storage.Pool] = true
 	}
 
 	return nil
+}
+
+func (s *Service) resolveVMJSONOutputDirectories(
+	ctx context.Context,
+	vm vmModels.VM,
+) ([]string, error) {
+	pools := vmJSONOutputPools(vm.Storages)
+	directories := make([]string, 0, len(pools))
+	for _, pool := range pools {
+		directory, err := s.resolveVMJSONOutputDirectory(ctx, vm, pool)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_resolve_vm_json_output_directory_%s: %w", pool, err)
+		}
+		directories = append(directories, directory)
+	}
+	return directories, nil
+}
+
+func (s *Service) resolveVMJSONOutputDirectory(
+	ctx context.Context,
+	vm vmModels.VM,
+	pool string,
+) (string, error) {
+	datasetName := fmt.Sprintf("%s/sylve/virtual-machines", pool)
+	appendRID := true
+	for _, storage := range vm.Storages {
+		if vmStoragePoolName(storage) != pool {
+			continue
+		}
+		if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
+			datasetName = fmt.Sprintf("%s/%d", datasetName, vm.RID)
+			appendRID = false
+			break
+		}
+	}
+
+	mountpoint, err := s.resolveFilesystemDatasetMountpoint(ctx, datasetName)
+	if err != nil {
+		return "", err
+	}
+	if appendRID {
+		mountpoint = filepath.Join(mountpoint, fmt.Sprintf("%d", vm.RID))
+	}
+
+	return filepath.Join(mountpoint, ".sylve"), nil
+}
+
+func vmStoragePoolName(storage vmModels.Storage) string {
+	pool := strings.TrimSpace(storage.Pool)
+	if pool == "" {
+		pool = strings.TrimSpace(storage.Dataset.Pool)
+	}
+	if pool == "" {
+		datasetName := strings.TrimSpace(storage.Dataset.Name)
+		if slash := strings.Index(datasetName, "/"); slash > 0 {
+			pool = strings.TrimSpace(datasetName[:slash])
+		}
+	}
+	return pool
+}
+
+func vmJSONOutputPools(storages []vmModels.Storage) []string {
+	seen := make(map[string]struct{})
+	pools := make([]string, 0, len(storages))
+	for _, storage := range storages {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			continue
+		}
+		pool := vmStoragePoolName(storage)
+		if pool == "" {
+			continue
+		}
+		if _, exists := seen[pool]; exists {
+			continue
+		}
+		seen[pool] = struct{}{}
+		pools = append(pools, pool)
+	}
+	return pools
 }

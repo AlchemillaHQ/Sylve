@@ -10,9 +10,11 @@ package startup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -22,12 +24,14 @@ import (
 	iscsiServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/iscsi"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	mdnsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
 )
@@ -46,6 +50,7 @@ type Service struct {
 	Jail      jailServiceInterfaces.JailServiceInterface
 	Cluster   clusterServiceInterfaces.ClusterServiceInterface
 	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
+	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
 }
 
 func NewStartupService(db *gorm.DB,
@@ -59,6 +64,7 @@ func NewStartupService(db *gorm.DB,
 	jail jailServiceInterfaces.JailServiceInterface,
 	cluster clusterServiceInterfaces.ClusterServiceInterface,
 	iscsiSvc iscsiServiceInterfaces.ISCSIServiceInterface,
+	mdnsSvc mdnsServiceInterfaces.MdnsServiceInterface,
 ) serviceInterfaces.StartupServiceInterface {
 	return &Service{
 		DB:        db,
@@ -72,6 +78,7 @@ func NewStartupService(db *gorm.DB,
 		Jail:      jail,
 		Cluster:   cluster,
 		ISCSI:     iscsiSvc,
+		Mdns:      mdnsSvc,
 	}
 }
 
@@ -104,6 +111,12 @@ func (s *Service) PreFlightChecklist(basicSettings models.BasicSettings) error {
 		return err
 	}
 
+	if slices.Contains(basicSettings.Services, models.Jails) {
+		if err := s.SyncJailLogRotation(); err != nil {
+			return err
+		}
+	}
+
 	if err := s.DevfsSync(); err != nil {
 		return err
 	}
@@ -116,10 +129,19 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return err
 	}
 
+	s.SysctlSync()
+
 	var basicSettings models.BasicSettings
 	result := s.DB.First(&basicSettings)
 	if result.Error != nil {
-		logger.L.Warn().Msgf("System not initialized yet, skipping startup checks")
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			logger.L.Info().Msg("System not initialized yet; skipping operational startup")
+			return nil
+		}
+		return fmt.Errorf("load basic settings: %w", result.Error)
+	}
+	if !basicSettings.Initialized {
+		logger.L.Info().Msg("System initialization is incomplete; skipping operational startup")
 		return nil
 	}
 
@@ -127,7 +149,13 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return fmt.Errorf("Pre-flight check failed: %w", err)
 	}
 
-	s.SysctlSync()
+	if err := s.ZFSTune(); err != nil {
+		logger.L.Error().Err(err).Msg("ZFS ARC auto-tune failed")
+	}
+
+	if err := s.System.ReapplyStoredTunables(); err != nil {
+		logger.L.Error().Err(err).Msg("Re-applying stored tunables failed")
+	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		err := ensureServiceStarted("libvirtd")
@@ -143,7 +171,17 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			return err
 		}
 
-		go s.Libvirt.StoreVMUsage()
+		if err := s.Libvirt.MigrateVNCToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("VNC migration had issues")
+		}
+
+		if err := s.Libvirt.MigrateIgnoreUMSRToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("IgnoreUMSR migration had issues")
+		}
+
+		if err := s.Libvirt.MigrateVirtio9PToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("Virtio-9P migration had issues")
+		}
 	}
 
 	go s.Info.Cron(dCtx)
@@ -157,12 +195,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	err := s.Network.SyncStandardSwitches(nil, "sync")
 	if err != nil {
 		logger.L.Error().Msgf("error syncing standard switches: %v", err)
-	}
-
-	if slices.Contains(basicSettings.Services, models.Jails) {
-		if err := s.Network.SyncEpairs(false); err != nil {
-			return fmt.Errorf("error syncing epairs %v", err)
-		}
 	}
 
 	s.Network.StartFirewallMonitor(dCtx)
@@ -187,19 +219,26 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.SambaServer) {
 		if err := s.InitSamba(ctx); err != nil {
-			return fmt.Errorf("failed to initialize Samba: %w", err)
-		}
+			logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
+		} else {
+			if err := s.InitSambaAdmins(); err != nil {
+				logger.L.Error().Err(err).Msg("failed to initialize Samba admins; continuing startup")
+			}
 
-		if err := s.InitSambaAdmins(); err != nil {
-			return fmt.Errorf("failed to initialize Samba admins: %w", err)
-		}
-
-		err := ensureServiceStarted("samba_server")
-		if err != nil {
-			logger.L.Error().Err(err).Msgf("unable to start samba server")
+			if err := ensureServiceStarted("samba_server"); err != nil {
+				logger.L.Error().Err(err).Msg("unable to start samba server")
+			} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
+				logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
+			}
 		}
 
 		go s.Samba.WatchAuditLogs(dCtx)
+	}
+
+	if slices.Contains(basicSettings.Services, models.Mdns) {
+		if err := s.Mdns.Rebuild(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed to rebuild mdns on startup")
+		}
 	}
 
 	if slices.Contains(basicSettings.Services, models.ISCSI) {
@@ -209,26 +248,35 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 		if err := ensureServiceStarted("iscsid"); err != nil {
 			logger.L.Error().Err(err).Msg("unable to start iscsid")
+		} else if err := s.ISCSI.WriteConfig(true); err != nil {
+			logger.L.Error().Err(err).Msg("unable to load configured iSCSI initiator sessions")
 		}
 
-		if err := ensureServiceStarted("iscsictl"); err != nil {
-			logger.L.Error().Err(err).Msg("unable to start iscsictl")
+		if err := ensureServiceStarted("ctld"); err != nil {
+			logger.L.Error().Err(err).Msg("unable to start ctld")
 		}
 	}
 
 	if slices.Contains(basicSettings.Services, models.Virtualization) {
 		go func() {
-			for {
-				if err := s.Libvirt.StoreVMUsage(); err != nil {
-					logger.L.Error().Msgf("Failed to sync VM states: %v", err)
-				}
+			timer := time.NewTimer(0)
+			defer timer.Stop()
 
-				time.Sleep(5 * time.Second)
+			for {
+				select {
+				case <-dCtx.Done():
+					return
+				case <-timer.C:
+					if err := s.Libvirt.StoreVMUsage(); err != nil {
+						logger.L.Error().Msgf("Failed to sync VM states: %v", err)
+					}
+					timer.Reset(5 * time.Second)
+				}
 			}
 		}()
 	}
 
-	s.Cluster.StartClusterMonitors()
+	s.Cluster.StartClusterMonitors(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.WoLServer) {
 		go s.Utilities.StartWOLServer()
@@ -236,7 +284,11 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.DHCPServer) {
 		go func() {
-			time.Sleep(30 * time.Second)
+			select {
+			case <-dCtx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
 
 			err := ensureServiceStarted("dnsmasq")
 			if err != nil {

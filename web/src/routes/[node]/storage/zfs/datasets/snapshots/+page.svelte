@@ -16,10 +16,10 @@
 		type Dataset,
 		type PeriodicSnapshot
 	} from '$lib/types/zfs/dataset';
-	import { updateCache } from '$lib/utils/http';
+	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch, PersistedState } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
-	import { renderWithIcon, sizeFormatter } from '$lib/utils/table';
+	import { renderWithIcon, sizeFormatter, deselectAllRows, getTable } from '$lib/utils/table';
 	import { plural } from '$lib/utils';
 	import { storage } from '$lib';
 
@@ -34,8 +34,11 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'basic-settings',
-		async () => {
+		async (_key, _previousKey, { data: previousSettings }): Promise<BasicSettings> => {
 			const results = await getBasicSettings();
+			if (isAPIResponse(results)) {
+				return previousSettings ?? data.basicSettings;
+			}
 			updateCache('basic-settings', results);
 			return results;
 		},
@@ -65,7 +68,17 @@
 		}
 	});
 
-	let pools = $derived(basicSettings.current.pools || []);
+	let pools = $derived.by(() => {
+		if (
+			basicSettings.current &&
+			!isAPIResponse(basicSettings.current) &&
+			basicSettings.current.pools
+		) {
+			return basicSettings.current.pools;
+		}
+		return [];
+	});
+
 	let reload = $state(false);
 
 	watch(
@@ -152,29 +165,42 @@
 	let query = $state('');
 	let nameFilterOpen = $state(false);
 
-	const nameFilterDefaults = [
-		{ value: 'bk_j', label: 'Backups' },
-		{ value: 'svms_', label: 'VM Snapshots' },
-		{ value: 'sjs_', label: 'Jail Snapshots' },
-		{ value: '_template', label: 'Templates' }
-	];
+	const nameFilterDefaultValues = ['bk_j', 'svms_', 'sjs_', '_template', 'ha_'];
 
-	const persistedNameFilter = new PersistedState<string[]>(
-		'snapshots-name-filter',
-		nameFilterDefaults.map((d) => d.value)
-	);
+	function createNameFilterData() {
+		const defaults = [
+			{ value: 'bk_j', label: 'Backups' },
+			{ value: 'svms_', label: 'VM Snapshots' },
+			{ value: 'sjs_', label: 'Jail Snapshots' },
+			{ value: '_template', label: 'Templates' },
+			{ value: 'ha_', label: 'HA Snapshots' }
+		];
+		const defaultValues = new Set(nameFilterDefaultValues);
+		const customEntries = persistedNameFilter.current
+			.filter((value) => !defaultValues.has(value))
+			.map((value) => ({ value, label: value }));
 
-	const defaultValues = new Set(nameFilterDefaults.map((d) => d.value));
-	const customEntries = persistedNameFilter.current
-		.filter((v) => !defaultValues.has(v))
-		.map((v) => ({ value: v, label: v }));
+		return [...defaults, ...customEntries];
+	}
 
-	let nameFilterData = $state([...nameFilterDefaults, ...customEntries]);
+	const persistedNameFilter = new PersistedState<string[]>('snapshots-name-filter', [
+		...nameFilterDefaultValues
+	]);
+	const legacyNameFilterDefaults = nameFilterDefaultValues.slice(0, -1);
+
+	if (
+		legacyNameFilterDefaults.every((value) => persistedNameFilter.current.includes(value)) &&
+		!persistedNameFilter.current.includes('ha_')
+	) {
+		persistedNameFilter.current = [...persistedNameFilter.current, 'ha_'];
+	}
+
+	let nameFilterData = $state(createNameFilterData());
 
 	let nameFilter = $state<string[]>(
 		persistedNameFilter.current.length > 0
 			? persistedNameFilter.current
-			: nameFilterDefaults.map((d) => d.value)
+			: [...nameFilterDefaultValues]
 	);
 
 	watch(
@@ -210,6 +236,7 @@
 		(value) => {
 			if (!value) {
 				activeRows = null;
+				deselectAllRows(getTable('snapshots-datasets-tt'));
 			}
 		}
 	);
@@ -312,7 +339,7 @@
 				multiple={true}
 				showSelected={false}
 				showSelectedCountLabel=" Filtered"
-				initialValues={nameFilterDefaults.map((d) => d.value)}
+				initialValues={[...nameFilterDefaultValues]}
 				triggerWidth="w-36"
 				buttonClass="h-6.5"
 				width="w-52"
@@ -335,7 +362,7 @@
 </div>
 
 <!-- Create Snapshot -->
-{#if modals.snapshot.create.open && basicSettings.current}
+{#if modals.snapshot.create.open && basicSettings.current && !isAPIResponse(basicSettings.current)}
 	<CreateDetailed
 		bind:open={modals.snapshot.create.open}
 		bind:reload
@@ -344,12 +371,7 @@
 {/if}
 
 {#if modals.snapshot.delete.open && activeDatasets && activeDatasets.length >= 1}
-	<DeleteSnapshot
-		bind:open={modals.snapshot.delete.open}
-		datasets={activeDatasets}
-		askRecursive={false}
-		bind:reload
-	/>
+	<DeleteSnapshot bind:open={modals.snapshot.delete.open} datasets={activeDatasets} bind:reload />
 {/if}
 
 {#if modals.snapshot.periodics.open && activePeriodics && activePeriodics.length > 0}

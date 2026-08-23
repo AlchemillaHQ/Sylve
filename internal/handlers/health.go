@@ -9,6 +9,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -20,13 +21,14 @@ import (
 )
 
 // @Summary Basic health check
-// @Description Overall basic health check of the system
+// @Description Retrieve the system's basic health information
 // @Tags Health
-// @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param X-Cluster-Key header string false "Cluster key authentication"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /health/basic [get]
 func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -42,6 +44,15 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 		}
 
 		b, err := systemService.GetBasicSettings()
+		if err != nil && !errors.Is(err, system.ErrBasicSettingsNotFound) {
+			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "health_check_unavailable",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
@@ -50,12 +61,19 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 				"hostname":     h,
 				"initialized":  b.Initialized,
 				"restarted":    b.Restarted,
+				"jailed":       systemService.IsJailed(),
 				"sylveVersion": cmd.Version,
 			},
 		})
 	}
 }
 
+// @Summary HTTP health check
+// @Description Check whether the system's HTTP API is reachable
+// @Tags Health
+// @Security BearerAuth
+// @Success 200 "OK"
+// @Router /health/http [get]
 func HTTPHealthCheckHandler(c *gin.Context) {
 	c.Status(http.StatusOK)
 }

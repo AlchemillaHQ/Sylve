@@ -9,9 +9,10 @@
 package utilitiesHandlers
 
 import (
-	"fmt"
+	"errors"
+	"mime"
 	"net/http"
-	"path"
+	"os"
 	"strconv"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -26,7 +28,29 @@ import (
 )
 
 type BulkDeleteDownloadRequest struct {
-	IDs []int `json:"ids" binding:"required"`
+	IDs []int `json:"ids" binding:"required,min=1,dive,gt=0"`
+}
+
+func signedDownloadMintError(err error) (int, string) {
+	switch {
+	case errors.Is(err, utilities.ErrSignedDownloadInvalid):
+		return http.StatusBadRequest, "invalid_signed_download_request"
+	case errors.Is(err, utilities.ErrSignedDownloadNotFound):
+		return http.StatusNotFound, "signed_download_not_found"
+	case errors.Is(err, utilities.ErrSignedDownloadNotReady):
+		return http.StatusConflict, "signed_download_not_ready"
+	default:
+		return http.StatusInternalServerError, "failed_to_create_signed_download_url"
+	}
+}
+
+func writePublicDownloadError(c *gin.Context, status int, message string) {
+	c.AbortWithStatusJSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   message,
+		Data:    nil,
+	})
 }
 
 type SignedURLRequest struct {
@@ -39,13 +63,58 @@ type DownloadPathsResponse struct {
 	Path string `json:"path"`
 }
 
+func utilitiesJSONBindError(err error) (int, string) {
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		return http.StatusRequestEntityTooLarge, "request_too_large"
+	}
+	return http.StatusBadRequest, "invalid_request"
+}
+
+func writeUtilitiesJSONBindError(c *gin.Context, err error) {
+	status, message := utilitiesJSONBindError(err)
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   message,
+		Data:    nil,
+	})
+}
+
+func downloadMutationError(err error, fallback string) (int, string) {
+	switch {
+	case errors.Is(err, utilities.ErrDownloadInvalid):
+		return http.StatusBadRequest, "invalid_download_request"
+	case errors.Is(err, utilities.ErrDownloadNotFound):
+		return http.StatusNotFound, "download_not_found"
+	case errors.Is(err, utilities.ErrDownloadConflict):
+		return http.StatusConflict, "download_conflict"
+	case errors.Is(err, utilities.ErrDownloadActive):
+		return http.StatusConflict, "download_active"
+	case errors.Is(err, utilities.ErrDownloadInUse):
+		return http.StatusConflict, "download_in_use"
+	case errors.Is(err, utilities.ErrDownloadCleanup):
+		return http.StatusInternalServerError, "download_cleanup_failed"
+	case errors.Is(err, utilities.ErrDownloaderPostProcessOptions):
+		return http.StatusUnprocessableEntity, "incompatible_post_processing_options"
+	case errors.Is(err, utilities.ErrDownloadUnprocessable):
+		return http.StatusUnprocessableEntity, "download_request_unprocessable"
+	case errors.Is(err, utilities.ErrDownloadQueueUnavailable):
+		return http.StatusServiceUnavailable, "download_queue_unavailable"
+	case errors.Is(err, utilities.ErrUtilitiesNotReady):
+		return http.StatusServiceUnavailable, "utilities_not_ready"
+	default:
+		return http.StatusInternalServerError, fallback
+	}
+}
+
 // @Summary Get Download Paths
 // @Description Get configured filesystem paths used by downloader for HTTP and Path downloads
 // @Tags Utilities
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[DownloadPathsResponse] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Router /utilities/downloads/paths [get]
 func GetDownloadPaths() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -62,12 +131,12 @@ func GetDownloadPaths() gin.HandlerFunc {
 }
 
 // @Summary List Downloads
-// @Description List all downloads
+// @Description List downloader records and their current transfer or processing state
 // @Tags Utilities
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]utilitiesModels.Downloads] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /utilities/downloads [get]
 func ListDownloads(utilitiesService *utilities.Service) gin.HandlerFunc {
@@ -77,7 +146,7 @@ func ListDownloads(utilitiesService *utilities.Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_list_downloads",
-				Error:   err.Error(),
+				Error:   "internal_error",
 				Data:    nil,
 			})
 			return
@@ -92,13 +161,13 @@ func ListDownloads(utilitiesService *utilities.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary List Downloads Grouped by Type
-// @Description List downloads grouped by their type
+// @Summary List Completed Download Choices
+// @Description List compact completed-download choices for consumers such as VM, Jail, and ZFS workflows
 // @Tags Utilities
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]utilitiesServiceInterfaces.UTypeGroupedDownload] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /utilities/downloads/utype [get]
 func ListDownloadsByUType(utilitiesService *utilities.Service) gin.HandlerFunc {
@@ -108,7 +177,7 @@ func ListDownloadsByUType(utilitiesService *utilities.Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_list_downloads_by_utype",
-				Error:   err.Error(),
+				Error:   "internal_error",
 				Data:    nil,
 			})
 			return
@@ -123,329 +192,384 @@ func ListDownloadsByUType(utilitiesService *utilities.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Download File
-// @Description Download a file from a Magnet or HTTP(s) URL
+// @Summary Start Download
+// @Description Persist and queue a download from a magnet URI, HTTP(S) URL, or readable regular absolute path
 // @Tags Utilities
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Request body DownloadFileRequest true "Download File Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param request body utilitiesServiceInterfaces.DownloadFileRequest true "Download request"
+// @Success 202 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadStartResult] "Accepted"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Download or destination already exists"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
+// @Failure 422 {object} internal.APIResponse[any] "Unsupported source or processing options"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadStartResult] "Queue unavailable"
 // @Router /utilities/downloads [post]
 func DownloadFile(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request utilitiesServiceInterfaces.DownloadFileRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			writeUtilitiesJSONBindError(c, err)
+			return
+		}
+
+		downloadID, err := utilitiesService.DownloadFile(request)
+		result := utilitiesServiceInterfaces.DownloadStartResult{
+			ID:     downloadID,
+			Status: utilitiesModels.DownloadStatusPending,
+		}
+		if err != nil {
+			status, message := downloadMutationError(err, "failed_to_start_download")
+			var data any
+			if downloadID > 0 {
+				data = result
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
+				Message: message,
+				Error:   message,
+				Data:    data,
 			})
 			return
 		}
 
-		if err := utilitiesService.DownloadFile(request); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_download_file",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
+		c.Set("AuditAsyncJobID", downloadID)
+		c.Set("AuditAsyncJobType", "file_download")
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[utilitiesServiceInterfaces.DownloadStartResult]{
 			Status:  "success",
-			Message: "file_download_started",
+			Message: "file_download_accepted",
 			Error:   "",
-			Data:    nil,
+			Data:    result,
 		})
 	}
 }
 
 // @Summary Delete Download
-// @Description Delete a download by its ID
+// @Description Delete one download after reference, activity, and managed-path preflight; unexpected cleanup failures return a typed retained-path result
 // @Tags Utilities
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Download ID"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param id path int true "Download ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Download not found"
+// @Failure 409 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Download active, referenced, or unsafe to clean"
+// @Failure 500 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Cleanup or persistence failure"
 // @Router /utilities/downloads/{id} [delete]
 func DeleteDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := utils.GetIdFromParam(c)
 
-		if err != nil {
+		if err != nil || id <= 0 {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_request",
-				Error:   err.Error(),
+				Error:   "invalid_request",
 				Data:    nil,
 			})
 			return
 		}
 
-		if err := utilitiesService.DeleteDownload(id); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+		result, err := utilitiesService.DeleteDownloads([]int{id})
+		if err != nil {
+			status, message := downloadMutationError(err, "failed_to_delete_download")
+			c.JSON(status, internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult]{
 				Status:  "error",
-				Message: "failed_to_delete_download",
-				Error:   err.Error(),
-				Data:    nil,
+				Message: message,
+				Error:   message,
+				Data:    result,
 			})
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult]{
 			Status:  "success",
 			Message: "download_deleted",
 			Error:   "",
-			Data:    nil,
+			Data:    result,
 		})
 	}
 }
 
 // @Summary Bulk Delete Downloads
-// @Description Bulk delete downloads by their IDs
+// @Description Delete unique downloads after strict all-member preflight; missing, referenced, active, or unsafe members prevent all deletion, while unexpected cleanup failures return typed partial results
 // @Tags Utilities
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Request body BulkDeleteDownloadRequest true "Bulk Delete Download Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param request body BulkDeleteDownloadRequest true "Bulk Delete Download Request"
+// @Success 200 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "One or more downloads not found; nothing deleted"
+// @Failure 409 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "One or more downloads active, referenced, or unsafe; nothing deleted"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
+// @Failure 500 {object} internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult] "Cleanup or persistence failure, possibly partial"
 // @Router /utilities/downloads/bulk-delete [post]
 func BulkDeleteDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request BulkDeleteDownloadRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			writeUtilitiesJSONBindError(c, err)
+			return
+		}
+
+		result, err := utilitiesService.DeleteDownloads(request.IDs)
+		if err != nil {
+			status, message := downloadMutationError(err, "failed_to_bulk_delete_downloads")
+			c.JSON(status, internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult]{
 				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
+				Message: message,
+				Error:   message,
+				Data:    result,
 			})
 			return
 		}
 
-		if err := utilitiesService.BulkDeleteDownload(request.IDs); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_bulk_delete_downloads",
-				Error:   err.Error(),
-				Data:    nil,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusOK, internal.APIResponse[utilitiesServiceInterfaces.DownloadDeleteResult]{
 			Status:  "success",
 			Message: "downloads_bulk_deleted",
 			Error:   "",
-			Data:    nil,
+			Data:    result,
 		})
 	}
 }
 
 // @Summary Get Signed Download URL
-// @Description Get a signed URL for downloading a file
+// @Description Create a two-hour public capability URL for one completed download or torrent member
 // @Tags Utilities
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Request body SignedURLRequest true "Signed URL Request"
-// @Success 200 {object} internal.APIResponse[string] "Success"
+// @Param request body SignedURLRequest true "Signed URL Request"
+// @Success 200 {object} internal.APIResponse[utilitiesServiceInterfaces.SignedDownloadURLResult] "Capability created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Administrator access required"
+// @Failure 404 {object} internal.APIResponse[any] "Download or torrent member not found"
+// @Failure 409 {object} internal.APIResponse[any] "Download is not complete"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /utilities/downloads/signed-url [get]
+// @Router /utilities/downloads/signed-url [post]
 func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request SignedURLRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeUtilitiesJSONBindError(c, err)
 			return
 		}
 
-		download, err := utilitiesService.GetDownload(request.ParentUUID)
+		result, err := utilitiesService.CreateSignedDownloadURL(request.ParentUUID, request.Name)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+			status, message := signedDownloadMintError(err)
+			if status == http.StatusInternalServerError {
+				logger.L.Error().Err(err).Msg("Failed to create signed download URL")
+			}
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "failed_to_get_download",
-				Error:   err.Error(),
+				Message: message,
+				Error:   message,
 				Data:    nil,
 			})
 			return
 		}
 
-		expires := time.Now().Add(2 * time.Hour).Unix()
-
-		if download.Type == "torrent" {
-			download, file, err := utilitiesService.GetMagnetDownloadAndFile(request.ParentUUID, request.Name)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "failed_to_get_download",
-					Error:   err.Error(),
-					Data:    nil,
-				})
-				return
-			}
-
-			input := fmt.Sprintf("%s:%d", download.UUID, file.ID)
-			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
-			if sigErr != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "failed_to_sign_download_url",
-					Error:   sigErr.Error(),
-					Data:    nil,
-				})
-				return
-			}
-			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, file.ID)
-
-			c.JSON(http.StatusOK, internal.APIResponse[string]{
-				Status:  "success",
-				Message: "signed_url_generated",
-				Error:   "",
-				Data:    signedURL,
-			})
-		} else if download.Type == "http" {
-			input := fmt.Sprintf("%s:%d", download.UUID, download.ID)
-			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
-			if sigErr != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "failed_to_sign_download_url",
-					Error:   sigErr.Error(),
-					Data:    nil,
-				})
-				return
-			}
-			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, download.ID)
-
-			c.JSON(http.StatusOK, internal.APIResponse[string]{
-				Status:  "success",
-				Message: "signed_url_generated",
-				Error:   "",
-				Data:    signedURL,
-			})
-		} else if download.Type == "path" {
-			input := fmt.Sprintf("%s:%d", download.UUID, download.ID)
-			sig, sigErr := utilitiesService.BuildDownloadSignature(input, expires)
-			if sigErr != nil {
-				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-					Status:  "error",
-					Message: "failed_to_sign_download_url",
-					Error:   sigErr.Error(),
-					Data:    nil,
-				})
-				return
-			}
-			signedURL := fmt.Sprintf("/api/utilities/downloads/%s?expires=%d&sig=%s&id=%d", download.UUID, expires, sig, download.ID)
-
-			c.JSON(http.StatusOK, internal.APIResponse[string]{
-				Status:  "success",
-				Message: "signed_url_generated",
-				Error:   "",
-				Data:    signedURL,
-			})
-		} else {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "unsupported_download_type",
-				Data:    nil,
-			})
-			return
-		}
+		c.JSON(http.StatusOK, internal.APIResponse[utilitiesServiceInterfaces.SignedDownloadURLResult]{
+			Status:  "success",
+			Message: "signed_url_generated",
+			Error:   "",
+			Data:    result,
+		})
 	}
 }
 
-// @Summary Download File
-// @Description Download a file from a signed URL
+// @Summary Update Download
+// @Description Partially update completed or failed download display metadata and processing options; active downloads cannot be changed
 // @Tags Utilities
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param id path int true "Download ID" minimum(1)
+// @Param request body utilitiesServiceInterfaces.UpdateDownloadRequest true "Update Download Request"
+// @Success 200 {object} internal.APIResponse[utilitiesModels.Downloads] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Download not found"
+// @Failure 409 {object} internal.APIResponse[any] "Download is active"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
+// @Failure 422 {object} internal.APIResponse[any] "Unsupported metadata or processing options"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Queue unavailable"
+// @Router /utilities/downloads/{id} [patch]
+func UpdateDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := utils.GetIdFromParam(c)
+		if err != nil || id <= 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "invalid_request",
+				Data:    nil,
+			})
+			return
+		}
+
+		var request utilitiesServiceInterfaces.UpdateDownloadRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			writeUtilitiesJSONBindError(c, err)
+			return
+		}
+
+		updated, err := utilitiesService.UpdateDownload(uint(id), request)
+		if err != nil {
+			status, message := downloadMutationError(err, "failed_to_update_download")
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Error:   message,
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[utilitiesModels.Downloads]{
+			Status:  "success",
+			Message: "download_updated",
+			Error:   "",
+			Data:    *updated,
+		})
+	}
+}
+
+// @Summary Download File
+// @Description Download exactly one file using an unexpired node-bound capability URL; no Bearer token is required
+// @Tags Utilities
+// @Produce octet-stream
 // @Param uuid path string true "Download UUID"
 // @Param expires query int true "Expiration time in Unix timestamp"
 // @Param sig query string true "Signature"
-// @Success 200 {file} file "File Download"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
-// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Param id query int true "Download or torrent member ID" minimum(1)
+// @Param node query string true "Serving cluster node hostname"
+// @Success 200 {file} file "File content"
+// @Success 206 {file} file "Partial file content"
+// @Failure 400 {object} internal.APIResponse[any] "Malformed capability"
+// @Failure 403 {object} internal.APIResponse[any] "Invalid, expired, or tampered capability"
+// @Failure 404 {object} internal.APIResponse[any] "Capability target or selected node not found"
+// @Failure 416 {string} string "Range Not Satisfiable"
+// @Failure 500 {object} internal.APIResponse[any] "Unexpected signing, database, or filesystem failure"
+// @Failure 502 {object} internal.APIResponse[any] "Selected node forwarding failed"
+// @Failure 503 {object} internal.APIResponse[any] "Selected node is offline or unavailable"
 // @Router /utilities/downloads/{uuid} [get]
 func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Header("Cache-Control", "private, no-store")
+		c.Header("Referrer-Policy", "no-referrer")
+		c.Header("X-Content-Type-Options", "nosniff")
+
 		uuid := c.Param("uuid")
 		expiresStr := c.Query("expires")
 		sig := c.Query("sig")
 		idStr := c.Query("id")
+		node := c.Query("node")
 
-		if uuid == "" || expiresStr == "" || sig == "" || idStr == "" {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "missing_required_params",
-			})
+		if uuid == "" || expiresStr == "" || sig == "" || idStr == "" || node == "" {
+			writePublicDownloadError(c, http.StatusBadRequest, "missing_required_params")
 			return
 		}
 
 		expires, err := strconv.ParseInt(expiresStr, 10, 64)
-		if err != nil || time.Now().Unix() > expires {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_or_expired_signature",
-			})
+		if err != nil || expires <= 0 {
+			writePublicDownloadError(c, http.StatusBadRequest, "invalid_expiration")
 			return
 		}
 
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_file_id",
-			})
+		if err != nil || id <= 0 {
+			writePublicDownloadError(c, http.StatusBadRequest, "invalid_file_id")
 			return
 		}
 
-		input := fmt.Sprintf("%s:%d", uuid, id)
-		validSig, sigErr := utilitiesService.ValidateDownloadSignature(input, expires, sig)
+		now := time.Now()
+		if expires <= now.Unix() || expires > now.Add(utilities.SignedDownloadURLValidity+time.Minute).Unix() {
+			writePublicDownloadError(c, http.StatusForbidden, "invalid_or_expired_signature")
+			return
+		}
+
+		validSig, sigErr := utilitiesService.ValidateSignedDownloadSignature(node, uuid, id, expires, sig)
 		if sigErr != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_validate_signature",
-				Error:   sigErr.Error(),
-			})
+			if errors.Is(sigErr, utilities.ErrSignedDownloadInvalid) {
+				writePublicDownloadError(c, http.StatusBadRequest, "invalid_capability")
+				return
+			}
+			logger.L.Error().Err(sigErr).Msg("Failed to validate signed download capability")
+			writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_validate_signature")
 			return
 		}
 		if !validSig {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "signature_mismatch",
-			})
+			writePublicDownloadError(c, http.StatusForbidden, "invalid_or_expired_signature")
 			return
 		}
 
-		filePath, err := utilitiesService.GetFilePathById(uuid, id)
+		target, err := utilitiesService.ResolveSignedDownloadTargetByID(uuid, id)
 		if err != nil {
-			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "file_not_found",
-				Error:   err.Error(),
-			})
+			switch {
+			case errors.Is(err, utilities.ErrSignedDownloadNotFound),
+				errors.Is(err, utilities.ErrSignedDownloadNotReady):
+				writePublicDownloadError(c, http.StatusNotFound, "file_not_found")
+			case errors.Is(err, utilities.ErrSignedDownloadInvalid):
+				writePublicDownloadError(c, http.StatusBadRequest, "invalid_capability")
+			default:
+				logger.L.Error().Err(err).Msg("Failed to resolve signed download target")
+				writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_resolve_download")
+			}
 			return
 		}
 
-		c.FileAttachment(filePath, path.Base(filePath))
+		before, err := os.Lstat(target.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			writePublicDownloadError(c, http.StatusNotFound, "file_not_found")
+			return
+		}
+		if err != nil || before.Mode()&os.ModeSymlink != 0 || !before.Mode().IsRegular() {
+			logger.L.Error().Err(err).Str("path", target.Path).Msg("Signed download target changed before open")
+			writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_open_download")
+			return
+		}
+
+		file, err := os.Open(target.Path)
+		if errors.Is(err, os.ErrNotExist) {
+			writePublicDownloadError(c, http.StatusNotFound, "file_not_found")
+			return
+		}
+		if err != nil {
+			logger.L.Error().Err(err).Str("path", target.Path).Msg("Failed to open signed download target")
+			writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_open_download")
+			return
+		}
+		defer file.Close()
+
+		after, err := file.Stat()
+		if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+			logger.L.Error().Err(err).Str("path", target.Path).Msg("Signed download target changed while opening")
+			writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_open_download")
+			return
+		}
+
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": target.Name})
+		if disposition == "" {
+			writePublicDownloadError(c, http.StatusInternalServerError, "failed_to_prepare_download")
+			return
+		}
+		c.Header("Content-Disposition", disposition)
+		http.ServeContent(c.Writer, c.Request, target.Name, after.ModTime(), file)
 	}
 }

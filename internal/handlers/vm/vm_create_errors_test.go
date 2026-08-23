@@ -45,6 +45,36 @@ func TestClassifyCreateVMError(t *testing.T) {
 			wantCode:   "rid_or_name_already_in_use",
 		},
 		{
+			name:       "shared guest ID conflict",
+			err:        fmt.Errorf("guest_id_already_in_use: guest_id=801 node_id=node-a guest_type=jail"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_id_already_in_use",
+		},
+		{
+			name:       "cluster inventory unavailable",
+			err:        fmt.Errorf("guest_identity_inventory_unavailable: remote node unavailable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "guest_identity_inventory_unavailable",
+		},
+		{
+			name:       "existing inventory conflict",
+			err:        fmt.Errorf("guest_identity_inventory_conflict: duplicate ID"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "guest_identity_inventory_conflict",
+		},
+		{
+			name:       "replication ownership denied",
+			err:        fmt.Errorf("replication_lease_not_owned"),
+			wantStatus: http.StatusForbidden,
+			wantCode:   "replication_lease_not_owned",
+		},
+		{
+			name:       "create dependency unavailable",
+			err:        fmt.Errorf("failed_to_list_usable_pools_for_vm_create_precheck: system unavailable"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "vm_create_dependency_not_ready",
+		},
+		{
 			name:       "libvirt domain already exists maps to vm id exists",
 			err:        fmt.Errorf("failed_to_create_lv_vm: failed to define VM domain: domain '801' already exists"),
 			wantStatus: http.StatusConflict,
@@ -83,6 +113,92 @@ func TestClassifyCreateVMError(t *testing.T) {
 			}
 			if gotCode != tt.wantCode {
 				t.Fatalf("expected code=%q, got code=%q", tt.wantCode, gotCode)
+			}
+		})
+	}
+}
+
+func TestClassifyUpdateVMDescriptionError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "not found", err: fmt.Errorf("vm_not_found: 100"), wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
+		{name: "invalid description", err: fmt.Errorf("invalid_description"), wantStatus: http.StatusBadRequest, wantCode: "invalid_description"},
+		{name: "ownership denied", err: fmt.Errorf("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
+		{name: "mountpoint conflict", err: fmt.Errorf("failed_to_write_vm_json: filesystem_dataset_mountpoint_not_usable"), wantStatus: http.StatusConflict, wantCode: "filesystem_dataset_mountpoint_not_usable"},
+		{name: "ownership check failed", err: fmt.Errorf("replication_lease_check_failed: database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: "replication_lease_check_failed"},
+		{name: "unknown", err: fmt.Errorf("write failed"), wantStatus: http.StatusInternalServerError, wantCode: "failed_to_update_vm_description"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotStatus, gotCode := classifyUpdateVMDescriptionError(tt.err)
+			if gotStatus != tt.wantStatus || gotCode != tt.wantCode {
+				t.Fatalf("classification = (%d, %q), want (%d, %q)", gotStatus, gotCode, tt.wantStatus, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestClassifyUpdateVMNameError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "not found", err: fmt.Errorf("vm_not_found: 100"), wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
+		{name: "invalid name", err: fmt.Errorf("invalid_vm_name"), wantStatus: http.StatusBadRequest, wantCode: "invalid_vm_name"},
+		{name: "duplicate name", err: fmt.Errorf("vm_name_already_in_use"), wantStatus: http.StatusConflict, wantCode: "vm_name_already_in_use"},
+		{name: "ownership denied", err: fmt.Errorf("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
+		{name: "mountpoint conflict", err: fmt.Errorf("failed_to_write_vm_json: filesystem_dataset_mountpoint_not_usable"), wantStatus: http.StatusConflict, wantCode: "filesystem_dataset_mountpoint_not_usable"},
+		{name: "ownership check failed", err: fmt.Errorf("replication_lease_check_failed: database unavailable"), wantStatus: http.StatusInternalServerError, wantCode: "replication_lease_check_failed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotStatus, gotCode := classifyUpdateVMNameError(tt.err)
+			if gotStatus != tt.wantStatus || gotCode != tt.wantCode {
+				t.Fatalf("classification = (%d, %q), want (%d, %q)", gotStatus, gotCode, tt.wantStatus, tt.wantCode)
+			}
+		})
+	}
+}
+
+func TestClassifyRemoveVMError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "not found", err: fmt.Errorf("vm_not_found: 100"), wantStatus: http.StatusNotFound, wantCode: "vm_not_found"},
+		{name: "ownership denied", err: fmt.Errorf("replication_lease_not_owned"), wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
+		{name: "policy conflict", err: fmt.Errorf("guest_delete_requires_replication_policy_removed"), wantStatus: http.StatusConflict, wantCode: "guest_delete_requires_replication_policy_removed"},
+		{name: "topology conflict", err: fmt.Errorf("replication_storage_topology_change_requires_policy_disabled"), wantStatus: http.StatusConflict, wantCode: "replication_storage_topology_change_requires_policy_disabled"},
+		{name: "live domain", err: fmt.Errorf("vm_not_orphaned"), wantStatus: http.StatusConflict, wantCode: "vm_not_orphaned"},
+		{name: "operation conflict", err: fmt.Errorf("lifecycle_task_in_progress"), wantStatus: http.StatusConflict, wantCode: "vm_operation_in_progress"},
+		{name: "orphan check unavailable", err: fmt.Errorf("vm_orphan_check_unavailable: connection refused"), wantStatus: http.StatusServiceUnavailable, wantCode: "vm_delete_dependency_not_ready"},
+		{name: "unknown", err: fmt.Errorf("cleanup failed"), wantStatus: http.StatusInternalServerError, wantCode: "fallback_code"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotStatus, gotCode := classifyRemoveVMError(tt.err, "fallback_code")
+			if gotStatus != tt.wantStatus || gotCode != tt.wantCode {
+				t.Fatalf("classification = (%d, %q), want (%d, %q)", gotStatus, gotCode, tt.wantStatus, tt.wantCode)
 			}
 		})
 	}

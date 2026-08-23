@@ -1,13 +1,77 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { PCIDevice, PPTDevice } from '$lib/types/system/pci';
+import type { VM } from '$lib/types/vm/vm';
 import type { CellComponent } from 'tabulator-tables';
 import { generateNumberFromString } from '../numbers';
 import { renderWithIcon } from '../table';
 
+export function findPPTDevice(device: PCIDevice, pptDevices: PPTDevice[]): PPTDevice | undefined {
+	const id = `${device.bus}/${device.device}/${device['function']}`;
+	return pptDevices.find((ppt) => ppt.domain === device.domain && ppt.deviceID === id);
+}
+
+export interface PassablePCIDevice {
+	device: PCIDevice;
+	pptId: number;
+}
+
+export function buildPassablePCI(
+	pciDevices: PCIDevice[],
+	pptDevices: PPTDevice[]
+): PassablePCIDevice[] {
+	const passable: PassablePCIDevice[] = [];
+
+	for (const mapping of pptDevices) {
+		if (mapping.domain !== 0) continue;
+
+		const parts = mapping.deviceID.split('/');
+		const bus = Number(parts[0]);
+		const device = Number(parts[1]);
+		const fn = Number(parts[2]);
+		if (!Number.isFinite(bus) || !Number.isFinite(device) || !Number.isFinite(fn)) continue;
+
+		const match = pciDevices.find(
+			(candidate) =>
+				candidate.name.startsWith('ppt') &&
+				candidate.domain === mapping.domain &&
+				candidate.bus === bus &&
+				candidate.device === device &&
+				candidate.function === fn
+		);
+
+		if (match) {
+			passable.push({ device: match, pptId: mapping.id });
+		}
+	}
+
+	return passable;
+}
+
+export function buildPptIdToVMsMap(vms: VM[]): Map<number, VM[]> {
+	const byPptId = new Map<number, VM[]>();
+
+	for (const vm of vms) {
+		if (!Array.isArray(vm.pciDevices)) continue;
+		for (const pptId of vm.pciDevices) {
+			const list = byPptId.get(pptId);
+			if (list) {
+				list.push(vm);
+			} else {
+				byPptId.set(pptId, [vm]);
+			}
+		}
+	}
+
+	return byPptId;
+}
+
 function getPassthroughStatus(device: PCIDevice, pptDevices: PPTDevice[]): string {
+	const mappedDevice = findPPTDevice(device, pptDevices);
+	if (device.domain !== 0 && !mappedDevice) return 'unsupported-domain';
+	if (mappedDevice && !device.name.startsWith('ppt')) return 'managed-not-attached';
+
 	if (device.name.startsWith('ppt')) {
-		const id = `${device.bus}/${device.device}/${device['function']}`;
-		if (pptDevices.some((ppt) => ppt.deviceID === id)) {
+		if (mappedDevice) {
 			return 'passed-through-in-db';
 		} else {
 			return 'passed-through-not-in-db';
@@ -76,6 +140,20 @@ export function generateTableData(
 						'text-yellow-500',
 						'This device is on ppt but not managed by Sylve yet. Import it to manage from here.'
 					);
+				} else if (status === 'unsupported-domain') {
+					return renderWithIcon(
+						'wpf:connected',
+						device,
+						'text-orange-500',
+						'Only PCI domain 0 is supported for new passthrough mappings'
+					);
+				} else if (status === 'managed-not-attached') {
+					return renderWithIcon(
+						'wpf:connected',
+						device,
+						'text-orange-500',
+						'This managed mapping is not currently attached to ppt. It can be disabled or may require a reboot.'
+					);
 				}
 
 				return device;
@@ -111,7 +189,9 @@ export function generateTableData(
 	for (const device of pciDevices) {
 		const id = generateNumberFromString(
 			device.name +
+				device.domain +
 				device.bus +
+				device.unit +
 				(device.class || '') +
 				(device.device || '') +
 				(device['function'] || '') +
@@ -120,11 +200,8 @@ export function generateTableData(
 
 		const deviceId = `${device.bus}/${device.device}/${device['function']}`;
 
-		let pptId = '';
-		if (device.name.startsWith('ppt')) {
-			const pptDevice = pptDevices.find((ppt) => ppt.deviceID === deviceId);
-			pptId = pptDevice ? pptDevice.id.toString() : '';
-		}
+		const pptDevice = findPPTDevice(device, pptDevices);
+		const pptId = pptDevice ? pptDevice.id.toString() : '';
 
 		rows.push({
 			status: getPassthroughStatus(device, pptDevices),
@@ -151,7 +228,6 @@ export function getPCIDeviceId(device: PCIDevice): string {
 }
 
 export function getPPTDeviceId(device: PCIDevice, pptDevices: PPTDevice[]): number {
-	const id = `${device.bus}/${device.device}/${device['function']}`;
-	const pptDevice = pptDevices.find((ppt) => ppt.deviceID === id);
+	const pptDevice = findPPTDevice(device, pptDevices);
 	return pptDevice?.id || 0;
 }

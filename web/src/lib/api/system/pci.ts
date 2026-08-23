@@ -7,12 +7,18 @@ import {
 } from '$lib/types/system/pci';
 import { apiRequest } from '$lib/utils/http';
 
-export async function getPCIDevices(): Promise<PCIDevice[]> {
-	return await apiRequest('/system/pci-devices', PCIDeviceSchema.array(), 'GET');
+export async function getPCIDevices(hostname?: string): Promise<PCIDevice[] | APIResponse> {
+	return await apiRequest('/system/pci-devices', PCIDeviceSchema.array(), 'GET', undefined, {
+		hostname,
+		preserveErrors: true
+	});
 }
 
-export async function getPPTDevices(): Promise<PPTDevice[]> {
-	return await apiRequest('/system/ppt-devices', PPTDeviceSchema.array(), 'GET');
+export async function getPPTDevices(hostname?: string): Promise<PPTDevice[] | APIResponse> {
+	return await apiRequest('/system/ppt-devices', PPTDeviceSchema.array(), 'GET', undefined, {
+		hostname,
+		preserveErrors: true
+	});
 }
 
 export async function addPPTDevice(domain: string, deviceID: string): Promise<APIResponse> {
@@ -33,6 +39,6 @@ export async function importPPTDevice(domain: string, deviceID: string): Promise
 	});
 }
 
-export async function removePPTDevice(deviceID: string): Promise<APIResponse> {
-	return await apiRequest(`/system/ppt-devices/${deviceID}`, APIResponseSchema, 'DELETE');
+export async function removePPTDevice(mappingID: number): Promise<APIResponse> {
+	return await apiRequest(`/system/ppt-devices/${mappingID}`, APIResponseSchema, 'DELETE');
 }

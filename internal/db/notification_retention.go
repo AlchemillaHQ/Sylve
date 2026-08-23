@@ -20,6 +20,7 @@ import (
 const (
 	NotificationDismissedRetentionDays   = 30
 	NotificationSuppressionRetentionDays = 90
+	DiskSmartSelfTestEventRetentionDays  = 30
 )
 
 func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
@@ -52,6 +53,32 @@ func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
 			Delete(&models.NotificationSuppression{}).
 			Error; err != nil {
 			return fmt.Errorf("failed_to_prune_zfs_notification_suppressions: %w", err)
+		}
+
+		for _, prefix := range []string{
+			notifier.DiskSmartTemperatureKindPrefix,
+			notifier.DiskSmartWearoutKindPrefix,
+			notifier.DiskSmartHealthKindPrefix,
+			notifier.DiskSmartNvmeKindPrefix,
+			notifier.DiskSmartSelfTestKindPrefix,
+		} {
+			if err := db.
+				Where("kind LIKE ?", prefix+"%").
+				Delete(&models.NotificationSuppression{}).
+				Error; err != nil {
+				return fmt.Errorf("failed_to_prune_disk_smart_notification_suppressions: %w", err)
+			}
+		}
+	}
+
+	if db.Migrator().HasTable(&models.DiskSmartSelfTestEvent{}) {
+		cutoff := now.UTC().Add(-DiskSmartSelfTestEventRetentionDays * 24 * time.Hour)
+		if err := db.
+			Where("dead_lettered_at IS NOT NULL").
+			Where("dead_lettered_at < ?", cutoff).
+			Delete(&models.DiskSmartSelfTestEvent{}).
+			Error; err != nil {
+			return fmt.Errorf("failed_to_prune_dead_lettered_disk_smart_self_test_events: %w", err)
 		}
 	}
 

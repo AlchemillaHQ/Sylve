@@ -28,25 +28,19 @@
 			(obj) => obj.type === 'Mac' && obj.entries?.length === 1 && obj.isUsed === false
 		);
 	});
+	// @wc-ignore
+	const emulationOptions = [
+		{ label: 'VirtIO', value: 'virtio' },
+		{ label: 'E1000', value: 'e1000' }
+	];
 
 	let comboBoxes = $state({
 		emulation: {
 			open: false,
-			value: 'virtio',
-			options: [
-				{ label: 'VirtIO', value: 'virtio' },
-				{ label: 'E1000', value: 'e1000' }
-			]
+			value: 'virtio'
 		},
 		mac: {
-			open: false,
-			value: '0'
-		}
-	});
-
-	$effect(() => {
-		if (comboBoxes.mac.value) {
-			mac = comboBoxes.mac.value;
+			open: false
 		}
 	});
 </script>
@@ -74,13 +68,13 @@
 	<RadioGroup.Root bind:value={nwSwitch} class="border p-2">
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
 			{#if switches && switches.standard}
-				{#each switches.standard ?? [] as sw}
+				{#each switches.standard ?? [] as sw (sw.id)}
 					{@render radioItem(sw.id, sw.name, 'standard')}
 				{/each}
 			{/if}
 
 			{#if switches && switches.manual}
-				{#each switches.manual ?? [] as sw}
+				{#each switches.manual ?? [] as sw (sw.id)}
 					{@render radioItem(sw.id, sw.name, 'manual')}
 				{/each}
 			{/if}
@@ -95,7 +89,7 @@
 				bind:open={comboBoxes.emulation.open}
 				label="Emulation Type"
 				bind:value={emulation}
-				data={comboBoxes.emulation.options}
+				data={emulationOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Emulation type"
 				width="w-3/4"
@@ -104,7 +98,7 @@
 			<CustomComboBox
 				bind:open={comboBoxes.mac.open}
 				label="MAC Address"
-				bind:value={comboBoxes.mac.value}
+				bind:value={mac}
 				data={generateMACOptions(usableMacs)}
 				classes="flex-1 space-y-1"
 				placeholder="Select MAC address"
