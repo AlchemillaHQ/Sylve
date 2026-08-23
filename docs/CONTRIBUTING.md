@@ -34,7 +34,7 @@ Please view [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details on our code of 
 - Ensure you have the recommended development environment set up, including the correct versions of dependencies.
 - Instructions for setting up the development environment should be documented in the project's README or a separate `CONTRIBUTING.md` file.
 - We recommend using VSCode, Neovim or WebStorm (or GoLand) as your IDE/Editor.
-- Test on a live device (apart from unit tests) before commiting to the repository.
+- Test on a live device (apart from unit tests) before committing to the repository.
 
 ### 5. Branching Strategy
 
