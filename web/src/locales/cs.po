@@ -5672,6 +5672,10 @@ msgstr "Konzole byla odpojena. <0/> Pokud chcete znovu navázat spojení, klikn�
 msgid "Jail terminal"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte

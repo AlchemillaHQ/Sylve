@@ -5670,6 +5670,10 @@ msgstr "കൺസോൾ വിച്ഛേദിക്കപ്പെട്ട�
 msgid "Jail terminal"
 msgstr "Jail ടെർമിനൽ"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte

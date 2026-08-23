@@ -173,15 +173,31 @@
 									<div class="p-4 grid grid-cols-3 gap-4 text-sm">
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">CPU Cores</span>
-											<span class="font-medium text-amber-600 dark:text-amber-400"
-												>{template.cores}</span
-											>
+											<span class="font-medium text-amber-600 dark:text-amber-400">
+												{#if template.resourceLimits === false}
+													<span class="inline-flex items-center" title="Unlimited">
+														<span class="icon-[mdi--infinity] h-3.5 w-3.5" aria-hidden="true"
+														></span>
+														<span class="sr-only">Unlimited</span>
+													</span>
+												{:else}
+													{template.cores}
+												{/if}
+											</span>
 										</div>
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Memory</span>
-											<span class="font-medium text-emerald-600 dark:text-emerald-400"
-												>{formatBytesBinary(template.memory || 0)}</span
-											>
+											<span class="font-medium text-emerald-600 dark:text-emerald-400">
+												{#if template.resourceLimits === false}
+													<span class="inline-flex items-center" title="Unlimited">
+														<span class="icon-[mdi--infinity] h-3.5 w-3.5" aria-hidden="true"
+														></span>
+														<span class="sr-only">Unlimited</span>
+													</span>
+												{:else}
+													{formatBytesBinary(template.memory || 0)}
+												{/if}
+											</span>
 										</div>
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Resource Limits</span>

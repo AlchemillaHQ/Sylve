@@ -5668,6 +5668,10 @@ msgstr "控制台已断开连接。<0/> 点击“重新连接”按钮以重新�
 msgid "Jail terminal"
 msgstr "Jail 终端"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte

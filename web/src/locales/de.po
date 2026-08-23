@@ -5670,6 +5670,10 @@ msgstr "Die Konsole wurde getrennt.<0/> Klicken Sie auf die Schaltfläche \"Reco
 msgid "Jail terminal"
 msgstr "Jail-Terminal"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte

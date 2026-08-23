@@ -5670,6 +5670,10 @@ msgstr "कंसोल डिस्कनेक्ट हो गया है�
 msgid "Jail terminal"
 msgstr "जेल टर्मिनल"
 
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
