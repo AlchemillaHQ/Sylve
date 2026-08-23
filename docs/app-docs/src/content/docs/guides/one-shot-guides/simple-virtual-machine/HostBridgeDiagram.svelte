@@ -13,8 +13,11 @@
   const MAX_VMS = 4;
   const nodeTypes = { network: NetworkNode };
 
+  let { guestType = "vm" } = $props();
   let hostPortCount = $state(1);
   let vmCount = $state(1);
+  let isJail = $derived(guestType === "jail");
+  let guestLabel = $derived(isJail ? "Jail" : "VM");
   let flowHeight = $derived(350 + (Math.max(hostPortCount, vmCount) - 1) * 155);
 
   const centeredY = (index, count, spacing, center) =>
@@ -22,7 +25,10 @@
 
   let nodes = $derived.by(() => {
     const hostPorts = Array.from({ length: hostPortCount }, (_, index) => "em" + index);
-    const vmPorts = Array.from({ length: vmCount }, (_, index) => "tap" + index);
+    const vmPorts = Array.from(
+      { length: vmCount },
+      (_, index) => isJail ? "epair" + index + "a" : "tap" + index,
+    );
 
     return [
       {
@@ -69,9 +75,11 @@
         position: { x: 900, y: centeredY(index, vmCount, 185, 235) },
         data: {
           kind: "vm",
-          eyebrow: "VIRTUAL ETHERNET PORT",
-          label: "VM " + (index + 1),
-          description: port + " acts like a virtual network cable.",
+          eyebrow: isJail ? "JAIL VNET STACK" : "VIRTUAL ETHERNET PORT",
+          label: guestLabel + " " + (index + 1),
+          description: isJail
+            ? "epair" + index + "b lives inside this jail."
+            : port + " acts like a virtual network cable.",
         },
         draggable: false,
         selectable: false,
@@ -102,7 +110,7 @@
       source: "bridge",
       sourceHandle: "vm-" + index,
       target: "vm-" + index,
-      label: "Virtual cable",
+      label: isJail ? "epair" + index + " pair" : "Virtual cable",
       animated: true,
       markerEnd: MarkerType.ArrowClosed,
       class: "packet-edge virtual-edge",
@@ -127,7 +135,7 @@
   <figcaption>
     <div>
       <span id="network-map-title">BUILD THE HOST NETWORK</span>
-      <small>Add ports and VMs to see the software switch grow.</small>
+      <small>Add ports and {guestLabel}s to see the software switch grow.</small>
     </div>
     <span class="live"><i></i> LIVE TOPOLOGY</span>
   </figcaption>
@@ -135,7 +143,7 @@
   <div
     class="flow"
     style:height={String(flowHeight) + "px"}
-    aria-label="Interactive host bridge topology"
+    aria-label={`Interactive host bridge topology for ${guestLabel}s`}
   >
     <SvelteFlow
       {nodes}
@@ -164,6 +172,7 @@
         onAddHostPort={addHostPort}
         onAddVm={addVm}
         onReset={reset}
+        {guestLabel}
       />
     </SvelteFlow>
   </div>
@@ -171,13 +180,18 @@
   <div class="key">
     <span><i class="solid"></i> Physical cable</span>
     <span><i class="membership"></i> Interface attached to bridge</span>
-    <span><i class="dashed"></i> Virtual interface</span>
+    <span><i class="dashed"></i> {isJail ? "epair pair" : "Virtual interface"}</span>
     <span>Drag the background to inspect the topology.</span>
   </div>
 
   <p class="plain-language">
     <strong>What this demonstrates:</strong>
-    a Standard Switch is a software Ethernet bridge inside the FreeBSD host. It forwards Ethernet frames like a physical switch, while the bridge interface itself can hold the host's IP address. Physical interfaces such as <code>em0</code> and virtual interfaces such as <code>tap0</code> occupy its ports.
+    a Standard Switch is a software Ethernet bridge inside the FreeBSD host. It forwards Ethernet frames like a physical switch, while the bridge interface itself can hold the host's IP address.
+    {#if isJail}
+      Physical interfaces such as <code>em0</code> and host-side epair ends such as <code>epair0a</code> occupy its ports. The matching <code>epair0b</code> end is moved into the jail's VNET network stack.
+    {:else}
+      Physical interfaces such as <code>em0</code> and virtual interfaces such as <code>tap0</code> occupy its ports.
+    {/if}
   </p>
 </figure>
 

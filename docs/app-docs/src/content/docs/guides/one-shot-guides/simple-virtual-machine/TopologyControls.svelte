@@ -9,6 +9,7 @@
     onAddHostPort,
     onAddVm,
     onReset,
+    guestLabel = "VM",
   } = $props();
 
   const { fitView } = useSvelteFlow();
@@ -35,7 +36,7 @@
       onclick={() => runAndRefit(onAddVm)}
       disabled={vmCount >= maxVms}
     >
-      <span>+</span> VM
+      <span>+</span> {guestLabel}
     </button>
     <button class="reset" type="button" onclick={() => runAndRefit(onReset)}>Reset</button>
   </div>

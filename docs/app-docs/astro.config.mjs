@@ -361,6 +361,7 @@ export default defineConfig({
                             collapsed: false,
                             items: [
                                 'guides/one-shot-guides/simple-virtual-machine',
+                                'guides/one-shot-guides/simple-jail',
                                 'guides/one-shot-guides/technitium-dns-jail',
                                 'guides/one-shot-guides/jellyfin-jail',
                                 'guides/one-shot-guides/rocky-linux-jail',

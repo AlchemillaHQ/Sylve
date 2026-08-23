@@ -1,0 +1,401 @@
+---
+title: Simple Jail
+description: Create a FreeBSD jail in Sylve and use it to run AdGuard Home.
+---
+
+import HostBridgeDiagram from "../simple-virtual-machine/HostBridgeDiagram.svelte";
+import standardSwitchCreate from "../simple-virtual-machine/simple-vm-standard-switch-create.png";
+import standardSwitchReady from "../simple-virtual-machine/simple-vm-standard-switch-ready.png";
+import jailBootstrap from "../../node/jails/creation/jail-create-bootstrap.png";
+import jailStorage from "../../node/jails/creation/jail-create-storage.png";
+import jailCreateBasic from "./simple-jail-create-basic.png";
+import jailCreateNetwork from "./simple-jail-create-network.png";
+import jailCreateHardware from "./simple-jail-create-hardware.png";
+import jailCreateAdvanced from "./simple-jail-create-advanced.png";
+import adGuardHomeSetup from "./simple-jail-adguard-home-setup.png";
+import adGuardHomeDashboard from "./simple-jail-adguard-home-dashboard.png";
+
+This guide is written for people starting from absolute zero and walks through the entire process from installation onward. If you have already completed some of the setup, use the page outline on the right to jump directly to the section relevant to you.
+
+This guide requires **Sylve 0.3.0 or newer**. The built-in FreeBSD pkgbase bootstrap used below also requires a FreeBSD 15.0 or newer host. The screens and workflow described here may not be available in earlier Sylve releases.
+
+## Install Sylve
+
+On the FreeBSD node, install Sylve from the package repository as `root`:
+
+```sh
+pkg install sylve
+```
+
+After the installation completes, enable Sylve so it starts automatically when FreeBSD boots, then start it now:
+
+```sh
+service sylve enable
+service sylve start
+```
+
+Open `https://<your-node-ip>:8181` in a browser. A fresh package installation uses `admin` as both the username and password. Change these default credentials before exposing the node to an untrusted network. You can follow the account guidance in [Getting Started](/getting-started/) or sign in, open **Settings → Authentication → Users → Local**, and edit the built-in administrator from the [Local Users](/guides/node/settings/authentication/users/local/) page.
+
+## Confirm the installed version
+
+Sign in to the web interface and open the node's [**Summary**](/guides/node/) page. Find the Sylve version and confirm that it is `0.3.0` or newer.
+
+You can also check the installed version from the command line:
+
+```sh
+sylve --version
+```
+
+Confirm that the command reports version `0.3.0` or newer before continuing.
+
+:::caution
+Do not continue with this guide if the node is running a version older than `0.3.0`. Upgrade Sylve, restart the required services, and verify the reported version again.
+:::
+
+## Initialize Sylve for jails
+
+Sylve must have its **Jails** service enabled before it can create or manage jails. How you enable it depends on whether the node has already been initialized.
+
+### During first-time initialization
+
+After your first sign-in, Sylve opens the initialization dialog automatically. Select a ZFS pool that Sylve may use, enable **Jails** under **Compute**, and then select **Initialize**.
+
+The initialization check verifies that FreeBSD resource accounting is enabled through `kern.racct.enable` and that jail filesystem visibility is restricted through `security.jail.enforce_statfs`. If resource accounting is not enabled, Sylve can add the required boot-time setting and require a reboot. Resolve any validation error shown by the dialog before continuing.
+
+For a complete explanation of the first-time setup screen, see [Initialization](/guides/).
+
+### On an initialized node
+
+If the node was initialized without jail support, open **Settings → System → Services**, select the **Jails** row, and select **Enable**. Confirm the change when prompted.
+
+:::caution[Reboot after enabling Jails]
+After enabling Jails from the Services page, perform a complete system reboot before proceeding. Jail resource accounting is a boot-time feature, and Sylve's jail monitoring starts during node startup. Rebooting ensures that the host and Sylve use the same saved configuration.
+:::
+
+After the node returns, sign in again and confirm that **Jails** is shown as enabled under [System Services](/guides/node/settings/system/services/).
+
+## Prepare the host networking
+
+A jail has a virtual network cable, but that cable still needs a way to reach the physical network. A bridge provides that connection.
+
+Think of a bridge as a small Ethernet switch living inside the FreeBSD host. The node's physical interface, such as `em0`, plugs into one side. Virtual interfaces belonging to jails plug into the other side. The bridge passes network traffic between them, allowing the jails to communicate with the same network as the host.
+
+In this guide, Sylve will create and manage that bridge as a **Standard Switch**. It will attach the node's existing `em0` interface as a physical port, then new jails can attach their virtual interfaces to the same switch.
+
+<HostBridgeDiagram guestType="jail" client:visible />
+
+For every switch-backed VNET jail, Sylve creates an `epair`, which is a connected pair of virtual Ethernet interfaces. The `a` end stays on the host and joins the Standard Switch bridge. The matching `b` end moves into the jail's private VNET network stack. Together, the two ends behave like the two ends of a virtual Ethernet cable.
+
+Your interface may have a different name. Open **Network → Interfaces** and identify the physical interface that currently provides network access before continuing. Substitute that name wherever this guide uses `em0`.
+
+### Check the current host configuration
+
+This guide assumes that `em0` is already configured in `/etc/rc.conf` with either DHCP or a static address. A DHCP configuration commonly looks like this:
+
+```ini
+ifconfig_em0="DHCP"
+```
+
+A static configuration commonly looks like this:
+
+```ini
+ifconfig_em0="inet 192.168.1.10/24"
+defaultrouter="192.168.1.1"
+```
+
+Use the values already assigned to your node. Do not copy the example address unless it matches your network.
+
+### Create a Standard Switch
+
+Open **Network → Switches → Standard**, select **New**, and configure the switch:
+
+1. Enter `LAN / WAN` as the switch name.
+2. Select `em0`, or your equivalent physical interface, under **Ports**.
+3. If `em0` currently uses DHCP, enable **DHCP** on the switch.
+4. If `em0` has a static address, enter that same address in CIDR notation under **IPv4 Network**, enter its gateway under **IPv4 Gateway**, and enable **Default Route**.
+5. Leave **Disable Bridge Offloads** enabled.
+6. Select **Create**.
+
+<img
+  src={standardSwitchCreate.src}
+  alt="Create Standard Switch dialog with LAN / WAN as the name, em0 selected as a port, and the host's IPv4 configuration applied to the switch"
+/>
+
+When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. The existing `ifconfig_em0` entry may remain in `/etc/rc.conf` as an early-boot or fallback configuration, but do not add the Sylve-managed bridge to `rc.conf`.
+
+:::danger[Expect a brief network interruption]
+Moving the interface into the switch interrupts connectivity while its address is transferred to the bridge. If you are managing the node through `em0`, use local or out-of-band access, or perform this step during a maintenance window. An incorrect address or gateway can make the web interface unreachable.
+:::
+
+After connectivity returns, confirm that the `LAN / WAN` switch appears in the Standard Switches table and shows the expected port and address configuration.
+
+<img
+  src={standardSwitchReady.src}
+  alt="Standard Switches table showing the completed LAN / WAN switch with em0 and its assigned IPv4 configuration"
+/>
+
+For a complete explanation of every field and network mode, see [Standard Switches](/guides/node/network/switches/standard/).
+
+## Bootstrap a FreeBSD jail base
+
+A jail shares the host kernel, but it still needs its own FreeBSD userland. Sylve can prepare that userland as a reusable ZFS dataset through FreeBSD pkgbase. Each jail created from it receives an independent copy.
+
+Select **Create Jail**, open the **Storage** tab, and select the ZFS pool that will contain the jail. Then select the download-box action beside **Base** to open **Bootstrap Jail Bases**.
+
+Choose the newest **Base** release that is not newer than the host:
+
+- On a FreeBSD 15.1 or newer host, select **Bootstrap** beside **FreeBSD 15.1 Base**.
+- On a FreeBSD 15.0 host, select **Bootstrap** beside **FreeBSD 15.0 Base**.
+
+The dialog only lists releases supported by Sylve and compatible with the current host. This guide uses the **Base** variant because its broader userland is a comfortable starting point for a first jail. The **Minimal** variant uses less storage and is useful when you already know which components the workload needs.
+
+<img
+  src={jailBootstrap.src}
+  alt="Bootstrap Jail Bases dialog showing FreeBSD 15.1 Base installing while the other compatible Base and Minimal choices remain available"
+/>
+
+Bootstrapping creates a dataset below `<pool>/sylve/bootstraps`, retrieves the signed pkgbase repository metadata, installs the selected FreeBSD set and `pkg`, and writes the initial jail files. The package installation can take several minutes.
+
+Keep the dialog open until the selected entry reports **Installed**. If it fails, read the reported phase and error, clear or retry the failed bootstrap, and do not select it as a base until installation completes.
+
+Close the bootstrap dialog, then select the installed FreeBSD Base in the **Base** field. Leave the Create Jail wizard open for the next section.
+
+<img
+  src={jailStorage.src}
+  alt="Create Jail Storage tab with the ZFS pool and completed FreeBSD 15.1 Base bootstrap selected"
+/>
+
+:::note[Reuse the bootstrap]
+You only need to bootstrap a particular FreeBSD release and variant once per ZFS pool. The completed bootstrap can be selected as the source for additional jails on that pool.
+:::
+
+## Create the jail
+
+The creation wizard groups the jail's identity, root filesystem, network, resource limits, and runtime behavior into separate tabs. The values below create a small FreeBSD jail for AdGuard Home with one CPU core, 1 GiB of memory, and its own DHCP address on the `LAN / WAN` switch.
+
+### Basic
+
+Open the **Basic** tab and identify the jail:
+
+1. Confirm that the correct **Node** is selected if the field is shown.
+2. Enter `AdguardHome` as the **Jail Name**.
+3. Enter `adguardhome` as the **Hostname**.
+4. Keep the suggested **Jail ID** unless you have a reason to use another available value.
+5. Enter `Primary DNS server, It sends bad requests to a black hole!` as the **Description**.
+
+The Jail ID, also called the CTID, must be from `1` through `9999` and unique across both VMs and jails in the cluster. The jail name may contain letters, numbers, hyphens, and underscores. The hostname follows the normal hostname rules used inside FreeBSD.
+
+<img
+  src={jailCreateBasic.src}
+  alt="Create Jail Basic tab with AdguardHome as the jail name, adguardhome in the Hostname field, Jail ID 114, and a description identifying it as the primary DNS server"
+/>
+
+### Storage
+
+Return to the **Storage** tab and confirm:
+
+1. The intended ZFS **Pool** is selected.
+2. The completed FreeBSD Base bootstrap is selected under **Base**.
+3. **FStab Additions** remains disabled.
+
+Sylve creates the jail root at `<pool>/sylve/jails/<Jail ID>` and copies the selected bootstrap into it. Fstab additions are not needed because this jail does not mount any extra host storage.
+
+<img
+  src={jailStorage.src}
+  alt="Create Jail Storage tab with the ZFS pool and completed FreeBSD 15.1 Base bootstrap selected and FStab Additions disabled"
+/>
+
+### Network
+
+Connect the jail to the Standard Switch created earlier:
+
+1. Select `LAN / WAN`, or the equivalent network-facing switch on your node. The example screenshot uses an existing manual switch named `WAN`.
+2. Enable **DHCP**.
+3. Enable **SLAAC**.
+4. Leave **IPv4 Network**, **IPv4 Gateway**, **IPv6 Network**, and **IPv6 Gateway** empty.
+5. Leave **MAC Address** empty so Sylve generates a unique managed MAC object.
+6. Keep **VLAN** set to `0`.
+7. Leave **Populate DNS Resolver Configuration** disabled.
+
+DHCP asks the upstream network for an IPv4 address, gateway, and DNS resolver information when the jail starts. Because this setup receives DNS servers through DHCP, Sylve does not need to write a separate resolver configuration into the jail. SLAAC allows the jail to configure IPv6 automatically when the upstream router advertises an IPv6 prefix.
+
+If your network does not provide DHCP or IPv6 router advertisements, use static addresses and gateways appropriate for your network instead. If DHCP does not provide DNS servers, enable **Populate DNS Resolver Configuration** and enter a suitable resolver configuration. See [Jail Creation](/guides/node/jails/creation/) for the manual network and resolver fields.
+
+<img
+  src={jailCreateNetwork.src}
+  alt="Create Jail Network tab with the WAN manual switch selected, DHCP and SLAAC enabled, manual addresses empty, VLAN set to 0, and Populate DNS Resolver Configuration disabled"
+/>
+
+### Hardware
+
+Apply modest limits for this first jail:
+
+1. Set **CPU Cores** to `1`.
+2. Enter `1 GiB` for **Memory Size**.
+3. Set **Boot Order** to `1`.
+4. Enable **Start On Boot**.
+5. Keep **Resource Limits** enabled.
+6. Leave **Custom Devfs Ruleset** disabled.
+
+Jails share the host kernel, so these values are enforced limits rather than emulated hardware or exclusive reservations. One core and 1 GiB are more than enough for AdGuard Home on a small network. You can change the limits later from the jail's [Hardware](/guides/node/jails/hardware/) page.
+
+<img
+  src={jailCreateHardware.src}
+  alt="Create Jail Hardware tab with one CPU core, 1 GiB memory, Boot Order 1, Start On Boot and Resource Limits enabled, and Custom Devfs Ruleset disabled"
+/>
+
+### Advanced
+
+Keep the standard FreeBSD runtime configuration:
+
+1. Keep **Type** set to **FreeBSD**.
+2. Keep the default **Allowed Options** selected, including **Mount devfs (`allow.mount.devfs`)**.
+3. Keep **Clean Environment** enabled.
+4. Leave **Additional Options** and both metadata fields disabled.
+5. Keep the default start hook enabled with `/bin/sh /etc/rc`.
+6. Keep the default stop hook enabled with `/bin/sh /etc/rc.shutdown`.
+7. Leave the other lifecycle hooks disabled.
+
+The default devfs permission is important for DHCP because the FreeBSD DHCP client needs access to a BPF device. The default start and stop commands run the jail's normal FreeBSD service lifecycle. Do not remove these defaults for this guide.
+
+<img
+  src={jailCreateAdvanced.src}
+  alt="Create Jail Advanced tab with FreeBSD selected, seven allowed options selected, Clean Environment enabled, and the default start hook enabled with /bin/sh /etc/rc"
+/>
+
+### Finish creation
+
+Review every tab, then select **Create Jail**. Sylve verifies the identity, pool, bootstrap, switch, network settings, limits, allowed options, and lifecycle hooks before it creates the jail.
+
+Creation can take time because Sylve creates a new ZFS dataset and copies the complete bootstrap into it. Keep the page open until the request finishes. When creation succeeds, `AdguardHome` appears beneath the selected node in the sidebar.
+
+{/* Screenshot needed: simple-jail-created-summary.png. Exact contents: The new AdguardHome Summary page before its first start, showing the jail name, Stopped status, one configured CPU core, 1 GiB memory limit, the Primary DNS server description, Start action, and no error notification. */}
+
+For a detailed reference covering every field in the wizard, see [Jail Creation](/guides/node/jails/creation/).
+
+## Start and verify the jail
+
+Open the new jail's **Summary** page, select **Start**, and wait for the lifecycle task to finish. Confirm that the status changes to **Running** before continuing. A successful queue response means the task was accepted, so wait for the final state rather than opening the console immediately.
+
+If the jail does not start, select **View Logs** on the Summary page and inspect the lifecycle output. The most common causes in this workflow are an incomplete bootstrap, an unavailable switch port, or DHCP failing because the default devfs permission was removed.
+
+### Open the console
+
+Open **Console** beneath the running jail. Sylve connects the browser to an interactive root shell inside the jail.
+
+:::caution[Root access]
+The browser console runs as `root` inside the jail. Confirm that `AdguardHome` is selected before entering commands, and do not paste commands you have not reviewed.
+:::
+
+Check the operating-system version and hostname:
+
+```sh
+freebsd-version
+hostname
+```
+
+The reported FreeBSD version should match the selected bootstrap, and the hostname should be `adguardhome`.
+
+Inspect the network interfaces and routing table:
+
+```sh
+ifconfig
+netstat -rn
+```
+
+Find the non-loopback interface and note its `inet` address. DHCP should also have installed a default IPv4 route. Then test the address path and DNS resolution separately:
+
+```sh
+ping -c 3 1.1.1.1
+ping -c 3 freebsd.org
+```
+
+If the first test fails, check the DHCP lease, switch, bridge port, and upstream network. If the first succeeds but the second fails, inspect `/etc/resolv.conf` and the DNS configuration chosen during creation.
+
+{/* Screenshot needed: simple-jail-console-network.png. Exact contents: The Sylve Jail Console connected to AdguardHome, showing successful freebsd-version and hostname output, a non-loopback DHCP IPv4 address in ifconfig, a default route in netstat -rn, and successful ping results for both 1.1.1.1 and freebsd.org. */}
+
+For more detail about connection controls and the shared administrative shell, see [Jail Console](/guides/node/jails/console/).
+
+## Install AdGuard Home
+
+AdGuard Home is a DNS server that blocks ads and trackers for devices that use it. The jail gives the service its own address on your network and keeps it separate from the FreeBSD host.
+
+The bootstrap includes `pkg`, so the jail can install ordinary FreeBSD packages. Update the repository catalog and install AdGuard Home:
+
+```sh
+pkg update
+pkg install adguardhome
+```
+
+The FreeBSD package normally starts AdGuard Home as the unprivileged `unbound` user. AdGuard Home refuses its first launch as that user because the setup process requires administrator privileges. For this dedicated jail, configure the service to run as `root`, enable it so it starts with the jail, and then start it now:
+
+```sh
+sysrc adguardhome_user=root
+sysrc adguardhome_enable=YES
+service adguardhome start
+```
+
+This grants AdGuard Home root privileges inside the jail, not on the Sylve host. The default `allow.reserved_ports` jail option selected earlier permits the jail's root user to bind DNS port `53`. Running as `unbound` instead requires advanced host-level port access control, which is outside the scope of this first-jail guide.
+
+Confirm that the service is running:
+
+```sh
+service adguardhome status
+```
+
+If the service stops immediately, inspect its log:
+
+```sh
+tail -n 100 /var/log/adguardhome.log
+```
+
+The message `this is the first launch of adguard home; you must run it as administrator` means `adguardhome_user=root` was not saved before the service started.
+
+On its first start, AdGuard Home opens its setup interface on TCP port `3000`. From another computer on the same network, open:
+
+```text
+http://<jail-ip>:3000/
+```
+
+You should see the AdGuard Home welcome page. If it does not open, confirm that the service is running and that you used the jail's address rather than the Sylve node's address. Then check the host firewall, upstream network policy, and client-to-jail routing.
+
+<img
+  src={adGuardHomeSetup.src}
+  alt="AdGuard Home first-launch welcome page with the Get Started button and the first step of the setup wizard"
+/>
+
+### Complete the setup wizard
+
+Select **Get Started**, then configure AdGuard Home:
+
+1. Keep the **Admin Web Interface** available on all interfaces. Use port `80` unless another service in this jail already uses it.
+2. Keep the **DNS Server** available on all interfaces and use port `53`.
+3. Create an administrator username and a strong, unique password.
+4. Review the device-configuration information and finish the wizard.
+
+After setup, the service reloads with its saved configuration. If you selected port `80` for the admin interface, open the dashboard at:
+
+```text
+http://<jail-ip>/
+```
+
+Return to the jail console and confirm that AdGuard Home is listening for DNS requests on both TCP and UDP port `53`:
+
+```sh
+sockstat -4 -6 -l | grep ':53'
+```
+
+<img
+  src={adGuardHomeDashboard.src}
+  alt="Completed AdGuard Home dashboard with protection enabled, DNS query and blocking statistics, and a client sending requests"
+/>
+
+### Send DNS queries through the jail
+
+For a safe first test, change the DNS server on one computer or phone to the jail's IPv4 address. Browse normally, then refresh the AdGuard Home dashboard. The query and blocked-request counters should begin to increase.
+
+:::caution[Give a DNS server a stable address]
+This guide initially uses DHCP because it makes the first jail easy to start. Before configuring your router or several devices to use AdGuard Home, reserve the jail's current address in your DHCP server or change the jail to an appropriate static address from its [Network](/guides/node/jails/network/) page. If the DNS server's address changes, clients configured with the old address can lose name resolution.
+:::
+
+The jail is now running AdGuard Home in an independently addressed FreeBSD userland on the `LAN / WAN` Standard Switch. Use its [Summary](/guides/node/jails/summary/) page for lifecycle controls and logs, [Network](/guides/node/jails/network/) for later interface changes, and [Snapshots](/guides/node/jails/snapshots/) or [Backups](/guides/node/jails/backups/) before making important configuration changes.
