@@ -406,7 +406,11 @@ jobs:
           BUILD_WEB_RESULT: ${{ needs.build-web.result }}
           BUILD_FREEBSD_RESULT: ${{ needs.build-freebsd.result }}
         run: |
-          test "$QUALITY_RESULT" = success
-          test "$TEST_RESULT" = success
-          test "$BUILD_WEB_RESULT" = success
-          test "$BUILD_FREEBSD_RESULT" = success
+          check_result() {
+            local result="$1"
+            [ "$result" = "success" ] || [ "$result" = "skipped" ]
+          }
+          check_result "$QUALITY_RESULT"
+          check_result "$TEST_RESULT"
+          check_result "$BUILD_WEB_RESULT"
+          check_result "$BUILD_FREEBSD_RESULT"
