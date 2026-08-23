@@ -509,10 +509,10 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 	config.WriteString("\n")
 
 	// quick hack: add dhcp-options for add default-route
-	config.Write("dhcp-option=option:router,10.0.1.1\n")
-	config.Write("dhcp-option=6,10.0.1.9,10.0.1.16\n")
-	config.Write("port=53\n")
-	config.Write("bogus-priv\n\n")
+	config.WriteString("dhcp-option=option:router,10.0.1.1\n")
+	config.WriteString("dhcp-option=6,10.0.1.9,10.0.1.16\n")
+	config.WriteString("port=53\n")
+	config.WriteString("bogus-priv\n\n")
 
 	return []byte(config.String()), nil
 }
