@@ -33,7 +33,9 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/mountutil"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
@@ -1101,6 +1103,25 @@ func (s *Service) phaseCleanupSource(ctx context.Context, mp *migrationPayload, 
 		if !isCanonicalMigrationGuestDataset(dataset, task.GuestType, task.GuestID) {
 			return fmt.Errorf("migration_cleanup_dataset_root_invalid: %s", dataset)
 		}
+	}
+
+	if task.GuestType == taskModels.GuestTypeJail && s.Jail != nil {
+		running, err := s.Jail.IsJailRunning(task.GuestID)
+		if err != nil {
+			return fmt.Errorf("migration_cleanup_jail_state_check_failed: %w", err)
+		}
+		if running {
+			return fmt.Errorf("migration_cleanup_jail_still_running")
+		}
+	}
+
+	type cleanupDataset struct {
+		name       string
+		dataset    *gzfs.Dataset
+		mountpoint string
+	}
+	resolved := make([]cleanupDataset, 0, len(datasets))
+	for _, dataset := range datasets {
 		ds, getErr := s.GZFS.ZFS.Get(ctx, dataset, false)
 		if getErr != nil {
 			if isDatasetNotFound(getErr) {
@@ -1111,8 +1132,37 @@ func (s *Service) phaseCleanupSource(ctx context.Context, mp *migrationPayload, 
 		if ds == nil {
 			return fmt.Errorf("migration_cleanup_get_dataset_%s_returned_nil", dataset)
 		}
-		if destroyErr := ds.Destroy(ctx, true, false); destroyErr != nil {
-			return fmt.Errorf("migration_cleanup_destroy_dataset_%s_failed: %w", dataset, destroyErr)
+
+		entry := cleanupDataset{name: dataset, dataset: ds}
+		if task.GuestType == taskModels.GuestTypeJail {
+			mountpoint, mountErr := zfsutil.FilesystemMountpoint(ds)
+			if mountErr != nil {
+				return fmt.Errorf("migration_cleanup_dataset_%s_mountpoint_invalid: %w", dataset, mountErr)
+			}
+			entry.mountpoint = mountpoint
+		}
+		resolved = append(resolved, entry)
+	}
+
+	if task.GuestType == taskModels.GuestTypeJail {
+		for _, entry := range resolved {
+			if unmountErr := mountutil.UnmountDescendants(
+				ctx,
+				entry.name,
+				entry.mountpoint,
+			); unmountErr != nil {
+				return fmt.Errorf(
+					"migration_cleanup_unmount_dataset_%s_descendants_failed: %w",
+					entry.name,
+					unmountErr,
+				)
+			}
+		}
+	}
+
+	for _, entry := range resolved {
+		if destroyErr := entry.dataset.Destroy(ctx, true, false); destroyErr != nil && !isDatasetNotFound(destroyErr) {
+			return fmt.Errorf("migration_cleanup_destroy_dataset_%s_failed: %w", entry.name, destroyErr)
 		}
 	}
 

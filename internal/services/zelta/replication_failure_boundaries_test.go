@@ -47,9 +47,16 @@ func (s *runtimeTruthJailStub) ForceStopJail(_ uint) error {
 
 func TestStopLocalJailUsesLiveRuntimeState(t *testing.T) {
 	jail := &runtimeTruthJailStub{runningStates: []bool{true, false}}
-	service := &Service{Jail: jail}
+	cleanupCalls := 0
+	service := &Service{
+		Jail: jail,
+		replicationJailMountCleaner: func(context.Context, uint) error {
+			cleanupCalls++
+			return nil
+		},
+	}
 
-	if err := service.stopLocalJailIfPresent(42); err != nil {
+	if err := service.stopLocalJailIfPresent(t.Context(), 42); err != nil {
 		t.Fatalf("stop live jail: %v", err)
 	}
 	if jail.stopCalls != 1 {
@@ -58,15 +65,104 @@ func TestStopLocalJailUsesLiveRuntimeState(t *testing.T) {
 	if jail.stateCalls != 2 {
 		t.Fatalf("runtime-state calls = %d, want 2", jail.stateCalls)
 	}
+	if cleanupCalls != 1 {
+		t.Fatalf("mount cleanup calls = %d, want 1", cleanupCalls)
+	}
+}
+
+func TestStopLocalJailCleansMountsWhenAlreadyStopped(t *testing.T) {
+	jail := &runtimeTruthJailStub{runningStates: []bool{false}}
+	cleanupCalls := 0
+	service := &Service{
+		Jail: jail,
+		replicationJailMountCleaner: func(_ context.Context, ctID uint) error {
+			cleanupCalls++
+			if ctID != 42 {
+				t.Fatalf("mount cleanup CTID = %d, want 42", ctID)
+			}
+			return nil
+		},
+	}
+
+	if err := service.stopLocalJailIfPresent(t.Context(), 42); err != nil {
+		t.Fatalf("clean mounts for stopped jail: %v", err)
+	}
+	if jail.stopCalls != 0 {
+		t.Fatalf("stop calls = %d, want 0", jail.stopCalls)
+	}
+	if jail.stateCalls != 1 {
+		t.Fatalf("runtime-state calls = %d, want 1", jail.stateCalls)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("mount cleanup calls = %d, want 1", cleanupCalls)
+	}
+}
+
+func TestStopLocalJailReturnsMountCleanupFailure(t *testing.T) {
+	cleanupErr := errors.New("runtime mount remains busy")
+	service := &Service{
+		Jail: &runtimeTruthJailStub{runningStates: []bool{false}},
+		replicationJailMountCleaner: func(context.Context, uint) error {
+			return cleanupErr
+		},
+	}
+
+	err := service.stopLocalJailIfPresent(t.Context(), 42)
+	if !errors.Is(err, cleanupErr) {
+		t.Fatalf("mount cleanup error = %v, want %v", err, cleanupErr)
+	}
 }
 
 func TestStopLocalJailFailsWhenRuntimeCannotBeConfirmedStopped(t *testing.T) {
 	jail := &runtimeTruthJailStub{runningStates: []bool{true, true}}
-	service := &Service{Jail: jail}
+	service := &Service{
+		Jail: jail,
+		replicationJailMountCleaner: func(context.Context, uint) error {
+			t.Fatal("mount cleanup ran before runtime stop was confirmed")
+			return nil
+		},
+	}
 
-	err := service.stopLocalJailIfPresent(42)
+	err := service.stopLocalJailIfPresent(t.Context(), 42)
 	if err == nil || !strings.Contains(err.Error(), "local_jail_still_running_after_stop") {
 		t.Fatalf("still-running jail returned %v", err)
+	}
+}
+
+func TestSelfFenceSurfacesJailMountCleanupFailure(t *testing.T) {
+	cleanupErr := errors.New("self-fence runtime mount cleanup failed")
+	jail := &runtimeTruthJailStub{}
+	cleanupCalls := 0
+	service := &Service{
+		Jail: jail,
+		localFilesystemDatasetLister: func(context.Context) ([]string, error) {
+			return nil, nil
+		},
+		replicationGuestDriverFactory: func(string) (replicationGuestDriver, error) {
+			return &disposableReplicationGuestDriver{}, nil
+		},
+		replicationJailMountCleaner: func(context.Context, uint) error {
+			cleanupCalls++
+			return cleanupErr
+		},
+	}
+	policy := &clusterModels.ReplicationPolicy{
+		ID:        8,
+		GuestType: clusterModels.ReplicationGuestTypeJail,
+		GuestID:   42,
+	}
+
+	err := service.selfFenceReplicationPolicy(
+		t.Context(), policy, "node-local", "node-owner", "test", false,
+	)
+	if !errors.Is(err, cleanupErr) {
+		t.Fatalf("self-fence error = %v, want %v", err, cleanupErr)
+	}
+	if cleanupCalls != 1 {
+		t.Fatalf("mount cleanup calls = %d, want 1", cleanupCalls)
+	}
+	if jail.stopCalls != 1 {
+		t.Fatalf("emergency stop calls = %d, want 1", jail.stopCalls)
 	}
 }
 

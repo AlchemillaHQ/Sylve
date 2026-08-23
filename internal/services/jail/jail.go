@@ -31,6 +31,7 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/mountutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -667,6 +668,18 @@ func (s *Service) destroyStorageDatasetForDelete(ctx context.Context, datasetNam
 		}
 		if dataset == nil {
 			return nil
+		}
+
+		mountpoint, mountpointErr := validateFilesystemDatasetMountpoint(dataset, datasetName, "")
+		if mountpointErr != nil {
+			return fmt.Errorf("failed_to_validate_storage_dataset_mountpoint: %w", mountpointErr)
+		}
+		if unmountErr := mountutil.UnmountDescendants(
+			ctx,
+			datasetName,
+			mountpoint,
+		); unmountErr != nil {
+			return fmt.Errorf("failed_to_unmount_storage_dataset_descendants: %w", unmountErr)
 		}
 
 		err = dataset.Destroy(ctx, true, false)

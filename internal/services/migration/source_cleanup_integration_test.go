@@ -8,7 +8,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -109,6 +112,87 @@ func TestIntegrationPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIntegrationPhaseCleanupSourceUnmountsFstabMountTree(t *testing.T) {
+	if runtime.GOOS != "freebsd" {
+		t.Skip("requires FreeBSD filesystem mounts")
+	}
+	zfstest.SkipIfUnavailable(t)
+
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	const ctID uint = 918
+	datasetName := fmt.Sprintf("%s/sylve/jails/%d", pool, ctID)
+	zfstest.EnsureDataset(t, client, datasetName)
+	dataset, err := client.ZFS.Get(t.Context(), datasetName, false)
+	if err != nil {
+		t.Fatalf("get jail dataset: %v", err)
+	}
+
+	devMount := filepath.Join(dataset.Mountpoint, "dev")
+	fdMount := filepath.Join(devMount, "fd")
+	if err := os.MkdirAll(fdMount, 0o755); err != nil {
+		t.Fatalf("create runtime mountpoints: %v", err)
+	}
+	fstabPath := filepath.Join(t.TempDir(), "fstab")
+	fstab := fmt.Sprintf(
+		"devfs %s devfs rw 0 0\nfdescfs %s fdescfs rw 0 0\n",
+		devMount,
+		fdMount,
+	)
+	if err := os.WriteFile(fstabPath, []byte(fstab), 0o600); err != nil {
+		t.Fatalf("write temporary fstab: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = exec.Command("/sbin/umount", "-f", fdMount).CombinedOutput()
+		_, _ = exec.Command("/sbin/umount", "-f", devMount).CombinedOutput()
+	})
+	if output, err := exec.Command(
+		"/sbin/mount", "-a", "-F", fstabPath,
+	).CombinedOutput(); err != nil {
+		t.Fatalf("mount temporary jail fstab: %v\n%s", err, output)
+	}
+	for _, target := range []string{devMount, fdMount} {
+		if !integrationMountTargetPresent(t, target) {
+			t.Fatalf("expected fstab target to be mounted: %s", target)
+		}
+	}
+
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	svc := &Service{DB: db, GZFS: client}
+	payload := &migrationPayload{SourceDatasetRoots: []string{datasetName}}
+	task := taskModels.GuestLifecycleTask{GuestType: taskModels.GuestTypeJail, GuestID: ctID}
+	if err := svc.phaseCleanupSource(t.Context(), payload, task); err != nil {
+		t.Fatalf("cleanup fstab-mounted jail source: %v", err)
+	}
+	for _, target := range []string{fdMount, devMount} {
+		if integrationMountTargetPresent(t, target) {
+			t.Fatalf("runtime target remains mounted after cleanup: %s", target)
+		}
+	}
+	if _, err := client.ZFS.Get(t.Context(), datasetName, false); err == nil {
+		t.Fatalf("jail dataset remains after cleanup: %s", datasetName)
+	}
+	if err := svc.phaseCleanupSource(t.Context(), payload, task); err != nil {
+		t.Fatalf("idempotent cleanup retry: %v", err)
+	}
+}
+
+func integrationMountTargetPresent(t *testing.T, target string) bool {
+	t.Helper()
+	output, err := exec.Command("/sbin/mount", "-p").Output()
+	if err != nil {
+		t.Fatalf("list live mounts: %v", err)
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestIntegrationVerifyMigrationSourceCleanupDoesNotMatchAdjacentGuestIDs(t *testing.T) {

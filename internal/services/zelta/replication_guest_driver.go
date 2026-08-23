@@ -73,8 +73,8 @@ func (d jailReplicationGuestDriver) sourceDatasets(ctx context.Context, guestID 
 	return []string{dataset}, nil
 }
 
-func (d jailReplicationGuestDriver) demote(_ context.Context, guestID uint, _ string) error {
-	return d.service.stopLocalJailIfPresent(guestID)
+func (d jailReplicationGuestDriver) demote(ctx context.Context, guestID uint, _ string) error {
+	return d.service.stopLocalJailIfPresent(ctx, guestID)
 }
 
 func (d jailReplicationGuestDriver) selfFence(

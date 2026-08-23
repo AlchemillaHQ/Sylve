@@ -181,6 +181,7 @@ type Service struct {
 	localVolumeDatasetLister     func(context.Context) ([]string, error)
 	localDatasetUnmounter        func(context.Context, string, bool) error
 	localDatasetMounter          func(context.Context, string) error
+	replicationJailMountCleaner  func(context.Context, uint) error
 
 	backupOperationEnqueue            func(context.Context, string, any) error
 	replicationOperationEnqueue       func(context.Context, string, any) error

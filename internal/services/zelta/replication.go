@@ -34,7 +34,9 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/mountutil"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
@@ -8641,7 +8643,7 @@ func (s *Service) activateReplicationJail(
 		// idempotent outcome; do not bounce it.
 		return nil
 	}
-	if err := s.stopLocalJailIfPresent(ctID); err != nil {
+	if err := s.stopLocalJailIfPresent(ctx, ctID); err != nil {
 		return err
 	}
 
@@ -8817,7 +8819,7 @@ func (s *Service) cleanupOrphanedVMRegistration(rid uint) {
 	logger.L.Info().Uint("rid", rid).Msg("purged_orphaned_vm_after_failed_activation")
 }
 
-func (s *Service) stopLocalJailIfPresent(ctID uint) error {
+func (s *Service) stopLocalJailIfPresent(ctx context.Context, ctID uint) error {
 	if ctID == 0 || s.Jail == nil {
 		return nil
 	}
@@ -8826,19 +8828,76 @@ func (s *Service) stopLocalJailIfPresent(ctID uint) error {
 	if err != nil {
 		return fmt.Errorf("check_local_jail_runtime_state_failed: %w", err)
 	}
-	if !running {
+	if running {
+		stopErr := s.Jail.ForceStopJail(ctID)
+		stillRunning, verifyErr := s.Jail.IsJailRunning(ctID)
+		if verifyErr != nil {
+			return errors.Join(stopErr, fmt.Errorf("verify_local_jail_stopped_failed: %w", verifyErr))
+		}
+		if stillRunning {
+			return errors.Join(stopErr, fmt.Errorf("local_jail_still_running_after_stop"))
+		}
+	}
+
+	return s.cleanupStoppedReplicationJailMounts(ctx, ctID)
+}
+
+func (s *Service) cleanupStoppedReplicationJailMounts(ctx context.Context, ctID uint) error {
+	if s != nil && s.replicationJailMountCleaner != nil {
+		return s.replicationJailMountCleaner(ctx, ctID)
+	}
+	if s == nil || s.Jail == nil || ctID == 0 {
 		return nil
 	}
-
-	stopErr := s.Jail.ForceStopJail(ctID)
-	stillRunning, verifyErr := s.Jail.IsJailRunning(ctID)
-	if verifyErr != nil {
-		return errors.Join(stopErr, fmt.Errorf("verify_local_jail_stopped_failed: %w", verifyErr))
-	}
-	if stillRunning {
-		return errors.Join(stopErr, fmt.Errorf("local_jail_still_running_after_stop"))
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
+	running, err := s.Jail.IsJailRunning(ctID)
+	if err != nil {
+		return fmt.Errorf("replication_jail_mount_cleanup_state_check_failed: %w", err)
+	}
+	if running {
+		return fmt.Errorf("replication_jail_still_running_before_mount_cleanup")
+	}
+
+	roots, err := s.findLocalGuestDatasets(ctx, clusterModels.ReplicationGuestTypeJail, ctID)
+	if err != nil {
+		return fmt.Errorf("replication_jail_mount_cleanup_dataset_discovery_failed: %w", err)
+	}
+	type mountAnchor struct {
+		dataset    string
+		mountpoint string
+	}
+	anchors := make([]mountAnchor, 0, len(roots))
+	for _, root := range roots {
+		dataset, err := s.getLocalDataset(ctx, root)
+		if err != nil {
+			return fmt.Errorf("replication_jail_mount_cleanup_dataset_%s_open_failed: %w", root, err)
+		}
+		if dataset == nil {
+			continue
+		}
+		mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
+		if err != nil {
+			return fmt.Errorf("replication_jail_mount_cleanup_dataset_%s_mountpoint_invalid: %w", root, err)
+		}
+		anchors = append(anchors, mountAnchor{dataset: root, mountpoint: mountpoint})
+	}
+
+	for _, anchor := range anchors {
+		if err := mountutil.UnmountDescendants(
+			ctx,
+			anchor.dataset,
+			anchor.mountpoint,
+		); err != nil {
+			return fmt.Errorf(
+				"replication_jail_mount_cleanup_dataset_%s_failed: %w",
+				anchor.dataset,
+				err,
+			)
+		}
+	}
 	return nil
 }
 
@@ -8847,7 +8906,7 @@ func (s *Service) forceKillReplicationJail(ctx context.Context, ctID uint) error
 		return nil
 	}
 
-	if err := s.stopLocalJailIfPresent(ctID); err != nil {
+	if err := s.stopLocalJailIfPresent(ctx, ctID); err != nil {
 		return err
 	}
 
@@ -9306,6 +9365,17 @@ func (s *Service) selfFenceReplicationPolicy(
 	}
 	if useRegisteredDriverFence {
 		driver.selfFence(ctx, policy.ID, policy.GuestID, localNodeID, expectedOwner, fenceReason)
+	}
+	if strings.TrimSpace(policy.GuestType) == clusterModels.ReplicationGuestTypeJail {
+		if err := s.cleanupStoppedReplicationJailMounts(ctx, policy.GuestID); err != nil {
+			fenceErr = errors.Join(fenceErr, err)
+			logger.L.Warn().
+				Err(err).
+				Uint("policy_id", policy.ID).
+				Uint("guest_id", policy.GuestID).
+				Str("reason", fenceReason).
+				Msg("replication_self_fence_jail_mount_cleanup_failed")
+		}
 	}
 	datasetFenceErr := s.fenceReplicationGuestDatasets(ctx, policy, fenceReason)
 	if datasetFenceErr != nil {
