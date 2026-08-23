@@ -7,6 +7,7 @@
           <th scope="col" class="sylve"><span>Sylve</span><small>FreeBSD-native</small></th>
           <th scope="col"><span>Proxmox VE</span><small>Virtualization platform</small></th>
           <th scope="col"><span>TrueNAS SCALE</span><small>Storage platform</small></th>
+          <th scope="col"><span>Cockpit</span><small>Linux web console</small></th>
         </tr>
       </thead>
       <tbody>
@@ -15,47 +16,54 @@
           <td class="sylve"><strong>FreeBSD 15+</strong><span>Installed at the application layer</span></td>
           <td><strong>Debian Linux</strong><span>Delivered as a complete platform</span></td>
           <td><strong>Linux</strong><span>Delivered as a storage appliance OS</span></td>
+          <td><strong>Linux distributions</strong><span>Installed on an existing server</span></td>
         </tr>
         <tr>
           <th scope="row">Primary focus</th>
           <td class="sylve"><strong>FreeBSD infrastructure</strong><span>Compute, ZFS, networking, and host operations together</span></td>
           <td><strong>Virtualization clusters</strong><span>VMs, containers, distributed compute, and storage</span></td>
           <td><strong>Storage services</strong><span>ZFS data management with apps and VMs alongside it</span></td>
+          <td><strong>Linux host administration</strong><span>Everyday system tasks through familiar system tools and APIs</span></td>
         </tr>
         <tr>
           <th scope="row">Workloads</th>
           <td class="sylve"><strong>Bhyve + Jails</strong><span>FreeBSD and Linux guests</span></td>
           <td><strong>KVM + LXC</strong><span>Linux containers and virtual machines</span></td>
           <td><strong>KVM + Apps</strong><span>Workloads run close to storage</span></td>
+          <td><strong>Libvirt + Podman integrations</strong><span>Optional applications manage virtual machines and containers</span></td>
         </tr>
         <tr>
           <th scope="row">Clustering</th>
           <td class="sylve"><strong>Built-in Raft coordination</strong><span>No separate clustering stack</span></td>
           <td><strong>Corosync-based cluster</strong><span>Mature multi-node virtualization tooling</span></td>
           <td><strong>Storage-oriented HA</strong><span>Advanced HA capabilities vary by deployment</span></td>
+          <td><strong>No cluster control plane</strong><span>Host-oriented management with optional remote access over SSH</span></td>
         </tr>
         <tr>
           <th scope="row">Host ownership</th>
           <td class="sylve"><strong>Leaves FreeBSD intact</strong><span>Manages the host without replacing it</span></td>
           <td><strong>Owns the platform</strong><span>Designed to be the virtualization host OS</span></td>
           <td><strong>Owns the appliance</strong><span>Designed to be the storage host OS</span></td>
+          <td><strong>Leaves Linux intact</strong><span>Uses the host's existing accounts, tools, and services</span></td>
         </tr>
         <tr>
           <th scope="row">Best fit</th>
           <td class="sylve"><strong>Unified infrastructure</strong><span>One self-contained system for compute, storage, networking, and operations</span></td>
           <td><strong>General virtualization</strong><span>Large, established Linux-based VM environments</span></td>
           <td><strong>Storage-first systems</strong><span>NAS and data services are the center of the deployment</span></td>
+          <td><strong>Existing Linux servers</strong><span>Graphical administration without adopting an appliance platform</span></td>
         </tr>
         <tr>
           <th scope="row">License model</th>
           <td class="sylve"><strong>BSD-2-Clause</strong><span>Permissive open source</span></td>
           <td><strong>AGPLv3</strong><span>Open source with optional subscriptions</span></td>
           <td><strong>Open-source components</strong><span>Additional Enterprise features are licensed</span></td>
+          <td><strong>GNU LGPL</strong><span>Free and open source</span></td>
         </tr>
       </tbody>
     </table>
   </div>
-  <p class="note">These products overlap, but begin from different priorities. Sylve is the FreeBSD-native option; Proxmox VE is virtualization-first; TrueNAS SCALE is storage-first.</p>
+  <p class="note">These products overlap, but begin from different priorities. Sylve is the FreeBSD-native option; Proxmox VE is virtualization-first; TrueNAS SCALE is storage-first; Cockpit is host-administration-first.</p>
 </div>
 
 <style>
@@ -74,7 +82,7 @@
 
   table {
     width: 100%;
-    min-width: 40rem;
+    min-width: 58rem;
     border-collapse: collapse;
     background: var(--sl-color-bg);
     font-size: 0.78rem;
