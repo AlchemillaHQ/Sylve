@@ -11,6 +11,12 @@ const site = 'https://sylve.io';
 export default defineConfig({
     output: 'static',
     site,
+    redirects: {
+        '/guides/deployments/simple-virtual-machine': '/guides/one-shot-guides/simple-virtual-machine',
+        '/guides/deployments/technitium-dns-jail': '/guides/one-shot-guides/technitium-dns-jail',
+        '/guides/deployments/jellyfin-jail': '/guides/one-shot-guides/jellyfin-jail',
+        '/guides/deployments/rocky-linux-jail': '/guides/one-shot-guides/rocky-linux-jail',
+    },
     integrations: [
         sitemap(),
         starlight({
@@ -351,12 +357,13 @@ export default defineConfig({
                             ],
                         },
                         {
-                            label: 'Deployments',
+                            label: 'One-Shot Guides',
                             collapsed: false,
                             items: [
-                                'guides/deployments/technitium-dns-jail',
-                                'guides/deployments/jellyfin-jail',
-                                'guides/deployments/rocky-linux-jail',
+                                'guides/one-shot-guides/simple-virtual-machine',
+                                'guides/one-shot-guides/technitium-dns-jail',
+                                'guides/one-shot-guides/jellyfin-jail',
+                                'guides/one-shot-guides/rocky-linux-jail',
                             ],
                         },
                         {
