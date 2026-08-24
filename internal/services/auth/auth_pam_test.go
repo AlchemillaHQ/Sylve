@@ -56,6 +56,16 @@ func TestGetOrCreatePAMIdentityReuse(t *testing.T) {
 func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 	svc := newAuthTestService(t)
 
+	originalConfig := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: true,
+		},
+	}
+	t.Cleanup(func() {
+		config.ParsedConfig = originalConfig
+	})
+
 	user := models.User{
 		Username: "pamuser",
 		Password: "pw",

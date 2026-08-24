@@ -77,7 +77,7 @@ func TestLoginConfigHandlerReturnsPAMDisabledFromConfig(t *testing.T) {
 	}
 }
 
-func TestLoginConfigHandlerReturnsPAMEnabledByDefault(t *testing.T) {
+func TestLoginConfigHandlerReturnsPAMDisabledByDefault(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	originalConfig := config.ParsedConfig
@@ -97,8 +97,8 @@ func TestLoginConfigHandlerReturnsPAMEnabledByDefault(t *testing.T) {
 		t.Fatalf("expected_pam_enabled_bool")
 	}
 
-	if !pamEnabled {
-		t.Fatalf("expected_pam_enabled")
+	if pamEnabled {
+		t.Fatalf("expected_pam_disabled")
 	}
 }
 
