@@ -1,0 +1,79 @@
+name: Enhancement request
+description: Suggest an improvement to an existing Sylve workflow or capability.
+title: "[Enhancement] "
+labels: ["Enhancement"]
+assignees: ["hayzamjs"]
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when Sylve already provides the capability but its behavior, usability, or performance could be improved.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      options:
+        - Installation and upgrade
+        - Dashboard and general UI
+        - Virtual machines
+        - Jails
+        - Storage and ZFS
+        - Networking, firewall, and WireGuard
+        - Backups, replication, and clustering
+        - Authentication and certificates
+        - Downloader and utilities
+        - CLI and interactive console
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current behavior
+      description: Explain how the existing workflow or capability behaves today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired-improvement
+    attributes:
+      label: Suggested improvement
+      description: Describe what should change and how the improved experience should work.
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Benefit
+      description: Who would benefit, and what problem would this improvement solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or other approaches.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, mockups, links, or related issues.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched open and closed issues for an existing request.
+          required: true

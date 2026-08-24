@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sylve documentation
+    url: https://sylve.io/docs
+    about: Check installation, configuration, and feature documentation.
+  - name: Community support
+    url: https://chat.sylve.io
+    about: Ask quick questions and discuss Sylve with the community.
