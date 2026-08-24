@@ -1,0 +1,472 @@
+---
+title: Import a VMware VM
+description: Convert a VMware VMDK and import the virtual machine into Sylve.
+---
+
+import createImportsDataset from "./import-vmware-create-imports-dataset.png";
+import createAdvanced from "./import-vmware-create-advanced.png";
+import createHardware from "./import-vmware-create-hardware.png";
+import createNetwork from "./import-vmware-create-network.png";
+import createStorage from "./import-vmware-create-storage.png";
+import fileExplorerReady from "./import-vmware-file-explorer-ready.png";
+import fileExplorerUpload from "./import-vmware-file-explorer-upload.png";
+import firstBoot from "./import-vmware-first-boot.png";
+import importRawDisk from "./import-vmware-import-raw-disk.png";
+import storageReady from "./import-vmware-storage-ready.png";
+
+This guide imports an existing VMware virtual machine into Sylve. It uses an Alpine Linux VM with a split VMDK as the example, but the same workflow applies to many Linux and BSD guests.
+
+The process moves the virtual disk and recreates the virtual hardware. VMware configuration, snapshots, suspended memory, and NVRAM are not imported automatically.
+
+:::caution[Keep the original VM]
+Work from a copy and keep the original VMware VM unchanged until the imported VM boots, has working networking, and passes application checks. A migration mistake can leave the only useful copy difficult to recover.
+:::
+
+## Prepare Sylve and host networking
+
+Follow [Simple Virtual Machine](/guides/one-shot-guides/simple-virtual-machine/) through [Create a Standard Switch](/guides/one-shot-guides/simple-virtual-machine/#create-a-standard-switch). This installs and initializes Sylve, enables Virtualization, and creates the network switch used by the imported VM.
+
+Stop before **Download the Debian installer**. This migration uses the existing VMware disk instead of an installer ISO.
+
+## Understand the VMware files
+
+A VMware directory can contain configuration, firmware state, logs, snapshots, and one or more virtual-disk files. The example directory contains:
+
+```bash
+hayzam-pc :: ~/vmware/Alpine » ls -lh
+total 252M
+-rw-rw-r-- 1 hayzam hayzam 7.7K Aug 24 13:10 Alpine-0.scoreboard
+-rw------- 1 hayzam hayzam 265K Aug 24 13:12 Alpine.nvram
+-rw------- 1 hayzam hayzam 7.0M Aug 24 13:12 Alpine-s001.vmdk
+-rw------- 1 hayzam hayzam 124M Aug 24 13:12 Alpine-s002.vmdk
+-rw------- 1 hayzam hayzam 128K Aug 24 13:12 Alpine-s003.vmdk
+-rw-rw-r-- 1 hayzam hayzam 7.9K Aug 24 13:12 Alpine.scoreboard
+-rw------- 1 hayzam hayzam  536 Aug 24 13:11 Alpine.vmdk
+-rw-r--r-- 1 hayzam hayzam    0 Aug 24 13:10 Alpine.vmsd
+-rwxr-xr-x 1 hayzam hayzam 2.6K Aug 24 13:12 Alpine.vmx
+-rw-r--r-- 1 hayzam hayzam  261 Aug 24 13:10 Alpine.vmxf
+-rw-r--r-- 1 hayzam hayzam 180K Aug 24 13:10 vmware-0.log
+-rw-r--r-- 1 hayzam hayzam 218K Aug 24 13:12 vmware.log
+hayzam-pc :: ~/vmware/Alpine » 
+```
+
+| File | Purpose |
+| --- | --- |
+| `Alpine.vmx` | Describes the VMware virtual hardware, including firmware, CPU, memory, disks, and network adapters. Use it as a reference when recreating the VM in Sylve. |
+| `Alpine.nvram` | Contains VMware firmware state and stored UEFI variables. Sylve does not import this file and creates new UEFI variable storage instead. |
+| `Alpine.vmdk` | Small disk descriptor that records the disk geometry and references the split extent files. Use this descriptor as the `qemu-img` conversion source. |
+| `Alpine-s001.vmdk` and later | Hold the actual virtual-disk data. Keep every referenced extent beside `Alpine.vmdk` while converting it. |
+
+Do not upload or convert only an extent such as `Alpine-s001.vmdk`. Run conversion against the descriptor, `Alpine.vmdk`, while every referenced extent remains beside it.
+
+## Prepare the VMware VM
+
+Before conversion:
+
+1. Shut the guest operating system down cleanly.
+2. Confirm that VMware shows the VM as powered off, not suspended.
+3. Delete or consolidate VMware snapshots so the descriptor represents the state you intend to migrate.
+4. Copy the complete VM directory to a safe working location.
+5. Do not start the original VM again after the final conversion if both systems could use the same identity, addresses, or application data.
+
+A scoreboard or lock file left by a running VMware process is a sign that the source may still be in use. Close VMware and confirm that the VM is fully stopped before continuing.
+
+## Record the original configuration
+
+Inspect the settings that must be recreated in Sylve:
+
+```bash
+hayzam-pc :: ~/vmware/Alpine » grep -E '^(firmware|memsize|numvcpus|ethernet0\.virtualDev|ethernet0\.addressType|ethernet0\.address|scsi0\.virtualDev|(scsi|sata|ide|nvme)[0-9]+:[0-9]+\.fileName)' Alpine.vmx
+numvcpus = "4"
+memsize = "4096"
+nvme0:0.fileName = "Alpine.vmdk"
+sata0:1.fileName = "/home/hayzam/Downloads/alpine-virt-3.24.1-x86_64.iso"
+ethernet0.addressType = "generated"
+ethernet0.virtualDev = "e1000"
+firmware = "efi"
+hayzam-pc :: ~/vmware/Alpine » 
+```
+
+Interpret the example before recreating its hardware:
+
+| Result | Meaning for the Sylve VM |
+| --- | --- |
+| `numvcpus = "4"` | Recreate four vCPUs. A simple layout is one socket, four cores, and one thread per core. |
+| `memsize = "4096"` | Allocate 4 GiB of memory. |
+| `nvme0:0.fileName = "Alpine.vmdk"` | `Alpine.vmdk` is the active boot-disk descriptor to convert. |
+| `sata0:1.fileName = "...alpine-virt-3.24.1-x86_64.iso"` | VMware still has an installer ISO attached. It is not part of the boot-disk conversion and does not need to be imported. |
+| `ethernet0.addressType = "generated"` | VMware generated the MAC address, so Sylve can generate a new managed MAC unless the guest configuration depends on the old value. |
+| `ethernet0.virtualDev = "e1000"` | Use E1000 for the first Sylve boot to minimize network-driver changes. |
+| No `firmware = "efi"` result | Treat the source as a legacy BIOS guest until its boot mode is verified. It will need conversion to UEFI before import. |
+
+:::caution[Legacy BIOS guests]
+Sylve on amd64 provides UEFI firmware but not VMware legacy BIOS or UEFI CSM. A VMware guest installed for legacy BIOS may not boot directly after import. Convert the guest to UEFI while it is still recoverable in VMware, or plan to repair its partitioning and bootloader from suitable rescue media.
+:::
+
+## Convert the split VMDK
+
+Install `qemu-img` on the computer holding the VMware directory. On Debian or Ubuntu it is provided by `qemu-utils`. Other operating systems may package it under a different name.
+
+From the directory containing the descriptor and every extent, run `qemu-img info Alpine.vmdk` to inspect the active disk. Substitute the descriptor recorded from `Alpine.vmx` if it differs:
+
+```bash
+hayzam-pc :: ~/vmware/Alpine » qemu-img info Alpine.vmdk
+image: Alpine.vmdk
+file format: vmdk
+virtual size: 8 GiB (8589934592 bytes)
+disk size: 251 MiB
+cluster_size: 65536
+Format specific information:
+    cid: 2583358334
+    parent cid: 4294967295
+    create type: twoGbMaxExtentSparse
+    extents:
+        [0]:
+            virtual size: 4261412864
+            filename: Alpine-s001.vmdk
+            cluster size: 65536
+            format: SPARSE
+        [1]:
+            virtual size: 4261412864
+            filename: Alpine-s002.vmdk
+            cluster size: 65536
+            format: SPARSE
+        [2]:
+            virtual size: 67108864
+            filename: Alpine-s003.vmdk
+            cluster size: 65536
+            format: SPARSE
+Child node '/extents.2':
+    filename: Alpine-s003.vmdk
+    protocol type: file
+    file length: 128 KiB (131072 bytes)
+    disk size: 50.1 MiB
+Child node '/extents.1':
+    filename: Alpine-s002.vmdk
+    protocol type: file
+    file length: 124 MiB (129957888 bytes)
+    disk size: 150 MiB
+Child node '/extents.0':
+    filename: Alpine-s001.vmdk
+    protocol type: file
+    file length: 7 MiB (7340032 bytes)
+    disk size: 50.5 MiB
+Child node '/file':
+    filename: Alpine.vmdk
+    protocol type: file
+    file length: 1 KiB (1024 bytes)
+    disk size: 4 KiB
+hayzam-pc :: ~/vmware/Alpine »
+```
+
+This confirms that `Alpine.vmdk` is a split sparse disk backed by all three extent files. Its current VMware data occupies about 251 MiB, but its virtual size is 8 GiB. The converted RAW file therefore has an 8 GiB logical size, and the browser upload processes the full 8 GiB.
+
+Note the **virtual size**. It determines the logical size that the browser must upload and the space required for the managed Raw Disk copy.
+
+Convert the descriptor and its referenced extents into one RAW disk:
+
+```bash
+hayzam-pc :: ~/vmware/Alpine » qemu-img convert -p -f vmdk -O raw Alpine.vmdk Alpine.raw
+    (100.00/100%)
+hayzam-pc :: ~/vmware/Alpine »
+```
+
+The `-p` option shows progress. `-f vmdk` identifies the source format, and `-O raw` creates the format required by the Raw Disk import workflow.
+
+Verify the result by running `qemu-img info Alpine.raw`:
+
+```bash
+hayzam-pc :: ~/vmware/Alpine » qemu-img info Alpine.raw
+image: Alpine.raw
+file format: raw
+virtual size: 8 GiB (8589934592 bytes)
+disk size: 127 MiB
+Child node '/file':
+    filename: Alpine.raw
+    protocol type: file
+    file length: 8 GiB (8589934592 bytes)
+    disk size: 127 MiB
+hayzam-pc :: ~/vmware/Alpine » 
+```
+
+The RAW file's apparent size matches the complete virtual disk even when the file is sparse. Keep `Alpine.raw` until the imported VM has been verified.
+
+## Create a temporary import dataset
+
+Open **Storage → ZFS → Datasets → File Systems** and select **New**. Create a temporary filesystem named `imports` beneath `zroot`. Keep the default storage properties and leave **Quota** empty. If you set a quota, it must be larger than the RAW disk's 8 GiB logical size and leave enough room for the upload.
+
+This guide assumes its mountpoint is:
+
+```text
+/zroot/imports
+```
+
+Set **Custom Mount Point** to `/zroot/imports`. Use the actual mountpoint shown by Sylve when your pool is mounted somewhere else. The path must be absolute because the Raw Disk import workflow reads an existing regular file from the node.
+
+<img
+  src={createImportsDataset.src}
+  alt="Create Filesystem dialog with imports beneath zroot, default storage properties, and /zroot/imports as the custom mountpoint"
+/>
+
+## Upload the RAW disk with File Explorer
+
+Open **Storage → Explorer**. File Explorer starts in the root directory, `/`, by default. For this example, first open `zroot`, then open `imports` to reach `/zroot/imports`. If you used a different custom mountpoint, navigate to that location instead.
+
+Select **Add New** then **Upload File** and upload `Alpine.raw`.
+
+Wait for the browser upload to complete before closing the upload dialog. Then confirm that `/zroot/imports/Alpine.raw` appears in File Explorer.
+
+<img
+  src={fileExplorerUpload.src}
+  alt="File Explorer upload dialog at /zroot/imports showing the 8.59 GB Alpine.raw upload as complete"
+/>
+
+<img
+  src={fileExplorerReady.src}
+  alt="File Explorer at /zroot/imports showing the uploaded Alpine.raw file"
+/>
+
+:::caution[If a large upload repeatedly fails]
+Sylve limits the size of each browser upload with `uploads.maxFileBytes` in `/usr/local/etc/sylve/config.json`. The default is 64 GiB. See [Configuration file](/getting-started/#configuration-file) for the configuration location and format. After changing the value, restart Sylve before trying the upload again.
+
+When Sylve is accessed through a reverse proxy, the proxy may enforce a smaller request-body limit or timeout. An upload that repeatedly stops or appears to restart can therefore fail at the proxy before Sylve receives the complete file. Increase the proxy's maximum request size and upload timeout as needed, or connect directly to Sylve for the transfer. The exact setting depends on the reverse-proxy software.
+:::
+
+:::caution[Sparse RAW files upload at their full logical size]
+`qemu-img` can create a sparse RAW file whose allocated space on the source computer is much smaller than its apparent size. A browser upload reads the complete logical file, including sparse ranges, so transfer time and node storage use are based on the virtual disk size rather than the smaller allocated size.
+
+This UI workflow is practical for the small Alpine example. For a large VMware disk, use a transfer method that preserves sparse files, such as `rsync --sparse`, or copy a compressed image to the node and decompress it there. The final import source must still be an uncompressed RAW regular file at a known absolute path.
+:::
+
+The upload and Raw Disk import also coexist temporarily because Sylve copies the source into managed VM storage. Allow free space for both complete files before starting.
+
+## Create the VM definition
+
+Click on **Create VM** that's present on the top-right.
+
+### Basic
+
+Choose an unused VM ID and use a clear name such as `Alpine`. Add a description noting that the VM was imported from VMware.
+
+### Storage
+
+Set **Storage Type** to **No Storage** and leave **Installation Media** set to **None**. The uploaded RAW disk will be imported after the VM definition exists.
+
+<img
+  src={createStorage.src}
+  alt="Create Virtual Machine Storage tab with No Storage selected and Installation Media set to None"
+/>
+
+### Network
+
+Attach the VM to the switch that provides the required guest network. Select the Standard Switch created earlier when following this guide exactly. The example screenshot instead uses an existing Manual Switch named `WAN`.
+
+Use **E1000** for the first boot when broad compatibility is more important than performance. Use **VirtIO** when the guest already has VirtIO network support. Alpine Linux normally supports VirtIO, but changing both hypervisor and device model at once can complicate troubleshooting.
+
+Leave **MAC Address** empty so Sylve generates a managed address. Reuse the VMware MAC only when the guest or surrounding network deliberately depends on it, and never run the original and imported VM on the same network with the same MAC.
+
+<img
+  src={createNetwork.src}
+  alt="Create Virtual Machine Network tab with the WAN Manual Switch selected, E1000 emulation, and no manually selected MAC address"
+/>
+
+### Hardware
+
+Recreate the source VM's vCPU count and memory using the values recorded from `Alpine.vmx`. A simple topology of one socket, the required number of cores, and one thread per core is suitable unless the guest licensing or workload requires another layout.
+
+Do not copy VMware PCI assignments. Configure Sylve PCI passthrough separately only after the imported VM works without it.
+
+<img
+  src={createHardware.src}
+  alt="Create Virtual Machine Hardware tab with one socket, four cores, one thread, 4 GiB of memory, and no PCI passthrough devices selected"
+/>
+
+### Advanced
+
+Enable **VNC** for the first boot so firmware and bootloader errors remain visible.
+
+Choose **UEFI** when the VMware configuration contains `firmware = "efi"`. VMware's `Alpine.nvram` is not imported, so Sylve creates fresh UEFI variable storage. The guest should provide a fallback EFI loader such as `EFI/BOOT/BOOTX64.EFI`, or its boot entry may need repair.
+
+Keep **QEMU GA** disabled until the QEMU Guest Agent is installed and enabled inside the guest. Configure Start On Boot only after the migration has been tested.
+
+Keep **Serial Console** enabled, especially for Linux and/or BSD guests that may not have a graphical console. It provides an alternative to VNC for troubleshooting boot failures.
+
+<img
+  src={createAdvanced.src}
+  alt="Create Virtual Machine Advanced tab with UEFI, VNC, and Serial Console enabled while Start On Boot and QEMU GA remain disabled"
+/>
+
+Select **Create** and wait for the empty VM definition to appear.
+
+## Import the RAW boot disk
+
+Keep the VM shut off. Open its **Storage** page, select **New**, and choose **Import**.
+
+Configure the attachment:
+
+- **Storage Type:** **Raw Disk**
+- **Source Path:** `/zroot/imports/Alpine.raw`, or the actual absolute upload path
+- **Destination Pool:** the pool that will hold the VM's managed storage
+- **Emulation:** **AHCI Hard Disk** for the first compatibility-oriented boot
+- **Boot Order:** `0`
+
+Sylve verifies that the source is a regular file, copies it into the VM's managed raw-disk location, and leaves the uploaded source file unchanged. Keep the browser open until the import task finishes.
+
+<img
+  src={importRawDisk.src}
+  alt="New Storage dialog importing /zroot/imports/Alpine.raw into zroot as a Raw Disk with AHCI Hard Disk emulation and boot order 0"
+/>
+
+Confirm that the imported disk appears as enabled storage before starting the VM.
+
+<img
+  src={storageReady.src}
+  alt="Alpine VMware VM Storage page showing an enabled 8 GiB Raw Disk named From VMware with AHCI Hard Disk emulation and boot order 0"
+/>
+
+## Perform the first boot
+
+Open **Console**, then start the VM. Watch the firmware and guest boot process rather than assuming a successful Start action means the operating system booted.
+
+<img
+  src={firstBoot.src}
+  alt="Sylve VNC console showing Alpine Linux loading its kernel and initial ramdisk from the imported disk"
+/>
+
+### Use the serial console for Alpine
+
+Alpine may continue booting even when VNC remains at **Loading initial ramdisk**. VMware provides its own virtual graphics adapter, but Bhyve does not emulate that device. After Linux takes control from the UEFI framebuffer, the imported guest may therefore stop updating VNC.
+
+The normal first boot reaches an Alpine GRUB menu containing the Linux entry and **UEFI Firmware Settings**. Its timeout is short, so press an arrow key repeatedly as the VM starts to pause the menu. Highlight the Alpine Linux entry and press `e`. Find the line beginning with `linux`, remove `quiet`, and add the following parameters:
+
+```text
+console=tty0 console=ttyS0,115200n8
+```
+
+Press `Ctrl+X` or `F10` to boot, then select **Switch to Serial Console** in Sylve. The serial output should show the root filesystem mounting, OpenRC starting, and the address received by the guest.
+
+Kernel output does not provide an interactive login by itself. If SSH is available, connect to the address shown by DHCP. If you need to recover a forgotten root password, edit the GRUB entry again and also append `init=/bin/sh`. At the serial root shell, run:
+
+```sh
+mount -o remount,rw /
+passwd
+grep -q '^ttyS0:' /etc/inittab || \
+  echo 'ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100' >> /etc/inittab
+sync
+exec /sbin/init
+```
+
+The `init=/bin/sh` argument is temporary and applies only to that boot.
+
+### Recover the GRUB configuration only if needed
+
+Most UEFI installations reach the normal GRUB menu described above. Use this recovery only if the VM instead stops at a bare `grub>` prompt. List the detected devices:
+
+```text
+ls
+```
+
+For this GPT example, the root filesystem is partition 3. Locate and load its GRUB configuration:
+
+```text
+search --no-floppy --file --set=root /boot/grub/grub.cfg
+echo $root
+configfile ($root)/boot/grub/grub.cfg
+```
+
+The `echo` command should report a device such as `hd0,gpt3`. If the search fails, inspect that partition directly, then load GRUB's normal mode:
+
+```text
+ls (hd0,gpt3)/
+set root=(hd0,gpt3)
+set prefix=(hd0,gpt3)/boot/grub
+insmod normal
+normal
+```
+
+These commands affect only the current boot. After the guest starts, reinstalling the portable UEFI loader with `grub-install --removable` can repair this specific fallback-loader problem.
+
+### Make Alpine's boot repairs permanent
+
+After logging in through serial or SSH, add `console=tty0 console=ttyS0,115200n8` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` and remove `quiet`. Keep the existing root filesystem and storage-module parameters.
+
+Ensure that `/etc/inittab` contains the serial getty shown above, then regenerate the GRUB configuration:
+
+```sh
+grub-mkconfig -o /boot/grub/grub.cfg
+reboot
+```
+
+VNC may still stop updating after GRUB. Use VNC for UEFI and GRUB interaction, Serial Console for Alpine boot and recovery, and SSH for routine administration.
+
+Inside Alpine, verify the operating system, disks, and network:
+
+```sh
+alpine:~# cat /etc/alpine-release
+3.24.1
+alpine:~# lsblk
+-sh: lsblk: not found
+alpine:~# ip address
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP qlen 1000
+    link/ether 36:da:da:13:b4:76 brd ff:ff:ff:ff:ff:ff
+    inet 10.10.30.244/24 brd 10.10.30.255 scope global eth0
+       valid_lft forever preferred_lft forever
+    inet6 fd00:10:30:0:34da:daff:fe13:b476/64 scope global dynamic flags 100 
+       valid_lft 5311sec preferred_lft 2611sec
+    inet6 fe80::34da:daff:fe13:b476/64 scope link 
+       valid_lft forever preferred_lft forever
+alpine:~# ip route
+default via 10.10.30.1 dev eth0  metric 202 
+10.10.30.0/24 dev eth0 scope link  src 10.10.30.244 
+alpine:~# 
+```
+
+If the guest boots but has no network, inspect its interface names and persistent network configuration. VMware and Bhyve may expose different device names or MAC addresses.
+
+After networking works, install and enable the QEMU Guest Agent if desired:
+
+```sh
+apk add qemu-guest-agent
+rc-update add qemu-guest-agent default
+```
+
+Shut the guest down, enable **QEMU GA** in Sylve, and start the VM again. OpenRC will start the agent after the QEMU guest-agent channel becomes available.
+
+## Troubleshoot boot failures
+
+### UEFI cannot find a bootloader
+
+The VMware NVRAM file is not transferred. Boot from suitable rescue media and reinstall the guest's EFI bootloader or place its loader at the standard fallback path. Confirm that the EFI System Partition is present before changing it.
+
+### The guest was installed for legacy BIOS
+
+Sylve does not provide VMware legacy BIOS compatibility. Return to the recoverable source VM and migrate it to UEFI, or use distribution-specific rescue procedures to create an EFI System Partition and install a UEFI bootloader.
+
+### The root filesystem is not found
+
+Change the imported disk emulation from AHCI to VirtIO Block or NVMe only when the guest contains the required driver. If the VMware guest depended on a specific SCSI controller, rebuild its initramfs with the Bhyve-visible storage driver before the final conversion.
+
+### The RAW disk import fails
+
+Confirm that the source path is absolute, the file exists on the Sylve node, and it is a regular uncompressed RAW file. Also confirm that the destination pool has enough free space for a complete managed copy of the disk. A successful browser upload alone does not reserve space for the later import.
+
+## Finish the migration
+
+After the VM boots reliably:
+
+1. Verify applications and stored data.
+2. Confirm time, DNS, routes, and expected network reachability.
+3. Remove or disable VMware-specific guest tools when they are no longer useful.
+4. Enable VirtIO devices only after confirming the guest drivers.
+5. Configure Start On Boot and startup order if required.
+6. Create a Sylve [VM snapshot](/guides/node/virtual-machines/snapshots/) or [backup](/guides/node/virtual-machines/backups/).
+7. Delete `/zroot/imports/Alpine.raw` through File Explorer after confirming that the VM uses its managed copy.
+8. Remove the temporary `imports` dataset if it is empty and no longer needed.
+
+Keep the original VMware VM powered off until the imported VM has passed your recovery and application checks.
