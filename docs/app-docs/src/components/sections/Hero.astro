@@ -22,9 +22,13 @@ import ProductDemo from "@/components/ProductDemo.svelte";
     </div>
 
     <div class="hero-actions">
-      <a href="/docs/" class="button button-primary" data-astro-reload>
+      <button type="button" class="button button-primary hero-sponsor" data-sponsor-open>
+        <span class="icon-[lucide--heart-handshake] size-4" aria-hidden="true"></span>
+        Sponsor Sylve
+      </button>
+      <a href="/docs/" class="button button-secondary" data-astro-reload>
+        <span class="icon-[lucide--book-open] size-4" aria-hidden="true"></span>
         Read the docs
-        <span class="icon-[lucide--arrow-up-right] size-4" aria-hidden="true"></span>
       </a>
       <a
         href="https://github.com/AlchemillaHQ/Sylve"
@@ -32,6 +36,7 @@ import ProductDemo from "@/components/ProductDemo.svelte";
         rel="noopener noreferrer"
         class="button button-secondary"
       >
+        <span class="icon-[lucide--github] size-4" aria-hidden="true"></span>
         View on GitHub
       </a>
     </div>

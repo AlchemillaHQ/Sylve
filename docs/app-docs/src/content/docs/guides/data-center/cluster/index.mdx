@@ -108,3 +108,85 @@ On startup, Sylve clears that node's old Raft state, starts it as a fresh standa
 :::caution
 Use this only on the node that the leader has already removed, and only when you intend to recover it separately or prepare it to join again. Do not set `raft.reset` on a healthy member that is still part of the cluster. Use `Reset Cluster State` instead if you want to clear a node's cluster state while it is still part of the cluster.
 :::
+
+## Upgrade clustered nodes safely
+
+For releases whose upgrade notes permit mixed-version operation, upgrade a cluster as a rolling maintenance operation, one node at a time. Keep the mixed-version period as short and quiet as possible. Sylve requires exact version equality when a node joins a cluster, but it does not continuously reject an existing member after that member is upgraded. This temporary tolerance is useful for compatible rolling maintenance, but it is not a promise that different releases can safely handle every new Raft command or cluster workflow together.
+
+Release-specific upgrade notes take precedence over this general playbook. If a release requires all nodes to stop together, a particular intermediate version, or another special step, follow that instruction instead.
+
+:::caution[Large version jumps require a coordinated outage]
+Do not assume the rolling procedure below is safe for a large version jump. Releases with substantial changes to Raft commands, database schemas, or node-to-node APIs may not be compatible while different versions are running in the same cluster.
+
+The upgrade from **0.2.3 to 0.3.0** is one such jump. Plan a coordinated control-plane outage instead:
+
+1. Back up the configuration and `dataPath` on every node.
+2. Stop scheduled backups, migrations, and other cluster tasks.
+3. Stop Sylve on every node before upgrading any node.
+4. Upgrade every node while all Sylve services remain stopped. Confirm the 0.3.0 hostname, FreeBSD, configuration, and VM-management requirements from the release notes.
+5. Start the voting members so the cluster can regain quorum, then start the remaining members.
+6. Confirm that every node reports the same version, the cluster has a leader, and workloads and backups are healthy before resuming normal operations.
+
+Use this coordinated procedure for any other large jump unless its release notes explicitly document a supported rolling path.
+:::
+
+### Before stopping any node
+
+1. Read the release notes for the target version and confirm the supported upgrade path.
+2. Back up `/usr/local/etc/sylve/config.json` and the configured `dataPath` on every node. The package default is `/var/db/sylve`. Use a consistent filesystem snapshot or another backup method suitable for the storage that holds it.
+3. Open **Data Center → Cluster** and confirm that every expected member is online, identify the current leader, and verify that enough voters will remain online to preserve quorum.
+4. Wait for migrations, backup and restore operations, replication runs, and other long-running guest tasks to finish.
+5. Decide what should happen to workloads on the node. Migrate or shut down workloads that must not remain there during maintenance.
+
+:::caution[Replication-protected guests]
+A clean Sylve service shutdown fences the local replication leases and stops replication-protected VMs and jails on that node. Depending on the policy and cluster health, HA may make the workload eligible to run elsewhere. Do not stop Sylve on an active replication owner while assuming its protected guests will continue running locally.
+:::
+
+### Rolling upgrade order
+
+Upgrade healthy followers first and the current leader last. This keeps the leader available for cluster writes during most of the maintenance and avoids an unnecessary election at the beginning. Recheck the crown icon before each node because leadership can change while the upgrade is in progress.
+
+Never take more voters offline at once than the cluster can tolerate. In a three-voter cluster, upgrade exactly one voter at a time. A two-voter cluster loses quorum when either voter is stopped, so it cannot provide an uninterrupted rolling control-plane upgrade. Non-voting members do not contribute to quorum.
+
+On each selected node, use either the FreeBSD package or a GitHub release binary.
+
+To upgrade with `pkg`, run:
+
+```sh
+service sylve stop
+pkg update
+pkg upgrade sylve
+service sylve start
+```
+
+Alternatively, download the binary from the [Sylve releases page](https://github.com/AlchemillaHQ/Sylve/releases). Replace `v0.3.0` with the exact target release, and replace `amd64` with `arm64` on ARM64 systems:
+
+```sh
+service sylve stop
+fetch https://github.com/AlchemillaHQ/Sylve/releases/download/v0.3.0/sylve-amd64 -o /tmp/sylve-new
+chmod 0555 /tmp/sylve-new
+mv /tmp/sylve-new /usr/local/sbin/sylve
+service sylve start
+```
+
+Use the same release version and architecture-appropriate binary across every cluster member. You may upgrade to the `tip` build, but its downloadable binary can change while the reported Sylve version remains the same. Download it once and distribute that exact binary to equivalent cluster members, or compare checksums to confirm every node received the same build.
+
+Then verify the node before moving to the next one:
+
+```sh
+service sylve status
+sylve --version
+```
+
+Confirm that the service is running, the expected version is reported, and the member returns to **Online** in the Cluster table. Check the node's Summary page and Sylve logs for startup or database-migration errors. Do not continue while the upgraded node is offline, unhealthy, or repeatedly leaving and rejoining consensus.
+
+During the mixed-version window, avoid cluster configuration changes, peer removal, backup-target changes, migrations, replication-policy changes, and manual failover unless they are required to recover the upgrade. Finish upgrading the remaining followers, then upgrade whichever node is the leader at that point.
+
+### After every node is upgraded
+
+- Confirm every member reports the same Sylve version and is online.
+- Confirm the cluster has a leader and the expected voter and non-voter roles.
+- Review failed or interrupted tasks before resuming scheduled maintenance.
+- Verify important workloads, replication policies, backup jobs, and backup targets.
+
+An offline member during a normal upgrade is still a cluster member. Do not select **Remove Peer**, **Reset Cluster State**, or set `raft.reset` merely because the service is temporarily stopped. Those are membership and recovery actions, not upgrade steps.

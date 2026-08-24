@@ -15,9 +15,10 @@ const sponsors = [
         Organizations helping Sylve stay open, independent, and useful on real
         infrastructure.
       </p>
-      <a href="https://github.com/sponsors/AlchemillaHQ" target="_blank" rel="noopener noreferrer">
-        Sponsor Sylve <span aria-hidden="true">↗</span>
-      </a>
+      <button type="button" class="supporters-cta" data-sponsor-open>
+        Sponsor Sylve
+        <span class="icon-[lucide--heart-handshake] size-4" aria-hidden="true"></span>
+      </button>
     </div>
     <div class="supporter-logos">
       {sponsors.map((sponsor) => (
@@ -26,17 +27,16 @@ const sponsors = [
           <img src={sponsor.darkLogo} alt={`${sponsor.name} logo`} class="hidden dark:block" loading="lazy" decoding="async" />
         </a>
       ))}
-      <a
+      <button
+        type="button"
         class="supporter-placeholder"
-        href="https://github.com/sponsors/AlchemillaHQ"
-        target="_blank"
-        rel="noopener noreferrer"
+        data-sponsor-open
         aria-label="Sponsor Sylve and add your logo"
       >
         <span aria-hidden="true">+</span>
         <strong>Your logo here</strong>
         <small>Become a supporter ↗</small>
-      </a>
+      </button>
     </div>
   </div>
 </section>

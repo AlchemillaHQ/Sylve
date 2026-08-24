@@ -24,6 +24,10 @@ import logoBlack from "@/assets/logo-black.svg";
     </div>
 
     <div class="site-nav-actions">
+      <button type="button" class="nav-sponsor" data-sponsor-open>
+        Sponsor
+        <span class="icon-[lucide--heart-handshake] size-3.5" aria-hidden="true"></span>
+      </button>
       <button
         type="button"
         data-theme-toggle
@@ -34,10 +38,6 @@ import logoBlack from "@/assets/logo-black.svg";
         <span class="icon-[lucide--sun] size-4 dark:hidden"></span>
         <span class="icon-[lucide--moon] hidden size-4 dark:block"></span>
       </button>
-      <a href="/getting-started/" class="nav-cta" data-astro-reload>
-        Get started
-        <span class="icon-[lucide--arrow-up-right] size-3.5" aria-hidden="true"></span>
-      </a>
     </div>
 
     <MobileSheet client:load />

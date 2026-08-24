@@ -95,6 +95,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .site-nav-links a { padding: 0.52rem 0.82rem; border-radius: 999px; color: var(--muted-foreground); font-size: 0.75rem; font-weight: 560; text-decoration: none; transition: color 160ms ease, background 160ms ease; }
 .site-nav-links a:hover { background: color-mix(in oklab, var(--foreground) 7%, transparent); color: var(--foreground); }
 .site-nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.55rem; }
+.nav-sponsor { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.55rem; padding: 0 0.95rem; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--foreground) 2.5%, transparent); color: var(--foreground); font-size: 0.73rem; font-weight: 650; cursor: pointer; transition: background 160ms ease, border-color 160ms ease, transform 160ms ease; }
+.nav-sponsor:hover { border-color: color-mix(in oklab, var(--foreground) 22%, transparent); background: color-mix(in oklab, var(--foreground) 7%, transparent); transform: translateY(-1px); }
 .theme-toggle { display: grid; place-items: center; width: 2.55rem; height: 2.55rem; border: 1px solid color-mix(in oklab, var(--foreground) 11%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--foreground) 2.5%, transparent); color: var(--foreground); cursor: pointer; transition: background 160ms ease, border-color 160ms ease; }
 .theme-toggle:hover { border-color: color-mix(in oklab, var(--foreground) 20%, transparent); background: color-mix(in oklab, var(--foreground) 7%, transparent); }
 .nav-cta { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.55rem; padding: 0 1rem; border-radius: 999px; background: var(--foreground); color: var(--background); font-size: 0.73rem; font-weight: 680; text-decoration: none; transition: transform 160ms ease, background 160ms ease; }
@@ -106,7 +108,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .hero h1 span { display: block; white-space: nowrap; }
 .hero-summary { max-width: 42rem; margin: 2rem 0 0; color: var(--muted-foreground); font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.6; letter-spacing: -0.015em; }
 .hero-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin-top: 0.8rem; }
-.button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 2.75rem; padding: 0 1rem; border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent); border-radius: 7px; font-size: 0.78rem; font-weight: 650; text-decoration: none; transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
+.hero-actions .button { width: 10.75rem; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 2.75rem; padding: 0 1rem; border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent); border-radius: 7px; font: 650 0.78rem Inter, sans-serif; text-decoration: none; cursor: pointer; transition: background 160ms ease, color 160ms ease, border-color 160ms ease; }
 .button-primary { background: var(--foreground); color: var(--background); }
 .button-primary:hover { background: color-mix(in oklab, var(--foreground) 86%, var(--background)); }
 .button-secondary { background: transparent; color: var(--foreground); }
@@ -147,13 +150,13 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .supporters-copy { padding: 2.4rem; border-right: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); }
 .supporters-copy h2 { max-width: 34rem; margin: 0.8rem 0 0; font-size: clamp(2rem, 3.2vw, 3.35rem); font-weight: 480; line-height: 1.05; letter-spacing: -0.05em; }
 .supporters-copy > p:not(.section-kicker) { max-width: 25rem; margin: 1.05rem 0 0; color: var(--muted-foreground); font-size: 0.82rem; line-height: 1.65; }
-.supporters-copy > a { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; margin-top: 1.5rem; padding: 0 1rem; border-radius: 7px; background: var(--foreground); color: var(--background); font-size: 0.75rem; font-weight: 680; text-decoration: none; transition: background 160ms ease, transform 160ms ease; }
-.supporters-copy > a:hover { background: color-mix(in oklab, var(--foreground) 86%, var(--background)); transform: translateY(-1px); }
+.supporters-cta { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem; margin-top: 1.5rem; padding: 0 1rem; border: 0; border-radius: 7px; background: var(--foreground); color: var(--background); font-size: 0.75rem; font-weight: 680; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.supporters-cta:hover { background: color-mix(in oklab, var(--foreground) 86%, var(--background)); transform: translateY(-1px); }
 .supporter-logos { display: grid; grid-template-columns: repeat(2, 1fr); }
-.supporter-logos a { display: grid; place-items: center; min-height: 9.5rem; padding: 1.5rem; border-left: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); opacity: 0.7; transition: opacity 160ms ease, background 160ms ease; }
-.supporter-logos a:nth-child(-n + 2) { border-top: 0; }
-.supporter-logos a:nth-child(odd) { border-left: 0; }
-.supporter-logos a:hover { background: color-mix(in oklab, var(--foreground) 2.5%, transparent); opacity: 1; }
+.supporter-logos > :is(a, button) { display: grid; place-items: center; min-height: 9.5rem; padding: 1.5rem; border: 0; border-left: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); background: transparent; font: inherit; opacity: 0.7; cursor: pointer; transition: opacity 160ms ease, background 160ms ease; }
+.supporter-logos > :is(a, button):nth-child(-n + 2) { border-top: 0; }
+.supporter-logos > :is(a, button):nth-child(odd) { border-left: 0; }
+.supporter-logos > :is(a, button):hover { background: color-mix(in oklab, var(--foreground) 2.5%, transparent); opacity: 1; }
 .supporter-logos img { max-width: 8.5rem; max-height: 2.8rem; object-fit: contain; }
 .supporter-logos .supporter-placeholder { display: grid; grid-template-columns: auto max-content; place-content: center; place-items: center start; gap: 0.25rem 0.7rem; color: var(--foreground); opacity: 1; text-decoration: none; }
 .supporter-placeholder > span { grid-row: 1 / 3; display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px dashed color-mix(in oklab, var(--foreground) 25%, transparent); border-radius: 50%; color: var(--muted-foreground); font: 1rem "IBM Plex Mono", monospace; }
@@ -178,8 +181,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .footer-brand p { max-width: 19rem; margin: 1.1rem 0 0; color: var(--muted-foreground); font-size: 0.76rem; line-height: 1.65; }
 .footer-grid nav { display: grid; align-content: start; gap: 0.75rem; }
 .footer-grid nav p { margin: 0 0 0.35rem; color: var(--foreground); font: 0.64rem "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em; }
-.footer-grid nav a { width: fit-content; color: var(--muted-foreground); font-size: 0.75rem; text-decoration: none; }
-.footer-grid nav a:hover { color: var(--foreground); }
+.footer-grid nav :is(a, button) { width: fit-content; padding: 0; border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 0.75rem; text-decoration: none; cursor: pointer; }
+.footer-grid nav :is(a, button):hover { color: var(--foreground); }
 .footer-bottom { display: flex; align-items: center; justify-content: space-between; padding-block: 1.1rem; border-top: 1px solid color-mix(in oklab, var(--foreground) 9%, transparent); color: var(--muted-foreground); font: 0.57rem "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.06em; }
 .footer-made { display: inline-flex; align-items: center; gap: 0.35rem; }
 .footer-made .icon-\[mdi--heart\] { color: #ef5b5b; }
@@ -223,6 +226,12 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .featured-post h2 { margin: 2rem 0 0; font-size: clamp(2.3rem, 4vw, 4.2rem); font-weight: 480; line-height: 1.02; letter-spacing: -0.055em; }
 .featured-post article > p { margin: 1.3rem 0 0; color: var(--muted-foreground); font-size: 0.9rem; line-height: 1.7; }
 .post-byline { margin-top: auto; padding-top: 3rem; color: var(--foreground); text-transform: none; }
+.blog-index-single { padding-bottom: 6rem; }
+.featured-post-single { grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr); min-height: 25rem; }
+.featured-post-single article { order: -1; min-height: 25rem; padding: 3rem 3.5rem; border-right: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-left: 0; }
+.featured-post-single .post-art { min-height: 23rem; }
+.featured-post-single .post-art-system i { width: clamp(2.5rem, 5vw, 4.5rem); height: clamp(2.5rem, 5vw, 4.5rem); }
+.featured-post-single .post-art-system strong { font-size: clamp(2.8rem, 5vw, 5rem); }
 .post-archive { padding-top: 5.5rem; }
 .archive-heading { display: flex; align-items: end; justify-content: space-between; padding-bottom: 1.4rem; }
 .archive-heading h2 { margin: 0; font-size: 2rem; font-weight: 500; letter-spacing: -0.04em; }
@@ -252,7 +261,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .blog-content h1, .blog-content h2, .blog-content h3 { color: var(--foreground); font-weight: 530; line-height: 1.15; letter-spacing: -0.04em; }
 .blog-content h2 { margin: 3.5rem 0 1.15rem; font-size: 2rem; }
 .blog-content h3 { margin: 2.5rem 0 1rem; font-size: 1.45rem; }
-.blog-content a { color: var(--foreground); text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+.blog-content a { color: var(--foreground); text-decoration-line: underline; text-decoration-color: color-mix(in oklab, var(--foreground) 45%, transparent); text-decoration-thickness: 1px; text-underline-offset: 0.2em; transition: text-decoration-color 160ms ease; }
+.blog-content a:hover { text-decoration-color: var(--foreground); }
 .blog-content strong { color: var(--foreground); font-weight: 650; }
 .blog-content ul, .blog-content ol { margin: 0 0 1.7rem; padding-left: 1.3rem; color: color-mix(in oklab, var(--foreground) 76%, var(--background)); }
 .blog-content li { margin: 0.5rem 0; padding-left: 0.35rem; }
@@ -260,6 +270,23 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .blog-content pre { margin: 2rem 0; padding: 1.2rem; overflow-x: auto; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 8px; background: color-mix(in oklab, var(--foreground) 4%, var(--background)); font-size: 0.78rem; line-height: 1.65; }
 .blog-content :not(pre) > code { padding: 0.15rem 0.32rem; border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-radius: 4px; background: color-mix(in oklab, var(--foreground) 5%, var(--background)); font-size: 0.84em; }
 .blog-content img { width: 100%; margin: 2.5rem 0; border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent); border-radius: 8px; }
+
+.sponsor-dialog { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 1rem; overflow-y: auto; overscroll-behavior: contain; background: rgb(0 0 0 / 62%); color: var(--foreground); backdrop-filter: blur(6px); }
+.sponsor-dialog[hidden] { display: none; }
+.sponsor-dialog-panel { position: relative; width: min(100%, 39rem); padding: 2.5rem; border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent); border-radius: 14px; background: var(--background); box-shadow: 0 2rem 6rem rgb(0 0 0 / 28%); }
+.sponsor-dialog-close { position: absolute; top: 1rem; right: 1rem; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--foreground) 3%, transparent); color: var(--foreground); cursor: pointer; }
+.sponsor-dialog-close:hover { background: color-mix(in oklab, var(--foreground) 8%, transparent); }
+.sponsor-dialog h2 { max-width: 31rem; margin: 0.8rem 3rem 0 0; font-size: clamp(2rem, 5vw, 3.2rem); font-weight: 490; line-height: 1.04; letter-spacing: -0.05em; }
+.sponsor-dialog-intro { max-width: 31rem; margin: 1rem 0 0; color: var(--muted-foreground); font-size: 0.88rem; line-height: 1.65; }
+.sponsor-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 1.8rem; }
+.sponsor-option { display: grid; grid-template-columns: auto 1fr auto; gap: 0.8rem; align-items: center; min-width: 0; padding: 1rem; border: 1px solid color-mix(in oklab, var(--foreground) 13%, transparent); border-radius: 10px; background: color-mix(in oklab, var(--foreground) 2.5%, transparent); color: var(--foreground); text-decoration: none; transition: background 160ms ease, border-color 160ms ease, transform 160ms ease; }
+.sponsor-option:hover { border-color: color-mix(in oklab, var(--foreground) 24%, transparent); background: color-mix(in oklab, var(--foreground) 6%, transparent); transform: translateY(-1px); }
+.sponsor-option > span:nth-child(2) { display: grid; min-width: 0; gap: 0.28rem; }
+.sponsor-option strong { font-size: 0.82rem; font-weight: 650; }
+.sponsor-option small { color: var(--muted-foreground); font-size: 0.67rem; line-height: 1.4; }
+.sponsor-option-icon { width: 1.15rem; height: 1.15rem; color: var(--muted-foreground); }
+.sponsor-dialog-note { margin: 1rem 0 0; color: var(--muted-foreground); font: 0.58rem "IBM Plex Mono", monospace; letter-spacing: 0.04em; }
+body:has(.sponsor-dialog:not([hidden])) { overflow: hidden; }
 
 @media (max-width: 900px) {
   .site-nav { grid-template-columns: 1fr auto; }
@@ -292,6 +319,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
   .featured-post { grid-template-columns: 1fr; }
   .featured-post article { min-height: 24rem; padding: 2.5rem; border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-left: 0; }
   .post-art { min-height: 26rem; }
+  .featured-post-single article { min-height: 22rem; border-top: 0; border-right: 0; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); }
+  .featured-post-single .post-art { min-height: 18rem; }
   .article-header { grid-template-columns: 1fr; gap: 3rem; }
   .article-meta { grid-template-columns: repeat(3, 1fr); }
   .article-layout { grid-template-columns: 1fr minmax(0, 46rem); gap: 2rem; }
@@ -315,7 +344,9 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
   .capability-card h3 { font-size: 2.2rem; }
   .supporters { padding-bottom: 5rem; }
   .supporters-copy { padding: 1.5rem; }
-  .supporter-logos a { min-height: 7.5rem; padding: 1rem; }
+  .supporter-logos > :is(a, button) { min-height: 7.5rem; padding: 1rem; }
+  .sponsor-dialog-panel { padding: 2rem 1.25rem 1.5rem; }
+  .sponsor-options { grid-template-columns: 1fr; }
   .faq-section { padding-bottom: 5rem; }
   .faq-intro h2 { font-size: 2.7rem; }
   .community-section { gap: 2.5rem; margin-bottom: 5rem; padding: 2rem; }
@@ -330,6 +361,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
   .post-art { min-height: 21rem; }
   .featured-post article { min-height: 22rem; }
   .featured-post h2 { font-size: 2.5rem; }
+  .featured-post-single article { min-height: 20rem; padding: 2rem; }
+  .featured-post-single .post-art { min-height: 15rem; }
   .archive-list > a { grid-template-columns: 1fr auto; gap: 1rem; }
   .archive-list time { grid-column: 1; }
   .archive-list div { grid-column: 1; }

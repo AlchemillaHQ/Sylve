@@ -41,6 +41,10 @@
           <span class="icon-[lucide--moon] hidden size-4 dark:block"></span>
           Change appearance
         </button>
+        <button type="button" class="mobile-sponsor" data-sponsor-open onclick={close}>
+          Sponsor Sylve
+          <span class="icon-[lucide--heart-handshake] size-4" aria-hidden="true"></span>
+        </button>
         <a href="/getting-started/" data-astro-reload onclick={close}>Get started <span>↗</span></a>
       </div>
     </aside>
@@ -58,7 +62,8 @@
   nav small { color: var(--muted-foreground); font: .6rem "IBM Plex Mono", monospace; }
   .mobile-menu-footer { display: grid; gap: .8rem; margin-top: auto; }
   .mobile-menu-footer button, .mobile-menu-footer a { display: flex; align-items: center; justify-content: space-between; gap: .6rem; min-height: 2.8rem; padding: 0 .85rem; border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); border-radius: 7px; background: transparent; color: var(--foreground); font-size: .78rem; text-decoration: none; }
-  .mobile-menu-footer button { justify-content: flex-start; }
+  .mobile-menu-footer button:not(.mobile-sponsor) { justify-content: flex-start; }
+  .mobile-menu-footer .mobile-sponsor { background: color-mix(in oklab, var(--foreground) 5%, transparent); }
   .mobile-menu-footer a { background: var(--foreground); color: var(--background); }
   @media (max-width: 900px) { .mobile-menu { display: block; } }
 </style>

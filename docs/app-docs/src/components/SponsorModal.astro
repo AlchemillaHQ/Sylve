@@ -1,0 +1,105 @@
+<div
+  class="sponsor-dialog"
+  data-sponsor-dialog
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="sponsor-dialog-title"
+  hidden
+>
+  <div class="sponsor-dialog-panel">
+    <button
+      type="button"
+      class="sponsor-dialog-close"
+      data-sponsor-close
+      aria-label="Close sponsor options"
+    >
+      <span class="icon-[lucide--x] size-4" aria-hidden="true"></span>
+    </button>
+
+    <p class="section-kicker">Support Sylve</p>
+    <h2 id="sponsor-dialog-title">Choose the option that works for you</h2>
+    <p class="sponsor-dialog-intro">
+      Both options support ongoing development, testing, documentation, and
+      the open-source projects around Sylve.
+    </p>
+
+    <div class="sponsor-options">
+      <a
+        href="https://pages.razorpay.com/sylve"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="sponsor-option"
+      >
+        <span class="sponsor-option-icon icon-[lucide--credit-card]" aria-hidden="true"></span>
+        <span>
+          <strong>Credit or debit card</strong>
+          <small>Secure payment via Razorpay</small>
+        </span>
+        <span class="icon-[lucide--arrow-up-right] size-4" aria-hidden="true"></span>
+      </a>
+
+      <a
+        href="https://github.com/sponsors/AlchemillaHQ/"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="sponsor-option"
+      >
+        <span class="sponsor-option-icon icon-[lucide--github]" aria-hidden="true"></span>
+        <span>
+          <strong>GitHub Sponsors</strong>
+          <small>Sponsor through your GitHub account</small>
+        </span>
+        <span class="icon-[lucide--arrow-up-right] size-4" aria-hidden="true"></span>
+      </a>
+    </div>
+
+    <p class="sponsor-dialog-note">Pick whichever is more convenient. Both support the same work.</p>
+  </div>
+</div>
+
+<script>
+  const setupSponsorDialog = () => {
+    const root = document.documentElement;
+    if (root.dataset.sponsorDialogBound === "true") return;
+
+    root.dataset.sponsorDialogBound = "true";
+    let sponsorOpener = null;
+
+    const closeSponsorDialog = () => {
+      const dialog = document.querySelector("[data-sponsor-dialog]");
+      if (!(dialog instanceof HTMLElement) || dialog.hidden) return;
+
+      dialog.hidden = true;
+      if (sponsorOpener instanceof HTMLElement) sponsorOpener.focus();
+      sponsorOpener = null;
+    };
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const dialog = document.querySelector("[data-sponsor-dialog]");
+      if (!(dialog instanceof HTMLElement)) return;
+
+      const opener = target.closest("[data-sponsor-open]");
+      if (opener) {
+        event.preventDefault();
+        sponsorOpener = opener;
+        dialog.hidden = false;
+        dialog.querySelector("[data-sponsor-close]")?.focus();
+        return;
+      }
+
+      if (target.closest("[data-sponsor-close]") || target === dialog) {
+        closeSponsorDialog();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeSponsorDialog();
+    });
+  };
+
+  setupSponsorDialog();
+  document.addEventListener("astro:page-load", setupSponsorDialog);
+</script>

@@ -2,6 +2,7 @@
 import BaseHead from "@/components/BaseHead.astro";
 import Footer from "@/components/Footer.astro";
 import Header from "@/components/sections/Header.astro";
+import SponsorModal from "@/components/SponsorModal.astro";
 import StructuredData from "@/components/StructuredData.astro";
 import "@/assets/landing.css";
 
@@ -121,5 +122,6 @@ const { title, description, image, ogType = "website" } = Astro.props;
       </main>
       <Footer />
     </div>
+    <SponsorModal />
   </body>
 </html>

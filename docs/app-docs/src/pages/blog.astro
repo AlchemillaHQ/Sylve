@@ -10,6 +10,7 @@ const featuredPost = sortedPosts.find(({ data }) => data.featured) ?? sortedPost
 const remainingPosts = featuredPost
   ? sortedPosts.filter(({ id }) => id !== featuredPost.id)
   : [];
+const isSinglePost = sortedPosts.length === 1;
 const formatDate = (date: Date) =>
   new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(date);
 ---
@@ -18,7 +19,11 @@ const formatDate = (date: Date) =>
   title="Sylve Journal | Engineering notes"
   description="Product updates, technical decisions, and practical FreeBSD notes from the Sylve project."
 >
-  <div class:list={["blog-index site-shell", !featuredPost && "blog-index-empty"]}>
+  <div class:list={[
+    "blog-index site-shell",
+    !featuredPost && "blog-index-empty",
+    isSinglePost && "blog-index-single",
+  ]}>
     <header class:list={["blog-index-header", !featuredPost && "blog-index-header-empty"]}>
       <div class="blog-index-copy">
         <p class="section-kicker">Sylve journal</p>
@@ -85,7 +90,10 @@ const formatDate = (date: Date) =>
 
     {featuredPost ? (
       <>
-        <a href={`/blog/${featuredPost.id}`} class="featured-post">
+        <a
+          href={`/blog/${featuredPost.id}`}
+          class:list={["featured-post", isSinglePost && "featured-post-single"]}
+        >
           <div class="post-art" data-category={featuredPost.data.category}>
             {featuredPost.data.image ? (
               <img src={featuredPost.data.image} alt="" />
@@ -111,25 +119,27 @@ const formatDate = (date: Date) =>
           </article>
         </a>
 
-        <section class="post-archive" aria-labelledby="archive-title">
-          <div class="archive-heading">
-            <h2 id="archive-title">All entries</h2>
-            <span>{String(sortedPosts.length).padStart(2, "0")} published</span>
-          </div>
-          <div class="archive-list">
-            {remainingPosts.map((post) => (
-              <a href={`/blog/${post.id}`}>
-                <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
-                <div>
-                  <span>{post.data.category}</span>
-                  <h3>{post.data.title}</h3>
-                  <p>{post.data.description}</p>
-                </div>
-                <span aria-hidden="true">↗</span>
-              </a>
-            ))}
-          </div>
-        </section>
+        {remainingPosts.length > 0 && (
+          <section class="post-archive" aria-labelledby="archive-title">
+            <div class="archive-heading">
+              <h2 id="archive-title">All entries</h2>
+              <span>{String(sortedPosts.length).padStart(2, "0")} published</span>
+            </div>
+            <div class="archive-list">
+              {remainingPosts.map((post) => (
+                <a href={`/blog/${post.id}`}>
+                  <time datetime={post.data.pubDate.toISOString()}>{formatDate(post.data.pubDate)}</time>
+                  <div>
+                    <span>{post.data.category}</span>
+                    <h3>{post.data.title}</h3>
+                    <p>{post.data.description}</p>
+                  </div>
+                  <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
       </>
     ) : null}
   </div>
