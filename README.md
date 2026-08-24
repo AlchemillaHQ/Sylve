@@ -10,9 +10,7 @@ Sylve is an open-source infrastructure management platform built for FreeBSD. It
 
 The backend is written in **Go**, while the frontend is built with **SvelteKit**.
 
-**Documentation:** [sylve.io/docs](https://sylve.io/docs)
-
-**Latest release notes:** [Sylve v0.3.0](docs/changelogs/v0.3.0.md)
+**Documentation:** [sylve.io/docs](https://sylve.io/docs) | **Latest release notes:** [Sylve v0.3.0](https://github.com/AlchemillaHQ/Sylve/blob/master/docs/changelogs/v0.3.0.md)
 
 ## Features
 
