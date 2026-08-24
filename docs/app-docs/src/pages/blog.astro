@@ -119,6 +119,30 @@ const formatDate = (date: Date) =>
           </article>
         </a>
 
+        {isSinglePost && (
+          <section class="blog-index-cta" aria-labelledby="blog-cta-title">
+            <div>
+              <p class="section-kicker">Try Sylve</p>
+              <h2 id="blog-cta-title">See the system for yourself.</h2>
+              <p>Explore a working cluster in your browser, read the documentation, or help support continued development.</p>
+            </div>
+            <div class="blog-index-cta-actions">
+              <a href="https://demo.sylve.io" class="button button-primary" target="_blank" rel="noopener noreferrer">
+                <span class="icon-[lucide--monitor-play] size-4" aria-hidden="true"></span>
+                Open demo
+              </a>
+              <a href="/docs/" class="button button-secondary" data-astro-reload>
+                <span class="icon-[lucide--book-open] size-4" aria-hidden="true"></span>
+                Read the docs
+              </a>
+              <button type="button" class="button button-secondary" data-sponsor-open>
+                <span class="icon-[lucide--heart-handshake] size-4" aria-hidden="true"></span>
+                Sponsor Sylve
+              </button>
+            </div>
+          </section>
+        )}
+
         {remainingPosts.length > 0 && (
           <section class="post-archive" aria-labelledby="archive-title">
             <div class="archive-heading">

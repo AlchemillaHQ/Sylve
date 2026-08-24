@@ -65,7 +65,8 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
     var(--background);
   background-attachment: fixed;
 }
-.marketing-canvas { min-height: 100vh; background: transparent; }
+.marketing-canvas { display: flex; min-height: 100vh; flex-direction: column; background: transparent; }
+.marketing-canvas > main { flex: 1; }
 
 .marketing-site ::selection { background: color-mix(in oklab, var(--foreground) 18%, transparent); }
 .marketing-site a, .marketing-site button { -webkit-tap-highlight-color: transparent; }
@@ -189,9 +190,9 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 
 .blog-index { padding-top: 10rem; padding-bottom: 7rem; }
 .blog-index-empty { display: grid; min-height: calc(100svh - 9.5rem); align-items: center; }
-.blog-index-header { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.38fr); gap: 4rem; align-items: end; padding-bottom: 3rem; }
-.blog-index-header h1 { margin: 0.85rem 0 0; font-size: clamp(3.4rem, 4.7vw, 4.6rem); font-weight: 470; line-height: 0.98; letter-spacing: -0.062em; white-space: nowrap; }
-.blog-index-header > p:last-child { max-width: 31rem; margin: 0 0 0.35rem; justify-self: end; color: var(--muted-foreground); font-size: 0.9rem; line-height: 1.75; }
+.blog-index-header { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 2.5rem; align-items: end; padding-bottom: 2.5rem; }
+.blog-index-header h1 { margin: 0.8rem 0 0; font-size: clamp(3.1rem, 4.1vw, 4.1rem); font-weight: 470; line-height: 1; letter-spacing: -0.055em; white-space: nowrap; }
+.blog-index-header > p:last-child { max-width: 22rem; margin: 0 0 0.2rem; justify-self: start; color: var(--muted-foreground); font-size: 0.82rem; line-height: 1.65; }
 .blog-index-header-empty { grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 0.85fr); gap: 5rem; align-items: center; padding-bottom: 2rem; }
 .blog-index-header-empty .blog-index-copy { padding-block: 1.5rem; }
 .blog-index-summary { max-width: 38rem; margin: 1.4rem 0 0; color: var(--muted-foreground); font-size: 0.95rem; line-height: 1.72; }
@@ -226,12 +227,17 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .featured-post h2 { margin: 2rem 0 0; font-size: clamp(2.3rem, 4vw, 4.2rem); font-weight: 480; line-height: 1.02; letter-spacing: -0.055em; }
 .featured-post article > p { margin: 1.3rem 0 0; color: var(--muted-foreground); font-size: 0.9rem; line-height: 1.7; }
 .post-byline { margin-top: auto; padding-top: 3rem; color: var(--foreground); text-transform: none; }
-.blog-index-single { padding-bottom: 6rem; }
+.blog-index-single { padding-bottom: 2rem; }
 .featured-post-single { grid-template-columns: minmax(0, 1.25fr) minmax(20rem, 0.75fr); min-height: 25rem; }
 .featured-post-single article { order: -1; min-height: 25rem; padding: 3rem 3.5rem; border-right: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); border-left: 0; }
 .featured-post-single .post-art { min-height: 23rem; }
 .featured-post-single .post-art-system i { width: clamp(2.5rem, 5vw, 4.5rem); height: clamp(2.5rem, 5vw, 4.5rem); }
 .featured-post-single .post-art-system strong { font-size: clamp(2.8rem, 5vw, 5rem); }
+.blog-index-cta { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3rem; align-items: center; min-height: 11rem; margin-top: 2rem; padding: 2rem 2.25rem; border: 1px solid color-mix(in oklab, var(--foreground) 11%, transparent); border-radius: 13px; background: color-mix(in oklab, var(--foreground) 1.5%, transparent); }
+.blog-index-cta h2 { margin: 0.6rem 0 0; font-size: clamp(1.8rem, 3vw, 2.6rem); font-weight: 490; line-height: 1.05; letter-spacing: -0.045em; }
+.blog-index-cta > div > p:last-child { max-width: 38rem; margin: 0.8rem 0 0; color: var(--muted-foreground); font-size: 0.75rem; line-height: 1.65; }
+.blog-index-cta-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.65rem; }
+.blog-index-cta-actions .button { width: auto; }
 .post-archive { padding-top: 5.5rem; }
 .archive-heading { display: flex; align-items: end; justify-content: space-between; padding-bottom: 1.4rem; }
 .archive-heading h2 { margin: 0; font-size: 2rem; font-weight: 500; letter-spacing: -0.04em; }
@@ -242,20 +248,18 @@ html.marketing-surface { scroll-behavior: smooth; background: var(--background);
 .archive-list h3 { margin: 0.6rem 0 0; font-size: 1.45rem; font-weight: 510; letter-spacing: -0.035em; }
 .archive-list p { max-width: 45rem; margin: 0.65rem 0 0; color: var(--muted-foreground); font-size: 0.82rem; line-height: 1.65; }
 .blog-article { padding-top: 9.5rem; padding-bottom: 8rem; }
-.article-back { color: var(--muted-foreground); font: 0.65rem "IBM Plex Mono", monospace; text-decoration: none; text-transform: uppercase; letter-spacing: 0.06em; }
-.article-header { display: grid; grid-template-columns: minmax(0, 1fr) 14rem; gap: 6rem; align-items: end; padding: 4.5rem 0 4rem; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); }
-.article-heading h1 { max-width: 58rem; margin: 1rem 0 0; font-size: clamp(3.4rem, 6vw, 6.6rem); font-weight: 470; line-height: 0.98; letter-spacing: -0.065em; }
-.article-heading > p:last-child { max-width: 45rem; margin: 1.7rem 0 0; color: var(--muted-foreground); font-size: 1rem; line-height: 1.7; }
-.article-meta { display: grid; gap: 1.2rem; margin: 0; }
+.article-back { display: block; width: min(100%, 64rem); margin-inline: auto; color: var(--muted-foreground); font: 0.65rem "IBM Plex Mono", monospace; text-decoration: none; text-transform: uppercase; letter-spacing: 0.06em; }
+.article-header { width: min(100%, 64rem); margin-inline: auto; padding: 3.5rem 0 3rem; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent); text-align: center; }
+.article-heading h1 { max-width: 60rem; margin: 1rem auto 0; font-size: clamp(3.2rem, 4vw, 4.8rem); font-weight: 470; line-height: 1.02; letter-spacing: -0.05em; text-wrap: balance; }
+.article-heading > p:last-child { max-width: 48rem; margin: 1.5rem auto 0; color: var(--muted-foreground); font-size: 1.03rem; line-height: 1.7; }
+.article-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; max-width: 48rem; margin: 2.25rem auto 0; text-align: center; }
 .article-meta div { display: grid; gap: 0.35rem; padding-top: 0.8rem; border-top: 1px solid color-mix(in oklab, var(--foreground) 12%, transparent); }
 .article-meta dt { color: var(--muted-foreground); font: 0.58rem "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.07em; }
 .article-meta dd { margin: 0; font-size: 0.75rem; }
 .article-cover { margin-top: 1.5rem; overflow: hidden; border-radius: 10px; }
 .article-cover img { display: block; width: 100%; max-height: 45rem; object-fit: cover; }
-.article-layout { display: grid; grid-template-columns: 11rem minmax(0, 46rem) 1fr; gap: 4rem; padding-top: 5rem; }
-.article-aside { display: grid; align-content: start; gap: 0.8rem; }
-.article-aside span, .article-aside a { color: var(--muted-foreground); font: 0.58rem "IBM Plex Mono", monospace; text-decoration: none; letter-spacing: 0.06em; }
-.blog-content { min-width: 0; color: var(--foreground); font-size: 1rem; line-height: 1.78; }
+.article-layout { width: min(100%, 56rem); margin-inline: auto; padding-top: 3rem; }
+.blog-content { min-width: 0; color: var(--foreground); font-size: 1.1rem; line-height: 1.82; }
 .blog-content > :first-child { margin-top: 0; }
 .blog-content p { margin: 0 0 1.65rem; color: color-mix(in oklab, var(--foreground) 76%, var(--background)); }
 .blog-content h1, .blog-content h2, .blog-content h3 { color: var(--foreground); font-weight: 530; line-height: 1.15; letter-spacing: -0.04em; }
@@ -321,9 +325,8 @@ body:has(.sponsor-dialog:not([hidden])) { overflow: hidden; }
   .post-art { min-height: 26rem; }
   .featured-post-single article { min-height: 22rem; border-top: 0; border-right: 0; border-bottom: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent); }
   .featured-post-single .post-art { min-height: 18rem; }
-  .article-header { grid-template-columns: 1fr; gap: 3rem; }
-  .article-meta { grid-template-columns: repeat(3, 1fr); }
-  .article-layout { grid-template-columns: 1fr minmax(0, 46rem); gap: 2rem; }
+  .blog-index-cta { grid-template-columns: 1fr; gap: 1.5rem; }
+  .blog-index-cta-actions { justify-content: flex-start; }
 }
 
 @media (max-width: 620px) {
@@ -370,12 +373,19 @@ body:has(.sponsor-dialog:not([hidden])) { overflow: hidden; }
   .blog-empty-footer { align-items: flex-start; flex-direction: column; }
   .blog-empty-actions { align-items: stretch; flex-direction: column; width: 100%; }
   .journal-visual { display: none; }
+  .blog-index-cta { padding: 1.5rem; }
+  .blog-index-cta-actions { display: grid; grid-template-columns: 1fr; justify-content: stretch; width: 100%; }
+  .blog-index-cta-actions .button { width: 100%; }
   .blog-article { padding-top: 8rem; padding-bottom: 5rem; }
-  .article-header { padding: 3rem 0; }
-  .article-heading h1 { font-size: clamp(3rem, 14vw, 4.6rem); }
-  .article-meta { grid-template-columns: 1fr; }
-  .article-layout { grid-template-columns: 1fr; padding-top: 3.5rem; }
-  .article-aside { display: none; }
+  .article-header { padding: 2.5rem 0 2.25rem; }
+  .article-heading h1 { font-size: clamp(2.75rem, 12vw, 3.5rem); line-height: 1.02; }
+  .article-heading > p:last-child { margin-top: 1.2rem; font-size: 0.95rem; }
+  .article-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.35rem; margin-top: 1.75rem; }
+  .article-meta div { padding: 0.75rem 0.2rem 0; }
+  .article-meta dt { font-size: 0.5rem; }
+  .article-meta dd { font-size: 0.68rem; }
+  .article-layout { padding-top: 2.5rem; }
+  .blog-content { font-size: 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

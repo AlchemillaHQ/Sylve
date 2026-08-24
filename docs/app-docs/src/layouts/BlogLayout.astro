@@ -5,12 +5,13 @@ import BlogStructuredData from "@/components/BlogStructuredData.astro";
 const { frontmatter } = Astro.props;
 const slug = Astro.url.pathname.replace(/^\/blog\//, "").replace(/\/$/, "");
 const published = new Date(frontmatter.pubDate);
+const socialImage = frontmatter.ogImage ?? frontmatter.image;
 ---
 
 <BaseLayout
   title={`${frontmatter.title} — Sylve Journal`}
   description={frontmatter.description}
-  image={frontmatter.image}
+  image={socialImage}
   ogType="article"
 >
   <BlogStructuredData
@@ -19,7 +20,7 @@ const published = new Date(frontmatter.pubDate);
     author={frontmatter.author}
     pubDate={published}
     slug={slug}
-    image={frontmatter.image}
+    image={socialImage}
   />
 
   <div class="blog-article site-shell">
@@ -28,7 +29,7 @@ const published = new Date(frontmatter.pubDate);
     <header class="article-header">
       <div class="article-heading">
         <p class="section-kicker">{frontmatter.category ?? "Engineering"}</p>
-        <h1>{frontmatter.title}</h1>
+        <h1>{frontmatter.displayTitle ?? frontmatter.title}</h1>
         <p>{frontmatter.description}</p>
       </div>
       <dl class="article-meta">
@@ -38,15 +39,11 @@ const published = new Date(frontmatter.pubDate);
       </dl>
     </header>
 
-    {frontmatter.image && (
+    {frontmatter.image && !frontmatter.hideCover && (
       <div class="article-cover"><img src={frontmatter.image} alt="" /></div>
     )}
 
     <div class="article-layout">
-      <aside class="article-aside">
-        <span>SYLVE / JOURNAL</span>
-        <a href="/docs/" data-astro-reload>Documentation ↗</a>
-      </aside>
       <article class="blog-content">
         <slot />
       </article>
