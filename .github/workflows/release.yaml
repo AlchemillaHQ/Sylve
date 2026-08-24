@@ -3,8 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "*"
-      - "!tip"
+      - "v*"
 
 permissions:
   actions: read
@@ -36,6 +35,11 @@ jobs:
           test -n "$TARGET_SHA"
           echo "tag_name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release changelog
+        env:
+          TAG_NAME: ${{ steps.vars.outputs.tag_name }}
+        run: ./scripts/validate-release-changelog.sh "$TAG_NAME"
 
       - name: Require successful CI for tagged master commit
         uses: actions/github-script@v9
@@ -142,30 +146,46 @@ jobs:
 
       - name: Capture release metadata
         id: vars
+        env:
+          TAG_NAME: ${{ needs.verify-ci.outputs.tag_name }}
+          TARGET_SHA: ${{ needs.verify-ci.outputs.target_sha }}
         run: |
           set -euo pipefail
-          echo "tag_name=${{ needs.verify-ci.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
-          echo "target_sha=${{ needs.verify-ci.outputs.target_sha }}" >> "$GITHUB_OUTPUT"
+          CHANGELOG_PATH="$(./scripts/validate-release-changelog.sh "$TAG_NAME")"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
+          echo "changelog_path=${CHANGELOG_PATH}" >> "$GITHUB_OUTPUT"
 
-      - name: Ensure release exists
+      - name: Create or update draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.vars.outputs.tag_name }}
+          TARGET_SHA: ${{ steps.vars.outputs.target_sha }}
+          CHANGELOG_PATH: ${{ steps.vars.outputs.changelog_path }}
         run: |
           set -euo pipefail
 
-          TAG="${{ steps.vars.outputs.tag_name }}"
-          TARGET_SHA="${{ steps.vars.outputs.target_sha }}"
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            IS_DRAFT="$(gh release view "${TAG_NAME}" --json isDraft --jq '.isDraft')"
+            if [ "${IS_DRAFT}" != "true" ]; then
+              echo "::error::Release ${TAG_NAME} is already published; refusing to change its notes or assets."
+              exit 1
+            fi
 
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            echo "Release ${TAG} already exists"
+            gh release edit "${TAG_NAME}" \
+              --title "${TAG_NAME}" \
+              --verify-tag \
+              --notes-file "${CHANGELOG_PATH}"
+            echo "Updated draft release ${TAG_NAME} from ${CHANGELOG_PATH}"
             exit 0
           fi
 
-          gh release create "${TAG}" \
-            --title "${TAG}" \
+          gh release create "${TAG_NAME}" \
+            --title "${TAG_NAME}" \
             --target "${TARGET_SHA}" \
+            --verify-tag \
             --draft \
-            --notes "TODO: add release notes."
+            --notes-file "${CHANGELOG_PATH}"
 
   build-web:
     needs:
@@ -209,10 +229,18 @@ jobs:
       - name: Upload web assets to release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
         run: |
           set -euo pipefail
+
+          IS_DRAFT="$(gh release view "${TAG_NAME}" --json isDraft --jq '.isDraft')"
+          if [ "${IS_DRAFT}" != "true" ]; then
+            echo "::error::Release ${TAG_NAME} is already published; refusing to replace its assets."
+            exit 1
+          fi
+
           for ASSET_NAME in sylve-web-assets.tar.gz sylve-web-demo-assets.tar.gz; do
-            gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "${ASSET_NAME}" --clobber
+            gh release upload "${TAG_NAME}" "${ASSET_NAME}" --clobber
           done
 
   build-freebsd:
@@ -285,8 +313,16 @@ jobs:
       - name: Upload binary to release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
         run: |
           set -euo pipefail
+
+          IS_DRAFT="$(gh release view "${TAG_NAME}" --json isDraft --jq '.isDraft')"
+          if [ "${IS_DRAFT}" != "true" ]; then
+            echo "::error::Release ${TAG_NAME} is already published; refusing to replace its assets."
+            exit 1
+          fi
+
           ASSET_NAME="sylve-${{ matrix.arch }}"
           cp bin/sylve "${ASSET_NAME}"
-          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" "${ASSET_NAME}" --clobber
+          gh release upload "${TAG_NAME}" "${ASSET_NAME}" --clobber

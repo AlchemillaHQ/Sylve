@@ -66,7 +66,7 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
     if (window.__sylveSidebarScrollPersistence) return;
     window.__sylveSidebarScrollPersistence = true;
 
-    const restoreSidebarScroll = () => {
+    const restoreSidebarContext = () => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const scroller = document.getElementById("starlight__sidebar");
@@ -74,21 +74,89 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
           if (!scroller || !sidebar) return;
 
           try {
-            const stored = JSON.parse(
+            const parsed = JSON.parse(
               sessionStorage.getItem("sl-sidebar-state") || "{}",
             );
+            const stored =
+              parsed && typeof parsed === "object" ? parsed : {};
+
             if (
               stored.hash === sidebar.dataset.hash &&
               typeof stored.scroll === "number"
             ) {
               scroller.scrollTop = stored.scroll;
             }
+
+            const normalizePath = (value) => {
+              const pathname = new URL(value, window.location.href).pathname;
+              return pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
+            };
+            const currentPath = normalizePath(window.location.href);
+            const activeLink =
+              scroller.querySelector('a[aria-current="page"]') ||
+              Array.from(scroller.querySelectorAll("a[href]")).find(
+                (link) => normalizePath(link.href) === currentPath,
+              );
+
+            if (!(activeLink instanceof HTMLElement)) return;
+
+            const open =
+              stored.hash === sidebar.dataset.hash && Array.isArray(stored.open)
+                ? [...stored.open]
+                : [];
+            let parent = activeLink.parentElement;
+
+            while (parent && parent !== scroller) {
+              if (parent instanceof HTMLDetailsElement) {
+                parent.open = true;
+                const restorePoint = parent.querySelector(
+                  ":scope > sl-sidebar-restore[data-index]",
+                );
+                const index = Number.parseInt(
+                  restorePoint?.dataset.index || "",
+                  10,
+                );
+                if (!Number.isNaN(index)) open[index] = true;
+              }
+              parent = parent.parentElement;
+            }
+
+            const scrollerRect = scroller.getBoundingClientRect();
+            const activeRect = activeLink.getBoundingClientRect();
+            const viewportPadding = 24;
+            const activeIsVisible =
+              activeRect.top >= scrollerRect.top + viewportPadding &&
+              activeRect.bottom <= scrollerRect.bottom - viewportPadding;
+
+            if (!activeIsVisible && activeRect.height > 0) {
+              const centeredScrollTop =
+                scroller.scrollTop +
+                activeRect.top -
+                scrollerRect.top -
+                (scroller.clientHeight - activeRect.height) / 2;
+              scroller.scrollTop = Math.max(
+                0,
+                Math.min(
+                  centeredScrollTop,
+                  scroller.scrollHeight - scroller.clientHeight,
+                ),
+              );
+            }
+
+            sessionStorage.setItem(
+              "sl-sidebar-state",
+              JSON.stringify({
+                hash: sidebar.dataset.hash || "",
+                open,
+                scroll: scroller.scrollTop,
+              }),
+            );
           } catch {}
         });
       });
     };
 
-    document.addEventListener("astro:page-load", restoreSidebarScroll);
+    document.addEventListener("astro:page-load", restoreSidebarContext);
 
     document.addEventListener(
       "click",
@@ -264,6 +332,86 @@ const ogImage = new URL("/og-default.png", Astro.site ?? Astro.url).toString();
       initializeWalkthroughVideos();
     }
     document.addEventListener('astro:page-load', initializeWalkthroughVideos);
+  })();
+</script>
+<script is:inline>
+  (() => {
+    if (window.__sylvePageActionsDelegation) return;
+    window.__sylvePageActionsDelegation = true;
+
+    const closeDropdowns = () => {
+      document
+        .querySelectorAll('.dropdown > #dropdown-menu.show')
+        .forEach((menu) => menu.classList.remove('show'));
+    };
+
+    const copyMarkdown = async (button) => {
+      let resultClass = 'copied';
+
+      try {
+        button.disabled = true;
+
+        const currentPath = button.dataset.path;
+        if (!currentPath) throw new Error('Missing Markdown page path.');
+
+        const response = await fetch(`${currentPath}.md`);
+        if (!response.ok) {
+          throw new Error(`Unable to load Markdown (${response.status}).`);
+        }
+
+        await navigator.clipboard.writeText(await response.text());
+      } catch (error) {
+        console.error(error);
+        resultClass = 'error';
+      } finally {
+        button.classList.add(resultClass);
+        button.disabled = false;
+
+        window.setTimeout(() => {
+          button.classList.remove(resultClass);
+        }, 3000);
+      }
+    };
+
+    // The plugin binds directly to the first page's elements. Delegating from
+    // `document` keeps the controls functional after Astro swaps the page DOM.
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (!(event.target instanceof Element)) return;
+
+        const copyButton = event.target.closest('[data-page-action="copy-markdown"]');
+        if (copyButton instanceof HTMLButtonElement) {
+          event.preventDefault();
+          event.stopPropagation();
+          void copyMarkdown(copyButton);
+          return;
+        }
+
+        const dropdownToggle = event.target.closest('.dropdown > #dropdown-toggle');
+        if (dropdownToggle instanceof HTMLButtonElement) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const dropdown = dropdownToggle.closest('.dropdown');
+          const menu = dropdown?.querySelector(':scope > #dropdown-menu');
+          const shouldOpen = menu && !menu.classList.contains('show');
+
+          closeDropdowns();
+          if (shouldOpen) menu.classList.add('show');
+          return;
+        }
+
+        const dropdownMenu = event.target.closest('.dropdown > #dropdown-menu');
+        if (dropdownMenu) {
+          dropdownMenu.classList.remove('show');
+          return;
+        }
+
+        closeDropdowns();
+      },
+      { capture: true },
+    );
   })();
 </script>
 <ClientRouter />

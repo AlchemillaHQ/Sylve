@@ -5,6 +5,8 @@ import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import svelte from '@astrojs/svelte';
 import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
+import starlightLlmsTxt from 'starlight-llms-txt';
+import starlightPageActions from 'starlight-page-actions';
 
 const site = 'https://sylve.io';
 
@@ -43,6 +45,7 @@ export default defineConfig({
             ],
             components: {
                 Head: './src/components/starlight/Head.astro',
+                PageTitle: './src/components/starlight/PageTitle.astro',
                 SiteTitle: './src/components/starlight/SiteTitle.astro',
             },
             plugins: [
@@ -63,6 +66,51 @@ export default defineConfig({
                         },
                     },
                 ]),
+                // Keep `baseUrl` unset so this plugin provides the page UI while
+                // `starlight-llms-txt` remains the sole owner of `/llms.txt`.
+                starlightPageActions(),
+                starlightLlmsTxt({
+                    description:
+                        'Official documentation for Sylve, an open-source management platform for FreeBSD virtual machines, jails, storage, networking, and system services.',
+                    details:
+                        'Hand-written documentation pages are also available as clean Markdown by replacing the trailing slash with `.md` (for example, `https://sylve.io/docs.md`).',
+                    customSets: [
+                        {
+                            label: 'Node administration',
+                            description: 'Guides for managing a Sylve node and its workloads.',
+                            paths: ['guides/node/**'],
+                        },
+                        {
+                            label: 'Data center administration',
+                            description: 'Guides for clustering, backups, replication, and shared resources.',
+                            paths: ['guides/data-center/**'],
+                        },
+                        {
+                            label: 'One-shot guides',
+                            description: 'End-to-end deployment and migration walkthroughs.',
+                            paths: ['guides/one-shot-guides/**'],
+                        },
+                    ],
+                    exclude: [
+                        'guides/node/**',
+                        'guides/data-center/**',
+                        'guides/one-shot-guides/**',
+                    ],
+                    // Required because a pair of guides embed a Svelte network diagram.
+                    rawContent: true,
+                    optionalLinks: [
+                        {
+                            label: 'OpenAPI specification (JSON)',
+                            url: 'https://raw.githubusercontent.com/AlchemillaHQ/Sylve/refs/heads/master/docs/swagger/swagger.json',
+                            description: 'Machine-readable API definition in JSON format.',
+                        },
+                        {
+                            label: 'OpenAPI specification (YAML)',
+                            url: 'https://raw.githubusercontent.com/AlchemillaHQ/Sylve/refs/heads/master/docs/swagger/swagger.yaml',
+                            description: 'Machine-readable API definition in YAML format.',
+                        },
+                    ],
+                }),
             ],
             sidebar: [
                 {

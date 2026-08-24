@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - "docs/**"
+    paths:
+      - "**"
+      - "!docs/**"
+      - "docs/changelogs/**"
     tags-ignore:
       - tip
   pull_request:
@@ -14,8 +16,10 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-    paths-ignore:
-      - "docs/**"
+    paths:
+      - "**"
+      - "!docs/**"
+      - "docs/changelogs/**"
 
 permissions:
   contents: read
@@ -31,6 +35,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+
+      - name: Validate release changelogs
+        run: ./scripts/validate-release-changelog.sh --all
 
       - name: Setup Go
         uses: actions/setup-go@v7
