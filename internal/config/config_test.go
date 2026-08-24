@@ -71,6 +71,40 @@ func TestReadConfigReturnsDecodeErrors(t *testing.T) {
 	}
 }
 
+func TestReadConfigDefaultsPAMDisabled(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(configPath, []byte(`{}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := ReadConfig(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if cfg.Auth.EnablePAM {
+		t.Fatal("expected PAM authentication to be disabled by default")
+	}
+}
+
+func TestIsPAMEnabledRequiresExplicitOptIn(t *testing.T) {
+	previous := ParsedConfig
+	t.Cleanup(func() {
+		ParsedConfig = previous
+	})
+
+	ParsedConfig = nil
+	if IsPAMEnabled() {
+		t.Fatal("expected PAM authentication to be disabled without a parsed config")
+	}
+
+	ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{EnablePAM: true},
+	}
+	if !IsPAMEnabled() {
+		t.Fatal("expected explicit PAM enablement to be honored")
+	}
+}
+
 func TestGetUploadsConfigUsesDefaults(t *testing.T) {
 	previous := ParsedConfig
 	ParsedConfig = nil

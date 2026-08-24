@@ -67,9 +67,6 @@ func ReadConfig(path string) (*internal.SylveConfig, error) {
 	defer file.Close()
 
 	cfg := &internal.SylveConfig{
-		Auth: internal.AuthConfig{
-			EnablePAM: true,
-		},
 		ZFS: internal.ZFSConfig{
 			Tune: true,
 		},
@@ -91,7 +88,7 @@ func DataPathFromConfig(path string) (string, error) {
 
 func IsPAMEnabled() bool {
 	if ParsedConfig == nil {
-		return true
+		return false
 	}
 
 	return ParsedConfig.Auth.EnablePAM
