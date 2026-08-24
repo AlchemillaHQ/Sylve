@@ -321,6 +321,18 @@ func (s *Service) buildTemplateHooks(hooks []jailModels.JailHooks) []jailModels.
 	return out
 }
 
+func (s *Service) selectJailTemplateCPUSet(template jailModels.JailTemplate, ctID uint) ([]int, error) {
+	if template.Cores <= 0 || (template.ResourceLimits != nil && !*template.ResourceLimits) {
+		return []int{}, nil
+	}
+
+	logicalCores := s.jailHardwareOps().HostLogicalCores()
+	if logicalCores < 1 {
+		return nil, fmt.Errorf("host_cpu_unavailable")
+	}
+	return s.selectJailHardwareCPUSet(ctID, template.Cores, logicalCores)
+}
+
 func normalizeTemplateName(name string) string {
 	return strings.TrimSpace(name)
 }
@@ -923,6 +935,11 @@ func (s *Service) createJailFromTemplateTarget(
 	cancel()
 	snapshotNeedsCleanup = false
 
+	cpuSet, err := s.selectJailTemplateCPUSet(template, target.CTID)
+	if err != nil {
+		return fmt.Errorf("failed_to_select_jail_template_cpu_set: %w", err)
+	}
+
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		createdJail = jailModels.Jail{
 			Name:              target.Name,
@@ -936,6 +953,7 @@ func (s *Service) createJailFromTemplateTarget(
 			InheritIPv6:       template.InheritIPv6,
 			ResourceLimits:    template.ResourceLimits,
 			Cores:             template.Cores,
+			CPUSet:            append([]int{}, cpuSet...),
 			Memory:            template.Memory,
 			DevFSRuleset:      template.DevFSRuleset,
 			Fstab:             template.Fstab,

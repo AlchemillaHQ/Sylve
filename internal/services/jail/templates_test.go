@@ -332,6 +332,78 @@ func TestBuildCreateTargetsValidationAndPoolSelection(t *testing.T) {
 	})
 }
 
+func TestSelectJailTemplateCPUSet(t *testing.T) {
+	t.Run("persists a fresh CPU set that config generation accepts", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+		svc := &Service{
+			DB:             dbConn,
+			hardwareOps:    &fakeJailHardwareOps{logicalCores: 4},
+			ctidHashByCTID: make(map[uint]string),
+		}
+		enabled := true
+		jails := []jailModels.Jail{
+			{CTID: 401, Name: "j401", ResourceLimits: &enabled, Cores: 2, Memory: 2 * 1024 * 1024 * 1024},
+			{CTID: 402, Name: "j402", ResourceLimits: &enabled, Cores: 2, Memory: 2 * 1024 * 1024 * 1024},
+		}
+		wantCPUSet := [][]int{{0, 1}, {2, 3}}
+
+		for i := range jails {
+			cpuSet, err := svc.selectJailTemplateCPUSet(jailModels.JailTemplate{
+				ResourceLimits: jails[i].ResourceLimits,
+				Cores:          jails[i].Cores,
+			}, jails[i].CTID)
+			if err != nil {
+				t.Fatalf("select CPU set for jail %d: %v", jails[i].CTID, err)
+			}
+			if !reflect.DeepEqual(cpuSet, wantCPUSet[i]) {
+				t.Fatalf("jail %d CPU set = %v, want %v", jails[i].CTID, cpuSet, wantCPUSet[i])
+			}
+			jails[i].CPUSet = cpuSet
+			if err := dbConn.Create(&jails[i]).Error; err != nil {
+				t.Fatalf("persist jail %d: %v", jails[i].CTID, err)
+			}
+
+			var reloaded jailModels.Jail
+			if err := dbConn.Where("ct_id = ?", jails[i].CTID).First(&reloaded).Error; err != nil {
+				t.Fatalf("reload jail %d: %v", jails[i].CTID, err)
+			}
+			if _, _, err := svc.CreateHardwareConfig(reloaded); err != nil {
+				t.Fatalf("create hardware config for jail %d: %v", jails[i].CTID, err)
+			}
+		}
+	})
+
+	t.Run("disabled or zero-core limits need no allocation", func(t *testing.T) {
+		disabled := false
+		svc := &Service{hardwareOps: &fakeJailHardwareOps{logicalCores: 0}}
+		for _, tt := range []struct {
+			ctID     uint
+			template jailModels.JailTemplate
+		}{
+			{ctID: 403, template: jailModels.JailTemplate{ResourceLimits: &disabled, Cores: 2}},
+			{ctID: 404, template: jailModels.JailTemplate{Cores: 0}},
+		} {
+			cpuSet, err := svc.selectJailTemplateCPUSet(tt.template, tt.ctID)
+			if err != nil {
+				t.Fatalf("unexpected allocation error for jail %d: %v", tt.ctID, err)
+			}
+			if len(cpuSet) != 0 {
+				t.Fatalf("jail %d CPU set = %v, want empty", tt.ctID, cpuSet)
+			}
+		}
+	})
+
+	t.Run("rejects an impossible core count", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+		enabled := true
+		template := jailModels.JailTemplate{ResourceLimits: &enabled, Cores: 5}
+		svc := &Service{DB: dbConn, hardwareOps: &fakeJailHardwareOps{logicalCores: 4}}
+		if _, err := svc.selectJailTemplateCPUSet(template, 405); err == nil || !strings.Contains(err.Error(), "invalid_cores") {
+			t.Fatalf("expected invalid_cores, got %v", err)
+		}
+	})
+}
+
 func TestPreflightTemplateTargetsRejectsVMRIDCollision(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &jailModels.Jail{}, &vmModels.VM{})
 
