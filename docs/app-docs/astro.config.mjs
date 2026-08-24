@@ -4,6 +4,7 @@ import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 import svelte from '@astrojs/svelte';
+import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 
 const site = 'https://sylve.io';
 
@@ -44,6 +45,25 @@ export default defineConfig({
                 Head: './src/components/starlight/Head.astro',
                 SiteTitle: './src/components/starlight/SiteTitle.astro',
             },
+            plugins: [
+                starlightOpenAPI([
+                    {
+                        base: 'api-reference',
+                        schema: '../swagger/swagger.json',
+                        sidebar: {
+                            label: 'API Reference',
+                            collapsed: true,
+                            operations: {
+                                badges: true,
+                                labels: 'summary',
+                            },
+                            tags: {
+                                sort: 'alphabetical',
+                            },
+                        },
+                    },
+                ]),
+            ],
             sidebar: [
                 {
                     label: 'Start Here',
@@ -377,6 +397,7 @@ export default defineConfig({
                         },
                     ],
                 },
+                ...openAPISidebarGroups,
             ],
             customCss: ['./src/styles/global.css', './src/assets/landing.css'],
         }),

@@ -24,6 +24,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "runed": "^0.37.1",
+        "starlight-openapi": "^0.26.1",
         "svelte": "^5.53.7",
         "swiper": "^12.1.2",
         "tailwind-merge": "^3.4.0",
@@ -38,5 +39,10 @@
         "@iconify/tailwind4": "^1.2.1",
         "pagefind": "^1.4.0",
         "tw-animate-css": "^1.4.0"
+    },
+    "overrides": {
+        "httpsnippet": {
+            "form-data": "4.0.6"
+        }
     }
 }
