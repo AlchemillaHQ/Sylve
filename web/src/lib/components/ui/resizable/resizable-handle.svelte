@@ -7,10 +7,29 @@
 		ref = $bindable(null),
 		class: className,
 		withHandle = false,
+		ondblclick,
 		...restProps
 	}: WithoutChildrenOrChild<ResizablePrimitive.PaneResizerProps> & {
 		withHandle?: boolean;
 	} = $props();
+
+	let gripVisible = $state(true);
+
+	function handleDoubleClick(event: MouseEvent & { currentTarget: EventTarget & HTMLDivElement }) {
+		ondblclick?.(event);
+		if (event.defaultPrevented || !withHandle) return;
+
+		const clickedGrip =
+			event.target instanceof Element &&
+			event.target.closest('[data-slot="resizable-grip"]') !== null;
+
+		if (gripVisible) {
+			if (clickedGrip) gripVisible = false;
+			return;
+		}
+
+		gripVisible = true;
+	}
 </script>
 
 <ResizablePrimitive.PaneResizer
@@ -21,9 +40,13 @@
 		className
 	)}
 	{...restProps}
+	ondblclick={handleDoubleClick}
 >
-	{#if withHandle}
-		<div class="bg-border rounded-xs z-10 flex h-4 w-3 items-center justify-center border">
+	{#if withHandle && gripVisible}
+		<div
+			data-slot="resizable-grip"
+			class="bg-border rounded-xs z-10 flex h-4 w-3 items-center justify-center border"
+		>
 			<GripVerticalIcon class="size-2.5" />
 		</div>
 	{/if}
