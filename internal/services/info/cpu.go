@@ -21,6 +21,20 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 )
 
+func resolveLogicalCoreCount(systemWide, fallback int) int16 {
+	if systemWide > 0 {
+		return int16(systemWide)
+	}
+	if fallback > 0 {
+		return int16(fallback)
+	}
+	return 1
+}
+
+func logicalCoreCount() int16 {
+	return resolveLogicalCoreCount(utils.GetLogicalCores(), cpuid.CPU.LogicalCores)
+}
+
 func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, error) {
 	info := infoServiceInterfaces.CPUInfo{
 		Usage: 0,
@@ -34,13 +48,7 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 		return info, nil
 	}
 
-	logical := int16(utils.GetLogicalCores())
-	if logical <= 0 {
-		logical = int16(cpuid.CPU.LogicalCores)
-	}
-	if logical <= 0 {
-		logical = 1
-	}
+	logical := logicalCoreCount()
 
 	physical := int16(cpuid.CPU.PhysicalCores)
 	if physical <= 0 {
