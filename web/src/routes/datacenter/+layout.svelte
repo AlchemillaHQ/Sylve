@@ -175,7 +175,7 @@
 			</div>
 		</Resizable.Pane>
 
-		<Resizable.Handle withHandle />
+		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
 
 		<Resizable.Pane>
 			<div class="h-full overflow-auto">

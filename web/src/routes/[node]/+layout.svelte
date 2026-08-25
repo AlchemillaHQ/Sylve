@@ -486,7 +486,7 @@
 				</div>
 			</div>
 		</Resizable.Pane>
-		<Resizable.Handle withHandle />
+		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
 		<Resizable.Pane>
 			{#if isConsoleRoute}
 				<div class="h-full w-full overflow-hidden">

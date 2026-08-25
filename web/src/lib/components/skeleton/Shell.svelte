@@ -132,7 +132,7 @@
 								</div>
 							</div>
 						</Resizable.Pane>
-						<Resizable.Handle withHandle />
+						<Resizable.Handle withHandle gripPreferenceKey="shell-resource-tree" />
 
 						<Resizable.Pane class="border-r">
 							{@render children?.()}
@@ -140,7 +140,7 @@
 					</Resizable.PaneGroup>
 				</Resizable.Pane>
 
-				<Resizable.Handle withHandle />
+				<Resizable.Handle withHandle gripPreferenceKey="shell-bottom-panel" />
 
 				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
 					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />
