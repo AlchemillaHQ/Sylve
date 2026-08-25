@@ -390,7 +390,11 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 			s.SignalDSChange(isnap.Pool, isnap.Name, "snapshot", "create")
 		}
 
-		if err := s.DB.Model(&snapshot).Update("LastRunAt", seedLocal.UTC()).Error; err != nil {
+		executedAt := time.Now().UTC()
+		if err := s.DB.Model(&snapshot).Updates(map[string]interface{}{
+			"LastRunAt":      seedLocal.UTC(),
+			"LastExecutedAt": executedAt,
+		}).Error; err != nil {
 			logger.L.Warn().Err(err).Msgf("Failed to seed LastRunAt for snapshot job %s", snapshot.GUID)
 		}
 	}
@@ -767,7 +771,11 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 					exists, _ := s.GZFS.ZFS.Get(ctx, full, false)
 					if exists != nil {
 						logger.L.Debug().Msgf("Snapshot %s already exists", name)
-						if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
+						executedAt := time.Now().UTC()
+						if err := s.DB.Model(&job).Updates(map[string]interface{}{
+							"LastRunAt":      persistTime,
+							"LastExecutedAt": executedAt,
+						}).Error; err != nil {
 							logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 						}
 						continue
@@ -780,7 +788,11 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 						s.SignalDSChange(snap.Pool, snap.Name, "snapshot", "create")
 					}
 
-					if err := s.DB.Model(&job).Update("LastRunAt", persistTime).Error; err != nil {
+					executedAt := time.Now().UTC()
+					if err := s.DB.Model(&job).Updates(map[string]interface{}{
+						"LastRunAt":      persistTime,
+						"LastExecutedAt": executedAt,
+					}).Error; err != nil {
 						logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
 					}
 

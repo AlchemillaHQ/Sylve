@@ -223,6 +223,9 @@ func TestIntegrationPeriodicSnapshotSkipsDoNotAdvanceLastRunRealZFS(t *testing.T
 			t.Fatalf("load control job: %v", err)
 		}
 		if control.LastRunAt.After(baseline) {
+			if control.LastExecutedAt == nil || control.LastExecutedAt.Before(baseline) {
+				t.Fatalf("control periodic snapshot did not record its execution time: %v", control.LastExecutedAt)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -239,6 +242,9 @@ func TestIntegrationPeriodicSnapshotSkipsDoNotAdvanceLastRunRealZFS(t *testing.T
 		}
 		if !current.LastRunAt.Equal(baseline) {
 			t.Fatalf("blocked job %d advanced LastRunAt: got %s want %s", current.ID, current.LastRunAt, baseline)
+		}
+		if current.LastExecutedAt != nil {
+			t.Fatalf("blocked job %d recorded an execution time: %s", current.ID, current.LastExecutedAt)
 		}
 	}
 

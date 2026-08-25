@@ -61,6 +61,7 @@ type DemoPeriodicSnapshot = {
 	keepYearly?: number;
 	createdAt: string;
 	lastRunAt: string;
+	lastExecutedAt: string | null;
 };
 
 type DemoPoolProperty = {
@@ -1040,7 +1041,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 				keepDaily: 7,
 				keepWeekly: 4,
 				createdAt: '2026-06-12T07:00:00.000Z',
-				lastRunAt: '2026-08-14T11:00:00.000Z'
+				lastRunAt: '2026-08-14T11:00:00.000Z',
+				lastExecutedAt: '2026-08-14T11:00:03.000Z'
 			},
 			{
 				id: 2,
@@ -1053,7 +1055,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 				keepLast: 14,
 				maxAgeDays: 30,
 				createdAt: '2026-05-01T02:15:00.000Z',
-				lastRunAt: '2026-08-14T02:15:00.000Z'
+				lastRunAt: '2026-08-14T02:15:00.000Z',
+				lastExecutedAt: '2026-08-14T02:15:04.000Z'
 			}
 		],
 		scrubbingPools: new Set<string>(),
@@ -2585,7 +2588,8 @@ export function handleDemoStorageRequest<T = unknown>(
 			keepMonthly: numberValue(body, 'keepMonthly') || undefined,
 			keepYearly: numberValue(body, 'keepYearly') || undefined,
 			createdAt: new Date().toISOString(),
-			lastRunAt: new Date().toISOString()
+			lastRunAt: new Date().toISOString(),
+			lastExecutedAt: new Date().toISOString()
 		};
 		state.periodicSnapshots.push(periodic);
 		return mutationSuccess('periodic_snapshot_created', 201) as DemoStorageResponse<T>;

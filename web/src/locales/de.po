@@ -7107,10 +7107,6 @@ msgid "View Snapshot Jobs"
 msgstr "Snapshot-Jobs anzeigen"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Jan 01, 0001"
-msgstr "Jan 01, 0001"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Deleted"
 msgstr "Gelöscht"
 
@@ -17556,4 +17552,14 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Options/ExecutionTimeout.svelte
 msgid "Execution Timeout (Seconds)"
+msgstr ""
+
+#. 0: runTimeToAgo(snapshot.lastExecutedAt)
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Actual: {0}"
+msgstr ""
+
+#. 0: runTimeToAgo(snapshot.lastRunAt)
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Scheduled: {0}"
 msgstr ""

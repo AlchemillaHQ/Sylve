@@ -62,6 +62,18 @@
 		}
 	}
 
+	function isKnownRunTime(date: Date | null | undefined): date is Date {
+		return date instanceof Date && !Number.isNaN(date.getTime()) && date.getFullYear() > 1;
+	}
+
+	function runTimeToAgo(date: Date | null | undefined) {
+		return isKnownRunTime(date) ? dateToAgo(date) : 'Never';
+	}
+
+	function runTimeTitle(date: Date | null | undefined) {
+		return isKnownRunTime(date) ? date.toLocaleString() : undefined;
+	}
+
 	async function saveJobs() {
 		try {
 			for (const id of shadowDeleted) {
@@ -134,13 +146,15 @@
 									<Table.Cell>{cronToHuman(snapshot.cronExpr)}</Table.Cell>
 								{/if}
 
-								<Table.Cell title={snapshot.lastRunAt.toLocaleString()}>
-									{@const lastRun = dateToAgo(snapshot.lastRunAt)}
-									{#if lastRun === 'Jan 01, 0001'}
-										<span>Never</span>
-									{:else}
-										{lastRun}
-									{/if}
+								<Table.Cell>
+									<div class="flex flex-col whitespace-nowrap text-xs">
+										<span title={runTimeTitle(snapshot.lastExecutedAt)}>
+											Actual: {runTimeToAgo(snapshot.lastExecutedAt)}
+										</span>
+										<span class="text-muted-foreground" title={runTimeTitle(snapshot.lastRunAt)}>
+											Scheduled: {runTimeToAgo(snapshot.lastRunAt)}
+										</span>
+									</div>
 								</Table.Cell>
 
 								{#if !shadowDeleted.includes(snapshot.id)}
