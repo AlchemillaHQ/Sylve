@@ -28,11 +28,9 @@
 		type ResourceTreeItem
 	} from '$lib/resource-tree';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
-	import { escapeHTML } from '$lib/utils/string';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
 	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop';
-	type QuickAction = Exclude<GuestAction, 'reboot'>;
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -101,19 +99,6 @@
 		return null;
 	}
 
-	let quickAction = $derived.by((): QuickAction => {
-		if (item.state !== 'active') return 'start';
-		return item.resourceType === 'vm' ? 'shutdown' : 'stop';
-	});
-
-	const handleQuickAction = (e: MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		if (actionInFlight || lifecycleActive) return;
-		pendingQuickAction = quickAction;
-		quickActionConfirmOpen = true;
-	};
-
 	const sidebarActive = 'rounded-md bg-muted font-inter font-medium';
 
 	function isItemActive(menuItem: ResourceTreeItem, currentUrl: string): boolean {
@@ -141,13 +126,6 @@
 			item.resourceType === 'vm-template'
 	);
 	let actionInFlight = $state(false);
-	let showQuickAction = $derived(
-		!actionInFlight &&
-			!lifecycleActive &&
-			(item.resourceType === 'vm' || item.resourceType === 'jail') &&
-			item.resourceId !== undefined &&
-			(item.state === 'active' || item.state === 'inactive')
-	);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
 		return segments[segments.length - 1];
@@ -161,8 +139,6 @@
 	let convertTemplateName = $state('');
 	let deleteVMOpen = $state(false);
 	let deleteVMLoading = $state(false);
-	let quickActionConfirmOpen = $state(false);
-	let pendingQuickAction = $state<QuickAction | null>(null);
 
 	function baseGuestName(label: string): string {
 		return label.replace(/\s*\((?:CT|VM)?\s*\d+\)\s*$/i, '').trim();
@@ -232,52 +208,6 @@
 			actionInFlight = false;
 		}
 	};
-
-	function quickActionLabel(action: QuickAction | null): string {
-		if (action === 'start') return 'Start';
-		if (action === 'shutdown') return 'Shut Down';
-		if (action === 'stop') return 'Stop';
-		return 'Continue';
-	}
-
-	function quickActionLoadingLabel(action: QuickAction | null): string {
-		if (action === 'start') return 'Starting...';
-		if (action === 'shutdown') return 'Shutting down...';
-		if (action === 'stop') return 'Stopping...';
-		return 'Processing...';
-	}
-
-	function quickActionMessage(action: QuickAction | null): string {
-		if (!action) return '';
-
-		const resourceLabel = item.resourceType === 'vm' ? 'VM' : 'jail';
-		const resourceName = `<span class="font-semibold">${escapeHTML(item.label)}</span>`;
-
-		if (action === 'start') {
-			return `Start ${resourceLabel} ${resourceName}? Its configured services will start and the guest may immediately become reachable on the network.`;
-		}
-
-		if (action === 'shutdown') {
-			return `Shut down VM ${resourceName}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off.`;
-		}
-
-		return `Stop jail ${resourceName}? Running services and active sessions inside the jail will be interrupted.`;
-	}
-
-	async function confirmQuickAction() {
-		const action = pendingQuickAction;
-		if (!action || lifecycleActive) {
-			quickActionConfirmOpen = false;
-			return;
-		}
-
-		await handleActionClick(action);
-		quickActionConfirmOpen = false;
-	}
-
-	function cancelQuickAction() {
-		quickActionConfirmOpen = false;
-	}
 
 	const handleConvertToTemplate = async () => {
 		if (
@@ -460,7 +390,7 @@
 			<ContextMenu.Trigger
 				role="button"
 				tabindex={0}
-				class={`group ${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
+				class={`${rowSpacingClass} data-[state=open]:bg-muted flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 				onclick={handleLabelClick}
 				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 			>
@@ -497,25 +427,8 @@
 					</p>
 				</div>
 
-				<div class="flex shrink-0 items-center gap-0.5">
-					{#if showQuickAction}
-						<button
-							type="button"
-							class="hover:bg-background hidden size-5 items-center justify-center rounded group-hover:flex"
-							disabled={actionInFlight || lifecycleActive}
-							title={quickAction === 'shutdown'
-								? 'Shutdown'
-								: quickAction === 'stop'
-									? 'Stop'
-									: 'Start'}
-							onclick={(e) => void handleQuickAction(e)}
-						>
-							<span
-								class={`icon-[mdi--${quickAction === 'shutdown' ? 'power' : quickAction === 'stop' ? 'stop' : 'play'}] h-3.5 w-3.5`}
-							></span>
-						</button>
-					{/if}
-					{#if item.children && item.children.length > 0}
+				{#if item.children && item.children.length > 0}
+					<div class="flex shrink-0 items-center gap-0.5">
 						<span
 							role="button"
 							tabindex="0"
@@ -527,8 +440,8 @@
 								class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
 							></span>
 						</span>
-					{/if}
-				</div>
+					</div>
+				{/if}
 			</ContextMenu.Trigger>
 			<ContextMenu.Content>
 				{#if item.resourceType === 'jail'}
@@ -740,19 +653,6 @@
 {/if}
 
 {#if (item.resourceType === 'jail' || item.resourceType === 'vm') && item.resourceId}
-	<AlertDialog
-		bind:open={quickActionConfirmOpen}
-		customTitle={quickActionMessage(pendingQuickAction)}
-		actions={{
-			onConfirm: confirmQuickAction,
-			onCancel: cancelQuickAction
-		}}
-		confirmLabel={quickActionLabel(pendingQuickAction)}
-		loadingLabel={quickActionLoadingLabel(pendingQuickAction)}
-		loading={actionInFlight}
-		keepOpenOnConfirm={true}
-	/>
-
 	<Dialog.Root bind:open={convertTemplateOpen}>
 		<Dialog.Content class="max-w-md">
 			<Dialog.Header>

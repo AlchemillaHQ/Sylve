@@ -1644,7 +1644,6 @@ msgstr "लॉग आउट"
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
@@ -1655,7 +1654,6 @@ msgid "Continue"
 msgstr "जारी रखें"
 
 #: src/lib/components/custom/Dialog/Alert.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Processing..."
 msgstr "प्रसंस्करण हो रहा है..."
 
@@ -2125,8 +2123,6 @@ msgid "Error starting jail"
 msgstr "जेल शुरू करने में त्रुटि"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2134,8 +2130,6 @@ msgid "Stop"
 msgstr "रोकें"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2781,7 +2775,6 @@ msgstr "चल रहा है"
 msgid "Reboot"
 msgstr "रीबूट"
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Shutdown"
@@ -5172,7 +5165,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -17152,36 +17145,26 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Shut Down"
-msgstr ""
+#~ msgid "Shut Down"
+#~ msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Starting..."
-msgstr ""
+#~ msgid "Starting..."
+#~ msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Shutting down..."
-msgstr ""
+#~ msgid "Shutting down..."
+#~ msgstr ""
 
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Stopping..."
-msgstr ""
+#~ msgid "Stopping..."
+#~ msgstr ""
 
-#. 0: resourceLabel; 1: resourceName
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
-msgstr ""
+#~ msgid "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
+#~ msgstr ""
 
-#. 0: resourceName
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
-msgstr ""
+#~ msgid "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
+#~ msgstr ""
 
-#. 0: resourceName
-#: src/lib/components/skeleton/TreeViewCluster.svelte
-msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
-msgstr ""
+#~ msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
+#~ msgstr ""
 
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "You have control"
