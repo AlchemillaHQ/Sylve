@@ -180,11 +180,6 @@
 			if (!devFSDisabled) {
 				allowedOptions.push('allow.mount.devfs');
 			}
-
-			execScripts['start'].script = '/bin/sh /etc/rc';
-			execScripts['stop'].script = '/bin/sh /etc/rc.shutdown';
-			execScripts['start'].enabled = true;
-			execScripts['stop'].enabled = true;
 		} else if (jailType === 'linux') {
 			allowedOptions = [
 				'allow.set_hostname',

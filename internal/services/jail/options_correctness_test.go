@@ -433,6 +433,110 @@ echo old-user-hook
 	}
 }
 
+func TestJailLifecycleReconcilePreservesRawAdditionalOptions(t *testing.T) {
+	const additional = "\texec.start = \"/bin/sh /etc/rc\";"
+	service, _, configPath, _ := newJailOptionsTestService(t, 914, func(record *jailModels.Jail) {
+		record.AdditionalOptions = additional
+	})
+	if err := service.ModifyLifecycleHooks(914, disabledJailLifecycleHooks()); err != nil {
+		t.Fatalf("reconcile lifecycle hooks: %v", err)
+	}
+	configContent, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(configContent), jailAdditionalOptionsConfigBlock(additional)) {
+		t.Fatalf("raw additional-options block was changed:\n%s", configContent)
+	}
+}
+
+func TestReconcileLifecycleConfigsMigratesExistingJails(t *testing.T) {
+	service, record, configPath, mountPoint := newJailOptionsTestService(t, 915, nil)
+	legacyHooks := lifecycleHookRows(record.ID, jailServiceInterfaces.Hooks{
+		Start: jailServiceInterfaces.HookPhase{Enabled: true, Script: defaultFreeBSDJailStartCommand},
+		Stop:  jailServiceInterfaces.HookPhase{Enabled: true, Script: "echo retained-custom-stop"},
+	})
+	if err := service.DB.Create(&legacyHooks).Error; err != nil {
+		t.Fatalf("seed legacy hooks: %v", err)
+	}
+
+	hostScriptsDir := filepath.Join(filepath.Dir(configPath), "scripts")
+	startHostPath := filepath.Join(hostScriptsDir, "start.sh")
+	stopHostPath := filepath.Join(hostScriptsDir, "stop.sh")
+	legacyStartScript := "#!/bin/sh\n\n" + jailUserHookStart + "\n" + defaultFreeBSDJailStartCommand + "\n" + jailUserHookEnd + "\n"
+	legacyStopScript := "#!/bin/sh\n\n" + jailUserHookStart + "\necho retained-custom-stop\n" + jailUserHookEnd + "\n"
+	if err := os.WriteFile(startHostPath, []byte(legacyStartScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stopHostPath, []byte(legacyStopScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configContent, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyConfigLines := strings.Join([]string{
+		"\texec.start = " + strconv.Quote(defaultFreeBSDJailStartCommand) + ";",
+		"\texec.start += " + strconv.Quote(jailStartHookExecPath) + ";",
+		"\texec.stop = " + strconv.Quote(defaultFreeBSDJailStopCommand) + ";",
+		"\texec.stop += " + strconv.Quote(jailStopHookExecPath) + ";",
+	}, "\n")
+	legacyConfig := strings.Replace(string(configContent), "\tpersist;", legacyConfigLines+"\n\tpersist;", 1)
+	if err := os.WriteFile(configPath, []byte(legacyConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.ReconcileLifecycleConfigs(); err != nil {
+		t.Fatalf("ReconcileLifecycleConfigs: %v", err)
+	}
+	migratedConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(migratedConfig), "exec.start") != 1 || strings.Count(string(migratedConfig), "exec.stop") != 1 {
+		t.Fatalf("existing jail config was not normalized:\n%s", migratedConfig)
+	}
+	if !strings.Contains(string(migratedConfig), "exec.start = "+strconv.Quote(defaultFreeBSDJailStartCommand)+";") ||
+		!strings.Contains(string(migratedConfig), "exec.stop = "+strconv.Quote(jailStopHookExecPath)+";") ||
+		strings.Contains(string(migratedConfig), strconv.Quote(defaultFreeBSDJailStopCommand)) {
+		t.Fatalf("existing default/custom lifecycle behavior was not preserved canonically:\n%s", migratedConfig)
+	}
+	migratedStartScript, err := os.ReadFile(filepath.Join(mountPoint, "usr", "local", "sylve", "scripts", "start.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(migratedStartScript), jailUserHookStart) {
+		t.Fatalf("legacy managed block remained in start.sh:\n%s", migratedStartScript)
+	}
+	migratedStopScript, err := os.ReadFile(filepath.Join(mountPoint, "usr", "local", "sylve", "scripts", "stop.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(migratedStopScript), "echo retained-custom-stop") {
+		t.Fatalf("custom stop hook was not preserved:\n%s", migratedStopScript)
+	}
+	persisted := loadJailOptionRecord(t, service.DB, 915)
+	for _, hook := range persisted.JailHooks {
+		if hook.Phase == jailModels.JailHookPhaseStart && (hook.Enabled || hook.Script != "") {
+			t.Fatalf("existing legacy hook row was retained: %+v", hook)
+		}
+		if hook.Phase == jailModels.JailHookPhaseStop && (!hook.Enabled || hook.Script != "echo retained-custom-stop") {
+			t.Fatalf("existing custom hook row was changed: %+v", hook)
+		}
+	}
+	beforeSecondPass := string(migratedConfig)
+	if err := service.ReconcileLifecycleConfigs(); err != nil {
+		t.Fatalf("second ReconcileLifecycleConfigs: %v", err)
+	}
+	afterSecondPass, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterSecondPass) != beforeSecondPass {
+		t.Fatalf("lifecycle normalization is not idempotent:\nbefore:\n%s\nafter:\n%s", beforeSecondPass, afterSecondPass)
+	}
+}
+
 func TestJailDevFSRuleRemovalReloadsAndPreservesUnrelatedRules(t *testing.T) {
 	if config.IsDevFSDisabled() {
 		t.Skip("DevFS management is disabled in this environment")

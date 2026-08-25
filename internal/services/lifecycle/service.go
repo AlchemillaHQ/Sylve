@@ -304,6 +304,14 @@ func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
 	return db.EnqueueNoPayload(ctx, guestAutostartQueueName)
 }
 
+func (s *Service) PrepareStartup(ctx context.Context) error {
+	var jailErr error
+	if s.Jail != nil {
+		jailErr = s.Jail.ReconcileLifecycleConfigs()
+	}
+	return errors.Join(jailErr, s.RecoverInterruptedTasks(ctx))
+}
+
 // RecoverInterruptedTasks closes normal tasks claimed by a previous process.
 // Migration tasks have durable recovery and must remain running for it.
 func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {

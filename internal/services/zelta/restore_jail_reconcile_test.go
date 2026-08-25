@@ -36,20 +36,24 @@ func TestNormalizeRestoredSwitchType(t *testing.T) {
 }
 
 func TestNormalizeRestoredJailHooks(t *testing.T) {
-	hooks := normalizeRestoredJailHooks(42, []jailModels.JailHooks{
+	hooks := normalizeRestoredJailHooks(42, jailModels.JailTypeFreeBSD, []jailModels.JailHooks{
 		{Phase: "prestart", Enabled: true, Script: "/bin/echo"},
+		{Phase: "start", Enabled: true, Script: "/bin/sh /etc/rc"},
 		{Phase: "poststop", Enabled: false, Script: "/bin/true"},
 	})
-	if len(hooks) != 2 {
-		t.Fatalf("expected 2 hooks, got %d", len(hooks))
+	if len(hooks) != 3 {
+		t.Fatalf("expected 3 hooks, got %d", len(hooks))
 	}
-	if hooks[0].JailID != 42 || hooks[1].JailID != 42 {
+	if hooks[0].JailID != 42 || hooks[1].JailID != 42 || hooks[2].JailID != 42 {
 		t.Fatal("jail ID should be set on all hooks")
 	}
 	if hooks[0].Phase != "prestart" {
 		t.Fatalf("expected prestart, got %q", hooks[0].Phase)
 	}
-	if hooks[1].Enabled {
+	if hooks[1].Enabled || hooks[1].Script != "" {
+		t.Fatalf("legacy FreeBSD start hook was not normalized: %+v", hooks[1])
+	}
+	if hooks[2].Enabled {
 		t.Fatal("poststop should stay disabled")
 	}
 }

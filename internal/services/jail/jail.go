@@ -1093,6 +1093,7 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	if err != nil {
 		return "", err
 	}
+	data.JailHooks, _ = NormalizeLegacyLifecycleHooks(data.Type, data.JailHooks)
 
 	jailsPath, err := config.GetJailsPath()
 	if err != nil {
@@ -1238,9 +1239,8 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 
 	// Logging & env
 	cfg += fmt.Sprintf("\texec.consolelog += \"%s\";\n", logPath)
-	if data.Type == jailModels.JailTypeFreeBSD {
-		cfg += "\texec.start = \"/bin/sh /etc/rc\";\n"
-		cfg += "\texec.stop = \"/bin/sh /etc/rc.shutdown\";\n"
+	for _, line := range canonicalJailStartStopExecLines(data.Type, startCfg != "", stopCfg != "") {
+		cfg += line + "\n"
 	}
 	if data.CleanEnvironment {
 		cfg += "\texec.clean;\n"
@@ -1265,10 +1265,6 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	startJailFsPath := filepath.Join(jailScriptsFsDir, "start.sh")
 	if err := writeScript(startJailFsPath, startCfg, true); err != nil {
 		return "", fmt.Errorf("failed_to_write_in_jail_start_script: %w", err)
-	}
-	startJailExecPath := "/" + filepath.Join(jailScriptsRelDir, "start.sh")
-	if startCfg != "" {
-		cfg += fmt.Sprintf("\texec.start += \"%s\";\n", startJailExecPath)
 	}
 
 	// poststart: host environment
@@ -1297,10 +1293,6 @@ func (s *Service) CreateJailConfig(data jailModels.Jail, mountPoint string) (str
 	stopJailFsPath := filepath.Join(jailScriptsFsDir, "stop.sh")
 	if err := writeScript(stopJailFsPath, stopCfg, true); err != nil {
 		return "", fmt.Errorf("failed_to_write_in_jail_stop_script: %w", err)
-	}
-	stopJailExecPath := "/" + filepath.Join(jailScriptsRelDir, "stop.sh")
-	if stopCfg != "" {
-		cfg += fmt.Sprintf("\texec.stop += \"%s\";\n", stopJailExecPath)
 	}
 
 	// poststop: host environment
@@ -1535,6 +1527,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			Script:  data.Hooks.Poststop.Script,
 		},
 	}
+	jail.JailHooks, _ = NormalizeLegacyLifecycleHooks(jail.Type, jail.JailHooks)
 
 	if jail.ResourceLimits != nil && *jail.ResourceLimits {
 		jail.Cores = initialHardware.cores

@@ -24,6 +24,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	jailService "github.com/alchemillahq/sylve/internal/services/jail"
 	"gorm.io/gorm"
 )
 
@@ -317,7 +318,7 @@ func (s *Service) upsertRestoredJailState(
 			}
 		}
 
-		hooks := normalizeRestoredJailHooks(baseJail.ID, restored.JailHooks)
+		hooks := normalizeRestoredJailHooks(baseJail.ID, baseJail.Type, restored.JailHooks)
 		storages := normalizeRestoredJailStorages(baseJail.ID, restored.Storages, basePool, datasetGUID)
 		var networks []jailModels.Network
 		requiresSwitchSync := false
@@ -497,9 +498,14 @@ func reconcileRestoredJailSnapshots(
 	return nil
 }
 
-func normalizeRestoredJailHooks(jailID uint, hooks []jailModels.JailHooks) []jailModels.JailHooks {
-	out := make([]jailModels.JailHooks, 0, len(hooks))
-	for _, hook := range hooks {
+func normalizeRestoredJailHooks(
+	jailID uint,
+	jailType jailModels.JailType,
+	hooks []jailModels.JailHooks,
+) []jailModels.JailHooks {
+	normalized, _ := jailService.NormalizeLegacyLifecycleHooks(jailType, hooks)
+	out := make([]jailModels.JailHooks, 0, len(normalized))
+	for _, hook := range normalized {
 		out = append(out, jailModels.JailHooks{
 			JailID:  jailID,
 			Phase:   hook.Phase,

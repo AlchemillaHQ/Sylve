@@ -313,9 +313,10 @@ func (s *Service) buildTemplateNetworks(networks []jailModels.Network) []jailMod
 	return out
 }
 
-func (s *Service) buildTemplateHooks(hooks []jailModels.JailHooks) []jailModels.JailTemplateHook {
-	out := make([]jailModels.JailTemplateHook, 0, len(hooks))
-	for _, h := range hooks {
+func (s *Service) buildTemplateHooks(jailType jailModels.JailType, hooks []jailModels.JailHooks) []jailModels.JailTemplateHook {
+	normalized, _ := NormalizeLegacyLifecycleHooks(jailType, hooks)
+	out := make([]jailModels.JailTemplateHook, 0, len(normalized))
+	for _, h := range normalized {
 		out = append(out, jailModels.JailTemplateHook{Phase: h.Phase, Enabled: h.Enabled, Script: h.Script})
 	}
 	return out
@@ -601,7 +602,7 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		MetadataMeta:      jail.MetadataMeta,
 		MetadataEnv:       jail.MetadataEnv,
 		Networks:          s.buildTemplateNetworks(jail.Networks),
-		Hooks:             s.buildTemplateHooks(jail.JailHooks),
+		Hooks:             s.buildTemplateHooks(jail.Type, jail.JailHooks),
 	}
 	if template.ExecTimeout == 0 {
 		template.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
@@ -842,6 +843,7 @@ func (s *Service) createJailFromTemplateTarget(
 	template jailModels.JailTemplate,
 	target createTarget,
 ) (retErr error) {
+	template.Hooks = normalizeTemplateLifecycleHooks(template.Type, template.Hooks)
 	templateDS, err := s.GZFS.ZFS.Get(ctx, template.RootDataset, false)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_template_dataset: %w", err)

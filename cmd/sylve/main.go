@@ -273,8 +273,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			}
 		}()
 
-		if err := lifecycleSvc.RecoverInterruptedTasks(initContext); err != nil {
-			logger.L.Error().Err(err).Msg("failed_to_recover_interrupted_lifecycle_tasks")
+		if err := lifecycleSvc.PrepareStartup(initContext); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
 		}
 
 		if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {

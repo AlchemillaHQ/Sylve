@@ -432,6 +432,116 @@ func TestCreateJailConfigStartsAndStopsFreeBSDRC(t *testing.T) {
 			t.Fatalf("jail config missing %q:\n%s", expected, config)
 		}
 	}
+	if strings.Count(config, "exec.start") != 1 || strings.Count(config, "exec.stop") != 1 {
+		t.Fatalf("FreeBSD lifecycle commands must be emitted exactly once:\n%s", config)
+	}
+}
+
+func TestCreateJailConfigCustomStartStopReplaceFreeBSDDefaults(t *testing.T) {
+	dataPath := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", dataPath)
+	mountPoint := t.TempDir()
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
+
+	config, err := service.CreateJailConfig(jailModels.Jail{
+		CTID: 702,
+		Name: "config-custom-lifecycle",
+		Type: jailModels.JailTypeFreeBSD,
+		JailHooks: []jailModels.JailHooks{
+			{Phase: jailModels.JailHookPhaseStart, Enabled: true, Script: "echo custom-start"},
+			{Phase: jailModels.JailHookPhaseStop, Enabled: true, Script: "echo custom-stop"},
+		},
+	}, mountPoint)
+	if err != nil {
+		t.Fatalf("CreateJailConfig: %v", err)
+	}
+	for _, expected := range []string{
+		"exec.start = \"/usr/local/sylve/scripts/start.sh\";",
+		"exec.stop = \"/usr/local/sylve/scripts/stop.sh\";",
+	} {
+		if strings.Count(config, expected) != 1 {
+			t.Fatalf("custom lifecycle command %q must be emitted exactly once:\n%s", expected, config)
+		}
+	}
+	for _, unexpected := range []string{
+		"exec.start +=",
+		"exec.stop +=",
+		defaultFreeBSDJailStartCommand,
+		defaultFreeBSDJailStopCommand,
+	} {
+		if strings.Contains(config, unexpected) {
+			t.Fatalf("custom lifecycle config unexpectedly contains %q:\n%s", unexpected, config)
+		}
+	}
+
+	startScript, err := os.ReadFile(filepath.Join(mountPoint, "usr", "local", "sylve", "scripts", "start.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(startScript), "echo custom-start") {
+		t.Fatalf("custom start script was not written:\n%s", startScript)
+	}
+}
+
+func TestCreateJailConfigNormalizesLegacyDefaultsAndLeavesLinuxUnwired(t *testing.T) {
+	dataPath := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", dataPath)
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	service := &Service{DB: db, ctidHashByCTID: make(map[uint]string)}
+
+	freeBSDMount := t.TempDir()
+	freeBSDConfig, err := service.CreateJailConfig(jailModels.Jail{
+		CTID: 703,
+		Name: "config-legacy-lifecycle",
+		Type: jailModels.JailTypeFreeBSD,
+		JailHooks: []jailModels.JailHooks{
+			{Phase: jailModels.JailHookPhaseStart, Enabled: true, Script: defaultFreeBSDJailStartCommand},
+			{Phase: jailModels.JailHookPhaseStop, Enabled: true, Script: defaultFreeBSDJailStopCommand},
+		},
+	}, freeBSDMount)
+	if err != nil {
+		t.Fatalf("CreateJailConfig FreeBSD: %v", err)
+	}
+	if strings.Count(freeBSDConfig, "exec.start") != 1 || strings.Count(freeBSDConfig, "exec.stop") != 1 {
+		t.Fatalf("legacy hooks were not collapsed to canonical defaults:\n%s", freeBSDConfig)
+	}
+	legacyStartScript, err := os.ReadFile(filepath.Join(freeBSDMount, "usr", "local", "sylve", "scripts", "start.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(legacyStartScript), jailUserHookStart) || strings.Contains(string(legacyStartScript), defaultFreeBSDJailStartCommand) {
+		t.Fatalf("legacy default remained in the managed start script:\n%s", legacyStartScript)
+	}
+
+	linuxConfig, err := service.CreateJailConfig(jailModels.Jail{
+		CTID: 704,
+		Name: "config-linux-lifecycle",
+		Type: jailModels.JailTypeLinux,
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateJailConfig Linux: %v", err)
+	}
+	if strings.Contains(linuxConfig, "exec.start") || strings.Contains(linuxConfig, "exec.stop") {
+		t.Fatalf("Linux jail without custom hooks must not receive FreeBSD lifecycle commands:\n%s", linuxConfig)
+	}
+
+	linuxCustomConfig, err := service.CreateJailConfig(jailModels.Jail{
+		CTID: 705,
+		Name: "config-linux-custom-lifecycle",
+		Type: jailModels.JailTypeLinux,
+		JailHooks: []jailModels.JailHooks{
+			{Phase: jailModels.JailHookPhaseStart, Enabled: true, Script: "echo linux-start"},
+			{Phase: jailModels.JailHookPhaseStop, Enabled: true, Script: "echo linux-stop"},
+		},
+	}, t.TempDir())
+	if err != nil {
+		t.Fatalf("CreateJailConfig Linux custom: %v", err)
+	}
+	if strings.Count(linuxCustomConfig, "exec.start = "+strconv.Quote(jailStartHookExecPath)+";") != 1 ||
+		strings.Count(linuxCustomConfig, "exec.stop = "+strconv.Quote(jailStopHookExecPath)+";") != 1 {
+		t.Fatalf("Linux custom lifecycle hooks were not emitted exactly once:\n%s", linuxCustomConfig)
+	}
 }
 
 func assertModelCount(t *testing.T, db *gorm.DB, model any, want int64, query string, args ...any) {

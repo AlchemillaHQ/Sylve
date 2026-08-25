@@ -514,6 +514,22 @@ func jailConfigAssignmentValueWithTrailingComment(line, key string) (string, boo
 	return jailConfigAssignmentValue(line[:semicolon+1], key)
 }
 
+func jailConfigLifecycleAssignment(line, key string) (string, bool, bool) {
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, key) {
+		return "", false, false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, key))
+	appendValue := strings.HasPrefix(rest, "+=")
+	if appendValue {
+		rest = "=" + strings.TrimPrefix(rest, "+=")
+	} else if !strings.HasPrefix(rest, "=") {
+		return "", false, false
+	}
+	value, ok := jailConfigAssignmentValueWithTrailingComment(key+" "+rest, key)
+	return value, appendValue, ok
+}
+
 func isJailConfigCommentTail(tail string) bool {
 	tail = strings.TrimSpace(tail)
 	for tail != "" {
@@ -887,13 +903,13 @@ type hookEditTarget struct {
 }
 
 func managedLifecycleExecLine(line string, target hookEditTarget) bool {
-	trimmed := strings.TrimSpace(line)
-	return strings.HasPrefix(trimmed, target.execKey) &&
-		strings.Contains(trimmed, strconv.Quote(target.execPath))
+	value, _, ok := jailConfigLifecycleAssignment(line, target.execKey)
+	return ok && value == target.execPath
 }
 
 func reconcileJailLifecycleConfig(
 	content string,
+	jailType jailModels.JailType,
 	targets []hookEditTarget,
 	shouldWire map[jailModels.JailHookPhase]bool,
 ) (string, error) {
@@ -920,6 +936,14 @@ func reconcileJailLifecycleConfig(
 					break
 				}
 			}
+			if !remove && jailType == jailModels.JailTypeFreeBSD {
+				if value, _, ok := jailConfigLifecycleAssignment(line, "exec.start"); ok && value == defaultFreeBSDJailStartCommand {
+					remove = true
+				}
+				if value, _, ok := jailConfigLifecycleAssignment(line, "exec.stop"); ok && value == defaultFreeBSDJailStopCommand {
+					remove = true
+				}
+			}
 		}
 		if !remove {
 			result = append(result, line)
@@ -928,10 +952,18 @@ func reconcileJailLifecycleConfig(
 	cleaned := normalizeJailConfigContent(strings.Join(result, "\n"))
 	execLines := make([]string, 0, len(targets))
 	for _, target := range targets {
+		if target.phase == jailModels.JailHookPhaseStart || target.phase == jailModels.JailHookPhaseStop {
+			continue
+		}
 		if shouldWire[target.phase] {
 			execLines = append(execLines, fmt.Sprintf("\t%s += %s;", target.execKey, strconv.Quote(target.execPath)))
 		}
 	}
+	execLines = append(execLines, canonicalJailStartStopExecLines(
+		jailType,
+		shouldWire[jailModels.JailHookPhaseStart],
+		shouldWire[jailModels.JailHookPhaseStop],
+	)...)
 	return insertJailConfigBlock(cleaned, strings.Join(execLines, "\n"), true)
 }
 
@@ -1301,6 +1333,7 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 		return err
 	}
 	return s.mutateJailOption(ctID, func(jail *jailModels.Jail) error {
+		hooks = normalizeLifecycleHookPayload(jail.Type, hooks)
 		configPath, currentConfig, err := s.loadJailOptionConfig(ctID)
 		if err != nil {
 			return err
@@ -1324,10 +1357,10 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 
 		targets := []hookEditTarget{
 			{phase: jailModels.JailHookPhasePreStart, execKey: "exec.prestart", execPath: filepath.Join(hostScriptsDir, "pre-start.sh"), hostPath: filepath.Join(hostScriptsDir, "pre-start.sh"), hookPayload: hooks.Prestart},
-			{phase: jailModels.JailHookPhaseStart, execKey: "exec.start", execPath: "/usr/local/sylve/scripts/start.sh", hostPath: filepath.Join(hostScriptsDir, "start.sh"), inJailPath: filepath.Join(inJailScriptsDir, "start.sh"), hookPayload: hooks.Start},
+			{phase: jailModels.JailHookPhaseStart, execKey: "exec.start", execPath: jailStartHookExecPath, hostPath: filepath.Join(hostScriptsDir, "start.sh"), inJailPath: filepath.Join(inJailScriptsDir, "start.sh"), hookPayload: hooks.Start},
 			{phase: jailModels.JailHookPhasePostStart, execKey: "exec.poststart", execPath: filepath.Join(hostScriptsDir, "post-start.sh"), hostPath: filepath.Join(hostScriptsDir, "post-start.sh"), hookPayload: hooks.Poststart},
 			{phase: jailModels.JailHookPhasePreStop, execKey: "exec.prestop", execPath: filepath.Join(hostScriptsDir, "pre-stop.sh"), hostPath: filepath.Join(hostScriptsDir, "pre-stop.sh"), hookPayload: hooks.Prestop},
-			{phase: jailModels.JailHookPhaseStop, execKey: "exec.stop", execPath: "/usr/local/sylve/scripts/stop.sh", hostPath: filepath.Join(hostScriptsDir, "stop.sh"), inJailPath: filepath.Join(inJailScriptsDir, "stop.sh"), hookPayload: hooks.Stop},
+			{phase: jailModels.JailHookPhaseStop, execKey: "exec.stop", execPath: jailStopHookExecPath, hostPath: filepath.Join(hostScriptsDir, "stop.sh"), inJailPath: filepath.Join(inJailScriptsDir, "stop.sh"), hookPayload: hooks.Stop},
 			{phase: jailModels.JailHookPhasePostStop, execKey: "exec.poststop", execPath: filepath.Join(hostScriptsDir, "post-stop.sh"), hostPath: filepath.Join(hostScriptsDir, "post-stop.sh"), hookPayload: hooks.Poststop},
 		}
 
@@ -1355,7 +1388,7 @@ func (s *Service) ModifyLifecycleHooks(ctID uint, hooks jailServiceInterfaces.Ho
 			shouldWire[target.phase] = s.hasHookBody(next)
 		}
 
-		nextConfig, err := reconcileJailLifecycleConfig(currentConfig, targets, shouldWire)
+		nextConfig, err := reconcileJailLifecycleConfig(currentConfig, jail.Type, targets, shouldWire)
 		if err != nil {
 			return err
 		}
