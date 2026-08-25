@@ -66,7 +66,8 @@ export const PeriodicSnapshotSchema = z.object({
 
 	createdAt: z.coerce.date().optional(),
 	lastRunAt: z.coerce.date(),
-	lastExecutedAt: z.coerce.date().nullable().optional()
+	lastExecutedAt: z.coerce.date().nullable().optional(),
+	nextRunAt: z.coerce.date().nullable().optional()
 });
 
 export const GroupedByPoolSchema = z.object({

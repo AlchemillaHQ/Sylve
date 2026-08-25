@@ -1267,6 +1267,7 @@ msgstr "准备中"
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -2991,7 +2992,6 @@ msgid "Schedule"
 msgstr "计划"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Last Run"
 msgstr "上次运行"
@@ -3380,6 +3380,7 @@ msgstr "检查"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
@@ -6962,6 +6963,8 @@ msgid "Recursive"
 msgstr "递归"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Cron Expression"
 msgstr "Cron 表达式"
@@ -7023,9 +7026,7 @@ msgid "Select a dataset"
 msgstr "选择数据集"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval"
 msgstr "间隔"
@@ -7049,6 +7050,7 @@ msgstr "选择保留策略"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Keep Last"
 msgstr "保留最近"
@@ -12844,7 +12846,9 @@ msgid "Schedules are opt-in and use the node's local time. A run waits safely if
 msgstr ""
 
 #. 0: resultOutcome(latestResult)
+#. 0: runTimeToAgo(snapshot.lastExecutedAt)
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Last: {0}"
 msgstr ""
 
@@ -14817,10 +14821,6 @@ msgstr ""
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "No samples exist in the selected time range."
-msgstr ""
-
-#: src/lib/components/custom/Charts/LineBrush/Single.svelte
-msgid "Telemetry may be stale"
 msgstr ""
 
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -17551,12 +17551,37 @@ msgstr ""
 msgid "Execution Timeout (Seconds)"
 msgstr ""
 
-#. 0: runTimeToAgo(snapshot.lastExecutedAt)
+#. 0: actual
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Actual: {0}"
 msgstr ""
 
-#. 0: runTimeToAgo(snapshot.lastRunAt)
+#. 0: scheduled
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Scheduled: {0}"
+msgid "Scheduled boundary: {0}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Due now"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Runs"
+msgstr ""
+
+#. 0: nextRunToAgo(snapshot.nextRunAt)
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Next: {0}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "At least one retention value must be greater than zero"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
+#: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+msgid "Interval Type"
 msgstr ""

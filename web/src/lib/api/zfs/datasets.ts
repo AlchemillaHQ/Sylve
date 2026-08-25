@@ -71,6 +71,7 @@ export async function createPeriodicSnapshot(
 	recursive: boolean,
 	interval: number,
 	cronExpr: string,
+	retentionType: 'none' | 'simple' | 'gfs',
 	keepLast: number | null = null,
 	maxAgeDays: number | null = null,
 	keepHourly: number | null = null,
@@ -85,6 +86,7 @@ export async function createPeriodicSnapshot(
 		recursive: recursive,
 		interval: interval,
 		cronExpr: cronExpr,
+		retentionType: retentionType,
 		keepLast: keepLast,
 		maxAgeDays: maxAgeDays,
 		keepHourly: keepHourly,
@@ -97,6 +99,9 @@ export async function createPeriodicSnapshot(
 
 export async function modifyPeriodicSnapshot(
 	id: number,
+	interval: number,
+	cronExpr: string,
+	retentionType: 'none' | 'simple' | 'gfs',
 	keepLast: number | null,
 	maxAgeDays: number | null,
 	keepHourly: number | null,
@@ -110,13 +115,16 @@ export async function modifyPeriodicSnapshot(
 		APIResponseSchema,
 		'PATCH',
 		{
-			keepLast: Number(keepLast) || null,
-			maxAgeDays: Number(maxAgeDays) || null,
-			keepHourly: Number(keepHourly) || null,
-			keepDaily: Number(keepDaily) || null,
-			keepWeekly: Number(keepWeekly) || null,
-			keepMonthly: Number(keepMonthly) || null,
-			keepYearly: Number(keepYearly) || null
+			interval: interval,
+			cronExpr: cronExpr,
+			retentionType: retentionType,
+			keepLast: keepLast,
+			maxAgeDays: maxAgeDays,
+			keepHourly: keepHourly,
+			keepDaily: keepDaily,
+			keepWeekly: keepWeekly,
+			keepMonthly: keepMonthly,
+			keepYearly: keepYearly
 		}
 	);
 }

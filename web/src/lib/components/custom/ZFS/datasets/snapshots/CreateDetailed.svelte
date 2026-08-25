@@ -25,6 +25,15 @@
 	}
 
 	let { open = $bindable(), reload = $bindable(), basicSettings, prefill }: Props = $props();
+	const simpleRetentionDefaults = { keepLast: '24', maxAgeDays: '0' };
+	const gfsRetentionDefaults = {
+		keepLast: '20',
+		keepHourly: '24',
+		keepDaily: '7',
+		keepWeekly: '4',
+		keepMonthly: '12',
+		keepYearly: '3'
+	};
 
 	let datasets = resource(
 		() => 'zfs-fs-vol-datasets',
@@ -85,16 +94,10 @@
 					{ value: 'gfs', label: 'GFS' }
 				],
 				simple: {
-					keepLast: '0',
-					maxAgeDays: '0'
+					...simpleRetentionDefaults
 				},
 				gfs: {
-					keepLast: '0',
-					keepHourly: '0',
-					keepDaily: '0',
-					keepWeekly: '0',
-					keepMonthly: '0',
-					keepYearly: '0'
+					...gfsRetentionDefaults
 				}
 			},
 			recursive: false
@@ -102,6 +105,9 @@
 	}
 
 	let properties = $state(createInitialProperties());
+	let cronDescription = $derived(
+		properties.interval.values.cron.trim() ? cronToHuman(properties.interval.values.cron) : ''
+	);
 
 	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
@@ -191,6 +197,24 @@
 				cron = properties.interval.values.cron;
 			}
 
+			if (retentionType === 'simple') {
+				const values = properties.retention.simple;
+				if (![values.keepLast, values.maxAgeDays].some((value) => Number(value) > 0)) {
+					toast.error('At least one retention value must be greater than zero', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			} else if (retentionType === 'gfs') {
+				const values = properties.retention.gfs;
+				if (!Object.values(values).some((value) => Number(value) > 0)) {
+					toast.error('At least one retention value must be greater than zero', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			}
+
 			if (retentionType !== 'none') {
 				if (retentionType === 'simple') {
 					response = await createPeriodicSnapshot(
@@ -199,8 +223,9 @@
 						properties.recursive,
 						minutes,
 						cron,
-						parseInt(properties.retention.simple.keepLast) || null,
-						parseInt(properties.retention.simple.maxAgeDays) || null
+						'simple',
+						Number(properties.retention.simple.keepLast),
+						Number(properties.retention.simple.maxAgeDays)
 					);
 				} else if (retentionType === 'gfs') {
 					response = await createPeriodicSnapshot(
@@ -209,13 +234,14 @@
 						properties.recursive,
 						minutes,
 						cron,
+						'gfs',
+						Number(properties.retention.gfs.keepLast),
 						null,
-						null,
-						parseInt(properties.retention.gfs.keepHourly) || null,
-						parseInt(properties.retention.gfs.keepDaily) || null,
-						parseInt(properties.retention.gfs.keepWeekly) || null,
-						parseInt(properties.retention.gfs.keepMonthly) || null,
-						parseInt(properties.retention.gfs.keepYearly) || null
+						Number(properties.retention.gfs.keepHourly),
+						Number(properties.retention.gfs.keepDaily),
+						Number(properties.retention.gfs.keepWeekly),
+						Number(properties.retention.gfs.keepMonthly),
+						Number(properties.retention.gfs.keepYearly)
 					);
 				}
 			} else {
@@ -225,6 +251,7 @@
 					properties.recursive,
 					minutes,
 					cron,
+					'none',
 					null,
 					null,
 					null,
@@ -317,7 +344,7 @@
 				<div class="flex w-full flex-col gap-2">
 					<CustomComboBox
 						bind:open={properties.interval.open}
-						label="Interval"
+						label="Interval Type"
 						bind:value={properties.interval.value}
 						data={properties.interval.data}
 						classes="w-full space-y-1"
@@ -327,16 +354,8 @@
 
 					{#if properties.interval.value === 'cronExpr'}
 						<CustomValueInput
-							label={`
-                    <span class="text-sm font-medium text-gray-200">
-                        Cron Expression${
-													cronToHuman(properties.interval.values.cron)
-														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(properties.interval.values.cron)})</span>`
-														: ''
-												}
-                    </span>
-                    `}
-							labelHTML={true}
+							label="Cron Expression"
+							hint={cronDescription}
 							placeholder="0 0 * * *"
 							bind:value={properties.interval.values.cron}
 							classes="w-full space-y-1"
@@ -371,12 +390,14 @@
 				<div class="flex flex-row items-center gap-4">
 					<CustomValueInput
 						label="Keep Last"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.simple.keepLast}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Max Age (Days)"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.simple.maxAgeDays}
 						classes="w-full space-y-1"
@@ -386,36 +407,42 @@
 				<div class="grid grid-cols-3 gap-4">
 					<CustomValueInput
 						label="Keep Last"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepLast}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Hourly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepHourly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Daily"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepDaily}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Weekly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepWeekly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Monthly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepMonthly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Yearly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepYearly}
 						classes="w-full space-y-1"

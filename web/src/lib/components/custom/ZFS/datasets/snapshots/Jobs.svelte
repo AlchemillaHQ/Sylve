@@ -74,6 +74,23 @@
 		return isKnownRunTime(date) ? date.toLocaleString() : undefined;
 	}
 
+	function lastRunTitle(snapshot: PeriodicSnapshot) {
+		const details: string[] = [];
+		const actual = runTimeTitle(snapshot.lastExecutedAt);
+		const scheduled = runTimeTitle(snapshot.lastRunAt);
+		if (actual) details.push(`Actual: ${actual}`);
+		if (scheduled) details.push(`Scheduled boundary: ${scheduled}`);
+		return details.length > 0 ? details.join('\n') : undefined;
+	}
+
+	function nextRunToAgo(date: Date | null | undefined) {
+		if (!isKnownRunTime(date)) return 'Unknown';
+		const remaining = date.getTime() - Date.now();
+		if (remaining <= 0) return 'Due now';
+		if (remaining < 60_000) return 'in less than a minute';
+		return dateToAgo(date);
+	}
+
 	async function saveJobs() {
 		try {
 			for (const id of shadowDeleted) {
@@ -128,7 +145,7 @@
 						<Table.Head class="w-50">Dataset</Table.Head>
 						<Table.Head class="w-50">Prefix</Table.Head>
 						<Table.Head class="w-50">Interval</Table.Head>
-						<Table.Head class="w-50">Last Run</Table.Head>
+						<Table.Head class="w-50">Runs</Table.Head>
 						<Table.Head class="w-50"></Table.Head>
 					</Table.Row>
 				</Table.Header>
@@ -148,11 +165,11 @@
 
 								<Table.Cell>
 									<div class="flex flex-col whitespace-nowrap text-xs">
-										<span title={runTimeTitle(snapshot.lastExecutedAt)}>
-											Actual: {runTimeToAgo(snapshot.lastExecutedAt)}
+										<span title={lastRunTitle(snapshot)}>
+											Last: {runTimeToAgo(snapshot.lastExecutedAt)}
 										</span>
-										<span class="text-muted-foreground" title={runTimeTitle(snapshot.lastRunAt)}>
-											Scheduled: {runTimeToAgo(snapshot.lastRunAt)}
+										<span class="text-muted-foreground" title={runTimeTitle(snapshot.nextRunAt)}>
+											Next: {nextRunToAgo(snapshot.nextRunAt)}
 										</span>
 									</div>
 								</Table.Cell>

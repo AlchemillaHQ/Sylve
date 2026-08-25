@@ -62,6 +62,89 @@ func validatePeriodicSnapshotPrefix(prefix string) error {
 	return validateUserSnapshotNamespace(prefix + "-")
 }
 
+func validatePeriodicSnapshotSchedule(interval int, cronExpr string) error {
+	if (interval == 0 && cronExpr == "") || (interval != 0 && cronExpr != "") {
+		return classifyError(ErrInvalidRequest, "invalid_schedule: specify either interval or cronExpr")
+	}
+	if interval < 0 {
+		return classifyError(ErrInvalidRequest, "invalid_schedule: interval must be greater than zero")
+	}
+	if cronExpr != "" {
+		if _, err := cron.ParseStandard(cronExpr); err != nil {
+			return classifyError(ErrInvalidRequest, "invalid_schedule: %v", err)
+		}
+	}
+	return nil
+}
+
+type periodicSnapshotScheduleState struct {
+	shouldRun   bool
+	runAtLocal  time.Time
+	nextAtLocal time.Time
+}
+
+func periodicSnapshotScheduleAt(
+	job zfsModels.PeriodicSnapshot,
+	now time.Time,
+) (periodicSnapshotScheduleState, error) {
+	var state periodicSnapshotScheduleState
+	nowLocal := now.In(time.Local)
+
+	if job.CronExpr != "" {
+		sched, err := cron.ParseStandard(job.CronExpr)
+		if err != nil {
+			return state, err
+		}
+
+		start := nowLocal.Add(-48 * time.Hour)
+		if !job.LastRunAt.IsZero() {
+			lastRunLocal := job.LastRunAt.In(time.Local)
+			if lastRunLocal.After(start) && !lastRunLocal.After(nowLocal) {
+				start = lastRunLocal
+			}
+		}
+
+		occurrence := sched.Next(start)
+		var last time.Time
+		for !occurrence.IsZero() && !occurrence.After(nowLocal) {
+			last = occurrence
+			occurrence = sched.Next(occurrence)
+		}
+
+		state.nextAtLocal = occurrence
+		if !last.IsZero() && (job.LastRunAt.IsZero() || last.After(job.LastRunAt)) {
+			state.shouldRun = true
+			state.runAtLocal = last
+		}
+		return state, nil
+	}
+
+	if job.Interval <= 0 {
+		return state, fmt.Errorf("no valid interval or cronExpr")
+	}
+
+	interval := time.Duration(job.Interval) * time.Second
+	if job.LastRunAt.IsZero() {
+		state.shouldRun = true
+		state.runAtLocal = nowLocal.Truncate(interval)
+		state.nextAtLocal = state.runAtLocal.Add(interval)
+		return state, nil
+	}
+
+	lastLocal := job.LastRunAt.In(time.Local)
+	elapsed := nowLocal.Sub(lastLocal)
+	if elapsed >= interval {
+		missedIntervals := elapsed / interval
+		state.shouldRun = true
+		state.runAtLocal = lastLocal.Add(missedIntervals * interval)
+		state.nextAtLocal = state.runAtLocal.Add(interval)
+		return state, nil
+	}
+
+	state.nextAtLocal = lastLocal.Add(interval)
+	return state, nil
+}
+
 func snapshotScopeContains(dataset, protectedRoot string, recursive bool) bool {
 	dataset = normalizedMutationDataset(dataset)
 	protectedRoot = normalizedMutationDataset(protectedRoot)
@@ -226,15 +309,34 @@ func (s *Service) GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error) {
 		return nil, err
 	}
 
+	now := time.Now()
+	for i := range snapshots {
+		schedule, err := periodicSnapshotScheduleAt(snapshots[i], now)
+		if err != nil {
+			continue
+		}
+		nextAtLocal := schedule.nextAtLocal
+		if schedule.shouldRun {
+			nextAtLocal = schedule.runAtLocal
+		}
+		if nextAtLocal.IsZero() {
+			continue
+		}
+		nextRunAt := nextAtLocal.UTC()
+		snapshots[i].NextRunAt = &nextRunAt
+	}
+
 	return snapshots, nil
 }
 
 func validateAndNormalizeRetention(req any, t string) (retentionType, retentionValues, error) {
 	var keepLast, maxAgeDays, keepHourly, keepDaily, keepWeekly, keepMonthly, keepYearly *int
+	var requestedType *string
 
 	switch t {
 	case "create":
 		r := req.(zfsServiceInterfaces.CreatePeriodicSnapshotJobRequest)
+		requestedType = r.RetentionType
 		keepLast = r.KeepLast
 		maxAgeDays = r.MaxAgeDays
 		keepHourly = r.KeepHourly
@@ -244,6 +346,7 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		keepYearly = r.KeepYearly
 	case "modify":
 		r := req.(zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest)
+		requestedType = r.RetentionType
 		keepLast = r.KeepLast
 		maxAgeDays = r.MaxAgeDays
 		keepHourly = r.KeepHourly
@@ -255,13 +358,8 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		return "", retentionValues{}, classifyError(ErrInvalidRequest, "invalid_request_type")
 	}
 
-	simplePresent := keepLast != nil || maxAgeDays != nil
 	gfsPresent := keepHourly != nil || keepDaily != nil ||
 		keepWeekly != nil || keepMonthly != nil || keepYearly != nil
-
-	if simplePresent && gfsPresent {
-		return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_conflict: simple and GFS cannot be set together")
-	}
 
 	val := retentionValues{
 		KeepLast:    utils.IntOrZero(keepLast),
@@ -282,18 +380,47 @@ func validateAndNormalizeRetention(req any, t string) (retentionType, retentionV
 		}
 	}
 
-	if simplePresent {
-		if val.KeepLast == 0 && val.MaxAgeDays == 0 {
+	gfsPositive := val.KeepHourly > 0 || val.KeepDaily > 0 || val.KeepWeekly > 0 ||
+		val.KeepMonthly > 0 || val.KeepYearly > 0
+
+	if requestedType != nil {
+		mode := retentionType(strings.ToLower(strings.TrimSpace(*requestedType)))
+		switch mode {
+		case retentionNone:
+			if val.KeepLast > 0 || val.MaxAgeDays > 0 || gfsPositive {
+				return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_none_cannot_include_values")
+			}
 			return retentionNone, val, nil
+		case retentionSimple:
+			if gfsPositive {
+				return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_conflict: simple retention cannot include GFS values")
+			}
+			if val.KeepLast == 0 && val.MaxAgeDays == 0 {
+				return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_requires_positive_value")
+			}
+			return retentionSimple, val, nil
+		case retentionGFS:
+			if val.MaxAgeDays > 0 {
+				return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_conflict: GFS retention cannot include maxAgeDays")
+			}
+			if val.KeepLast == 0 && !gfsPositive {
+				return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_requires_positive_value")
+			}
+			return retentionGFS, val, nil
+		default:
+			return "", retentionValues{}, classifyError(ErrInvalidRequest, "invalid_retention_type")
 		}
-		return retentionSimple, val, nil
 	}
-	if gfsPresent {
-		if val.KeepHourly == 0 && val.KeepDaily == 0 && val.KeepWeekly == 0 &&
-			val.KeepMonthly == 0 && val.KeepYearly == 0 {
-			return retentionNone, val, nil
+
+	// Backward-compatible inference for clients that do not send retentionType.
+	if gfsPositive || (gfsPresent && val.KeepLast > 0 && val.MaxAgeDays == 0) {
+		if val.MaxAgeDays > 0 {
+			return "", retentionValues{}, classifyError(ErrInvalidRequest, "retention_conflict: GFS retention cannot include maxAgeDays")
 		}
 		return retentionGFS, val, nil
+	}
+	if val.KeepLast > 0 || val.MaxAgeDays > 0 {
+		return retentionSimple, val, nil
 	}
 
 	return retentionNone, val, nil
@@ -320,16 +447,8 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 		recursive = *req.Recursive
 	}
 
-	if (interval == 0 && cronExpr == "") || (interval != 0 && cronExpr != "") {
-		return classifyError(ErrInvalidRequest, "invalid_schedule: specify either interval or cronExpr")
-	}
-	if interval < 0 {
-		return classifyError(ErrInvalidRequest, "invalid_schedule: interval must be greater than zero")
-	}
-	if cronExpr != "" {
-		if _, err := cron.ParseStandard(cronExpr); err != nil {
-			return classifyError(ErrInvalidRequest, "invalid_schedule: %v", err)
-		}
+	if err := validatePeriodicSnapshotSchedule(interval, cronExpr); err != nil {
+		return err
 	}
 
 	_, rvals, err := validateAndNormalizeRetention(req, "create")
@@ -407,9 +526,24 @@ func (s *Service) ModifyPeriodicSnapshotRetention(
 	id uint,
 	req zfsServiceInterfaces.ModifyPeriodicSnapshotRetentionRequest,
 ) error {
-	rtype, rvals, err := validateAndNormalizeRetention(req, "modify")
-	if err != nil {
-		return err
+	retentionPresent := req.RetentionType != nil || req.KeepLast != nil || req.MaxAgeDays != nil ||
+		req.KeepHourly != nil || req.KeepDaily != nil || req.KeepWeekly != nil ||
+		req.KeepMonthly != nil || req.KeepYearly != nil
+	schedulePresent := req.Interval != nil || req.CronExpr != nil
+	if !retentionPresent && !schedulePresent {
+		return classifyError(ErrInvalidRequest, "no_periodic_snapshot_changes_provided")
+	}
+
+	var (
+		rtype retentionType
+		rvals retentionValues
+		err   error
+	)
+	if retentionPresent {
+		rtype, rvals, err = validateAndNormalizeRetention(req, "modify")
+		if err != nil {
+			return err
+		}
 	}
 
 	var job zfsModels.PeriodicSnapshot
@@ -423,59 +557,87 @@ func (s *Service) ModifyPeriodicSnapshotRetention(
 		return err
 	}
 
-	simplePresent := req.KeepLast != nil || req.MaxAgeDays != nil
-	gfsPresent := req.KeepHourly != nil || req.KeepDaily != nil ||
-		req.KeepWeekly != nil || req.KeepMonthly != nil || req.KeepYearly != nil
-
 	updates := map[string]interface{}{}
+	if schedulePresent {
+		interval := job.Interval
+		cronExpr := job.CronExpr
+		if req.Interval != nil {
+			interval = *req.Interval
+		}
+		if req.CronExpr != nil {
+			cronExpr = strings.TrimSpace(*req.CronExpr)
+		}
+		if err := validatePeriodicSnapshotSchedule(interval, cronExpr); err != nil {
+			return err
+		}
+		if interval != job.Interval || cronExpr != job.CronExpr {
+			updates["Interval"] = interval
+			updates["CronExpr"] = cronExpr
+		}
+	}
 
-	if req.KeepLast != nil {
+	if retentionPresent && req.KeepLast != nil {
 		updates["KeepLast"] = rvals.KeepLast
 	}
-	if req.MaxAgeDays != nil {
+	if retentionPresent && req.MaxAgeDays != nil {
 		updates["MaxAgeDays"] = rvals.MaxAgeDays
 	}
-	if req.KeepHourly != nil {
+	if retentionPresent && req.KeepHourly != nil {
 		updates["KeepHourly"] = rvals.KeepHourly
 	}
-	if req.KeepDaily != nil {
+	if retentionPresent && req.KeepDaily != nil {
 		updates["KeepDaily"] = rvals.KeepDaily
 	}
-	if req.KeepWeekly != nil {
+	if retentionPresent && req.KeepWeekly != nil {
 		updates["KeepWeekly"] = rvals.KeepWeekly
 	}
-	if req.KeepMonthly != nil {
+	if retentionPresent && req.KeepMonthly != nil {
 		updates["KeepMonthly"] = rvals.KeepMonthly
 	}
-	if req.KeepYearly != nil {
+	if retentionPresent && req.KeepYearly != nil {
 		updates["KeepYearly"] = rvals.KeepYearly
 	}
 
-	switch rtype {
-	case retentionSimple:
-		if gfsPresent {
-			// no-op; validator should have errored earlier
-		} else if simplePresent {
-			// They touched simple; zero-out GFS only if they're switching away from it
-			if job.KeepHourly != 0 || job.KeepDaily != 0 || job.KeepWeekly != 0 || job.KeepMonthly != 0 || job.KeepYearly != 0 {
+	if retentionPresent {
+		if req.RetentionType != nil {
+			switch rtype {
+			case retentionNone:
+				updates["KeepLast"] = 0
+				updates["MaxAgeDays"] = 0
 				updates["KeepHourly"] = 0
 				updates["KeepDaily"] = 0
 				updates["KeepWeekly"] = 0
 				updates["KeepMonthly"] = 0
 				updates["KeepYearly"] = 0
+			case retentionSimple:
+				updates["KeepLast"] = rvals.KeepLast
+				updates["MaxAgeDays"] = rvals.MaxAgeDays
+				updates["KeepHourly"] = 0
+				updates["KeepDaily"] = 0
+				updates["KeepWeekly"] = 0
+				updates["KeepMonthly"] = 0
+				updates["KeepYearly"] = 0
+			case retentionGFS:
+				updates["KeepLast"] = rvals.KeepLast
+				updates["MaxAgeDays"] = 0
+				updates["KeepHourly"] = rvals.KeepHourly
+				updates["KeepDaily"] = rvals.KeepDaily
+				updates["KeepWeekly"] = rvals.KeepWeekly
+				updates["KeepMonthly"] = rvals.KeepMonthly
+				updates["KeepYearly"] = rvals.KeepYearly
 			}
-		}
-	case retentionGFS:
-		if simplePresent {
-			// no-op
-		} else if gfsPresent {
-			if job.KeepLast != 0 || job.MaxAgeDays != 0 {
-				updates["KeepLast"] = 0
+		} else {
+			switch rtype {
+			case retentionSimple:
+				updates["KeepHourly"] = 0
+				updates["KeepDaily"] = 0
+				updates["KeepWeekly"] = 0
+				updates["KeepMonthly"] = 0
+				updates["KeepYearly"] = 0
+			case retentionGFS:
 				updates["MaxAgeDays"] = 0
 			}
 		}
-	case retentionNone:
-		return classifyError(ErrInvalidRequest, "no_retention_values_provided")
 	}
 
 	if len(updates) == 0 {
@@ -483,6 +645,9 @@ func (s *Service) ModifyPeriodicSnapshotRetention(
 	}
 
 	if err := s.DB.WithContext(ctx).Model(&job).Updates(updates).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return classifyError(ErrConflict, "%v", err)
+		}
 		return err
 	}
 	return nil
@@ -682,59 +847,16 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 				nowLocal := time.Now()
 
 				for _, job := range snapshotJobs {
-					var (
-						shouldRun  bool
-						runAtLocal time.Time
-					)
-
-					if job.CronExpr != "" {
-						sched, err := cron.ParseStandard(job.CronExpr)
-						if err != nil {
-							logger.L.Debug().Err(err).Msgf("Invalid cron expression for job %s", job.GUID)
-							continue
-						}
-
-						start := nowLocal.Add(-48 * time.Hour)
-						t := sched.Next(start)
-						var last time.Time
-						for !t.After(nowLocal) {
-							last = t
-							t = sched.Next(t)
-						}
-
-						if last.IsZero() {
-							continue
-						}
-
-						if job.LastRunAt.IsZero() || last.After(job.LastRunAt) {
-							shouldRun = true
-							runAtLocal = last
-						}
-
-					} else if job.Interval > 0 {
-						iv := time.Duration(job.Interval) * time.Second
-						nowLocal := time.Now().In(time.Local)
-
-						if job.LastRunAt.IsZero() {
-							runAtLocal = nowLocal.Truncate(iv)
-							shouldRun = true
-						} else {
-							lastLocal := job.LastRunAt.In(time.Local)
-							elapsed := nowLocal.Sub(lastLocal)
-							if elapsed >= iv {
-								missedIntervals := elapsed / iv
-								runAtLocal = lastLocal.Add(missedIntervals * iv)
-								shouldRun = true
-							}
-						}
-					} else {
-						logger.L.Debug().Msgf("Skipping job %s: no valid interval or cronExpr", job.GUID)
+					schedule, err := periodicSnapshotScheduleAt(job, nowLocal)
+					if err != nil {
+						logger.L.Debug().Err(err).Msgf("Skipping job %s with invalid schedule", job.GUID)
 						continue
 					}
 
-					if !shouldRun {
+					if !schedule.shouldRun {
 						continue
 					}
+					runAtLocal := schedule.runAtLocal
 					if err := validatePeriodicSnapshotPrefix(job.Prefix); err != nil {
 						logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s with reserved prefix", job.GUID)
 						continue

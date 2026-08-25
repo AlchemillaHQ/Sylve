@@ -2603,6 +2603,8 @@ export function handleDemoStorageRequest<T = unknown>(
 				'periodic_snapshot_not_found',
 				`Schedule ${id} was not found`
 			) as DemoStorageResponse<T>;
+		if ('interval' in body) periodic.interval = numberValue(body, 'interval');
+		if ('cronExpr' in body) periodic.cronExpr = stringValue(body, 'cronExpr');
 		for (const key of [
 			'keepLast',
 			'maxAgeDays',
@@ -2612,6 +2614,7 @@ export function handleDemoStorageRequest<T = unknown>(
 			'keepMonthly',
 			'keepYearly'
 		] as const) {
+			if (!(key in body)) continue;
 			const value = numberValue(body, key);
 			periodic[key] = value || undefined;
 		}

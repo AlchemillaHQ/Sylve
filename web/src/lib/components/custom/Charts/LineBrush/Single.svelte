@@ -482,14 +482,6 @@
 					>{title}</span
 				>
 			</div>
-			{#if points.length > 0 && error}
-				<div
-					role="status"
-					class="text-muted-foreground pointer-events-none absolute top-1 right-12 z-10 flex items-center gap-1 text-xs"
-				>
-					<span>Telemetry may be stale</span>
-				</div>
-			{/if}
 			{#if points.length === 0 && (emptyMessage || loading)}
 				<div
 					role="status"

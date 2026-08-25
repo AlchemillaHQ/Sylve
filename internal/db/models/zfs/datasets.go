@@ -19,9 +19,9 @@ type PeriodicSnapshot struct {
 	CronExpr  string `json:"cronExpr"`
 	Pool      string `json:"pool"`
 
-	/* Simple Retention */
-	KeepLast   int `json:"keepLast" gorm:"default:0"`   // e.g., keep last 5 snapshots
-	MaxAgeDays int `json:"maxAgeDays" gorm:"default:0"` // e.g., 30 (delete older than 30 days)
+	/* Count/Age Retention */
+	KeepLast   int `json:"keepLast" gorm:"default:0"`   // shared by simple and GFS policies
+	MaxAgeDays int `json:"maxAgeDays" gorm:"default:0"` // simple only; e.g., 30 days
 
 	/* GFS Retention */
 	KeepHourly  int `json:"keepHourly" gorm:"default:0"`  // e.g., keep 24 hourly
@@ -33,4 +33,5 @@ type PeriodicSnapshot struct {
 	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"createdAt"`
 	LastRunAt      time.Time  `json:"lastRunAt"`
 	LastExecutedAt *time.Time `json:"lastExecutedAt"`
+	NextRunAt      *time.Time `gorm:"-" json:"nextRunAt"`
 }
