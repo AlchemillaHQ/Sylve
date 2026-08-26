@@ -366,6 +366,18 @@
 			actionRequestInFlight = false;
 		}
 	}
+
+	let jailModalConfirmationState = $state(false);
+
+	function openStopConfirmationModal() {
+		if (!jail.current) return;
+		jailModalConfirmationState = true;
+	}
+
+	function handleConfirmation() {
+		if (!jail.current) return;
+		handleStop();
+	}
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">
@@ -393,7 +405,7 @@
 			{#if jail.current && jState.current}
 				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 					<Button
-						onclick={handleStop}
+						onclick={() => openStopConfirmationModal()}
 						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
@@ -536,6 +548,25 @@
 				}}>Cancel</AlertDialogRaw.Cancel
 			>
 			<AlertDialogRaw.Action onclick={handleDelete}>Continue</AlertDialogRaw.Action>
+		</AlertDialogRaw.Footer>
+	</AlertDialogRaw.Content>
+</AlertDialogRaw.Root>
+
+<AlertDialogRaw.Root bind:open={jailModalConfirmationState}>
+	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5 max-w-xl!">
+		<AlertDialogRaw.Header>STOP the running Jail?</AlertDialogRaw.Header>
+		<AlertDialogRaw.Footer>
+			<AlertDialogRaw.Cancel
+				onclick={() => {
+					jailModalConfirmationState = false;
+				}}>Cancel</AlertDialogRaw.Cancel
+			>
+			<AlertDialogRaw.Action
+				onclick={() => {
+					handleConfirmation();
+					jailModalConfirmationState = false;
+				}}>Confirm</AlertDialogRaw.Action
+			>
 		</AlertDialogRaw.Footer>
 	</AlertDialogRaw.Content>
 </AlertDialogRaw.Root>

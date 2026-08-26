@@ -1678,9 +1678,12 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -5164,7 +5167,7 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "പുതുക്കുക "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -10351,6 +10354,9 @@ msgid "New folder name"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Confirm"
 msgstr ""
 
@@ -17592,4 +17598,25 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Key stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "Are you sure you want to stop the running VM?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to {0} the running VM?"
+#~ msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Are you sure you want to <0/> the running VM?"
+msgstr ""
+
+#~ msgid "Are you sure you want to stop the running Jail?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to STOP the running Jail?"
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "STOP the running Jail?"
 msgstr ""

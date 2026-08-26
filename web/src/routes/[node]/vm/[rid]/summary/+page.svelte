@@ -856,6 +856,39 @@
 		}
 		return '';
 	});
+
+	type ConfirmationAction = 'none' | 'stop' | 'shutdown' | 'forcestop' | 'reboot';
+
+	let vmModalConfirmationState = $state<{ open: boolean; action: ConfirmationAction }>({
+		open: false,
+		action: 'none'
+	});
+
+	function openConfirmationModal(action: ConfirmationAction) {
+		if (!vm.current) return;
+		vmModalConfirmationState.open = true;
+		vmModalConfirmationState.action = action;
+	}
+
+	function handleConfirmation(action: ConfirmationAction) {
+		if (!vm.current) return;
+		switch (action) {
+			case 'none':
+				return;
+			case 'stop':
+				handleStop();
+				break;
+			case 'shutdown':
+				handleShutdown();
+				break;
+			case 'forcestop':
+				handleForceStop();
+				break;
+			case 'reboot':
+				handleReboot();
+				break;
+		}
+	}
 </script>
 
 {#snippet button(type: string)}
@@ -903,7 +936,7 @@
 		</Button>
 	{:else if type === 'force-stop' && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions && isShutdownTaskActive}
 		<Button
-			onclick={() => handleForceStop()}
+			onclick={() => openConfirmationModal('forcestop')}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -912,7 +945,11 @@
 	{:else if (type === 'stop' || type === 'shutdown' || type === 'reboot') && !shouldHideActionButtons && (domain.current?.id !== -1 || domain.current?.pendingAction === 'start' || domain.current?.pendingAction === 'reboot') && isDomainRunningForActions}
 		<Button
 			onclick={() =>
-				type === 'stop' ? handleStop() : type === 'shutdown' ? handleShutdown() : handleReboot()}
+				type === 'stop'
+					? openConfirmationModal('stop')
+					: type === 'shutdown'
+						? openConfirmationModal('shutdown')
+						: openConfirmationModal('reboot')}
 			size="sm"
 			class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
 		>
@@ -1266,6 +1303,31 @@
 					: modalState.forceDelete
 						? 'Force Delete'
 						: 'Continue'}</AlertDialogRaw.Action
+			>
+		</AlertDialogRaw.Footer>
+	</AlertDialogRaw.Content>
+</AlertDialogRaw.Root>
+
+<AlertDialogRaw.Root bind:open={vmModalConfirmationState.open}>
+	<AlertDialogRaw.Content onInteractOutside={(e) => e.preventDefault()} class="p-5 max-w-xl!">
+		<AlertDialogRaw.Header>
+			<span>
+				<span class="font-bold">{vmModalConfirmationState.action.toUpperCase()}</span> the running VM?
+			</span>
+		</AlertDialogRaw.Header>
+		<AlertDialogRaw.Footer>
+			<AlertDialogRaw.Cancel
+				onclick={() => {
+					vmModalConfirmationState.open = false;
+					vmModalConfirmationState.action = 'none';
+				}}>Cancel</AlertDialogRaw.Cancel
+			>
+			<AlertDialogRaw.Action
+				onclick={() => {
+					handleConfirmation(vmModalConfirmationState.action);
+					vmModalConfirmationState.open = false;
+					vmModalConfirmationState.action = 'none';
+				}}>Confirm</AlertDialogRaw.Action
 			>
 		</AlertDialogRaw.Footer>
 	</AlertDialogRaw.Content>
