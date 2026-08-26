@@ -17606,10 +17606,8 @@ msgstr "Key stored (leave blank to keep)"
 #~ msgid "Are you sure you want to {0} the running VM?"
 #~ msgstr "Are you sure you want to {0} the running VM?"
 
-#: src/routes/[node]/vm/[rid]/+layout.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
-msgid "Are you sure you want to <0/> the running VM?"
-msgstr "Are you sure you want to <0/> the running VM?"
+#~ msgid "Are you sure you want to <0/> the running VM?"
+#~ msgstr "Are you sure you want to <0/> the running VM?"
 
 #~ msgid "Are you sure you want to stop the running Jail?"
 #~ msgstr "Are you sure you want to stop the running Jail?"
@@ -17620,3 +17618,8 @@ msgstr "Are you sure you want to <0/> the running VM?"
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "STOP the running Jail?"
 msgstr "STOP the running Jail?"
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "<0/> the running VM?"
+msgstr "<0/> the running VM?"

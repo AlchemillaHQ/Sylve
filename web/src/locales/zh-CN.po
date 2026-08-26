@@ -17603,10 +17603,8 @@ msgstr ""
 #~ msgid "Are you sure you want to {0} the running VM?"
 #~ msgstr ""
 
-#: src/routes/[node]/vm/[rid]/+layout.svelte
-#: src/routes/[node]/vm/[rid]/summary/+page.svelte
-msgid "Are you sure you want to <0/> the running VM?"
-msgstr ""
+#~ msgid "Are you sure you want to <0/> the running VM?"
+#~ msgstr ""
 
 #~ msgid "Are you sure you want to stop the running Jail?"
 #~ msgstr ""
@@ -17616,4 +17614,9 @@ msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "STOP the running Jail?"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "<0/> the running VM?"
 msgstr ""
