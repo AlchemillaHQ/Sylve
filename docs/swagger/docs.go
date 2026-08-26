@@ -17831,7 +17831,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "List administrator-visible notification transport configuration, including configured Discord webhook URLs",
+                "description": "List administrator-visible notification transport configuration, including credential-presence flags and configured Discord webhook URLs",
                 "produces": [
                     "application/json"
                 ],
@@ -17872,7 +17872,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create one ntfy, SMTP, or Discord notification transport",
+                "description": "Create one ntfy, Pushover, SMTP, or Discord notification transport",
                 "consumes": [
                     "application/json"
                 ],
@@ -17941,7 +17941,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the mutable configuration of one notification transport; omitted credentials remain unchanged and explicit empty credentials are cleared",
+                "description": "Replace the mutable configuration of one notification transport; omitted credentials remain unchanged, and blank required Pushover credentials are preserved",
                 "consumes": [
                     "application/json"
                 ],
@@ -33718,7 +33718,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "keepLast": {
-                    "description": "Simple Retention",
+                    "description": "Count/Age Retention",
                     "type": "integer"
                 },
                 "keepMonthly": {
@@ -33733,12 +33733,18 @@ const docTemplate = `{
                     "description": "e.g., keep 3 yearly",
                     "type": "integer"
                 },
+                "lastExecutedAt": {
+                    "type": "string"
+                },
                 "lastRunAt": {
                     "type": "string"
                 },
                 "maxAgeDays": {
-                    "description": "e.g., 30 (delete older than 30 days)",
+                    "description": "simple only; e.g., 30 days",
                     "type": "integer"
+                },
+                "nextRunAt": {
+                    "type": "string"
                 },
                 "pool": {
                     "type": "string"
@@ -36914,6 +36920,9 @@ const docTemplate = `{
                 },
                 "recursive": {
                     "type": "boolean"
+                },
+                "retentionType": {
+                    "type": "string"
                 }
             }
         },
@@ -37291,6 +37300,12 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.ModifyPeriodicSnapshotRetentionRequest": {
             "type": "object",
             "properties": {
+                "cronExpr": {
+                    "type": "string"
+                },
+                "interval": {
+                    "type": "integer"
+                },
                 "keepDaily": {
                     "type": "integer"
                 },
@@ -37311,6 +37326,9 @@ const docTemplate = `{
                 },
                 "maxAgeDays": {
                     "type": "integer"
+                },
+                "retentionType": {
+                    "type": "string"
                 }
             }
         },
@@ -38369,6 +38387,28 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_services_notifications.PushoverTransportConfigUpdate": {
+            "type": "object",
+            "properties": {
+                "apiToken": {
+                    "type": "string"
+                },
+                "userKey": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_notifications.PushoverTransportConfigView": {
+            "type": "object",
+            "properties": {
+                "hasApiToken": {
+                    "type": "boolean"
+                },
+                "hasUserKey": {
+                    "type": "boolean"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_services_notifications.RuleConfigEntryUpdate": {
             "type": "object",
             "properties": {
@@ -38389,6 +38429,9 @@ const docTemplate = `{
                 },
                 "pool": {
                     "type": "string"
+                },
+                "pushoverEnabled": {
+                    "type": "boolean"
                 },
                 "targetKey": {
                     "type": "string"
@@ -38423,6 +38466,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ntfyEnabled": {
+                    "type": "boolean"
+                },
+                "pushoverEnabled": {
                     "type": "boolean"
                 },
                 "targetKey": {
@@ -38480,6 +38526,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "ntfyEnabled": {
+                    "type": "boolean"
+                },
+                "pushoverEnabled": {
                     "type": "boolean"
                 },
                 "targetKey": {
@@ -38545,6 +38594,9 @@ const docTemplate = `{
                 "ntfyEnabled": {
                     "type": "boolean"
                 },
+                "pushoverEnabled": {
+                    "type": "boolean"
+                },
                 "uiEnabled": {
                     "type": "boolean"
                 }
@@ -38588,6 +38640,9 @@ const docTemplate = `{
                 "ntfy": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_notifications.NtfyTransportConfigView"
                 },
+                "pushover": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_notifications.PushoverTransportConfigView"
+                },
                 "type": {
                     "type": "string"
                 }
@@ -38621,6 +38676,9 @@ const docTemplate = `{
                 },
                 "ntfy": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_notifications.NtfyTransportConfigUpdate"
+                },
+                "pushover": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_notifications.PushoverTransportConfigUpdate"
                 },
                 "type": {
                     "type": "string"
@@ -39586,6 +39644,9 @@ const docTemplate = `{
                     }
                 },
                 "ntfyEnabled": {
+                    "type": "boolean"
+                },
+                "pushoverEnabled": {
                     "type": "boolean"
                 },
                 "uiEnabled": {
