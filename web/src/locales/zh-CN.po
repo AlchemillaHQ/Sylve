@@ -50,7 +50,6 @@ msgstr "硬件"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -61,7 +60,6 @@ msgstr "硬件"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Network"
 msgstr "网络"
 
@@ -2210,12 +2208,10 @@ msgstr "详情 - {0}"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
 msgstr "主机"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2234,12 +2230,10 @@ msgstr "网络"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC 地址"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -3038,10 +3032,8 @@ msgstr "SSH 主机"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
@@ -4065,10 +4057,8 @@ msgstr "留空以使用默认规则集"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Mac"
 msgstr "MAC"
 
@@ -4085,13 +4075,11 @@ msgstr "MAC"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Host"
 msgstr "主机"
 
@@ -8600,12 +8588,10 @@ msgstr "防火墙 - 高级规则"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "FQDN(s)"
 msgstr "FQDN"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -8642,8 +8628,6 @@ msgstr "无效的列表源 URL: {0}"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "List"
 msgstr "列表"
@@ -9437,7 +9421,6 @@ msgstr "启用策略路由以限定入口范围"
 msgid "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family."
 msgstr "启用后，需要恰好一个出口接口和一个网关。网关必须与规则协议族匹配。"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -19885,7 +19868,6 @@ msgstr ""
 #~ "powered on."
 #~ msgstr ""
 
-
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 msgid "Error updating jail description"
@@ -19901,4 +19883,15 @@ msgstr ""
 
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error updating VM description"
+msgstr ""
+
+#~ msgid "Use four octal digits to control permissions for newly created files and directo"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Coul"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgstr ""

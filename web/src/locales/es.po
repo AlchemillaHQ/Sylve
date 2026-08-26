@@ -50,7 +50,6 @@ msgstr "Hardware"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -61,7 +60,6 @@ msgstr "Hardware"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Network"
 msgstr "Red"
 
@@ -154,7 +152,7 @@ msgstr "Pools"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Datasets"
-msgstr "Conjuntos de datos"
+msgstr "Datasets"
 
 #: src/routes/[node]/+layout.svelte
 msgid "File Systems"
@@ -1995,7 +1993,7 @@ msgstr "El nombre es obligatorio"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Dataset is required"
-msgstr "El conjunto de datos es obligatorio"
+msgstr "El Dataset es obligatorio"
 
 #. 0: edit ? 'edit' \\: 'create'
 #: src/lib/components/custom/Samba/Share.svelte
@@ -2017,12 +2015,12 @@ msgstr "Crear recurso compartido Samba"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
-msgstr "Conjunto de datos"
+msgstr "Dataset"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Select dataset"
-msgstr "Seleccionar conjunto de datos"
+msgstr "Seleccionar Dataset"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -2210,12 +2208,10 @@ msgstr "Detalles - {0}"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
 msgstr "Host(s)"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2234,12 +2230,10 @@ msgstr "Red(es)"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC(s)"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2803,7 +2797,7 @@ msgstr "Esto eliminará permanentemente la VM"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Best-effort cleanup will attempt libvirt/domain removal, VM datasets, VM DB records, and VM network objects. Partial failures will be tolerated."
-msgstr "La limpieza por mejor esfuerzo intentará eliminar libvirt/dominio, conjuntos de datos de la VM, registros de base de datos de la VM y objetos de red de la VM. Se tolerarán fallos parciales."
+msgstr "La limpieza por mejor esfuerzo intentará eliminar libvirt/dominio, Datasets de la VM, registros de base de datos de la VM y objetos de red de la VM. Se tolerarán fallos parciales."
 
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -3038,10 +3032,8 @@ msgstr "Host SSH"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
@@ -4065,10 +4057,8 @@ msgstr "Deje vacío para el conjunto de reglas predeterminado"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Mac"
 msgstr "Mac"
 
@@ -4085,13 +4075,11 @@ msgstr "Mac"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 msgid "Host"
 msgstr "Host"
 
@@ -8558,7 +8546,7 @@ msgstr "Almacenamiento importado"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Please select a ZFS filesystem dataset"
-msgstr "Seleccione un conjunto de datos de sistema de ficheros ZFS"
+msgstr "Seleccione un Dataset de sistema de ficheros ZFS"
 
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
@@ -8603,12 +8591,10 @@ msgstr "Cortafuegos - Reglas avanzadas"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "FQDN(s)"
 msgstr "FQDN(s)"
 
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -8645,8 +8631,6 @@ msgstr "URL de origen de lista no válida: {0}"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "List"
 msgstr "Lista"
@@ -9447,7 +9431,6 @@ msgstr "Cuando está activado, se requieren exactamente una interfaz de salida y
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Port(s)"
 msgstr "Puerto(s)"
@@ -9925,7 +9908,7 @@ msgstr "En cola..."
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Creating ZFS dataset..."
-msgstr "Creando conjunto de datos ZFS..."
+msgstr "Creando Dataset ZFS..."
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Copying signing keys..."
@@ -10004,7 +9987,7 @@ msgstr "Eliminar arranque inicial"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails."
-msgstr "Inicialice un directorio con pkgbase para crear una base de jail. Esto configura los archivos necesarios en un conjunto de datos ZFS, que luego puede utilizarse para crear nuevas jails."
+msgstr "Inicialice un directorio con pkgbase para crear una base de jail. Esto configura los archivos necesarios en un Dataset ZFS, que luego puede utilizarse para crear nuevas jails."
 
 #: src/routes/[node]/+layout.svelte
 msgid "Initiators"
@@ -10537,7 +10520,7 @@ msgstr "Tamaño máximo de Time Machine (GB)"
 #. 0: escapeHTML(properties.detach.name); 1: escapeHTML(vm.current.name)
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "This will detach the storage {0} from the VM <b>{1}</b>. The underlying disk dataset/file will NOT be deleted."
-msgstr "Esta acción desconectará el almacenamiento {0} de la VM <b>{1}</b>. El conjunto de datos/archivo de disco subyacente NO será eliminado."
+msgstr "Esta acción desconectará el almacenamiento {0} de la VM <b>{1}</b>. El Dataset/archivo de disco subyacente NO será eliminado."
 
 #: src/lib/components/custom/Notifications/Bell.svelte
 msgid "Failed to dismiss notification"
@@ -10804,7 +10787,7 @@ msgstr "Notas del DC - Eliminación masiva"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "No snapshots found for this dataset. A backup may still be in progress."
-msgstr "No se encontraron instantáneas para este conjunto de datos. Es posible que una copia de seguridad esté en curso."
+msgstr "No se encontraron instantáneas para este Dataset. Es posible que una copia de seguridad esté en curso."
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "A backup is currently in progress. Restore is unavailable until it completes."
@@ -11299,7 +11282,7 @@ msgstr "El origen no está cifrado"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Select a dataset to view encryption information"
-msgstr "Seleccione un conjunto de datos para ver la información de cifrado"
+msgstr "Seleccione un Dataset para ver la información de cifrado"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "This option is only applicable for jail and VM backups"
@@ -11382,7 +11365,7 @@ msgstr "{0} conjunto(s) de datos secundario(s) en el destino se restaurarán de 
 #. 0: selectedSnapshotInfo.childCount
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "{0} child dataset(s) on target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config or use OOB Restore to recover children separately."
-msgstr "{0} conjunto(s) de datos secundario(s) en el destino. Solo se restaurará el conjunto de datos seleccionado. Habilite \"Copia de seguridad recursiva\" en la configuración del trabajo o use la restauración OOB para recuperar los secundarios por separado."
+msgstr "{0} conjunto(s) de datos secundario(s) en el destino. Solo se restaurará el Dataset seleccionado. Habilite \"Copia de seguridad recursiva\" en la configuración del trabajo o use la restauración OOB para recuperar los secundarios por separado."
 
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Crash Recovery"
@@ -11735,7 +11718,7 @@ msgstr "Esta <0>no</0> es una migración en vivo"
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "The VM will be <0>stopped</0> on the source node, its datasets transferred over the network, and then <1>started</1> on the target node. There will be a brief downtime during the transfer."
-msgstr "La VM será <0>detenida</0> en el nodo de origen, sus conjuntos de datos transferidos a través de la red y, a continuación, <1>iniciada</1> en el nodo de destino. Habrá una breve interrupción durante la transferencia."
+msgstr "La VM será <0>detenida</0> en el nodo de origen, sus Datasets transferidos a través de la red y, a continuación, <1>iniciada</1> en el nodo de destino. Habrá una breve interrupción durante la transferencia."
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Starting…"
@@ -11757,7 +11740,7 @@ msgstr "Validando requisitos previos…"
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Replicating datasets…"
-msgstr "Replicando conjuntos de datos…"
+msgstr "Replicando Datasets…"
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Stopping guest on source…"
@@ -12032,12 +12015,12 @@ msgstr "Iniciador conectado"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM entry removed (datasets preserved)"
-msgstr "Entrada de VM retirada (los conjuntos de datos se conservan)"
+msgstr "Entrada de VM retirada (los Datasets se conservan)"
 
 #. 0: item.label
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Remove the stale inventory entry for <span class=\"font-semibold\">{0}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes."
-msgstr "¿Retirar la entrada de inventario obsoleta de <span class=\"font-semibold\">{0}</span>? Solo se eliminan el registro local de la VM y cualquier dominio libvirt local &mdash; los conjuntos de datos ZFS se conservan y no se elimina nada en otros nodos."
+msgstr "¿Retirar la entrada de inventario obsoleta de <span class=\"font-semibold\">{0}</span>? Solo se eliminan el registro local de la VM y cualquier dominio libvirt local &mdash; los Datasets ZFS se conservan y no se elimina nada en otros nodos."
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Removing..."
@@ -12053,7 +12036,7 @@ msgstr "Retirando entrada obsoleta de VM"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Removing stale registration for VM <b>{0} ({1})</b>; datasets are preserved"
-msgstr "Retirando el registro obsoleto de la VM <b>{0} ({1})</b>; los conjuntos de datos se conservan"
+msgstr "Retirando el registro obsoleto de la VM <b>{0} ({1})</b>; los Datasets se conservan"
 
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -12063,7 +12046,7 @@ msgstr "Error al retirar la entrada de la VM"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM entry removed with warnings; datasets preserved"
-msgstr "Entrada de VM retirada con advertencias; los conjuntos de datos se conservan"
+msgstr "Entrada de VM retirada con advertencias; los Datasets se conservan"
 
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -12078,7 +12061,7 @@ msgstr "¿Retirar la entrada obsoleta de la VM?"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This will remove the stale inventory entry for VM <0/> on this node. <1>Only the local VM record and any local libvirt domain are removed. ZFS datasets are preserved and nothing is deleted on other nodes.</1>"
-msgstr "Esto retirará la entrada de inventario obsoleta de la VM <0/> en este nodo. <1>Solo se eliminan el registro local de la VM y cualquier dominio libvirt local. Los conjuntos de datos ZFS se conservan y no se elimina nada en otros nodos.</1>"
+msgstr "Esto retirará la entrada de inventario obsoleta de la VM <0/> en este nodo. <1>Solo se eliminan el registro local de la VM y cualquier dominio libvirt local. Los Datasets ZFS se conservan y no se elimina nada en otros nodos.</1>"
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "This VM still has a live definition on its node — use Delete instead of removing a stale entry"
@@ -12926,7 +12909,7 @@ msgstr "Una frase de contraseña suministrada se guarda en el almacén de claves
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 msgid "<0/> History"
-msgstr "Historia de <0/>"
+msgstr "<0/> Historial"
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 msgid "No self-test results are available"
@@ -13199,11 +13182,11 @@ msgstr "Se ha guardado la política, pero este nodo no ha podido confirmar la li
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "All local snapshots of the replaced dataset are permanently removed"
-msgstr "Todas las instantáneas locales del conjunto de datos sustituido se eliminan de forma permanente"
+msgstr "Todas las instantáneas locales del Dataset sustituido se eliminan de forma permanente"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "This is a legacy restore point created before manifest commits. Its complete dataset set cannot be cryptographically verified; legacy VM restore points are blocked."
-msgstr "Este es un punto de restauración heredado creado antes de las confirmaciones de manifiesto. Su conjunto de datos completo no se puede verificar criptográficamente; los puntos de restauración VM heredados están bloqueados."
+msgstr "Este es un punto de restauración heredado creado antes de las confirmaciones de manifiesto. Su Dataset completo no se puede verificar criptográficamente; los puntos de restauración VM heredados están bloqueados."
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
@@ -13229,7 +13212,7 @@ msgstr "Guest restores require an exact destination such as pool/Sylve/virtual-m
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "Guest restores are create-only. The RID/CTID and canonical destination dataset must not already exist."
-msgstr "Las restauraciones para huéspedes son solo para crear. El RID/CTID y el conjunto de datos de destino canónico no deben existir ya."
+msgstr "Las restauraciones para huéspedes son solo para crear. El RID/CTID y el Dataset de destino canónico no deben existir ya."
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 msgid "The selected VM root uses the destination pool. Any additional VM storage pools keep their original pool names and must exist on the restore node."
@@ -13241,7 +13224,7 @@ msgstr "Este punto de restauración es anterior a las confirmaciones de manifies
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "VM backups must include all child disk datasets"
-msgstr "Las copias de seguridad de VM deben incluir todos los conjuntos de datos del disco secundario"
+msgstr "Las copias de seguridad de VM deben incluir todos los Datasets del disco secundario"
 
 #. 0: convertDbTime( replicationActivity.current.updatedAt )
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
@@ -13368,7 +13351,7 @@ msgstr "El objetivo divergió y requiere resiembra"
 
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Could not inspect target dataset"
-msgstr "No se ha podido inspeccionar el conjunto de datos de destino"
+msgstr "No se ha podido inspeccionar el Dataset de destino"
 
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Finalizing"
@@ -13785,7 +13768,7 @@ msgstr "El nombre no puede contener corchetes o saltos de línea"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "This dataset is already used by another Samba share"
-msgstr "Este conjunto de datos ya está siendo utilizado por otro recurso compartido Samba"
+msgstr "Este Dataset ya está siendo utilizado por otro recurso compartido Samba"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create mask must contain exactly four octal digits"
@@ -13832,11 +13815,11 @@ msgstr "<0/> Acceso <1/>"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "<0/> Options <1/>"
-msgstr "Opciones de <0/> <1/>"
+msgstr "<0/> Opciones <1/>"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "No datasets available"
-msgstr "No hay conjuntos de datos disponibles"
+msgstr "No hay Datasets disponibles"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "<0/> Authenticated"
@@ -13937,7 +13920,7 @@ msgstr "Crear nuevo recurso compartido"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Only mounted, non-system datasets that are not already used by another Samba share are shown."
-msgstr "Solo se muestran los conjuntos de datos montados que no son del sistema y que no son utilizados por otro recurso compartido Samba."
+msgstr "Solo se muestran los Datasets montados que no son del sistema y que no son utilizados por otro recurso compartido Samba."
 
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -14397,7 +14380,7 @@ msgstr "Sólo configurado"
 
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Dataset missing"
-msgstr "Falta el conjunto de datos"
+msgstr "Falta el Dataset"
 
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Disabled shares are saved but are not published by Samba."
@@ -14484,7 +14467,7 @@ msgstr "Convertir a RAW"
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "<0/> Completing"
-msgstr "Finalización de <0/>"
+msgstr "<0/> Completando"
 
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "Retry completion"
@@ -14629,7 +14612,7 @@ msgstr "VM {0} no se encontró en {1}"
 #. 0: scopedGuest.id
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Unable to resolve a dataset root for VM {0}"
-msgstr "No se puede resolver una raíz de conjunto de datos para VM {0}"
+msgstr "No se puede resolver una raíz de Dataset para VM {0}"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Runner rebind is still in progress"
@@ -14863,7 +14846,7 @@ msgstr "Jail {0} no se encontró en {1}"
 #. 0: scopedGuest.id
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Unable to resolve a dataset root for jail {0}"
-msgstr "No se puede resolver la raíz del conjunto de datos para jail {0}"
+msgstr "No se puede resolver la raíz del Dataset para jail {0}"
 
 #. 0: scopedGuestLabel
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
@@ -14902,15 +14885,15 @@ msgstr "Propietario actual de {0} seleccionado"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "<0/> RAM Usage"
-msgstr "Uso de <0/> RAM"
+msgstr "<0/> Uso de RAM"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "<0/> Disk Usage"
-msgstr "Uso del disco <0/>"
+msgstr "<0/> Uso del disco"
 
 #: src/routes/[node]/summary/+page.svelte
 msgid "<0/>Swap Usage"
-msgstr "Uso de <0/>Swap"
+msgstr "<0/>Uso de Swap"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Dashboard"
@@ -16335,7 +16318,7 @@ msgstr "No se pudieron cargar los bootstraps"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Dataset exists without a bootstrap record. Delete it before recreating."
-msgstr "El conjunto de datos existe sin un registro de arranque. Elimínelo antes de volver a crearlo."
+msgstr "El Dataset existe sin un registro de arranque. Elimínelo antes de volver a crearlo."
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Clear failed bootstrap"
@@ -16347,7 +16330,7 @@ msgstr "Huérfano"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 msgid "Delete orphaned bootstrap dataset"
-msgstr "Eliminar conjunto de datos de arranque huérfano"
+msgstr "Eliminar Dataset de arranque huérfano"
 
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 msgid "CPU cores must be a whole number"
@@ -16709,12 +16692,12 @@ msgstr "Las instantáneas de jail son consistentes ante fallos y no detienen los
 #. 0: escapeHTML(selectedSnapshot.name)
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 msgid "Rollback jail to <b>{0}</b>? If the jail is running, it will be stopped. The complete jail dataset tree will be rolled back, permanently destroying every newer ZFS snapshot beneath it—including snapshots not listed here. Saved configuration will be restored and the jail will then be restarted if it was previously running."
-msgstr "¿Revertir el jail a <b>{0}</b>? Si el jail está en ejecución, se detendrá. Se revertirá todo el árbol de conjuntos de datos del jail, destruyendo permanentemente todas las instantáneas ZFS más recientes debajo de él, incluidas las instantáneas no listadas aquí. Se restaurará la configuración guardada y el jail se reiniciará si estaba en ejecución previamente."
+msgstr "¿Revertir el jail a <b>{0}</b>? Si el jail está en ejecución, se detendrá. Se revertirá todo el árbol de Datasets del jail, destruyendo permanentemente todas las instantáneas ZFS más recientes debajo de él, incluidas las instantáneas no listadas aquí. Se restaurará la configuración guardada y el jail se reiniciará si estaba en ejecución previamente."
 
 #. 0: escapeHTML(selectedSnapshot.name)
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 msgid "Delete snapshot <b>{0}</b>? This removes it throughout the jail dataset tree and cannot be undone."
-msgstr "¿Eliminar la instantánea <b>{0}</b>? Esto la elimina en todo el árbol de conjuntos de datos del jail y no se puede deshacer."
+msgstr "¿Eliminar la instantánea <b>{0}</b>? Esto la elimina en todo el árbol de Datasets del jail y no se puede deshacer."
 
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 msgid "Loading jail logs…"
@@ -16762,7 +16745,7 @@ msgstr "Las instantáneas de VM son consistentes ante fallos, no detienen el hu�
 #. 0: escapeHTML(selectedSnapshot.name)
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 msgid "Rollback VM to <b>{0}</b>? If the VM is running, it will be stopped. Every VM ZFS dataset will be rolled back, permanently destroying all newer ZFS snapshots under those datasets—including snapshots not listed here. The saved configuration will be restored and the VM will then be restarted if it was previously running."
-msgstr "¿Revertir la VM a <b>{0}</b>? Si la VM está en ejecución, se detendrá. Todos los conjuntos de datos ZFS de la VM se revertirán, destruyendo permanentemente todas las instantáneas ZFS más recientes bajo esos conjuntos de datos, incluidas las instantáneas no listadas aquí. Se restaurará la configuración guardada y la VM se reiniciará si estaba en ejecución previamente."
+msgstr "¿Revertir la VM a <b>{0}</b>? Si la VM está en ejecución, se detendrá. Todos los Datasets ZFS de la VM se revertirán, destruyendo permanentemente todas las instantáneas ZFS más recientes bajo esos Datasets, incluidas las instantáneas no listadas aquí. Se restaurará la configuración guardada y la VM se reiniciará si estaba en ejecución previamente."
 
 #. 0: escapeHTML(selectedSnapshot.name)
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
@@ -17476,7 +17459,7 @@ msgstr "Eliminar un nodo activo es destructivo. Continúe solo si desea eliminar
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Target, mode, source, and dataset runner are fixed after creation. Guest runners change only through migration or failover repair."
-msgstr "El destino, modo, origen y runner del conjunto de datos son fijos tras la creación. Los runners de huésped solo cambian mediante migración o reparación de conmutación por error."
+msgstr "El destino, modo, origen y runner del Dataset son fijos tras la creación. Los runners de huésped solo cambian mediante migración o reparación de conmutación por error."
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 msgid "Changing recursive scope may archive the active generation and trigger a full reseed"
@@ -17623,7 +17606,7 @@ msgstr "Clave almacenada (dejar en blanco para conservar)"
 #~ msgstr "Disco - Borrar"
 
 #~ msgid "ZFS Dataset - Bulk Delete"
-#~ msgstr "Conjunto de datos ZFS - Eliminación masiva"
+#~ msgstr "Dataset ZFS - Eliminación masiva"
 
 #~ msgid "Jail - Network Inherit"
 #~ msgstr "Jail - Heredar red"
@@ -19636,7 +19619,7 @@ msgstr "Clave almacenada (dejar en blanco para conservar)"
 #~ msgstr "Grupo de autenticación - Miembros"
 
 #~ msgid "ZFS Dataset - Bulk Delete By Names"
-#~ msgstr "Conjunto de datos ZFS - Eliminación masiva por nombres"
+#~ msgstr "Dataset ZFS - Eliminación masiva por nombres"
 
 #~ msgid "This will delete snapshot <0/>"
 #~ msgstr "Se eliminará la instantánea <0/>"
@@ -19904,3 +19887,14 @@ msgstr "La descripción de la VM debe tener 1024 caracteres o menos"
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Error updating VM description"
 msgstr "Error al actualizar la descripción de la VM"
+
+#~ msgid "Use four octal digits to control permissions for newly created files and directo"
+#~ msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Coul"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgstr ""
