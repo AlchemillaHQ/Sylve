@@ -75,6 +75,81 @@ func TestRewriteLoaderPPTIDsDeduplicatesAssignments(t *testing.T) {
 	}
 }
 
+func TestEnsureVMMLoadForPPTDevices(t *testing.T) {
+	tests := []struct {
+		name  string
+		lines []string
+		want  []string
+	}{
+		{
+			name: "does_not_manage_modules_without_ppt_devices",
+			lines: []string{
+				`vmm_load="NO"`,
+				`ppt_load="NO"`,
+			},
+			want: []string{
+				`vmm_load="NO"`,
+				`ppt_load="NO"`,
+			},
+		},
+		{
+			name: "adds_vmm_before_ppt_devices",
+			lines: []string{
+				`ppt_load="NO"`,
+				`pptdevs="1/2/3"`,
+			},
+			want: []string{
+				`ppt_load="NO"`,
+				`vmm_load="YES"`,
+				`pptdevs="1/2/3"`,
+			},
+		},
+		{
+			name: "enables_existing_vmm_and_preserves_ppt_load",
+			lines: []string{
+				`vmm_load="NO"`,
+				`ppt_load="NO"`,
+				`pptdevs="1/2/3"`,
+			},
+			want: []string{
+				`vmm_load="YES"`,
+				`ppt_load="NO"`,
+				`pptdevs="1/2/3"`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ensureVMMLoadForPPTDevices(tt.lines)
+			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
+				t.Fatalf("loader lines = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddLoaderPPTDeviceEnsuresVMMForExistingID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "loader.conf")
+	if err := os.WriteFile(path, []byte("ppt_load=\"NO\"\npptdevs=\"1/2/3\"\n"), 0644); err != nil {
+		t.Fatalf("creating loader.conf fixture: %v", err)
+	}
+	setPassthroughTestDependencies(t, path, nil, nil)
+
+	if err := (&Service{}).addLoaderPPTDevice("1/2/3"); err != nil {
+		t.Fatalf("ensuring existing passthrough device failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading loader.conf: %v", err)
+	}
+	want := "ppt_load=\"NO\"\nvmm_load=\"YES\"\npptdevs=\"1/2/3\"\n"
+	if string(data) != want {
+		t.Fatalf("loader.conf = %q; want %q", data, want)
+	}
+}
+
 func TestWriteFileAtomicallyReplacesContentAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "loader.conf")
 	if err := os.WriteFile(path, []byte("old\n"), 0600); err != nil {

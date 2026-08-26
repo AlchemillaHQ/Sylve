@@ -203,64 +203,41 @@ func writeFileAtomically(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
-func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
-	settings, err := s.GetBasicSettings()
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return fmt.Errorf("failed to fetch basic settings for loader config: %w", err)
+func ensureVMMLoadForPPTDevices(lines []string) []string {
+	if len(parsePPTIDsFromLoader(lines)) == 0 {
+		return lines
 	}
 
-	hasVirtualization := slices.Contains(settings.Services, models.Virtualization)
-
+	lines = append([]string(nil), lines...)
 	vmmFound := false
-	pptFound := false
-
 	for i, line := range lines {
 		key, _, ok := parseLoaderConfAssignment(line)
-		if !ok {
-			continue
-		}
-
-		switch key {
-		case "vmm_load":
+		if ok && key == "vmm_load" {
+			lines[i] = `vmm_load="YES"`
 			vmmFound = true
-			if hasVirtualization {
-				lines[i] = `vmm_load="YES"`
-			}
-		case "ppt_load":
-			pptFound = true
-			lines[i] = `ppt_load="YES"`
 		}
 	}
 
-	needsVmm := hasVirtualization && !vmmFound
-	needsPpt := !pptFound
-
-	if needsVmm || needsPpt {
-		var newLines []string
-		for _, line := range lines {
-			key, _, ok := parseLoaderConfAssignment(line)
-			if ok && key == loaderConfKey {
-				if needsVmm {
-					newLines = append(newLines, `vmm_load="YES"`)
-					needsVmm = false
-				}
-				if needsPpt {
-					newLines = append(newLines, `ppt_load="YES"`)
-					needsPpt = false
-				}
-			}
-			newLines = append(newLines, line)
-		}
-
-		if needsVmm {
-			newLines = append(newLines, `vmm_load="YES"`)
-		}
-		if needsPpt {
-			newLines = append(newLines, `ppt_load="YES"`)
-		}
-
-		lines = newLines
+	if vmmFound {
+		return lines
 	}
+
+	updated := make([]string, 0, len(lines)+1)
+	inserted := false
+	for _, line := range lines {
+		key, _, ok := parseLoaderConfAssignment(line)
+		if ok && key == loaderConfKey && !inserted {
+			updated = append(updated, `vmm_load="YES"`)
+			inserted = true
+		}
+		updated = append(updated, line)
+	}
+
+	return updated
+}
+
+func (s *Service) writeLoaderConf(lines []string, perm os.FileMode) error {
+	lines = ensureVMMLoadForPPTDevices(lines)
 
 	out := ""
 	if len(lines) > 0 {
@@ -415,12 +392,11 @@ func (s *Service) addLoaderPPTDevice(id string) error {
 	}
 
 	ids := parsePPTIDsFromLoader(lines)
-	if slices.Contains(ids, id) {
-		return nil
+	if !slices.Contains(ids, id) {
+		ids = append(ids, id)
+		lines = rewriteLoaderPPTIDs(lines, ids)
 	}
 
-	ids = append(ids, id)
-	lines = rewriteLoaderPPTIDs(lines, ids)
 	return s.writeLoaderConf(lines, perm)
 }
 
