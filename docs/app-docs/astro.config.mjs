@@ -434,6 +434,7 @@ export default defineConfig({
                                 'guides/one-shot-guides/technitium-dns-jail',
                                 'guides/one-shot-guides/jellyfin-jail',
                                 'guides/one-shot-guides/rocky-linux-jail',
+                                'guides/one-shot-guides/kde-desktop-jail',
                             ],
                         },
                         {
