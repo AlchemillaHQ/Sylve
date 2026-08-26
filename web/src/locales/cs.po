@@ -50,6 +50,7 @@ msgstr "Hardware"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -60,6 +61,7 @@ msgstr "Hardware"
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Network"
 msgstr "Síť"
 
@@ -2208,10 +2210,12 @@ msgstr "Podrobnosti – {0}"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Host(s)"
 msgstr "Hostitel(é)"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2230,10 +2234,12 @@ msgstr "Síť/sítě"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC adresa/adresy"
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -2843,6 +2849,7 @@ msgstr ""
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3031,8 +3038,10 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Port"
@@ -4056,8 +4065,10 @@ msgstr "Pokud chcete použít výchozí sadu pravidel, nevyplňujte"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Mac"
 msgstr "MAC adresa"
 
@@ -4074,11 +4085,13 @@ msgstr "MAC adresa"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 msgid "Host"
 msgstr "Hostitel"
 
@@ -5164,7 +5177,7 @@ msgstr "Uložit a přejít zpět na patice"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualizovat"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -8469,6 +8482,7 @@ msgid "VM name is already in use"
 msgstr ""
 
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "This VM is owned by another node right now"
 msgstr ""
 
@@ -8511,6 +8525,7 @@ msgstr ""
 msgid "Jail name is already in use"
 msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 msgid "This jail is owned by another node right now"
 msgstr ""
@@ -8591,10 +8606,12 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "FQDN(s)"
 msgstr ""
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -8631,6 +8648,8 @@ msgstr ""
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "List"
 msgstr ""
@@ -9424,6 +9443,7 @@ msgstr ""
 msgid "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family."
 msgstr ""
 
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -13036,6 +13056,7 @@ msgid "Waiting to retry the migration safely…"
 msgstr ""
 
 #: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Ready"
@@ -14514,6 +14535,7 @@ msgstr ""
 msgid "Removed voter"
 msgstr ""
 
+#: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Configuration changed"
 msgstr ""
@@ -17595,4 +17617,2294 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Key stored (leave blank to keep)"
+msgstr ""
+
+#~ msgid "Swagger"
+#~ msgstr ""
+
+#~ msgid "Disk - Wipe"
+#~ msgstr ""
+
+#~ msgid "ZFS Dataset - Bulk Delete"
+#~ msgstr ""
+
+#~ msgid "Jail - Network Inherit"
+#~ msgstr ""
+
+#~ msgid "Jail - Network Disinherit"
+#~ msgstr ""
+
+#~ msgid "Jail Network"
+#~ msgstr ""
+
+#~ msgid "Toggle - DHCP Server"
+#~ msgstr ""
+
+#~ msgid "Toggle - WoL Server"
+#~ msgstr ""
+
+#~ msgid "Toggle - Samba Server"
+#~ msgstr ""
+
+#~ msgid "Toggle - Jails"
+#~ msgstr ""
+
+#~ msgid "Toggle - Virtualization"
+#~ msgstr ""
+
+#~ msgid "No response"
+#~ msgstr ""
+
+#~ msgid "Copied response to clipboard"
+#~ msgstr ""
+
+#~ msgid "Virtual Environment 0.0.1"
+#~ msgstr ""
+
+#~ msgid "Note"
+#~ msgstr ""
+
+#~ msgid "Disk Usage"
+#~ msgstr ""
+
+#~ msgid "Swap Usage"
+#~ msgstr ""
+
+#~ msgid "The host console has been disconnected.<0/> Click the \"Reconnect\" button to start a new session."
+#~ msgstr ""
+
+#~ msgid "Reset Cluster"
+#~ msgstr ""
+
+#~ msgid "This will reset all clustered data and configuration, including all notes, backup targets, jobs and events. This action cannot be undone."
+#~ msgstr ""
+
+#~ msgid "Login required after cluster reset"
+#~ msgstr ""
+
+#~ msgid "Username and password are required"
+#~ msgstr ""
+
+#~ msgid "Invalid username"
+#~ msgstr ""
+
+#~ msgid "Password must be at least 8 characters long"
+#~ msgstr ""
+
+#~ msgid "No user selected for editing"
+#~ msgstr ""
+
+#~ msgid "Invalid port number"
+#~ msgstr ""
+
+#~ msgid "Login required after initializing cluster"
+#~ msgstr ""
+
+#~ msgid "Node Port"
+#~ msgstr ""
+
+#~ msgid "Leader API is required"
+#~ msgstr ""
+
+#~ msgid "Leader API (192.168.1.1:8181)"
+#~ msgstr ""
+
+#~ msgid "This action cannot be undone. This will permanently delete"
+#~ msgstr ""
+
+#~ msgid "<0/> Create {0}"
+#~ msgstr ""
+
+#~ msgid "WOL Server"
+#~ msgstr ""
+
+#~ msgid "We've hit errors during initialization"
+#~ msgstr ""
+
+#~ msgid "System is restarting…"
+#~ msgstr ""
+
+#~ msgid "System did not come back online in time"
+#~ msgstr ""
+
+#~ msgid "<0/> Rebooting..."
+#~ msgstr ""
+
+#~ msgid "No groups selected and guests are not allowed"
+#~ msgstr ""
+
+#~ msgid "Share cannot have overlapping groups"
+#~ msgstr ""
+
+#~ msgid "Edit Samba Share"
+#~ msgstr ""
+
+#~ msgid "Read-Only Groups"
+#~ msgstr ""
+
+#~ msgid "Writeable Groups"
+#~ msgstr ""
+
+#~ msgid "Stopping Jail"
+#~ msgstr ""
+
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being stopped"
+#~ msgstr ""
+
+#~ msgid "Jail stopped"
+#~ msgstr ""
+
+#~ msgid "Starting Jail"
+#~ msgstr ""
+
+#~ msgid "Please wait while Jail <b>{0} ({1})</b> is being started"
+#~ msgstr ""
+
+#~ msgid "Jail started"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete Jail"
+#~ msgstr ""
+
+#~ msgid "Device is in use by a VM, failed to remove"
+#~ msgstr ""
+
+#~ msgid "Toggle {0}"
+#~ msgstr ""
+
+#~ msgid "You are about to {0} {1}, {2}you will have to restart Sylve and or the host system for changes to take effect"
+#~ msgstr ""
+
+#~ msgid "Failed to toggle {0}"
+#~ msgstr ""
+
+#~ msgid "S.M.A.R.T Values ({0})"
+#~ msgstr ""
+
+#~ msgid "This action cannot be undone. This will permanently <b>wipe</b> disk <b>{0}</b>."
+#~ msgstr ""
+
+#~ msgid "Wipe Disk"
+#~ msgstr ""
+
+#~ msgid "Disk Wiped"
+#~ msgstr ""
+
+#~ msgid "Device busy"
+#~ msgstr ""
+
+#~ msgid "Unable to wipe busy disk"
+#~ msgstr ""
+
+#~ msgid "Failed to rename"
+#~ msgstr ""
+
+#~ msgid "Failed to delete {0} item{1}."
+#~ msgstr ""
+
+#~ msgid "Failed to delete template {0}"
+#~ msgstr ""
+
+#~ msgid "Download started"
+#~ msgstr ""
+
+#~ msgid "Download failed"
+#~ msgstr ""
+
+#~ msgid "Failed to get download link"
+#~ msgstr ""
+
+#~ msgid "Failed to delete download"
+#~ msgstr ""
+
+#~ msgid "Failed to delete downloads"
+#~ msgstr ""
+
+#~ msgid "Starting Virtual Machine"
+#~ msgstr ""
+
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being started."
+#~ msgstr ""
+
+#~ msgid "VM started"
+#~ msgstr ""
+
+#~ msgid "Stopping Virtual Machine"
+#~ msgstr ""
+
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being stopped"
+#~ msgstr ""
+
+#~ msgid "VM stopped"
+#~ msgstr ""
+
+#~ msgid "Shutting Down Virtual Machine"
+#~ msgstr ""
+
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is shutting down"
+#~ msgstr ""
+
+#~ msgid "VM shutdown started"
+#~ msgstr ""
+
+#~ msgid "Rebooting Virtual Machine"
+#~ msgstr ""
+
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being rebooted"
+#~ msgstr ""
+
+#~ msgid "VM rebooted"
+#~ msgstr ""
+
+#~ msgid "#{0} Event - Error Details"
+#~ msgstr ""
+
+#~ msgid "Target Receipts"
+#~ msgstr ""
+
+#~ msgid "No target-side receipts yet."
+#~ msgstr ""
+
+#~ msgid "Last Attempt"
+#~ msgstr ""
+
+#~ msgid "Last Success"
+#~ msgstr ""
+
+#~ msgid "This policy needs at least two distinct target servers."
+#~ msgstr ""
+
+#~ msgid "Add at least two distinct target servers."
+#~ msgstr ""
+
+#~ msgid "Automatic safe move"
+#~ msgstr ""
+
+#~ msgid "Automatically move after a safe demote and sync."
+#~ msgstr ""
+
+#~ msgid "Protects data first, then promotes a target."
+#~ msgstr ""
+
+#~ msgid "Auto safe move"
+#~ msgstr ""
+
+#~ msgid "Auto-pick the best target from policy priority"
+#~ msgstr ""
+
+#~ msgid "HA State"
+#~ msgstr ""
+
+#~ msgid "Target Sync"
+#~ msgstr ""
+
+#~ msgid "You cannot add more targets than available cluster nodes."
+#~ msgstr ""
+
+#~ msgid "Add at least two distinct target servers for HA."
+#~ msgstr ""
+
+#~ msgid "Failed to delete policy"
+#~ msgstr ""
+
+#~ msgid "Edit Protection Policy"
+#~ msgstr ""
+
+#~ msgid "New Protection Policy"
+#~ msgstr ""
+
+#~ msgid "If the active server goes down"
+#~ msgstr ""
+
+#~ msgid "Choose what should happen automatically."
+#~ msgstr ""
+
+#~ msgid "Higher priority gets picked first when auto-selecting a target."
+#~ msgstr ""
+
+#~ msgid "Sync schedule (cron)"
+#~ msgstr ""
+
+#~ msgid "Policy enabled"
+#~ msgstr ""
+
+#~ msgid "Review your settings before saving."
+#~ msgstr ""
+
+#~ msgid "Missing required fields"
+#~ msgstr ""
+
+#~ msgid "Failed to create S3 storage"
+#~ msgstr ""
+
+#~ msgid "S3 storage created"
+#~ msgstr ""
+
+#~ msgid "Failed to create Directory storage"
+#~ msgstr ""
+
+#~ msgid "Directory storage created"
+#~ msgstr ""
+
+#~ msgid "Please select a storage type"
+#~ msgstr ""
+
+#~ msgid "Create Storage"
+#~ msgstr ""
+
+#~ msgid "Directory"
+#~ msgstr ""
+
+#~ msgid "Region"
+#~ msgstr ""
+
+#~ msgid "Bucket"
+#~ msgstr ""
+
+#~ msgid "Access Key"
+#~ msgstr ""
+
+#~ msgid "Secret Key"
+#~ msgstr ""
+
+#~ msgid "Last updated: {0}"
+#~ msgstr ""
+
+#~ msgid "Invalid IPv4 gateway or address"
+#~ msgstr ""
+
+#~ msgid "Invalid IPv6 gateway or address"
+#~ msgstr ""
+
+#~ msgid "Select IPv4"
+#~ msgstr ""
+
+#~ msgid "Select IPv4 Gateway"
+#~ msgstr ""
+
+#~ msgid "Select IPv6"
+#~ msgstr ""
+
+#~ msgid "Select IPv6 Gateway"
+#~ msgstr ""
+
+#~ msgid "Select FStab Option"
+#~ msgstr ""
+
+#~ msgid "The above script will run during {0}, ensure they are valid for the host or jail"
+#~ msgstr ""
+
+#~ msgid "Manage the devfs ruleset for this jail"
+#~ msgstr ""
+
+#~ msgid "Manage additional options for this jail"
+#~ msgstr ""
+
+#~ msgid "Meta and Env key-value pairs"
+#~ msgstr ""
+
+#~ msgid "Meta (Key=Value per line)"
+#~ msgstr ""
+
+#~ msgid "ENV (Key=Value per line)"
+#~ msgstr ""
+
+#~ msgid "RAM value must be greater than 0"
+#~ msgstr ""
+
+#~ msgid "Jail not found"
+#~ msgstr ""
+
+#~ msgid "Select MAC Address"
+#~ msgstr ""
+
+#~ msgid "Select IPv4 Address"
+#~ msgstr ""
+
+#~ msgid "Select IPv6 Address"
+#~ msgstr ""
+
+#~ msgid "At least one protocol required"
+#~ msgstr ""
+
+#~ msgid "Network inherited"
+#~ msgstr ""
+
+#~ msgid "Failed to inherit network"
+#~ msgstr ""
+
+#~ msgid "Network disinherited"
+#~ msgstr ""
+
+#~ msgid "Failed to disinherit network"
+#~ msgstr ""
+
+#~ msgid "Disinherit Network"
+#~ msgstr ""
+
+#~ msgid "This option will disinherit the network configuration from the host. Choose this if you want to attach a custom network switch to this jail or disable networking entirely. Changes will take effect after restarting the jail."
+#~ msgstr ""
+
+#~ msgid "This option will inherit the network configuration from the host. Choose this if you want the jail to share the host's networking. You can select which protocols to inherit below. Changes will take effect after restarting the jail."
+#~ msgstr ""
+
+#~ msgid "Disinherit"
+#~ msgstr ""
+
+#~ msgid "Host object used in switch, only one IP is allowed"
+#~ msgstr ""
+
+#~ msgid "No changes detected"
+#~ msgstr ""
+
+#~ msgid "Cannot change type of object that is in use"
+#~ msgstr ""
+
+#~ msgid "Cannot change object of active VM"
+#~ msgstr ""
+
+#~ msgid "Select hosts"
+#~ msgstr ""
+
+#~ msgid "Select networks"
+#~ msgstr ""
+
+#~ msgid "Select MACs"
+#~ msgstr ""
+
+#~ msgid "Select DUIDs"
+#~ msgstr ""
+
+#~ msgid "Failed to {0} template {1}"
+#~ msgstr ""
+
+#~ msgid "Failed to create VM"
+#~ msgstr ""
+
+#~ msgid "Select PCI Devices"
+#~ msgstr ""
+
+#~ msgid "Please specify a boot order"
+#~ msgstr ""
+
+#~ msgid "Failed to import disk"
+#~ msgstr ""
+
+#~ msgid "Disk imported"
+#~ msgstr ""
+
+#~ msgid "Please specify a size"
+#~ msgstr ""
+
+#~ msgid "Failed to attach disk"
+#~ msgstr ""
+
+#~ msgid "Disk attached"
+#~ msgstr ""
+
+#~ msgid "ISO Image"
+#~ msgstr ""
+
+#~ msgid "Select ISO Image"
+#~ msgstr ""
+
+#~ msgid "<0/> TPM"
+#~ msgstr ""
+
+#~ msgid "Password too short"
+#~ msgstr ""
+
+#~ msgid "<0/> CPU Pinning"
+#~ msgstr ""
+
+#~ msgid "Shutdown Wait Time must be a non-negative number"
+#~ msgstr ""
+
+#~ msgid "↓ {0}B"
+#~ msgstr ""
+
+#~ msgid "↑ {0}B"
+#~ msgstr ""
+
+#~ msgid "No available disks or partitions"
+#~ msgstr ""
+
+#~ msgid "At least one VDEV containing disks is required"
+#~ msgstr ""
+
+#~ msgid "No available disks"
+#~ msgstr ""
+
+#~ msgid "<0/> Create ZFS Pool"
+#~ msgstr ""
+
+#~ msgid "Virtual Devices"
+#~ msgstr ""
+
+#~ msgid "Redundancy <0/>"
+#~ msgstr ""
+
+#~ msgid "Select Redundancy"
+#~ msgstr ""
+
+#~ msgid "VDEVs"
+#~ msgstr ""
+
+#~ msgid "Console Settings - {0}"
+#~ msgstr ""
+
+#~ msgid "This will enable resource limits for this jail, defaulting to <b>1 GB RAM</b> and <b>1 vCPU</b>, you can change this later"
+#~ msgstr ""
+
+#~ msgid "This will detach the jail from the switch <b>{0}</b>"
+#~ msgstr ""
+
+#~ msgid "Snapshot rollback started"
+#~ msgstr ""
+
+#~ msgid "Rollback to <b>{0}</b>? This will destroy snapshots created after it."
+#~ msgstr ""
+
+#~ msgid "Delete snapshot <b>{0}</b>? This action cannot be undone."
+#~ msgstr ""
+
+#~ msgid "{0} Logs"
+#~ msgstr ""
+
+#~ msgid "This action cannot be undone. This will permanently delete static DHCP lease for <b>{0}</b>"
+#~ msgstr ""
+
+#~ msgid "Cannot delete admin user"
+#~ msgstr ""
+
+#~ msgid "Cannot edit admin user"
+#~ msgstr ""
+
+#~ msgid "Select IPv4 Network"
+#~ msgstr ""
+
+#~ msgid "Select IPv6 Network"
+#~ msgstr ""
+
+#~ msgid "Delete (File/Directory)"
+#~ msgstr ""
+
+#~ msgid "Enter Workgroup"
+#~ msgstr ""
+
+#~ msgid "Enter Unix Charset"
+#~ msgstr ""
+
+#~ msgid "Enter Server String"
+#~ msgstr ""
+
+#~ msgid "Select Interfaces"
+#~ msgstr ""
+
+#~ msgid "Unknown Switch"
+#~ msgstr ""
+
+#~ msgid "No available/unused switches to attach to"
+#~ msgstr ""
+
+#~ msgid "This will detach the VM <b>{0}</b> from the switch <b>{1}</b>"
+#~ msgstr ""
+
+#~ msgid "This will detach the storage {0} from the VM <b>{1}</b>"
+#~ msgstr ""
+
+#~ msgid "Please wait while VM <b>{0} ({1})</b> is being shut down"
+#~ msgstr ""
+
+#~ msgid "VM shut down"
+#~ msgstr ""
+
+#~ msgid "Current"
+#~ msgstr ""
+
+#~ msgid "Failed to validate cluster guest placement"
+#~ msgstr ""
+
+#~ msgid "Invalid selection"
+#~ msgstr ""
+
+#~ msgid "Failed to edit lease"
+#~ msgstr ""
+
+#~ msgid "Lease edited"
+#~ msgstr ""
+
+#~ msgid "{0} DHCP Lease"
+#~ msgstr ""
+
+#~ msgid "IP Range not in switch subnet"
+#~ msgstr ""
+
+#~ msgid "IP Range not in switch subnet ({0}/{1})"
+#~ msgstr ""
+
+#~ msgid "No DHCP range selected"
+#~ msgstr ""
+
+#~ msgid "{0} DHCP Range"
+#~ msgstr ""
+
+#~ msgid "This will delete snapshot {0}"
+#~ msgstr ""
+
+#~ msgid "This will delete {0} snapshots"
+#~ msgstr ""
+
+#~ msgid "Jan 01, 0001"
+#~ msgstr ""
+
+#~ msgid "Retention Policies -"
+#~ msgstr ""
+
+#~ msgid "<0/> Create Filesystem"
+#~ msgstr ""
+
+#~ msgid "Select Compression"
+#~ msgstr ""
+
+#~ msgid "<0/> Edit Filesystem - {0}"
+#~ msgstr ""
+
+#~ msgid "<0/> Edit Volume - {0}"
+#~ msgstr ""
+
+#~ msgid "Volume size is not a multiple of block size, click on this if you'd like to automatically adjust it"
+#~ msgstr ""
+
+#~ msgid "<0/> Flash File to {0}"
+#~ msgstr ""
+
+#~ msgid "Edit Filesystem"
+#~ msgstr ""
+
+#~ msgid "Delete Filesystem"
+#~ msgstr ""
+
+#~ msgid "Delete Volume"
+#~ msgstr ""
+
+#~ msgid "Edit Volume"
+#~ msgstr ""
+
+#~ msgid "Populate /etc/resolv.conf"
+#~ msgstr ""
+
+#~ msgid "Predefined Configurations"
+#~ msgstr ""
+
+#~ msgid "Cloudflare DNS"
+#~ msgstr ""
+
+#~ msgid "Google DNS"
+#~ msgstr ""
+
+#~ msgid "Quad9 DNS"
+#~ msgstr ""
+
+#~ msgid "<0/> {0} lifecycle action{1} in progress"
+#~ msgstr ""
+
+#~ msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+#~ msgstr ""
+
+#~ msgid "Live Console Stream"
+#~ msgstr ""
+
+#~ msgid "Task Pipeline Preview"
+#~ msgstr ""
+
+#~ msgid "Edge Telemetry Mode"
+#~ msgstr ""
+
+#~ msgid "Invalid registration challenge payload"
+#~ msgstr ""
+
+#~ msgid "Label (optional)"
+#~ msgstr ""
+
+#~ msgid "Laptop, Phone, Security Key..."
+#~ msgstr ""
+
+#~ msgid "<0/> Scanning"
+#~ msgstr ""
+
+#~ msgid "<0/> Touch ID"
+#~ msgstr ""
+
+#~ msgid "Register - Passkey - Finish"
+#~ msgstr ""
+
+#~ msgid "Register - Passkey - Begin"
+#~ msgstr ""
+
+#~ msgid "Jail Snapshot - Rollback"
+#~ msgstr ""
+
+#~ msgid "Jail Snapshot"
+#~ msgstr ""
+
+#~ msgid "This option is not available for Linux jails"
+#~ msgstr ""
+
+#~ msgid "B/s"
+#~ msgstr ""
+
+#~ msgid "<0/> Hello World"
+#~ msgstr ""
+
+#~ msgid "Local node"
+#~ msgstr ""
+
+#~ msgid "Jail Template - Convert"
+#~ msgstr ""
+
+#~ msgid "Jail Template - Create Jail"
+#~ msgstr ""
+
+#~ msgid "Jail Template"
+#~ msgstr ""
+
+#~ msgid "Template conversion queued"
+#~ msgstr ""
+
+#~ msgid "Delete template \"{0}\"?"
+#~ msgstr ""
+
+#~ msgid "Template restore job queued"
+#~ msgstr ""
+
+#~ msgid "<0/> Convert to Template"
+#~ msgstr ""
+
+#~ msgid "Create Jail From Template"
+#~ msgstr ""
+
+#~ msgid "CTID"
+#~ msgstr ""
+
+#~ msgid "Name (optional)"
+#~ msgstr ""
+
+#~ msgid "Create Jail Template - From Jail"
+#~ msgstr ""
+
+#~ msgid "Create Jail - Template"
+#~ msgstr ""
+
+#~ msgid "Template Details - {0}"
+#~ msgstr ""
+
+#~ msgid "Loading template details..."
+#~ msgstr ""
+
+#~ msgid "ID:"
+#~ msgstr ""
+
+#~ msgid "Source CTID:"
+#~ msgstr ""
+
+#~ msgid "Source Jail:"
+#~ msgstr ""
+
+#~ msgid "Type:"
+#~ msgstr ""
+
+#~ msgid "Pool:"
+#~ msgstr ""
+
+#~ msgid "Root Dataset:"
+#~ msgstr ""
+
+#~ msgid "Resource Limits:"
+#~ msgstr ""
+
+#~ msgid "CPU Cores:"
+#~ msgstr ""
+
+#~ msgid "Memory (bytes):"
+#~ msgstr ""
+
+#~ msgid "Inherit IPv4:"
+#~ msgstr ""
+
+#~ msgid "Inherit IPv6:"
+#~ msgstr ""
+
+#~ msgid "Created:"
+#~ msgstr ""
+
+#~ msgid "Updated:"
+#~ msgstr ""
+
+#~ msgid "Network Templates"
+#~ msgstr ""
+
+#~ msgid "#{0} {1} ({2}, switch {3})"
+#~ msgstr ""
+
+#~ msgid "Hook Templates"
+#~ msgstr ""
+
+#~ msgid "FStab"
+#~ msgstr ""
+
+#~ msgid "General"
+#~ msgstr ""
+
+#~ msgid "Source CTID"
+#~ msgstr ""
+
+#~ msgid "Memory (bytes)"
+#~ msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1}"
+#~ msgstr ""
+
+#~ msgid "Linux"
+#~ msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1} {2}"
+#~ msgstr ""
+
+#~ msgid "Type: {0} • Switch ID: {1} DHCP: {2} • SLAAC: {3}"
+#~ msgstr ""
+
+#~ msgid "<0/> Partitions <1>({0} available)</1>"
+#~ msgstr ""
+
+#~ msgid "Create VM Template - From VM"
+#~ msgstr ""
+
+#~ msgid "Create VM - Template"
+#~ msgstr ""
+
+#~ msgid "Failed to convert to template"
+#~ msgstr ""
+
+#~ msgid "If empty, VM name is used"
+#~ msgstr ""
+
+#~ msgid "Convert To Template"
+#~ msgstr ""
+
+#~ msgid "Provide a unique template name for this {0}."
+#~ msgstr ""
+
+#~ msgid "VM must be shut off to convert to template"
+#~ msgstr ""
+
+#~ msgid "Storage #{storage.sourceStorageId} ({0})"
+#~ msgstr ""
+
+#~ msgid "Enabled (Attached to VM)"
+#~ msgstr ""
+
+#~ msgid "Snapshot Filesystem"
+#~ msgstr ""
+
+#~ msgid "Snapshot {0}/{1}@{2} created"
+#~ msgstr ""
+
+#~ msgid "Use \"{0}\""
+#~ msgstr ""
+
+#~ msgid "Create Snapshot 1"
+#~ msgstr ""
+
+#~ msgid "<0/> Flash File"
+#~ msgstr ""
+
+#~ msgid "Select a file below to flash to the ZFS Volume {0}"
+#~ msgstr ""
+
+#~ msgid "Select a file below to flash to the ZFS Volume <0/>"
+#~ msgstr ""
+
+#~ msgid "<0/> Flash File To ZFS Volume"
+#~ msgstr ""
+
+#~ msgid "Flash File To ZFS Volume"
+#~ msgstr ""
+
+#~ msgid "Failed to start download from uploaded file"
+#~ msgstr ""
+
+#~ msgid "Upload failed"
+#~ msgstr ""
+
+#~ msgid "Uploaded file path is invalid"
+#~ msgstr ""
+
+#~ msgid "Upload destination: <0/>"
+#~ msgstr ""
+
+#~ msgid "File uploaded. Click Download to start."
+#~ msgstr ""
+
+#~ msgid "Upload a file first"
+#~ msgstr ""
+
+#~ msgid "Complete Upload"
+#~ msgstr ""
+
+#~ msgid "Failed to start move from uploaded file"
+#~ msgstr ""
+
+#~ msgid "File uploaded, you can complete upload now"
+#~ msgstr ""
+
+#~ msgid "Jail - {0} IPv4"
+#~ msgstr ""
+
+#~ msgid "Networks(s)"
+#~ msgstr ""
+
+#~ msgid "<0/> Note"
+#~ msgstr ""
+
+#~ msgid "VM name"
+#~ msgstr ""
+
+#~ msgid "Save Name"
+#~ msgstr ""
+
+#~ msgid "Login required after joining cluster"
+#~ msgstr ""
+
+#~ msgid "Setting this option to be <0>on</0> will enable Wake on LAN for this jail for all MAC addresses attached to it"
+#~ msgstr ""
+
+#~ msgid "At least one CPU must be left unpinned"
+#~ msgstr ""
+
+#~ msgid "Invalid expiry format, resetting to 12h"
+#~ msgstr ""
+
+#~ msgid "Toggle - Firewall"
+#~ msgstr ""
+
+#~ msgid "Firewall - Traffic Rule"
+#~ msgstr ""
+
+#~ msgid "Firewall - NAT Rule"
+#~ msgstr ""
+
+#~ msgid "Traffic rule name is required"
+#~ msgstr ""
+
+#~ msgid "Traffic rule saved"
+#~ msgstr ""
+
+#~ msgid "Failed to save traffic rule"
+#~ msgstr ""
+
+#~ msgid "Traffic rule order updated"
+#~ msgstr ""
+
+#~ msgid "NAT rule name is required"
+#~ msgstr ""
+
+#~ msgid "NAT rule saved"
+#~ msgstr ""
+
+#~ msgid "Failed to save NAT rule"
+#~ msgstr ""
+
+#~ msgid "NAT rule order updated"
+#~ msgstr ""
+
+#~ msgid "Advanced firewall settings saved"
+#~ msgstr ""
+
+#~ msgid "Failed to save advanced settings"
+#~ msgstr ""
+
+#~ msgid "Rule name"
+#~ msgstr ""
+
+#~ msgid "pass"
+#~ msgstr ""
+
+#~ msgid "block"
+#~ msgstr ""
+
+#~ msgid "in"
+#~ msgstr ""
+
+#~ msgid "out"
+#~ msgstr ""
+
+#~ msgid "any"
+#~ msgstr ""
+
+#~ msgid "tcp"
+#~ msgstr ""
+
+#~ msgid "udp"
+#~ msgstr ""
+
+#~ msgid "icmp"
+#~ msgstr ""
+
+#~ msgid "inet"
+#~ msgstr ""
+
+#~ msgid "inet6"
+#~ msgstr ""
+
+#~ msgid "Interfaces (comma separated)"
+#~ msgstr ""
+
+#~ msgid "<0/> Enabled"
+#~ msgstr ""
+
+#~ msgid "Source raw (optional)"
+#~ msgstr ""
+
+#~ msgid "Source object (optional)"
+#~ msgstr ""
+
+#~ msgid "Destination raw (optional)"
+#~ msgstr ""
+
+#~ msgid "Destination object (optional)"
+#~ msgstr ""
+
+#~ msgid "Source ports raw (optional)"
+#~ msgstr ""
+
+#~ msgid "Source port object (optional)"
+#~ msgstr ""
+
+#~ msgid "Destination ports raw (optional)"
+#~ msgstr ""
+
+#~ msgid "Destination port object (optional)"
+#~ msgstr ""
+
+#~ msgid "{0} Rule"
+#~ msgstr ""
+
+#~ msgid "Up"
+#~ msgstr ""
+
+#~ msgid "Down"
+#~ msgstr ""
+
+#~ msgid "NAT Rules (Outbound)"
+#~ msgstr ""
+
+#~ msgid "{0} NAT Rule"
+#~ msgstr ""
+
+#~ msgid "Advanced Settings"
+#~ msgstr ""
+
+#~ msgid "Custom PF text injected globally before and after Sylve anchors."
+#~ msgstr ""
+
+#~ msgid "Save Advanced Settings"
+#~ msgstr ""
+
+#~ msgid "Interface Reference"
+#~ msgstr ""
+
+#~ msgid "Edit NAT Rule"
+#~ msgstr ""
+
+#~ msgid "Available interfaces"
+#~ msgstr ""
+
+#~ msgid "Failed to update advanced settings"
+#~ msgstr ""
+
+#~ msgid "Global PF text injected before and after Sylve anchors in <0/>."
+#~ msgstr ""
+
+#~ msgid "Rules placed before Sylve anchors"
+#~ msgstr ""
+
+#~ msgid "Rules placed after Sylve anchors"
+#~ msgstr ""
+
+#~ msgid "Edit Traffic Rule"
+#~ msgstr ""
+
+#~ msgid "Apply to interfaces"
+#~ msgstr ""
+
+#~ msgid "Any (leave empty for all)"
+#~ msgstr ""
+
+#~ msgid "No interfaces available — rule applies to all."
+#~ msgstr ""
+
+#~ msgid "Raw address / CIDR"
+#~ msgstr ""
+
+#~ msgid "or"
+#~ msgstr ""
+
+#~ msgid "Network object"
+#~ msgstr ""
+
+#~ msgid "Select object"
+#~ msgstr ""
+
+#~ msgid "Raw ports"
+#~ msgstr ""
+
+#~ msgid "Port object"
+#~ msgstr ""
+
+#~ msgid "Select port object"
+#~ msgstr ""
+
+#~ msgid "Copied action to clipboard"
+#~ msgstr ""
+
+#~ msgid "DNAT (rdr)"
+#~ msgstr ""
+
+#~ msgid "Not used for SNAT/BINAT"
+#~ msgstr ""
+
+#~ msgid "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface."
+#~ msgstr ""
+
+#~ msgid "Destination/rewrite ports are available only for TCP or UDP DNAT rules."
+#~ msgstr ""
+
+#~ msgid "Global PF rules injected before and after Sylve anchors in <0/>."
+#~ msgstr ""
+
+#~ msgid "<0/> Pre Rules"
+#~ msgstr ""
+
+#~ msgid "Injected before all Sylve-managed anchors."
+#~ msgstr ""
+
+#~ msgid "<0/> Post Rules"
+#~ msgstr ""
+
+#~ msgid "Injected after all Sylve-managed anchors."
+#~ msgstr ""
+
+#~ msgid "Counters stale"
+#~ msgstr ""
+
+#~ msgid "Counters updated {0}"
+#~ msgstr ""
+
+#~ msgid "Clear"
+#~ msgstr ""
+
+#~ msgid "Log stream stale"
+#~ msgstr ""
+
+#~ msgid "Live stream connected"
+#~ msgstr ""
+
+#~ msgid "Live stream unavailable"
+#~ msgstr ""
+
+#~ msgid "Updated {0}"
+#~ msgstr ""
+
+#~ msgid "No firewall hits captured yet."
+#~ msgstr ""
+
+#~ msgid "Filter…"
+#~ msgstr ""
+
+#~ msgid "WireGuard Clients"
+#~ msgstr ""
+
+#~ msgid "Toggle - WireGuard"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Server"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Server Toggle"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Server Peer"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Client Toggle"
+#~ msgstr ""
+
+#~ msgid "WireGuard server toggled"
+#~ msgstr ""
+
+#~ msgid "Peer toggled"
+#~ msgstr ""
+
+#~ msgid "Failed to toggle peer"
+#~ msgstr ""
+
+#~ msgid "PrivateKey = {0}"
+#~ msgstr ""
+
+#~ msgid "Address = {0}"
+#~ msgstr ""
+
+#~ msgid "PublicKey = {0}"
+#~ msgstr ""
+
+#~ msgid "Endpoint = <server-host-or-ip>:{0}"
+#~ msgstr ""
+
+#~ msgid "AllowedIPs = {0}"
+#~ msgstr ""
+
+#~ msgid "PresharedKey = {0}"
+#~ msgstr ""
+
+#~ msgid "PersistentKeepalive = 25"
+#~ msgstr ""
+
+#~ msgid "Peer config copied"
+#~ msgstr ""
+
+#~ msgid "Configure the deterministic server interface `wgs0`."
+#~ msgstr ""
+
+#~ msgid "Manage inbound peers and export client config."
+#~ msgstr ""
+
+#~ msgid "Initialize the server first to manage peers."
+#~ msgstr ""
+
+#~ msgid "Handshake"
+#~ msgstr ""
+
+#~ msgid "Export"
+#~ msgstr ""
+
+#~ msgid "Edit Peer"
+#~ msgstr ""
+
+#~ msgid "Add Peer"
+#~ msgstr ""
+
+#~ msgid "Route IPs"
+#~ msgstr ""
+
+#~ msgid "Save Peer"
+#~ msgstr ""
+
+#~ msgid "Peer Config Preview"
+#~ msgstr ""
+
+#~ msgid "This will remove the WireGuard server runtime state and peer records. Continue?"
+#~ msgstr ""
+
+#~ msgid "This action removes the selected peer. Continue?"
+#~ msgstr ""
+
+#~ msgid "Client updated"
+#~ msgstr ""
+
+#~ msgid "Client created"
+#~ msgstr ""
+
+#~ msgid "Client toggled"
+#~ msgstr ""
+
+#~ msgid "Failed to toggle client"
+#~ msgstr ""
+
+#~ msgid "Client removed"
+#~ msgstr ""
+
+#~ msgid "Manage deterministic client interfaces (`wgc<id>`) for outbound WireGuard tunnels."
+#~ msgstr ""
+
+#~ msgid "No clients configured."
+#~ msgstr ""
+
+#~ msgid "Endpoint: {0}:{1}"
+#~ msgstr ""
+
+#~ msgid "RX / TX: {0} / {1}"
+#~ msgstr ""
+
+#~ msgid "Uptime: {0}"
+#~ msgstr ""
+
+#~ msgid "Last Handshake: {0}"
+#~ msgstr ""
+
+#~ msgid "Interface: wgc{0}"
+#~ msgstr ""
+
+#~ msgid "Edit Client"
+#~ msgstr ""
+
+#~ msgid "Create Client"
+#~ msgstr ""
+
+#~ msgid "Private keys are generated by backend automatically."
+#~ msgstr ""
+
+#~ msgid "Remote Site"
+#~ msgstr ""
+
+#~ msgid "Endpoint Host"
+#~ msgstr ""
+
+#~ msgid "Endpoint Port"
+#~ msgstr ""
+
+#~ msgid "No Host Routes"
+#~ msgstr ""
+
+#~ msgid "Save Client"
+#~ msgstr ""
+
+#~ msgid "WireGuard Client"
+#~ msgstr ""
+
+#~ msgid "This action removes the selected WireGuard client. Continue?"
+#~ msgstr ""
+
+#~ msgid "Provide the local private key for this outbound client."
+#~ msgstr ""
+
+#~ msgid "Policy route gateway (optional)"
+#~ msgstr ""
+
+#~ msgid "When enabled, exactly one egress interface is required. Optional gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+#~ msgstr ""
+
+#~ msgid "When enabled, exactly one egress interface and a gateway are required. Gateway must match the rule family (IPv4 for inet, IPv6 for inet6)."
+#~ msgstr ""
+
+#~ msgid "Destination Type"
+#~ msgstr ""
+
+#~ msgid "Next Hop Mode"
+#~ msgstr ""
+
+#~ msgid "Gateway: {0}"
+#~ msgstr ""
+
+#~ msgid "Iface: {0}"
+#~ msgstr ""
+
+#~ msgid "Failed to delete route"
+#~ msgstr ""
+
+#~ msgid "Iface: {0} ({1})"
+#~ msgstr ""
+
+#~ msgid "Network: {0}"
+#~ msgstr ""
+
+#~ msgid "Host: {0}"
+#~ msgstr ""
+
+#~ msgid "DNAT requires at least one ingress interface. SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+#~ msgstr ""
+
+#~ msgid "DNAT requires at least one ingress interface. and SNAT/BINAT require at least one egress interface; ingress is optional and only used for policy routing scope."
+#~ msgstr ""
+
+#~ msgid "Invalid private key — must be a valid 32-byte base64-encoded WireGuard key"
+#~ msgstr ""
+
+#~ msgid "Generate random private address"
+#~ msgstr ""
+
+#~ msgid "Hide"
+#~ msgstr ""
+
+#~ msgid "Show"
+#~ msgstr ""
+
+#~ msgid "Edit Peer — {0}"
+#~ msgstr ""
+
+#~ msgid "Enable Persistent Keepalive"
+#~ msgstr ""
+
+#~ msgid "<0/> Auto-generate Pre-shared Key"
+#~ msgstr ""
+
+#~ msgid "Use this peer to route the above IPs"
+#~ msgstr ""
+
+#~ msgid "Leave empty to auto-generate"
+#~ msgstr ""
+
+#~ msgid "<0/> Auto-generate All Keys"
+#~ msgstr ""
+
+#~ msgid "<0/> Auto generate All Keys"
+#~ msgstr ""
+
+#~ msgid "Export Peer — {0}"
+#~ msgstr ""
+
+#~ msgid "<0/> Route All Traffic"
+#~ msgstr ""
+
+#~ msgid "<0/> Continue to Export"
+#~ msgstr ""
+
+#~ msgid "Scan to import on a mobile device."
+#~ msgstr ""
+
+#~ msgid "Auto generated WireGuard allow rule"
+#~ msgstr ""
+
+#~ msgid "Allow WireGuard"
+#~ msgstr ""
+
+#~ msgid "WireGuard firewall rule created"
+#~ msgstr ""
+
+#~ msgid "Failed to create WireGuard firewall rule"
+#~ msgstr ""
+
+#~ msgid "WireGuard firewall rule removed"
+#~ msgstr ""
+
+#~ msgid "Failed to remove WireGuard firewall rule"
+#~ msgstr ""
+
+#~ msgid "Allow WireGuard traffic in firewall (UDP port {0})"
+#~ msgstr ""
+
+#~ msgid "Manage inbound peers and client config."
+#~ msgstr ""
+
+#~ msgid "Manage inbound peers and client config"
+#~ msgstr ""
+
+#~ msgid "Enable WireGuard client \"{0}\"?"
+#~ msgstr ""
+
+#~ msgid "Disable WireGuard client \"{0}\"?"
+#~ msgstr ""
+
+#~ msgid "Edit Client — {0}"
+#~ msgstr ""
+
+#~ msgid "0 = random"
+#~ msgstr ""
+
+#~ msgid "Paste a config first"
+#~ msgstr ""
+
+#~ msgid "Apply Config"
+#~ msgstr ""
+
+#~ msgid "Paste WireGuard Config"
+#~ msgstr ""
+
+#~ msgid "Set a specific local port to listen on. Leave as 0 to auto-assign."
+#~ msgstr ""
+
+#~ msgid "Time Machine Max Size (GB, 0 = unlimited)"
+#~ msgstr ""
+
+#~ msgid "Time Machine Max Size"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete {0} objects"
+#~ msgstr ""
+
+#~ msgid "<0/> Installed"
+#~ msgstr ""
+
+#~ msgid "Select a jail base to bootstrap with the help of pkgbase. This will create a new ZFS dataset with the selected base and install the necessary packages to make it a valid jail root. Once bootstrapped, you can select this base when creating a new jail."
+#~ msgstr ""
+
+#~ msgid "Edit Initiator"
+#~ msgstr ""
+
+#~ msgid "Delete Initiator"
+#~ msgstr ""
+
+#~ msgid "Configure a new iSCSI initiator connection."
+#~ msgstr ""
+
+#~ msgid "Update the iSCSI initiator configuration."
+#~ msgstr ""
+
+#~ msgid "CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr ""
+
+#~ msgid "Target CHAP Secret must be 12–16 characters (RFC 3720)"
+#~ msgstr ""
+
+#~ msgid "Initiator Name <0>(IQN, optional)</0>"
+#~ msgstr ""
+
+#~ msgid "<0/> Initiator CHAP Credentials"
+#~ msgstr ""
+
+#~ msgid "CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr ""
+
+#~ msgid "<0/> Target CHAP Credentials"
+#~ msgstr ""
+
+#~ msgid "Target CHAP Secret <0>(12–16 chars)</0>"
+#~ msgstr ""
+
+#~ msgid "CHAP Secret (12–16 chars)"
+#~ msgstr ""
+
+#~ msgid "Target CHAP Secret (12–16 chars)"
+#~ msgstr ""
+
+#~ msgid "Must be 12-16 characters (RFC 3720)"
+#~ msgstr ""
+
+#~ msgid "Alias (optional)"
+#~ msgstr ""
+
+#~ msgid "No portals configured."
+#~ msgstr ""
+
+#~ msgid "LUN {0}:"
+#~ msgstr ""
+
+#~ msgid "No LUNs configured."
+#~ msgstr ""
+
+#~ msgid "ZVol"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete {0} network objects<<<<<<< Updated upstream"
+#~ msgstr ""
+
+#~ msgid "Bootstrap a base>>>>>>> Stashed changes"
+#~ msgstr ""
+
+#~ msgid "Bootstrap a directory with pkgbase to create a jail base. This sets up the required files in a ZFS dataset, which can then be used to create new jails.<<<<<<< Updated upstream"
+#~ msgstr ""
+
+#~ msgid "LUN {0}=======>>>>>>> Stashed changes"
+#~ msgstr ""
+
+#~ msgid "Home directory is required"
+#~ msgstr ""
+
+#~ msgid "Edit User — {0}"
+#~ msgstr ""
+
+#~ msgid "Identification"
+#~ msgstr ""
+
+#~ msgid "ID & Groups"
+#~ msgstr ""
+
+#~ msgid "Directories"
+#~ msgstr ""
+
+#~ msgid "User ID (UID)"
+#~ msgstr ""
+
+#~ msgid "New Primary Group (create group named after username)"
+#~ msgstr ""
+
+#~ msgid "Select primary group..."
+#~ msgstr ""
+
+#~ msgid "Select auxiliary groups..."
+#~ msgstr ""
+
+#~ msgid "Execute"
+#~ msgstr ""
+
+#~ msgid "Group"
+#~ msgstr ""
+
+#~ msgid "Octal: 0{0}"
+#~ msgstr ""
+
+#~ msgid "Select shell..."
+#~ msgstr ""
+
+#~ msgid "Lock User"
+#~ msgstr ""
+
+#~ msgid "Permit Doas"
+#~ msgstr ""
+
+#~ msgid "UID {0} is already used by \"{1}\""
+#~ msgstr ""
+
+#~ msgid "Primary group cannot also be an auxiliary group"
+#~ msgstr ""
+
+#~ msgid "<0/> Browse"
+#~ msgstr ""
+
+#~ msgid "Select Directory"
+#~ msgstr ""
+
+#~ msgid "Loading..."
+#~ msgstr ""
+
+#~ msgid "No subdirectories"
+#~ msgstr ""
+
+#~ msgid "Failed to delete folder"
+#~ msgstr ""
+
+#~ msgid "New Primary Group (Create group named after username)"
+#~ msgstr ""
+
+#~ msgid "New User Primary Group"
+#~ msgstr ""
+
+#~ msgid "Create User Primary Group"
+#~ msgstr ""
+
+#~ msgid "Use /home/<username>"
+#~ msgstr ""
+
+#~ msgid "Filter by name…"
+#~ msgstr ""
+
+#~ msgid "Hide by name…"
+#~ msgstr ""
+
+#~ msgid "UEFI CSM (Deprecated)"
+#~ msgstr ""
+
+#~ msgid "One option per line. These raw args are prepended before Sylve-generated bhyve args."
+#~ msgstr ""
+
+#~ msgid "One option per line. These arguments are prepended before generated bhyve args."
+#~ msgstr ""
+
+#~ msgid "Guest-only shares cannot include users or groups"
+#~ msgstr ""
+
+#~ msgid "Guest Only"
+#~ msgstr ""
+
+#~ msgid "Guest Writeable"
+#~ msgstr ""
+
+#~ msgid "Set to 0 for unlimited size"
+#~ msgstr ""
+
+#~ msgid "<0/> Show dismissed"
+#~ msgstr ""
+
+#~ msgid "Refresh Count"
+#~ msgstr ""
+
+#~ msgid "Refresh List"
+#~ msgstr ""
+
+#~ msgid "Default"
+#~ msgstr ""
+
+#~ msgid "Failed to update notification config"
+#~ msgstr ""
+
+#~ msgid "Notification config updated"
+#~ msgstr ""
+
+#~ msgid "Configure one row per transport. UI notifications are always enabled."
+#~ msgstr ""
+
+#~ msgid "Add ntfy"
+#~ msgstr ""
+
+#~ msgid "Add SMTP"
+#~ msgstr ""
+
+#~ msgid "No transports configured."
+#~ msgstr ""
+
+#~ msgid "ntfy"
+#~ msgstr ""
+
+#~ msgid "smtp"
+#~ msgstr ""
+
+#~ msgid "<0/> Clear stored token ({0})"
+#~ msgstr ""
+
+#~ msgid "<0/> Clear stored password ({0})"
+#~ msgstr ""
+
+#~ msgid "Recipients (comma or newline separated)"
+#~ msgstr ""
+
+#~ msgid "<0/> Use TLS/STARTTLS"
+#~ msgstr ""
+
+#~ msgid "Transport 1"
+#~ msgstr ""
+
+#~ msgid "Clear stored token ({0})"
+#~ msgstr ""
+
+#~ msgid "Clear stored password ({0})"
+#~ msgstr ""
+
+#~ msgid "Recipients / Topic"
+#~ msgstr ""
+
+#~ msgid "Notification rules updated"
+#~ msgstr ""
+
+#~ msgid "Per-pool ZFS state-change notification rules"
+#~ msgstr ""
+
+#~ msgid "No active ZFS pools found."
+#~ msgstr ""
+
+#~ msgid "Target / Rules"
+#~ msgstr ""
+
+#~ msgid "All available targets already have rules."
+#~ msgstr ""
+
+#~ msgid "Template:"
+#~ msgstr ""
+
+#~ msgid "Target:"
+#~ msgstr ""
+
+#~ msgid "Status:"
+#~ msgstr ""
+
+#~ msgid "Inactive (target is not currently active)"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete {0} notes"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete <b>{0}</b> notes"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete <b>{0}</b> selected notes"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete <b>{0}</b> of the selected notes"
+#~ msgstr ""
+
+#~ msgid "A backup is currently in progress. No completed snapshots are available yet."
+#~ msgstr ""
+
+#~ msgid "A backup for this target is currently in progress. Restore is unavailable until it completes."
+#~ msgstr ""
+
+#~ msgid "Enable WireGuard client <b>{0}</b>?"
+#~ msgstr ""
+
+#~ msgid "Disable WireGuard client <b>{0}</b>?"
+#~ msgstr ""
+
+#~ msgid "Enable WireGuard client <b>{0}</b> ?"
+#~ msgstr ""
+
+#~ msgid "Disable WireGuard client <b>{0}</b> ?"
+#~ msgstr ""
+
+#~ msgid "This will enable WireGuard client <b>{0}</b>, continue?"
+#~ msgstr ""
+
+#~ msgid "This will disable WireGuard client <b>{0}</b>, continue?"
+#~ msgstr ""
+
+#~ msgid "Delete WireGuard client <b>{0}</b> ?"
+#~ msgstr ""
+
+#~ msgid "Console settings - {0} <0>Console settings - {0}</0>"
+#~ msgstr ""
+
+#~ msgid "This will permanently delete the jail <0/> <1/>"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This node can’t be reached right now. Check the network connection and confirm the node is\n"
+#~ "powered on."
+#~ msgstr ""
+
+#~ msgid "⌘⇧Q"
+#~ msgstr ""
+
+#~ msgid "We've hit the following errors during initialization"
+#~ msgstr ""
+
+#~ msgid "Session killed: {0}"
+#~ msgstr ""
+
+#~ msgid "Add new tab"
+#~ msgstr ""
+
+#~ msgid "This will reset clustering data on this node"
+#~ msgstr ""
+
+#~ msgid "Network RX"
+#~ msgstr ""
+
+#~ msgid "Network TX"
+#~ msgstr ""
+
+#~ msgid "Bucket: {0}<br/>Region: {1}"
+#~ msgstr ""
+
+#~ msgid "Path: {0}"
+#~ msgstr ""
+
+#~ msgid "This will delete {0}"
+#~ msgstr ""
+
+#~ msgid "Deleted {0}"
+#~ msgstr ""
+
+#~ msgid "HH:mm"
+#~ msgstr ""
+
+#~ msgid "Disable Zoom"
+#~ msgstr ""
+
+#~ msgid "Enable Zoom"
+#~ msgstr ""
+
+#~ msgid "<0/> Reset zoom"
+#~ msgstr ""
+
+#~ msgid "Baseline"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This VM currently has serial console access enabled. You can disable it using the button\n"
+#~ "below."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This VM currently has serial console access disabled. You can enable it using the button\n"
+#~ "below."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Setting this option to be <0>on</0> will enable Wake on LAN for this VM for all MAC addresses attached\n"
+#~ "to it"
+#~ msgstr ""
+
+#~ msgid "Jail console connected for jail {0}"
+#~ msgstr ""
+
+#~ msgid "No users selected"
+#~ msgstr ""
+
+#~ msgid "Failed to add users to group"
+#~ msgstr ""
+
+#~ msgid "Users added to group"
+#~ msgstr ""
+
+#~ msgid "Add Users"
+#~ msgstr ""
+
+#~ msgid "Kill Serial Session"
+#~ msgstr ""
+
+#~ msgid "Reconnect Serial"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Enable this option to ignore accesses to unimplemented Model-Specific Registers (MSRs) by the\n"
+#~ "VM. This can help prevent crashes or instability caused by such accesses, but may also lead to\n"
+#~ "unexpected behavior if the guest OS relies on these MSRs."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "The above script will run during {0}, Ensure they are valid for the host or\n"
+#~ "jail"
+#~ msgstr ""
+
+#~ msgid "Terminal WebSocket connected for tab {0}"
+#~ msgstr ""
+
+#~ msgid "Terminal WebSocket disconnected for tab {0}"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This option will disinherit the network configuration from the host. Choose this if you want\n"
+#~ "to attach a custom network switch to this jail or disable networking entirely. Changes will\n"
+#~ "take effect after restarting the jail."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This option will inherit the network configuration from the host. Choose this if you want\n"
+#~ "the jail to share the host's networking. You can select which protocols to inherit below.\n"
+#~ "Changes will take effect after restarting the jail."
+#~ msgstr ""
+
+#~ msgid "ZFS Pools updated successfully"
+#~ msgstr ""
+
+#~ msgid "Select ZFS Pools"
+#~ msgstr ""
+
+#~ msgid "Cannot remove initialized ZFS Pools"
+#~ msgstr ""
+
+#~ msgid "Failed to connect to terminal WebSocket"
+#~ msgstr ""
+
+#~ msgid "Unexpected error occurred"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "A <0>full system reboot</0> is required for Sylve to\n"
+#~ "finish initialization. Continue when ready."
+#~ msgstr ""
+
+#~ msgid "<0/> Restart"
+#~ msgstr ""
+
+#~ msgid "<0/> Restarting..."
+#~ msgstr ""
+
+#~ msgid "We need to restart the system to apply changes"
+#~ msgstr ""
+
+#~ msgid "All Unix users with UID ≥ 1000 are already registered in Sylve."
+#~ msgstr ""
+
+#~ msgid "Unix User"
+#~ msgstr ""
+
+#~ msgid "UID:"
+#~ msgstr ""
+
+#~ msgid "Importing registers the existing Unix user in Sylve. The Unix user, its groups, and home directory are left untouched. If you set a password, the user can log in with Sylve credentials; otherwise they must use System Auth (PAM)."
+#~ msgstr ""
+
+#~ msgid "Cannot edit this user"
+#~ msgstr ""
+
+#~ msgid "root is a permanent member of the wheel group and cannot be removed."
+#~ msgstr ""
+
+#~ msgid "Password authentication is disabled. The user will need an SSH key or other authentication method to access the system."
+#~ msgstr ""
+
+#~ msgid "Jail - Bootstrap"
+#~ msgstr ""
+
+#~ msgid "Jail - Update Memory"
+#~ msgstr ""
+
+#~ msgid "Jail - Update CPU"
+#~ msgstr ""
+
+#~ msgid "Jail - Resource Limits"
+#~ msgstr ""
+
+#~ msgid "Firewall - Traffic Reorder"
+#~ msgstr ""
+
+#~ msgid "Firewall - NAT Reorder"
+#~ msgstr ""
+
+#~ msgid "Static Route - Suggest From NAT"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Peer Toggle"
+#~ msgstr ""
+
+#~ msgid "WireGuard - Peer Bulk Delete"
+#~ msgstr ""
+
+#~ msgid "Cluster - Remove Peer"
+#~ msgstr ""
+
+#~ msgid "File Explorer - Copy/Move"
+#~ msgstr ""
+
+#~ msgid "Auth Group - Members"
+#~ msgstr ""
+
+#~ msgid "ZFS Dataset - Bulk Delete By Names"
+#~ msgstr ""
+
+#~ msgid "This will delete snapshot <0/>"
+#~ msgstr ""
+
+#~ msgid "This will delete <0>{0} snapshots</0>"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "\n"
+#~ "Pinned: {0}"
+#~ msgstr ""
+
+#~ msgid "Create VM Template"
+#~ msgstr ""
+
+#~ msgid "Create Jail Template"
+#~ msgstr ""
+
+#~ msgid "Jail Template - Create"
+#~ msgstr ""
+
+#~ msgid "Encryption: <0/>"
+#~ msgstr ""
+
+#~ msgid "Enabled (keys auto-managed)"
+#~ msgstr ""
+
+#~ msgid "Encryption: <0>Enabled (keys auto-managed)</0>"
+#~ msgstr ""
+
+#~ msgid "Checking source encryption..."
+#~ msgstr ""
+
+#~ msgid "Source is encrypted (keys auto-managed)"
+#~ msgstr ""
+
+#~ msgid "No encryption information available"
+#~ msgstr ""
+
+#~ msgid "Children on target will be restored recursively."
+#~ msgstr ""
+
+#~ msgid "The dataset has child datasets on the target. Only the selected dataset will be restored. Enable \"Recursive backup\" in the job config or use OOB Restore to recover children separately."
+#~ msgstr ""
+
+#~ msgid "Content-Type"
+#~ msgstr ""
+
+#~ msgid "Create Samba User"
+#~ msgstr ""
+
+#~ msgid "root is a permanent member of the wheel group and cannot be removed. This restriction is enforced by the system."
+#~ msgstr ""
+
+#~ msgid "Filesystem"
+#~ msgstr ""
+
+#~ msgid "May lose the newest writes"
+#~ msgstr ""
+
+#~ msgid "Failed to detach"
+#~ msgstr ""
+
+#~ msgid "Jail Console - Session"
+#~ msgstr ""
+
+#~ msgid "UID"
+#~ msgstr ""
+
+#~ msgid "Synced"
+#~ msgstr ""
+
+#~ msgid "Migration in progress. You can close this dialog and the migration will continue in the background."
+#~ msgstr ""
+
+#~ msgid "Select a target node to migrate this guest to."
+#~ msgstr ""
+
+#~ msgid "Choose the cluster node to migrate this guest to. The guest will be stopped on the source node, its datasets transferred, and started on the target node."
+#~ msgstr ""
+
+#~ msgid "{0} CPU cores · {1} GB RAM · {2}"
+#~ msgstr ""
+
+#~ msgid "<0/> Validating..."
+#~ msgstr ""
+
+#~ msgid "Migration not allowed:"
+#~ msgstr ""
+
+#~ msgid "Migrating"
+#~ msgstr ""
+
+#~ msgid "Warnings:"
+#~ msgstr ""
+
+#~ msgid "Current active no"
+#~ msgstr ""
+
+#~ msgid "Select which cluster node to migrate this {0} to."
+#~ msgstr ""
+
+#~ msgid "Warnings"
+#~ msgstr ""
+
+#~ msgid "<0/> Migrating..."
+#~ msgstr ""
+
+#~ msgid "✓ Ready to migrate"
+#~ msgstr ""
+
+#~ msgid "<0/> This is not a live migration"
+#~ msgstr ""
+
+#~ msgid "The {0} will be <0>stopped</0> on the source node, its datasets transferred over the network, and then <1>started</1> on the target node. There will be a brief downtime during the transfer."
+#~ msgstr ""
+
+#~ msgid "<0/> This is <1>not</1> a live migration"
+#~ msgstr ""
+
+#~ msgid "This is not live migration"
+#~ msgstr ""
+
+#~ msgid "This will remove the WireGuard server and all peer associated peer records. Continue?"
+#~ msgstr ""
+
+#~ msgid "This will remove the WireGuard server state and associated peer records. Continue?"
+#~ msgstr ""
+
+#~ msgid "Ctrl"
+#~ msgstr ""
+
+#~ msgid "Alt"
+#~ msgstr ""
+
+#~ msgid "Leave the host console?"
+#~ msgstr ""
+
+#~ msgid "You have an active terminal session. Leaving this page will disconnect it."
+#~ msgstr ""
+
+#~ msgid "Stay"
+#~ msgstr ""
+
+#~ msgid "Leave"
+#~ msgstr ""
+
+#~ msgid "Immediate attention required."
+#~ msgstr ""
+
+#~ msgid "An error has occurred that needs investigation."
+#~ msgstr ""
+
+#~ msgid "Please review at your earliest convenience."
+#~ msgstr ""
+
+#~ msgid "For your information - no action needed."
+#~ msgstr ""
+
+#~ msgid "Redundancy <0>{0} Usable</0>"
+#~ msgstr ""
+
+#~ msgid "Usable space"
+#~ msgstr ""
+
+#~ msgid "Usable Space <0/>"
+#~ msgstr ""
+
+#~ msgid "Usable Space"
+#~ msgstr ""
+
+#~ msgid "({0} Usable)"
+#~ msgstr ""
+
+#~ msgid "VDEVs <0/>"
+#~ msgstr ""
+
+#~ msgid "VDEV {0} has no disks"
+#~ msgstr ""
+
+#~ msgid "VDEV {0} needs at least {1} disks for {2}"
+#~ msgstr ""
+
+#~ msgid "All Data VDEVs must use the same RAID type — or enable Force Create"
+#~ msgstr ""
+
+#~ msgid "({0} selected)"
+#~ msgstr ""
+
+#~ msgid "No devices available for spares"
+#~ msgstr ""
+
+#~ msgid "No available spare devices"
+#~ msgstr ""
+
+#~ msgid "<0/> Remove"
+#~ msgstr ""
+
+#~ msgid "Failed to update download"
+#~ msgstr ""
+
+#~ msgid "Edit Download"
+#~ msgstr ""
+
+#~ msgid "Toggle - iSCSI"
+#~ msgstr ""
+
+#~ msgid "Toggle - mDNS"
+#~ msgstr ""
+
+#~ msgid "Failed to save mDNS record"
+#~ msgstr ""
+
+#~ msgid "Edit Record"
+#~ msgstr ""
+
+#~ msgid "Add mDNS Record"
+#~ msgstr ""
+
+#~ msgid "TXT (key=val, key2=val2)"
+#~ msgstr ""
+
+#~ msgid "Failed to save settings"
+#~ msgstr ""
+
+#~ msgid "mDNS Settings"
+#~ msgstr ""
+
+#~ msgid "Interfaces (comma-separated, empty=all)"
+#~ msgstr ""
+
+#~ msgid "Hostname (empty=system hostname)"
+#~ msgstr ""
+
+#~ msgid "Ref Reservation <0/>"
+#~ msgstr ""
+
+#~ msgid "Sparse (Thin Provision)"
+#~ msgstr ""
+
+#~ msgid "Referenced Reservation <0/>"
+#~ msgstr ""
+
+#~ msgid "Ref Reservation"
+#~ msgstr ""
+
+#~ msgid ""
+#~ "This node can't be reached right now. Check the network connection and confirm the node is\n"
+#~ "powered on."
+#~ msgstr ""
+
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Error updating jail description"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+msgid "Jail description must be 1024 characters or fewer"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "VM description must be 1024 characters or fewer"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Error updating VM description"
 msgstr ""
