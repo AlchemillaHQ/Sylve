@@ -1,0 +1,296 @@
+---
+interface Props {
+  defaultRoot?: string;
+}
+
+const { defaultRoot = '/zroot/sylve/jails/115' } = Astro.props;
+const initialRoot = defaultRoot.replace(/\/+$/, '');
+
+function generateFstab(root: string) {
+  return [
+    `devfs\t${root}/compat/linux/dev\tdevfs\trw\t0\t0`,
+    `tmpfs\t${root}/compat/linux/dev/shm\ttmpfs\trw,size=1g,mode=1777\t0\t0`,
+    `fdescfs\t${root}/compat/linux/dev/fd\tfdescfs\trw,linrdlnk\t0\t0`,
+    `linprocfs\t${root}/compat/linux/proc\tlinprocfs\trw\t0\t0`,
+    `linsysfs\t${root}/compat/linux/sys\tlinsysfs\trw\t0\t0`,
+    `${root}/tmp\t${root}/compat/linux/tmp\tnullfs\trw\t0\t0`,
+    `${root}/home\t${root}/compat/linux/home\tnullfs\trw\t0\t0`,
+  ].join('\n');
+}
+
+const initialOutput = generateFstab(initialRoot);
+---
+
+<div class="fstab-generator not-content" data-linux-fstab-generator>
+  <div class="generator-input">
+    <label>
+      <span>Sylve jail root mountpoint</span>
+      <input
+        type="text"
+        value={initialRoot}
+        inputmode="url"
+        autocomplete="off"
+        spellcheck="false"
+        data-fstab-root
+        aria-describedby="linux-fstab-help linux-fstab-status"
+      />
+    </label>
+    <p id="linux-fstab-help">
+      Enter the host path to the jail root, ending with its Jail ID. Do not enter
+      <code>/compat/linux</code> here.
+    </p>
+  </div>
+
+  <div class="generator-output-heading">
+    <div>
+      <strong>Generated FSTab entries</strong>
+      <span>Tabs separate each field and are safe to paste into Sylve.</span>
+    </div>
+    <button type="button" data-fstab-copy>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span data-fstab-copy-label>Copy FSTab</span>
+    </button>
+  </div>
+
+  <pre tabindex="0"><code data-fstab-output>{initialOutput}</code></pre>
+  <p id="linux-fstab-status" class="generator-status" data-fstab-status aria-live="polite">
+    Seven host-side mount entries ready.
+  </p>
+</div>
+
+<script>
+  document.querySelectorAll('[data-linux-fstab-generator]').forEach((generator) => {
+    if (!(generator instanceof HTMLElement) || generator.dataset.ready === 'true') return;
+
+    const rootInput = generator.querySelector('[data-fstab-root]');
+    const output = generator.querySelector('[data-fstab-output]');
+    const copyButton = generator.querySelector('[data-fstab-copy]');
+    const copyLabel = generator.querySelector('[data-fstab-copy-label]');
+    const status = generator.querySelector('[data-fstab-status]');
+    if (!(rootInput instanceof HTMLInputElement) || !(copyButton instanceof HTMLButtonElement)) return;
+
+    generator.dataset.ready = 'true';
+    let generatedFstab = '';
+    let resetLabelTimer;
+
+    const entriesFor = (root) => [
+      `devfs\t${root}/compat/linux/dev\tdevfs\trw\t0\t0`,
+      `tmpfs\t${root}/compat/linux/dev/shm\ttmpfs\trw,size=1g,mode=1777\t0\t0`,
+      `fdescfs\t${root}/compat/linux/dev/fd\tfdescfs\trw,linrdlnk\t0\t0`,
+      `linprocfs\t${root}/compat/linux/proc\tlinprocfs\trw\t0\t0`,
+      `linsysfs\t${root}/compat/linux/sys\tlinsysfs\trw\t0\t0`,
+      `${root}/tmp\t${root}/compat/linux/tmp\tnullfs\trw\t0\t0`,
+      `${root}/home\t${root}/compat/linux/home\tnullfs\trw\t0\t0`,
+    ].join('\n');
+
+    const update = () => {
+      const root = rootInput.value.trim().replace(/\/+$/, '');
+      const isAbsoluteSafePath = /^\/[-A-Za-z0-9._/]+$/.test(root) && root !== '/' && !root.includes('//') && !root.split('/').includes('..');
+      const isCompatPath = root.endsWith('/compat/linux');
+      const isValid = isAbsoluteSafePath && !isCompatPath;
+
+      rootInput.setAttribute('aria-invalid', String(!isValid));
+      copyButton.disabled = !isValid;
+      generatedFstab = isValid ? entriesFor(root) : '';
+      if (output) output.textContent = generatedFstab || 'Enter a valid jail root mountpoint to generate the entries.';
+
+      if (!status) return;
+      if (isCompatPath) {
+        status.textContent = 'Enter the jail root only; remove /compat/linux from the end.';
+      } else if (!isValid) {
+        status.textContent = 'Use an absolute path without spaces, such as /zroot/sylve/jails/115.';
+      } else if (!/\/sylve\/jails\/[1-9][0-9]{0,3}$/.test(root)) {
+        status.textContent = 'Entries generated. Confirm that this is the root mountpoint shown by Sylve.';
+      } else {
+        status.textContent = 'Seven host-side mount entries ready.';
+      }
+    };
+
+    const copyWithFallback = async (text) => {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    };
+
+    rootInput.addEventListener('input', update);
+    copyButton.addEventListener('click', async () => {
+      if (!generatedFstab) return;
+
+      try {
+        await copyWithFallback(generatedFstab);
+        if (copyLabel) copyLabel.textContent = 'Copied';
+        if (status) status.textContent = 'Copied all seven entries to the clipboard.';
+        window.clearTimeout(resetLabelTimer);
+        resetLabelTimer = window.setTimeout(() => {
+          if (copyLabel) copyLabel.textContent = 'Copy FSTab';
+        }, 2500);
+      } catch {
+        if (status) status.textContent = 'Copy failed. Select the generated entries and copy them manually.';
+      }
+    });
+
+    update();
+  });
+</script>
+
+<style>
+  .fstab-generator {
+    --line: color-mix(in oklab, var(--sl-color-white) 18%, transparent);
+    margin: 1.5rem 0 2rem;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 0.35rem;
+    background: color-mix(in oklab, var(--sl-color-bg) 97%, var(--sl-color-white));
+  }
+
+  .generator-input {
+    padding: 1rem 1.25rem;
+  }
+
+  .generator-input label,
+  .generator-output-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .generator-input label > span,
+  .generator-output-heading strong {
+    color: var(--sl-color-white);
+    font-size: 0.78rem;
+    font-weight: 650;
+  }
+
+  .generator-input input {
+    width: min(100%, 29rem);
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+    outline: none;
+    background: var(--sl-color-bg-inline-code);
+    color: var(--sl-color-white);
+    font: 500 0.72rem/1.4 var(--sl-font-mono);
+  }
+
+  .generator-input input:focus {
+    border-color: var(--sl-color-white);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+  }
+
+  .generator-input input[aria-invalid='true'] {
+    border-color: #ef8f8f;
+  }
+
+  .generator-input p,
+  .generator-status {
+    margin: 0.55rem 0 0;
+    color: var(--sl-color-gray-3);
+    font-size: 0.7rem;
+    line-height: 1.5;
+  }
+
+  .generator-input code {
+    color: var(--sl-color-gray-2);
+    font-family: var(--sl-font-mono);
+  }
+
+  .generator-output-heading {
+    padding: 0.8rem 1.25rem;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .generator-output-heading strong,
+  .generator-output-heading span {
+    display: block;
+  }
+
+  .generator-output-heading div > span {
+    margin-top: 0.2rem;
+    color: var(--sl-color-gray-3);
+    font-size: 0.65rem;
+  }
+
+  .generator-output-heading button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+    background: transparent;
+    color: var(--sl-color-white);
+    font: 600 0.68rem var(--sl-font);
+    cursor: pointer;
+  }
+
+  .generator-output-heading button:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--sl-color-white) 7%, transparent);
+  }
+
+  .generator-output-heading button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .generator-output-heading svg {
+    width: 0.9rem;
+    height: 0.9rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+  }
+
+  pre {
+    min-height: 12rem;
+    margin: 0;
+    padding: 1rem 1.25rem;
+    overflow: auto;
+    border: 0;
+    border-radius: 0;
+    background: var(--sl-color-bg);
+    color: var(--sl-color-gray-1);
+    font: 500 0.67rem/1.75 var(--sl-font-mono);
+    tab-size: 2;
+  }
+
+  .generator-status {
+    min-height: 2.5rem;
+    margin: 0;
+    padding: 0.65rem 1.25rem;
+    border-top: 1px solid var(--line);
+  }
+
+  @media (max-width: 42rem) {
+    .generator-input label,
+    .generator-output-heading {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .generator-input input {
+      width: 100%;
+    }
+
+    .generator-output-heading button {
+      justify-content: center;
+    }
+  }
+</style>

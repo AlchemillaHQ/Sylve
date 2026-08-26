@@ -1,6 +1,7 @@
 #!/bin/sh
 
-# Install a KDE Plasma X11 desktop and XRDP inside a FreeBSD jail.
+# Install KDE Plasma X11, XRDP, RDP audio, and optional Linux app support
+# inside a FreeBSD jail.
 # This script is intended to be safe to rerun after an interruption.
 
 set -eu
@@ -12,7 +13,10 @@ PROGRAM=${0##*/}
 MANAGED_MARKER="Managed by the Sylve KDE/XRDP one-shot installer"
 SKIP_PASSWORD_SETUP=${SKIP_PASSWORD_SETUP:-NO}
 ALLOW_NON_JAIL=${ALLOW_NON_JAIL:-NO}
+INSTALL_LINUX_APPS=${INSTALL_LINUX_APPS:-YES}
+LINUX_APP_HELPER_URL=https://sylve.io/scripts/sylve-linux-app.sh
 tmp_file=
+linux_apps_status="not installed"
 
 log() {
     printf '\n==> %s\n' "$*"
@@ -31,12 +35,14 @@ usage() {
     cat <<EOF
 Usage: $PROGRAM <desktop-user>
 
-Install KDE Plasma and XRDP in the current FreeBSD jail. The named regular
-user is created when necessary and is used to sign in through RDP.
+Install KDE Plasma, XRDP, RDP audio redirection, and Linux application support
+in the current FreeBSD jail. The named regular user is created when necessary
+and is used to sign in through RDP.
 
 Environment overrides:
   SKIP_PASSWORD_SETUP=YES  Allow the user to remain locked for later setup.
   ALLOW_NON_JAIL=YES       Allow installation on a FreeBSD host (not advised).
+  INSTALL_LINUX_APPS=NO    Skip the Rocky Linux userland and app helper.
 EOF
 }
 
@@ -72,6 +78,10 @@ esac
 [ "${#desktop_user}" -le 32 ] || die "The desktop user name must be 32 characters or fewer."
 [ "$(id -u)" -eq 0 ] || die "Run this script as root."
 [ "$(uname -s)" = "FreeBSD" ] || die "This installer supports FreeBSD only."
+case "$INSTALL_LINUX_APPS" in
+    YES|NO) ;;
+    *) die "INSTALL_LINUX_APPS must be YES or NO." ;;
+esac
 
 jailed=$(sysctl -n security.jail.jailed 2>/dev/null || printf '0')
 if [ "$jailed" != "1" ] && [ "$ALLOW_NON_JAIL" != "YES" ]; then
@@ -137,18 +147,122 @@ fi
 log "Refreshing signed FreeBSD package catalogues"
 pkg update
 
-log "Installing the full KDE Plasma desktop and XRDP Xorg backend"
-pkg install -y kde xrdp xorgxrdp
+log "Installing KDE Plasma, archive support, XRDP, and RDP audio redirection"
+pkg install -y kde ark mesa-demos xrdp xorgxrdp pulseaudio-module-xrdp
+
+mount_has_type() {
+    mount_path=$1
+    mount_type=$2
+    mount -p 2>/dev/null |
+        awk -v expected_path="$mount_path" -v expected_type="$mount_type" '
+            $2 == expected_path && $3 == expected_type { found = 1 }
+            END { exit found ? 0 : 1 }
+        '
+}
+
+if [ "$INSTALL_LINUX_APPS" = "YES" ]; then
+    log "Installing the Rocky Linux compatibility userland"
+    pkg install -y linux-rl9
+
+    log "Installing additional compatible Rocky Linux 9 packages"
+    pkg install -y \
+        linux-rl9-glx-utils \
+        linux-rl9-graphene \
+        linux-rl9-lld \
+        linux-rl9-lldb \
+        linux-rl9-nasm \
+        linux-rl9-qt5 \
+        linux-rl9-tcl86 \
+        linux-rl9-tk86 \
+        linux-rl9-trousers
+
+    for linux_mountpoint in \
+        /compat/linux/dev/shm \
+        /compat/linux/dev/fd \
+        /compat/linux/proc \
+        /compat/linux/sys \
+        /compat/linux/tmp \
+        /compat/linux/home
+    do
+        [ -d "$linux_mountpoint" ] || install -d -m 0755 "$linux_mountpoint"
+    done
+
+    [ -x /compat/linux/bin/uname ] ||
+        die "linux-rl9 installed without the expected command: /compat/linux/bin/uname"
+    [ -x /compat/linux/usr/bin/env ] ||
+        die "linux-rl9 installed without the expected command: /compat/linux/usr/bin/env"
+    command -v brandelf >/dev/null 2>&1 ||
+        die "The FreeBSD brandelf command is missing."
+    command -v fetch >/dev/null 2>&1 ||
+        die "The FreeBSD fetch command is missing."
+
+    log "Installing the Sylve Linux application helper"
+    tmp_file=$(mktemp /tmp/sylve-linux-app.XXXXXX)
+    fetch -o "$tmp_file" "$LINUX_APP_HELPER_URL"
+    grep -Fq 'MANAGED_MARKER="Managed by the Sylve Linux app helper"' "$tmp_file" ||
+        die "The downloaded Linux application helper failed its identity check."
+    sh -n "$tmp_file" || die "The downloaded Linux application helper has invalid shell syntax."
+    install -o root -g wheel -m 0755 "$tmp_file" /usr/local/bin/sylve-linux-app
+    rm -f "$tmp_file"
+    tmp_file=
+
+    linux_runtime_ready=NO
+    if /compat/linux/bin/uname -s 2>/dev/null | grep -qx Linux; then
+        linux_runtime_ready=YES
+    fi
+
+    missing_linux_mounts=
+    for linux_mount in \
+        /compat/linux/dev:devfs \
+        /compat/linux/dev/shm:tmpfs \
+        /compat/linux/dev/fd:fdescfs \
+        /compat/linux/proc:linprocfs \
+        /compat/linux/sys:linsysfs \
+        /compat/linux/tmp:nullfs \
+        /compat/linux/home:nullfs
+    do
+        linux_mount_path=${linux_mount%:*}
+        linux_mount_type=${linux_mount##*:}
+        if ! mount_has_type "$linux_mount_path" "$linux_mount_type"; then
+            missing_linux_mounts="$missing_linux_mounts $linux_mount_path"
+        fi
+    done
+
+    if [ "$linux_runtime_ready" = "YES" ] && [ -z "$missing_linux_mounts" ]; then
+        linux_apps_status="ready; run sylve-linux-app as $desktop_user"
+    else
+        linux_apps_status="installed; jail option or FSTab mounts still need attention"
+        [ "$linux_runtime_ready" = "YES" ] ||
+            warn "The Rocky Linux userland is installed, but Sylve's Linux ABI or the jail Linux option is not active."
+        [ -z "$missing_linux_mounts" ] ||
+            warn "Linux compatibility mounts are missing:$missing_linux_mounts"
+        warn "Complete the guide's jail option and FSTab setup, then restart the jail before running Linux applications."
+    fi
+else
+    linux_apps_status="skipped with INSTALL_LINUX_APPS=NO"
+fi
 
 for required_command in \
+    /usr/local/bin/ark \
     /usr/local/bin/ck-launch-session \
     /usr/local/bin/dbus-launch \
+    /usr/local/bin/glxinfo \
+    /usr/local/bin/pulseaudio \
     /usr/local/bin/startplasma-x11 \
+    /usr/local/libexec/pulseaudio-module-xrdp/load_pa_modules.sh \
     /usr/local/libexec/Xorg \
     /usr/local/sbin/xrdp \
     /usr/local/sbin/xrdp-sesman
 do
     [ -x "$required_command" ] || die "The installation completed without the expected command: $required_command"
+done
+
+pulse_module_directory=$(pkg-config --variable=modlibexecdir libpulse 2>/dev/null) || \
+    die "PulseAudio is installed but its module directory could not be found."
+for required_audio_module in module-xrdp-sink.so module-xrdp-source.so
+do
+    [ -f "$pulse_module_directory/$required_audio_module" ] || \
+        die "The installation completed without the expected XRDP audio module: $required_audio_module"
 done
 
 user_record=$(pw usershow "$desktop_user")
@@ -177,9 +291,13 @@ export XDG_SESSION_TYPE=x11
 export XDG_CURRENT_DESKTOP=KDE
 export KDE_FULL_SESSION=true
 
-# A headless jail has no GPU device. Force Mesa's software renderer so Plasma
-# does not depend on host graphics devices or a permissive DevFS ruleset.
-export LIBGL_ALWAYS_SOFTWARE=1
+# xorgxrdp can use an allowed render node through DRI3 and glamor. Keep the
+# no-device setup safe and portable by falling back to Mesa software rendering.
+if [ -c /dev/dri/renderD128 ] && [ -r /dev/dri/renderD128 ] && [ -w /dev/dri/renderD128 ]; then
+    : # Let Mesa select the host render node unless the environment overrides it.
+else
+    export LIBGL_ALWAYS_SOFTWARE=1
+fi
 
 unset DBUS_SESSION_BUS_ADDRESS
 unset SESSION_MANAGER
@@ -193,10 +311,19 @@ tmp_file=
 
 sesman_config=/usr/local/etc/xrdp/sesman.ini
 [ -f "$sesman_config" ] || die "XRDP did not install $sesman_config."
+xrdp_config=/usr/local/etc/xrdp/xrdp.ini
+[ -f "$xrdp_config" ] || die "XRDP did not install $xrdp_config."
 
 if grep -Eq '^AllowRootLogin=(true|yes|1)$' "$sesman_config"; then
     cp -p "$sesman_config" "$sesman_config.pre-sylve-kde-xrdp"
     sed -i '' -E 's/^AllowRootLogin=(true|yes|1)$/AllowRootLogin=false/' "$sesman_config"
+fi
+
+if ! grep -Eiq '^[[:space:]]*rdpsnd[[:space:]]*=[[:space:]]*(true|yes|1)[[:space:]]*$' "$xrdp_config"; then
+    warn "XRDP audio output is installed, but the rdpsnd channel is disabled in $xrdp_config."
+fi
+if ! grep -Eiq '^[[:space:]]*drdynvc[[:space:]]*=[[:space:]]*(true|yes|1)[[:space:]]*$' "$xrdp_config"; then
+    warn "XRDP microphone redirection is installed, but the drdynvc channel is disabled in $xrdp_config."
 fi
 
 log "Enabling D-Bus and XRDP at jail startup"
@@ -242,6 +369,8 @@ printf '%s\n' \
     "RDP user: $desktop_user" \
     "RDP port: 3389" \
     "Session:  Xorg / Plasma X11" \
+    "Audio:    RDP redirection (enable local playback in the client)" \
+    "Linux:    $linux_apps_status" \
     "" \
     "Connect to this jail's IP address with an RDP client. Keep TCP 3389" \
     "limited to a trusted LAN or VPN; do not publish it directly to the Internet."

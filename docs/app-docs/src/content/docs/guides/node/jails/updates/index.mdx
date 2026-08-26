@@ -1,0 +1,187 @@
+---
+title: Updates
+description: Safely update FreeBSD pkgbase jails, traditional base.txz jails, and Linux jails.
+---
+
+Jails have their own userland and installed applications, so updating the Sylve node does not update the operating systems inside its jails. Update each jail with the tool that matches the root filesystem used during creation.
+
+Sylve creates an independent ZFS-backed copy of the selected root filesystem. Existing jails do not change when you update, replace, or delete the original bootstrap or Base/RootFS download.
+
+:::caution[Do not mix FreeBSD update methods]
+A jail created from a Sylve FreeBSD bootstrap uses pkgbase and must be updated with `pkg`. A traditional jail created from `base.txz` must be updated with `freebsd-update` from the host. Do not run both methods against the same jail.
+:::
+
+## Before every update
+
+1. Read the release notes for the packages or FreeBSD release you plan to install.
+2. Confirm that the node's FreeBSD version is at least as new as the jail userland. A jail cannot run a newer FreeBSD userland than its host.
+3. Create a clearly named [jail snapshot](/guides/node/jails/snapshots/), such as `before-2026-08-updates`.
+4. Use a [backup](/guides/node/jails/backups/) as well when the update affects important or irreplaceable data.
+5. Plan a restart and a short validation window for the services inside the jail.
+
+A snapshot is the quickest local rollback point, but it is not an independent backup. If you need to roll back, stop the jail first and use the snapshot's **Rollback** action.
+
+## Identify the jail type
+
+The source selected on the **Storage** step during [jail creation](/guides/node/jails/creation/) determines the update method.
+
+| Creation source | Jail type | Update tool |
+| --- | --- | --- |
+| **Bootstrap**, such as FreeBSD 15.1 Base or Minimal | FreeBSD pkgbase jail | `pkg` from the jail console |
+| Extracted FreeBSD `base.txz` selected as a **Base/RootFS download** | Traditional FreeBSD release-set jail | `freebsd-update -j` from the node |
+| Linux **Base/RootFS download** | Linux jail | The distribution's package manager |
+
+If the creation source is no longer known, open the jail [Console](/guides/node/jails/console/) and check for Sylve's pkgbase repository:
+
+```sh
+test -f /usr/local/etc/pkg/repos/FreeBSD-base.conf && echo "pkgbase jail"
+```
+
+The presence of that file identifies a jail created from a Sylve pkgbase bootstrap. Do not create or remove it merely to change update methods.
+
+## Update a FreeBSD pkgbase jail
+
+This is the normal path for FreeBSD jails created from Sylve's built-in **Bootstrap** option. The bootstrap installs the FreeBSD base system as packages, installs `pkg`, and enables a release-specific `FreeBSD-base` repository inside every jail copied from it.
+
+Open the running jail's **Console**, then inspect the current userland version:
+
+```sh
+freebsd-version -u
+```
+
+Refresh the repository catalog and install available base-system and application updates:
+
+```sh
+pkg update
+pkg upgrade
+```
+
+Review the proposed package changes before accepting them. When the upgrade finishes, look for configuration files that need attention:
+
+```sh
+find /etc -type f \( -name '*.pkgnew' -o -name '*.pkgsave' \) -print
+```
+
+`pkg` performs configuration-file merging for pkgbase. A `.pkgnew` file contains a new version that could not be merged automatically, while a `.pkgsave` file preserves the previous local file. Compare and reconcile these files before removing them. Do not run `etcupdate` on a pkgbase jail.
+
+Restart the jail from Sylve, then confirm the version and test its services:
+
+```sh
+freebsd-version -u
+service -e
+```
+
+### Move a pkgbase jail to another minor release
+
+Upgrade the node first and confirm it is running the target FreeBSD release. Inside the jail, open:
+
+```text
+/usr/local/etc/pkg/repos/FreeBSD-base.conf
+```
+
+Change its release repository to the target minor version. For example, a FreeBSD 15.0 jail uses `base_release_0`, while FreeBSD 15.1 uses `base_release_1`. Then run:
+
+```sh
+pkg update -f
+pkg upgrade
+```
+
+Restart the jail and review `.pkgnew` and `.pkgsave` files again. For a large version jump, especially a new FreeBSD major version, creating a fresh jail on the desired bootstrap and migrating the application data is usually easier to validate and roll back.
+
+:::note[Updating the bootstrap]
+Updating packages inside a jail does not update the reusable bootstrap stored under `<pool>/sylve/bootstraps`. Likewise, creating or replacing a bootstrap does not modify existing jails. Create future jails from a bootstrap for the desired release, then update each created jail independently.
+:::
+
+## Update a traditional FreeBSD `base.txz` jail
+
+A jail created from an extracted `base.txz` is not a pkgbase installation. FreeBSD requires these jails to be updated from the host because protected file flags can prevent a complete base-system update from inside the jail.
+
+Open the node's [Terminal](/guides/node/terminal/) and list the running jails:
+
+```sh
+jls name host.hostname path
+```
+
+Sylve uses an internal five-letter runtime name. Identify the correct entry by matching its hostname or the root path ending in the jail's CTID. Use that value as `<runtime-name>` below.
+
+Apply security and errata updates for the jail's current release:
+
+```sh
+freebsd-update -j <runtime-name> fetch install
+```
+
+Restart the jail from Sylve, then open its console and verify the userland:
+
+```sh
+freebsd-version -u
+```
+
+Application packages are separate from the FreeBSD base system. Update them from the jail console:
+
+```sh
+pkg update
+pkg upgrade
+```
+
+### Move a traditional jail to another FreeBSD release
+
+Upgrade and reboot the node first. The node must run the target release or a newer compatible release. With the jail running, execute from the node terminal:
+
+```sh
+freebsd-update -j <runtime-name> -r 15.1-RELEASE upgrade
+freebsd-update -j <runtime-name> install
+```
+
+Restart the jail from Sylve, then complete the second installation pass from the node:
+
+```sh
+freebsd-update -j <runtime-name> install
+```
+
+Restart the jail again. The two installation passes are intentional. For an upgrade across FreeBSD major versions, also reinstall the jail's application packages for the new ABI:
+
+```sh
+pkg -j <runtime-name> upgrade -f
+```
+
+For a large release jump, consider creating a new jail from the target release and migrating the application configuration and data. This provides a cleaner rollback boundary than modifying a long-lived jail in place.
+
+## Update a Linux jail
+
+Open the jail **Console** and use the package manager supplied by its distribution. Common examples include:
+
+### Debian or Ubuntu
+
+```sh
+apt update
+apt full-upgrade
+```
+
+### Alpine Linux
+
+```sh
+apk update
+apk upgrade
+```
+
+### Rocky Linux or another DNF-based distribution
+
+```sh
+dnf upgrade
+```
+
+Follow that distribution's documented procedure for major release upgrades. Linux jails use the FreeBSD Linux compatibility layer, so verify both application behavior and compatibility after significant userland changes.
+
+## Validate the update
+
+After restarting the jail:
+
+1. Confirm that it returns to the **Active** state on its [Summary](/guides/node/jails/summary/) page.
+2. Review the jail logs for startup failures.
+3. Open the **Console** and confirm the operating-system version.
+4. Test the application, network listeners, mounted storage, and scheduled services.
+5. Keep the pre-update snapshot until the workload has completed a meaningful validation period.
+
+If validation fails, collect the relevant logs before rolling back. A snapshot rollback discards every filesystem change made after that recovery point, including application data written after the update.
+
+For the underlying FreeBSD procedures and their current limitations, see the [FreeBSD Handbook jail-upgrading chapter](https://docs.freebsd.org/en/books/handbook/jails/#jail-upgrading).

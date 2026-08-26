@@ -335,6 +335,7 @@ export default defineConfig({
                                         'guides/node/jails/hardware',
                                         'guides/node/jails/network',
                                         'guides/node/jails/snapshots',
+                                        'guides/node/jails/updates',
                                         'guides/node/jails/backups',
                                         'guides/node/jails/options',
                                         'guides/node/jails/templates',

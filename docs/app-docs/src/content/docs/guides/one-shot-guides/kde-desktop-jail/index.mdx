@@ -1,15 +1,25 @@
 ---
-title: KDE Desktop in a Jail
+title: KDE Plasma in a Jail
 description: Install KDE Plasma and XRDP in a FreeBSD jail for remote desktop access.
 ---
 
+import LinuxCompatFstabGenerator from '../../../../../components/LinuxCompatFstabGenerator.astro';
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="KDE Plasma remote desktop demonstration">
+  <source src="https://adhoc-bucket.difuse.io/KDE-Demo.mp4" type="video/mp4" />
+</video>
+
 This guide turns a FreeBSD jail into a remotely accessible KDE Plasma desktop. XRDP accepts an RDP connection, authenticates a regular FreeBSD account, and starts a private Plasma X11 session through the `xorgxrdp` display driver.
 
-The desktop is rendered in software inside the jail. It does not need a physical display, GPU passthrough, SDDM, Wayland, or a custom DevFS ruleset. This keeps the jail configuration simple, but software rendering uses more CPU than a desktop with graphics acceleration.
+:::note[Built for convenience]
+This guide uses practical, convenience-focused defaults so KDE and many Linux applications work with minimal setup. These defaults enable a few more jail features than a minimal configuration.
+
+If you want a desktop that works quickly and handles most everyday tasks, follow the guide as written. If you prefer to tailor the jail to a particular security policy, review each step as you go and enable only the features you want.
+:::
+
+The default setup renders the desktop in software and does not need a physical display, GPU passthrough, SDDM, Wayland, or a custom DevFS ruleset. An optional host render node can accelerate the XRDP desktop when a supported iGPU is available.
 
 The installer follows the FreeBSD Handbook's [Plasma and D-Bus configuration](https://docs.freebsd.org/en/books/handbook/desktop/) and the FreeBSD XRDP package's setup requirements. It is limited to FreeBSD 15.0 or newer and refuses to run on the host unless that safety check is deliberately overridden.
-
-## Understand the result
 
 A desktop jail is still a jail, not a virtual machine. It shares the FreeBSD host kernel and has no virtual firmware, emulated graphics card, or local monitor. XRDP creates an Xorg display only when a user connects.
 
@@ -31,7 +41,7 @@ Choose an unused **Jail ID**.
 
 ### Storage
 
-Use a FreeBSD 15.1 Base bootstrap on a FreeBSD 15.1 or newer host. The script installs the complete `kde` package rather than a minimal Plasma set. Allow at least **10 GiB of free space** in the jail dataset.
+Use a FreeBSD 15.1 Base bootstrap on a FreeBSD 15.1 or newer host. The script installs the complete `kde` package rather than a minimal Plasma set, plus the Rocky Linux compatibility userland used by downloaded Linux applications. Allow at least **12 GiB of free space** in the jail dataset.
 
 Package counts and sizes change as the FreeBSD repository changes. A tested FreeBSD 15.1 quarterly installation downloaded about 1 GiB and added about 7 GiB across 600 packages.
 
@@ -45,13 +55,32 @@ XRDP listens on TCP port `3389` inside the jail. Confirm that the upstream netwo
 
 Use **4 CPU cores and 8 GiB of memory** for a comfortable full KDE desktop. Two cores and 4 GiB can work for light use, but package installation, web browsers, and software rendering will be slower.
 
-Keep **Start On Boot** and **Resource Limits** enabled. Leave **Custom DevFS Ruleset** disabled. XRDP's virtual Xorg display does not need `/dev/dri`, `/dev/input`, or other host devices.
+Keep **Start On Boot** and **Resource Limits** enabled. Leave **Custom DevFS Ruleset** disabled for the simple software-rendered setup.
+
+#### Optional iGPU acceleration
+
+The installed `xorgxrdp` driver supports DRI3 and glamor acceleration through `/dev/dri/renderD128`; the iGPU remains managed by the FreeBSD host and does not need PCI passthrough. First check the Sylve node's terminal, outside the jail:
+
+```sh
+ls -l /dev/dri /dev/drm
+```
+
+Continue only if the host graphics driver has created `/dev/dri/renderD128`. Enable **Custom DevFS Ruleset** for the jail and enter:
+
+```text
+add path 'dri' unhide
+add path 'dri/renderD128' unhide
+```
+
+These rules expose only the host render node needed by `xorgxrdp`, rather than every graphics device. The installer adds the desktop user to the `video` group and automatically uses the render node when that user can access it; otherwise, it retains software rendering. If you add the rules later, stop and start the jail, then log out of the Plasma session and reconnect.
 
 ### Advanced
 
 Keep **Type** set to **FreeBSD**, **Clean Environment** enabled, and the lifecycle hooks disabled. Retain the default FreeBSD allowed options, including **SysV IPC (`allow.sysvipc`)**. KDE and Xorg use the normal FreeBSD jail IPC facilities; no additional privilege is required.
 
 Create and start the jail, verify its network connection, and create a [Snapshot](/guides/node/jails/snapshots/) before installing the desktop. A snapshot provides a quick return to the small base jail if the desktop is no longer wanted.
+
+Leave **FSTab Entries** empty during this initial creation. A clean FreeBSD bootstrap does not yet contain the `/compat/linux` mount targets. The main installer creates them, and this guide returns to the jail options immediately afterward to add the Linux mounts before the first RDP connection.
 
 ## Download the installer
 
@@ -82,15 +111,24 @@ If the account does not exist, the script creates it and asks for its password. 
 The installer then:
 
 1. Refreshes the signed FreeBSD package catalogues.
-2. Installs `kde`, `xrdp`, and `xorgxrdp` from the configured repository.
+2. Installs `kde`, the Ark archive manager, Mesa's renderer diagnostics, `xrdp`, `xorgxrdp`, `pulseaudio-module-xrdp`, `linux-rl9`, and every additional compatible `linux-rl9-*` package from the configured repository.
 3. Adds the login account to FreeBSD's `video` group.
 4. Creates a per-user Plasma X11 launcher using D-Bus and ConsoleKit.
-5. Forces software rendering so no host graphics device is required.
-6. Disables root login through XRDP.
-7. Enables and starts D-Bus, `xrdp-sesman`, and XRDP.
-8. Confirms that XRDP is listening on TCP port `3389`.
+5. Uses an accessible iGPU render node when available, with automatic software-rendering fallback.
+6. Adds PulseAudio sink and source modules for speaker and microphone redirection over RDP.
+7. Disables root login through XRDP.
+8. Enables and starts D-Bus, `xrdp-sesman`, and XRDP.
+9. Installs `sylve-linux-app` and creates the Linux compatibility mountpoints.
+10. Checks whether Sylve's host Linux ABI, the jail option, and the FSTab mounts are ready.
+11. Confirms that XRDP is listening on TCP port `3389`.
 
 The full package installation can take several minutes. Do not close the console or interrupt the jail while `pkg` is installing packages. If the connection is lost, reconnect and run the same command again.
+
+Linux application support is included by default. For a smaller FreeBSD-only desktop, disable that part explicitly:
+
+```sh
+INSTALL_LINUX_APPS=NO sh /root/install-kde-xrdp.sh desktop
+```
 
 For unattended package installation, the password prompt can be deferred:
 
@@ -100,6 +138,37 @@ passwd desktop
 ```
 
 The account remains locked until `passwd desktop` succeeds. RDP authentication cannot use SSH keys, so a usable account password is required even when SSH access uses a key.
+
+## Complete the jail's Linux configuration
+
+The main installer has now installed the Rocky Linux 9 compatibility userland, created its mountpoints, and placed `sylve-linux-app` in `/usr/local/bin`. FreeBSD's [Linux binary compatibility layer](https://docs.freebsd.org/en/books/handbook/linuxemu/) can run many unmodified Linux binaries without replacing this jail's FreeBSD userland, but the remaining kernel and mount configuration belongs to the Sylve node. Keep the jail's **Type** set to **FreeBSD**. Sylve's **Simple Linux** FSTab preset is intended for a full Linux-userland jail and must not be saved unchanged for this setup.
+
+The `linux-rl9` metapackage includes the GTK, X11, Mesa, D-Bus, audio, font, and multimedia libraries commonly required by downloaded desktop applications. The installer also adds every other Rocky Linux 9 package that can coexist with the metapackage, including optional graphics, Tcl/Tk, Qt, and development tools. It deliberately excludes `linux-rl9-sdl_net`: that package conflicts with the metapackage's `linux-rl9-sdl12-extralibs` because both provide `libSDL_net-1.2.so.0`; the library remains available through the metapackage. The installer does not mix in the older and incompatible `linux-c7` userland, application-specific ports, GPU driver libraries, or hardware kernel modules.
+
+Take another snapshot of the completed in-jail installation. No manual `linux_enable` or `service linux` command is needed on the node: when Sylve's **Jails** service is enabled, the Sylve backend loads the Linux ABI and supporting kernel modules and prepares the node's `/compat/linux` mounts during startup.
+
+Stop the jail. Under **Options → Additional Options**, add:
+
+```text
+linux = new;
+```
+
+Open **Options → FSTab Entries**, choose **Manual**, and paste the entries produced below. Enter the real host mountpoint of the jail's root ZFS dataset; it normally follows `<pool-mountpoint>/sylve/jails/<Jail ID>`.
+
+<LinuxCompatFstabGenerator defaultRoot="/zroot/sylve/jails/115" />
+
+:::note[The generator does not apply these mounts]
+Changing the field above only generates text in your browser. It does not update Sylve, write the jail's FSTab configuration, or mount anything. Paste the generated entries into **Options → FSTab Entries** and save them. Sylve applies the mounts the next time the jail starts; changing saved FSTab entries while a jail is running does not change its current mounts. Stop and start the jail to apply later FSTab changes.
+:::
+
+These are host-managed mounts, so the jail does not need `allow.mount` or any `allow.mount.*` capabilities. The two `nullfs` entries share the jail's own `/tmp` and `/home` with Linux applications; they do not expose the Sylve host's directories.
+
+Start the jail and verify both Linux execution and the installed helper:
+
+```sh
+/compat/linux/bin/uname -a
+command -v sylve-linux-app
+```
 
 ## Verify the services
 
@@ -114,15 +183,7 @@ sockstat -4 -6 -l | grep ':3389'
 
 The final command should show `xrdp` listening on `*:3389`. SDDM should remain disabled; XRDP provides the remote login and starts a separate Xorg display for each session.
 
-Display the self-signed XRDP certificate's SHA-256 fingerprint before connecting for the first time:
-
-```sh
-openssl x509 \
-  -in /usr/local/etc/xrdp/cert.pem \
-  -noout -fingerprint -sha256
-```
-
-Record the fingerprint through the trusted Sylve console or SSH connection. Compare it with the certificate shown by the RDP client instead of accepting an unexpected certificate blindly.
+XRDP uses a self-signed TLS certificate by default, so the RDP client will show a certificate warning on the first connection.
 
 ## Connect to Plasma
 
@@ -136,9 +197,98 @@ Sign in with the regular account created by the installer. If the XRDP login scr
 
 The first connection may take longer while Plasma creates the account's configuration and caches. A successful login opens a normal Plasma desktop. Later connections normally reattach to the existing session for that user.
 
+### Redirect audio to the RDP client
+
+Audio is carried through the RDP connection; the jail does not need access to the Sylve node's sound devices. In a saved Remmina profile, set **Sound** to a **Local** option before connecting. Enable **Redirect local microphone** only when applications in the remote session should be allowed to use the client's microphone.
+
+From Konsole inside the Plasma session, run the checks as the regular desktop user, not as `root` and not from an SSH shell. PulseAudio belongs to the logged-in desktop user:
+
+```sh
+id -un
+pactl list short sinks | grep xrdp
+pactl list short sources | grep xrdp
+paplay /usr/local/share/sounds/ocean/stereo/completion-success.oga
+```
+
+The first command should print the desktop login name. The next two should show `xrdp-sink` and `xrdp-source`. If they show nothing and Plasma displays **Dummy Output**, or `pactl info` reports `Default Sink: auto_null`, log out of Plasma and reconnect. Disconnecting the RDP client leaves the existing session running and does not rerun the desktop's audio-module autostart. To retry the loader without ending the session, run this as the desktop user from Konsole:
+
+```sh
+/usr/local/libexec/pulseaudio-module-xrdp/load_pa_modules.sh
+```
+
 :::danger[Do not publish XRDP directly to the Internet]
-The XRDP service listens on every address inside the jail. Limit TCP `3389` to trusted source networks with the upstream firewall, a Sylve firewall rule, or a VPN such as WireGuard. A self-signed TLS certificate encrypts the session but does not make a public password endpoint safe from scanning and login attempts.
+The XRDP service listens on every address inside the jail. Limit TCP `3389` to trusted source networks with the upstream firewall, a Sylve firewall rule, or a VPN such as WireGuard. TLS encrypts the session but does not make a public password endpoint safe from scanning and login attempts.
 :::
+
+## Run Linux applications
+
+Complete the jail's Linux configuration above and connect to Plasma before installing graphical Linux applications.
+
+### Use the Linux application helper
+
+Run the installed helper from Konsole as the regular Plasma user. Do not run it with `doas` or as `root`. It keeps each application under `~/.local/share/sylve-linux-apps`, creates a wrapper under `~/.local/bin`, and adds a Plasma launcher under `~/.local/share/applications`. It does not download applications, enable FUSE, or create setuid files. The standalone [helper source](/scripts/sylve-linux-app.sh) remains available for review.
+
+Only install applications obtained from a source you trust. AppImage extraction runs the image's embedded runtime as your desktop user, and installed applications can access that user's files and network connections.
+
+### Install an AppImage
+
+The helper extracts a Type 2 AppImage once instead of trying to mount it with FUSE. Some AppImage runtimes identify themselves as generic System V ELF executables; the helper marks only its private extraction copy as Linux so FreeBSD can pass it to Linuxulator. The downloaded AppImage is not modified:
+
+```sh
+sylve-linux-app install \
+  --name Feishin \
+  --electron \
+  ~/Downloads/Feishin-linux-x86_64.AppImage
+```
+
+Feishin should appear in Plasma's application launcher, with its generated command at `~/.local/bin/feishin`. Feishin uses Electron, so this example explicitly includes `--electron`; omit that option for applications that do not need it. The helper never enables reduced-sandbox mode implicitly. AppImages using an older format or requiring unsupported Linux kernel facilities may still fail. See AppImage's [documented extraction mode](https://docs.appimage.org/user-guide/run-appimages.html#extract-the-contents-of-an-appimage) for the underlying mechanism.
+
+### Install a raw binary or application bundle
+
+A standalone Linux executable needs only the source file:
+
+```sh
+sylve-linux-app install --name Example ~/Downloads/example-linux-x64
+```
+
+For an application distributed as a directory, supply the directory followed by the executable's relative path. This preserves the application's libraries, resources, and helper programs:
+
+```sh
+sylve-linux-app install \
+  --name Feishin \
+  --electron \
+  ~/Downloads/Feishin-linux-x64 \
+  feishin
+```
+
+The helper also accepts `.tar.xz`, `.tar.gz`, `.tar.bz2`, `.txz`, `.tgz`, `.tbz`, and `.zip` archives directly. It uses FreeBSD's base `/usr/bin/tar`, backed by libarchive, so these formats do not require another package. List the archive first to find its internal executable path, then pass that path as the final argument. For example, Feishin's archive contains `Feishin-linux-x64/feishin`:
+
+```sh
+tar -tf ~/Downloads/Feishin-linux-x64.tar.xz | less
+sylve-linux-app install \
+  --name Feishin \
+  --electron \
+  ~/Downloads/Feishin-linux-x64.tar.xz \
+  Feishin-linux-x64/feishin
+```
+
+Use `--icon ~/Downloads/example.png` when a bundle does not contain a suitable top-level icon.
+
+Ark is installed for normal desktop archive handling and supplies Dolphin's **Extract** and **Compress** actions. The `sylve-linux-app` helper performs its own extraction so it also works from Konsole without opening Ark or Dolphin.
+
+:::caution[Electron compatibility reduces application isolation]
+Electron and Chromium depend on Linux namespaces that Linuxulator does not provide. The explicit `--electron` option adds `--no-sandbox`, `--no-zygote`, and `--in-process-gpu`, while keeping software rendering enabled. This allows applications such as Feishin to start, but removes Chromium's internal process sandbox. The application still runs as the regular user inside the FreeBSD jail and can access everything that user can access. Use this option only for applications you trust; Electron recommends `--no-sandbox` for testing rather than normal production use.
+:::
+
+Manage installed applications with:
+
+```sh
+sylve-linux-app list
+sylve-linux-app install --replace --name Feishin --electron ~/Downloads/Feishin-linux-x86_64.AppImage
+sylve-linux-app remove feishin
+```
+
+Graphical Linux applications launched from Plasma inherit its X11 session and the helper forces Mesa software rendering. Packages that require systemd services, Linux namespaces with a working sandbox, cgroups, kernel drivers, Snap, Flatpak, or Docker generally need a Linux virtual machine instead.
 
 ## Troubleshoot a connection
 
@@ -156,19 +306,30 @@ tail -n 100 /var/log/xrdp.log
 tail -n 100 /var/log/xrdp-sesman.log
 ```
 
-If authentication succeeds but the session closes or remains blank, inspect the user's Xorg log and confirm that the Plasma launcher is executable:
+If authentication succeeds but the display turns black, white, frozen, or repeatedly reconnects, compare the timestamps in all four logs:
+
+```sh
+tail -n 100 /var/log/xrdp.log
+tail -n 100 /var/log/xrdp-sesman.log
+tail -n 100 /home/desktop/.local/share/xorg/Xorg.*.log
+tail -n 100 /home/desktop/.local/share/xrdp/xrdp-chansrv.*.log
+```
+
+`xrdp.log` covers the client connection and graphics negotiation, `xrdp-sesman.log` covers login and session lifetime, the Xorg log covers the `xorgxrdp` display, and the channel log covers clipboard, audio, and redirected devices. Replace `desktop` with the login name passed to the installer.
+
+If the session and Xorg remain alive while a Remmina window becomes blank, disable Remmina's **Dynamic resolution update** and reconnect using a fixed resolution. Remmina has an [open report for black screens during dynamic resizing against XRDP](https://gitlab.com/Remmina/Remmina/-/issues/3088). To capture the client side, fully exit Remmina, start it from the client terminal, reproduce the problem once, and then close it:
+
+```sh
+G_MESSAGES_DEBUG=remmina remmina 2>&1 | tee "$HOME/remmina-xrdp.log"
+```
+
+Also confirm that `/home/desktop/startwm.sh` is executable, the jail still has **SysV IPC (`allow.sysvipc`)** enabled, and enough free memory is available. A locked account can be repaired from the console with:
 
 ```sh
 ls -l /home/desktop/startwm.sh
-tail -n 100 /home/desktop/.local/share/xorg/Xorg.*.log
-```
-
-Replace `desktop` with the login name passed to the installer. Also confirm that the jail still has **SysV IPC (`allow.sysvipc`)** enabled and enough free memory. A locked account can be repaired from the console with:
-
-```sh
 passwd desktop
 ```
 
-Software rendering is deliberate. A high CPU load while displaying animations, video, or graphics-heavy web pages does not necessarily indicate an XRDP fault. Reduce desktop effects or allocate more CPU before exposing host graphics devices to the jail.
+To identify the active renderer, run `glxinfo -B` from Konsole inside the XRDP session. `llvmpipe` means software rendering is active; an Intel or AMD renderer means the optional iGPU path is working. With software rendering, high CPU use during animations, video, or graphics-heavy web pages does not necessarily indicate an XRDP fault.
 
 After the desktop is working, restart the jail from Sylve during a maintenance window and repeat the service checks. Keep the pre-install snapshot until boot-time service startup and an RDP login have both been confirmed in your environment.
