@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"testing"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
 )
@@ -22,8 +24,8 @@ import (
 func newClusterLifecycleValidationRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.POST("/cluster", CreateCluster(nil, nil, nil))
-	r.POST("/cluster/join", JoinCluster(nil, nil, nil, nil))
+	r.POST("/cluster", CreateCluster(nil, nil))
+	r.POST("/cluster/join", JoinCluster(nil, nil, nil))
 	r.POST("/cluster/accept-join", AcceptJoin(nil))
 	return r
 }
@@ -66,7 +68,7 @@ func TestJoinClusterRejectsLegacyLeaderApiPayload(t *testing.T) {
 func TestAcceptJoinRejectsPayloadWithoutNodeIP(t *testing.T) {
 	r := newClusterLifecycleValidationRouter()
 
-	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/accept-join", []byte(`{"nodeId":"node-1","clusterKey":"secret"}`))
+	rr := performJSONRequest(t, r, http.MethodPost, "/cluster/accept-join", []byte(`{"nodeId":"node-1"}`))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d with body %s", rr.Code, rr.Body.String())
 	}
@@ -88,7 +90,7 @@ func TestAcceptJoinRejectsVersionMismatch(t *testing.T) {
 		r,
 		http.MethodPost,
 		"/cluster/accept-join",
-		[]byte(`{"nodeId":"node-1","nodeIp":"10.0.0.2","clusterKey":"secret","nodeVersion":"0.0.0"}`),
+		[]byte(`{"nodeId":"node-1","nodeIp":"10.0.0.2","nodeVersion":"0.0.0"}`),
 	)
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("expected status 409, got %d with body %s", rr.Code, rr.Body.String())
@@ -100,6 +102,53 @@ func TestAcceptJoinRejectsVersionMismatch(t *testing.T) {
 	}
 	if resp.Message != "cluster_version_mismatch" {
 		t.Fatalf("expected cluster_version_mismatch, got %q", resp.Message)
+	}
+}
+
+func TestGetJoinKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		cluster clusterModels.Cluster
+		want    int
+	}{
+		{
+			name: "enabled cluster", cluster: clusterModels.Cluster{Enabled: true, Key: "cluster-secret"},
+			want: http.StatusOK,
+		},
+		{
+			name: "standalone cluster", cluster: clusterModels.Cluster{Enabled: false, Key: "cluster-secret"},
+			want: http.StatusConflict,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := newClusterHandlerTestDB(t, &clusterModels.Cluster{})
+			if err := db.Create(&test.cluster).Error; err != nil {
+				t.Fatalf("create cluster: %v", err)
+			}
+			router := gin.New()
+			router.GET("/cluster/join-key", GetJoinKey(&authService.Service{DB: db}))
+
+			response := performJSONRequest(t, router, http.MethodGet, "/cluster/join-key", nil)
+			if response.Code != test.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, test.want, response.Body.String())
+			}
+			if response.Header().Get("Cache-Control") != "no-store" ||
+				response.Header().Get("Pragma") != "no-cache" ||
+				response.Header().Get("Referrer-Policy") != "no-referrer" {
+				t.Fatalf("missing secret response headers: %v", response.Header())
+			}
+			if test.want == http.StatusOK {
+				var body handlerAPIResponse[JoinKeyResponse]
+				if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+					t.Fatalf("decode response: %v", err)
+				}
+				if body.Data.Key != "cluster-secret" {
+					t.Fatalf("key=%q", body.Data.Key)
+				}
+			}
+		})
 	}
 }
 

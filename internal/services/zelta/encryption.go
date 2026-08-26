@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -146,12 +147,31 @@ func (s *Service) EnsureEncryptionKeyFile(uuid string) error {
 }
 
 func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Dataset) (keyLoaded bool, err error) {
-	keylocProp, err := ds.GetProperty(ctx, "keylocation")
-	if err != nil {
-		return false, fmt.Errorf("get_keylocation_failed: %w", err)
+	if ds == nil {
+		return false, fmt.Errorf("encrypted_dataset_required")
 	}
 
-	keyloc := strings.TrimSpace(keylocProp.Value)
+	encProps, err := ds.GetEncryptionProperties(ctx)
+	if err != nil {
+		return false, fmt.Errorf("get_encryption_properties_failed: %w", err)
+	}
+	if strings.EqualFold(strings.TrimSpace(encProps.KeyStatus), "available") {
+		return true, nil
+	}
+
+	encryptionRoot := strings.TrimSpace(encProps.EncryptionRoot)
+	if encryptionRoot != "" && encryptionRoot != "-" && encryptionRoot != ds.Name {
+		root, rootErr := s.getLocalDataset(ctx, encryptionRoot)
+		if rootErr != nil {
+			return false, fmt.Errorf("get_encryption_root_%s_failed: %w", encryptionRoot, rootErr)
+		}
+		if root == nil {
+			return false, fmt.Errorf("encryption_root_not_found: %s", encryptionRoot)
+		}
+		return s.ensureEncryptionKeyForDataset(ctx, root)
+	}
+
+	keyloc := strings.TrimSpace(encProps.KeyLocation)
 	if keyloc == "" || keyloc == "none" {
 		return false, nil
 	}
@@ -161,15 +181,19 @@ func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Da
 		if err := s.EnsureEncryptionKeyFile(uuid); err != nil {
 			return false, fmt.Errorf("encryption_key_not_found_in_cluster_store: %s", uuid)
 		}
-		if err := ds.LoadKey(ctx, true); err != nil {
+		if err := ds.LoadKey(ctx, false); err != nil {
 			return false, fmt.Errorf("load_key_failed: %w", err)
 		}
-		return true, nil
+		return encryptionKeyIsAvailable(ctx, ds)
 	}
 
 	// keylocation is "prompt" — the original key file wasn't available on
 	// the server that received this dataset (e.g. a backup target). Try each
 	// key in the cluster store until one loads successfully.
+	if s.Cluster == nil {
+		return false, nil
+	}
+
 	keys, listErr := s.Cluster.ListEncryptionKeys()
 	if listErr != nil {
 		logger.L.Warn().Err(listErr).Str("dataset", ds.Name).
@@ -178,7 +202,7 @@ func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Da
 	}
 
 	for _, key := range keys {
-		if err := ds.LoadKeyWithPassphrase(ctx, key.KeyData, true); err != nil {
+		if err := ds.LoadKeyWithPassphrase(ctx, key.KeyData, false); err != nil {
 			continue
 		}
 
@@ -191,10 +215,44 @@ func (s *Service) ensureEncryptionKeyForDataset(ctx context.Context, ds *gzfs.Da
 
 		logger.L.Info().Str("dataset", ds.Name).Str("uuid", key.UUID).
 			Msg("encrypted_dataset_key_loaded_via_prompt_fallback")
-		return true, nil
+		return encryptionKeyIsAvailable(ctx, ds)
 	}
 
 	logger.L.Warn().Str("dataset", ds.Name).
 		Msg("encrypted_dataset_requires_manual_key_load_run_zfs_load_key")
 	return false, nil
+}
+
+func encryptionKeyIsAvailable(ctx context.Context, ds *gzfs.Dataset) (bool, error) {
+	props, err := ds.GetEncryptionProperties(ctx)
+	if err != nil {
+		return false, fmt.Errorf("verify_encryption_key_status_failed: %w", err)
+	}
+	return strings.EqualFold(strings.TrimSpace(props.KeyStatus), "available"), nil
+}
+
+// RegisterRestoreEncryptionKey makes an explicitly supplied restore key
+// immediately available on this node and forwards it to the cluster key store.
+func (s *Service) RegisterRestoreEncryptionKey(keyData, keyFormat string) error {
+	if strings.TrimSpace(keyData) == "" {
+		return nil
+	}
+	if s.Cluster == nil {
+		return fmt.Errorf("cluster_service_not_initialized")
+	}
+
+	keyFormat = strings.TrimSpace(keyFormat)
+	if keyFormat == "" {
+		keyFormat = "passphrase"
+	}
+	digest := sha256.Sum256([]byte(keyFormat + "\x00" + keyData))
+	uuid := fmt.Sprintf("restore-%x", digest[:12])
+
+	if err := s.Cluster.UpsertEncryptionKeyLocally(uuid, keyData, keyFormat); err != nil {
+		return fmt.Errorf("store_restore_encryption_key_failed: %w", err)
+	}
+	if err := s.Cluster.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
+		return fmt.Errorf("forward_restore_encryption_key_failed: %w", err)
+	}
+	return nil
 }

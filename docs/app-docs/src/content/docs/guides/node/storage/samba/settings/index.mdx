@@ -1,26 +1,35 @@
 ---
 title: Settings
-description: Managing samba settings on Sylve
+description: Configure the Samba server identity, network binding, and Apple SMB support.
 ---
 
-As mentioned in the preface of the Shares guide, the samba implementation in Sylve is pretty basic and doesn't have a lot of features, but it does cover the basics and is enough for most use-cases. In this guide we'll be going through the settings that we do have and how to configure them.
+import sambaSettingsOverview from './samba-settings-overview.png';
+import sambaSettingsUpdate from './samba-settings-update.png';
 
-When you open up the Samba Settings page, you'll see a table like this:
+The Samba Settings page shows the active global configuration. Select **Update** to change it. These settings control the SMB server as a whole, while share-specific access and options are configured on the [Shares](/guides/node/storage/samba/shares/) page.
 
-![Settings Table](./settings-table.png)
+<img src={sambaSettingsOverview.src} alt="Sylve Samba Settings page showing Unix Charset, Workgroup, Server String, Interfaces, Bind Interfaces Only, Apple Extensions, and Advertise Samba mDNS values" />
 
-Let's go through the fields one by one:
+## Update Samba settings
 
-- **Workgroup**: The workgroup name for your samba server, this is the name that will be displayed in the network section of samba clients when they scan for available servers. The default value is `WORKGROUP`, but you can change it to whatever you want.
+Changing settings validates the requested values, rewrites the Samba configuration, and reloads Samba. If selected interfaces no longer exist, Sylve removes them from the saved selection. If no valid interface remains, it falls back to `lo0`.
 
-- **Unix Character Set**: The character set that will be used for file names and other strings in samba, the default value is `UTF-8` which is the most common character set and should work fine for most use-cases.
+<img src={sambaSettingsUpdate.src} alt="Update Samba Configuration dialog with a workgroup, server string, selected network interfaces, Bind Interfaces Only, Apple Extensions, and Advertise Samba mDNS options" />
 
-- **Server String**: The server string is a description of your samba server that will be displayed in the network section of samba clients when they scan for available servers. The default value is `Sylve SMB Server`, but you can change it to whatever you want.
+| Option | Behavior |
+| --- | --- |
+| Unix Charset | Character encoding Samba uses for Unix filenames. Required and must be supported by the node. Default deployments normally use `UTF-8`. |
+| Workgroup | SMB workgroup name announced by the server. Required and validated as a Samba workgroup name. Use the same value as Windows clients or your existing SMB environment when appropriate. |
+| Server String | Human-readable server description presented to SMB clients. Required. It cannot contain line breaks or a null character. |
+| Interfaces | Network interfaces Samba should use. Select one or more available non-TAP interfaces. Sylve saves their operating-system interface names, while the table shows a description when one is available. |
+| Bind Interfaces Only | Restricts Samba to the selected interfaces. Enable this when the SMB service must not listen on other node interfaces. |
+| Apple Extensions | Enables Apple-focused SMB extensions, including the `fruit` and `streams_xattr` modules on shares. It is required before a share can expose the Time Machine option. |
+| Advertise Samba (mDNS) | Controls whether Sylve publishes its managed Samba discovery records through mDNS. When enabled, Sylve ensures the mDNS service is enabled and rebuilds the advertisements after saving. This is enabled by default. |
 
-:::warning
-Binding to an interface which has a public IP address can be dangerous if you don't have proper firewall rules in place, make sure to only bind to interfaces that are not exposed to the internet and always use a VPN or a secure tunnel like WireGuard or Tailscale when accessing your samba shares remotely.
+:::note[mDNS behavior]
+**Advertise Samba (mDNS)** controls Samba discovery independently of Apple Extensions. Disabling it removes Sylve-managed Samba advertisements without disabling the mDNS service itself. Enabling it ensures mDNS is available and publishes applicable records: `_smb._tcp` for enabled Samba shares, plus Apple device and Time Machine records when Apple Extensions and Time Machine shares are enabled.
 :::
 
-- **Interfaces**: The network interfaces that samba will listen on, you can select multiple interfaces here. By default, samba will listen on ONLY the loopback interface.
-
-- **Bind Interfaces Only**: Whether to bind samba to the selected interfaces only, if enabled samba will only listen on the selected interfaces and ignore all other interfaces. This is enabled by default for security reasons, but you can disable it if you want samba to listen on all interfaces.
+:::caution
+Before enabling **Bind Interfaces Only**, verify that the selected interface has the network address your SMB clients use. Selecting the wrong interface can make every share unreachable until the setting is corrected.
+:::

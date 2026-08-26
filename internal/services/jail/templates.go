@@ -18,11 +18,13 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
-	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -45,6 +47,131 @@ type createTarget struct {
 	CTID uint
 	Name string
 	Pool string
+}
+
+func jailTemplateCleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+}
+
+func isMissingJailTemplateDatasetError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "dataset does not exist") || strings.Contains(message, "does not exist")
+}
+
+func validateJailTemplateDatasetPath(pool, dataset string) error {
+	pool = strings.TrimSpace(strings.Trim(pool, "/"))
+	dataset = strings.TrimSpace(strings.Trim(dataset, "/"))
+	if pool == "" || strings.Contains(pool, "/") || dataset == "" {
+		return fmt.Errorf("invalid_template_dataset_path")
+	}
+
+	prefix := fmt.Sprintf("%s/sylve/jails/templates/", pool)
+	if !strings.HasPrefix(dataset, prefix) || strings.TrimPrefix(dataset, prefix) == "" {
+		return fmt.Errorf("invalid_template_dataset_path")
+	}
+
+	return nil
+}
+
+func (s *Service) destroyJailTemplateDatasetIfPresent(
+	ctx context.Context,
+	pool string,
+	dataset string,
+	recursive bool,
+) error {
+	if err := validateJailTemplateDatasetPath(pool, dataset); err != nil {
+		return err
+	}
+
+	ds, err := s.GZFS.ZFS.Get(ctx, strings.TrimSpace(strings.Trim(dataset, "/")), false)
+	if err != nil {
+		if isMissingJailTemplateDatasetError(err) {
+			return nil
+		}
+		return err
+	}
+	if ds == nil {
+		return nil
+	}
+	return ds.Destroy(ctx, recursive, false)
+}
+
+func (s *Service) validateJailTemplateNetworks(jailType jailModels.JailType, networks []jailModels.JailTemplateNetwork) error {
+	defaultGatewayCount := 0
+	for _, network := range networks {
+		if jailType == jailModels.JailTypeLinux && (network.DHCP || network.SLAAC) {
+			return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
+		}
+		if network.DefaultGateway {
+			defaultGatewayCount++
+			if defaultGatewayCount > 1 {
+				return fmt.Errorf("jail_default_gateway_exists")
+			}
+		}
+	}
+
+	for _, network := range networks {
+		if network.SwitchID == 0 {
+			continue
+		}
+		if s.NetworkService == nil {
+			return fmt.Errorf("template_network_service_unavailable")
+		}
+
+		bridge, err := s.NetworkService.GetBridgeNameByIDType(
+			network.SwitchID,
+			strings.ToLower(strings.TrimSpace(network.SwitchType)),
+		)
+		if err != nil {
+			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+				return fmt.Errorf("template_network_switch_not_found")
+			}
+			return fmt.Errorf("failed_to_validate_template_network_switch: %w", err)
+		}
+		if strings.TrimSpace(bridge) == "" {
+			return fmt.Errorf("template_network_switch_not_found")
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) ensureNoActiveJailLifecycleTask(ctID uint) error {
+	var count int64
+	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+		Where("guest_type = ? AND guest_id = ? AND status IN ?", taskModels.GuestTypeJail, ctID, []string{
+			taskModels.LifecycleTaskStatusQueued,
+			taskModels.LifecycleTaskStatusRunning,
+		}).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_jail_lifecycle_tasks: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("jail_has_active_lifecycle_task")
+	}
+	return nil
+}
+
+func (s *Service) ensureNoActiveJailTemplateCreateTask(templateID uint) error {
+	var count int64
+	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+		Where(
+			"guest_type = ? AND guest_id = ? AND action = ? AND status IN ?",
+			taskModels.GuestTypeJailTemplate,
+			templateID,
+			"create",
+			[]string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning},
+		).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed_to_check_jail_template_usage: %w", err)
+	}
+	if count > 0 {
+		return fmt.Errorf("jail_template_in_use")
+	}
+	return nil
 }
 
 func (s *Service) ensureFilesystemPath(ctx context.Context, dataset string) error {
@@ -168,18 +295,6 @@ func (s *Service) validateCreateTargetPool(ctx context.Context, pool string) err
 	return fmt.Errorf("pool_not_found")
 }
 
-func (s *Service) isClusterEnabled() (bool, error) {
-	var cluster clusterModels.Cluster
-	if err := s.DB.Select("enabled").First(&cluster).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		return false, fmt.Errorf("failed_to_get_cluster_state: %w", err)
-	}
-
-	return cluster.Enabled, nil
-}
-
 func (s *Service) buildTemplateNetworks(networks []jailModels.Network) []jailModels.JailTemplateNetwork {
 	out := make([]jailModels.JailTemplateNetwork, 0, len(networks))
 	for _, n := range networks {
@@ -198,12 +313,25 @@ func (s *Service) buildTemplateNetworks(networks []jailModels.Network) []jailMod
 	return out
 }
 
-func (s *Service) buildTemplateHooks(hooks []jailModels.JailHooks) []jailModels.JailTemplateHook {
-	out := make([]jailModels.JailTemplateHook, 0, len(hooks))
-	for _, h := range hooks {
+func (s *Service) buildTemplateHooks(jailType jailModels.JailType, hooks []jailModels.JailHooks) []jailModels.JailTemplateHook {
+	normalized, _ := NormalizeLegacyLifecycleHooks(jailType, hooks)
+	out := make([]jailModels.JailTemplateHook, 0, len(normalized))
+	for _, h := range normalized {
 		out = append(out, jailModels.JailTemplateHook{Phase: h.Phase, Enabled: h.Enabled, Script: h.Script})
 	}
 	return out
+}
+
+func (s *Service) selectJailTemplateCPUSet(template jailModels.JailTemplate, ctID uint) ([]int, error) {
+	if template.Cores <= 0 || (template.ResourceLimits != nil && !*template.ResourceLimits) {
+		return []int{}, nil
+	}
+
+	logicalCores := s.jailHardwareOps().HostLogicalCores()
+	if logicalCores < 1 {
+		return nil, fmt.Errorf("host_cpu_unavailable")
+	}
+	return s.selectJailHardwareCPUSet(ctID, template.Cores, logicalCores)
 }
 
 func normalizeTemplateName(name string) string {
@@ -265,13 +393,47 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 	if ctID == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
+
+	jail, err := s.GetJailByCTID(ctID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("jail_not_found")
+		}
+		return fmt.Errorf("failed_to_get_jail: %w", err)
+	}
+	if jail == nil {
+		return fmt.Errorf("jail_not_found")
+	}
+
 	if err := s.ensureUniqueJailTemplateName(req.Name); err != nil {
 		return err
 	}
 
-	jail, err := s.GetJailByCTID(ctID)
+	if replicationguard.PolicySchemaReady(s.DB) || replicationguard.GuestOperationSchemaReady(s.DB) {
+		allowed, leaseErr := s.canMutateProtectedJail(ctID)
+		if leaseErr != nil {
+			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+		}
+		if !allowed {
+			return fmt.Errorf("replication_lease_not_owned")
+		}
+	}
+
+	state, err := s.GetStateByCtId(ctID)
 	if err != nil {
-		return fmt.Errorf("failed_to_get_jail: %w", err)
+		return fmt.Errorf("failed_to_get_jail_state: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(state.State), "INACTIVE") {
+		return fmt.Errorf("jail_must_be_stopped")
+	}
+
+	if err := s.ensureNoActiveJailLifecycleTask(ctID); err != nil {
+		return err
+	}
+
+	templateNetworks := s.buildTemplateNetworks(jail.Networks)
+	if err := s.validateJailTemplateNetworks(jail.Type, templateNetworks); err != nil {
+		return err
 	}
 
 	pool := ""
@@ -294,24 +456,10 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 		return fmt.Errorf("source_jail_dataset_not_found")
 	}
 
-	requiredBytes := datasetEstimatedUsed(srcDS.Used, srcDS.Referenced)
-
-	zpool, err := s.GZFS.Zpool.Get(ctx, pool)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_pool: %w", err)
-	}
-	if zpool == nil {
-		return fmt.Errorf("pool_not_found")
-	}
-
-	if requiredBytes > zpool.Free {
-		return fmt.Errorf("insufficient_pool_space")
-	}
-
-	return nil
+	return s.checkPoolCapacity(ctx, pool, datasetEstimatedUsed(srcDS.Used, srcDS.Referenced))
 }
 
-func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req ConvertToTemplateRequest) error {
+func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req ConvertToTemplateRequest) (retErr error) {
 	if ctID == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}
@@ -323,14 +471,6 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 	jail, err := s.GetJailByCTID(ctID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_jail: %w", err)
-	}
-
-	allowed, leaseErr := s.canMutateProtectedJail(ctID)
-	if leaseErr != nil {
-		return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
-	}
-	if !allowed {
-		return fmt.Errorf("replication_lease_not_owned")
 	}
 
 	pool := ""
@@ -353,23 +493,9 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		templateToken,
 		time.Now().UTC().UnixMilli(),
 	)
-
-	state, err := s.GetStateByCtId(ctID)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_jail_state: %w", err)
+	if err := validateJailTemplateDatasetPath(pool, templateDataset); err != nil {
+		return err
 	}
-
-	wasRunning := state.State == "ACTIVE"
-	if wasRunning {
-		if err := s.JailAction(int(ctID), "stop"); err != nil {
-			return fmt.Errorf("failed_to_stop_jail_before_template_conversion: %w", err)
-		}
-	}
-	defer func() {
-		if wasRunning {
-			_ = s.JailAction(int(ctID), "start")
-		}
-	}()
 
 	srcDS, err := s.GZFS.ZFS.Get(ctx, sourceDataset, false)
 	if err != nil {
@@ -383,22 +509,77 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		return fmt.Errorf("failed_to_prepare_template_parent_dataset: %w", err)
 	}
 
+	templateDatasetCreated := false
+	templateRowCreated := false
+	var template jailModels.JailTemplate
+	defer func() {
+		if retErr == nil || !templateDatasetCreated {
+			return
+		}
+
+		cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+		defer cancel()
+
+		if err := s.destroyJailTemplateDatasetIfPresent(cleanupCtx, pool, templateDataset, true); err != nil {
+			logger.L.Warn().Err(err).Str("dataset", templateDataset).Msg("jail_template_capture_dataset_cleanup_failed")
+			retErr = errors.Join(retErr, fmt.Errorf("failed_to_cleanup_jail_template_dataset: %w", err))
+			return
+		}
+		if templateRowCreated {
+			if err := s.DB.WithContext(cleanupCtx).Delete(&jailModels.JailTemplate{}, template.ID).Error; err != nil {
+				logger.L.Warn().Err(err).Uint("template_id", template.ID).Msg("jail_template_capture_row_cleanup_failed")
+				retErr = errors.Join(retErr, fmt.Errorf("failed_to_cleanup_jail_template_record: %w", err))
+			}
+		}
+	}()
+
 	snapshotName := fmt.Sprintf("sylve_template_%d_%d", ctID, time.Now().UTC().UnixMilli())
+	s.actionMutex.Lock()
+	state, stateErr := s.GetStateByCtId(ctID)
+	if stateErr != nil {
+		s.actionMutex.Unlock()
+		return fmt.Errorf("failed_to_get_jail_state: %w", stateErr)
+	}
+	if !strings.EqualFold(strings.TrimSpace(state.State), "INACTIVE") {
+		s.actionMutex.Unlock()
+		return fmt.Errorf("jail_must_be_stopped")
+	}
+	if taskErr := s.ensureNoActiveJailLifecycleTask(ctID); taskErr != nil {
+		s.actionMutex.Unlock()
+		return taskErr
+	}
 	snapshot, err := srcDS.Snapshot(ctx, snapshotName, true)
+	s.actionMutex.Unlock()
 	if err != nil {
 		return fmt.Errorf("failed_to_create_template_snapshot: %w", err)
 	}
+	snapshotNeedsCleanup := true
 	defer func() {
-		_ = snapshot.Destroy(ctx, true, false)
+		if !snapshotNeedsCleanup {
+			return
+		}
+		cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+		defer cancel()
+		if err := snapshot.Destroy(cleanupCtx, true, false); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("failed_to_delete_temporary_template_snapshot: %w", err))
+		}
 	}()
 
+	templateDatasetCreated = true
 	if _, err := snapshot.SendToDataset(ctx, templateDataset, false); err != nil {
 		return fmt.Errorf("failed_to_copy_jail_dataset_to_template: %w", err)
 	}
+	cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+	if err := snapshot.Destroy(cleanupCtx, true, false); err != nil {
+		cancel()
+		return fmt.Errorf("failed_to_delete_temporary_template_snapshot: %w", err)
+	}
+	cancel()
+	snapshotNeedsCleanup = false
 
 	templateName := normalizeTemplateName(req.Name)
 
-	template := jailModels.JailTemplate{
+	template = jailModels.JailTemplate{
 		Name:              templateName,
 		SourceJailName:    jail.Name,
 		SourceJailCTID:    jail.CTID,
@@ -415,17 +596,22 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		ResolvConf:        jail.ResolvConf,
 		DevFSRuleset:      jail.DevFSRuleset,
 		CleanEnvironment:  jail.CleanEnvironment,
+		ExecTimeout:       jail.ExecTimeout,
 		AdditionalOptions: jail.AdditionalOptions,
 		AllowedOptions:    append([]string{}, jail.AllowedOptions...),
 		MetadataMeta:      jail.MetadataMeta,
 		MetadataEnv:       jail.MetadataEnv,
 		Networks:          s.buildTemplateNetworks(jail.Networks),
-		Hooks:             s.buildTemplateHooks(jail.JailHooks),
+		Hooks:             s.buildTemplateHooks(jail.Type, jail.JailHooks),
+	}
+	if template.ExecTimeout == 0 {
+		template.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
 	}
 
 	if err := s.DB.Create(&template).Error; err != nil {
 		return fmt.Errorf("failed_to_create_jail_template: %w", err)
 	}
+	templateRowCreated = true
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("jail_template_convert_%d", ctID))
 	return nil
@@ -518,6 +704,9 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 	if len(targets) == 0 {
 		return fmt.Errorf("no_targets")
 	}
+	if err := s.validateJailTemplateNetworks(template.Type, template.Networks); err != nil {
+		return err
+	}
 
 	ctids := make([]uint, 0, len(targets))
 	names := make([]string, 0, len(targets))
@@ -542,6 +731,17 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 		ctids = append(ctids, t.CTID)
 		names = append(names, name)
 	}
+	if replicationguard.GuestOperationSchemaReady(s.DB) {
+		for _, ctID := range ctids {
+			allowed, leaseErr := s.canMutateProtectedJail(ctID)
+			if leaseErr != nil {
+				return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
+			}
+			if !allowed {
+				return fmt.Errorf("replication_lease_not_owned")
+			}
+		}
+	}
 
 	var existingCount int64
 	if err := s.DB.Model(&jailModels.Jail{}).Where("ct_id IN ?", ctids).Count(&existingCount).Error; err != nil {
@@ -558,27 +758,9 @@ func (s *Service) preflightTemplateTargets(ctx context.Context, template jailMod
 		return fmt.Errorf("ctid_range_contains_used_values")
 	}
 
-	enabled, err := s.isClusterEnabled()
-	if err != nil {
-		return err
-	}
-	if enabled {
-		var nodes []clusterModels.ClusterNode
-		if err := s.DB.Select("guest_ids").Find(&nodes).Error; err != nil {
-			return fmt.Errorf("failed_to_check_cluster_guest_ids: %w", err)
-		}
-
-		usedGuestIDSet := make(map[uint]struct{})
-		for _, node := range nodes {
-			for _, id := range node.GuestIDs {
-				usedGuestIDSet[id] = struct{}{}
-			}
-		}
-
-		for _, ctid := range ctids {
-			if _, exists := usedGuestIDSet[ctid]; exists {
-				return fmt.Errorf("ctid_range_contains_used_values")
-			}
+	if s.guestIdentityChecker != nil {
+		if err := s.guestIdentityChecker.RequireGuestIDsAvailable(ctx, ctids); err != nil {
+			return err
 		}
 	}
 
@@ -661,6 +843,7 @@ func (s *Service) createJailFromTemplateTarget(
 	template jailModels.JailTemplate,
 	target createTarget,
 ) (retErr error) {
+	template.Hooks = normalizeTemplateLifecycleHooks(template.Type, template.Hooks)
 	templateDS, err := s.GZFS.ZFS.Get(ctx, template.RootDataset, false)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_template_dataset: %w", err)
@@ -670,7 +853,6 @@ func (s *Service) createJailFromTemplateTarget(
 	}
 
 	datasetName := fmt.Sprintf("%s/sylve/jails/%d", target.Pool, target.CTID)
-	mountPoint := fmt.Sprintf("/%s/sylve/jails/%d", target.Pool, target.CTID)
 
 	if existing, getErr := s.GZFS.ZFS.Get(ctx, datasetName, false); getErr != nil {
 		if !strings.Contains(strings.ToLower(getErr.Error()), "does not exist") {
@@ -685,17 +867,28 @@ func (s *Service) createJailFromTemplateTarget(
 	if err != nil {
 		return fmt.Errorf("failed_to_snapshot_template_dataset: %w", err)
 	}
-	defer func() {
-		_ = snapshot.Destroy(ctx, true, false)
-	}()
 
 	createdDS, err := snapshot.SendToDataset(ctx, datasetName, false)
 	if err != nil {
-		return fmt.Errorf("failed_to_clone_template_dataset: %w", err)
+		resultErr := fmt.Errorf("failed_to_clone_template_dataset: %w", err)
+		cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+		defer cancel()
+		if cleanupErr := snapshot.Destroy(cleanupCtx, true, false); cleanupErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("failed_to_delete_temporary_template_snapshot: %w", cleanupErr))
+		}
+		partialDS, getErr := s.GZFS.ZFS.Get(cleanupCtx, datasetName, false)
+		switch {
+		case getErr != nil && !isMissingJailTemplateDatasetError(getErr):
+			resultErr = errors.Join(resultErr, fmt.Errorf("failed_to_check_partial_jail_dataset: %w", getErr))
+		case getErr == nil && partialDS != nil:
+			if cleanupErr := partialDS.Destroy(cleanupCtx, true, false); cleanupErr != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("failed_to_cleanup_partial_jail_dataset: %w", cleanupErr))
+			}
+		}
+		return resultErr
 	}
 
 	var createdJail jailModels.Jail
-	macByNetworkIndex := map[int]string{}
 	cleanupCreatedJail := false
 
 	defer func() {
@@ -703,18 +896,51 @@ func (s *Service) createJailFromTemplateTarget(
 			return
 		}
 
-		// Once DB state exists, use the normal jail deletion path so partial
-		// filesystem/config artifacts are cleaned consistently.
+		cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+		defer cancel()
+
 		if cleanupCreatedJail {
-			_ = s.DeleteJail(ctx, target.CTID, true, true)
+			if err := s.DeleteJail(cleanupCtx, target.CTID, true, true); err != nil {
+				logger.L.Warn().Err(err).Uint("ctid", target.CTID).Msg("jail_template_target_cleanup_failed")
+				retErr = errors.Join(retErr, fmt.Errorf("failed_to_cleanup_template_created_jail: %w", err))
+			}
 			return
 		}
 
-		// Before DB state exists, fall back to removing the cloned dataset.
 		if createdDS != nil {
-			_ = createdDS.Destroy(ctx, true, false)
+			if err := createdDS.Destroy(cleanupCtx, true, false); err != nil {
+				logger.L.Warn().Err(err).Str("dataset", datasetName).Msg("jail_template_target_dataset_cleanup_failed")
+				retErr = errors.Join(retErr, fmt.Errorf("failed_to_cleanup_template_created_dataset: %w", err))
+			}
 		}
 	}()
+	mountPoint, err := validateFilesystemDatasetMountpoint(createdDS, datasetName, "")
+	if err != nil {
+		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
+	}
+	snapshotNeedsCleanup := true
+	defer func() {
+		if !snapshotNeedsCleanup {
+			return
+		}
+		cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+		defer cancel()
+		if err := snapshot.Destroy(cleanupCtx, true, false); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("failed_to_delete_temporary_template_snapshot: %w", err))
+		}
+	}()
+	cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+	if err := snapshot.Destroy(cleanupCtx, true, false); err != nil {
+		cancel()
+		return fmt.Errorf("failed_to_delete_temporary_template_snapshot: %w", err)
+	}
+	cancel()
+	snapshotNeedsCleanup = false
+
+	cpuSet, err := s.selectJailTemplateCPUSet(template, target.CTID)
+	if err != nil {
+		return fmt.Errorf("failed_to_select_jail_template_cpu_set: %w", err)
+	}
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		createdJail = jailModels.Jail{
@@ -729,15 +955,20 @@ func (s *Service) createJailFromTemplateTarget(
 			InheritIPv6:       template.InheritIPv6,
 			ResourceLimits:    template.ResourceLimits,
 			Cores:             template.Cores,
+			CPUSet:            append([]int{}, cpuSet...),
 			Memory:            template.Memory,
 			DevFSRuleset:      template.DevFSRuleset,
 			Fstab:             template.Fstab,
 			ResolvConf:        template.ResolvConf,
 			CleanEnvironment:  template.CleanEnvironment,
+			ExecTimeout:       template.ExecTimeout,
 			AdditionalOptions: template.AdditionalOptions,
 			AllowedOptions:    append([]string{}, template.AllowedOptions...),
 			MetadataMeta:      template.MetadataMeta,
 			MetadataEnv:       template.MetadataEnv,
+		}
+		if createdJail.ExecTimeout == 0 {
+			createdJail.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
 		}
 		if createdJail.ResourceLimits != nil && !*createdJail.ResourceLimits {
 			createdJail.Cores = 0
@@ -772,11 +1003,10 @@ func (s *Service) createJailFromTemplateTarget(
 		}
 
 		for idx, n := range template.Networks {
-			macID, macAddr, err := s.allocateMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
+			macID, _, err := s.allocateMACObject(tx, fmt.Sprintf("%s-net-%d", target.Name, idx+1))
 			if err != nil {
 				return err
 			}
-			macByNetworkIndex[idx] = macAddr
 			macIDCopy := macID
 
 			network := jailModels.Network{
@@ -840,15 +1070,7 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_reload_created_jail: %w", err)
 	}
 
-	firstMAC := ""
-	if len(reloaded.Networks) > 0 {
-		firstMAC = macByNetworkIndex[0]
-		if firstMAC == "" && reloaded.Networks[0].MacID != nil {
-			firstMAC, _ = s.NetworkService.GetObjectEntryByID(*reloaded.Networks[0].MacID)
-		}
-	}
-
-	cfg, err := s.CreateJailConfig(*reloaded, mountPoint, firstMAC)
+	cfg, err := s.CreateJailConfig(*reloaded, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_create_jail_config_from_template: %w", err)
 	}
@@ -863,8 +1085,8 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_create_jail_metadata_directory: %w", err)
 	}
 
-	if err := s.WriteJailJSON(target.CTID); err != nil {
-		return fmt.Errorf("failed_to_write_jail_json_from_template: %w", err)
+	if err := s.SyncNetwork(target.CTID, *reloaded); err != nil {
+		return fmt.Errorf("failed_to_sync_template_jail_network: %w", err)
 	}
 
 	return nil
@@ -900,16 +1122,54 @@ func (s *Service) PreflightCreateJailsFromTemplate(ctx context.Context, template
 	return err
 }
 
+func runJailTemplateCreatePlan(
+	ctx context.Context,
+	targets []createTarget,
+	createFn func(context.Context, createTarget) error,
+	cleanupFn func(context.Context, createTarget) error,
+) error {
+	createdTargets := make([]createTarget, 0, len(targets))
+	for _, target := range targets {
+		if err := createFn(ctx, target); err != nil {
+			resultErr := err
+			cleanupCtx, cancel := jailTemplateCleanupContext(ctx)
+			for idx := len(createdTargets) - 1; idx >= 0; idx-- {
+				createdTarget := createdTargets[idx]
+				if cleanupErr := cleanupFn(cleanupCtx, createdTarget); cleanupErr != nil {
+					resultErr = errors.Join(
+						resultErr,
+						fmt.Errorf("failed_to_rollback_template_created_jail_%d: %w", createdTarget.CTID, cleanupErr),
+					)
+				}
+			}
+			cancel()
+			return resultErr
+		}
+		createdTargets = append(createdTargets, target)
+	}
+	return nil
+}
+
 func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error {
+	s.createMutex.Lock()
+	defer s.createMutex.Unlock()
+
 	template, targets, err := s.preflightCreateJailsFromTemplate(ctx, templateID, req)
 	if err != nil {
 		return err
 	}
 
-	for _, target := range targets {
-		if err := s.createJailFromTemplateTarget(ctx, template, target); err != nil {
-			return err
-		}
+	if err := runJailTemplateCreatePlan(
+		ctx,
+		targets,
+		func(createCtx context.Context, target createTarget) error {
+			return s.createJailFromTemplateTarget(createCtx, template, target)
+		},
+		func(cleanupCtx context.Context, target createTarget) error {
+			return s.DeleteJail(cleanupCtx, target.CTID, true, true)
+		},
+	); err != nil {
+		return err
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("jail_template_create_%d", templateID))
@@ -921,6 +1181,9 @@ func (s *Service) DeleteJailTemplate(ctx context.Context, templateID uint) error
 		return fmt.Errorf("invalid_template_id")
 	}
 
+	s.createMutex.Lock()
+	defer s.createMutex.Unlock()
+
 	var template jailModels.JailTemplate
 	if err := s.DB.First(&template, "id = ?", templateID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -929,15 +1192,16 @@ func (s *Service) DeleteJailTemplate(ctx context.Context, templateID uint) error
 		return fmt.Errorf("failed_to_get_template: %w", err)
 	}
 
-	if err := s.DB.Delete(&template).Error; err != nil {
-		return fmt.Errorf("failed_to_delete_template_db_record: %w", err)
+	if err := s.ensureNoActiveJailTemplateCreateTask(templateID); err != nil {
+		return err
 	}
 
-	ds, err := s.GZFS.ZFS.Get(ctx, template.RootDataset, false)
-	if err == nil && ds != nil {
-		if err := ds.Destroy(ctx, true, false); err != nil {
-			return fmt.Errorf("failed_to_delete_template_dataset: %w", err)
-		}
+	if err := s.destroyJailTemplateDatasetIfPresent(ctx, template.Pool, template.RootDataset, true); err != nil {
+		return fmt.Errorf("failed_to_delete_template_dataset: %w", err)
+	}
+
+	if err := s.DB.Delete(&template).Error; err != nil {
+		return fmt.Errorf("failed_to_delete_template_db_record: %w", err)
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("jail_template_delete_%d", templateID))

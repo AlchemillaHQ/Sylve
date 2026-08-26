@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package dnssd
 
 import (
@@ -127,8 +135,9 @@ func (c *Cache) UpdateFrom(req *Request) (adds []*Service, rmvs []*Service) {
 func (c *Cache) removeExpired() []*Service {
 	var outdated []*Service
 	var services = c.services
+	now := time.Now()
 	for key, srv := range services {
-		if time.Now().After(srv.expiration) {
+		if !now.Before(srv.expiration) {
 			outdated = append(outdated, srv)
 			delete(c.services, key)
 		}

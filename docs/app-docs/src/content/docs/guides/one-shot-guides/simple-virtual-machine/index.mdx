@@ -1,0 +1,350 @@
+---
+title: Simple Virtual Machine
+description: Create a simple virtual machine in Sylve.
+---
+
+import HostBridgeDiagram from "./HostBridgeDiagram.svelte";
+import standardSwitchCreate from "./simple-vm-standard-switch-create.png";
+import standardSwitchReady from "./simple-vm-standard-switch-ready.png";
+import debianDownloadCreate from "./simple-vm-debian-download-create.png";
+import debianDownloadReady from "./simple-vm-debian-download-ready.png";
+import vmCreateBasic from "./simple-vm-create-basic.png";
+import vmCreateStorage from "./simple-vm-create-storage.png";
+import vmCreateNetwork from "./simple-vm-create-network.png";
+import vmCreateHardware from "./simple-vm-create-hardware.png";
+import vmCreateAdvanced from "./simple-vm-create-advanced.png";
+import vmCreatedSummary from "./simple-vm-created-summary.png";
+import debianInstallerBoot from "./simple-vm-debian-installer-boot.png";
+import debianSoftwareSelection from "./simple-vm-debian-software-selection.png";
+import debianGnomeDesktop from "./simple-vm-debian-gnome-desktop.png";
+
+This guide is written for people starting from absolute zero and walks through the entire process from installation onward. If you have already completed some of the setup, use the page outline on the right to jump directly to the section relevant to you.
+
+This guide requires **Sylve 0.3.0 or newer**. The screens and workflow described here may not be available in earlier releases.
+
+## Install Sylve
+
+On the FreeBSD node, install Sylve from the package repository as `root`:
+
+```sh
+pkg install sylve
+```
+
+After the installation completes, enable Sylve so it starts automatically when FreeBSD boots, then start it now:
+
+```sh
+service sylve enable
+service sylve start
+```
+
+Open `https://<your-node-ip>:8181` in a browser. A fresh package installation uses `admin` as both the username and password. Change these default credentials before exposing the node to an untrusted network. You can follow the account guidance in [Getting Started](/getting-started/) or sign in, open **Settings → Authentication → Users → Local**, and edit the built-in administrator from the [Local Users](/guides/node/settings/authentication/users/local/) page.
+
+## Confirm the installed version
+
+Sign in to the web interface and open the node's [**Summary**](/guides/node/) page. Find the Sylve version and confirm that it is `0.3.0` or newer.
+
+You can also check the installed version from the command line:
+
+```sh
+sylve --version
+```
+
+Confirm that the command reports version `0.3.0` or newer before continuing.
+
+:::caution
+Do not continue with this guide if the node is running a version older than `0.3.0`. Upgrade Sylve, restart the required services, and verify the reported version again.
+:::
+
+## Initialize Sylve for virtual machines
+
+Sylve must have its **Virtualization** service enabled before it can create or manage virtual machines. How you enable it depends on whether the node has already been initialized.
+
+### During first-time initialization
+
+After your first sign-in, Sylve opens the initialization dialog automatically. Select a ZFS pool that Sylve may use, enable **Virtualization** under **Compute**, and then select **Initialize**.
+
+The initialization check verifies the required virtualization packages, confirms that `qemu-img` is available, and loads the FreeBSD `vmm` kernel module when needed. Resolve any validation error shown by the dialog before continuing.
+
+For a complete explanation of the first-time setup screen, see [Initialization](/guides/).
+
+### On an initialized node
+
+If the node was initialized without virtual-machine support, open **Settings → System → Services**, select the **Virtualization** row, and select **Enable**. Confirm the change when prompted.
+
+:::caution[Reboot after enabling Virtualization]
+After enabling Virtualization from the Services page, a complete system reboot is highly recommended before proceeding. Although the saved setting changes immediately, virtualization monitoring and dependent services are initialized during node startup. Rebooting ensures that Sylve, libvirt, bhyve, and the required kernel modules all start from the same configuration.
+:::
+
+After the node returns, sign in again and confirm that **Virtualization** is shown as enabled under [System Services](/guides/node/settings/system/services/).
+
+## Prepare the host networking
+
+A virtual machine has a virtual network cable, but that cable still needs a way to reach the physical network. A bridge provides that connection.
+
+Think of a bridge as a small Ethernet switch living inside the FreeBSD host. The node's physical interface, such as `em0`, plugs into one side. Virtual interfaces belonging to VMs plug into the other side. The bridge passes network traffic between them, allowing the VMs to communicate with the same network as the host.
+
+In this guide, Sylve will create and manage that bridge as a **Standard Switch**. It will attach the node's existing `em0` interface as a physical port, then new VMs can attach their virtual interfaces to the same switch.
+
+<HostBridgeDiagram client:visible />
+
+Your interface may have a different name. Open **Network → Interfaces** and identify the physical interface that currently provides network access before continuing. Substitute that name wherever this guide uses `em0`.
+
+### Check the current host configuration
+
+This guide assumes that `em0` is already configured in `/etc/rc.conf` with either DHCP or a static address. A DHCP configuration commonly looks like this:
+
+```ini
+ifconfig_em0="DHCP"
+```
+
+A static configuration commonly looks like this:
+
+```ini
+ifconfig_em0="inet 192.168.1.10/24"
+defaultrouter="192.168.1.1"
+```
+
+Use the values already assigned to your node. Do not copy the example address unless it matches your network.
+
+### Create a Standard Switch
+
+Open **Network → Switches → Standard**, select **New**, and configure the switch:
+
+1. Enter `LAN / WAN` as the switch name.
+2. Select `em0`, or your equivalent physical interface, under **Ports**.
+3. If `em0` currently uses DHCP, enable **DHCP** on the switch.
+4. If `em0` has a static address, enter that same address in CIDR notation under **IPv4 Network**, enter its gateway under **IPv4 Gateway**, and enable **Default Route**.
+5. Leave **Disable Bridge Offloads** enabled.
+6. Select **Create**.
+
+<img
+  src={standardSwitchCreate.src}
+  alt="Create Standard Switch dialog with LAN / WAN as the name, em0 selected as a port, and the host's IPv4 configuration applied to the switch"
+/>
+
+When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. The existing `ifconfig_em0` entry may remain in `/etc/rc.conf` as an early-boot or fallback configuration, but do not add the Sylve-managed bridge to `rc.conf`.
+
+:::danger[Expect a brief network interruption]
+Moving the interface into the switch interrupts connectivity while its address is transferred to the bridge. If you are managing the node through `em0`, use local or out-of-band access, or perform this step during a maintenance window. An incorrect address or gateway can make the web interface unreachable.
+:::
+
+After connectivity returns, confirm that the `LAN / WAN` switch appears in the Standard Switches table and shows the expected port and address configuration.
+
+<img
+  src={standardSwitchReady.src}
+  alt="Standard Switches table showing the completed LAN / WAN switch with em0 and its assigned IPv4 configuration"
+/>
+
+For a complete explanation of every field and network mode, see [Standard Switches](/guides/node/network/switches/standard/).
+
+## Download the Debian installer
+
+Before creating the VM, add its installation ISO to the node's Downloader library. This guide installs **Debian 13.6 with the GNOME desktop environment** using the official amd64 network installer:
+
+```text
+https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.6.0-amd64-netinst.iso
+```
+
+The netinst image is intentionally small and retrieves most packages during installation, so the VM will need working internet access. We will select GNOME later in the Debian installer.
+
+:::tip[Consider Alpine Linux for servers]
+For most server workloads, we highly recommend considering [Alpine Linux](https://www.alpinelinux.org/). Its small footprint, resource efficiency, simple `apk` package manager, and straightforward OpenRC-based system make it an excellent guest when you do not need a full desktop environment. It leaves more CPU, memory, and storage available for the service the VM is meant to run.
+
+Debian with GNOME is used here because its graphical installer and desktop make every stage easy to see while learning the complete VM workflow.
+:::
+
+Open **Utilities → Downloader**, select **New**, and configure the download:
+
+1. Paste the Debian ISO URL into **Source**.
+2. Leave **Optional File Name** blank so Sylve uses the filename from the URL.
+3. Select **Uncategorized (ISOs, IMGs, etc.)** as the download type.
+4. Leave **Ignore TLS Errors**, **Extract Automatically**, and **Auto-convert to RAW** disabled. An installer ISO should be stored as-is.
+5. Select **Download**.
+
+<img
+  src={debianDownloadCreate.src}
+  alt="New Download dialog containing the Debian 13.6 amd64 netinst URL, Uncategorized selected, and all processing options disabled"
+/>
+
+The dialog closes after the request is accepted. Watch the new row in the Downloader table while it moves through **Pending** and **Processing**. Continue only after its state is **Done** and the filename is `debian-13.6.0-amd64-netinst.iso`.
+
+<img
+  src={debianDownloadReady.src}
+  alt="Downloader table showing debian-13.6.0-amd64-netinst.iso in the Done state"
+/>
+
+For other source types, uploads, processing options, and troubleshooting, see [Downloader](/guides/node/utilities/downloader/).
+
+## Create the virtual machine
+
+Open **Virtual Machines** beneath your node and select **Create VM**. The creation wizard groups the VM's identity, disk, network adapter, hardware allocation, and console settings into separate tabs.
+
+The values below create a comfortable first Debian desktop VM with 3 vCPUs, 3 GiB of memory, and a 48 GiB disk. You may reduce or increase them to suit the resources available on your node, but remember that FreeBSD, ZFS, and any other guests also need memory and CPU time.
+
+### Basic
+
+Use the **Basic** tab to identify the guest:
+
+1. Confirm that the correct **Node** is selected if the field is shown.
+2. Enter `Debian-GNOME` as the **VM Name**.
+3. Keep the suggested **VM ID** unless you have a reason to use another available value.
+4. Enter a helpful description such as `Debian 13 desktop with Gnome`.
+
+The VM ID must be unique across both VMs and jails in the cluster. A clear name and description make the guest easier to find later.
+
+<img
+  src={vmCreateBasic.src}
+  alt="Create VM wizard Basic tab with Debian GNOME as the name, the suggested VM ID, and Debian 13 desktop as the description"
+/>
+
+### Storage
+
+Configure the VM's boot disk and attach the installer:
+
+1. Select **ZFS Volume**. This creates a ZFS-managed virtual block device for the guest.
+2. Select `debian-13.6.0-amd64-netinst.iso` under **Installation Media**.
+3. Select the ZFS pool that should contain the VM disk.
+4. Enter `48 G` for **Disk Size**.
+5. Select **NVMe** as the emulation type.
+
+Debian supports the NVMe controller without additional drivers. The ISO is installation media, while the 48 GiB ZFS volume is the persistent disk onto which Debian will be installed.
+
+<img
+  src={vmCreateStorage.src}
+  alt="Create VM wizard Storage tab with ZFS Volume, the Debian 13.6 netinst ISO, a selected pool, a 48G disk, and NVMe emulation"
+/>
+
+### Network
+
+Connect the VM to the Standard Switch created earlier:
+
+1. Select `LAN / WAN` under **Switch**.
+2. Select **VirtIO** as the emulation type.
+3. Leave **MAC Address** unselected so Sylve generates and manages a unique address automatically.
+
+VirtIO gives Debian an efficient paravirtualized network adapter. Selecting `LAN / WAN` plugs that adapter into the software bridge, allowing the installer and the finished guest to reach the same upstream network as the host.
+
+<img
+  src={vmCreateNetwork.src}
+  alt="Create VM wizard Network tab with the LAN / WAN Standard Switch selected, VirtIO emulation, and no manually selected MAC address"
+/>
+
+### Hardware
+
+Allocate enough resources for the GNOME desktop:
+
+1. Set **CPU Sockets** to `1`.
+2. Set **CPU Cores** to `3`.
+3. Set **CPU Threads** to `1`. Together, these values give the VM 3 vCPUs.
+4. Enter `3 GiB` for **Memory Size**.
+5. Leave CPU pinning and **PCI Passthrough** unconfigured.
+
+CPU pinning and PCI passthrough are useful for specialized workloads, but neither is needed for this VM. Three GiB of memory is a practical starting point for Debian with GNOME without making the example unnecessarily large.
+
+<img
+  src={vmCreateHardware.src}
+  alt="Create VM wizard Hardware tab with one socket, three cores, one thread, 3 GiB of memory, and no CPU pins or PCI passthrough devices"
+/>
+
+### Advanced
+
+The graphical Debian installer requires a graphical console. Configure the final tab as follows:
+
+1. Keep **Enable VNC** enabled.
+2. Select a comfortable resolution such as `1280x720`.
+3. Keep the generated **VNC Password** and store it if you plan to connect with an external VNC client.
+4. Keep **VNC Bind IP** set to `127.0.0.1` and use the automatically selected VNC port.
+5. Leave **VNC Wait** and **Serial Console** disabled.
+6. Keep **Boot ROM** set to **UEFI** and **Clock Offset** set to **UTC**.
+7. Leave **Start On Boot**, **TPM Emulation**, **Cloud-Init**, **Ignore UMSRs**, **QEMU GA**, and **Bhyve Options** disabled for now.
+
+Binding VNC to `127.0.0.1` avoids exposing the raw VNC server on the network. You will still be able to use Sylve's built-in console after creating and starting the VM. Cloud-init is not used because this guide performs an ordinary installation from an ISO.
+
+<img
+  src={vmCreateAdvanced.src}
+  alt="Create VM wizard Advanced tab with VNC enabled at 1280x720, localhost binding, UEFI, UTC, and optional integrations disabled"
+/>
+
+### Finish creation
+
+Review each tab, then select **Create**. Sylve validates the VM ID, storage capacity, installation media, switch, hardware allocation, and console settings before creating the guest.
+
+Do not start clicking through the Debian installer yet. The next section will start the VM, open its graphical console, and walk through installing Debian with GNOME.
+
+<img
+  src={vmCreatedSummary.src}
+  alt="Newly created Debian GNOME VM summary before its first start"
+/>
+
+For a detailed reference covering every field in the wizard, see [Virtual Machine Creation](/guides/node/virtual-machines/creation/).
+
+## Install Debian with GNOME
+
+This section covers only the normal path through the Debian installer. Debian maintains a complete [Debian 13 installation guide](https://www.debian.org/releases/stable/amd64/) with detailed explanations, accessibility options, alternate partitioning layouts, troubleshooting, and advanced installation methods.
+
+### Start the VM and open its console
+
+From the new VM's **Summary** page, select **Start** and wait for the start task to complete. Then open **Console** beneath the VM. Because VNC is enabled, Sylve displays the graphical framebuffer directly in the browser.
+
+The VM should boot from `debian-13.6.0-amd64-netinst.iso` and show the Debian installer menu. Select **Graphical install**.
+
+<img
+  src={debianInstallerBoot.src}
+  alt="Sylve VNC console showing the Debian installer boot menu with Graphical install selected"
+/>
+
+If the console reports that the VM is not running, return to **Summary** and confirm its state. If startup fails, use **View Logs** on the Summary page to inspect the error before trying again.
+
+### Complete the basic installer flow
+
+Work through the installer using settings appropriate for your location and network:
+
+1. Select your language, location, and keyboard layout.
+2. Allow Debian to configure the VirtIO network adapter. On a typical home or office network, it receives an address through DHCP from the upstream router.
+3. Enter a hostname such as `debian-gnome`. Leave the domain name blank unless your network uses one.
+4. Configure the root account when prompted, then create your normal user account and password. Debian may skip the separate root password when the chosen installer flow configures the first user for administrative access instead.
+5. Select your time zone.
+6. For the simple layout used by this guide, choose **Guided - use entire disk**, select the 48 GiB virtual NVMe disk, and choose **All files in one partition**.
+7. Review the proposed partition layout, select **Finish partitioning and write changes to disk**, and confirm the write.
+8. Select a nearby Debian archive mirror and configure an HTTP proxy only if your network requires one.
+9. Choose whether to participate in the package usage survey.
+
+The guided partitioner changes only the VM's virtual disk. It does not repartition the FreeBSD host or the underlying ZFS pool.
+
+:::caution
+Confirm that the installer shows the VM's 48 GiB virtual disk before approving partition changes. Do not proceed if the disk list or size is not what you expect.
+:::
+
+### Select GNOME and finish
+
+At **Software selection**, keep these items selected:
+
+- **Debian desktop environment**
+- **GNOME**
+- **standard system utilities**
+
+You may also select **SSH server** if you want to administer the guest over SSH after installation. Avoid selecting multiple desktop environments for this simple VM.
+
+<img
+  src={debianSoftwareSelection.src}
+  alt="Debian Software selection screen with Debian desktop environment, GNOME, and standard system utilities selected"
+/>
+
+Continue and allow Debian to install the selected packages and boot loader. The netinst image downloads packages during this stage, so completion time depends on the VM's network connection and the selected mirror.
+
+When Debian reports that installation is complete, select **Continue** and allow the VM to reboot. If it returns to the installer instead of booting the installed system, stop the VM from Sylve before continuing.
+
+### Detach the installer ISO
+
+Once the VM is powered off, open its **Storage** page, select the Debian installer image, and choose **Detach**. Detaching removes the ISO from this VM but leaves the Downloader copy available for future installations.
+
+Storage attachments cannot be changed while the VM is running. If Debian already booted successfully from the virtual disk, shut it down cleanly before detaching the ISO.
+
+Start the VM again, open **Console**, and sign in to the GNOME desktop with the user account created during installation.
+
+<img
+  src={debianGnomeDesktop.src}
+  alt="Sylve VNC console showing the first successful Debian GNOME desktop login"
+/>
+
+The VM is now installed and connected through the `LAN / WAN` Standard Switch. For more detail about graphical and serial access, see [VM Console](/guides/node/virtual-machines/console/). For disk and installation-media management, see [VM Storage](/guides/node/virtual-machines/storage/).

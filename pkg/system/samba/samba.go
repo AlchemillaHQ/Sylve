@@ -20,13 +20,14 @@ func SambaUserExists(name string) (bool, error) {
 		low := strings.ToLower(out)
 		if strings.Contains(low, "no such user") ||
 			strings.Contains(low, "nt_status_no_such_user") ||
-			strings.Contains(low, "username not found!") {
+			strings.Contains(low, "username not found!") ||
+			(strings.TrimSpace(out) == "" && strings.Contains(strings.ToLower(err.Error()), "exit status 1")) {
 			return false, nil
 		}
 		return false, fmt.Errorf("pdbedit lookup failed: %v: %s", err, out)
 	}
 
-	return true, nil
+	return strings.TrimSpace(out) != "", nil
 }
 
 func CreateSambaUser(name, password string) error {

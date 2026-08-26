@@ -7,14 +7,16 @@
 		ref = $bindable(null),
 		class: className,
 		portalProps,
+		overlayClass,
 		...restProps
 	}: WithoutChild<AlertDialogPrimitive.ContentProps> & {
 		portalProps?: WithoutChildrenOrChild<AlertDialogPrimitive.PortalProps>;
+		overlayClass?: string;
 	} = $props();
 </script>
 
 <AlertDialogPrimitive.Portal {...portalProps}>
-	<AlertDialogOverlay />
+	<AlertDialogOverlay class={overlayClass} />
 	<AlertDialogPrimitive.Content
 		bind:ref
 		data-slot="alert-dialog-content"

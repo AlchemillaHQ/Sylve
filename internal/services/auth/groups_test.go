@@ -41,7 +41,7 @@ func newGroupTestService(t *testing.T) *Service {
 
 func seedGroupTestUser(t *testing.T, svc *Service, username string) models.User {
 	t.Helper()
-	u := models.User{Username: username, Password: "hashed"}
+	u := models.User{Username: username, Password: "hashed", Source: "pam"}
 	if err := svc.DB.Create(&u).Error; err != nil {
 		t.Fatalf("failed to seed user: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestCreateGroupInvalidName(t *testing.T) {
 	svc := newGroupTestService(t)
 	seedGroupTestUser(t, svc, "alice")
 
-	err := svc.CreateGroup("Bad Name!", []string{"alice"})
+	_, err := svc.CreateGroup("Bad Name!", []string{"alice"})
 	if err == nil {
 		t.Fatalf("expected error for invalid group name")
 	}
@@ -102,19 +102,19 @@ func TestCreateGroupInvalidName(t *testing.T) {
 func TestCreateGroupMemberNotFound(t *testing.T) {
 	svc := newGroupTestService(t)
 
-	err := svc.CreateGroup("devs", []string{"nonexistent"})
+	_, err := svc.CreateGroup("devs", []string{"nonexistent"})
 	if err == nil {
 		t.Fatalf("expected error for unknown member")
 	}
-	if !strings.Contains(err.Error(), "user_not_found") {
-		t.Fatalf("expected user_not_found, got: %v", err)
+	if !strings.Contains(err.Error(), "group_member_not_found") {
+		t.Fatalf("expected group_member_not_found, got: %v", err)
 	}
 }
 
 func TestDeleteGroupNotFound(t *testing.T) {
 	svc := newGroupTestService(t)
 
-	err := svc.DeleteGroup(999)
+	_, err := svc.DeleteGroup(999)
 	if err == nil {
 		t.Fatalf("expected error for non-existent group")
 	}
@@ -125,6 +125,21 @@ func TestDeleteGroupNotFound(t *testing.T) {
 
 func TestSyncGroupMembersWheelRootProtected(t *testing.T) {
 	svc := newGroupTestService(t)
+	restore := system.SetRunCommand(func(command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/bin/getent":
+			return "wheel:*:0:root", nil
+		case "/usr/bin/id":
+			if len(args) > 0 && args[0] == "-nG" {
+				return "wheel", nil
+			}
+			return "uid=0(root) gid=0(wheel)", nil
+		default:
+			return "", nil
+		}
+	})
+	defer restore()
+
 	g := models.Group{Name: "wheel"}
 	if err := svc.DB.Create(&g).Error; err != nil {
 		t.Fatalf("failed to create group: %v", err)
@@ -134,34 +149,8 @@ func TestSyncGroupMembersWheelRootProtected(t *testing.T) {
 		t.Fatalf("failed to associate root with wheel: %v", err)
 	}
 
-	err := svc.SyncGroupMembers([]string{}, "wheel")
-	if err != nil {
-		if strings.Contains(err.Error(), "failed_to_remove_unix_member") {
-			t.Skipf("system call not available in test: %v", err)
-		}
-		if strings.Contains(err.Error(), "failed_to_fetch_target_users") {
-			t.Skipf("empty IN clause not supported: %v", err)
-		}
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestAddUsersToGroupSkipsExisting(t *testing.T) {
-	svc := newGroupTestService(t)
-	u := seedGroupTestUser(t, svc, "bob")
-	g := models.Group{Name: "ops"}
-	if err := svc.DB.Create(&g).Error; err != nil {
-		t.Fatalf("failed to create group: %v", err)
-	}
-	if err := svc.DB.Model(&g).Association("Users").Append(&u); err != nil {
-		t.Fatalf("failed to associate: %v", err)
-	}
-
-	err := svc.AddUsersToGroup([]string{"bob"}, "ops")
-	if err != nil {
-		if strings.Contains(err.Error(), "failed_to_add_user_to_unix_group") {
-			t.Skipf("system call not available in test: %v", err)
-		}
-		t.Fatalf("expected no error for already-existing member, got: %v", err)
+	_, err := svc.SyncGroupMembers(g.ID, []string{})
+	if err == nil || !strings.Contains(err.Error(), "cannot_remove_root_from_wheel") {
+		t.Fatalf("expected root protection error, got: %v", err)
 	}
 }

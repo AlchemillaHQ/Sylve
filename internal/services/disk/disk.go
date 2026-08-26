@@ -10,11 +10,12 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
+	"strconv"
 	"strings"
 	"sync"
-	"syscall"
+	"sync/atomic"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
@@ -22,31 +23,79 @@ import (
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	diskUtils "github.com/alchemillahq/sylve/pkg/disk"
+	"github.com/alchemillahq/sylve/pkg/disk/smart"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
 var _ diskServiceInterfaces.DiskServiceInterface = (*Service)(nil)
 
 const smartFailRetryAfter = 1 * time.Hour
+const physicalDiskResolveCacheTTL = 30 * time.Second
+
+type physicalDiskResolveCacheEntry struct {
+	disk      diskServiceInterfaces.DiskInfo
+	expiresAt time.Time
+}
+
+type smartFailureCacheEntry struct {
+	failedAt time.Time
+	identity string
+}
+
+type diskIdentity struct {
+	uuid   string
+	stable bool
+}
 
 type Service struct {
-	DB                 *gorm.DB
-	DiskOperationMutex sync.Mutex
-	ZFS                zfsServiceInterfaces.ZfsServiceInterface
-	GZFS               *gzfs.Client
-	smartFailCache     map[string]time.Time
-	smartFailMu        sync.Mutex
+	DB                        *gorm.DB
+	DiskOperationMutex        sync.Mutex
+	ZFS                       zfsServiceInterfaces.ZfsServiceInterface
+	GZFS                      *gzfs.Client
+	smartFailCache            map[string]smartFailureCacheEntry
+	smartFailMu               sync.Mutex
+	selfTestDriver            selfTestBackend
+	selfTestCache             map[string]selfTestCacheEntry
+	selfTestCacheMu           sync.Mutex
+	selfTestCacheTTL          time.Duration
+	selfTestReadGroup         singleflight.Group
+	selfTestDeviceLock        sync.Map
+	selfTestActiveKinds       sync.Map
+	selfTestScheduleMu        sync.Mutex
+	selfTestJobEnqueue        func(context.Context, smartSelfTestSchedulerJob) error
+	selfTestEventEnqueue      func(context.Context, smartSelfTestEventJob) error
+	selfTestJobsReady         atomic.Bool
+	selfTestTrackingActive    atomic.Bool
+	selfTestEventRelayActive  atomic.Bool
+	selfTestEventRelayVersion atomic.Uint64
+	physicalDiskCache         map[string]physicalDiskResolveCacheEntry
+	physicalDiskCacheMu       sync.Mutex
+	physicalDiskSource        func() ([]diskServiceInterfaces.DiskInfo, error)
+	iscsiDeviceSource         func() (map[string]struct{}, error)
+	zpoolDeviceSource         func(context.Context) (map[string]string, error)
+	smartDataSource           func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error)
+	ataPowerModeSource        func(string) (smart.ATAPowerMode, error)
+	scsiPowerModeSource       func(string) (smart.SCSIPowerMode, error)
+	diskGPTSource             func(string, int) bool
 }
 
 func NewDiskService(db *gorm.DB, zfsService zfsServiceInterfaces.ZfsServiceInterface, gzfs *gzfs.Client) diskServiceInterfaces.DiskServiceInterface {
+	if db != nil {
+		db = db.Session(&gorm.Session{NowFunc: func() time.Time { return time.Now().UTC() }})
+	}
 	return &Service{
-		DB:             db,
-		ZFS:            zfsService,
-		GZFS:           gzfs,
-		smartFailCache: make(map[string]time.Time),
+		DB:                db,
+		ZFS:               zfsService,
+		GZFS:              gzfs,
+		smartFailCache:    make(map[string]smartFailureCacheEntry),
+		selfTestDriver:    librarySelfTestBackend{},
+		selfTestCache:     make(map[string]selfTestCacheEntry),
+		selfTestCacheTTL:  defaultSelfTestCacheTTL,
+		physicalDiskCache: make(map[string]physicalDiskResolveCacheEntry),
 	}
 }
 
@@ -82,14 +131,16 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 
 		provider := geom.Providers[0]
 		diskType := "SSD"
+		isISCSI := strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi")
 
 		if strings.Contains(strings.ToLower(provider.Config.Descr), "virtual") ||
-			strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi") {
+			isISCSI {
 			diskType = "Virtual"
 		} else if provider.Config.RotationRate != "0" && provider.Config.RotationRate != "" {
 			diskType = "HDD"
 		} else if strings.HasPrefix(provider.Name, "nvme") ||
 			strings.HasPrefix(provider.Name, "nda") ||
+			strings.HasPrefix(provider.Name, "nvd") ||
 			strings.HasPrefix(provider.Alias, "nv") {
 			diskType = "NVMe"
 		}
@@ -104,6 +155,7 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 			Serial:       provider.Config.Ident,
 			LunID:        provider.Config.LunID,
 			Type:         diskType,
+			IsISCSI:      isISCSI,
 			Partitions:   []diskServiceInterfaces.PartitionInfo{},
 			IsBootDevice: false,
 		}
@@ -152,94 +204,204 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 	return disks, nil
 }
 
-func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
-	var disks []diskServiceInterfaces.Disk
+func physicalDiskIdentities(disks []diskServiceInterfaces.DiskInfo) []diskIdentity {
+	seeds := make([]string, len(disks))
+	counts := make(map[string]int, len(disks))
+	for i, disk := range disks {
+		if strings.TrimSpace(disk.LunID) == "" && strings.TrimSpace(disk.Serial) == "" {
+			continue
+		}
+		seed := fmt.Sprintf("%s-%s", disk.LunID, disk.Serial)
+		seeds[i] = seed
+		counts[seed]++
+	}
+	identities := make([]diskIdentity, len(disks))
+	for i, disk := range disks {
+		seed := seeds[i]
+		stable := seed != "" && counts[seed] == 1
+		if !stable {
+			seed = disk.Name
+		}
+		identities[i] = diskIdentity{uuid: utils.GenerateDeterministicUUID(seed), stable: stable}
+	}
+	return identities
+}
+
+func (s *Service) physicalDisks() ([]diskServiceInterfaces.DiskInfo, error) {
+	if s.physicalDiskSource != nil {
+		return s.physicalDiskSource()
+	}
 
 	mesh, err := s.ParseGeomOutput()
 	if err != nil {
 		return nil, err
 	}
 
-	dinfo, err := ExtractDiskInfo(&mesh)
+	disks, err := ExtractDiskInfo(&mesh)
+	if err != nil {
+		return nil, err
+	}
+	if !hasAmbiguousSCSIDisk(disks) {
+		return disks, nil
+	}
 
+	iscsiDevices, err := s.iscsiDevices()
+	if err != nil {
+		logger.L.Debug().Err(err).Msg("failed to identify iSCSI disks from CAM inventory")
+		return disks, nil
+	}
+	for i := range disks {
+		if _, ok := iscsiDevices[disks[i].Name]; ok {
+			disks[i].Type = "Virtual"
+			disks[i].IsISCSI = true
+		}
+	}
+	return disks, nil
+}
+
+func (s *Service) diskIsGPT(device string, sectorSize int) bool {
+	if s.diskGPTSource != nil {
+		return s.diskGPTSource(device, sectorSize)
+	}
+	return s.IsDiskGPT(device, sectorSize)
+}
+
+func (s *Service) readSmartData(disk diskServiceInterfaces.DiskInfo, includeSelfTestLog bool) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+	if s.smartDataSource != nil {
+		return s.smartDataSource(disk)
+	}
+	return s.getSmartData(disk, includeSelfTestLog)
+}
+
+func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	return s.getDiskDevices(ctx, true, false)
+}
+
+func (s *Service) GetDiskDevicesWithoutSMART(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	return s.getDiskDevices(ctx, false, false)
+}
+
+func (s *Service) GetDiskDevicesForSMARTMonitor(ctx context.Context) ([]diskServiceInterfaces.Disk, error) {
+	return s.getDiskDevices(ctx, true, true)
+}
+
+func (s *Service) GetDiskDevicesInventory(_ context.Context) ([]diskServiceInterfaces.Disk, error) {
+	disks, err := s.physicalDisks()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]diskServiceInterfaces.Disk, 0, len(disks))
+	identities := physicalDiskIdentities(disks)
+	for i, item := range disks {
+		result = append(result, diskServiceInterfaces.Disk{
+			UUID:           identities[i].uuid,
+			IdentityStable: identities[i].stable,
+			Device:         item.Name,
+			Type:           item.Type,
+			Size:           uint64(item.MediaSize),
+			Model:          item.Description,
+			Serial:         item.Serial,
+			Partitions:     []diskServiceInterfaces.Partition{},
+		})
+	}
+	return result, nil
+}
+
+func (s *Service) getDiskDevices(ctx context.Context, includeSMART, avoidWake bool) ([]diskServiceInterfaces.Disk, error) {
+	var disks []diskServiceInterfaces.Disk
+
+	dinfo, err := s.physicalDisks()
 	if err != nil {
 		return nil, err
 	}
 
-	seenUUIDs := make(map[string]bool)
-
-	for _, d := range dinfo {
+	identities := physicalDiskIdentities(dinfo)
+	s.pruneSmartFailureCache(dinfo)
+	skipRemainingSMART := false
+	for i, d := range dinfo {
 		var disk diskServiceInterfaces.Disk
-
-		seed := fmt.Sprintf("%s-%s", d.LunID, d.Serial)
-		if strings.TrimSpace(d.LunID) == "" && strings.TrimSpace(d.Serial) == "" {
-			seed = d.Name
-		}
-
-		uuid := utils.GenerateDeterministicUUID(seed)
-		for attempt := 1; seenUUIDs[uuid]; attempt++ {
-			uuid = utils.GenerateDeterministicUUID(fmt.Sprintf("%s#%s#%d", seed, d.Name, attempt))
-		}
-		seenUUIDs[uuid] = true
-
-		disk.UUID = uuid
+		disk.UUID = identities[i].uuid
+		disk.IdentityStable = identities[i].stable
 		disk.Device = d.Name
 		disk.Type = d.Type
 		disk.Size = uint64(d.MediaSize)
 		disk.Serial = d.Serial
 
-		if s.IsDiskGPT("/dev/" + d.Name) {
-			disk.GPT = true
-		} else {
-			disk.GPT = false
+		if !avoidWake {
+			disk.GPT = s.diskIsGPT("/dev/"+d.Name, d.SectorSize)
 		}
 
-		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
-			s.smartFailMu.Lock()
-			failTime, failed := s.smartFailCache[d.Name]
-			s.smartFailMu.Unlock()
-
-			if failed {
-				if time.Since(failTime) < smartFailRetryAfter {
+		if includeSMART && !skipRemainingSMART {
+			failed := s.smartReadSuppressed(d, time.Now())
+			if !failed && avoidWake && d.Type != "NVMe" {
+				probe := s.ataPowerModeSource
+				if probe == nil {
+					probe = smart.CheckATAPowerMode
+				}
+				mode, probeErr := probe(d.Name)
+				if probeErr == nil && mode.IsStandbyOrSleeping() {
+					disk.SmartReadPowerSkipped = true
 					disk.SmartData = nil
-				} else {
-					s.smartFailMu.Lock()
-					delete(s.smartFailCache, d.Name)
-					s.smartFailMu.Unlock()
-					failed = false
+					goto smartDone
+				}
+				if errors.Is(probeErr, smart.ErrUnsupportedFeature) {
+					scsiProbe := s.scsiPowerModeSource
+					if scsiProbe == nil {
+						scsiProbe = smart.CheckSCSIPowerMode
+					}
+					scsiMode, scsiProbeErr := scsiProbe(d.Name)
+					probeErr = scsiProbeErr
+					if scsiProbeErr == nil && scsiMode.IsStandbyOrSleeping() {
+						disk.SmartReadPowerSkipped = true
+						disk.SmartData = nil
+						goto smartDone
+					}
+				}
+				if probeErr != nil && !errors.Is(probeErr, smart.ErrUnsupportedFeature) {
+					s.recordSmartFailure(d, time.Now())
+					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to check disk power state %v", probeErr))
+					disk.SmartData = nil
+					if smart.IsControllerError(probeErr) {
+						logger.L.Warn().Str("device", d.Name).Msg("controller_level_error_skipping_remaining_smart_reads")
+						skipRemainingSMART = true
+					}
+					goto smartDone
 				}
 			}
 
 			if !failed {
-				smartData, err := s.GetSmartData(d)
+				smartData, selfTestLog, err := s.readSmartData(d, false)
 				if err != nil {
-					s.smartFailMu.Lock()
-					s.smartFailCache[d.Name] = time.Now()
-					s.smartFailMu.Unlock()
+					s.recordSmartFailure(d, time.Now())
 					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to retrieve S.M.A.R.T data %v", err))
+
+					if smart.IsControllerError(err) {
+						logger.L.Warn().
+							Str("device", d.Name).
+							Msg("controller_level_error_skipping_remaining_smart_reads")
+						disk.SmartData = nil
+						skipRemainingSMART = true
+					}
+
 					disk.SmartData = nil
 				} else if err == nil && smartData != nil {
 					disk.SmartData = smartData
+					disk.SelfTestLog = selfTestLog
 				}
 			}
 		} else {
 			disk.SmartData = nil
 		}
 
-		if d.Type == "NVMe" || d.Type == "SSD" || d.Type == "HDD" {
-			wearOut, err := s.GetWearOut(disk.SmartData)
-			if err != nil {
-				disk.WearOut = "Unknown"
-			} else {
-				disk.WearOut = fmt.Sprintf("%.2f", wearOut)
-			}
-		} else {
-			disk.WearOut = "Unknown"
+	smartDone:
+		disk.WearOut = s.formatWearOut(d.Type, disk.SmartData)
+		disk.Model = d.Description
+		if avoidWake {
+			disks = append(disks, disk)
+			continue
 		}
 
 		disk.Partitions = []diskServiceInterfaces.Partition{}
-
-		disk.Model = d.Description
 		for _, p := range d.Partitions {
 			if strings.HasPrefix(p.Name, d.Name) {
 				var partition diskServiceInterfaces.Partition
@@ -275,6 +437,53 @@ func (s *Service) GetDiskDevices(ctx context.Context) ([]diskServiceInterfaces.D
 	return disks, nil
 }
 
+func smartFailureIdentity(disk diskServiceInterfaces.DiskInfo) string {
+	return strings.Join([]string{
+		strings.TrimSpace(disk.LunID),
+		strings.TrimSpace(disk.Serial),
+		strings.TrimSpace(disk.Description),
+		strconv.FormatInt(disk.MediaSize, 10),
+	}, "\x00")
+}
+
+func (s *Service) smartReadSuppressed(disk diskServiceInterfaces.DiskInfo, now time.Time) bool {
+	identity := smartFailureIdentity(disk)
+	s.smartFailMu.Lock()
+	defer s.smartFailMu.Unlock()
+	entry, ok := s.smartFailCache[disk.Name]
+	if !ok {
+		return false
+	}
+	if entry.identity != identity || now.Sub(entry.failedAt) >= smartFailRetryAfter {
+		delete(s.smartFailCache, disk.Name)
+		return false
+	}
+	return true
+}
+
+func (s *Service) recordSmartFailure(disk diskServiceInterfaces.DiskInfo, now time.Time) {
+	s.smartFailMu.Lock()
+	if s.smartFailCache == nil {
+		s.smartFailCache = make(map[string]smartFailureCacheEntry)
+	}
+	s.smartFailCache[disk.Name] = smartFailureCacheEntry{failedAt: now, identity: smartFailureIdentity(disk)}
+	s.smartFailMu.Unlock()
+}
+
+func (s *Service) pruneSmartFailureCache(disks []diskServiceInterfaces.DiskInfo) {
+	present := make(map[string]string, len(disks))
+	for _, disk := range disks {
+		present[disk.Name] = smartFailureIdentity(disk)
+	}
+	s.smartFailMu.Lock()
+	for name, entry := range s.smartFailCache {
+		if identity, ok := present[name]; !ok || identity != entry.identity {
+			delete(s.smartFailCache, name)
+		}
+	}
+	s.smartFailMu.Unlock()
+}
+
 func (s *Service) GetDiskSize(device string) (uint64, error) {
 	size, err := diskUtils.GetDiskSize(device)
 
@@ -285,76 +494,8 @@ func (s *Service) GetDiskSize(device string) (uint64, error) {
 	return size, nil
 }
 
-func (s *Service) DestroyPartitionTable(device string) error {
-	s.DiskOperationMutex.Lock()
-	defer s.DiskOperationMutex.Unlock()
-
-	if _, err := os.Stat(device); os.IsNotExist(err) {
-		return fmt.Errorf("device does not exist: %v", err)
-	}
-
-	file, err := os.OpenFile(device, os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("failed to open disk: %v", err)
-	}
-
-	defer file.Close()
-
-	diskSize, err := s.GetDiskSize(device)
-	if err != nil {
-		return fmt.Errorf("failed to get disk size: %v", err)
-	}
-
-	const wipeSize = 1024 * 1024
-	buffer := make([]byte, wipeSize)
-
-	_, err = file.WriteAt(buffer, 0)
-	if err != nil {
-		return fmt.Errorf("error wiping primary GPT: %v", err)
-	}
-
-	if diskSize > wipeSize {
-		_, err = file.WriteAt(buffer, int64(diskSize)-int64(wipeSize))
-		if err != nil {
-			return fmt.Errorf("error wiping backup GPT: %v", err)
-		}
-	} else {
-		return fmt.Errorf("disk size is too small for GPT")
-	}
-
-	err = syscall.Fsync(int(file.Fd()))
-	if err != nil {
-		return fmt.Errorf("failed to sync disk: %v", err)
-	}
-
-	return nil
-}
-
-func (s *Service) InitializeGPT(device string) error {
-	s.DiskOperationMutex.Lock()
-	defer s.DiskOperationMutex.Unlock()
-
-	output, err := utils.RunCommand("/sbin/gpart", "create", "-s", "gpt", device)
-	if err != nil {
-		if strings.Contains(output, "File exists") {
-			return fmt.Errorf("gpt_partition_table_already_exists")
-		}
-
-		return fmt.Errorf("failed_to_create_gpt_partition_table %s", output)
-	}
-
-	baseDevice := strings.TrimPrefix(device, "/dev/")
-	expectedOutput := fmt.Sprintf("%s created", baseDevice)
-
-	if !strings.Contains(output, expectedOutput) {
-		return fmt.Errorf("failed_to_create_gpt_partition_table %s", output)
-	}
-
-	return nil
-}
-
-func (s *Service) IsDiskGPT(device string) bool {
-	gptSector, err := utils.ReadDiskSector(device, 1)
+func (s *Service) IsDiskGPT(device string, sectorSize int) bool {
+	gptSector, err := utils.ReadDiskSector(device, 1, int64(sectorSize))
 	if err != nil {
 		if strings.Contains(err.Error(), "device not configured") {
 			return false

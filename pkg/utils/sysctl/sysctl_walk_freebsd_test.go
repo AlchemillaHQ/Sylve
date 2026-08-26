@@ -46,3 +46,26 @@ func TestFormatKelvin(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDStrictlyAfter(t *testing.T) {
+	tests := []struct {
+		name     string
+		previous []int32
+		next     []int32
+		want     bool
+	}{
+		{name: "greater component", previous: []int32{1, 2}, next: []int32{1, 3}, want: true},
+		{name: "child", previous: []int32{1, 2}, next: []int32{1, 2, 1}, want: true},
+		{name: "same", previous: []int32{1, 2}, next: []int32{1, 2}, want: false},
+		{name: "parent", previous: []int32{1, 2, 1}, next: []int32{1, 2}, want: false},
+		{name: "lower component", previous: []int32{1, 3}, next: []int32{1, 2}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := oidStrictlyAfter(tt.previous, tt.next); got != tt.want {
+				t.Fatalf("oidStrictlyAfter(%v, %v) = %v, want %v", tt.previous, tt.next, got, tt.want)
+			}
+		})
+	}
+}

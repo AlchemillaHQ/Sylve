@@ -7,6 +7,7 @@
 	import { cronToHuman } from '$lib/utils/time';
 	import { modifyPeriodicSnapshot } from '$lib/api/zfs/datasets';
 	import { handleAPIError } from '$lib/utils/http';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -17,69 +18,143 @@
 	}
 
 	let { open = $bindable(), snapshot = null, dataset = '', reload = $bindable() }: Props = $props();
+	const simpleRetentionDefaults = { keepLast: 24, maxAgeDays: 0 };
+	const gfsRetentionDefaults = {
+		keepLast: 20,
+		keepHourly: 24,
+		keepDaily: 7,
+		keepWeekly: 4,
+		keepMonthly: 12,
+		keepYearly: 3
+	};
 
-	let properties = $state({
-		interval: {
-			open: false,
-			value: snapshot?.cronExpr ? 'cronExpr' : 'minutes',
-			data: [
-				{ value: 'minutes', label: 'Simple' },
-				{ value: 'cronExpr', label: 'Cron Expression' }
-			],
-			values: {
-				cron: snapshot?.cronExpr || '',
-				interval: {
-					open: false,
-					data: [
-						{ value: '60', label: 'Every Minute' },
-						{ value: '3600', label: 'Every Hour' },
-						{ value: '86400', label: 'Every Day' },
-						{ value: '604800', label: 'Every Week' },
-						{ value: '2419200', label: 'Every Month' },
-						{ value: '29030400', label: 'Every Year' }
-					],
-					value: snapshot?.interval.toString() || '86400'
+	function createProperties(source: PeriodicSnapshot | null) {
+		const hasGFS = Boolean(
+			source?.keepHourly ||
+			source?.keepDaily ||
+			source?.keepWeekly ||
+			source?.keepMonthly ||
+			source?.keepYearly
+		);
+		const hasSimple = Boolean(source?.keepLast || source?.maxAgeDays);
+		const retentionType = hasGFS ? 'gfs' : hasSimple ? 'simple' : 'none';
+
+		return {
+			interval: {
+				open: false,
+				value: source?.cronExpr ? 'cronExpr' : 'minutes',
+				data: [
+					{ value: 'minutes', label: 'Simple' },
+					{ value: 'cronExpr', label: 'Cron Expression' }
+				],
+				values: {
+					cron: source?.cronExpr || '',
+					interval: {
+						open: false,
+						data: [
+							{ value: '60', label: 'Every Minute' },
+							{ value: '3600', label: 'Every Hour' },
+							{ value: '86400', label: 'Every Day' },
+							{ value: '604800', label: 'Every Week' },
+							{ value: '2419200', label: 'Every Month' },
+							{ value: '29030400', label: 'Every Year' }
+						],
+						value: source?.interval.toString() || '86400'
+					}
+				}
+			},
+			retention: {
+				open: false,
+				value: retentionType,
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'simple', label: 'Simple' },
+					{ value: 'gfs', label: 'GFS' }
+				],
+				values: {
+					simple: {
+						keepLast:
+							retentionType === 'simple' ? source?.keepLast || 0 : simpleRetentionDefaults.keepLast,
+						maxAgeDays:
+							retentionType === 'simple'
+								? source?.maxAgeDays || 0
+								: simpleRetentionDefaults.maxAgeDays
+					},
+					gfs: {
+						keepLast:
+							retentionType === 'gfs' ? source?.keepLast || 0 : gfsRetentionDefaults.keepLast,
+						keepHourly:
+							retentionType === 'gfs' ? source?.keepHourly || 0 : gfsRetentionDefaults.keepHourly,
+						keepDaily:
+							retentionType === 'gfs' ? source?.keepDaily || 0 : gfsRetentionDefaults.keepDaily,
+						keepWeekly:
+							retentionType === 'gfs' ? source?.keepWeekly || 0 : gfsRetentionDefaults.keepWeekly,
+						keepMonthly:
+							retentionType === 'gfs' ? source?.keepMonthly || 0 : gfsRetentionDefaults.keepMonthly,
+						keepYearly:
+							retentionType === 'gfs' ? source?.keepYearly || 0 : gfsRetentionDefaults.keepYearly
+					}
 				}
 			}
-		},
-		retention: {
-			open: false,
-			value: snapshot?.keepLast || snapshot?.maxAgeDays ? 'simple' : 'gfs',
-			data: [
-				{ value: 'simple', label: 'Simple' },
-				{ value: 'gfs', label: 'GFS' }
-			],
-			values: {
-				simple: {
-					keepLast: snapshot?.keepLast || 0,
-					maxAgeDays: snapshot?.maxAgeDays || 0
-				},
-				gfs: {
-					keepHourly: snapshot?.keepHourly || 0,
-					keepDaily: snapshot?.keepDaily || 0,
-					keepWeekly: snapshot?.keepWeekly || 0,
-					keepMonthly: snapshot?.keepMonthly || 0,
-					keepYearly: snapshot?.keepYearly || 0
-				}
-			}
-		}
-	});
+		};
+	}
+
+	const snapshotAtOpen = untrack(() => snapshot);
+	let properties = $state(createProperties(snapshotAtOpen));
+	let cronDescription = $derived(
+		properties.interval.values.cron.trim() ? cronToHuman(properties.interval.values.cron) : ''
+	);
 
 	async function save() {
+		if (!snapshotAtOpen) {
+			toast.error('Snapshot job is unavailable', { position: 'bottom-center' });
+			return;
+		}
+
+		const simpleSchedule = properties.interval.value === 'minutes';
+		const retentionType = properties.retention.value as 'none' | 'simple' | 'gfs';
+		if (retentionType === 'simple') {
+			const values = properties.retention.values.simple;
+			if (![values.keepLast, values.maxAgeDays].some((value) => Number(value) > 0)) {
+				toast.error('At least one retention value must be greater than zero', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+		} else if (retentionType === 'gfs') {
+			if (!Object.values(properties.retention.values.gfs).some((value) => Number(value) > 0)) {
+				toast.error('At least one retention value must be greater than zero', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+		}
+
 		const response = await modifyPeriodicSnapshot(
-			snapshot?.id as number,
-			properties.retention.values.simple.keepLast || null,
-			properties.retention.values.simple.maxAgeDays || null,
-			properties.retention.values.gfs.keepHourly || null,
-			properties.retention.values.gfs.keepDaily || null,
-			properties.retention.values.gfs.keepWeekly || null,
-			properties.retention.values.gfs.keepMonthly || null,
-			properties.retention.values.gfs.keepYearly || null
+			snapshotAtOpen.id,
+			simpleSchedule ? Number(properties.interval.values.interval.value) : 0,
+			simpleSchedule ? '' : properties.interval.values.cron.trim(),
+			retentionType,
+			retentionType === 'simple'
+				? Number(properties.retention.values.simple.keepLast)
+				: retentionType === 'gfs'
+					? Number(properties.retention.values.gfs.keepLast)
+					: 0,
+			retentionType === 'simple'
+				? Number(properties.retention.values.simple.maxAgeDays)
+				: retentionType === 'none'
+					? 0
+					: null,
+			retentionType === 'gfs' ? Number(properties.retention.values.gfs.keepHourly) : 0,
+			retentionType === 'gfs' ? Number(properties.retention.values.gfs.keepDaily) : 0,
+			retentionType === 'gfs' ? Number(properties.retention.values.gfs.keepWeekly) : 0,
+			retentionType === 'gfs' ? Number(properties.retention.values.gfs.keepMonthly) : 0,
+			retentionType === 'gfs' ? Number(properties.retention.values.gfs.keepYearly) : 0
 		);
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
 			handleAPIError(response);
 			toast.error('Error modifying retention policy', {
 				position: 'bottom-center'
@@ -111,27 +186,18 @@
 					</div>
 				</Dialog.Title>
 				<Dialog.Description>
-					{dataset}@{snapshot?.prefix}
+					{dataset}@{snapshotAtOpen?.prefix}
 				</Dialog.Description>
 			</Dialog.Header>
-
-			<Dialog.Close
-				class="flex h-5 w-5 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={() => {
-					open = false;
-				}}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-			</Dialog.Close>
 		</div>
 
-		<div class="flex flex-row gap-2">
+		<div class="flex min-w-0 flex-row items-start gap-2">
 			<CustomComboBox
 				bind:open={properties.interval.open}
-				label="Interval"
+				label="Interval Type"
 				bind:value={properties.interval.value}
 				data={properties.interval.data}
-				classes="w-full space-y-1"
+				classes="min-w-0 flex-1 space-y-1"
 				placeholder="Select an interval"
 				width="w-full"
 			/>
@@ -142,25 +208,17 @@
 					label="Interval"
 					bind:value={properties.interval.values.interval.value}
 					data={properties.interval.values.interval.data}
-					classes="w-full space-y-1"
+					classes="min-w-0 flex-1 space-y-1"
 					placeholder="Select an interval"
 					width="w-full"
 				/>
 			{:else if properties.interval.value === 'cronExpr'}
 				<CustomValueInput
-					label={`
-                    <span class="text-sm font-medium text-gray-200">
-                        Cron Expression${
-													cronToHuman(properties.interval.values.cron)
-														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(properties.interval.values.cron)})</span>`
-														: ''
-												}
-                    </span>
-                    `}
-					labelHTML={true}
+					label="Cron Expression"
+					hint={cronDescription}
 					placeholder="0 0 * * *"
 					bind:value={properties.interval.values.cron}
-					classes="w-full space-y-1"
+					classes="min-w-0 flex-1 space-y-1"
 				/>
 			{/if}
 
@@ -169,7 +227,7 @@
 				label="Retention"
 				bind:value={properties.retention.value}
 				data={properties.retention.data}
-				classes="w-full space-y-1"
+				classes="min-w-0 flex-1 space-y-1"
 				placeholder="Select a retention policy"
 				width="w-full"
 			/>
@@ -194,6 +252,13 @@
 			</div>
 		{:else if properties.retention.value === 'gfs'}
 			<div class="flex w-full flex-row gap-2">
+				<CustomValueInput
+					label="Keep Last"
+					type="number"
+					placeholder="e.g. 20"
+					bind:value={properties.retention.values.gfs.keepLast}
+					classes="w-full space-y-1"
+				/>
 				<CustomValueInput
 					label="Keep Hourly"
 					type="number"

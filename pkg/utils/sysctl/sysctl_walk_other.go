@@ -35,14 +35,28 @@ func List() ([]Tunable, error) {
 		if eq < 0 {
 			continue
 		}
+		name := strings.TrimSpace(line[:eq])
+		if name == "" {
+			continue
+		}
 
 		result = append(result, Tunable{
-			Name:     line[:eq],
-			Value:    line[eq+1:],
+			Name:     name,
+			Value:    strings.TrimSpace(line[eq+1:]),
 			Type:     "",
 			Writable: false,
 		})
 	}
 
 	return result, nil
+}
+
+// Describe performs a bounded per-name lookup where native MIB metadata is
+// unavailable. Fallback builds cannot reliably determine type or writability.
+func Describe(name string) (Tunable, bool, error) {
+	value, err := GetString(name)
+	if err != nil {
+		return Tunable{}, false, nil
+	}
+	return Tunable{Name: name, Value: value}, true, nil
 }

@@ -165,7 +165,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item (item.label)}
+								{#each nodeItems as item (item.href ?? item.icon)}
 									<TreeView {item} onToggle={toggleCategory} />
 								{/each}
 							</ScrollArea>
@@ -175,7 +175,7 @@
 			</div>
 		</Resizable.Pane>
 
-		<Resizable.Handle withHandle />
+		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
 
 		<Resizable.Pane>
 			<div class="h-full overflow-auto">

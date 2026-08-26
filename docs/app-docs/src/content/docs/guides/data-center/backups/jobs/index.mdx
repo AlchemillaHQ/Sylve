@@ -1,111 +1,115 @@
 ---
 title: Jobs
-description: Creating backup jobs, restoring from jobs, and out-of-band restores
+description: Schedule backups for ZFS datasets, jails, and virtual machines.
 ---
 
-:::note
-Backups are currently in early beta, so some features may not be available yet and the UI may change in the future. We are actively working on improving the backup experience, so stay tuned for updates!
-:::
+A backup job combines a source, a target, a runner node, and a schedule. Create and manage jobs in **Data Center → Backups → Jobs**. Before creating one, add a target and validate it from the node that will run the job.
 
-In this section, you will learn how to create backup jobs and restore data from existing backups.
+![Backup jobs table with scheduled jobs, source labels, encryption state, and row actions.](./backups-jobs-overview.png)
 
-A **target** defines *where* backups go.  
-A **job** defines *what* to back up, *when* to run, and *which node* should run it.
+## Create a job
 
-## Creating a Backup Job
+Select **New** and choose a target, runner, and backup mode.
 
-Go to **Backups → Jobs**, then click **New**.
+| Field | Description |
+| --- | --- |
+| **Name** | A name for the scheduled backup. |
+| **Target** | Remote backup target that receives the data. |
+| **Run On Node** | Node that performs the backup. In a cluster, select the node that owns the selected source. |
+| **Mode** | **Dataset** backs up one chosen ZFS dataset, **Jail** backs up a Sylve jail, and **Virtual Machine** backs up a Sylve VM. |
+| **Source Dataset / Jail / Virtual Machine** | The source appropriate to the selected mode. |
+| **Schedule (Cron, 5-field)** | Five-field cron expression, for example `0 * * * *` for hourly. |
+| **Keep Last Snapshots** | Number of backup snapshots to retain. `0` disables count-based pruning. |
+| **Enabled** | Saves a job without scheduling it when unchecked. |
+| **Recursive backup** | Includes descendant datasets. It is required for VM backups because a VM can have child disk datasets. |
+| **Prune on target** | Applies the configured retention count to copies stored on the remote target. |
+| **Stop before backup** | Stops a jail or VM before its backup. It does not apply to dataset jobs. |
 
-![Create Job Form](form.png)
+### Dataset job
 
-### Job fields
+![Dataset backup job form with its target, runner, schedule, retention, and source dataset selected.](./backups-job-create-dataset.png)
 
-| Field                          | Description                                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Name**                       | Friendly name for the job.                                                                                                                      |
-| **Target**                     | Which backup target this job writes to.                                                                                                         |
-| **Run On Node**                | Node that executes this job. In clustered setups, choose the node you want. On standalone systems, this is automatically set to the local node. |
-| **Mode**                       | Determines what is being backed up: **Single Dataset**, **Jail**, or **Virtual Machine**.                                                       |
-| **Source Dataset / Jail / VM** | The specific dataset, jail, or VM to back up, depending on the selected **Mode**.                                                               |
-| **Schedule (Cron, 5-field)**   | Backup schedule using cron syntax (for example, `0 * * * *` for hourly).                                                                        |
-| **Keep Last Snapshots**        | Number of snapshots to retain for pruning. Setting `0` disables prune count enforcement.                                                        |
-| **Enabled**                    | If disabled, the job is saved but will not run on its schedule.                                                                                 |
-| **Prune on Target**            | Enables snapshot pruning on the backup target.                                                                                                  |
-| **Stop Before Backup**         | Stops the guest before the backup begins when applicable.                                                                                       |
+### Virtual machine job
 
-### Editing / Deleting / Running Manually
+![Virtual machine backup job form with a guest source and guest-specific backup options.](./backups-job-create-guest.png)
 
-Select a row in the Jobs table to use context actions:
+### Choosing safe job options
 
-- **Edit**: Update target, schedule, source, and options.
-- **Delete**: Remove the job.
-- **Run Now**: Trigger an immediate run without waiting for the schedule.
+- Use **Stop before backup** when you need an offline, application-consistent guest copy and its downtime is acceptable.
+- Keep **Recursive backup** enabled for virtual machines. Disabling it would omit child disk datasets, and Sylve prevents that for VM jobs.
+- Enable **Prune on target** only after choosing a retention count that matches your recovery policy. A value of `0` does not enforce a keep-last limit.
 
-![Job Actions](buttons.png)
+### Encrypted sources
 
-## Understanding Generations and Lineage
+Sylve detects encryption at the start of a backup run. For a recursive job, it checks every included dataset. For a virtual machine, it checks every storage root belonging to that VM, including roots on other pools. If any included source is encrypted, its ZFS key must already be loaded on the runner node. A missing or unavailable key stops the run before data is backed up; load the key with ZFS and run the job again.
 
-During restore flows, snapshots are grouped by **Generation**. A generation is created when a backup job runs after a successful restore, and it represents a new backup lineage. Each generation contains snapshots taken during that run and subsequent runs until the next restore that creates a new generation.
+The lock in the jobs table records the last encryption state Sylve successfully determined. It is informational and does not decrypt data or replace normal ZFS key management. If a later encryption check cannot be completed, Sylve retains the last known state instead of incorrectly clearing the lock.
 
-## Restore from a Backup Job
+### Dataset source restrictions
 
-Use this when you want to restore from snapshots produced by a specific job.
+**Dataset** mode is for ordinary ZFS datasets, not Sylve-managed guest storage. Sylve rejects `<pool>/sylve`, such as `zroot/sylve`, every dataset below that managed hierarchy, and any parent dataset that contains a managed jail or virtual machine. Back up those guests with **Jail** or **Virtual Machine** mode so Sylve can preserve their lifecycle metadata and restore safety checks.
 
-From **Backups → Jobs**, select a job, then click **Restore**.
+### Job identity is fixed after creation
 
-![Restore](restore.png)
+After a job is created, its **Target**, **Mode**, **Source**, and, for a dataset job, **Run On Node** are fixed. This preserves the backup lineage and prevents a job from silently changing what or where it protects. Create a new job when you need a different target, mode, dataset, or dataset runner.
 
-### Steps
+For jail and VM jobs, the guest can move to another node through migration or failover repair. Sylve updates the guest runner through that workflow rather than allowing it to be selected in the job editor.
 
-1. Select a **Generation**.
-2. Select a **Snapshot**.
-3. Review the restore warning.
-4. Click **Restore**.
+You can still edit the job name, schedule, enabled state, retention, pruning, stop-before-backup, and recursive option. Be careful when changing **Recursive backup** for a non-VM job: Sylve can archive the active generation and require a full reseed because the protected dataset set has changed.
 
-What happens:
+## Read the jobs table
 
-- The destination dataset for that job is restored **in place**.
-- Existing snapshots on the target are not deleted.
-- Progress and result appear in backup events.
+For jail and VM jobs, the source column shows the guest's friendly name together with its stable identifier: **CT** for a jail and **RID** for a VM. This makes it easier to distinguish guests with similar names and to follow a guest after its storage location changes.
 
-## Out-of-Band (OOB) Restore
+The Jobs list is cluster-wide. Requests made through a follower are forwarded to the current leader, so the shared job list remains consistent regardless of which Data Center member you are viewing.
 
-Use **OOB Restore** when you want to restore directly from a target dataset/snapshot, independent of a specific job context.
+## Run, edit, and delete jobs
 
-From **Backups → Jobs**, click **OOB Restore**.
+Select a job to open its context actions. **Run Now** queues an immediate backup without changing its cron schedule. **Edit** changes the job's policy options. **Delete** removes the job definition; it does not remove backup data already stored on the target.
 
-![OOB Restore](oob-restore.png)
+When a guest changes ownership or its routing node, a job may show that its runner needs repair. Complete the applicable migration or failover repair workflow before relying on the next scheduled run.
 
-### OOB Restore fields
+![Backup job context menu with actions to run, edit, delete, or restore the selected job.](./backups-job-actions.png)
 
-{/* - **Target**: Backup target to browse.
-- **Restore On Node**: Node where restore should happen.
-- **Dataset on Target**: Source dataset from target.
-- **Generation**: Snapshot generation group.
-- **Snapshot**: Specific restore point.
-- **Destination Dataset**: Local dataset path to restore into.
-- **Restore Jail/VM Network Config** (when applicable): Restores guest network config metadata. */}
+## Restore from a job
 
-| Field                          | Description                                                                                                                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Target**                     | Which backup target to browse for snapshots.                                                                                                         |
-| **Restore On Node**            | Node where restore should happen. In clustered setups, choose the node you want. On standalone systems, this is automatically set to the local node. |
-| **Dataset on Target**          | Source dataset from the target to restore.                                                                                                                               |
-| **Generation**                 | Snapshot generation group to restore from.                                                                                                         |
-| **Snapshot**                   | Specific restore point to use.                                                                                                         |
-| **Destination Dataset**        | Local dataset path to restore into.                                                                                                                        |
-| **Restore Jail/VM Network Config** | When restoring a jail/VM, this option restores network configuration metadata (IP address, MAC address, etc.) along with the dataset.
+Select a job and choose **Restore** to browse the snapshots that belong to that job. Select a generation and snapshot, then supply an encryption passphrase when the source is encrypted. The job restore returns the backup to its job-defined destination.
 
-If Jail/VM metadata is detected, the UI will show inferred details (name, CT ID / RID, pools/base pool), and can auto-suggest destination dataset paths.
+For a legacy restore point (Pre v0.3.0), Sylve cannot cryptographically verify the complete dataset set. Legacy VM restore points are blocked. For a legacy dataset or jail restore, set **Recursive backup** to the value that was in use when that restore point was created before restoring it.
 
-### OOB restore flow
+![Job restore dialog with backup generation and recovery snapshot selection.](./backups-job-restore.png)
 
-1. Pick **Target** and **Restore On Node**.
-2. Select **Dataset on Target**.
-3. Choose **Generation** and **Snapshot**.
-4. Confirm / adjust **Destination Dataset**.
-5. Click **Restore**.
+### Restoring a virtual machine with storage on multiple pools
+
+Sylve treats a virtual machine with storage on multiple pools as one coordinated backup and restore set. It discovers every storage root belonging to the VM, records all roots in one committed manifest, and considers the generation restorable only when the complete set is present. The storage is never flattened into one dataset.
+
+| Original VM storage | Restore in place | Restore as new to `tank/sylve/virtual-machines/108` |
+| --- | --- | --- |
+| `fast/sylve/virtual-machines/42` | Restored to `fast/sylve/virtual-machines/42` | The selected root becomes `tank/sylve/virtual-machines/108`. |
+| `slow/sylve/virtual-machines/42` | Restored to `slow/sylve/virtual-machines/42` | Remains on `slow/sylve/virtual-machines/108`. |
+
+Before changing storage, Sylve validates every destination pool and rejects mappings where two roots would collide. It restores each root as a coordinated operation and rolls back roots already restored if a later root or VM metadata reconciliation fails.
 
 :::caution
-If the destination dataset already exists, it will be replaced.
+For a restore as new, only the selected VM root moves to the destination pool. Additional storage roots retain their original pool names and must exist on the restore node. If a required pool is absent, preflight fails safely. Sylve cannot currently consolidate every VM disk onto the selected pool during this restore.
+:::
+
+## Out-of-band restore
+
+Use **OOB Restore** when you need to browse a target independently of its current job, such as restoring to a different node or dataset. Select the target, destination node, remote dataset, generation, snapshot, and destination dataset. For jail and VM data, Sylve detects stored metadata and can present the guest details and an appropriate destination suggestion. The optional network setting restores the guest's saved network metadata.
+
+| Field | Description |
+| --- | --- |
+| **Target** | Remote target to browse. |
+| **Restore On Node** | Node where Sylve performs the restore. |
+| **Dataset on Target** | Remote backup dataset to restore. |
+| **Generation** | Backup lineage to browse. |
+| **Snapshot** | Exact recovery point to receive. |
+| **Destination Dataset** | Local ZFS destination for the restored data. |
+| **Restore Jail/VM Network Config** | Restores detected guest network metadata when available. |
+
+![Out-of-band restore form with target, recovery point, destination, and detected guest settings.](./backups-oob-restore.png)
+
+:::caution
+An out-of-band restore can replace an existing destination dataset. Confirm the destination path and retain any data you need before starting it.
 :::

@@ -9,7 +9,7 @@
 	import type { BasicSettings } from '$lib/types/system/settings';
 	import type { APIResponse } from '$lib/types/common';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
-	import { handleAPIError } from '$lib/utils/http';
+	import { getAPIErrorMessages, handleAPIError } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { getDashedDate } from '$lib/utils/time.svelte';
 	import { deepEqual } from 'fast-equals';
@@ -25,6 +25,15 @@
 	}
 
 	let { open = $bindable(), reload = $bindable(), basicSettings, prefill }: Props = $props();
+	const simpleRetentionDefaults = { keepLast: '24', maxAgeDays: '0' };
+	const gfsRetentionDefaults = {
+		keepLast: '20',
+		keepHourly: '24',
+		keepDaily: '7',
+		keepWeekly: '4',
+		keepMonthly: '12',
+		keepYearly: '3'
+	};
 
 	let datasets = resource(
 		() => 'zfs-fs-vol-datasets',
@@ -38,69 +47,67 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
-	let options = {
-		name: `manual-${getDashedDate()}`,
-		pool: {
-			open: false,
-			value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
-			data: generateSimpleSelectOptions(basicSettings.pools)
-		},
-		datasets: {
-			open: false,
-			value: prefill?.dataset || '',
-			data: [] as { label: string; value: string }[]
-		},
-		interval: {
-			type: 'none' as 'none' | 'minutes' | 'cronExpr',
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'minutes', label: 'Simple' },
-				{ value: 'cronExpr', label: 'Cron Expression' }
-			],
-			values: {
-				cron: '',
-				interval: {
-					open: false,
-					data: [
-						{ value: '60', label: 'Every Minute' },
-						{ value: '3600', label: 'Every Hour' },
-						{ value: '86400', label: 'Every Day' },
-						{ value: '604800', label: 'Every Week' },
-						{ value: '2419200', label: 'Every Month' },
-						{ value: '29030400', label: 'Every Year' }
-					],
-					value: ''
-				}
-			}
-		},
-		retention: {
-			open: false,
-			value: 'none',
-			data: [
-				{ value: 'none', label: 'None' },
-				{ value: 'simple', label: 'Simple' },
-				{ value: 'gfs', label: 'GFS' }
-			],
-			simple: {
-				keepLast: '0',
-				maxAgeDays: '0'
+	function createInitialProperties() {
+		return {
+			name: `manual-${getDashedDate()}`,
+			pool: {
+				open: false,
+				value: prefill?.pool || (basicSettings.pools.length === 1 ? basicSettings.pools[0] : ''),
+				data: generateSimpleSelectOptions(basicSettings.pools)
 			},
-			gfs: {
-				keepLast: '0',
-				keepHourly: '0',
-				keepDaily: '0',
-				keepWeekly: '0',
-				keepMonthly: '0',
-				keepYearly: '0'
-			}
-		},
-		recursive: false
-	};
+			datasets: {
+				open: false,
+				value: prefill?.dataset || '',
+				data: [] as { label: string; value: string }[]
+			},
+			interval: {
+				type: 'none' as 'none' | 'minutes' | 'cronExpr',
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'minutes', label: 'Simple' },
+					{ value: 'cronExpr', label: 'Cron Expression' }
+				],
+				values: {
+					cron: '',
+					interval: {
+						open: false,
+						data: [
+							{ value: '60', label: 'Every Minute' },
+							{ value: '3600', label: 'Every Hour' },
+							{ value: '86400', label: 'Every Day' },
+							{ value: '604800', label: 'Every Week' },
+							{ value: '2419200', label: 'Every Month' },
+							{ value: '29030400', label: 'Every Year' }
+						],
+						value: ''
+					}
+				}
+			},
+			retention: {
+				open: false,
+				value: 'none',
+				data: [
+					{ value: 'none', label: 'None' },
+					{ value: 'simple', label: 'Simple' },
+					{ value: 'gfs', label: 'GFS' }
+				],
+				simple: {
+					...simpleRetentionDefaults
+				},
+				gfs: {
+					...gfsRetentionDefaults
+				}
+			},
+			recursive: false
+		};
+	}
 
-	let properties = $state(options);
+	let properties = $state(createInitialProperties());
+	let cronDescription = $derived(
+		properties.interval.values.cron.trim() ? cronToHuman(properties.interval.values.cron) : ''
+	);
 
 	watch([() => properties.pool.value, () => datasets.current], ([poolValue]) => {
 		if (poolValue) {
@@ -116,6 +123,26 @@
 			}
 		}
 	});
+
+	function showSnapshotCreateError(
+		response: APIResponse,
+		datasetName: string,
+		snapshotName: string
+	) {
+		if (
+			getAPIErrorMessages(response).some((message) => message.includes('dataset already exists'))
+		) {
+			toast.error(`Snapshot ${datasetName}@${snapshotName} already exists`, {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		handleAPIError(response);
+		toast.error('Failed to create snapshot', {
+			position: 'bottom-center'
+		});
+	}
 
 	async function create() {
 		if (properties.name.trim() === '') {
@@ -140,38 +167,52 @@
 		}
 
 		const dataset = datasets.current.find((dataset) => dataset.name === properties.datasets.value);
-		const pool = basicSettings.pools.find((poolName) => poolName === properties.pool.value);
 
 		if (dataset) {
 			const intervalType = properties.interval.value;
-			let retentionType = properties.retention.value;
+			const retentionType = properties.retention.value;
 			let response: APIResponse | null = null;
 			let minutes: number = 0;
 			let cron: string = '';
 
 			if (intervalType === 'none' || intervalType === '') {
 				response = await createSnapshot(dataset, properties.name, properties.recursive);
-				retentionType = 'none';
 
-				let message = '';
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.dataset}@${properties.name} created`;
-				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+				if (response.status !== 'success') {
+					showSnapshotCreateError(response, dataset.name, properties.name);
+					return;
 				}
 
-				toast.success(message, {
+				toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
 					position: 'bottom-center'
 				});
 
 				reload = true;
-				properties = options;
+				properties = createInitialProperties();
 				open = false;
 				return;
 			} else if (intervalType === 'minutes') {
 				minutes = parseInt(properties.interval.values.interval.value) || 0;
 			} else if (intervalType === 'cronExpr') {
 				cron = properties.interval.values.cron;
+			}
+
+			if (retentionType === 'simple') {
+				const values = properties.retention.simple;
+				if (![values.keepLast, values.maxAgeDays].some((value) => Number(value) > 0)) {
+					toast.error('At least one retention value must be greater than zero', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			} else if (retentionType === 'gfs') {
+				const values = properties.retention.gfs;
+				if (!Object.values(values).some((value) => Number(value) > 0)) {
+					toast.error('At least one retention value must be greater than zero', {
+						position: 'bottom-center'
+					});
+					return;
+				}
 			}
 
 			if (retentionType !== 'none') {
@@ -182,8 +223,9 @@
 						properties.recursive,
 						minutes,
 						cron,
-						parseInt(properties.retention.simple.keepLast) || null,
-						parseInt(properties.retention.simple.maxAgeDays) || null
+						'simple',
+						Number(properties.retention.simple.keepLast),
+						Number(properties.retention.simple.maxAgeDays)
 					);
 				} else if (retentionType === 'gfs') {
 					response = await createPeriodicSnapshot(
@@ -192,13 +234,14 @@
 						properties.recursive,
 						minutes,
 						cron,
+						'gfs',
+						Number(properties.retention.gfs.keepLast),
 						null,
-						null,
-						parseInt(properties.retention.gfs.keepHourly) || null,
-						parseInt(properties.retention.gfs.keepDaily) || null,
-						parseInt(properties.retention.gfs.keepWeekly) || null,
-						parseInt(properties.retention.gfs.keepMonthly) || null,
-						parseInt(properties.retention.gfs.keepYearly) || null
+						Number(properties.retention.gfs.keepHourly),
+						Number(properties.retention.gfs.keepDaily),
+						Number(properties.retention.gfs.keepWeekly),
+						Number(properties.retention.gfs.keepMonthly),
+						Number(properties.retention.gfs.keepYearly)
 					);
 				}
 			} else {
@@ -208,6 +251,7 @@
 					properties.recursive,
 					minutes,
 					cron,
+					'none',
 					null,
 					null,
 					null,
@@ -217,29 +261,24 @@
 				);
 			}
 
-			reload = true;
-			if (response?.error) {
-				handleAPIError(response);
-				toast.error('Failed to create snapshot', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
-				let message = '';
-
-				if (prefill?.dataset && prefill?.pool) {
-					message = `Snapshot ${prefill.pool}/${prefill.dataset}@${properties.name} created`;
+			if (!response || response.status !== 'success') {
+				if (response) {
+					showSnapshotCreateError(response, dataset.name, properties.name);
 				} else {
-					message = `Snapshot ${pool}@${properties.name} created`;
+					toast.error('Failed to create snapshot', {
+						position: 'bottom-center'
+					});
 				}
-
-				toast.success(message, {
-					position: 'bottom-center'
-				});
-
-				properties = options;
-				open = false;
+				return;
 			}
+
+			reload = true;
+			toast.success(`Snapshot ${dataset.name}@${properties.name} created`, {
+				position: 'bottom-center'
+			});
+
+			properties = createInitialProperties();
+			open = false;
 		}
 	}
 </script>
@@ -250,16 +289,21 @@
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => {
-			properties = options;
+			properties = createInitialProperties();
 		}}
 		onClose={() => {
-			properties = options;
+			properties = createInitialProperties();
 			open = false;
 		}}
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
-				<SpanWithIcon icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]" size="h-5 w-5" gap="gap-2" title="Create Snapshot" />
+				<SpanWithIcon
+					icon="icon-[carbon--ibm-cloud-vpc-block-storage-snapshots]"
+					size="h-5 w-5"
+					gap="gap-2"
+					title="Create Snapshot"
+				/>
 			</Dialog.Title>
 		</Dialog.Header>
 
@@ -300,7 +344,7 @@
 				<div class="flex w-full flex-col gap-2">
 					<CustomComboBox
 						bind:open={properties.interval.open}
-						label="Interval"
+						label="Interval Type"
 						bind:value={properties.interval.value}
 						data={properties.interval.data}
 						classes="w-full space-y-1"
@@ -310,16 +354,8 @@
 
 					{#if properties.interval.value === 'cronExpr'}
 						<CustomValueInput
-							label={`
-                    <span class="text-sm font-medium text-gray-200">
-                        Cron Expression${
-													cronToHuman(properties.interval.values.cron)
-														? `&nbsp;<span class="text-green-300 font-semibold">(${cronToHuman(properties.interval.values.cron)})</span>`
-														: ''
-												}
-                    </span>
-                    `}
-							labelHTML={true}
+							label="Cron Expression"
+							hint={cronDescription}
 							placeholder="0 0 * * *"
 							bind:value={properties.interval.values.cron}
 							classes="w-full space-y-1"
@@ -354,12 +390,14 @@
 				<div class="flex flex-row items-center gap-4">
 					<CustomValueInput
 						label="Keep Last"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.simple.keepLast}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Max Age (Days)"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.simple.maxAgeDays}
 						classes="w-full space-y-1"
@@ -369,36 +407,42 @@
 				<div class="grid grid-cols-3 gap-4">
 					<CustomValueInput
 						label="Keep Last"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepLast}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Hourly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepHourly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Daily"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepDaily}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Weekly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepWeekly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Monthly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepMonthly}
 						classes="w-full space-y-1"
 					/>
 					<CustomValueInput
 						label="Keep Yearly"
+						type="number"
 						placeholder="0"
 						bind:value={properties.retention.gfs.keepYearly}
 						classes="w-full space-y-1"

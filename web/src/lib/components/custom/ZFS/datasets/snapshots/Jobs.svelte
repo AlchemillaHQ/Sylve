@@ -3,11 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table';
-	import {
-		GZFSDatasetTypeSchema,
-		type Dataset,
-		type PeriodicSnapshot
-	} from '$lib/types/zfs/dataset';
+	import { GZFSDatasetTypeSchema, type PeriodicSnapshot } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { cronToHuman, dateToAgo } from '$lib/utils/time';
 	import { getDatasetByGUID } from '$lib/utils/zfs/dataset/dataset';
@@ -25,7 +21,7 @@
 
 	let datasets = resource(
 		() => 'zfs-fs-vol-datasets',
-		async (key, prevKey, { signal }) => {
+		async () => {
 			const fs = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
 			const vol = await getDatasets(GZFSDatasetTypeSchema.enum.VOLUME);
 			return [...fs, ...vol];
@@ -36,11 +32,6 @@
 	);
 
 	let shadowDeleted: number[] = $state([]);
-
-	function close() {
-		shadowDeleted = [];
-		open = false;
-	}
 
 	function getDatasetName(guid: string) {
 		const dataset = getDatasetByGUID(datasets.current, guid);
@@ -71,14 +62,43 @@
 		}
 	}
 
+	function isKnownRunTime(date: Date | null | undefined): date is Date {
+		return date instanceof Date && !Number.isNaN(date.getTime()) && date.getFullYear() > 1;
+	}
+
+	function runTimeToAgo(date: Date | null | undefined) {
+		return isKnownRunTime(date) ? dateToAgo(date) : 'Never';
+	}
+
+	function runTimeTitle(date: Date | null | undefined) {
+		return isKnownRunTime(date) ? date.toLocaleString() : undefined;
+	}
+
+	function lastRunTitle(snapshot: PeriodicSnapshot) {
+		const details: string[] = [];
+		const actual = runTimeTitle(snapshot.lastExecutedAt);
+		const scheduled = runTimeTitle(snapshot.lastRunAt);
+		if (actual) details.push(`Actual: ${actual}`);
+		if (scheduled) details.push(`Scheduled boundary: ${scheduled}`);
+		return details.length > 0 ? details.join('\n') : undefined;
+	}
+
+	function nextRunToAgo(date: Date | null | undefined) {
+		if (!isKnownRunTime(date)) return 'Unknown';
+		const remaining = date.getTime() - Date.now();
+		if (remaining <= 0) return 'Due now';
+		if (remaining < 60_000) return 'in less than a minute';
+		return dateToAgo(date);
+	}
+
 	async function saveJobs() {
 		try {
 			for (const id of shadowDeleted) {
 				const snapshot = periodicSnapshots.find((s) => s.id === id);
 				if (snapshot) {
-					const response = await deletePeriodicSnapshot(snapshot.guid);
+					const response = await deletePeriodicSnapshot(snapshot.id);
 					reload = true;
-					if (response.error) {
+					if (response.status !== 'success') {
 						handleAPIError(response);
 						toast.error('Failed to delete periodic snapshot', {
 							position: 'bottom-center'
@@ -106,43 +126,34 @@
 		onEscapeKeydown={(e) => e.preventDefault()}
 		class="fixed top-1/2 left-1/2 w-[80%] -translate-x-1/2 -translate-y-1/2 transform gap-0 overflow-hidden p-0 lg:max-w-3xl"
 	>
-		<div class="flex items-center justify-between p-4">
+		<div class="flex items-center justify-between p-6">
 			<Dialog.Header class="p-0">
 				<Dialog.Title>
 					<div class="flex items-center gap-2">
 						<span class="icon-[material-symbols--save-clock] h-5 w-5"></span>
-
 						<span>View Snapshot Jobs</span>
 					</div>
 				</Dialog.Title>
-				<Dialog.Description></Dialog.Description>
 			</Dialog.Header>
-
-			<Dialog.Close
-				class="flex h-5 w-5 items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100"
-				onclick={() => close()}
-			>
-				<span class="icon-[material-symbols--close-rounded] h-5 w-5"></span>
-			</Dialog.Close>
 		</div>
 
-		<div class="max-h-75 overflow-y-auto px-4" id="table-body">
+		<div class="max-h-75 overflow-y-auto px-6" id="table-body">
 			<Table.Root>
 				<Table.Header class="bg-background sticky top-0 z-10">
 					<Table.Row>
-						<Table.Head class="w-2.5">ID</Table.Head>
+						<Table.Head class="w-2.5 pl-6">ID</Table.Head>
 						<Table.Head class="w-50">Dataset</Table.Head>
 						<Table.Head class="w-50">Prefix</Table.Head>
 						<Table.Head class="w-50">Interval</Table.Head>
-						<Table.Head class="w-50">Last Run</Table.Head>
+						<Table.Head class="w-50">Runs</Table.Head>
 						<Table.Head class="w-50"></Table.Head>
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
 					{#if periodicSnapshots && periodicSnapshots.length > 0}
-						{#each periodicSnapshots as snapshot, index}
-							<Table.Row>
-								<Table.Cell>{snapshot.id}</Table.Cell>
+						{#each periodicSnapshots as snapshot (snapshot.id)}
+							<Table.Row class="h-10">
+								<Table.Cell class="pl-6">{snapshot.id}</Table.Cell>
 								<Table.Cell>{getDatasetName(snapshot.guid)}</Table.Cell>
 								<Table.Cell>{snapshot.prefix}</Table.Cell>
 
@@ -152,17 +163,19 @@
 									<Table.Cell>{cronToHuman(snapshot.cronExpr)}</Table.Cell>
 								{/if}
 
-								<Table.Cell title={snapshot.lastRunAt.toLocaleString()}>
-									{@const lastRun = dateToAgo(snapshot.lastRunAt)}
-									{#if lastRun === 'Jan 01, 0001'}
-										<span>Never</span>
-									{:else}
-										{lastRun}
-									{/if}
+								<Table.Cell>
+									<div class="flex flex-col whitespace-nowrap text-xs">
+										<span title={lastRunTitle(snapshot)}>
+											Last: {runTimeToAgo(snapshot.lastExecutedAt)}
+										</span>
+										<span class="text-muted-foreground" title={runTimeTitle(snapshot.nextRunAt)}>
+											Next: {nextRunToAgo(snapshot.nextRunAt)}
+										</span>
+									</div>
 								</Table.Cell>
 
 								{#if !shadowDeleted.includes(snapshot.id)}
-									<Table.Cell>
+									<Table.Cell style="padding-block: 0.25rem">
 										<Button
 											variant="ghost"
 											class="h-8"
@@ -186,7 +199,7 @@
 										</Button>
 									</Table.Cell>
 								{:else}
-									<Table.Cell>
+									<Table.Cell class="py-1">
 										<span class="text-muted-foreground text-xs italic">Deleted</span>
 									</Table.Cell>
 								{/if}
@@ -205,7 +218,6 @@
 
 		<Dialog.Footer class="flex justify-between gap-2 border-t px-6 py-4">
 			<div class="flex gap-2">
-				<Button size="sm" onclick={() => close()}>Cancel</Button>
 				{#if shadowDeleted.length > 0}
 					<Button size="sm" onclick={saveJobs}>Save Snapshot Jobs</Button>
 				{/if}

@@ -29,10 +29,10 @@ func (s *Service) GetJailLogs(id uint) (string, error) {
 	}
 
 	logFilePath := fmt.Sprintf("%s/%d/%d.log", jailsPath, jail.CTID, jail.CTID)
-	logs, err := utils.ReadFile(logFilePath)
+	logs, err := utils.ReadLastLines(logFilePath, 512)
 	if err != nil {
 		return "", fmt.Errorf("failed to read jail logs: %w", err)
 	}
 
-	return string(logs), nil
+	return logs, nil
 }

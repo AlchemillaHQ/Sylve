@@ -92,18 +92,44 @@ func TestLatestCommonBackupSnapshotByGUID(t *testing.T) {
 	}
 }
 
-func TestLatestCommonBackupSnapshotNameFallback(t *testing.T) {
+func TestLatestCommonBackupSnapshotRequiresGUIDIdentity(t *testing.T) {
 	prefix := "bk_jx"
-	local := []SnapshotInfo{
-		mkSnap("p/d@bk_jx_a", "", "2026-06-24T02:00:00Z"),
-		mkSnap("p/d@bk_jx_b", "", "2026-06-25T02:00:00Z"),
+	tests := []struct {
+		name   string
+		local  SnapshotInfo
+		remote SnapshotInfo
+	}{
+		{
+			name:   "same name different GUID",
+			local:  mkSnap("p/d@bk_jx_a", "local-guid", ""),
+			remote: mkSnap("t/d@bk_jx_a", "remote-guid", ""),
+		},
+		{
+			name:   "both GUIDs missing",
+			local:  mkSnap("p/d@bk_jx_a", "", ""),
+			remote: mkSnap("t/d@bk_jx_a", "", ""),
+		},
+		{
+			name:   "remote GUID missing",
+			local:  mkSnap("p/d@bk_jx_a", "local-guid", ""),
+			remote: mkSnap("t/d@bk_jx_a", "", ""),
+		},
+		{
+			name:   "local GUID missing",
+			local:  mkSnap("p/d@bk_jx_a", "", ""),
+			remote: mkSnap("t/d@bk_jx_a", "remote-guid", ""),
+		},
 	}
-	remote := []SnapshotInfo{
-		mkSnap("t/d@bk_jx_a", "", "2026-06-24T02:00:00Z"),
-	}
-	base, ok := latestCommonBackupSnapshot(local, remote, prefix)
-	if !ok || base.ShortName != "@bk_jx_a" {
-		t.Fatalf("expected common base @bk_jx_a, ok=%v base=%q", ok, base.ShortName)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, ok := latestCommonBackupSnapshot(
+				[]SnapshotInfo{tt.local},
+				[]SnapshotInfo{tt.remote},
+				prefix,
+			); ok {
+				t.Fatal("snapshot name alone must not establish a common base")
+			}
+		})
 	}
 }
 
@@ -122,27 +148,85 @@ func TestLatestCommonBackupSnapshotEmpty(t *testing.T) {
 	}
 }
 
+func TestLatestCommonBackupSnapshotsByDatasetAndJobPrefix(t *testing.T) {
+	local := []SnapshotInfo{
+		mkSnap("src/root@bk_ja_1", "r1", ""),
+		mkSnap("src/root/child@bk_ja_1", "c1", ""),
+		mkSnap("src/root@bk_jb_1", "rb1", ""),
+		mkSnap("src/root/child@bk_jb_1", "cb1", ""),
+		mkSnap("src/root@bk_ja_2", "r2", ""),
+		mkSnap("src/root/child@bk_ja_2", "c2", ""),
+		mkSnap("src/root@bk_ja_3", "r3", ""),
+		mkSnap("src/root/child@bk_ja_3", "c3", ""),
+	}
+	remote := []SnapshotInfo{
+		mkSnap("dst/root@bk_ja_1", "r1", ""),
+		mkSnap("dst/root/child@bk_ja_1", "c1", ""),
+		mkSnap("dst/root@bk_jb_1", "rb1", ""),
+		mkSnap("dst/root/child@bk_jb_1", "cb1", ""),
+		mkSnap("dst/root@bk_ja_2", "r2", ""),
+		// A reused short name with a different GUID is not a common base.
+		mkSnap("dst/root/child@bk_ja_2", "different-c2", ""),
+	}
+
+	bases := latestCommonBackupSnapshotsByDataset(
+		local,
+		remote,
+		"src/root",
+		"dst/root",
+		"bk_ja",
+	)
+	if got := bases["src/root"].Name; got != "src/root@bk_ja_2" {
+		t.Fatalf("root base = %q, want bk_ja_2", got)
+	}
+	if got := bases["src/root/child"].Name; got != "src/root/child@bk_ja_1" {
+		t.Fatalf("child base = %q, want bk_ja_1", got)
+	}
+	for _, base := range bases {
+		if strings.Contains(base.Name, "@bk_jb_") {
+			t.Fatalf("other job prefix selected as a base: %s", base.Name)
+		}
+	}
+}
+
+func TestLatestCommonBackupSnapshotsByDatasetRequiresGUIDs(t *testing.T) {
+	local := []SnapshotInfo{
+		mkSnap("src/root/local-missing@bk_ja_1", "", ""),
+		mkSnap("src/root/remote-missing@bk_ja_1", "local-guid", ""),
+	}
+	remote := []SnapshotInfo{
+		mkSnap("dst/root/local-missing@bk_ja_1", "remote-guid", ""),
+		mkSnap("dst/root/remote-missing@bk_ja_1", "", ""),
+	}
+
+	bases := latestCommonBackupSnapshotsByDataset(local, remote, "src/root", "dst/root", "bk_ja")
+	if len(bases) != 0 {
+		t.Fatalf("GUID-less snapshots selected as common bases: %+v", bases)
+	}
+}
+
 func TestForeignTargetSnapshots(t *testing.T) {
-	prefix := "bk_jx"
 	local := []SnapshotInfo{
 		mkSnap("p/d@bk_jx_a", "1", ""),
 		mkSnap("p/d@bk_jx_b", "2", ""),
+		mkSnap("p/d@shared", "5", ""),
 	}
 	remote := []SnapshotInfo{
 		mkSnap("t/d@bk_jx_b", "2", ""),
+		mkSnap("t/d@bk_jx_user", "777", ""),
+		mkSnap("t/d@shared", "different-guid", ""),
 		mkSnap("t/d@2026-06-26", "999", ""),
 		mkSnap("t/d@manual-thing", "888", ""),
 	}
-	got := foreignTargetSnapshots(local, remote, prefix)
+	got := foreignTargetSnapshots(local, remote, "p/d", "t/d", nil)
 	sort.Strings(got)
-	want := []string{"t/d@2026-06-26", "t/d@manual-thing"}
+	want := []string{"t/d@2026-06-26", "t/d@bk_jx_user", "t/d@manual-thing", "t/d@shared"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("foreign mismatch:\n got=%v\nwant=%v", got, want)
 	}
 }
 
 func TestForeignTargetSnapshotsNeverTouchesBackupOrSourcePresent(t *testing.T) {
-	prefix := "bk_jx"
 	local := []SnapshotInfo{
 		mkSnap("p/d@bk_jx_a", "1", ""),
 		mkSnap("p/d@shared", "5", ""),
@@ -151,82 +235,96 @@ func TestForeignTargetSnapshotsNeverTouchesBackupOrSourcePresent(t *testing.T) {
 		mkSnap("t/d@bk_jx_a", "1", ""),
 		mkSnap("t/d@shared", "5", ""),
 	}
-	got := foreignTargetSnapshots(local, remote, prefix)
+	got := foreignTargetSnapshots(local, remote, "p/d", "t/d", nil)
 	if len(got) != 0 {
 		t.Fatalf("expected no foreign snapshots, got %v", got)
 	}
 }
 
-func TestGenerationDatasetToken(t *testing.T) {
-	if v, ok := generationDatasetToken("p/x/active_gen-zz"); !ok || v != 35*36+35 {
-		t.Fatalf("zz token: ok=%v v=%d", ok, v)
+func TestForeignTargetSnapshotsRequireMatchingDatasetSuffix(t *testing.T) {
+	local := []SnapshotInfo{
+		mkSnap("p/d/one@bk_jx_a", "guid-one", ""),
+		mkSnap("p/d/two@bk_jx_a", "guid-two", ""),
 	}
-	if v, ok := generationDatasetToken("p/x/active_gen-100"); !ok || v != 1296 {
-		t.Fatalf("100 token: ok=%v v=%d", ok, v)
+	remote := []SnapshotInfo{
+		// The GUIDs exist on the source, but only at the opposite suffixes.
+		mkSnap("t/d/one@bk_jx_a", "guid-two", ""),
+		mkSnap("t/d/two@bk_jx_a", "guid-one", ""),
 	}
-	if v, ok := generationDatasetToken("p/x/active_gen-zz-2"); !ok || v != 1295 {
-		t.Fatalf("retry token: ok=%v v=%d", ok, v)
-	}
-	if _, ok := generationDatasetToken("p/x/active"); ok {
-		t.Fatal("non-generation dataset should not parse")
+
+	got := foreignTargetSnapshots(local, remote, "p/d", "t/d", nil)
+	want := []string{"t/d/one@bk_jx_a", "t/d/two@bk_jx_a"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("suffix-swapped snapshots = %v, want %v", got, want)
 	}
 }
 
-func TestStaleBackupGenerationsKeepNewestChronological(t *testing.T) {
-	active := "p/x/active"
-	lineage := []string{
-		"p/x/active",
-		"p/x/active_gen-zz",
-		"p/x/active_gen-100",
+func TestForeignTargetSnapshotsAcceptOnlyExactProvenTargetSnapshot(t *testing.T) {
+	remote := []SnapshotInfo{
+		mkSnap("t/d@bk_jx_c1_old", "root-guid", ""),
+		mkSnap("t/d/rogue@bk_jx_c1_old", "rogue-guid", ""),
 	}
-	stale := staleBackupGenerationDatasets(active, lineage, 1)
-	if !reflect.DeepEqual(stale, []string{"p/x/active_gen-zz"}) {
-		t.Fatalf("expected to destroy the older (zz) generation, got %v", stale)
+	proofs := map[string]string{
+		"t/d@bk_jx_c1_old": "root-guid",
+	}
+
+	got := foreignTargetSnapshots(nil, remote, "p/d", "t/d", proofs)
+	want := []string{"t/d/rogue@bk_jx_c1_old"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("target proof classification = %v, want %v", got, want)
 	}
 }
 
-func TestStaleBackupGenerationsKeepN(t *testing.T) {
-	active := "p/x/active"
-	lineage := []string{
-		"p/x/active",
-		"p/x/active_gen-1",
-		"p/x/active_gen-2",
-		"p/x/active_gen-3",
-		"p/x/active_gen-4",
+func TestFilterToleratedLegacyTargetSnapshotsRequiresCanonicalJobScope(t *testing.T) {
+	job := &clusterModels.BackupJob{
+		ID: 10,
+		Target: clusterModels.BackupTarget{
+			BackupRoot: "backup/root",
+		},
 	}
-	stale := staleBackupGenerationDatasets(active, lineage, 2)
-	sort.Strings(stale)
-	want := []string{"p/x/active_gen-1", "p/x/active_gen-2"}
-	if !reflect.DeepEqual(stale, want) {
-		t.Fatalf("keepN mismatch: got=%v want=%v", stale, want)
+	const (
+		sourceRoot = "src/root"
+		targetRoot = "backup/root/jobs/a/active"
+	)
+	scopes := []backupScope{{sourceDataset: sourceRoot, destSuffix: "jobs/a/active"}}
+	foreign := []string{
+		targetRoot + "@bk_ja_legacy",
+		targetRoot + "/child@bk_ja_legacy",
+		targetRoot + "@bk_jb_legacy",
+		targetRoot + "@bk_ja_c1_current",
+		targetRoot + "@bk_ja_extra_c1_malformed",
+		"backup/root/other@bk_ja_legacy",
 	}
-}
 
-func TestStaleBackupGenerationsNoopWhenWithinKeep(t *testing.T) {
-	active := "p/x/active"
-	lineage := []string{"p/x/active", "p/x/active_gen-1", "p/x/active_gen-2"}
-	if stale := staleBackupGenerationDatasets(active, lineage, 2); len(stale) != 0 {
-		t.Fatalf("expected no-op, got %v", stale)
+	got := filterToleratedLegacyTargetSnapshots(job, sourceRoot, targetRoot, scopes, foreign)
+	want := []string{
+		targetRoot + "@bk_jb_legacy",
+		targetRoot + "@bk_ja_c1_current",
+		targetRoot + "@bk_ja_extra_c1_malformed",
+		"backup/root/other@bk_ja_legacy",
 	}
-}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("filtered foreign snapshots = %v, want %v", got, want)
+	}
 
-func TestStaleBackupGenerationsNeverTouchesActiveOrUnrelated(t *testing.T) {
-	active := "p/x/active"
-	lineage := []string{
-		"p/x/active",
-		"p/x/active_gen-1",
-		"p/x/active_gen-2",
-		"p/x/active_gen-3",
-		"p/x/somethingelse",
+	tests := []struct {
+		name       string
+		sourceRoot string
+		targetRoot string
+		scopes     []backupScope
+	}{
+		{name: "wrong source", sourceRoot: "src/other", targetRoot: targetRoot, scopes: scopes},
+		{name: "wrong target", sourceRoot: sourceRoot, targetRoot: "backup/root/jobs/b/active", scopes: scopes},
+		{name: "missing scope", sourceRoot: sourceRoot, targetRoot: targetRoot},
+		{name: "outside backup root", sourceRoot: sourceRoot, targetRoot: "other/root/jobs/a/active", scopes: scopes},
 	}
-	stale := staleBackupGenerationDatasets(active, lineage, 1)
-	for _, ds := range stale {
-		if ds == active || ds == "p/x/somethingelse" {
-			t.Fatalf("must never destroy active or unrelated datasets, got %v", stale)
-		}
-		if !strings.HasPrefix(ds, active+"_gen-") {
-			t.Fatalf("destroyed a non-generation dataset: %s", ds)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := filterToleratedLegacyTargetSnapshots(job, tt.sourceRoot, tt.targetRoot, tt.scopes, foreign)
+			if !reflect.DeepEqual(got, foreign) {
+				t.Fatalf("non-canonical scope filtered snapshots: got %v, want %v", got, foreign)
+			}
+		})
 	}
 }
 
@@ -310,6 +408,43 @@ func TestBuildLocalRetentionPerDatasetGrouping(t *testing.T) {
 	}
 }
 
+func TestBuildTargetRetentionRecursivePerDatasetAndJobPrefix(t *testing.T) {
+	prefix := "bk_ja"
+	snaps := []SnapshotInfo{
+		mkSnap("dst/root@bk_ja_1", "r1", ""),
+		mkSnap("dst/root/child@bk_ja_1", "c1", ""),
+		mkSnap("dst/root@bk_jb_1", "rb1", ""),
+		mkSnap("dst/root/child@bk_jb_1", "cb1", ""),
+		mkSnap("dst/root@bk_ja_2", "r2", ""),
+		mkSnap("dst/root/child@bk_ja_2", "c2", ""),
+		mkSnap("dst/root@bk_ja_3", "r3", ""),
+		mkSnap("dst/root/child@bk_ja_3", "c3", ""),
+	}
+	safe := snapshotCandidateSet([]string{
+		"dst/root@bk_ja_1",
+		"dst/root@bk_ja_2",
+		"dst/root/child@bk_ja_1",
+		// The child's second snapshot is its protected incremental base.
+	})
+
+	got := buildBKRetentionPruneCandidates(snaps, 1, safe, prefix)
+	sort.Strings(got)
+	want := []string{
+		"dst/root/child@bk_ja_1",
+		"dst/root@bk_ja_1",
+		"dst/root@bk_ja_2",
+	}
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("recursive target prune mismatch: got=%v want=%v", got, want)
+	}
+	for _, candidate := range got {
+		if strings.Contains(candidate, "@bk_jb_") {
+			t.Fatalf("other job prefix selected for pruning: %s", candidate)
+		}
+	}
+}
+
 func TestRemoteActiveDatasetForSuffix(t *testing.T) {
 	got := remoteActiveDatasetForSuffix("zdata/backups/host", "zapp/sylve/jails/10/j-x/active")
 	want := "zdata/backups/host/zapp/sylve/jails/10/j-x/active"
@@ -322,78 +457,6 @@ func TestRemoteActiveDatasetForSuffix(t *testing.T) {
 	if remoteActiveDatasetForSuffix("root", "") != "root" {
 		t.Fatal("empty suffix should return root")
 	}
-}
-
-func TestTrimTargetBackupGenerationsKeepNewestViaSSH(t *testing.T) {
-	h := newFakeSSHHarness(t)
-	parent := "tank/backups/jails/10/j-x"
-	active := parent + "/active"
-
-	h.SetScenario(fakeSSHScenario{
-		Responses: map[string][]fakeSSHResponse{
-			"zfs list -t filesystem -d 1 -Hp -o name " + parent: {
-				{Stdout: strings.Join([]string{
-					active,
-					parent + "/active_gen-1",
-					parent + "/active_gen-2",
-					parent + "/active_gen-3",
-					parent + "/active_gen-4",
-				}, "\n") + "\n", ExitCode: 0},
-			},
-			"zfs destroy -r " + parent + "/active_gen-1": {{ExitCode: 0}},
-			"zfs destroy -r " + parent + "/active_gen-2": {{ExitCode: 0}},
-		},
-	})
-
-	s := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "tank/backups"}
-
-	destroyed, err := s.trimTargetBackupGenerations(context.Background(), target, active, 2)
-	if err != nil {
-		t.Fatalf("trimTargetBackupGenerations: %v", err)
-	}
-	if destroyed != 2 {
-		t.Fatalf("expected 2 generations destroyed, got %d", destroyed)
-	}
-
-	assertFakeSSHCallSequence(t, h.Calls(), []string{
-		"zfs list -t filesystem -d 1 -Hp -o name " + parent,
-		"zfs destroy -r " + parent + "/active_gen-2",
-		"zfs destroy -r " + parent + "/active_gen-1",
-	})
-}
-
-func TestTrimTargetBackupGenerationsNoopWhenWithinKeepViaSSH(t *testing.T) {
-	h := newFakeSSHHarness(t)
-	parent := "tank/backups/jails/10/j-x"
-	active := parent + "/active"
-
-	h.SetScenario(fakeSSHScenario{
-		Responses: map[string][]fakeSSHResponse{
-			"zfs list -t filesystem -d 1 -Hp -o name " + parent: {
-				{Stdout: strings.Join([]string{
-					active,
-					parent + "/active_gen-1",
-					parent + "/active_gen-2",
-				}, "\n") + "\n", ExitCode: 0},
-			},
-		},
-	})
-
-	s := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "tank/backups"}
-
-	destroyed, err := s.trimTargetBackupGenerations(context.Background(), target, active, 2)
-	if err != nil {
-		t.Fatalf("trimTargetBackupGenerations: %v", err)
-	}
-	if destroyed != 0 {
-		t.Fatalf("expected 0 generations destroyed, got %d", destroyed)
-	}
-
-	assertFakeSSHCallSequence(t, h.Calls(), []string{
-		"zfs list -t filesystem -d 1 -Hp -o name " + parent,
-	})
 }
 
 func TestTargetDatasetExistsTolerantOfSSHBanner(t *testing.T) {

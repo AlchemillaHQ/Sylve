@@ -9,11 +9,14 @@
 package system
 
 import (
+	"context"
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 
 	"github.com/alchemillahq/gzfs"
@@ -23,23 +26,43 @@ import (
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB          *gorm.DB
-	syncMutex   sync.Mutex
-	achMutex    sync.Mutex
-	GZFS        *gzfs.Client
-	DiskService diskServiceInterfaces.DiskServiceInterface
+	DB                      *gorm.DB
+	initMutex               sync.Mutex
+	syncMutex               sync.Mutex
+	achMutex                sync.Mutex
+	serviceSettingsMutex    sync.Mutex
+	dhcpServiceStateApply   func(bool) error
+	GZFS                    *gzfs.Client
+	DiskService             diskServiceInterfaces.DiskServiceInterface
+	diskSmartConfigMu       sync.RWMutex
+	diskSmartConfigs        map[string]diskSmartConfig
+	diskSmartConfigSnapshot bool
 
-	tunMutex    sync.Mutex
-	tunCache    []sysctl.Tunable
-	tunCachedAt time.Time
+	tunMutex         sync.Mutex
+	tunCache         []sysctl.Tunable
+	tunCachedAt      time.Time
+	tunList          func() ([]sysctl.Tunable, error)
+	tunDescribe      func(string) (sysctl.Tunable, bool, error)
+	tunMutationMutex sync.Mutex
+	tunRead          func(string) (string, error)
+	tunApply         func(string, string) error
 
-	MdnsRebuild func() error
+	fileExplorerMutationMutex sync.Mutex
+	fileExplorerRename        func(string, string) error
+	jailed                    bool
+	restartRequester          func()
+	runCommand                func(string, ...string) (string, error)
+
+	MdnsRebuild          func() error
+	OnUsablePoolsChanged func(context.Context) error
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {
 	return &Service{
-		DB:   db,
-		GZFS: gzfs,
+		DB:         db,
+		GZFS:       gzfs,
+		jailed:     config.IsRunningInJail(),
+		runCommand: utils.RunCommand,
 	}
 }
 

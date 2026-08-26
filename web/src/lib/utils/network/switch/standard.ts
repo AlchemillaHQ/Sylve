@@ -163,6 +163,11 @@ export function generateTableData(switches: SwitchList | undefined): {
 
 				return renderWithIcon('gridicons:cross-circle', 'No');
 			}
+		},
+		{
+			field: 'disableBridgeOffloads',
+			title: 'Disable Bridge Offloads',
+			visible: false
 		}
 	];
 
@@ -198,7 +203,8 @@ export function generateTableData(switches: SwitchList | undefined): {
 				dhcp: sw.dhcp || false,
 				disableIPv6: sw.disableIPv6 || false,
 				slaac: sw.slaac || false,
-				defaultRoute: sw.defaultRoute || false
+				defaultRoute: sw.defaultRoute || false,
+				disableBridgeOffloads: sw.disableBridgeOffloads || false
 			});
 		}
 	}

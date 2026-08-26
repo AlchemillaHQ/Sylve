@@ -9,7 +9,9 @@
 package zelta
 
 import (
+	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -17,6 +19,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 type stubVMService struct {
@@ -27,6 +30,49 @@ type stubVMService struct {
 
 func (s stubVMService) IsDomainShutOff(_ uint) (bool, error) {
 	return s.shutOff, s.shutOffErr
+}
+
+func (s stubVMService) ForceStopVM(_ uint) error {
+	return nil
+}
+
+type transitionDemoteVMStub struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	running           bool
+	ordinaryActions   int
+	ordinaryAction    string
+	transitionActions int
+	transitionAction  string
+	transitionRunID   string
+}
+
+func (s *transitionDemoteVMStub) IsDomainShutOff(_ uint) (bool, error) {
+	return !s.running, nil
+}
+
+func (s *transitionDemoteVMStub) LvVMAction(_ vmModels.VM, action string) error {
+	s.ordinaryActions++
+	s.ordinaryAction = action
+	s.running = false
+	return nil
+}
+
+func (s *transitionDemoteVMStub) LvVMActionForReplication(_ vmModels.VM, action, transitionRunID string) error {
+	s.transitionActions++
+	s.transitionAction = action
+	s.transitionRunID = transitionRunID
+	s.running = false
+	return nil
+}
+
+type retirementVMStub struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	retired bool
+}
+
+func (s *retirementVMStub) RetireVMLocalMetadata(_ uint, _ bool) error {
+	s.retired = true
+	return nil
 }
 
 type stubJailService struct {
@@ -61,6 +107,186 @@ func TestReplicationGuestDriver(t *testing.T) {
 	_, err = s.replicationGuestDriver("invalid")
 	if err == nil {
 		t.Fatal("expected error for invalid guest type")
+	}
+}
+
+func TestDemoteReplicationPolicyUsesAuthorizedVMTransitionAction(t *testing.T) {
+	db := newZeltaServiceTestDB(
+		t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationPolicyTarget{},
+		&vmModels.VM{},
+		&vmModels.Storage{},
+		&vmModels.VMStorageDataset{},
+		&vmModels.Network{},
+		&vmModels.VMCPUPinning{},
+	)
+	if err := db.Create(&vmModels.VM{RID: 108, Name: "safe-move"}).Error; err != nil {
+		t.Fatalf("create VM registration: %v", err)
+	}
+	policy := clusterModels.ReplicationPolicy{
+		ID: 71, Name: "safe-move", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 108,
+		SourceNodeID: "node-hera", ActiveNodeID: "node-hera", OwnerEpoch: 4,
+		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
+		CronExpr:   "*/5 * * * *", Enabled: true,
+		ProtectionState:        clusterModels.ReplicationProtectionStateSuspended,
+		TransitionState:        clusterModels.ReplicationTransitionStateDemoting,
+		TransitionRunID:        "safe-move-run",
+		TransitionSourceNodeID: "node-hera",
+		TransitionTargetNodeID: "node-ares",
+		TransitionOwnerEpoch:   4,
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("create replication policy: %v", err)
+	}
+
+	vmRuntime := &transitionDemoteVMStub{running: true}
+	service := newTestZeltaService(db)
+	service.Cluster = &clusterService.Service{DB: db, NodeID: "node-hera"}
+	service.VM = vmRuntime
+
+	if err := service.DemoteReplicationPolicyForTransition(
+		context.Background(),
+		policy.ID,
+		policy.OwnerEpoch,
+		policy.TransitionRunID,
+	); err != nil {
+		t.Fatalf("demote VM for safe move: %v", err)
+	}
+	if vmRuntime.ordinaryActions != 0 {
+		t.Fatalf("ordinary VM actions = %d, want 0", vmRuntime.ordinaryActions)
+	}
+	if vmRuntime.transitionActions != 1 || vmRuntime.transitionAction != "stop" ||
+		vmRuntime.transitionRunID != policy.TransitionRunID {
+		t.Fatalf(
+			"transition VM action = calls:%d action:%q run:%q, want calls:1 action:stop run:%q",
+			vmRuntime.transitionActions,
+			vmRuntime.transitionAction,
+			vmRuntime.transitionRunID,
+			policy.TransitionRunID,
+		)
+	}
+	if vmRuntime.running {
+		t.Fatal("transition-authorized VM stop left the VM running")
+	}
+
+	vmRuntime.running = true
+	if err := service.stopVMIfPresent(policy.GuestID); err != nil {
+		t.Fatalf("ordinary VM stop: %v", err)
+	}
+	if vmRuntime.ordinaryActions != 1 || vmRuntime.ordinaryAction != "stop" {
+		t.Fatalf(
+			"ordinary VM action = calls:%d action:%q, want calls:1 action:stop",
+			vmRuntime.ordinaryActions,
+			vmRuntime.ordinaryAction,
+		)
+	}
+	if vmRuntime.transitionActions != 1 {
+		t.Fatalf("ordinary VM stop reused transition action; transition calls = %d", vmRuntime.transitionActions)
+	}
+}
+
+func TestRequireSupportedReplicationVMStorages(t *testing.T) {
+	if err := requireSupportedReplicationVMStorages([]vmModels.Storage{
+		{Type: vmModels.VMStorageTypeZVol, Enable: true},
+		{Type: vmModels.VMStorageTypeFilesystem, Enable: false},
+	}); err != nil {
+		t.Fatalf("disabled filesystem storage was rejected: %v", err)
+	}
+	if err := requireSupportedReplicationVMStorages([]vmModels.Storage{
+		{Type: vmModels.VMStorageTypeFilesystem, Enable: true},
+	}); !errors.Is(err, errReplicationVMFilesystemStorageUnsupported) {
+		t.Fatalf("enabled filesystem storage returned %v", err)
+	}
+}
+
+func TestVMReplicationSourcesIgnoreLegacyISOPool(t *testing.T) {
+	service := newTestZeltaService(newZeltaServiceTestDB(t))
+	service.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
+		return []string{
+			"tank/sylve/virtual-machines/107",
+			"stale/sylve/virtual-machines/107",
+		}, nil
+	}
+	driver := vmReplicationGuestDriver{service: service}
+	sources, err := driver.replicationSourceDatasets(context.Background(), &vmModels.VM{
+		RID: 107,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeRaw, Pool: "tank", Enable: true},
+			{
+				Type: vmModels.VMStorageTypeDiskImage, Pool: "stale", Enable: true,
+				DownloadUUID: "iso-107", Emulation: vmModels.AHCICDStorageEmulation,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("discover VM replication sources: %v", err)
+	}
+	want := []string{"tank/sylve/virtual-machines/107"}
+	if !reflect.DeepEqual(sources, want) {
+		t.Fatalf("replication sources = %v, want %v", sources, want)
+	}
+}
+
+func TestVMReplicationSourcesIgnoreRetainedGenerations(t *testing.T) {
+	service := newTestZeltaService(newZeltaServiceTestDB(t))
+	service.localFilesystemDatasetLister = func(context.Context) ([]string, error) {
+		return []string{
+			"zroot/sylve/virtual-machines/107",
+			"zroot/sylve/virtual-machines/107_previous-replication-6633921964961922-mrmb3i63-2",
+			"zroot/sylve/virtual-machines/107_previous-replication-6633921964961922-mrmb9yr1-2",
+		}, nil
+	}
+	driver := vmReplicationGuestDriver{service: service}
+	sources, err := driver.replicationSourceDatasets(context.Background(), &vmModels.VM{
+		RID: 107,
+		Storages: []vmModels.Storage{
+			{Type: vmModels.VMStorageTypeZVol, Pool: "zroot", Enable: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("discover VM replication sources: %v", err)
+	}
+	want := []string{"zroot/sylve/virtual-machines/107"}
+	if !reflect.DeepEqual(sources, want) {
+		t.Fatalf("replication sources = %v, want %v", sources, want)
+	}
+}
+
+func TestSelfFencePreservesMigrationCutoverTargetRegistration(t *testing.T) {
+	db := newZeltaServiceTestDB(t, &vmModels.VM{}, &clusterModels.ReplicationGuestOperation{})
+	if err := db.Create(&vmModels.VM{RID: 107, Name: "migration-target"}).Error; err != nil {
+		t.Fatalf("create VM registration: %v", err)
+	}
+	if err := db.Create(&clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeVM,
+		GuestID:      107,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source:1",
+		OwnerNodeID:  "node-a",
+		TargetNodeID: "node-b",
+	}).Error; err != nil {
+		t.Fatalf("create migration cutover operation: %v", err)
+	}
+
+	vm := &retirementVMStub{}
+	service := &Service{DB: db, VM: vm}
+	service.selfFenceReplicationPolicy(context.Background(), &clusterModels.ReplicationPolicy{
+		ID:        1,
+		GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID:   107,
+	}, "node-b", "node-a", replicationFenceReasonPolicyOwnerMismatch, true)
+
+	if vm.retired {
+		t.Fatal("migration cutover target VM registration was retired")
+	}
+	var count int64
+	if err := db.Model(&vmModels.VM{}).Where("rid = ?", 107).Count(&count).Error; err != nil {
+		t.Fatalf("count VM registrations: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("VM registration count = %d, want 1", count)
 	}
 }
 

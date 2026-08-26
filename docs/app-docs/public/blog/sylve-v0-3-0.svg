@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Sylve v0.3.0 system graphic</title>
+  <desc id="desc">Four infrastructure components connected around a single integrated core.</desc>
+
+  <rect width="1600" height="900" fill="#f4f3ef"/>
+
+  <g stroke="#171715" stroke-width="2" fill="none" opacity=".1">
+    <path d="M0 150H1600M0 450H1600M0 750H1600"/>
+    <path d="M200 0V900M500 0V900M800 0V900M1100 0V900M1400 0V900"/>
+  </g>
+
+  <g transform="translate(800 450) scale(.82)">
+    <g stroke="#171715" stroke-width="4" fill="none">
+      <circle r="292" opacity=".12"/>
+      <circle r="206" opacity=".12"/>
+      <path d="M0-148V-258M148 0h110M0 148v110M-148 0h-110" opacity=".48"/>
+    </g>
+
+    <g stroke="#171715" stroke-width="4" stroke-linejoin="round">
+      <path d="M0-148 148 0 0 148-148 0Z" fill="#171715"/>
+      <path d="M0-98 98 0 0 98-98 0Z" fill="#f4f3ef"/>
+      <path d="M0-48 48 0 0 48-48 0Z" fill="#171715"/>
+
+      <rect x="-70" y="-398" width="140" height="140" rx="10" fill="#f4f3ef"/>
+      <rect x="258" y="-70" width="140" height="140" rx="10" fill="#f4f3ef"/>
+      <rect x="-70" y="258" width="140" height="140" rx="10" fill="#f4f3ef"/>
+      <rect x="-398" y="-70" width="140" height="140" rx="10" fill="#f4f3ef"/>
+    </g>
+
+    <g fill="#171715">
+      <circle cy="-258" r="9"/>
+      <circle cx="258" r="9"/>
+      <circle cy="258" r="9"/>
+      <circle cx="-258" r="9"/>
+    </g>
+
+    <g fill="#171715" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="18" text-anchor="middle" letter-spacing="2">
+      <text y="-316">COMPUTE</text>
+      <text x="328" y="7">STORAGE</text>
+      <text y="340">CLUSTER</text>
+      <text x="-328" y="7">NETWORK</text>
+    </g>
+  </g>
+
+</svg>

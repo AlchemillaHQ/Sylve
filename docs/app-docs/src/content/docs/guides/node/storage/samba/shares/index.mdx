@@ -1,79 +1,82 @@
 ---
 title: Shares
-description: Managing samba shares on Sylve
+description: Publish mounted ZFS filesystems as Samba shares and control their access.
 ---
 
-## Pre-Requisites
+import sambaSharesOverview from './samba-shares-overview.png';
+import sambaShareDetails from './samba-share-details.png';
+import sambaShareAccess from './samba-share-access.png';
+import sambaShareOptions from './samba-share-options.png';
+import sambaShareDelete from './samba-share-delete.png';
 
-You should have local users and/or groups ready before creating a share. You can manage both from the Authentication section.
+Samba shares publish a mounted ZFS filesystem over SMB. Each share is bound to exactly one dataset, and a dataset can belong to only one Samba share. Create the filesystem first, then use **Storage → Samba → Shares** to publish it.
 
-## Preface
+The Shares table shows the share's status, name, dataset mount point, read and write principals, and creation time. Select a row to edit or delete that share.
 
-Samba Shares are extremely simple in Sylve, just covering the basics. For our use-case this was plenty, but more features and improvements are definitely needed here, that being said we believe a lot of users' requirements are met with the implementation we do have.
+<img src={sambaSharesOverview.src} alt="Sylve Samba Shares page listing enabled and disabled shares with their mount points, read access, write access, and creation times" />
 
-If you're someone with extensive samba knowledge/experience please get in touch with us over GitHub or Discord, would love to chat and this is one area where we're actively looking for PRs on!
+## Create a share
 
-## Create a Samba Share
+Select **New**. The dialog has **Details**, **Access**, and **Options** tabs. Configure all three before selecting **Create Share**.
 
-Creating a samba share is relatively simple, clicking on the "New" button in the context menu opens a form like this:
+### Details
 
-![Creating a Share](./share.png)
+<img src={sambaShareDetails.src} alt="Create Samba Share dialog on the Details tab with a share name, mounted filesystem dataset, and the Enabled option selected" />
 
-Let's go through the fields one by one:
+| Option | Behavior |
+| --- | --- |
+| Name | Required share name. It must be unique and cannot contain square brackets or line breaks. This is the SMB share name clients browse. |
+| Dataset | Required mounted ZFS filesystem to publish. Sylve excludes unmounted datasets, the pool root, `pool/ROOT/...`, `pool/sylve/...`, and datasets already used by another Samba share. |
+| Enabled | When enabled, Sylve writes the share into Samba's configuration. A disabled share remains saved for later but is not published. |
 
-- **Name**: The name of the share, this is what will be displayed in the samba clients when they connect to the server.
+When Sylve creates or enables a share, it applies `nfsv4` ACLs with `restricted` ACL mode and `passthrough` inheritance to its dataset. If a shared dataset is later deleted through a managed Sylve workflow, its share is disabled automatically.
 
-- **Dataset**: The dataset you want to share, this is the path that will be shared over samba. You can create one in the ZFS/Filesystem section if you don't have one already.
+### Access
 
+Choose one access mode. Authenticated access requires at least one selected user or group. Guest modes clear the effective named permissions for the share.
 
-- **Read Users**: Users that get read access.
+<img src={sambaShareAccess.src} alt="Create Samba Share dialog on the Access tab with Authenticated access selected and read and write users and groups populated" />
 
-- **Write Users**: Users that get write access.
+| Option | Behavior |
+| --- | --- |
+| Authenticated | Restricts access to the users and groups selected below. This is the appropriate choice for most private shares. |
+| Guest read-only | Allows anyone to browse and read files without credentials. |
+| Guest read/write | Allows anyone to read and modify files without credentials. Use only on a trusted network and a disposable or deliberately public dataset. |
+| Read Users | Local Sylve users granted read access. |
+| Write Users | Local Sylve users granted write access. Write access takes precedence, so a user in both lists is kept only as a writer. |
+| Read Groups | Local Sylve groups granted read access. |
+| Write Groups | Local Sylve groups granted write access. Write access takes precedence, so a group in both lists is kept only as a writer. |
 
-- **Read Groups**: Groups that get read access.
-
-- **Write Groups**: Groups that get write access.
-
-Sylve uses **write-wins** normalization. If the same user/group is selected in both read and write lists, it is treated as write access.
-
-- **Create Mask**: The permissions that will be set on files created in the share, this is a standard unix permission mask. The default value is `0664` which means that the owner and group will have read and write permissions, while others will have read-only permissions.
-
-- **Directory Mask**: The permissions that will be set on directories created in the share, this is a standard unix permission mask. The default value is `2775` which means that the owner and group will have read, write and execute permissions, while others will have read and execute permissions.
-
-- **Guest Only**: Whether to make this a guest-only share. If enabled, authenticated user/group access is disabled for that share.
-
-- **Guest Writeable**: Only shown in guest-only mode. Controls whether guests can write or read-only.
-
-## Editing a Samba Share
-
-Editing a samba share is just as simple as creating one, clicking on the "Edit" button in the context menu and do whatever changes you want to make, then click "Edit" to apply the changes.
-
-## Deleting a Samba Share
-
-Deleting a samba share is also simple, just click on the "Delete" button in the context menu and confirm the deletion. This will permanently delete the share and all its configurations, but it will not delete the underlying dataset or files.
-
-## Accessing the Samba Share
-
-:::warning
-Never ever expose samba directly to the internet, if you want to access your samba shares remotely, use a VPN or a secure tunnel like WireGuard or Tailscale. Samba is not designed to be exposed to the internet and doing so can lead to serious security vulnerabilities.
+:::caution
+Guest write access allows unauthenticated modification of the dataset. Treat it as public write access, not as a convenience setting for ordinary household or office shares.
 :::
 
-In this demonstration we'll be accessing the samba share from a macOS client over tailcale, but the process is similar for other operating systems as well.
+### Options
 
-:::note
-Modern Windows versions may block insecure SMB guest logons by default. If guest-only shares fail from Windows clients, check the client-side SMB guest logon policy.
-:::
+Use this tab for Apple Time Machine support, per-share auditing, and default permissions for newly created files and directories.
 
-![Opening the Samba Share](./conn-1.png)
+<img src={sambaShareOptions.src} alt="Create Samba Share dialog on the Options tab showing Time Machine, audit logging with selected operations, advanced permission masks, and the share summary" />
 
-In the "Connect to Server" dialog, enter the address of your Sylve server in the following format:
+| Option | Behavior |
+| --- | --- |
+| Time Machine | Advertises this share as an Apple Time Machine destination. It is available only when **Apple Extensions** is enabled in Samba Settings. |
+| Time Machine Max Size (GB) | Maximum Time Machine backup size in whole gigabytes. `0` means no limit. Available when Time Machine is enabled. |
+| Audit logging | Enables recording of selected SMB operations for this share. |
+| Operations to Audit | Choose one or more of `connect`, `disconnect`, `create_file`, `mkdirat`, `unlinkat`, `renameat`, `openat`, `close`, `read`, and `write`. At least one operation is required when audit logging is enabled. |
+| Retention Days | How long Sylve keeps this share's audit records. Default: `70`. Enter a whole number of days, or `0` to retain records indefinitely. Changing it on an existing share also updates the retention applied to its existing records. |
+| Create Mask | Four octal digits controlling permissions for new files. Default: `0664`. |
+| Directory Mask | Four octal digits controlling permissions for new directories. Default: `2775`, which preserves the shared group on child directories. |
 
-```
-smb://<IP_ADDRESS_OR_HOSTNAME>/<SHARE_NAME>
-```
+### Discovery and Time Machine advertising
 
-![Authenticating with the server](./conn-2.png)
+When **Advertise Samba (mDNS)** is enabled in Samba Settings and at least one share is enabled, Sylve's mDNS service advertises the SMB server as `_smb._tcp` on port 445. With **Apple Extensions** enabled, it also advertises Apple device information. Each enabled share with **Time Machine** enabled is included in the `_adisk._tcp` advertisement, allowing compatible Apple devices to discover it as a backup destination.
 
-After the authentication is successful, you should see the contents of the share in the Finder.
+Sylve rebuilds its managed mDNS records after a share is created, updated, deleted, enabled, or disabled. These Samba-generated records are managed by Sylve and are not editable as custom mDNS records.
 
-![Contents of the Samba Share](./conn-3.png)
+## Edit or delete a share
+
+Select one share and choose **Edit Share** to change its dataset, status, access mode, principals, or options. Changing the dataset removes Sylve-managed Samba access entries from the old mounted dataset and applies the intended access to the new one.
+
+Choose **Delete Share** to remove the share configuration. It does not delete the underlying ZFS filesystem or its data.
+
+<img src={sambaShareDelete.src} alt="Sylve confirmation dialog asking to delete a Samba share while preserving its underlying dataset" />

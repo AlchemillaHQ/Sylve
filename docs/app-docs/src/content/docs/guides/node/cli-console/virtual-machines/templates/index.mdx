@@ -1,0 +1,211 @@
+---
+title: Templates
+description: Capture powered-off VMs and create single or multiple guests from reusable Sylve templates.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+VM templates preserve a guest's configuration and copy its managed raw disks and ZVOLs into reusable ZFS datasets. The source VM remains available after capture.
+
+## Know what capture includes
+
+Capture stores the VM's CPU topology, memory, firmware, console settings, guest-agent setting, shutdown wait, cloud-init content, extra bhyve options, and other reusable configuration. It also records each attached switch by name and type.
+
+Storage is handled by ownership:
+
+- Managed raw disks and ZVOLs are copied into template datasets.
+- Their enabled state, emulation, size, boot order, and ZFS tuning are retained.
+- Download-backed images are not copied into the template.
+- External filesystem attachments are not copied.
+- PCI devices are not part of the template.
+- CPU pinning is not part of the template.
+
+The source VM must be powered off and must have at least one managed raw disk or ZVOL. Every referenced switch and storage pool must still exist when the operation runs.
+
+Each created VM receives safe per-guest values. Sylve allocates an available VNC port and generates a new VNC password. Each recorded network attachment receives a newly generated MAC object and is enabled on the created VM. Sylve also disables autostart and Wake-on-LAN, resets start order to `0`, and leaves PCI assignments and CPU pinning empty. Review these settings after creation instead of assuming they match the source VM.
+
+:::note[Capture is a copy]
+Capturing a template does not convert, rename, or delete the source VM. Later changes to the source VM do not update an existing template.
+:::
+
+## Capture a powered-off VM
+
+Capture VM `301` under a unique template name:
+
+```bash
+doas sylve vms templates capture \
+  --rid 301 \
+  --name docs-alpine-template \
+  --json
+```
+
+Loki queued the copy as task `32`:
+
+```json
+{
+  "taskId": 32,
+  "sourceRid": 301,
+  "action": "capture",
+  "outcome": "queued"
+}
+```
+
+Inspect the task before using the template:
+
+```bash
+doas sylve tasks get --id 32 --json
+```
+
+A successful task has `"status": "success"`. Capture performs preflight before it queues work, so invalid storage, missing switches, a running VM, or a duplicate template name is rejected without creating a task.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-templates-capture.cast"
+  title="A real template capture and its three managed storage mappings on Loki."
+/>
+
+## List and inspect templates
+
+List the compact inventory:
+
+```bash
+doas sylve vms templates list
+```
+
+The storage mapping IDs in this output are important when overriding target pools:
+
+```text
+ID    NAME                    SOURCE VM            STORAGE MAPPINGS
+1     docs-alpine-template    docs-alpine (301)    5=zroot (raw), 7=zroot (raw), 8=zroot (zvol)
+```
+
+Inspect a readable summary:
+
+```bash
+doas sylve vms templates get --template-id 1
+```
+
+Use JSON to see the complete saved configuration, networks, template dataset paths, estimated bytes, and source storage IDs:
+
+```bash
+doas sylve vms templates get --template-id 1 --json
+```
+
+The Loki template contains raw mappings `5` and `7`, ZVOL mapping `8`, and the standard switch `TTT`. Its Alpine installer image is absent because image storage is not cloneable template storage.
+
+## Create one VM
+
+Single mode requires an unused RID. The name is optional:
+
+```bash
+doas sylve vms templates create \
+  --template-id 1 \
+  --mode single \
+  --rid 302 \
+  --name docs-from-template \
+  --json
+```
+
+The request queued task `33`. After it succeeded, Loki reported:
+
+```text
+RID:  302
+Name:  docs-from-template
+Description:  CLI documentation example
+Networks:  1
+Storage devices:  3
+```
+
+If `--name` is omitted, Sylve tries `<source-name>-<RID>` and falls back to `vm-<RID>` when needed.
+
+## Create a batch
+
+Multiple mode creates a contiguous RID range. It accepts between 1 and 200 targets:
+
+```bash
+doas sylve vms templates create \
+  --template-id 1 \
+  --mode multiple \
+  --start-rid 303 \
+  --count 2 \
+  --name-prefix docs-batch \
+  --json
+```
+
+Task `34` created `docs-batch-303` and `docs-batch-304`. Every RID and generated name is checked before the task is queued. If creation later fails for any target, guests already created by that batch are cleaned up.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-templates-create.cast"
+  title="Real single and two-VM batch creation from template 1 on Loki."
+/>
+
+## Override storage placement
+
+By default, each cloned disk uses the pool recorded in the template. Override selected mappings with the source storage IDs shown by `list` or `get`:
+
+```bash
+doas sylve vms templates create \
+  --template-id 1 \
+  --mode single \
+  --rid 305 \
+  --name docs-fast \
+  --storage-pool 5=fast \
+  --storage-pool 7=bulk \
+  --storage-pool 8=fast
+```
+
+Repeat `--storage-pool` once per override. Each value must use `SOURCE_STORAGE_ID=POOL`, the source ID must belong to the selected template, and the target pool must be usable. Mappings without an override retain their recorded pool.
+
+## Rewrite cloud-init identity
+
+Cloning cloud-init data unchanged can duplicate `instance-id` and hostname values. For a template that contains cloud-init data, request a unique identity for every target:
+
+```bash
+doas sylve vms templates create \
+  --template-id 4 \
+  --mode multiple \
+  --start-rid 500 \
+  --count 3 \
+  --name-prefix web \
+  --rewrite-cloud-init-identity \
+  --cloud-init-prefix web
+```
+
+`--cloud-init-prefix` requires `--rewrite-cloud-init-identity`. The Loki example template has no cloud-init data, so its real creation commands did not request rewriting.
+
+## Delete a template
+
+Delete the template record and all of its managed template datasets:
+
+```bash
+doas sylve vms templates delete --template-id 1 --json
+```
+
+This does not delete the original VM or VMs previously created from the template. Deletion is rejected while a create task for that template is active.
+
+:::caution[Template deletion is permanent]
+Deleting a template destroys the copied template datasets. Existing guests have their own cloned storage, but the template can no longer create new guests.
+:::
+
+## Use the interactive console
+
+The console uses positional IDs after each leaf command:
+
+```text
+vms templates list --json
+vms templates get 1 --json
+vms templates capture 301 --name docs-alpine-template --json
+vms templates create 1 --mode single --rid 302 --name docs-from-template --json
+vms templates create 1 --mode multiple --start-rid 303 --count 2 --name-prefix docs-batch --json
+vms templates delete 1 --json
+```
+
+The same preflight, task, storage placement, and cleanup behavior applies in direct and console modes.
+
+## Safe workflow
+
+1. Power off the source and inspect its managed storage and switch attachments.
+2. Capture the template and wait for the returned task to succeed.
+3. Use `templates get --json` to record source storage mapping IDs.
+4. Confirm every requested RID, name, switch, and target pool before batch creation.
+5. Rewrite cloud-init identity when the template contains cloud-init configuration.
+6. Keep the template until no further guests need to be created from it.

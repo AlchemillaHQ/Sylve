@@ -1,0 +1,173 @@
+---
+title: Rocky Linux Jail
+description: Create a Rocky Linux 10 jail with Sylve and FreeBSD Linux compatibility.
+---
+
+import rockyStorage from "./storage.png";
+import rockyNetwork from "./network.png";
+import rockyAdvanced from "./advanced.png";
+import rockyConsole from "./console.png";
+import rockyDownloader from "./rocky-linux-downloader.png";
+
+Rocky Linux is a glibc-based Linux distribution that works well for experimenting with FreeBSD's Linux binary compatibility layer, commonly called Linuxulator. Sylve runs the Rocky Linux userland inside a FreeBSD jail while the processes continue to use the FreeBSD host kernel.
+
+This is not the same as running Rocky Linux in a virtual machine. A Linux jail does not boot a Linux kernel, and software that depends on Linux kernel features such as cgroups, namespaces, kernel modules, or a complete systemd environment may not work. Use a [virtual machine](/guides/one-shot-guides/simple-virtual-machine/) when the workload needs those features.
+
+## Prepare Sylve and networking
+
+Follow [Simple Jail](/guides/one-shot-guides/simple-jail/) through [Create a Standard Switch](/guides/one-shot-guides/simple-jail/#create-a-standard-switch). This prepares Sylve, enables the Jails service and FreeBSD Linux compatibility support, and creates the switch used below.
+
+Do not bootstrap a FreeBSD jail base. A Linux jail needs an extracted Linux root filesystem, which you will add through Downloader instead.
+
+## Choose a Rocky Linux root filesystem
+
+This guide uses the [Rocky Linux 10 amd64 root filesystem built on August 23, 2026](https://images.linuxcontainers.org/images/rockylinux/10/amd64/default/20260823_02%3A06/rootfs.tar.xz):
+
+```text
+https://images.linuxcontainers.org/images/rockylinux/10/amd64/default/20260823_02%3A06/rootfs.tar.xz
+```
+
+You can use that tested URL directly. To choose a newer build, open the [Linux Containers Rocky Linux 10 image directory](https://images.linuxcontainers.org/images/rockylinux/10/amd64/default/), select the newest timestamped folder, and copy the URL for its `rootfs.tar.xz` file.
+
+Timestamped build folders are replaced regularly. Selecting the newest available build avoids embedding a dated archive URL in this guide. Confirm that you are using this path:
+
+```text
+rockylinux/10/amd64/default/<build>/rootfs.tar.xz
+```
+
+The architecture must match the FreeBSD host. This guide uses `amd64`.
+
+## Add the root filesystem to Downloader
+
+Open **Utilities → Downloader**, select **New**, and configure the download:
+
+| Field | Value |
+| --- | --- |
+| **Source** | The complete HTTPS URL for the selected `rootfs.tar.xz` |
+| **Optional File Name** | `rocky-linux-10.tar.xz` |
+| **Download Type** | **Base / RootFS** |
+| **Ignore TLS Errors** | Disabled |
+| **Extract Automatically** | Enabled automatically by **Base / RootFS** |
+| **Auto-convert to RAW** | Disabled |
+
+<img
+  src={rockyDownloader.src}
+  alt="Downloader dialog containing the August 23 Rocky Linux 10 rootfs URL, rocky-linux-10.tar.xz as the optional filename, automatic extraction enabled, and conversion and TLS-error options disabled"
+/>
+
+The screenshot was captured before changing **Download Type**. Select **Base / RootFS** instead of the displayed **Uncategorized** value before selecting **Download**. This classification makes the extracted directory available in the jail's **Base** selector.
+
+Select **Download**. The item moves from **Pending** to **Processing** while Sylve downloads and extracts the archive. Wait until its state is **Done** before creating the jail.
+
+Extraction is required. Jail creation copies the contents of an extracted root filesystem directory and cannot use the compressed archive directly. For details about states, processing options, retries, and cleanup, see [Downloader](/guides/node/utilities/downloader/).
+
+## Create the Rocky Linux jail
+
+Select **Create Jail** and use the Simple Jail values where this section does not specify a change.
+
+### Basic
+
+Use these identity values:
+
+- **Jail Name:** `RockyLinux`
+- **Hostname:** `rockylinux`
+- **Description:** `Rocky Linux 10 jail`
+
+Choose an unused **Jail ID**.
+
+### Storage
+
+Select the intended ZFS **Pool**, then choose `rocky-linux-10.tar.xz` under **Base**.
+
+Enable **FStab Additions** and select **Simple Linux**. Sylve generates the `devfs`, `tmpfs`, `fdescfs`, `linprocfs`, and `linsysfs` mounts required by the Linux compatibility environment. Review the generated entries but do not replace them with the FreeBSD defaults.
+
+<img
+  src={rockyStorage.src}
+  alt="Create Jail Storage tab with a Rocky Linux root filesystem selected and the Simple Linux fstab preset generating compatibility mounts"
+/>
+
+:::caution
+Invalid or missing fstab mounts can prevent the jail from starting. Keep the generated Simple Linux entries unless you understand the Linuxulator mount requirements.
+:::
+
+### Network
+
+Select the Standard Switch prepared earlier. Linux jails cannot use **DHCP** or **SLAAC** in Sylve, so configure a static address:
+
+1. Select or enter an unused **IPv4 Network** address with its CIDR prefix.
+2. Select or enter the matching **IPv4 Gateway**.
+3. Optionally configure static IPv6 using **IPv6 Network** and **IPv6 Gateway**.
+4. Leave **MAC Address** empty to generate one, or select an unused managed MAC object.
+5. Keep **VLAN** at `0` unless the upstream network requires a VLAN.
+6. Enable **Populate DNS Resolver Configuration** and choose a suitable preset or provide your own resolver content.
+
+The small create action beside an address, gateway, or MAC selector can create a [Network Object](/guides/node/network/objects/) without leaving the jail wizard.
+
+<img
+  src={rockyNetwork.src}
+  alt="Create Jail Network tab with static IPv4 and IPv6 addresses, matching gateways, a managed MAC address, DHCP and SLAAC disabled, and DNS resolver configuration enabled"
+/>
+
+Use addresses appropriate for your network. Do not copy the example addresses from the screenshot unless they belong to your subnet and are unused.
+
+### Hardware
+
+The Simple Jail starting point of one CPU core and 1 GiB of memory is sufficient for testing the base userland. Keep **Boot Order** set to `1`, **Start On Boot** enabled, and **Resource Limits** enabled. Increase the limits later if the installed workload needs more capacity.
+
+### Advanced
+
+Set **Type** to **Linux**. Changing the type applies Sylve's Linux capability defaults and leaves the normal FreeBSD start and stop scripts disabled.
+
+Keep **Clean Environment** enabled and leave the lifecycle hooks disabled unless the workload requires a deliberate custom startup command. Do not add `/bin/sh /etc/rc`, which is a FreeBSD service startup command and is not appropriate for this Rocky Linux root filesystem.
+
+<img
+  src={rockyAdvanced.src}
+  alt="Create Jail Advanced tab with Linux selected, the default Linux allowed options retained, Clean Environment enabled, and lifecycle hooks disabled"
+/>
+
+Review every tab and select **Create Jail**. Wait for creation to finish before opening the new jail.
+
+## Start and verify the jail
+
+Open the Rocky Linux jail's **Summary** page, select **Start**, and wait for the state to become **Running**. Then open **Console**.
+
+Confirm the userland release:
+
+```sh
+cat /etc/rocky-release
+```
+
+Check the static network configuration injected by Sylve:
+
+```sh
+ip address
+ip route
+cat /etc/resolv.conf
+```
+
+Verify connectivity by refreshing the DNF metadata:
+
+```sh
+dnf makecache
+```
+
+Then install available Rocky Linux package updates:
+
+```sh
+dnf upgrade -y
+```
+
+<img
+  src={rockyConsole.src}
+  alt="Sylve console connected to a running Rocky Linux jail with a root shell and successful DNF package activity"
+/>
+
+If `dnf makecache` cannot reach the repositories, inspect the address, default route, and `/etc/resolv.conf` separately. If the jail does not start, check its lifecycle logs and confirm that the Downloader item is fully extracted, **Simple Linux** fstab entries are present, and **Linux** is selected.
+
+## Understand the limitations
+
+Rocky Linux uses glibc, which is generally a better match for Linuxulator than a musl-based userland. Compatibility still depends on the application and the Linux system calls it uses.
+
+Good candidates include command-line tools, build environments, and self-contained services that do not require a Linux kernel control plane. Prefer a VM for Docker or Podman engines, Kubernetes components, kernel modules, applications that require full systemd service management, or software that depends heavily on Linux namespaces and cgroups.
+
+The Rocky Linux jail is now ready for application-specific configuration. Before major package or configuration changes, create a jail [Snapshot](/guides/node/jails/snapshots/) or [Backup](/guides/node/jails/backups/).

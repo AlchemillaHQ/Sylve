@@ -2,6 +2,7 @@ package samba
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -61,6 +62,24 @@ func TestSambaUserExists_NoSuchUser(t *testing.T) {
 			}
 			if exists {
 				t.Fatalf("expected user not to exist")
+			}
+		})
+	}
+}
+
+func TestSambaUserExists_EmptyLookupIsMissing(t *testing.T) {
+	for _, commandErr := range []error{nil, errors.New("exit status 1")} {
+		t.Run(fmt.Sprintf("error=%v", commandErr), func(t *testing.T) {
+			defer resetMocks()
+			runCommand = func(command string, args ...string) (string, error) {
+				return "", commandErr
+			}
+			exists, err := SambaUserExists("alice")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if exists {
+				t.Fatal("empty Samba lookup must not report an existing user")
 			}
 		})
 	}
@@ -207,6 +226,15 @@ func TestEditSambaUser_Success(t *testing.T) {
 		}
 		return true, nil
 	}
+	runCommand = func(command string, args ...string) (string, error) {
+		if command != "/usr/local/bin/pdbedit" {
+			t.Fatalf("unexpected command: %s", command)
+		}
+		if len(args) != 2 || args[0] != "-L" || args[1] != "alice" {
+			t.Fatalf("unexpected args: %#v", args)
+		}
+		return "alice:1000:", nil
+	}
 
 	runCommandWithInput = func(command, input string, args ...string) (string, error) {
 		if command != "/usr/local/bin/smbpasswd" {
@@ -232,6 +260,9 @@ func TestEditSambaUser_SmbpasswdFails(t *testing.T) {
 
 	unixUserExists = func(name string) (bool, error) {
 		return true, nil
+	}
+	runCommand = func(command string, args ...string) (string, error) {
+		return "alice:1000:", nil
 	}
 
 	runCommandWithInput = func(command, input string, args ...string) (string, error) {

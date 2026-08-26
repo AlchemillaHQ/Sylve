@@ -18,26 +18,40 @@
 	import Toolbar from '$lib/components/custom/FileExplorer/Toolbar.svelte';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { storage } from '$lib';
+	import type { APIResponse } from '$lib/types/common';
 	import type { FileNode } from '$lib/types/system/file-explorer';
 	import { generateBreadcrumbItems, sortFileItems, type SortBy } from '$lib/utils/explorer';
-	import { PersistedState } from 'runed';
+	import { isAPIResponse } from '$lib/utils/http';
+	import { toHex } from '$lib/utils/string';
+	import { PersistedState, watch } from 'runed';
+	import { onMount } from 'svelte';
 
 	interface Data {
+		node: string;
 		files: FileNode[];
+		filesError: APIResponse | null;
 	}
 
 	let { data }: { data: Data } = $props();
 
 	const viewMode = new PersistedState<'grid' | 'list'>('file-explorer-view-mode', 'grid');
+	const initialPath = storage.fileExplorerCurrentPath || '/';
 
 	let searchQuery = $state('');
-	let currentPath = $state(storage.fileExplorerCurrentPath || '/');
+	let currentPath = $state('/');
 
 	// svelte-ignore state_referenced_locally
 	let folderData = $state<{ [path: string]: FileNode[] }>({ '/': data.files });
 
 	let selectedItems = $state<string[]>([]);
 	let sortBy = $state<SortBy>('name-asc');
+	let createLoading = $state(false);
+	let renameLoading = $state(false);
+	let transferLoading = $state(false);
+	let navigationRequest = 0;
+	let createRequest = 0;
+	let renameRequest = 0;
+	let transferRequest = 0;
 
 	let copyFileOrFolder = $state({
 		items: [] as string[],
@@ -83,9 +97,7 @@
 
 	async function handleItemClick(item: FileNode) {
 		if (item.type === 'folder') {
-			searchQuery = '';
-			currentPath = item.id;
-			await loadFolderData(item.id);
+			await navigateToPath(item.id);
 		}
 	}
 
@@ -113,62 +125,124 @@
 		}
 	}
 
-	$effect(() => {
-		storage.fileExplorerCurrentPath = currentPath;
-		selectedItems = [];
-		if (currentPath !== '/' && !folderData[currentPath]) {
-			loadFolderData(currentPath);
-		}
-	});
-
 	function handleBackClick() {
 		if (currentPath === '/') return;
 
 		const parts = currentPath.split('/').filter(Boolean);
-		if (parts.length > 1) {
-			parts.pop();
-			currentPath = '/' + parts.join('/');
-		} else {
-			currentPath = '/';
+		parts.pop();
+		void navigateToPath(parts.length > 0 ? `/${parts.join('/')}` : '/');
+	}
+
+	function showBrowseError(response: APIResponse, folderId: string) {
+		handleAPIResponse(response, {
+			error: `Failed to load folder "${folderId}"`
+		});
+	}
+
+	async function loadFolderData(folderId: string, node = data.node): Promise<boolean> {
+		try {
+			const response = await getFiles(folderId, node);
+			if (node !== data.node) return false;
+			if (isAPIResponse(response)) {
+				showBrowseError(response, folderId);
+				return false;
+			}
+			folderData = { ...folderData, [folderId]: response };
+			return true;
+		} catch (error) {
+			console.error('Error loading folder data:', error);
+			return false;
 		}
 	}
 
-	async function loadFolderData(folderId: string) {
-		try {
-			const response = await getFiles(folderId);
-			folderData = { ...folderData, [folderId]: response };
-		} catch (error) {
-			console.error('Error loading folder data:', error);
-			folderData = { ...folderData, [folderId]: [] };
-		}
+	async function navigateToPath(path: string) {
+		const request = ++navigationRequest;
+		const node = data.node;
+
+		if (!folderData[path] && !(await loadFolderData(path, node))) return;
+		if (request !== navigationRequest || node !== data.node) return;
+
+		currentPath = path;
+		storage.fileExplorerCurrentPath = path;
+		selectedItems = [];
+		searchQuery = '';
 	}
 
 	async function createFileOrFolder() {
-		let name = modals.create.name;
-		let isFolder = modals.create.isFolder;
-		const response = await addFileOrFolder(currentPath, name, isFolder);
+		if (createLoading || !modals.create.name.trim()) return;
 
-		delete folderData[currentPath];
-		await loadFolderData(currentPath);
+		const request = ++createRequest;
+		const node = data.node;
+		const path = currentPath;
+		const name = modals.create.name;
+		const isFolder = modals.create.isFolder;
+		createLoading = true;
 
-		handleAPIResponse(response, {
-			success: `${isFolder ? 'Folder' : 'File'} "${name}" created successfully`,
-			error: `Failed to create ${isFolder ? 'folder' : 'file'} "${name}"`
-		});
+		try {
+			const response = await addFileOrFolder(path, name, isFolder, node);
+			if (request !== createRequest || node !== data.node) return;
 
-		modals.create.name = '';
+			handleAPIResponse(response, {
+				success: `${isFolder ? 'Folder' : 'File'} "${name}" created successfully`,
+				error: `Failed to create ${isFolder ? 'folder' : 'file'} "${name}"`
+			});
+			if (response.status !== 'success') return;
+
+			modals.create.isOpen = false;
+			modals.create.isFolder = true;
+			modals.create.name = '';
+			await refreshFolder(path, node);
+		} finally {
+			if (request === createRequest) createLoading = false;
+		}
 	}
 
-	async function handleDeleteFileOrFolder(item: FileNode) {
+	function handleDeleteFileOrFolder(item: FileNode) {
 		modals.delete.item = item;
 		modals.delete.isOpen = true;
 	}
 
-	async function refreshCurrentFolder() {
-		delete folderData[currentPath];
-		await loadFolderData(currentPath);
-		selectedItems = [];
+	async function refreshFolder(path: string, node = data.node): Promise<boolean> {
+		const loaded = await loadFolderData(path, node);
+		if (loaded && node === data.node && path === currentPath) selectedItems = [];
+		return loaded;
 	}
+
+	async function refreshCurrentFolder() {
+		await refreshFolder(currentPath, data.node);
+	}
+
+	onMount(() => {
+		if (data.filesError) showBrowseError(data.filesError, '/');
+		if (initialPath !== '/') void navigateToPath(initialPath);
+	});
+
+	watch(
+		() => data.node,
+		(node, previousNode) => {
+			if (!previousNode || node === previousNode) return;
+
+			navigationRequest++;
+			createRequest++;
+			renameRequest++;
+			transferRequest++;
+			currentPath = '/';
+			storage.fileExplorerCurrentPath = '/';
+			folderData = { '/': data.files };
+			selectedItems = [];
+			searchQuery = '';
+			copyFileOrFolder = { items: [], isCut: false };
+			createLoading = false;
+			renameLoading = false;
+			transferLoading = false;
+			modals.create = { isOpen: false, isFolder: true, name: '' };
+			modals.delete = { isOpen: false, item: null };
+			modals.rename = { isOpen: false, id: '', newName: '' };
+			modals.filepond.isOpen = false;
+
+			if (data.filesError) showBrowseError(data.filesError, '/');
+		}
+	);
 
 	function handleEmptySpaceInteraction(e: MouseEvent) {
 		const target = e.target as HTMLElement;
@@ -193,8 +267,18 @@
 	async function downloadFile(item: FileNode) {
 		if (item.type !== 'file') return;
 
+		const node = data.node;
+		if (!node) return;
 		const hash = await getTokenHash();
-		const downloadUrl = `/api/system/file-explorer/download?id=${encodeURIComponent(item.id)}&hash=${hash}`;
+		if (!hash || node !== data.node) return;
+
+		const auth = toHex(
+			JSON.stringify({
+				hostname: node
+			})
+		);
+		const query = new URLSearchParams({ id: item.id, hash, auth });
+		const downloadUrl = `/api/system/file-explorer/download?${query.toString()}`;
 		const filename = item.id.split('/').pop() || 'download';
 
 		try {
@@ -212,61 +296,135 @@
 		}
 	}
 
-	async function handleCopyFileOrFolder(item: FileNode, isCut: boolean) {
+	function handleCopyFileOrFolder(item: FileNode, isCut: boolean) {
+		if (transferLoading) return;
+
 		const itemsToCopy = selectedItems.length > 0 ? selectedItems : [item.id];
 		copyFileOrFolder.items = itemsToCopy;
 		copyFileOrFolder.isCut = isCut;
 	}
 
+	function parentPath(path: string): string {
+		const separator = path.lastIndexOf('/');
+		return separator <= 0 ? '/' : path.slice(0, separator);
+	}
+
 	async function pasteFileOrFolder() {
-		if (!copyFileOrFolder.items || copyFileOrFolder.items.length === 0) return;
+		if (transferLoading || copyFileOrFolder.items.length === 0) return;
 
-		const requestData: [string, string][] = copyFileOrFolder.items.map((itemId) => [
-			itemId,
-			currentPath
-		]);
+		const request = ++transferRequest;
+		const node = data.node;
+		const destination = currentPath;
+		const sources = [...copyFileOrFolder.items];
+		const move = copyFileOrFolder.isCut;
+		const items = sources.map((source) => ({ source, destination }));
+		let transferSucceeded = false;
+		transferLoading = true;
 
-		await copyOrMoveFilesOrFolders(requestData, copyFileOrFolder.isCut);
+		try {
+			const response = await copyOrMoveFilesOrFolders(items, move, node);
+			if (request !== transferRequest || node !== data.node) return;
 
-		delete folderData[currentPath];
-		await loadFolderData(currentPath);
+			handleAPIResponse(response, {
+				success: `${sources.length} ${sources.length === 1 ? 'item' : 'items'} ${move ? 'moved' : 'copied'} successfully`,
+				error: `Failed to ${move ? 'move' : 'copy'} ${sources.length === 1 ? 'item' : `${sources.length} items`}`
+			});
+			if (response.status !== 'success') return;
+			transferSucceeded = true;
 
-		copyFileOrFolder.items = [];
-		copyFileOrFolder.isCut = false;
-	}
+			const affectedFolders = [destination];
+			if (move) {
+				for (const source of sources) {
+					const sourceParent = parentPath(source);
+					if (!affectedFolders.includes(sourceParent)) affectedFolders.push(sourceParent);
+				}
+			}
 
-	async function handleRenameFileOrFolder(item: FileNode) {
-		modals.rename.id = item.id;
-		modals.rename.isOpen = true;
-		let name = item.id.split('/').pop() || item.id;
-		modals.rename.newName = name;
-	}
+			const nextFolderData = { ...folderData };
+			for (const path of affectedFolders) delete nextFolderData[path];
+			folderData = nextFolderData;
+			if (affectedFolders.includes(currentPath)) selectedItems = [];
 
-	async function handleBreadcrumbNavigate(path: string) {
-		searchQuery = '';
-		selectedItems = [];
-		currentPath = path;
-
-		if (!folderData[path]) {
-			await loadFolderData(path);
+			await loadFolderData(destination, node);
+			if (move && currentPath !== destination && affectedFolders.includes(currentPath)) {
+				await loadFolderData(currentPath, node);
+			}
+		} finally {
+			if (request === transferRequest) {
+				if (transferSucceeded) copyFileOrFolder = { items: [], isCut: false };
+				transferLoading = false;
+			}
 		}
 	}
 
-	async function rename() {
-		if (!modals.rename.id || !modals.rename.newName) return;
+	function handleRenameFileOrFolder(item: FileNode) {
+		modals.rename.id = item.id;
+		modals.rename.isOpen = true;
+		modals.rename.newName = item.id.split('/').pop() || item.id;
+	}
 
-		const response = await renameFileOrFolder(modals.rename.id, modals.rename.newName);
-		delete folderData[currentPath];
-		await loadFolderData(currentPath);
+	async function handleBreadcrumbNavigate(path: string) {
+		await navigateToPath(path);
+	}
+
+	async function rename() {
+		if (renameLoading || !modals.rename.id || !modals.rename.newName.trim()) return;
+
+		const request = ++renameRequest;
+		const node = data.node;
+		const path = currentPath;
+		const id = modals.rename.id;
+		const newName = modals.rename.newName;
+		renameLoading = true;
+
+		try {
+			const response = await renameFileOrFolder(id, newName, node);
+			if (request !== renameRequest || node !== data.node) return;
+
+			handleAPIResponse(response, {
+				success: 'Renamed successfully',
+				error: `Failed to rename "${id.split('/').pop() || id}"`
+			});
+			if (response.status !== 'success') return;
+
+			modals.rename.isOpen = false;
+			modals.rename.id = '';
+			modals.rename.newName = '';
+			await refreshFolder(path, node);
+		} finally {
+			if (request === renameRequest) renameLoading = false;
+		}
+	}
+
+	async function deleteSelectedItems() {
+		const item = modals.delete.item;
+		const paths = [...selectedItems];
+		if (!item || paths.length === 0) return;
+
+		const node = data.node;
+		const path = currentPath;
+		const response = await deleteFilesOrFolders(paths, node);
+		if (node !== data.node) return;
+
+		const single = paths.length === 1;
 		handleAPIResponse(response, {
-			success: 'Renamed successfully',
-			error: Array.isArray(response.error)
-				? response.error.join(', ')
-				: (response.error ?? 'Failed to rename')
+			success: single
+				? `${item.type === 'folder' ? 'Folder' : 'File'} "${item.id.split('/').pop() || ''}" was deleted successfully.`
+				: `${paths.length} items were deleted successfully.`,
+			error: single
+				? `Failed to delete ${item.type === 'folder' ? 'folder' : 'file'} "${item.id.split('/').pop() || ''}".`
+				: `Failed to delete ${paths.length} items.`
 		});
-		modals.rename.isOpen = false;
-		modals.rename.id = '';
-		modals.rename.newName = '';
+		if (response.status !== 'success') return;
+
+		modals.delete.isOpen = false;
+		modals.delete.item = null;
+		await refreshFolder(path, node);
+	}
+
+	function cancelDelete() {
+		modals.delete.isOpen = false;
+		modals.delete.item = null;
 	}
 
 	let isDragOver = $state(false);
@@ -405,7 +563,7 @@
 					Refresh</ContextMenu.Item
 				>
 				{#if copyFileOrFolder.items.length > 0}
-					<ContextMenu.Item class="gap-2" onclick={pasteFileOrFolder}>
+					<ContextMenu.Item class="gap-2" disabled={transferLoading} onclick={pasteFileOrFolder}>
 						<span class="icon-[lucide--clipboard] h-4 w-4"></span>
 						Paste
 					</ContextMenu.Item>
@@ -444,7 +602,16 @@
 
 		<div class="bg-muted/30 flex shrink-0 items-center justify-between border-t px-4 py-1">
 			<div class="text-muted-foreground flex items-center gap-4 text-sm">
-				<span>{sortedItems.length} items</span>
+				{#if transferLoading}
+					<span class="flex items-center gap-2">
+						<span class="icon-[lucide--loader-circle] h-3.5 w-3.5 animate-spin"></span>
+						{copyFileOrFolder.isCut ? 'Moving' : 'Copying'}
+						{copyFileOrFolder.items.length}
+						{copyFileOrFolder.items.length === 1 ? 'item' : 'items'}…
+					</span>
+				{:else}
+					<span>{sortedItems.length} items</span>
+				{/if}
 			</div>
 			<div class="text-muted-foreground text-sm">
 				{sortedItems.filter((item: FileNode) => item.type === 'folder').length} folders,
@@ -458,6 +625,7 @@
 	bind:isOpen={modals.create.isOpen}
 	bind:isFolder={modals.create.isFolder}
 	bind:name={modals.create.name}
+	loading={createLoading}
 	onClose={() => {
 		modals.create.isOpen = false;
 		modals.create.isFolder = true;
@@ -465,16 +633,13 @@
 	onReset={() => {
 		modals.create.name = '';
 	}}
-	onCreate={() => {
-		createFileOrFolder();
-		modals.create.isOpen = false;
-		modals.create.isFolder = true;
-	}}
+	onCreate={createFileOrFolder}
 />
 
 <RenameModal
 	bind:isOpen={modals.rename.isOpen}
 	bind:newName={modals.rename.newName}
+	loading={renameLoading}
 	onClose={() => {
 		modals.rename.isOpen = false;
 		modals.rename.id = '';
@@ -482,13 +647,12 @@
 	onReset={() => {
 		modals.rename.newName = modals.rename.id.split('/').pop() || '';
 	}}
-	onRename={() => {
-		rename();
-	}}
+	onRename={rename}
 />
 
 <AlertDialog
-	open={modals.delete.isOpen}
+	bind:open={modals.delete.isOpen}
+	keepOpenOnConfirm={true}
 	names={selectedItems.length === 1 && modals.delete.item
 		? {
 				parent: modals.delete.item.type === 'folder' ? 'folder' : 'file',
@@ -499,34 +663,14 @@
 				element: selectedItems.length === 1 ? 'item' : 'items'
 			}}
 	actions={{
-		onConfirm: async () => {
-			if (modals.delete.item) {
-				const response = await deleteFilesOrFolders(selectedItems);
-				const single = selectedItems.length === 1 && modals.delete.item;
-
-				handleAPIResponse(response, {
-					success: single
-						? `${modals.delete.item.type === 'folder' ? 'Folder' : 'File'} "${modals.delete.item.id.split('/').pop() || ''}" was deleted successfully.`
-						: `${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''} were deleted successfully.`,
-					error: single
-						? `Failed to delete ${modals.delete.item.type === 'folder' ? 'folder' : 'file'} "${modals.delete.item.id.split('/').pop() || ''}".`
-						: `Failed to delete ${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''}.`
-				});
-			}
-			delete folderData[currentPath];
-			await loadFolderData(currentPath);
-			modals.delete.isOpen = false;
-			modals.delete.item = null;
-		},
-		onCancel: () => {
-			modals.delete.isOpen = false;
-			modals.delete.item = null;
-		}
+		onConfirm: deleteSelectedItems,
+		onCancel: cancelDelete
 	}}
 ></AlertDialog>
 
 <FilepondModal
 	bind:isOpen={modals.filepond.isOpen}
+	hostname={data.node}
 	onClose={() => {
 		modals.filepond.isOpen = false;
 		droppedFiles = [];

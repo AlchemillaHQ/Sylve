@@ -9,6 +9,7 @@
 package info
 
 import (
+	"errors"
 	"testing"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -69,8 +70,8 @@ func TestGetNoteByID(t *testing.T) {
 	}
 
 	_, err = svc.GetNoteByID(9999)
-	if err == nil {
-		t.Fatal("expected error for non-existent note")
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("expected ErrNoteNotFound, got %v", err)
 	}
 }
 
@@ -118,9 +119,14 @@ func TestUpdateNoteByID(t *testing.T) {
 		t.Fatalf("note not updated: %+v", got)
 	}
 
-	err = svc.UpdateNoteByID(9999, "x", "y")
+	err = svc.UpdateNoteByID(int(n.ID), "Updated Title", "Updated content")
 	if err != nil {
-		t.Fatalf("UpdateNoteByID on non-existent should not error at DB level: %v", err)
+		t.Fatalf("UpdateNoteByID with unchanged values failed: %v", err)
+	}
+
+	err = svc.UpdateNoteByID(9999, "x", "y")
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("expected ErrNoteNotFound for non-existent update, got %v", err)
 	}
 }
 
@@ -138,16 +144,13 @@ func TestDeleteNoteByID(t *testing.T) {
 	}
 
 	err = svc.DeleteNoteByID(int(n.ID))
-	if err == nil {
-		t.Fatal("expected error deleting already-deleted note")
-	}
-	if err.Error() != "record not found" {
-		t.Fatalf("expected 'record not found', got %q", err.Error())
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("expected ErrNoteNotFound deleting already-deleted note, got %v", err)
 	}
 
 	err = svc.DeleteNoteByID(9999)
-	if err == nil {
-		t.Fatal("expected error deleting non-existent note")
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("expected ErrNoteNotFound deleting non-existent note, got %v", err)
 	}
 }
 

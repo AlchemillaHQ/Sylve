@@ -1,0 +1,11 @@
+{"version":2,"width":112,"height":28,"timestamp":1787447200,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms templates capture --rid 301 --name docs-alpine-template --json\r\n"]
+[0.9,"o","{\r\n  \"taskId\": 32,\r\n  \"sourceRid\": 301,\r\n  \"action\": \"capture\",\r\n  \"outcome\": \"queued\"\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve tasks get --id 32 --json\r\n"]
+[1.9,"o","{\r\n  \"id\": 32,\r\n  \"guestType\": \"vm-template\",\r\n  \"guestId\": 301,\r\n  \"action\": \"convert\",\r\n  \"source\": \"user\",\r\n  \"status\": \"success\",\r\n  \"requestedBy\": \"console\",\r\n  \"message\": \"completed\",\r\n  \"error\": \"\",\r\n  \"payload\": \"{\\\"name\\\":\\\"docs-alpine-template\\\"}\",\r\n  \"overrideRequested\": false,\r\n  \"startedAt\": \"2026-08-22T22:26:42.277976186Z\",\r\n  \"finishedAt\": \"2026-08-22T22:26:42.801417261Z\",\r\n  \"createdAt\": \"2026-08-23T03:56:41.42642375+05:30\",\r\n  \"updatedAt\": \"2026-08-23T03:56:42.801481203+05:30\"\r\n}\r\n"]
+[2.1,"o","# "]
+[2.8,"o","sylve vms templates list\r\n"]
+[2.9,"o","ID    NAME                    SOURCE VM            STORAGE MAPPINGS                            \r\n───────────────────────────────────────────────────────────────────────────────────────────────\r\n1     docs-alpine-template    docs-alpine (301)    5=zroot (raw), 7=zroot (raw), 8=zroot (zvol)\r\n"]
+[3.1,"o","# "]

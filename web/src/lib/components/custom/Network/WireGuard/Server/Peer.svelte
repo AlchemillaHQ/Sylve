@@ -111,14 +111,20 @@
 			});
 			return;
 		}
+		const trimmedPreSharedKey = form.preSharedKey.trim();
+		if (trimmedPreSharedKey && !isValidWireGuardKey(trimmedPreSharedKey)) {
+			toast.error('Invalid pre-shared key - must be a valid 32-byte base64-encoded WireGuard key', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 
 		const payload = {
-			id: id ?? undefined,
 			name: form.name.trim(),
 			enabled: form.enabled,
 			persistentKeepalive: form.persistentKeepalive,
 			privateKey: trimmedKey || undefined,
-			preSharedKey: form.preSharedKey.trim(),
+			preSharedKey: trimmedPreSharedKey,
 			clientIPs,
 			routableIPs: splitLines(form.routableIPs),
 			routeIPs: form.routeIPs
@@ -127,9 +133,7 @@
 		saving = true;
 		try {
 			const [response] = await Promise.all([
-				id !== null
-					? wireGuardServerPeers.edit(payload)
-					: wireGuardServerPeers.add(payload),
+				id !== null ? wireGuardServerPeers.edit(id, payload) : wireGuardServerPeers.add(payload),
 				sleep(800)
 			]);
 

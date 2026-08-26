@@ -27,7 +27,7 @@ type ImageInfo struct {
 }
 
 func (q *qimg) Info(path string) (*ImageInfo, error) {
-	out, err := q.run(nil, nil, "qemu-img", "info", "--output=json", path)
+	out, err := q.run(nil, nil, qemuImgPath, "info", "--output=json", path)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (q *qimg) Info(path string) (*ImageInfo, error) {
 }
 
 func (q *qimg) InfoBackingChain(path string) ([]*ImageInfo, error) {
-	out, err := q.run(nil, nil, "qemu-img", "info", "--backing-chain", "--output=json", path)
+	out, err := q.run(nil, nil, qemuImgPath, "info", "--backing-chain", "--output=json", path)
 	if err != nil {
 		return nil, err
 	}

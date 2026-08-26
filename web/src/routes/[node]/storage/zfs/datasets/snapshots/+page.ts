@@ -1,4 +1,4 @@
-import { getBasicSettings } from '$lib/api/system/settings';
+import { basicSettingsOrFallback, getBasicSettings } from '$lib/api/system/settings';
 import { getPeriodicSnapshots } from '$lib/api/zfs/datasets';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
@@ -11,7 +11,7 @@ export async function load() {
 	]);
 
 	return {
-		basicSettings: basicSettings,
+		basicSettings: basicSettingsOrFallback(basicSettings),
 		periodicSnapshots: periodicSnapshots
 	};
 }

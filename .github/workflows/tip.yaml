@@ -3,7 +3,7 @@ name: Tip
 on:
   workflow_run:
     workflows:
-      - Test
+      - CI
     branches:
       - master
     types:
@@ -20,12 +20,13 @@ concurrency:
 jobs:
   select-runner:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       linux_runner: ${{ steps.pick.outputs.linux_runner }}
     steps:
       - name: Pick self-hosted runner when available
         id: pick
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.RUNNER_DISCOVERY_TOKEN || github.token }}
           script: |
@@ -74,11 +75,12 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 10
     outputs:
       head_sha: ${{ steps.vars.outputs.head_sha }}
       should_publish: ${{ steps.vars.outputs.should_publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
@@ -134,25 +136,33 @@ jobs:
       - prepare-release
     if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.head_sha }}
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
-      - name: Build Web Assets
+      - name: Check and Build Web Assets
         run: |
           make frontend
 
+      - name: Build Demo Web Assets
+        run: |
+          npm run build:demo --prefix web
+
       - name: Upload Web Assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tip-web-assets
           path: internal/assets/web-files/
+          retention-days: 1
 
       - name: Verify tip still points to this commit
         id: freshness
@@ -175,6 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
+          tar -czf sylve-web-demo-assets.tar.gz -C web/build .
 
       - name: Upload web assets to tip prerelease
         if: steps.freshness.outputs.upload == 'true'
@@ -182,11 +193,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ASSET_NAME="sylve-web-assets.tar.gz"
-          while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
-            echo "Deleted existing ${ASSET_NAME}"
+          for ASSET_NAME in sylve-web-assets.tar.gz sylve-web-demo-assets.tar.gz; do
+            while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
+              echo "Deleted existing ${ASSET_NAME}"
+            done
+            gh release upload tip "${ASSET_NAME}"
           done
-          gh release upload tip "sylve-web-assets.tar.gz"
 
   build-freebsd:
     needs:
@@ -195,8 +207,9 @@ jobs:
       - build-web
     if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 30
     env:
-      FREEBSD_VERSION: 15.0-RELEASE
+      FREEBSD_VERSION: "15"
     strategy:
       fail-fast: false
       matrix:
@@ -204,12 +217,12 @@ jobs:
           - arch: amd64
           - arch: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.head_sha }}
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
 
@@ -219,20 +232,29 @@ jobs:
           sudo apt-get install -y clang lld xz-utils tar file
 
       - name: Download Web Assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: tip-web-assets
           path: internal/assets/web-files
 
+      - name: Resolve FreeBSD release
+        id: freebsd
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
+
       - name: Cache FreeBSD sysroot
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
-          path: .cache/freebsd/${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
-          key: freebsd-sysroot-${{ runner.os }}-${{ matrix.arch }}-${{ env.FREEBSD_VERSION }}
+          path: .cache/freebsd/${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}
+          key: freebsd-sysroot-v2-${{ runner.os }}-${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
 
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
+        env:
+          FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
         run: |
-          make cross-build-${{ matrix.arch }} FREEBSD_VERSION=${{ env.FREEBSD_VERSION }}
+          make cross-build-${{ matrix.arch }}
 
       - name: Verify binary format
         run: |

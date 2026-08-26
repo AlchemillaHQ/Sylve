@@ -13,19 +13,19 @@
 		onclick={() => onBackClick()}
 		disabled={currentPath === '/'}
 	>
-		<span class="icon-[tabler--arrow-left] pointer-events-none !h-6 !w-6"></span>
+		<span class="icon-[tabler--arrow-left] pointer-events-none h-6! w-6!"></span>
 	</Button>
 
 	<Breadcrumb.Root>
 		<Breadcrumb.List>
-			{#each items as item, index}
+			{#each items as item, _index (item.path)}
 				<Breadcrumb.Item>
 					{#if item.isLast}
 						<Breadcrumb.Page>{item.name}</Breadcrumb.Page>
 					{:else}
 						<Breadcrumb.Link
 							href="#"
-							onclick={(e: any) => {
+							onclick={(e: MouseEvent) => {
 								e.preventDefault();
 								onNavigate(item.path);
 							}}

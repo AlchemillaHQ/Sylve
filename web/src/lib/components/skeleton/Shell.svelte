@@ -4,10 +4,19 @@
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
+	import {
+		DEFAULT_RESOURCE_TREE_PREFERENCES,
+		normalizeResourceTreePreferences,
+		type ResourceTreePreferences
+	} from '$lib/resource-tree';
 	import LeftPanelClustered from './LeftPanelClustered.svelte';
+	import ResourceTreeToolbar from './ResourceTreeToolbar.svelte';
 	import { fade } from 'svelte/transition';
-	import { resource, watch } from 'runed';
+	import { PersistedState, resource, watch } from 'runed';
 	import { reload } from '$lib/stores/api.svelte';
+	import type { ClusterDetails } from '$lib/types/cluster/cluster';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
+	import { isAPIResponse } from '$lib/utils/http';
 
 	interface Props {
 		children?: import('svelte').Snippet;
@@ -18,9 +27,10 @@
 	const clusterDetails = resource(
 		() => 'cluster-details-shell',
 		async () => {
-			return await getDetails();
+			const result = await getDetails();
+			return isAPIResponse(result) ? null : result;
 		},
-		{}
+		{ initialValue: null as ClusterDetails | null }
 	);
 
 	watch(
@@ -35,7 +45,28 @@
 	);
 
 	let details = $derived(clusterDetails.current);
-	let clustered = $derived(details?.cluster?.enabled || false);
+	let clustered = $derived(details?.cluster?.enabled === true);
+	const resourceTreePreferences = new PersistedState<ResourceTreePreferences>(
+		'sylve-resource-tree-preferences-v1',
+		DEFAULT_RESOURCE_TREE_PREFERENCES
+	);
+	let treePreferences = $derived(normalizeResourceTreePreferences(resourceTreePreferences.current));
+
+	let treeSearchQuery = $state('');
+	let leftPanelRef = $state<{ expandAll: () => void; collapseAll: () => void } | undefined>();
+	let leftPanelClusteredRef = $state<
+		{ expandAll: () => void; collapseAll: () => void } | undefined
+	>();
+	let lifecycleActive = $state(false);
+	let activeLifecycleGuests = $state.raw<ActiveLifecycleGuest[]>([]);
+
+	function expandTree() {
+		(clustered ? leftPanelClusteredRef : leftPanelRef)?.expandAll();
+	}
+
+	function collapseTree() {
+		(clustered ? leftPanelClusteredRef : leftPanelRef)?.collapseAll();
+	}
 
 	let leftPaneDefaultSize = $state(12);
 	let topPaneDefaultSize = $state(90);
@@ -43,9 +74,17 @@
 
 	const lifecyclePaneBoost = 6;
 
-	function handleLifecycleActiveChange(active: boolean) {
+	function handleLifecycleActiveChange(active: boolean, activeGuests: ActiveLifecycleGuest[]) {
+		activeLifecycleGuests = activeGuests;
+		if (lifecycleActive === active) return;
+
+		lifecycleActive = active;
 		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
 		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
+	}
+
+	function updateTreePreferences(preferences: ResourceTreePreferences) {
+		resourceTreePreferences.current = normalizeResourceTreePreferences(preferences);
 	}
 </script>
 
@@ -64,16 +103,36 @@
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
 					>
-						<Resizable.Pane defaultSize={leftPaneDefaultSize} class="border-l">
-							<div class="h-full" transition:fade|global={{ duration: 400 }}>
-								{#if clustered}
-									<LeftPanelClustered />
-								{:else}
-									<LeftPanel />
-								{/if}
+						<Resizable.Pane defaultSize={leftPaneDefaultSize} minSize={12} class="border-l">
+							<div class="flex h-full min-h-0 flex-col">
+								<ResourceTreeToolbar
+									preferences={treePreferences}
+									onChange={updateTreePreferences}
+									searchQuery={treeSearchQuery}
+									onSearchChange={(value) => (treeSearchQuery = value)}
+									onExpandAll={expandTree}
+									onCollapseAll={collapseTree}
+								/>
+								<div class="min-h-0 flex-1" transition:fade|global={{ duration: 400 }}>
+									{#if clustered}
+										<LeftPanelClustered
+											bind:this={leftPanelClusteredRef}
+											preferences={treePreferences}
+											searchQuery={treeSearchQuery}
+											{activeLifecycleGuests}
+										/>
+									{:else}
+										<LeftPanel
+											bind:this={leftPanelRef}
+											preferences={treePreferences}
+											searchQuery={treeSearchQuery}
+											{activeLifecycleGuests}
+										/>
+									{/if}
+								</div>
 							</div>
 						</Resizable.Pane>
-						<Resizable.Handle withHandle />
+						<Resizable.Handle withHandle gripPreferenceKey="shell-resource-tree" />
 
 						<Resizable.Pane class="border-r">
 							{@render children?.()}
@@ -81,7 +140,7 @@
 					</Resizable.PaneGroup>
 				</Resizable.Pane>
 
-				<Resizable.Handle withHandle />
+				<Resizable.Handle withHandle gripPreferenceKey="shell-bottom-panel" />
 
 				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
 					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />

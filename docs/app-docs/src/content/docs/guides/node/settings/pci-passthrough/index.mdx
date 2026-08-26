@@ -1,22 +1,81 @@
 ---
 title: PCI Passthrough
-description: Configure PCI passthrough settings for your Sylve node
+description: Make a physical PCI device available to a virtual machine.
 ---
 
-:::warning
-PCI passthrough is an advanced feature that allows you to directly assign a physical PCI device to a virtual machine. This can provide improved performance for certain workloads, but it also comes with risks. Incorrectly configuring PCI passthrough can lead to system instability, data loss, or even hardware damage. It is recommended that only experienced users with a good understanding of their hardware and virtualization technology attempt to use PCI passthrough.
+PCI passthrough gives a virtual machine direct access to a physical PCI device, such as a dedicated GPU, network adapter, USB controller, or hardware accelerator. The host cannot use a device while it is assigned to the `ppt` driver for passthrough.
+
+Find this page at **Settings → System → PCI Passthrough**. It lists PCI devices detected on the node and whether each device is owned by the host or prepared for VM use.
+
+:::caution
+Do not pass through the node's boot-storage controller, active management network adapter, or any device required to keep the host accessible. A mistake can remove the host's network, storage, display, or other critical capability until you recover it from console access or restart it.
 :::
 
-To configure PCI passthrough settings for your Sylve node, navigate to the PCI Passthrough section in the settings. Here, you can view a list of available PCI devices on your system and select which ones you want to pass through to your virtual machines.
+## Before you start
 
-## Enabling PCI Passthrough
+Enable the **Virtualization** service in [Services](/guides/node/settings/system/services/) and restart the node before configuring a VM for passthrough. Confirm that the device is not needed by the host and that you have a safe way to manage the node after it is detached.
 
-When you click on a row that is a device that is not already passed through, you will see 2 buttons, like this:
+The table inventories devices from every detected PCI domain and identifies each with a **Device ID** in the form `bus/device/function`. Sylve currently permits new passthrough mappings only for devices in PCI domain 0. Devices from other domains remain visible but are marked unsupported for new mappings.
 
-![PCI Passthrough](./ppt-1.png)
+![PCI Passthrough table showing host-owned devices and a device managed through the ppt driver](./pci-passthrough-overview.png)
 
-It is **highly** recommended to use the **Prepare Passthrough** button and then restart your node so that the device is properly configured for passthrough. This will ensure that the necessary drivers and configurations are set up correctly.
+## Prepare a device for passthrough
 
-Otherwise if you're absolutely sure you know what you're doing, you can click the **Enable Passthrough** button to immediately start passing the device through to your virtual machines.
+For most devices, use **Prepare Passthrough**. Select a host-owned device, select **Prepare Passthrough**, confirm the prompt, then restart the node.
 
-Once a device is passed through, it will be marked as such in the list with a blue icon instead of a green one, essentially green means the device is attached to the host and blue means it's available to be attached to a VM. You can click on the row again to see the option to disable passthrough for that device if needed.
+Preparation adds the device to the persistent `pptdevs` assignment in `/boot/loader.conf` so FreeBSD claims it for passthrough during startup. When at least one persistent assignment exists, Sylve also ensures that `vmm_load="YES"` is present because the `vmm` kernel module provides the required passthrough support. Sylve does not create or rewrite `ppt_load`; a separate `ppt_load="YES"` entry is not required. After the restart, Sylve recognizes the prepared device and adds it to its managed passthrough inventory.
+
+:::caution
+Strongly prefer **Prepare Passthrough** followed by a complete node restart. It is the cleanest path because FreeBSD assigns the device to `ppt` from boot, before the host has loaded and begun using its normal driver. In Sylve testing, moving an already-live device into `ppt` also caused issues on a running system. **Enable Passthrough** detaches a live device from the host immediately and is intended only for cases where you understand and accept that disruption.
+:::
+
+| Action | When to use it | Result |
+| --- | --- | --- |
+| Prepare Passthrough | Recommended for a host-owned device. | Persists the device for the `ppt` driver at the next boot. A restart is required. |
+| Enable Passthrough | Only when you intentionally need the device detached from the host immediately. | Detaches the host driver and attaches the device to `ppt` now. The host loses access immediately. |
+| Import Passthrough | The device already appears as `ppt` because it was prepared outside Sylve. | Adds it to Sylve’s managed inventory without changing its current `ppt` state. |
+
+![Prepare Passthrough confirmation for a host-owned Intel USB controller, explaining that a node restart is required](./pci-passthrough-prepare.png)
+
+## Attach a device to a VM
+
+Once a device is managed as passthrough hardware, open the target VM and go to **Hardware → PCI Devices**. The VM must be completely shut off before you save hardware changes.
+
+1. Shut off the VM.
+2. Open **Hardware → PCI Devices**.
+3. Select one or more prepared PCI devices.
+4. Save the change.
+5. Start the VM and install or configure the guest driver if the operating system needs one.
+
+Sylve adds the selected device to the VM's bhyve configuration and locks the VM's memory as required for PCI passthrough.
+
+![PCI Devices dialog for a shut-off virtual machine with a prepared Intel USB controller selected](./vm-pci-devices-select.png)
+
+### Example: USB Wi-Fi dongle for an Alpine VM
+
+Suppose the node has an `Intel 200 Series/Z370 Chipset Family USB 3.0 xHCI Controller` that is not needed by the host, and a USB Wi-Fi dongle is connected to one of that controller's ports. You want an Alpine VM named `Alpine` to use the dongle.
+
+1. In **Settings → System → PCI Passthrough**, select the Intel USB controller and choose **Prepare Passthrough**.
+2. Restart the node. Verify that the controller now appears as a managed `ppt` device.
+3. Shut off `Alpine`.
+4. Open **Alpine → Hardware → PCI Devices**, select the Intel USB controller, and save.
+5. Start `Alpine`. Alpine sees the controller and the attached Wi-Fi dongle as its own USB hardware. Configure the adapter inside Alpine as you would on a physical machine.
+
+PCI passthrough assigns the entire USB controller, not just the Wi-Fi dongle. Every USB port attached to that controller becomes unavailable to FreeBSD and is available to the guest instead. Check which physical ports belong to the controller before preparing it, especially if the host uses one for a keyboard, management device, or boot media.
+
+![Alpine virtual machine showing the passed-through USB controller and Wi-Fi dongle available inside the guest](./vm-pci-passthrough-example.png)
+
+## Sharing and removing devices
+
+Sylve lets you select a managed PCI device in more than one VM configuration, but only one running VM can use that device at a time. Sylve blocks a VM from starting when another running VM already uses the same device.
+
+To return a device to the host:
+
+1. Shut off every VM that uses it.
+2. Remove the device from each VM's **Hardware → PCI Devices** selection and save.
+3. Return to **Settings → System → PCI Passthrough**, select the device, and choose **Disable Passthrough**.
+4. Restart the node if Sylve reports that a restart is required to restore the host driver.
+
+Sylve blocks removal while the device is still assigned to a VM. Removing passthrough deletes Sylve’s mapping and attempts to restore the device’s previous host driver when possible.
+
+![Disable Passthrough confirmation for a managed ppt device](./pci-passthrough-disable.png)

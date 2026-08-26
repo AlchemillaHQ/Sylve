@@ -79,27 +79,40 @@
 		parentActiveRow = table?.getSelectedRows().map((r) => r.getData() as Row) || [];
 	}
 
+	function getRowId(row: Row): string | number | undefined {
+		const value = row[idField];
+		return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+	}
+
 	function pushRows(rows: Row[]) {
 		if (!table) return;
 
-		const newRows = rows.filter((r) => !knownIds.has(r[idField]));
+		const newRows = rows.filter((row) => {
+			const id = getRowId(row);
+			return id !== undefined && !knownIds.has(id);
+		});
+
 		if (newRows.length === 0) return;
 
-		for (const r of newRows) knownIds.add(r[idField]);
+		for (const row of newRows) {
+			const id = getRowId(row);
+			if (id !== undefined) {
+				knownIds.add(id);
+			}
+		}
 
-		// Prepend so newest rows appear at the top without sorting all data.
 		table.addData(newRows, true).then(() => {
-			const allData = table?.getData() ?? [];
-			if (allData.length > maxRows) {
-				// The oldest rows are at the end (appended via earlier pushes that got
-				// shifted down). Remove from the tail.
-				const toRemove = allData.slice(maxRows);
-				for (const row of toRemove) {
-					const tRow = table?.getRow(row[idField]);
-					if (tRow) {
-						knownIds.delete(row[idField]);
-						tRow.delete();
-					}
+			const allData = table?.getData() as Row[] | undefined;
+			if (!allData || allData.length <= maxRows) return;
+
+			for (const row of allData.slice(maxRows)) {
+				const id = getRowId(row);
+				if (id === undefined) continue;
+
+				const tableRow = table?.getRow(id);
+				if (tableRow) {
+					knownIds.delete(id);
+					tableRow.delete();
 				}
 			}
 		});

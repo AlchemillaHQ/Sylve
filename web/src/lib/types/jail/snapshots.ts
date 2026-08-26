@@ -14,3 +14,11 @@ export const JailSnapshotSchema = z.object({
 });
 
 export type JailSnapshot = z.infer<typeof JailSnapshotSchema>;
+
+export const JailSnapshotRollbackResultSchema = z.object({
+	wasRunning: z.boolean(),
+	restarted: z.boolean(),
+	warnings: z.array(z.string()).default([])
+});
+
+export type JailSnapshotRollbackResult = z.infer<typeof JailSnapshotRollbackResultSchema>;

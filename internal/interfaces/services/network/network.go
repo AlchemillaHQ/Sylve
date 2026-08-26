@@ -8,9 +8,17 @@
 
 package networkServiceInterfaces
 
-import "context"
+import (
+	"context"
+	"errors"
 
-import networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+)
+
+var (
+	ErrEpairOwnershipConflict = errors.New("epair ownership conflict")
+	ErrEpairStateConflict     = errors.New("epair state conflict")
+)
 
 type NetworkServiceInterface interface {
 	SyncStandardSwitches(previous *networkModels.StandardSwitch, action string) error
@@ -28,7 +36,8 @@ type NetworkServiceInterface interface {
 		disableIPv6 bool,
 		slaac bool,
 		defaultRoute bool,
-		manual networkModels.StandardSwitchManualAddresses) error
+		disableBridgeOffloads bool,
+		manual networkModels.StandardSwitchManualAddresses) (uint, error)
 
 	EditStandardSwitch(id uint,
 		mtu int,
@@ -43,13 +52,14 @@ type NetworkServiceInterface interface {
 		disableIPv6 bool,
 		slaac bool,
 		defaultRoute bool,
+		disableBridgeOffloads bool,
 		manual networkModels.StandardSwitchManualAddresses) error
-	DeleteStandardSwitch(id int) error
+	DeleteStandardSwitch(id uint) error
 	IsObjectUsed(id uint) (bool, string, error)
 	GetObjectEntryByID(id uint) (string, error)
 	GetBridgeNameByIDType(id uint, swType string) (string, error)
 	CreateEpair(name string) error
-	SyncEpairs(forceStart bool) error
+	EnsureEpair(name string) error
 	DeleteEpair(name string) error
 	StartFirewallMonitor(ctx context.Context)
 	EnableWireGuardService(ctx context.Context) error

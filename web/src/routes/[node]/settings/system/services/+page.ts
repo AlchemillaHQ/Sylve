@@ -1,5 +1,5 @@
 import { getPools } from '$lib/api/zfs/pool';
-import { getBasicSettings } from '$lib/api/system/settings';
+import { basicSettingsOrFallback, getBasicSettings } from '$lib/api/system/settings';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
@@ -12,6 +12,6 @@ export async function load() {
 
 	return {
 		pools,
-		basicSettings
+		basicSettings: basicSettingsOrFallback(basicSettings)
 	};
 }

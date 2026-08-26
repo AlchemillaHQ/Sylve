@@ -11,6 +11,7 @@ package clusterHandlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -102,6 +103,50 @@ func TestBackupEventsHandlerGet(t *testing.T) {
 	}
 }
 
+func TestBackupEventsRejectInvalidQueries(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
+	cS := &cluster.Service{DB: db}
+	zS := &zelta.Service{DB: db}
+	r := newBackupEventsRouter(cS, zS)
+
+	paths := []string{
+		"/cluster/backups/events?limit=0",
+		"/cluster/backups/events?limit=501",
+		"/cluster/backups/events?limit=nope",
+		"/cluster/backups/events?jobId=0",
+		"/cluster/backups/events?jobId=9007199254740992",
+		"/cluster/backups/events?nodeId=missing&limit=0",
+		"/cluster/backups/events/remote?page=0",
+		"/cluster/backups/events/remote?size=101",
+		"/cluster/backups/events/remote?sort%5B0%5D%5Bfield%5D=createdAt",
+		"/cluster/backups/events/remote?sort%5B0%5D%5Bfield%5D=id&sort%5B0%5D%5Bdir%5D=sideways",
+		"/cluster/backups/events/remote?sort%5B0%5D%5Bdir%5D=asc",
+		"/cluster/backups/events/remote?page=9223372036854775807&size=100",
+	}
+
+	for _, path := range paths {
+		rr := performJSONRequest(t, r, http.MethodGet, path, nil)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("path %q: expected 400, got %d body=%s", path, rr.Code, rr.Body.String())
+		}
+	}
+}
+
+func TestBackupEventsUnknownNodeReturnsNotFound(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{}, &clusterModels.ClusterNode{})
+	r := newBackupEventsRouter(&cluster.Service{DB: db}, &zelta.Service{DB: db})
+
+	rr := performJSONRequest(
+		t, r, http.MethodGet, "/cluster/backups/events?nodeId=missing-node", nil,
+	)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "backup_events_node_not_found") {
+		t.Fatalf("unexpected response: %s", rr.Body.String())
+	}
+}
+
 func TestBackupEventByIDHandler(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.BackupEvent{})
 	cS := &cluster.Service{DB: db}
@@ -184,6 +229,25 @@ func TestBackupEventProgressByIDHandler(t *testing.T) {
 	if resp.Data.TotalBytes == nil || *resp.Data.TotalBytes != 100000000 {
 		t.Fatalf("expected total bytes 100000000, got %v", resp.Data.TotalBytes)
 	}
+
+	db.Create(&clusterModels.BackupEvent{
+		ID: 3, Status: "running", Mode: "backup",
+		Output: "{\"replicationSize\": \"100000000\"}\nbackup_phase: finalizing\n",
+	})
+
+	rr = performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/3/progress", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for finalizing event, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if resp.Data.Phase != "finalizing" {
+		t.Fatalf("expected finalizing phase, got %q", resp.Data.Phase)
+	}
+	if resp.Data.MovedBytes == nil || *resp.Data.MovedBytes != 100000000 {
+		t.Fatalf("expected completed transfer bytes, got %v", resp.Data.MovedBytes)
+	}
 }
 
 func TestBackupEventsRemoteHandler(t *testing.T) {
@@ -197,6 +261,8 @@ func TestBackupEventsRemoteHandler(t *testing.T) {
 			ID: i, JobID: uintPtr(10), Status: "success", Mode: "backup",
 		})
 	}
+	db.Model(&clusterModels.BackupEvent{}).Where("id = ?", 1).Update("source_dataset", "z-last")
+	db.Model(&clusterModels.BackupEvent{}).Where("id = ?", 2).Update("source_dataset", "a-first")
 
 	rr := performJSONRequest(t, r, http.MethodGet, "/cluster/backups/events/remote", nil)
 	if rr.Code != http.StatusOK {
@@ -250,5 +316,22 @@ func TestBackupEventsRemoteHandler(t *testing.T) {
 	}
 	if len(resp.Data.Data) != 10 {
 		t.Fatalf("expected 10 events matching search, got %d", len(resp.Data.Data))
+	}
+
+	rr = performJSONRequest(
+		t,
+		r,
+		http.MethodGet,
+		"/cluster/backups/events/remote?size=5&sort%5B0%5D%5Bfield%5D=sourceDataset&sort%5B0%5D%5Bdir%5D=desc",
+		nil,
+	)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for camelCase sort, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if len(resp.Data.Data) == 0 || resp.Data.Data[0].SourceDataset != "z-last" {
+		t.Fatalf("camelCase sort was not applied: %+v", resp.Data.Data)
 	}
 }

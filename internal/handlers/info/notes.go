@@ -9,8 +9,8 @@
 package infoHandlers
 
 import (
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -21,19 +21,30 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+type bulkDeleteNotesQuery struct {
+	IDs []int `form:"ids" binding:"required,min=1,dive,gt=0"`
+}
+
+func invalidNoteIDError(err error) string {
+	if err != nil {
+		return err.Error()
+	}
+
+	return "note ID must be a positive integer"
+}
+
 func NotesHandler(infoService *info.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch c.Request.Method {
 		case http.MethodGet:
 			handleGetNotes(c, infoService)
 		case http.MethodPost:
-			if strings.HasSuffix(c.Request.URL.Path, "bulk-delete") {
+			handlePostNotes(c, infoService)
+		case http.MethodDelete:
+			if c.Param("id") == "" {
 				handleBulkDeleteNotes(c, infoService)
 				return
-			} else {
-				handlePostNotes(c, infoService)
 			}
-		case http.MethodDelete:
 			handleDeleteNoteByID(c, infoService)
 		case http.MethodPut:
 			handleUpdateNoteByID(c, infoService)
@@ -51,7 +62,6 @@ func NotesHandler(infoService *info.Service) gin.HandlerFunc {
 // @Summary Get All Notes
 // @Description Get all notes stored in the database
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Success 200 {object} internal.APIResponse[[]infoModels.Note] "Success"
@@ -83,7 +93,9 @@ func handleGetNotes(c *gin.Context, infoService *info.Service) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[infoModels.Note] "Success"
+// @Param request body internal.NoteRequest true "Note"
+// @Success 201 {object} internal.APIResponse[infoModels.Note] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/notes [post]
 func handlePostNotes(c *gin.Context, infoService *info.Service) {
@@ -125,43 +137,30 @@ func handlePostNotes(c *gin.Context, infoService *info.Service) {
 // @Summary Delete a note by ID
 // @Description Delete a note from the database by its ID
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param id path int true "Note ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Invalid note ID"
 // @Failure 404 {object} internal.APIResponse[any] "Note not found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/:id [delete]
+// @Router /info/notes/{id} [delete]
 func handleDeleteNoteByID(c *gin.Context, infoService *info.Service) {
 	id, err := utils.GetIdFromParam(c)
 
-	if err != nil {
+	if err != nil || id <= 0 {
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 			Status:  "error",
 			Message: "invalid_note_id",
-			Error:   err.Error(),
+			Error:   invalidNoteIDError(err),
 			Data:    nil,
 		})
-		return
-	}
-
-	_, err = infoService.GetNoteByID(id)
-
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "note_fetch_failed",
-			Error:   err.Error(),
-			Data:    nil,
-		})
-
 		return
 	}
 
 	err = infoService.DeleteNoteByID(id)
 	if err != nil {
-		if err.Error() == "record not found" {
+		if errors.Is(err, info.ErrNoteNotFound) {
 			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "note_not_found",
@@ -196,17 +195,20 @@ func handleDeleteNoteByID(c *gin.Context, infoService *info.Service) {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param id path int true "Note ID" minimum(1)
+// @Param request body internal.NoteRequest true "Note"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Invalid note ID"
+// @Failure 404 {object} internal.APIResponse[any] "Note not found"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/:id [put]
+// @Router /info/notes/{id} [put]
 func handleUpdateNoteByID(c *gin.Context, infoService *info.Service) {
 	id, err := utils.GetIdFromParam(c)
-	if err != nil {
+	if err != nil || id <= 0 {
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 			Status:  "error",
 			Message: "invalid_note_id",
-			Error:   err.Error(),
+			Error:   invalidNoteIDError(err),
 			Data:    nil,
 		})
 		return
@@ -234,20 +236,18 @@ func handleUpdateNoteByID(c *gin.Context, infoService *info.Service) {
 		return
 	}
 
-	_, err = infoService.GetNoteByID(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-			Status:  "error",
-			Message: "note_fetch_failed",
-			Error:   err.Error(),
-			Data:    nil,
-		})
-
-		return
-	}
-
 	err = infoService.UpdateNoteByID(id, req.Title, req.Content)
 	if err != nil {
+		if errors.Is(err, info.ErrNoteNotFound) {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "note_not_found",
+				Error:   "",
+				Data:    nil,
+			})
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 			Status:  "error",
 			Message: "note_update_failed",
@@ -268,27 +268,27 @@ func handleUpdateNoteByID(c *gin.Context, infoService *info.Service) {
 // @Summary Bulk delete notes
 // @Description Delete multiple notes from the database by their IDs
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Param ids query []int true "Note IDs" collectionFormat(multi)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Invalid note IDs"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /info/notes/bulk-delete [post]
+// @Router /info/notes [delete]
 func handleBulkDeleteNotes(c *gin.Context, infoService *info.Service) {
-	var req internal.BulkDeleteRequest
+	var query bulkDeleteNotesQuery
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindQuery(&query); err != nil {
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 			Status:  "error",
-			Message: "invalid_request_payload",
+			Message: "invalid_note_ids",
 			Error:   "validation_error",
 			Data:    nil,
 		})
 		return
 	}
 
-	err := infoService.BulkDeleteNotes(req.IDs)
+	err := infoService.BulkDeleteNotes(query.IDs)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 			Status:  "error",

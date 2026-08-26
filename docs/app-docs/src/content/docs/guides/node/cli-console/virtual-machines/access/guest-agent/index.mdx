@@ -1,0 +1,107 @@
+---
+title: Guest Agent
+description: Inspect QEMU Guest Agent reachability and send guest-agent commands with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../../components/AsciinemaPlayer.astro';
+
+QEMU Guest Agent integration lets Sylve query a cooperating guest through its agent channel. Host-side configuration and guest-side availability are separate states.
+
+## Enable the host-side channel
+
+Power off the VM, then enable QGA in its persistent definition:
+
+```bash
+doas sylve vms config qga --rid 301 --enabled=true --json
+```
+
+This does not install an agent inside the guest. Install, enable, and start the QEMU Guest Agent using the guest operating system's normal package and service tools.
+
+## Inspect status and capabilities
+
+Check configuration, domain state, reachability, version, and advertised commands:
+
+```bash
+doas sylve vms qga info --rid 301 --json
+```
+
+With VM `301` powered off, Loki returned:
+
+```json
+{
+  "rid": 301,
+  "enabled": true,
+  "domainState": "shut off",
+  "reachable": false,
+  "version": "",
+  "capabilities": [],
+  "unavailableReason": "vm_not_running"
+}
+```
+
+After startup, the Alpine installer did not provide a guest agent, so the result changed to:
+
+```json
+{
+  "rid": 301,
+  "enabled": true,
+  "domainState": "running",
+  "reachable": false,
+  "version": "",
+  "capabilities": [],
+  "unavailableReason": "qga_unreachable"
+}
+```
+
+These states distinguish common problems:
+
+| State | Meaning |
+| --- | --- |
+| `qemu_guest_agent_disabled` | The VM definition does not expose the agent channel. |
+| `vm_not_running` | QGA is configured, but the domain is powered off. |
+| `qga_unreachable` | The domain runs, but the guest agent did not respond. |
+| `qga_capabilities_unavailable` | The agent responded, but `guest-info` capabilities could not be obtained. |
+| `reachable: true` | The agent responded and its version and capabilities are available. |
+
+## Send an agent command
+
+Send a supported QGA command name:
+
+```bash
+doas sylve vms qga send \
+  --rid 301 \
+  --command guest-ping \
+  --json
+```
+
+The documentation guest had no running agent, so the command exited nonzero after the two-second agent timeout:
+
+```json
+{
+  "error": "qga_command_failed: failed_to_run_qga_command: Guest agent is not responding: guest agent didn't respond to synchronization within '2' seconds"
+}
+```
+
+With a reachable agent, JSON mode prints the QGA return value as machine-readable JSON.
+
+:::caution[QGA commands are privileged guest operations]
+The command is sent to the guest agent, not to a guest shell. Only send a capability advertised by that agent and understand its effect before using it in automation.
+:::
+
+The current `send` interface accepts a command name without an arguments object. Commands that require arguments are not expressible through this CLI operation.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-access-qga.cast"
+  title="Real stopped and running QGA status followed by the unreachable guest-ping result."
+/>
+
+## Use the interactive console
+
+The console places the RID after the leaf command:
+
+```text
+vms qga info 301 --json
+vms qga send 301 --command guest-ping --json
+```
+
+For automation, inspect `enabled`, `domainState`, `reachable`, and `capabilities` before sending a command. Do not infer reachability merely because QGA is enabled in the VM configuration.

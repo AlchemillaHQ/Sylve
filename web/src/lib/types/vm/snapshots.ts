@@ -14,3 +14,11 @@ export const VMSnapshotSchema = z.object({
 });
 
 export type VMSnapshot = z.infer<typeof VMSnapshotSchema>;
+
+export const VMSnapshotRollbackResultSchema = z.object({
+	wasRunning: z.boolean(),
+	restarted: z.boolean(),
+	warnings: z.array(z.string()).default([])
+});
+
+export type VMSnapshotRollbackResult = z.infer<typeof VMSnapshotRollbackResultSchema>;

@@ -1,70 +1,74 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { ISCSIInitiatorSchema, ISCSIStatusSchema, type ISCSIInitiator, type ISCSIStatus } from '$lib/types/iscsi/initiator';
-import { apiRequest } from '$lib/utils/http';
+import {
+	ISCSIInitiatorSchema,
+	ISCSIStatusSchema,
+	type ISCSIInitiator,
+	type ISCSIStatus
+} from '$lib/types/iscsi/initiator';
+import { apiRequestData, apiRequestResult } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
 export async function getInitiators(): Promise<ISCSIInitiator[]> {
-    return await apiRequest('/iscsi/initiators', z.array(ISCSIInitiatorSchema), 'GET');
+	return await apiRequestData('/iscsi/initiators', z.array(ISCSIInitiatorSchema), 'GET');
 }
 
 export async function createInitiator(
-    nickname: string,
-    targetAddress: string,
-    targetName: string,
-    initiatorName: string = '',
-    authMethod: string = 'None',
-    chapName: string = '',
-    chapSecret: string = '',
-    tgtChapName: string = '',
-    tgtChapSecret: string = ''
+	nickname: string,
+	targetAddress: string,
+	targetName: string,
+	initiatorName: string = '',
+	authMethod: string = 'None',
+	chapName: string = '',
+	chapSecret: string = '',
+	tgtChapName: string = '',
+	tgtChapSecret: string = ''
 ): Promise<APIResponse> {
-    return await apiRequest('/iscsi/initiators', APIResponseSchema, 'POST', {
-        nickname,
-        targetAddress,
-        targetName,
-        initiatorName,
-        authMethod,
-        chapName,
-        chapSecret,
-        tgtChapName,
-        tgtChapSecret
-    });
+	return await apiRequestResult('/iscsi/initiators', APIResponseSchema, 'POST', {
+		nickname,
+		targetAddress,
+		targetName,
+		initiatorName,
+		authMethod,
+		chapName,
+		chapSecret,
+		tgtChapName,
+		tgtChapSecret
+	});
 }
 
 export async function updateInitiator(
-    id: number,
-    nickname: string,
-    targetAddress: string,
-    targetName: string,
-    initiatorName: string = '',
-    authMethod: string = 'None',
-    chapName: string = '',
-    chapSecret: string = '',
-    tgtChapName: string = '',
-    tgtChapSecret: string = ''
+	id: number,
+	nickname: string,
+	targetAddress: string,
+	targetName: string,
+	initiatorName: string = '',
+	authMethod: string = 'None',
+	chapName: string = '',
+	chapSecret: string = '',
+	tgtChapName: string = '',
+	tgtChapSecret: string = ''
 ): Promise<APIResponse> {
-    return await apiRequest('/iscsi/initiators', APIResponseSchema, 'PUT', {
-        id,
-        nickname,
-        targetAddress,
-        targetName,
-        initiatorName,
-        authMethod,
-        chapName,
-        chapSecret,
-        tgtChapName,
-        tgtChapSecret
-    });
+	return await apiRequestResult(`/iscsi/initiators/${id}`, APIResponseSchema, 'PUT', {
+		nickname,
+		targetAddress,
+		targetName,
+		initiatorName,
+		authMethod,
+		chapName,
+		chapSecret,
+		tgtChapName,
+		tgtChapSecret
+	});
 }
 
 export async function deleteInitiator(id: number): Promise<APIResponse> {
-    return await apiRequest(`/iscsi/initiators/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequestResult(`/iscsi/initiators/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export async function getISCSIStatus(): Promise<ISCSIStatus> {
-    return await apiRequest('/iscsi/status', ISCSIStatusSchema, 'GET');
+	return await apiRequestData('/iscsi/status', ISCSIStatusSchema, 'GET');
 }
 
 export async function connectInitiator(id: number): Promise<APIResponse> {
-    return await apiRequest(`/iscsi/initiators/${id}/connect`, APIResponseSchema, 'POST');
+	return await apiRequestResult(`/iscsi/initiators/${id}/connect`, APIResponseSchema, 'POST');
 }

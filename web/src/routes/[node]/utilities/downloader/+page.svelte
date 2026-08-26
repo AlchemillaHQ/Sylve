@@ -2,7 +2,7 @@
 	import {
 		bulkDeleteDownloads,
 		deleteDownload,
-		getDownloads,
+		getDownloadsResult,
 		getSignedURL,
 		startDownload,
 		updateDownload
@@ -18,8 +18,18 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { type APIResponse } from '$lib/types/common';
 	import type { Row } from '$lib/types/components/tree-table';
-	import type { Download, DownloadPaths } from '$lib/types/utilities/downloader';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		DownloadDeleteResultSchema,
+		type Download,
+		type DownloadDeleteResult
+	} from '$lib/types/utilities/downloader';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
+	import { getDownloaderProcessingOptionsError } from '$lib/utils/downloader-processing';
 	import {
 		addTrackersToMagnet,
 		isDownloadURL,
@@ -30,71 +40,99 @@
 	import { toast } from 'svelte-sonner';
 	import isMagnet from 'validator/lib/isMagnetURI';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
-	import { sleep } from '$lib/utils';
+	import { storage } from '$lib';
 	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import { watch } from 'runed';
+	import { onMount, untrack } from 'svelte';
 
 	interface Data {
+		node: string;
 		downloads: Download[];
-		downloadPaths: DownloadPaths;
+		loadErrors: APIResponse[];
 	}
 
 	type DownloadType = 'base-rootfs' | 'cloud-init' | 'uncategorized';
 
-	interface UploadedDownloadPayload {
-		path: string;
-		downloadType: DownloadType;
-		automaticExtraction: boolean;
-		automaticRawConversion: boolean;
-	}
-
 	let { data }: { data: Data } = $props();
-	let reload = $state(false);
+	const initialData = untrack(() => data);
 
 	const visible = new IsDocumentVisible();
+	const lastDownloadsByNode: Record<string, Download[]> = Object.create(null);
+	lastDownloadsByNode[initialData.node] = initialData.downloads;
 
-	// svelte-ignore state_referenced_locally
 	const downloads = resource(
-		() => 'downloads',
-		async () => {
-			const results = await getDownloads();
-			updateCache('downloads', results);
-			return results;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await getDownloadsResult({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastDownloadsByNode[node] ?? [];
+				}
+				lastDownloadsByNode[node] = result;
+				await updateCache('download-list', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastDownloadsByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.downloads
+			initialValue: initialData.downloads
 		}
 	);
+	let downloadRefreshInFlight = false;
+
+	async function refreshDownloads() {
+		if (downloadRefreshInFlight) return;
+		downloadRefreshInFlight = true;
+		try {
+			await downloads.refetch();
+		} finally {
+			downloadRefreshInFlight = false;
+		}
+	}
+
+	async function handleDeletionResult(result: DownloadDeleteResult | APIResponse) {
+		if (isAPIResponse(result)) {
+			const partial = DownloadDeleteResultSchema.safeParse(result.data);
+			handleAPIError(result);
+			if (partial.success && partial.data.deleted.length > 0) {
+				await refreshDownloads();
+				activeRows = null;
+			}
+			return;
+		}
+
+		await refreshDownloads();
+		modalState = options;
+		activeRows = null;
+	}
 
 	watch(
 		() => visible.current,
 		(current) => {
 			if (current) {
-				downloads.refetch();
-			}
-		}
-	);
-
-	watch(
-		() => reload,
-		(current) => {
-			if (current) {
-				downloads.refetch();
-				reload = false;
+				void refreshDownloads();
 			}
 		}
 	);
 
 	useInterval(1000, {
 		callback: () => {
-			const incomplete = (downloads.current as Download[]).some(
+			if (!storage.visible) return;
+			const incomplete = downloads.current.some(
 				(d) => d.status !== 'done' && d.status !== 'failed'
 			);
 
 			if (incomplete) {
-				downloads.refetch();
+				void refreshDownloads();
 			}
 		}
+	});
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
 	});
 
 	let options = {
@@ -112,10 +150,7 @@
 	};
 
 	let modalState = $state(options);
-	let uploadModalState = $state({
-		isOpen: false,
-		loading: false
-	});
+	let uploadModalState = $state({ isOpen: false });
 	let editState = $state({
 		isOpen: false,
 		loading: false,
@@ -131,29 +166,24 @@
 	});
 	let isAlreadyExtracted = $derived(editState.extractedPath !== '');
 	let isAlreadyRawConverted = $derived(editState.extractedPath.endsWith('.raw'));
-	let uploadStagingPath: string = $derived.by(() => {
-		const pathDownloadsPath =
-			data?.downloadPaths && typeof data.downloadPaths.path === 'string'
-				? data.downloadPaths.path
-				: '';
-		const httpDownloadsPath =
-			data?.downloadPaths && typeof data.downloadPaths.http === 'string'
-				? data.downloadPaths.http
-				: '';
-
-		if (isValidAbsPath(pathDownloadsPath)) {
-			return pathDownloadsPath;
-		}
-
-		if (isValidAbsPath(httpDownloadsPath)) {
-			return httpDownloadsPath;
-		}
-
-		return '/tmp';
-	});
-	let tableData = $derived(generateTableData(downloads.current as Download[]));
+	let newDownloadProcessingError = $derived(
+		getDownloaderProcessingOptionsError(
+			modalState.name || modalState.url,
+			modalState.automaticExtraction,
+			modalState.automaticRawConversion
+		)
+	);
+	let editProcessingError = $derived(
+		getDownloaderProcessingOptionsError(
+			editState.name,
+			editState.automaticExtraction,
+			editState.automaticRawConversion
+		)
+	);
+	let tableData = $derived(generateTableData(downloads.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
+	let signedURLLoading = $state(false);
 	let onlyParentsSelected: boolean = $derived.by(() => {
 		if (activeRows) {
 			for (const row of activeRows) {
@@ -189,7 +219,7 @@
 	let httpDownloadSelected: boolean = $derived.by(() => {
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
-			return row.type === 'http';
+			return typeof row.type === 'string' && row.type === 'http';
 		}
 		return false;
 	});
@@ -197,7 +227,7 @@
 	let pathDownloadSelected: boolean = $derived.by(() => {
 		if (activeRows && activeRows.length === 1) {
 			const row = activeRows[0];
-			return row.type === 'path';
+			return typeof row.type === 'string' && row.type === 'path';
 		}
 		return false;
 	});
@@ -207,8 +237,8 @@
 			const row = activeRows[0];
 			if (row.progress === '-') {
 				const parent = downloads.current.find((d) => d.uuid === row.parentUUID);
-				return parent ? parent.progress === 100 : false;
-			} else if (row.progress === 100) {
+				return parent ? parent.status === 'done' && parent.progress === 100 : false;
+			} else if (row.progress === 100 && row.status === 'done') {
 				return true;
 			}
 		}
@@ -216,6 +246,7 @@
 	});
 
 	async function newDownload() {
+		if (modalState.loading) return;
 		if (!modalState.url) {
 			toast.error('Please enter a valid URL', { position: 'bottom-center' });
 			return;
@@ -242,111 +273,131 @@
 		if (!modalState.downloadType) {
 			modalState.downloadType = 'uncategorized';
 		}
+		if (newDownloadProcessingError) {
+			toast.error(newDownloadProcessingError, { position: 'bottom-center' });
+			return;
+		}
 
 		modalState.loading = true;
+		try {
+			const result = await startDownload(
+				modalState.url,
+				modalState.downloadType,
+				modalState.name || undefined,
+				modalState.ignoreTLS,
+				modalState.automaticExtraction,
+				modalState.automaticRawConversion,
+				data.node
+			);
 
-		await sleep(500);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return;
+			}
 
-		const result = await startDownload(
-			modalState.url,
-			modalState.downloadType,
-			modalState.name || undefined,
-			modalState.ignoreTLS,
-			modalState.automaticExtraction,
-			modalState.automaticRawConversion
-		);
-
-		if (result) {
 			modalState = options;
-			reload = true;
-			toast.success('Download started', { position: 'bottom-center' });
-		} else {
-			toast.error('Download failed', { position: 'bottom-center' });
+			await refreshDownloads();
+			toast.success(`Download ${result.id} accepted`, { position: 'bottom-center' });
+		} finally {
+			modalState.loading = false;
 		}
 	}
 
-	async function handleDelete() {
-		if (activeRows && activeRows.length == 1) {
+	function handleDelete() {
+		if (!activeRows?.length) return;
+
+		if (activeRows.length === 1) {
 			modalState.isDelete = true;
-			modalState.title = activeRows[0].name;
+			if (typeof activeRows[0].name === 'string') {
+				modalState.title = activeRows[0].name;
+			}
+			return;
 		}
 
-		if (activeRows && activeRows.length > 1) {
-			for (const row of activeRows) {
-				if (row.type !== 'http' && row.type !== 'torrent') {
-					modalState.isBulkDelete = false;
-					modalState.title = '';
-					return;
-				}
-			}
-			modalState.isBulkDelete = true;
-			modalState.title = `${activeRows.length} downloads`;
-		}
+		modalState.isBulkDelete = true;
+		modalState.title = `${activeRows.length} downloads`;
 	}
 
 	async function handleDownload() {
 		const row = activeRows ? activeRows[0] : null;
-		if (row) {
-			const result = await getSignedURL(row.name as string, (row.parentUUID as string) || row.uuid);
-			if (isAPIResponse(result) && result.status === 'success') {
-				const url = result.data as string;
-				const link = document.createElement('a');
-				link.href = url;
-				link.download = row.name as string;
-				document.body.appendChild(link);
-				link.click();
+		if (!row || signedURLLoading) return;
+
+		signedURLLoading = true;
+		try {
+			let uuid = '';
+
+			if (row.parentUUID) {
+				uuid = row.parentUUID as string;
+			} else if (row.uuid) {
+				uuid = row.uuid as string;
 			} else {
-				handleAPIError(result as APIResponse);
-				toast.error('Failed to get download link', { position: 'bottom-center' });
+				toast.error('Invalid download selection', { position: 'bottom-center' });
+				return;
 			}
+
+			const result = await getSignedURL(row.name as string, uuid, data.node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return;
+			}
+
+			const link = document.createElement('a');
+			link.href = result.url;
+			link.download = row.name as string;
+			document.body.appendChild(link);
+			try {
+				link.click();
+			} finally {
+				link.remove();
+			}
+		} finally {
+			signedURLLoading = false;
 		}
 	}
 
 	async function handleCopyURL() {
 		const row = activeRows ? activeRows[0] : null;
-		if (row) {
-			const result = await getSignedURL(row.name as string, (row.parentUUID as string) || row.uuid);
-			if (isAPIResponse(result) && result.status === 'success') {
-				const url = result.data as string;
-				const fullURl = new URL(url, window.location.origin).toString();
-				await navigator.clipboard.writeText(fullURl);
-				toast.success('Download URL copied to clipboard', { position: 'bottom-center' });
+		if (!row || signedURLLoading) return;
+
+		signedURLLoading = true;
+		try {
+			let uuid = '';
+			if (row.parentUUID) {
+				uuid = row.parentUUID as string;
+			} else if (row.uuid) {
+				uuid = row.uuid as string;
 			} else {
-				handleAPIError(result as APIResponse);
-				toast.error('Failed to get download link', { position: 'bottom-center' });
+				toast.error('Invalid download selection', { position: 'bottom-center' });
+				return;
 			}
+
+			const result = await getSignedURL(row.name as string, uuid, data.node);
+
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return;
+			}
+
+			const fullURL = new URL(result.url, window.location.origin).toString();
+			try {
+				await navigator.clipboard.writeText(fullURL);
+				toast.success('Download URL copied to clipboard', { position: 'bottom-center' });
+			} catch {
+				toast.error('Failed to copy download URL', { position: 'bottom-center' });
+			}
+		} finally {
+			signedURLLoading = false;
 		}
 	}
 
-	async function handleUploadedFile(payload: UploadedDownloadPayload) {
-		if (uploadModalState.loading) return;
-
-		uploadModalState.loading = true;
-		const result = await startDownload(
-			payload.path,
-			payload.downloadType,
-			undefined,
-			false,
-			payload.automaticExtraction,
-			payload.automaticRawConversion
-		);
-		uploadModalState.loading = false;
-
-		if (isAPIResponse(result) && result.status === 'success') {
-			uploadModalState.isOpen = false;
-			reload = true;
-			toast.success('Download started', { position: 'bottom-center' });
-			return;
-		}
-
-		handleAPIError(result as APIResponse);
-		toast.error('Failed to start download from uploaded file', { position: 'bottom-center' });
+	function handleUploadedFile() {
+		void refreshDownloads();
 	}
 
 	function handleView() {
 		if (!activeRows || activeRows.length !== 1) return;
 		const row = activeRows[0];
-		const download = (downloads.current as Download[]).find((d) => d.uuid === row.uuid);
+		const download = downloads.current.find((d) => d.uuid === row.uuid);
 		if (!download) return;
 
 		editState = {
@@ -367,7 +418,7 @@
 	function handleEdit() {
 		if (!activeRows || activeRows.length !== 1) return;
 		const row = activeRows[0];
-		const download = (downloads.current as Download[]).find((d) => d.uuid === row.uuid);
+		const download = downloads.current.find((d) => d.uuid === row.uuid);
 		if (!download) return;
 
 		const alreadyExtracted = !!download.extractedPath;
@@ -389,26 +440,34 @@
 	}
 
 	async function handleSaveEdit() {
+		if (editState.loading) return;
+		if (editProcessingError) {
+			toast.error(editProcessingError, { position: 'bottom-center' });
+			return;
+		}
 		editState.loading = true;
-		const result = await updateDownload(
-			editState.id,
-			{
-				name: editState.name,
-				uType: editState.uType,
-				automaticExtraction: editState.automaticExtraction,
-				automaticRawConversion: editState.automaticRawConversion
+		try {
+			const result = await updateDownload(
+				editState.id,
+				{
+					name: editState.name,
+					uType: editState.uType,
+					automaticExtraction: editState.automaticExtraction,
+					automaticRawConversion: editState.automaticRawConversion
+				},
+				data.node
+			);
+
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return;
 			}
-		);
 
-		editState.loading = false;
-
-		if (isAPIResponse(result) && result.status === 'success') {
 			editState.isOpen = false;
-			reload = true;
+			await refreshDownloads();
 			toast.success('Download updated', { position: 'bottom-center' });
-		} else {
-			handleAPIError(result as APIResponse);
-			toast.error('Failed to update download', { position: 'bottom-center' });
+		} finally {
+			editState.loading = false;
 		}
 	}
 
@@ -436,24 +495,62 @@
 {#snippet button(type: string)}
 	{#if type === 'download' && onlyChildSelected && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
-				<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
+			<Button
+				onclick={handleDownload}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
+				{#if signedURLLoading}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
+					<span class="sr-only">Creating download link</span>
+				{:else}
+					<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
+				{/if}
 			</Button>
 		{/if}
 	{/if}
 
 	{#if type === 'download' && (httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleDownload} size="sm" variant="outline" class="h-6.5">
-				<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
+			<Button
+				onclick={handleDownload}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
+				{#if signedURLLoading}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
+					<span class="sr-only">Creating download link</span>
+				{:else}
+					<SpanWithIcon icon="icon-[mdi--download]" size="h-4 w-4" gap="gap-2" title="Download" />
+				{/if}
 			</Button>
 		{/if}
 	{/if}
 
 	{#if type === 'copy' && (((httpDownloadSelected || pathDownloadSelected) && isDownloadCompleted) || (onlyChildSelected && isDownloadCompleted))}
 		{#if activeRows && activeRows.length == 1}
-			<Button onclick={handleCopyURL} size="sm" variant="outline" class="h-6.5">
-				<SpanWithIcon icon="icon-[mdi--content-copy]" size="h-4 w-4" gap="gap-2" title="Copy URL" />
+			<Button
+				onclick={handleCopyURL}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={signedURLLoading}
+			>
+				{#if signedURLLoading}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin" aria-hidden="true"></span>
+					<span class="sr-only">Creating download link</span>
+				{:else}
+					<SpanWithIcon
+						icon="icon-[mdi--content-copy]"
+						size="h-4 w-4"
+						gap="gap-2"
+						title="Copy URL"
+					/>
+				{/if}
 			</Button>
 		{/if}
 	{/if}
@@ -592,12 +689,22 @@
 							classes="flex items-center gap-2"
 						/>
 					</div>
+					{#if newDownloadProcessingError}
+						<p class="text-destructive mt-2 text-xs" role="alert">
+							{newDownloadProcessingError}
+						</p>
+					{/if}
 				</div>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2 py-2">
-					<Button onclick={newDownload} type="submit" size="sm">
+					<Button
+						onclick={newDownload}
+						type="submit"
+						size="sm"
+						disabled={modalState.loading || Boolean(newDownloadProcessingError)}
+					>
 						{#if modalState.loading}
 							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 						{:else}
@@ -620,7 +727,9 @@
 			<Dialog.Header class="pr-14">
 				<Dialog.Title>
 					<SpanWithIcon
-						icon={editState.type === 'torrent' ? 'icon-[mdi--eye] text-primary' : 'icon-[mdi--pencil] text-primary'}
+						icon={editState.type === 'torrent'
+							? 'icon-[mdi--eye] text-primary'
+							: 'icon-[mdi--pencil] text-primary'}
 						size="h-5 w-5"
 						gap="gap-2"
 						title={editState.type === 'torrent' ? 'View' : 'Edit'}
@@ -689,6 +798,11 @@
 							classes="flex items-center gap-2"
 						/>
 					</div>
+					{#if editProcessingError}
+						<p class="text-destructive text-xs" role="alert">
+							{editProcessingError}
+						</p>
+					{/if}
 
 					{#if editState.extractedPath}
 						<p class="text-xs text-muted-foreground">
@@ -701,7 +815,12 @@
 			{#if editState.type !== 'torrent'}
 				<Dialog.Footer class="flex justify-end">
 					<div class="flex w-full items-center justify-end gap-2 py-2">
-						<Button onclick={handleSaveEdit} type="submit" size="sm">
+						<Button
+							onclick={handleSaveEdit}
+							type="submit"
+							size="sm"
+							disabled={editState.loading || Boolean(editProcessingError)}
+						>
 							{#if editState.loading}
 								<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 							{:else}
@@ -716,12 +835,10 @@
 
 	<DownloaderUploadModal
 		bind:open={uploadModalState.isOpen}
-		stagingPath={uploadStagingPath}
-		loading={uploadModalState.loading}
 		onClose={() => {
 			uploadModalState.isOpen = false;
 		}}
-		onUploaded={handleUploadedFile}
+		onCompleted={handleUploadedFile}
 	/>
 
 	<TreeTable
@@ -738,15 +855,8 @@
 		actions={{
 			onConfirm: async () => {
 				const id = activeRows ? activeRows[0]?.id : null;
-				const result = await deleteDownload(id as number);
-				reload = true;
-				if (isAPIResponse(result) && result.status === 'success') {
-					modalState = options;
-					activeRows = null;
-				} else {
-					handleAPIError(result as APIResponse);
-					toast.error('Failed to delete download', { position: 'bottom-center' });
-				}
+				const result = await deleteDownload(id as number, data.node);
+				await handleDeletionResult(result);
 			},
 			onCancel: () => {
 				modalState = options;
@@ -761,15 +871,8 @@
 		actions={{
 			onConfirm: async () => {
 				const ids = activeRows ? activeRows.map((row) => row.id) : [];
-				const result = await bulkDeleteDownloads(ids as number[]);
-				reload = true;
-				if (isAPIResponse(result) && result.status === 'success') {
-					modalState = options;
-					activeRows = null;
-				} else {
-					handleAPIError(result as APIResponse);
-					toast.error('Failed to delete downloads', { position: 'bottom-center' });
-				}
+				const result = await bulkDeleteDownloads(ids as number[], data.node);
+				await handleDeletionResult(result);
 			},
 			onCancel: () => {
 				modalState = options;

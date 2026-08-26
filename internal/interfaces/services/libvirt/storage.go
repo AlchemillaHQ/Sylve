@@ -64,7 +64,7 @@ type StorageAttachRequest struct {
 	FilesystemTarget string            `json:"filesystemTarget"`
 	ReadOnly         *bool             `json:"readOnly"`
 
-	RID  uint   `json:"rid" binding:"required"`
+	RID  uint   `json:"-"`
 	Name string `json:"name"`
 	UUID string `json:"downloadUUID"`
 
@@ -79,17 +79,18 @@ type StorageAttachRequest struct {
 }
 
 type StorageUpdateRequest struct {
-	ID               int                  `json:"id" binding:"required"`
-	Name             string               `json:"name" binding:"required"`
-	Size             *int64               `json:"size"`
-	Emulation        StorageEmulationType `json:"emulation" binding:"required,oneof=virtio-blk virtio-9p ahci-hd ahci-cd nvme"`
-	BootOrder        *int                 `json:"bootOrder"`
-	Enable           *bool                `json:"enable"`
-	FilesystemTarget *string              `json:"filesystemTarget"`
-	ReadOnly         *bool                `json:"readOnly"`
+	RID              uint                  `json:"-"`
+	ID               uint                  `json:"-"`
+	Name             *string               `json:"name"`
+	Size             *int64                `json:"size"`
+	Emulation        *StorageEmulationType `json:"emulation" binding:"omitempty,oneof=virtio-blk virtio-9p ahci-hd ahci-cd nvme"`
+	BootOrder        *int                  `json:"bootOrder"`
+	Enable           *bool                 `json:"enable"`
+	FilesystemTarget *string               `json:"filesystemTarget"`
+	ReadOnly         *bool                 `json:"readOnly"`
 }
 
 type StorageDetachRequest struct {
-	RID       uint `json:"rid" binding:"required"`
-	StorageId int  `json:"storageId" binding:"required"`
+	RID       uint `json:"-"`
+	StorageID uint `json:"-"`
 }

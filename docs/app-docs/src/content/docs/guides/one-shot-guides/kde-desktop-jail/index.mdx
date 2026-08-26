@@ -1,0 +1,174 @@
+---
+title: KDE Desktop in a Jail
+description: Install KDE Plasma and XRDP in a FreeBSD jail for remote desktop access.
+---
+
+This guide turns a FreeBSD jail into a remotely accessible KDE Plasma desktop. XRDP accepts an RDP connection, authenticates a regular FreeBSD account, and starts a private Plasma X11 session through the `xorgxrdp` display driver.
+
+The desktop is rendered in software inside the jail. It does not need a physical display, GPU passthrough, SDDM, Wayland, or a custom DevFS ruleset. This keeps the jail configuration simple, but software rendering uses more CPU than a desktop with graphics acceleration.
+
+The installer follows the FreeBSD Handbook's [Plasma and D-Bus configuration](https://docs.freebsd.org/en/books/handbook/desktop/) and the FreeBSD XRDP package's setup requirements. It is limited to FreeBSD 15.0 or newer and refuses to run on the host unless that safety check is deliberately overridden.
+
+## Understand the result
+
+A desktop jail is still a jail, not a virtual machine. It shares the FreeBSD host kernel and has no virtual firmware, emulated graphics card, or local monitor. XRDP creates an Xorg display only when a user connects.
+
+This setup is suitable for administration, development tools, browsers, and ordinary desktop applications. Hardware controls such as suspend, reboot, display brightness, removable devices, and direct GPU settings may be unavailable or inappropriate inside a jail. Use **Log Out** to end a Plasma session; manage the jail itself from Sylve.
+
+## Prepare the jail
+
+Follow [Simple Jail](/guides/one-shot-guides/simple-jail/) through [Start and verify the jail](/guides/one-shot-guides/simple-jail/#start-and-verify-the-jail), applying the changes below while creating it. Stop before installing AdGuard Home.
+
+### Basic
+
+Use these identity values:
+
+- **Jail Name:** `KDEDesktop`
+- **Hostname:** `kde-desktop`
+- **Description:** `KDE Plasma remote desktop`
+
+Choose an unused **Jail ID**.
+
+### Storage
+
+Use a FreeBSD 15.1 Base bootstrap on a FreeBSD 15.1 or newer host. The script installs the complete `kde` package rather than a minimal Plasma set. Allow at least **10 GiB of free space** in the jail dataset.
+
+Package counts and sizes change as the FreeBSD repository changes. A tested FreeBSD 15.1 quarterly installation downloaded about 1 GiB and added about 7 GiB across 600 packages.
+
+### Network
+
+Attach the jail to a network-facing Standard Switch and give it an address reachable from the intended RDP clients. DHCP works, but reserve the lease on the upstream DHCP server so bookmarks and firewall rules continue to point to the same address. A static address is also suitable.
+
+XRDP listens on TCP port `3389` inside the jail. Confirm that the upstream network and any Sylve-managed firewall permit that port only from a trusted LAN or VPN.
+
+### Hardware
+
+Use **4 CPU cores and 8 GiB of memory** for a comfortable full KDE desktop. Two cores and 4 GiB can work for light use, but package installation, web browsers, and software rendering will be slower.
+
+Keep **Start On Boot** and **Resource Limits** enabled. Leave **Custom DevFS Ruleset** disabled. XRDP's virtual Xorg display does not need `/dev/dri`, `/dev/input`, or other host devices.
+
+### Advanced
+
+Keep **Type** set to **FreeBSD**, **Clean Environment** enabled, and the lifecycle hooks disabled. Retain the default FreeBSD allowed options, including **SysV IPC (`allow.sysvipc`)**. KDE and Xorg use the normal FreeBSD jail IPC facilities; no additional privilege is required.
+
+Create and start the jail, verify its network connection, and create a [Snapshot](/guides/node/jails/snapshots/) before installing the desktop. A snapshot provides a quick return to the small base jail if the desktop is no longer wanted.
+
+## Download the installer
+
+Open the jail's Sylve console or connect to it over SSH as `root`. Download the [KDE and XRDP installer](/scripts/install-kde-xrdp.sh):
+
+```sh
+fetch -o /root/install-kde-xrdp.sh https://sylve.io/scripts/install-kde-xrdp.sh
+```
+
+Review it before running it:
+
+```sh
+less /root/install-kde-xrdp.sh
+```
+
+The script is safe to rerun after an interrupted package download or on an already configured jail. If it finds an unrelated `startwm.sh` in the desktop user's home directory, it preserves that file with a timestamped backup before writing the Plasma session launcher.
+
+## Install KDE and XRDP
+
+Choose a lowercase login name for the desktop account. This example uses `desktop`:
+
+```sh
+sh /root/install-kde-xrdp.sh desktop
+```
+
+If the account does not exist, the script creates it and asks for its password. The password is entered through FreeBSD's `passwd` utility and is not accepted as a command-line argument. Use a strong, unique password; this account can start a graphical session and access everything owned by that FreeBSD user.
+
+The installer then:
+
+1. Refreshes the signed FreeBSD package catalogues.
+2. Installs `kde`, `xrdp`, and `xorgxrdp` from the configured repository.
+3. Adds the login account to FreeBSD's `video` group.
+4. Creates a per-user Plasma X11 launcher using D-Bus and ConsoleKit.
+5. Forces software rendering so no host graphics device is required.
+6. Disables root login through XRDP.
+7. Enables and starts D-Bus, `xrdp-sesman`, and XRDP.
+8. Confirms that XRDP is listening on TCP port `3389`.
+
+The full package installation can take several minutes. Do not close the console or interrupt the jail while `pkg` is installing packages. If the connection is lost, reconnect and run the same command again.
+
+For unattended package installation, the password prompt can be deferred:
+
+```sh
+SKIP_PASSWORD_SETUP=YES sh /root/install-kde-xrdp.sh desktop
+passwd desktop
+```
+
+The account remains locked until `passwd desktop` succeeds. RDP authentication cannot use SSH keys, so a usable account password is required even when SSH access uses a key.
+
+## Verify the services
+
+The installer performs these checks automatically. You can repeat them after maintenance or a jail restart:
+
+```sh
+service dbus status
+service xrdp-sesman status
+service xrdp status
+sockstat -4 -6 -l | grep ':3389'
+```
+
+The final command should show `xrdp` listening on `*:3389`. SDDM should remain disabled; XRDP provides the remote login and starts a separate Xorg display for each session.
+
+Display the self-signed XRDP certificate's SHA-256 fingerprint before connecting for the first time:
+
+```sh
+openssl x509 \
+  -in /usr/local/etc/xrdp/cert.pem \
+  -noout -fingerprint -sha256
+```
+
+Record the fingerprint through the trusted Sylve console or SSH connection. Compare it with the certificate shown by the RDP client instead of accepting an unexpected certificate blindly.
+
+## Connect to Plasma
+
+Open an RDP client and connect to:
+
+```text
+<jail-ip>:3389
+```
+
+Sign in with the regular account created by the installer. If the XRDP login screen displays a session selector, choose **Xorg**. Do not use the `root` account; the installer disables XRDP root login.
+
+The first connection may take longer while Plasma creates the account's configuration and caches. A successful login opens a normal Plasma desktop. Later connections normally reattach to the existing session for that user.
+
+:::danger[Do not publish XRDP directly to the Internet]
+The XRDP service listens on every address inside the jail. Limit TCP `3389` to trusted source networks with the upstream firewall, a Sylve firewall rule, or a VPN such as WireGuard. A self-signed TLS certificate encrypts the session but does not make a public password endpoint safe from scanning and login attempts.
+:::
+
+## Troubleshoot a connection
+
+If the RDP client cannot reach the jail, first confirm the jail address and listening socket:
+
+```sh
+ifconfig
+sockstat -4 -6 -l | grep ':3389'
+```
+
+If the port is absent, inspect the service logs:
+
+```sh
+tail -n 100 /var/log/xrdp.log
+tail -n 100 /var/log/xrdp-sesman.log
+```
+
+If authentication succeeds but the session closes or remains blank, inspect the user's Xorg log and confirm that the Plasma launcher is executable:
+
+```sh
+ls -l /home/desktop/startwm.sh
+tail -n 100 /home/desktop/.local/share/xorg/Xorg.*.log
+```
+
+Replace `desktop` with the login name passed to the installer. Also confirm that the jail still has **SysV IPC (`allow.sysvipc`)** enabled and enough free memory. A locked account can be repaired from the console with:
+
+```sh
+passwd desktop
+```
+
+Software rendering is deliberate. A high CPU load while displaying animations, video, or graphics-heavy web pages does not necessarily indicate an XRDP fault. Reduce desktop effects or allocate more CPU before exposing host graphics devices to the jail.
+
+After the desktop is working, restart the jail from Sylve during a maintenance window and repeat the service checks. Keep the pre-install snapshot until boot-time service startup and an RDP login have both been confirmed in your environment.

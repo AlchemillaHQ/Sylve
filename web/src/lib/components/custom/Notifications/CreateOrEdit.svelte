@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { updateNotificationTransports } from '$lib/api/notifications';
+	import { createNotificationTransport, updateNotificationTransport } from '$lib/api/notifications';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -8,14 +8,14 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { User } from '$lib/types/auth';
-	import type { NotificationConfig, UpdateNotificationConfigInput } from '$lib/types/notifications';
+	import type { NotificationConfig, NotificationTransportInput } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
 	import { generatePassword } from '$lib/utils/string';
 
-	type TransportType = 'ntfy' | 'smtp' | 'discord';
+	type TransportType = 'ntfy' | 'pushover' | 'smtp' | 'discord';
 	type TransportForm = {
 		id?: number;
 		name: string;
@@ -25,6 +25,10 @@
 		ntfyTopic: string;
 		ntfyToken: string;
 		ntfyHasAuthToken: boolean;
+		pushoverApiToken: string;
+		pushoverHasApiToken: boolean;
+		pushoverUserKey: string;
+		pushoverHasUserKey: boolean;
 		smtpHost: string;
 		smtpPort: number;
 		smtpUsername: string;
@@ -49,6 +53,7 @@
 
 	let loading = $state(false);
 	let smtpRecipientsOpen = $state(false);
+	const pushoverCredentialPattern = /^[A-Za-z0-9]{30}$/;
 
 	function defaultForm(type: TransportType = 'smtp'): TransportForm {
 		return {
@@ -59,6 +64,10 @@
 			ntfyTopic: '',
 			ntfyToken: '',
 			ntfyHasAuthToken: false,
+			pushoverApiToken: '',
+			pushoverHasApiToken: false,
+			pushoverUserKey: '',
+			pushoverHasUserKey: false,
 			smtpHost: '',
 			smtpPort: 587,
 			smtpUsername: '',
@@ -94,6 +103,10 @@
 						ntfyTopic: editingTransport.ntfy?.topic ?? '',
 						ntfyToken: '',
 						ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+						pushoverApiToken: '',
+						pushoverHasApiToken: editingTransport.pushover?.hasApiToken ?? false,
+						pushoverUserKey: '',
+						pushoverHasUserKey: editingTransport.pushover?.hasUserKey ?? false,
 						smtpHost: editingTransport.email?.smtpHost ?? '',
 						smtpPort: editingTransport.email?.smtpPort ?? 587,
 						smtpUsername: editingTransport.email?.smtpUsername ?? '',
@@ -148,9 +161,8 @@
 		return normalized;
 	}
 
-	function buildEntry(f: TransportForm): UpdateNotificationConfigInput['transports'][number] {
+	function buildEntry(f: TransportForm): NotificationTransportInput {
 		return {
-			...(f.id ? { id: f.id } : {}),
 			name: f.name.trim(),
 			type: f.type,
 			enabled: f.enabled,
@@ -160,6 +172,15 @@
 							baseUrl: f.ntfyBaseUrl,
 							topic: f.ntfyTopic,
 							...(f.ntfyToken.trim().length > 0 ? { authToken: f.ntfyToken.trim() } : {})
+						}
+					: null,
+			pushover:
+				f.type === 'pushover'
+					? {
+							...(f.pushoverApiToken.trim().length > 0
+								? { apiToken: f.pushoverApiToken.trim() }
+								: {}),
+							...(f.pushoverUserKey.trim().length > 0 ? { userKey: f.pushoverUserKey.trim() } : {})
 						}
 					: null,
 			email:
@@ -185,29 +206,6 @@
 		};
 	}
 
-	function asPayloadTransport(
-		t: NotificationConfig['transports'][number]
-	): UpdateNotificationConfigInput['transports'][number] {
-		return {
-			id: t.id,
-			name: t.name,
-			type: t.type,
-			enabled: t.enabled,
-			ntfy: t.ntfy ? { baseUrl: t.ntfy.baseUrl, topic: t.ntfy.topic } : null,
-			email: t.email
-				? {
-						smtpHost: t.email.smtpHost,
-						smtpPort: t.email.smtpPort,
-						smtpUsername: t.email.smtpUsername,
-						smtpFrom: t.email.smtpFrom,
-						smtpUseTls: t.email.smtpUseTls,
-						recipients: t.email.recipients
-					}
-				: null,
-			discord: t.discord ? { webhookUrl: t.discord.webhookUrl } : null
-		};
-	}
-
 	function resetForm() {
 		if (editingTransport) {
 			form = {
@@ -219,6 +217,10 @@
 				ntfyTopic: editingTransport.ntfy?.topic ?? '',
 				ntfyToken: '',
 				ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+				pushoverApiToken: '',
+				pushoverHasApiToken: editingTransport.pushover?.hasApiToken ?? false,
+				pushoverUserKey: '',
+				pushoverHasUserKey: editingTransport.pushover?.hasUserKey ?? false,
 				smtpHost: editingTransport.email?.smtpHost ?? '',
 				smtpPort: editingTransport.email?.smtpPort ?? 587,
 				smtpUsername: editingTransport.email?.smtpUsername ?? '',
@@ -233,6 +235,14 @@
 	}
 
 	async function save() {
+		if (edit && !form.id) {
+			toast.error('Transport is no longer available', {
+				duration: 5000,
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		if (form.name.trim().length === 0) {
 			toast.error('Transport name is required', {
 				duration: 5000,
@@ -262,6 +272,41 @@
 				toast.error('Topic is required', { duration: 5000, position: 'bottom-center' });
 				return;
 			}
+		} else if (form.type === 'pushover') {
+			if (form.pushoverApiToken.trim().length === 0 && !form.pushoverHasApiToken) {
+				toast.error('Application API token is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (
+				form.pushoverApiToken.trim().length > 0 &&
+				!pushoverCredentialPattern.test(form.pushoverApiToken.trim())
+			) {
+				toast.error('Application API token must be 30 letters or numbers', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (form.pushoverUserKey.trim().length === 0 && !form.pushoverHasUserKey) {
+				toast.error('User or group key is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (
+				form.pushoverUserKey.trim().length > 0 &&
+				!pushoverCredentialPattern.test(form.pushoverUserKey.trim())
+			) {
+				toast.error('User or group key must be 30 letters or numbers', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
 		} else if (form.type === 'discord') {
 			if (form.discordWebhookUrl.trim().length === 0) {
 				toast.error('Webhook URL is required', { duration: 5000, position: 'bottom-center' });
@@ -272,12 +317,9 @@
 		loading = true;
 
 		const entry = buildEntry(form);
-
-		const updatedTransports: UpdateNotificationConfigInput['transports'] = edit
-			? transports.map((t) => (t.id === form.id ? entry : asPayloadTransport(t)))
-			: [...transports.map(asPayloadTransport), entry];
-
-		const response = await updateNotificationTransports({ transports: updatedTransports });
+		const response = edit
+			? await updateNotificationTransport(form.id as number, entry)
+			: await createNotificationTransport(entry);
 		loading = false;
 
 		if (isAPIResponse(response) && response.status === 'error') {
@@ -331,6 +373,7 @@
 					label="Type"
 					options={[
 						{ value: 'ntfy', label: 'ntfy' },
+						{ value: 'pushover', label: 'Pushover' },
 						{ value: 'smtp', label: 'SMTP' },
 						{ value: 'discord', label: 'Discord' }
 					]}
@@ -369,6 +412,26 @@
 						type="password"
 						bind:value={form.ntfyToken}
 						placeholder={form.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
+						revealOnFocus={true}
+					/>
+					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+				</div>
+			{:else if form.type === 'pushover'}
+				<div class="space-y-3">
+					<CustomValueInput
+						label="Application API Token"
+						type="password"
+						bind:value={form.pushoverApiToken}
+						placeholder={form.pushoverHasApiToken
+							? 'Token stored (leave blank to keep)'
+							: 'Required'}
+						revealOnFocus={true}
+					/>
+					<CustomValueInput
+						label="User / Group Key"
+						type="password"
+						bind:value={form.pushoverUserKey}
+						placeholder={form.pushoverHasUserKey ? 'Key stored (leave blank to keep)' : 'Required'}
 						revealOnFocus={true}
 					/>
 					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />

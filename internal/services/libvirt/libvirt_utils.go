@@ -26,6 +26,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/klauspost/cpuid/v2"
+	"gorm.io/gorm"
 )
 
 var flashImageToDiskCtx = utils.FlashImageToDiskCtx
@@ -115,9 +116,16 @@ func domainReasonToString(state libvirt.DomainState, reason int32) libvirtServic
 	}
 }
 
+// FindISOByUUID resolves the on-disk path for a download UUID.
 func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
+	return s.findISOByUUIDWithDB(s.DB, uuid, includeImg)
+}
+
+// findISOByUUIDWithDB is FindISOByUUID with an explicit db handle, for
+// callers running inside a DB transaction.
+func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool) (string, error) {
 	var download utilitiesModels.Downloads
-	if err := s.DB.
+	if err := db.
 		Preload("Files").
 		Where("uuid = ?", uuid).
 		First(&download).Error; err != nil {
@@ -261,6 +269,7 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 
 	switch download.Type {
 	case "http":
+		addCandidate(download.Path)
 		addCandidate(httpMainPath)
 		addCandidate(download.ExtractedPath)
 		addCandidatesFromDir(download.ExtractedPath)
@@ -334,7 +343,7 @@ func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, err
 	for _, d := range domains {
 		state, reason, err := s.conn().DomainGetState(d, 0)
 		if err != nil {
-			fmt.Printf("failed to get domain state: %v\n", err)
+			return states, fmt.Errorf("failed_to_get_domain_state_%s: %w", d.Name, err)
 		}
 
 		pState := libvirt.DomainState(state)
@@ -581,59 +590,81 @@ func (s *Service) GetVMConfigDirectory(rid uint) (string, error) {
 }
 
 func (s *Service) CreateCloudInitISO(vm vmModels.VM) error {
-	if vm.CloudInitData == "" && vm.CloudInitMetaData == "" {
-		return nil
-	}
-
 	vmPath, err := s.GetVMConfigDirectory(vm.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_path: %w", err)
 	}
-
-	cloudInitISOPath := filepath.Join(vmPath, "cloud-init.iso")
-	if _, err := os.Stat(cloudInitISOPath); err == nil {
-		if err := os.Remove(cloudInitISOPath); err != nil {
-			return fmt.Errorf("failed_to_remove_existing_cloud_init_iso: %w", err)
-		}
+	if err := os.MkdirAll(vmPath, 0755); err != nil {
+		return fmt.Errorf("failed_to_create_vm_path: %w", err)
 	}
 
+	cloudInitISOPath := filepath.Join(vmPath, "cloud-init.iso")
 	cloudInitPath := filepath.Join(vmPath, "cloud-init")
-	if _, err := os.Stat(cloudInitPath); err == nil {
+	if !vmHasCloudInitConfiguration(vm) {
+		if err := os.Remove(cloudInitISOPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed_to_remove_existing_cloud_init_iso: %w", err)
+		}
 		if err := os.RemoveAll(cloudInitPath); err != nil {
 			return fmt.Errorf("failed_to_remove_existing_cloud_init_directory: %w", err)
 		}
+		return nil
 	}
 
-	if err := os.MkdirAll(cloudInitPath, 0755); err != nil {
+	buildPath, err := os.MkdirTemp(vmPath, ".cloud-init-build-")
+	if err != nil {
+		return fmt.Errorf("failed_to_create_cloud_init_build_directory: %w", err)
+	}
+	defer os.RemoveAll(buildPath)
+
+	buildDataPath := filepath.Join(buildPath, "cloud-init")
+	if err := os.Mkdir(buildDataPath, 0700); err != nil {
 		return fmt.Errorf("failed_to_create_cloud_init_directory: %w", err)
 	}
 
-	userDataPath := filepath.Join(cloudInitPath, "user-data")
-	metaDataPath := filepath.Join(cloudInitPath, "meta-data")
-	networkConfigPath := filepath.Join(cloudInitPath, "network-config")
+	userDataPath := filepath.Join(buildDataPath, "user-data")
+	metaDataPath := filepath.Join(buildDataPath, "meta-data")
+	networkConfigPath := filepath.Join(buildDataPath, "network-config")
 
-	err = os.WriteFile(userDataPath, []byte(vm.CloudInitData), 0644)
+	err = os.WriteFile(userDataPath, []byte(vm.CloudInitData), 0600)
 	if err != nil {
 		return fmt.Errorf("failed_to_write_user_data: %w", err)
 	}
 
-	err = os.WriteFile(metaDataPath, []byte(vm.CloudInitMetaData), 0644)
+	err = os.WriteFile(metaDataPath, []byte(vm.CloudInitMetaData), 0600)
 	if err != nil {
 		return fmt.Errorf("failed_to_write_meta_data: %w", err)
 	}
 
 	if vm.CloudInitNetworkConfig != "" {
-		err = os.WriteFile(networkConfigPath, []byte(vm.CloudInitNetworkConfig), 0644)
+		err = os.WriteFile(networkConfigPath, []byte(vm.CloudInitNetworkConfig), 0600)
 		if err != nil {
 			return fmt.Errorf("failed_to_write_network_config: %w", err)
 		}
 	}
 
-	isoPath := filepath.Join(vmPath, "cloud-init.iso")
-	_, err = utils.RunCommand("/usr/sbin/makefs", "-t", "cd9660", "-o", "rockridge", "-o", "label=cidata", isoPath, cloudInitPath)
-
-	if err != nil {
+	buildISOPath := filepath.Join(buildPath, "cloud-init.iso")
+	if _, err := utils.RunCommand(
+		"/usr/sbin/makefs",
+		"-t", "cd9660",
+		"-o", "rockridge",
+		"-o", "label=cidata",
+		buildISOPath,
+		buildDataPath,
+	); err != nil {
 		return fmt.Errorf("failed_to_create_cloud_init_iso: %w", err)
+	}
+	if err := os.Chmod(buildISOPath, 0600); err != nil {
+		return fmt.Errorf("failed_to_secure_cloud_init_iso: %w", err)
+	}
+
+	if err := os.RemoveAll(cloudInitPath); err != nil {
+		return fmt.Errorf("failed_to_remove_existing_cloud_init_directory: %w", err)
+	}
+	if err := os.Rename(buildDataPath, cloudInitPath); err != nil {
+		return fmt.Errorf("failed_to_install_cloud_init_directory: %w", err)
+	}
+	if err := os.Rename(buildISOPath, cloudInitISOPath); err != nil {
+		return fmt.Errorf("failed_to_install_cloud_init_iso: %w", err)
 	}
 
 	return nil
@@ -724,13 +755,15 @@ func (s *Service) FlashCloudInitMediaToDisk(vm vmModels.VM) error {
 	var storagePath string
 
 	if diskStorage.Type == vmModels.VMStorageTypeRaw {
-		storagePath = fmt.Sprintf(
-			"/%s/sylve/virtual-machines/%d/raw-%d/%d.img",
-			diskStorage.Dataset.Pool,
+		storagePath, err = s.resolveRawStorageImagePath(
+			context.Background(),
+			s.DB,
 			vm.RID,
-			diskStorage.ID,
-			diskStorage.ID,
+			*diskStorage,
 		)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_raw_cloud_init_disk: %w", err)
+		}
 
 		if _, err := os.Stat(storagePath); err != nil {
 			return fmt.Errorf("disk_image_not_found: %w", err)

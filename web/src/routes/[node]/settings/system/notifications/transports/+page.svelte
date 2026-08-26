@@ -11,20 +11,27 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { User } from '$lib/types/auth';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { NotificationConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		config: NotificationConfig;
 		users: User[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	// svelte-ignore state_referenced_locally
 	let configResource = resource(
@@ -45,7 +52,7 @@
 		delete: { open: false, id: 0 }
 	});
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'enabled',
@@ -60,7 +67,15 @@
 			title: 'Type',
 			formatter: (cell: CellComponent) => {
 				const v = cell.getValue();
-				return v === 'ntfy' ? 'ntfy' : v === 'smtp' ? 'SMTP' : v === 'discord' ? 'Discord' : v || '-';
+				return v === 'ntfy'
+					? 'ntfy'
+					: v === 'pushover'
+						? 'Pushover'
+						: v === 'smtp'
+							? 'SMTP'
+							: v === 'discord'
+								? 'Discord'
+								: v || '-';
 			}
 		},
 		{
@@ -70,7 +85,7 @@
 		},
 		{
 			field: 'details',
-			title: 'Recipients / Topic',
+			title: 'Destination',
 			formatter: (cell: CellComponent) => {
 				const v = cell.getValue();
 				return v || '-';
@@ -87,6 +102,8 @@
 				details = r.length <= 2 ? r.join(', ') : `${r[0]} ...+${r.length - 1} more`;
 			} else if (t.type === 'ntfy' && t.ntfy?.topic) {
 				details = t.ntfy.topic;
+			} else if (t.type === 'pushover') {
+				details = t.pushover?.hasUserKey ? 'User / group key configured' : '-';
 			} else if (t.type === 'discord') {
 				details = t.discord?.webhookUrl ? new URL(t.discord.webhookUrl).hostname : '-';
 			}

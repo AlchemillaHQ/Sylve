@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import {
 		createJailSnapshot,
 		deleteJailSnapshot,
@@ -6,6 +7,7 @@
 		rollbackJailSnapshot
 	} from '$lib/api/jail/snapshots';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -13,36 +15,78 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { reload as apiReload } from '$lib/stores/api.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { JailSnapshot } from '$lib/types/jail/snapshots';
+	import { JailSnapshotRollbackResultSchema, type JailSnapshot } from '$lib/types/jail/snapshots';
+	import { removeStaleJailCacheByCTID } from '$lib/utils/jail/jail';
+	import { escapeHTML } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { dateToAgo } from '$lib/utils/time';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { resource, watch } from 'runed';
+	import { onMount } from 'svelte';
 	import type { CellComponent } from 'tabulator-tables';
 	import { toast } from 'svelte-sonner';
 	import { SvelteMap } from 'svelte/reactivity';
-	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
+		node: string;
 		ctId: number;
 		snapshots: JailSnapshot[];
+		snapshotsError: APIResponse | null;
+	}
+	interface SnapshotResourceValue {
+		identity: string;
+		items: JailSnapshot[];
 	}
 
 	let { data }: { data: Data } = $props();
 
-	// svelte-ignore state_referenced_locally
+	const initialSnapshots = () => data.snapshots;
+	const initialSnapshotIdentity = () => `${data.node}:${data.ctId}`;
+	let lastSnapshotIdentity = '';
+	let lastSnapshots: JailSnapshot[] = [];
+
 	const snapshots = resource(
-		() => `jail-${data.ctId}-snapshots`,
-		async (key) => {
-			const result = await listJailSnapshots(data.ctId);
-			updateCache(key, result);
-			return result;
+		[() => data.node, () => data.ctId],
+		async ([hostname, ctId], _, { signal }) => {
+			const requestIdentity = `${hostname}:${ctId}`;
+			if (lastSnapshotIdentity !== requestIdentity) {
+				lastSnapshotIdentity = requestIdentity;
+				lastSnapshots = data.node === hostname && data.ctId === ctId ? data.snapshots : [];
+			}
+
+			const result = await listJailSnapshots(ctId, {
+				hostname,
+				signal,
+				preserveErrors: true
+			});
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return { identity: requestIdentity, items: lastSnapshots };
+			}
+
+			lastSnapshots = result;
+			await updateCache(`jail-${ctId}-snapshots`, result, hostname);
+			return { identity: requestIdentity, items: result };
 		},
 		{
-			initialValue: data.snapshots
+			initialValue: {
+				identity: initialSnapshotIdentity(),
+				items: initialSnapshots()
+			} satisfies SnapshotResourceValue
 		}
 	);
+	let currentSnapshots = $derived(
+		snapshots.current.identity === `${data.node}:${data.ctId}`
+			? snapshots.current.items
+			: data.snapshots
+	);
+
+	onMount(() => {
+		if (data.snapshotsError) handleAPIError(data.snapshotsError);
+	});
 
 	let reload = $state(false);
 
@@ -102,7 +146,10 @@
 				field: 'name',
 				title: 'Name',
 				formatter: (cell: CellComponent) =>
-					renderWithIcon('carbon:ibm-cloud-vpc-block-storage-snapshots', cell.getValue())
+					renderWithIcon(
+						'carbon:ibm-cloud-vpc-block-storage-snapshots',
+						escapeHTML(String(cell.getValue()))
+					)
 			},
 			{
 				field: 'description',
@@ -123,7 +170,7 @@
 				}
 			}
 		] as Column[],
-		rows: buildSnapshotTreeRows(snapshots.current || [])
+		rows: buildSnapshotTreeRows(currentSnapshots)
 	});
 
 	let query = $state('');
@@ -131,7 +178,7 @@
 	let selectedSnapshot = $derived.by(() => {
 		if (!activeRows || activeRows.length !== 1) return null;
 		const id = Number(activeRows[0].id);
-		return snapshots.current.find((snap) => snap.id === id) || null;
+		return currentSnapshots.find((snap) => snap.id === id) || null;
 	});
 
 	let createModal = $state({
@@ -144,29 +191,58 @@
 	let rollbackConfirmOpen = $state(false);
 	let deleteConfirmOpen = $state(false);
 	let rollbacking = $state(false);
+	let deleting = $state(false);
 
 	async function onCreateSnapshot() {
+		if (createModal.creating) return;
+		const hostname = data.node;
+		const ctId = data.ctId;
+		const requestIdentity = `${hostname}:${ctId}`;
 		const name = createModal.name.trim();
 		const description = createModal.description.trim();
 		if (!name) {
 			toast.error('Snapshot name is required', { position: 'bottom-center' });
 			return;
 		}
+		if (name.length > 128) {
+			toast.error('Snapshot name must be 128 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		if (description.length > 4096) {
+			toast.error('Snapshot description must be 4096 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 
 		createModal.creating = true;
 		try {
-			const response = await createJailSnapshot(data.ctId, name, description);
-			if (response.status === 'success') {
-				toast.success('Snapshot created', { position: 'bottom-center' });
-				createModal.open = false;
-				createModal.name = '';
-				createModal.description = '';
-				reload = true;
-				return;
-			} else {
+			const response = await createJailSnapshot(ctId, name, description, {
+				hostname,
+				preserveErrors: true
+			});
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to create snapshot', { position: 'bottom-center' });
+				return;
 			}
+
+			toast.success('Snapshot created', { position: 'bottom-center' });
+			if (
+				`${data.node}:${data.ctId}` === requestIdentity &&
+				lastSnapshotIdentity === requestIdentity
+			) {
+				lastSnapshots = [...lastSnapshots, response];
+				await updateCache(`jail-${ctId}-snapshots`, lastSnapshots, hostname);
+				reload = true;
+			} else {
+				await removeCache(`jail-${ctId}-snapshots`, hostname);
+			}
+			createModal.open = false;
+			createModal.name = '';
+			createModal.description = '';
 		} catch {
 			toast.error('Failed to create snapshot', { position: 'bottom-center' });
 		} finally {
@@ -176,19 +252,56 @@
 
 	async function onRollbackSnapshot() {
 		if (!selectedSnapshot || rollbacking) return;
+		const hostname = data.node;
+		const ctId = data.ctId;
+		const requestIdentity = `${hostname}:${ctId}`;
+		const rollbackTarget = selectedSnapshot;
 		rollbacking = true;
 		try {
-			const response = await rollbackJailSnapshot(data.ctId, selectedSnapshot.id);
-			if (response.status === 'success') {
-				toast.success('Snapshot rollback started', { position: 'bottom-center' });
-				rollbackConfirmOpen = false;
-				activeRows = null;
-				reload = true;
-				return;
-			} else {
+			const response = await rollbackJailSnapshot(ctId, rollbackTarget.id, {
+				hostname,
+				preserveErrors: true
+			});
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
-				toast.error('Failed to rollback snapshot', { position: 'bottom-center' });
+				const diagnostics = JailSnapshotRollbackResultSchema.safeParse(response.data);
+				toast.error('Failed to rollback snapshot', {
+					position: 'bottom-center',
+					description:
+						diagnostics.success && diagnostics.data.warnings.length > 0
+							? diagnostics.data.warnings.join('\n')
+							: undefined
+				});
+				return;
 			}
+
+			if (response.warnings.length > 0) {
+				toast.warning('Snapshot rolled back with warnings', {
+					position: 'bottom-center',
+					description: response.warnings.join('\n')
+				});
+			} else {
+				toast.success('Snapshot rolled back', { position: 'bottom-center' });
+			}
+			rollbackConfirmOpen = false;
+			activeRows = null;
+			if (
+				`${data.node}:${data.ctId}` === requestIdentity &&
+				lastSnapshotIdentity === requestIdentity
+			) {
+				const rollbackCreatedAt = new Date(rollbackTarget.createdAt).getTime();
+				lastSnapshots = lastSnapshots.filter((snapshot) => {
+					const createdAt = new Date(snapshot.createdAt).getTime();
+					return (
+						createdAt < rollbackCreatedAt ||
+						(createdAt === rollbackCreatedAt && snapshot.id <= rollbackTarget.id)
+					);
+				});
+				reload = true;
+			}
+			await removeStaleJailCacheByCTID(ctId, hostname);
+			apiReload.leftPanel = true;
+			if (`${data.node}:${data.ctId}` === requestIdentity) await invalidateAll();
 		} catch {
 			toast.error('Failed to rollback snapshot', { position: 'bottom-center' });
 		} finally {
@@ -197,14 +310,37 @@
 	}
 
 	async function onDeleteSnapshot() {
-		if (!selectedSnapshot) return;
+		if (!selectedSnapshot || deleting) return;
+		const hostname = data.node;
+		const ctId = data.ctId;
+		const requestIdentity = `${hostname}:${ctId}`;
+		const deletedSnapshot = selectedSnapshot;
+		deleting = true;
 		try {
-			const response = await deleteJailSnapshot(data.ctId, selectedSnapshot.id);
+			const response = await deleteJailSnapshot(ctId, deletedSnapshot.id, {
+				hostname,
+				preserveErrors: true
+			});
 			if (response.status === 'success') {
 				toast.success('Snapshot deleted', { position: 'bottom-center' });
+				if (
+					`${data.node}:${data.ctId}` === requestIdentity &&
+					lastSnapshotIdentity === requestIdentity
+				) {
+					lastSnapshots = lastSnapshots
+						.filter((snapshot) => snapshot.id !== deletedSnapshot.id)
+						.map((snapshot) =>
+							snapshot.parentSnapshotId === deletedSnapshot.id
+								? { ...snapshot, parentSnapshotId: deletedSnapshot.parentSnapshotId }
+								: snapshot
+						);
+					await updateCache(`jail-${ctId}-snapshots`, lastSnapshots, hostname);
+					reload = true;
+				} else {
+					await removeCache(`jail-${ctId}-snapshots`, hostname);
+				}
 				deleteConfirmOpen = false;
 				activeRows = null;
-				reload = true;
 				return;
 			} else {
 				handleAPIError(response);
@@ -212,6 +348,8 @@
 			}
 		} catch {
 			toast.error('Failed to delete snapshot', { position: 'bottom-center' });
+		} finally {
+			deleting = false;
 		}
 	}
 </script>
@@ -224,6 +362,7 @@
 			onclick={() => {
 				createModal.open = true;
 			}}
+			disabled={createModal.creating || rollbacking || deleting}
 			size="sm"
 			class="h-6"
 		>
@@ -237,6 +376,7 @@
 				}}
 				size="sm"
 				variant="outline"
+				disabled={rollbacking || deleting}
 				class="h-6.5"
 			>
 				<SpanWithIcon
@@ -253,6 +393,7 @@
 				}}
 				size="sm"
 				variant="outline"
+				disabled={rollbacking || deleting}
 				class="h-6.5"
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
@@ -273,7 +414,8 @@
 
 <Dialog.Root bind:open={createModal.open}>
 	<Dialog.Content
-		class="max-h-[90vh] min-w-1/3 overflow-y-auto p-6"
+		class="min-w-1/3"
+		showCloseButton={true}
 		onClose={() => {
 			createModal.open = false;
 		}}
@@ -296,6 +438,7 @@
 					id="snapshot-name"
 					placeholder="Clean Slate"
 					bind:value={createModal.name}
+					maxlength={128}
 					disabled={createModal.creating}
 				/>
 			</div>
@@ -306,22 +449,17 @@
 					id="snapshot-description"
 					placeholder="Optional note about why this snapshot was taken"
 					bind:value={createModal.description}
+					maxlength={4096}
 					rows={5}
 					disabled={createModal.creating}
 				/>
 			</div>
+			<p class="text-muted-foreground text-xs">
+				Jail snapshots are crash-consistent and do not quiesce processes running inside the jail.
+			</p>
 		</div>
 
 		<Dialog.Footer>
-			<Button
-				variant="outline"
-				disabled={createModal.creating}
-				onclick={() => {
-					createModal.open = false;
-				}}
-			>
-				Cancel
-			</Button>
 			<Button disabled={createModal.creating} onclick={onCreateSnapshot}>
 				{createModal.creating ? 'Creating...' : 'Create Snapshot'}
 			</Button>
@@ -333,9 +471,9 @@
 	open={rollbackConfirmOpen}
 	loading={rollbacking}
 	loadingLabel="Rolling Back"
-	confirmLabel="Continue"
+	confirmLabel="Rollback"
 	customTitle={selectedSnapshot
-		? `Rollback to <b>${selectedSnapshot.name}</b>? This will destroy snapshots created after it.`
+		? `Rollback jail to <b>${escapeHTML(selectedSnapshot.name)}</b>? If the jail is running, it will be stopped. The complete jail dataset tree will be rolled back, permanently destroying every newer ZFS snapshot beneath it—including snapshots not listed here. Saved configuration will be restored and the jail will then be restarted if it was previously running.`
 		: ''}
 	actions={{
 		onConfirm: onRollbackSnapshot,
@@ -347,8 +485,11 @@
 
 <AlertDialog
 	open={deleteConfirmOpen}
+	loading={deleting}
+	loadingLabel="Deleting"
+	confirmLabel="Delete"
 	customTitle={selectedSnapshot
-		? `Delete snapshot <b>${selectedSnapshot.name}</b>? This action cannot be undone.`
+		? `Delete snapshot <b>${escapeHTML(selectedSnapshot.name)}</b>? This removes it throughout the jail dataset tree and cannot be undone.`
 		: ''}
 	actions={{
 		onConfirm: onDeleteSnapshot,

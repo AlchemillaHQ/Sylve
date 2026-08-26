@@ -221,7 +221,8 @@
 
 			const items = result.items ?? [];
 			if (items.length > 0) {
-				logControl?.push(items.map(hitToRow));
+				if (!logControl) return;
+				logControl.push(items.map(hitToRow));
 			}
 
 			nextPollCursor = result.nextCursor ?? cursor;

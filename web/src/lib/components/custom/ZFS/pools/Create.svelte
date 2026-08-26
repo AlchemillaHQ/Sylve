@@ -2,7 +2,6 @@
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import * as Card from '$lib/components/ui/card/index.js';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -10,7 +9,6 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import type { Disk, Partition } from '$lib/types/disk/disk';
 	import type { VdevType, Zpool, ZpoolRaidType } from '$lib/types/zfs/pool';
@@ -69,7 +67,9 @@
 
 	let properties = $state(options);
 	let accordionOpen = $state<string[]>([]);
-	let sectionOrder = $state<string[]>(['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions']);
+	// @wc-ignore
+	const defaultSectionOrder = ['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions'];
+	let sectionOrder = $state<string[]>([...defaultSectionOrder]);
 
 	watch(
 		() => open,
@@ -94,7 +94,7 @@
 						.length,
 					Partitions: usable.partitions.length
 				};
-				sectionOrder = ['HDD', 'SSD', 'NVMe', 'Virtual', 'Partitions'].sort(
+				sectionOrder = [...defaultSectionOrder].sort(
 					(a, b) => (initialCounts[b] ?? 0) - (initialCounts[a] ?? 0)
 				);
 			}
@@ -110,8 +110,7 @@
 							(p) =>
 								!properties.vdev.containers
 									.flatMap((v) => v.partitions)
-									.some((vp) => vp.name === p.name) &&
-								!properties.props.spares.includes(p.name)
+									.some((vp) => vp.name === p.name) && !properties.props.spares.includes(p.name)
 						).length
 					: usable.disks.filter(
 							(d) =>
@@ -122,28 +121,6 @@
 						).length
 		}))
 	);
-
-	let spares: string[] = $derived.by(() => {
-		const uD: string[] = usable.disks
-			.filter((disk) => {
-				return !properties.vdev.containers.some((vdev) => {
-					return vdev.disks.some((d) => d.uuid === disk.uuid);
-				});
-			})
-			.map((disk) => disk.device);
-
-		const uP: string[] = usable.partitions
-			.filter((partition) => {
-				return !properties.vdev.containers.some((vdev) => {
-					return vdev.partitions.some((p) => p.name === partition.name);
-				});
-			})
-			.map((partition) => partition.name);
-
-		return [...uD, ...uP].filter((device) => {
-			return device !== 'da0' && device !== 'cd0';
-		});
-	});
 
 	function setUsableSpace() {
 		let totalUsable = 0;
@@ -624,6 +601,8 @@
 			}
 		}
 
+		const mountpoint = properties.mount.trim();
+
 		const response = await createPool({
 			name: properties.name,
 			vdevs: properties.vdev.containers.map((vdev) => ({
@@ -643,6 +622,7 @@
 				delegation: properties.props.delegation,
 				failmode: properties.props.failmode
 			},
+			...(mountpoint ? { mountpoint } : {}),
 			spares: properties.props.spares.map((spare) => spare),
 			createForce: properties.force
 		});
@@ -830,7 +810,7 @@
 		onReset={() => {
 			properties = options;
 		}}
-		class="fixed top-1/2 left-1/2 flex h-[75vh] max-h-[800px] w-[75%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-3 overflow-auto pt-5 pr-6 pb-5 pl-5 transition-all duration-300 ease-in-out lg:max-w-4xl"
+		class="fixed top-1/2 left-1/2 flex h-[75vh] max-h-200 w-[75%] -translate-x-1/2 -translate-y-1/2 transform flex-col gap-3 overflow-auto pt-5 pr-6 pb-5 pl-5 transition-all duration-300 ease-in-out lg:max-w-4xl"
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title class="text-left">
@@ -886,7 +866,7 @@
 													setUsableSpace();
 												}}
 											>
-												<Select.Trigger class="!bg-primary/5 dark:!bg-background h-6 w-32 text-xs">
+												<Select.Trigger class="bg-primary/5! dark:bg-background! h-6 w-32 text-xs">
 													{vdevTypeArr.find((vt) => vt.value === vdev.type)?.label ?? 'Data'}
 												</Select.Trigger>
 												<Select.Content>
@@ -905,7 +885,7 @@
 													onValueChange={() => setUsableSpace()}
 												>
 													<Select.Trigger
-														class="!bg-primary/5 dark:!bg-background h-6 w-24 text-xs"
+														class="bg-primary/5! dark:bg-background! h-6 w-24 text-xs"
 													>
 														{vdev.raidType
 															? raidTypeArr.find((rt) => rt.value === vdev.raidType)?.label
@@ -967,7 +947,11 @@
 							{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
 								<div class="flex items-center gap-1">
 									<span class="text-xs text-muted-foreground">Spares</span>
-									<span class="text-xs font-semibold text-green-500 {properties.props.spares.length ? '' : 'hidden'}">
+									<span
+										class="text-xs font-semibold text-green-500 {properties.props.spares.length
+											? ''
+											: 'hidden'}"
+									>
 										({properties.props.spares.length})
 									</span>
 								</div>
@@ -975,43 +959,41 @@
 						</div>
 
 						{#if properties.vdev.containers.some((v) => v.raidType && v.raidType !== 'stripe')}
-						<div id="spares-container" class="mt-2">
-							<div
-								class="bg-primary/10 dark:bg-background relative h-20 w-full overflow-auto rounded-lg border border-dashed border-muted-foreground/30 p-2"
-								use:dropzone={{
-									on_dropzone: (data: string) => handleDropToSpares(data),
-									dragover_class: 'droppable'
-								}}
-							>
-								{#if properties.props.spares.length === 0}
-									<div
-										class="text-muted-foreground/60 flex h-full w-full items-center justify-center"
-									>
-										Drop disks here to use as spares
-									</div>
-								{:else}
-									<div
-										class="flex h-full items-center justify-center gap-3"
-									>
-										{#each properties.props.spares as spare (spare)}
-											<div class="relative text-center">
-												<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
-												<div class="max-w-16 truncate text-xs">
-													{spare.split('/').pop()}
+							<div id="spares-container" class="mt-2">
+								<div
+									class="bg-primary/10 dark:bg-background relative h-20 w-full overflow-auto rounded-lg border border-dashed border-muted-foreground/30 p-2"
+									use:dropzone={{
+										on_dropzone: (data: string) => handleDropToSpares(data),
+										dragover_class: 'droppable'
+									}}
+								>
+									{#if properties.props.spares.length === 0}
+										<div
+											class="text-muted-foreground/60 flex h-full w-full items-center justify-center"
+										>
+											Drop disks here to use as spares
+										</div>
+									{:else}
+										<div class="flex h-full items-center justify-center gap-3">
+											{#each properties.props.spares as spare (spare)}
+												<div class="relative text-center">
+													<span class="icon-[mdi--harddisk] h-9 w-9 text-green-500"></span>
+													<div class="max-w-16 truncate text-xs">
+														{spare.split('/').pop()}
+													</div>
+													<button
+														class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
+														onclick={() => removeFromSpares(spare)}
+														aria-label="Remove {spare} from spares"
+													>
+														<span class="icon-[mdi--close] h-3 w-3 block"></span>
+													</button>
 												</div>
-												<button
-													class="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600"
-													onclick={() => removeFromSpares(spare)}
-													aria-label="Remove {spare} from spares"
-												>
-													<span class="icon-[mdi--close] h-3 w-3 block"></span>
-												</button>
-											</div>
-										{/each}
-									</div>
-								{/if}
+											{/each}
+										</div>
+									{/if}
+								</div>
 							</div>
-						</div>
 						{/if}
 
 						<Accordion.Root
@@ -1074,7 +1056,8 @@
 							<CustomValueInput
 								type="text"
 								label="Mount Point"
-								placeholder="/tank"
+								placeholder={properties.name ? `/${properties.name}` : '/<pool>'}
+								hint="Leave blank to use the ZFS default /&lt;pool&gt;. Set an absolute path such as /mnt/tank to customize it."
 								bind:value={properties.mount}
 								classes="flex-1 space-y-1"
 							></CustomValueInput>

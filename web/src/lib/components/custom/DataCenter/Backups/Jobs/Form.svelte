@@ -2,7 +2,7 @@
 	import { createBackupJob, updateBackupJob, type BackupJobInput } from '$lib/api/cluster/backups';
 	import { getJails } from '$lib/api/jail/jail';
 	import { getVMs } from '$lib/api/vm/vm';
-	import { getDatasets } from '$lib/api/zfs/datasets';
+	import { getDatasetsResult } from '$lib/api/zfs/datasets';
 	import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -13,13 +13,14 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type {
 		BackupGuestRef,
+		BackupGuestScope,
 		BackupJob,
 		BackupJobMode,
 		BackupTarget
 	} from '$lib/types/cluster/backups';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { VM } from '$lib/types/vm/vm';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { cronToHuman } from '$lib/utils/time';
 	import { vmBaseDataset, vmStoragePools } from '$lib/utils/vm/vm';
 	import { watch } from 'runed';
@@ -34,6 +35,7 @@
 		nodes: ClusterNode[];
 		localNodeId?: string;
 		standaloneMode?: boolean;
+		guestScope?: BackupGuestScope | null;
 		reload: boolean;
 	}
 
@@ -53,14 +55,17 @@
 		recursive: boolean;
 	};
 
+	type SourceEncryptionState = 'idle' | 'checking' | 'encrypted' | 'unencrypted' | 'unavailable';
+
 	let {
 		open = $bindable(),
-		edit = $bindable(),
+		edit,
 		selectedJob,
 		targets,
 		nodes,
 		localNodeId = '',
 		standaloneMode = false,
+		guestScope = null,
 		reload = $bindable()
 	}: Props = $props();
 
@@ -73,8 +78,9 @@
 	let vmsLoading = $state(false);
 	let vmsLoadedForNode = $state('');
 	let lastRunnerNodeId = $state('');
-	let srcEncrypted = $state(false);
-	let srcEncryptionChecking = $state(false);
+	let srcEncryptionState = $state<SourceEncryptionState>('idle');
+	let srcEncryptionGeneration = 0;
+	let srcEncryptionController: AbortController | null = null;
 
 	let form = $state<JobFormState>({
 		name: '',
@@ -116,11 +122,52 @@
 		];
 	});
 
+	function normalizedNodeHostname(value: string): string {
+		return value.trim().replace(/\s+\(Local\)$/, '');
+	}
+
+	let scopedGuest = $derived(guestScope && guestScope.id > 0 ? guestScope : null);
+	let scopedGuestNode = $derived.by(() => {
+		if (!scopedGuest?.hostname.trim()) return null;
+		const hostname = normalizedNodeHostname(scopedGuest.hostname);
+		return nodes.find((node) => normalizedNodeHostname(node.hostname) === hostname) || null;
+	});
+	let scopedGuestLabel = $derived(scopedGuest?.kind === 'vm' ? 'VM' : 'jail');
+	let scopedGuestLoading = $derived(
+		scopedGuest?.kind === 'vm' ? vmsLoading : scopedGuest?.kind === 'jail' ? jailsLoading : false
+	);
+	let scopedRebindPending = $derived(
+		edit &&
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			selectedJob?.lastStatus === 'runner_rebind_pending'
+	);
+	let scopedRunnerMismatch = $derived(
+		edit &&
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			!!scopedGuestNode &&
+			form.runnerNodeId.trim() !== scopedGuestNode.nodeUUID.trim()
+	);
+	let scopedRunnerSelectedForSave = $derived(
+		edit &&
+			!!scopedGuest &&
+			selectedJob?.mode === scopedGuest.kind &&
+			!!scopedGuestNode &&
+			(selectedJob.runnerNodeId || '').trim() !== scopedGuestNode.nodeUUID.trim() &&
+			form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim()
+	);
+
 	const modeOptions: Array<{ value: BackupJobMode; label: string }> = [
 		{ value: 'dataset', label: 'Single Dataset' },
 		{ value: 'jail', label: 'Jail' },
 		{ value: 'vm', label: 'Virtual Machine' }
 	];
+	const sourceSelectClasses = {
+		parent: 'min-w-0 space-y-1',
+		label: 'flex h-7 items-center whitespace-nowrap text-sm',
+		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+	};
 
 	let jailOptions = $derived(
 		jails.map((jail) => ({
@@ -168,32 +215,70 @@
 		return { kind: 'dataset', id: 0 };
 	}
 
-	async function checkSourceEncryption(dataset: string) {
-		if (!dataset) {
-			srcEncrypted = false;
+	function invalidateSourceEncryptionCheck(state: SourceEncryptionState = 'idle') {
+		srcEncryptionGeneration += 1;
+		srcEncryptionController?.abort();
+		srcEncryptionController = null;
+		srcEncryptionState = state;
+	}
+
+	async function checkSourceEncryption(dataset: string, hostname: string) {
+		const requestedDataset = dataset.trim();
+		const requestedHostname = hostname.trim();
+		invalidateSourceEncryptionCheck();
+		if (!requestedDataset) return;
+		if (!requestedHostname) {
+			srcEncryptionState = 'unavailable';
 			return;
 		}
 
-		srcEncryptionChecking = true;
-		await sleep(1000);
+		const generation = srcEncryptionGeneration;
+		const controller = new AbortController();
+		srcEncryptionController = controller;
+		srcEncryptionState = 'checking';
 
 		try {
-			const datasets = await Promise.all([
-				getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
-				getDatasets(GZFSDatasetTypeSchema.enum.VOLUME)
-			]).then(([filesystems, volumes]) => [...filesystems, ...volumes]);
+			await sleep(1000);
+			if (controller.signal.aborted || generation !== srcEncryptionGeneration) return;
 
-			const match = datasets.find((d) => {
-				if (d.name !== dataset) return false;
-				console.log(d.properties);
-				const enc = d.properties?.encryption || '';
-				return enc && enc !== 'off' && enc !== '-' && enc !== 'none';
-			});
-			srcEncrypted = !!match;
-		} catch {
-			srcEncrypted = false;
+			const [filesystems, volumes] = await Promise.all([
+				getDatasetsResult(
+					GZFSDatasetTypeSchema.enum.FILESYSTEM,
+					requestedHostname,
+					controller.signal
+				),
+				getDatasetsResult(GZFSDatasetTypeSchema.enum.VOLUME, requestedHostname, controller.signal)
+			]);
+			if (controller.signal.aborted || generation !== srcEncryptionGeneration) return;
+			if (isAPIResponse(filesystems) || isAPIResponse(volumes)) {
+				srcEncryptionState = 'unavailable';
+				return;
+			}
+
+			const source = [...filesystems, ...volumes].find((entry) => entry.name === requestedDataset);
+			if (!source) {
+				srcEncryptionState = 'unavailable';
+				return;
+			}
+			const encryption = (source.properties?.encryption || '').trim().toLowerCase();
+			srcEncryptionState =
+				encryption !== '' && encryption !== 'off' && encryption !== '-' && encryption !== 'none'
+					? 'encrypted'
+					: 'unencrypted';
+		} catch (error) {
+			if (
+				!(error instanceof Error && error.name === 'AbortError') &&
+				generation === srcEncryptionGeneration
+			) {
+				srcEncryptionState = 'unavailable';
+			}
 		} finally {
-			srcEncryptionChecking = false;
+			if (generation === srcEncryptionGeneration) {
+				srcEncryptionController = null;
+				if (srcEncryptionState === 'checking') {
+					srcEncryptionState = 'unavailable';
+				}
+			}
 		}
 	}
 
@@ -203,11 +288,14 @@
 
 		const selectedNode = nodes.find((node) => node.nodeUUID === runnerNodeId);
 		if (selectedNode?.hostname) {
-			return selectedNode.hostname;
+			return normalizedNodeHostname(selectedNode.hostname);
 		}
 
-		const nodeByHostname = nodes.find((node) => node.hostname === runnerNodeId);
-		return nodeByHostname?.hostname || runnerNodeId;
+		const normalizedRunner = normalizedNodeHostname(runnerNodeId);
+		const nodeByHostname = nodes.find(
+			(node) => normalizedNodeHostname(node.hostname) === normalizedRunner
+		);
+		return nodeByHostname ? normalizedNodeHostname(nodeByHostname.hostname) : '';
 	}
 
 	async function loadJails(force: boolean = false) {
@@ -240,23 +328,33 @@
 		}
 	}
 
-	function applyDefaults() {
+	async function applyDefaults() {
 		form.name = '';
 		form.targetId = targets[0]?.id ? String(targets[0].id) : '';
-		form.runnerNodeId = standaloneMode
-			? localNodeId || nodes[0]?.nodeUUID || ''
-			: (nodes[0]?.nodeUUID ?? '');
-		form.mode = 'dataset';
+		form.runnerNodeId =
+			scopedGuestNode?.nodeUUID ||
+			(standaloneMode ? localNodeId || nodes[0]?.nodeUUID || '' : (nodes[0]?.nodeUUID ?? ''));
+		form.mode = scopedGuest?.kind ?? 'dataset';
 		form.sourceDataset = '';
 		form.selectedJailId = '';
 		form.selectedVmId = '';
 		form.pruneKeepLast = '0';
 		form.pruneTarget = false;
 		form.stopBeforeBackup = false;
-		form.recursive = false;
+		form.recursive = scopedGuest?.kind === 'vm';
 		form.cronExpr = '0 * * * *';
 		form.enabled = true;
 		lastRunnerNodeId = form.runnerNodeId;
+
+		if (scopedGuest?.kind === 'vm') {
+			await loadVMs(true);
+			const scopedVM = vms.find((vm) => vm.rid === scopedGuest.id);
+			form.selectedVmId = scopedVM ? String(scopedVM.id) : '';
+		} else if (scopedGuest?.kind === 'jail') {
+			await loadJails(true);
+			const scopedJail = jails.find((jail) => jail.ctId === scopedGuest.id);
+			form.selectedJailId = scopedJail ? String(scopedJail.id) : '';
+		}
 	}
 
 	async function applyFromJob(job: BackupJob) {
@@ -280,8 +378,18 @@
 			await loadJails(true);
 			const rootDataset = job.jailRootDataset || job.sourceDataset || '';
 			const parsedGuest = parseGuestFromDatasetPath(rootDataset);
-			if (parsedGuest.kind === 'jail' && parsedGuest.id > 0) {
-				const matchingJail = jails.find((jail) => jail.ctId === parsedGuest.id);
+			const scopedRunnerMatches =
+				scopedGuest?.kind === 'jail' &&
+				!!scopedGuestNode &&
+				form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim();
+			const expectedCtID =
+				parsedGuest.kind === 'jail' && parsedGuest.id > 0
+					? parsedGuest.id
+					: scopedRunnerMatches
+						? scopedGuest.id
+						: 0;
+			if (expectedCtID > 0) {
+				const matchingJail = jails.find((jail) => jail.ctId === expectedCtID);
 				form.selectedJailId = matchingJail ? String(matchingJail.id) : '';
 			} else {
 				const matchingJail = jails.find((jail) => {
@@ -296,16 +404,106 @@
 		if (form.mode === 'vm') {
 			await loadVMs(true);
 			const parsedGuest = parseGuestFromDatasetPath(job.sourceDataset || '');
-			if (parsedGuest.kind === 'vm' && parsedGuest.id > 0) {
-				const matchingVM = vms.find((vm) => vm.rid === parsedGuest.id);
+			const scopedRunnerMatches =
+				scopedGuest?.kind === 'vm' &&
+				!!scopedGuestNode &&
+				form.runnerNodeId.trim() === scopedGuestNode.nodeUUID.trim();
+			const expectedRID =
+				parsedGuest.kind === 'vm' && parsedGuest.id > 0
+					? parsedGuest.id
+					: scopedRunnerMatches
+						? scopedGuest.id
+						: 0;
+			if (expectedRID > 0) {
+				const matchingVM = vms.find((vm) => vm.rid === expectedRID);
 				form.selectedVmId = matchingVM ? String(matchingVM.id) : '';
 			}
 		}
 	}
 
+	async function useCurrentGuestOwner() {
+		if (!scopedGuestNode || !scopedGuest || scopedRebindPending) return;
+
+		if (scopedGuest.kind === 'vm') vmsLoading = true;
+		else jailsLoading = true;
+		try {
+			const hostname = normalizedNodeHostname(scopedGuestNode.hostname);
+			if (scopedGuest.kind === 'jail') {
+				const result = await getJails(hostname || undefined);
+				const scopedJail = result.find((jail) => jail.ctId === scopedGuest.id);
+				if (!scopedJail) {
+					toast.error(`Jail ${scopedGuest.id} was not found on ${hostname || 'the scoped node'}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+				const baseStorage = scopedJail.storages?.find((storage) => storage.isBase);
+				if (!baseStorage) {
+					toast.error(`Unable to resolve a dataset root for jail ${scopedGuest.id}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', result);
+				jails = result;
+				jailsLoadedForNode = hostname;
+				form.runnerNodeId = scopedGuestNode.nodeUUID;
+				lastRunnerNodeId = form.runnerNodeId;
+				form.mode = 'jail';
+				form.selectedJailId = String(scopedJail.id);
+				form.selectedVmId = '';
+				form.sourceDataset = '';
+			} else {
+				const result = await getVMs(hostname || undefined);
+				const scopedVM = result.find((vm) => vm.rid === scopedGuest.id);
+				if (!scopedVM) {
+					toast.error(`VM ${scopedGuest.id} was not found on ${hostname || 'the scoped node'}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+				const dataset = vmBaseDataset(scopedVM);
+				if (!dataset) {
+					toast.error(`Unable to resolve a dataset root for VM ${scopedGuest.id}`, {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', result);
+				vms = result;
+				vmsLoadedForNode = hostname;
+				form.runnerNodeId = scopedGuestNode.nodeUUID;
+				lastRunnerNodeId = form.runnerNodeId;
+				form.mode = 'vm';
+				form.selectedJailId = '';
+				form.selectedVmId = String(scopedVM.id);
+				form.sourceDataset = dataset;
+				form.recursive = true;
+			}
+
+			toast.success(
+				`Current ${scopedGuestLabel} owner selected. Save the job to apply the repair.`,
+				{
+					position: 'bottom-center'
+				}
+			);
+		} catch (e: unknown) {
+			toast.error(
+				(e as { message?: string })?.message ||
+					`Failed to load the scoped ${scopedGuestLabel} owner`,
+				{ position: 'bottom-center' }
+			);
+		} finally {
+			if (scopedGuest.kind === 'vm') vmsLoading = false;
+			else jailsLoading = false;
+		}
+	}
+
 	function handleClose() {
+		invalidateSourceEncryptionCheck();
 		open = false;
-		edit = false;
 		loading = false;
 	}
 
@@ -315,7 +513,7 @@
 			return;
 		}
 
-		applyDefaults();
+		await applyDefaults();
 	}
 
 	async function handleModeChange(value: string) {
@@ -346,11 +544,11 @@
 			toast.error('Source dataset is required for dataset mode', { position: 'bottom-center' });
 			return;
 		}
-		if (form.mode === 'jail' && !form.selectedJailId) {
+		if (!edit && form.mode === 'jail' && !form.selectedJailId) {
 			toast.error('Jail selection is required for jail mode', { position: 'bottom-center' });
 			return;
 		}
-		if (form.mode === 'vm' && !form.selectedVmId) {
+		if (!edit && form.mode === 'vm' && !form.selectedVmId) {
 			toast.error('VM selection is required for VM mode', { position: 'bottom-center' });
 			return;
 		}
@@ -361,32 +559,33 @@
 			return;
 		}
 
-		let jailDataset = '';
+		let jailDataset = edit ? selectedJob?.jailRootDataset || selectedJob?.sourceDataset || '' : '';
 		if (form.mode === 'jail') {
-			if (!selectedJail) {
+			if (selectedJail) {
+				const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
+				if (baseStorage) {
+					jailDataset = `${baseStorage.pool}/sylve/jails/${selectedJail.ctId}`;
+				} else if (!jailDataset) {
+					toast.error('Unable to resolve a jail base dataset for the selected jail', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			} else if (!jailDataset) {
 				toast.error('Selected jail was not found', { position: 'bottom-center' });
 				return;
 			}
-
-			const baseStorage = selectedJail.storages?.find((storage) => storage.isBase);
-			if (!baseStorage) {
-				toast.error('Unable to resolve a jail base dataset for the selected jail', {
-					position: 'bottom-center'
-				});
-				return;
-			}
-
-			jailDataset = `${baseStorage.pool}/sylve/jails/${selectedJail.ctId}`;
 		}
 
-		let vmDataset = '';
+		let vmDataset = edit ? selectedJob?.sourceDataset || '' : '';
 		if (form.mode === 'vm') {
-			if (!selectedVM) {
+			if (selectedVM) {
+				vmDataset = vmBaseDataset(selectedVM) || vmDataset;
+			} else if (!vmDataset) {
 				toast.error('Selected VM was not found', { position: 'bottom-center' });
 				return;
 			}
 
-			vmDataset = vmBaseDataset(selectedVM);
 			if (!vmDataset) {
 				toast.error('Unable to resolve a VM dataset root for the selected VM', {
 					position: 'bottom-center'
@@ -394,6 +593,13 @@
 				return;
 			}
 		}
+
+		const encrypted =
+			form.mode === 'dataset' && srcEncryptionState === 'encrypted'
+				? true
+				: form.mode === 'dataset' && srcEncryptionState === 'unencrypted'
+					? false
+					: undefined;
 
 		const payload: BackupJobInput = {
 			name: form.name,
@@ -410,6 +616,7 @@
 			pruneTarget: form.pruneTarget,
 			stopBeforeBackup: form.stopBeforeBackup,
 			recursive: form.recursive,
+			...(encrypted === undefined ? {} : { encrypted }),
 			cronExpr: form.cronExpr,
 			enabled: form.enabled
 		};
@@ -441,7 +648,7 @@
 			void applyFromJob(selectedJob);
 			return;
 		}
-		applyDefaults();
+		void applyDefaults();
 	});
 
 	watch([() => open, () => form.mode, () => form.selectedVmId], ([isOpen, mode, selectedVmId]) => {
@@ -474,29 +681,18 @@
 	});
 
 	watch(
-		[
-			() => open,
-			() => form.mode,
-			() => form.sourceDataset,
-			() => form.selectedJailId,
-			() => form.selectedVmId
-		],
-		([isOpen]) => {
-			if (!isOpen) return;
-			let dataset = '';
-			if (form.mode === 'dataset') {
-				dataset = form.sourceDataset;
-			} else if (form.mode === 'jail' && selectedJail) {
-				const base = selectedJail.storages?.find((s) => s.isBase);
-				if (base) dataset = `${base.pool}/sylve/jails/${selectedJail.ctId}`;
-			} else if (form.mode === 'vm' && selectedVM) {
-				dataset = vmBaseDataset(selectedVM) || '';
+		[() => open, () => form.mode, () => form.sourceDataset, () => form.runnerNodeId],
+		([isOpen, mode, dataset]) => {
+			if (!isOpen || mode !== 'dataset') {
+				invalidateSourceEncryptionCheck();
+				return;
 			}
-			void checkSourceEncryption(dataset);
+			void checkSourceEncryption(dataset, selectedRunnerHostname());
 		}
 	);
 
 	let disableStopBeforeBackup = $state(false);
+	let disableRecursiveBackup = $state(false);
 
 	watch(
 		() => form.mode,
@@ -507,13 +703,19 @@
 			} else {
 				disableStopBeforeBackup = false;
 			}
+			if (mode === 'vm') {
+				form.recursive = true;
+				disableRecursiveBackup = true;
+			} else {
+				disableRecursiveBackup = false;
+			}
 		}
 	);
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="max-h-[90vh] w-[90%] max-w-xl! overflow-y-auto p-5"
+		class="max-h-[90vh] w-[90%] max-w-xl! overflow-y-auto p-6"
 		showCloseButton={true}
 		showResetButton={edit}
 		onReset={handleReset}
@@ -533,6 +735,67 @@
 		</Dialog.Header>
 
 		<div class="grid gap-4 py-0">
+			{#if edit}
+				<div class="-mb-2 rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
+					Target, mode, source, and dataset runner are fixed after creation. Guest runners change
+					only through migration or failover repair.
+				</div>
+			{/if}
+
+			{#if edit && scopedGuest && selectedJob?.mode === scopedGuest.kind}
+				{#if scopedRebindPending}
+					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+						<p class="font-medium text-amber-700 dark:text-amber-300">
+							Runner rebind is still in progress
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							Automatic reconciliation owns this job. Wait for it to finish before editing.
+						</p>
+					</div>
+				{:else if !scopedGuestNode}
+					<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
+						<p class="font-medium text-destructive">
+							Scoped {scopedGuestLabel} node is unavailable
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							The route node could not be resolved, so runner repair is disabled.
+						</p>
+					</div>
+				{:else if scopedRunnerMismatch}
+					<div class="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+						<p class="font-medium text-amber-700 dark:text-amber-300">
+							This job is assigned to a different runner
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							The scoped {scopedGuestLabel} is on {scopedGuestNode.hostname}. Select its current
+							owner, then save to repair the assignment.
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							class="mt-3"
+							onclick={useCurrentGuestOwner}
+							disabled={scopedGuestLoading}
+						>
+							{scopedGuestLoading
+								? `Loading ${scopedGuestLabel} owner…`
+								: `Use current ${scopedGuestLabel} owner`}
+						</Button>
+					</div>
+				{:else if scopedRunnerSelectedForSave}
+					<div class="rounded-md border border-blue-500/50 bg-blue-500/10 p-3 text-sm">
+						<p class="font-medium text-blue-700 dark:text-blue-300">
+							Current {scopedGuestLabel} owner selected
+						</p>
+						<p class="mt-1 text-muted-foreground">
+							The runner will change to {scopedGuestNode.hostname} only after this job is saved and the
+							backend verifies live placement.
+						</p>
+					</div>
+				{/if}
+			{/if}
+
 			<CustomValueInput
 				label="Name"
 				placeholder="daily-backup"
@@ -547,6 +810,7 @@
 					options={targetOptions}
 					bind:value={form.targetId}
 					onChange={() => {}}
+					disabled={edit}
 				/>
 
 				<SimpleSelect
@@ -555,6 +819,7 @@
 					options={nodeOptions}
 					bind:value={form.runnerNodeId}
 					onChange={() => {}}
+					disabled={edit || Boolean(scopedGuest)}
 				/>
 
 				<SimpleSelect
@@ -563,16 +828,18 @@
 					options={modeOptions}
 					bind:value={form.mode}
 					onChange={handleModeChange}
+					disabled={edit || Boolean(scopedGuest)}
 				/>
 			</div>
 
-			<div>
+			<div class="-mt-2 grid grid-cols-1 gap-4 md:grid-cols-3">
 				{#if form.mode === 'dataset'}
 					<CustomValueInput
 						label="Source Dataset"
 						placeholder="zroot/data"
 						bind:value={form.sourceDataset}
 						classes="space-y-1"
+						disabled={edit}
 					/>
 				{:else if form.mode === 'jail'}
 					<SimpleSelect
@@ -585,7 +852,8 @@
 						options={jailOptions}
 						bind:value={form.selectedJailId}
 						onChange={() => {}}
-						disabled={jailsLoading || jails.length === 0}
+						classes={sourceSelectClasses}
+						disabled={edit || jailsLoading || jails.length === 0 || scopedGuest?.kind === 'jail'}
 					/>
 				{:else}
 					<SimpleSelect
@@ -598,12 +866,11 @@
 						options={vmOptions}
 						bind:value={form.selectedVmId}
 						onChange={() => {}}
-						disabled={vmsLoading || vms.length === 0}
+						classes={sourceSelectClasses}
+						disabled={edit || vmsLoading || vms.length === 0 || scopedGuest?.kind === 'vm'}
 					/>
 				{/if}
-			</div>
 
-			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 				<CustomValueInput
 					label="Schedule (Cron, 5-field)"
 					placeholder="0 * * * *"
@@ -631,6 +898,12 @@
 					label="Recursive backup"
 					bind:checked={form.recursive}
 					classes="flex items-center gap-2"
+					disabled={disableRecursiveBackup}
+					title={form.mode === 'vm'
+						? 'VM backups must include all child disk datasets'
+						: edit
+							? 'Changing recursive scope may archive the active generation and trigger a full reseed'
+							: ''}
 				/>
 
 				<CustomCheckbox
@@ -718,7 +991,7 @@
 					</li>
 
 					{#if form.mode !== 'jail' && form.mode !== 'vm'}
-						{#if srcEncryptionChecking}
+						{#if srcEncryptionState === 'checking'}
 							<li>
 								<span
 									class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin inline-block align-text-bottom mb-0.5"
@@ -730,17 +1003,23 @@
 								></span>
 								<span>Select a dataset to view encryption information</span>
 							</li>
-						{:else if srcEncrypted}
+						{:else if srcEncryptionState === 'encrypted'}
 							<li>
 								<span class="icon-[mdi--lock] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
 								></span>
 								<span>Source is encrypted</span>
 							</li>
-						{:else}
+						{:else if srcEncryptionState === 'unencrypted'}
 							<li>
 								<span class="icon-[mdi--unlocked] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
 								></span>
 								<span>Source is not encrypted</span>
+							</li>
+						{:else}
+							<li>
+								<span class="icon-[mdi--help] h-3.5 w-3.5 inline-block align-text-bottom mb-0.5"
+								></span>
+								<span>Encryption information is unavailable for the selected runner</span>
 							</li>
 						{/if}
 					{/if}
@@ -749,7 +1028,12 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button onclick={saveJob} disabled={loading}>
+			<Button
+				onclick={saveJob}
+				disabled={loading ||
+					scopedRebindPending ||
+					(form.mode === 'dataset' && srcEncryptionState === 'checking')}
+			>
 				{#if loading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

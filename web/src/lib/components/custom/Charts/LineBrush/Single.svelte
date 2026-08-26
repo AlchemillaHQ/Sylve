@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Chart } from 'svelte-echarts';
+	import { Chart } from '@alchemilla/svelte-echarts';
 	import { init, use } from 'echarts/core';
 	import { LineChart } from 'echarts/charts';
 	import {
@@ -16,6 +16,8 @@
 	import type { EChartsOption, EChartsType } from 'echarts';
 	import { cssVar } from '$lib/utils';
 	import { watch } from 'runed';
+	import { onDestroy, untrack } from 'svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 
 	use([
 		LineChart,
@@ -36,6 +38,11 @@
 		color: 'one' | 'two' | 'three' | 'four';
 		containerClass?: string;
 		containerContentHeight?: string;
+		emptyMessage?: string;
+		loading?: boolean;
+		error?: boolean;
+		onRetry?: () => void;
+		animateOnMount?: boolean;
 	}
 
 	let {
@@ -45,11 +52,23 @@
 		color,
 		percentage,
 		containerClass = 'p-5',
-		containerContentHeight = 'h-[360px]'
+		containerContentHeight = 'h-[360px]',
+		emptyMessage = '',
+		loading = false,
+		error = false,
+		onRetry,
+		animateOnMount = false
 	}: Props = $props();
 
+	const mountAnimationDuration = 1400;
+	const mountAnimationEnabled = untrack(() => animateOnMount);
 	let chart: EChartsType | undefined = $state(undefined);
 	let optionRafId: number | null = null;
+	let restoreRafId: number | null = null;
+	let mountAnimatedChart: EChartsType | undefined;
+	let mountAnimationRevealTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationSyncTimer: ReturnType<typeof setTimeout> | null = null;
+	let mountAnimationReady = !mountAnimationEnabled;
 
 	const colors = $derived({
 		title: cssVar('--text-blue-600'),
@@ -88,19 +107,22 @@
 						color: 'rgb(170, 170, 170)',
 						borderColor: 'rgb(170, 170, 170)',
 						soft: 'rgb(200, 200, 200, 0.6)',
-						filler: 'rgb(200, 200, 200, 0.01)'
+						filler: 'rgb(200, 200, 200, 0.1)'
 					}
 				: {
 						color: 'rgb(165, 165, 165)',
 						borderColor: 'rgb(165, 165, 165)',
 						soft: 'rgb(195, 195, 195, 0.6)',
-						filler: 'rgb(195, 195, 195, 0.01)'
+						filler: 'rgb(195, 195, 195, 0.1)'
 					}
 	});
 
 	// svelte-ignore state_referenced_locally
 	// @wc-ignore
 	let options: EChartsOption = $state.raw({
+		animation: mountAnimationEnabled ? true : undefined,
+		animationDuration: mountAnimationEnabled ? mountAnimationDuration : undefined,
+		animationEasing: mountAnimationEnabled ? 'cubicInOut' : undefined,
 		title: {
 			show: false,
 			textStyle: {
@@ -148,7 +170,8 @@
 			right: 10,
 			top: 56,
 			bottom: 56,
-			containLabel: true
+			outerBoundsMode: 'same',
+			outerBoundsContain: 'axisLabel'
 		},
 		xAxis: {
 			type: 'time',
@@ -178,24 +201,18 @@
 			{
 				type: 'slider',
 				xAxisIndex: 0,
-				// track
+				showDataShadow: true,
 				backgroundColor: 'rgba(0,0,0,0)',
 				borderColor: 'rgba(0,0,0,0)',
-
-				// mini preview (behind the orange line)
 				dataBackground: {
-					lineStyle: { color: 'rgba(255,255,255,0.15)' }, // neutral, not blue, why wont this work?
-					areaStyle: { color: 'rgba(0,0,0,0.35)' }
+					lineStyle: { color: colors.moveHandle.color, opacity: 0.3 },
+					areaStyle: { color: 'rgba(0,0,0,0)' }
 				},
-
-				// **selected region** – this is the bar that was blue
 				selectedDataBackground: {
-					lineStyle: { color: colors.moveHandle.color },
-					areaStyle: { color: colors.moveHandle.soft }
+					lineStyle: { color: colors[color].main },
+					areaStyle: { color: colors[color].soft }
 				},
-
-				// filler between handles
-				fillerColor: colors.moveHandle.filler,
+				fillerColor: 'rgba(0,0,0,0)',
 
 				// the two handles
 				handleStyle: {
@@ -225,14 +242,7 @@
 				}
 			}
 		],
-		series: [
-			{
-				type: 'line',
-				showSymbol: false,
-				smooth: true,
-				data: points.map((p) => [p.date, p.value])
-			}
-		],
+		series: mountAnimationEnabled ? [] : buildSeries(points),
 		toolbox: {
 			feature: {
 				saveAsImage: {
@@ -264,16 +274,89 @@
 
 	let mouseIn = $state(false);
 
-	watch([() => points, () => mouseIn], ([currentPoints, isMouseIn]) => {
-		if (!chart || !currentPoints || isMouseIn) return;
+	function buildSeries(currentPoints: Props['points']) {
+		const visibleData = currentPoints.map((point) => [point.date, point.value]);
+		const previewData = [...visibleData];
 
-		chart.setOption({
-			series: [
-				{
-					data: currentPoints.map((p) => [p.date, p.value])
-				}
-			]
+		if (visibleData.length > 0) {
+			const firstDate = visibleData[0][0];
+			const lastDate = visibleData[visibleData.length - 1][0];
+			previewData.unshift([firstDate, 100], [firstDate, 0]);
+			previewData.push([lastDate, 100], [lastDate, 0]);
+		}
+
+		return [
+			{
+				id: 'zoom-preview',
+				type: 'line' as const,
+				showSymbol: false,
+				silent: true,
+				animation: false,
+				lineStyle: { opacity: 0 },
+				itemStyle: { opacity: 0 },
+				tooltip: { show: false },
+				data: previewData
+			},
+			{
+				id: 'main',
+				type: 'line' as const,
+				showSymbol: false,
+				smooth: true,
+				data: visibleData
+			}
+		];
+	}
+
+	function setSeriesPoints(currentChart: EChartsType, currentPoints = points) {
+		currentChart.setOption({
+			series: buildSeries(currentPoints)
 		});
+	}
+
+	function handleRestore() {
+		if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
+
+		restoreRafId = requestAnimationFrame(() => {
+			restoreRafId = null;
+			if (!chart || chart.isDisposed?.()) return;
+
+			setSeriesPoints(chart);
+		});
+	}
+
+	function startMountAnimation(currentChart: EChartsType) {
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+
+		mountAnimatedChart = currentChart;
+		mountAnimationReady = false;
+		mountAnimationRevealTimer = setTimeout(() => {
+			mountAnimationRevealTimer = null;
+			if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+			const revealedPoints = points;
+			setSeriesPoints(currentChart, revealedPoints);
+
+			mountAnimationSyncTimer = setTimeout(() => {
+				mountAnimationSyncTimer = null;
+				if (chart !== currentChart || currentChart.isDisposed?.()) return;
+
+				mountAnimationReady = true;
+				if (points !== revealedPoints) setSeriesPoints(currentChart);
+			}, mountAnimationDuration);
+		}, 100);
+	}
+
+	watch([() => chart, () => points, () => mouseIn], ([currentChart, currentPoints, isMouseIn]) => {
+		if (!currentChart || !currentPoints) return;
+		if (currentChart !== mountAnimatedChart) {
+			if (mountAnimationEnabled) startMountAnimation(currentChart);
+			else mountAnimatedChart = currentChart;
+			return;
+		}
+		if ((mountAnimationEnabled && !mountAnimationReady) || isMouseIn) return;
+
+		setSeriesPoints(currentChart, currentPoints);
 	});
 
 	watch(
@@ -322,11 +405,16 @@
 					},
 					dataZoom: [
 						{
-							selectedDataBackground: {
-								lineStyle: { color: colors.moveHandle.color },
-								areaStyle: { color: colors.moveHandle.soft }
+							backgroundColor: 'rgba(0,0,0,0)',
+							dataBackground: {
+								lineStyle: { color: colors.moveHandle.color, opacity: 0.3 },
+								areaStyle: { color: 'rgba(0,0,0,0)' }
 							},
-							fillerColor: colors.moveHandle.filler,
+							selectedDataBackground: {
+								lineStyle: { color: colors[color].main },
+								areaStyle: { color: colors[color].soft }
+							},
+							fillerColor: 'rgba(0,0,0,0)',
 							handleStyle: {
 								color: colors.moveHandle.color,
 								borderColor: colors.moveHandle.color
@@ -360,8 +448,18 @@
 
 				optionRafId = null;
 			});
-		}
+		},
+		{ lazy: mountAnimationEnabled }
 	);
+
+	onDestroy(() => {
+		if (optionRafId !== null) {
+			cancelAnimationFrame(optionRafId);
+		}
+		if (restoreRafId !== null) cancelAnimationFrame(restoreRafId);
+		if (mountAnimationRevealTimer !== null) clearTimeout(mountAnimationRevealTimer);
+		if (mountAnimationSyncTimer !== null) clearTimeout(mountAnimationSyncTimer);
+	});
 </script>
 
 <Card.Root class={containerClass}>
@@ -384,7 +482,24 @@
 					>{title}</span
 				>
 			</div>
-			<Chart {init} {options} bind:chart />
+			{#if points.length === 0 && (emptyMessage || loading)}
+				<div
+					role="status"
+					class="text-muted-foreground flex h-full w-full flex-col items-center justify-center gap-3 px-6 pt-8 text-center text-sm"
+				>
+					<div class="flex items-center gap-2">
+						{#if loading}
+							<span class="icon-[mdi--loading] h-4 w-4 shrink-0 animate-spin"></span>
+						{/if}
+						<span>{emptyMessage || 'Loading telemetry…'}</span>
+					</div>
+					{#if error && onRetry}
+						<Button size="sm" variant="outline" onclick={onRetry}>Retry</Button>
+					{/if}
+				</div>
+			{:else}
+				<Chart {init} {options} bind:chart onrestore={handleRestore} />
+			{/if}
 		</div>
 	</Card.Content>
 </Card.Root>

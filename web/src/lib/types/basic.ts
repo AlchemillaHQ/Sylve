@@ -9,14 +9,10 @@
  */
 
 import { z } from 'zod/v4';
+import { APIResponseSchema } from '$lib/types/common';
 
-export const InitializeSchema = z.array(z.string());
-
-export const BasicSettingsSchema = z.object({
-	pools: z.array(z.string()),
-	services: z.array(z.string()),
-	initialized: z.boolean()
+export const InitializeResponseSchema = APIResponseSchema.extend({
+	data: z.array(z.string()).nullable().optional()
 });
 
-export type Initialize = z.infer<typeof InitializeSchema>;
-export type BasicSettings = z.infer<typeof BasicSettingsSchema>;
+export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;

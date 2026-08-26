@@ -1,0 +1,301 @@
+---
+title: Creation
+description: Prepare a base and create FreeBSD or Linux Jails with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Creating a Jail requires a CTID, name, ZFS pool, root filesystem source, network choice, and Jail type. The CLI accepts either core flags or a complete JSON request file.
+
+:::caution[Creation changes storage and networking]
+Jail creation writes datasets and configuration to the selected pool. Confirm the pool, CTID, source, and switch before running a create command.
+:::
+
+## Choose a root filesystem source
+
+Exactly one source is required:
+
+- A **bootstrap** managed under the selected ZFS pool.
+- A completed **base-rootfs download**, referenced by its UUID.
+
+Do not supply both `--base` and `--bootstrap`.
+
+### Inspect FreeBSD bootstraps
+
+List the bootstraps supported for a pool:
+
+```bash
+doas sylve jails bootstrap list --pool zroot
+```
+
+Inside the interactive console, the pool is positional:
+
+```text
+jails bootstrap list zroot
+```
+
+Real output from the test node includes:
+
+```text
+Name            Version    Type       Status
+15-0-Base       15.0       base       not installed
+15-0-Minimal    15.0       minimal    not installed
+15-1-Base       15.1       base       not installed
+15-1-Minimal    15.1       minimal    not installed
+```
+
+Install a bootstrap asynchronously:
+
+```bash
+doas sylve jails bootstrap create \
+  --pool zroot \
+  --version 15.1 \
+  --type minimal
+```
+
+Add `--wait` to keep the command open until installation completes or fails:
+
+```text
+jails bootstrap create zroot 15.1 minimal --wait
+```
+
+The version must use `major.minor` form, and the type must be `base` or `minimal`. Run the list command again to follow the reported status and phase.
+
+### Use a downloaded base
+
+List completed downloads and find one whose `uType` is `base-rootfs`:
+
+```bash
+doas sylve downloads list --json
+```
+
+Pass the download's `uuid` to `--base`. Do not use its numeric list ID.
+
+## Create from core flags
+
+The core creation flags are:
+
+| Flag | Required | Purpose |
+| --- | --- | --- |
+| `--ctid <id>` | Yes | Unique Jail ID from `1` through `9999`. |
+| `--name <name>` | Yes | Jail name. It cannot be empty. |
+| `--pool <pool>` | Yes | ZFS pool that will contain the Jail dataset. |
+| `--base <uuid>` | One source required | UUID of a completed `base-rootfs` download. |
+| `--bootstrap <name>` | One source required | Name of an installed FreeBSD bootstrap in the selected pool. |
+| `--switch <name>` | Yes | Switch name, `none`, or `inherit`. |
+| `--type <type>` | Yes | Jail type: `freebsd` or `linux`. |
+
+Supply exactly one of `--base` and `--bootstrap`. These flags are also available as explicit overrides when `--file` is used. The separate `--json` flag changes command output and is not part of the creation request.
+
+The following FreeBSD example uses a previously installed bootstrap and does not attach a network:
+
+```bash
+doas sylve jails create \
+  --ctid 101 \
+  --name web01 \
+  --pool zroot \
+  --bootstrap 15-1-Minimal \
+  --switch none \
+  --type freebsd
+```
+
+The console accepts the same named creation options:
+
+```text
+jails create --ctid 101 --name web01 --pool zroot --bootstrap 15-1-Minimal --switch none --type freebsd
+```
+
+CTIDs must be unique integers from `1` through `9999`. The type must be `freebsd` or `linux`. For `--switch`, supply a switch name, `none`, or `inherit`.
+
+### Configure DHCP and SLAAC on the selected switch
+
+The core `--switch` flag selects the switch, but the core flags do not expose address configuration. Use a JSON request to enable DHCP, SLAAC, static addresses, a MAC address, or VLAN tagging on the initial attachment.
+
+This example creates a FreeBSD Jail attached to `TTT`, obtains IPv4 configuration through DHCP, and obtains IPv6 configuration through SLAAC:
+
+```json
+{
+  "name": "auto-net",
+  "ctId": 103,
+  "hostname": "auto-net.example.test",
+  "pool": "zroot",
+  "bootstrapName": "15-1-Minimal",
+  "switchName": "TTT",
+  "dhcp": true,
+  "slaac": true,
+  "type": "freebsd",
+  "allowedOptions": ["allow.mount.devfs"]
+}
+```
+
+Save it as `auto-net.json`, then create the Jail:
+
+```bash
+doas sylve jails create --file ./auto-net.json
+```
+
+Sylve automatically generates a MAC object when neither `mac` nor `macRaw` is supplied. DHCP and SLAAC leave the corresponding static address and gateway fields unset.
+
+`allow.mount.devfs` is required for DHCP because FreeBSD's DHCP client needs access to a BPF device inside the Jail. Sylve applies its managed devfs ruleset, which exposes BPF while retaining the standard Jail device restrictions. Without this option, the Jail can start but `dhclient` cannot obtain a lease.
+
+For a static IPv4 configuration, replace the automatic fields with raw address values:
+
+```json
+{
+  "name": "static-net",
+  "ctId": 104,
+  "hostname": "static-net.example.test",
+  "pool": "zroot",
+  "bootstrapName": "15-1-Minimal",
+  "switchName": "TTT",
+  "dhcp": false,
+  "ipv4Raw": "10.20.0.10/24",
+  "ipv4GwRaw": "10.20.0.1",
+  "type": "freebsd"
+}
+```
+
+You can use `ipv4` and `ipv4Gw` object IDs instead of raw values. IPv6 follows the same pattern with `ipv6`, `ipv6Gw`, `ipv6Raw`, and `ipv6GwRaw`. Add `vlan` or `macRaw` to the same request when the attachment requires them.
+
+Use a downloaded root filesystem by replacing the bootstrap option:
+
+```bash
+doas sylve jails create \
+  --ctid 102 \
+  --name service01 \
+  --pool zroot \
+  --base 42f7f8df-dcbc-5ff1-ad93-c45209d733f4 \
+  --switch WAN \
+  --type freebsd
+```
+
+The UUID shown above is real output from the test node and is only an example. Always obtain the current UUID from your own node.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-jails-creation.cast"
+  title="A real Sylve 0.3.0 session verifying both FreeBSD 15.1 bootstraps and the DHCP and static Jails created from JSON requests."
+/>
+
+## Create from a JSON request
+
+Core flags intentionally expose only the common fields. Use a strict JSON request when you need hostname, address objects, resource limits, startup behavior, allowed options, hooks, or metadata.
+
+```json
+{
+  "name": "web01",
+  "ctId": 101,
+  "hostname": "web01.example.test",
+  "description": "Documentation example",
+  "pool": "zroot",
+  "base": "",
+  "bootstrapName": "15-1-Minimal",
+  "switchName": "none",
+  "type": "freebsd",
+  "allowedOptions": [],
+  "hooks": {
+    "prestart": { "enabled": false, "script": "" },
+    "start": { "enabled": false, "script": "" },
+    "poststart": { "enabled": false, "script": "" },
+    "prestop": { "enabled": false, "script": "" },
+    "stop": { "enabled": false, "script": "" },
+    "poststop": { "enabled": false, "script": "" }
+  }
+}
+```
+
+Create the Jail from that file:
+
+```bash
+doas sylve jails create --file ./web01.json
+```
+
+Explicit core flags override matching fields loaded from the file. Unknown JSON fields are rejected, which helps catch misspelled configuration keys.
+
+## Complete JSON field reference
+
+The JSON document supports the complete `CreateJailRequest` implemented by Sylve. Fields marked as core are required after file values and command-line overrides are combined.
+
+### Identity and storage
+
+| JSON field | Value | Purpose |
+| --- | --- | --- |
+| `name` | String | Core. Non-empty Jail name. |
+| `ctId` | Integer | Core. Unique CTID from `1` through `9999`. |
+| `hostname` | String | Hostname configured for the Jail. |
+| `description` | String | Optional descriptive text. |
+| `pool` | String | Core. ZFS pool used for Jail storage. |
+| `base` | String | UUID of a completed base-rootfs download. Mutually exclusive with `bootstrapName`. |
+| `bootstrapName` | String | Installed bootstrap name. Mutually exclusive with `base`. |
+| `fstab` | String | Jail filesystem mount configuration. |
+| `resolvConf` | String | Contents used for the Jail's resolver configuration. |
+
+Exactly one of `base` and `bootstrapName` must be non-empty.
+
+### Network configuration
+
+| JSON field | Value | Purpose |
+| --- | --- | --- |
+| `switchName` | String | Core. Switch name, `none`, or `inherit`. |
+| `inheritIPv4` | Boolean | Inherit the host's IPv4 networking. |
+| `inheritIPv6` | Boolean | Inherit the host's IPv6 networking. |
+| `dhcp` | Boolean | Request IPv4 configuration through DHCP. |
+| `slaac` | Boolean | Request IPv6 configuration through SLAAC. |
+| `ipv4` | Integer | IPv4 host-object ID. |
+| `ipv4Gw` | Integer | IPv4 gateway host-object ID. |
+| `ipv4Raw` | String | Manual IPv4 address value. |
+| `ipv4GwRaw` | String | Manual IPv4 gateway value. |
+| `ipv6` | Integer | IPv6 host-object ID. |
+| `ipv6Gw` | Integer | IPv6 gateway host-object ID. |
+| `ipv6Raw` | String | Manual IPv6 address value. |
+| `ipv6GwRaw` | String | Manual IPv6 gateway value. |
+| `mac` | Integer | MAC-object ID. |
+| `macRaw` | String | Manual MAC address. |
+| `vlan` | Integer | VLAN identifier for the initial attachment. |
+
+Object ID fields and their corresponding raw fields provide two ways to express the same kind of value. Prefer reusable objects when an address will be shared across configurations or managed centrally.
+
+### Resources and startup
+
+| JSON field | Value | Purpose |
+| --- | --- | --- |
+| `resourceLimits` | Boolean | Enable Jail CPU and memory limits. |
+| `cores` | Integer | Number of CPU cores assigned when limits are enabled. |
+| `memory` | Integer | Memory allocation used by the Jail service. |
+| `startAtBoot` | Boolean | Start the Jail during Sylve startup. |
+| `startOrder` | Integer | Relative startup ordering value. |
+| `devfsRuleset` | String | Additional FreeBSD devfs rule content appended to the managed Jail ruleset. |
+
+### Jail behavior
+
+| JSON field | Value | Purpose |
+| --- | --- | --- |
+| `type` | String | Core. `freebsd` or `linux`. |
+| `allowedOptions` | String array | Jail options explicitly allowed by the configuration. |
+| `cleanEnvironment` | Boolean | Start with a clean Jail environment. |
+| `additionalOptions` | String | Additional Jail configuration options. |
+
+### Hooks and metadata
+
+| JSON field | Value | Purpose |
+| --- | --- | --- |
+| `hooks.prestart` | Hook phase | Runs before the Jail starts. |
+| `hooks.start` | Hook phase | Runs during the start phase. |
+| `hooks.poststart` | Hook phase | Runs after the Jail starts. |
+| `hooks.prestop` | Hook phase | Runs before the Jail stops. |
+| `hooks.stop` | Hook phase | Runs during the stop phase. |
+| `hooks.poststop` | Hook phase | Runs after the Jail stops. |
+| `metadataMeta` | String | Additional metadata stored with the Jail. |
+| `metadataEnv` | String | Environment metadata stored with the Jail. |
+
+Each hook phase is an object containing an `enabled` boolean and a `script` string:
+
+```json
+{
+  "enabled": true,
+  "script": "/usr/local/libexec/sylve/hooks/web01-prestart.sh"
+}
+```
+
+Boolean and numeric fields represented as pointers in the Go request can be omitted when no explicit value is needed. This differs from sending `false` or `0`, which explicitly selects that value.
+
+Use `--json` when a script needs the created CTID and name as structured output.

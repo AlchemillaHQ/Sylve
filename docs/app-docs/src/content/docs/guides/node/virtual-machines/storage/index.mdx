@@ -1,24 +1,122 @@
 ---
 title: Storage
-description: Manage your VMs storage volumes, including creating new volumes, attaching/detaching them to/from your VMs, and viewing their details.
+description: Attach, import, configure, and detach virtual-machine disks, media, and 9P filesystem shares.
 ---
 
-In the Storage section, you can manage your VM's storage volumes. This includes creating new volumes, attaching or detaching them to/from your VMs, and viewing their details.
+import overview from "./vm-storage-overview.png";
+import newDisk from "./vm-storage-new-disk.png";
+import importedStorage from "./vm-storage-import.png";
+import filesystemShare from "./vm-storage-9p-share.png";
+import editDetach from "./vm-storage-edit-detach.png";
 
-Basically there are 2 types of attachments that you can do to your VM, the first one is creating a new storage media and then attaching it, the other one is where you import an existing disk.
+The **Storage** page lists every disk, installation image, and filesystem share attached to a VM. It shows the attachment's status, type, emulation, boot order, size, and resolved path.
 
 :::note
-We don't support cloning ZFS volumes yet, so if you import a ZFS volume, it will be **RENAMED** **NOT** copied, so make sure to create a copy of the ZFS volume you want to import before importing it if need be.
+The VM must be shut off before you add, edit, or detach storage. Sylve changes the Bhyve domain definition while the VM is inactive, so storage topology never changes underneath a running guest.
 :::
 
-## Creating New Storage
+<img
+  src={overview.src}
+  alt="VM Storage table listing enabled ZFS volume, installation image, raw disk, and 9P filesystem-share attachments"
+/>
 
-![New Storage](./new-storage.png)
+## Add storage
 
-Most of the fields are self explanatory, but just a quick not about pool selection: try not to mix different types of storage media in the same pool, for example don't mix SSDs and HDDs in the same pool, this can lead to performance issues.
+Select **New** to open the storage dialog. Choose **New** to create a managed disk or filesystem-share attachment, or **Import** to bring an existing raw disk, ZFS volume, or Downloader image into the VM.
 
-## Editing / Detaching Storage
+| Storage type | New or import | What it provides | Example |
+| --- | --- | --- | --- |
+| **ZFS Volume** | New or import | A block device backed by a ZFS zvol. | A `64 GiB` NVMe boot disk for a Linux VM. |
+| **Raw Disk** | New or import | A file-backed virtual disk stored in Sylve's managed VM storage. | A `200 GiB` secondary AHCI disk for application data. |
+| **Image** | Import only | A read-only ISO or image already managed by Downloader. | A FreeBSD installer ISO attached as an AHCI CD-ROM. |
+| **9P Filesystem Share** | New only | A host ZFS filesystem exposed to the guest through VirtIO 9P. | A read-only `build_artifacts` share mounted by a development VM. |
 
-If you click on a row in the table the context menu lets you both Edit a storage device and also detach it from the VM. Detach is exactly what it sounds like, it DOES NOT delete the storage media, it just detaches it from the VM, you have to manually delete it from the ZFS section, this is just done so that you don't accidentally delete a storage media when you just want to detach it from the VM.
+For ZFS volumes and raw disks, choose a [ZFS pool](/guides/node/storage/zfs/pools/), a size, an emulation type, and a unique boot order. The selected pool must have enough free space. A 9P share instead selects an existing ZFS filesystem, a guest-visible target name, and an optional read-only mode.
 
-![Actions](./actions.png)
+### Create a managed disk
+
+Choose **New** with either **ZFS Volume** or **Raw Disk**. Sylve creates the disk under the VM's managed storage hierarchy in the selected pool and attaches it to the VM.
+
+- Use a **ZFS Volume** when you want a native ZFS block device for the guest.
+- Use a **Raw Disk** when the workload needs a file-backed disk image.
+- Select **NVMe**, **VirtIO Block**, or **AHCI Hard Disk** according to guest compatibility. NVMe is generally appropriate for modern guests; VirtIO Block needs guest support; AHCI is useful for compatibility.
+
+<img
+  src={newDisk.src}
+  alt="New VM storage dialog creating a ZFS volume with selected pool, size, NVMe emulation, and boot order"
+/>
+
+### Import existing storage
+
+Importing makes an existing resource available through Sylve's managed VM storage model. The exact behaviour depends on the type:
+
+| Import type | What happens |
+| --- | --- |
+| **Raw Disk** | Select an absolute path to an existing regular file. Sylve copies that file into a new managed raw-disk location, leaving the source file in place. |
+| **ZFS Volume** | Select an unused existing zvol. If it is already in the destination pool, Sylve moves it into the VM's managed ZFS path by renaming it. If it is on another pool, Sylve creates a target zvol and copies its contents with ZFS snapshot transfer. |
+| **Image** | Select an existing ISO or image from [Downloader](/guides/node/utilities/downloader/). Sylve attaches it read-only without copying it into VM storage. |
+
+:::caution
+Importing a zvol from the same pool renames the original dataset. It is not a clone or a copy. Make a separate ZFS copy first if the source must remain independently available.
+:::
+
+If the Image selector is empty, add the ISO or image through [Downloader](/guides/node/utilities/downloader/) and return to the VM Storage page.
+
+<img
+  src={importedStorage.src}
+  alt="Import VM storage dialog with ZFS Volume selected and an unused existing zvol chosen"
+/>
+
+### Share a filesystem with 9P
+
+Choose **9P Filesystem Share** to expose an existing ZFS filesystem's mounted host path to a guest. This is not a boot disk and does not receive a boot order. The target name is how the guest identifies the share; it must be unique within the VM and may contain only letters, numbers, periods, underscores, and hyphens.
+
+Use **Read-only share** for media, artifacts, or reference data that the VM must not alter. The guest still needs a compatible 9P client and its own mount configuration.
+
+:::caution
+VMs with 9P filesystem storage cannot be protected by Sylve replication. Do not add a 9P share to a VM that you need to replicate until the share is removed.
+:::
+
+<img
+  src={filesystemShare.src}
+  alt="New 9P filesystem-share attachment with a selected ZFS filesystem, guest target name, and read-only option"
+/>
+
+## Choose emulation and boot order
+
+For block disks and images, select the device model shown to the guest:
+
+| Emulation | Use it for |
+| --- | --- |
+| **NVMe** | Modern guests that support NVMe. |
+| **VirtIO Block** | Guests with VirtIO block drivers. |
+| **AHCI Hard Disk** | SATA-style disk compatibility. |
+| **AHCI CD-ROM** | Installer media and other optical images. |
+| **VirtIO 9P** | Filesystem shares only. Sylve selects it automatically for 9P shares. |
+
+**Boot Order** is a unique non-negative value for every attached block disk and image. Lower values are placed earlier in Sylve's generated device order. Filesystem shares do not have a boot order.
+
+:::note
+Bhyve does not provide a native, strict per-device boot-order mechanism. Sylve sorts the attachments and assigns them to an ordered PCI device layout so that UEFI firmware normally sees the intended order. Treat this as best effort, not a firmware-enforced guarantee. If a guest has multiple bootable devices, confirm its UEFI boot entries and test the result.
+:::
+
+### After installing from media
+
+After the operating system is installed, shut the VM off and detach the installer ISO or image. This prevents the firmware from returning to the installer instead of booting the main disk on the next start. Detaching the image removes only the VM attachment. The Downloader item remains available for other VMs.
+
+## Edit, disable, and detach
+
+Select one storage row to reveal **Edit** and **Detach**. You can change the attachment name, emulation, enabled state, and boot order. For raw disks and zvols, you can also grow the disk, but Sylve does not support shrinking it. Image and 9P-share sizes are read-only.
+
+For a 9P share, editing also lets you change the target name and read-only setting. Disabling an attachment keeps its configuration and underlying data but omits it from the VM until you enable it again.
+
+**Detach** removes the attachment from the VM without deleting its underlying raw disk, zvol, filesystem dataset, or Downloader image. Clean up data you no longer need through the appropriate storage subsystem, such as [ZFS Filesystems](/guides/node/storage/zfs/datasets/filesystems/) or [ZFS Volumes](/guides/node/storage/zfs/datasets/volumes/).
+
+<img
+  src={editDetach.src}
+  alt="VM Storage table with an attachment selected and the Edit and Detach controls available"
+/>
+
+:::caution
+Changing a VM's storage topology is blocked while it is protected by a replication policy. Disable replication protection and wait until it is fully cleared before adding, removing, or changing storage attachments.
+:::

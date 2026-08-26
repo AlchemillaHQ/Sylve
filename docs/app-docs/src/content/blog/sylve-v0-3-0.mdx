@@ -1,0 +1,189 @@
+---
+title: "Sylve v0.3.0: Toward an Integrated System"
+displayTitle: "Toward an Integrated System"
+description: "Networking, workload migration, storage operations, and reliability improvements make Sylve a more complete management platform."
+pubDate: 2026-08-24
+author: "Hayzam Sherif"
+draft: false
+category: "Releases"
+featured: true
+image: "/blog/sylve-v0-3-0.svg"
+ogImage: "/blog/sylve-v0-3-0-og.png"
+hideCover: true
+---
+
+**TL;DR:** Have a FreeBSD 15+ system? Run `pkg install sylve` and follow the
+[getting-started guide](/getting-started/) to bring up your first node.
+
+Sylve is an open-source infrastructure management platform with a simple goal:
+compute, storage, networking, and day-to-day operations should work as one
+system. It brings
+[Bhyve virtual machines](/guides/node/virtual-machines/summary/),
+[Jails](/guides/node/jails/summary/),
+[ZFS storage](/guides/node/storage/zfs/dashboard/),
+[networking](/guides/node/network/interfaces/),
+[backups](/guides/data-center/backups/jobs/), and
+[cluster operations](/guides/data-center/cluster/) into one web interface. It
+uses what is already built into FreeBSD instead of layering a separate
+appliance on top.
+
+Sylve v0.3.0 is now available. With more than 500 commits since v0.2.3, it is
+our largest release so far. The biggest change is how much better the different
+parts of Sylve now work together.
+
+We are very happy with how the product is maturing. Sylve is being used in
+real-world enterprise environments, and that feedback has pushed us to spend a
+lot of time on the things people notice when something goes wrong: recovery,
+validation, observability, safer changes, and predictable failure handling.
+
+## Where Sylve is today
+
+v0.3.0 lets Sylve manage much more of a host without sending you to a
+collection of separate tools.
+
+Networking saw some of the biggest changes. Sylve can now manage
+[PF traffic](/guides/node/network/firewall/traffic/) and
+[NAT rules](/guides/node/network/firewall/nat/), reusable
+[network objects](/guides/node/network/objects/),
+[routes](/guides/node/network/routes/), and
+[WireGuard](/guides/node/network/wireguard/server/).
+[Firewall logs](/guides/node/network/firewall/logs/), counters, service-aware
+telemetry, and
+[generated configuration previews](/guides/node/network/firewall/advanced/)
+make it easier to see what the host is actually doing.
+
+[VMs](/guides/node/virtual-machines/migration/) and
+[Jails](/guides/node/jails/migration/) can now be migrated between nodes in the
+same cluster. Sylve transfers the bulk of the ZFS data while the workload is
+still online, then performs a final incremental transfer and guarded cutover.
+There are preflight checks, progress reporting, recovery state, and guards
+against conflicting storage or lifecycle operations.
+
+We also put a lot of work into storage and day-to-day operations. Backups now
+commit related datasets and VM disks as coordinated generations, with stronger
+restore and recovery workflows. The release adds
+[iSCSI initiator](/guides/node/storage/iscsi/initiators/) and
+[target management](/guides/node/storage/iscsi/targets/), deeper
+[ZFS and ARC telemetry](/guides/node/storage/zfs/dashboard/),
+[scheduled S.M.A.R.T. tests](/guides/node/storage/disks/), and
+[notifications](/guides/node/settings/system/notifications/rules/) through the
+interface or
+[ntfy, email, and Discord](/guides/node/settings/system/notifications/transports/).
+A protected
+[local CLI and interactive console](/guides/node/cli-console/getting-started/)
+provide another way to carry out common VM, Jail, networking, and lifecycle
+work.
+
+[Certificate](/guides/node/services/certificates/) and
+[Dynamic DNS](/guides/node/services/dynamic-dns/) management are built in now,
+too. Each node that needs one can use a free
+[Sylve.app](https://sylve.app) hostname and managed TLS certificate without
+opening an inbound validation port or sending its private key off-node.
+Cloudflare and Namecheap are also supported as Dynamic DNS providers, with more
+integrations planned.
+
+[Replication](/guides/data-center/replication/) is available as an opt-in
+early-access feature in the v0.3.x series. It is backed by extensive automated
+testing across failover, fencing, recovery, and cluster-state handling, and has
+also been exercised in real-world enterprise environments. We call it early
+access because we are rolling out a failure-sensitive feature carefully, not
+because it is an untested prototype. We still recommend using it alongside
+independent backups. The
+[full v0.3.0 release notes](https://github.com/AlchemillaHQ/Sylve/releases/tag/v0.3.0)
+cover the complete set of changes, compatibility notes, and upgrade details.
+
+## Why try it
+
+You do not need to be a FreeBSD specialist to use Sylve. It is built around
+familiar infrastructure tasks: running workloads, managing and sharing
+storage, connecting services, monitoring systems, and protecting data.
+FreeBSD supplies the building blocks underneath: Bhyve, Jails, ZFS, PF, and a
+capable base system. Sylve puts a shared model and interface around them, so
+creating a workload, attaching storage and networking, monitoring it, backing
+it up, and moving it to another node do not have to be separate projects.
+
+It also stays small. The Go backend and web interface ship as one service, with
+a baseline memory footprint below 384 MB. Sylve itself can run on FreeBSD 15
+without packages outside the base system.
+
+A few extra packages are used only when their features are enabled: libvirt
+for VMs, QEMU tools for disk images, Samba for
+[SMB shares](/guides/node/storage/samba/shares/), swtpm for TPM emulation, and
+dnsmasq for [DHCP and DNS](/guides/node/network/dhcp-dns/config/). The FreeBSD
+package and port install these for you. A Jail-only or otherwise narrower setup
+does not need to run the whole stack.
+
+You can try Sylve on modest hardware and still grow from one host into a
+clustered setup later. It is not a thin dashboard over unrelated services. The
+same system understands how workloads, ZFS data, networking, backups, and
+cluster ownership relate to each other.
+
+## Try it in your browser
+
+You do not need a FreeBSD host to explore the interface. The demo on
+[sylve.io](https://sylve.io/) is a working three-node cluster with sample data
+that runs directly in the browser. Use the embedded version on the home page or
+[open it full screen](https://demo.sylve.io/).
+
+## Support what comes next
+
+The [FreeBSD Foundation](https://freebsdfoundation.org/) supported work across
+both the previous release and v0.3.0 through its project grant. The grant paid
+for visible features, but also for the integration, testing, and reliability
+work needed to make those features useful together. We report progress through
+the
+[FreeBSD quarterly status reports](https://www.freebsd.org/status/report-2026-04-2026-06/#_sylvea_unified_system_management_platform_for_freebsd).
+
+The Foundation has since expanded that support in two related directions. It
+awarded Sylve another grant for the next phase of the platform, and it is
+sponsoring memory ballooning support for Bhyve. Developers at
+[Alchemilla](https://alchemilla.io/) are actively working on both. One stream
+builds out the management experience, while the other improves the underlying
+virtualization stack for Sylve and the wider Bhyve ecosystem.
+
+For Sylve users, the new grant will bring native OCI container management
+through Podman, an App Gallery with repeatable installers for Jails and
+containers, and faster deployment using application templates.
+
+The same effort expands Sylve as a storage platform, with NFS sharing,
+automatic ZFS dataset tuning, mobile monitoring, operating-system updates from
+the interface, and ZFS scrub schedules. It also includes end-to-end testing and
+clearer migration documentation.
+
+We are also designing a simpler interface for people moving from TrueNAS CORE
+13.x and its FreeBSD-based storage model. We do not see Sylve as only a VM
+platform or simply a counterpart to Proxmox. Virtualization is important, but
+future releases will also make Sylve a complete NAS and infrastructure
+management system.
+
+Beyond the grant-funded work, Alchemilla handles ongoing development and
+maintenance. [IPTechnics](https://iptechnics.com/) contributes infrastructure
+and real-world enterprise testing. For v0.3.0,
+[Senex IT](https://senexit.com/) also made a one-time contribution through
+GitHub Sponsors that helped fund part of the release.
+
+Different sponsors bring different things to a project like Sylve. Storage,
+virtualization, networking, and cluster operations do not look the same in a
+home lab, at a service provider, or inside an enterprise. No single
+organization sees every use case. Grants, long-term development support,
+infrastructure, and operational testing all help in different ways. Together,
+they give us a better view of what people actually need.
+
+That support also produces work that is useful outside Sylve. One example is
+[gzfs](https://github.com/AlchemillaHQ/gzfs), an open-source project that grew
+out of the same work. gzfs provides a typed Go interface for ZFS, ZPool, and
+ZDB operations, including JSON parsing and test-friendly command execution. It
+is useful on FreeBSD, but it also supports other OpenZFS-compatible systems and
+can be used entirely independently of Sylve. Supporting Sylve can therefore
+produce tools that help the wider ZFS and open-source infrastructure ecosystem
+too.
+
+If this approach to infrastructure management is useful to you or your
+organization, there are several ways to take part. You can test v0.3.0 in your
+environment, share operational feedback, contribute code or documentation,
+provide testing infrastructure, or
+[sponsor continued development](https://github.com/sponsors/AlchemillaHQ).
+Organizations interested in supporting a particular area can also
+[contact us](mailto:hello@sylve.io). A wider mix of community and sponsor
+support gives maintainers the time and stability to improve Sylve and its
+supporting projects over the long term.

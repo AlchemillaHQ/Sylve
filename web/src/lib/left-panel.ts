@@ -8,8 +8,35 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
+import type { ResourceTreeView } from '$lib/resource-tree';
+
 const STORAGE_KEY = 'left-panel-state';
 const OPEN_IDS_STORAGE_KEY = 'left-panel-open-ids';
+const LEGACY_CLUSTER_OPEN_IDS_STORAGE_KEY = 'clusterIds';
+
+export type ResourceTreeMode = 'single' | 'cluster';
+
+function scopedOpenIdsStorageKey(mode: ResourceTreeMode, view: ResourceTreeView): string {
+	return `${OPEN_IDS_STORAGE_KEY}:${mode}:${view}`;
+}
+
+function legacyOpenIdsStorageKey(mode: ResourceTreeMode): string {
+	return mode === 'cluster' ? LEGACY_CLUSTER_OPEN_IDS_STORAGE_KEY : OPEN_IDS_STORAGE_KEY;
+}
+
+function parseOpenIds(value: string, storageKey: string): Set<string> {
+	try {
+		const parsed: unknown = JSON.parse(value);
+		if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === 'string')) {
+			throw new TypeError('Expected an array of tree item IDs');
+		}
+		return new Set(parsed);
+	} catch (error) {
+		console.error(`Failed to parse open tree IDs from "${storageKey}":`, error);
+		localStorage.removeItem(storageKey);
+		return new Set<string>();
+	}
+}
 
 export function saveOpenCategories(state: { [key: string]: boolean }) {
 	if (typeof localStorage !== 'undefined') {
@@ -32,29 +59,47 @@ export function loadOpenCategories(): { [key: string]: boolean } {
 	return {};
 }
 
-export function saveOpenIds(ids: Set<string>) {
+export function saveOpenIds(
+	ids: Set<string>,
+	mode: ResourceTreeMode = 'single',
+	view: ResourceTreeView = 'server'
+) {
 	if (typeof localStorage !== 'undefined') {
-		localStorage.setItem(OPEN_IDS_STORAGE_KEY, JSON.stringify(Array.from(ids)));
+		localStorage.setItem(scopedOpenIdsStorageKey(mode, view), JSON.stringify(Array.from(ids)));
 	}
 }
 
-export function hasSavedOpenIds(): boolean {
+export function hasSavedOpenIds(
+	mode: ResourceTreeMode = 'single',
+	view: ResourceTreeView = 'server'
+): boolean {
 	if (typeof localStorage === 'undefined') {
 		return false;
 	}
 
-	return localStorage.getItem(OPEN_IDS_STORAGE_KEY) !== null;
+	if (localStorage.getItem(scopedOpenIdsStorageKey(mode, view)) !== null) {
+		return true;
+	}
+
+	return view === 'server' && localStorage.getItem(legacyOpenIdsStorageKey(mode)) !== null;
 }
 
-export function loadOpenIds(): Set<string> {
+export function loadOpenIds(
+	mode: ResourceTreeMode = 'single',
+	view: ResourceTreeView = 'server'
+): Set<string> {
 	if (typeof localStorage !== 'undefined') {
-		const saved = localStorage.getItem(OPEN_IDS_STORAGE_KEY);
+		const scopedKey = scopedOpenIdsStorageKey(mode, view);
+		const saved = localStorage.getItem(scopedKey);
 		if (saved) {
-			try {
-				return new Set(JSON.parse(saved));
-			} catch (e) {
-				console.error('Failed to parse open ids:', e);
-				localStorage.removeItem(OPEN_IDS_STORAGE_KEY);
+			return parseOpenIds(saved, scopedKey);
+		}
+
+		if (view === 'server') {
+			const legacyKey = legacyOpenIdsStorageKey(mode);
+			const legacy = localStorage.getItem(legacyKey);
+			if (legacy) {
+				return parseOpenIds(legacy, legacyKey);
 			}
 		}
 	}

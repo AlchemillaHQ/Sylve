@@ -16,15 +16,15 @@
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
-		type props = {
-			checksum: string;
-			compression: string;
-			volblocksize: string;
-			dedup: string;
-			readonly: string;
-			primarycache: string;
-			volmode: string;
-		};
+	type props = {
+		checksum: string;
+		compression: string;
+		volblocksize: string;
+		dedup: string;
+		readonly: string;
+		primarycache: string;
+		volmode: string;
+	};
 
 	interface Props {
 		open: boolean;
@@ -44,9 +44,9 @@
 			: '16384',
 		checksum: dataset.properties?.checksum || 'on',
 		compression: dataset.properties?.compression || 'lz4',
-			dedup: dataset.properties?.dedup || 'off',
-			readonly: dataset.properties?.readonly || 'off',
-			refreservation:
+		dedup: dataset.properties?.dedup || 'off',
+		readonly: dataset.properties?.readonly || 'off',
+		refreservation:
 			dataset.properties?.refreservation && dataset.properties.refreservation !== 'none'
 				? (normalizeSizeInputExact(dataset.properties.refreservation) ?? '')
 				: '',
@@ -78,15 +78,15 @@
 
 		const volsizeBytes = toZfsBytesString(parsedVolsize);
 
-			const props: Record<string, string> = {
-				volsize: volsizeBytes,
-				checksum: properties.checksum,
-				compression: properties.compression,
-				dedup: properties.dedup,
-				readonly: properties.readonly,
-				primarycache: properties.primarycache,
-				volmode: properties.volmode
-			};
+		const props: Record<string, string> = {
+			volsize: volsizeBytes,
+			checksum: properties.checksum,
+			compression: properties.compression,
+			dedup: properties.dedup,
+			readonly: properties.readonly,
+			primarycache: properties.primarycache,
+			volmode: properties.volmode
+		};
 
 		if (properties.refreservation) {
 			const parsed = parseSizeInputToBytes(properties.refreservation);

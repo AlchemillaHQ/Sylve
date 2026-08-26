@@ -1,196 +1,305 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
-    FirewallAdvancedSettingsSchema,
-    FirewallLiveHitsResponseSchema,
-    FirewallNATRuleCounterSchema,
-    FirewallNATRuleSchema,
-    FirewallTrafficRuleCounterSchema,
-    FirewallTrafficRuleSchema,
-    type FirewallAdvancedSettings,
-    type FirewallLiveHitsResponse,
-    type FirewallNATRuleCounter,
-    type FirewallNATRule,
-    type FirewallTrafficRuleCounter,
-    type FirewallTrafficRule
+	FirewallAdvancedSettingsSchema,
+	FirewallLiveHitsResponseSchema,
+	FirewallNATRuleCounterSchema,
+	FirewallNATRuleSchema,
+	FirewallTrafficRuleCounterSchema,
+	FirewallTrafficRuleSchema,
+	RenderedConfigSchema,
+	type FirewallAdvancedSettings,
+	type FirewallLiveHitsResponse,
+	type FirewallNATRuleCounter,
+	type FirewallNATRule,
+	type FirewallTrafficRuleCounter,
+	type FirewallTrafficRule,
+	type RenderedConfig
 } from '$lib/types/network/firewall';
 import { apiRequest, isAPIResponse } from '$lib/utils/http';
 import z from 'zod/v4';
 
 export interface FirewallReorderRequest {
-    id: number;
-    priority: number;
+	id: number;
+	priority: number;
+}
+
+export interface FirewallTrafficRuleUpsertRequest {
+	name: string;
+	description?: string;
+	enabled?: boolean;
+	log?: boolean;
+	quick?: boolean;
+	priority?: number;
+	action: 'pass' | 'block';
+	direction: 'in' | 'out';
+	protocol: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp';
+	ingressInterfaces: string[];
+	egressInterfaces: string[];
+	family: 'any' | 'inet' | 'inet6';
+	sourceRaw: string;
+	sourceObjId: number | null;
+	destRaw: string;
+	destObjId: number | null;
+	srcPortsRaw: string;
+	srcPortObjId: number | null;
+	dstPortsRaw: string;
+	dstPortObjId: number | null;
+}
+
+export interface FirewallNATRuleUpsertRequest {
+	name: string;
+	description?: string;
+	enabled?: boolean;
+	log?: boolean;
+	priority?: number;
+	natType: 'snat' | 'dnat' | 'binat';
+	policyRoutingEnabled?: boolean;
+	policyRouteGateway?: string;
+	ingressInterfaces: string[];
+	egressInterfaces: string[];
+	family: 'any' | 'inet' | 'inet6';
+	protocol: 'any' | 'tcp' | 'udp' | 'icmp';
+	sourceRaw: string;
+	sourceObjId: number | null;
+	destRaw: string;
+	destObjId: number | null;
+	translateMode?: 'interface' | 'address';
+	translateToRaw: string;
+	translateToObjId: number | null;
+	dnatTargetRaw: string;
+	dnatTargetObjId: number | null;
+	dstPortsRaw: string;
+	dstPortObjId: number | null;
+	redirectPortsRaw: string;
+	redirectPortObjId: number | null;
+}
+
+export interface FirewallAdvancedRequest {
+	preRules: string;
+	preNatDecl: string;
+	postNatDecl: string;
+	preTrafficAnchor: string;
+	postTrafficAnchor: string;
+	postRules: string;
 }
 
 export async function getFirewallTrafficRules(): Promise<FirewallTrafficRule[] | APIResponse> {
-    return await apiRequest('/network/firewall/traffic', FirewallTrafficRuleSchema.array(), 'GET');
+	return await apiRequest(
+		'/network/firewall/traffic',
+		FirewallTrafficRuleSchema.array(),
+		'GET',
+		undefined,
+		{
+			preserveErrors: true
+		}
+	);
 }
 
 export async function getFirewallTrafficRuleCounters(): Promise<
-    FirewallTrafficRuleCounter[] | APIResponse
+	FirewallTrafficRuleCounter[] | APIResponse
 > {
-    const response = await apiRequest(
-        '/network/firewall/traffic/counters',
-        APIResponseSchema,
-        'GET',
-        undefined,
-        { raw: true }
-    );
+	const response = await apiRequest(
+		'/network/firewall/traffic/counters',
+		APIResponseSchema,
+		'GET',
+		undefined,
+		{ raw: true }
+	);
 
-    if (!isAPIResponse(response)) {
-        return {
-            status: 'error',
-            message: 'invalid_response',
-            error: 'invalid_response_shape'
-        };
-    }
+	if (!isAPIResponse(response)) {
+		return {
+			status: 'error',
+			message: 'invalid_response',
+			error: 'invalid_response_shape'
+		};
+	}
 
-    if (response.status !== 'success') {
-        return response;
-    }
+	if (response.status !== 'success') {
+		return response;
+	}
 
-    const parsed = FirewallTrafficRuleCounterSchema.array().safeParse(response.data);
-    if (!parsed.success) {
-        return {
-            status: 'error',
-            message: 'invalid_firewall_traffic_counter_response',
-            error: parsed.error.issues.map((issue) => issue.message)
-        };
-    }
+	const parsed = FirewallTrafficRuleCounterSchema.array().safeParse(response.data);
+	if (!parsed.success) {
+		return {
+			status: 'error',
+			message: 'invalid_firewall_traffic_counter_response',
+			error: parsed.error.issues.map((issue) => issue.message)
+		};
+	}
 
-    return parsed.data;
+	return parsed.data;
 }
 
 export async function createFirewallTrafficRule(
-    payload: Partial<FirewallTrafficRule>
+	payload: FirewallTrafficRuleUpsertRequest
 ): Promise<number | APIResponse> {
-    return await apiRequest('/network/firewall/traffic', z.number(), 'POST', payload);
+	return await apiRequest(
+		'/network/firewall/traffic',
+		z.number().int().positive(),
+		'POST',
+		payload
+	);
 }
 
 export async function updateFirewallTrafficRule(
-    id: number,
-    payload: Partial<FirewallTrafficRule>
+	id: number,
+	payload: FirewallTrafficRuleUpsertRequest
 ): Promise<APIResponse> {
-    return await apiRequest(`/network/firewall/traffic/${id}`, APIResponseSchema, 'PUT', payload);
+	return await apiRequest(`/network/firewall/traffic/${id}`, APIResponseSchema, 'PUT', payload);
 }
 
 export async function deleteFirewallTrafficRule(id: number): Promise<APIResponse> {
-    return await apiRequest(`/network/firewall/traffic/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequest(`/network/firewall/traffic/${id}`, APIResponseSchema, 'DELETE');
+}
+
+export async function bulkDeleteFirewallTrafficRules(ids: number[]): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/traffic', APIResponseSchema, 'DELETE', { ids });
 }
 
 export async function reorderFirewallTrafficRules(
-    payload: FirewallReorderRequest[]
+	payload: FirewallReorderRequest[]
 ): Promise<APIResponse> {
-    return await apiRequest('/network/firewall/traffic/reorder', APIResponseSchema, 'PUT', payload);
+	return await apiRequest('/network/firewall/traffic/reorder', APIResponseSchema, 'PUT', payload);
 }
 
 export async function getFirewallNATRules(): Promise<FirewallNATRule[] | APIResponse> {
-    return await apiRequest('/network/firewall/nat', FirewallNATRuleSchema.array(), 'GET');
+	return await apiRequest(
+		'/network/firewall/nat',
+		FirewallNATRuleSchema.array(),
+		'GET',
+		undefined,
+		{
+			preserveErrors: true
+		}
+	);
 }
 
 export async function createFirewallNATRule(
-    payload: Record<string, unknown>
+	payload: FirewallNATRuleUpsertRequest
 ): Promise<number | APIResponse> {
-    return await apiRequest('/network/firewall/nat', z.number(), 'POST', payload);
+	return await apiRequest('/network/firewall/nat', z.number().int().positive(), 'POST', payload);
 }
 
-export async function getFirewallNATRuleCounters(): Promise<FirewallNATRuleCounter[] | APIResponse> {
-    const response = await apiRequest(
-        '/network/firewall/nat/counters',
-        APIResponseSchema,
-        'GET',
-        undefined,
-        { raw: true }
-    );
+export async function getFirewallNATRuleCounters(): Promise<
+	FirewallNATRuleCounter[] | APIResponse
+> {
+	const response = await apiRequest(
+		'/network/firewall/nat/counters',
+		APIResponseSchema,
+		'GET',
+		undefined,
+		{ raw: true }
+	);
 
-    if (!isAPIResponse(response)) {
-        return {
-            status: 'error',
-            message: 'invalid_response',
-            error: 'invalid_response_shape'
-        };
-    }
+	if (!isAPIResponse(response)) {
+		return {
+			status: 'error',
+			message: 'invalid_response',
+			error: 'invalid_response_shape'
+		};
+	}
 
-    if (response.status !== 'success') {
-        return response;
-    }
+	if (response.status !== 'success') {
+		return response;
+	}
 
-    const parsed = FirewallNATRuleCounterSchema.array().safeParse(response.data);
-    if (!parsed.success) {
-        return {
-            status: 'error',
-            message: 'invalid_firewall_nat_counter_response',
-            error: parsed.error.issues.map((issue) => issue.message)
-        };
-    }
+	const parsed = FirewallNATRuleCounterSchema.array().safeParse(response.data);
+	if (!parsed.success) {
+		return {
+			status: 'error',
+			message: 'invalid_firewall_nat_counter_response',
+			error: parsed.error.issues.map((issue) => issue.message)
+		};
+	}
 
-    return parsed.data;
+	return parsed.data;
 }
 
 export async function updateFirewallNATRule(
-    id: number,
-    payload: Record<string, unknown>
+	id: number,
+	payload: FirewallNATRuleUpsertRequest
 ): Promise<APIResponse> {
-    return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'PUT', payload);
+	return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'PUT', payload);
 }
 
 export async function deleteFirewallNATRule(id: number): Promise<APIResponse> {
-    return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequest(`/network/firewall/nat/${id}`, APIResponseSchema, 'DELETE');
 }
 
-export async function reorderFirewallNATRules(payload: FirewallReorderRequest[]): Promise<APIResponse> {
-    return await apiRequest('/network/firewall/nat/reorder', APIResponseSchema, 'PUT', payload);
+export async function bulkDeleteFirewallNATRules(ids: number[]): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/nat', APIResponseSchema, 'DELETE', { ids });
 }
 
-export async function getFirewallAdvancedSettings(): Promise<FirewallAdvancedSettings | APIResponse> {
-    return await apiRequest('/network/firewall/advanced', FirewallAdvancedSettingsSchema, 'GET');
+export async function reorderFirewallNATRules(
+	payload: FirewallReorderRequest[]
+): Promise<APIResponse> {
+	return await apiRequest('/network/firewall/nat/reorder', APIResponseSchema, 'PUT', payload);
+}
+
+export async function getFirewallAdvancedSettings(): Promise<
+	FirewallAdvancedSettings | APIResponse
+> {
+	return await apiRequest('/network/firewall/advanced', FirewallAdvancedSettingsSchema, 'GET');
+}
+
+export async function previewRenderedConfig(
+	fields: FirewallAdvancedRequest
+): Promise<RenderedConfig | APIResponse> {
+	return await apiRequest(
+		'/network/firewall/advanced/preview',
+		RenderedConfigSchema,
+		'POST',
+		fields,
+		{ skipAuditLog: true }
+	);
+}
+
+export async function getRenderedConfigOnDisk(): Promise<RenderedConfig | APIResponse> {
+	return await apiRequest('/network/firewall/advanced/rendered', RenderedConfigSchema, 'GET');
 }
 
 export async function updateFirewallAdvancedSettings(
-    preRules: string,
-    postRules: string
+	fields: FirewallAdvancedRequest
 ): Promise<APIResponse> {
-    return await apiRequest('/network/firewall/advanced', APIResponseSchema, 'PUT', {
-        preRules,
-        postRules
-    });
+	return await apiRequest('/network/firewall/advanced', APIResponseSchema, 'PUT', fields);
 }
 
 export async function getFirewallLiveLogs(
-    cursor: number,
-    limit: number = 200
+	cursor: number,
+	limit: number = 200
 ): Promise<FirewallLiveHitsResponse | APIResponse> {
-    const query = new URLSearchParams({
-        cursor: String(cursor),
-        limit: String(limit)
-    });
-    const response = await apiRequest(
-        `/network/firewall/logs/live?${query.toString()}`,
-        APIResponseSchema,
-        'GET',
-        undefined,
-        { raw: true }
-    );
+	const query = new URLSearchParams({
+		cursor: String(cursor),
+		limit: String(limit)
+	});
+	const response = await apiRequest(
+		`/network/firewall/logs/live?${query.toString()}`,
+		APIResponseSchema,
+		'GET',
+		undefined,
+		{ raw: true }
+	);
 
-    if (!isAPIResponse(response)) {
-        return {
-            status: 'error',
-            message: 'invalid_response',
-            error: 'invalid_response_shape'
-        };
-    }
+	if (!isAPIResponse(response)) {
+		return {
+			status: 'error',
+			message: 'invalid_response',
+			error: 'invalid_response_shape'
+		};
+	}
 
-    if (response.status !== 'success') {
-        return response;
-    }
+	if (response.status !== 'success') {
+		return response;
+	}
 
-    const parsed = FirewallLiveHitsResponseSchema.safeParse(response.data);
-    if (!parsed.success) {
-        return {
-            status: 'error',
-            message: 'invalid_firewall_live_hits_response',
-            error: parsed.error.issues.map((issue) => issue.message)
-        };
-    }
+	const parsed = FirewallLiveHitsResponseSchema.safeParse(response.data);
+	if (!parsed.success) {
+		return {
+			status: 'error',
+			message: 'invalid_firewall_live_hits_response',
+			error: parsed.error.issues.map((issue) => issue.message)
+		};
+	}
 
-    return parsed.data;
+	return parsed.data;
 }

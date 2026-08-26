@@ -21,7 +21,8 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 	// --- Hard blocks ---
 	target_check_unsupported:
 		'The target node runs an older version that cannot verify this guest\u2019s dependencies. Update the target node, then retry.',
-	target_check_failed: (d) => `Could not verify the target node\u2019s readiness${d ? `: ${d}` : ''}.`,
+	target_check_failed: (d) =>
+		`Could not verify the target node\u2019s readiness${d ? `: ${d}` : ''}.`,
 	target_missing_pool: (d) =>
 		`The target node is missing the required ZFS pool${d ? ` \u201c${d}\u201d` : ''}.`,
 	target_already_has_guest: 'A guest with this ID already exists on the target node.',
@@ -39,6 +40,16 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 		'A backup job is currently running for this guest. Wait for it to finish, then retry.',
 	guest_has_active_lifecycle_task: 'Another lifecycle task is already running for this guest.',
 	guest_has_active_transition: 'This guest has an active HA transition in progress.',
+	replication_policy_must_be_disabled_before_migration:
+		'Disable replication protection for this guest before migrating it.',
+	replication_policy_deleting:
+		'This guest\u2019s replication policy is still being removed. Wait for deletion to finish, then retry.',
+	replication_guest_lease_still_present:
+		'This guest still has an active replication lease. Wait for replication to become fully quiescent, then retry.',
+	guest_operation_in_progress:
+		'A protected guest operation is already in progress. Wait for it to finish, then retry.',
+	migration_recovery_pending:
+		'The migration passed cutover and is being retried safely. The guest remains protected while recovery continues.',
 
 	// --- Warnings (migration proceeds) ---
 	warning_pci_passthrough_not_migrated:
@@ -47,19 +58,21 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 	warning_target_insufficient_memory: (d) =>
 		`The target node may not have enough free memory${d ? ` (${d})` : ''}.`,
 	warning_target_missing_iso: (d) =>
-		`The CD/ISO${d ? ` \u201c${d}\u201d` : ''} is not present on the target. The VM will start without it; the drive re-attaches automatically once the ISO is available there.`,
+		`The CD/ISO${d ? ` \u201c${d}\u201d` : ''} is not present on the target. The VM will start without it; attach it manually after making the ISO available.`,
 	warning_target_missing_switch: (d) =>
-		`The network switch${d ? ` \u201c${d}\u201d` : ''} does not exist on the target. The NIC stays disconnected until you create it there.`,
+		`The network switch${d ? ` \u201c${d}\u201d` : ''} does not exist on the target. The affected NIC will be omitted and must be added again manually.`,
 	warning_target_missing_bridge: (d) =>
-		`The network bridge${d ? ` \u201c${d}\u201d` : ''} does not exist on the target.`,
+		`The network bridge${d ? ` \u201c${d}\u201d` : ''} does not exist on the target. The affected interface will be omitted and must be added again manually.`,
 	warning_9p_share_not_migrated: (d) =>
 		`The shared folder${d ? ` \u201c${d}\u201d` : ''} is not present on the target and will be skipped.`,
 	warning_target_vnc_port_in_use: (d) =>
 		`VNC port${d ? ` ${d}` : ''} is already in use on the target; a free port will be assigned.`,
+	warning_target_vnc_port_reassigned: (d) =>
+		`The target assigned a different VNC port${d ? ` (${d})` : ''}.`,
 	warning_stale_dataset_on_target: (d) =>
-		`A leftover dataset${d ? ` \u201c${d}\u201d` : ''} already exists on the target and will be reused.`,
+		`A leftover dataset${d ? ` \u201c${d}\u201d` : ''} already exists on the target and will be replaced by the migrated data.`,
 	warning_ownership_reassignment_failed:
-		'The guest moved successfully, but updating cluster ownership (replication/HA) failed. The cluster may still treat the source node as the owner \u2014 check replication policies or re-run the migration.',
+		'Cluster ownership could not be updated yet. The migration remains protected and will retry safely.',
 	warning_ownership_reassignment_skipped_no_guard:
 		'Cluster ownership (replication/HA) was not reassigned because the cluster service was unavailable.'
 };

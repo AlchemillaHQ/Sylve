@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	BackupEventRetentionDays       = 90
-	BackupEventMaxRows             = 10000
-	ReplicationEventRetentionDays  = 90
-	ReplicationEventMaxRows        = 10000
+	BackupEventRetentionDays      = 90
+	BackupEventMaxRows            = 10000
+	ReplicationEventRetentionDays = 90
+	ReplicationEventMaxRows       = 10000
 )
 
 func EnforceBackupEventRetention(db *gorm.DB, now time.Time) error {
@@ -48,14 +48,32 @@ func EnforceBackupEventRetention(db *gorm.DB, now time.Time) error {
 		return nil
 	}
 
-	keepNewest := db.
+	activeStatuses := []string{"queued", "running"}
+	var activeCount int64
+	if err := db.Model(&clusterModels.BackupEvent{}).
+		Where("status IN ?", activeStatuses).
+		Count(&activeCount).Error; err != nil {
+		return fmt.Errorf("failed_to_count_active_backup_events: %w", err)
+	}
+	if activeCount >= int64(BackupEventMaxRows) {
+		// Active work is observability state, not retention data. Never delete it
+		// merely to satisfy a telemetry row cap.
+		return nil
+	}
+	terminalBudget := BackupEventMaxRows - int(activeCount)
+	if terminalBudget <= 0 {
+		return nil
+	}
+
+	keepNewestTerminal := db.
 		Model(&clusterModels.BackupEvent{}).
 		Select("id").
+		Where("status NOT IN ?", activeStatuses).
 		Order("started_at DESC, id DESC").
-		Limit(BackupEventMaxRows)
+		Limit(terminalBudget)
 
 	if err := db.
-		Where("id NOT IN (?)", keepNewest).
+		Where("status NOT IN ? AND id NOT IN (?)", activeStatuses, keepNewestTerminal).
 		Delete(&clusterModels.BackupEvent{}).
 		Error; err != nil {
 		return fmt.Errorf("failed_to_enforce_backup_event_hard_cap: %w", err)
@@ -105,7 +123,8 @@ func EnforceReplicationEventRetention(db *gorm.DB, now time.Time) error {
 
 func CleanupOrphanBackupEvents(db *gorm.DB) error {
 	deleteResult := db.Where(
-		"job_id IS NOT NULL AND job_id NOT IN (?)",
+		"job_id IS NOT NULL AND status NOT IN ? AND job_id NOT IN (?)",
+		[]string{"queued", "running"},
 		db.Model(&clusterModels.BackupJob{}).Select("id"),
 	).Delete(&clusterModels.BackupEvent{})
 	if deleteResult.Error != nil {
@@ -119,12 +138,37 @@ func CleanupOrphanBackupEvents(db *gorm.DB) error {
 	return nil
 }
 
+func CleanupOrphanReplicationEvents(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&clusterModels.ReplicationEvent{}) ||
+		!db.Migrator().HasTable(&clusterModels.ReplicationPolicy{}) {
+		return nil
+	}
+
+	deleteResult := db.Where(
+		"policy_id IS NOT NULL AND policy_id NOT IN (?)",
+		db.Model(&clusterModels.ReplicationPolicy{}).Select("id"),
+	).Delete(&clusterModels.ReplicationEvent{})
+	if deleteResult.Error != nil {
+		return fmt.Errorf("failed_to_prune_orphan_replication_events: %w", deleteResult.Error)
+	}
+
+	if deleteResult.RowsAffected > 0 {
+		logger.L.Info().Int64("count", deleteResult.RowsAffected).Msg("Removed orphan replication events")
+	}
+
+	return nil
+}
+
 func PruneJobs(db *gorm.DB) error {
 	if err := CleanupOrphanBackupEvents(db); err != nil {
 		return err
 	}
 
 	if err := EnforceBackupEventRetention(db, time.Now()); err != nil {
+		return err
+	}
+
+	if err := CleanupOrphanReplicationEvents(db); err != nil {
 		return err
 	}
 

@@ -1,29 +1,62 @@
-import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { CloudInitTemplateSchema, type CloudInitTemplate } from '$lib/types/utilities/cloud-init';
-import { apiRequest } from '$lib/utils/http';
+import type { APIResponse } from '$lib/types/common';
+import {
+	CloudInitTemplateIdentitySchema,
+	CloudInitTemplateSchema,
+	type CloudInitTemplate,
+	type CloudInitTemplateIdentity,
+	type CloudInitTemplateInput
+} from '$lib/types/utilities/cloud-init';
+import { apiRequest, type NodeAPIRequestOptions } from '$lib/utils/http';
 import z from 'zod/v4';
 
-export async function getTemplates(): Promise<CloudInitTemplate[]> {
+export async function getTemplates(
+	options?: NodeAPIRequestOptions
+): Promise<CloudInitTemplate[] | APIResponse> {
 	return await apiRequest(
 		'/utilities/cloud-init/templates',
 		z.array(CloudInitTemplateSchema),
-		'GET'
+		'GET',
+		undefined,
+		{ ...options, preserveErrors: true }
 	);
 }
 
-export async function createTemplate(data: Partial<CloudInitTemplate>): Promise<APIResponse> {
-	return await apiRequest('/utilities/cloud-init/templates', APIResponseSchema, 'POST', data);
-}
-
-export async function updateTemplate(data: Partial<CloudInitTemplate>): Promise<APIResponse> {
+export async function createTemplate(
+	data: CloudInitTemplateInput,
+	options?: NodeAPIRequestOptions
+): Promise<CloudInitTemplate | APIResponse> {
 	return await apiRequest(
-		`/utilities/cloud-init/templates/${data.id}`,
-		APIResponseSchema,
-		'PUT',
-		data
+		'/utilities/cloud-init/templates',
+		CloudInitTemplateSchema,
+		'POST',
+		data,
+		{ ...options, preserveErrors: true }
 	);
 }
 
-export async function deleteTemplate(id: number): Promise<APIResponse> {
-	return await apiRequest(`/utilities/cloud-init/templates/${id}`, APIResponseSchema, 'DELETE');
+export async function updateTemplate(
+	id: number,
+	data: CloudInitTemplateInput,
+	options?: NodeAPIRequestOptions
+): Promise<CloudInitTemplate | APIResponse> {
+	return await apiRequest(
+		`/utilities/cloud-init/templates/${id}`,
+		CloudInitTemplateSchema,
+		'PUT',
+		data,
+		{ ...options, preserveErrors: true }
+	);
+}
+
+export async function deleteTemplate(
+	id: number,
+	options?: NodeAPIRequestOptions
+): Promise<CloudInitTemplateIdentity | APIResponse> {
+	return await apiRequest(
+		`/utilities/cloud-init/templates/${id}`,
+		CloudInitTemplateIdentitySchema,
+		'DELETE',
+		undefined,
+		{ ...options, preserveErrors: true }
+	);
 }

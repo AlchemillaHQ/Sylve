@@ -9,70 +9,92 @@
 	import { resource, watch } from 'runed';
 	import type { APIResponse } from '$lib/types/common';
 	import type { QGAInfo } from '$lib/types/vm/vm';
+	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 
 	interface Props {
+		node: string;
 		rid: number;
 		initialGaInfo: QGAInfo | APIResponse | null;
 		qgaEnabled: boolean;
+		vmRunning?: boolean;
 		refreshSignal?: number;
 	}
 
-	let { rid, initialGaInfo, qgaEnabled, refreshSignal = 0 }: Props = $props();
+	let {
+		node,
+		rid,
+		initialGaInfo,
+		qgaEnabled,
+		vmRunning = false,
+		refreshSignal = 0
+	}: Props = $props();
 	let activeGaView = $state('os');
+	const qgaIdentity = (hostname: string, vmRID: number) => `${hostname}\u0000${vmRID}`;
 	let normalizedInitialGaInfo = $derived.by(() =>
 		!qgaEnabled || !initialGaInfo || isAPIResponse(initialGaInfo) ? null : initialGaInfo
 	);
-	let fallbackGaInfo = $state<QGAInfo | null>(null);
-	let hasCompletedInitialGaFetch = $state(false);
+	type QGASnapshot = { identity: string; info: QGAInfo };
+	const initialSnapshot = untrack(() => {
+		if (!qgaEnabled || !initialGaInfo || isAPIResponse(initialGaInfo)) return null;
+		return {
+			identity: qgaIdentity(node, rid),
+			info: initialGaInfo
+		};
+	});
+	let fallbackGaInfoByIdentity = $state<Record<string, QGAInfo>>(Object.create(null));
+	if (initialSnapshot) {
+		fallbackGaInfoByIdentity[initialSnapshot.identity] = initialSnapshot.info;
+	}
 
 	const gaInfo = resource(
-		() => `vm-qga-${rid}`,
-		async (key) => {
-			if (!qgaEnabled) {
+		[() => node, () => rid, () => qgaEnabled],
+		async ([hostname, currentRid, enabled], _, { signal }): Promise<QGASnapshot | null> => {
+			if (!enabled) {
 				return null;
 			}
 
-			const result = await getQGAInfo(rid);
+			const result = await getQGAInfo(currentRid, { hostname, signal });
 			if (isAPIResponse(result)) {
-				return null;
+				const details = Array.isArray(result.error) ? result.error.join(', ') : result.error;
+				throw new Error(details || result.message || 'Guest agent is unavailable');
 			}
 
-			updateCache(key, result);
-			return result;
+			updateCache(`vm-qga-${currentRid}`, result, hostname);
+			return {
+				identity: qgaIdentity(hostname, currentRid),
+				info: result
+			};
 		},
-		{ initialValue: null }
+		{ initialValue: initialSnapshot }
 	);
 
-	let hasGaCache = $derived.by(() => !!fallbackGaInfo);
-	let isGaInfoStale = $derived.by(
-		() => hasGaCache && !gaInfo.current && hasCompletedInitialGaFetch
+	let currentIdentity = $derived(qgaIdentity(node, rid));
+	let liveGaInfo = $derived.by(() =>
+		gaInfo.current?.identity === currentIdentity ? gaInfo.current.info : null
 	);
-	let displayGaInfo = $derived.by(() => (qgaEnabled ? gaInfo.current || fallbackGaInfo : null));
+	let fallbackGaInfo = $derived(fallbackGaInfoByIdentity[currentIdentity] ?? null);
+	let displayGaInfo = $derived.by(() => (qgaEnabled ? liveGaInfo || fallbackGaInfo : null));
+	let isGaInfoStale = $derived(Boolean(displayGaInfo && gaInfo.error));
+	let isGaUnavailable = $derived.by(
+		() => qgaEnabled && vmRunning && !gaInfo.loading && !displayGaInfo && Boolean(gaInfo.error)
+	);
 
 	watch(
-		() => normalizedInitialGaInfo,
-		(currentInitialGaInfo) => {
-			if (!fallbackGaInfo && currentInitialGaInfo) {
-				fallbackGaInfo = currentInitialGaInfo;
+		[() => node, () => rid, () => normalizedInitialGaInfo],
+		([hostname, currentRid, currentInitialGaInfo]) => {
+			if (currentInitialGaInfo) {
+				const identity = qgaIdentity(hostname, currentRid);
+				fallbackGaInfoByIdentity[identity] ??= currentInitialGaInfo;
 			}
 		}
 	);
 
 	watch(
 		() => gaInfo.current,
-		(currentGaInfo) => {
-			if (qgaEnabled && currentGaInfo) {
-				fallbackGaInfo = currentGaInfo;
-			}
-		}
-	);
-
-	watch(
-		() => gaInfo.loading,
-		(loading, prevLoading) => {
-			if (prevLoading === true && loading === false) {
-				hasCompletedInitialGaFetch = true;
+		(currentSnapshot) => {
+			if (currentSnapshot) {
+				fallbackGaInfoByIdentity[currentSnapshot.identity] = currentSnapshot.info;
 			}
 		}
 	);
@@ -81,7 +103,15 @@
 		() => refreshSignal,
 		(curr, prev) => {
 			if (qgaEnabled && curr !== prev) {
-				hasCompletedInitialGaFetch = false;
+				gaInfo.refetch();
+			}
+		}
+	);
+
+	watch(
+		() => vmRunning,
+		(running, prev) => {
+			if (qgaEnabled && running && prev === false) {
 				gaInfo.refetch();
 			}
 		}
@@ -89,24 +119,16 @@
 
 	watch(
 		() => qgaEnabled,
-		(enabled, prevEnabled) => {
+		(enabled) => {
 			if (!enabled) {
-				fallbackGaInfo = null;
-				hasCompletedInitialGaFetch = false;
 				activeGaView = 'os';
-				return;
-			}
-
-			if (enabled && prevEnabled === false) {
-				hasCompletedInitialGaFetch = false;
-				gaInfo.refetch();
 			}
 		}
 	);
 </script>
 
 {#if displayGaInfo}
-	<div class="space-y-4 px-4 pb-4">
+	<div class="space-y-4 px-4 pb-4" in:fade={{ duration: 180 }}>
 		<Card.Root class="w-full gap-0 p-4">
 			<Card.Header class="p-0">
 				<Card.Description
@@ -197,7 +219,7 @@
 							</Table.Header>
 							<Table.Body>
 								{#if displayGaInfo.interfaces && displayGaInfo.interfaces.length > 0}
-									{#each displayGaInfo.interfaces as iface}
+									{#each displayGaInfo.interfaces as iface (iface)}
 										<Table.Row>
 											<Table.Cell class="font-mono font-bold">{iface.name || 'unknown'}</Table.Cell>
 											<Table.Cell class="font-mono text-xs"
@@ -206,7 +228,7 @@
 											<Table.Cell>
 												<div class="flex flex-col gap-1">
 													{#if iface['ip-addresses'] && iface['ip-addresses'].length > 0}
-														{#each iface['ip-addresses'] as ip}
+														{#each iface['ip-addresses'] as ip (`${ip['ip-address-type']}:${ip['ip-address']}:${ip.prefix}`)}
 															<span class="text-xs">
 																<span class="text-muted-foreground mr-1 uppercase"
 																	>{ip['ip-address-type']}:</span
@@ -240,6 +262,35 @@
 						</Table.Root>
 					</div>
 				{/if}
+			</Card.Content>
+		</Card.Root>
+	</div>
+{:else if isGaUnavailable}
+	<div class="space-y-4 px-4 pb-4" in:fade={{ duration: 180 }}>
+		<Card.Root class="w-full gap-0 p-4">
+			<Card.Header class="p-0">
+				<Card.Description
+					class="text-md flex items-center justify-between font-normal text-amber-600 dark:text-amber-500"
+				>
+					<div class="flex items-center gap-2">
+						<span class="icon icon-[lucide--bot-off] h-6 w-6"></span>
+						<span>Guest agent unavailable</span>
+					</div>
+
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={() => gaInfo.refetch()}
+						disabled={gaInfo.loading}
+					>
+						<span class="icon-[mdi--refresh] h-4 w-4"></span>
+						Retry
+					</Button>
+				</Card.Description>
+			</Card.Header>
+			<Card.Content class="text-muted-foreground mt-3 p-0 text-sm">
+				The agent is enabled, but it did not respond. Confirm that the VM is running and the guest
+				agent service is installed and active.
 			</Card.Content>
 		</Card.Root>
 	</div>

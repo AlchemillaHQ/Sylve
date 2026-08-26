@@ -1,0 +1,419 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "**"
+      - "!docs/**"
+      - "docs/changelogs/**"
+    tags-ignore:
+      - tip
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - "**"
+      - "!docs/**"
+      - "docs/changelogs/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate release changelogs
+        run: ./scripts/validate-release-changelog.sh --all
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Run quality checks
+        run: make quality
+
+  test:
+    name: Test
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GOCACHE: ${{ github.workspace }}/.cache/freebsd-go/build
+      GOMODCACHE: ${{ github.workspace }}/.cache/freebsd-go/mod
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache FreeBSD Go files
+        id: freebsd_go_cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/freebsd-go/build
+            .cache/freebsd-go/mod
+          key: freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}
+
+      - name: Run FreeBSD checks and test suites
+        env:
+          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-hit == 'true' }}
+        uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
+        with:
+          release: "15"
+          usesh: true
+          copyback: true
+          cache-after-prepare: true
+          envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED
+          prepare: |
+            pkg update
+            pkg install -y go git libvirt bhyve-firmware
+            sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+            sysrc sshd_enable=YES
+            mkdir -p /root/.ssh && chmod 700 /root/.ssh
+            [ -f /root/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f /root/.ssh/id_ed25519
+            touch /root/.ssh/authorized_keys
+            local_key="$(cat /root/.ssh/id_ed25519.pub)"
+            grep -qxF "$local_key" /root/.ssh/authorized_keys || printf '%s\n' "$local_key" >> /root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys
+          run: |
+            setup_started="$(date +%s)"
+            mkdir -p test-results
+            set +e
+            (
+              set -e
+              mkdir -p "$GOCACHE" "$GOMODCACHE"
+              go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
+
+              for module in zfs pf vmm nlsysevent if_bridge if_epair; do
+                kldstat -q -m "$module" || kldload "$module"
+              done
+
+              service libvirtd onestart || service libvirtd onerestart
+              service sshd onestart 2>/dev/null || service sshd onerestart
+              ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
+              ssh_ready=false
+              for i in $(seq 1 60); do
+                if ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null; then
+                  ssh_ready=true
+                  break
+                fi
+                sleep 0.5
+              done
+              [ "$ssh_ready" = true ] || { echo "ssh root@localhost not ready"; exit 1; }
+
+              virsh -c bhyve:///system version
+              available_kib="$(df -Pk /tmp | awk 'NR == 2 { print $4 }')"
+              [ -n "$available_kib" ] && [ "$available_kib" -ge 9437184 ] || {
+                echo "/tmp needs at least 9 GiB available; found ${available_kib:-unknown} KiB"
+                exit 1
+              }
+            )
+            setup_rc="$?"
+            setup_finished="$(date +%s)"
+            setup_seconds="$((setup_finished - setup_started))"
+            printf '%s\n' "$setup_rc" > test-results/setup.rc
+            if [ "$setup_rc" -ne 0 ]; then
+              exit 0
+            fi
+
+            go vet ./... > test-results/vet.log 2>&1
+            vet_rc="$?"
+            cat test-results/vet.log
+            printf '%s\n' "$vet_rc" > test-results/vet.rc
+            if [ "$vet_rc" -ne 0 ]; then
+              exit 0
+            fi
+
+            /tmp/sylve-testreport \
+              -lane unit \
+              -out test-results \
+              -setup-duration "${setup_seconds}s" \
+              -cache-restored="$GO_CACHE_RESTORED" \
+              -- make -s GO_TEST_FLAGS=-json test
+            unit_rc="$?"
+            printf '%s\n' "$unit_rc" > test-results/unit.rc
+            if [ "$unit_rc" -ne 0 ]; then
+              exit 0
+            fi
+
+            /tmp/sylve-testreport \
+              -lane integration \
+              -out test-results \
+              -setup-duration "0s" \
+              -cache-restored="$GO_CACHE_RESTORED" \
+              -- make -s GO_TEST_FLAGS=-json test-integration
+            integration_rc="$?"
+            printf '%s\n' "$integration_rc" > test-results/integration.rc
+            if [ "$integration_rc" -ne 0 ]; then
+              exit 0
+            fi
+
+            /tmp/sylve-testreport \
+              -lane acceptance \
+              -out test-results \
+              -setup-duration "0s" \
+              -cache-restored="$GO_CACHE_RESTORED" \
+              -- make -s GO_TEST_FLAGS=-json test-acceptance-all
+            acceptance_rc="$?"
+            printf '%s\n' "$acceptance_rc" > test-results/acceptance.rc
+            exit 0
+
+      - name: Check FreeBSD host setup
+        id: setup_result
+        if: always()
+        run: |
+          if [ ! -f test-results/setup.rc ]; then
+            echo "FreeBSD host setup did not produce a result"
+            exit 1
+          fi
+          exit "$(cat test-results/setup.rc)"
+
+      - name: Upload vet report
+        if: always() && steps.setup_result.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: vet-report
+          path: |
+            test-results/vet.log
+            test-results/vet.rc
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Check vet result
+        id: vet_result
+        if: always() && steps.setup_result.outcome == 'success'
+        run: |
+          if [ ! -f test-results/vet.rc ]; then
+            echo "Vet result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-results/vet.rc)"
+
+      - name: Publish unit test summary
+        if: always() && steps.vet_result.outcome == 'success'
+        run: |
+          if [ -f test-results/unit-summary.md ]; then
+            cat test-results/unit-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload unit test report
+        if: always() && steps.vet_result.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-report
+          path: |
+            test-results/unit.json
+            test-results/unit.log
+            test-results/unit-summary.md
+            test-results/unit.rc
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Check unit test result
+        id: unit_result
+        if: always() && steps.vet_result.outcome == 'success'
+        run: |
+          if [ ! -f test-results/unit.rc ]; then
+            echo "Unit test result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-results/unit.rc)"
+
+      - name: Publish integration test summary
+        if: always() && steps.unit_result.outcome == 'success'
+        run: |
+          if [ -f test-results/integration-summary.md ]; then
+            cat test-results/integration-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload integration test report
+        if: always() && steps.unit_result.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-test-report
+          path: |
+            test-results/integration.json
+            test-results/integration.log
+            test-results/integration-summary.md
+            test-results/integration.rc
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Check integration test result
+        id: integration_result
+        if: always() && steps.unit_result.outcome == 'success'
+        run: |
+          if [ ! -f test-results/integration.rc ]; then
+            echo "Integration test result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-results/integration.rc)"
+
+      - name: Publish acceptance test summary
+        if: always() && steps.integration_result.outcome == 'success'
+        run: |
+          if [ -f test-results/acceptance-summary.md ]; then
+            cat test-results/acceptance-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload acceptance test report
+        if: always() && steps.integration_result.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: acceptance-test-report
+          path: |
+            test-results/acceptance.json
+            test-results/acceptance.log
+            test-results/acceptance-summary.md
+            test-results/acceptance.rc
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Check acceptance test result
+        if: always() && steps.integration_result.outcome == 'success'
+        run: |
+          if [ ! -f test-results/acceptance.rc ]; then
+            echo "Acceptance test result was not produced"
+            exit 1
+          fi
+          exit "$(cat test-results/acceptance.rc)"
+
+  build-web:
+    name: Build Web
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Check and Build Web Assets
+        run: make frontend
+
+      - name: Build Demo Web Assets
+        run: npm run build:demo --prefix web
+
+      - name: Upload Web Assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-assets
+          path: internal/assets/web-files/
+          retention-days: 1
+
+  build-freebsd:
+    name: Build FreeBSD (${{ matrix.arch }})
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FREEBSD_VERSION: "15"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+          - arch: arm64
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+
+      - name: Install cross-build toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld xz-utils tar file
+
+      - name: Download Web Assets
+        uses: actions/download-artifact@v8
+        with:
+          name: web-assets
+          path: internal/assets/web-files
+
+      - name: Resolve FreeBSD release
+        id: freebsd
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache FreeBSD sysroot
+        uses: actions/cache@v6
+        with:
+          path: .cache/freebsd/${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}
+          key: freebsd-sysroot-v2-${{ runner.os }}-${{ matrix.arch }}-${{ steps.freebsd.outputs.version }}-${{ hashFiles('scripts/setup-freebsd-sysroot.sh', 'scripts/resolve-freebsd-release.sh') }}
+
+      - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
+        env:
+          FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
+        run: make cross-build-${{ matrix.arch }}
+
+      - name: Verify binary format
+        run: |
+          set -euo pipefail
+          file bin/sylve | tee /tmp/sylve-file.txt
+          grep -q "FreeBSD" /tmp/sylve-file.txt
+
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            grep -Eq "x86-64|amd64" /tmp/sylve-file.txt
+          else
+            grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
+          fi
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: sylve-${{ matrix.arch }}
+          path: bin/sylve
+          retention-days: 7
+
+  ci-success:
+    name: CI Success
+    if: always()
+    needs:
+      - quality
+      - test
+      - build-web
+      - build-freebsd
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify required jobs succeeded
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_WEB_RESULT: ${{ needs.build-web.result }}
+          BUILD_FREEBSD_RESULT: ${{ needs.build-freebsd.result }}
+        run: |
+          test "$QUALITY_RESULT" = success
+          test "$TEST_RESULT" = success
+          test "$BUILD_WEB_RESULT" = success
+          test "$BUILD_FREEBSD_RESULT" = success

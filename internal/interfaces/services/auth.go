@@ -11,6 +11,7 @@ package serviceInterfaces
 import (
 	"context"
 	"crypto/tls"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 )
@@ -20,6 +21,12 @@ type CustomClaims struct {
 	Username string `json:"username"`
 	AuthType string `json:"authType"`
 	TokenUse string `json:"tokenUse,omitempty"`
+	Admin    bool   `json:"admin,omitempty"`
+}
+
+type ScopedValidationResult struct {
+	CustomClaims
+	ExpiresAt time.Time
 }
 
 // CreateUserOpts contains create-time-only parameters not stored directly on the model.
@@ -27,6 +34,15 @@ type CreateUserOpts struct {
 	NewPrimaryGroup bool
 	AuxGroupIDs     []uint
 	CreateSamba     bool
+}
+
+type ImportableUnixUser struct {
+	Username      string `json:"username"`
+	FullName      string `json:"fullName"`
+	UID           int    `json:"uid"`
+	GID           int    `json:"gid"`
+	Shell         string `json:"shell"`
+	HomeDirectory string `json:"homeDirectory"`
 }
 
 type EditUserOpts struct {
@@ -46,7 +62,7 @@ type EditUserOpts struct {
 	NewPrimaryGroup bool
 	PrimaryGroupID  *uint
 	AuxGroupIDs     []uint
-	CreateSamba     bool
+	SambaAction     string
 }
 
 type AuthServiceInterface interface {
@@ -54,13 +70,13 @@ type AuthServiceInterface interface {
 	GetClusterKey() (string, error)
 	CreateJWT(username, password, authType string, remember bool) (uint, string, error)
 	CreateScopedJWT(userID uint, username, authType, scope string, expiresInSeconds int64) (string, error)
-	CreateClusterJWT(userId uint, username string, authType string, forceSecret string) (string, error)
-	CreateInternalClusterJWT(username string, forceSecret string) (string, error)
+	CreateUserProxyJWT(userId uint, username string, authType string) (string, error)
+	CreateInternalClusterJWT(username string) (string, error)
 	VerifyClusterJWT(tokenString string) (CustomClaims, error)
 	RevokeJWT(token string) error
 	VerifyTokenInDb(token string) bool
 	ValidateToken(tokenString string) (CustomClaims, error)
-	ValidateScopedJWT(tokenString, expectedScope string) (CustomClaims, error)
+	ValidateScopedJWT(tokenString, expectedScope string) (ScopedValidationResult, error)
 	InitSecret(name string, shaRounds int) error
 	GetSecret(name string) (string, error)
 	UpsertSecret(name string, data string) error
@@ -70,17 +86,17 @@ type AuthServiceInterface interface {
 	GetBasicSettings() (models.BasicSettings, error)
 
 	ListGroups() ([]models.Group, error)
-	CreateGroup(name string, members []string) error
-	DeleteGroup(id uint) error
-	AddUsersToGroup(usernames []string, groupName string) error
+	CreateGroup(name string, members []string) (models.Group, error)
+	DeleteGroup(id uint) (models.Group, error)
+	SyncGroupMembers(id uint, usernames []string) (models.Group, error)
 
 	ListUsers() ([]models.User, error)
 	ListUsersBySource(source string) ([]models.User, error)
 	GetUserByID(id uint) (*models.User, error)
 	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error
-	ImportUser(username string, password string, admin bool, opts CreateUserOpts) (*models.User, error)
-	ListImportableUnixUsers() ([]models.User, error)
+	ImportUser(username string, password string, admin bool) (*models.User, error)
+	ListImportableUnixUsers() ([]ImportableUnixUser, error)
 	DeleteUser(userID uint) error
 	EditUser(userID uint, opts EditUserOpts) error
 	GetNextUID() (int, error)
@@ -88,5 +104,5 @@ type AuthServiceInterface interface {
 
 	AuthenticatePAM(username, password string) (bool, error)
 
-	GetSylveCertificate() (*tls.Config, error)
+	GetClusterTLSConfig() (*tls.Config, error)
 }

@@ -11,9 +11,9 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { Row } from '$lib/types/components/tree-table';
-	import { type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
-	import { updateCache } from '$lib/utils/http';
+	import type { APIResponse } from '$lib/types/common';
+	import { type DeviceRow, type PCIDevice, type PPTDevice } from '$lib/types/system/pci';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData } from '$lib/utils/system/pci';
 	import { resource, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -28,9 +28,13 @@
 	// svelte-ignore state_referenced_locally
 	let pptDevices = resource(
 		() => 'ppt-devices',
-		async () => {
+		async (key, _previousKey, { data: previousDevices }): Promise<PPTDevice[]> => {
 			const result = await getPPTDevices();
-			updateCache('ppt-devices', result);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
+			updateCache(key, result);
 			return result;
 		},
 		{
@@ -41,9 +45,13 @@
 	// svelte-ignore state_referenced_locally
 	let pciDevices = resource(
 		() => 'pci-devices',
-		async () => {
+		async (key, _previousKey, { data: previousDevices }): Promise<PCIDevice[]> => {
 			const result = await getPCIDevices();
-			updateCache('pci-devices', result);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return previousDevices ?? [];
+			}
+			updateCache(key, result);
 			return result;
 		},
 		{
@@ -67,7 +75,7 @@
 	let tableData = $derived(generateTableData(pciDevices.current, pptDevices.current));
 	let tableName: string = 'device-passthrough-tt';
 	let query: string = $state('');
-	let activeRow: Row[] | null = $state(null);
+	let activeRow: DeviceRow[] | null = $state(null);
 
 	let modalState = $state({
 		isOpen: false,
@@ -123,11 +131,83 @@
 		modalState.action = 'remove';
 		modalState.remove.id = id;
 	}
+
+	function responseHasError(response: APIResponse, code: string): boolean {
+		return (
+			response.error === code || (Array.isArray(response.error) && response.error.includes(code))
+		);
+	}
+
+	function removalNeedsReboot(response: APIResponse): boolean {
+		return (
+			typeof response.data === 'object' &&
+			response.data !== null &&
+			'rebootRequired' in response.data &&
+			response.data.rebootRequired === true
+		);
+	}
+
+	async function confirmPassthroughAction() {
+		let result: APIResponse;
+		let successMessage = '';
+		let errorMessage = '';
+		let shouldReload = false;
+
+		switch (modalState.action) {
+			case 'add':
+				result = await addPPTDevice(modalState.add.domain, modalState.add.deviceId);
+				successMessage = 'Device added to passthrough';
+				errorMessage = responseHasError(result, 'passthrough_device_requires_import')
+					? 'Device is already attached to ppt; import it instead'
+					: responseHasError(result, 'passthrough_device_already_managed')
+						? 'Device is already managed for passthrough'
+						: 'Failed to add device to passthrough';
+				shouldReload = true;
+				break;
+			case 'prepare':
+				result = await preparePPTDevice(modalState.add.domain, modalState.add.deviceId);
+				successMessage = 'Device prepared for passthrough. Reboot required.';
+				errorMessage = 'Failed to prepare device for passthrough';
+				break;
+			case 'import':
+				result = await importPPTDevice(modalState.add.domain, modalState.add.deviceId);
+				successMessage =
+					result.message === 'device_already_managed'
+						? 'Device is already managed for passthrough'
+						: 'Device imported into passthrough management';
+				errorMessage = responseHasError(result, 'passthrough_device_not_attached')
+					? 'Device is not currently attached to ppt'
+					: 'Failed to import device into passthrough management';
+				shouldReload = true;
+				break;
+			case 'remove':
+				result = await removePPTDevice(modalState.remove.id);
+				successMessage = removalNeedsReboot(result)
+					? 'Passthrough removed. Reboot required to restore the host driver.'
+					: 'Device removed from passthrough';
+				errorMessage = responseHasError(result, 'passthrough_device_in_use')
+					? 'Device is assigned to a VM and cannot be removed'
+					: 'Failed to remove device from passthrough';
+				shouldReload = true;
+				break;
+			default:
+				return;
+		}
+
+		if (result.status !== 'success') {
+			toast.error(errorMessage, { position: 'bottom-center' });
+			return;
+		}
+
+		if (shouldReload) reload = true;
+		toast.success(successMessage, { position: 'bottom-center' });
+		modalState.isOpen = false;
+	}
 </script>
 
 {#snippet button(type: string)}
 	{#if activeRow !== null && activeRow.length === 1}
-		{#if type === 'enable-passthrough' && !activeRow[0].name.startsWith('ppt')}
+		{#if type === 'enable-passthrough' && activeRow[0].domain === 0 && !activeRow[0].name.startsWith('ppt') && !activeRow[0].pptId}
 			<Button
 				onclick={() =>
 					activeRow && addDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
@@ -143,7 +223,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'prepare-passthrough' && !activeRow[0].name.startsWith('ppt')}
+		{#if type === 'prepare-passthrough' && activeRow[0].domain === 0 && !activeRow[0].name.startsWith('ppt')}
 			<Button
 				onclick={() =>
 					activeRow && prepareDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
@@ -158,7 +238,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'import-passthrough' && activeRow[0].name.startsWith('ppt') && !activeRow[0].pptId}
+		{#if type === 'import-passthrough' && activeRow[0].domain === 0 && activeRow[0].name.startsWith('ppt') && !activeRow[0].pptId}
 			<Button
 				onclick={() =>
 					activeRow && importDevice(activeRow[0].domain.toString(), activeRow[0].deviceId)}
@@ -174,7 +254,7 @@
 			</Button>
 		{/if}
 
-		{#if type === 'disable-passthrough' && activeRow[0].name.startsWith('ppt') && activeRow[0].pptId}
+		{#if type === 'disable-passthrough' && activeRow[0].pptId}
 			<Button
 				onclick={() => activeRow && removeDevice(Number(activeRow[0].pptId))}
 				size="sm"
@@ -216,83 +296,10 @@
 	open={modalState.isOpen}
 	names={{ parent: '', element: modalState?.title || '' }}
 	customTitle={modalState.title}
+	keepOpenOnConfirm={true}
+	loadingLabel="Applying..."
 	actions={{
-		onConfirm: async () => {
-			if (modalState.action === 'add') {
-				const result = await addPPTDevice(modalState.add.domain, modalState.add.deviceId);
-				reload = true;
-				if (result.status === 'success') {
-					toast.success('Device added to passthrough', {
-						position: 'bottom-center'
-					});
-				} else {
-					toast.error('Failed to add device to passthrough', {
-						position: 'bottom-center'
-					});
-				}
-
-				modalState.isOpen = false;
-			}
-
-			if (modalState.action === 'prepare') {
-				const result = await preparePPTDevice(modalState.add.domain, modalState.add.deviceId);
-				if (result.status === 'success') {
-					toast.success('Device prepared for passthrough. Reboot required.', {
-						position: 'bottom-center'
-					});
-				} else {
-					toast.error('Failed to prepare device for passthrough', {
-						position: 'bottom-center'
-					});
-				}
-
-				modalState.isOpen = false;
-			}
-
-			if (modalState.action === 'import') {
-				const result = await importPPTDevice(modalState.add.domain, modalState.add.deviceId);
-				reload = true;
-				if (result.status === 'success') {
-					toast.success('Device imported into passthrough management', {
-						position: 'bottom-center'
-					});
-				} else {
-					toast.error('Failed to import device into passthrough management', {
-						position: 'bottom-center'
-					});
-				}
-
-				modalState.isOpen = false;
-			}
-
-			if (modalState.action === 'remove') {
-				const result = await removePPTDevice(modalState.remove.id.toString());
-				reload = true;
-				if (result.status === 'success') {
-					toast.success('Device removed from passthrough', {
-						position: 'bottom-center'
-					});
-				} else {
-					let message = '';
-					if (
-						typeof result.error === 'string'
-							? result.error.endsWith('in_use_by_vm')
-							: Array.isArray(result.error) &&
-								result.error.some((e) => typeof e === 'string' && e.endsWith('in_use_by_vm'))
-					) {
-						message = 'Device is in use by a VM, failed to remove';
-					} else {
-						message = 'Failed to remove device from passthrough';
-					}
-
-					toast.error(message, {
-						position: 'bottom-center'
-					});
-				}
-
-				modalState.isOpen = false;
-			}
-		},
+		onConfirm: confirmPassthroughAction,
 		onCancel: () => {
 			modalState.isOpen = false;
 		}

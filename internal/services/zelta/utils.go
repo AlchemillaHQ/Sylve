@@ -148,6 +148,22 @@ func parseMovedBytesFromOutput(output string) *uint64 {
 	return &total
 }
 
+func backupEventProgressPhase(output string) string {
+	const prefix = "backup_phase:"
+	phase := ""
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		switch candidate := strings.TrimSpace(strings.TrimPrefix(line, prefix)); candidate {
+		case "finalizing":
+			phase = candidate
+		}
+	}
+	return phase
+}
+
 func zfsDatasetUsedBytes(s *Service, ctx context.Context, dataset string) (*uint64, error) {
 	path := strings.TrimSpace(dataset)
 	if path == "" {
@@ -214,7 +230,10 @@ func datasetFromZeltaEndpoint(endpoint string) string {
 		return ""
 	}
 
-	if idx := strings.LastIndex(raw, ":"); idx >= 0 && idx+1 < len(raw) {
+	if idx := strings.Index(raw, "]:"); idx >= 0 && idx+2 < len(raw) {
+		return normalizeDatasetPath(raw[idx+2:])
+	}
+	if idx := strings.Index(raw, ":"); idx >= 0 && idx+1 < len(raw) {
 		return normalizeDatasetPath(raw[idx+1:])
 	}
 

@@ -40,12 +40,18 @@ type Dataset struct {
 	VolMode       string `json:"volmode"`
 }
 
+type DatasetDeletionTarget struct {
+	Name string `json:"name"`
+	GUID string `json:"guid"`
+}
+
 type CreatePeriodicSnapshotJobRequest struct {
-	GUID      string `json:"guid" binding:"required"`
-	Prefix    string `json:"prefix" binding:"required"`
-	Recursive *bool  `json:"recursive"`
-	Interval  *int   `json:"interval" binding:"required"`
-	CronExpr  string `json:"cronExpr"`
+	GUID          string  `json:"guid" binding:"required"`
+	Prefix        string  `json:"prefix" binding:"required"`
+	Recursive     *bool   `json:"recursive"`
+	Interval      *int    `json:"interval"`
+	CronExpr      string  `json:"cronExpr"`
+	RetentionType *string `json:"retentionType"`
 
 	KeepLast   *int `json:"keepLast"`
 	MaxAgeDays *int `json:"maxAgeDays"`
@@ -58,7 +64,9 @@ type CreatePeriodicSnapshotJobRequest struct {
 }
 
 type ModifyPeriodicSnapshotRetentionRequest struct {
-	ID int `json:"id" binding:"required"`
+	Interval      *int    `json:"interval"`
+	CronExpr      *string `json:"cronExpr"`
+	RetentionType *string `json:"retentionType"`
 
 	KeepLast   *int `json:"keepLast"`
 	MaxAgeDays *int `json:"maxAgeDays"`

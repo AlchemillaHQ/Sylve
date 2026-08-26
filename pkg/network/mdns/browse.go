@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package dnssd
 
 import (
@@ -68,21 +76,15 @@ func lookupType(ctx context.Context, service string, conn MDNSConn, add AddFunc,
 
 	ch := conn.Read(readCtx)
 
-	qs := make(chan *Query)
-	go func() {
-		for _, iface := range MulticastInterfaces(ifaces...) {
-			iface := iface
-			q := &Query{msg: m, iface: iface}
-			qs <- q
+	for _, iface := range MulticastInterfaces(ifaces...) {
+		if err := conn.SendQuery(&Query{msg: m, iface: iface}); err != nil {
+			return err
 		}
-	}()
+	}
 
 	es := []*BrowseEntry{}
 	for {
 		select {
-		case q := <-qs:
-			conn.SendQuery(q)
-
 		case req := <-ch:
 			cache.UpdateFrom(req)
 			for _, srv := range cache.Services() {

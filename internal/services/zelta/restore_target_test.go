@@ -50,6 +50,61 @@ func TestNormalizeDatasetPath(t *testing.T) {
 	}
 }
 
+func TestParseRemoteDatasetEncryption(t *testing.T) {
+	tests := []struct {
+		line      string
+		dataset   string
+		encrypted bool
+	}{
+		{line: "tank/backups/plain\toff", dataset: "tank/backups/plain"},
+		{line: "tank/backups/encrypted\taes-256-gcm", dataset: "tank/backups/encrypted", encrypted: true},
+		{line: "tank/backups/legacy", dataset: "tank/backups/legacy"},
+		{line: "   "},
+	}
+
+	for _, tc := range tests {
+		dataset, encrypted := parseRemoteDatasetEncryption(tc.line)
+		if dataset != tc.dataset || encrypted != tc.encrypted {
+			t.Fatalf("line %q: got dataset=%q encrypted=%v", tc.line, dataset, encrypted)
+		}
+	}
+}
+
+func TestCanonicalRestoreFromTargetInput(t *testing.T) {
+	remote, snapshot, destination, err := CanonicalRestoreFromTargetInput(
+		"tank/backups/data",
+		"bk_j1_c1_valid",
+		"zroot/restored",
+	)
+	if err != nil {
+		t.Fatalf("canonical input: %v", err)
+	}
+	if remote != "tank/backups/data" || snapshot != "@bk_j1_c1_valid" || destination != "zroot/restored" {
+		t.Fatalf("canonical input = %q %q %q", remote, snapshot, destination)
+	}
+
+	for _, test := range []struct {
+		name        string
+		remote      string
+		snapshot    string
+		destination string
+	}{
+		{name: "absolute remote", remote: "/tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "remote traversal", remote: "tank/backups/../data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "snapshot shell", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid;touch", destination: "zroot/restored"},
+		{name: "snapshot dataset mismatch", remote: "tank/backups/data", snapshot: "tank/backups/other@bk_j1_c1_valid", destination: "zroot/restored"},
+		{name: "absolute destination", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "/zroot/restored"},
+		{name: "pool-only destination", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot"},
+		{name: "destination snapshot", remote: "tank/backups/data", snapshot: "@bk_j1_c1_valid", destination: "zroot/restored@snap"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, _, _, err := CanonicalRestoreFromTargetInput(test.remote, test.snapshot, test.destination); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestIsValidRestoreDestinationDataset(t *testing.T) {
 	if !isValidRestoreDestinationDataset("tank/data") {
 		t.Fatal("valid pool/path should pass")
@@ -162,18 +217,40 @@ func TestExtractDatasetGuestID(t *testing.T) {
 	}
 }
 
-func TestRestoreLockIDFromDestination(t *testing.T) {
-	id1 := restoreLockIDFromDestination("tank/jails/42")
-	if id1 == 0 {
-		t.Fatal("should return non-zero")
+func TestRestoreDestinationLockSerializesOverlappingTrees(t *testing.T) {
+	svc := &Service{}
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve"); !acquired || holder != "" {
+		t.Fatalf("acquire root = %v, %q", acquired, holder)
 	}
-	id2 := restoreLockIDFromDestination("tank/jails/42")
-	if id1 != id2 {
-		t.Fatal("same input should return same lock ID")
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve/jails/100"); acquired || holder != "zroot/sylve" {
+		t.Fatalf("overlapping child acquire = %v, %q", acquired, holder)
 	}
-	id3 := restoreLockIDFromDestination("tank/virtual-machines/7")
-	if id1 == id3 {
-		t.Fatal("different destination should return different lock ID")
+	if acquired, holder := svc.acquireRestoreDestination("tank/independent"); !acquired || holder != "" {
+		t.Fatalf("independent acquire = %v, %q", acquired, holder)
+	}
+
+	svc.releaseRestoreDestination("zroot/sylve")
+	if acquired, holder := svc.acquireRestoreDestination("zroot/sylve/jails/100"); !acquired || holder != "" {
+		t.Fatalf("child acquire after release = %v, %q", acquired, holder)
+	}
+}
+
+func TestRestoreWorkloadIdentityInterlocksWithDatasetBackup(t *testing.T) {
+	svc := &Service{}
+	kind, id := restoreWorkloadIdentityForDataset("zroot/sylve")
+	if kind != clusterModels.BackupJobModeDataset || id != datasetHash("zroot/sylve") {
+		t.Fatalf("dataset restore identity = %q/%d", kind, id)
+	}
+	if acquired, _ := svc.acquireWorkloadOperation(kind, id, "backup_job:1"); !acquired {
+		t.Fatal("failed to acquire backup workload guard")
+	}
+	if acquired, holder := svc.acquireWorkloadOperation(kind, id, "restore_job:2"); acquired || holder != "backup_job:1" {
+		t.Fatalf("restore conflict = %v, %q", acquired, holder)
+	}
+
+	kind, id = restoreWorkloadIdentityForDataset("zroot/sylve/jails/100")
+	if kind != clusterModels.BackupJobModeJail || id != 100 {
+		t.Fatalf("jail restore identity = %q/%d", kind, id)
 	}
 }
 
@@ -232,13 +309,16 @@ func TestCanonicalVMDatasetRoot(t *testing.T) {
 }
 
 func TestParseSnapshotInfoOutput(t *testing.T) {
-	output := "pool/data@bk_1\t1749000000\t100M\t50M\npool/data@bk_2\t1749100000\t200M\t100M\n"
+	output := "pool/data@bk_1\t1749000000\t100M\t50M\tguid-1\toff\npool/data@bk_2\t1749100000\t200M\t100M\tguid-2\taes-256-gcm\n"
 	snaps := parseSnapshotInfoOutput(output)
 	if len(snaps) != 2 {
 		t.Fatalf("expected 2 snapshots, got %d", len(snaps))
 	}
 	if snaps[0].ShortName != "@bk_1" {
 		t.Fatalf("short name: %q", snaps[0].ShortName)
+	}
+	if snaps[0].Encrypted || !snaps[1].Encrypted {
+		t.Fatalf("unexpected encryption flags: %+v", snaps)
 	}
 	if snaps[0].Dataset != "pool/data" {
 		t.Fatalf("dataset: %q", snaps[0].Dataset)

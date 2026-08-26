@@ -15,7 +15,6 @@ import (
 	"github.com/alchemillahq/gzfs"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/utils"
-	"github.com/klauspost/cpuid/v2"
 	"github.com/shirou/gopsutil/cpu"
 
 	"gorm.io/gorm"
@@ -78,10 +77,7 @@ func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 
 	nodeInfo.Hostname = hostname
 
-	nodeInfo.LogicalCores = int16(cpuid.CPU.LogicalCores)
-	if nodeInfo.LogicalCores <= 0 {
-		nodeInfo.LogicalCores = int16(1)
-	}
+	nodeInfo.LogicalCores = logicalCoreCount()
 
 	if perc, err := cpu.Percent(time.Second, false); err == nil && len(perc) > 0 {
 		nodeInfo.CPUUsage = perc[0]

@@ -11,6 +11,7 @@ package jailServiceInterfaces
 import (
 	"context"
 
+	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 )
 
@@ -26,12 +27,6 @@ type Hooks struct {
 	Prestop   HookPhase `json:"prestop"`
 	Stop      HookPhase `json:"stop"`
 	Poststop  HookPhase `json:"poststop"`
-}
-
-type JailCreationState struct {
-	CTID        uint
-	DatasetName string
-	JailDir     string
 }
 
 type CreateJailRequest struct {
@@ -54,13 +49,18 @@ type CreateJailRequest struct {
 	DHCP  *bool `json:"dhcp"`
 	SLAAC *bool `json:"slaac"`
 
-	IPv4   *int `json:"ipv4"`
-	IPv4Gw *int `json:"ipv4Gw"`
+	IPv4      *int   `json:"ipv4"`
+	IPv4Gw    *int   `json:"ipv4Gw"`
+	IPv4Raw   string `json:"ipv4Raw"`
+	IPv4GwRaw string `json:"ipv4GwRaw"`
 
-	IPv6   *int `json:"ipv6"`
-	IPv6Gw *int `json:"ipv6Gw"`
+	IPv6      *int   `json:"ipv6"`
+	IPv6Gw    *int   `json:"ipv6Gw"`
+	IPv6Raw   string `json:"ipv6Raw"`
+	IPv6GwRaw string `json:"ipv6GwRaw"`
 
-	MAC *int `json:"mac"`
+	MAC    *int   `json:"mac"`
+	MACRaw string `json:"macRaw"`
 
 	VLAN *int `json:"vlan"`
 
@@ -82,10 +82,13 @@ type CreateJailRequest struct {
 }
 
 type SimpleList struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	CTID  uint   `json:"ctId"`
-	State string `json:"state"`
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	CTID           uint   `json:"ctId"`
+	State          string `json:"state"`
+	ResourceLimits *bool  `json:"resourceLimits"`
+	Cores          int    `json:"cores"`
+	Memory         int    `json:"memory"`
 }
 
 type SimpleTemplateList struct {
@@ -104,14 +107,18 @@ type State struct {
 }
 
 type AddJailNetworkRequest struct {
-	CTID           uint   `json:"ctId" binding:"required"`
 	Name           string `json:"name" binding:"required"`
 	SwitchName     string `json:"switchName" binding:"required"`
 	MacID          *uint  `json:"macId"`
+	MACRaw         string `json:"macRaw"`
 	IP4            *uint  `json:"ip4"`
+	IP4Raw         string `json:"ip4Raw"`
 	IP4GW          *uint  `json:"ip4gw"`
+	IP4GwRaw       string `json:"ip4gwRaw"`
 	IP6            *uint  `json:"ip6"`
+	IP6Raw         string `json:"ip6Raw"`
 	IP6GW          *uint  `json:"ip6gw"`
+	IP6GwRaw       string `json:"ip6gwRaw"`
 	DHCP           *bool  `json:"dhcp"`
 	SLAAC          *bool  `json:"slaac"`
 	DefaultGateway *bool  `json:"defaultGateway"`
@@ -119,18 +126,42 @@ type AddJailNetworkRequest struct {
 }
 
 type EditJailNetworkRequest struct {
-	NetworkID      uint   `json:"networkId" binding:"required"`
-	Name           string `json:"name" binding:"required"`
-	SwitchName     string `json:"switchName" binding:"required"`
-	MacID          *uint  `json:"macId"`
-	IP4            *uint  `json:"ip4"`
-	IP4GW          *uint  `json:"ip4gw"`
-	IP6            *uint  `json:"ip6"`
-	IP6GW          *uint  `json:"ip6gw"`
-	DHCP           *bool  `json:"dhcp"`
-	SLAAC          *bool  `json:"slaac"`
-	DefaultGateway *bool  `json:"defaultGateway"`
-	VLAN           *int   `json:"vlan"`
+	Name           *string `json:"name"`
+	SwitchName     *string `json:"switchName"`
+	MacID          *uint   `json:"macId"`
+	MACRaw         *string `json:"macRaw"`
+	IP4            *uint   `json:"ip4"`
+	IP4Raw         *string `json:"ip4Raw"`
+	IP4GW          *uint   `json:"ip4gw"`
+	IP4GwRaw       *string `json:"ip4gwRaw"`
+	IP6            *uint   `json:"ip6"`
+	IP6Raw         *string `json:"ip6Raw"`
+	IP6GW          *uint   `json:"ip6gw"`
+	IP6GwRaw       *string `json:"ip6gwRaw"`
+	DHCP           *bool   `json:"dhcp"`
+	SLAAC          *bool   `json:"slaac"`
+	DefaultGateway *bool   `json:"defaultGateway"`
+	VLAN           *int    `json:"vlan"`
+}
+
+type JailNetworkInheritanceResult struct {
+	CTID              uint   `json:"ctId"`
+	InheritIPv4       bool   `json:"inheritIPv4"`
+	InheritIPv6       bool   `json:"inheritIPv6"`
+	RemovedNetworkIDs []uint `json:"removedNetworkIds"`
+}
+
+type JailHardwareResult struct {
+	CTID           uint  `json:"ctId"`
+	ResourceLimits bool  `json:"resourceLimits"`
+	Memory         int64 `json:"memory"`
+	Cores          int   `json:"cores"`
+	CPUSet         []int `json:"cpuSet"`
+}
+
+type DeleteJailResult struct {
+	Warnings         []string `json:"warnings"`
+	RetainedDatasets []string `json:"retainedDatasets"`
 }
 
 type JailServiceInterface interface {
@@ -139,12 +170,16 @@ type JailServiceInterface interface {
 	IsJailRunning(ctid uint) (bool, error)
 	GetJailCTIDFromDataset(dataset string) (uint, error)
 	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
+	DeleteJailWithWarnings(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) (DeleteJailResult, error)
+	RetireJailLocalMetadata(ctx context.Context, ctId uint, deleteMacs bool) error
 	StartStatsMonitoring(ctx context.Context)
 
 	StoreJailUsage() error
 	PruneOrphanedJailStats() error
+	GetJailUsage(ctId uint, step db.GFSStep) ([]jailModels.JailStats, error)
+	GetJailUsageBootstrap(ctId uint) (db.StatsBootstrap[jailModels.JailStats], error)
 
 	ListBootstraps(ctx context.Context, pool string) ([]BootstrapEntry, error)
-	CreateBootstrap(ctx context.Context, req BootstrapRequest) error
-	DeleteBootstrap(ctx context.Context, pool, name string) error
+	CreateBootstrap(ctx context.Context, req BootstrapRequest) (BootstrapCreateResult, error)
+	DeleteBootstrap(ctx context.Context, pool, name string) (BootstrapDeleteResult, error)
 }

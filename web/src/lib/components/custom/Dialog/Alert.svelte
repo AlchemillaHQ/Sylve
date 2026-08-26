@@ -1,5 +1,6 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
+	import { onMount } from 'svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -9,13 +10,14 @@
 			element: string;
 		};
 		actions: {
-			onConfirm: () => void;
+			onConfirm: () => void | Promise<void>;
 			onCancel: () => void;
 		};
 		customTitle?: string;
 		confirmLabel?: string;
 		loadingLabel?: string;
 		loading?: boolean;
+		keepOpenOnConfirm?: boolean;
 	}
 
 	let {
@@ -25,12 +27,50 @@
 		customTitle,
 		confirmLabel = 'Continue',
 		loadingLabel = 'Processing...',
-		loading = false
+		loading = false,
+		keepOpenOnConfirm = false
 	}: Props = $props();
+
+	let confirming = $state(false);
+	let mounted = false;
+	let busy = $derived(loading || confirming);
+
+	onMount(() => {
+		mounted = true;
+		return () => {
+			mounted = false;
+		};
+	});
+
+	async function handleConfirm(event: MouseEvent) {
+		if (busy) return;
+		if (keepOpenOnConfirm) event.preventDefault();
+		confirming = true;
+		try {
+			await actions.onConfirm();
+		} finally {
+			if (mounted) confirming = false;
+		}
+	}
+
+	function handleCancel() {
+		if (busy) return;
+		actions.onCancel();
+	}
+
+	function handleEscapeKeydown(event: KeyboardEvent) {
+		if (busy) event.preventDefault();
+	}
 </script>
 
 <AlertDialog.Root bind:open>
-	<AlertDialog.Content onInteractOutside={(e) => e.preventDefault()} class="p-5">
+	<AlertDialog.Content
+		onInteractOutside={(e) => e.preventDefault()}
+		onEscapeKeydown={handleEscapeKeydown}
+		aria-busy={busy}
+		class="z-[80] p-5"
+		overlayClass="z-[80]"
+	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>
 				<SpanWithIcon
@@ -54,9 +94,9 @@
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
-			<AlertDialog.Cancel onclick={actions.onCancel}>Cancel</AlertDialog.Cancel>
-			<AlertDialog.Action onclick={actions.onConfirm} disabled={loading}>
-				{#if loading}
+			<AlertDialog.Cancel onclick={handleCancel} disabled={busy}>Cancel</AlertDialog.Cancel>
+			<AlertDialog.Action onclick={handleConfirm} disabled={busy}>
+				{#if busy}
 					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
 					{loadingLabel}
 				{:else}

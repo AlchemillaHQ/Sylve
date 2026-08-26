@@ -25,7 +25,7 @@ export function draggable(node: HTMLElement, data: string) {
 		// }, 0);
 	}
 
-	function handle_dragend(e: DragEvent) {
+	function handle_dragend(_e: DragEvent) {
 		// Reset any visual changes
 		// node.style.opacity = '1';
 	}
@@ -70,7 +70,7 @@ export function dropzone(
 		}
 	}
 
-	function handle_dragleave(e: DragEvent) {
+	function handle_dragleave(_e: DragEvent) {
 		dragCounter--;
 
 		if (dragCounter === 0) {

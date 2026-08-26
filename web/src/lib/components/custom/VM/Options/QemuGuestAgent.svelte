@@ -7,35 +7,45 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
 
-	// svelte-ignore state_referenced_locally
-	let qemuGuestAgent: boolean = $state(vm.qemuGuestAgent);
+	let qemuGuestAgent: boolean = $state(untrack(() => vm.qemuGuestAgent));
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-		const response = await modifyQemuGuestAgent(vm.rid, qemuGuestAgent);
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify QEMU Guest Agent setting', {
-				position: 'bottom-center'
-			});
-			return;
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifyQemuGuestAgent(vm.rid, qemuGuestAgent, { hostname: node });
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify QEMU Guest Agent setting', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No QEMU Guest Agent changes needed'
+					: 'Modified QEMU Guest Agent setting',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified QEMU Guest Agent setting', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -71,11 +81,19 @@
 			label="Enable QEMU Guest Agent"
 			bind:checked={qemuGuestAgent}
 			classes="flex items-center gap-2"
+			disabled={saving}
 		></CustomCheckbox>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">Save</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

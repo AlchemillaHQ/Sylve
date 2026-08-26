@@ -21,21 +21,13 @@ import (
 	"sync"
 	"syscall"
 
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/chzyer/readline"
+	libvirt "github.com/alchemillahq/sylve/internal/services/libvirt"
 )
 
-const ConsoleSocketPath = "/var/run/sylve-console.sock"
-
-type socketRequest struct {
-	Command string `json:"command"`
-}
-
-type socketResponse struct {
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
-	Close  bool   `json:"close,omitempty"`
-}
+type socketRequest = consoleprotocol.Request
+type socketResponse = consoleprotocol.Response
 
 type SocketServer struct {
 	path string
@@ -44,8 +36,8 @@ type SocketServer struct {
 	closeOnce sync.Once
 }
 
-func StartSocketServer(ctx *Context) (*SocketServer, error) {
-	return startSocketServer(ctx, ConsoleSocketPath)
+func StartSocketServer(ctx *Context, socketPath string) (*SocketServer, error) {
+	return startSocketServer(ctx, socketPath)
 }
 
 func startSocketServer(ctx *Context, socketPath string) (*SocketServer, error) {
@@ -137,6 +129,173 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 }
 
 func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
+	if req.Operation != "" {
+		switch req.Operation {
+		case consoleprotocol.OperationStatus:
+			return processStatusSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailList:
+			return processJailListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailGet:
+			return processJailGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailCreate:
+			return processJailCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailAction:
+			return processJailActionSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailDelete:
+			return processJailDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailNetworks:
+			return processJailNetworksSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationJailRemoveNetwork:
+			return processJailRemoveNetworkSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationBootstrapList:
+			return processBootstrapListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationBootstrapCreate:
+			return processBootstrapCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationBootstrapDelete:
+			return processBootstrapDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMList:
+			return processVMListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMGet:
+			return processVMGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMCreate:
+			return processVMCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMAction:
+			return processVMActionSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMDelete:
+			return processVMDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMPurge:
+			return processVMPurgeSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMNetworks:
+			return processVMNetworksSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMNetworkAttach:
+			return processVMNetworkAttachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMNetworkUpdate:
+			return processVMNetworkUpdateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMNetworkDetach:
+			return processVMNetworkDetachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageList:
+			return processVMStorageListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageAttach:
+			return processVMStorageAttachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageUpdate:
+			return processVMStorageUpdateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMStorageDetach:
+			return processVMStorageDetachSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigCPU:
+			return processVMConfigCPUSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigName:
+			return processVMConfigTextSocketRequest(ctx, req.Payload, "name", func(service *libvirt.Service, rid uint, value string) error {
+				return updateVMNameAndBackupMetadata(ctx, service, rid, value)
+			})
+		case consoleprotocol.OperationVMConfigDescription:
+			return processVMConfigTextSocketRequest(ctx, req.Payload, "description", func(service *libvirt.Service, rid uint, value string) error {
+				return service.UpdateDescription(rid, value)
+			})
+		case consoleprotocol.OperationVMConfigMemory:
+			return processVMConfigMemorySocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigVNC:
+			return processVMConfigVNCSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigSerial:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "serial", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifySerial(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigPCI:
+			return processVMConfigPCISocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigAutostart:
+			return processVMConfigAutostartSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigClock:
+			return processVMConfigClockSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigShutdown:
+			return processVMConfigShutdownSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigBootROM:
+			return processVMConfigBootROMSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigCloudInit:
+			return processVMConfigCloudInitSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigBhyveOptions:
+			return processVMConfigBhyveOptionsSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMConfigUnknownMSR:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "unknown-msr", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyIgnoreUMSRs(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigQGA:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "qga", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyQemuGuestAgent(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigWOL:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "wol", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyWakeOnLan(rid, enabled)
+			})
+		case consoleprotocol.OperationVMConfigTPM:
+			return processVMConfigBoolSocketRequest(ctx, req.Payload, "tpm", func(service *libvirt.Service, rid uint, enabled bool) error {
+				return service.ModifyTPMEmulation(rid, enabled)
+			})
+		case consoleprotocol.OperationVMAccessVNC:
+			return processVMAccessVNCSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMAccessSerial:
+			return processVMAccessSerialSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotList:
+			return processVMSnapshotListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotCreate:
+			return processVMSnapshotCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotRollback:
+			return processVMSnapshotRollbackSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMSnapshotDelete:
+			return processVMSnapshotDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateList:
+			return processVMTemplateListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateGet:
+			return processVMTemplateGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateConvert:
+			return processVMTemplateConvertSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateCreate:
+			return processVMTemplateCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMTemplateDelete:
+			return processVMTemplateDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMQGASend:
+			return processVMQGASendSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationVMQGAInfo:
+			return processVMQGAInfoSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationSwitchList:
+			return processSwitchListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationSwitchCreate:
+			return processSwitchCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationSwitchDelete:
+			return processSwitchDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationSwitchEdit:
+			return processSwitchEditSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationObjectList:
+			return processObjectListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationObjectCreate:
+			return processObjectCreateSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationObjectEdit:
+			return processObjectEditSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationObjectDelete:
+			return processObjectDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDownloadList:
+			return processDownloadListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDownloadStart:
+			return processDownloadStartSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDownloadDelete:
+			return processDownloadDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationNoteAdd:
+			return processNoteAddSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationNoteList:
+			return processNoteListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationNoteGet:
+			return processNoteGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationNoteDelete:
+			return processNoteDeleteSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationTaskListActive:
+			return processTaskActiveSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationTaskListRecent:
+			return processTaskRecentSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationTaskGet:
+			return processTaskGetSocketRequest(ctx, req.Payload)
+		default:
+			return socketResponse{Error: "unknown_operation"}
+		}
+	}
+
 	if strings.TrimSpace(req.Command) == "" {
 		return socketResponse{Error: "command_required"}
 	}
@@ -148,19 +307,48 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 
 	var out bytes.Buffer
 	localCtx.Out = &out
+	localCtx.pendingSerialConsole = nil
 
 	shouldContinue := ExecuteLine(&localCtx, req.Command)
 	return socketResponse{
-		Output: out.String(),
-		Close:  !shouldContinue,
+		Output:        out.String(),
+		Close:         !shouldContinue,
+		SerialConsole: localCtx.takeSerialConsole(),
 	}
 }
 
-func TryAttachSocketConsole() (bool, error) {
-	return tryAttachSocketConsole(ConsoleSocketPath)
+func decodeOperationPayload(payload json.RawMessage, target any) error {
+	if len(payload) == 0 {
+		return fmt.Errorf("payload_required")
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("invalid_payload: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("invalid_payload: contains more than one JSON value")
+		}
+		return fmt.Errorf("invalid_payload: %w", err)
+	}
+
+	return nil
 }
 
-func tryAttachSocketConsole(socketPath string) (bool, error) {
+func operationSuccess(jsonMode bool, result any, text string) socketResponse {
+	if jsonMode {
+		return socketResponse{Output: mustJSON(result) + "\n"}
+	}
+	return socketResponse{Output: text + "\n"}
+}
+
+func TryAttachSocketConsole(socketPath, historyPath string) (bool, error) {
+	return tryAttachSocketConsole(socketPath, historyPath)
+}
+
+func tryAttachSocketConsole(socketPath, historyPath string) (bool, error) {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		if isSocketUnavailable(err) {
@@ -170,70 +358,24 @@ func tryAttachSocketConsole(socketPath string) (bool, error) {
 	}
 	defer conn.Close()
 
-	if err := runRemoteConsole(conn, os.Stdin, os.Stdout); err != nil {
+	if err := runRemoteConsoleTUI(conn, socketPath, historyPath); err != nil {
 		return true, err
 	}
 
 	return true, nil
 }
 
-func runRemoteConsole(conn net.Conn, in io.ReadCloser, out io.Writer) error {
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:          "sylve> ",
-		HistoryFile:     replHistoryFile,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-		Stdin:           in,
-		Stdout:          out,
-		Stderr:          out,
-	})
-	if err != nil {
-		return fmt.Errorf("repl_client_init_failed: %w", err)
-	}
-	defer rl.Close()
-
-	fmt.Fprintln(out, "Connected to Sylve daemon REPL. Type `help`.")
-
-	enc := json.NewEncoder(conn)
-	dec := json.NewDecoder(conn)
-
-	for {
-		line, err := rl.Readline()
-		if err != nil {
-			return nil
-		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		if err := enc.Encode(socketRequest{Command: line}); err != nil {
-			return fmt.Errorf("repl_client_send_failed: %w", err)
-		}
-
-		var resp socketResponse
-		if err := dec.Decode(&resp); err != nil {
-			return fmt.Errorf("repl_client_read_failed: %w", err)
-		}
-
-		if resp.Error != "" {
-			fmt.Fprintf(out, "Error: %s\n", resp.Error)
-		}
-
-		if resp.Output != "" {
-			fmt.Fprint(out, resp.Output)
-		}
-
-		if resp.Close {
-			return nil
-		}
-	}
-}
-
 func prepareSocketPath(socketPath string) error {
-	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
+	if strings.TrimSpace(socketPath) == "" {
+		return fmt.Errorf("repl_socket_path_required")
+	}
+
+	directory := filepath.Dir(socketPath)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return fmt.Errorf("repl_socket_dir_create_failed: %w", err)
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return fmt.Errorf("repl_socket_dir_chmod_failed: %w", err)
 	}
 
 	info, err := os.Lstat(socketPath)

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import {
 		createVMSnapshot,
 		deleteVMSnapshot,
@@ -14,43 +15,65 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { reload as apiReload } from '$lib/stores/api.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { VMSnapshot } from '$lib/types/vm/snapshots';
+	import { escapeHTML } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { dateToAgo } from '$lib/utils/time';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 	import { resource, watch } from 'runed';
+	import { onMount } from 'svelte';
 	import type { CellComponent } from 'tabulator-tables';
 	import { toast } from 'svelte-sonner';
 	import { SvelteMap } from 'svelte/reactivity';
 
 	interface Data {
 		rid: number;
+		node: string;
 		snapshots: VMSnapshot[];
+		snapshotsError: APIResponse | null;
 	}
 
 	let { data }: { data: Data } = $props();
 
-	// svelte-ignore state_referenced_locally
+	const initialSnapshots = () => data.snapshots;
+	let lastSnapshots = initialSnapshots();
+
 	const snapshots = resource(
-		() => `vm-${data.rid}-snapshots`,
+		() => 'vm-' + data.rid + '-snapshots',
 		async (key) => {
-			const result = await listVMSnapshots(data.rid);
-			updateCache(key, result);
+			const result = await listVMSnapshots(data.rid, {
+				hostname: data.node,
+				preserveErrors: true
+			});
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastSnapshots;
+			}
+
+			lastSnapshots = result;
+			await updateCache(key, result, data.node);
 			return result;
 		},
 		{
-			initialValue: data.snapshots
+			initialValue: initialSnapshots()
 		}
 	);
 
-	let reload = $state(false);
+	onMount(() => {
+		if (data.snapshotsError) handleAPIError(data.snapshotsError);
+	});
+
+	let refetchSnapshots = $state(false);
 	watch(
-		() => reload,
+		() => refetchSnapshots,
 		(value) => {
 			if (!value) return;
 			snapshots.refetch();
-			reload = false;
+			refetchSnapshots = false;
 		}
 	);
 
@@ -143,6 +166,7 @@
 	let rollbackConfirmOpen = $state(false);
 	let deleteConfirmOpen = $state(false);
 	let rollbacking = $state(false);
+	let deleting = $state(false);
 
 	async function onCreateSnapshot() {
 		const name = createModal.name.trim();
@@ -151,21 +175,36 @@
 			toast.error('Snapshot name is required', { position: 'bottom-center' });
 			return;
 		}
+		if (name.length > 128) {
+			toast.error('Snapshot name must be 128 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+		if (description.length > 4096) {
+			toast.error('Snapshot description must be 4096 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 
 		createModal.creating = true;
 		try {
-			const response = await createVMSnapshot(data.rid, name, description);
-			if (response.status === 'success') {
-				toast.success('Snapshot created', { position: 'bottom-center' });
-				createModal.open = false;
-				createModal.name = '';
-				createModal.description = '';
-				reload = true;
-				return;
-			} else {
+			const response = await createVMSnapshot(data.rid, name, description, {
+				hostname: data.node,
+				preserveErrors: true
+			});
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to create snapshot', { position: 'bottom-center' });
+				return;
 			}
+
+			toast.success('Snapshot created', { position: 'bottom-center' });
+			createModal.open = false;
+			createModal.name = '';
+			createModal.description = '';
+			refetchSnapshots = true;
 		} catch {
 			toast.error('Failed to create snapshot', { position: 'bottom-center' });
 		} finally {
@@ -177,17 +216,30 @@
 		if (!selectedSnapshot || rollbacking) return;
 		rollbacking = true;
 		try {
-			const response = await rollbackVMSnapshot(data.rid, selectedSnapshot.id);
-			if (response.status === 'success') {
-				toast.success('Snapshot rollback started', { position: 'bottom-center' });
-				rollbackConfirmOpen = false;
-				activeRows = null;
-				reload = true;
-				return;
-			} else {
+			const response = await rollbackVMSnapshot(data.rid, selectedSnapshot.id, {
+				hostname: data.node,
+				preserveErrors: true
+			});
+			if (isAPIResponse(response)) {
 				handleAPIError(response);
 				toast.error('Failed to rollback snapshot', { position: 'bottom-center' });
+				return;
 			}
+
+			if (response.warnings.length > 0) {
+				toast.warning('Snapshot rolled back with warnings', {
+					position: 'bottom-center',
+					description: response.warnings.join('\n')
+				});
+			} else {
+				toast.success('Snapshot rolled back', { position: 'bottom-center' });
+			}
+			rollbackConfirmOpen = false;
+			activeRows = null;
+			await removeStaleCacheByRID(data.rid, data.node);
+			apiReload.leftPanel = true;
+			await invalidateAll();
+			refetchSnapshots = true;
 		} catch {
 			toast.error('Failed to rollback snapshot', { position: 'bottom-center' });
 		} finally {
@@ -196,14 +248,18 @@
 	}
 
 	async function onDeleteSnapshot() {
-		if (!selectedSnapshot) return;
+		if (!selectedSnapshot || deleting) return;
+		deleting = true;
 		try {
-			const response = await deleteVMSnapshot(data.rid, selectedSnapshot.id);
+			const response = await deleteVMSnapshot(data.rid, selectedSnapshot.id, {
+				hostname: data.node,
+				preserveErrors: true
+			});
 			if (response.status === 'success') {
 				toast.success('Snapshot deleted', { position: 'bottom-center' });
 				deleteConfirmOpen = false;
 				activeRows = null;
-				reload = true;
+				refetchSnapshots = true;
 				return;
 			}
 
@@ -211,6 +267,8 @@
 			toast.error('Failed to delete snapshot', { position: 'bottom-center' });
 		} catch {
 			toast.error('Failed to delete snapshot', { position: 'bottom-center' });
+		} finally {
+			deleting = false;
 		}
 	}
 </script>
@@ -223,6 +281,7 @@
 			onclick={() => {
 				createModal.open = true;
 			}}
+			disabled={createModal.creating || rollbacking || deleting}
 			size="sm"
 			class="h-6"
 		>
@@ -236,6 +295,7 @@
 				}}
 				size="sm"
 				variant="outline"
+				disabled={rollbacking || deleting}
 				class="h-6.5"
 			>
 				<SpanWithIcon
@@ -252,6 +312,7 @@
 				}}
 				size="sm"
 				variant="outline"
+				disabled={rollbacking || deleting}
 				class="h-6.5"
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
@@ -272,7 +333,8 @@
 
 <Dialog.Root bind:open={createModal.open}>
 	<Dialog.Content
-		class="max-h-[90vh] min-w-1/3 overflow-y-auto p-5"
+		class="min-w-1/3"
+		showCloseButton={true}
 		onClose={() => {
 			createModal.open = false;
 		}}
@@ -295,6 +357,7 @@
 					id="snapshot-name"
 					placeholder="Clean Slate"
 					bind:value={createModal.name}
+					maxlength={128}
 					disabled={createModal.creating}
 				/>
 			</div>
@@ -305,22 +368,18 @@
 					id="snapshot-description"
 					placeholder="Optional note about why this snapshot was taken"
 					bind:value={createModal.description}
+					maxlength={4096}
 					rows={5}
 					disabled={createModal.creating}
 				/>
 			</div>
+			<p class="text-muted-foreground text-xs">
+				VM snapshots are crash-consistent, do not quiesce the guest, and are captured sequentially
+				when storage spans multiple pools.
+			</p>
 		</div>
 
 		<Dialog.Footer>
-			<Button
-				variant="outline"
-				disabled={createModal.creating}
-				onclick={() => {
-					createModal.open = false;
-				}}
-			>
-				Cancel
-			</Button>
 			<Button disabled={createModal.creating} onclick={onCreateSnapshot}>
 				{createModal.creating ? 'Creating...' : 'Create Snapshot'}
 			</Button>
@@ -332,9 +391,9 @@
 	open={rollbackConfirmOpen}
 	loading={rollbacking}
 	loadingLabel="Rolling Back"
-	confirmLabel="Continue"
+	confirmLabel="Rollback"
 	customTitle={selectedSnapshot
-		? `Rollback to <b>${selectedSnapshot.name}</b>? This will destroy snapshots created after it.`
+		? `Rollback VM to <b>${escapeHTML(selectedSnapshot.name)}</b>? If the VM is running, it will be stopped. Every VM ZFS dataset will be rolled back, permanently destroying all newer ZFS snapshots under those datasets—including snapshots not listed here. The saved configuration will be restored and the VM will then be restarted if it was previously running.`
 		: ''}
 	actions={{
 		onConfirm: onRollbackSnapshot,
@@ -346,8 +405,11 @@
 
 <AlertDialog
 	open={deleteConfirmOpen}
+	loading={deleting}
+	loadingLabel="Deleting"
+	confirmLabel="Delete"
 	customTitle={selectedSnapshot
-		? `Delete snapshot <b>${selectedSnapshot.name}</b>? This action cannot be undone.`
+		? `Delete snapshot <b>${escapeHTML(selectedSnapshot.name)}</b>? This removes it from every VM ZFS root and cannot be undone.`
 		: ''}
 	actions={{
 		onConfirm: onDeleteSnapshot,

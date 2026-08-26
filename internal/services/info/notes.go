@@ -12,12 +12,19 @@ import (
 	"errors"
 
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"gorm.io/gorm"
 )
+
+// ErrNoteNotFound indicates that the requested note does not exist.
+var ErrNoteNotFound = errors.New("note_not_found")
 
 func (s *Service) GetNoteByID(id int) (infoModels.Note, error) {
 	var note infoModels.Note
 	err := s.DB.First(&note, id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return infoModels.Note{}, ErrNoteNotFound
+		}
 		return infoModels.Note{}, err
 	}
 	return note, nil
@@ -38,10 +45,13 @@ func (s *Service) AddNote(title, note string) (infoModels.Note, error) {
 
 func (s *Service) DeleteNoteByID(id int) error {
 	result := s.DB.Delete(&infoModels.Note{}, id)
-	if result.RowsAffected == 0 {
-		return errors.New("record not found")
+	if result.Error != nil {
+		return result.Error
 	}
-	return result.Error
+	if result.RowsAffected == 0 {
+		return ErrNoteNotFound
+	}
+	return nil
 }
 
 func (s *Service) BulkDeleteNotes(ids []int) error {
@@ -64,5 +74,15 @@ func (s *Service) BulkDeleteNotes(ids []int) error {
 }
 
 func (s *Service) UpdateNoteByID(id int, title, note string) error {
-	return s.DB.Model(&infoModels.Note{}).Where("id = ?", id).Updates(infoModels.Note{Title: title, Content: note}).Error
+	result := s.DB.Model(&infoModels.Note{}).
+		Where("id = ?", id).
+		Updates(infoModels.Note{Title: title, Content: note})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNoteNotFound
+	}
+
+	return nil
 }

@@ -25,35 +25,39 @@ const (
 
 // BackupTarget represents a remote ZFS host reachable via SSH for Zelta replication.
 type BackupTarget struct {
-	ID               uint        `gorm:"primaryKey" json:"id"`
-	Name             string      `gorm:"uniqueIndex;not null" json:"name"`
-	SSHHost          string      `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
-	SSHPort          int         `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
-	SSHKeyPath       string      `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // path to private key on host filesystem
-	SSHKey           string      `gorm:"column:ssh_key;type:text" json:"-"`
-	BackupRoot       string      `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
-	CreateBackupRoot bool        `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
-	Description      string      `json:"description"`
-	Enabled          bool        `json:"enabled"`
-	CreatedAt        time.Time   `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt        time.Time   `gorm:"autoUpdateTime" json:"updatedAt"`
-	Jobs             []BackupJob `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	ID               uint                              `gorm:"primaryKey" json:"id"`
+	Name             string                            `gorm:"uniqueIndex;not null" json:"name"`
+	SSHHost          string                            `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
+	SSHPort          int                               `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
+	SSHKeyPath       string                            `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // legacy/local execution path; managed paths are derived per node
+	SSHKey           string                            `gorm:"column:ssh_key;type:text" json:"-"`
+	BackupRoot       string                            `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
+	CreateBackupRoot bool                              `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
+	Description      string                            `json:"description"`
+	Enabled          bool                              `json:"enabled"`
+	CreatedAt        time.Time                         `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt        time.Time                         `gorm:"autoUpdateTime" json:"updatedAt"`
+	Jobs             []BackupJob                       `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Readiness        []BackupTargetNodeReadinessStatus `json:"readiness,omitempty" gorm:"-"`
 }
 
 type BackupTargetReplicationPayload struct {
-	ID               uint   `json:"id"`
-	Name             string `json:"name"`
-	SSHHost          string `json:"sshHost"`
-	SSHPort          int    `json:"sshPort"`
-	SSHKeyPath       string `json:"sshKeyPath"`
-	SSHKey           string `json:"sshKey"`
-	BackupRoot       string `json:"backupRoot"`
-	CreateBackupRoot bool   `json:"createBackupRoot"`
-	Description      string `json:"description"`
-	Enabled          bool   `json:"enabled"`
+	ID               uint      `json:"id"`
+	Name             string    `json:"name"`
+	SSHHost          string    `json:"sshHost"`
+	SSHPort          int       `json:"sshPort"`
+	SSHKeyPath       string    `json:"sshKeyPath"`
+	SSHKey           string    `json:"sshKey"`
+	BackupRoot       string    `json:"backupRoot"`
+	CreateBackupRoot bool      `json:"createBackupRoot"`
+	Description      string    `json:"description"`
+	Enabled          bool      `json:"enabled"`
+	CreatedAt        time.Time `json:"createdAt,omitempty"`
+	UpdatedAt        time.Time `json:"updatedAt,omitempty"`
 }
 
 func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicationPayload {
+	target = normalizeBackupTarget(target)
 	return BackupTargetReplicationPayload{
 		ID:               target.ID,
 		Name:             target.Name,
@@ -65,6 +69,8 @@ func BackupTargetToReplicationPayload(target BackupTarget) BackupTargetReplicati
 		CreateBackupRoot: target.CreateBackupRoot,
 		Description:      target.Description,
 		Enabled:          target.Enabled,
+		CreatedAt:        target.CreatedAt,
+		UpdatedAt:        target.UpdatedAt,
 	}
 }
 
@@ -80,6 +86,8 @@ func (p BackupTargetReplicationPayload) ToModel() BackupTarget {
 		CreateBackupRoot: p.CreateBackupRoot,
 		Description:      p.Description,
 		Enabled:          p.Enabled,
+		CreatedAt:        p.CreatedAt,
+		UpdatedAt:        p.UpdatedAt,
 	}
 }
 
@@ -94,39 +102,43 @@ func (t *BackupTarget) ZeltaEndpoint(suffix string) string {
 
 // BackupJob represents a scheduled Zelta replication job.
 type BackupJob struct {
-	ID               uint         `gorm:"primaryKey" json:"id"`
-	Name             string       `gorm:"not null" json:"name"`
-	TargetID         uint         `gorm:"index;not null" json:"targetId"`
-	Target           BackupTarget `json:"target" gorm:"foreignKey:TargetID;references:ID"`
-	RunnerNodeID     string       `gorm:"index" json:"runnerNodeId"`
-	Mode             string       `gorm:"default:dataset;index" json:"mode"` // "dataset" or "jail"
-	SourceDataset    string       `json:"sourceDataset"`                     // for mode=dataset
-	JailRootDataset  string       `json:"jailRootDataset"`                   // for mode=jail
-	FriendlySrc      string       `gorm:"column:friendly_src" json:"friendlySrc"`
-	DestSuffix       string       `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
-	PruneKeepLast    int          `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
-	PruneTarget      bool         `gorm:"column:prune_target;default:false" json:"pruneTarget"`
-	StopBeforeBackup bool         `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
-	Recursive        bool         `gorm:"column:recursive;default:false" json:"recursive"`
-	Encrypted        bool         `gorm:"column:encrypted;default:false" json:"encrypted"`
-	CronExpr         string       `gorm:"not null" json:"cronExpr"`
-	Enabled          bool         `gorm:"index" json:"enabled"`
-	LastRunAt        *time.Time   `json:"lastRunAt"`
-	NextRunAt        *time.Time   `gorm:"index" json:"nextRunAt"`
-	LastStatus       string       `gorm:"index" json:"lastStatus"`
-	LastError        string       `gorm:"type:text" json:"lastError"`
-	CreatedAt        time.Time    `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt        time.Time    `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID                     uint                             `gorm:"primaryKey" json:"id"`
+	Name                   string                           `gorm:"not null" json:"name"`
+	TargetID               uint                             `gorm:"index;not null" json:"targetId"`
+	Target                 BackupTarget                     `json:"target" gorm:"foreignKey:TargetID;references:ID"`
+	TargetReadinessReceipt *BackupTargetNodeReadinessUpdate `gorm:"-" json:"-"`
+	RunnerNodeID           string                           `gorm:"index" json:"runnerNodeId"`
+	Mode                   string                           `gorm:"default:dataset;index" json:"mode"` // "dataset" or "jail"
+	SourceDataset          string                           `json:"sourceDataset"`                     // for mode=dataset
+	JailRootDataset        string                           `json:"jailRootDataset"`                   // for mode=jail
+	FriendlySrc            string                           `gorm:"column:friendly_src" json:"friendlySrc"`
+	DestSuffix             string                           `gorm:"column:dest_suffix" json:"destSuffix"` // appended to target's BackupRoot
+	PruneKeepLast          int                              `gorm:"column:prune_keep_last;default:0" json:"pruneKeepLast"`
+	PruneTarget            bool                             `gorm:"column:prune_target;default:false" json:"pruneTarget"`
+	StopBeforeBackup       bool                             `gorm:"column:stop_before_backup;default:false" json:"stopBeforeBackup"`
+	Recursive              bool                             `gorm:"column:recursive;default:false" json:"recursive"`
+	Encrypted              bool                             `gorm:"column:encrypted;default:false" json:"encrypted"`
+	CronExpr               string                           `gorm:"not null" json:"cronExpr"`
+	Enabled                bool                             `gorm:"index" json:"enabled"`
+	LastRunAt              *time.Time                       `json:"lastRunAt"`
+	NextRunAt              *time.Time                       `gorm:"index" json:"nextRunAt"`
+	LastStatus             string                           `gorm:"index" json:"lastStatus"`
+	LastError              string                           `gorm:"type:text" json:"lastError"`
+	ScheduleRevision       uint64                           `gorm:"not null;default:0" json:"scheduleRevision"`
+	CreatedAt              time.Time                        `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt              time.Time                        `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 // BackupEvent records the result of a Zelta backup run.
 type BackupEvent struct {
 	ID             uint       `gorm:"primaryKey" json:"id"`
 	JobID          *uint      `gorm:"index" json:"jobId"`
+	OperationID    *string    `gorm:"uniqueIndex" json:"-"`
+	AuditRecordID  *uint      `gorm:"index" json:"-"`
 	SourceDataset  string     `json:"sourceDataset"`
 	TargetEndpoint string     `json:"targetEndpoint"`
 	Mode           string     `json:"mode"`
-	Status         string     `gorm:"index" json:"status"` // "running", "success", "failed"
+	Status         string     `gorm:"index" json:"status"` // "queued", "running", "success", "failed", "interrupted"
 	Error          string     `gorm:"type:text" json:"error"`
 	Output         string     `gorm:"type:text" json:"output"` // zelta output
 	StartedAt      time.Time  `gorm:"index" json:"startedAt"`
@@ -135,7 +147,14 @@ type BackupEvent struct {
 	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
+func UpsertBackupTargetTxn(db *gorm.DB, target *BackupTarget) error {
+	return upsertBackupTarget(db, target)
+}
+
 func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
+	if db == nil {
+		return fmt.Errorf("backup_target_database_unavailable")
+	}
 	if target.ID == 0 {
 		return fmt.Errorf("backup_target_id_required")
 	}
@@ -158,7 +177,7 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 		}
 		hasByName := queryByName.RowsAffected > 0
 
-		now := time.Now()
+		now := replicatedCommandTime(tx)
 		updates := map[string]any{
 			"name":               target.Name,
 			"ssh_host":           target.SSHHost,
@@ -172,6 +191,14 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 			"updated_at":         now,
 		}
 
+		invalidateReadiness := func(existing BackupTarget) error {
+			if BackupTargetConnectivityFingerprint(&existing) == BackupTargetConnectivityFingerprint(target) ||
+				!tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+				return nil
+			}
+			return tx.Where("target_id = ?", target.ID).Delete(&BackupTargetNodeReadiness{}).Error
+		}
+
 		switch {
 		case hasByID:
 			if hasByName && existingByName.ID != existingByID.ID {
@@ -181,8 +208,10 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 			if backupTargetsEquivalent(existingByID, *target) {
 				return nil
 			}
-
-			return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
+			if err := tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			return invalidateReadiness(existingByID)
 
 		case hasByName:
 			if existingByName.ID != target.ID {
@@ -192,8 +221,10 @@ func upsertBackupTarget(db *gorm.DB, target *BackupTarget) error {
 			if backupTargetsEquivalent(existingByName, *target) {
 				return nil
 			}
-
-			return tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error
+			if err := tx.Model(&BackupTarget{}).Where("id = ?", target.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			return invalidateReadiness(existingByName)
 
 		default:
 			return tx.Create(target).Error
@@ -205,6 +236,12 @@ func normalizeBackupTarget(target BackupTarget) BackupTarget {
 	target.Name = strings.TrimSpace(target.Name)
 	target.SSHHost = strings.TrimSpace(target.SSHHost)
 	target.SSHKeyPath = strings.TrimSpace(target.SSHKeyPath)
+	target.SSHKey = strings.TrimSpace(target.SSHKey)
+	if target.SSHKey != "" {
+		// Managed key paths are derived independently on every node and must
+		// never become part of replicated target state.
+		target.SSHKeyPath = ""
+	}
 	target.BackupRoot = strings.TrimSpace(target.BackupRoot)
 	target.Description = strings.TrimSpace(target.Description)
 
@@ -254,4 +291,70 @@ func upsertBackupJob(db *gorm.DB, job *BackupJob) error {
 			"updated_at",
 		}),
 	}).Create(job).Error
+}
+
+// InsertBackupJobTxn is the standalone create guard. Clustered creates retain
+// the legacy upsert FSM action for mixed-version and log replay compatibility;
+// their IDs are collision-checked while the leader's create lock is held.
+func InsertBackupJobTxn(db *gorm.DB, job *BackupJob) error {
+	if db == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_id_required")
+	}
+
+	result := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(job)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("backup_job_id_conflict")
+	}
+	return nil
+}
+
+// ApplyBackupJobUpdateTxn applies an already validated ordinary job update.
+// Callers own the surrounding transaction so a missing job also rolls back
+// target-readiness and repair-state changes in the same command.
+func ApplyBackupJobUpdateTxn(db *gorm.DB, job *BackupJob) error {
+	if db == nil {
+		return fmt.Errorf("backup_job_database_unavailable")
+	}
+	if job == nil || job.ID == 0 {
+		return fmt.Errorf("backup_job_id_required")
+	}
+
+	result := db.Model(&BackupJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+		"name":               job.Name,
+		"target_id":          job.TargetID,
+		"runner_node_id":     job.RunnerNodeID,
+		"mode":               job.Mode,
+		"source_dataset":     job.SourceDataset,
+		"jail_root_dataset":  job.JailRootDataset,
+		"friendly_src":       job.FriendlySrc,
+		"dest_suffix":        job.DestSuffix,
+		"prune_keep_last":    job.PruneKeepLast,
+		"prune_target":       job.PruneTarget,
+		"stop_before_backup": job.StopBeforeBackup,
+		"recursive":          job.Recursive,
+		"encrypted":          job.Encrypted,
+		"cron_expr":          job.CronExpr,
+		"enabled":            job.Enabled,
+		"next_run_at":        job.NextRunAt,
+		"schedule_revision":  gorm.Expr("schedule_revision + ?", 1),
+	})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("backup_job_not_found")
+	}
+
+	// A normal update has already passed runner-local validation and therefore
+	// acts as the explicit repair acknowledgement.
+	return ClearBackupJobRepairRequiredTxn(db, job.ID)
 }

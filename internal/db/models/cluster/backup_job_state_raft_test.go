@@ -62,6 +62,76 @@ func TestFSMDispatcherBackupJobStateCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("legacy update without encrypted preserves value", func(t *testing.T) {
+		raw, _ := json.Marshal(map[string]any{
+			"jobId": 1, "lastRunAt": time.Now().UTC(),
+			"lastStatus": "failed", "lastError": "legacy runner",
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_state", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("legacy update failed: %v", err)
+		}
+
+		var job BackupJob
+		db.First(&job, 1)
+		if !job.Encrypted {
+			t.Fatal("legacy update cleared encrypted state")
+		}
+	})
+
+	t.Run("explicit false updates encrypted", func(t *testing.T) {
+		lastRun := time.Now().UTC()
+		raw, _ := json.Marshal(map[string]any{
+			"version": 1, "jobId": 1, "lastRunAt": lastRun,
+			"lastStatus": "success", "encrypted": false,
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_state", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("explicit unencrypted update failed: %v", err)
+		}
+
+		var job BackupJob
+		db.First(&job, 1)
+		if job.Encrypted {
+			t.Fatal("explicit encrypted=false was not applied")
+		}
+
+		raw, _ = json.Marshal(map[string]any{
+			"version": 1, "jobId": 1, "lastRunAt": lastRun,
+			"lastStatus": "success", "encrypted": true,
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_state", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("restore encrypted state: %v", err)
+		}
+	})
+
+	t.Run("update next run only", func(t *testing.T) {
+		nextRun := time.Now().UTC().Add(48 * time.Hour).Truncate(time.Second)
+		raw, _ := json.Marshal(map[string]any{
+			"jobId":       1,
+			"nextRunAt":   nextRun,
+			"nextRunOnly": true,
+		})
+		if err := applyFSMCommand(t, fsm, Command{
+			Type: "backup_job_state", Action: "update", Data: raw,
+		}); err != nil {
+			t.Fatalf("next-run-only update failed: %v", err)
+		}
+
+		var job BackupJob
+		db.First(&job, 1)
+		if job.NextRunAt == nil || !job.NextRunAt.Equal(nextRun) {
+			t.Fatalf("next_run_at mismatch: %v", job.NextRunAt)
+		}
+		if job.LastStatus != "success" || job.LastRunAt == nil {
+			t.Fatalf("next-run-only update changed runtime result: %+v", job)
+		}
+	})
+
 	t.Run("update status=success", func(t *testing.T) {
 		raw, _ := json.Marshal(map[string]any{"jobId": 1, "lastStatus": "success"})
 		if err := applyFSMCommand(t, fsm, Command{

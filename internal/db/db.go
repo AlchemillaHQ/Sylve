@@ -10,11 +10,17 @@ package db
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -25,6 +31,7 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -34,16 +41,26 @@ import (
 	gormLogger "gorm.io/gorm/logger"
 )
 
+func databaseGormLogger(level gormLogger.LogLevel) gormLogger.Interface {
+	return gormLogger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), gormLogger.Config{
+		SlowThreshold:             200 * time.Millisecond,
+		LogLevel:                  level,
+		IgnoreRecordNotFoundError: true,
+		ParameterizedQueries:      true,
+		Colorful:                  true,
+	})
+}
+
 func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	var logMode gormLogger.Interface
 
 	switch cfg.Environment {
 	case internal.Development:
-		logMode = gormLogger.Default.LogMode(gormLogger.Warn)
+		logMode = databaseGormLogger(gormLogger.Warn)
 	case internal.Debug:
-		logMode = gormLogger.Default.LogMode(gormLogger.Info)
+		logMode = databaseGormLogger(gormLogger.Info)
 	case internal.Production:
-		logMode = gormLogger.Default.LogMode(gormLogger.Silent)
+		logMode = databaseGormLogger(gormLogger.Silent)
 	}
 
 	ormConfig := &gorm.Config{
@@ -54,25 +71,42 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	var db *gorm.DB
 	var err error
+	databasePath := ""
 
 	if isTest {
 		db, err = gorm.Open(sqlite.Open(":memory:"), ormConfig)
 	} else {
-		db, err = gorm.Open(sqlite.Open(cfg.DataPath+"/sylve.db"), ormConfig)
+		databasePath = filepath.Join(cfg.DataPath, "sylve.db")
+		db, err = gorm.Open(sqlite.Open(databasePath), ormConfig)
 	}
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error connecting to database: %v", err)
+	}
+	if databasePath != "" {
+		if err := hardenDatabaseFiles(databasePath); err != nil {
+			logger.L.Fatal().Msgf("Error securing database files: %v", err)
+		}
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
 		logger.L.Fatal().Msgf("Error getting sql database handle: %v", err)
 	}
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 
-	db.Exec("PRAGMA busy_timeout = 5000")
-	db.Exec("PRAGMA journal_mode = WAL")
-	db.Exec("PRAGMA synchronous = NORMAL")
+	if err := configureSQLite(db); err != nil {
+		if databasePath != "" {
+			_ = hardenDatabaseFiles(databasePath)
+		}
+		logger.L.Fatal().Msgf("Error configuring database: %v", err)
+	}
+	if databasePath != "" {
+		if err := hardenDatabaseFiles(databasePath); err != nil {
+			logger.L.Fatal().Msgf("Error securing database sidecar files: %v", err)
+		}
+	}
 
 	// Pre-migration fixups use the migrations tracking table, so ensure it
 	// exists before running any pre-migration logic.
@@ -88,6 +122,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartSelfTestSchedule{},
+		&models.DiskSmartSelfTestEvent{},
+		&models.DiskSmartSelfTestRun{},
+		&models.DiskSmartSelfTestSchedulerLease{},
 
 		&models.System{},
 		&models.User{},
@@ -97,6 +135,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.WebAuthnCredential{},
 		&models.WebAuthnChallenge{},
 		&models.SystemSecrets{},
+		&models.Certificate{},
+		&models.ManagedCertificateOrder{},
+		&models.CertificateSettings{},
 
 		&vmModels.Storage{},
 		&vmModels.Network{},
@@ -117,7 +158,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},
-		&models.NetlinkEvent{},
+		&models.ZFSCacheInvalidation{},
 		&models.SystemTunable{},
 
 		&networkModels.Object{},
@@ -148,6 +189,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&utilitiesModels.CloudInitTemplate{},
 		&utilitiesModels.DownloadedFile{},
 		&utilitiesModels.Downloads{},
+		&utilitiesModels.Upload{},
 		&utilitiesModels.WoL{},
 
 		&sambaModels.SambaSettings{},
@@ -155,6 +197,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&mdnsModels.MdnsSettings{},
 		&mdnsModels.MdnsRecord{},
+
+		&dynamicDNSModels.Entry{},
 
 		&iscsiModels.ISCSIInitiator{},
 		&iscsiModels.ISCSITarget{},
@@ -166,13 +210,24 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.ClusterOption{},
 		&clusterModels.ClusterNote{},
 		&clusterModels.BackupTarget{},
+		&clusterModels.BackupTargetProvisionOperation{},
+		&clusterModels.BackupTargetNodeReadiness{},
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
+		&clusterModels.ReplicationRunOperation{},
+		&clusterModels.ScheduledRunReceipt{},
+		&clusterModels.ScheduledRunResultOutbox{},
+		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupJobRunnerRebind{},
+		&clusterModels.BackupJobRunnerRebindItem{},
 		&clusterModels.BackupEvent{},
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
+		&clusterModels.ReplicationGuestOperation{},
+		&clusterModels.ReplicationGuestOperationReceipt{},
 		&clusterModels.ReplicationEvent{},
-		&clusterModels.ReplicationReceipt{},
+		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.ClusterSSHIdentity{},
 		&clusterModels.EncryptionKey{},
 		&taskModels.GuestLifecycleTask{},
@@ -183,9 +238,8 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)
 	}
-
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	replicationguard.MarkPolicySchemaReady(db)
+	replicationguard.MarkGuestOperationSchemaReady(db)
 
 	err = setupInitUsers(db, cfg)
 	if err != nil {
@@ -232,81 +286,159 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		}
 	}
 
-	db.Model(&models.BasicSettings{}).
-		Where("id = ? AND (SELECT COUNT(*) FROM basic_settings) = 1", 1).
-		Update("restarted", true)
-
 	return db
 }
 
-func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
-	const username = "admin"
-	adminCfg := cfg.Admin
+func configureSQLite(db *gorm.DB) error {
+	pragmas := []string{
+		"PRAGMA busy_timeout = 5000",
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA synchronous = NORMAL",
+	}
+	for _, pragma := range pragmas {
+		if err := db.Exec(pragma).Error; err != nil {
+			return fmt.Errorf("execute %q: %w", pragma, err)
+		}
+	}
+	return nil
+}
 
+func hardenDatabaseFiles(databasePath string) error {
+	for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+		path := databasePath + suffix
+		if err := os.Chmod(path, 0600); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("chmod %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func setupInitUsers(db *gorm.DB, cfg *internal.SylveConfig) error {
 	// Import root user if it exists as a Unix user but not in the DB.
 	setupRootUser(db)
+	return setupConfiguredAdmin(db, cfg.Admin)
+}
+
+func setupConfiguredAdmin(db *gorm.DB, adminCfg internal.BaseConfigAdmin) error {
+	return setupConfiguredAdminWithHasher(db, adminCfg, utils.BcryptPasswordHasher{})
+}
+
+type passwordHasher interface {
+	Hash(password string) (string, error)
+	Verify(password, encodedHash string) bool
+}
+
+func setupConfiguredAdminWithHasher(
+	db *gorm.DB,
+	adminCfg internal.BaseConfigAdmin,
+	hasher passwordHasher,
+) error {
+	const username = "admin"
 
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 
 	if result.Error != nil {
-		if result.Error == gorm.ErrRecordNotFound {
-			hashed, err := utils.HashPassword(adminCfg.Password)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			hashed, err := hasher.Hash(adminCfg.Password)
 			if err != nil {
-				logger.L.Error().Msgf("Failed to hash password for admin user: %v", err)
-				return err
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
+				return fmt.Errorf("hash initial admin password: %w", err)
 			}
 
 			newUser := models.User{
 				Username: username,
+				Email:    adminCfg.Email,
 				Password: hashed,
 				Admin:    true,
 				Source:   "local",
 			}
 			if err := db.Create(&newUser).Error; err != nil {
-				logger.L.Error().Msgf("Failed to create admin user: %v", err)
-				return err
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_user_create_failed")
+				return fmt.Errorf("create initial admin user: %w", err)
 			}
-			logger.L.Info().Msg("Admin user created")
+			logger.L.Info().
+				Str("username", username).
+				Str("outcome", "created").
+				Msg("admin_password_configuration")
+			return nil
 		} else {
-			logger.L.Error().Msgf("Error querying admin user: %v", result.Error)
-			return result.Error
+			logger.L.Error().Err(result.Error).Str("username", username).Msg("admin_user_lookup_failed")
+			return fmt.Errorf("query initial admin user: %w", result.Error)
 		}
-	} else {
-		updates := map[string]any{}
-		needsUpdate := false
+	}
 
-		if user.Email != adminCfg.Email {
-			updates["email"] = adminCfg.Email
-			needsUpdate = true
+	updates := map[string]any{}
+	if user.Email != adminCfg.Email {
+		updates["email"] = adminCfg.Email
+	}
+	if !user.Admin {
+		updates["admin"] = true
+	}
+
+	passwordOutcome := "matches_stored"
+	passwordLogLevel := "debug"
+	if adminCfg.ForcePasswordReset {
+		if adminCfg.Password == "" {
+			logger.L.Error().
+				Str("username", username).
+				Str("outcome", "rejected_empty_password").
+				Msg("admin_password_configuration")
+			return fmt.Errorf("admin force password reset requires a non-empty configured password")
 		}
 
-		if !user.Admin {
-			updates["admin"] = true
-			needsUpdate = true
-		}
-
-		if adminCfg.ForcePasswordReset && adminCfg.Password != "" {
-			if !utils.CheckPasswordHash(adminCfg.Password, user.Password) {
-				hashed, err := utils.HashPassword(adminCfg.Password)
-				if err != nil {
-					logger.L.Error().Msgf("Failed to hash password for admin update: %v", err)
-					return err
-				}
-				updates["password"] = hashed
-				needsUpdate = true
-				logger.L.Warn().Msg("Admin password forcefully reset from config")
+		passwordLogLevel = "info"
+		if hasher.Verify(adminCfg.Password, user.Password) {
+			passwordOutcome = "force_reset_already_matched"
+		} else {
+			hashed, err := hasher.Hash(adminCfg.Password)
+			if err != nil {
+				logger.L.Error().Err(err).Str("username", username).Msg("admin_password_hash_failed")
+				return fmt.Errorf("hash admin reset password: %w", err)
 			}
+			updates["password"] = hashed
+			passwordOutcome = "force_reset_applied"
 		}
+	} else if adminCfg.Password == "" {
+		passwordOutcome = "configured_password_empty"
+	} else if !hasher.Verify(adminCfg.Password, user.Password) {
+		passwordOutcome = "ignored_force_reset_disabled"
+		passwordLogLevel = "warn"
+	}
 
-		if !needsUpdate {
-			logger.L.Debug().Msg("Admin user up to date, no changes needed")
-		} else if err := db.Model(&user).Updates(updates).Error; err != nil {
-			logger.L.Error().Msgf("Failed to update admin user: %v", err)
-			return err
-		} else {
-			logger.L.Info().Msg("Admin user updated")
+	if len(updates) > 0 {
+		if err := db.Model(&user).Updates(updates).Error; err != nil {
+			logger.L.Error().Err(err).Str("username", username).Msg("admin_user_update_failed")
+			return fmt.Errorf("update initial admin user: %w", err)
 		}
+	}
+
+	if adminCfg.ForcePasswordReset {
+		var persisted models.User
+		if err := db.Select("password").Where("username = ?", username).First(&persisted).Error; err != nil {
+			logger.L.Error().Err(err).Str("username", username).Msg("admin_password_verification_failed")
+			return fmt.Errorf("reload admin password after force reset: %w", err)
+		}
+		if !hasher.Verify(adminCfg.Password, persisted.Password) {
+			logger.L.Error().Str("username", username).Msg("admin_password_verification_failed")
+			return fmt.Errorf("persisted admin password did not verify after force reset")
+		}
+	}
+
+	passwordLog := logger.L.Debug()
+	switch passwordLogLevel {
+	case "info":
+		passwordLog = logger.L.Info()
+	case "warn":
+		passwordLog = logger.L.Warn()
+	}
+	passwordLog.
+		Str("username", username).
+		Str("outcome", passwordOutcome).
+		Msg("admin_password_configuration")
+
+	if len(updates) > 0 {
+		logger.L.Info().Str("username", username).Msg("admin_user_updated")
 	}
 
 	return nil
@@ -393,37 +525,6 @@ func setupWheelGroup(db *gorm.DB, rootUser *models.User) {
 	}
 }
 
-func ensureUserInSylveG(db *gorm.DB, username string) {
-	var grp models.Group
-	if err := db.Where("name = ?", "sylve_g").First(&grp).Error; err != nil {
-		return
-	}
-
-	var dbUser models.User
-	if err := db.Where("username = ?", username).First(&dbUser).Error; err != nil {
-		return
-	}
-
-	if err := system.AddUserToGroup(username, "sylve_g"); err != nil {
-		logger.L.Warn().Msgf("Failed to add %s to sylve_g unix group: %v", username, err)
-	}
-
-	var cnt int64
-	if err := db.Table("user_groups").
-		Where("user_id = ? AND group_id = ?", dbUser.ID, grp.ID).
-		Count(&cnt).Error; err != nil {
-		logger.L.Warn().Msgf("Failed to check sylve_g membership for %s: %v", username, err)
-		return
-	}
-	if cnt > 0 {
-		return
-	}
-
-	if err := db.Model(&grp).Association("Users").Append(&dbUser); err != nil {
-		logger.L.Warn().Msgf("Failed to associate %s with sylve_g: %v", username, err)
-	}
-}
-
 func initClusterRecord(db *gorm.DB) error {
 	var keepID uint
 
@@ -505,8 +606,12 @@ func initFirewallConfig(db *gorm.DB) error {
 	}
 
 	firewallConfig := &networkModels.FirewallAdvancedSettings{
-		PreRules:  "",
-		PostRules: "",
+		PreRules:          "",
+		PreNatDecl:        "",
+		PostNatDecl:       "",
+		PreTrafficAnchor:  "",
+		PostTrafficAnchor: "",
+		PostRules:         "",
 	}
 
 	if err := db.Create(firewallConfig).Error; err != nil {

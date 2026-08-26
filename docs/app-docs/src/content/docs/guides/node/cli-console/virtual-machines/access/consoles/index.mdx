@@ -1,0 +1,142 @@
+---
+title: Consoles
+description: Inspect VNC access and connect to a VM serial console with the Sylve CLI and interactive console.
+---
+
+import AsciinemaPlayer from '../../../../../../../../components/AsciinemaPlayer.astro';
+
+Sylve exposes safe VNC connection information and provides a preflighted local serial connection. Neither command returns stored VNC passwords.
+
+## Inspect VNC access
+
+Inspect VNC configuration without opening a client:
+
+```bash
+doas sylve vms access vnc --rid 301 --json
+```
+
+When VM `301` was powered off, Loki returned:
+
+```json
+{
+  "rid": 301,
+  "name": "docs-alpine",
+  "enabled": true,
+  "available": false,
+  "domainState": "shut off",
+  "bindAddress": "127.0.0.1",
+  "port": 5901,
+  "endpoint": "127.0.0.1:5901",
+  "resolution": "1024x768",
+  "wait": false,
+  "passwordConfigured": false,
+  "unavailableReason": "vm_not_running"
+}
+```
+
+After the start task completed, the same command reported `"available": true`, `"domainState": "running"`, and an empty unavailable reason.
+
+The response deliberately reports `passwordConfigured` rather than returning the password. Replace or clear VNC authentication through `vms config vnc`.
+
+### Reach a loopback VNC endpoint
+
+VM `301` binds VNC to the node's loopback interface. Forward the port over SSH from an administrator workstation:
+
+```bash
+ssh -L 5901:127.0.0.1:5901 root@your-sylve-node
+```
+
+While that SSH session remains open, connect the local VNC client to:
+
+```text
+127.0.0.1:5901
+```
+
+:::caution[Do not expose unauthenticated VNC]
+The documentation VM reports `passwordConfigured: false`, so its loopback bind is important. Before binding VNC to a network-facing address, set a password and apply appropriate firewall restrictions.
+:::
+
+## Check serial readiness
+
+JSON mode performs daemon-side preflight without launching a terminal client:
+
+```bash
+doas sylve vms access serial \
+  --rid 301 \
+  --baud 115200 \
+  --json
+```
+
+A powered-off VM fails with a nonzero exit status:
+
+```json
+{"error":"vm_console_requires_running_vm"}
+```
+
+After VM `301` started, preflight returned:
+
+```json
+{
+  "rid": 301,
+  "name": "docs-alpine",
+  "baudRate": "115200",
+  "devicePath": "/dev/nmdm301B",
+  "domainState": "running",
+  "available": true
+}
+```
+
+Preflight checks that:
+
+- Serial is enabled in the VM configuration.
+- The domain is in a supported running state.
+- The node owns the VM's replication lease.
+- `/dev/nmdm<RID>B` exists.
+- Baud is an integer from 50 through 4000000.
+
+## Open the serial console
+
+Omit `--json` to run the local `cu` client after preflight:
+
+```bash
+doas sylve vms access serial --rid 301 --baud 115200
+```
+
+The bounded connection test on Loki printed:
+
+```text
+RID:  301
+Name:  docs-alpine
+Available:  true
+Domain state:  running
+Device:  /dev/nmdm301B
+Baud:  115200
+Connected
+```
+
+The command must run on the Sylve node because the nmdm device is local. When connected through SSH, run `sylve vms access serial` inside the SSH session.
+
+To exit `cu`, enter its disconnect sequence at the beginning of a new line:
+
+```text
+~.
+```
+
+The guest must configure its bootloader and operating system for serial output. A successful host preflight confirms the device path, not that the guest will print a login prompt.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-access-consoles.cast"
+  title="Real running-state VNC information, serial readiness, and a bounded cu connection on Loki."
+/>
+
+## Use the interactive console
+
+Use positional RIDs inside `sylve --console`:
+
+```text
+vms access vnc 301 --json
+vms access serial 301 --baud 115200 --json
+vms access serial 301 --baud 115200
+```
+
+The non-JSON serial form temporarily hands the terminal to `cu`. Exiting `cu` returns to the Sylve prompt.

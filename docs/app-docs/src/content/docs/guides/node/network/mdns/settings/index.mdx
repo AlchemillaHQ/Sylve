@@ -1,0 +1,38 @@
+---
+title: Settings
+description: Control the hostname and network interfaces used by Sylve's mDNS responder.
+---
+
+import overview from "./mdns-settings-overview.png";
+import update from "./mdns-settings-update.png";
+
+Multicast DNS, or mDNS, lets devices on the local network discover services without a conventional DNS server. Sylve advertises its mDNS records only while the **mDNS** system service is enabled. Enable it from **System Settings → Services** before configuring this page.
+
+The settings are shared by every user-created mDNS record and by records managed for Samba. They control where Sylve advertises, not which services it advertises. Add those on [Records](/guides/node/network/mdns/records/).
+
+<img
+  src={overview.src}
+  alt="mDNS Settings table showing igb0 and igb1 as selected interfaces and zeus as the configured hostname"
+/>
+
+## Update mDNS settings
+
+Choose **Update** to change the responder configuration. Sylve validates the selection, rebuilds the responder, then saves the change. If the new responder cannot start, the previous active configuration is restored.
+
+<img
+  src={update.src}
+  alt="Update mDNS Settings dialog with igb0 and igb1 selected and zeus entered as the hostname"
+/>
+
+| Field | What it controls |
+| --- | --- |
+| **Interfaces** | Limits advertisements to the selected network interfaces. Leave it empty to advertise through all available interfaces. A selected interface must still exist when the settings are saved. |
+| **Hostname** | The hostname used by the responder. Leave it empty to use the node's system hostname. A custom hostname may contain DNS labels, numbers, and hyphens, with a maximum length of 253 characters. |
+
+## Choosing interfaces
+
+Use a specific LAN-facing interface when mDNS must stay within one network. Leaving the setting empty is useful on a small single-LAN node, but can expose service discovery on every connected network. Interface-specific records can further narrow an individual advertisement; see [Records](/guides/node/network/mdns/records/).
+
+:::note
+Changing the system hostname affects mDNS only when **Hostname** is empty here. A hostname set on this page takes precedence.
+:::

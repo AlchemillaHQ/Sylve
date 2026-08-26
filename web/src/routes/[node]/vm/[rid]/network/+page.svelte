@@ -1,115 +1,112 @@
 <script lang="ts">
-	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
 	import { detachNetwork } from '$lib/api/vm/network';
-	import { getVmById } from '$lib/api/vm/vm';
+	import { getVmByIdResult } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Network from '$lib/components/custom/VM/Hardware/Network.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type ManualSwitch,
+		type StandardSwitch,
+		type SwitchList
+	} from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { escapeHTML } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
-	import { resource, useInterval, watch } from 'runed';
-	import { storage } from '$lib';
-	import { getContext } from 'svelte';
+	import { resource, watch } from 'runed';
+	import { getContext, onMount, untrack } from 'svelte';
 
 	interface Data {
 		vm: VM;
-		interfaces: Iface[];
 		switches: SwitchList;
 		rid: number;
+		node: string;
 		networkObjects: NetworkObject[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
-
+	const initialData = untrack(() => data);
 	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
 
-	// svelte-ignore state_referenced_locally
-	const interfaces = resource(
-		() => 'networkInterfaces',
-		async (key) => {
-			const result = await getInterfaces();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.interfaces
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
+	const lastSwitchesByNode: Record<string, SwitchList> = Object.create(null);
+	lastSwitchesByNode[initialData.node] = initialData.switches;
 	const switches = resource(
-		() => 'networkSwitches',
-		async (key) => {
-			const result = await getSwitches();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.switches
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
-	const vm = resource(
-		() => `vm-${data.rid}`,
-		async (key) => {
-			const result = await getVmById(data.rid, 'rid');
-			updateCache(key, result);
-			return result;
-		},
-		{
-			lazy: true,
-			initialValue: data.vm
-		}
-	);
-
-	// svelte-ignore state_referenced_locally
-
-	const networkObjects = resource(
-		() => 'networkObjects',
-		async (key) => {
-			const result = await getNetworkObjects();
-			updateCache(key, result);
-			return result;
-		},
-		{
-			initialValue: data.networkObjects
-		}
-	);
-
-	useInterval(() => 1000, {
-		callback: () => {
-			if (storage.visible) {
-				interfaces.refetch();
-				switches.refetch();
-				vm.refetch();
-				networkObjects.refetch();
+		() => data.node,
+		async (node) => {
+			const result = await getSwitches(node);
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastSwitchesByNode[node] ?? emptySwitchList();
 			}
-		}
-	});
-
-	watch(
-		() => storage.visible,
-		() => {
-			interfaces.refetch();
-			switches.refetch();
-			vm.refetch();
-			networkObjects.refetch();
+			lastSwitchesByNode[node] = result;
+			await updateCache('network-switches', result, node);
+			return result;
+		},
+		{
+			initialValue: initialData.switches
 		}
 	);
+
+	const vmIdentity = (node: string, rid: number) => `${node}\u0000${rid}`;
+	const lastVMByIdentity: Record<string, VM> = Object.create(null);
+	lastVMByIdentity[vmIdentity(initialData.node, initialData.rid)] = initialData.vm;
+	const vm = resource(
+		() => [data.node, data.rid] as const,
+		async ([node, rid]) => {
+			const result = await getVmByIdResult(rid, { hostname: node });
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastVMByIdentity[vmIdentity(node, rid)] ?? data.vm;
+			}
+			lastVMByIdentity[vmIdentity(node, rid)] = result;
+			await updateCache(`vm-${rid}`, result, node);
+			return result;
+		},
+		{
+			initialValue: initialData.vm
+		}
+	);
+
+	const lastNetworkObjectsByNode: Record<string, NetworkObject[]> = Object.create(null);
+	lastNetworkObjectsByNode[initialData.node] = initialData.networkObjects;
+	const networkObjects = resource(
+		() => data.node,
+		async (node) => {
+			const result = await getNetworkObjects(node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastNetworkObjectsByNode[node] ?? [];
+			}
+			lastNetworkObjectsByNode[node] = result;
+			await updateCache('network-objects', result, node);
+			return result;
+		},
+		{
+			initialValue: initialData.networkObjects
+		}
+	);
+
+	function refreshData() {
+		vm.refetch();
+		switches.refetch();
+		networkObjects.refetch();
+	}
+
+	onMount(() => {
+		for (const loadError of data.loadErrors) handleAPIError(loadError);
+	});
 
 	let isLifecycleActive = $derived(!!domain.current?.pendingAction);
 	let isDomainShutoff = $derived(
@@ -140,96 +137,90 @@
 				title: 'Emulation',
 				formatter(cell: CellComponent) {
 					const value = cell.getValue();
-					if (value === 'virtio') {
-						return 'VirtIO';
-					} else if (value === 'e1000') {
-						return 'E1000';
-					}
-
+					if (value === 'virtio') return 'VirtIO';
+					if (value === 'e1000') return 'E1000';
 					return value;
 				}
 			}
 		];
 
-		if (vm.current) {
-			for (const network of vm.current.networks) {
-				let sw: StandardSwitch | ManualSwitch | null = null;
-				if (network.switchType === 'standard') {
-					sw = switches.current.standard?.find((s) => s.id === network.switchId) ?? null;
-				} else if (network.switchType === 'manual') {
-					sw = switches.current.manual?.find((s) => s.id === network.switchId) ?? null;
-				}
-
-				if (sw) {
-					if (Array.isArray(networkObjects.current)) {
-						const macObj = networkObjects.current.find((obj) => obj.id === network.macId);
-						const mac =
-							macObj && macObj.entries && macObj.entries.length > 0
-								? macObj.entries[0].value
-								: undefined;
-
-						const row: Row = {
-							id: network.id,
-							name: sw.name || 'Unknown Switch',
-							mac: macObj ? `${macObj.name} (${mac})` : 'Unknown MAC',
-							macObject: macObj || null,
-							emulation: network.emulation || 'Unknown',
-							enabled: network.enable
-						};
-
-						rows.push(row);
-					}
-				}
+		for (const network of vm.current.networks) {
+			let sw: StandardSwitch | ManualSwitch | null = null;
+			if (network.switchType === 'standard') {
+				sw =
+					switches.current.standard.find((candidate) => candidate.id === network.switchId) ?? null;
+			} else if (network.switchType === 'manual') {
+				sw = switches.current.manual.find((candidate) => candidate.id === network.switchId) ?? null;
 			}
+
+			const macObject =
+				networkObjects.current.find((object) => object.id === network.macId) ?? null;
+			const macAddress = macObject?.entries?.[0]?.value || network.mac || '';
+			rows.push({
+				id: network.id,
+				name: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
+				mac: macObject
+					? `${macObject.name} (${macAddress || 'No address'})`
+					: macAddress || 'Unknown MAC',
+				macObject,
+				emulation: network.emulation || 'Unknown',
+				enabled: network.enable
+			});
 		}
 
 		return { rows, columns };
 	}
 
 	let table = $derived(generateTableData());
-	let activeRows: Row[] | null = $state(null);
+	let activeRows: Row[] = $state([]);
 	let query = $state('');
-	let usable = $derived.by(() => {
-		return [
-			...(switches.current.standard ?? []).map((s) => ({
-				...s,
-				uid: `standard-${s.id}`
-			})),
-			...(switches.current.manual ?? []).map((s) => ({
-				...s,
-				uid: `manual-${s.id}`
-			}))
-		];
-	});
+	let usable = $derived([
+		...switches.current.standard.map((networkSwitch) => ({
+			...networkSwitch,
+			uid: `standard-${networkSwitch.id}`
+		})),
+		...switches.current.manual.map((networkSwitch) => ({
+			...networkSwitch,
+			uid: `manual-${networkSwitch.id}`
+		}))
+	]);
 
-	let options = {
-		attach: {
-			open: false
-		},
-		detach: {
-			open: false,
-			id: null as number | null,
-			name: ''
-		},
-		edit: {
-			open: false,
-			id: null as number | null
+	function createPageOptions() {
+		return {
+			attach: { open: false },
+			detach: {
+				open: false,
+				id: null as number | null,
+				name: ''
+			},
+			edit: {
+				open: false,
+				id: null as number | null
+			}
+		};
+	}
+
+	let properties = $state(createPageOptions());
+	let reload = $state(false);
+
+	watch(
+		() => reload,
+		(value) => {
+			if (!value) return;
+			refreshData();
+			reload = false;
 		}
-	};
-
-	let properties = $state(options);
+	);
 </script>
 
 {#snippet button(type: string)}
 	{#if isDomainShutoff}
-		{#if type === 'detach' && activeRows && activeRows.length === 1}
+		{#if type === 'detach' && activeRows.length === 1}
 			<Button
 				onclick={() => {
-					if (activeRows) {
-						properties.detach.open = true;
-						properties.detach.id = activeRows[0].id as number;
-						properties.detach.name = activeRows[0].name as string;
-					}
+					properties.detach.open = true;
+					properties.detach.id = activeRows[0].id as number;
+					properties.detach.name = activeRows[0].name as string;
 				}}
 				size="sm"
 				variant="outline"
@@ -239,13 +230,11 @@
 			</Button>
 		{/if}
 
-		{#if type === 'edit' && activeRows && activeRows.length === 1}
+		{#if type === 'edit' && activeRows.length === 1}
 			<Button
 				onclick={() => {
-					if (activeRows) {
-						properties.edit.open = true;
-						properties.edit.id = activeRows[0].id as number;
-					}
+					properties.edit.open = true;
+					properties.edit.id = activeRows[0].id as number;
 				}}
 				size="sm"
 				variant="outline"
@@ -261,17 +250,13 @@
 	<div class="flex h-10 w-full items-center gap-2 border p-2">
 		<Button
 			onclick={() => {
-				if (vm.current) {
-					if (usable?.length === 0) {
-						toast.error('No available/unused switches to attach to', {
-							position: 'bottom-center'
-						});
-
-						return;
-					}
-
-					properties.attach.open = true;
+				if (usable.length === 0) {
+					toast.error('No network switches are available to attach', {
+						position: 'bottom-center'
+					});
+					return;
 				}
+				properties.attach.open = true;
 			}}
 			size="sm"
 			class="h-6"
@@ -298,47 +283,48 @@
 
 <AlertDialog
 	open={properties.detach.open}
-	customTitle={`This will detach the VM <b>${vm.current.name}</b> from the switch <b>${properties.detach.name}</b>`}
+	customTitle={`This will detach the VM <b>${escapeHTML(vm.current.name)}</b> from the switch <b>${escapeHTML(properties.detach.name)}</b>. The MAC object will NOT be deleted.`}
 	actions={{
 		onConfirm: async () => {
-			let response = await detachNetwork(vm.current.rid as number, properties.detach.id as number);
+			const response = await detachNetwork(data.rid, properties.detach.id as number, {
+				hostname: data.node
+			});
 			if (response.status === 'error') {
 				handleAPIError(response);
-				toast.error('Failed to detach network', {
-					position: 'bottom-center'
-				});
+				toast.error('Failed to detach network', { position: 'bottom-center' });
 			} else {
-				toast.success('Network detached', {
-					position: 'bottom-center'
-				});
+				activeRows = [];
+				toast.success('Network detached', { position: 'bottom-center' });
+				reload = true;
 			}
-
-			activeRows = null;
 			properties.detach.open = false;
 		},
 		onCancel: () => {
-			properties.detach.open = false;
-			properties = options;
+			properties = createPageOptions();
 		}
 	}}
 />
 
-{#if properties.attach.open && Array.isArray(networkObjects.current)}
+{#if properties.attach.open}
 	<Network
 		bind:open={properties.attach.open}
+		node={data.node}
 		switches={switches.current}
 		networkObjects={networkObjects.current}
-		vm={vm.current ?? null}
+		vm={vm.current}
 		networkId={null}
+		bind:reload
 	/>
 {/if}
 
-{#if properties.edit.open && Array.isArray(networkObjects.current)}
+{#if properties.edit.open}
 	<Network
 		bind:open={properties.edit.open}
+		node={data.node}
 		switches={switches.current}
 		networkObjects={networkObjects.current}
-		vm={vm.current ?? null}
+		vm={vm.current}
 		networkId={properties.edit.id}
+		bind:reload
 	/>
 {/if}

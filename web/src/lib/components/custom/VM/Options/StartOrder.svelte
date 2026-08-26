@@ -8,35 +8,54 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
 
-	let startAtBoot = $state(vm.startAtBoot);
-	let startOrder = $state(vm.startOrder);
+	let startAtBoot = $state(untrack(() => vm.startAtBoot));
+	let startOrder = $state(untrack(() => vm.startOrder));
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-		const response = await modifyBootOrder(vm.rid, startAtBoot, Number(startOrder));
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify start order', {
+		if (saving) return;
+		const normalizedStartOrder = Number(startOrder);
+		if (!Number.isSafeInteger(normalizedStartOrder) || normalizedStartOrder < 0) {
+			toast.error('Start order must be a non-negative whole number', {
 				position: 'bottom-center'
 			});
 			return;
 		}
 
-		toast.success('Modified start order', {
-			position: 'bottom-center'
-		});
+		saving = true;
+		try {
+			const response = await modifyBootOrder(vm.rid, startAtBoot, normalizedStartOrder, {
+				hostname: node
+			});
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify start order', { position: 'bottom-center' });
+				return;
+			}
 
-		reload = true;
-		open = false;
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No start-order changes needed'
+					: 'Modified start order',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
+		}
 	}
 </script>
 
@@ -66,22 +85,31 @@
 		</Dialog.Header>
 
 		<CustomValueInput
-			label={'Start Order'}
+			label="Start Order"
 			placeholder="1"
 			bind:value={startOrder}
 			classes="flex-1 space-y-1.5"
 			type="number"
+			disabled={saving}
 		/>
 
 		<CustomCheckbox
 			label="Start at Boot"
 			bind:checked={startAtBoot}
 			classes="flex items-center gap-2"
+			disabled={saving}
 		></CustomCheckbox>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

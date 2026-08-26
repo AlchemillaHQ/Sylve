@@ -42,7 +42,17 @@ export const VdevSchema = z.object({
 	replacingDevices: z.array(ReplacingVdevDeviceSchema).optional()
 });
 
-export const ZpoolDeviceSchema: z.ZodType<any> = z.lazy(() =>
+export type ZpoolDevice = {
+	name: string;
+	state: string;
+	read: number;
+	write: number;
+	cksum: number;
+	note: string;
+	children: ZpoolDevice[];
+};
+
+export const ZpoolDeviceSchema: z.ZodType<ZpoolDevice> = z.lazy(() =>
 	z.object({
 		name: z.string(),
 		state: z.string(),
@@ -110,7 +120,7 @@ export type ZpoolStatusVDEV = {
 	read_errors?: string | number | null;
 	write_errors?: string | number | null;
 	checksum_errors?: string | number | null;
-	properties?: Record<string, any> | null;
+	properties?: Record<string, unknown> | null;
 	vdevs?: Record<string, ZpoolStatusVDEV> | null;
 };
 
@@ -140,6 +150,8 @@ export const ZpoolSchema = z
 		size: z.number(),
 		free: z.number(),
 		allocated: z.number(),
+		fragmentation: z.number().default(0),
+		dedup_ratio: z.number().default(1),
 		pool_guid: z.string(),
 		txg: z.string(),
 		spa_version: z.string(),
@@ -154,7 +166,8 @@ export const ZpoolSchema = z
 	})
 	.transform((data) => ({
 		...data,
-		guid: data.pool_guid
+		guid: data.pool_guid,
+		dedupRatio: data.dedup_ratio
 	}));
 
 export const ZPoolStatusVDEVSchema = z.lazy(() =>
@@ -237,6 +250,7 @@ export const CreateZpoolSchema = z.object({
 		.regex(/^[a-zA-Z0-9]+$/, 'Name must be alphanumeric'),
 	vdevs: z.array(CreateVdevSchema),
 	properties: z.record(z.string(), z.string()).optional(),
+	mountpoint: z.string().optional(),
 	createForce: z.boolean().default(false),
 	spares: z.array(z.string()).optional()
 });
@@ -248,25 +262,143 @@ export const ReplaceDeviceSchema = z.object({
 });
 
 export const PoolStatPointSchema = z.object({
+	id: z.number().default(0),
+	health: z.string().default('UNKNOWN'),
+	worstHealth: z.string().default('UNKNOWN'),
 	allocated: z.number(),
 	free: z.number(),
 	size: z.number(),
+	fragmentation: z.number().default(0),
 	dedupRatio: z.number(),
+	readIOPS: z.number().default(0),
+	writeIOPS: z.number().default(0),
+	readBytesPerSecond: z.number().default(0),
+	writeBytesPerSecond: z.number().default(0),
+	readLatencyNanos: z.number().default(0),
+	writeLatencyNanos: z.number().default(0),
+	maxReadIOPS: z.number().default(0),
+	maxWriteIOPS: z.number().default(0),
+	maxReadBytesPerSecond: z.number().default(0),
+	maxWriteBytesPerSecond: z.number().default(0),
+	maxReadLatencyNanos: z.number().default(0),
+	maxWriteLatencyNanos: z.number().default(0),
+	sampleCount: z.number().default(1),
+	intervalSeconds: z.number().default(10),
 	time: z.number()
 });
 
-export const PoolStatPointsSchema = z.record(
-	z.string(),
-	z
-		.array(PoolStatPointSchema)
-		.refine((obj) => Object.keys(obj).length > 0, { message: 'No Data Found' })
-);
+export const ZFSDashboardPoolSeriesSchema = z.object({
+	guid: z.string(),
+	name: z.string(),
+	points: z.array(PoolStatPointSchema)
+});
 
-export const PoolStatPointsResponseSchema = z.object({
-	poolStatPoint: PoolStatPointsSchema,
-	intervalMap: z.array(
-		z.object({ value: z.number().transform((v) => v.toString()), label: z.string() })
-	)
+export const ZFSDashboardARCPointSchema = z.object({
+	id: z.number().default(0),
+	time: z.number(),
+	size: z.number().default(0),
+	targetSize: z.number().default(0),
+	minSize: z.number().default(0),
+	maxSize: z.number().default(0),
+	dataSize: z.number().default(0),
+	metadataSize: z.number().default(0),
+	otherSize: z.number().default(0),
+	headerSize: z.number().default(0),
+	compressedSize: z.number().default(0),
+	uncompressedSize: z.number().default(0),
+	hitRatio: z.number().nullable().default(null),
+	demandHitRatio: z.number().nullable().default(null),
+	prefetchHitRatio: z.number().nullable().default(null),
+	l2HitRatio: z.number().nullable().default(null),
+	evictionsPerSecond: z.number().default(0),
+	l2ReadBytesPerSecond: z.number().default(0),
+	l2WriteBytesPerSecond: z.number().default(0),
+	memoryThrottleEvents: z.number().default(0),
+	evictNotEnoughEvents: z.number().default(0),
+	l2DeviceCount: z.number().default(0),
+	l2Size: z.number().default(0),
+	l2Allocated: z.number().default(0)
+});
+
+export const ZFSDashboardHistorySchema = z.object({
+	pools: z.array(ZFSDashboardPoolSeriesSchema),
+	arc: z.array(ZFSDashboardARCPointSchema),
+	cursors: z.object({
+		pool: z.number().default(0),
+		arc: z.number().default(0)
+	}),
+	resolutionSeconds: z.number().default(10),
+	generatedAt: z.number(),
+	resetRequired: z.boolean().default(false)
+});
+
+export const ZFSDashboardIOStatsSchema = z.object({
+	sampledAt: z.number().default(0),
+	intervalSeconds: z.number().default(10),
+	valid: z.boolean().default(false),
+	latencyAvailable: z.boolean().default(false),
+	readIOPS: z.number().default(0),
+	writeIOPS: z.number().default(0),
+	readBytesPerSecond: z.number().default(0),
+	writeBytesPerSecond: z.number().default(0),
+	readLatencyNanos: z.number().nullable().default(null),
+	writeLatencyNanos: z.number().nullable().default(null)
+});
+
+export const ZFSDashboardPoolErrorsSchema = z.object({
+	read: z.number().default(0),
+	write: z.number().default(0),
+	checksum: z.number().default(0),
+	scan: z.number().default(0)
+});
+
+export const ZFSDashboardPoolScanSchema = z.object({
+	function: z.string(),
+	state: z.string(),
+	startTime: z.string().default(''),
+	endTime: z.string().default(''),
+	examined: z.number().default(0),
+	toExamine: z.number().default(0),
+	issued: z.number().default(0),
+	processed: z.number().default(0),
+	errors: z.number().default(0),
+	progressPercent: z.number().nullable().default(null)
+});
+
+export const ZFSDashboardPoolTopologySchema = z.object({
+	dataVdevs: z.number().default(0),
+	disks: z.number().default(0),
+	logs: z.number().default(0),
+	cache: z.number().default(0),
+	spares: z.number().default(0),
+	special: z.number().default(0),
+	dedup: z.number().default(0)
+});
+
+export const ZFSDashboardPoolSnapshotSchema = z.object({
+	guid: z.string(),
+	name: z.string(),
+	state: z.string(),
+	size: z.number(),
+	allocated: z.number(),
+	free: z.number(),
+	fragmentation: z.number().default(0),
+	dedupRatio: z.number().default(1),
+	statusAvailable: z.boolean().default(false),
+	status: z.string().default(''),
+	action: z.string().default(''),
+	errors: ZFSDashboardPoolErrorsSchema,
+	scan: ZFSDashboardPoolScanSchema.nullable().default(null),
+	topology: ZFSDashboardPoolTopologySchema,
+	io: ZFSDashboardIOStatsSchema
+});
+
+export const ZFSDashboardSnapshotSchema = z.object({
+	pools: z.array(ZFSDashboardPoolSnapshotSchema),
+	arc: ZFSDashboardARCPointSchema.nullable().default(null),
+	sampledAt: z.number().default(0),
+	generatedAt: z.number(),
+	stale: z.boolean().default(false)
 });
 
 export const PoolsDiskUsageSchema = z.object({
@@ -282,10 +414,17 @@ export type ReplaceDevice = z.infer<typeof ReplaceDeviceSchema>;
 export type CreateZpool = z.infer<typeof CreateZpoolSchema>;
 export type ZpoolRaidType = z.infer<typeof ZpoolRaidTypeSchema>;
 export type VdevType = z.infer<typeof VdevTypeSchema>;
-export type PoolStatPointsResponse = z.infer<typeof PoolStatPointsResponseSchema>;
+export type PoolStatPoint = z.infer<typeof PoolStatPointSchema>;
+export type ZFSDashboardPoolSeries = z.infer<typeof ZFSDashboardPoolSeriesSchema>;
+export type ZFSDashboardARCPoint = z.infer<typeof ZFSDashboardARCPointSchema>;
+export type ZFSDashboardHistory = z.infer<typeof ZFSDashboardHistorySchema>;
+export type ZFSDashboardIOStats = z.infer<typeof ZFSDashboardIOStatsSchema>;
+export type ZFSDashboardPoolScan = z.infer<typeof ZFSDashboardPoolScanSchema>;
+export type ZFSDashboardPoolSnapshot = z.infer<typeof ZFSDashboardPoolSnapshotSchema>;
+export type ZFSDashboardSnapshot = z.infer<typeof ZFSDashboardSnapshotSchema>;
 export type PoolsDiskUsage = z.infer<typeof PoolsDiskUsageSchema>;
 
-export type ScanStatsRaw = Record<string, any>;
+export type ScanStatsRaw = Record<string, unknown>;
 export type ScanSentenceResult = {
 	title: string;
 	text: string | null;

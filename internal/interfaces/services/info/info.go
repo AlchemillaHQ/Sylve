@@ -32,6 +32,7 @@ type InfoServiceInterface interface {
 
 	GetCPUInfo(usageOnly bool) (CPUInfo, error)
 	GetCPUUsageHistorical() ([]infoModels.CPU, error)
+	GetSummaryHistory(context.Context, *SummaryHistoryCursors) (SummaryHistory, error)
 
 	GetNetworkInterfacesInfo() ([]NetworkInterface, error)
 	GetNetworkInterfacesHistorical() ([]HistoricalNetworkInterface, error)

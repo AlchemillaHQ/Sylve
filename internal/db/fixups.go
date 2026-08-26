@@ -9,20 +9,43 @@
 package db
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func Fixups(db *gorm.DB) error {
+	if err := enforceBasicSettingsSingleton(db); err != nil {
+		return err
+	}
+	if err := renameLegacyARCMaxTunable(db); err != nil {
+		return err
+	}
+	if err := replaceLegacyNetlinkEvents(db); err != nil {
+		return err
+	}
+	if err := clearReplicatedManagedBackupTargetKeyPaths(db); err != nil {
+		return err
+	}
+	if err := migrateReplicationTransitionEvents(db); err != nil {
+		return err
+	}
+	if err := normalizeDownloadUncategorizedType(db); err != nil {
+		return err
+	}
+
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)
 	backfillVMStorageEnableDefaults(db)
@@ -44,8 +67,271 @@ func Fixups(db *gorm.DB) error {
 	return nil
 }
 
+func renameLegacyARCMaxTunable(db *gorm.DB) error {
+	const name = "rename_legacy_arc_max_tunable_1"
+	if !db.Migrator().HasTable(&authModels.SystemTunable{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", name).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking legacy arc_max tunable migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var legacyCount int64
+		if err := tx.Model(&authModels.SystemTunable{}).
+			Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+			Count(&legacyCount).Error; err != nil {
+			return fmt.Errorf("failed checking legacy arc_max tunable rows: %w", err)
+		}
+
+		if legacyCount > 0 {
+			var canonicalCount int64
+			if err := tx.Model(&authModels.SystemTunable{}).
+				Where("name = ?", authModels.SystemTunableARCMaxOID).
+				Count(&canonicalCount).Error; err != nil {
+				return fmt.Errorf("failed checking canonical arc.max tunable rows: %w", err)
+			}
+
+			if canonicalCount == 0 {
+				if err := tx.Model(&authModels.SystemTunable{}).
+					Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+					UpdateColumn("name", authModels.SystemTunableARCMaxOID).Error; err != nil {
+					return fmt.Errorf("failed renaming legacy arc_max tunable: %w", err)
+				}
+			} else {
+				if err := tx.Where("name = ?", authModels.SystemTunableLegacyARCMaxOID).
+					Delete(&authModels.SystemTunable{}).Error; err != nil {
+					return fmt.Errorf("failed removing legacy arc_max tunable: %w", err)
+				}
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording legacy arc_max tunable migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func normalizeDownloadUncategorizedType(db *gorm.DB) error {
+	const migrationName = "normalize_download_uncategorized_type_1"
+	const legacyValue = "uncategoried"
+
+	if !db.Migrator().HasTable(&utilitiesModels.Downloads{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", migrationName).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking download category migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		if err := tx.Model(&utilitiesModels.Downloads{}).
+			Where("u_type = ?", legacyValue).
+			UpdateColumn("u_type", utilitiesModels.DownloadUTypeOther).Error; err != nil {
+			return fmt.Errorf("failed normalizing download categories: %w", err)
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: migrationName}).Error; err != nil {
+			return fmt.Errorf("failed recording download category migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func migrateReplicationTransitionEvents(db *gorm.DB) error {
+	const name = "split_replication_transition_events_1"
+	if !db.Migrator().HasTable(&clusterModels.ReplicationEvent{}) ||
+		!db.Migrator().HasTable(&clusterModels.ReplicationTransitionEvent{}) {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking replication event split migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var legacyTransitions []clusterModels.ReplicationEvent
+		if err := tx.
+			Where("TRIM(COALESCE(transition_run_id, '')) <> ''").
+			Order("id ASC").
+			Find(&legacyTransitions).Error; err != nil {
+			return fmt.Errorf("failed reading legacy replication transition events: %w", err)
+		}
+		for _, event := range legacyTransitions {
+			transition := clusterModels.ReplicationTransitionEventFromEvent(event)
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&transition).Error; err != nil {
+				return fmt.Errorf("failed migrating replication transition event %d: %w", event.ID, err)
+			}
+		}
+		if err := tx.
+			Where("TRIM(COALESCE(transition_run_id, '')) <> ''").
+			Delete(&clusterModels.ReplicationEvent{}).Error; err != nil {
+			return fmt.Errorf("failed removing migrated replication transition events: %w", err)
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording replication event split migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func clearReplicatedManagedBackupTargetKeyPaths(db *gorm.DB) error {
+	const name = "clear_replicated_managed_backup_target_key_paths_1"
+	if !db.Migrator().HasTable("backup_targets") {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking managed backup target key path migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		var targetIDs []uint
+		if err := tx.Table("backup_targets").
+			Where("TRIM(COALESCE(ssh_key, '')) <> '' AND TRIM(COALESCE(ssh_key_path, '')) <> ''").
+			Pluck("id", &targetIDs).Error; err != nil {
+			return fmt.Errorf("failed finding replicated managed backup target key paths: %w", err)
+		}
+		if len(targetIDs) > 0 {
+			if err := tx.Table("backup_targets").Where("id IN ?", targetIDs).
+				UpdateColumn("ssh_key_path", "").Error; err != nil {
+				return fmt.Errorf("failed clearing replicated managed backup target key paths: %w", err)
+			}
+			if tx.Migrator().HasTable("backup_target_node_readinesses") {
+				if err := tx.Exec("DELETE FROM backup_target_node_readinesses WHERE target_id IN ?", targetIDs).Error; err != nil {
+					return fmt.Errorf("failed invalidating backup target readiness after key path migration: %w", err)
+				}
+			}
+		}
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording managed backup target key path migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func replaceLegacyNetlinkEvents(db *gorm.DB) error {
+	const name = "replace_netlink_events_with_zfs_cache_invalidations_1"
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).
+			Where("name = ?", name).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("failed checking netlink replacement migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+
+		if err := InvalidateZFSCaches(tx); err != nil {
+			return fmt.Errorf("failed seeding zfs cache invalidations: %w", err)
+		}
+
+		if tx.Migrator().HasTable("netlink_events") {
+			if err := tx.Migrator().DropTable("netlink_events"); err != nil {
+				return fmt.Errorf("failed dropping legacy netlink_events table: %w", err)
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: name}).Error; err != nil {
+			return fmt.Errorf("failed recording netlink replacement migration: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func enforceBasicSettingsSingleton(db *gorm.DB) error {
+	const indexName = "idx_basic_settings_singleton"
+
+	if !db.Migrator().HasTable(&authModels.BasicSettings{}) {
+		return fmt.Errorf("basic settings table does not exist")
+	}
+
+	var duplicatesRemoved int64
+	normalizedID := false
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var settings []authModels.BasicSettings
+		if err := tx.
+			Order("initialized DESC").
+			Order("restarted DESC").
+			Order("id ASC").
+			Find(&settings).Error; err != nil {
+			return fmt.Errorf("failed to read basic settings: %w", err)
+		}
+
+		if len(settings) > 0 {
+			keep := settings[0]
+			deleteResult := tx.Where("id <> ?", keep.ID).Delete(&authModels.BasicSettings{})
+			if deleteResult.Error != nil {
+				return fmt.Errorf("failed to remove duplicate basic settings: %w", deleteResult.Error)
+			}
+			duplicatesRemoved = deleteResult.RowsAffected
+
+			if keep.ID != 1 {
+				updateResult := tx.Model(&authModels.BasicSettings{}).
+					Where("id = ?", keep.ID).
+					UpdateColumn("id", 1)
+				if updateResult.Error != nil {
+					return fmt.Errorf("failed to normalize basic settings ID: %w", updateResult.Error)
+				}
+				if updateResult.RowsAffected != 1 {
+					return fmt.Errorf("failed to normalize basic settings ID: expected one row, updated %d", updateResult.RowsAffected)
+				}
+				normalizedID = true
+			}
+		}
+
+		if err := tx.Exec(
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS %s ON basic_settings ((1))", indexName),
+		).Error; err != nil {
+			return fmt.Errorf("failed to create basic settings singleton index: %w", err)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if duplicatesRemoved > 0 || normalizedID {
+		logger.L.Warn().
+			Int64("duplicates_removed", duplicatesRemoved).
+			Bool("normalized_id", normalizedID).
+			Msg("Repaired basic settings singleton")
+	}
+
+	return nil
+}
+
 func PreMigrationFixups(db *gorm.DB) {
 	deduplicateJailHooks(db)
+	deduplicateMdnsRecords(db)
 }
 
 func runNetworkDeltaMigration(db *gorm.DB) {
@@ -687,6 +973,58 @@ func deduplicateJailHooks(db *gorm.DB) {
 	})
 
 	logger.L.Info().Msg("Deduplicated jail hooks and migrated schema")
+}
+
+func deduplicateMdnsRecords(db *gorm.DB) {
+	const name = "deduplicate_mdns_record_identity_1"
+
+	var count int64
+	if err := db.
+		Table("migrations").
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		logger.L.Err(err).Msg("migration check failed for deduplicate_mdns_records")
+		return
+	}
+	if count > 0 {
+		return
+	}
+
+	if !db.Migrator().HasTable("mdns_records") {
+		if err := db.Table("migrations").Create(map[string]any{"name": name}).Error; err != nil {
+			logger.L.Err(err).Msg("failed recording deduplicate_mdns_records migration")
+		}
+		return
+	}
+
+	var duplicatesRemoved int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Exec(`
+			DELETE FROM mdns_records
+			WHERE id NOT IN (
+				SELECT MIN(id)
+				FROM mdns_records
+				GROUP BY name, type
+			)
+		`)
+		if result.Error != nil {
+			return fmt.Errorf("failed removing duplicate mdns records: %w", result.Error)
+		}
+		duplicatesRemoved = result.RowsAffected
+
+		if err := tx.Table("migrations").Create(map[string]any{"name": name}).Error; err != nil {
+			return fmt.Errorf("failed recording deduplicate_mdns_records migration: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		logger.L.Err(err).Msg("failed deduplicating mdns records")
+		return
+	}
+
+	if duplicatesRemoved > 0 {
+		logger.L.Warn().Int64("duplicates_removed", duplicatesRemoved).Msg("Removed duplicate mDNS records")
+	}
 }
 
 func backfillUserSystemData(db *gorm.DB) {

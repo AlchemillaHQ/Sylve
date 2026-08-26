@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './NodeTreeView.svelte';
@@ -106,7 +105,7 @@
 
 {#if isOpen && item.children}
 	<ul class="pl-5" transition:slide={{ duration: 200, easing: (t) => t }} style="overflow: hidden;">
-		{#each item.children as child (child.label)}
+		{#each item.children as child (child.href ?? child.icon)}
 			<SidebarElement item={child} {onToggle} />
 		{/each}
 	</ul>

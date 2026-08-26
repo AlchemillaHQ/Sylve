@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { storage } from '$lib';
+	import { handleAPIResponse } from '$lib/api/common';
 	import { setTunable } from '$lib/api/system/tunables';
 	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
 	import ValueViewer from '$lib/components/custom/Dialog/ValueViewer.svelte';
@@ -7,17 +7,14 @@
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError } from '$lib/utils/http';
-	import { sha256 } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
-	let hash = $state('');
 	let query = $state('');
 	let reload = $state(false);
 	let loading = $state(false);
+	let configuredOnly = $state(false);
 	let activeRows = $state<Row[] | null>(null);
 
 	let activeRow: Row | null = $derived(
@@ -42,10 +39,6 @@
 		position: 'bottom-center' as const
 	};
 
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-	});
-
 	const dashIfEmpty = (cell: CellComponent) => {
 		const value = cell.getValue();
 		return value === null || value === undefined || value === '' ? '-' : String(value);
@@ -66,6 +59,15 @@
 	]);
 
 	let tableData = $derived({ rows: [], columns });
+	let extraParams = $derived({
+		configuredOnly: configuredOnly ? 'true' : 'false'
+	});
+
+	function toggleConfiguredOnly() {
+		configuredOnly = !configuredOnly;
+		activeRows = null;
+		reload = true;
+	}
 
 	function openEdit() {
 		if (!activeRow) return;
@@ -85,17 +87,19 @@
 		if (!editModal.name) return;
 
 		loading = true;
-		const res = await setTunable(editModal.name, editValue);
-		loading = false;
+		try {
+			const res = await setTunable(editModal.name, editValue);
 
-		if (res.status === 'success') {
-			toast.success(`Tunable ${editModal.name} updated`, toastOpts);
-			editModal.open = false;
-			activeRows = null;
-			reload = true;
-		} else {
-			handleAPIError(res);
-			toast.error(`Failed to update ${editModal.name}`, toastOpts);
+			if (res.status === 'success') {
+				toast.success(`Tunable ${editModal.name} updated`, toastOpts);
+				editModal.open = false;
+				activeRows = null;
+				reload = true;
+			} else {
+				handleAPIResponse(res, { error: `Failed to update ${editModal.name}` });
+			}
+		} finally {
+			loading = false;
 		}
 	}
 </script>
@@ -122,31 +126,41 @@
 			</Button>
 		{/if}
 
-		<Button
-			onclick={() => (reload = true)}
-			size="sm"
-			variant="outline"
-			class="ml-auto h-6 shrink-0"
-		>
-			<div class="flex items-center">
-				<span class="icon-[mdi--refresh] h-4 w-4"></span>
-			</div>
-		</Button>
+		<div class="ml-auto">
+			<Button
+				size="sm"
+				variant={configuredOnly ? 'default' : 'outline'}
+				class="h-6.5 shrink-0"
+				onclick={toggleConfiguredOnly}
+				aria-pressed={configuredOnly}
+				title="Show tunables configured and persisted through Sylve"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--filter-check-outline] mr-1 h-4 w-4"></span>
+					<span>Configured Only</span>
+				</div>
+			</Button>
+
+			<Button onclick={() => (reload = true)} size="sm" variant="outline" class="h-6 shrink-0">
+				<div class="flex items-center">
+					<span class="icon-[mdi--refresh] h-4 w-4"></span>
+				</div>
+			</Button>
+		</div>
 	</div>
 
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash}
-			<TreeTable
-				data={tableData}
-				name="system-tunables-tt"
-				ajaxURL="/api/system/tunables/remote?hash={hash}"
-				bind:query
-				bind:parentActiveRow={activeRows}
-				bind:reload
-				multipleSelect={false}
-				initialSort={[{ column: 'name', dir: 'asc' }]}
-			/>
-		{/if}
+		<TreeTable
+			data={tableData}
+			name="system-tunables-tt"
+			ajaxURL="/api/system/tunables/remote"
+			bind:query
+			bind:parentActiveRow={activeRows}
+			bind:reload
+			multipleSelect={false}
+			{extraParams}
+			initialSort={[{ column: 'name', dir: 'asc' }]}
+		/>
 	</div>
 </div>
 

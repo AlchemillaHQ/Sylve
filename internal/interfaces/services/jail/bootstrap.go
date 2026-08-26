@@ -20,6 +20,7 @@ type SupportedBootstrapVersion struct {
 // bootstrap. Add new entries here as pkgbase sets become available.
 var SupportedVersions = []SupportedBootstrapVersion{
 	{Major: 15, Minor: 0},
+	{Major: 15, Minor: 1},
 }
 
 // BootstrapTypeSpec describes one pkgbase set within a major/minor version.
@@ -39,13 +40,13 @@ var BootstrapTypes = []BootstrapTypeSpec{
 	{
 		Type:   "base",
 		Name:   "%d-%d-Base",
-		Label:  "FreeBSD %d Base",
+		Label:  "FreeBSD %d.%d Base",
 		PkgSet: "FreeBSD-set-base-jail",
 	},
 	{
 		Type:   "minimal",
 		Name:   "%d-%d-Minimal",
-		Label:  "FreeBSD %d Minimal",
+		Label:  "FreeBSD %d.%d Minimal",
 		PkgSet: "FreeBSD-set-minimal-jail",
 	},
 }
@@ -65,6 +66,25 @@ type BootstrapEntry struct {
 	Status     string `json:"status"`
 	Phase      string `json:"phase"`
 	Error      string `json:"error"`
+}
+
+// BootstrapCreateResult describes whether a create request queued new work or
+// found an already completed bootstrap.
+type BootstrapCreateResult struct {
+	Pool    string `json:"pool"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Outcome string `json:"outcome"`
+}
+
+// BootstrapDeleteResult describes the idempotent result of deleting one exact
+// bootstrap member.
+type BootstrapDeleteResult struct {
+	Pool           string `json:"pool"`
+	Name           string `json:"name"`
+	Outcome        string `json:"outcome"`
+	DatasetDeleted bool   `json:"datasetDeleted"`
+	RecordDeleted  bool   `json:"recordDeleted"`
 }
 
 // BootstrapRequest is the payload for CreateBootstrap.

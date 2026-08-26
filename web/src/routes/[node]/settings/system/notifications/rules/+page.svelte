@@ -1,6 +1,17 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import {
 		bulkDeleteNotificationRules,
+		bulkUpdateNotificationRules,
 		createNotificationRule,
 		deleteNotificationRule,
 		getNotificationRules,
@@ -14,10 +25,11 @@
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
+	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import type { NotificationRulesConfig } from '$lib/types/notifications';
+	import type { BulkUpdateRulesInput, NotificationRulesConfig } from '$lib/types/notifications';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { resource } from 'runed';
@@ -38,11 +50,29 @@
 		active: boolean;
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
+		pushoverEnabled: boolean;
 		emailEnabled: boolean;
 		discordEnabled: boolean;
 		config?: string;
 		isTemplateRow: boolean;
 	}
+
+	type BulkUpdateChannelKey = Exclude<keyof BulkUpdateRulesInput, 'ids'>;
+	const bulkUpdateChannels: Array<{
+		key: BulkUpdateChannelKey;
+		label: string;
+		icon: string;
+	}> = [
+		{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
+		{ key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+		{
+			key: 'pushoverEnabled',
+			label: 'Pushover',
+			icon: 'icon-[mdi--message-arrow-right-outline]'
+		},
+		{ key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
+		{ key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
+	];
 
 	let { data }: { data: Data } = $props();
 
@@ -61,7 +91,7 @@
 
 	let currentConfig = $derived(rulesResource.current as NotificationRulesConfig);
 
-	let columns: Column[] = $state([
+	let columns: Column[] = $derived([
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'templateLabel',
@@ -93,7 +123,7 @@
 		{
 			field: 'uiEnabled',
 			title: 'Channels',
-			width: 200,
+			width: 310,
 			formatter: (cell: CellComponent) => {
 				const rowData = cell.getRow().getData() as RuleRow;
 				if (rowData.isTemplateRow) {
@@ -102,6 +132,11 @@
 				const channels: { field: keyof RuleRow; label: string; icon: string }[] = [
 					{ field: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
 					{ field: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+					{
+						field: 'pushoverEnabled',
+						label: 'Pushover',
+						icon: 'icon-[mdi--message-arrow-right-outline]'
+					},
 					{ field: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
 					{ field: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
 				];
@@ -128,6 +163,7 @@
 				active: true,
 				uiEnabled: false,
 				ntfyEnabled: false,
+				pushoverEnabled: false,
 				emailEnabled: false,
 				discordEnabled: false,
 				isTemplateRow: true,
@@ -146,6 +182,7 @@
 				active: rule.active,
 				uiEnabled: rule.uiEnabled,
 				ntfyEnabled: rule.ntfyEnabled,
+				pushoverEnabled: rule.pushoverEnabled ?? false,
 				emailEnabled: rule.emailEnabled,
 				discordEnabled: rule.discordEnabled,
 				config: rule.config,
@@ -161,6 +198,7 @@
 					active: true,
 					uiEnabled: false,
 					ntfyEnabled: false,
+					pushoverEnabled: false,
 					emailEnabled: false,
 					discordEnabled: false,
 					isTemplateRow: true,
@@ -218,6 +256,7 @@
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true
 		},
@@ -230,6 +269,7 @@
 			active: true,
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true,
 			config: ''
@@ -243,6 +283,26 @@
 			open: false,
 			ids: [] as number[]
 		},
+		bulkUpdate: {
+			open: false,
+			ids: [] as number[],
+			rules: [] as Array<{
+				id: number;
+				templateKey: string;
+				templateLabel: string;
+				targetLabel: string;
+				uiEnabled: boolean;
+				ntfyEnabled: boolean;
+				pushoverEnabled: boolean;
+				emailEnabled: boolean;
+				discordEnabled: boolean;
+			}>,
+			uiEnabled: null as boolean | null,
+			ntfyEnabled: null as boolean | null,
+			pushoverEnabled: null as boolean | null,
+			emailEnabled: null as boolean | null,
+			discordEnabled: null as boolean | null
+		},
 		test: {
 			open: false,
 			templateKey: '',
@@ -251,7 +311,27 @@
 		}
 	});
 
-	let editOriginal = $state({ uiEnabled: true, ntfyEnabled: true, emailEnabled: true, discordEnabled: true, config: '' });
+	let bulkUpdateGroups = $derived.by(() => {
+		const map = new SvelteMap<string, { label: string; count: number }>();
+		for (const r of modals.bulkUpdate.rules) {
+			const existing = map.get(r.templateKey);
+			if (existing) {
+				existing.count++;
+			} else {
+				map.set(r.templateKey, { label: r.templateLabel, count: 1 });
+			}
+		}
+		return Array.from(map.values());
+	});
+
+	let editOriginal = $state({
+		uiEnabled: true,
+		ntfyEnabled: true,
+		pushoverEnabled: false,
+		emailEnabled: true,
+		discordEnabled: true,
+		config: ''
+	});
 
 	function configNumber(key: string, fallback: number): number {
 		try {
@@ -280,9 +360,7 @@
 
 	let editConfigDefaults = $derived.by(() => {
 		if (!editTemplateHasConfig) return {};
-		const template = (currentConfig.templates || []).find(
-			(t) => t.key === modals.edit.templateKey
-		);
+		const template = (currentConfig.templates || []).find((t) => t.key === modals.edit.templateKey);
 		try {
 			return JSON.parse(template?.defaultConfig || '{}');
 		} catch {
@@ -361,6 +439,7 @@
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true
 		};
@@ -385,6 +464,7 @@
 			active: selectedRule.active,
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
+			pushoverEnabled: selectedRule.pushoverEnabled,
 			emailEnabled: selectedRule.emailEnabled,
 			discordEnabled: selectedRule.discordEnabled,
 			config
@@ -393,6 +473,7 @@
 		editOriginal = {
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
+			pushoverEnabled: selectedRule.pushoverEnabled,
 			emailEnabled: selectedRule.emailEnabled,
 			discordEnabled: selectedRule.discordEnabled,
 			config
@@ -425,6 +506,36 @@
 		};
 	}
 
+	function openBulkUpdateModal() {
+		const eligibleRows = (activeRows || []).filter(
+			(r): r is RuleRow => !(r as RuleRow).isTemplateRow && !!(r as RuleRow).ruleId
+		);
+		if (eligibleRows.length < 2) {
+			return;
+		}
+
+		modals.bulkUpdate = {
+			open: true,
+			ids: eligibleRows.map((r) => r.ruleId as number),
+			rules: eligibleRows.map((r) => ({
+				id: r.ruleId as number,
+				templateKey: r.templateKey,
+				templateLabel: r.templateLabel,
+				targetLabel: r.targetLabel,
+				uiEnabled: r.uiEnabled,
+				ntfyEnabled: r.ntfyEnabled,
+				pushoverEnabled: r.pushoverEnabled,
+				emailEnabled: r.emailEnabled,
+				discordEnabled: r.discordEnabled
+			})),
+			uiEnabled: null,
+			ntfyEnabled: null,
+			pushoverEnabled: null,
+			emailEnabled: null,
+			discordEnabled: null
+		};
+	}
+
 	async function createRule() {
 		if (busy.create) {
 			return;
@@ -442,6 +553,7 @@
 			targetKey: modals.create.targetKey,
 			uiEnabled: modals.create.uiEnabled,
 			ntfyEnabled: modals.create.ntfyEnabled,
+			pushoverEnabled: modals.create.pushoverEnabled,
 			emailEnabled: modals.create.emailEnabled,
 			discordEnabled: modals.create.discordEnabled
 		});
@@ -468,6 +580,7 @@
 		const response = await updateNotificationRule(modals.edit.id, {
 			uiEnabled: modals.edit.uiEnabled,
 			ntfyEnabled: modals.edit.ntfyEnabled,
+			pushoverEnabled: modals.edit.pushoverEnabled,
 			emailEnabled: modals.edit.emailEnabled,
 			discordEnabled: modals.edit.discordEnabled,
 			config: modals.edit.config
@@ -530,10 +643,51 @@
 			return;
 		}
 
-		toast.success(`${modals.bulkDelete.ids.length} notification rules deleted`, { position: 'bottom-center' });
+		toast.success(`${modals.bulkDelete.ids.length} notification rules deleted`, {
+			position: 'bottom-center'
+		});
 		modals.bulkDelete.open = false;
 		activeRows = null;
 		await rulesResource.refetch();
+	}
+
+	async function bulkUpdateRules() {
+		if (busy.delete || modals.bulkUpdate.ids.length === 0) {
+			return;
+		}
+
+		const payload: BulkUpdateRulesInput = { ids: modals.bulkUpdate.ids };
+		if (modals.bulkUpdate.uiEnabled !== null) payload.uiEnabled = modals.bulkUpdate.uiEnabled;
+		if (modals.bulkUpdate.ntfyEnabled !== null) payload.ntfyEnabled = modals.bulkUpdate.ntfyEnabled;
+		if (modals.bulkUpdate.pushoverEnabled !== null)
+			payload.pushoverEnabled = modals.bulkUpdate.pushoverEnabled;
+		if (modals.bulkUpdate.emailEnabled !== null)
+			payload.emailEnabled = modals.bulkUpdate.emailEnabled;
+		if (modals.bulkUpdate.discordEnabled !== null)
+			payload.discordEnabled = modals.bulkUpdate.discordEnabled;
+
+		if (Object.keys(payload).length <= 1) {
+			toast.error('Select at least one channel', { position: 'bottom-center' });
+			return;
+		}
+
+		busy.delete = true;
+		const response = await bulkUpdateNotificationRules(payload);
+		busy.delete = false;
+
+		if (isAPIResponse(response) && response.status === 'error') {
+			handleAPIError(response);
+			toast.error('Failed to update notification rules', { position: 'bottom-center' });
+			modals.bulkUpdate.open = false;
+			return;
+		}
+
+		toast.success(`${modals.bulkUpdate.ids.length} notification rules updated`, {
+			position: 'bottom-center'
+		});
+		modals.bulkUpdate.open = false;
+		await rulesResource.refetch();
+		activeRows = null;
 	}
 
 	function openTestModal() {
@@ -547,9 +701,7 @@
 	}
 
 	let testTargetOptions = $derived.by(() => {
-		const template = (currentConfig.templates || []).find(
-			(t) => t.key === modals.test.templateKey
-		);
+		const template = (currentConfig.templates || []).find((t) => t.key === modals.test.templateKey);
 		return (template?.targets || []).map((t) => ({ key: t.key, label: t.label }));
 	});
 
@@ -572,6 +724,11 @@
 				];
 			case 'system.disk.smart.nvme':
 				return [{ key: 'nvme_warning', label: 'NVMe Warning' }];
+			case 'system.disk.smart.selftest':
+				return [
+					{ key: 'self_test_failed', label: 'Self-Test Failed' },
+					{ key: 'self_test_passed', label: 'Self-Test Passed' }
+				];
 			case 'system.zfs.pool_state':
 				return [
 					{ key: 'pool_degraded', label: 'Degraded' },
@@ -584,7 +741,10 @@
 
 	$effect(() => {
 		if (!modals.test.open) return;
-		if (testTargetOptions.length > 0 && !testTargetOptions.some((t) => t.key === modals.test.targetKey)) {
+		if (
+			testTargetOptions.length > 0 &&
+			!testTargetOptions.some((t) => t.key === modals.test.targetKey)
+		) {
 			modals.test.targetKey = testTargetOptions[0].key;
 		}
 		if (
@@ -601,6 +761,10 @@
 		if (busy.test) return;
 		if (!modals.test.templateKey) {
 			toast.error('Select a template', { position: 'bottom-center' });
+			return;
+		}
+		if (!modals.test.targetKey) {
+			toast.error('Select an available target', { position: 'bottom-center' });
 			return;
 		}
 
@@ -642,8 +806,21 @@
 			</Button>
 		{/if}
 		{#if activeRows && activeRows.filter((r) => !(r as RuleRow).isTemplateRow && (r as RuleRow).ruleId).length > 1}
+			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkUpdateModal}>
+				<SpanWithIcon
+					icon="icon-[material-symbols--toggle-on]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Update"
+				/>
+			</Button>
 			<Button size="sm" variant="outline" class="h-6.5" onclick={openBulkDeleteModal}>
-				<SpanWithIcon icon="icon-[material-symbols--delete-sweep]" size="h-4 w-4" gap="gap-2" title="Bulk Delete" />
+				<SpanWithIcon
+					icon="icon-[material-symbols--delete-sweep]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Bulk Delete"
+				/>
 			</Button>
 		{/if}
 		<Button
@@ -671,7 +848,7 @@
 		customPlaceholder="No notification rules available"
 		selectableRowCheck={(row) => {
 			const d = row.getData() as RuleRow;
-			return !d.isTemplateRow && d.active;
+			return !d.isTemplateRow;
 		}}
 	/>
 </div>
@@ -679,7 +856,7 @@
 {#if modals.create.open}
 	<Dialog.Root bind:open={modals.create.open}>
 		<Dialog.Content
-			class="sm:max-w-106.25"
+			class="sm:max-w-150"
 			onInteractOutside={(e) => e.preventDefault()}
 			showCloseButton={true}
 			onClose={() => (modals.create.open = false)}
@@ -730,9 +907,10 @@
 
 				<div class="space-y-2 pt-1">
 					<p class="text-sm font-medium">Channels</p>
-					<div class="flex items-center gap-4">
+					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 sm:flex-nowrap">
 						<CustomCheckbox label="In-App" bind:checked={modals.create.uiEnabled} />
 						<CustomCheckbox label="ntfy" bind:checked={modals.create.ntfyEnabled} />
+						<CustomCheckbox label="Pushover" bind:checked={modals.create.pushoverEnabled} />
 						<CustomCheckbox label="Email" bind:checked={modals.create.emailEnabled} />
 						<CustomCheckbox label="Discord" bind:checked={modals.create.discordEnabled} />
 					</div>
@@ -766,6 +944,7 @@
 			onReset={() => {
 				modals.edit.uiEnabled = editOriginal.uiEnabled;
 				modals.edit.ntfyEnabled = editOriginal.ntfyEnabled;
+				modals.edit.pushoverEnabled = editOriginal.pushoverEnabled;
 				modals.edit.emailEnabled = editOriginal.emailEnabled;
 				modals.edit.discordEnabled = editOriginal.discordEnabled;
 				modals.edit.config = editOriginal.config;
@@ -794,7 +973,9 @@
 					<Table.Body>
 						<Table.Row>
 							<Table.Cell>{modals.edit.templateLabel}</Table.Cell>
-							<Table.Cell class="truncate max-w-0" title={modals.edit.targetLabel}>{modals.edit.targetLabel}</Table.Cell>
+							<Table.Cell class="truncate max-w-0" title={modals.edit.targetLabel}
+								>{modals.edit.targetLabel}</Table.Cell
+							>
 							<Table.Cell>
 								{#if modals.edit.active}
 									<span class="text-green-500">Active</span>
@@ -816,10 +997,11 @@
 					</p>
 					<div class="flex min-w-0 items-start gap-3">
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
-							<label class="text-muted-foreground text-xs">
+							<label for="notification-warning-threshold" class="text-muted-foreground text-xs">
 								Warning{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
 							</label>
 							<input
+								id="notification-warning-threshold"
 								type="number"
 								min="0"
 								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
@@ -829,8 +1011,8 @@
 										? 'warningCelsius'
 										: 'warningPercent',
 									modals.edit.templateKey === 'system.disk.smart.temperature'
-										? editConfigDefaults['warningCelsius'] ?? 55
-										: editConfigDefaults['warningPercent'] ?? 80
+										? (editConfigDefaults['warningCelsius'] ?? 55)
+										: (editConfigDefaults['warningPercent'] ?? 80)
 								)}
 								oninput={(e) =>
 									setConfigNumber(
@@ -842,15 +1024,19 @@
 							/>
 							<span class="text-muted-foreground text-[10px]"
 								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
-									? editConfigDefaults['warningCelsius'] ?? 55
-									: editConfigDefaults['warningPercent'] ?? 80}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+									? (editConfigDefaults['warningCelsius'] ?? 55)
+									: (editConfigDefaults['warningPercent'] ?? 80)}{modals.edit.templateKey ===
+								'system.disk.smart.temperature'
+									? ' °C'
+									: ' %'}</span
 							>
 						</div>
 						<div class="flex min-w-0 flex-1 flex-col gap-1">
-							<label class="text-muted-foreground text-xs">
+							<label for="notification-critical-threshold" class="text-muted-foreground text-xs">
 								Critical{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}
 							</label>
 							<input
+								id="notification-critical-threshold"
 								type="number"
 								min="0"
 								max={modals.edit.templateKey === 'system.disk.smart.temperature' ? '125' : '100'}
@@ -860,8 +1046,8 @@
 										? 'criticalCelsius'
 										: 'criticalPercent',
 									modals.edit.templateKey === 'system.disk.smart.temperature'
-										? editConfigDefaults['criticalCelsius'] ?? 65
-										: editConfigDefaults['criticalPercent'] ?? 90
+										? (editConfigDefaults['criticalCelsius'] ?? 65)
+										: (editConfigDefaults['criticalPercent'] ?? 90)
 								)}
 								oninput={(e) =>
 									setConfigNumber(
@@ -873,8 +1059,11 @@
 							/>
 							<span class="text-muted-foreground text-[10px]"
 								>Default: {modals.edit.templateKey === 'system.disk.smart.temperature'
-									? editConfigDefaults['criticalCelsius'] ?? 65
-									: editConfigDefaults['criticalPercent'] ?? 90}{modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' : ' %'}</span
+									? (editConfigDefaults['criticalCelsius'] ?? 65)
+									: (editConfigDefaults['criticalPercent'] ?? 90)}{modals.edit.templateKey ===
+								'system.disk.smart.temperature'
+									? ' °C'
+									: ' %'}</span
 							>
 						</div>
 					</div>
@@ -886,9 +1075,10 @@
 
 			<div class="space-y-2 pt-1">
 				<p class="text-sm font-medium">Channels</p>
-				<div class="flex items-center gap-4">
+				<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
 					<CustomCheckbox label="In-App" bind:checked={modals.edit.uiEnabled} />
 					<CustomCheckbox label="ntfy" bind:checked={modals.edit.ntfyEnabled} />
+					<CustomCheckbox label="Pushover" bind:checked={modals.edit.pushoverEnabled} />
 					<CustomCheckbox label="Email" bind:checked={modals.edit.emailEnabled} />
 					<CustomCheckbox label="Discord" bind:checked={modals.edit.discordEnabled} />
 				</div>
@@ -970,7 +1160,7 @@
 				<Button
 					onclick={sendTest}
 					size="sm"
-					disabled={busy.test || !modals.test.templateKey}
+					disabled={busy.test || !modals.test.templateKey || !modals.test.targetKey}
 				>
 					{#if busy.test}
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
@@ -1007,3 +1197,103 @@
 		}
 	}}
 />
+
+{#if modals.bulkUpdate.open}
+	<Dialog.Root bind:open={modals.bulkUpdate.open}>
+		<Dialog.Content
+			class="sm:max-w-150"
+			onInteractOutside={(e) => e.preventDefault()}
+			showCloseButton={true}
+			onClose={() => (modals.bulkUpdate.open = false)}
+		>
+			<Dialog.Header>
+				<Dialog.Title>
+					<SpanWithIcon
+						icon="icon-[material-symbols--toggle-on]"
+						size="h-5 w-5"
+						gap="gap-2"
+						title="Bulk Update Notification Channels"
+					/>
+				</Dialog.Title>
+			</Dialog.Header>
+
+			<div class="space-y-4">
+				<div class="rounded-md border bg-muted/10">
+					<Accordion.Root type="single">
+						<Accordion.Item value="selected-rules" class="border-b-0">
+							<Accordion.Trigger
+								class="px-4 py-2.5 text-xs uppercase tracking-widest text-muted-foreground hover:no-underline"
+							>
+								{modals.bulkUpdate.ids.length} Rule(s) Selected
+							</Accordion.Trigger>
+							<Accordion.Content class="px-4 pb-3">
+								<div class="space-y-1">
+									{#each bulkUpdateGroups as group (group.label)}
+										<div
+											class="flex items-center justify-between rounded bg-background px-3 py-1.5 text-xs"
+										>
+											<span class="text-muted-foreground">{group.label}</span>
+											<span class="font-medium"
+												>{group.count} rule{group.count !== 1 ? 's' : ''}</span
+											>
+										</div>
+									{/each}
+								</div>
+							</Accordion.Content>
+						</Accordion.Item>
+					</Accordion.Root>
+				</div>
+
+				<div class="grid grid-cols-2 gap-3">
+					{#each bulkUpdateChannels as channel (channel.key)}
+						{@const value = modals.bulkUpdate[channel.key]}
+						<div class="rounded-md border p-3 space-y-2.5">
+							<div class="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+								<span class="{channel.icon} h-4 w-4 shrink-0"></span>
+								{channel.label}
+							</div>
+							<div class="flex gap-2">
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									true
+										? 'border-green-600 bg-green-600 text-white shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = true)}
+								>
+									Enable
+								</button>
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									false
+										? 'border-red-600 bg-red-600 text-white shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = false)}
+								>
+									Disable
+								</button>
+								<button
+									class="inline-flex h-7 cursor-pointer items-center rounded-md border px-3 text-xs font-medium transition-all {value ===
+									null
+										? 'bg-muted text-foreground shadow-xs'
+										: 'bg-background text-muted-foreground hover:bg-muted'} disabled:pointer-events-none disabled:opacity-50"
+									onclick={() => (modals.bulkUpdate[channel.key] = null)}
+								>
+									No Change
+								</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+
+			<Dialog.Footer>
+				<Button onclick={bulkUpdateRules} size="sm" disabled={busy.delete}>
+					{#if busy.delete}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+					{/if}
+					Apply Changes
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+{/if}

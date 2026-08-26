@@ -11,6 +11,7 @@ package network
 import (
 	"testing"
 
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -18,7 +19,11 @@ import (
 
 func newNetworkServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	models := append([]any{}, migrateModels...)
-	models = append(models, &networkModels.ObjectListSnapshot{})
+	models = append(models,
+		&networkModels.ObjectListSnapshot{},
+		&infoModels.FirewallRuleDelta{},
+		&infoModels.FirewallRuleCounterTotal{},
+	)
 	return testutil.NewSQLiteTestDB(t, models...)
 }
 

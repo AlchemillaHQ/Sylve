@@ -4,14 +4,13 @@
 		deleteReplicationPolicy,
 		failoverReplicationPolicy,
 		listReplicationPolicies,
-		listReplicationReceipts,
 		runReplicationPolicy,
 		updateReplicationPolicy,
 		type ReplicationPolicyInput,
 		type ReplicationPolicyTargetInput
 	} from '$lib/api/cluster/replication';
-	import { getJails } from '$lib/api/jail/jail';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getSimpleJails } from '$lib/api/jail/jail';
+	import { getSimpleVMs } from '$lib/api/vm/vm';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -23,31 +22,83 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import type { ClusterNode, NodeResource } from '$lib/types/cluster/cluster';
-	import type { ReplicationPolicy, ReplicationReceipt } from '$lib/types/cluster/replication';
+	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { ReplicationPolicy } from '$lib/types/cluster/replication';
 	import type { SimpleJail } from '$lib/types/jail/jail';
 	import type { SimpleVm } from '$lib/types/vm/vm';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isRequestCancellation, removeCache, updateCache } from '$lib/utils/http';
 	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { renderWithIcon } from '$lib/utils/table';
-	import { resource, watch } from 'runed';
+	import { watch } from 'runed';
+	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Data {
 		policies: ReplicationPolicy[];
-		receipts: ReplicationReceipt[];
 		nodes: ClusterNode[];
-		resources: NodeResource[];
-		jails: SimpleJail[];
-		vms: SimpleVm[];
 	}
 
 	type EditableTarget = {
 		nodeId: string;
 		weight: string;
+	};
+
+	type PendingPolicyDelete = {
+		id: number;
+		name: string;
+		protectionState: string;
+	};
+
+	type PolicyTargetSyncState = 'active' | 'ready' | 'failed' | 'stale' | 'pending' | 'untargeted';
+	type PolicyTargetSync = {
+		nodeId: string;
+		label: string;
+		weight?: number;
+		state: PolicyTargetSyncState;
+		dotColor: string;
+		statusLabel: string;
+		verifiedAt?: string;
+		readyUntil?: string;
+		datasetProgress?: string;
+		detail?: string;
+	};
+	type PolicyTargetSyncDetails = Partial<
+		Pick<PolicyTargetSync, 'verifiedAt' | 'readyUntil' | 'datasetProgress' | 'detail'>
+	>;
+	type PolicyProtectionLabel =
+		| 'Unprotected'
+		| 'Blocked'
+		| 'Deleting'
+		| 'Suspended'
+		| 'Failed'
+		| 'Degraded'
+		| 'Syncing'
+		| 'Initializing'
+		| 'Protected'
+		| 'Eligible';
+
+	const targetSyncColors: Record<PolicyTargetSyncState, string> = {
+		active: '#3b82f6',
+		ready: '#22c55e',
+		failed: '#ef4444',
+		stale: '#f59e0b',
+		pending: '#6b7280',
+		untargeted: '#9ca3af'
+	};
+	const protectionStyles: Record<PolicyProtectionLabel, { icon: string; className: string }> = {
+		Unprotected: { icon: 'mdi:shield-off-outline', className: 'text-gray-500' },
+		Blocked: { icon: 'mdi:alert-octagon', className: 'text-red-500' },
+		Deleting: { icon: 'mdi:delete-clock', className: 'text-amber-500' },
+		Suspended: { icon: 'mdi:pause-circle-outline', className: 'text-blue-500' },
+		Failed: { icon: 'mdi:close-circle', className: 'text-red-500' },
+		Degraded: { icon: 'mdi:alert-circle-outline', className: 'text-amber-500' },
+		Syncing: { icon: 'mdi:progress-clock', className: 'text-blue-500' },
+		Initializing: { icon: 'mdi:progress-clock', className: 'text-blue-500' },
+		Protected: { icon: 'mdi:shield-check', className: 'text-green-500' },
+		Eligible: { icon: 'mdi:check-circle', className: 'text-green-500' }
 	};
 
 	type PolicyStep = 'workload' | 'failover' | 'targets' | 'advanced' | 'review';
@@ -61,6 +112,8 @@
 	};
 
 	const FORCE_RECOVERY_CONFIRM_TEXT = 'FORCE';
+	const POLICY_SAVE_REFRESH_ATTEMPTS = 6;
+	const POLICY_SAVE_REFRESH_DELAY_MS = 250;
 
 	function failoverModeOptions(ownerOnline: boolean): FailoverModeOption[] {
 		const options: FailoverModeOption[] = [];
@@ -214,6 +267,79 @@
 		return '';
 	}
 
+	function isPolicyDeleteCleanupIncomplete(message: unknown, error: unknown): boolean {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+		return combined.includes('replication_policy_delete_cleanup_incomplete');
+	}
+
+	function userPolicyDeleteErrorMessage(message: unknown, error: unknown): string {
+		const combined = `${normalizeErrorInput(message).toLowerCase()} ${normalizeErrorInput(error).toLowerCase()}`;
+
+		if (combined.includes('replication_policy_delete_cleanup_incomplete')) {
+			return 'Cleanup is incomplete; the policy remains safely disabled. Retry when all cluster nodes are available.';
+		}
+		if (
+			combined.includes('policy_transition_in_progress') ||
+			combined.includes('cannot_delete_policy_during_failover') ||
+			combined.includes('transition_in_progress')
+		) {
+			return 'This policy is currently moving between nodes. Wait for that operation to finish, then retry.';
+		}
+		if (combined.includes('quorum')) {
+			return 'Cluster quorum is unavailable. Restore quorum, then retry cleanup.';
+		}
+		if (
+			combined.includes('not_leader') ||
+			combined.includes('not the leader') ||
+			combined.includes('leadership')
+		) {
+			return 'The cluster leader changed during deletion. Wait a few seconds, then retry.';
+		}
+		if (
+			combined.includes('node_unavailable') ||
+			combined.includes('node_id_unavailable') ||
+			combined.includes('node offline') ||
+			combined.includes('unreachable') ||
+			combined.includes('connection refused') ||
+			combined.includes('no route to host')
+		) {
+			return 'A cluster node is unavailable. Bring all nodes back online, then retry cleanup.';
+		}
+		if (
+			combined.includes('replication_policy_delete_revalidation_failed') ||
+			combined.includes('owner_epoch') ||
+			combined.includes('cas_conflict')
+		) {
+			return 'Policy ownership changed during cleanup. Refresh the policy state, then retry.';
+		}
+		if (
+			combined.includes('replication_policy_delete_cleanup_unavailable') ||
+			combined.includes('replication_service_unavailable')
+		) {
+			return 'Replication cleanup is temporarily unavailable. Restore the replication service, then retry.';
+		}
+		if (
+			combined.includes('replication_policy_not_found') ||
+			combined.includes('record not found')
+		) {
+			return 'This policy no longer exists. Refresh the policy list.';
+		}
+		if (combined.includes('timeout') || combined.includes('deadline exceeded')) {
+			return 'Deletion timed out before cleanup was confirmed. Check cluster health, then retry.';
+		}
+		if (
+			combined.includes('request failed') ||
+			combined.includes('failed to fetch') ||
+			combined.includes('network error') ||
+			combined.includes('econnreset') ||
+			combined.includes('econnrefused')
+		) {
+			return 'The delete request could not be completed. Check your connection and cluster status, then retry.';
+		}
+
+		return 'Could not delete the policy. Check the reported error and cluster status, then retry.';
+	}
+
 	function describePolicyHAReasons(reasons: string[]): string {
 		const values = (reasons || []).map((value) =>
 			String(value || '')
@@ -237,6 +363,12 @@
 		}
 		if (values.includes('quorum_lost')) {
 			return 'Cluster quorum is unavailable.';
+		}
+		if (values.includes('backup_job_runner_rebind_pending')) {
+			return 'Backup jobs are still being assigned to the new active node.';
+		}
+		if (values.includes('backup_job_runner_rebind_repair_required')) {
+			return 'One or more backup jobs require repair after ownership changed.';
 		}
 		return 'This policy is currently blocked by HA constraints.';
 	}
@@ -277,9 +409,10 @@
 		},
 		{
 			value: 'auto_safe',
-			title: 'Automatic safe move',
-			description: 'Automatically move after a safe demote and sync.',
-			impact: 'Protects data first, then promotes a target.'
+			title: 'Automatic safe handoff',
+			description: 'Automatically hand off only while the active server is reachable.',
+			impact:
+				'If the active server is unreachable, wait for it to return or force recovery manually.'
 		},
 		{
 			value: 'auto_force',
@@ -295,53 +428,81 @@
 	// svelte-ignore state_referenced_locally
 	let nodes = $state(data.nodes);
 
-	// svelte-ignore state_referenced_locally
-	let jails = $state(data.jails);
+	let jails = $state<SimpleJail[]>([]);
 
-	// svelte-ignore state_referenced_locally
-	let vms = $state(data.vms);
+	let vms = $state<SimpleVm[]>([]);
 
 	let reload = $state(false);
 	let query = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let deleteModalOpen = $state(false);
+	let policyDeleting = $state(false);
+	let pendingPolicyDelete = $state<PendingPolicyDelete | null>(null);
 	let failoverModalOpen = $state(false);
+	let policySaving = $state(false);
 	let jailsLoading = $state(false);
 	let vmsLoading = $state(false);
 	let jailsLoadedForNode = $state('');
 	let vmsLoadedForNode = $state('');
+	let freshnessNow = $state(Date.now());
+	let periodicRefreshRunning = false;
+	let policyRefreshGeneration = 0;
+	let jailLoadGeneration = 0;
+	let vmLoadGeneration = 0;
+	let jailLoadController: AbortController | null = null;
+	let vmLoadController: AbortController | null = null;
 
 	// svelte-ignore state_referenced_locally
-	let policies = resource(
-		() => 'replication-policies',
-		async () => {
-			const res = await listReplicationPolicies();
-			updateCache('replication-policies', res);
-			return res;
-		},
-		{ initialValue: data.policies }
-	);
+	let policies = $state<ReplicationPolicy[]>(data.policies);
 
-	// svelte-ignore state_referenced_locally
-	let receipts = resource(
-		() => 'replication-receipts-policies',
-		async () => {
-			const res = await listReplicationReceipts();
-			updateCache('replication-receipts', res);
-			return res;
-		},
-		{ initialValue: data.receipts || [] }
-	);
+	async function refreshPolicyList() {
+		const generation = ++policyRefreshGeneration;
+		const refreshedPolicies = await listReplicationPolicies();
+		if (generation !== policyRefreshGeneration) return;
+
+		updateCache('replication-policies', refreshedPolicies);
+		policies = refreshedPolicies;
+	}
 
 	watch(
 		() => reload,
 		(value) => {
 			if (!value) return;
-			policies.refetch();
-			receipts.refetch();
+			void refreshPolicyList().catch(() => undefined);
 			reload = false;
 		}
 	);
+
+	onMount(() => {
+		const timer = window.setInterval(() => {
+			freshnessNow = Date.now();
+			if (periodicRefreshRunning || policySaving) return;
+
+			periodicRefreshRunning = true;
+			const generation = policyRefreshGeneration;
+			const previousPolicies = policies;
+			void listReplicationPolicies()
+				.then((refreshedPolicies) => {
+					if (generation !== policyRefreshGeneration || policySaving) return;
+
+					// Array API failures collapse to an empty array. Do not blank a healthy
+					// table during background polling when we cannot distinguish that from
+					// a legitimate remote deletion; an explicit reload can reconcile deletions.
+					if (previousPolicies.length > 0 && refreshedPolicies?.length === 0) {
+						return;
+					}
+
+					updateCache('replication-policies', refreshedPolicies);
+					policies = refreshedPolicies;
+				})
+				.catch(() => undefined)
+				.finally(() => {
+					periodicRefreshRunning = false;
+				});
+		}, 30_000);
+
+		return () => window.clearInterval(timer);
+	});
 
 	let selectedPolicyId = $derived.by(() => {
 		if (!activeRows || activeRows.length !== 1) return 0;
@@ -389,14 +550,22 @@
 		)
 	);
 
-	let isFirstPolicyStep = $derived.by(() => policyStepIndex === 0);
 	let isLastPolicyStep = $derived.by(() => policyStepIndex === policySteps.length - 1);
-	let maxTargetRows = $derived.by(() => Math.max(1, nodes.length));
+	let maxTargetRows = $derived.by(() => {
+		const workloadNodeID = String(policyModal.workloadNodeId || '').trim();
+		return Math.max(1, nodes.length - (workloadNodeID ? 1 : 0));
+	});
 	let canAddTargetRow = $derived.by(() => policyModal.targets.length < maxTargetRows);
 	let reviewWorkload = $derived.by(() => {
 		const guestId = String(policyModal.guestId || '').trim();
 		if (!guestId) return 'None';
-		return `${policyModal.guestType.toUpperCase()} ${guestId}`;
+		const id = Number.parseInt(guestId, 10);
+		const name =
+			policyModal.guestType === 'jail'
+				? jails.find((jail) => jail.ctId === id)?.name
+				: vms.find((vm) => vm.rid === id)?.name;
+		const type = policyModal.guestType === 'jail' ? 'Jail' : 'VM';
+		return name ? `${type} ${guestId} - ${name}` : `${type} ${guestId}`;
 	});
 	let reviewSchedule = $derived.by(() => {
 		const cron = String(policyModal.cronExpr || '').trim();
@@ -416,12 +585,12 @@
 
 	let selectedPolicyName = $derived.by(() => {
 		if (selectedPolicyId === 0) return '';
-		return policies.current.find((policy) => policy.id === selectedPolicyId)?.name || '';
+		return policies.find((policy) => policy.id === selectedPolicyId)?.name || '';
 	});
 
 	let selectedPolicy = $derived.by(() => {
 		if (selectedPolicyId === 0) return null;
-		return policies.current.find((policy) => policy.id === selectedPolicyId) || null;
+		return policies.find((policy) => policy.id === selectedPolicyId) || null;
 	});
 
 	let nodeNameByID = $derived.by(() => {
@@ -432,12 +601,91 @@
 		return out;
 	});
 
+	function workloadKey(guestType: string, guestId: number): string {
+		return `${guestType}:${guestId}`;
+	}
+
+	let workloadNames = $state<Record<string, string>>({});
+	let workloadNameLoadGeneration = 0;
+
+	async function resolveWorkloadNames(signal: AbortSignal): Promise<Record<string, string>> {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const workloadsByNode = new Map<string, ReplicationPolicy[]>();
+		for (const policy of policies) {
+			const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+			const hostname = nodeNameByID[nodeId];
+			if (!hostname) continue;
+			const workloads = workloadsByNode.get(hostname) || [];
+			workloads.push(policy);
+			workloadsByNode.set(hostname, workloads);
+		}
+
+		const names: Record<string, string> = {};
+		await Promise.all(
+			Array.from(workloadsByNode.entries()).map(async ([hostname, workloads]) => {
+				if (workloads.some((workload) => workload.guestType === 'vm')) {
+					try {
+						for (const vm of await getSimpleVMs(hostname, signal)) {
+							names[workloadKey('vm', vm.rid)] = vm.name;
+						}
+					} catch {
+						// Keep ID-only labels when this node cannot be reached.
+					}
+				}
+				if (workloads.some((workload) => workload.guestType === 'jail')) {
+					try {
+						for (const jail of await getSimpleJails(hostname, signal)) {
+							names[workloadKey('jail', jail.ctId)] = jail.name;
+						}
+					} catch {
+						// Keep ID-only labels when this node cannot be reached.
+					}
+				}
+			})
+		);
+		return names;
+	}
+
+	watch(
+		() =>
+			policies
+				.map((policy) => {
+					const nodeId = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
+					return `${policy.guestType}:${policy.guestId}:${nodeNameByID[nodeId] || ''}`;
+				})
+				.sort()
+				.join('|'),
+		() => {
+			const generation = ++workloadNameLoadGeneration;
+			const controller = new AbortController();
+			void resolveWorkloadNames(controller.signal).then((names) => {
+				if (generation === workloadNameLoadGeneration && !controller.signal.aborted) {
+					workloadNames = names;
+				}
+			});
+			return () => controller.abort();
+		}
+	);
+
 	function compactNodeLabel(nodeId: string): string {
 		const value = String(nodeId || '').trim();
 		if (!value) return '-';
 		const known = nodeNameByID[value];
 		if (known) return known;
 		return value.length > 12 ? `${value.slice(0, 8)}...` : value;
+	}
+
+	function escapeHtml(value: unknown): string {
+		return String(value ?? '').replace(/[&<>"']/g, (character) => {
+			const entities: Record<string, string> = {
+				'&': '&amp;',
+				'<': '&lt;',
+				'>': '&gt;',
+				'"': '&quot;',
+				"'": '&#39;'
+			};
+			return entities[character] || character;
+		});
 	}
 
 	function scheduleLabel(cronExpr: string): string {
@@ -458,7 +706,7 @@
 
 	function failoverModeSummary(failoverMode: string): string {
 		if (failoverMode === 'auto_force') return 'Auto force recovery';
-		if (failoverMode === 'auto_safe') return 'Auto safe move';
+		if (failoverMode === 'auto_safe') return 'Auto safe handoff';
 		return 'Manual moves only';
 	}
 
@@ -466,108 +714,215 @@
 		return failbackMode === 'auto' ? 'Auto move back' : 'Manual move back';
 	}
 
+	function pendingReadinessLabel(reason: string): string {
+		const normalized = String(reason || '')
+			.trim()
+			.toLowerCase();
+		if (!normalized) return '';
+		if (
+			normalized === 'replication_generation_commit_in_progress' ||
+			normalized.endsWith('_in_progress')
+		) {
+			return 'Syncing';
+		}
+		if (
+			normalized === 'awaiting_post_transition_validation' ||
+			(normalized.startsWith('awaiting_') && normalized.endsWith('_validation'))
+		) {
+			return 'Validating';
+		}
+		if (normalized.endsWith('_requires_validation')) {
+			return 'Needs sync';
+		}
+		return '';
+	}
+
 	function policyModeSummary(policy: ReplicationPolicy): string {
 		return `${failoverModeSummary(policy.failoverMode)} | ${sourceModeSummary(policy.sourceMode)} | ${failbackModeSummary(policy.failbackMode)}`;
 	}
 
-	let receiptsByPolicyID = $derived.by(() => {
-		const out: Record<number, ReplicationReceipt[]> = {};
-		for (const receipt of receipts.current || []) {
-			const policyID = Number(receipt.policyId || 0);
-			if (!Number.isFinite(policyID) || policyID <= 0) continue;
-			if (!out[policyID]) out[policyID] = [];
-			out[policyID].push(receipt);
-		}
-		return out;
-	});
+	function makeTargetSync(
+		nodeId: string,
+		label: string,
+		weight: number | undefined,
+		state: PolicyTargetSyncState,
+		statusLabel: string,
+		details: PolicyTargetSyncDetails = {}
+	): PolicyTargetSync {
+		return {
+			nodeId,
+			label,
+			weight,
+			state,
+			statusLabel,
+			dotColor: targetSyncColors[state],
+			...details
+		};
+	}
 
-	function resolvePolicyTargetSync(policy: ReplicationPolicy) {
+	function resolvePolicyTargetSync(policy: ReplicationPolicy): PolicyTargetSync[] {
 		const ownerNodeID = String(policy.activeNodeId || policy.sourceNodeId || '').trim();
-		const targetSet = new Set(
-			(policy.targets || [])
-				.map((t) => String(t.nodeId || '').trim())
-				.filter((id) => id.length > 0)
+		const orderedTargets = [...(policy.targets || [])].sort(
+			(a, b) => Number(b.weight || 0) - Number(a.weight || 0)
 		);
+		const configuredTargetIDs = orderedTargets
+			.map((target) => String(target.nodeId || '').trim())
+			.filter((id) => id.length > 0);
+		const targetSet = new Set(configuredTargetIDs);
 		const targetWeightByID: Record<string, number> = {};
+		const targetByID: Record<string, (typeof orderedTargets)[number]> = {};
 		for (const t of policy.targets || []) {
 			const id = String(t.nodeId || '').trim();
-			if (id) targetWeightByID[id] = Number(t.weight) || 0;
+			if (!id) continue;
+			targetWeightByID[id] = Number(t.weight) || 0;
+			targetByID[id] = t;
 		}
 
-		const receiptsForPolicy = receiptsByPolicyID[policy.id] || [];
-		const receiptByTargetID: Record<string, ReplicationReceipt> = {};
-		for (const receipt of receiptsForPolicy) {
-			const targetID = String(receipt.targetNodeId || '').trim();
-			if (!targetID || !targetSet.has(targetID)) continue;
-			const existing = receiptByTargetID[targetID];
-			if (!existing) {
-				receiptByTargetID[targetID] = receipt;
-				continue;
-			}
-			const existingAt = Date.parse(existing.lastAttemptAt || '');
-			const candidateAt = Date.parse(receipt.lastAttemptAt || '');
-			if (
-				!Number.isFinite(existingAt) ||
-				(Number.isFinite(candidateAt) && candidateAt > existingAt)
-			) {
-				receiptByTargetID[targetID] = receipt;
-			}
-		}
-
-		const now = Date.now();
-		const allNodeIDs = nodes.map((n) => n.nodeUUID);
+		const now = freshnessNow;
+		const allNodeIDs = Array.from(
+			new Set(
+				[ownerNodeID, ...configuredTargetIDs, ...nodes.map((node) => node.nodeUUID)].filter(
+					(nodeID) => nodeID.length > 0
+				)
+			)
+		);
 
 		return allNodeIDs.map((nodeID) => {
 			const label = compactNodeLabel(nodeID);
 
 			if (nodeID === ownerNodeID) {
-				return {
-					nodeId: nodeID,
+				return makeTargetSync(
+					nodeID,
 					label,
-					weight: targetWeightByID[nodeID] ?? undefined,
-					state: 'active' as const,
-					dotColor: '#3b82f6'
-				};
+					targetWeightByID[nodeID] ?? undefined,
+					'active',
+					'Active'
+				);
 			}
 
 			if (!targetSet.has(nodeID)) {
-				return {
-					nodeId: nodeID,
-					label,
-					weight: undefined,
-					state: 'untargeted' as const,
-					dotColor: '#9ca3af'
-				};
+				return makeTargetSync(nodeID, label, undefined, 'untargeted', 'Not targeted');
 			}
 
 			const weight = targetWeightByID[nodeID];
-			const receipt = receiptByTargetID[nodeID];
-			if (!receipt) {
-				return { nodeId: nodeID, label, weight, state: 'never' as const, dotColor: '#9ca3af' };
+			const target = targetByID[nodeID];
+			const lastError = String(target?.lastError || '').trim();
+			const lastVerifiedAt = String(target?.lastVerifiedAt || '').trim();
+			const readyUntil = String(target?.readyUntil || '').trim();
+			const lastVerifiedAtMs = Date.parse(lastVerifiedAt);
+			const readyUntilMs = Date.parse(readyUntil);
+			const requiredDatasetCount = Number(target?.requiredDatasetCount || 0);
+			const completedDatasetCount = Number(target?.completedDatasetCount || 0);
+			const datasetProgress =
+				requiredDatasetCount > 0
+					? `${completedDatasetCount}/${requiredDatasetCount} ${requiredDatasetCount === 1 ? 'dataset' : 'datasets'}`
+					: undefined;
+			const targetHasReadiness = Boolean(
+				target?.ready ||
+				String(target?.generationId || '').trim() ||
+				lastVerifiedAt ||
+				readyUntil ||
+				lastError ||
+				requiredDatasetCount > 0 ||
+				completedDatasetCount > 0
+			);
+			const targetGenerationReady = Boolean(
+				target?.ready &&
+				String(target.generationId || '').trim() &&
+				Number(target.ownerEpoch || 0) === Number(policy.ownerEpoch || 0) &&
+				requiredDatasetCount > 0 &&
+				completedDatasetCount === requiredDatasetCount &&
+				Number.isFinite(lastVerifiedAtMs) &&
+				Number.isFinite(readyUntilMs) &&
+				readyUntilMs > now
+			);
+			const pendingLabel = pendingReadinessLabel(lastError);
+			const readinessDetails: PolicyTargetSyncDetails = {
+				verifiedAt: lastVerifiedAt || undefined,
+				readyUntil: readyUntil || undefined,
+				datasetProgress
+			};
+
+			if (pendingLabel) {
+				return makeTargetSync(nodeID, label, weight, 'pending', pendingLabel, {
+					...readinessDetails,
+					detail: lastError
+				});
 			}
 
-			const status = String(receipt.status || '').trim().toLowerCase();
-			if (status === 'failed') {
-				return { nodeId: nodeID, label, weight, state: 'failed' as const, dotColor: '#ef4444' };
+			if (lastError) {
+				return makeTargetSync(nodeID, label, weight, 'failed', 'Error', {
+					...readinessDetails,
+					detail: lastError
+				});
 			}
 
-			const lastSuccessAt = Date.parse(receipt.lastSuccessAt || '');
-			const freshnessWindowSeconds = Number(receipt.freshnessWindowSeconds || 0);
+			if (targetGenerationReady) {
+				return makeTargetSync(nodeID, label, weight, 'ready', 'Ready', readinessDetails);
+			}
+
 			if (
-				!Number.isFinite(lastSuccessAt) ||
-				!Number.isFinite(freshnessWindowSeconds) ||
-				freshnessWindowSeconds <= 0
+				targetHasReadiness &&
+				(Number.isFinite(lastVerifiedAtMs) ||
+					(target?.ready && Number.isFinite(readyUntilMs) && readyUntilMs <= now))
 			) {
-				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
+				return makeTargetSync(nodeID, label, weight, 'stale', 'Stale', readinessDetails);
 			}
 
-			const ageSeconds = (now - lastSuccessAt) / 1000;
-			if (ageSeconds > freshnessWindowSeconds) {
-				return { nodeId: nodeID, label, weight, state: 'stale' as const, dotColor: '#f59e0b' };
+			if (targetHasReadiness) {
+				return makeTargetSync(nodeID, label, weight, 'pending', 'Pending', readinessDetails);
 			}
 
-			return { nodeId: nodeID, label, weight, state: 'ok' as const, dotColor: '#22c55e' };
+			return makeTargetSync(nodeID, label, weight, 'pending', 'Pending');
 		});
+	}
+
+	function resolvePolicyProtection(
+		policy: ReplicationPolicy,
+		targetSync: PolicyTargetSync[]
+	): PolicyProtectionLabel {
+		if (!policy.enabled) return 'Unprotected';
+		if (!policy.haEligible) return 'Blocked';
+
+		const protectionState = String(policy.protectionState || '')
+			.trim()
+			.toLowerCase();
+		if (protectionState === 'deleting') return 'Deleting';
+		if (protectionState === 'suspended') return 'Suspended';
+		if (protectionState === 'unprotected') return 'Unprotected';
+
+		const targetStates = targetSync
+			.filter((target) => target.state !== 'active' && target.state !== 'untargeted')
+			.map((target) => target.state);
+		const syncing = targetSync.some(
+			(target) => target.state === 'pending' && target.statusLabel === 'Syncing'
+		);
+		if (
+			policy.haDegraded ||
+			targetStates.some((state) => state === 'failed' || state === 'stale')
+		) {
+			return 'Degraded';
+		}
+		if (syncing) return 'Syncing';
+
+		const lastStatus = String(policy.lastStatus || '')
+			.trim()
+			.toLowerCase();
+		if (lastStatus === 'blocked') return 'Blocked';
+		if (lastStatus === 'failed') return 'Failed';
+		if (lastStatus === 'degraded' || protectionState === 'degraded') return 'Degraded';
+		if (
+			protectionState === 'initializing' ||
+			targetStates.length === 0 ||
+			targetStates.some((state) => state === 'pending')
+		) {
+			return 'Initializing';
+		}
+		if (protectionState === 'armed' || targetStates.every((state) => state === 'ready')) {
+			return 'Protected';
+		}
+
+		return 'Eligible';
 	}
 
 	let nodeOptions = $derived.by(() =>
@@ -604,10 +959,7 @@
 	let failoverTargetOptions = $derived.by(() => {
 		const policy = selectedPolicy;
 		if (!policy) {
-			return [
-				{ value: '', label: 'Auto-pick the best target from policy priority' },
-				...nodeOptions
-			];
+			return [{ value: '', label: 'Auto-pick the best eligible target' }, ...nodeOptions];
 		}
 
 		const ownerNodeID = (policy.activeNodeId || policy.sourceNodeId || '').trim();
@@ -619,10 +971,7 @@
 		const scopedOptions = nodeOptions.filter(
 			(option) => configuredTargets.has(option.value) && isOnlineNode(option.value)
 		);
-		return [
-			{ value: '', label: 'Auto-pick the best target from policy priority' },
-			...scopedOptions
-		];
+		return [{ value: '', label: 'Auto-pick the best eligible target' }, ...scopedOptions];
 	});
 	let failoverTargetHint = $derived.by(() => {
 		if (!selectedPolicy) return '';
@@ -630,59 +979,39 @@
 		return 'No online target server is currently available for this policy.';
 	});
 
-	let vmOptions = $derived.by(() =>
-		vms.map((vm) => ({ value: String(vm.rid), label: `${vm.name} (RID ${vm.rid})` }))
-	);
-
-	let jailOptions = $derived.by(() =>
-		jails.map((jail) => ({ value: String(jail.ctId), label: `${jail.name} (CTID ${jail.ctId})` }))
-	);
-
-	let vmByNode = $derived.by(() => {
-		const out: Record<string, Array<{ value: string; label: string }>> = {};
-		for (const res of data.resources) {
-			if (!res.vms) continue;
-			const nodeVms = res.vms.map((vm) => ({
-				value: String(vm.rid),
-				label: `${vm.name} (RID ${vm.rid})`
-			}));
-			if (nodeVms.length > 0) out[res.nodeUUID] = nodeVms;
-		}
-		return out;
-	});
-
-	let jailByNode = $derived.by(() => {
-		const out: Record<string, Array<{ value: string; label: string }>> = {};
-		for (const res of data.resources) {
-			if (!res.jails) continue;
-			const nodeJails = res.jails.map((jail) => ({
-				value: String(jail.ctId),
-				label: `${jail.name} (CTID ${jail.ctId})`
-			}));
-			if (nodeJails.length > 0) out[res.nodeUUID] = nodeJails;
-		}
-		return out;
-	});
-
 	let guestOptions = $derived.by(() => {
 		const nodeId = String(policyModal.workloadNodeId || '').trim();
 		if (!nodeId) return [];
-		if (policyModal.guestType === 'vm') return vmByNode[nodeId] || [];
-		return jailByNode[nodeId] || [];
+		if (policyModal.guestType === 'vm') {
+			if (vmsLoadedForNode !== nodeId) return [];
+			return vms.map((vm) => ({ value: String(vm.rid), label: `${vm.name} (RID ${vm.rid})` }));
+		}
+		if (jailsLoadedForNode !== nodeId) return [];
+		return jails.map((jail) => ({
+			value: String(jail.ctId),
+			label: `${jail.name} (CTID ${jail.ctId})`
+		}));
 	});
+
+	function policyWorkloadLabel(policy: ReplicationPolicy): string {
+		const id = policy.guestId;
+		const idPrefix = policy.guestType === 'jail' ? 'CTID' : 'RID';
+		const name = workloadNames[workloadKey(policy.guestType, id)];
+		return name ? `${name} (${idPrefix} ${id})` : `${idPrefix} ${id}`;
+	}
 
 	const policyColumns: Column[] = [
 		{ field: 'id', title: 'ID', visible: false },
 		{
 			field: 'status',
 			title: 'Status',
-			width: 150,
-			minWidth: 130,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData() as {
 					enabled: boolean;
 					lastStatus: string;
 					transitionState: string;
+					isSyncing: boolean;
+					haReasons: string[];
 				};
 				const icons = [];
 				if (row.enabled) {
@@ -692,7 +1021,11 @@
 				}
 
 				const transitionState = String(row.transitionState || 'none');
-				if (transitionState !== 'none' && transitionState !== 'completed' && transitionState !== 'failed') {
+				if (
+					transitionState !== 'none' &&
+					transitionState !== 'completed' &&
+					transitionState !== 'failed'
+				) {
 					const phaseLabels: Record<string, string> = {
 						demoting: 'Demoting',
 						catchup: 'Catching Up',
@@ -708,8 +1041,19 @@
 					return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
 				}
 
+				const healthReasons = row.haReasons || [];
+				if (healthReasons.includes('backup_job_runner_rebind_repair_required')) {
+					icons.push(renderWithIcon('mdi:wrench-clock', 'Backup repair required', 'text-red-500'));
+				} else if (healthReasons.includes('backup_job_runner_rebind_pending')) {
+					icons.push(
+						renderWithIcon('mdi:server-network', 'Backup runner pending', 'text-amber-500')
+					);
+				}
+
 				const lastStatus = String(row.lastStatus || '').toLowerCase();
-				if (lastStatus === 'success') {
+				if (row.isSyncing) {
+					icons.push(renderWithIcon('mdi:progress-clock', 'Syncing', 'text-blue-500'));
+				} else if (lastStatus === 'success') {
 					icons.push(renderWithIcon('mdi:check-circle', 'Success', 'text-green-500'));
 				} else if (lastStatus === 'failed') {
 					icons.push(renderWithIcon('mdi:close-circle', 'Failed', 'text-red-500'));
@@ -724,12 +1068,10 @@
 				return `<div class="flex flex-col gap-1">${icons.join(' ')}</div>`;
 			}
 		},
-		{ field: 'name', title: 'Policy', width: 190, minWidth: 150 },
+		{ field: 'name', title: 'Policy' },
 		{
 			field: 'workload',
 			title: 'Workload',
-			width: 120,
-			minWidth: 110,
 			formatter: (cell: CellComponent) => {
 				const data = cell.getRow().getData();
 				const icon =
@@ -737,86 +1079,56 @@
 				return renderWithIcon(icon, String(cell.getValue()));
 			}
 		},
-		{ field: 'activeNode', title: 'Active Node', width: 170, minWidth: 130 },
-		{ field: 'mode', title: 'Behavior', width: 320, minWidth: 240 },
+		{ field: 'activeNode', title: 'Active Node' },
+		{ field: 'mode', title: 'Behavior' },
 		{
 			field: 'haState',
-			title: 'HA State',
-			width: 150,
-			minWidth: 130,
+			title: 'Protection',
 			formatter: (cell: CellComponent) => {
-				const row = cell.getRow().getData() as {
-					haEligible: boolean;
-					haDegraded: boolean;
-					haLabel: string;
-				};
-				if (!row.haEligible) {
-					return renderWithIcon('mdi:alert-octagon', row.haLabel || 'Blocked', 'text-red-500');
-				}
-				if (row.haDegraded) {
-					return renderWithIcon(
-						'mdi:alert-circle-outline',
-						row.haLabel || 'Degraded',
-						'text-amber-500'
-					);
-				}
-				return renderWithIcon('mdi:check-circle', row.haLabel || 'Eligible', 'text-green-500');
+				const label = String(cell.getValue() || 'Eligible') as PolicyProtectionLabel;
+				const style = protectionStyles[label] || protectionStyles.Eligible;
+				return renderWithIcon(style.icon, label, style.className);
 			}
 		},
 		{
 			field: 'targets',
 			title: 'Targets',
-			width: 320,
-			minWidth: 220,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow().getData() as {
-					nodeSyncStatuses: Array<{
-						nodeId: string;
-						label: string;
-						weight?: number;
-						state: string;
-						dotColor: string;
-					}>;
+					nodeSyncStatuses: PolicyTargetSync[];
 				};
 				const statuses = row.nodeSyncStatuses;
 				if (!statuses || !statuses.length) return '-';
 
-				const stateLabels: Record<string, string> = {
-					active: 'Active',
-					ok: 'Synced',
-					failed: 'Failed',
-					stale: 'Stale',
-					never: 'Pending',
-					untargeted: 'Not targeted'
-				};
-
 				const tracked = statuses.filter((s) => s.state !== 'untargeted');
-				const untargeted = statuses.filter((s) => s.state === 'untargeted');
 
 				const nodeHtml = (s: (typeof statuses)[number]) => {
-					const humanState = stateLabels[s.state] || s.state;
-					const suffix =
-						s.weight !== undefined ? `${s.label} (${s.weight})` : s.label;
-					return `<span class="inline-flex items-center gap-0.5" title="${s.label}: ${humanState}"><span class="shrink-0 inline-block rounded-full" style="width:8px;height:8px;background-color:${s.dotColor}"></span><span>${suffix}</span></span>`;
+					const roleLabel = s.state === 'active' ? 'Active' : s.statusLabel;
+					const priorityLabel = s.weight !== undefined ? `Priority ${s.weight}` : '';
+					const verifiedLabel = s.verifiedAt ? `Verified ${convertDbTime(s.verifiedAt)}` : '';
+					const readyUntilLabel = s.readyUntil ? `Ready until ${convertDbTime(s.readyUntil)}` : '';
+					const progressLabel = s.datasetProgress || '';
+					const tooltip = [
+						`${s.label}: ${roleLabel}`,
+						priorityLabel,
+						verifiedLabel,
+						readyUntilLabel,
+						progressLabel,
+						s.detail || ''
+					]
+						.filter(Boolean)
+						.join(' | ');
+					const summaryLabel = progressLabel || roleLabel;
+					return `<span class="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs" title="${escapeHtml(tooltip)}"><span class="inline-block h-2 w-2 shrink-0 translate-y-px rounded-full" style="background-color:${s.dotColor}"></span><span class="font-medium leading-none">${escapeHtml(s.label)}</span>${s.weight !== undefined ? `<span class="leading-none">(${s.weight})</span>` : ''}<span class="text-muted-foreground leading-none">- ${escapeHtml(summaryLabel)}</span></span>`;
 				};
 
-				let parts = tracked.map(nodeHtml);
-
-				if (untargeted.length > 0) {
-					parts.push(
-						`<span class="inline-flex items-center gap-0.5 text-muted-foreground" title="${untargeted.length} node${untargeted.length > 1 ? 's' : ''} not targeted">+${untargeted.length}</span>`
-					);
-				}
-
-				return `<span class="inline-flex items-center gap-1.5 flex-wrap">${parts.join('')}</span>`;
+				return `<span class="inline-flex flex-wrap items-center gap-1.5">${tracked.map(nodeHtml).join('')}</span>`;
 			}
 		},
-		{ field: 'schedule', title: 'Schedule', width: 190, minWidth: 150 },
+		{ field: 'schedule', title: 'Schedule' },
 		{
 			field: 'lastRunAt',
 			title: 'Last Run',
-			width: 170,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -825,8 +1137,6 @@
 		{
 			field: 'nextRunAt',
 			title: 'Next Run',
-			width: 170,
-			minWidth: 145,
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
 				return value ? convertDbTime(value) : '-';
@@ -835,9 +1145,7 @@
 	];
 
 	let tableData = $derived.by(() => ({
-		rows: policies.current.map((policy) => {
-			const workloadLabel =
-				policy.guestType === 'jail' ? `Jail ${policy.guestId}` : `VM ${policy.guestId}`;
+		rows: policies.map((policy) => {
 			const sourceNode = policy.activeNodeId || policy.sourceNodeId || '';
 			const sourceLabel = compactNodeLabel(sourceNode);
 			const targetsLabel =
@@ -845,9 +1153,7 @@
 					?.map((target) => `${compactNodeLabel(target.nodeId)} (${target.weight})`)
 					.join(' | ') || '-';
 			const targetSync = resolvePolicyTargetSync(policy);
-			const haEligible = Boolean(policy.haEligible);
-			const haDegraded = Boolean(policy.haDegraded);
-			const haLabel = !haEligible ? 'Blocked' : haDegraded ? 'Degraded' : 'Eligible';
+			const protection = resolvePolicyProtection(policy, targetSync);
 
 			return {
 				id: policy.id,
@@ -855,17 +1161,20 @@
 				enabled: policy.enabled,
 				name: policy.name,
 				guestType: policy.guestType,
-				workload: workloadLabel,
+				workload: policyWorkloadLabel(policy),
 				activeNode: sourceLabel,
 				mode: policyModeSummary(policy),
-				haState: haLabel,
-				haEligible,
+				haState: protection,
+				haEligible: Boolean(policy.haEligible),
 				haDegraded: policy.haDegraded,
-				haLabel,
+				haReasons: policy.haReasons || [],
 				targets: targetsLabel,
 				nodeSyncStatuses: targetSync,
 				schedule: scheduleLabel(policy.cronExpr),
 				lastStatus: policy.lastStatus,
+				isSyncing: targetSync.some(
+					(target) => target.state === 'pending' && target.statusLabel === 'Syncing'
+				),
 				transitionState: policy.transitionState,
 				lastRunAt: policy.lastRunAt,
 				nextRunAt: policy.nextRunAt
@@ -875,7 +1184,6 @@
 	}));
 
 	function resetPolicyModal() {
-		policyModal.open = false;
 		policyStep = 'workload';
 		policyModal.edit = false;
 		policyModal.name = '';
@@ -899,14 +1207,12 @@
 
 	function openCreatePolicy() {
 		resetPolicyModal();
-		policyStep = 'workload';
 		policyModal.open = true;
-		void loadVMsForNode();
 	}
 
-	async function openEditPolicy() {
+	function openEditPolicy() {
 		if (selectedPolicyId === 0) return;
-		const policy = policies.current.find((entry) => entry.id === selectedPolicyId);
+		const policy = policies.find((entry) => entry.id === selectedPolicyId);
 		if (!policy) return;
 
 		policyStep = 'workload';
@@ -935,12 +1241,6 @@
 						weight: String(target.weight || 100)
 					}))
 				: [{ nodeId: '', weight: '100' }];
-
-		if (policyModal.guestType === 'jail') {
-			await loadJailsForNode(true);
-			return;
-		}
-		await loadVMsForNode(true);
 	}
 
 	function selectedWorkloadHostname(): string {
@@ -956,43 +1256,85 @@
 		return nodeByHostname?.hostname || nodeId;
 	}
 
-	async function loadJailsForNode(force: boolean = false) {
+	async function loadJailsForNode() {
+		const nodeId = policyModal.workloadNodeId.trim();
+		if (!nodeId) {
+			jailLoadController?.abort();
+			jailLoadController = null;
+			jailLoadGeneration += 1;
+			jails = [];
+			jailsLoadedForNode = '';
+			jailsLoading = false;
+			return;
+		}
 		const hostname = selectedWorkloadHostname();
-		if (jailsLoading) return;
-		if (!force && jailsLoadedForNode === hostname) return;
+		if (jailsLoadedForNode === nodeId) return;
+		jailLoadController?.abort();
+		jailLoadController = new AbortController();
+		const controller = jailLoadController;
+		const generation = ++jailLoadGeneration;
+		jails = [];
+		jailsLoadedForNode = '';
 		jailsLoading = true;
 		try {
-			const res = await getJails(hostname || undefined);
-			updateCache(hostname ? `jail-list-${hostname}` : 'jail-list', res);
+			const res = await getSimpleJails(hostname || undefined, controller.signal);
+			if (generation !== jailLoadGeneration) return;
+			void updateCache('simple-jails', res, hostname || undefined);
 			jails = res;
-			jailsLoadedForNode = hostname;
+			jailsLoadedForNode = nodeId;
+		} catch (error) {
+			if (!isRequestCancellation(error)) throw error;
 		} finally {
-			jailsLoading = false;
+			if (generation === jailLoadGeneration) {
+				jailLoadController = null;
+				jailsLoading = false;
+			}
 		}
 	}
 
-	async function loadVMsForNode(force: boolean = false) {
+	async function loadVMsForNode() {
+		const nodeId = policyModal.workloadNodeId.trim();
+		if (!nodeId) {
+			vmLoadController?.abort();
+			vmLoadController = null;
+			vmLoadGeneration += 1;
+			vms = [];
+			vmsLoadedForNode = '';
+			vmsLoading = false;
+			return;
+		}
 		const hostname = selectedWorkloadHostname();
-		if (vmsLoading) return;
-		if (!force && vmsLoadedForNode === hostname) return;
+		if (vmsLoadedForNode === nodeId) return;
+		vmLoadController?.abort();
+		vmLoadController = new AbortController();
+		const controller = vmLoadController;
+		const generation = ++vmLoadGeneration;
+		vms = [];
+		vmsLoadedForNode = '';
 		vmsLoading = true;
 		try {
-			const res = await getVMs(hostname || undefined);
-			updateCache(hostname ? `vm-list-${hostname}` : 'vm-list', res);
+			const res = await getSimpleVMs(hostname || undefined, controller.signal);
+			if (generation !== vmLoadGeneration) return;
+			void updateCache('simple-vms', res, hostname || undefined);
 			vms = res;
-			vmsLoadedForNode = hostname;
+			vmsLoadedForNode = nodeId;
+		} catch (error) {
+			if (!isRequestCancellation(error)) throw error;
 		} finally {
-			vmsLoading = false;
+			if (generation === vmLoadGeneration) {
+				vmLoadController = null;
+				vmsLoading = false;
+			}
 		}
 	}
 
 	function closePolicyModal() {
-		resetPolicyModal();
+		policyModal.open = false;
 	}
 
 	function addTargetRow() {
 		if (!canAddTargetRow) {
-			toast.error('You cannot add more targets than available cluster nodes.', {
+			toast.error('You cannot add more targets than available remote cluster nodes.', {
 				position: 'bottom-center'
 			});
 			return;
@@ -1001,22 +1343,20 @@
 	}
 
 	function targetOptionsFor(index: number) {
+		const workloadNodeID = String(policyModal.workloadNodeId || '').trim();
 		const selectedElsewhere = new Set(
 			policyModal.targets
 				.map((target, idx) => (idx === index ? '' : String(target.nodeId || '').trim()))
 				.filter((value) => value.length > 0)
 		);
-		return nodeOptions.filter((option) => !selectedElsewhere.has(option.value));
+		return nodeOptions.filter(
+			(option) => option.value !== workloadNodeID && !selectedElsewhere.has(option.value)
+		);
 	}
 
 	function goToNextPolicyStep() {
 		const next = Math.min(policyStepIndex + 1, policySteps.length - 1);
 		policyStep = policySteps[next].value;
-	}
-
-	function goToPreviousPolicyStep() {
-		const prev = Math.max(policyStepIndex - 1, 0);
-		policyStep = policySteps[prev].value;
 	}
 
 	function removeTargetRow(index: number) {
@@ -1034,6 +1374,12 @@
 			const nodeId = target.nodeId.trim();
 			if (!nodeId) {
 				continue;
+			}
+			if (nodeId === String(policyModal.workloadNodeId || '').trim()) {
+				toast.error('The active workload node cannot be a replication target.', {
+					position: 'bottom-center'
+				});
+				return null;
 			}
 			if (seen.has(nodeId)) {
 				toast.error('Each target server can be added only once.', { position: 'bottom-center' });
@@ -1134,42 +1480,179 @@
 		};
 	}
 
-	async function savePolicy() {
-		const payload = buildPolicyPayload();
-		if (!payload) return;
+	function policyMatchesSavedInput(
+		policy: ReplicationPolicy,
+		payload: ReplicationPolicyInput
+	): boolean {
+		const actualTargets = [...(policy.targets || [])]
+			.map((target) => `${String(target.nodeId || '').trim()}:${Number(target.weight || 0)}`)
+			.sort();
+		const expectedTargets = [...payload.targets]
+			.map((target) => `${String(target.nodeId || '').trim()}:${Number(target.weight || 0)}`)
+			.sort();
+		const pinnedSourceMatches =
+			payload.sourceMode !== 'pinned_primary' ||
+			String(policy.sourceNodeId || '').trim() === String(payload.sourceNodeId || '').trim();
 
-		const result = policyModal.edit
-			? await updateReplicationPolicy(selectedPolicyId, payload)
-			: await createReplicationPolicy(payload);
+		return (
+			policy.name === payload.name &&
+			String(policy.description || '') === String(payload.description || '') &&
+			policy.guestType === payload.guestType &&
+			Number(policy.guestId) === Number(payload.guestId) &&
+			policy.sourceMode === payload.sourceMode &&
+			pinnedSourceMatches &&
+			policy.failbackMode === payload.failbackMode &&
+			policy.failoverMode === payload.failoverMode &&
+			String(policy.cronExpr || '').trim() === String(payload.cronExpr || '').trim() &&
+			policy.enabled === payload.enabled &&
+			policy.crashRecovery === payload.crashRecovery &&
+			Number(policy.crashRestartMax) === Number(payload.crashRestartMax) &&
+			policy.poolHealthCheck === payload.poolHealthCheck &&
+			Number(policy.poolCapacityPct) === Number(payload.poolCapacityPct) &&
+			actualTargets.length === expectedTargets.length &&
+			actualTargets.every((target, index) => target === expectedTargets[index])
+		);
+	}
 
-		if (result.status === 'success') {
-			toast.success(policyModal.edit ? 'Policy updated' : 'Policy created', {
-				position: 'bottom-center'
-			});
-			reload = true;
-			resetPolicyModal();
-			return;
+	async function refetchSavedPolicy(
+		editingPolicy: boolean,
+		policyID: number,
+		payload: ReplicationPolicyInput,
+		generation: number
+	): Promise<ReplicationPolicy[] | null> {
+		for (let attempt = 0; attempt < POLICY_SAVE_REFRESH_ATTEMPTS; attempt += 1) {
+			try {
+				const refreshedPolicies = await listReplicationPolicies();
+				if (generation !== policyRefreshGeneration) return null;
+
+				const refreshedPolicy = refreshedPolicies.find((policy) =>
+					editingPolicy ? policy.id === policyID : policyMatchesSavedInput(policy, payload)
+				);
+				if (refreshedPolicy && policyMatchesSavedInput(refreshedPolicy, payload)) {
+					return refreshedPolicies;
+				}
+			} catch {
+				// Retry transient list failures within the same bounded confirmation window.
+			}
+
+			if (attempt < POLICY_SAVE_REFRESH_ATTEMPTS - 1) {
+				await new Promise<void>((resolve) =>
+					window.setTimeout(resolve, POLICY_SAVE_REFRESH_DELAY_MS)
+				);
+			}
 		}
 
-		handleAPIError(result);
-		toast.error(userPolicySaveErrorMessage(result.message || '', result.error || ''), {
-			position: 'bottom-center'
-		});
+		return null;
+	}
+
+	async function savePolicy() {
+		if (policySaving) return;
+		const payload = buildPolicyPayload();
+		if (!payload) return;
+		const editingPolicy = policyModal.edit;
+		const policyID = selectedPolicyId;
+		const previousPolicies = policies;
+
+		policySaving = true;
+		const saveGeneration = ++policyRefreshGeneration;
+		try {
+			const result = editingPolicy
+				? await updateReplicationPolicy(policyID, payload)
+				: await createReplicationPolicy(payload);
+
+			if (result.status === 'success') {
+				const refreshedPolicies = await refetchSavedPolicy(
+					editingPolicy,
+					policyID,
+					payload,
+					saveGeneration
+				);
+				if (!refreshedPolicies) {
+					policies = previousPolicies;
+					toast.warning(
+						'Policy was saved, but this node could not confirm the updated list. The form remains open; retry Save or reload the page.',
+						{ position: 'bottom-center' }
+					);
+					return;
+				}
+
+				updateCache('replication-policies', refreshedPolicies);
+				policies = refreshedPolicies;
+
+				toast.success(editingPolicy ? 'Policy updated' : 'Policy created', {
+					position: 'bottom-center'
+				});
+				closePolicyModal();
+				return;
+			}
+
+			handleAPIError(result);
+			toast.error(userPolicySaveErrorMessage(result.message || '', result.error || ''), {
+				position: 'bottom-center'
+			});
+		} finally {
+			policySaving = false;
+		}
+	}
+
+	function openDeletePolicyModal() {
+		if (!selectedPolicy) return;
+		pendingPolicyDelete = {
+			id: selectedPolicy.id,
+			name: selectedPolicy.name,
+			protectionState: selectedPolicy.protectionState || ''
+		};
+		deleteModalOpen = true;
+	}
+
+	function closeDeletePolicyModal() {
+		if (policyDeleting) return;
+		deleteModalOpen = false;
+		pendingPolicyDelete = null;
 	}
 
 	async function removePolicy() {
-		if (!selectedPolicyId) return;
-		const result = await deleteReplicationPolicy(selectedPolicyId);
-		if (result.status === 'success') {
-			toast.success('Policy deleted', { position: 'bottom-center' });
-			deleteModalOpen = false;
-			activeRows = [];
-			reload = true;
-			return;
-		}
+		const target = pendingPolicyDelete;
+		if (policyDeleting || !target) return;
 
-		handleAPIError(result);
-		toast.error('Failed to delete policy', { position: 'bottom-center' });
+		policyDeleting = true;
+		try {
+			const result = await deleteReplicationPolicy(target.id);
+			if (result.status === 'success') {
+				const remainingPolicies = policies.filter((policy) => policy.id !== target.id);
+				policyRefreshGeneration += 1;
+				policies = remainingPolicies;
+				activeRows = [];
+				deleteModalOpen = false;
+				pendingPolicyDelete = null;
+				await Promise.all([
+					updateCache('replication-policies', remainingPolicies),
+					removeCache('replication-events')
+				]);
+				toast.success('Policy deleted', { position: 'bottom-center' });
+				return;
+			}
+
+			handleAPIError(result);
+			if (isPolicyDeleteCleanupIncomplete(result.message || '', result.error || '')) {
+				pendingPolicyDelete = { ...target, protectionState: 'deleting' };
+				reload = true;
+			}
+			toast.error(userPolicyDeleteErrorMessage(result.message || '', result.error || ''), {
+				position: 'bottom-center'
+			});
+		} catch (error) {
+			console.error('Replication policy delete request failed', error);
+			toast.error(
+				userPolicyDeleteErrorMessage(
+					'Request failed',
+					error instanceof Error ? error.message : error
+				),
+				{ position: 'bottom-center' }
+			);
+		} finally {
+			policyDeleting = false;
+		}
 	}
 
 	async function runNow() {
@@ -1257,12 +1740,26 @@
 	watch(
 		[() => policyModal.open, () => policyModal.workloadNodeId, () => policyModal.guestType],
 		([isOpen, _workloadNodeId, guestType]) => {
-			if (!isOpen) return;
-			if (guestType === 'jail') {
-				void loadJailsForNode(true);
+			if (!isOpen) {
+				jailLoadController?.abort();
+				vmLoadController?.abort();
+				jailLoadController = null;
+				vmLoadController = null;
+				jailLoadGeneration += 1;
+				vmLoadGeneration += 1;
+				jails = [];
+				vms = [];
+				jailsLoadedForNode = '';
+				vmsLoadedForNode = '';
+				jailsLoading = false;
+				vmsLoading = false;
 				return;
 			}
-			void loadVMsForNode(true);
+			if (guestType === 'jail') {
+				void loadJailsForNode();
+				return;
+			}
+			void loadVMsForNode();
 		}
 	);
 
@@ -1310,7 +1807,13 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
+			disabled={Boolean(
+				selectedPolicy &&
+				(!selectedPolicy.haEligible ||
+					(selectedPolicy.transitionState !== 'none' &&
+						selectedPolicy.transitionState !== 'completed' &&
+						selectedPolicy.transitionState !== 'failed'))
+			)}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--swap-horizontal-bold] mr-1 h-4 w-4"></span>
@@ -1325,7 +1828,13 @@
 			size="sm"
 			variant="outline"
 			class="h-6"
-			disabled={Boolean(selectedPolicy && (!selectedPolicy.haEligible || (selectedPolicy.transitionState !== 'none' && selectedPolicy.transitionState !== 'completed' && selectedPolicy.transitionState !== 'failed')))}
+			disabled={Boolean(
+				selectedPolicy &&
+				(!selectedPolicy.haEligible ||
+					(selectedPolicy.transitionState !== 'none' &&
+						selectedPolicy.transitionState !== 'completed' &&
+						selectedPolicy.transitionState !== 'failed'))
+			)}
 		>
 			<div class="flex items-center">
 				<span class="icon-[mdi--play] mr-1 h-4 w-4"></span>
@@ -1344,7 +1853,7 @@
 	{/if}
 
 	{#if type === 'delete' && selectedPolicyId > 0}
-		<Button onclick={() => (deleteModalOpen = true)} size="sm" variant="outline" class="h-6">
+		<Button onclick={openDeletePolicyModal} size="sm" variant="outline" class="h-6">
 			<div class="flex items-center">
 				<span class="icon-[mdi--delete] mr-1 h-4 w-4"></span>
 				<span>Delete</span>
@@ -1446,11 +1955,6 @@
 									onChange={(value) => {
 										policyModal.guestType = (value || 'vm') as 'vm' | 'jail';
 										policyModal.guestId = '';
-										if (policyModal.guestType === 'jail') {
-											void loadJailsForNode(true);
-											return;
-										}
-										void loadVMsForNode(true);
 									}}
 								/>
 
@@ -1488,15 +1992,20 @@
 												: ''}
 								/>
 							</div>
+							<CustomCheckbox
+								label="Enable"
+								bind:checked={policyModal.enabled}
+								classes="flex items-center gap-2 mt-4"
+							/>
 						</div>
 					</Tabs.Content>
 
 					<Tabs.Content value="failover" class="space-y-3">
 						<div class="rounded-md border p-2.5">
 							<div class="mb-2">
-								<p class="text-sm font-medium">If the active server goes down</p>
+								<p class="text-sm font-medium">Automatic recovery behavior</p>
 								<p class="text-muted-foreground text-xs">
-									Choose what should happen automatically.
+									Choose when Sylve may move the workload without an administrator.
 								</p>
 							</div>
 							<RadioGroup.Root bind:value={policyModal.failoverMode} class="gap-2">
@@ -1540,11 +2049,11 @@
 
 					<Tabs.Content value="targets" class="space-y-3">
 						<div class="rounded-md border p-2.5">
-							<div class="mb-2 flex items-center justify-between">
-								<div>
+							<div class="mb-2 flex items-start justify-between gap-3">
+								<div class="min-w-0">
 									<p class="text-sm font-medium">Target servers</p>
 									<p class="text-muted-foreground text-xs">
-										Higher priority gets picked first when auto-selecting a target.
+										Forced recovery selects the freshest complete replica; priority breaks ties.
 									</p>
 									<p class="text-muted-foreground mt-1 text-xs">
 										{policyModal.targets.length}/{maxTargetRows} targets configured
@@ -1553,7 +2062,7 @@
 								<Button
 									size="sm"
 									variant="outline"
-									class="h-6"
+									class="h-6 shrink-0"
 									onclick={addTargetRow}
 									disabled={!canAddTargetRow}
 								>
@@ -1588,11 +2097,11 @@
 										<Button
 											size="sm"
 											variant="outline"
-											class="h-8"
+											class="h-9 w-9 shrink-0"
 											disabled={policyModal.targets.length <= 1}
 											onclick={() => removeTargetRow(idx)}
 										>
-											<span class="icon-[mdi--delete] h-4 w-4"></span>
+											<span class="icon-[mdi--delete] h-5 w-5"></span>
 										</Button>
 									</div>
 								{/each}
@@ -1671,18 +2180,14 @@
 									? `Current schedule: ${humanCron}.`
 									: 'Enter a valid cron schedule, for example: */15 * * * *'}
 							</p>
-							<CustomCheckbox
-								label="Policy enabled"
-								bind:checked={policyModal.enabled}
-								classes="mt-3 flex items-center gap-2"
-							/>
 						</div>
 
 						<div class="rounded-md border p-2.5 space-y-2">
 							<div class="mb-2">
 								<p class="text-sm font-medium">Crash recovery</p>
 								<p class="text-muted-foreground text-xs">
-									Detect crashed guests and restart locally. After repeated failures, initiate failover.
+									Detect crashed guests and restart locally. After repeated failures, initiate
+									failover.
 								</p>
 							</div>
 							<CustomCheckbox
@@ -1705,7 +2210,12 @@
 							<div class="mb-2">
 								<p class="text-sm font-medium">Pool health monitoring</p>
 								<p class="text-muted-foreground text-xs">
-									Monitor ZFS pool health and capacity. Trigger failover if the pool becomes unhealthy or full.
+									Monitor ZFS pool health and capacity. Trigger failover if the pool becomes
+									unhealthy or full.
+								</p>
+								<p class="mt-1 text-xs text-amber-300">
+									An unhealthy pool uses force recovery and may lose the newest writes. Capacity
+									pressure uses a safe handoff.
 								</p>
 							</div>
 							<CustomCheckbox
@@ -1790,12 +2300,13 @@
 		</div>
 
 		<Dialog.Footer class="flex items-center justify-between">
-			<Button variant="outline" onclick={resetPolicyModal}>Cancel</Button>
 			<div class="flex items-center gap-2">
 				{#if !isLastPolicyStep}
-					<Button onclick={goToNextPolicyStep}>Next</Button>
+					<Button onclick={goToNextPolicyStep} disabled={policySaving}>Next</Button>
 				{:else}
-					<Button onclick={savePolicy}>Save</Button>
+					<Button onclick={savePolicy} disabled={policySaving}>
+						{policySaving ? 'Saving...' : 'Save'}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>
@@ -1922,14 +2433,17 @@
 </Dialog.Root>
 
 <AlertDialog
-	open={deleteModalOpen}
-	names={{ parent: 'replication policy', element: selectedPolicyName }}
+	bind:open={deleteModalOpen}
+	customTitle={pendingPolicyDelete?.protectionState === 'deleting'
+		? `Replication policy <span class="font-semibold">${escapeHtml(pendingPolicyDelete.name)}</span> is already disabled for deletion. Retry cleanup of its standby replicas and policy-owned HA snapshots. The active VM or jail data will be preserved.`
+		: `This will permanently delete replication policy <span class="font-semibold">${escapeHtml(pendingPolicyDelete?.name || '')}</span>, its standby replicas, and HA snapshots owned by this policy. The active VM or jail data will be preserved.`}
+	confirmLabel={pendingPolicyDelete?.protectionState === 'deleting'
+		? 'Retry cleanup'
+		: 'Delete policy'}
+	loading={policyDeleting}
+	loadingLabel="Cleaning replicas on all nodes..."
 	actions={{
-		onConfirm: async () => {
-			await removePolicy();
-		},
-		onCancel: () => {
-			deleteModalOpen = false;
-		}
+		onConfirm: removePolicy,
+		onCancel: closeDeletePolicyModal
 	}}
 />

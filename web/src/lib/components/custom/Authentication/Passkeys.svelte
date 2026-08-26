@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		PasskeyChallengeSchema,
 		beginPasskeyRegistration,
 		deleteUserPasskey,
 		finishPasskeyRegistration,
@@ -12,60 +11,138 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Passkey } from '$lib/types/auth';
-	import { handleAPIError } from '$lib/utils/http';
+	import { isDemoMode } from '$lib/demo/runtime';
+	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import {
 		buildRegistrationOptions,
 		isPasskeySupported,
 		serializeCredential
 	} from '$lib/utils/passkeys';
 	import { convertDbTime } from '$lib/utils/time';
+	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		userId: number;
 		username: string;
+		hostname: string;
+		registrationEligible: boolean;
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), userId, username, reload = $bindable() }: Props = $props();
+	let {
+		open = $bindable(),
+		userId,
+		username,
+		hostname,
+		registrationEligible,
+		reload = $bindable()
+	}: Props = $props();
 	let loading = $state(false);
+	let loadFailed = $state(false);
 	let registering = $state(false);
+	let deletingCredentialId = $state('');
 	let label = $state('');
-	let passkeys = $state<Passkey[]>([]);
+	let passkeys = $state.raw<Passkey[]>([]);
 	let pendingDelete = $state<{ open: boolean; credentialId: string; label: string }>({
 		open: false,
 		credentialId: '',
 		label: ''
 	});
+	let listController: AbortController | null = null;
+	let registrationController: AbortController | null = null;
+	let deleteController: AbortController | null = null;
 
 	async function refreshPasskeys() {
+		listController?.abort();
+		const controller = new AbortController();
+		listController = controller;
 		loading = true;
+		loadFailed = false;
 		try {
-			passkeys = await listUserPasskeys(userId);
+			const response = await listUserPasskeys(userId, {
+				hostname,
+				signal: controller.signal
+			});
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				passkeys = [];
+				loadFailed = true;
+				toast.error('Failed to load passkeys', { position: 'bottom-center' });
+				return;
+			}
+			passkeys = response;
+		} catch (error) {
+			if (isRequestCancellation(error)) return;
+			passkeys = [];
+			loadFailed = true;
+			toast.error('Failed to load passkeys', { position: 'bottom-center' });
 		} finally {
-			loading = false;
+			if (listController === controller) {
+				listController = null;
+				loading = false;
+			}
 		}
 	}
 
-	$effect(() => {
-		if (open) {
-			void refreshPasskeys();
-		}
+	function closeDialog() {
+		listController?.abort();
+		registrationController?.abort();
+		deleteController?.abort();
+		pendingDelete = { open: false, credentialId: '', label: '' };
+		open = false;
+	}
+
+	onDestroy(() => {
+		listController?.abort();
+		registrationController?.abort();
+		deleteController?.abort();
+	});
+
+	watch([() => open, () => userId, () => hostname, () => registrationEligible], ([isOpen]) => {
+		listController?.abort();
+		registrationController?.abort();
+		deleteController?.abort();
+		passkeys = [];
+		loadFailed = false;
+		label = '';
+		pendingDelete = { open: false, credentialId: '', label: '' };
+		if (isOpen) void refreshPasskeys();
 	});
 
 	async function registerPasskey() {
-		if (!isPasskeySupported()) {
+		if (registering || deletingCredentialId || !registrationEligible) return;
+
+		const trimmedLabel = label.trim();
+		if (trimmedLabel === '') return;
+		if (Array.from(trimmedLabel).length > 128) {
+			toast.error('Passkey labels must be 128 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
+		if (!isDemoMode && !isPasskeySupported()) {
 			toast.error('Passkeys require HTTPS and browser WebAuthn support', {
 				position: 'bottom-center'
 			});
 			return;
 		}
 
+		registrationController?.abort();
+		const controller = new AbortController();
+		registrationController = controller;
 		registering = true;
 		try {
-			const begin = await beginPasskeyRegistration(userId);
-			if (begin.status !== 'success') {
+			const begin = await beginPasskeyRegistration(userId, {
+				hostname,
+				signal: controller.signal
+			});
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(begin)) {
 				handleAPIError(begin);
 				toast.error('Could not start passkey registration', {
 					position: 'bottom-center'
@@ -73,19 +150,15 @@
 				return;
 			}
 
-			const parsed = PasskeyChallengeSchema.safeParse(begin.data);
-			if (!parsed.success) {
-				toast.error('Invalid registration challenge payload', {
-					position: 'bottom-center'
-				});
-				return;
-			}
+			const credential = isDemoMode
+				? { id: `demo-${Date.now().toString(36)}`, type: 'public-key' }
+				: await navigator.credentials.create({
+						publicKey: buildRegistrationOptions(begin.publicKey),
+						signal: controller.signal
+					});
 
-			const credential = await navigator.credentials.create({
-				publicKey: buildRegistrationOptions(parsed.data.publicKey)
-			});
-
-			if (!credential || !(credential instanceof PublicKeyCredential)) {
+			if (controller.signal.aborted) return;
+			if (!isDemoMode && (!credential || !(credential instanceof PublicKeyCredential))) {
 				toast.error('Passkey registration failed', {
 					position: 'bottom-center'
 				});
@@ -93,11 +166,13 @@
 			}
 
 			const finish = await finishPasskeyRegistration(
-				parsed.data.requestId,
-				serializeCredential(credential),
-				label
+				begin.requestId,
+				isDemoMode ? credential : serializeCredential(credential as PublicKeyCredential),
+				trimmedLabel,
+				{ hostname, signal: controller.signal }
 			);
-			if (finish.status !== 'success') {
+			if (controller.signal.aborted) return;
+			if (isAPIResponse(finish)) {
 				handleAPIError(finish);
 				toast.error('Could not finish passkey registration', {
 					position: 'bottom-center'
@@ -112,7 +187,12 @@
 				position: 'bottom-center'
 			});
 		} catch (error) {
-			if (error instanceof DOMException && error.name === 'NotAllowedError') {
+			if (
+				isRequestCancellation(error) ||
+				(error instanceof DOMException && error.name === 'AbortError')
+			) {
+				return;
+			} else if (error instanceof DOMException && error.name === 'NotAllowedError') {
 				toast.error('Passkey request cancelled or timed out', {
 					position: 'bottom-center'
 				});
@@ -123,25 +203,49 @@
 				});
 			}
 		} finally {
-			registering = false;
+			if (registrationController === controller) {
+				registrationController = null;
+				registering = false;
+			}
 		}
 	}
 
-	async function removePasskey(credentialId: string) {
-		const response = await deleteUserPasskey(userId, credentialId);
-		if (response.status !== 'success') {
-			handleAPIError(response);
-			toast.error('Failed to delete passkey', {
+	async function removePasskey(credentialId: string): Promise<boolean> {
+		if (deletingCredentialId || registering) return false;
+		deleteController?.abort();
+		const controller = new AbortController();
+		deleteController = controller;
+		deletingCredentialId = credentialId;
+		try {
+			const response = await deleteUserPasskey(userId, credentialId, {
+				hostname,
+				signal: controller.signal
+			});
+			if (controller.signal.aborted) return false;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to delete passkey', {
+					position: 'bottom-center'
+				});
+				return false;
+			}
+
+			reload = true;
+			await refreshPasskeys();
+			toast.success('Passkey deleted', {
 				position: 'bottom-center'
 			});
-			return;
+			return true;
+		} catch (error) {
+			if (isRequestCancellation(error)) return false;
+			toast.error('Failed to delete passkey', { position: 'bottom-center' });
+			return false;
+		} finally {
+			if (deleteController === controller) {
+				deleteController = null;
+				deletingCredentialId = '';
+			}
 		}
-
-		reload = true;
-		await refreshPasskeys();
-		toast.success('Passkey deleted', {
-			position: 'bottom-center'
-		});
 	}
 </script>
 
@@ -149,9 +253,7 @@
 	<Dialog.Content
 		class="w-1/2 md:min-w-1/4 sm:min-w-1/2 gap-4 p-5 overflow-hidden"
 		showCloseButton={true}
-		onClose={() => {
-			open = false;
-		}}
+		onClose={closeDialog}
 	>
 		<Dialog.Header class="p-0">
 			<Dialog.Title>
@@ -171,8 +273,16 @@
 					bind:value={label}
 					classes="w-full min-w-0"
 					autocomplete="off"
+					disabled={!registrationEligible || registering || Boolean(deletingCredentialId)}
 				/>
-				<Button onclick={registerPasskey} disabled={registering || label.trim() === ''} class="shrink-0">
+				<Button
+					onclick={registerPasskey}
+					disabled={!registrationEligible ||
+						registering ||
+						Boolean(deletingCredentialId) ||
+						label.trim() === ''}
+					class="shrink-0"
+				>
 					{#if registering}
 						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
 					{:else}
@@ -180,11 +290,22 @@
 					{/if}
 				</Button>
 			</div>
+			{#if !registrationEligible}
+				<p class="text-xs text-muted-foreground">
+					Registration is available only for administrators with Sylve credentials. Existing
+					passkeys can still be removed.
+				</p>
+			{/if}
 		</div>
 
 		<div class="rounded-md border overflow-x-auto">
 			{#if loading}
 				<div class="p-3 text-sm text-muted-foreground">Loading passkeys...</div>
+			{:else if loadFailed}
+				<div class="flex items-center justify-between gap-3 p-3 text-sm text-muted-foreground">
+					<span>Unable to load passkeys.</span>
+					<Button size="sm" variant="outline" onclick={refreshPasskeys}>Retry</Button>
+				</div>
 			{:else if passkeys.length === 0}
 				<div class="p-3 text-sm text-muted-foreground">No passkeys registered.</div>
 			{:else}
@@ -198,15 +319,19 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each passkeys as passkey, index (index)}
+						{#each passkeys as passkey (passkey.credentialId)}
 							<tr class="border-b last:border-b-0">
 								<td class="px-3 py-2 max-w-[120px] truncate">{passkey.label || '-'}</td>
-								<td class="px-3 py-2 font-mono text-xs max-w-[200px] truncate" title={passkey.credentialId}>{passkey.credentialId}</td>
+								<td
+									class="px-3 py-2 font-mono text-xs max-w-[200px] truncate"
+									title={passkey.credentialId}>{passkey.credentialId}</td
+								>
 								<td class="px-3 py-2 whitespace-nowrap">{convertDbTime(passkey.createdAt)}</td>
 								<td class="px-3 py-2 text-right whitespace-nowrap">
 									<Button
 										size="sm"
 										variant="outline"
+										disabled={registering || Boolean(deletingCredentialId)}
 										onclick={() => {
 											pendingDelete = {
 												open: true,
@@ -240,11 +365,13 @@
 	}}
 	actions={{
 		onConfirm: async () => {
-			await removePasskey(pendingDelete.credentialId);
-			pendingDelete = { open: false, credentialId: '', label: '' };
+			if (await removePasskey(pendingDelete.credentialId)) {
+				pendingDelete = { open: false, credentialId: '', label: '' };
+			}
 		},
 		onCancel: () => {
 			pendingDelete = { open: false, credentialId: '', label: '' };
 		}
 	}}
+	keepOpenOnConfirm={true}
 ></AlertDialog>

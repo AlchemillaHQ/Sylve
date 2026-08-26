@@ -1,0 +1,237 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
+//go:build freebsd
+
+package integration
+
+import (
+	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"github.com/alchemillahq/sylve/internal/repl"
+	"github.com/alchemillahq/sylve/internal/services/info"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+const consoleIntegrationCommandTimeout = 2 * time.Minute
+
+func TestAcceptanceNotesCLIAndREPL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping console integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("run console integration tests with make test-integration as root")
+	}
+	t.Setenv("SYLVE_DATA_PATH", "")
+	suite := requireConsoleIntegrationSuite(t)
+
+	dataPath := t.TempDir()
+	database := openConsoleDatabase(t, filepath.Join(dataPath, "sylve.db"), &infoModels.Note{})
+	infoService := &info.Service{DB: database, TelemetryDB: database}
+
+	socketPath := consoleprotocol.SocketPath(dataPath)
+	server, err := repl.StartSocketServer(&repl.Context{Info: infoService}, socketPath)
+	if err != nil {
+		t.Fatalf("start console socket: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("close console socket: %v", err)
+		}
+	})
+
+	configPath := writeConsoleConfig(t, dataPath)
+	binaryPath := suite.binaryPath
+
+	cliOutput := runSylve(t, binaryPath, configPath,
+		"notes", "add", "--title", "CLI note", "--content", "created through the CLI")
+	if !strings.Contains(cliOutput, "Note added") {
+		t.Fatalf("CLI add output = %q", cliOutput)
+	}
+	cliNote := noteByTitle(t, database, "CLI note")
+
+	replOutput := runREPLCommand(t, socketPath, `notes add "REPL note" "created through the REPL"`)
+	if !strings.Contains(replOutput, "Note added") {
+		t.Fatalf("REPL add output = %q", replOutput)
+	}
+	replNote := noteByTitle(t, database, "REPL note")
+
+	listOutput := runSylve(t, binaryPath, configPath, "notes", "list", "--json")
+	var notes []infoModels.Note
+	if err := json.Unmarshal([]byte(listOutput), &notes); err != nil {
+		t.Fatalf("decode CLI note list: %v\noutput: %s", err, listOutput)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("CLI listed %d notes, want 2: %#v", len(notes), notes)
+	}
+
+	getOutput := runREPLCommand(t, socketPath,
+		"notes get "+strconv.FormatUint(uint64(cliNote.ID), 10)+" --json")
+	var got infoModels.Note
+	if err := json.Unmarshal([]byte(getOutput), &got); err != nil {
+		t.Fatalf("decode REPL note get: %v\noutput: %s", err, getOutput)
+	}
+	if got.ID != cliNote.ID || got.Content != cliNote.Content {
+		t.Fatalf("REPL got note = %#v, want %#v", got, cliNote)
+	}
+
+	deleteOutput := runSylve(t, binaryPath, configPath,
+		"notes", "delete", "--id", strconv.FormatUint(uint64(replNote.ID), 10))
+	if !strings.Contains(deleteOutput, "deleted successfully") {
+		t.Fatalf("CLI delete output = %q", deleteOutput)
+	}
+
+	replOutput = runREPLCommand(t, socketPath,
+		"notes delete "+strconv.FormatUint(uint64(cliNote.ID), 10))
+	if !strings.Contains(replOutput, "deleted successfully") {
+		t.Fatalf("REPL delete output = %q", replOutput)
+	}
+
+	var count int64
+	if err := database.Model(&infoModels.Note{}).Count(&count).Error; err != nil {
+		t.Fatalf("count remaining notes: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("remaining notes = %d, want 0", count)
+	}
+}
+
+func openConsoleDatabase(t *testing.T, path string, models ...any) *gorm.DB {
+	t.Helper()
+	database, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open console database: %v", err)
+	}
+	if err := database.AutoMigrate(models...); err != nil {
+		t.Fatalf("migrate console database: %v", err)
+	}
+	return database
+}
+
+func writeConsoleConfig(t *testing.T, dataPath string) string {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	contents, err := json.Marshal(struct {
+		DataPath string `json:"dataPath"`
+	}{DataPath: dataPath})
+	if err != nil {
+		t.Fatalf("marshal console config: %v", err)
+	}
+	if err := os.WriteFile(configPath, contents, 0600); err != nil {
+		t.Fatalf("write console config: %v", err)
+	}
+	return configPath
+}
+
+func runSylve(t *testing.T, binaryPath, configPath string, args ...string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), consoleIntegrationCommandTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, binaryPath, append([]string{"--config", configPath}, args...)...)
+	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("run sylve %s timed out after %s\n%s", strings.Join(args, " "), consoleIntegrationCommandTimeout, output)
+	}
+	if err != nil {
+		t.Fatalf("run sylve %s: %v\n%s", strings.Join(args, " "), err, output)
+	}
+	return string(output)
+}
+
+func runSylveFailure(t *testing.T, binaryPath, configPath string, args ...string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), consoleIntegrationCommandTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, binaryPath, append([]string{"--config", configPath}, args...)...)
+	output, err := command.CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("run sylve %s timed out after %s\n%s", strings.Join(args, " "), consoleIntegrationCommandTimeout, output)
+	}
+	if err == nil {
+		t.Fatalf("run sylve %s unexpectedly succeeded:\n%s", strings.Join(args, " "), output)
+	}
+	return string(output)
+}
+
+func runREPLCommand(t *testing.T, socketPath, command string) string {
+	t.Helper()
+	conn, err := net.DialTimeout("unix", socketPath, consoleIntegrationCommandTimeout)
+	if err != nil {
+		t.Fatalf("connect to console socket: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(consoleIntegrationCommandTimeout)); err != nil {
+		t.Fatalf("set console socket deadline: %v", err)
+	}
+
+	if err := json.NewEncoder(conn).Encode(consoleprotocol.Request{Command: command}); err != nil {
+		t.Fatalf("send REPL command: %v", err)
+	}
+	var response consoleprotocol.Response
+	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		t.Fatalf("read REPL response: %v", err)
+	}
+	if response.Error != "" {
+		t.Fatalf("REPL command %q failed: %s", command, response.Error)
+	}
+	return response.Output
+}
+
+func runREPLCommandFailure(t *testing.T, socketPath, command string) string {
+	t.Helper()
+	conn, err := net.DialTimeout("unix", socketPath, consoleIntegrationCommandTimeout)
+	if err != nil {
+		t.Fatalf("connect to console socket: %v", err)
+	}
+	defer conn.Close()
+	if err := conn.SetDeadline(time.Now().Add(consoleIntegrationCommandTimeout)); err != nil {
+		t.Fatalf("set console socket deadline: %v", err)
+	}
+
+	if err := json.NewEncoder(conn).Encode(consoleprotocol.Request{Command: command}); err != nil {
+		t.Fatalf("send REPL command: %v", err)
+	}
+	var response consoleprotocol.Response
+	if err := json.NewDecoder(conn).Decode(&response); err != nil {
+		t.Fatalf("read REPL response: %v", err)
+	}
+	if response.Error == "" {
+		if strings.Contains(strings.ToLower(response.Output), "error ") {
+			return response.Output
+		}
+		var jsonFailure struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(response.Output), &jsonFailure); err == nil && strings.TrimSpace(jsonFailure.Error) != "" {
+			return response.Output
+		}
+		t.Fatalf("REPL command %q unexpectedly succeeded: %s", command, response.Output)
+	}
+	return response.Error
+}
+
+func noteByTitle(t *testing.T, database *gorm.DB, title string) infoModels.Note {
+	t.Helper()
+	var note infoModels.Note
+	if err := database.Where("title = ?", title).First(&note).Error; err != nil {
+		t.Fatalf("find note %q: %v", title, err)
+	}
+	return note
+}

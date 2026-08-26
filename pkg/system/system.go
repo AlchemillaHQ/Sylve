@@ -10,6 +10,7 @@ import (
 )
 
 var runCommand = utils.RunCommand
+var runCommandWithInput = utils.RunCommandWithInput
 var unixUserExists = UnixUserExists
 var unixGroupExists = UnixGroupExists
 var isUserInGroup = IsUserInGroup
@@ -21,6 +22,14 @@ func SetRunCommand(fn func(string, ...string) (string, error)) func() {
 	original := runCommand
 	runCommand = fn
 	return func() { runCommand = original }
+}
+
+// SetRunCommandWithInput overrides the stdin-aware command runner for tests.
+// Returns a function that restores the original runner.
+func SetRunCommandWithInput(fn func(string, string, ...string) (string, error)) func() {
+	original := runCommandWithInput
+	runCommandWithInput = fn
+	return func() { runCommandWithInput = original }
 }
 
 func UnixUserExists(name string) (bool, error) {
@@ -35,6 +44,24 @@ func UnixUserExists(name string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+// UnixUIDExists reports whether a Unix account already owns uid.
+func UnixUIDExists(uid int) (bool, error) {
+	output, err := runCommand("/usr/sbin/pw", "usershow", "-u", strconv.Itoa(uid))
+	if err == nil {
+		return strings.TrimSpace(output) != "", nil
+	}
+
+	lowerOutput := strings.ToLower(output + " " + err.Error())
+	if strings.Contains(lowerOutput, "no such user") ||
+		strings.Contains(lowerOutput, "unknown user") ||
+		strings.Contains(lowerOutput, "does not exist") ||
+		strings.Contains(lowerOutput, "exit status 67") {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("failed to check UID %d: %w", uid, err)
 }
 
 func CreateUnixUser(name string, shell string, dir string, group string) error {
@@ -88,13 +115,26 @@ func DeleteUnixUser(name string, removeHome bool) error {
 }
 
 func UnixGroupExists(name string) bool {
-	output, err := runCommand("/usr/bin/getent", "group", name)
+	exists, _ := UnixGroupExistsWithError(name)
+	return exists
+}
 
-	if err != nil {
-		return false
+// UnixGroupExistsWithError distinguishes a missing group from lookup failure.
+func UnixGroupExistsWithError(name string) (bool, error) {
+	output, err := runCommand("/usr/bin/getent", "group", name)
+	if err == nil {
+		return strings.TrimSpace(output) != "", nil
 	}
 
-	return strings.TrimSpace(output) != ""
+	lowerOutput := strings.ToLower(output + " " + err.Error())
+	if strings.Contains(lowerOutput, "not found") ||
+		strings.Contains(lowerOutput, "no such") ||
+		strings.Contains(lowerOutput, "does not exist") ||
+		strings.Contains(lowerOutput, "exit status 2") {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("failed to check group %s: %w", name, err)
 }
 
 func CreateUnixGroup(name string) error {
@@ -293,7 +333,7 @@ func CreateUnixUserFull(opts UnixUserCreateOpts) error {
 func GetNextUnixUID() (int, error) {
 	output, err := runCommand("/usr/sbin/pw", "usershow", "-a")
 	if err != nil {
-		return 1000, nil
+		return 0, fmt.Errorf("failed to list unix users: %w", err)
 	}
 
 	used := map[int]bool{}
@@ -316,6 +356,31 @@ func GetNextUnixUID() (int, error) {
 	}
 
 	return 0, fmt.Errorf("no available UID found in range 1000-65533")
+}
+
+// SetUnixUserPassword updates a Unix account password without exposing it in
+// the process argument list. FreeBSD pw(8) reads the plaintext from fd 0 when
+// invoked with -h 0.
+func SetUnixUserPassword(username, password string) error {
+	if strings.TrimSpace(username) == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+
+	_, err := runCommandWithInput(
+		"/usr/sbin/pw",
+		password+"\n",
+		"usermod",
+		username,
+		"-h",
+		"0",
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set password for user %s: %w", username, err)
+	}
+	return nil
 }
 
 // UnixUserInfo holds the full metadata of an existing Unix user.
@@ -485,6 +550,14 @@ func AddDoasPerm(username string) error {
 	const doasConf = "/usr/local/etc/doas.conf"
 	entry := fmt.Sprintf("permit nopass %s\n", username)
 
+	if data, err := os.ReadFile(doasConf); err == nil {
+		if strings.Contains(string(data), entry) {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read doas.conf: %w", err)
+	}
+
 	f, err := os.OpenFile(doasConf, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to open doas.conf: %w", err)
@@ -566,6 +639,19 @@ func GetUnixGroupGID(group string) (int, error) {
 		return 0, fmt.Errorf("failed to parse GID for %s: %w", group, err)
 	}
 	return gid, nil
+}
+
+// GetUnixGroupNameByGID resolves a numeric Unix GID to its group name.
+func GetUnixGroupNameByGID(gid int) (string, error) {
+	output, err := runCommand("/usr/bin/getent", "group", strconv.Itoa(gid))
+	if err != nil {
+		return "", fmt.Errorf("failed to get group info for GID %d: %w", gid, err)
+	}
+	parts := strings.Split(strings.TrimSpace(output), ":")
+	if len(parts) < 3 || strings.TrimSpace(parts[0]) == "" {
+		return "", fmt.Errorf("unexpected getent output for GID %d", gid)
+	}
+	return strings.TrimSpace(parts[0]), nil
 }
 
 // ChownHome recursively chowns a home directory to the given UID and group.

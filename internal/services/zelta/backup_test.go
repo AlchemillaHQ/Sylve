@@ -9,8 +9,11 @@
 package zelta
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 func TestClassifyBackupOutput(t *testing.T) {
@@ -23,6 +26,8 @@ func TestClassifyBackupOutput(t *testing.T) {
 		{"up to date alt", "No datasets to backup, source and target are up-to-date", backupOutputUpToDate},
 		{"no source", "error: No source: tank/data does not exist", backupOutputBlockedNoSource},
 		{"no source snapshot", "error: No source snapshot found", backupOutputBlockedNoSourceSnapshot},
+		{"source snapshot creation failed", "source_snapshot_creation_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
+		{"source snapshot verification failed", "source_snapshot_verification_failed: tank/data@bk_j1_x", backupOutputBlockedSourceSnapshot},
 		{"target diverged", "error: Target has diverged from source", backupOutputBlockedTargetDiverged},
 		{"target diverged alt", "Target diverged after last sync", backupOutputBlockedTargetDiverged},
 		{"target local writes", "error: Target has local writes preventing sync", backupOutputBlockedTargetLocalWrites},
@@ -47,6 +52,7 @@ func TestBackupOutputKindErrorCode(t *testing.T) {
 	}{
 		{backupOutputBlockedNoSource, backupErrorSourceMissing},
 		{backupOutputBlockedNoSourceSnapshot, backupErrorSourceSnapshotMissing},
+		{backupOutputBlockedSourceSnapshot, backupErrorSourceSnapshotFailed},
 		{backupOutputBlockedTargetLocalWrites, backupErrorTargetLocalWrites},
 		{backupOutputBlockedTargetDiverged, backupErrorTargetDiverged},
 		{backupOutputBlockedNoSnapshotDiverged, backupErrorTargetDiverged},
@@ -276,6 +282,35 @@ func TestParseTotalBytesFromOutput(t *testing.T) {
 	result = parseTotalBytesFromOutput("")
 	if result != nil {
 		t.Fatal("empty output should return nil")
+	}
+}
+
+func TestGetBackupEventProgressReportsFinalizingTransfer(t *testing.T) {
+	svc := newRunBackupJobTestDB(t)
+	event := clusterModels.BackupEvent{
+		Mode:   "jail",
+		Status: "running",
+		Output: "{\"replicationSize\": \"100000000\"}\nbackup_phase: finalizing\n",
+	}
+	if err := svc.DB.Create(&event).Error; err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	progress, err := svc.GetBackupEventProgress(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("get progress: %v", err)
+	}
+	if progress.Phase != "finalizing" {
+		t.Fatalf("phase = %q, want finalizing", progress.Phase)
+	}
+	if progress.TotalBytes == nil || *progress.TotalBytes != 100000000 {
+		t.Fatalf("total bytes = %v, want 100000000", progress.TotalBytes)
+	}
+	if progress.MovedBytes == nil || *progress.MovedBytes != 100000000 {
+		t.Fatalf("moved bytes = %v, want 100000000", progress.MovedBytes)
+	}
+	if progress.ProgressPercent == nil || *progress.ProgressPercent != 100 {
+		t.Fatalf("progress percent = %v, want 100", progress.ProgressPercent)
 	}
 }
 

@@ -9,13 +9,11 @@
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
 	import { storage, languageArr } from '$lib';
-	import {
-		getEnabledServicesForHostname,
-		resolveNodeHostname
-	} from '$lib/utils/enabled-services';
+	import { getEnabledServicesForHostname, resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { loadLocale } from 'wuchale/load-utils';
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { resource } from 'runed';
+	import { isDemoMode } from '$lib/demo/runtime';
 
 	let options = {
 		createVM: {
@@ -32,9 +30,11 @@
 	let jwt = $state(getJWTClaims());
 	let mobileMenuOpen = $state(false);
 
-	let activeNode = $derived(resolveNodeHostname(page.url.pathname) || storage.localHostname || storage.hostname || '');
+	let activeNode = $derived(
+		resolveNodeHostname(page.url.pathname) || storage.localHostname || storage.hostname || ''
+	);
 	let activeServices = $derived(
-		activeNode ? getEnabledServicesForHostname(activeNode) : (storage.enabledServices || [])
+		activeNode ? getEnabledServicesForHostname(activeNode) : storage.enabledServices || []
 	);
 	let virtualizationEnabled = $derived(activeServices.includes('virtualization'));
 	let jailEnabled = $derived(activeServices.includes('jails'));
@@ -217,7 +217,7 @@
 			<CreateJail
 				bind:open={properties.createJail.open}
 				bind:minimize={properties.createJail.minimize}
-				devFSDisabled={devFSDisabled}
+				{devFSDisabled}
 			/>
 		{/if}
 
@@ -269,11 +269,13 @@
 						>
 					</DropdownMenu.Group>
 
-					<DropdownMenu.Separator />
-					<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
-						<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
-						<span>Log Out</span>
-					</DropdownMenu.Item>
+					{#if !isDemoMode}
+						<DropdownMenu.Separator />
+						<DropdownMenu.Item class="cursor-pointer" onclick={() => logOut()}>
+							<span class="icon-[ic--twotone-logout] mr-2 h-4 w-4"></span>
+							<span>Log Out</span>
+						</DropdownMenu.Item>
+					{/if}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		</div>

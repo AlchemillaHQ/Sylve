@@ -27,10 +27,11 @@ func (Storage) TableName() string {
 type VMStorageType string
 
 const (
-	VMStorageTypeRaw        VMStorageType = "raw"
-	VMStorageTypeZVol       VMStorageType = "zvol"
-	VMStorageTypeDiskImage  VMStorageType = "image"
-	VMStorageTypeFilesystem VMStorageType = "filesystem"
+	VMStorageTypeRaw                        VMStorageType = "raw"
+	VMStorageTypeZVol                       VMStorageType = "zvol"
+	VMStorageTypeDiskImage                  VMStorageType = "image"
+	VMStorageTypeFilesystem                 VMStorageType = "filesystem"
+	ReplicationFilesystemStorageUnsupported               = "replication_vm_filesystem_storage_not_supported"
 )
 
 type VMTemplateStorage struct {
@@ -349,8 +350,8 @@ type VM struct {
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 
-	StartedAt           *time.Time `json:"startedAt" gorm:"default:null"`
-	StoppedAt           *time.Time `json:"stoppedAt" gorm:"default:null"`
+	StartedAt            *time.Time `json:"startedAt" gorm:"default:null"`
+	StoppedAt            *time.Time `json:"stoppedAt" gorm:"default:null"`
 	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
 }
 

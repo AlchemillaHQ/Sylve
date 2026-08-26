@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { updateSambaConfig } from '$lib/api/samba/config';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -8,6 +9,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
+	import { loadEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 
@@ -42,36 +44,61 @@
 			}
 		},
 		bindInterfacesOnly: sambaConfig.bindInterfacesOnly,
-		appleExtensions: sambaConfig.appleExtensions
+		appleExtensions: sambaConfig.appleExtensions,
+		advertiseMdns: sambaConfig.advertiseMdns
 	};
 
 	let properties = $state(options);
+	let isSaving = $state(false);
 
 	async function saveConfig() {
-		const response = await updateSambaConfig({
-			unixCharset: properties.unixCharset,
-			workgroup: properties.workgroup,
-			serverString: properties.serverString,
-			interfaces: properties.interfaces.combobox.values.join(','),
-			bindInterfacesOnly: properties.bindInterfacesOnly,
-			appleExtensions: properties.appleExtensions
-		});
+		if (isSaving) return;
+		isSaving = true;
 
-		reload = true;
+		try {
+			const enablingMdnsAdvertising = !sambaConfig.advertiseMdns && properties.advertiseMdns;
+			const refreshMdnsServices = properties.advertiseMdns;
+			const response = await updateSambaConfig({
+				unixCharset: properties.unixCharset,
+				workgroup: properties.workgroup,
+				serverString: properties.serverString,
+				interfaces: properties.interfaces.combobox.values.join(','),
+				bindInterfacesOnly: properties.bindInterfacesOnly,
+				appleExtensions: properties.appleExtensions,
+				advertiseMdns: properties.advertiseMdns
+			});
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to update Samba configuration', { position: 'bottom-center' });
-			return;
+			reload = true;
+
+			if (response.status !== 'success') {
+				if (refreshMdnsServices) {
+					await loadEnabledServicesForHostname(page.params.node);
+				}
+				handleAPIError(response);
+				toast.error('Failed to update Samba configuration', { position: 'bottom-center' });
+				return;
+			}
+
+			if (refreshMdnsServices) {
+				await loadEnabledServicesForHostname(page.params.node);
+			}
+
+			toast.success(
+				enablingMdnsAdvertising
+					? 'Samba configuration updated; mDNS discovery enabled'
+					: 'Samba configuration updated',
+				{ position: 'bottom-center' }
+			);
+			open = false;
+		} finally {
+			isSaving = false;
 		}
-
-		toast.success('Samba configuration updated', { position: 'bottom-center' });
-		open = false;
 	}
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
+		class="sm:max-w-2xl"
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => (properties = options)}
@@ -128,7 +155,7 @@
 			/>
 		</div>
 
-		<div class="flex items-center gap-6">
+		<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 			<CustomCheckbox
 				label="Bind Interfaces Only"
 				bind:checked={properties.bindInterfacesOnly}
@@ -140,11 +167,30 @@
 				bind:checked={properties.appleExtensions}
 				classes="flex items-center gap-2"
 			/>
+
+			<CustomCheckbox
+				label="Advertise Samba (mDNS)"
+				bind:checked={properties.advertiseMdns}
+				classes="flex items-center gap-2"
+			/>
 		</div>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={saveConfig} type="submit" size="sm">Save</Button>
+				<Button
+					onclick={saveConfig}
+					type="submit"
+					size="sm"
+					disabled={isSaving}
+					aria-busy={isSaving}
+				>
+					{#if isSaving}
+						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+						<span>Saving...</span>
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

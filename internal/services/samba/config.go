@@ -10,8 +10,10 @@ package samba
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -21,7 +23,26 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
+	"gorm.io/gorm"
 )
+
+var ErrInvalidGlobalConfig = errors.New("invalid_samba_global_config")
+
+type invalidGlobalConfigError struct {
+	detail error
+}
+
+func (e *invalidGlobalConfigError) Error() string {
+	return e.detail.Error()
+}
+
+func (e *invalidGlobalConfigError) Unwrap() []error {
+	return []error{ErrInvalidGlobalConfig, e.detail}
+}
+
+func invalidGlobalConfig(format string, args ...any) error {
+	return &invalidGlobalConfigError{detail: fmt.Errorf(format, args...)}
+}
 
 const (
 	sambaACLType    = "nfsv4"
@@ -33,7 +54,27 @@ const (
 	writeACLPerm    = "modify_set"
 )
 
-var sambaRunCommand = utils.RunCommand
+var (
+	sambaRunCommand        = utils.RunCommand
+	sambaSupportedCharsets = utils.GetSupportedCharsets
+	sambaGetInterface      = iface.Get
+	sambaConfigFilePath    = "/usr/local/etc/smb4.conf"
+	sambaTestparmPath      = "/usr/local/bin/testparm"
+	sambaAtomicWriteFile   = utils.AtomicWriteFile
+)
+
+var allowedSambaAuditOperations = map[string]struct{}{
+	"connect":     {},
+	"disconnect":  {},
+	"create_file": {},
+	"mkdirat":     {},
+	"unlinkat":    {},
+	"renameat":    {},
+	"openat":      {},
+	"close":       {},
+	"read":        {},
+	"write":       {},
+}
 
 func isMissingACLEntryRemovalError(err error) bool {
 	if err == nil {
@@ -41,6 +82,39 @@ func isMissingACLEntryRemovalError(err error) bool {
 	}
 
 	return strings.Contains(err.Error(), "cannot remove non-existent ACL entry")
+}
+
+func validateSambaShareInput(name, createMask, directoryMask string, auditedOperations []string) error {
+	if name == "" || strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n[]") {
+		return fmt.Errorf("invalid_share_name")
+	}
+
+	validMask := func(mask string) bool {
+		if len(mask) != 4 {
+			return false
+		}
+		for _, char := range mask {
+			if char < '0' || char > '7' {
+				return false
+			}
+		}
+		return true
+	}
+
+	if !validMask(createMask) {
+		return fmt.Errorf("invalid_create_mask")
+	}
+	if !validMask(directoryMask) {
+		return fmt.Errorf("invalid_directory_mask")
+	}
+
+	for _, operation := range auditedOperations {
+		if _, allowed := allowedSambaAuditOperations[operation]; !allowed {
+			return fmt.Errorf("invalid_audit_operation: %s", operation)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) GetGlobalConfig() (sambaModels.SambaSettings, error) {
@@ -58,27 +132,28 @@ func (s *Service) SetGlobalConfig(
 	serverString string,
 	interfaces string,
 	bindInterfacesOnly bool,
-	appleExtensions bool) error {
+	appleExtensions bool,
+	advertiseMdns bool) error {
 	if unixCharset == "" || workgroup == "" || serverString == "" {
-		return fmt.Errorf("unixCharset, workgroup, and serverString cannot be empty")
+		return invalidGlobalConfig("unixCharset, workgroup, and serverString cannot be empty")
 	}
 
 	if interfaces == "" {
 		interfaces = "lo0"
 	}
 
-	supportedCharsets := utils.GetSupportedCharsets()
+	supportedCharsets := sambaSupportedCharsets()
 
 	if !utils.StringInSlice(unixCharset, supportedCharsets) {
-		return fmt.Errorf("unsupported unixCharset: %s", unixCharset)
+		return invalidGlobalConfig("unsupported unixCharset: %s", unixCharset)
 	}
 
 	if !utils.IsValidWorkgroup(workgroup) {
-		return fmt.Errorf("invalid workgroup name: %s", workgroup)
+		return invalidGlobalConfig("invalid workgroup name: %s", workgroup)
 	}
 
-	if !utils.IsValidServerString(serverString) {
-		return fmt.Errorf("invalid server string: %s", serverString)
+	if !utils.IsValidServerString(serverString) || strings.ContainsAny(serverString, "\r\n\x00") {
+		return invalidGlobalConfig("invalid server string: %s", serverString)
 	}
 
 	interfacesList := strings.Split(interfaces, ",")
@@ -86,9 +161,9 @@ func (s *Service) SetGlobalConfig(
 
 	for _, eIface := range interfacesList {
 		eIface = strings.TrimSpace(eIface)
-		_, err := iface.Get(eIface)
+		_, err := sambaGetInterface(eIface)
 		if err != nil && !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("invalid interface '%s': %w", eIface, err)
+			return invalidGlobalConfig("invalid interface '%s': %v", eIface, err)
 		} else if err != nil && strings.Contains(err.Error(), "not found") {
 			logger.L.Warn().Str("interface", eIface).Msg("Interface not found, continuing without it")
 			interfacesList = utils.RemoveStringFromSlice(interfacesList, eIface)
@@ -101,28 +176,64 @@ func (s *Service) SetGlobalConfig(
 		interfaces = "lo0"
 	}
 
-	var settings sambaModels.SambaSettings
-	if err := s.DB.First(&settings).Error; err != nil {
-		return fmt.Errorf("failed to retrieve Samba settings: %w", err)
+	update := func() error {
+		return s.DB.Transaction(func(tx *gorm.DB) error {
+			var settings sambaModels.SambaSettings
+			if err := tx.First(&settings).Error; err != nil {
+				return fmt.Errorf("failed to retrieve Samba settings: %w", err)
+			}
+
+			enableMdns := advertiseMdns
+
+			settings.UnixCharset = unixCharset
+			settings.Workgroup = workgroup
+			settings.ServerString = serverString
+			settings.Interfaces = interfaces
+			settings.BindInterfacesOnly = bindInterfacesOnly
+			settings.AppleExtensions = appleExtensions
+			settings.AdvertiseMdns = advertiseMdns
+
+			if err := tx.Save(&settings).Error; err != nil {
+				return fmt.Errorf("failed to update Samba settings: %w", err)
+			}
+
+			if enableMdns {
+				if s.EnsureMdnsEnabled == nil {
+					return fmt.Errorf("mdns service dependency is unavailable")
+				}
+				if err := s.EnsureMdnsEnabled(tx); err != nil {
+					return fmt.Errorf("failed to enable mdns for Samba advertisements: %w", err)
+				}
+			}
+
+			transactionalService := &Service{
+				DB:   tx,
+				GZFS: s.GZFS,
+			}
+			return sambaWriteConfig(transactionalService, ctx, true)
+		})
 	}
 
-	settings.UnixCharset = unixCharset
-	settings.Workgroup = workgroup
-	settings.ServerString = serverString
-	settings.Interfaces = interfaces
-	settings.BindInterfacesOnly = bindInterfacesOnly
-	settings.AppleExtensions = appleExtensions
-
-	if err := s.DB.Save(&settings).Error; err != nil {
-		return fmt.Errorf("failed to update Samba settings: %w", err)
+	if s.WithServiceSettingsLock != nil {
+		if err := s.WithServiceSettingsLock(update); err != nil {
+			return err
+		}
+	} else if err := update(); err != nil {
+		return err
 	}
 
-	return s.WriteConfig(ctx, true)
+	if s.OnConfigChange != nil {
+		if err := s.OnConfigChange(); err != nil {
+			return fmt.Errorf("mdns rebuild failed after samba config change: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) hasGuestOnlyShares() (bool, error) {
 	var count int64
-	if err := s.DB.Model(&sambaModels.SambaShare{}).Where("guest_ok = ?", true).Count(&count).Error; err != nil {
+	if err := s.DB.Model(&sambaModels.SambaShare{}).Where("enabled = ? AND guest_ok = ?", true, true).Count(&count).Error; err != nil {
 		return false, fmt.Errorf("failed_to_check_guest_shares: %w", err)
 	}
 
@@ -453,16 +564,6 @@ func (s *Service) GlobalConfig() (string, error) {
 	if settings.AppleExtensions {
 		config += "min protocol = SMB2\n"
 		config += "ea support = yes\n"
-		config += "vfs objects = fruit streams_xattr full_audit zfsacl\n"
-		config += "fruit:metadata = stream\n"
-		config += "fruit:model = MacSamba\n"
-		config += "fruit:veto_appledouble = no\n"
-		config += "fruit:nfs_aces = no\n"
-		config += "fruit:wipe_intentionally_left_blank_rfork = yes\n"
-		config += "fruit:delete_empty_adfiles = yes\n"
-		config += "fruit:posix_rename = yes\n"
-	} else {
-		config += "vfs objects = full_audit zfsacl\n"
 	}
 	config += "inherit acls = yes\n"
 
@@ -470,18 +571,28 @@ func (s *Service) GlobalConfig() (string, error) {
 }
 
 func (s *Service) ShareConfig(ctx context.Context) (string, error) {
+	settings, err := s.GetGlobalConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Samba settings: %w", err)
+	}
+
 	shares := []sambaModels.SambaShare{}
 	if err := s.DB.
 		Preload("ReadOnlyUsers").
 		Preload("WriteableUsers").
 		Preload("ReadOnlyGroups").
 		Preload("WriteableGroups").
+		Where("enabled = ?", true).
 		Find(&shares).Error; err != nil {
 		return "", fmt.Errorf("failed to retrieve Samba shares: %w", err)
 	}
 
 	var datasets = make(map[string]*gzfs.Dataset)
 	for _, share := range shares {
+		if err := validateSambaShareInput(share.Name, share.CreateMask, share.DirectoryMask, share.AuditedOperations); err != nil {
+			return "", fmt.Errorf("invalid configuration for share %q: %w", share.Name, err)
+		}
+
 		if _, exists := datasets[share.Dataset]; !exists {
 			ds, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
 			if err != nil {
@@ -582,24 +693,78 @@ func (s *Service) ShareConfig(ctx context.Context) (string, error) {
 
 		config.WriteString(fmt.Sprintf("\tcreate mask = %s\n", share.CreateMask))
 		config.WriteString(fmt.Sprintf("\tdirectory mask = %s\n", share.DirectoryMask))
-		if share.TimeMachine {
+
+		// Per-share VFS objects
+		var vfsObjects []string
+		if settings.AppleExtensions {
+			vfsObjects = append(vfsObjects, "fruit", "streams_xattr")
+		}
+		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
+			vfsObjects = append(vfsObjects, "full_audit")
+		}
+		vfsObjects = append(vfsObjects, "zfsacl")
+		config.WriteString(fmt.Sprintf("\tvfs objects = %s\n", strings.Join(vfsObjects, " ")))
+
+		// Per-share fruit config
+		if settings.AppleExtensions {
+			config.WriteString("\tfruit:metadata = stream\n")
+			config.WriteString("\tfruit:model = MacSamba\n")
+			config.WriteString("\tfruit:veto_appledouble = yes\n")
+			config.WriteString("\tfruit:convert_adouble = no\n")
+			config.WriteString("\tfruit:nfs_aces = no\n")
+			config.WriteString("\tfruit:wipe_intentionally_left_blank_rfork = yes\n")
+			config.WriteString("\tfruit:delete_empty_adfiles = yes\n")
+			config.WriteString("\tfruit:posix_rename = yes\n")
+		}
+
+		if settings.AppleExtensions && share.TimeMachine {
 			config.WriteString("\tfruit:time machine = yes\n")
 			if share.TimeMachineMaxSize > 0 {
 				config.WriteString(fmt.Sprintf("\tfruit:time machine max size = %dG\n", share.TimeMachineMaxSize))
 			}
 		}
-		config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
-		config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
-		config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
-		config.WriteString("\tfull_audit:facility = LOCAL7\n")
-		config.WriteString("\tfull_audit:priority = ALERT\n")
-		config.WriteString("\tfull_audit:syslog = true\n")
-		config.WriteString("\tfull_audit:log_secdesc = true\n")
+
+		// Per-share audit config
+		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
+			config.WriteString("\tfull_audit:prefix = sylve-smb-al|%u|%I|%m|%S|%P\n")
+			opsStr := strings.Join(share.AuditedOperations, " ")
+			config.WriteString(fmt.Sprintf("\tfull_audit:success = %s\n", opsStr))
+			config.WriteString(fmt.Sprintf("\tfull_audit:failure = %s\n", opsStr))
+			config.WriteString("\tfull_audit:syslog = true\n")
+			config.WriteString("\tfull_audit:facility = LOCAL5\n")
+			config.WriteString("\tfull_audit:priority = NOTICE\n")
+			config.WriteString("\tfull_audit:log_secdesc = true\n")
+		}
 
 		config.WriteString("\n\n")
 	}
 
 	return config.String(), nil
+}
+
+func validateSambaConfig(config string) error {
+	dir := filepath.Dir(sambaConfigFilePath)
+	file, err := os.CreateTemp(dir, ".smb4.conf-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary Samba configuration: %w", err)
+	}
+	temporaryPath := file.Name()
+	defer os.Remove(temporaryPath)
+
+	if _, err := file.WriteString(config); err != nil {
+		file.Close()
+		return fmt.Errorf("failed to write temporary Samba configuration: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary Samba configuration: %w", err)
+	}
+
+	output, err := sambaRunCommand(sambaTestparmPath, "-s", temporaryPath)
+	if err != nil {
+		return fmt.Errorf("Samba configuration validation failed: %w: %s", err, output)
+	}
+
+	return nil
 }
 
 func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
@@ -618,21 +783,23 @@ func (s *Service) WriteConfig(ctx context.Context, reload bool) error {
 	}
 
 	fullConfig := gCfg + "\n" + shareCfg
-	filePath := "/usr/local/etc/smb4.conf"
-
-	if err := os.WriteFile(filePath, []byte(fullConfig), 0644); err != nil {
-		return fmt.Errorf("failed to write Samba configuration to %s: %w", filePath, err)
+	if err := validateSambaConfig(fullConfig); err != nil {
+		return err
 	}
 
-	if s.OnConfigChange != nil {
-		if err := s.OnConfigChange(); err != nil {
-			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
-		}
+	if err := sambaAtomicWriteFile(sambaConfigFilePath, []byte(fullConfig), 0644); err != nil {
+		return fmt.Errorf("failed to write Samba configuration to %s: %w", sambaConfigFilePath, err)
 	}
 
 	if reload {
 		if err := system.ServiceAction("samba_server", "onerestart"); err != nil {
 			return fmt.Errorf("failed to restart Samba service: %w", err)
+		}
+	}
+
+	if s.OnConfigChange != nil {
+		if err := s.OnConfigChange(); err != nil {
+			logger.L.Warn().Err(err).Msg("mdns rebuild failed after samba config change")
 		}
 	}
 

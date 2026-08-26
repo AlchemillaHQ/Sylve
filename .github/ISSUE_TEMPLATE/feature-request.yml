@@ -1,0 +1,71 @@
+name: Feature request
+description: Propose a new capability that Sylve does not currently provide.
+title: "[Feature] "
+labels: ["Feature"]
+assignees: ["hayzamjs"]
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for new capabilities. For improvements to something Sylve already does, choose the Enhancement form instead.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      options:
+        - Installation and upgrade
+        - Dashboard and general UI
+        - Virtual machines
+        - Jails
+        - Storage and ZFS
+        - Networking, firewall, and WireGuard
+        - Backups, replication, and clustering
+        - Authentication and certificates
+        - Downloader and utilities
+        - CLI and interactive console
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and why is it important?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed feature
+      description: Describe the capability and how you expect it to work.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or alternative approaches you have tried.
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add examples, mockups, links, or related issues.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched open and closed issues for an existing request.
+          required: true

@@ -20,8 +20,8 @@ type MdnsSettings struct {
 
 type MdnsRecord struct {
 	ID         uint              `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name       string            `json:"name"`
-	Type       string            `json:"type"`
+	Name       string            `json:"name" gorm:"uniqueIndex:idx_mdns_record_identity,priority:1"`
+	Type       string            `json:"type" gorm:"uniqueIndex:idx_mdns_record_identity,priority:2"`
 	Port       int               `json:"port"`
 	Txt        map[string]string `json:"txt" gorm:"serializer:json;type:json"`
 	Interfaces string            `json:"interfaces"`

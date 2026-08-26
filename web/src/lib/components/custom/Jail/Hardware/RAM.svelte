@@ -17,32 +17,29 @@
 	interface Props {
 		open: boolean;
 		ram: RAMInfo;
-		jail: Jail | undefined;
-		reload: boolean;
+		jail: Jail;
+		node: string;
+		onSaved: () => void | Promise<void>;
 	}
 
-	let { open = $bindable(), ram, jail, reload = $bindable() }: Props = $props();
-
-	// svelte-ignore state_referenced_locally
-	let options = {
-		ram: formatBytesBinary(jail?.memory || 1)
-	};
-
-	let properties = $state(options);
+	let { open = $bindable(), ram, jail, node, onSaved }: Props = $props();
+	let ramValue = $derived(formatBytesBinary(jail.memory || 1));
+	let saving = $state(false);
 
 	async function modify() {
+		if (saving) return;
 		let bytes: number = 0;
 		let error: string = '';
 
-		const parsed = parseSizeInputToBytes(properties.ram);
+		const parsed = parseSizeInputToBytes(ramValue);
 		if (parsed === null) {
 			error = 'Invalid RAM value';
 		} else {
 			bytes = parsed;
 		}
 
-		if (bytes <= 0) {
-			error = 'RAM value must be greater than 0';
+		if (bytes < 1024 * 1024) {
+			error = 'RAM value must be at least 1 MiB';
 		}
 
 		if (bytes > ram.total - 1024 * 1024 * 1024 || bytes > ram.total) {
@@ -60,24 +57,24 @@
 			return;
 		}
 
-		if (jail) {
-			const response = await modifyRAM(jail.ctId, bytes);
-			reload = true;
+		saving = true;
+		try {
+			const response = await modifyRAM(jail.ctId, bytes, { hostname: node });
 			if (response.error) {
 				handleAPIError(response);
 				toast.error('Failed to modify RAM', {
 					position: 'bottom-center'
 				});
-			} else {
-				toast.success('RAM modified', {
-					position: 'bottom-center'
-				});
-				open = false;
+				return;
 			}
-		} else {
-			toast.error('Jail not found', {
+
+			await onSaved();
+			toast.success('RAM modified', {
 				position: 'bottom-center'
 			});
+			open = false;
+		} finally {
+			saving = false;
 		}
 	}
 </script>
@@ -87,10 +84,11 @@
 		class="w-1/4 overflow-hidden p-6 lg:max-w-2xl"
 		showResetButton={true}
 		onReset={() => {
-			properties = options;
+			if (!saving) ramValue = formatBytesBinary(jail.memory || 1);
 		}}
 		onClose={() => {
-			properties = options;
+			if (saving) return;
+			ramValue = formatBytesBinary(jail.memory || 1);
 			open = false;
 		}}
 	>
@@ -102,19 +100,26 @@
 
 		<CustomValueInput
 			placeholder="1.0 GiB"
-			bind:value={properties.ram}
+			bind:value={ramValue}
 			classes="flex-1 space-y-1"
 			onBlur={() => {
-				const normalized = normalizeSizeInputExact(properties.ram);
+				const normalized = normalizeSizeInputExact(ramValue);
 				if (normalized !== null) {
-					properties.ram = normalized;
+					ramValue = normalized;
 				}
 			}}
 		/>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">Save</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving} aria-busy={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

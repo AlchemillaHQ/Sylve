@@ -1,0 +1,49 @@
+---
+title: Overview
+description: Understand Sylve replication's early-access status and enable it for a cluster.
+---
+
+import replicationEnablement from './enabling-replication-ui.mp4';
+
+Sylve replication protects a virtual machine or jail by maintaining recoverable ZFS replicas on other members of a cluster. It is designed for a broad range of high-availability workloads. One example is a cloud-native platform where Talos Linux virtual machines managed by Sylve form a Kubernetes cluster.
+
+It is built to keep replication direct and contained: Sylve coordinates cluster state and uses native ZFS replication for workload data, rather than requiring a separate replication platform. The result is a focused workflow for protecting a VM or jail, checking replica readiness, and recovering it when needed.
+
+## Early-access status
+
+Replication is available as an early-access feature throughout the Sylve v0.3.0 series. Its public API and final on-disk and control-plane schema are still being refined, with stability currently targeted for around v0.3.5 and, if more iteration is needed, v0.4.0. The feature is ready to evaluate and use for supported workloads, but third-party integrations should wait for the stable API before depending on its current request and response shapes.
+
+The label does **not** reflect a lack of testing. Replication has focused code-level coverage for policy, transfer, recovery, and failure handling, integration testing across clustered nodes and real ZFS storage, and repeated manual testing of normal synchronization, safe moves, forced recovery, and failure paths. It is also relied on for real production workloads, including cloud-native deployments with Talos Linux VMs managed by Sylve and running Kubernetes.
+
+FreeBSD users reasonably expect their infrastructure to be stable and predictable. Sylve takes that expectation seriously: the remaining time before a GA or GM designation is for hardening the final contracts and earning confidence across real recovery scenarios, not for treating users as test subjects. Keep independent backups and validate your own recovery plan, as you should for any HA system.
+
+:::caution
+Replication is not a replacement for backups. It makes a recent replica available inside the cluster, but an independent backup target protects against broader failures, accidental deletion, and corruption.
+:::
+
+## Enable replication
+
+Replication is hidden by default while its API is being finalized. To enable it in the UI:
+
+1. Select the heart icon in the top-right corner to open the About dialog.
+2. Expand **Experimental Features**.
+3. Check **Replication**.
+4. Open **Data Center → Replication** and configure a policy.
+
+The setting reveals the Replication section and its activity indicator for the current browser session. It is only a UI visibility preference: it does not enable, disable, pause, modify, or delete replication policies, and it has no effect on backend HA behavior. Replication policies require a Sylve cluster; configure and verify the cluster before creating one.
+
+<video class="docs-walkthrough-video" autoplay muted loop playsinline controls aria-label="Walkthrough of enabling Replication from the About dialog">
+  <source src={replicationEnablement} type="video/mp4" />
+</video>
+
+### Cluster requirement
+
+Replication HA requires at least three configured Raft voters. This is enforced by the backend, so a standalone node or a two-voter cluster cannot create or run an eligible HA replication policy. A policy must also have at least one remote target: a cluster node other than the VM or jail's current active node. It is not a Backup Target. These requirements let the cluster maintain quorum and ensure there is another node on which the workload can be recovered.
+
+:::note
+Before using replication for an important workload, validate a full recovery on representative data and review the policy's failover behavior. Automatic force recovery can lose writes that were not yet replicated from the previous active node.
+:::
+
+:::caution
+If you no longer want a workload to participate in HA, explicitly delete its replication policy and confirm its standby replicas and policy-owned snapshots have been cleaned up. Hiding Replication in the UI does not stop or remove protection.
+:::

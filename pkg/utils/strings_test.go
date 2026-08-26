@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestFNVHash(t *testing.T) {
@@ -58,7 +59,7 @@ func TestFNVHash(t *testing.T) {
 }
 
 func TestHashAndCheckPassword(t *testing.T) {
-	password := "supersecret123"
+	const password = "supersecret123"
 
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -68,6 +69,13 @@ func TestHashAndCheckPassword(t *testing.T) {
 	if hash == "" {
 		t.Fatal("expected non-empty hash")
 	}
+	cost, err := bcrypt.Cost([]byte(hash))
+	if err != nil {
+		t.Fatalf("HashPassword returned an invalid bcrypt hash: %v", err)
+	}
+	if cost != 14 {
+		t.Fatalf("bcrypt cost = %d; want 14", cost)
+	}
 
 	if !CheckPasswordHash(password, hash) {
 		t.Error("CheckPasswordHash failed for correct password")
@@ -75,6 +83,15 @@ func TestHashAndCheckPassword(t *testing.T) {
 
 	if CheckPasswordHash("wrongpassword", hash) {
 		t.Error("CheckPasswordHash returned true for incorrect password")
+	}
+
+	if CheckPasswordHash(password, "not-a-bcrypt-hash") {
+		t.Error("CheckPasswordHash accepted a malformed hash")
+	}
+
+	const persistedHash = "$2a$04$q8RMvfpZU3MpIHropi1cfu0QobOdx.lw1SwiSLPC2ctgMMtPw6cc."
+	if !CheckPasswordHash("correct horse battery staple", persistedHash) {
+		t.Error("CheckPasswordHash rejected a persisted bcrypt hash")
 	}
 }
 
@@ -258,6 +275,40 @@ func TestGenerateRandomString(t *testing.T) {
 			generatedStrings[str] = true
 		}
 	})
+}
+
+func TestIsValidFilename(t *testing.T) {
+	t.Parallel()
+
+	valid := []string{
+		"FreeBSD-15.1-RELEASE-amd64.iso",
+		"root filesystem.txz",
+		"日本語.img",
+		strings.Repeat("a", 255),
+	}
+	for _, name := range valid {
+		if err := IsValidFilename(name); err != nil {
+			t.Errorf("IsValidFilename(%q) returned error: %v", name, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"   ",
+		".",
+		"..",
+		"nested/file.iso",
+		`nested\\file.iso`,
+		"line\nbreak.iso",
+		"nul\x00byte.iso",
+		strings.Repeat("a", 256),
+		strings.Repeat("界", 86),
+	}
+	for _, name := range invalid {
+		if err := IsValidFilename(name); err == nil {
+			t.Errorf("IsValidFilename(%q) succeeded, want error", name)
+		}
+	}
 }
 
 func TestStringInSlice(t *testing.T) {

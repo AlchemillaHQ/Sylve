@@ -33,8 +33,129 @@ type wireGuardFirewallSnapshot struct {
 	NAT     []networkModels.FirewallNATRule
 }
 
+func (s *Service) isWireGuardUDPPortInUse(port int) bool {
+	if s.wireGuardUDPPortInUse != nil {
+		return s.wireGuardUDPPortInUse(port)
+	}
+	return utils.IsUDPPortInUse(port)
+}
+
 func normalizeWireGuardManagedInterface(value string) string {
 	return strings.TrimSpace(value)
+}
+
+func cloneWireGuardServer(server *networkModels.WireGuardServer) networkModels.WireGuardServer {
+	if server == nil {
+		return networkModels.WireGuardServer{}
+	}
+
+	cloned := *server
+	cloned.Addresses = append([]string(nil), server.Addresses...)
+	cloned.Peers = append([]networkModels.WireGuardServerPeer(nil), server.Peers...)
+	for i := range cloned.Peers {
+		cloned.Peers[i].ClientIPs = append([]string(nil), server.Peers[i].ClientIPs...)
+		cloned.Peers[i].RoutableIPs = append([]string(nil), server.Peers[i].RoutableIPs...)
+	}
+	return cloned
+}
+
+func (s *Service) persistWireGuardServerConfig(server *networkModels.WireGuardServer) error {
+	if server == nil || server.ID == 0 {
+		return fmt.Errorf("invalid wireguard server persistence target")
+	}
+	return s.DB.Model(&networkModels.WireGuardServer{}).
+		Where("id = ?", server.ID).
+		Select(
+			"Enabled",
+			"Port",
+			"Addresses",
+			"AllowWireGuardPort",
+			"MasqueradeIPv4Interface",
+			"MasqueradeIPv6Interface",
+			"PrivateKey",
+			"PublicKey",
+			"MTU",
+			"Metric",
+			"RestartedAt",
+		).
+		Updates(server).Error
+}
+
+func (s *Service) validateWireGuardServerConfig(server *networkModels.WireGuardServer) error {
+	if server == nil {
+		return invalidWireGuardServer("wireguard_server_required", nil)
+	}
+	if server.Port == 0 || server.Port > 65535 {
+		return invalidWireGuardServer("wireguard_invalid_port", nil)
+	}
+	if len(server.Addresses) == 0 {
+		return invalidWireGuardServer("wireguard_addresses_required", nil)
+	}
+	if server.MTU < 576 || server.MTU > 9000 {
+		return invalidWireGuardServer("wireguard_invalid_mtu", nil)
+	}
+	if _, err := wgtypes.ParseKey(strings.TrimSpace(server.PrivateKey)); err != nil {
+		return invalidWireGuardServer("wireguard_invalid_private_key", err)
+	}
+
+	hasIPv4 := false
+	hasIPv6 := false
+	for _, address := range server.Addresses {
+		ip, _, err := net.ParseCIDR(strings.TrimSpace(address))
+		if err != nil {
+			return invalidWireGuardServer("wireguard_invalid_address", err)
+		}
+		if ip.To4() == nil {
+			hasIPv6 = true
+		} else {
+			hasIPv4 = true
+		}
+	}
+	if hasIPv6 && server.MTU < 1280 {
+		return invalidWireGuardServer("wireguard_ipv6_mtu_too_small", nil)
+	}
+
+	v4Iface := normalizeWireGuardManagedInterface(server.MasqueradeIPv4Interface)
+	v6Iface := normalizeWireGuardManagedInterface(server.MasqueradeIPv6Interface)
+	if v4Iface != "" && !hasIPv4 {
+		return invalidWireGuardServer("wireguard_masquerade_ipv4_requires_server_ipv4_cidr", nil)
+	}
+	if v6Iface != "" && !hasIPv6 {
+		return invalidWireGuardServer("wireguard_masquerade_ipv6_requires_server_ipv6_cidr", nil)
+	}
+	for _, iface := range []string{v4Iface, v6Iface} {
+		if iface == "" {
+			continue
+		}
+		if len(iface) > MaxFirewallNATRuleInterfaceBytes || !firewallInterfaceNamePattern.MatchString(iface) {
+			return invalidWireGuardServer("wireguard_invalid_masquerade_interface", nil)
+		}
+		if iface == wireGuardServerInterfaceName {
+			return invalidWireGuardServer("wireguard_masquerade_interface_cannot_be_server", nil)
+		}
+	}
+	if v4Iface == "" && v6Iface == "" {
+		return nil
+	}
+
+	interfaces, err := wireGuardListInterfaces()
+	if err != nil {
+		return fmt.Errorf("failed to list interfaces for wireguard validation: %w", err)
+	}
+	existing := make(map[string]struct{}, len(interfaces))
+	for _, iface := range interfaces {
+		existing[strings.TrimSpace(iface.Name)] = struct{}{}
+	}
+	for _, iface := range []string{v4Iface, v6Iface} {
+		if iface == "" {
+			continue
+		}
+		if _, ok := existing[iface]; !ok {
+			return invalidWireGuardServer("wireguard_masquerade_interface_not_found", nil)
+		}
+	}
+
+	return nil
 }
 
 func wireGuardCIDRNetworkByFamily(cidrs []string, wantV6 bool) string {
@@ -64,47 +185,6 @@ func (s *Service) snapshotWireGuardFirewallState() (*wireGuardFirewallSnapshot, 
 		return nil, err
 	}
 	return out, nil
-}
-
-func (s *Service) restoreWireGuardFirewallState(snapshot *wireGuardFirewallSnapshot) error {
-	if snapshot == nil {
-		return nil
-	}
-	return s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&networkModels.FirewallTrafficRule{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&networkModels.FirewallNATRule{}).Error; err != nil {
-			return err
-		}
-		if len(snapshot.Traffic) > 0 {
-			if err := tx.Create(&snapshot.Traffic).Error; err != nil {
-				return err
-			}
-			for _, row := range snapshot.Traffic {
-				if row.Visible {
-					continue
-				}
-				if err := tx.Model(&networkModels.FirewallTrafficRule{}).Where("id = ?", row.ID).Update("visible", false).Error; err != nil {
-					return err
-				}
-			}
-		}
-		if len(snapshot.NAT) > 0 {
-			if err := tx.Create(&snapshot.NAT).Error; err != nil {
-				return err
-			}
-			for _, row := range snapshot.NAT {
-				if row.Visible {
-					continue
-				}
-				if err := tx.Model(&networkModels.FirewallNATRule{}).Where("id = ?", row.ID).Update("visible", false).Error; err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
 }
 
 func (s *Service) reconcileManagedWireGuardTrafficRule(tx *gorm.DB, server *networkModels.WireGuardServer) error {
@@ -296,15 +376,18 @@ func (s *Service) deleteManagedWireGuardNATRule(tx *gorm.DB, name string) error 
 	return tx.Where("visible = ? AND name = ?", false, name).Delete(&networkModels.FirewallNATRule{}).Error
 }
 
-func (s *Service) syncWireGuardManagedFirewallRules(server *networkModels.WireGuardServer) error {
-	if server == nil {
-		return nil
+func (s *Service) reconcileWireGuardManagedFirewallRows(server *networkModels.WireGuardServer, active bool) error {
+	desired := cloneWireGuardServer(server)
+	if !active {
+		desired.AllowWireGuardPort = false
+		desired.MasqueradeIPv4Interface = ""
+		desired.MasqueradeIPv6Interface = ""
 	}
 
-	v4Iface := normalizeWireGuardManagedInterface(server.MasqueradeIPv4Interface)
-	v6Iface := normalizeWireGuardManagedInterface(server.MasqueradeIPv6Interface)
-	v4CIDR := wireGuardCIDRNetworkByFamily(server.Addresses, false)
-	v6CIDR := wireGuardCIDRNetworkByFamily(server.Addresses, true)
+	v4Iface := normalizeWireGuardManagedInterface(desired.MasqueradeIPv4Interface)
+	v6Iface := normalizeWireGuardManagedInterface(desired.MasqueradeIPv6Interface)
+	v4CIDR := wireGuardCIDRNetworkByFamily(desired.Addresses, false)
+	v6CIDR := wireGuardCIDRNetworkByFamily(desired.Addresses, true)
 
 	if v4Iface != "" && v4CIDR == "" {
 		return fmt.Errorf("wireguard_masquerade_ipv4_requires_server_ipv4_cidr")
@@ -313,13 +396,8 @@ func (s *Service) syncWireGuardManagedFirewallRules(server *networkModels.WireGu
 		return fmt.Errorf("wireguard_masquerade_ipv6_requires_server_ipv6_cidr")
 	}
 
-	snapshot, err := s.snapshotWireGuardFirewallState()
-	if err != nil {
-		return err
-	}
-
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if syncErr := s.reconcileManagedWireGuardTrafficRule(tx, server); syncErr != nil {
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if syncErr := s.reconcileManagedWireGuardTrafficRule(tx, &desired); syncErr != nil {
 			return syncErr
 		}
 
@@ -342,22 +420,107 @@ func (s *Service) syncWireGuardManagedFirewallRules(server *networkModels.WireGu
 		}
 
 		return nil
-	}); err != nil {
+	})
+}
+
+func (s *Service) syncWireGuardManagedFirewallRules(server *networkModels.WireGuardServer, active bool) error {
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
+	snapshot, err := s.snapshotWireGuardFirewallState()
+	if err != nil {
+		return err
+	}
+	if err := s.reconcileWireGuardManagedFirewallRows(server, active); err != nil {
 		return err
 	}
 
 	if err := s.ApplyFirewallIfEnabled(); err != nil {
-		_ = s.restoreWireGuardFirewallState(snapshot)
+		rollbackErr := s.DB.Transaction(func(tx *gorm.DB) error {
+			if restoreErr := restoreFirewallTrafficRules(tx, snapshot.Traffic); restoreErr != nil {
+				return restoreErr
+			}
+			return restoreFirewallNATRules(tx, snapshot.NAT)
+		})
+		if rollbackErr != nil {
+			return errors.Join(err, fmt.Errorf("wireguard firewall database rollback failed: %w", rollbackErr))
+		}
+		if reapplyErr := s.ApplyFirewallIfEnabled(); reapplyErr != nil {
+			return errors.Join(err, fmt.Errorf("wireguard firewall runtime rollback failed: %w", reapplyErr))
+		}
 		return err
 	}
 
 	return nil
 }
 
+func (s *Service) reconcileWireGuardManagedFirewallRowsForCurrentState() error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
+	serviceEnabled, err := s.wireGuardServiceState()
+	if err != nil {
+		return err
+	}
+
+	var server networkModels.WireGuardServer
+	err = s.DB.First(&server).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	s.firewallTrafficMutationMutex.Lock()
+	defer s.firewallTrafficMutationMutex.Unlock()
+	s.firewallNATMutationMutex.Lock()
+	defer s.firewallNATMutationMutex.Unlock()
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.reconcileWireGuardManagedFirewallRows(nil, false)
+	}
+	return s.reconcileWireGuardManagedFirewallRows(&server, serviceEnabled && server.Enabled)
+}
+
+func (s *Service) restoreWireGuardServerOperationalState(snapshot *networkModels.WireGuardServer) error {
+	if snapshot == nil || snapshot.ID == 0 {
+		return nil
+	}
+
+	var rollbackErrors []error
+	if err := s.persistWireGuardServerConfig(snapshot); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore wireguard server database state: %w", err))
+	}
+	if err := s.applyWireGuardServerRuntime(snapshot); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore wireguard server runtime state: %w", err))
+	}
+	if err := s.syncWireGuardManagedFirewallRules(snapshot, snapshot.Enabled); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore wireguard server firewall state: %w", err))
+	}
+	return errors.Join(rollbackErrors...)
+}
+
+func (s *Service) rollbackWireGuardServerInitialization(server *networkModels.WireGuardServer) error {
+	if server == nil || server.ID == 0 {
+		return nil
+	}
+
+	var rollbackErrors []error
+	if err := s.syncWireGuardManagedFirewallRules(server, false); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("remove initialized wireguard firewall state: %w", err))
+	}
+	if err := s.teardownWireGuardServerRuntime(server); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("remove initialized wireguard runtime state: %w", err))
+	}
+	if err := s.DB.Delete(&networkModels.WireGuardServer{}, server.ID).Error; err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("remove initialized wireguard database state: %w", err))
+	}
+	return errors.Join(rollbackErrors...)
+}
+
 func (s *Service) GetWireGuardServer() (*networkModels.WireGuardServer, error) {
-	inited, _ := s.isWireGuardServerInitialized()
-	if !inited {
-		return nil, ErrWireGuardServerNotInited
+	if err := s.requireWireGuardServiceEnabled(); err != nil {
+		return nil, err
 	}
 
 	var server networkModels.WireGuardServer
@@ -373,8 +536,14 @@ func (s *Service) GetWireGuardServer() (*networkModels.WireGuardServer, error) {
 }
 
 func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
+	}
+	if req == nil {
+		return invalidWireGuardServer("wireguard_server_request_required", nil)
 	}
 
 	var existing networkModels.WireGuardServer
@@ -387,10 +556,6 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 		return err
 	}
 
-	if utils.IsPortInUse(int(req.Port)) {
-		return fmt.Errorf("wireguard_port_already_in_use")
-	}
-
 	privateKey, err := wireGuardGeneratePrivateKey()
 	if err != nil {
 		return err
@@ -399,7 +564,7 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 	if req.PrivateKey != nil && strings.TrimSpace(*req.PrivateKey) != "" {
 		provided := strings.TrimSpace(*req.PrivateKey)
 		if _, parseErr := wgtypes.ParseKey(provided); parseErr != nil {
-			return fmt.Errorf("wireguard_invalid_private_key: %w", parseErr)
+			return invalidWireGuardServer("wireguard_invalid_private_key", parseErr)
 		}
 		privateKey = provided
 	}
@@ -413,10 +578,6 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 	if len(addresses) == 0 {
 		addresses = []string{"10.210.0.1/24"}
 	}
-	if err := parseWireGuardCIDRs(addresses); err != nil {
-		return err
-	}
-
 	mtu := uint(1420)
 	if req.MTU != nil {
 		mtu = *req.MTU
@@ -433,51 +594,56 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 		MasqueradeIPv4Interface: normalizeWireGuardManagedInterface(req.MasqueradeIPv4Interface),
 		MasqueradeIPv6Interface: normalizeWireGuardManagedInterface(req.MasqueradeIPv6Interface),
 	}
+	if err := s.validateWireGuardServerConfig(&server); err != nil {
+		return err
+	}
+	if s.isWireGuardUDPPortInUse(int(server.Port)) {
+		return wireGuardServerConflict("wireguard_port_already_in_use", nil)
+	}
 
 	if err := s.DB.Create(&server).Error; err != nil {
 		return err
 	}
 
 	if err := s.applyWireGuardServerRuntime(&server); err != nil {
-		_ = s.DB.Delete(&server).Error
-		return err
+		return errors.Join(err, s.rollbackWireGuardServerInitialization(&server))
 	}
 
-	if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-		_ = s.teardownWireGuardServerRuntime(&server)
-		_ = s.DB.Delete(&server).Error
-		return err
+	if err := s.syncWireGuardManagedFirewallRules(&server, true); err != nil {
+		return errors.Join(err, s.rollbackWireGuardServerInitialization(&server))
 	}
 
-	if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-		return err
+	restartedAt := wireGuardCurrentTime()
+	if err := s.DB.Model(&server).Update("restarted_at", restartedAt).Error; err != nil {
+		return errors.Join(err, s.rollbackWireGuardServerInitialization(&server))
 	}
+	server.RestartedAt = restartedAt
 	s.flushWireGuardMetricsOnConfigChange()
 	return nil
 }
 
 func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
 
 	var server networkModels.WireGuardServer
-	if err := s.DB.First(&server).Error; err != nil {
+	if err := s.DB.Preload("Peers").First(&server).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrWireGuardServerNotInited
 		}
 		return err
 	}
-
-	if req.Port != server.Port && utils.IsPortInUse(int(req.Port)) {
-		return fmt.Errorf("wireguard_port_already_in_use")
-	}
+	previous := cloneWireGuardServer(&server)
 
 	privateKey := server.PrivateKey
 	if req.PrivateKey != nil && strings.TrimSpace(*req.PrivateKey) != "" {
 		provided := strings.TrimSpace(*req.PrivateKey)
 		if _, parseErr := wgtypes.ParseKey(provided); parseErr != nil {
-			return fmt.Errorf("wireguard_invalid_private_key: %w", parseErr)
+			return invalidWireGuardServer("wireguard_invalid_private_key", parseErr)
 		}
 		privateKey = provided
 	}
@@ -491,13 +657,6 @@ func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
 	if len(req.Addresses) > 0 {
 		addresses = sortedUnique(req.Addresses)
 	}
-	if len(addresses) == 0 {
-		return ErrWireGuardAddressesRequired
-	}
-	if err := parseWireGuardCIDRs(addresses); err != nil {
-		return err
-	}
-
 	mtu := server.MTU
 	if req.MTU != nil {
 		mtu = *req.MTU
@@ -511,38 +670,39 @@ func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
 	server.AllowWireGuardPort = req.AllowWireGuardPort
 	server.MasqueradeIPv4Interface = normalizeWireGuardManagedInterface(req.MasqueradeIPv4Interface)
 	server.MasqueradeIPv6Interface = normalizeWireGuardManagedInterface(req.MasqueradeIPv6Interface)
+	if err := s.validateWireGuardServerConfig(&server); err != nil {
+		return err
+	}
+	if server.Port != previous.Port && s.isWireGuardUDPPortInUse(int(server.Port)) {
+		return wireGuardServerConflict("wireguard_port_already_in_use", nil)
+	}
 
-	if err := s.DB.Save(&server).Error; err != nil {
+	if err := s.persistWireGuardServerConfig(&server); err != nil {
 		return err
 	}
 
-	if err := s.DB.Preload("Peers").First(&server, server.ID).Error; err != nil {
-		return err
+	if err := s.applyWireGuardServerRuntime(&server); err != nil {
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 	}
-
+	if err := s.syncWireGuardManagedFirewallRules(&server, server.Enabled); err != nil {
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
+	}
 	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
+		restartedAt := wireGuardCurrentTime()
+		if err := s.DB.Model(&server).Update("restarted_at", restartedAt).Error; err != nil {
+			return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 		}
-		if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
-		return nil
-	}
-
-	if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-		return err
+		server.RestartedAt = restartedAt
 	}
 
 	s.flushWireGuardMetricsOnConfigChange()
 	return nil
 }
 
-func (s *Service) ToggleWireGuardServer() error {
+func (s *Service) SetWireGuardServerEnabled(enabled bool) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
@@ -554,37 +714,56 @@ func (s *Service) ToggleWireGuardServer() error {
 		}
 		return err
 	}
+	if server.Enabled == enabled {
+		return nil
+	}
+	previous := cloneWireGuardServer(&server)
 
-	server.Enabled = !server.Enabled
-	if err := s.DB.Save(&server).Error; err != nil {
+	server.Enabled = enabled
+	if enabled {
+		if err := s.validateWireGuardServerConfig(&server); err != nil {
+			return err
+		}
+		if s.isWireGuardUDPPortInUse(int(server.Port)) {
+			return wireGuardServerConflict("wireguard_port_already_in_use", nil)
+		}
+	}
+	if err := s.DB.Model(&networkModels.WireGuardServer{}).
+		Where("id = ?", server.ID).
+		Update("enabled", enabled).Error; err != nil {
 		return err
 	}
 
-	if server.Enabled {
+	if enabled {
 		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
+			return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 		}
-		if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-			return err
+		if err := s.syncWireGuardManagedFirewallRules(&server, true); err != nil {
+			return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
+		restartedAt := wireGuardCurrentTime()
+		if err := s.DB.Model(&server).Update("restarted_at", restartedAt).Error; err != nil {
+			return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 		}
+		server.RestartedAt = restartedAt
 		s.flushWireGuardMetricsOnConfigChange()
 		return nil
 	}
 
-	if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-		return err
+	if err := s.syncWireGuardManagedFirewallRules(&server, false); err != nil {
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 	}
 	if err := s.teardownWireGuardServerRuntime(&server); err != nil {
-		return err
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 	}
 	s.flushWireGuardMetricsOnConfigChange()
 	return nil
 }
 
 func (s *Service) DeinitWireGuardServer() error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
@@ -596,71 +775,315 @@ func (s *Service) DeinitWireGuardServer() error {
 		}
 		return err
 	}
+	previous := cloneWireGuardServer(&server)
 
+	if err := s.syncWireGuardManagedFirewallRules(&server, false); err != nil {
+		return err
+	}
 	if err := s.teardownWireGuardServerRuntime(&server); err != nil {
-		return err
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 	}
 
-	if err := s.DB.Where("wire_guard_server_id = ?", server.ID).Delete(&networkModels.WireGuardServerPeer{}).Error; err != nil {
-		return err
-	}
-
-	server.AllowWireGuardPort = false
-	server.MasqueradeIPv4Interface = ""
-	server.MasqueradeIPv6Interface = ""
-	if err := s.syncWireGuardManagedFirewallRules(&server); err != nil {
-		return err
-	}
-
-	if err := s.DB.Delete(&server).Error; err != nil {
-		return err
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if deleteErr := tx.Where("wire_guard_server_id = ?", server.ID).Delete(&networkModels.WireGuardServerPeer{}).Error; deleteErr != nil {
+			return deleteErr
+		}
+		return tx.Delete(&networkModels.WireGuardServer{}, server.ID).Error
+	}); err != nil {
+		return errors.Join(err, s.restoreWireGuardServerOperationalState(&previous))
 	}
 	s.flushWireGuardMetricsOnConfigChange()
 	return nil
 }
 
-func (s *Service) AddWireGuardServerPeer(req WireGuardServerPeerRequest) error {
-	if err := s.requireWireGuardServiceEnabled(); err != nil {
+func cloneWireGuardServerPeer(peer *networkModels.WireGuardServerPeer) networkModels.WireGuardServerPeer {
+	if peer == nil {
+		return networkModels.WireGuardServerPeer{}
+	}
+
+	cloned := *peer
+	cloned.ClientIPs = append([]string(nil), peer.ClientIPs...)
+	cloned.RoutableIPs = append([]string(nil), peer.RoutableIPs...)
+	return cloned
+}
+
+func normalizeWireGuardServerPeerName(value string) (string, error) {
+	name := strings.TrimSpace(value)
+	if name == "" {
+		return "", invalidWireGuardServer("wireguard_peer_name_required", nil)
+	}
+	if len(name) > MaxWireGuardServerPeerNameBytes {
+		return "", invalidWireGuardServer("wireguard_peer_name_too_long", nil)
+	}
+	return name, nil
+}
+
+func normalizeWireGuardServerPeerCIDRs(values []string, required bool, tooManyCode string) ([]string, error) {
+	if len(values) > MaxWireGuardServerPeerCIDRs {
+		return nil, invalidWireGuardServer(tooManyCode, nil)
+	}
+
+	normalized := sortedUnique(values)
+	if required && len(normalized) == 0 {
+		return nil, invalidWireGuardServer("wireguard_peer_client_ips_required", nil)
+	}
+	for _, cidr := range normalized {
+		if len(cidr) > MaxWireGuardServerPeerCIDRBytes {
+			return nil, invalidWireGuardServer("wireguard_peer_cidr_too_long", nil)
+		}
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return nil, invalidWireGuardServer("wireguard_invalid_peer_cidr", err)
+		}
+	}
+	return normalized, nil
+}
+
+func wireGuardServerPeerAllowedNetworks(peer *networkModels.WireGuardServerPeer) (map[string]struct{}, error) {
+	networks := make(map[string]struct{}, len(peer.ClientIPs)+len(peer.RoutableIPs))
+	values := append(append([]string{}, peer.ClientIPs...), peer.RoutableIPs...)
+	for _, cidr := range values {
+		_, network, err := net.ParseCIDR(strings.TrimSpace(cidr))
+		if err != nil {
+			return nil, err
+		}
+		networks[network.String()] = struct{}{}
+	}
+	return networks, nil
+}
+
+func validateWireGuardServerPeerCandidate(candidate *networkModels.WireGuardServerPeer, peers []networkModels.WireGuardServerPeer) error {
+	if candidate == nil {
+		return invalidWireGuardServer("wireguard_peer_required", nil)
+	}
+	if _, err := normalizeWireGuardServerPeerName(candidate.Name); err != nil {
 		return err
+	}
+	if _, err := normalizeWireGuardServerPeerCIDRs(
+		candidate.ClientIPs,
+		true,
+		"wireguard_peer_too_many_client_ips",
+	); err != nil {
+		return err
+	}
+	if _, err := normalizeWireGuardServerPeerCIDRs(
+		candidate.RoutableIPs,
+		false,
+		"wireguard_peer_too_many_routable_ips",
+	); err != nil {
+		return err
+	}
+
+	if _, err := wgtypes.ParseKey(strings.TrimSpace(candidate.PrivateKey)); err != nil {
+		return invalidWireGuardServer("wireguard_invalid_peer_private_key", err)
+	}
+	candidatePublicKey, err := wgtypes.ParseKey(strings.TrimSpace(candidate.PublicKey))
+	if err != nil {
+		return invalidWireGuardServer("wireguard_invalid_peer_public_key", err)
+	}
+	if err := validateWireGuardPSK(candidate.PreSharedKey); err != nil {
+		return invalidWireGuardServer("wireguard_invalid_peer_preshared_key", err)
+	}
+
+	var candidateNetworks map[string]struct{}
+	if candidate.Enabled {
+		candidateNetworks, err = wireGuardServerPeerAllowedNetworks(candidate)
+		if err != nil {
+			return invalidWireGuardServer("wireguard_invalid_peer_cidr", err)
+		}
+	}
+
+	for i := range peers {
+		existing := &peers[i]
+		if existing.ID == candidate.ID {
+			continue
+		}
+
+		existingPublicKey, parseErr := wgtypes.ParseKey(strings.TrimSpace(existing.PublicKey))
+		if parseErr != nil {
+			return fmt.Errorf("invalid stored wireguard peer public key %d: %w", existing.ID, parseErr)
+		}
+		if existingPublicKey.String() == candidatePublicKey.String() {
+			return wireGuardServerConflict("wireguard_peer_public_key_conflict", nil)
+		}
+
+		if !candidate.Enabled || !existing.Enabled {
+			continue
+		}
+		existingNetworks, networkErr := wireGuardServerPeerAllowedNetworks(existing)
+		if networkErr != nil {
+			return fmt.Errorf("invalid stored wireguard peer CIDR %d: %w", existing.ID, networkErr)
+		}
+		for network := range candidateNetworks {
+			if _, exists := existingNetworks[network]; exists {
+				return wireGuardServerConflict("wireguard_peer_allowed_ip_conflict", nil)
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *Service) persistWireGuardServerPeerConfig(peer *networkModels.WireGuardServerPeer) error {
+	if peer == nil || peer.ID == 0 {
+		return fmt.Errorf("invalid wireguard server peer persistence target")
+	}
+	return s.DB.Model(&networkModels.WireGuardServerPeer{}).
+		Where("id = ?", peer.ID).
+		Select(
+			"Name",
+			"Enabled",
+			"PrivateKey",
+			"PublicKey",
+			"PreSharedKey",
+			"ClientIPs",
+			"RoutableIPs",
+			"RouteIPs",
+			"PersistentKeepalive",
+		).
+		Updates(peer).Error
+}
+
+func (s *Service) createWireGuardServerPeer(peer *networkModels.WireGuardServerPeer) error {
+	if peer == nil {
+		return fmt.Errorf("invalid wireguard server peer creation target")
+	}
+
+	enabled := peer.Enabled
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(peer).Error; err != nil {
+			return err
+		}
+		if enabled {
+			return nil
+		}
+		return tx.Model(&networkModels.WireGuardServerPeer{}).
+			Where("id = ?", peer.ID).
+			Update("enabled", false).Error
+	}); err != nil {
+		return err
+	}
+	peer.Enabled = enabled
+	return nil
+}
+
+func (s *Service) loadWireGuardServerPeer(id uint) (*networkModels.WireGuardServerPeer, *networkModels.WireGuardServer, error) {
+	var peer networkModels.WireGuardServerPeer
+	if err := s.DB.First(&peer, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrWireGuardServerPeerNotFound
+		}
+		return nil, nil, err
+	}
+
+	var server networkModels.WireGuardServer
+	if err := s.DB.Preload("Peers").First(&server, peer.WireGuardServerID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil, ErrWireGuardServerNotInited
+		}
+		return nil, nil, err
+	}
+	return &peer, &server, nil
+}
+
+func (s *Service) restoreWireGuardServerPeerMutation(
+	previous *networkModels.WireGuardServer,
+	rollbackDatabase func() error,
+) error {
+	var rollbackErrors []error
+	if rollbackDatabase != nil {
+		if err := rollbackDatabase(); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("restore wireguard peer database state: %w", err))
+		}
+	}
+	if previous != nil && previous.Enabled {
+		if err := s.applyWireGuardServerRuntime(previous); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("restore wireguard peer runtime state: %w", err))
+		}
+	}
+	s.flushWireGuardMetricsOnConfigChange()
+	return errors.Join(rollbackErrors...)
+}
+
+func (s *Service) applyWireGuardServerPeerMutation(
+	server *networkModels.WireGuardServer,
+	previous *networkModels.WireGuardServer,
+	runtimeChanged bool,
+	rollbackDatabase func() error,
+) error {
+	if server == nil || !server.Enabled || !runtimeChanged {
+		s.flushWireGuardMetricsOnConfigChange()
+		return nil
+	}
+
+	if err := s.applyWireGuardServerRuntime(server); err != nil {
+		return errors.Join(err, s.restoreWireGuardServerPeerMutation(previous, rollbackDatabase))
+	}
+
+	restartedAt := wireGuardCurrentTime()
+	if err := s.DB.Model(&networkModels.WireGuardServer{}).
+		Where("id = ?", server.ID).
+		Update("restarted_at", restartedAt).Error; err != nil {
+		return errors.Join(err, s.restoreWireGuardServerPeerMutation(previous, rollbackDatabase))
+	}
+	server.RestartedAt = restartedAt
+	s.flushWireGuardMetricsOnConfigChange()
+	return nil
+}
+
+func (s *Service) AddWireGuardServerPeer(req WireGuardServerPeerRequest) (uint, error) {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
+	if err := s.requireWireGuardServiceEnabled(); err != nil {
+		return 0, err
 	}
 
 	var server networkModels.WireGuardServer
 	if err := s.DB.Preload("Peers").First(&server).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrWireGuardServerNotInited
+			return 0, ErrWireGuardServerNotInited
 		}
-		return err
+		return 0, err
 	}
+	previous := cloneWireGuardServer(&server)
 
-	clientIPs := sortedUnique(req.ClientIPs)
-	if len(clientIPs) == 0 {
-		return ErrWireGuardClientIPsRequired
+	name, err := normalizeWireGuardServerPeerName(req.Name)
+	if err != nil {
+		return 0, err
 	}
-	if err := parseWireGuardCIDRs(clientIPs); err != nil {
-		return err
+	clientIPs, err := normalizeWireGuardServerPeerCIDRs(
+		req.ClientIPs,
+		true,
+		"wireguard_peer_too_many_client_ips",
+	)
+	if err != nil {
+		return 0, err
 	}
-
-	routableIPs := sortedUnique(req.RoutableIPs)
-	if err := parseWireGuardCIDRs(routableIPs); err != nil {
-		return err
+	routableIPs, err := normalizeWireGuardServerPeerCIDRs(
+		req.RoutableIPs,
+		false,
+		"wireguard_peer_too_many_routable_ips",
+	)
+	if err != nil {
+		return 0, err
 	}
 
 	privateKey, err := wireGuardGeneratePrivateKey()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if req.PrivateKey != nil && strings.TrimSpace(*req.PrivateKey) != "" {
 		provided := strings.TrimSpace(*req.PrivateKey)
 		if _, parseErr := wgtypes.ParseKey(provided); parseErr != nil {
-			return fmt.Errorf("wireguard_invalid_private_key: %w", parseErr)
+			return 0, invalidWireGuardServer("wireguard_invalid_peer_private_key", parseErr)
 		}
 		privateKey = provided
 	}
 
 	publicKey, err := wireGuardPublicKeyFromPrivate(privateKey)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	preSharedKey := ""
@@ -668,7 +1091,7 @@ func (s *Service) AddWireGuardServerPeer(req WireGuardServerPeerRequest) error {
 		preSharedKey = strings.TrimSpace(*req.PreSharedKey)
 	}
 	if err := validateWireGuardPSK(preSharedKey); err != nil {
-		return err
+		return 0, invalidWireGuardServer("wireguard_invalid_peer_preshared_key", err)
 	}
 
 	enabled := true
@@ -687,7 +1110,7 @@ func (s *Service) AddWireGuardServerPeer(req WireGuardServerPeerRequest) error {
 	}
 
 	peer := networkModels.WireGuardServerPeer{
-		Name:                req.Name,
+		Name:                name,
 		Enabled:             enabled,
 		WireGuardServerID:   server.ID,
 		PrivateKey:          privateKey,
@@ -698,50 +1121,51 @@ func (s *Service) AddWireGuardServerPeer(req WireGuardServerPeerRequest) error {
 		RouteIPs:            routeIPs,
 		PersistentKeepalive: persistentKeepalive,
 	}
+	if err := validateWireGuardServerPeerCandidate(&peer, server.Peers); err != nil {
+		return 0, err
+	}
 
-	if err := s.DB.Create(&peer).Error; err != nil {
-		return err
+	if err := s.createWireGuardServerPeer(&peer); err != nil {
+		return 0, err
+	}
+	rollbackDatabase := func() error {
+		return s.DB.Delete(&networkModels.WireGuardServerPeer{}, peer.ID).Error
 	}
 
 	if err := s.DB.Preload("Peers").First(&server, server.ID).Error; err != nil {
-		return err
+		return 0, errors.Join(err, rollbackDatabase())
 	}
 
-	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
-		return nil
+	if err := s.applyWireGuardServerPeerMutation(&server, &previous, peer.Enabled, rollbackDatabase); err != nil {
+		return 0, err
 	}
-
-	s.flushWireGuardMetricsOnConfigChange()
-	return nil
+	return peer.ID, nil
 }
 
 func (s *Service) EditWireGuardServerPeer(req WireGuardServerPeerRequest) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
 
-	if req.ID == nil {
+	if req.ID == nil || *req.ID == 0 {
 		return ErrWireGuardServerPeerNotFound
 	}
 
-	var peer networkModels.WireGuardServerPeer
-	if err := s.DB.First(&peer, *req.ID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrWireGuardServerPeerNotFound
-		}
+	peer, server, err := s.loadWireGuardServerPeer(*req.ID)
+	if err != nil {
 		return err
 	}
+	previousPeer := cloneWireGuardServerPeer(peer)
+	previousServer := cloneWireGuardServer(server)
 
-	if strings.TrimSpace(req.Name) != "" {
-		peer.Name = strings.TrimSpace(req.Name)
+	name, err := normalizeWireGuardServerPeerName(req.Name)
+	if err != nil {
+		return err
 	}
+	peer.Name = name
 	if req.Enabled != nil {
 		peer.Enabled = *req.Enabled
 	}
@@ -749,29 +1173,30 @@ func (s *Service) EditWireGuardServerPeer(req WireGuardServerPeerRequest) error 
 	if req.PreSharedKey != nil {
 		preSharedKey := strings.TrimSpace(*req.PreSharedKey)
 		if err := validateWireGuardPSK(preSharedKey); err != nil {
-			return err
+			return invalidWireGuardServer("wireguard_invalid_peer_preshared_key", err)
 		}
 		peer.PreSharedKey = preSharedKey
 	}
 
-	if req.ClientIPs != nil {
-		clientIPs := sortedUnique(req.ClientIPs)
-		if len(clientIPs) == 0 {
-			return ErrWireGuardClientIPsRequired
-		}
-		if err := parseWireGuardCIDRs(clientIPs); err != nil {
-			return err
-		}
-		peer.ClientIPs = clientIPs
+	clientIPs, err := normalizeWireGuardServerPeerCIDRs(
+		req.ClientIPs,
+		true,
+		"wireguard_peer_too_many_client_ips",
+	)
+	if err != nil {
+		return err
 	}
+	peer.ClientIPs = clientIPs
 
-	if req.RoutableIPs != nil {
-		routableIPs := sortedUnique(req.RoutableIPs)
-		if err := parseWireGuardCIDRs(routableIPs); err != nil {
-			return err
-		}
-		peer.RoutableIPs = routableIPs
+	routableIPs, err := normalizeWireGuardServerPeerCIDRs(
+		req.RoutableIPs,
+		false,
+		"wireguard_peer_too_many_routable_ips",
+	)
+	if err != nil {
+		return err
 	}
+	peer.RoutableIPs = routableIPs
 
 	if req.RouteIPs != nil {
 		peer.RouteIPs = *req.RouteIPs
@@ -780,7 +1205,7 @@ func (s *Service) EditWireGuardServerPeer(req WireGuardServerPeerRequest) error 
 	if req.PrivateKey != nil && strings.TrimSpace(*req.PrivateKey) != "" {
 		provided := strings.TrimSpace(*req.PrivateKey)
 		if _, parseErr := wgtypes.ParseKey(provided); parseErr != nil {
-			return fmt.Errorf("wireguard_invalid_private_key: %w", parseErr)
+			return invalidWireGuardServer("wireguard_invalid_peer_private_key", parseErr)
 		}
 		newPublicKey, pkErr := wireGuardPublicKeyFromPrivate(provided)
 		if pkErr != nil {
@@ -793,143 +1218,99 @@ func (s *Service) EditWireGuardServerPeer(req WireGuardServerPeerRequest) error 
 	if req.PersistentKeepalive != nil {
 		peer.PersistentKeepalive = *req.PersistentKeepalive
 	}
-
-	if err := s.DB.Save(&peer).Error; err != nil {
+	if err := validateWireGuardServerPeerCandidate(peer, server.Peers); err != nil {
 		return err
 	}
 
-	var server networkModels.WireGuardServer
-	if err := s.DB.Preload("Peers").First(&server, peer.WireGuardServerID).Error; err != nil {
+	if err := s.persistWireGuardServerPeerConfig(peer); err != nil {
 		return err
 	}
-
-	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
-		return nil
+	rollbackDatabase := func() error {
+		return s.persistWireGuardServerPeerConfig(&previousPeer)
 	}
 
-	s.flushWireGuardMetricsOnConfigChange()
-	return nil
+	if err := s.DB.Preload("Peers").First(server, server.ID).Error; err != nil {
+		return errors.Join(err, rollbackDatabase())
+	}
+	return s.applyWireGuardServerPeerMutation(
+		server,
+		&previousServer,
+		previousPeer.Enabled || peer.Enabled,
+		rollbackDatabase,
+	)
 }
 
-func (s *Service) ToggleWireGuardServerPeer(id uint) error {
+func (s *Service) SetWireGuardServerPeerEnabled(id uint, enabled bool) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
 
-	var peer networkModels.WireGuardServerPeer
-	if err := s.DB.First(&peer, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrWireGuardServerPeerNotFound
-		}
+	if id == 0 {
+		return ErrWireGuardServerPeerNotFound
+	}
+	peer, server, err := s.loadWireGuardServerPeer(id)
+	if err != nil {
 		return err
 	}
-
-	peer.Enabled = !peer.Enabled
-	if err := s.DB.Save(&peer).Error; err != nil {
-		return err
-	}
-
-	var server networkModels.WireGuardServer
-	if err := s.DB.Preload("Peers").First(&server, peer.WireGuardServerID).Error; err != nil {
-		return err
-	}
-
-	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
+	if peer.Enabled == enabled {
 		return nil
 	}
+	previousPeer := cloneWireGuardServerPeer(peer)
+	previousServer := cloneWireGuardServer(server)
 
-	s.flushWireGuardMetricsOnConfigChange()
-	return nil
+	peer.Enabled = enabled
+	if err := validateWireGuardServerPeerCandidate(peer, server.Peers); err != nil {
+		return err
+	}
+	if err := s.DB.Model(&networkModels.WireGuardServerPeer{}).
+		Where("id = ?", peer.ID).
+		Update("enabled", enabled).Error; err != nil {
+		return err
+	}
+	rollbackDatabase := func() error {
+		return s.DB.Model(&networkModels.WireGuardServerPeer{}).
+			Where("id = ?", previousPeer.ID).
+			Update("enabled", previousPeer.Enabled).Error
+	}
+
+	if err := s.DB.Preload("Peers").First(server, server.ID).Error; err != nil {
+		return errors.Join(err, rollbackDatabase())
+	}
+	return s.applyWireGuardServerPeerMutation(server, &previousServer, true, rollbackDatabase)
 }
 
 func (s *Service) RemoveWireGuardServerPeer(id uint) error {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
 	if err := s.requireWireGuardServiceEnabled(); err != nil {
 		return err
 	}
 
-	var peer networkModels.WireGuardServerPeer
-	if err := s.DB.First(&peer, id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrWireGuardServerPeerNotFound
-		}
+	if id == 0 {
+		return ErrWireGuardServerPeerNotFound
+	}
+	peer, server, err := s.loadWireGuardServerPeer(id)
+	if err != nil {
 		return err
 	}
+	previousPeer := cloneWireGuardServerPeer(peer)
+	previousServer := cloneWireGuardServer(server)
 
-	if err := s.DB.Delete(&peer).Error; err != nil {
+	if err := s.DB.Delete(peer).Error; err != nil {
 		return err
 	}
-
-	var server networkModels.WireGuardServer
-	if err := s.DB.Preload("Peers").First(&server, peer.WireGuardServerID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
+	rollbackDatabase := func() error {
+		return s.createWireGuardServerPeer(&previousPeer)
 	}
 
-	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
-		return nil
+	if err := s.DB.Preload("Peers").First(server, server.ID).Error; err != nil {
+		return errors.Join(err, rollbackDatabase())
 	}
-
-	s.flushWireGuardMetricsOnConfigChange()
-	return nil
-}
-
-func (s *Service) RemoveWireGuardServerPeers(ids []uint) error {
-	if err := s.requireWireGuardServiceEnabled(); err != nil {
-		return err
-	}
-
-	if len(ids) == 0 {
-		return nil
-	}
-
-	if err := s.DB.Where("id IN ?", ids).Delete(&networkModels.WireGuardServerPeer{}).Error; err != nil {
-		return err
-	}
-
-	var server networkModels.WireGuardServer
-	if err := s.DB.Preload("Peers").First(&server).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
-		}
-		return err
-	}
-
-	if server.Enabled {
-		if err := s.applyWireGuardServerRuntime(&server); err != nil {
-			return err
-		}
-		if err := s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error; err != nil {
-			return err
-		}
-		s.flushWireGuardMetricsOnConfigChange()
-		return nil
-	}
-
-	s.flushWireGuardMetricsOnConfigChange()
-	return nil
+	return s.applyWireGuardServerPeerMutation(server, &previousServer, previousPeer.Enabled, rollbackDatabase)
 }
 
 func buildWireGuardServerPeers(peers []networkModels.WireGuardServerPeer) ([]wgtypes.PeerConfig, error) {

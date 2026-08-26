@@ -1,0 +1,11 @@
+---
+import DefaultPageTitle from '@astrojs/starlight/components/PageTitle.astro';
+import PageActionsPageTitle from 'starlight-page-actions/overrides/PageTitle.astro';
+
+// OpenAPI pages are generated routes and do not have the Markdown files used by
+// the copy/view actions. Avoid showing controls there that would point to 404s.
+const isOpenAPIPage =
+    Astro.url.pathname === '/api-reference' || Astro.url.pathname.startsWith('/api-reference/');
+---
+
+{isOpenAPIPage ? <DefaultPageTitle /> : <PageActionsPageTitle />}

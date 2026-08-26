@@ -1,22 +1,26 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { SwitchListSchema, type SwitchList } from '$lib/types/network/switch';
 import { apiRequest } from '$lib/utils/http';
+import z from 'zod/v4';
 
-export async function getSwitches(hostname?: string): Promise<SwitchList> {
+export async function getSwitches(hostname?: string): Promise<SwitchList | APIResponse> {
 	return await apiRequest('/network/switch', SwitchListSchema, 'GET', undefined, { hostname });
 }
 
-export async function createManualSwitch(name: string, bridge: string): Promise<APIResponse> {
+export async function createManualSwitch(
+	name: string,
+	bridge: string
+): Promise<number | APIResponse> {
 	const body = {
 		name,
 		bridge
 	};
 
-	return await apiRequest('/network/manual-switch', APIResponseSchema, 'POST', body);
+	return await apiRequest('/network/switch/manual', z.number().int().positive(), 'POST', body);
 }
 
 export async function deleteManualSwitch(id: number): Promise<APIResponse> {
-	return await apiRequest(`/network/manual-switch/${id}`, APIResponseSchema, 'DELETE');
+	return await apiRequest(`/network/switch/manual/${id}`, APIResponseSchema, 'DELETE');
 }
 
 export type SwitchManualAddresses = {
@@ -42,13 +46,14 @@ export async function createSwitch(
 	network6: number,
 	gateway6: number,
 	privateSw: boolean,
-	dhcp: boolean,
 	ports: string[],
 	disableIPv6: boolean,
 	slaac: boolean,
+	dhcp: boolean,
 	defaultRoute: boolean,
+	disableBridgeOffloads: boolean,
 	manual: SwitchManualAddresses = emptyManualAddresses
-): Promise<APIResponse> {
+): Promise<number | APIResponse> {
 	const body = {
 		name,
 		mtu,
@@ -63,13 +68,14 @@ export async function createSwitch(
 		disableIPv6,
 		slaac,
 		defaultRoute,
+		disableBridgeOffloads,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,
 		gateway6Manual: manual.gateway6
 	};
 
-	return await apiRequest('/network/switch/standard', APIResponseSchema, 'POST', body);
+	return await apiRequest('/network/switch/standard', z.number().int().positive(), 'POST', body);
 }
 
 export async function deleteSwitch(id: number): Promise<APIResponse> {
@@ -90,10 +96,10 @@ export async function updateSwitch(
 	slaac: boolean,
 	dhcp: boolean,
 	defaultRoute: boolean,
+	disableBridgeOffloads: boolean,
 	manual: SwitchManualAddresses = emptyManualAddresses
 ): Promise<APIResponse> {
 	const body = {
-		id,
 		mtu,
 		vlan,
 		network4,
@@ -106,11 +112,12 @@ export async function updateSwitch(
 		slaac,
 		dhcp,
 		defaultRoute,
+		disableBridgeOffloads,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,
 		gateway6Manual: manual.gateway6
 	};
 
-	return await apiRequest('/network/switch/standard', APIResponseSchema, 'PUT', body);
+	return await apiRequest(`/network/switch/standard/${id}`, APIResponseSchema, 'PUT', body);
 }

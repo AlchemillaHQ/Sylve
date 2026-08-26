@@ -1,0 +1,28 @@
+---
+title: Events
+description: Inspect backup runs, transfer progress, output, and failures.
+---
+
+**Data Center → Backups → Events** is the operational record for backup and restore work. It shows scheduled runs, manual runs, job restores, and out-of-band restores, including the node that ran the work. The newest events appear first.
+
+![Backup events table with successful dataset, jail, and virtual machine backups, source and target labels, filters, and pagination.](./backups-events-overview.png)
+
+## Filter the event history
+
+Use the search box to narrow the visible history, the job filter to focus on one job, and the node selector to view events recorded by a particular cluster node. The selected node defaults to the current node. In a cluster, Sylve forwards the request to the selected node when needed, which is useful when diagnosing a target that is reachable from one node but not another.
+
+The event table is paginated so a long history remains responsive. Use the page controls at the bottom of the table to move through older events, and the refresh button to request the latest rows.
+
+When an event belongs to a known job, Sylve resolves raw ZFS paths into readable source and target labels. Jail and VM events show the guest name with its CT or RID. Target labels include the configured target name and omit internal backup-lineage path segments. Snapshot labels are formatted as dates where possible. Hover a source or target cell to see its complete raw endpoint.
+
+## Inspect a run
+
+Select a running event and choose **View Progress** to open its live transfer details. The dialog shows its status, mode, source, target, start and completion times, transferred bytes, stream estimate, and progress percentage. It refreshes while open. A transfer that has sent all data can remain in **Finalizing** while Sylve verifies and commits the backup.
+
+![Event Progress dialog for a virtual machine backup in the finalizing phase, showing transfer bytes and 100 percent progress.](./backups-event-progress.png)
+
+Completed and interrupted events retain their status and timestamps in the table. For a failed event, select the error cell to open the complete error text, then use **Copy** to take it to a ticket, terminal session, or support request. The error normally identifies whether the problem is connectivity, authentication, target readiness, ZFS, or source-side state.
+
+![Backup event error dialog with the complete Zelta failure output and Copy button.](./backups-event-error.png)
+
+Use the event record as the first place to verify a manual or scheduled run. A job row's last status is useful for a summary, while Events provides the individual execution history and diagnostics. Sylve retains completed events for up to 90 days, subject to a 10,000-row cap; queued and running events are not removed merely to satisfy that cap.

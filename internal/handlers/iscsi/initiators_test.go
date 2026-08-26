@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
+
 package iscsiHandlers
 
 import (
@@ -5,10 +13,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -91,8 +101,8 @@ func TestCreateInitiatorHandler(t *testing.T) {
 	})
 
 	rr := testutil.PerformJSONRequest(t, router, "POST", "/initiators", body)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
 	resp := testutil.DecodeJSONResponse[internal.APIResponse[any]](t, rr)
@@ -113,8 +123,8 @@ func TestCreateInitiatorHandlerValidationError(t *testing.T) {
 	})
 
 	rr := testutil.PerformJSONRequest(t, router, "POST", "/initiators", body)
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rr.Code)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
 	}
 }
 
@@ -130,19 +140,16 @@ func TestUpdateInitiatorHandler(t *testing.T) {
 	})
 
 	router := gin.New()
-	router.PUT("/initiators", UpdateInitiator(svc))
+	router.PUT("/initiators/:id", UpdateInitiator(svc))
 
-	body, _ := json.Marshal(UpdateISCSIInitiatorRequest{
-		ID: 1,
-		ISCSIInitiatorRequest: ISCSIInitiatorRequest{
-			Nickname:      "test-nick-updated",
-			TargetAddress: "10.0.0.2",
-			TargetName:    "iqn.2025-01.com.example:target1",
-			AuthMethod:    "None",
-		},
+	body, _ := json.Marshal(ISCSIInitiatorRequest{
+		Nickname:      "test-nick-updated",
+		TargetAddress: "10.0.0.2",
+		TargetName:    "iqn.2025-01.com.example:target1",
+		AuthMethod:    "None",
 	})
 
-	rr := testutil.PerformJSONRequest(t, router, "PUT", "/initiators", body)
+	rr := testutil.PerformJSONRequest(t, router, "PUT", "/initiators/1", body)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -152,21 +159,18 @@ func TestUpdateInitiatorHandlerNotFound(t *testing.T) {
 	svc := newTestService(t)
 
 	router := gin.New()
-	router.PUT("/initiators", UpdateInitiator(svc))
+	router.PUT("/initiators/:id", UpdateInitiator(svc))
 
-	body, _ := json.Marshal(UpdateISCSIInitiatorRequest{
-		ID: 999,
-		ISCSIInitiatorRequest: ISCSIInitiatorRequest{
-			Nickname:      "ghost",
-			TargetAddress: "10.0.0.1",
-			TargetName:    "iqn.2025-01.com.example:target0",
-			AuthMethod:    "None",
-		},
+	body, _ := json.Marshal(ISCSIInitiatorRequest{
+		Nickname:      "ghost",
+		TargetAddress: "10.0.0.1",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "None",
 	})
 
-	rr := testutil.PerformJSONRequest(t, router, "PUT", "/initiators", body)
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rr.Code)
+	rr := testutil.PerformJSONRequest(t, router, "PUT", "/initiators/999", body)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }
 
@@ -197,8 +201,8 @@ func TestDeleteInitiatorHandlerNotFound(t *testing.T) {
 	router.DELETE("/initiators/:id", DeleteInitiator(svc))
 
 	rr := testutil.PerformRequest(t, router, "DELETE", "/initiators/999", nil, nil)
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }
 
@@ -233,8 +237,71 @@ func TestConnectInitiatorHandlerNotFound(t *testing.T) {
 	router.POST("/initiators/:id/connect", ConnectInitiator(svc))
 
 	rr := testutil.PerformRequest(t, router, "POST", "/initiators/999/connect", nil, nil)
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for not found, got %d", rr.Code)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for not found, got %d", rr.Code)
+	}
+}
+
+func TestGetInitiatorsHandlerRedactsSecrets(t *testing.T) {
+	svc := newTestService(t)
+	svc.DB.Create(&iscsiModels.ISCSIInitiator{
+		Nickname:      "secret-test",
+		TargetAddress: "10.0.0.1",
+		TargetName:    "iqn.2025-01.com.example:target0",
+		AuthMethod:    "MutualCHAP",
+		CHAPName:      "initiator-user",
+		CHAPSecret:    "secretpassw0rd",
+		TgtCHAPName:   "target-user",
+		TgtCHAPSecret: "targetpassw0rd",
+	})
+
+	router := gin.New()
+	router.GET("/initiators", GetInitiators(svc))
+	rr := testutil.PerformRequest(t, router, http.MethodGet, "/initiators", nil, nil)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	for _, secret := range []string{"secretpassw0rd", "targetpassw0rd", "chapSecret", "tgtChapSecret"} {
+		if strings.Contains(rr.Body.String(), secret) {
+			t.Fatalf("response exposed %q: %s", secret, rr.Body.String())
+		}
+	}
+}
+
+func TestCreateInitiatorHandlerConflict(t *testing.T) {
+	svc := newTestService(t)
+	svc.DB.Create(&iscsiModels.ISCSIInitiator{
+		Nickname:      "duplicate",
+		TargetAddress: "10.0.0.1",
+		TargetName:    "iqn.2025-01.com.example:target0",
+	})
+
+	router := gin.New()
+	router.POST("/initiators", CreateInitiator(svc))
+	body, _ := json.Marshal(ISCSIInitiatorRequest{
+		Nickname:      "duplicate",
+		TargetAddress: "10.0.0.2",
+		TargetName:    "iqn.2025-01.com.example:target1",
+		AuthMethod:    "None",
+	})
+	rr := testutil.PerformJSONRequest(t, router, http.MethodPost, "/initiators", body)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestCreateInitiatorHandlerRejectsOversizedBody(t *testing.T) {
+	svc := newTestService(t)
+	router := gin.New()
+	router.Use(middleware.LimitRequestBody(iscsi.MaxRequestBodyBytes))
+	router.POST("/initiators", CreateInitiator(svc))
+	body := []byte(`{"nickname":"` + strings.Repeat("x", int(iscsi.MaxRequestBodyBytes)) + `"}`)
+	rr := testutil.PerformJSONRequest(t, router, http.MethodPost, "/initiators", body)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -247,5 +314,16 @@ func TestConnectInitiatorHandlerInvalidID(t *testing.T) {
 	rr := testutil.PerformRequest(t, router, "POST", "/initiators/abc/connect", nil, nil)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid ID, got %d", rr.Code)
+	}
+}
+
+func TestDeleteInitiatorHandlerRejectsZeroID(t *testing.T) {
+	svc := newTestService(t)
+	router := gin.New()
+	router.DELETE("/initiators/:id", DeleteInitiator(svc))
+
+	rr := testutil.PerformRequest(t, router, http.MethodDelete, "/initiators/0", nil, nil)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for zero ID, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

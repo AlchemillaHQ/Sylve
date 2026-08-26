@@ -8,17 +8,14 @@
 
 package utilitiesServiceInterfaces
 
-type AddTemplateRequest struct {
-	Name string `json:"name" binding:"required,min=1,max=255"`
-	User string `json:"user" binding:"required"`
-	Meta string `json:"meta" binding:"required"`
-	NetworkConfig string `json:"networkConfig" binding:"omitempty"`
+type CloudInitTemplateRequest struct {
+	Name          string  `json:"name" binding:"required,min=1,max=255"`
+	User          string  `json:"user" binding:"required"`
+	Meta          string  `json:"meta" binding:"required"`
+	NetworkConfig *string `json:"networkConfig" binding:"required"`
 }
 
-type EditTemplateRequest struct {
-	ID   uint   `json:"-"`
-	Name string `json:"name" binding:"omitempty,min=1,max=255"`
-	User string `json:"user"`
-	Meta string `json:"meta"`
-	NetworkConfig string `json:"networkConfig"`
+type CloudInitTemplateIdentity struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
 }

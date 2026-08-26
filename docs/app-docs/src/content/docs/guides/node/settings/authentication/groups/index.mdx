@@ -1,22 +1,45 @@
 ---
 title: Groups
-description: Configure user group settings for your Sylve node
+description: Manage Sylve-controlled Unix groups and their PAM user members.
 ---
 
-:::note
-A default group sylve_g is created when you create your Sylve node. This group is used for all users that are created on the node. You can create additional groups if needed.
-:::
+Groups are managed Unix groups on the node. They organize [PAM Users](/guides/node/settings/authentication/users/pam/) into reusable sets for filesystem permissions, Samba access, and other host-level access decisions.
 
-## Creating a Group
+Only PAM users can be members of a managed group because local users do not have Unix accounts. Creating a group creates the corresponding Unix group and its Sylve record.
 
-Creating a group is pretty straightforward. You can create a group using the "New" button in the context menu and then filling out the form below:
+![Groups table showing managed Unix groups, creation dates, and an expanded list of member PAM users](./authentication-groups-overview.png)
 
-![Create Group](./create.png)
+## Groups and Samba shares
 
-You can add as many users as you'd line to the group. You can also add users to the group later on by editing this created group.
+Managed groups are the recommended way to grant the same Samba access to several people. Add the PAM users to a group here, then assign that group as a read-only or writable group on the relevant Samba share.
 
-## Editing a Group
+Membership alone does not give a user access to every Samba share. The group must be selected on the share, and each person must also have a Samba user credential to authenticate to a non-guest share. Create that credential with **Samba User** when creating the PAM user, or select **Create or update Samba user** while editing it.
 
-To edit a group, simply click on the group you want to edit and then click on the "Edit" button in the context menu. This will open the same form as when creating a group, but with the existing information filled out. You can then make any changes you want and save the group. 
+If the same group is assigned both read-only and writable access to a share, writable access takes precedence. Guest shares do not use individual users or groups.
 
-You can also delete a group by clicking on the "Delete" button in the context menu. This will permanently delete the group and all users that are part of that group. Make sure to move any users that are part of the group to another group before deleting it.
+## Create a group
+
+Select **New Group**, enter a unique group name, then select one or more PAM users as members. A group must have at least one member when it is created.
+
+| Field | Description |
+| --- | --- |
+| Name | The managed Unix group name. Choose a clear, durable name because it can be used by filesystem and share permissions. |
+| Users | PAM users that should belong to the group. Local users are not available because they do not exist on the operating system. |
+
+![New Group form with a managed group name and selected PAM user members](./authentication-group-create.png)
+
+## View and edit members
+
+Expand a group in the table to see its current members. Use **Edit Users** to add or remove PAM users. Member changes are applied to the managed Unix group as well as Sylve’s record.
+
+Be deliberate when changing a primary group. Sylve prevents removing a user from their primary group through this screen. It also keeps `root` in the protected `wheel` group.
+
+![Edit Users dialog for a managed group, showing the available and selected PAM user members](./authentication-group-members.png)
+
+## Delete a group
+
+Deleting a group removes the managed Unix group and its Sylve group record. It does **not** delete its user accounts.
+
+Deletion is blocked when the group is a user’s primary group or when a Samba share still references it. Reassign the affected users or share before trying again. The built-in `sylve_g` and `wheel` groups are protected and cannot be deleted.
+
+Avoid removing a group until you have checked filesystem ownership, ACLs, Samba shares, service accounts, and scheduled jobs that may rely on it.

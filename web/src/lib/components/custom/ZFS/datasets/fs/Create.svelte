@@ -14,8 +14,7 @@
 		toZfsBytesString
 	} from '$lib/utils/bytes';
 	import { handleAPIError } from '$lib/utils/http';
-	import { generatePassword } from '$lib/utils/string';
-	import { isValidDatasetName } from '$lib/utils/zfs';
+	import { generateZFSEncryptionKey, isValidDatasetName } from '$lib/utils/zfs';
 	import { createFSProps } from '$lib/utils/zfs/dataset/fs';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -117,7 +116,7 @@
 		}
 	});
 
-	watch([() => properties.parent.value], ([parentValue]) => {
+	watch([() => properties.parent.value], ([_parentValue]) => {
 		if (!parentEncrypted && properties.encryption === 'inherit') {
 			properties.encryption = 'off';
 			properties.encryptionKey = '';
@@ -164,7 +163,6 @@
 		const isInheriting = properties.encryption === 'inherit';
 
 		const props: Record<string, string | undefined> = {
-			parent: properties.parent.value,
 			atime: properties.atime,
 			checksum: properties.checksum,
 			compression: properties.compression,
@@ -308,12 +306,12 @@
 					}}
 				/>
 
-			<SimpleSelect
-				label="Encryption"
-				placeholder="Select Encryption"
-				options={encryptionOptions}
-				bind:value={properties.encryption}
-				onChange={(value) => (properties.encryption = value)}
+				<SimpleSelect
+					label="Encryption"
+					placeholder="Select Encryption"
+					options={encryptionOptions}
+					bind:value={properties.encryption}
+					onChange={(value) => (properties.encryption = value)}
 					classes={{
 						parent: 'flex-1 min-w-0 space-y-1',
 						label: 'flex h-7 items-center whitespace-nowrap text-sm',
@@ -338,7 +336,7 @@
 
 							<Button
 								onclick={() => {
-									properties.encryptionKey = generatePassword();
+									properties.encryptionKey = generateZFSEncryptionKey();
 								}}
 							>
 								<span
@@ -346,11 +344,11 @@
 									tabindex="0"
 									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
-										properties.encryptionKey = generatePassword();
+										properties.encryptionKey = generateZFSEncryptionKey();
 									}}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
-											properties.encryptionKey = generatePassword();
+											properties.encryptionKey = generateZFSEncryptionKey();
 										}
 									}}
 								></span>

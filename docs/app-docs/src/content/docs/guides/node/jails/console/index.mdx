@@ -1,22 +1,84 @@
 ---
 title: Console
-description: Access your Jail terminal from the browser
+description: Open and manage an interactive root shell inside a running jail.
 ---
 
-:::caution
-The terminal requires a secure context (HTTPS) to function. Sylve automatically configures HTTPS for your nodes, so no additional setup is needed. However, if you access Sylve over HTTP, the terminal will not work. Ensure you are using HTTPS when accessing Sylve.
+import terminal from './jail-console-terminal.png';
+import settings from './jail-console-settings.png';
+
+The **Console** page opens an interactive shell inside the selected jail. Use it for package management, service administration, configuration changes, and troubleshooting without opening a separate SSH connection to the jail.
+
+:::caution[Root access]
+The console runs `su -l root` inside the jail. Commands have root privileges within that jail, so check the selected jail before making changes.
 :::
 
-The **Console** page gives you an interactive terminal session inside the browser by connecting to the jail shell over WebSocket. Console preferences are stored per jail, so your theme and font choices persist between sessions.
+## Requirements
 
-From **Console Settings** you can tune font size, background color, and foreground color for a setup that is easy to read during longer maintenance sessions.
+The console is available when all of the following are true:
+
+- The jail is in the **Active** state.
+- You are signed in with an administrator account.
+- The current node owns the jail's replication lease, when replication protection applies.
+- No restore operation is in progress for the jail.
+- The browser can establish the authenticated WebSocket connection used by the console.
+
+If the jail is stopped, the page asks you to start it. If its runtime state cannot be read, the page reports that the console is unavailable.
+
+## Open a session
+
+Select a running jail, then open **Console**. The page connects automatically and fits the terminal to the available space. Resizing the page also updates the shell's terminal dimensions.
+
+The toolbar reports and controls the current browser connection:
+
+| Control | Effect |
+| --- | --- |
+| **Disconnect** | Closes this browser's connection. The page remembers the manual disconnect for this jail until you select **Reconnect**. |
+| **Reconnect** | Opens a new connection after a manual disconnect or connection failure. |
+| **Clear** | Clears only the terminal content displayed in this browser. It does not undo commands or clear shell history inside the jail. |
+| **Settings** | Opens the local font and colour controls. |
+
+<img
+  src={terminal.src}
+  alt="Jail Console page showing an active interactive root shell and its connection controls"
+/>
+
+:::note[Shared shell]
+Administrators connected to the same jail share one live root shell while at least one browser remains connected. They see the same output and can all send input. Coordinate before typing when another administrator is attached.
+:::
+
+When the last browser disconnects, the server closes the shell session. A later connection starts a fresh login shell. Recently displayed output can be replayed to an administrator joining an existing shared session, but the console is not a persistent session manager.
+
+## Adjust the terminal
+
+Open **Settings** to change the console appearance:
+
+| Setting | Effect |
+| --- | --- |
+| **Font Size** | Sets the terminal font from 8 to 24 pixels. The default is 14 pixels. |
+| **Background** | Changes the terminal background colour in this browser. |
+| **Foreground** | Changes the terminal text colour in this browser. |
+
+You can also increase or decrease the font size with `Ctrl` + `+` or `Ctrl` + `-`. On macOS, use `Command` instead of `Ctrl`.
+
+These settings are stored in the browser separately for each jail on each node. They do not change the jail or another administrator's console.
+
+<img
+  src={settings.src}
+  alt="Jail console settings dialog with font size, background colour, and foreground colour controls"
+/>
+
+## Understand connection changes
+
+Stopping the jail ends its console connection. Starting it again reconnects the page automatically unless you previously selected **Disconnect**. Leaving or reloading the page while a connection is open can produce a browser confirmation prompt.
+
+The console can show these connection messages:
+
+- **The jail console session ended.** The connection opened successfully and then closed.
+- **Unable to connect to the jail console.** The initial connection could not be established.
+- **Jail console unavailable.** The server could not start the shell process inside the jail.
+
+To recover, confirm that the jail is active, check that this node owns any required replication lease, and select **Reconnect**. If the jail will not start, review its lifecycle output on the [Summary](/guides/node/jails/summary/) page. A jail that is being restored must finish that operation before its console becomes available.
 
 :::note
-If the jail is powered off, the console view stays in an inactive state until you start the jail.
+The browser console is an administrative shell inside an already running jail. It is not an out-of-band recovery console and cannot access a jail that has failed to start.
 :::
-
-![Console](./console.png)
-
-<br />
-
-![Console Settings](./console_settings.png)

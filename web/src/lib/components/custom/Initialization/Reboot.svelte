@@ -1,36 +1,26 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { toast } from 'svelte-sonner';
 	import { mode } from 'mode-watcher';
-	import { getBasicHealth, rebootSystem } from '$lib/api/system/system';
-	import { goto } from '$app/navigation';
+	import { probeBasicHealth, rebootSystem } from '$lib/api/system/system';
+	import { handleAPIError } from '$lib/utils/http';
 
 	let rebootInitiated = $state(false);
+	let jailed = $state(false);
+
+	onMount(async () => {
+		const health = await probeBasicHealth();
+		jailed = health?.jailed === true;
+	});
 
 	async function waitForRebootCycle({ intervalMs = 2000, timeoutMs = 60 * 60 * 1000 } = {}) {
 		const start = Date.now();
-		let wentDown = false;
 
 		while (Date.now() - start < timeoutMs) {
-			try {
-				const health = await getBasicHealth();
-
-				if (!health || ('status' in health && health.status === 'error')) {
-					throw new Error('System is down');
-				}
-
-				if (!wentDown) {
-					// still up → wait for it to go down
-					await new Promise((r) => setTimeout(r, intervalMs));
-					continue;
-				}
-
-				if (health?.initialized === true && health?.restarted === true) {
-					return true; // back up AFTER going down
-				}
-			} catch {
-				// request failed → system is down
-				wentDown = true;
+			const health = await probeBasicHealth();
+			if (health?.initialized === true && health.restarted === true) {
+				return true;
 			}
 
 			await new Promise((r) => setTimeout(r, intervalMs));
@@ -40,27 +30,34 @@
 	}
 
 	async function handleReboot() {
+		if (rebootInitiated) return;
 		rebootInitiated = true;
 
 		try {
-			await rebootSystem();
+			const response = await rebootSystem();
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to request a system reboot', { position: 'bottom-center' });
+				rebootInitiated = false;
+				return;
+			}
+
+			toast.info(jailed ? 'Sylve is restarting...' : 'System is restarting...', {
+				position: 'bottom-center'
+			});
+			await waitForRebootCycle();
+			toast.success(jailed ? 'Sylve is back online' : 'System is back online', {
+				position: 'bottom-center'
+			});
+			setTimeout(() => {
+				window.location.href = '/datacenter/summary';
+			}, 1000);
 		} catch {
-			// no-op
+			toast.error('System did not come back online in time. You can try again.', {
+				position: 'bottom-center'
+			});
+			rebootInitiated = false;
 		}
-
-		const rebootPromise = waitForRebootCycle();
-
-		toast.promise(rebootPromise, {
-			loading: 'System is restarting…',
-			success: () => {
-				setTimeout(() => {
-					window.location.href = '/datacenter/summary';
-				}, 1000);
-				return 'System is back online';
-			},
-			error: 'System did not come back online in time',
-			position: 'bottom-center'
-		});
 	}
 </script>
 
@@ -86,17 +83,22 @@
 		<!-- Content -->
 		<div class="space-y-6">
 			<p class="text-muted-foreground text-sm max-w-xs mx-auto">
-				A <span class="font-medium text-foreground">full system reboot</span> is required for Sylve to
-				finish initialization. Continue when ready.
+				{#if jailed}
+					A <span class="font-medium text-foreground">quick restart</span> is required for Sylve to finish
+					initialization. Continue when ready.
+				{:else}
+					A <span class="font-medium text-foreground">full system reboot</span> is required for Sylve
+					to finish initialization. Continue when ready.
+				{/if}
 			</p>
 
 			<Button onclick={handleReboot} class="px-8 py-2.5" disabled={rebootInitiated}>
 				{#if rebootInitiated}
 					<span class="icon icon-[mdi--loading] w-4 h-4 mr-2 inline-block animate-spin"></span>
-					Rebooting...
+					{jailed ? 'Restarting...' : 'Rebooting...'}
 				{:else}
 					<span class="icon icon-[mdi--restart] w-4 h-4 mr-2 inline-block"></span>
-					Reboot
+					{jailed ? 'Restart' : 'Reboot'}
 				{/if}
 			</Button>
 		</div>

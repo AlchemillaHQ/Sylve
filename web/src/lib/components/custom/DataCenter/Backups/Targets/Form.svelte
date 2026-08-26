@@ -27,6 +27,7 @@
 		enabled: boolean;
 		reload: boolean;
 		selectedTarget: BackupTarget | null;
+		disabled?: boolean;
 	}
 
 	let {
@@ -41,12 +42,15 @@
 		createBackupRoot = $bindable(),
 		enabled = $bindable(),
 		reload = $bindable(),
-		selectedTarget
+		selectedTarget,
+		disabled = false
 	}: Props = $props();
 
 	let loading = $state(false);
 
 	async function saveTarget() {
+		if (disabled) return;
+
 		if (!name.trim()) {
 			toast.error('Name is required', { position: 'bottom-center' });
 			return;
@@ -57,6 +61,39 @@
 		}
 		if (!backupRoot.trim()) {
 			toast.error('Backup Root is required', { position: 'bottom-center' });
+			return;
+		}
+		if (!edit && !sshKey.trim()) {
+			toast.error('SSH private key is required', { position: 'bottom-center' });
+			return;
+		}
+		if (edit && selectedTarget && sshKey.trim()) {
+			if (selectedTarget.enabled || enabled) {
+				toast.error('Disable the target before rotating its SSH key', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (
+				name.trim() !== selectedTarget.name.trim() ||
+				description.trim() !== (selectedTarget.description || '').trim()
+			) {
+				toast.error('Rotate the SSH key separately from metadata changes', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+		}
+		if (
+			edit &&
+			selectedTarget &&
+			enabled !== selectedTarget.enabled &&
+			(name.trim() !== selectedTarget.name.trim() ||
+				description.trim() !== (selectedTarget.description || '').trim())
+		) {
+			toast.error('Change enabled state separately from metadata', {
+				position: 'bottom-center'
+			});
 			return;
 		}
 
@@ -92,6 +129,21 @@
 		handleAPIError(response);
 		if (response.error?.includes('backup_root_not_found')) {
 			toast.error('Backup root not found on target', { position: 'bottom-center' });
+		} else if (response.error?.includes('managed_ssh_key_required')) {
+			toast.error('Paste the SSH private key for this target', { position: 'bottom-center' });
+		} else if (
+			response.error?.includes('backup_target_root_immutable') ||
+			response.error?.includes('backup_target_endpoint_immutable')
+		) {
+			toast.error('Create a new target to change its SSH endpoint or backup root', {
+				position: 'bottom-center'
+			});
+		} else if (response.error?.includes('backup_target_must_be_disabled_for_key_rotation')) {
+			toast.error('Disable the target before rotating its SSH key', { position: 'bottom-center' });
+		} else if (response.error?.includes('backup_target_has_active_operations')) {
+			toast.error('Wait for queued and running target operations to finish', {
+				position: 'bottom-center'
+			});
 		} else {
 			toast.error(edit ? 'Failed to update target' : 'Failed to create target', {
 				position: 'bottom-center'
@@ -113,7 +165,7 @@
 		backupRoot = edit ? selectedTarget?.backupRoot || '' : '';
 		createBackupRoot = edit ? selectedTarget?.createBackupRoot || false : false;
 		description = edit ? selectedTarget?.description || '' : '';
-		enabled = edit ? selectedTarget?.enabled || true : true;
+		enabled = edit ? (selectedTarget?.enabled ?? true) : true;
 	}
 
 	watch(
@@ -127,7 +179,7 @@
 				backupRoot = edit ? selectedTarget?.backupRoot || '' : '';
 				createBackupRoot = edit ? selectedTarget?.createBackupRoot || false : false;
 				description = edit ? selectedTarget?.description || '' : '';
-				enabled = edit ? selectedTarget?.enabled || true : true;
+				enabled = edit ? (selectedTarget?.enabled ?? true) : true;
 			}
 		}
 	);
@@ -135,7 +187,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="w-[90%] max-w-xl overflow-hidden p-5"
+		class="w-[90%] max-w-xl overflow-hidden p-6"
 		showCloseButton={true}
 		showResetButton={edit}
 		onReset={() => reset(true)}
@@ -166,6 +218,7 @@
 						label="SSH Host"
 						placeholder="root@192.168.1.100"
 						bind:value={sshHost}
+						disabled={edit}
 						classes="space-y-1"
 					/>
 				</div>
@@ -174,6 +227,7 @@
 					placeholder="22"
 					bind:value={sshPort}
 					type="number"
+					disabled={edit}
 					classes="space-y-1"
 				/>
 			</div>
@@ -184,15 +238,24 @@
 					placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----"
 					bind:value={sshKey}
 					type="textarea"
+					disabled={edit && (selectedTarget?.enabled !== false || enabled)}
 					classes="space-y-1"
 					textAreaClasses="min-h-[80px]! max-h-[200px]!"
 				/>
+				<p class="text-muted-foreground text-xs">
+					{#if edit && selectedTarget?.enabled !== false}
+						Disable and save the target before rotating its key.
+					{:else}
+						The matching public key must already be authorized on the backup target.
+					{/if}
+				</p>
 			</div>
 
 			<CustomValueInput
 				label="Backup Root"
 				placeholder="tank/Backups"
 				bind:value={backupRoot}
+				disabled={edit}
 				classes="space-y-1"
 			/>
 
@@ -204,18 +267,25 @@
 			/>
 
 			<div class="flex items-center gap-4">
-				<CustomCheckbox
-					label="Create Backup Root"
-					bind:checked={createBackupRoot}
-					classes="flex items-center gap-2"
-				/>
+				{#if !edit}
+					<CustomCheckbox
+						label="Create Backup Root"
+						bind:checked={createBackupRoot}
+						classes="flex items-center gap-2"
+					/>
+				{/if}
 
 				<CustomCheckbox label="Enabled" bind:checked={enabled} classes="flex items-center gap-2" />
 			</div>
+			{#if edit}
+				<p class="text-muted-foreground text-xs">
+					SSH endpoint and backup root are immutable. Create a new target to change them.
+				</p>
+			{/if}
 		</div>
 
 		<Dialog.Footer>
-			<Button onclick={saveTarget} disabled={loading}>
+			<Button onclick={saveTarget} disabled={loading || disabled}>
 				{#if loading}
 					<div class="flex items-center gap-1">
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>

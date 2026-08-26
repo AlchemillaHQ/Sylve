@@ -9,77 +9,122 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 
 	import { resource, watch } from 'runed';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
+		node: string;
 		users: User[];
 		groups: Group[];
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
-
-	// svelte-ignore state_referenced_locally
-	const users = resource(
-		() => 'users',
-		async (key) => {
-			const res = await listUsers();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.users }
-	);
-
-	// svelte-ignore state_referenced_locally
-	let groups = resource(
-		() => 'groups',
-		async (key) => {
-			const res = await listGroups();
-			updateCache(key, res);
-			return res;
-		},
-		{ initialValue: data.groups }
-	);
-
-	let usersOptions = $derived.by(() => {
-		return users.current.map((user) => ({
-			label: user.username,
-			value: user.username
-		}));
+	const initialData = untrack(() => data);
+	let pageActive = true;
+	onDestroy(() => {
+		pageActive = false;
 	});
 
-	let options = {
-		create: {
-			open: false,
-			name: '',
-			users: {
-				open: false,
-				value: [] as string[],
-				data: (() => $state.snapshot(usersOptions))()
+	const lastUsersByNode: Record<string, User[]> = Object.create(null);
+	lastUsersByNode[initialData.node] = initialData.users;
+	const users = resource(
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listUsers(undefined, { hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastUsersByNode[node] ?? [];
+				}
+				lastUsersByNode[node] = result;
+				await updateCache('users', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastUsersByNode[node] ?? [];
+				throw error;
 			}
 		},
-		delete: {
-			open: false,
-			id: 0
-		},
-		modifyUsers: {
-			open: false,
-			combobox: {
-				open: false,
-				value: [] as string[],
-				data: (() => $state.snapshot(usersOptions))()
-			}
-		}
-	};
+		{ initialValue: initialData.users }
+	);
 
-	let properties = $state(options);
+	const lastGroupsByNode: Record<string, Group[]> = Object.create(null);
+	lastGroupsByNode[initialData.node] = initialData.groups;
+	let groups = resource(
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listGroups({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGroupsByNode[node] ?? [];
+				}
+				lastGroupsByNode[node] = result;
+				await updateCache('groups', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGroupsByNode[node] ?? [];
+				throw error;
+			}
+		},
+		{ initialValue: initialData.groups }
+	);
+
+	onMount(() => {
+		for (const loadError of initialData.loadErrors) handleAPIError(loadError);
+	});
+
+	let usersOptions = $derived.by(() => {
+		return users.current
+			.filter((user) => user.source === 'pam')
+			.map((user) => ({
+				label: user.username,
+				value: user.username
+			}));
+	});
+
+	function defaultProperties() {
+		return {
+			create: {
+				open: false,
+				name: '',
+				users: {
+					open: false,
+					value: [] as string[]
+				}
+			},
+			delete: {
+				open: false,
+				id: 0
+			},
+			modifyUsers: {
+				open: false,
+				combobox: {
+					open: false,
+					value: [] as string[]
+				}
+			}
+		};
+	}
+
+	let properties = $state(defaultProperties());
 	let reload = $state(false);
+	let creating = $state(false);
+	let updating = $state(false);
+	let deleting = $state(false);
 
 	watch(
 		() => reload,
@@ -93,6 +138,7 @@
 	);
 
 	async function onCreate() {
+		if (creating) return;
 		let error = '';
 
 		if (!properties.create.name.trim() || properties.create.users.value.length === 0) {
@@ -108,55 +154,75 @@
 			return;
 		}
 
-		const response = await createGroup(
-			properties.create.name.trim(),
-			properties.create.users.value
-		);
+		creating = true;
+		const hostname = data.node;
+		const name = properties.create.name.trim();
+		const members = [...properties.create.users.value];
+		try {
+			const response = await createGroup(name, members, { hostname });
+			if (!pageActive || data.node !== hostname || !properties.create.open) return;
 
-		reload = true;
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to create group', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to create group', {
-				position: 'bottom-center'
-			});
-			return;
-		} else {
 			toast.success('Group created', {
 				position: 'bottom-center'
 			});
+			if (data.node !== hostname) return;
 
+			reload = true;
 			properties.create.open = false;
 			properties.create.name = '';
 			properties.create.users.value = [];
+		} finally {
+			creating = false;
 		}
 	}
 
 	async function onModifyUsers() {
-		const response = await updateGroupMembers(
-			properties.modifyUsers.combobox.value,
-			activeRow ? activeRow.name : ''
-		);
+		if (updating || !activeGroup) return;
 
-		reload = true;
+		updating = true;
+		const groupID = activeGroup.id;
+		const hostname = data.node;
+		const usernames = withRequiredMembers(properties.modifyUsers.combobox.value, activeGroup);
+		try {
+			const response = await updateGroupMembers(groupID, usernames, { hostname });
+			if (
+				!pageActive ||
+				data.node !== hostname ||
+				activeGroup?.id !== groupID ||
+				!properties.modifyUsers.open
+			)
+				return;
 
-		if (response.status === 'error') {
-			handleAPIError(response);
-			toast.error('Failed to modify users in group', {
-				position: 'bottom-center'
-			});
-			return;
-		} else {
+			if (isAPIResponse(response)) {
+				handleAPIError(response);
+				toast.error('Failed to modify users in group', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			toast.success('Users modified in group', {
 				position: 'bottom-center'
 			});
+			if (data.node !== hostname) return;
 
+			reload = true;
 			properties.modifyUsers.open = false;
 			properties.modifyUsers.combobox.value = [];
+		} finally {
+			updating = false;
 		}
 	}
 
-	function generateTableData(users: User[], groups: Group[]): { rows: Row[]; columns: Column[] } {
+	function generateTableData(groups: Group[]): { rows: Row[]; columns: Column[] } {
 		const columns: Column[] = [
 			{
 				field: 'id',
@@ -208,10 +274,46 @@
 		};
 	}
 
-	let tableData = $derived(generateTableData(users.current, groups.current));
+	let tableData = $derived(generateTableData(groups.current));
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
-	let activeRow: Row | null = $derived(activeRows ? (activeRows[0] as Row) : ({} as Row));
+	let activeGroup: Group | null = $derived.by(() => {
+		const row = activeRows?.[0];
+		if (!row) return null;
+		return groups.current.find((group) => group.id === Number(row.id)) ?? null;
+	});
+
+	function requiredMembers(group: Group): string[] {
+		const members = (group.users ?? [])
+			.filter(
+				(user) =>
+					user.source === 'pam' &&
+					((group.name === 'wheel' && user.username === 'root') ||
+						user.primaryGroupId === group.id ||
+						(group.name === 'sylve_g' && user.primaryGroupId == null))
+			)
+			.map((user) => user.username);
+		if (group.name === 'wheel' && !members.includes('root')) members.push('root');
+		return members;
+	}
+
+	function editableMembers(group: Group): string[] {
+		return (group.users ?? []).filter((user) => user.source === 'pam').map((user) => user.username);
+	}
+
+	function withRequiredMembers(usernames: string[], group: Group): string[] {
+		return Array.from(new Set([...usernames, ...requiredMembers(group)]));
+	}
+
+	let activeRequiredMembers = $derived(activeGroup ? requiredMembers(activeGroup) : []);
+
+	watch(
+		() => data.node,
+		() => {
+			activeRows = null;
+			properties = defaultProperties();
+		}
+	);
 </script>
 
 {#snippet button(type: string)}
@@ -225,10 +327,13 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={activeRow?.name === 'sylve_g' || activeRow?.name === 'wheel'}
-				title={activeRow?.name === 'sylve_g'
+				disabled={deleting ||
+					!activeGroup ||
+					activeGroup.name === 'sylve_g' ||
+					activeGroup.name === 'wheel'}
+				title={activeGroup?.name === 'sylve_g'
 					? 'Default system group, cannot be deleted'
-					: activeRow?.name === 'wheel'
+					: activeGroup?.name === 'wheel'
 						? 'System group, cannot be deleted'
 						: 'Delete'}
 			>
@@ -240,14 +345,14 @@
 			<Button
 				onclick={() => {
 					properties.modifyUsers.open = !properties.modifyUsers.open;
-					if (activeRows) {
-						properties.modifyUsers.combobox.value =
-							activeRows[0].children?.map((user) => user.name) || [];
+					if (activeGroup) {
+						properties.modifyUsers.combobox.value = editableMembers(activeGroup);
 					}
 				}}
 				size="sm"
 				variant="outline"
 				class="h-6.5"
+				disabled={updating}
 			>
 				<SpanWithIcon
 					icon="icon-[material-symbols--edit]"
@@ -267,6 +372,7 @@
 			onclick={() => (properties.create.open = !properties.create.open)}
 			size="sm"
 			class="h-6"
+			disabled={creating}
 		>
 			<SpanWithIcon icon="icon-[gg--add]" size="h-4 w-4" gap="gap-2" title="New" />
 		</Button>
@@ -290,10 +396,10 @@
 			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
-			showCloseButton={true}
-			showResetButton={true}
+			showResetButton={!creating}
+			showCloseButton={!creating}
 			onClose={() => {
-				properties = options;
+				properties = defaultProperties();
 				properties.create.open = false;
 			}}
 			onReset={() => {
@@ -318,23 +424,32 @@
 				placeholder="c-level"
 				bind:value={properties.create.name}
 				classes="flex-1 space-y-1.5"
+				disabled={creating}
 			/>
 
 			<CustomComboBox
 				bind:open={properties.create.users.open}
 				bind:value={properties.create.users.value}
-				data={properties.create.users.data}
+				data={usersOptions}
 				onValueChange={(v) => {
 					properties.create.users.value = v as string[];
 				}}
 				placeholder="Select Users"
 				multiple={true}
 				width="w-full"
+				disabled={creating}
 			/>
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={() => onCreate()} type="submit" size="sm">Create</Button>
+					<Button onclick={() => onCreate()} type="submit" size="sm" disabled={creating}>
+						{#if creating}
+							<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+							Creating...
+						{:else}
+							Create
+						{/if}
+					</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -347,15 +462,14 @@
 			class="sm:max-w-106.25"
 			onInteractOutside={(e) => e.preventDefault()}
 			onEscapeKeydown={(e) => e.preventDefault()}
-			showCloseButton={true}
-			showResetButton={true}
+			showCloseButton={!updating}
+			showResetButton={!updating}
 			onClose={() => {
-				properties = options;
+				properties = defaultProperties();
 				properties.modifyUsers.open = false;
 			}}
 			onReset={() => {
-				properties.modifyUsers.combobox.value =
-					activeRows?.[0]?.children?.map((user) => user.name) || [];
+				properties.modifyUsers.combobox.value = activeGroup ? editableMembers(activeGroup) : [];
 				properties.modifyUsers.combobox.open = false;
 			}}
 		>
@@ -373,25 +487,35 @@
 			<CustomComboBox
 				bind:open={properties.modifyUsers.combobox.open}
 				bind:value={properties.modifyUsers.combobox.value}
-				data={properties.modifyUsers.combobox.data}
+				data={usersOptions}
 				onValueChange={(v) => {
-					properties.modifyUsers.combobox.value = v as string[];
+					properties.modifyUsers.combobox.value = activeGroup
+						? withRequiredMembers(v as string[], activeGroup)
+						: (v as string[]);
 				}}
 				placeholder="Select Users"
 				multiple={true}
 				width="w-full"
+				disabled={updating}
 			/>
 
-			{#if activeRow?.name === 'wheel'}
+			{#if activeRequiredMembers.length > 0}
 				<p class="text-muted-foreground text-xs text-justify">
-					root is a permanent member of the wheel group and cannot be removed. This restriction is
-					enforced by the system.
+					Primary group members{activeGroup?.name === 'wheel' ? ', including root,' : ''} cannot be removed
+					here. This restriction is enforced by the system.
 				</p>
 			{/if}
 
 			<Dialog.Footer class="flex justify-end">
 				<div class="flex w-full items-center justify-end gap-2">
-					<Button onclick={() => onModifyUsers()} type="submit" size="sm">Modify Users</Button>
+					<Button onclick={() => onModifyUsers()} type="submit" size="sm" disabled={updating}>
+						{#if updating}
+							<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+							Saving...
+						{:else}
+							Modify Users
+						{/if}
+					</Button>
 				</div>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -400,26 +524,36 @@
 
 <AlertDialog
 	open={properties.delete.open}
-	names={{ parent: 'group', element: activeRow?.name || '' }}
+	loading={deleting}
+	loadingLabel="Deleting..."
+	keepOpenOnConfirm={true}
+	names={{ parent: 'group', element: activeGroup?.name || '' }}
 	actions={{
 		onConfirm: async () => {
-			const result = await deleteGroup(properties.delete.id);
-			reload = true;
-			activeRows = null;
-			activeRow = null;
-			if (result.status === 'error') {
-				handleAPIError(result);
-				toast.error('Failed to delete group', {
-					position: 'bottom-center'
-				});
-				return;
-			} else {
+			if (deleting) return;
+			deleting = true;
+			const hostname = data.node;
+			const groupID = properties.delete.id;
+			try {
+				const result = await deleteGroup(groupID, { hostname });
+				if (!pageActive || data.node !== hostname || properties.delete.id !== groupID) return;
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					toast.error('Failed to delete group', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
 				toast.success('Group deleted', {
 					position: 'bottom-center'
 				});
-
+				reload = true;
+				activeRows = null;
 				properties.delete.open = false;
 				properties.delete.id = 0;
+			} finally {
+				deleting = false;
 			}
 		},
 		onCancel: () => {

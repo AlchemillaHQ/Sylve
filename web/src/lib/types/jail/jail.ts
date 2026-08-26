@@ -1,250 +1,306 @@
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
+import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
 
 export interface CreateData {
-    name: string;
-    hostname: string;
-    id: number;
-    node: string;
-    description: string;
-    storage: {
-        pool: string;
-        base: string;
-        bootstrapName: string;
-        fstab: string;
-    };
-    network: {
-        switch: string;
-        mac: number;
-        inheritIPv4: boolean;
-        inheritIPv6: boolean;
-        ipv4: number;
-        ipv4Gateway: number;
-        ipv6: number;
-        ipv6Gateway: number;
-        dhcp: boolean;
-        slaac: boolean;
-        resolvConf: string;
-        vlan: number;
-    };
-    hardware: {
-        cpuCores: number;
-        ram: number;
-        startAtBoot: boolean;
-        resourceLimits: boolean;
-        bootOrder: number;
-        devfsRuleset: string;
-    };
-    advanced: {
-        jailType: 'linux' | 'freebsd';
-        additionalOptions: string;
-        cleanEnvironment: boolean;
-        execScripts: Record<ExecPhaseKey, ExecPhaseState>;
-        allowedOptions: string[];
-        metadata: {
-            env: string;
-            meta: string;
-        };
-    };
+	name: string;
+	hostname: string;
+	id: number;
+	node: string;
+	description: string;
+	storage: {
+		pool: string;
+		base: string;
+		bootstrapName: string;
+		fstab: string;
+	};
+	network: {
+		switch: string;
+		mac: number;
+		macRaw: string;
+		inheritIPv4: boolean;
+		inheritIPv6: boolean;
+		ipv4: number;
+		ipv4Raw: string;
+		ipv4Gateway: number;
+		ipv4GatewayRaw: string;
+		ipv6: number;
+		ipv6Raw: string;
+		ipv6Gateway: number;
+		ipv6GatewayRaw: string;
+		dhcp: boolean;
+		slaac: boolean;
+		resolvConf: string;
+		vlan: number;
+	};
+	hardware: {
+		cpuCores: number;
+		ram: number;
+		startAtBoot: boolean;
+		resourceLimits: boolean;
+		bootOrder: number;
+		devfsRuleset: string;
+	};
+	advanced: {
+		jailType: 'linux' | 'freebsd';
+		additionalOptions: string;
+		cleanEnvironment: boolean;
+		execScripts: Record<ExecPhaseKey, ExecPhaseState>;
+		allowedOptions: string[];
+		metadata: {
+			env: string;
+			meta: string;
+		};
+	};
 }
 export const JailStorageSchema = z.object({
-    id: z.number().int(),
-    jid: z.number().int(),
-    pool: z.string(),
-    guid: z.string(),
-    name: z.string(),
-    isBase: z.boolean()
+	id: z.number().int(),
+	jid: z.number().int(),
+	pool: z.string(),
+	guid: z.string(),
+	name: z.string(),
+	isBase: z.boolean()
+});
+
+export const JailRootMountPointSchema = z.object({
+	mountPoint: z.string().min(1)
 });
 
 export const SimpleJailSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    ctId: z.number().int(),
-    state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN', '']).optional()
+	id: z.number().int(),
+	name: z.string(),
+	ctId: z.number().int(),
+	state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN', '']).optional()
 });
 
 export const SimpleJailTemplateSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    sourceJailName: z.string(),
+	id: z.number().int(),
+	name: z.string(),
+	sourceJailName: z.string()
 });
 
 export const NetworkSchema = z.object({
-    id: z.number().int(),
-    jid: z.number().int(),
-    name: z.string(),
-    switchId: z.number().int(),
-    switchType: z.enum(['standard', 'manual']),
-    macId: z.number().int().nullable(),
-    macObj: NetworkObjectSchema.optional().nullable(),
-    ipv4Id: z.number().int().nullable(),
-    ipv4GwId: z.number().int().nullable(),
-    ipv6Id: z.number().int().nullable(),
-    ipv6GwId: z.number().int().nullable(),
-    dhcp: z.boolean().nullable().default(false),
-    slaac: z.boolean().nullable().default(false),
-    defaultGateway: z.boolean().default(false),
-    vlan: z.number().int().min(0).max(4095).optional().default(0)
+	id: z.number().int(),
+	jid: z.number().int(),
+	name: z.string(),
+	switchId: z.number().int(),
+	switchType: z.enum(['standard', 'manual']),
+	macId: z.number().int().nullable(),
+	macObj: NetworkObjectSchema.optional().nullable(),
+	ipv4Id: z.number().int().nullable(),
+	ipv4GwId: z.number().int().nullable(),
+	ipv6Id: z.number().int().nullable(),
+	ipv6GwId: z.number().int().nullable(),
+	dhcp: z.boolean().nullable().default(false),
+	slaac: z.boolean().nullable().default(false),
+	defaultGateway: z.boolean().default(false),
+	vlan: z.number().int().min(0).max(4095).optional().default(0)
+});
+
+export const JailNetworkInheritanceResultSchema = z.object({
+	ctId: z.number().int().positive(),
+	inheritIPv4: z.boolean(),
+	inheritIPv6: z.boolean(),
+	removedNetworkIds: z.array(z.number().int().positive()).default([])
 });
 
 export const JailHookPhaseSchema = z.enum([
-    'prestart',
-    'start',
-    'poststart',
-    'prestop',
-    'stop',
-    'poststop'
+	'prestart',
+	'start',
+	'poststart',
+	'prestop',
+	'stop',
+	'poststop'
 ]);
 
 export const JailHookSchema = z.object({
-    phase: JailHookPhaseSchema,
-    enabled: z.boolean(),
-    script: z.string()
+	phase: JailHookPhaseSchema,
+	enabled: z.boolean(),
+	script: z.string()
 });
 
 export const JailTemplateNetworkSchema = z.object({
-    name: z.string(),
-    switchId: z.number().int(),
-    switchType: z.enum(['standard', 'manual']),
-    dhcp: z.boolean().default(false),
-    slaac: z.boolean().default(false),
-    defaultGateway: z.boolean().default(false)
+	name: z.string(),
+	switchId: z.number().int(),
+	switchType: z.enum(['standard', 'manual']),
+	dhcp: z.boolean().default(false),
+	slaac: z.boolean().default(false),
+	defaultGateway: z.boolean().default(false)
 });
 
 export const JailTemplateHookSchema = z.object({
-    phase: JailHookPhaseSchema,
-    enabled: z.boolean(),
-    script: z.string()
+	phase: JailHookPhaseSchema,
+	enabled: z.boolean(),
+	script: z.string()
 });
 
 export const JailTemplateSchema = z.object({
-    id: z.number().int(),
-    name: z.string(),
-    sourceJailName: z.string(),
-    pool: z.string(),
-    rootDataset: z.string(),
-    type: z.enum(['freebsd', 'linux']),
-    wol: z.boolean().default(false),
-    resourceLimits: z.boolean().nullable(),
-    cores: z.number(),
-    memory: z.number(),
-    inheritIPv4: z.boolean(),
-    inheritIPv6: z.boolean(),
-    fstab: z.string(),
-    resolvConf: z.string(),
-    devfsRuleset: z.string(),
-    cleanEnvironment: z.boolean(),
-    additionalOptions: z.string(),
-    allowedOptions: z.array(z.string()).default([]),
-    metadataMeta: z.string(),
-    metadataEnv: z.string(),
-    networks: z.array(JailTemplateNetworkSchema).default([]),
-    hooks: z.array(JailTemplateHookSchema).default([]),
-    createdAt: z.string(),
-    updatedAt: z.string()
+	id: z.number().int(),
+	name: z.string(),
+	sourceJailName: z.string(),
+	sourceJailCtid: z.number().int().positive(),
+	pool: z.string(),
+	rootDataset: z.string(),
+	type: z.enum(['freebsd', 'linux']),
+	wol: z.boolean().default(false),
+	resourceLimits: z.boolean().nullable(),
+	cores: z.number(),
+	memory: z.number(),
+	inheritIPv4: z.boolean(),
+	inheritIPv6: z.boolean(),
+	fstab: z.string(),
+	resolvConf: z.string(),
+	devfsRuleset: z.string(),
+	execTimeout: z.number().int().positive().default(120),
+	cleanEnvironment: z.boolean(),
+	additionalOptions: z.string(),
+	allowedOptions: z.array(z.string()).default([]),
+	metadataMeta: z.string(),
+	metadataEnv: z.string(),
+	networks: z.array(JailTemplateNetworkSchema).default([]),
+	hooks: z.array(JailTemplateHookSchema).default([]),
+	createdAt: z.string(),
+	updatedAt: z.string()
+});
+
+export const JailTemplateCaptureTaskResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	sourceCtid: z.number().int().positive(),
+	action: z.literal('convert'),
+	outcome: z.string()
+});
+
+export const JailTemplateInstantiationTaskResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	templateId: z.number().int().positive(),
+	action: z.literal('create'),
+	outcome: z.string()
 });
 
 export const JailSchema = SimpleJailSchema.extend({
-    description: z.string().nullable(),
-    startAtBoot: z.boolean(),
-    startOrder: z.number().int(),
-    wol: z.boolean().default(false),
-    inheritIPv4: z.boolean(),
-    inheritIPv6: z.boolean(),
-    networks: z.array(NetworkSchema).optional().default([]),
-    storages: z.array(JailStorageSchema).optional().default([]),
-    type: z.enum(['freebsd', 'linux']),
-    fstab: z.string(),
-    resolvConf: z.string(),
-    devfsRuleset: z.string(),
-    additionalOptions: z.string(),
-    allowedOptions: z.array(z.string()).default([]),
-    jailHooks: z.array(JailHookSchema).nullable().default([]),
-    metadataMeta: z.string(),
-    metadataEnv: z.string(),
-    cores: z.number(),
-    memory: z.number(),
-    startedAt: z.string().nullable(),
-    stoppedAt: z.string().nullable(),
-    resourceLimits: z.boolean()
+	description: z.string().nullable(),
+	startAtBoot: z.boolean(),
+	startOrder: z.number().int(),
+	wol: z.boolean().default(false),
+	inheritIPv4: z.boolean(),
+	inheritIPv6: z.boolean(),
+	networks: z.array(NetworkSchema).optional().default([]),
+	storages: z.array(JailStorageSchema).optional().default([]),
+	type: z.enum(['freebsd', 'linux']),
+	fstab: z.string(),
+	resolvConf: z.string(),
+	devfsRuleset: z.string(),
+	execTimeout: z.number().int().positive().default(120),
+	additionalOptions: z.string(),
+	allowedOptions: z.array(z.string()).default([]),
+	jailHooks: z.array(JailHookSchema).nullable().default([]),
+	metadataMeta: z.string(),
+	metadataEnv: z.string(),
+	cores: z.number(),
+	memory: z.number(),
+	startedAt: z.string().nullable(),
+	stoppedAt: z.string().nullable(),
+	resourceLimits: z.boolean()
 });
 
 export const JailStateSchema = z.object({
-    ctId: z.number().int(),
-    state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN']),
-    pcpu: z.number(),
-    memory: z.number(),
-    pendingAction: z.string().optional().default(''),
-    overrideRequested: z.boolean().optional().default(false)
+	ctId: z.number().int(),
+	state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN']),
+	pcpu: z.number(),
+	memory: z.number(),
+	pendingAction: z.string().optional().default(''),
+	overrideRequested: z.boolean().optional().default(false)
+});
+
+export const JailActionResponseSchema = z.object({
+	taskId: z.number().int().positive(),
+	ctId: z.number().int().positive(),
+	action: z.enum(['start', 'stop', 'restart']),
+	outcome: z.string()
 });
 
 export const JailLogsSchema = z.object({
-    logs: z.string()
+	logs: z.string()
 });
 
 export const JailStatSchema = z.object({
-    id: z.number().int(),
-    jid: z.number().int(),
-    cpuUsage: z.number(),
-    memoryUsage: z.number(),
-    createdAt: z.string()
+	id: z.number().int(),
+	jid: z.number().int(),
+	cpuUsage: z.number(),
+	memoryUsage: z.number(),
+	createdAt: z.string()
+});
+
+export const JailStatsBootstrapSchema = z.object({
+	points: z.array(JailStatSchema),
+	resolvedStep: GFSStepSchema.nullable(),
+	lastSampleAt: z.string().nullable(),
+	historyState: StatsHistoryStateSchema
 });
 
 export const ExecPhaseDefs = [
-    {
-        key: 'prestart',
-        label: 'Pre-start (exec.prestart)',
-        description: 'Runs on the host before the jail starts'
-    },
-    {
-        key: 'start',
-        label: 'Start (exec.start)',
-        description: 'Runs inside the jail to start it, Often /bin/sh /etc/rc'
-    },
-    {
-        key: 'poststart',
-        label: 'Post-start (exec.poststart)',
-        description: 'Runs outside the jail after it has started'
-    },
-    {
-        key: 'prestop',
-        label: 'Pre-stop (exec.prestop)',
-        description: 'Runs outside the jail before it is stopped'
-    },
-    {
-        key: 'stop',
-        label: 'Stop (exec.stop)',
-        description: 'Runs inside the jail to stop it, Often /bin/sh /etc/rc.shutdown'
-    },
-    {
-        key: 'poststop',
-        label: 'Post-stop (exec.poststop)',
-        description: 'Runs on the host after the jail has stopped'
-    }
+	{
+		key: 'prestart',
+		label: 'Pre-start (exec.prestart)',
+		description: 'Runs on the host before the jail starts'
+	},
+	{
+		key: 'start',
+		label: 'Start (exec.start)',
+		description: 'Runs inside the jail to start it, Often /bin/sh /etc/rc'
+	},
+	{
+		key: 'poststart',
+		label: 'Post-start (exec.poststart)',
+		description: 'Runs outside the jail after it has started'
+	},
+	{
+		key: 'prestop',
+		label: 'Pre-stop (exec.prestop)',
+		description: 'Runs outside the jail before it is stopped'
+	},
+	{
+		key: 'stop',
+		label: 'Stop (exec.stop)',
+		description: 'Runs inside the jail to stop it, Often /bin/sh /etc/rc.shutdown'
+	},
+	{
+		key: 'poststop',
+		label: 'Post-stop (exec.poststop)',
+		description: 'Runs on the host after the jail has stopped'
+	}
 ] as const;
 
 export type ExecPhaseKey = (typeof ExecPhaseDefs)[number]['key'];
 export interface ExecPhaseState {
-    enabled: boolean;
-    script: string;
+	enabled: boolean;
+	script: string;
 }
 
 export type SimpleJail = z.infer<typeof SimpleJailSchema>;
 export type SimpleJailTemplate = z.infer<typeof SimpleJailTemplateSchema>;
 export type Jail = z.infer<typeof JailSchema>;
 export type JailStorage = z.infer<typeof JailStorageSchema>;
+export type JailRootMountPoint = z.infer<typeof JailRootMountPointSchema>;
 export type JailNetwork = z.infer<typeof NetworkSchema>;
+export type JailNetworkInheritanceResult = z.infer<typeof JailNetworkInheritanceResultSchema>;
 export type JailHook = z.infer<typeof JailHookSchema>;
 export type JailTemplate = z.infer<typeof JailTemplateSchema>;
+export type JailTemplateCaptureTaskResponse = z.infer<typeof JailTemplateCaptureTaskResponseSchema>;
+export type JailTemplateInstantiationTaskResponse = z.infer<
+	typeof JailTemplateInstantiationTaskResponseSchema
+>;
 export type JailState = z.infer<typeof JailStateSchema>;
+export type JailActionResponse = z.infer<typeof JailActionResponseSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;
+export type JailStatsBootstrap = z.infer<typeof JailStatsBootstrapSchema>;
 
-export type JailLifecycleAction = 'start' | 'stop';
+export type JailLifecycleAction = JailActionResponse['action'];
 export type JailLifecycleBadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline';
 
 export interface JailLifecycleBadgeStyle {
-    variant: JailLifecycleBadgeVariant;
-    className: string;
-    label: string;
+	variant: JailLifecycleBadgeVariant;
+	className: string;
+	label: string;
 }

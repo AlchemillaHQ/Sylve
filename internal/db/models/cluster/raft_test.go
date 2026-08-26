@@ -10,8 +10,11 @@ package clusterModels
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
+
+	"gorm.io/gorm"
 )
 
 func TestFSMDispatcherNoteCommands(t *testing.T) {
@@ -112,6 +115,51 @@ func TestFSMDispatcherNoteCommands(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected 0 notes after delete + bulk delete, found %d", count)
+	}
+}
+
+func TestFSMDispatcherNoteCommandsRejectMissingAndPartialMutations(t *testing.T) {
+	db := newClusterModelTestDB(t, &ClusterNote{})
+	fsm := NewFSMDispatcher(db)
+	RegisterDefaultHandlers(fsm)
+
+	notes := []ClusterNote{
+		{ID: 1, Title: "first", Content: "first content"},
+		{ID: 2, Title: "second", Content: "second content"},
+	}
+	if err := db.Create(&notes).Error; err != nil {
+		t.Fatalf("failed to seed notes: %v", err)
+	}
+
+	missingUpdate, _ := json.Marshal(map[string]any{
+		"id": 999, "title": "missing", "content": "missing content",
+	})
+	if err := applyFSMCommand(t, fsm, Command{
+		Type: "note", Action: "update", Data: missingUpdate,
+	}); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing update error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	missingDelete, _ := json.Marshal(map[string]any{"id": 999})
+	if err := applyFSMCommand(t, fsm, Command{
+		Type: "note", Action: "delete", Data: missingDelete,
+	}); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	partialBulkDelete, _ := json.Marshal(map[string]any{"ids": []int{1, 999}})
+	if err := applyFSMCommand(t, fsm, Command{
+		Type: "note", Action: "bulk_delete", Data: partialBulkDelete,
+	}); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("partial bulk delete error=%v want=%v", err, gorm.ErrRecordNotFound)
+	}
+
+	var stored []ClusterNote
+	if err := db.Order("id ASC").Find(&stored).Error; err != nil {
+		t.Fatalf("failed to load notes after rejected mutations: %v", err)
+	}
+	if len(stored) != 2 || stored[0].ID != 1 || stored[1].ID != 2 {
+		t.Fatalf("rejected mutations changed notes: %+v", stored)
 	}
 }
 

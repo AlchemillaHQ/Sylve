@@ -7,47 +7,58 @@
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		vm: VM;
 		reload: boolean;
 	}
 
-	let { open = $bindable(), vm, reload = $bindable(false) }: Props = $props();
+	let { open = $bindable(), node, vm, reload = $bindable(false) }: Props = $props();
 
 	let comboBox = $state({
 		open: false,
-		value: vm.timeOffset === 'utc' ? 'utc' : 'localtime',
-		options: [
-			{
-				label: 'UTC',
-				value: 'utc'
-			},
-			{
-				label: 'Local Time',
-				value: 'localtime'
-			}
-		]
+		value: untrack(() => (vm.timeOffset === 'utc' ? 'utc' : 'localtime'))
 	});
+	let clockOffsetOptions = $derived([
+		{
+			label: 'UTC',
+			value: 'utc'
+		},
+		{
+			label: 'Local Time',
+			value: 'localtime'
+		}
+	]);
+	let saving = $state(false);
 
 	async function modify() {
-		if (!vm) return;
-		const response = await modifyClockOffset(vm.rid, comboBox.value as 'localtime' | 'utc');
-		if (response.error) {
-			handleAPIError(response);
-			toast.error('Failed to modify clock offset', {
-				position: 'bottom-center'
+		if (saving) return;
+		saving = true;
+		try {
+			const response = await modifyClockOffset(vm.rid, comboBox.value as 'localtime' | 'utc', {
+				hostname: node
 			});
-			return;
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to modify clock offset', { position: 'bottom-center' });
+				return;
+			}
+
+			toast.success(
+				response.message === 'no_changes_detected'
+					? 'No clock-offset changes needed'
+					: 'Modified clock offset',
+				{ position: 'bottom-center' }
+			);
+
+			reload = true;
+			open = false;
+		} finally {
+			saving = false;
 		}
-
-		toast.success('Modified clock offset', {
-			position: 'bottom-center'
-		});
-
-		reload = true;
-		open = false;
 	}
 </script>
 
@@ -71,17 +82,25 @@
 
 		<ComboBox
 			bind:open={comboBox.open}
-			label={'Offset'}
+			label="Offset"
 			bind:value={comboBox.value}
-			data={comboBox.options}
+			data={clockOffsetOptions}
 			classes="flex-1 space-y-1"
 			placeholder="Select type"
 			width="w-3/4"
+			disabled={saving}
 		></ComboBox>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm">{'Save'}</Button>
+				<Button onclick={modify} type="submit" size="sm" disabled={saving}>
+					{#if saving}
+						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
+						Saving...
+					{:else}
+						Save
+					{/if}
+				</Button>
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

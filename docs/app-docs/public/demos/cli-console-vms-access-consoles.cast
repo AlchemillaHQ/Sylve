@@ -1,0 +1,10 @@
+{"version":2,"width":105,"height":27,"timestamp":1787446300,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms access vnc --rid 301 --json\r\n"]
+[0.9,"o","{\r\n  \"rid\": 301,\r\n  \"name\": \"docs-alpine\",\r\n  \"enabled\": true,\r\n  \"available\": true,\r\n  \"domainState\": \"running\",\r\n  \"bindAddress\": \"127.0.0.1\",\r\n  \"port\": 5901,\r\n  \"endpoint\": \"127.0.0.1:5901\",\r\n  \"resolution\": \"1024x768\",\r\n  \"wait\": false,\r\n  \"passwordConfigured\": false,\r\n  \"unavailableReason\": \"\"\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve vms access serial --rid 301 --baud 115200 --json\r\n"]
+[1.9,"o","{\r\n  \"rid\": 301,\r\n  \"name\": \"docs-alpine\",\r\n  \"baudRate\": \"115200\",\r\n  \"devicePath\": \"/dev/nmdm301B\",\r\n  \"domainState\": \"running\",\r\n  \"available\": true\r\n}\r\n"]
+[2.1,"o","# "]
+[2.8,"o","sylve vms access serial --rid 301 --baud 115200\r\n"]
+[2.9,"o","RID:  301\r\nName:  docs-alpine\r\nAvailable:  true\r\nDomain state:  running\r\nDevice:  /dev/nmdm301B\r\nBaud:  115200\r\nConnected\r\n"]

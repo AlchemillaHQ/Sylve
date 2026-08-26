@@ -1,0 +1,11 @@
+{"version":2,"width":108,"height":25,"timestamp":1787448500,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve tasks active\r\n"]
+[0.9,"o","No lifecycle tasks found.\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve tasks active --json\r\n"]
+[1.9,"o","[]\r\n"]
+[2.1,"o","# "]
+[2.8,"o","sylve tasks recent --limit 6\r\n"]
+[2.9,"o","TASK ID    GUEST          GUEST ID    ACTION     STATUS     CREATED             \r\n────────────────────────────────────────────────────────────────────────────────\r\n34         vm-template    1           create     success    2026-08-22T22:27:04Z\r\n33         vm-template    1           create     success    2026-08-22T22:26:57Z\r\n32         vm-template    301         convert    success    2026-08-22T22:26:41Z\r\n31         vm             301         stop       success    2026-08-22T22:22:15Z\r\n30         vm             301         start      success    2026-08-22T22:21:36Z\r\n29         vm             301         stop       success    2026-08-22T22:03:42Z\r\n"]
+[3.1,"o","# "]

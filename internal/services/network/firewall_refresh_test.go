@@ -9,6 +9,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -65,6 +67,84 @@ func TestParseListPayloadToValuesRejectsUnsupportedLine(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported_list_line") {
 		t.Fatalf("expected unsupported_list_line error, got: %v", err)
+	}
+}
+
+func TestValidateNetworkObjectListURLRejectsUnsafeSources(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		url  string
+		code string
+	}{
+		{"embedded credentials", "https://user:secret@example.com/list.txt", "network_object_list_credentials_not_allowed"},
+		{"unsupported scheme", "ftp://example.com/list.txt", "invalid_network_object_list_url_scheme"},
+		{"relative URL", "/list.txt", "invalid_network_object_list_url"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateNetworkObjectListURL(tt.url)
+			if !errors.Is(err, ErrInvalidNetworkObject) {
+				t.Fatalf("expected invalid object error, got %v", err)
+			}
+			if code := NetworkObjectErrorCode(err); code != tt.code {
+				t.Fatalf("expected code %q, got %q", tt.code, code)
+			}
+		})
+	}
+}
+
+func TestFetchListPayloadRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("12345"))
+	}))
+	defer server.Close()
+
+	_, err := fetchListPayload(context.Background(), server.URL, 4)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_source_too_large" {
+		t.Fatalf("expected oversized-source code, got %q", code)
+	}
+}
+
+func TestFetchListPayloadLimitsRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/"))
+		if err != nil {
+			http.Error(w, "bad step", http.StatusBadRequest)
+			return
+		}
+		if step < 4 {
+			http.Redirect(w, r, fmt.Sprintf("/%d", step+1), http.StatusFound)
+			return
+		}
+		_, _ = w.Write([]byte("192.0.2.1\n"))
+	}))
+	defer server.Close()
+
+	_, err := fetchListPayload(context.Background(), server.URL+"/0", 1024)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected redirect-limit upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_source_redirect_limit" {
+		t.Fatalf("expected redirect-limit code, got %q", code)
+	}
+}
+
+func TestFetchListPayloadHonorsRefreshContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := fetchListPayload(ctx, server.URL, 1024)
+	if !errors.Is(err, ErrNetworkObjectUpstream) {
+		t.Fatalf("expected timeout upstream error, got %v", err)
+	}
+	if code := NetworkObjectErrorCode(err); code != "network_object_refresh_timeout" {
+		t.Fatalf("expected refresh-timeout code, got %q", code)
 	}
 }
 
@@ -557,6 +637,34 @@ func TestRenderTrafficRulesUsesIngressAndEgressInterfaces(t *testing.T) {
 	}
 }
 
+func TestRenderTrafficRulesUsesPFProtocolListForTCPUDP(t *testing.T) {
+	svc := &Service{}
+	rules := []networkModels.FirewallTrafficRule{
+		{
+			ID:               88,
+			Name:             "DNS over TCP and UDP",
+			Enabled:          true,
+			Action:           "pass",
+			Direction:        "out",
+			Protocol:         "tcp_udp",
+			Family:           "inet",
+			EgressInterfaces: []string{"em0"},
+			SourceRaw:        "192.0.2.0/24",
+			DestRaw:          "any",
+			DstPortsRaw:      "53",
+		},
+	}
+
+	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
+	if err != nil {
+		t.Fatalf("unexpected render error: %v", err)
+	}
+	expected := `pass out on em0 inet proto { tcp, udp } from 192.0.2.0/24 to any port 53 label "sylve_trf_88"`
+	if !strings.Contains(rendered, expected) {
+		t.Fatalf("expected combined protocol PF syntax, got:\n%s", rendered)
+	}
+}
+
 func TestParseTrafficRuleCountersFromPFAggregatesByLabel(t *testing.T) {
 	output := strings.Join([]string{
 		`@101 block in quick inet from 10.0.0.2 to any label "sylve_trf_11"`,
@@ -599,7 +707,10 @@ func TestParseLabeledRuleCountersMapsRuleNumberZero(t *testing.T) {
 }
 
 func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallTrafficRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallTrafficRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	rule := networkModels.FirewallTrafficRule{
 		ID:        501,
@@ -619,8 +730,8 @@ func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.
 
 	previousRunCommand := firewallRunCommand
 	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
-			return "", fmt.Errorf("pf disabled")
+		if command == "/sbin/pfctl" && len(args) == 3 && args[0] == "-a" {
+			return "", fmt.Errorf("pf unavailable")
 		}
 		return "", nil
 	}
@@ -644,7 +755,10 @@ func TestGetFirewallTrafficRuleCountersReturnsZerosWhenPFUnavailable(t *testing.
 }
 
 func TestGetFirewallTrafficRuleCountersParsesPFOutput(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallTrafficRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallTrafficRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	ruleA := networkModels.FirewallTrafficRule{
 		ID:        601,
@@ -742,7 +856,10 @@ func TestParseNATRuleCountersFromPFAggregatesByLabel(t *testing.T) {
 }
 
 func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallNATRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallNATRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	rule := networkModels.FirewallNATRule{
 		ID:               701,
@@ -763,8 +880,8 @@ func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
 
 	previousRunCommand := firewallRunCommand
 	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
-			return "", fmt.Errorf("pf disabled")
+		if command == "/sbin/pfctl" && len(args) == 3 && args[0] == "-a" {
+			return "", fmt.Errorf("pf unavailable")
 		}
 		return "", nil
 	}
@@ -788,7 +905,10 @@ func TestGetFirewallNATRuleCountersReturnsZerosWhenPFUnavailable(t *testing.T) {
 }
 
 func TestGetFirewallNATRuleCountersParsesPFOutput(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallNATRule{})
+	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.FirewallNATRule{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("failed to enable firewall service: %v", err)
+	}
 
 	ruleA := networkModels.FirewallNATRule{
 		ID:               801,
@@ -984,6 +1104,35 @@ func TestGetFirewallLiveHitsCursorPagination(t *testing.T) {
 	}
 }
 
+func TestGetFirewallLiveHitsCapsRequestedLimit(t *testing.T) {
+	svc, _ := newNetworkServiceForTest(t)
+	runtime := svc.getFirewallTelemetryRuntime()
+
+	now := time.Now().UTC()
+	hits := make([]networkServiceInterfaces.FirewallLiveHitEvent, 0, firewallLiveMaxLimit+2)
+	for i := int64(1); i <= int64(firewallLiveMaxLimit+2); i++ {
+		hits = append(hits, networkServiceInterfaces.FirewallLiveHitEvent{
+			Cursor: i, Timestamp: now, RuleType: "traffic", RuleID: 1,
+		})
+	}
+
+	runtime.mu.Lock()
+	runtime.liveCursor = int64(len(hits))
+	runtime.liveHits = hits
+	runtime.mu.Unlock()
+
+	resp, err := svc.GetFirewallLiveHits(1, firewallLiveMaxLimit+500, nil)
+	if err != nil {
+		t.Fatalf("expected live hits query to succeed, got: %v", err)
+	}
+	if len(resp.Items) != firewallLiveMaxLimit {
+		t.Fatalf("expected capped result length %d, got %d", firewallLiveMaxLimit, len(resp.Items))
+	}
+	if resp.NextCursor != int64(firewallLiveMaxLimit+1) {
+		t.Fatalf("unexpected next cursor after capped page: %d", resp.NextCursor)
+	}
+}
+
 func TestGetFirewallLiveHitsInitialCursorBootstrapsWithoutHistory(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t)
 	runtime := svc.getFirewallTelemetryRuntime()
@@ -1097,7 +1246,7 @@ func TestGetFirewallLiveHitsAppliesFilters(t *testing.T) {
 
 func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 	inlineTables := "table <sylve_obj_1_inet> persist { 10.0.0.0/8 }"
-	rendered := buildPFMainConfig("", "", inlineTables, "/tmp/nat.conf", "/tmp/traffic.conf")
+	rendered := buildPFMainConfig("", "", "", "", "", "", inlineTables, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if !strings.Contains(rendered, `table <sylve_obj_1_inet> persist { 10.0.0.0/8 }`) {
 		t.Fatalf("expected inline table definition, got:\n%s", rendered)
@@ -1123,8 +1272,8 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 }
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
-		tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
-	rendered := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
+	rendered := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
 		t.Fatalf("did not expect object-tables anchor when tables are empty, got:\n%s", rendered)
@@ -1137,8 +1286,8 @@ func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
 	}
 }
 
-func TestBuildPFMainConfigPlacesPreRulesAfterTranslationHooks(t *testing.T) {
-	rendered := buildPFMainConfig("pass in all keep state", "", "", "/tmp/nat.conf", "/tmp/traffic.conf")
+func TestBuildPFMainConfigPlacesPreRulesBeforeTranslationHooks(t *testing.T) {
+	rendered := buildPFMainConfig("pass in all keep state", "", "", "", "", "", "", "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	natHook := strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`)
 	preRule := strings.Index(rendered, "pass in all keep state")
@@ -1244,24 +1393,24 @@ func TestBuildFirewallObjectTablesDeterministicAndFiltered(t *testing.T) {
 }
 
 func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
-		rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
-			10: {
-				ObjectID:    10,
-				ObjectName:  "Portal IPv4/IPv6",
-				InetName:    "sylve_obj_10_inet",
-				InetValues:  []string{"10.0.0.2", "10.0.0.1"},
-				Inet6Name:   "sylve_obj_10_inet6",
-				Inet6Values: []string{"2001:db8::2"},
-			},
-			2: {
-				ObjectID:    2,
-				ObjectName:  "LAN Allow",
-				InetName:    "sylve_obj_2_inet",
-				InetValues:  []string{"192.168.1.1"},
-				Inet6Name:   "",
-				Inet6Values: nil,
-			},
-			},)
+	rendered := renderFirewallObjectTables(map[uint]firewallObjectTable{
+		10: {
+			ObjectID:    10,
+			ObjectName:  "Portal IPv4/IPv6",
+			InetName:    "sylve_obj_10_inet",
+			InetValues:  []string{"10.0.0.2", "10.0.0.1"},
+			Inet6Name:   "sylve_obj_10_inet6",
+			Inet6Values: []string{"2001:db8::2"},
+		},
+		2: {
+			ObjectID:    2,
+			ObjectName:  "LAN Allow",
+			InetName:    "sylve_obj_2_inet",
+			InetValues:  []string{"192.168.1.1"},
+			Inet6Name:   "",
+			Inet6Values: nil,
+		},
+	})
 
 	firstObjectIdx := strings.Index(rendered, "table <sylve_obj_2_inet>")
 	secondObjectIdx := strings.Index(rendered, "table <sylve_obj_10_inet>")
@@ -1315,7 +1464,7 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 	tmpDir := t.TempDir()
 	entriesDir := filepath.Join(tmpDir, "entries")
 
-		initial := map[uint]firewallObjectTable{
+	initial := map[uint]firewallObjectTable{
 		1: {
 			ObjectID:   1,
 			InetName:   "sylve_obj_1_inet",
@@ -1331,7 +1480,7 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-		updated := map[uint]firewallObjectTable{
+	updated := map[uint]firewallObjectTable{
 		2: {
 			ObjectID:   2,
 			InetName:   "sylve_obj_2_inet",
@@ -1347,11 +1496,11 @@ func TestWriteFirewallObjectTableEntriesCleansUpStale(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-		if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_1_inet")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(entriesDir, "sylve_obj_1_inet")); !os.IsNotExist(err) {
 		t.Fatalf("expected sylve_obj_1_inet to be removed, got err: %v", err)
 	}
 
-		data, err := os.ReadFile(filepath.Join(entriesDir, "sylve_obj_2_inet"))
+	data, err := os.ReadFile(filepath.Join(entriesDir, "sylve_obj_2_inet"))
 	if err != nil {
 		t.Fatalf("failed to read sylve_obj_2_inet: %v", err)
 	}
@@ -1369,7 +1518,7 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 	tmpDir := t.TempDir()
 	entriesDir := filepath.Join(tmpDir, "entries")
 
-		if err := os.MkdirAll(entriesDir, 0755); err != nil {
+	if err := os.MkdirAll(entriesDir, 0755); err != nil {
 		t.Fatalf("failed to create entries dir: %v", err)
 	}
 	stalePath := filepath.Join(entriesDir, "stale_file")
@@ -1377,12 +1526,168 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 		t.Fatalf("failed to write stale file: %v", err)
 	}
 
-		if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
+	if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatalf("expected stale_file to be removed, got err: %v", err)
+	}
+}
+
+func TestLoadFirewallObjectTableEntriesUsesReplace(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		return "", nil
+	}
+
+	tables := map[uint]firewallObjectTable{
+		2: {
+			ObjectID:    2,
+			InetName:    "sylve_obj_2_inet",
+			InetValues:  []string{"192.0.2.1"},
+			Inet6Name:   "sylve_obj_2_inet6",
+			Inet6Values: []string{"2001:db8::1"},
+		},
+	}
+
+	if err := (&Service{}).loadFirewallObjectTableEntries(tables); err != nil {
+		t.Fatalf("expected table entries to load, got: %v", err)
+	}
+
+	expected := []string{
+		"/sbin/pfctl -t sylve_obj_2_inet -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet"),
+		"/sbin/pfctl -t sylve_obj_2_inet6 -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet6"),
+	}
+	if !slices.Equal(calls, expected) {
+		t.Fatalf("unexpected pfctl calls:\nexpected: %v\nactual:   %v", expected, calls)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesPrunesStaleEntriesAfterENOMEM(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	replaceCalls := 0
+	sequence := []string{}
+	deletedEntries := ""
+	stalePath := ""
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command != "/sbin/pfctl" || len(args) < 4 {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+
+		operation := args[3]
+		sequence = append(sequence, operation)
+		switch operation {
+		case "replace":
+			replaceCalls++
+			if replaceCalls == 1 {
+				return "", errors.New("command execution failed: exit status 255, output: pfctl: Cannot allocate memory")
+			}
+			return "", nil
+		case "show":
+			return "  10.0.0.1\n  192.0.2.1\n10.0.0.9\n", nil
+		case "delete":
+			if len(args) != 6 || args[4] != "-f" {
+				t.Fatalf("unexpected delete arguments: %v", args)
+			}
+			stalePath = args[5]
+			data, err := os.ReadFile(stalePath)
+			if err != nil {
+				t.Fatalf("failed to read stale entries file: %v", err)
+			}
+			deletedEntries = string(data)
+			return "", nil
+		default:
+			t.Fatalf("unexpected pfctl operation: %s", operation)
+			return "", nil
+		}
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{
+		"10.0.0.0/24",
+		"10.0.0.1",
+		"10.0.0.2",
+	})
+	if err != nil {
+		t.Fatalf("expected memory recovery to succeed, got: %v", err)
+	}
+	if !slices.Equal(sequence, []string{"replace", "show", "delete", "replace"}) {
+		t.Fatalf("unexpected recovery sequence: %v", sequence)
+	}
+	if deletedEntries != "10.0.0.9\n192.0.2.1\n" {
+		t.Fatalf("expected only sorted stale entries to be deleted, got %q", deletedEntries)
+	}
+	if stalePath == "" {
+		t.Fatal("expected recovery to create a stale entries file")
+	}
+	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale entries file to be removed, got: %v", err)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesDoesNotPruneOtherErrors(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls++
+		if command != "/sbin/pfctl" || len(args) != 6 || args[3] != "replace" {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+		return "", errors.New("permission denied")
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
+	if err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("expected replace error to be returned, got: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected no destructive recovery for a non-memory error, got %d calls", calls)
+	}
+}
+
+func TestReplaceFirewallObjectTableEntriesRequiresStaleEntriesForRecovery(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls++
+		if command != "/sbin/pfctl" || len(args) < 4 {
+			t.Fatalf("unexpected command call: %s %v", command, args)
+		}
+		switch args[3] {
+		case "replace":
+			return "", errors.New("pfctl: Cannot allocate memory")
+		case "show":
+			return "10.0.0.1\n", nil
+		default:
+			t.Fatalf("unexpected recovery operation: %s", args[3])
+			return "", nil
+		}
+	}
+
+	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
+	if err == nil || !strings.Contains(err.Error(), "no_stale_table_entries_to_prune") {
+		t.Fatalf("expected recovery to preserve the original table, got: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected replace and show only, got %d calls", calls)
 	}
 }
 
@@ -2478,8 +2783,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 	}
 
 	err := svc.ReorderFirewallTrafficRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: ruleA.ID, Priority: 1010},
-		{ID: ruleB.ID, Priority: 1000},
+		{ID: ruleA.ID, Priority: 2},
+		{ID: ruleB.ID, Priority: 1},
 	})
 	if err != nil {
 		t.Fatalf("expected reorder to succeed, got: %v", err)
@@ -2494,7 +2799,7 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 		t.Fatalf("failed to reload rule B: %v", err)
 	}
 
-	if refreshedA.Priority != 1010 || refreshedB.Priority != 1000 {
+	if refreshedA.Priority != 2 || refreshedB.Priority != 1 {
 		t.Fatalf("unexpected reordered priorities: A=%d B=%d", refreshedA.Priority, refreshedB.Priority)
 	}
 }
@@ -2502,8 +2807,8 @@ func TestReorderFirewallTrafficRulesUpdatesPriorities(t *testing.T) {
 func TestReorderFirewallNATRulesRejectsDuplicateIDs(t *testing.T) {
 	svc := &Service{}
 	err := svc.ReorderFirewallNATRules([]networkServiceInterfaces.FirewallReorderRequest{
-		{ID: 1, Priority: 1000},
-		{ID: 1, Priority: 1010},
+		{ID: 1, Priority: 1},
+		{ID: 1, Priority: 2},
 	})
 	if err == nil {
 		t.Fatal("expected duplicate id validation error")
@@ -2974,45 +3279,149 @@ func TestEnsurePFKernelModuleLoadedReturnsErrorOnLoadFailure(t *testing.T) {
 	}
 }
 
-func TestEnsurePFLogInterfaceReadySkipsCreateWhenPresent(t *testing.T) {
+func disablePFLogRetryDelayForTest(t *testing.T) {
+	original := firewallPFLogRetryWait
+	firewallPFLogRetryWait = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() {
+		firewallPFLogRetryWait = original
+	})
+}
+
+func TestEnsurePFLogCaptureReadyUsesLegacyIfnetAndBringsPresentInterfaceUp(t *testing.T) {
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
 	})
 
+	up := false
 	calls := []string{}
 	firewallRunCommand = func(command string, args ...string) (string, error) {
 		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
+		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
-			return "pflog0: flags=...", nil
+			if up {
+				return "pflog0: flags=41<UP,RUNNING>", nil
+			}
+			return "pflog0: flags=0<>", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
 		}
 		t.Fatalf("unexpected command call: %s %v", command, args)
 		return "", nil
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(); err != nil {
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
 		t.Fatalf("expected pflog readiness check to succeed, got: %v", err)
 	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
+	}
 
-	if len(calls) != 1 {
-		t.Fatalf("expected one ifconfig check call, got %d calls: %v", len(calls), calls)
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+		"/sbin/ifconfig pflog0",
+		"/sbin/ifconfig pflog0 up",
+		"/sbin/ifconfig pflog0",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected pflog readiness calls: got %v want %v", calls, expected)
 	}
 }
 
-func TestEnsurePFLogInterfaceReadyCreatesWhenMissing(t *testing.T) {
+func TestEnsurePFLogCaptureReadyWaitsForAutomaticLegacyInterface(t *testing.T) {
+	disablePFLogRetryDelayForTest(t)
 	original := firewallRunCommand
 	t.Cleanup(func() {
 		firewallRunCommand = original
 	})
 
+	checks := 0
+	up := false
+	created := false
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
+		}
+		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
+			checks++
+			if checks < 3 {
+				return "", errors.New("interface does not exist")
+			}
+			if up {
+				return "pflog0: flags=41<UP,RUNNING>", nil
+			}
+			return "pflog0: flags=0<>", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "create" {
+			created = true
+			return "", nil
+		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	svc := &Service{}
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
+		t.Fatalf("expected delayed automatic pflog interface to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
+	}
+	if created {
+		t.Fatal("automatic pflog interface appeared during wait but create was still called")
+	}
+}
+
+func TestEnsurePFLogCaptureReadyLoadsModuleAndCreatesMissingLegacyInterface(t *testing.T) {
+	disablePFLogRetryDelayForTest(t)
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	moduleLoaded := false
 	exists := false
+	up := false
 	calls := []string{}
 	firewallRunCommand = func(command string, args ...string) (string, error) {
 		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			if moduleLoaded {
+				return "pflog loaded", nil
+			}
+			return "", errors.New("module not found")
+		}
+		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pflog" {
+			moduleLoaded = true
+			return "", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: unknown oid 'net.pflog.if_count'")
+		}
 		if command == "/sbin/ifconfig" && len(args) == 1 && args[0] == "pflog0" {
 			if exists {
-				return "pflog0: flags=...", nil
+				if up {
+					return "pflog0: flags=41<UP,RUNNING>", nil
+				}
+				return "pflog0: flags=0<>", nil
 			}
 			return "", errors.New("No Such Device")
 		}
@@ -3020,17 +3429,289 @@ func TestEnsurePFLogInterfaceReadyCreatesWhenMissing(t *testing.T) {
 			exists = true
 			return "pflog0", nil
 		}
+		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "pflog0" && args[1] == "up" {
+			up = true
+			return "", nil
+		}
 		t.Fatalf("unexpected command call: %s %v", command, args)
 		return "", nil
 	}
 
 	svc := &Service{}
-	if err := svc.ensurePFLogInterfaceReady(); err != nil {
+	backend, err := svc.ensurePFLogCaptureReady(context.Background())
+	if err != nil {
 		t.Fatalf("expected pflog create path to succeed, got: %v", err)
 	}
+	if backend != pfLogCaptureBackendIfnet {
+		t.Fatalf("expected legacy ifnet backend, got %d", backend)
+	}
 
-	if len(calls) < 3 {
-		t.Fatalf("expected ifconfig check + create + verify calls, got %d calls: %v", len(calls), calls)
+	for _, expected := range []string{
+		"/sbin/kldload -n pflog",
+		"/sbin/ifconfig pflog0 create",
+		"/sbin/ifconfig pflog0 up",
+	} {
+		if !slices.Contains(calls, expected) {
+			t.Fatalf("expected call %q, got: %v", expected, calls)
+		}
+	}
+}
+
+func TestEnsurePFLogCaptureReadyRejectsUnverifiedModuleLoad(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	statCalls := 0
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			statCalls++
+			return "", errors.New("module not found")
+		}
+		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pflog" {
+			return "", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed_to_verify_pflog_kernel_module") {
+		t.Fatalf("expected module verification failure, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after module failure, got %d", backend)
+	}
+	if statCalls != 2 {
+		t.Fatalf("expected pre-load and post-load module checks, got %d", statCalls)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyUsesBPFTapWithoutIfconfig(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "8\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err != nil {
+		t.Fatalf("expected BPF tap readiness check to succeed, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendBPFTap {
+		t.Fatalf("expected BPF tap backend, got %d", backend)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap readiness calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyRestoresDisabledBPFTap(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	tapCount := 0
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return fmt.Sprintf("%d\n", tapCount), nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 1 && args[0] == pflogTapCountOID+"=1" {
+			tapCount = 1
+			return "net.pflog.if_count: 0 -> 1\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err != nil {
+		t.Fatalf("expected disabled BPF tap to be restored, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendBPFTap {
+		t.Fatalf("expected BPF tap backend, got %d", backend)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+		"/sbin/sysctl net.pflog.if_count=1",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap restore calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyDoesNotTreatSysctlFailureAsLegacy(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "", errors.New("sysctl: permission denied")
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "failed_to_detect_pflog_capture_backend") {
+		t.Fatalf("expected backend detection failure, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after detection failure, got %d", backend)
+	}
+}
+
+func TestEnsurePFLogCaptureReadyRejectsMalformedBPFTapCount(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "eight\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	backend, err := (&Service{}).ensurePFLogCaptureReady(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "invalid_pflog_bpf_tap_count") {
+		t.Fatalf("expected malformed tap count failure, got: %v", err)
+	}
+	if backend != pfLogCaptureBackendUnknown {
+		t.Fatalf("expected unknown backend after malformed tap count, got %d", backend)
+	}
+}
+
+func TestPflogAlreadyExistsErrorDoesNotAcceptMissingInterface(t *testing.T) {
+	if isPflogAlreadyExistsError(errors.New("interface does not exist")) {
+		t.Fatal("missing-interface error was incorrectly treated as already existing")
+	}
+	if !isPflogAlreadyExistsError(errors.New("SIOCIFCREATE2: File exists")) {
+		t.Fatal("FreeBSD file-exists error was not recognized")
+	}
+}
+
+func TestUnknownPFLogTapCountOIDErrorDetection(t *testing.T) {
+	if !isUnknownPFLogTapCountOIDError(errors.New("sysctl: unknown oid 'net.pflog.if_count'")) {
+		t.Fatal("FreeBSD unknown-OID error was not recognized")
+	}
+	if isUnknownPFLogTapCountOIDError(errors.New("sysctl: permission denied")) {
+		t.Fatal("non-OID sysctl error was incorrectly treated as a legacy kernel")
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesDetectsDownInterface(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/ifconfig" {
+			return "pflog0: flags=0<>", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendIfnet)
+	if err == nil || !strings.Contains(err.Error(), "pflog_interface_down") {
+		t.Fatalf("expected down-interface health failure, got: %v", err)
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesUsesBPFTapCount(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	calls := []string{}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls = append(calls, command+" "+strings.Join(args, " "))
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "8\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	if err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendBPFTap); err != nil {
+		t.Fatalf("expected BPF tap health check to succeed, got: %v", err)
+	}
+
+	expected := []string{
+		"/sbin/kldstat -m pflog",
+		"/sbin/sysctl -n net.pflog.if_count",
+	}
+	if fmt.Sprint(calls) != fmt.Sprint(expected) {
+		t.Fatalf("unexpected BPF tap health calls: got %v want %v", calls, expected)
+	}
+}
+
+func TestVerifyPFLogCapturePrerequisitesDetectsMissingBPFTap(t *testing.T) {
+	original := firewallRunCommand
+	t.Cleanup(func() {
+		firewallRunCommand = original
+	})
+
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pflog" {
+			return "pflog loaded", nil
+		}
+		if command == "/sbin/sysctl" && len(args) == 2 && args[0] == "-n" && args[1] == pflogTapCountOID {
+			return "0\n", nil
+		}
+		t.Fatalf("unexpected command call: %s %v", command, args)
+		return "", nil
+	}
+
+	err := verifyPFLogCapturePrerequisites(pfLogCaptureBackendBPFTap)
+	if err == nil || !strings.Contains(err.Error(), "pflog_bpf_tap_missing") {
+		t.Fatalf("expected missing BPF tap health failure, got: %v", err)
 	}
 }
 
@@ -3123,7 +3804,7 @@ func TestSampleFirewallCountersSkipsWhenFirewallServiceDisabled(t *testing.T) {
 	}
 }
 
-func TestPFConfigValidation(t *testing.T) {
+func TestIntegrationPFConfigValidation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping pfctl integration test in short mode")
 	}
@@ -3132,6 +3813,26 @@ func TestPFConfigValidation(t *testing.T) {
 	}
 
 	svc := &Service{}
+
+	t.Run("traffic_tcp_udp_with_ports", func(t *testing.T) {
+		rules := []networkModels.FirewallTrafficRule{
+			{
+				ID:               120,
+				Name:             "DNS both transports",
+				Enabled:          true,
+				Priority:         1,
+				Action:           "pass",
+				Direction:        "out",
+				Protocol:         "tcp_udp",
+				Family:           "inet",
+				EgressInterfaces: []string{"em0"},
+				SourceRaw:        "192.0.2.0/24",
+				DestRaw:          "any",
+				DstPortsRaw:      "53",
+			},
+		}
+		validateGeneratedConfig(t, svc, nil, rules, "", "")
+	})
 
 	t.Run("snat_with_object_table_source", func(t *testing.T) {
 		rules := []networkModels.FirewallNATRule{
@@ -3266,15 +3967,15 @@ func TestPFConfigValidation(t *testing.T) {
 		}
 		trafficRules := []networkModels.FirewallTrafficRule{
 			{
-				ID:          70,
-				Name:        "Pass LAN out",
-				Enabled:     true,
-				Priority:    100,
-				Action:      "pass",
-				Quick:       true,
-				Family:      "inet",
-				Protocol:    "any",
-				Direction:   "out",
+				ID:               70,
+				Name:             "Pass LAN out",
+				Enabled:          true,
+				Priority:         100,
+				Action:           "pass",
+				Quick:            true,
+				Family:           "inet",
+				Protocol:         "any",
+				Direction:        "out",
 				EgressInterfaces: []string{"igb0"},
 				SourceObj: &networkModels.Object{
 					ID:   30,
@@ -3391,7 +4092,7 @@ func TestPFConfigValidation(t *testing.T) {
 		}
 		tables := buildFirewallObjectTables(nil, rules)
 		tablesRendered := renderFirewallObjectTables(tables)
-		config := buildPFMainConfig("", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
+		config := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 		if !strings.Contains(config, `table <sylve_obj_8_inet> persist`) {
 			t.Fatal("expected table definition in pf.conf before " +
 				"nat-anchor (tables must be top-level for pf section ordering)")
@@ -3417,9 +4118,9 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-		defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir)
 
-		tablesRendered := renderFirewallObjectTables(tables)
+	tablesRendered := renderFirewallObjectTables(tables)
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
 	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")
@@ -3431,7 +4132,7 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 		t.Fatalf("failed to write traffic-rules.conf: %v", err)
 	}
 
-	config := buildPFMainConfig(preRules, postRules, tablesRendered, natPath, trafficPath)
+	config := buildPFMainConfig(preRules, "", "", "", "", postRules, tablesRendered, natPath, trafficPath)
 	configPath := filepath.Join(tmpDir, "pf.conf")
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		t.Fatalf("failed to write pf.conf: %v", err)

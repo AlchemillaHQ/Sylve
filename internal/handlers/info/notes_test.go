@@ -32,9 +32,9 @@ func newInfoNotesRouter(infoService *info.Service) *gin.Engine {
 	r := gin.New()
 	r.GET("/info/notes", NotesHandler(infoService))
 	r.POST("/info/notes", NotesHandler(infoService))
+	r.DELETE("/info/notes", NotesHandler(infoService))
 	r.PUT("/info/notes/:id", NotesHandler(infoService))
 	r.DELETE("/info/notes/:id", NotesHandler(infoService))
-	r.POST("/info/notes/bulk-delete", NotesHandler(infoService))
 	return r
 }
 
@@ -152,8 +152,14 @@ func TestInfoNotesHandlerUpdate(t *testing.T) {
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodPut, "/info/notes/99999",
 		[]byte(`{"title":"Valid Title","content":"Valid Content"}`))
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for non-existent, got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-existent, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = testutil.PerformJSONRequest(t, r, http.MethodPut, "/info/notes/-1",
+		[]byte(`{"title":"Valid Title","content":"Valid Content"}`))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for negative ID, got %d: %s", rr.Code, rr.Body.String())
 	}
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodPut, path,
@@ -185,13 +191,18 @@ func TestInfoNotesHandlerDelete(t *testing.T) {
 	}
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodDelete, path, nil)
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 for already deleted (fetch fails), got %d: %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for already deleted, got %d: %s", rr.Code, rr.Body.String())
 	}
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodDelete, "/info/notes/abc", nil)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for bad ID, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	rr = testutil.PerformJSONRequest(t, r, http.MethodDelete, "/info/notes/-1", nil)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for negative ID, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -204,9 +215,8 @@ func TestInfoNotesHandlerBulkDelete(t *testing.T) {
 	n2, _ := svc.AddNote("N2", "C2")
 	n3, _ := svc.AddNote("N3", "C3")
 
-	ids := []int{int(n1.ID), int(n2.ID)}
-	body, _ := json.Marshal(map[string][]int{"ids": ids})
-	rr := testutil.PerformJSONRequest(t, r, http.MethodPost, "/info/notes/bulk-delete", body)
+	path := "/info/notes?ids=" + strconv.Itoa(int(n1.ID)) + "&ids=" + strconv.Itoa(int(n2.ID))
+	rr := testutil.PerformJSONRequest(t, r, http.MethodDelete, path, nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -227,9 +237,25 @@ func TestInfoNotesHandlerBulkDelete(t *testing.T) {
 		t.Fatalf("expected note 3 to remain, got ID %d", notes[0].ID)
 	}
 
-	rr = testutil.PerformJSONRequest(t, r, http.MethodPost, "/info/notes/bulk-delete",
-		[]byte(`{}`))
+	rr = testutil.PerformJSONRequest(t, r, http.MethodDelete, "/info/notes", nil)
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing ids field, got %d: %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 400 for missing ids query, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	for _, invalidPath := range []string{
+		"/info/notes?ids=0",
+		"/info/notes?ids=-1",
+		"/info/notes?ids=invalid",
+	} {
+		rr = testutil.PerformJSONRequest(t, r, http.MethodDelete, invalidPath, nil)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d: %s", invalidPath, rr.Code, rr.Body.String())
+		}
+	}
+
+	legacyBody, _ := json.Marshal(map[string][]int{"ids": []int{int(n3.ID)}})
+	rr = testutil.PerformJSONRequest(t, r, http.MethodPost, "/info/notes/bulk-delete", legacyBody)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected removed bulk POST route to return 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }

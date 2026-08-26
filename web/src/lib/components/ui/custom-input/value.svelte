@@ -75,14 +75,11 @@
 					>
 						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
 					</Tooltip.Trigger>
-	
-						<Tooltip.Content
-							class="text-pretty break-words"
-							style="max-width: 250px"
-						>
-							{hint}
-						</Tooltip.Content>
-					</Tooltip.Root>
+
+					<Tooltip.Content class="text-pretty break-words" style="max-width: 250px">
+						{hint}
+					</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
 
 			{#if topRightButton}

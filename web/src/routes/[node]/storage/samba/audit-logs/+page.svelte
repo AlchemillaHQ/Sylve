@@ -1,13 +1,10 @@
 <script lang="ts">
 	import TreeTable from '$lib/components/custom/TreeTableRemote.svelte';
-	import { storage } from '$lib';
 	import type { Column } from '$lib/types/components/tree-table';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import type { Dataset } from '$lib/types/zfs/dataset';
-	import { sha256 } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
-	import { onMount } from 'svelte';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
@@ -16,6 +13,19 @@
 	}
 
 	let { data }: { data: Data } = $props();
+
+	const actionPresentation: Record<string, { icon: string; label: string }> = {
+		connect: { icon: 'mdi:lan-connect', label: 'Connect' },
+		disconnect: { icon: 'mdi:lan-disconnect', label: 'Disconnect' },
+		create_file: { icon: 'mdi:file-plus', label: 'Create File' },
+		mkdirat: { icon: 'mdi:folder-plus-outline', label: 'Create Directory' },
+		unlinkat: { icon: 'mdi:delete-outline', label: 'Delete File/Directory' },
+		renameat: { icon: 'mdi:rename-box-outline', label: 'Rename' },
+		openat: { icon: 'mdi:file-lock-open-outline', label: 'Open File' },
+		close: { icon: 'mdi:file-lock-outline', label: 'Close File' },
+		read: { icon: 'mdi:file-eye-outline', label: 'Read File' },
+		write: { icon: 'mdi:file-edit-outline', label: 'Write File' }
+	};
 
 	function pathFormatter(cell: CellComponent) {
 		const row = cell.getRow();
@@ -32,26 +42,26 @@
 	}
 
 	function actionFormatter(cell: CellComponent) {
-		const action = cell.getValue();
-		switch (action) {
-			case 'mkdirat':
-				return renderWithIcon('mingcute:new-folder-line', 'Create Directory');
-			case 'unlinkat':
-				return renderWithIcon('mdi:delete-outline', 'Delete (File/Directory)');
-			case 'create_file':
-				return renderWithIcon('mdi:file-plus', 'Create File');
-			case 'renameat':
-				return renderWithIcon('mdi:rename', 'Rename');
-			default:
-				return renderWithIcon('mdi:file', action);
-		}
+		const action = String(cell.getValue() ?? '');
+		const presentation = actionPresentation[action];
+		return presentation
+			? renderWithIcon(presentation.icon, presentation.label)
+			: renderWithIcon('mdi:file-question-outline', action || 'Unknown');
 	}
 
 	let table = $derived({
 		columns: [
 			{ field: 'id', title: 'ID', visible: false },
 			{ field: 'share', title: 'Share' },
+			{ field: 'user', title: 'User' },
+			{ field: 'client', title: 'Client' },
+			{ field: 'ip', title: 'Client IP' },
 			{ field: 'action', title: 'Action', formatter: actionFormatter },
+			{
+				field: 'occurrences',
+				title: 'Count',
+				formatter: (cell: CellComponent) => cell.getValue() || 1
+			},
 			{
 				field: 'path',
 				title: 'Path',
@@ -74,23 +84,11 @@
 		rows: []
 	});
 
-	let hash = $state('');
 	let reload = $state(false);
-
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
-	});
 </script>
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-full flex-col overflow-hidden">
-		{#if hash}
-			<TreeTable
-				name="smb-audit-log-tt"
-				data={table}
-				ajaxURL="/api/samba/audit-logs?hash={hash}"
-				bind:reload
-			/>
-		{/if}
+		<TreeTable name="smb-audit-log-tt" data={table} ajaxURL="/api/samba/audit-logs" bind:reload />
 	</div>
 </div>

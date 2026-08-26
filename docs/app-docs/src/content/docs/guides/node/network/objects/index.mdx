@@ -1,50 +1,46 @@
 ---
-title:  Objects
-description: Host(s), Network(s), MAC(s) and DUID(s) you can use throughout the application
+title: Objects
+description: Define reusable network values once, then use them across Sylve.
 ---
 
-Network Objects are somewhat controversial in the Sylve community. They are a way to abstract away the details of your network configuration and allow you to use simple names instead of complex configurations throughout the application.
+Network objects are named, reusable values for addresses, networks, ports, identities, and remote address sets. Create an object once, then select it wherever Sylve offers that type instead of repeating raw values in firewall rules, static leases, switches, routes, jails, or VMs.
 
-The idea is that you can define a Network Object for everything you need to reference in the application, and then use those objects instead of the raw values. This can make your configuration more readable and easier to manage, and more importantly if you need to change something, you can change it in one place instead of having to find and replace it throughout your configuration.
+![The Network Objects table](./table.png)
 
-As an example we will be making 4 objects, namely:
+## Object types
 
-<div class="flex justify-center">
+| Type | Example | Used by |
+| --- | --- | --- |
+| **Host(s)** | `192.0.2.25` | Firewall addresses, routes, jail addresses and gateways, switches, DHCP lease IPs. |
+| **Network(s)** | `10.30.40.1/24` | Firewall addresses, route destinations, and switch networks. |
+| **Port(s)** | `443`, `8000:8010` | Firewall traffic and NAT rule ports. |
+| **MAC(s)** | `02:00:00:00:00:25` | VM and jail NICs, DHCP static leases. |
+| **DUID(s)** | `00:04:...` | DHCPv6 static leases. |
+| **FQDN(s)** | `updates.example.net` | Firewall address matching; resolved and refreshed automatically. |
+| **List(s)** | `https://example.net/deny.txt` | Firewall address matching; downloaded and refreshed automatically. |
 
-| Name | Value |
-|---|---|
-| LAN Network | 192.168.80.1/24 |
-| LAN Gateway | 192.168.80.1 |
-| LAN Network V6 | fd18:8080::/64 |
-| LAN Gateway V6 | fd18:8080::1 |
+## Network(s) means CIDR
 
-</div>
+A **Network(s)** value is always a CIDR block, not a host address. Use **Host(s)** for `10.30.40.25`; use **Network(s)** for `10.30.40.1/24`. The suffix defines the mask: `/24` covers 256 IPv4 addresses, while `2001:db8:30::1/64` is an IPv6 LAN prefix. A Host or Network object cannot mix IPv4 and IPv6 values.
 
-And then we will use them in the next section of the guide which is Switch creation.
-
-## Creating a Subnet Network Object
-
-Just like we did with other additions to the table, we will click on the "New" button and give a name for our Object, in this case it will be "LAN Network", and then in the second dropdown we pick "Network(s)" as we need to define a subnet.
-
-The 3rd box is what we call a combobox, you can either select values from it if any or you could just add your own entries to it. In this case we need to add `192.168.80.1/24`. After all that's done it will look something like this:
-
-![Add - Subnet Network Object](./network-add.png)
-
-## Creating a Host Network Object
-
-Similar to a Subnet Object, we will click on the "New" button and give a name for our Object, in this case it will be "LAN Gateway", and then in the second dropdown we pick "Host(s)" as we need to define a host.
-
-In the 3rd box we will add `192.168.80.1`. After all that's done it will look something like this:
-
-![Add - Host Network Object](./host-add.png)
-
-Now after repeating the process for the IPv6 objects as well your table should look something like this:
-
-:::note
-You can click on an object's **data** in the network objects table to copy it to clipboard.
+:::note[VNET jail addressing]
+A VNET jail needs one network and one gateway for each address family it uses. The CIDR suffix on the network value, such as `/24` or `/48`, includes the subnet mask, so Sylve can infer the network boundary without a separate subnet-mask field. For IPv4, select a network such as **Caddy IPv4** (`192.168.12.100/24`) and a gateway such as **LAN Gateway** (`192.168.12.1`). For IPv6, select a network such as **Caddy IPv6** (`fdc0:ffee:cafe::100/48`) and a gateway such as **LAN Gateway v6** (`fdc0:ffee:cafe::1`).
 :::
 
-![Table - Network Objects](./table.png)
+## Create an object
 
-Now in the next sections we will see how these objects are actualy used.
+Choose **Network → Objects → New**, give the object a purpose-based name, select a type, add its values, and click **Create**. Each value is a separate entry. A Port entry is one number or inclusive range, such as `443` or `8000:8010`.
 
+![Creating a Network object](./network-add.png)
+
+Example objects: `Example Jail` as Network(s) `10.30.40.1/24`, `Example Host` as Host(s) `10.30.40.25`, `Example Service Port` as Port(s) `8181`, `Example Gateway MAC` as MAC(s), `Example DHCP DUID` as DUID(s), `Example Service DNS` as FQDN(s), and `Example Remote List` as List(s).
+
+![Creating a Host object](./host-add.png)
+
+FQDN and List objects resolve or download their data on creation. The **Refresh** column records success, the last refresh time, or an error. List sources must be HTTP(S) and cannot include credentials.
+
+## Edit, delete, and bulk delete
+
+Select one row to reveal **Edit** and **Delete**. Editing is the right way to change a value in one place, but changing the type of an in-use object is rejected. DHCP leases require exactly one Host, MAC, or DUID value; route objects also require one value.
+
+Select multiple unused rows to reveal **Bulk Delete**. Sylve checks every selected object first and blocks deletion if any is used by a firewall rule, DHCP lease, VM, jail, switch, or static route. Bulk deletion is all-or-nothing.

@@ -1,0 +1,257 @@
+---
+title: Lifecycle
+description: Start, reboot, gracefully shut down, and force-stop virtual machines with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+VM lifecycle commands submit work to Sylve's lifecycle queue. The initial response confirms that the action was accepted and provides a task ID. Inspect that task to determine whether the hypervisor operation eventually succeeded or failed.
+
+## Inspect the VM first
+
+List all VMs or inspect a single RID:
+
+```bash
+doas sylve vms list
+doas sylve vms get --rid 301
+```
+
+Use JSON when a script needs the complete configuration and runtime timestamps:
+
+```bash
+doas sylve vms get --rid 301 --json
+```
+
+The interactive console uses a positional RID:
+
+```text
+vms list
+vms get 301
+vms get 301 --json
+```
+
+## Understand lifecycle tasks
+
+All four VM actions return immediately after queuing a lifecycle task:
+
+| Action | Direct CLI | Interactive console | Behavior |
+| --- | --- | --- | --- |
+| Start | `sylve vms start --rid 301` | `vms start 301` | Starts a powered-off VM. |
+| Reboot | `sylve vms reboot --rid 301` | `vms reboot 301` | Requests a hypervisor reboot of a running VM. |
+| Shutdown | `sylve vms shutdown --rid 301` | `vms shutdown 301` | Requests a graceful guest shutdown, then force-stops the VM if the configured wait expires. |
+| Stop | `sylve vms stop --rid 301` | `vms stop 301` | Force-stops the VM without waiting for guest cooperation. |
+
+Task status moves through `queued`, `running`, and then `success` or `failed`. A successful command submission does not by itself mean the VM action has finished.
+
+:::note[One active task per VM]
+Sylve rejects a new lifecycle action while another task is queued or running for the same VM. The exception is `stop` during an active `shutdown`: the stop request marks the shutdown task for a force-stop override.
+:::
+
+## Start a VM
+
+Start VM `301` and request a stable JSON response:
+
+```bash
+doas sylve vms start --rid 301 --json
+```
+
+The real response from Loki was:
+
+```json
+{
+  "rid": 301,
+  "action": "start",
+  "outcome": "queued",
+  "taskId": 26
+}
+```
+
+The response records the requested action and task ID. It does not wait for bhyve startup to complete.
+
+### Follow the task
+
+Inspect the returned task:
+
+```bash
+doas sylve tasks get --id 26 --json
+```
+
+Loki reported:
+
+```json
+{
+  "id": 26,
+  "guestType": "vm",
+  "guestId": 301,
+  "action": "start",
+  "source": "user",
+  "status": "success",
+  "requestedBy": "console",
+  "message": "completed",
+  "error": "",
+  "overrideRequested": false
+}
+```
+
+The actual response also includes creation, start, update, and finish timestamps. Check `status` and `error` rather than assuming that a queued task succeeded.
+
+List only active tasks for this VM:
+
+```bash
+doas sylve tasks active \
+  --guest-type vm \
+  --guest-id 301 \
+  --json
+```
+
+After task `26` completed, the result was an empty array:
+
+```json
+[]
+```
+
+## Reboot a running VM
+
+Request a reboot with:
+
+```bash
+doas sylve vms reboot --rid 301 --json
+```
+
+The request on Loki produced task `27`:
+
+```json
+{
+  "rid": 301,
+  "action": "reboot",
+  "outcome": "queued",
+  "taskId": 27
+}
+```
+
+Reboot checks the VM's replication ownership and PCI assignments before asking libvirt to reboot the domain. A failed preflight is recorded on the lifecycle task.
+
+## Choose shutdown or stop
+
+Prefer graceful shutdown for a normally functioning guest:
+
+```bash
+doas sylve vms shutdown --rid 301 --json
+```
+
+The request returns a task immediately:
+
+```json
+{
+  "rid": 301,
+  "action": "shutdown",
+  "outcome": "queued",
+  "taskId": 28
+}
+```
+
+While Sylve waited for the guest, task `28` appeared as `running` in `tasks active`. The installer did not shut itself down, so the configured ten-second wait expired and Sylve force-stopped the domain. The same shutdown task then completed successfully.
+
+:::caution[Shutdown has a forced fallback]
+`shutdown` begins with a graceful libvirt request, but it does not wait indefinitely. If the VM is still running when its shutdown wait time expires, Sylve force-stops it. Increase the configured wait when a guest needs more time to finish filesystem or application shutdown.
+:::
+
+Use force-stop when the guest cannot shut down or when an active shutdown must be overridden:
+
+```bash
+doas sylve vms stop --rid 301 --json
+```
+
+:::caution[Force-stop can lose guest data]
+`stop` destroys the running domain without waiting for the guest operating system. Use it when graceful shutdown is unavailable, not as the normal way to turn off a healthy VM.
+:::
+
+Calling `stop` for an already-stopped VM is safe and idempotent. Loki accepted task `29`, completed it successfully, and left VM `301` powered off.
+
+## Review lifecycle history
+
+Show recent VM tasks, optionally filtered to one RID:
+
+```bash
+doas sylve tasks recent \
+  --guest-type vm \
+  --guest-id 301 \
+  --limit 10
+```
+
+The real sequence used for this guide was:
+
+```text
+TASK ID    GUEST    GUEST ID    ACTION      STATUS     CREATED
+───────────────────────────────────────────────────────────────────────────
+29         vm       301         stop        success    2026-08-22T22:03:42Z
+28         vm       301         shutdown    success    2026-08-22T22:03:29Z
+27         vm       301         reboot      success    2026-08-22T22:03:17Z
+26         vm       301         start       success    2026-08-22T22:03:02Z
+```
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-lifecycle.cast"
+  title="A real Sylve 0.3.0 lifecycle sequence on Loki, including task inspection and recent history."
+/>
+
+## Use lifecycle commands in the console
+
+The console places the task or VM identifier immediately after the leaf command:
+
+```text
+vms start 301 --json
+tasks get 26 --json
+tasks active --guest-type vm --guest-id 301 --json
+vms reboot 301 --json
+vms shutdown 301 --json
+tasks recent --guest-type vm --guest-id 301 --limit 10
+```
+
+Do not include `sylve` or `doas` after entering `sylve --console`.
+
+## Wait for completion in a script
+
+Automation should retain the returned task ID and poll `tasks get`. Treat `success` and `failed` as terminal states:
+
+```bash
+result="$(doas sylve vms start --rid 301 --json)" || exit 1
+task_id="$(printf '%s\n' "$result" | jq -r '.taskId')"
+
+while :; do
+  task="$(doas sylve tasks get --id "$task_id" --json)" || exit 1
+  status="$(printf '%s\n' "$task" | jq -r '.status')"
+
+  case "$status" in
+    success)
+      break
+      ;;
+    failed)
+      printf '%s\n' "$task" >&2
+      exit 1
+      ;;
+    queued|running)
+      sleep 1
+      ;;
+    *)
+      printf 'Unexpected task status: %s\n' "$status" >&2
+      exit 1
+      ;;
+  esac
+done
+```
+
+This pattern distinguishes successful submission from successful execution and preserves the task's error details when an operation fails.
+
+## Common failure conditions
+
+A lifecycle task can fail after it was queued. Common causes include:
+
+- The requested RID does not exist.
+- Another lifecycle or migration task is active for the VM.
+- The node does not own the VM's replication lease.
+- A PCI device required for startup is unavailable or already in use.
+- libvirt or bhyve cannot perform the requested transition.
+- The hypervisor returns an error while requesting or monitoring a graceful shutdown.
+
+Inspect the task's `error` and `message` fields for the service's precise failure reason. Configuration and hardware changes generally require a powered-off VM, so confirm task completion before continuing to the storage, networking, or configuration guides.

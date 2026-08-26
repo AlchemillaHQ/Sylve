@@ -1,27 +1,57 @@
-import { getRAMInfo } from '$lib/api/info/ram.js';
+import { getRAMInfoResult } from '$lib/api/info/ram.js';
 import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
-import { getVMs } from '$lib/api/vm/vm';
+import { getVmByIdResult, getVMsResult } from '$lib/api/vm/vm';
+import type { APIResponse } from '$lib/types/common';
 import { SEVEN_DAYS } from '$lib/utils';
-import { cachedFetch } from '$lib/utils/http';
+import { cachedFetch, isAPIResponse } from '$lib/utils/http';
+import { error } from '@sveltejs/kit';
 
 export async function load({ params }) {
-    const rid = Number(params.rid);
-    const cacheDuration = SEVEN_DAYS;
+	const rid = Number(params.rid);
+	const node = params.node;
+	if (!Number.isSafeInteger(rid) || rid <= 0) {
+		error(404, 'Invalid VM RID');
+	}
 
-    const [vms, ram, pciDevices, pptDevices] = await Promise.all([
-        cachedFetch('vm-list', async () => await getVMs(), cacheDuration),
-        cachedFetch('ramInfo', async () => await getRAMInfo('current'), cacheDuration),
-        cachedFetch('pciDevices', async () => await getPCIDevices(), cacheDuration),
-        cachedFetch('pptDevices', async () => await getPPTDevices(), cacheDuration)
-    ]);
+	const [vmsResult, vmResult, ramResult, pciDevicesResult, pptDevicesResult] = await Promise.all([
+		cachedFetch('vm-list', async () => getVMsResult({ hostname: node }), SEVEN_DAYS, false, node),
+		cachedFetch(
+			`vm-${rid}`,
+			async () => getVmByIdResult(rid, { hostname: node }),
+			SEVEN_DAYS,
+			false,
+			node
+		),
+		cachedFetch(
+			'system-ram-info',
+			async () => getRAMInfoResult({ hostname: node }),
+			SEVEN_DAYS,
+			false,
+			node
+		),
+		cachedFetch('pciDevices', async () => getPCIDevices(node), SEVEN_DAYS, false, node),
+		cachedFetch('pptDevices', async () => getPPTDevices(node), SEVEN_DAYS, false, node)
+	]);
 
-    const vm = vms.find((vm) => vm.rid === rid);
+	if (isAPIResponse(vmResult)) {
+		const vmError = Array.isArray(vmResult.error) ? vmResult.error.join(', ') : vmResult.error;
+		const detail = vmError || vmResult.message || 'Failed to load virtual machine';
+		const notFound = /(?:not[_ ]found|record not found)/i.test(detail);
+		error(notFound ? 404 : 502, detail);
+	}
 
-    return {
-        vm,
-        vms,
-        ram,
-        pciDevices: pciDevices || [],
-        pptDevices: pptDevices || []
-    };
+	const loadErrors = [vmsResult, ramResult, pciDevicesResult, pptDevicesResult].filter(
+		isAPIResponse
+	) as APIResponse[];
+
+	return {
+		node,
+		rid,
+		vm: vmResult,
+		vms: isAPIResponse(vmsResult) ? [vmResult] : vmsResult,
+		ram: isAPIResponse(ramResult) ? { total: 0, free: 0, usedPercent: 0 } : ramResult,
+		pciDevices: isAPIResponse(pciDevicesResult) ? [] : pciDevicesResult,
+		pptDevices: isAPIResponse(pptDevicesResult) ? [] : pptDevicesResult,
+		loadErrors
+	};
 }

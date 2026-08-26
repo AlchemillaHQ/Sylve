@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -243,10 +244,6 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	return false
 }
 
-func (s *Service) getClusterToken(hostname string) (string, error) {
-	return s.AuthService.CreateClusterJWT(0, hostname, "", "")
-}
-
 func (s *Service) GetNodeInfo(host string, port int, clusterToken string) (infoServiceInterfaces.NodeInfo, error) {
 	var nodeInfo infoServiceInterfaces.NodeInfo
 
@@ -418,7 +415,11 @@ func (s *Service) PopulateClusterNodes() error {
 		return err
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	serviceReadToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
+	if err != nil {
+		return err
+	}
+	internalControlToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
 	if err != nil {
 		return err
 	}
@@ -429,7 +430,7 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 	cfg := cfgFuture.Configuration()
 
-	current := s.collectCurrentClusterInfo(cfg, clusterToken)
+	current := s.collectCurrentClusterInfo(cfg, serviceReadToken)
 
 	changed, err := s.persistCurrentClusterNodes(current)
 	if err != nil {
@@ -490,7 +491,7 @@ func (s *Service) PopulateClusterNodes() error {
 		}
 	}
 
-	s.fanOutHealthSync(syncPayload, clusterToken, cfg, "PopulateClusterNodes")
+	s.fanOutHealthSync(syncPayload, internalControlToken, cfg, "PopulateClusterNodes")
 
 	return nil
 }
@@ -609,7 +610,7 @@ func (s *Service) fastStatusCheckFollower(leaderID raft.ServerID, peerIDs []stri
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: non-leader failed to get cluster token")
 		return
@@ -705,7 +706,7 @@ func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]s
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateClusterJWT(0, selfHostname, "", "")
+	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
 		s.setPeersOfflineWithHysteresis(peerIDs, now)
@@ -793,7 +794,7 @@ func (s *Service) syncClusterHealthToFollowers() {
 		return
 	}
 
-	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname, "")
+	clusterToken, err := s.AuthService.CreateInternalClusterJWT(selfHostname)
 	if err != nil {
 		return
 	}
@@ -857,7 +858,7 @@ func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealth
 	}
 }
 
-func (s *Service) StartClusterMonitors() {
+func (s *Service) StartClusterMonitors(ctx context.Context) {
 	s.monitorOnce.Do(func() {
 		runPopulateClusterNodes := func() {
 			if err := s.PopulateClusterNodes(); err != nil {
@@ -873,8 +874,13 @@ func (s *Service) StartClusterMonitors() {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				s.FastStatusCheck()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.FastStatusCheck()
+				}
 			}
 		}()
 
@@ -882,8 +888,30 @@ func (s *Service) StartClusterMonitors() {
 			ticker := time.NewTicker(clusterNodePopulateInterval)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				runPopulateClusterNodes()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					runPopulateClusterNodes()
+				}
+			}
+		}()
+
+		go func() {
+			timer := time.NewTimer(replicatedRetentionInitialDelay)
+			defer timer.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
+						logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+					}
+					timer.Reset(replicatedRetentionInterval)
+				}
 			}
 		}()
 	})

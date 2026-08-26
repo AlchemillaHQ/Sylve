@@ -9,15 +9,27 @@
 package iscsi
 
 import (
+	"encoding/xml"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
+type ctladmConnection struct {
+	Initiator string `xml:"initiator"`
+	Target    string `xml:"target"`
+}
+
+type ctladmIsList struct {
+	Connections []ctladmConnection `xml:"connection"`
+}
+
 func (s *Service) GetStatus() (map[string]string, error) {
-	out, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0, 1}, "-L")
+	out, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-L")
 	if err != nil {
-		return nil, err
+		logger.L.Error().Err(err).Msg("failed to get iSCSI initiator status")
+		return nil, applyFailed("failed_to_get_status", err)
 	}
 
 	result := make(map[string]string)
@@ -39,4 +51,35 @@ func (s *Service) GetStatus() (map[string]string, error) {
 	}
 
 	return result, nil
+}
+
+func (s *Service) GetTargetSessions() (map[string]int, error) {
+	out, err := utils.RunCommandAllowExitCode("/usr/sbin/ctladm", []int{0}, "islist", "-x")
+	if err != nil {
+		logger.L.Error().Err(err).Msg("failed to get iSCSI target sessions")
+		return nil, applyFailed("failed_to_get_target_sessions", err)
+	}
+
+	var list ctladmIsList
+	if err := xml.Unmarshal([]byte(out), &list); err != nil {
+		logger.L.Error().Err(err).Msg("failed to parse iSCSI target sessions")
+		return nil, applyFailed("failed_to_parse_target_sessions", err)
+	}
+
+	result := make(map[string]int)
+	for _, c := range list.Connections {
+		result[c.Target]++
+	}
+	return result, nil
+}
+
+func (s *Service) ensureTargetHasNoSessions(targetName string) error {
+	sessions, err := s.GetTargetSessions()
+	if err != nil {
+		return runtimeFailed("failed_to_check_target_sessions", err)
+	}
+	if sessions[targetName] > 0 {
+		return resourceConflict("target_has_active_connections", nil)
+	}
+	return nil
 }

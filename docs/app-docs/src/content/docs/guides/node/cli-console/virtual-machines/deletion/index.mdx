@@ -1,0 +1,184 @@
+---
+title: Deletion
+description: Preview VM removal, choose which managed resources to destroy, and recover orphaned registrations safely.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+VM deletion separates registration removal from storage and MAC cleanup. The default is conservative: remove the VM while retaining its managed disks and MAC objects. Add explicit flags only for resources that should be destroyed.
+
+## Understand the two commands
+
+Use `delete` for a normally registered VM. It can remove the libvirt domain, database registration, runtime files, selected managed storage, and selected MAC objects.
+
+Use `purge` only when a Sylve registration remains but its local libvirt domain is already missing. Purge removes registration and runtime metadata, but deliberately leaves disks alone.
+
+:::caution[Do not use purge as ordinary deletion]
+Purge verifies that the local domain is absent. It rejects a healthy registered VM with `vm_not_orphaned`.
+:::
+
+## Preview before deleting
+
+`--dry-run` builds the same removal plan as deletion without changing the VM or its resources:
+
+```bash
+doas sylve vms delete --rid 302 --dry-run --json
+```
+
+The default preview on Loki retained MAC object `16` and every managed dataset:
+
+```json
+{
+  "registration": {
+    "rid": 302,
+    "name": "docs-from-template"
+  },
+  "deleteMacObjectIds": [],
+  "retainMacObjectIds": [16],
+  "deleteRawDatasets": [],
+  "deleteZvolDatasets": [],
+  "deleteContainerDatasets": [],
+  "deleteSnapshots": [],
+  "retainedDatasets": [
+    "zroot/sylve/virtual-machines/302",
+    "zroot/sylve/virtual-machines/302/raw-11",
+    "zroot/sylve/virtual-machines/302/raw-13",
+    "zroot/sylve/virtual-machines/302/zvol-12"
+  ],
+  "retainedImageUuids": [],
+  "warnings": []
+}
+```
+
+Read every preview field before proceeding:
+
+- `deleteRawDatasets` contains managed raw disks selected for destruction.
+- `deleteZvolDatasets` contains managed ZVOLs selected for destruction.
+- `deleteContainerDatasets` contains empty VM roots that can be removed afterward.
+- `deleteSnapshots` contains Sylve-owned snapshots that storage cleanup must remove.
+- `retainedDatasets` identifies storage that will remain after registration removal.
+- `retainedImageUuids` lists download-backed images, which deletion does not own.
+- `warnings` reports anything the planner could not resolve confidently.
+
+## Preview full cleanup
+
+Select every managed resource category explicitly:
+
+```bash
+doas sylve vms delete \
+  --rid 302 \
+  --delete-macs \
+  --delete-raw-disks \
+  --delete-volumes \
+  --dry-run \
+  --json
+```
+
+Loki's second preview moved raw datasets `raw-11` and `raw-13`, ZVOL `zvol-12`, the VM root, and MAC object `16` into the corresponding deletion lists. Its `retainedDatasets` list was empty.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-deletion-preview.cast"
+  title="Real conservative and full-cleanup deletion previews for VM 302 on Loki."
+/>
+
+## Delete the VM
+
+Run the reviewed command without `--dry-run`:
+
+```bash
+doas sylve vms delete \
+  --rid 302 \
+  --delete-macs \
+  --delete-raw-disks \
+  --delete-volumes \
+  --json
+```
+
+The real result was:
+
+```json
+{
+  "deleted": true,
+  "rid": 302,
+  "warnings": [],
+  "retainedDatasets": [],
+  "deletedMacObjectIds": [16],
+  "retainedMacObjectIds": []
+}
+```
+
+Deletion is immediate, not a lifecycle task. A running VM is force-stopped before its registration is removed. If storage or MAC cleanup is incomplete after registration removal, the response reports retained resources and warnings rather than hiding them.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-deletion-run.cast"
+  title="Complete removal and verification of documentation VMs 302 through 304."
+/>
+
+## Choose what to retain
+
+The cleanup flags are independent:
+
+| Command choice | Raw disks | ZVOLs | MAC objects |
+| --- | --- | --- | --- |
+| No cleanup flags | Retained | Retained | Retained |
+| `--delete-raw-disks` | Deleted | Retained | Retained |
+| `--delete-volumes` | Retained | Deleted | Retained |
+| `--delete-macs` | Retained | Retained | Deleted |
+| All three flags | Deleted | Deleted | Deleted |
+
+External filesystem attachments and download-backed images are retained regardless of these flags. Sylve does not destroy storage it does not own as part of VM deletion.
+
+Deleting only one managed storage type can preserve the common VM root because retained siblings still live below it. Trust the dry-run plan rather than assuming the root will be removed.
+
+## Remove replication policy first
+
+Deletion and dry-run are rejected while any replication policy still owns the VM RID, including a disabled policy. Remove the policy before deleting the VM so a future guest cannot inherit stale replication identity.
+
+## Recover an orphaned registration
+
+If the database contains VM `304` but libvirt no longer has its domain, purge the stale registration:
+
+```bash
+doas sylve vms purge --rid 304 --json
+```
+
+Add `--delete-macs` only when the orphan's MAC objects should also be removed:
+
+```bash
+doas sylve vms purge --rid 304 --delete-macs --json
+```
+
+Purge never deletes VM disks. Inspect and recover or remove orphaned datasets separately after confirming their identity.
+
+On Loki, VM `304` was healthy, so the safety check rejected the test without changing anything:
+
+```json
+{
+  "error": "failed_to_purge_vm: vm_not_orphaned"
+}
+```
+
+The VM was then removed through the normal `delete` path.
+
+## Use the interactive console
+
+The console puts the RID after the leaf command:
+
+```text
+vms delete 302 --dry-run --json
+vms delete 302 --delete-macs --delete-raw-disks --delete-volumes --dry-run --json
+vms delete 302 --delete-macs --delete-raw-disks --delete-volumes --json
+vms purge 304 --delete-macs --json
+```
+
+Direct and console modes use the same preview, ownership, replication, and orphan checks.
+
+## Safe workflow
+
+1. Confirm the RID and inspect the VM's storage and network attachments.
+2. Remove any replication policy that references the VM.
+3. Run `delete --dry-run --json` with the intended cleanup flags.
+4. Review every deletion, retention, snapshot, and warning list.
+5. Run the identical command without `--dry-run`.
+6. Check `warnings`, `retainedDatasets`, and retained MAC IDs in the result.
+7. Reserve `purge` for a verified missing local domain.

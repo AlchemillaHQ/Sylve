@@ -1,0 +1,8 @@
+{"version":2,"width":108,"height":27,"timestamp":1787446600,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve vms snapshots create --rid 301 --name docs-baseline --description 'Before documentation change' --json\r\n"]
+[0.9,"o","{\r\n  \"id\": 1,\r\n  \"vmId\": 3,\r\n  \"rid\": 301,\r\n  \"parentSnapshotId\": null,\r\n  \"name\": \"docs-baseline\",\r\n  \"description\": \"Before documentation change\",\r\n  \"snapshotName\": \"svms_docs-baseline_1787437446346\",\r\n  \"rootDatasets\": [\r\n    \"zroot/sylve/virtual-machines/301\"\r\n  ],\r\n  \"createdAt\": \"2026-08-23T03:54:06.382320758+05:30\",\r\n  \"updatedAt\": \"2026-08-23T03:54:06.382320758+05:30\"\r\n}\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve vms snapshots create --rid 301 --name docs-followup --description 'Newer documentation snapshot' --json\r\n"]
+[1.9,"o","{\r\n  \"id\": 2,\r\n  \"vmId\": 3,\r\n  \"rid\": 301,\r\n  \"parentSnapshotId\": 1,\r\n  \"name\": \"docs-followup\",\r\n  \"description\": \"Newer documentation snapshot\",\r\n  \"snapshotName\": \"svms_docs-followup_1787437449300\",\r\n  \"rootDatasets\": [\r\n    \"zroot/sylve/virtual-machines/301\"\r\n  ],\r\n  \"createdAt\": \"2026-08-23T03:54:09.331979693+05:30\",\r\n  \"updatedAt\": \"2026-08-23T03:54:09.331979693+05:30\"\r\n}\r\n"]
+[2.1,"o","# "]

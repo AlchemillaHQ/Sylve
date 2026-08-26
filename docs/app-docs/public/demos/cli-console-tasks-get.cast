@@ -1,0 +1,8 @@
+{"version":2,"width":108,"height":27,"timestamp":1787448600,"idle_time_limit":2.0,"env":{"SHELL":"/bin/sh","TERM":"xterm-256color"}}
+[0.1,"o","# "]
+[0.8,"o","sylve tasks get --id 34\r\n"]
+[0.9,"o","Task ID:  34\r\nGuest type:  vm-template\r\nGuest ID:  1\r\nAction:  create\r\nSource:  user\r\nStatus:  success\r\nRequested by:  console\r\nCreated:  2026-08-22T22:27:04Z\r\nStarted:  2026-08-22T22:27:06Z\r\nFinished:  2026-08-22T22:27:09Z\r\nMessage:  completed\r\n"]
+[1.1,"o","# "]
+[1.8,"o","sylve tasks get --id 34 --json\r\n"]
+[1.9,"o","{\r\n  \"id\": 34,\r\n  \"guestType\": \"vm-template\",\r\n  \"guestId\": 1,\r\n  \"action\": \"create\",\r\n  \"source\": \"user\",\r\n  \"status\": \"success\",\r\n  \"requestedBy\": \"console\",\r\n  \"message\": \"completed\",\r\n  \"error\": \"\",\r\n  \"payload\": \"{\\\"mode\\\":\\\"multiple\\\",\\\"rid\\\":0,\\\"name\\\":\\\"\\\",\\\"startRid\\\":303,\\\"count\\\":2,\\\"namePrefix\\\":\\\"docs-batch\\\",\\\"storagePools\\\":[],\\\"rewriteCloudInitIdentity\\\":false,\\\"cloudInitPrefix\\\":\\\"\\\"}\",\r\n  \"overrideRequested\": false,\r\n  \"startedAt\": \"2026-08-22T22:27:06.279737194Z\",\r\n  \"finishedAt\": \"2026-08-22T22:27:09.172297824Z\",\r\n  \"createdAt\": \"2026-08-23T03:57:04.306826661+05:30\",\r\n  \"updatedAt\": \"2026-08-23T03:57:09.172384207+05:30\"\r\n}\r\n"]
+[2.1,"o","# "]

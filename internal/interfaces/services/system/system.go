@@ -28,23 +28,20 @@ type SystemServiceInterface interface {
 	ReapplyStoredTunables() error
 
 	StartNetlinkWatcher(ctx context.Context)
-	NetlinkEventsCleaner(ctx context.Context)
 	StartDiskSmartMonitor(ctx context.Context)
 
 	Traverse(path string) ([]FileNode, error)
 	AddFileOrFolder(path string, name string, isFolder bool) error
-	DeleteFileOrFolder(path string) error
 	DeleteFilesOrFolders(paths []string) error
 	RenameFileOrFolder(oldPath string, newName string) error
-	DownloadFile(id string) (string, error)
-	CopyOrMoveFileOrFolder(source, destination string, move bool) error
-	CopyOrMoveFilesOrFolders(pairs [][2]string, move bool) error
+	DownloadFile(id string) (*FileDownload, error)
+	CopyOrMoveFilesOrFolders(items []FileTransferItem, move bool) error
 
 	SyncPPTDevices() error
 	ReconcilePreparedPPTDevices() error
 	GetPPTDevices() ([]models.PassedThroughIDs, error)
-	AddPPTDevice(domain string, id string) error
+	AddPPTDevice(domain string, id string) (*models.PassedThroughIDs, error)
 	PreparePPTDevice(domain string, id string) error
-	ImportPPTDevice(domain string, id string) error
-	RemovePPTDevice(id string) error
+	ImportPPTDevice(domain string, id string) (*models.PassedThroughIDs, bool, error)
+	RemovePPTDevice(id uint) (bool, error)
 }

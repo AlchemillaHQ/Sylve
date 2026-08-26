@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { storage } from '$lib';
@@ -69,6 +68,11 @@
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
 					href: `/${node}/vm/${vmName}/snapshots`
 				},
+				{
+					label: 'Backups',
+					icon: 'mdi--backup-restore',
+					href: `/${node}/vm/${vmName}/backups`
+				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/vm/${vmName}/options` }
 			];
 		}
@@ -92,6 +96,11 @@
 					label: 'Snapshots',
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
 					href: `/${node}/jail/${jailName}/snapshots`
+				},
+				{
+					label: 'Backups',
+					icon: 'mdi--backup-restore',
+					href: `/${node}/jail/${jailName}/backups`
 				},
 				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
 			];
@@ -175,8 +184,16 @@
 						label: 'mDNS',
 						icon: 'mdi--broadcast',
 						children: [
-							{ label: 'Records', icon: 'mdi--format-list-bulleted', href: `/${node}/network/mdns/records` },
-							{ label: 'Settings', icon: 'mdi--cog-outline', href: `/${node}/network/mdns/settings` }
+							{
+								label: 'Records',
+								icon: 'mdi--format-list-bulleted',
+								href: `/${node}/network/mdns/records`
+							},
+							{
+								label: 'Settings',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/network/mdns/settings`
+							}
 						]
 					},
 					hasWireGuard && {
@@ -214,12 +231,11 @@
 						label: 'ZFS',
 						icon: 'file-icons--openzfs',
 						children: [
-							// Turned off dashboard for now
-							// {
-							// 	label: 'Dashboard',
-							// 	icon: 'mdi--monitor-dashboard',
-							// 	href: `/${node}/storage/zfs/dashboard`
-							// },
+							{
+								label: 'Dashboard',
+								icon: 'mdi--monitor-dashboard',
+								href: `/${node}/storage/zfs/dashboard`
+							},
 							{ label: 'Pools', icon: 'bi--hdd-stack-fill', href: `/${node}/storage/zfs/pools` },
 							{
 								label: 'Datasets',
@@ -299,6 +315,22 @@
 					}
 				]
 			},
+			{
+				label: 'Services',
+				icon: 'material-symbols--design-services-outline-rounded',
+				children: [
+					{
+						label: 'Certificates',
+						icon: 'mdi--certificate-outline',
+						href: `/${node}/services/certificates`
+					},
+					{
+						label: 'Dynamic DNS',
+						icon: 'mdi--dns',
+						href: `/${node}/services/dynamic-dns`
+					}
+				]
+			},
 
 			{
 				label: 'Settings',
@@ -360,13 +392,13 @@
 								label: 'Tunables',
 								icon: 'mdi--tune-variant',
 								href: `/${node}/settings/system/tunables`
+							},
+							{
+								label: 'PCI Passthrough',
+								icon: 'eos-icons--hardware-circuit',
+								href: `/${node}/settings/device-passthrough`
 							}
 						]
-					},
-					{
-						label: 'PCI Passthrough',
-						icon: 'eos-icons--hardware-circuit',
-						href: `/${node}/settings/device-passthrough`
 					}
 				]
 			}
@@ -445,7 +477,7 @@
 					<nav aria-label="Difuse-sidebar" class="menu thin-scrollbar w-full">
 						<ul>
 							<ScrollArea orientation="both" class="h-full w-full">
-								{#each nodeItems as item (item.label)}
+								{#each nodeItems as item (item.href ?? item.icon)}
 									<NodeTreeView {item} onToggle={toggleCategory} bind:this={openCategories} />
 								{/each}
 							</ScrollArea>
@@ -454,7 +486,7 @@
 				</div>
 			</div>
 		</Resizable.Pane>
-		<Resizable.Handle withHandle />
+		<Resizable.Handle withHandle gripPreferenceKey="main-navigation" />
 		<Resizable.Pane>
 			{#if isConsoleRoute}
 				<div class="h-full w-full overflow-hidden">

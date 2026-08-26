@@ -9,13 +9,17 @@
 package clusterHandlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -34,7 +38,9 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.BackupJob{},
+		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTarget{},
+		&clusterModels.BackupTargetNodeReadiness{},
 		&clusterModels.BackupEvent{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
@@ -84,6 +90,7 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 	})
 
 	cS := &cluster.Service{DB: db, Raft: r}
+	cS.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 	return cS, func() {
 		r.Shutdown()
 		transport.Close()
@@ -104,7 +111,7 @@ func TestCreateBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup",
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
@@ -138,7 +145,7 @@ func TestDeleteBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup",
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
@@ -175,7 +182,7 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	defer cleanup()
 
 	target := clusterModels.BackupTarget{
-		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "/backup",
+		Name: "test-target", SSHHost: "localhost", SSHPort: 22, BackupRoot: "tank/backup", Enabled: true,
 	}
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
@@ -209,6 +216,171 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	}
 	if updated.Enabled {
 		t.Fatalf("expected enabled=false")
+	}
+
+	identityUpdateBody := `{"name":"updated-job","targetId":1,"mode":"dataset","sourceDataset":"tank/other","cronExpr":"0 12 * * *","enabled":false}`
+	rr = performJSONRequest(t, r, http.MethodPut, "/cluster/backups/jobs/"+toStr(int(jobID)),
+		[]byte(identityUpdateBody))
+	if rr.Code != http.StatusConflict ||
+		!strings.Contains(rr.Body.String(), "backup_job_source_immutable") {
+		t.Fatalf("immutable source response=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if err := cS.DB.First(&updated, jobID).Error; err != nil {
+		t.Fatalf("reload after immutable update: %v", err)
+	}
+	if updated.SourceDataset != "tank/data" {
+		t.Fatalf("immutable source changed to %q", updated.SourceDataset)
+	}
+}
+
+func TestUpdateBackupJobHandlerMissingJobReturnsNotFound(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{})
+	router := newBackupJobCrudRouter(&cluster.Service{DB: database})
+	body := `{"name":"missing-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *","enabled":true}`
+
+	response := performJSONRequest(
+		t,
+		router,
+		http.MethodPut,
+		"/cluster/backups/jobs/999",
+		[]byte(body),
+	)
+	if response.Code != http.StatusNotFound ||
+		!strings.Contains(response.Body.String(), "backup_job_not_found") {
+		t.Fatalf("response=%d body=%s, want missing-job 404", response.Code, response.Body.String())
+	}
+}
+
+func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T) {
+	tests := []struct {
+		name        string
+		clustered   bool
+		duplicate   bool
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name: "inventory unavailable", clustered: true,
+			wantStatus: http.StatusServiceUnavailable, wantMessage: "backup_job_runner_inventory_unavailable",
+		},
+		{
+			name: "duplicate registration", duplicate: true,
+			wantStatus: http.StatusConflict, wantMessage: "backup_job_update_failed",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			database := testutil.NewSQLiteTestDB(
+				t,
+				&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+				&clusterModels.BackupJob{}, &clusterModels.BackupJobRunnerRebind{},
+				&clusterModels.BackupJobRunnerRebindItem{}, &clusterModels.Cluster{},
+				&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
+				&vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{},
+				&jailModels.Jail{},
+			)
+			if err := database.Create(&clusterModels.Cluster{Enabled: test.clustered}).Error; err != nil {
+				t.Fatalf("seed cluster state: %v", err)
+			}
+			target := clusterModels.BackupTarget{
+				ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+			}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatalf("seed target: %v", err)
+			}
+			job := clusterModels.BackupJob{
+				ID: 82, Name: "stale-runner", TargetID: target.ID, RunnerNodeID: "node-old",
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/812",
+				Recursive: true, CronExpr: "0 0 * * *", Enabled: true,
+			}
+			if err := database.Create(&job).Error; err != nil {
+				t.Fatalf("seed job: %v", err)
+			}
+			vm := vmModels.VM{RID: 812, Name: "vm-812"}
+			if err := database.Create(&vm).Error; err != nil {
+				t.Fatalf("seed VM: %v", err)
+			}
+			dataset := vmModels.VMStorageDataset{
+				Pool: "fast", Name: "fast/sylve/virtual-machines/812/disk0", GUID: "vm-812-guid",
+			}
+			if err := database.Create(&dataset).Error; err != nil {
+				t.Fatalf("seed VM dataset: %v", err)
+			}
+			if err := database.Create(&vmModels.Storage{
+				VMID: vm.ID, Type: vmModels.VMStorageTypeZVol,
+				Pool: "fast", Enable: true, DatasetID: &dataset.ID,
+			}).Error; err != nil {
+				t.Fatalf("seed VM storage: %v", err)
+			}
+			if test.duplicate {
+				if err := database.Create(&jailModels.Jail{CTID: 812, Name: "duplicate-jail"}).Error; err != nil {
+					t.Fatalf("seed duplicate jail: %v", err)
+				}
+			}
+
+			service := &cluster.Service{DB: database, NodeID: "node-current"}
+			service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
+				return nil
+			})
+			router := newBackupJobCrudRouter(service)
+			body := `{"name":"stale-runner","targetId":1,"runnerNodeId":"node-current","mode":"vm","sourceDataset":"fast/sylve/virtual-machines/812","recursive":true,"cronExpr":"0 0 * * *","enabled":true}`
+			response := performJSONRequest(
+				t,
+				router,
+				http.MethodPut,
+				"/cluster/backups/jobs/82",
+				[]byte(body),
+			)
+			if response.Code != test.wantStatus ||
+				!strings.Contains(response.Body.String(), test.wantMessage) {
+				t.Fatalf(
+					"response=%d body=%s, want status=%d message=%s",
+					response.Code,
+					response.Body.String(),
+					test.wantStatus,
+					test.wantMessage,
+				)
+			}
+			var unchanged clusterModels.BackupJob
+			if err := database.First(&unchanged, job.ID).Error; err != nil {
+				t.Fatalf("reload job: %v", err)
+			}
+			if unchanged.RunnerNodeID != "node-old" {
+				t.Fatalf("failed placement changed runner: %+v", unchanged)
+			}
+		})
+	}
+}
+
+func TestValidateBackupTargetRequiresExplicitVoterInCluster(t *testing.T) {
+	cS, cleanup := setupHandlerRaftCluster(t)
+	defer cleanup()
+	target := clusterModels.BackupTarget{
+		ID: 91, Name: "target-validate-node", SSHHost: "root@backup", SSHPort: 22,
+		BackupRoot: "tank/backups", Enabled: true,
+	}
+	if err := cS.DB.Create(&target).Error; err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	zStub := &backupTargetZeltaStub{}
+	router := newBackupTargetRouter(cS, zStub)
+	path := "/cluster/backups/targets/91/validate"
+	rr := performJSONRequest(t, router, http.MethodPost, path, nil)
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "validation_node_id_required") {
+		t.Fatalf("missing node status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	configuration := cS.Raft.GetConfiguration()
+	if err := configuration.Error(); err != nil || len(configuration.Configuration().Servers) != 1 {
+		t.Fatalf("configuration err=%v servers=%+v", err, configuration.Configuration().Servers)
+	}
+	nodeID := string(configuration.Configuration().Servers[0].ID)
+	rr = performJSONRequest(t, router, http.MethodPost, path+"?nodeId="+nodeID, nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("selected node status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(zStub.validateCalls) != 1 {
+		t.Fatalf("validate calls=%d, want 1", len(zStub.validateCalls))
 	}
 }
 

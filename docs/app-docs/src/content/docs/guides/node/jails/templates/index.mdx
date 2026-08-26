@@ -1,0 +1,226 @@
+---
+title: Templates
+description: Capture reusable jail templates and create one or more jails from them.
+---
+
+import templatesTree from './jail-templates-tree.png';
+import createAction from './jail-template-create-action.png';
+import createName from './jail-template-create-name.png';
+import contextMenu from './jail-template-context-menu.png';
+import viewBasic from './jail-template-view-basic.png';
+import viewNetwork from './jail-template-view-network.png';
+import viewStorage from './jail-template-view-storage.png';
+import viewAdvanced from './jail-template-view-advanced.png';
+import createSingle from './jail-template-create-single.png';
+import createMultiple from './jail-template-create-multiple.png';
+import deleteTemplate from './jail-template-delete.png';
+
+Jail templates let you capture a stopped jail as a reusable ZFS-backed image. A template preserves the jail's base filesystem and supported configuration, while leaving the source jail intact. You can then create one jail or a sequential group of up to 200 jails from that template.
+
+Templates appear in the **Templates** branch of the resource tree. If template grouping is disabled in the tree preferences, jail templates appear with the other resources on their node.
+
+<img
+  src={templatesTree.src}
+  alt="Resource tree showing a jail template grouped in the Templates branch"
+/>
+
+## Prepare the source jail
+
+The source jail must be stopped before capture. Review its filesystem and configuration first because the template records their current state.
+
+Before continuing:
+
+1. Apply pending package, configuration, and application updates.
+2. Remove temporary files, credentials, host-specific state, and data that every new jail should not inherit.
+3. Review network, fstab, DevFS, resolver, and lifecycle-hook settings for node-specific dependencies.
+4. Stop the jail and confirm that no lifecycle task is still running.
+5. Confirm that the source pool has enough free space for another copy of the jail's base dataset tree.
+
+## Convert a jail to a template
+
+Open the stopped jail's context menu and select **Create Template**. The action is unavailable while the jail is active. Capture is also refused while another jail lifecycle task is active, when the node does not own the jail's replication lease, when the base dataset is missing, or when its pool does not have enough free space for the template copy.
+
+<img
+  src={createAction.src}
+  alt="Stopped jail context menu showing the Create Template action"
+/>
+
+Enter a unique **Template Name**, then select **Convert**. Names are trimmed, must not be empty, are limited to 120 characters, and are compared without case when checking uniqueness.
+
+<img
+  src={createName.src}
+  alt="Create Jail Template dialog for entering a unique template name"
+/>
+
+Sylve queues the capture as a background lifecycle task. It rechecks that the jail is stopped, creates a recursive temporary snapshot, sends it to the template dataset, saves the supported configuration, and refreshes the resource tree. The source jail is not deleted or converted into a template-only object.
+
+If capture fails, Sylve attempts to remove the temporary snapshot, partial template dataset, and incomplete database record.
+
+### What the template retains
+
+Sylve recursively snapshots the source jail's base ZFS dataset tree and copies it to an independent dataset under:
+
+```text
+<pool>/sylve/jails/templates/<template-name>-<timestamp>
+```
+
+The source snapshot is temporary and is removed after capture. The resulting template does not depend on the source jail remaining present.
+
+The saved configuration includes:
+
+- Jail type and Wake on LAN setting
+- Resource-limit state, CPU cores, and memory
+- IPv4 and IPv6 inheritance settings
+- Fstab and resolver content
+- DevFS rules and clean-environment behavior
+- Execution timeout
+- Additional and allowed jail options
+- Metadata and lifecycle hooks
+- Network switch references, DHCP, SLAAC, and default-gateway behavior
+
+### What each new jail receives instead
+
+Some identity-specific values are intentionally not reused:
+
+| Value | Behavior in a new jail |
+| --- | --- |
+| **CTID** | Supplied when creating from the template. It must be available throughout the cluster. |
+| **Jail name** | Supplied or generated during creation. |
+| **Description** | Starts empty. |
+| **Start at boot and start order** | Start at boot is disabled and start order is reset to `0`. |
+| **MAC address** | A new MAC object and address are generated for every template interface. |
+| **Static IP and gateway objects** | Not copied. Configure static addressing on the created jail afterward. |
+| **Additional storage outside the captured base tree** | Not recreated as separate storage attachments. Attach or recreate it after creation. |
+
+:::note
+Switch references are preserved by their node-local switch IDs. Every referenced switch must still exist on the node where the template is used.
+:::
+
+## Inspect a template
+
+Open the template's context menu and select **View Template**. The viewer separates the captured information into four tabs.
+
+<img
+  src={contextMenu.src}
+  alt="Jail template context menu with View Template, Create Jail, and Delete Template actions"
+/>
+
+### Basic
+
+The **Basic** tab shows the template ID, FreeBSD or Linux type, source jail, creation and update times, and captured hardware limits.
+
+<img
+  src={viewBasic.src}
+  alt="Basic jail template tab showing source details, type, and hardware limits"
+/>
+
+### Network
+
+The **Network** tab shows IPv4 and IPv6 inheritance, each saved interface and switch type, and its DHCP, SLAAC, and default-gateway behavior. Captured resolver content appears below the interface list when present.
+
+Remember that the displayed interface definitions do not contain the source jail's MAC, static IP, or gateway objects. New MAC objects are generated during creation.
+
+<img
+  src={viewNetwork.src}
+  alt="Network jail template tab showing address inheritance and saved interface settings"
+/>
+
+### Storage
+
+The **Storage** tab shows the template's ZFS pool, root dataset, and captured fstab content.
+
+<img
+  src={viewStorage.src}
+  alt="Storage jail template tab showing its ZFS pool, root dataset, and fstab mounts"
+/>
+
+### Advanced
+
+The **Advanced** tab shows captured lifecycle hooks, allowed options, and raw additional options. Select a hook to inspect its complete script and enabled state.
+
+<img
+  src={viewAdvanced.src}
+  alt="Advanced jail template tab showing lifecycle hooks and captured jail options"
+/>
+
+## Create jails from a template
+
+Open the template's context menu and select **Create Jail**. Sylve loads the complete template and the usable ZFS pools on the current node.
+
+### Single jail
+
+In **Single** mode, configure:
+
+| Field | Requirement |
+| --- | --- |
+| **Pool** | Destination pool for the new jail dataset. The template's original pool is selected when available; otherwise, Sylve selects the first usable pool. |
+| **CTID** | A whole number from `1` through `9999`. The suggested value is the next available guest ID. |
+| **Name** | Optional valid jail name. When empty, Sylve uses the source jail's name or falls back to `jail-<CTID>`. |
+
+<img
+  src={createSingle.src}
+  alt="Create Jail dialog in Single mode with destination pool, CTID, and name fields"
+/>
+
+Select **Create Jail** to queue the operation. The created jail remains stopped so you can review its network, storage, options, and identity-specific settings before starting it.
+
+### Multiple jails
+
+Choose **Multiple** to create a sequential group. Configure:
+
+| Field | Requirement |
+| --- | --- |
+| **Starting CTID** | First CTID in the requested range. The complete range must remain between `1` and `9999`. |
+| **Count** | Number of jails to create, from `1` through `200`. |
+| **Name Prefix** | Optional prefix of at most 15 characters. Each name becomes `<prefix>-<CTID>`. |
+| **Pool** | One destination pool used by every jail in the group. |
+
+When the prefix is empty, Sylve uses the source jail's name if it is valid and no longer than 15 characters. Otherwise, it uses `jail`.
+
+<img
+  src={createMultiple.src}
+  alt="Create Jail dialog in Multiple mode with starting CTID, count, and name prefix fields"
+/>
+
+## Preflight checks and recovery
+
+Before queueing creation, Sylve verifies the complete request as one plan:
+
+- Every CTID is valid, unique in the request, and unused by both VMs and jails across the cluster.
+- Every generated jail name is valid, unique in the request, and unused on the current node.
+- The target datasets do not already exist.
+- The template dataset and referenced network switches are available.
+- The selected pool has enough estimated free space for every requested copy.
+- Linux template interfaces do not request DHCP or SLAAC.
+- No more than one saved interface is marked as the default gateway.
+
+The jails are then created one at a time. If a later jail fails, Sylve attempts to roll back the jails already created by that request in reverse order.
+
+:::caution
+Each created jail is an independent recursive ZFS copy, not a lightweight linked clone. This avoids a permanent dependency on the template's snapshots, prevents long clone dependency chains, and lets you delete the template without affecting jails created from it. The tradeoff is that creating many jails can require more pool space and take longer than creating linked clones.
+:::
+
+## Review a created jail
+
+Before starting a jail created from a template, check:
+
+1. The generated name and CTID.
+2. The destination pool and base dataset.
+3. Every network interface and newly generated MAC object.
+4. Static IP and gateway configuration, which must be assigned separately.
+5. Fstab host paths and any storage that was not part of the captured base tree.
+6. DevFS devices and node-dependent lifecycle hooks.
+7. Resource limits, resolver content, and advanced options.
+
+Use the [Summary](/guides/node/jails/summary/), [Network](/guides/node/jails/network/), [Hardware](/guides/node/jails/hardware/), and [Options](/guides/node/jails/options/) pages to complete the review.
+
+## Delete a template
+
+Open the template's context menu, select **Delete Template**, and confirm the warning. Deletion recursively removes the stored template dataset and its database record. Jails previously created from the template are independent and are not deleted.
+
+<img
+  src={deleteTemplate.src}
+  alt="Confirmation dialog for deleting a jail template and its stored dataset"
+/>
+
+Deletion is blocked while a jail-creation task from that template is queued or running. Wait for the active task to finish before trying again.

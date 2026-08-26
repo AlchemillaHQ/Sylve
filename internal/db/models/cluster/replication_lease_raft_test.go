@@ -16,9 +16,15 @@ import (
 )
 
 func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
-	db := newClusterModelTestDB(t, &ReplicationLease{})
+	db := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
+	if err := db.Create(&ReplicationPolicy{
+		ID: 1, Name: "policy-1", GuestType: ReplicationGuestTypeVM, GuestID: 100,
+		SourceNodeID: "node-1", ActiveNodeID: "node-1", OwnerEpoch: 1, Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
 
 	t.Run("upsert new lease", func(t *testing.T) {
 		raw, _ := json.Marshal(ReplicationLease{
@@ -45,6 +51,12 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 	})
 
 	t.Run("upsert same policy_id updates existing", func(t *testing.T) {
+		if err := db.Model(&ReplicationPolicy{}).Where("id = ?", 1).Updates(map[string]any{
+			"active_node_id": "node-2",
+			"owner_epoch":    2,
+		}).Error; err != nil {
+			t.Fatalf("advance policy owner: %v", err)
+		}
 		raw, _ := json.Marshal(ReplicationLease{
 			PolicyID: 1, GuestType: ReplicationGuestTypeVM, GuestID: 100,
 			OwnerNodeID: "node-2", OwnerEpoch: 2,
@@ -72,7 +84,7 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 	})
 
 	t.Run("upsert with zero node_id and epoch stored as-is", func(t *testing.T) {
-		db2 := newClusterModelTestDB(t, &ReplicationLease{})
+		db2 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
 		fsm2 := NewFSMDispatcher(db2)
 		RegisterDefaultHandlers(fsm2)
 
@@ -95,9 +107,15 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 	})
 
 	t.Run("upsert_batch two leases", func(t *testing.T) {
-		db3 := newClusterModelTestDB(t, &ReplicationLease{})
+		db3 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
 		fsm3 := NewFSMDispatcher(db3)
 		RegisterDefaultHandlers(fsm3)
+		if err := db3.Create(&[]ReplicationPolicy{
+			{ID: 1, Name: "policy-1", GuestType: ReplicationGuestTypeVM, GuestID: 100, ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true},
+			{ID: 2, Name: "policy-2", GuestType: ReplicationGuestTypeJail, GuestID: 200, ActiveNodeID: "node-b", OwnerEpoch: 1, Enabled: true},
+		}).Error; err != nil {
+			t.Fatalf("seed policies: %v", err)
+		}
 
 		raw, _ := json.Marshal([]ReplicationLease{
 			{PolicyID: 1, GuestType: ReplicationGuestTypeVM, GuestID: 100,
@@ -121,9 +139,15 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 	})
 
 	t.Run("upsert_batch one fails rolls back", func(t *testing.T) {
-		db4 := newClusterModelTestDB(t, &ReplicationLease{})
+		db4 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
 		fsm4 := NewFSMDispatcher(db4)
 		RegisterDefaultHandlers(fsm4)
+		if err := db4.Create(&[]ReplicationPolicy{
+			{ID: 1, Name: "policy-1", GuestType: ReplicationGuestTypeVM, GuestID: 100, ActiveNodeID: "node-a", OwnerEpoch: 1, Enabled: true},
+			{ID: 2, Name: "policy-2", GuestType: ReplicationGuestTypeVM, GuestID: 200, ActiveNodeID: "node-b", OwnerEpoch: 1, Enabled: true},
+		}).Error; err != nil {
+			t.Fatalf("seed policies: %v", err)
+		}
 
 		// first lease valid, second has empty OwnerNodeID which fails validation
 		raw, _ := json.Marshal([]ReplicationLease{
@@ -149,7 +173,7 @@ func TestFSMDispatcherReplicationLeaseCommands(t *testing.T) {
 	})
 
 	t.Run("delete existing lease", func(t *testing.T) {
-		db5 := newClusterModelTestDB(t, &ReplicationLease{})
+		db5 := newClusterModelTestDB(t, &ReplicationPolicy{}, &ReplicationLease{})
 		fsm5 := NewFSMDispatcher(db5)
 		RegisterDefaultHandlers(fsm5)
 

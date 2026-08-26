@@ -9,12 +9,12 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
+	import { IsDocumentVisible, resource, useInterval } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
 	import { sameElements } from '$lib/utils/arr';
 	import { toast } from 'svelte-sonner';
-	import { getBasicSettings, toggleService, updateUsablePools } from '$lib/api/system/settings';
+	import { getBasicSettings, setServiceEnabled, updateUsablePools } from '$lib/api/system/settings';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { setEnabledServicesForHostname } from '$lib/utils/enabled-services';
 
@@ -30,7 +30,7 @@
 	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'zfs-pools-full',
-		async (key) => {
+		async (key): Promise<Zpool[]> => {
 			const results = await getPools(true);
 			updateCache(key, results);
 			return results;
@@ -43,11 +43,11 @@
 	// svelte-ignore state_referenced_locally
 	const basicSettings = resource(
 		() => 'system-basic-settings',
-		async (key) => {
+		async (key, _previousKey, { data: previousSettings }): Promise<BasicSettings> => {
 			const results = await getBasicSettings();
 			if (isAPIResponse(results)) {
 				handleAPIError(results);
-				return data.basicSettings;
+				return previousSettings ?? data.basicSettings;
 			}
 
 			setEnabledServicesForHostname(storage.hostname, results.services);
@@ -152,40 +152,31 @@
 			values: basicSettings.current.pools.join(',')
 		},
 		'dhcp-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('dhcp-server')
+			open: false
 		},
 		'wol-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('wol-server')
+			open: false
 		},
 		'samba-server': {
-			open: false,
-			enabled: basicSettings.current.services.includes('samba-server')
+			open: false
 		},
 		virtualization: {
-			open: false,
-			enabled: basicSettings.current.services.includes('virtualization')
+			open: false
 		},
 		jails: {
-			open: false,
-			enabled: basicSettings.current.services.includes('jails')
+			open: false
 		},
 		firewall: {
-			open: false,
-			enabled: basicSettings.current.services.includes('firewall')
+			open: false
 		},
 		wireguard: {
-			open: false,
-			enabled: basicSettings.current.services.includes('wireguard')
+			open: false
 		},
 		iscsi: {
-			open: false,
-			enabled: basicSettings.current.services.includes('iscsi')
+			open: false
 		},
 		mdns: {
-			open: false,
-			enabled: basicSettings.current.services.includes('mdns')
+			open: false
 		}
 	});
 
@@ -222,25 +213,18 @@
 		}
 	});
 
-	let reload = $state(false);
 	let loading = $state(false);
-
-	watch(
-		() => reload,
-		(value) => {
-			if (value) {
-				refetch();
-				reload = false;
-			}
-		}
-	);
 
 	async function saveZFSPools() {
 		if (modals.zfsPools.open) {
-			const newPools = modals.zfsPools.values
-				.split(',')
-				.map((p) => p.trim())
-				.filter((p) => p.length > 0);
+			const newPools = Array.from(
+				new Set(
+					modals.zfsPools.values
+						.split(',')
+						.map((p) => p.trim())
+						.filter((p) => p.length > 0)
+				)
+			);
 
 			if (newPools.length === 0) {
 				toast.error('At least one ZFS Pool must be selected', toastOpts);
@@ -253,19 +237,23 @@
 			}
 
 			loading = true;
+			try {
+				const response = await updateUsablePools(newPools);
+				if (response.status !== 'success') {
+					handleAPIError(response);
+					toast.error('Failed to update ZFS Pools', toastOpts);
+					return;
+				}
 
-			const response = await updateUsablePools(newPools);
-
-			reload = true;
-			loading = false;
-
-			if (response.error) {
-				handleAPIError(response);
-				toast.error('Failed to update ZFS Pools', toastOpts);
-			} else {
+				const updatedSettings = { ...basicSettings.current, pools: newPools };
+				basicSettings.mutate(updatedSettings);
+				await updateCache('system-basic-settings', updatedSettings);
+				await basicSettings.refetch();
+				modals.zfsPools.values = basicSettings.current.pools.join(',');
 				toast.success('ZFS Pools updated', toastOpts);
 				modals.zfsPools.open = false;
-				modals.zfsPools.values = newPools.join(',');
+			} finally {
+				loading = false;
 			}
 		}
 	}
@@ -313,7 +301,10 @@
 				{#if activeRow?.property === 'ZFS Pools'}
 					{@render toggleButton('icon-[mdi--pencil]', `Edit ${activeRow.property}`)}
 				{:else}
-					{@render toggleButton('icon-[ri--toggle-line]', `Toggle ${activeRow?.property}`)}
+					{@render toggleButton(
+						'icon-[ri--toggle-line]',
+						`${activeRow?.value === 'Enabled' ? 'Disable' : 'Enable'} ${activeRow?.property}`
+					)}
 				{/if}
 			</div>
 		</Button>
@@ -331,33 +322,46 @@
 		| 'firewall'
 		| 'wireguard'
 		| 'iscsi'
-		| 'mdns',
-	enabled: boolean
+		| 'mdns'
 )}
+	{@const enabled = basicSettings.current.services.includes(serviceKey)}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
 	{@const hasNetworkWarning = serviceName === 'DHCP Server' || serviceName === 'Firewall'}
 	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
-	{@const networkWarning = hasNetworkWarning ? 'this may affect network configurations, ' : ''}
+	{@const networkWarning = hasNetworkWarning ? ' This may affect network configuration.' : ''}
+	{@const mdnsTitle = enabled
+		? 'Disabling mDNS Discovery immediately stops Bonjour discovery, including discovery of any Samba Apple and Time Machine shares.'
+		: 'Enabling mDNS Discovery immediately publishes existing managed and custom records.'}
 
 	<AlertDialog
 		bind:open={modals[serviceKey].open}
 		names={{ parent: serviceName, element: '' }}
-		customTitle={`You are about to ${enabled ? 'disable' : 'enable'} ${displayName}, ${networkWarning}you will have to restart Sylve and or the host system for changes to take effect`}
+		customTitle={serviceKey === 'mdns'
+			? mdnsTitle
+			: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
+		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
+		loadingLabel={enabled ? 'Disabling...' : 'Enabling...'}
+		keepOpenOnConfirm
 		actions={{
 			onConfirm: async () => {
-				const toggled = await toggleService(serviceKey as AvailableService);
-				reload = true;
+				const desiredEnabled = !enabled;
+				const response = await setServiceEnabled(serviceKey as AvailableService, desiredEnabled);
 
-				if (toggled.status === 'success') {
-					modals[serviceKey].enabled = !modals[serviceKey].enabled;
-					toast.success(
-						`${serviceName} ${modals[serviceKey].enabled ? 'enabled' : 'disabled'}`,
-						toastOpts
-					);
+				if (response.status === 'success') {
+					const services = enabled
+						? basicSettings.current.services.filter((service) => service !== serviceKey)
+						: [...new Set([...basicSettings.current.services, serviceKey])];
+					const updatedSettings = { ...basicSettings.current, services };
+					basicSettings.mutate(updatedSettings);
+					setEnabledServicesForHostname(storage.hostname, services);
+					await updateCache('system-basic-settings', updatedSettings);
+					await basicSettings.refetch();
+					setEnabledServicesForHostname(storage.hostname, basicSettings.current.services);
+					toast.success(`${serviceName} ${desiredEnabled ? 'enabled' : 'disabled'}`, toastOpts);
 					modals[serviceKey].open = false;
 				} else {
-					handleAPIError(toggled);
-					toast.error(`Failed to toggle ${serviceName}`, toastOpts);
+					handleAPIError(response);
+					toast.error(`Failed to update ${serviceName}`, toastOpts);
 				}
 			},
 			onCancel: () => {
@@ -395,12 +399,12 @@
 	bind:loading
 />
 
-{@render serviceToggleDialog('DHCP Server', 'dhcp-server', modals['dhcp-server'].enabled)}
-{@render serviceToggleDialog('WoL Server', 'wol-server', modals['wol-server'].enabled)}
-{@render serviceToggleDialog('Samba Server', 'samba-server', modals['samba-server'].enabled)}
-{@render serviceToggleDialog('Virtualization', 'virtualization', modals['virtualization'].enabled)}
-{@render serviceToggleDialog('Jails', 'jails', modals['jails'].enabled)}
-{@render serviceToggleDialog('Firewall', 'firewall', modals['firewall'].enabled)}
-{@render serviceToggleDialog('WireGuard', 'wireguard', modals['wireguard'].enabled)}
-{@render serviceToggleDialog('iSCSI', 'iscsi', modals['iscsi'].enabled)}
-{@render serviceToggleDialog('mDNS Discovery', 'mdns', modals.mdns.enabled)}
+{@render serviceToggleDialog('DHCP Server', 'dhcp-server')}
+{@render serviceToggleDialog('WoL Server', 'wol-server')}
+{@render serviceToggleDialog('Samba Server', 'samba-server')}
+{@render serviceToggleDialog('Virtualization', 'virtualization')}
+{@render serviceToggleDialog('Jails', 'jails')}
+{@render serviceToggleDialog('Firewall', 'firewall')}
+{@render serviceToggleDialog('WireGuard', 'wireguard')}
+{@render serviceToggleDialog('iSCSI', 'iscsi')}
+{@render serviceToggleDialog('mDNS Discovery', 'mdns')}

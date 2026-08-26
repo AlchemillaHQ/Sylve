@@ -1,0 +1,90 @@
+name: Support request
+description: Ask for help with installing, configuring, or using Sylve.
+title: "[Support] "
+labels: ["Question"]
+assignees: ["hayzamjs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the documentation and existing issues first. For quick community help, you can also join the Sylve Discord server.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      options:
+        - Installation and upgrade
+        - Dashboard and general UI
+        - Virtual machines
+        - Jails
+        - Storage and ZFS
+        - Networking, firewall, and WireGuard
+        - Backups, replication, and clustering
+        - Authentication and certificates
+        - Downloader and utilities
+        - CLI and interactive console
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: sylve-version
+    attributes:
+      label: Sylve version
+      description: Provide a release tag or commit SHA.
+      placeholder: v0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: freebsd-version
+    attributes:
+      label: FreeBSD version
+      placeholder: 15.0-RELEASE
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Explain what you are trying to accomplish and where you are stuck.
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Include relevant documentation, commands, or troubleshooting steps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste only the relevant output after removing sensitive information.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots, configuration details, or anything else that may help.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I checked the Sylve documentation and searched existing issues.
+          required: true
+        - label: I removed passwords, tokens, private keys, and other sensitive information.
+          required: true

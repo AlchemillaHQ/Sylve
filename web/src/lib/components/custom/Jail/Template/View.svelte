@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getJailTemplateById } from '$lib/api/jail/jail';
-	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
@@ -8,11 +7,10 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import type { JailTemplate } from '$lib/types/jail/jail';
 	import { formatBytesBinary } from '$lib/utils/bytes';
-	import { isAPIResponse } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { dateToAgo } from '$lib/utils/time';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
-	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 
 	interface Props {
@@ -56,12 +54,13 @@
 
 	async function loadTemplate() {
 		loading = true;
-		await sleep(500);
 		try {
 			const result = await getJailTemplateById(templateId, hostname);
-			if (isAPIResponse(result) && result.status === 'error') {
+			if (isAPIResponse(result)) {
 				template = null;
-				toast.error(result.error?.[0] || 'Failed to load template details', {
+				handleAPIError(result);
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				toast.error(error || 'Failed to load template details', {
 					position: 'bottom-center'
 				});
 				return;
@@ -174,15 +173,31 @@
 									<div class="p-4 grid grid-cols-3 gap-4 text-sm">
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">CPU Cores</span>
-											<span class="font-medium text-amber-600 dark:text-amber-400"
-												>{template.cores}</span
-											>
+											<span class="font-medium text-amber-600 dark:text-amber-400">
+												{#if template.resourceLimits === false}
+													<span class="inline-flex items-center" title="Unlimited">
+														<span class="icon-[mdi--infinity] h-3.5 w-3.5" aria-hidden="true"
+														></span>
+														<span class="sr-only">Unlimited</span>
+													</span>
+												{:else}
+													{template.cores}
+												{/if}
+											</span>
 										</div>
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Memory</span>
-											<span class="font-medium text-emerald-600 dark:text-emerald-400"
-												>{formatBytesBinary(template.memory || 0)}</span
-											>
+											<span class="font-medium text-emerald-600 dark:text-emerald-400">
+												{#if template.resourceLimits === false}
+													<span class="inline-flex items-center" title="Unlimited">
+														<span class="icon-[mdi--infinity] h-3.5 w-3.5" aria-hidden="true"
+														></span>
+														<span class="sr-only">Unlimited</span>
+													</span>
+												{:else}
+													{formatBytesBinary(template.memory || 0)}
+												{/if}
+											</span>
 										</div>
 										<div class="flex flex-col">
 											<span class="text-muted-foreground text-xs">Resource Limits</span>

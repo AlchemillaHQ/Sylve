@@ -29,7 +29,7 @@ func newAuthTestService(t *testing.T) *Service {
 		&models.SystemSecrets{},
 	)
 
-	return &Service{DB: db}
+	return newAuthService(db, fakePasswordHasher{})
 }
 
 func TestGetOrCreatePAMIdentityReuse(t *testing.T) {
@@ -55,6 +55,16 @@ func TestGetOrCreatePAMIdentityReuse(t *testing.T) {
 
 func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 	svc := newAuthTestService(t)
+
+	originalConfig := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{
+			EnablePAM: true,
+		},
+	}
+	t.Cleanup(func() {
+		config.ParsedConfig = originalConfig
+	})
 
 	user := models.User{
 		Username: "pamuser",
@@ -157,6 +167,59 @@ func TestVerifyTokenInDbForLocalUser(t *testing.T) {
 
 	if ok := svc.VerifyTokenInDb("local-token"); ok {
 		t.Fatalf("expected_token_to_fail_verification_without_user")
+	}
+}
+
+func TestVerifyTokenInDbRejectsIneligibleLocalUser(t *testing.T) {
+	tests := []struct {
+		name          string
+		configureUser func(*models.User)
+	}{
+		{
+			name: "demoted administrator",
+			configureUser: func(user *models.User) {
+				user.Admin = false
+			},
+		},
+		{
+			name: "locked administrator",
+			configureUser: func(user *models.User) {
+				user.Locked = true
+			},
+		},
+		{
+			name: "password login disabled",
+			configureUser: func(user *models.User) {
+				user.DisablePassword = true
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc := newAuthTestService(t)
+			user := models.User{Username: "admin", Password: "pw", Admin: true}
+			if err := svc.DB.Create(&user).Error; err != nil {
+				t.Fatalf("create user: %v", err)
+			}
+			if err := svc.DB.Create(&models.Token{
+				UserID:   user.ID,
+				Token:    "local-token",
+				AuthType: "sylve",
+				Expiry:   time.Now().Add(time.Hour),
+			}).Error; err != nil {
+				t.Fatalf("create token: %v", err)
+			}
+
+			test.configureUser(&user)
+			if err := svc.DB.Save(&user).Error; err != nil {
+				t.Fatalf("update user: %v", err)
+			}
+
+			if svc.VerifyTokenInDb("local-token") {
+				t.Fatal("ineligible user token unexpectedly verified")
+			}
+		})
 	}
 }
 

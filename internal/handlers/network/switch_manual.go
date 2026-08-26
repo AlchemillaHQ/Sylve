@@ -9,10 +9,13 @@
 package networkHandlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
 	"github.com/gin-gonic/gin"
 )
@@ -22,94 +25,146 @@ type CreateManualSwitchRequest struct {
 	Bridge string `json:"bridge" binding:"required"`
 }
 
-type UpdateManualSwitchRequest struct {
-	ID     uint   `json:"id" binding:"required"`
-	Name   string `json:"name" binding:"required"`
-	Bridge string `json:"bridge" binding:"required"`
+var (
+	createManualSwitchOperation = func(service *network.Service, name, bridge string) (*networkModels.ManualSwitch, error) {
+		return service.CreateManualSwitch(name, bridge)
+	}
+	deleteManualSwitchOperation = func(service *network.Service, id uint) error {
+		return service.DeleteManualSwitch(id)
+	}
+)
+
+func bindManualSwitchJSON(c *gin.Context, destination any) bool {
+	if err := c.ShouldBindJSON(destination); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "manual_switch_request_too_large",
+				Error:   "manual_switch_request_too_large",
+				Data:    nil,
+			})
+			return false
+		}
+
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_request",
+			Error:   "invalid_manual_switch_request",
+			Data:    nil,
+		})
+		return false
+	}
+	return true
 }
 
-// @Summary Create a new Manual Switch
-// @Description Create a new manual switch
+func manualSwitchPathID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_manual_switch_id",
+			Error:   "invalid_manual_switch_id",
+			Data:    nil,
+		})
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func manualSwitchErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, network.ErrInvalidManualSwitch):
+		return http.StatusBadRequest
+	case errors.Is(err, network.ErrManualSwitchNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, network.ErrManualSwitchConflict), errors.Is(err, network.ErrManualSwitchInUse):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func writeManualSwitchError(c *gin.Context, message string, err error) {
+	status := manualSwitchErrorStatus(err)
+	if status == http.StatusInternalServerError {
+		logger.L.Error().Err(err).Str("operation", message).Msg("manual_switch_request_failed")
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   network.ManualSwitchErrorCode(err),
+		Data:    nil,
+	})
+}
+
+// @Summary Create a manual switch
+// @Description Register an existing host bridge as a manual network switch
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body CreateManualSwitchRequest true "Create Manual Switch Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Success 201 {object} internal.APIResponse[uint] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/manual-switch [post]
+// @Router /network/switch/manual [post]
 func CreateManualSwitch(networkService *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req CreateManualSwitchRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindManualSwitchJSON(c, &req) {
 			return
 		}
 
-		_, err := networkService.CreateManualSwitch(req.Name, req.Bridge)
+		switchModel, err := createManualSwitchOperation(networkService, req.Name, req.Bridge)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "internal_server_error",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeManualSwitchError(c, "failed_to_create_manual_switch", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusCreated, internal.APIResponse[uint]{
 			Status:  "success",
-			Message: "switch_created",
+			Message: "manual_switch_created",
 			Error:   "",
-			Data:    nil,
+			Data:    switchModel.ID,
 		})
 	}
 }
 
-// @Summary Delete a Manual Switch
-// @Description Delete a manual switch by ID
+// @Summary Delete a manual switch
+// @Description Delete a manual switch registration by ID
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Switch ID"
+// @Param id path int true "Manual Switch ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /network/manual-switch/:id [delete]
+// @Router /network/switch/manual/{id} [delete]
 func DeleteManualSwitch(networkService *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_switch_id",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		id, ok := manualSwitchPathID(c)
+		if !ok {
 			return
 		}
 
-		err = networkService.DeleteManualSwitch(uint(id))
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_switch",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := deleteManualSwitchOperation(networkService, id); err != nil {
+			writeManualSwitchError(c, "failed_to_delete_manual_switch", err)
 			return
 		}
 
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "switch_deleted",
+			Message: "manual_switch_deleted",
 			Error:   "",
 			Data:    nil,
 		})

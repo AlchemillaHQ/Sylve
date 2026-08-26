@@ -22,8 +22,9 @@ import (
 )
 
 type jailNetworkValidationFakeNetworkService struct {
-	entries        map[uint]string
-	syncEpairsCall int
+	entries          map[uint]string
+	ensureEpairCalls []string
+	ensureEpairErr   error
 }
 
 func (f *jailNetworkValidationFakeNetworkService) SyncStandardSwitches(_ *networkModels.StandardSwitch, _ string) error {
@@ -48,9 +49,10 @@ func (f *jailNetworkValidationFakeNetworkService) NewStandardSwitch(
 	_ bool,
 	_ bool,
 	_ bool,
+	_ bool,
 	_ networkModels.StandardSwitchManualAddresses,
-) error {
-	return nil
+) (uint, error) {
+	return 1, nil
 }
 
 func (f *jailNetworkValidationFakeNetworkService) EditStandardSwitch(
@@ -67,12 +69,13 @@ func (f *jailNetworkValidationFakeNetworkService) EditStandardSwitch(
 	_ bool,
 	_ bool,
 	_ bool,
+	_ bool,
 	_ networkModels.StandardSwitchManualAddresses,
 ) error {
 	return nil
 }
 
-func (f *jailNetworkValidationFakeNetworkService) DeleteStandardSwitch(_ int) error {
+func (f *jailNetworkValidationFakeNetworkService) DeleteStandardSwitch(_ uint) error {
 	return nil
 }
 
@@ -96,9 +99,9 @@ func (f *jailNetworkValidationFakeNetworkService) CreateEpair(_ string) error {
 	return nil
 }
 
-func (f *jailNetworkValidationFakeNetworkService) SyncEpairs(_ bool) error {
-	f.syncEpairsCall++
-	return nil
+func (f *jailNetworkValidationFakeNetworkService) EnsureEpair(name string) error {
+	f.ensureEpairCalls = append(f.ensureEpairCalls, name)
+	return f.ensureEpairErr
 }
 
 func (f *jailNetworkValidationFakeNetworkService) DeleteEpair(_ string) error {
@@ -128,6 +131,7 @@ func TestAddNetworkRejectsUnassignableIPv4CIDRBeforeSync(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -139,7 +143,7 @@ func TestAddNetworkRejectsUnassignableIPv4CIDRBeforeSync(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9101, Name: "jail-validation-add", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -173,22 +177,21 @@ func TestAddNetworkRejectsUnassignableIPv4CIDRBeforeSync(t *testing.T) {
 	ip4 := ip4Obj.ID
 	gw4 := gw4Obj.ID
 	req := jailServiceInterfaces.AddJailNetworkRequest{
-		CTID:       jail.CTID,
 		Name:       "net-add",
 		SwitchName: sw.Name,
 		IP4:        &ip4,
 		IP4GW:      &gw4,
 	}
 
-	err := svc.AddNetwork(req)
+	_, err := svc.AddNetwork(jail.CTID, req)
 	if err == nil {
 		t.Fatal("expected add network validation error, got nil")
 	}
 	if !strings.Contains(err.Error(), "invalid_ip4_cidr_not_assignable") {
 		t.Fatalf("expected invalid_ip4_cidr_not_assignable, got %v", err)
 	}
-	if fakeNetwork.syncEpairsCall != 0 {
-		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	if len(fakeNetwork.ensureEpairCalls) != 0 {
+		t.Fatalf("expected no EnsureEpair call on validation failure, got %d", len(fakeNetwork.ensureEpairCalls))
 	}
 
 	var count int64
@@ -206,6 +209,7 @@ func TestEditNetworkRejectsUnassignableIPv6CIDRBeforeSync(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -217,7 +221,7 @@ func TestEditNetworkRejectsUnassignableIPv6CIDRBeforeSync(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9102, Name: "jail-validation-edit", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -260,23 +264,24 @@ func TestEditNetworkRejectsUnassignableIPv6CIDRBeforeSync(t *testing.T) {
 
 	ip6 := ip6Obj.ID
 	gw6 := gw6Obj.ID
+	updatedName := "net-edit-updated"
+	switchName := sw.Name
 	req := jailServiceInterfaces.EditJailNetworkRequest{
-		NetworkID:  existing.ID,
-		Name:       "net-edit-updated",
-		SwitchName: sw.Name,
+		Name:       &updatedName,
+		SwitchName: &switchName,
 		IP6:        &ip6,
 		IP6GW:      &gw6,
 	}
 
-	err := svc.EditNetwork(req)
+	_, err := svc.EditNetwork(jail.CTID, existing.ID, req)
 	if err == nil {
 		t.Fatal("expected edit network validation error, got nil")
 	}
 	if !strings.Contains(err.Error(), "invalid_ip6_cidr_not_assignable") {
 		t.Fatalf("expected invalid_ip6_cidr_not_assignable, got %v", err)
 	}
-	if fakeNetwork.syncEpairsCall != 0 {
-		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	if len(fakeNetwork.ensureEpairCalls) != 0 {
+		t.Fatalf("expected no EnsureEpair call on validation failure, got %d", len(fakeNetwork.ensureEpairCalls))
 	}
 
 	var refreshed jailModels.Network
@@ -294,6 +299,7 @@ func TestAddNetworkRejectsInvalidVLANLow(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -305,7 +311,7 @@ func TestAddNetworkRejectsInvalidVLANLow(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9201, Name: "jail-vlan-low", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -319,21 +325,20 @@ func TestAddNetworkRejectsInvalidVLANLow(t *testing.T) {
 
 	vlan := -1
 	req := jailServiceInterfaces.AddJailNetworkRequest{
-		CTID:       jail.CTID,
 		Name:       "net-vlan-low",
 		SwitchName: sw.Name,
 		VLAN:       &vlan,
 	}
 
-	err := svc.AddNetwork(req)
+	_, err := svc.AddNetwork(jail.CTID, req)
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
 	}
 	if err.Error() != "invalid_vlan" {
 		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
 	}
-	if fakeNetwork.syncEpairsCall != 0 {
-		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	if len(fakeNetwork.ensureEpairCalls) != 0 {
+		t.Fatalf("expected no EnsureEpair call on validation failure, got %d", len(fakeNetwork.ensureEpairCalls))
 	}
 
 	var count int64
@@ -351,6 +356,7 @@ func TestAddNetworkRejectsInvalidVLANHigh(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -362,7 +368,7 @@ func TestAddNetworkRejectsInvalidVLANHigh(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9202, Name: "jail-vlan-high", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -376,21 +382,20 @@ func TestAddNetworkRejectsInvalidVLANHigh(t *testing.T) {
 
 	vlan := 4096
 	req := jailServiceInterfaces.AddJailNetworkRequest{
-		CTID:       jail.CTID,
 		Name:       "net-vlan-high",
 		SwitchName: sw.Name,
 		VLAN:       &vlan,
 	}
 
-	err := svc.AddNetwork(req)
+	_, err := svc.AddNetwork(jail.CTID, req)
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
 	}
 	if err.Error() != "invalid_vlan" {
 		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
 	}
-	if fakeNetwork.syncEpairsCall != 0 {
-		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	if len(fakeNetwork.ensureEpairCalls) != 0 {
+		t.Fatalf("expected no EnsureEpair call on validation failure, got %d", len(fakeNetwork.ensureEpairCalls))
 	}
 
 	var count int64
@@ -408,6 +413,7 @@ func TestEditNetworkRejectsInvalidVLAN(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -419,7 +425,7 @@ func TestEditNetworkRejectsInvalidVLAN(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9203, Name: "jail-vlan-edit", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -442,22 +448,23 @@ func TestEditNetworkRejectsInvalidVLAN(t *testing.T) {
 	}
 
 	vlan := 5000
+	updatedName := "net-vlan-edit-updated"
+	switchName := sw.Name
 	req := jailServiceInterfaces.EditJailNetworkRequest{
-		NetworkID:  existing.ID,
-		Name:       "net-vlan-edit-updated",
-		SwitchName: sw.Name,
+		Name:       &updatedName,
+		SwitchName: &switchName,
 		VLAN:       &vlan,
 	}
 
-	err := svc.EditNetwork(req)
+	_, err := svc.EditNetwork(jail.CTID, existing.ID, req)
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
 	}
 	if err.Error() != "invalid_vlan" {
 		t.Fatalf("expected invalid_vlan error, got %q", err.Error())
 	}
-	if fakeNetwork.syncEpairsCall != 0 {
-		t.Fatalf("expected no SyncEpairs call on validation failure, got %d", fakeNetwork.syncEpairsCall)
+	if len(fakeNetwork.ensureEpairCalls) != 0 {
+		t.Fatalf("expected no EnsureEpair call on validation failure, got %d", len(fakeNetwork.ensureEpairCalls))
 	}
 
 	var refreshed jailModels.Network
@@ -469,12 +476,13 @@ func TestEditNetworkRejectsInvalidVLAN(t *testing.T) {
 	}
 }
 
-func TestAddNetworkStoresVLANOnNetworkRecord(t *testing.T) {
+func TestAddNetworkDoesNotPersistWhenConfigSnapshotFails(t *testing.T) {
 	requireSystemUUIDOrSkip(t)
 
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&jailModels.Jail{},
+		&jailModels.Storage{},
 		&jailModels.Network{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
@@ -486,7 +494,7 @@ func TestAddNetworkStoresVLANOnNetworkRecord(t *testing.T) {
 	)
 
 	fakeNetwork := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
-	svc := &Service{DB: db, NetworkService: fakeNetwork}
+	svc := &Service{DB: db, NetworkService: fakeNetwork, ctidHashByCTID: make(map[uint]string)}
 
 	jail := jailModels.Jail{CTID: 9204, Name: "jail-vlan-store", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
@@ -500,27 +508,20 @@ func TestAddNetworkStoresVLANOnNetworkRecord(t *testing.T) {
 
 	vlan := 100
 	req := jailServiceInterfaces.AddJailNetworkRequest{
-		CTID:       jail.CTID,
 		Name:       "net-vlan-store",
 		SwitchName: sw.Name,
 		VLAN:       &vlan,
 	}
 
-	_ = svc.AddNetwork(req)
+	if _, err := svc.AddNetwork(jail.CTID, req); err == nil {
+		t.Fatal("expected configuration snapshot failure, got nil")
+	}
 
 	var networks []jailModels.Network
 	if err := db.Where("jid = ?", jail.ID).Find(&networks).Error; err != nil {
 		t.Fatalf("failed to load jail networks: %v", err)
 	}
-	if len(networks) != 1 {
-		t.Fatalf("expected 1 network, got %d", len(networks))
-	}
-
-	stored := networks[0]
-	if stored.VLAN == nil {
-		t.Fatal("expected VLAN to be non-nil")
-	}
-	if *stored.VLAN != 100 {
-		t.Fatalf("expected VLAN 100, got %d", *stored.VLAN)
+	if len(networks) != 0 {
+		t.Fatalf("expected no persisted networks after config snapshot failure, got %d", len(networks))
 	}
 }

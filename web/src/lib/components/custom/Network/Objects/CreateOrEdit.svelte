@@ -53,7 +53,11 @@
 	function isValidListSourceURL(value: string): boolean {
 		try {
 			const parsed = new URL(value.trim());
-			return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+			return (
+				(parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+				parsed.username === '' &&
+				parsed.password === ''
+			);
 		} catch {
 			return false;
 		}
@@ -272,12 +276,15 @@
 
 	/* svelte-ignore state_referenced_locally */
 	let properties = $state(options);
+	let saving = $state(false);
 
 	async function basicTests() {
 		let error = '';
 
-		if (properties.name === '') {
+		if (properties.name.trim() === '') {
 			error = 'Name is required';
+		} else if (properties.name.trim().length > 128) {
+			error = 'Name must be 128 characters or fewer';
 		}
 
 		if (properties.type.combobox.value === '') {
@@ -564,31 +571,85 @@
 		return oType;
 	}
 
+	function validateRequestBounds(type: string, values: string[]): boolean {
+		const maxValues = type === 'List' ? 16 : 1024;
+		if (values.length > maxValues) {
+			toast.error(
+				type === 'List'
+					? 'A List object can contain at most 16 source URLs'
+					: 'A network object can contain at most 1024 values',
+				{ position: 'bottom-center' }
+			);
+			return false;
+		}
+		if (values.some((value) => value.length > 2048)) {
+			toast.error('Each network object value must be 2048 characters or fewer', {
+				position: 'bottom-center'
+			});
+			return false;
+		}
+		return true;
+	}
+
+	function mutationErrorMessage(response: APIResponse, fallback: string): string {
+		const code = Array.isArray(response.error) ? '' : response.error;
+		switch (code) {
+			case 'network_object_name_conflict':
+				return 'Object with this name already exists';
+			case 'network_object_type_in_use':
+				return 'Cannot change the type of an object that is in use';
+			case 'network_object_active_vm_conflict':
+				return 'Cannot change the MAC object of an active VM';
+			case 'network_object_vm_requires_one_mac':
+			case 'network_object_dhcp_requires_one_mac':
+				return 'This object is in use and must contain exactly one MAC address';
+			case 'network_object_switch_requires_one_host':
+			case 'network_object_dhcp_requires_one_host':
+				return 'This object is in use and must contain exactly one IP address';
+			case 'network_object_switch_requires_one_network':
+				return 'This object is in use and must contain exactly one network';
+			case 'network_object_jail_requires_one_value':
+			case 'network_object_route_requires_one_value':
+				return 'This object is in use and must contain exactly one value';
+			case 'network_object_source_too_large':
+				return 'The remote list is larger than the supported limit';
+			case 'network_object_refresh_timeout':
+				return 'The remote source took too long to respond';
+			case 'network_object_source_unavailable':
+			case 'network_object_source_redirect_limit':
+			case 'network_object_source_redirect_invalid':
+				return 'The remote network object source is unavailable';
+			case 'network_object_source_invalid':
+				return 'The remote list contains unsupported data';
+			default:
+				return fallback;
+		}
+	}
+
 	async function create() {
+		if (saving) return;
+
 		const values = await basicTests();
 		if (!values) {
 			return;
 		}
 
 		let oType = getOType();
+		if (!validateRequestBounds(oType, values as string[])) return;
+		properties.name = properties.name.trim();
+		saving = true;
 
-		const response = (await createNetworkObject(properties.name, oType, values as string[])) as
-			| APIResponse
-			| number;
+		let response: APIResponse | number;
+		try {
+			response = await createNetworkObject(properties.name, oType, values as string[]);
+		} finally {
+			saving = false;
+		}
 
 		if (typeof response !== 'number') {
 			handleAPIError(response);
 
-			let message = 'Failed to create network object';
-
-			if (
-				typeof response.error === 'string' &&
-				response.error.startsWith('object_with_name_already')
-			) {
-				message = 'Object with this name already exists';
-			}
-
-			toast.error(message, {
+			toast.error(mutationErrorMessage(response, 'Failed to create network object'), {
 				position: 'bottom-center'
 			});
 			return;
@@ -607,52 +668,35 @@
 	}
 
 	async function editObject() {
+		if (saving) return;
+
 		const values = await basicTests();
 		if (!values) {
 			return;
 		}
 
 		let oType = getOType();
+		if (!validateRequestBounds(oType, values as string[])) return;
+		properties.name = properties.name.trim();
+		saving = true;
 
-		const response = await updateNetworkObject(
-			editingObject?.id || 0,
-			properties.name,
-			oType,
-			values as string[]
-		);
+		let response: APIResponse;
+		try {
+			response = await updateNetworkObject(
+				editingObject?.id || 0,
+				properties.name,
+				oType,
+				values as string[]
+			);
+		} finally {
+			saving = false;
+		}
 
 		if (response.error) {
 			handleAPIError(response);
-			let error = '';
-
-			if (!Array.isArray(response.error) && response.error.startsWith('object_with_name_already')) {
-				error = 'Object with this name already exists';
-			} else if (
-				!Array.isArray(response.error) &&
-				response.error.includes('please ensure only one IP is provided')
-			) {
-				error = 'Host object used in switch, only one IP is allowed';
-			} else if (!Array.isArray(response.error) && response.error.includes('no_detected_changes')) {
-				error = 'No changes detected';
-			} else if (
-				!Array.isArray(response.error) &&
-				response.error.includes('cannot_change_object_type')
-			) {
-				error = 'Cannot change type of object that is in use';
-			} else if (
-				!Array.isArray(response.error) &&
-				response.error.includes('cannot_change_object_of_active_vm')
-			) {
-				error = 'Cannot change object of active VM';
-			} else {
-				error = 'Failed to update network object';
-			}
-
-			if (error) {
-				toast.error(error, {
-					position: 'bottom-center'
-				});
-			}
+			toast.error(mutationErrorMessage(response, 'Failed to update network object'), {
+				position: 'bottom-center'
+			});
 		} else {
 			toast.success('Updated object', {
 				position: 'bottom-center'
@@ -805,9 +849,23 @@
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
 				{#if edit}
-					<Button onclick={editObject} type="submit" size="sm">Save</Button>
+					<Button onclick={editObject} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+							<span>Saving...</span>
+						{:else}
+							Save
+						{/if}
+					</Button>
 				{:else}
-					<Button onclick={create} type="submit" size="sm">Create</Button>
+					<Button onclick={create} type="submit" size="sm" disabled={saving}>
+						{#if saving}
+							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+							<span>Creating...</span>
+						{:else}
+							Create
+						{/if}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>

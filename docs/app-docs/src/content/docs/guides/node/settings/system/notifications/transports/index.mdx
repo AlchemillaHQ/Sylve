@@ -1,0 +1,65 @@
+---
+title: Notification Transports
+description: Configure the destinations that deliver Sylve notifications outside the web interface.
+---
+
+Notification transports are delivery destinations. Create one or more transports before enabling an external channel in a notification rule. Sylve can deliver to the web interface, ntfy, Pushover, SMTP email, and Discord. The web interface is configured per rule and does not need a transport.
+
+{/* Screenshot update needed: notifications-transports-overview.png. Capture the Notification Transports table with enabled examples of ntfy, Pushover, SMTP, and Discord. The Pushover row should show User / group key configured in the Destination column. */}
+
+![Notification Transports table showing enabled ntfy, Pushover, SMTP, and Discord delivery destinations](./notifications-transports-overview.png)
+
+## Create a transport
+
+Select **New**, give the transport a clear name, choose its type, configure its settings, then enable it. You can create multiple transports of the same type, such as separate email destinations for operations and backups.
+
+| Type | Required configuration | Optional configuration |
+| --- | --- | --- |
+| ntfy | Topic | Base URL, which defaults to `https://ntfy.sh`, and an authentication token. |
+| Pushover | Application API Token and User or Group Key | None. Both credentials must contain exactly 30 letters or numbers. |
+| SMTP | SMTP host, From Email, and at least one recipient | Port, username, password, and TLS or STARTTLS. The default port is 587. |
+| Discord | Webhook URL | None. |
+
+For SMTP recipients, Sylve offers email addresses saved on local and PAM user records, and you can also enter a recipient address directly. A transport can be saved disabled while you finish configuration or wait for the destination to be ready.
+
+### ntfy transport
+
+![New Notification Transport form configured for ntfy with base URL, topic, optional authentication token, and enabled state](./notifications-transport-create-ntfy.png)
+
+### Pushover transport
+
+Create an application in Pushover, then enter its **Application API Token** and the **User / Group Key** that should receive messages. Treat both values as secrets.
+
+{/* Screenshot needed: notifications-transport-create-pushover.png. Capture the New Notification Transport form with Type set to Pushover, a clear transport name, both credential fields populated or masked, and Enabled selected. */}
+
+### SMTP transport
+
+![New Notification Transport form configured for SMTP with host, sender, recipients, password field, and TLS or STARTTLS option](./notifications-transport-create-smtp.png)
+
+### Discord transport
+
+![New Notification Transport form configured for Discord with a webhook URL and enabled state](./notifications-transport-create-discord.png)
+
+## Test before enabling rules
+
+Select a transport in the table and use **Test** to send a test notification. Testing checks the configured delivery path without needing to wait for an actual disk, pool, or service event.
+
+Treat the credentials and URLs in transport forms as secrets. Tokens, Pushover keys, SMTP passwords, and Discord webhooks can grant access to notification destinations. When editing an existing ntfy, Pushover, or SMTP transport, leave a stored credential field blank to retain its current value. Enter a replacement only when you intend to change it.
+
+![Selected notification transport with the Test action available in Sylve](./notifications-transport-test-button-showcase.png)
+
+### SMTP test delivery
+
+![Test notification delivered as an SMTP email](./notifications-transport-test-smtp.png)
+
+### Discord test delivery
+
+![Test notification delivered to a Discord channel](./notifications-transport-test-discord.png)
+
+Pushover transports use the same **Test** action. A successful test should appear in the Pushover application associated with the configured user or group key.
+
+## Manage transports
+
+The table shows the status, type, name, and destination details for each transport. For Pushover, Sylve confirms that a user or group key is configured without revealing it. Select one transport to edit, test, or delete it.
+
+Deleting a transport removes that delivery destination without deleting notification rules or other transports. Review rules that use its channel afterward, because an enabled ntfy, Pushover, email, or Discord channel cannot deliver without an enabled matching transport.

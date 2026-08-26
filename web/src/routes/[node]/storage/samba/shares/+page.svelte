@@ -10,26 +10,37 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import type { SambaShare } from '$lib/types/samba/shares';
 	import { GZFSDatasetTypeSchema, type Dataset } from '$lib/types/zfs/dataset';
-	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		handleAPIError,
+		isAPIResponse,
+		isRequestCancellation,
+		updateCache
+	} from '$lib/utils/http';
+	import { renderWithIcon } from '$lib/utils/table';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
+	import { onMount, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
+		node: string;
 		shares: SambaShare[];
 		datasets: Dataset[];
 		groups: Group[];
 		users: User[];
 		sambaConfig: SambaConfig;
+		loadErrors: APIResponse[];
 	}
 
 	let { data }: { data: Data } = $props();
+	const initialData = untrack(() => data);
 
 	// svelte-ignore state_referenced_locally
 	let datasets = resource(
@@ -57,31 +68,57 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastGroupsByNode: Record<string, Group[]> = Object.create(null);
+	lastGroupsByNode[initialData.node] = initialData.groups;
 	let groups = resource(
-		() => 'groups',
-		async () => {
-			const result = await listGroups();
-			updateCache('groups', result);
-			return result;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listGroups({ hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastGroupsByNode[node] ?? [];
+				}
+				lastGroupsByNode[node] = result;
+				await updateCache('groups', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastGroupsByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.groups
+			initialValue: initialData.groups
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
+	const lastUsersByNode: Record<string, User[]> = Object.create(null);
+	lastUsersByNode[initialData.node] = initialData.users;
 	let users = resource(
-		() => 'users',
-		async () => {
-			const result = await listUsers();
-			updateCache('users', result);
-			return result;
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			try {
+				const result = await listUsers(undefined, { hostname: node, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return lastUsersByNode[node] ?? [];
+				}
+				lastUsersByNode[node] = result;
+				await updateCache('users', result, node);
+				return result;
+			} catch (error) {
+				if (isRequestCancellation(error)) return lastUsersByNode[node] ?? [];
+				throw error;
+			}
 		},
 		{
-			initialValue: data.users
+			initialValue: initialData.users
 		}
 	);
+
+	onMount(() => {
+		for (const loadError of initialData.loadErrors) handleAPIError(loadError);
+	});
 
 	// svelte-ignore state_referenced_locally
 	let sambaConfig = resource(
@@ -153,6 +190,14 @@
 				visible: false
 			},
 			{
+				field: 'enabled',
+				title: 'Status',
+				formatter: (cell: CellComponent) =>
+					cell.getValue()
+						? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
+						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-muted-foreground')
+			},
+			{
 				field: 'name',
 				title: 'Name'
 			},
@@ -194,7 +239,8 @@
 			const row: Row = {
 				id: share.id,
 				name: share.name,
-				mountpoint: dataset ? dataset.mountpoint : '-',
+				enabled: share.enabled,
+				mountpoint: dataset ? dataset.mountpoint : 'Dataset missing',
 				readAccess,
 				writeAccess,
 				created: share.createdAt
@@ -303,7 +349,7 @@
 
 <AlertDialog
 	open={properties.delete.open}
-	names={{ parent: 'Samba share', element: activeRow ? activeRow.name : '' }}
+	names={{ parent: 'Samba share', element: activeRow ? (activeRow.name as string) : '' }}
 	actions={{
 		onConfirm: async () => {
 			if (activeRow) {

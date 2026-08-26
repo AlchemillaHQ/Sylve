@@ -14,8 +14,7 @@
 
 	async function copyValue() {
 		await navigator.clipboard.writeText(value);
-		const truncated =
-			value.length > 20 ? value.slice(0, 20) + '...' : value;
+		const truncated = value.length > 20 ? value.slice(0, 20) + '...' : value;
 		toast.success(`Copied "${truncated}" to clipboard`, {
 			duration: 2000,
 			position: 'bottom-center'
@@ -25,7 +24,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="flex w-[90vw] max-w-xl flex-col p-5"
+		class="flex w-[90vw] max-w-xl flex-col p-6"
 		showCloseButton={true}
 		onClose={() => (open = false)}
 		onInteractOutside={() => (open = false)}
@@ -37,7 +36,8 @@
 		</Dialog.Header>
 
 		<div class="my-4 max-h-[60vh] overflow-auto">
-			<pre class="whitespace-pre-wrap break-all font-mono text-sm bg-muted p-3 rounded-md">{value}</pre>
+			<pre
+				class="whitespace-pre-wrap break-all font-mono text-sm bg-muted p-3 rounded-md">{value}</pre>
 		</div>
 
 		<Dialog.Footer class="p-0">

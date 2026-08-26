@@ -154,7 +154,7 @@ type fakeSSHConnMeta struct {
 	localAddr     net.Addr
 }
 
-func (f *fakeSSHConnMeta) User() string         { return f.user }
+func (f *fakeSSHConnMeta) User() string          { return f.user }
 func (f *fakeSSHConnMeta) SessionID() []byte     { return f.sessionID }
 func (f *fakeSSHConnMeta) ClientVersion() []byte { return []byte(f.clientVersion) }
 func (f *fakeSSHConnMeta) ServerVersion() []byte { return []byte(f.serverVersion) }

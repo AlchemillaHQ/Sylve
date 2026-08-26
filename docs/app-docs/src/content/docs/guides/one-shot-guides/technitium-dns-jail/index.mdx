@@ -1,0 +1,185 @@
+---
+title: Technitium DNS in a Jail
+description: Install Technitium DNS Server in a Sylve jail by extending the Simple Jail workflow.
+---
+
+import memLockOption from "./mem-lock-option.webp";
+import technitiumWebUi from "./web-ui.webp";
+
+This guide builds on [Simple Jail](/guides/one-shot-guides/simple-jail/). It covers only the settings and installation steps that differ when the jail will run Technitium DNS Server instead of AdGuard Home.
+
+Follow the Simple Jail guide through [Start and verify the jail](/guides/one-shot-guides/simple-jail/#start-and-verify-the-jail), applying the changes below while creating the jail. Stop before **Install AdGuard Home**. Do not install AdGuard Home in the Technitium jail because both applications would try to use DNS port `53`.
+
+This guide uses a **FreeBSD 15.x amd64** base. The .NET build below is native to FreeBSD 15 and may not work on a different FreeBSD release or architecture without adjustments.
+
+:::caution[Community-built .NET runtime]
+Microsoft does not officially support .NET 10 on FreeBSD. This guide uses binaries provided by the community project [sec/dotnet-core-freebsd-source-build](https://github.com/sec/dotnet-core-freebsd-source-build). Review the project, release notes, and checksum before installing the binaries, and keep the runtime updated when security fixes become available.
+:::
+
+## Changes from Simple Jail
+
+Use the same host networking, jail base, storage, network, hardware, and startup configuration described in Simple Jail, except for the changes in this section.
+
+### Basic
+
+On the **Basic** tab, use these Technitium-specific values:
+
+- **Jail Name:** `TechnitiumDNS`
+- **Hostname:** `technitiumdns`
+- **Description:** `Technitium DNS Server`
+
+Choose an unused **CT ID**. Leave the other fields as described in [Simple Jail: Basic](/guides/one-shot-guides/simple-jail/#basic).
+
+### Network
+
+The DHCP and SLAAC configuration from Simple Jail works for the initial installation. Before other devices begin using this jail as their DNS server, give it a stable address by reserving its DHCP lease on your router or changing the jail to a suitable static network configuration. A DNS server that changes address will become unreachable from clients configured with its old address.
+
+### Advanced
+
+Keep the default allowed options and leave the custom lifecycle hooks disabled as described in [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). In **Allowed Options**, additionally select **Memory Locking (`allow.mlock`)**. The .NET runtime needs permission to lock memory inside the jail.
+
+<div style="text-align: center;">
+  <img src={memLockOption.src} alt="Allowed Options menu with Memory Locking (allow.mlock) selected for the Technitium jail" />
+</div>
+
+The selected-option count in the screenshot may differ from the current interface. Keep every default selected by Simple Jail and add **Memory Locking**.
+
+Finish creating the jail, start it, open its console, and note its assigned IP address as described in [Start and verify the jail](/guides/one-shot-guides/simple-jail/#start-and-verify-the-jail). The remaining commands in this guide run as `root` inside that jail.
+
+## Install .NET 10
+
+Update the package catalog and install the runtime libraries needed by the community .NET build:
+
+```sh
+pkg update
+pkg install -y libunwind icu libinotify
+```
+
+Download the native FreeBSD 15 x64 .NET 10 SDK:
+
+```sh
+mkdir -p /opt/dotnet10
+cd /opt/dotnet10
+fetch https://github.com/sec/dotnet-core-freebsd-source-build/releases/download/10.0.110-vmr/dotnet-sdk-10.0.110-freebsd.15-x64.tar.gz
+sha256 dotnet-sdk-10.0.110-freebsd.15-x64.tar.gz
+```
+
+Confirm that `sha256` reports this expected value from the community release:
+
+```text
+c5cd785168d21d778f64cfd044140d0c30e35ef19324e34a8c94ad3f8e213101
+```
+
+If the value does not match exactly, do not use the archive. Remove it and check the [10.0.110-vmr release](https://github.com/sec/dotnet-core-freebsd-source-build/releases/tag/10.0.110-vmr) for updated instructions.
+
+After the checksum matches, extract the archive and remove the downloaded copy:
+
+```sh
+tar xzf dotnet-sdk-10.0.110-freebsd.15-x64.tar.gz
+rm dotnet-sdk-10.0.110-freebsd.15-x64.tar.gz
+```
+
+Verify that .NET starts:
+
+```sh
+DOTNET_OPENSSL_VERSION_OVERRIDE=35 /opt/dotnet10/dotnet --info
+```
+
+The output should identify SDK `10.0.110`, FreeBSD 15, the `freebsd.15-x64` runtime identifier, and both the `Microsoft.NETCore.App` and `Microsoft.AspNetCore.App` runtimes.
+
+## Install Technitium DNS Server
+
+Download the current portable Technitium DNS Server release into `/opt/technitium-dns`:
+
+```sh
+mkdir -p /opt/technitium-dns
+cd /opt/technitium-dns
+fetch https://download.technitium.com/dns/DnsServerPortable.tar.gz
+tar xzf DnsServerPortable.tar.gz
+rm DnsServerPortable.tar.gz
+```
+
+The download URL tracks the current stable release. You can compare the downloaded archive with the checksum published on the official [Technitium DNS Server download page](https://technitium.com/dns/) before extracting it.
+
+Test the server interactively:
+
+```sh
+cd /opt/technitium-dns
+DOTNET_OPENSSL_VERSION_OVERRIDE=35 DOTNET_ROOT=/opt/dotnet10 PATH=/opt/dotnet10:$PATH /opt/dotnet10/dotnet DnsServerApp.dll
+```
+
+Wait for `Technitium DNS Server was started successfully`, then press <kbd>Ctrl</kbd> + <kbd>C</kbd> to stop the test process before creating the service.
+
+## Run Technitium as a service
+
+Create an rc.d service so Technitium starts with the jail:
+
+```sh
+mkdir -p /usr/local/etc/rc.d
+
+cat > /usr/local/etc/rc.d/technitium <<'EOF'
+#!/bin/sh
+
+# PROVIDE: technitium
+# REQUIRE: LOGIN
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="technitium"
+rcvar="technitium_enable"
+
+load_rc_config "$name"
+
+: ${technitium_enable:="NO"}
+: ${technitium_user:="root"}
+: ${technitium_dir:="/opt/technitium-dns"}
+: ${technitium_dotnet:="/opt/dotnet10/dotnet"}
+: ${technitium_dotnet_root:="/opt/dotnet10"}
+: ${technitium_openssl_override:="35"}
+
+pidfile="/var/run/${name}.pid"
+procname="${technitium_dotnet}"
+command="/usr/sbin/daemon"
+
+command_args="-f -p ${pidfile} -u ${technitium_user} /usr/bin/env \
+DOTNET_OPENSSL_VERSION_OVERRIDE=${technitium_openssl_override} \
+DOTNET_ROOT=${technitium_dotnet_root} \
+PATH=${technitium_dotnet_root}:/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin \
+${technitium_dotnet} ${technitium_dir}/DnsServerApp.dll"
+
+run_rc_command "$1"
+EOF
+
+chmod +x /usr/local/etc/rc.d/technitium
+sysrc technitium_enable=YES
+service technitium start
+```
+
+Confirm that the service stays running:
+
+```sh
+service technitium status
+```
+
+Then confirm that its DNS and web-console ports are listening:
+
+```sh
+sockstat -4 -6 -l | grep -E '(:53|:5380)'
+```
+
+You should see TCP and UDP listeners on port `53` and a TCP listener on port `5380`. If port `53` is already occupied, stop the conflicting DNS service before starting Technitium again.
+
+## Complete setup in the web console
+
+From another device on the same network, open:
+
+```text
+http://<jail-ip>:5380/
+```
+
+Replace `<jail-ip>` with the address you noted earlier. Sign in with the default username `admin` and password `admin`, then change the password immediately before configuring zones, forwarders, or client DNS settings.
+
+<img src={technitiumWebUi.src} alt="Technitium DNS Server web console dashboard running from a Sylve jail" />
+
+Your Technitium DNS Server is now running in a jail and will start automatically whenever Sylve starts the jail. Before making important configuration changes, create a jail [Snapshot](/guides/node/jails/snapshots/) or [Backup](/guides/node/jails/backups/).

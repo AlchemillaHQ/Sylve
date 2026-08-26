@@ -10,13 +10,15 @@ package zelta
 
 import (
 	"context"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
-func TestZFSGetLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSGetLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/get-test"
 	ctx := context.Background()
@@ -41,8 +43,8 @@ func TestZFSGetLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSLocalDatasetExists(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSLocalDatasetExists(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/exists-test"
 	ctx := context.Background()
@@ -67,8 +69,86 @@ func TestZFSLocalDatasetExists(t *testing.T) {
 	}
 }
 
-func TestZFSDestroyLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationRestoreStagingDatasetExistsFailsClosedWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	staging := pool + "/live.restoring"
+	clone := pool + "/external-clone"
+	zfstest.EnsureDataset(t, client, staging)
+
+	for _, args := range [][]string{
+		{"snapshot", staging + "@preserve"},
+		{"clone", staging + "@preserve", clone},
+	} {
+		output, err := exec.Command("zfs", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("zfs %s: %v\noutput: %s", strings.Join(args, " "), err, output)
+		}
+	}
+
+	s := &Service{GZFS: client}
+	err := s.requireRestoreStagingDatasetAvailable(ctx, staging)
+	if err == nil {
+		t.Fatal("expected existing restore staging dataset to fail closed")
+	}
+	if !strings.Contains(err.Error(), "restore_staging_dataset_exists_requires_manual_cleanup") {
+		t.Fatalf("unexpected staging error: %v", err)
+	}
+
+	for _, dataset := range []string{staging, clone} {
+		exists, existsErr := s.localDatasetExists(ctx, dataset)
+		if existsErr != nil {
+			t.Fatalf("check %s: %v", dataset, existsErr)
+		}
+		if !exists {
+			t.Fatalf("%s was destroyed by staging preflight", dataset)
+		}
+	}
+	originOut, err := exec.Command("zfs", "get", "-H", "-o", "value", "origin", clone).CombinedOutput()
+	if err != nil {
+		t.Fatalf("read clone origin: %v\noutput: %s", err, originOut)
+	}
+	if got, want := strings.TrimSpace(string(originOut)), staging+"@preserve"; got != want {
+		t.Fatalf("clone origin = %q, want %q", got, want)
+	}
+}
+
+func TestIntegrationRestoreBackupCleanupPreservesArchiveWithDependentClone(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	archive := pool + "/live_restore-backup-owned"
+	clone := pool + "/dependent-clone"
+	zfstest.EnsureDataset(t, client, archive+"/child")
+
+	for _, args := range [][]string{
+		{"snapshot", archive + "@preserve"},
+		{"clone", archive + "@preserve", clone},
+	} {
+		output, err := exec.Command("zfs", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("zfs %s: %v\noutput: %s", strings.Join(args, " "), err, output)
+		}
+	}
+
+	s := &Service{GZFS: client}
+	if err := s.cleanupRestoreBackupDataset(ctx, archive); err == nil {
+		t.Fatal("expected ordinary recursive cleanup to be blocked by the dependent clone")
+	}
+	for _, dataset := range []string{archive, archive + "/child", clone} {
+		exists, err := s.localDatasetExists(ctx, dataset)
+		if err != nil {
+			t.Fatalf("check %s: %v", dataset, err)
+		}
+		if !exists {
+			t.Fatalf("%s was destroyed despite the dependent-clone cleanup failure", dataset)
+		}
+	}
+}
+
+func TestIntegrationZFSDestroyLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/destroy-test"
 	ctx := context.Background()
@@ -91,8 +171,8 @@ func TestZFSDestroyLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSRenameLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSRenameLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	src := pool + "/rename-src"
 	dst := pool + "/rename-dst"
@@ -115,8 +195,8 @@ func TestZFSRenameLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSMountUnmountLocalDataset(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSMountUnmountLocalDataset(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ds := pool + "/mount-test"
 	ctx := context.Background()
@@ -133,8 +213,8 @@ func TestZFSMountUnmountLocalDataset(t *testing.T) {
 	}
 }
 
-func TestZFSEnsureLocalPoolExists(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSEnsureLocalPoolExists(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	s := &Service{GZFS: client}
 
@@ -146,8 +226,8 @@ func TestZFSEnsureLocalPoolExists(t *testing.T) {
 	}
 }
 
-func TestZFSListLocalDatasets(t *testing.T) {
-	pool, client, cleanup := zfstest.Pool(t)
+func TestIntegrationZFSListLocalDatasets(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
 	ctx := context.Background()
 
@@ -186,6 +266,18 @@ func TestIsLocalDatasetBusyError(t *testing.T) {
 	err = errFromStr("some other error")
 	if isLocalDatasetBusyError(err) {
 		t.Fatal("unrelated error should not be busy")
+	}
+}
+
+func TestIsLocalDatasetNotMountedError(t *testing.T) {
+	if isLocalDatasetNotMountedError(nil) {
+		t.Fatal("nil should not be not-mounted")
+	}
+	if !isLocalDatasetNotMountedError(errFromStr("filesystem is not currently mounted")) {
+		t.Fatal("not-currently-mounted error should be detected")
+	}
+	if isLocalDatasetNotMountedError(errFromStr("dataset is busy")) {
+		t.Fatal("busy error should not be not-mounted")
 	}
 }
 

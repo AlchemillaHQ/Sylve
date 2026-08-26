@@ -81,7 +81,7 @@ func TestRunErrorIncludesStderr(t *testing.T) {
 
 func TestCheckTools(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
-		cmd:  "qemu-img",
+		cmd:  "/usr/local/bin/qemu-img",
 		args: []string{"--version"},
 	}}}
 	q := &qimg{exec: exec}

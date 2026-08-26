@@ -1,4 +1,4 @@
-difuse/
+/difuse/
 .gocache/
 data/*
 !data/.gitignore
@@ -41,3 +41,7 @@ Temporary Items
 /.cache/
 /libbsmart/
 /dataset.json
+/.idea/
+/SignalInspector.core
+/sylve-ddns/
+/test-results/

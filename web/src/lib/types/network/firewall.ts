@@ -31,14 +31,23 @@ export const FirewallTrafficRuleSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: nullableString,
-	visible: z.boolean().nullish().transform((value) => value ?? true),
+	visible: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? true),
 	enabled: z.boolean().optional().default(true),
-	log: z.boolean().nullish().transform((value) => value ?? false),
-	quick: z.boolean().nullish().transform((value) => value ?? false),
+	log: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
+	quick: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	priority: z.number().int(),
 	action: z.enum(['pass', 'block']),
 	direction: z.enum(['in', 'out']),
-	protocol: z.enum(['any', 'tcp', 'udp', 'icmp']),
+	protocol: z.enum(['any', 'tcp', 'udp', 'tcp_udp', 'icmp']),
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
 	family: z.enum(['any', 'inet', 'inet6']).optional().default('any'),
@@ -58,12 +67,21 @@ export const FirewallNATRuleSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	description: nullableString,
-	visible: z.boolean().nullish().transform((value) => value ?? true),
+	visible: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? true),
 	enabled: z.boolean().optional().default(true),
-	log: z.boolean().nullish().transform((value) => value ?? false),
+	log: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	priority: z.number().int(),
 	natType: natTypeSchema,
-	policyRoutingEnabled: z.boolean().nullish().transform((value) => value ?? false),
+	policyRoutingEnabled: z
+		.boolean()
+		.nullish()
+		.transform((value) => value ?? false),
 	policyRouteGateway: nullableString,
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
@@ -89,6 +107,10 @@ export const FirewallNATRuleSchema = z.object({
 export const FirewallAdvancedSettingsSchema = z.object({
 	id: z.number().int(),
 	preRules: nullableString,
+	preNatDecl: nullableString,
+	postNatDecl: nullableString,
+	preTrafficAnchor: nullableString,
+	postTrafficAnchor: nullableString,
 	postRules: nullableString,
 	createdAt: z.string(),
 	updatedAt: z.string()
@@ -113,7 +135,10 @@ export const FirewallLiveHitEventSchema = z.object({
 	timestamp: z.string(),
 	ruleType: z.enum(['traffic', 'nat']),
 	ruleId: z.number().int().nonnegative(),
-	ruleName: z.string().nullish().transform((value) => value ?? ''),
+	ruleName: z
+		.string()
+		.nullish()
+		.transform((value) => value ?? ''),
 	action: nullableString,
 	direction: nullableString,
 	interface: nullableString,
@@ -129,10 +154,18 @@ export const FirewallLiveHitsResponseSchema = z.object({
 	updatedAt: z.string()
 });
 
+export const RenderedConfigSchema = z.object({
+	pfConf: nullableString,
+	objectTables: nullableString,
+	natRules: nullableString,
+	trafficRules: nullableString
+});
+
 export type FirewallTrafficRule = z.infer<typeof FirewallTrafficRuleSchema>;
 export type FirewallNATRule = z.infer<typeof FirewallNATRuleSchema>;
 export type FirewallAdvancedSettings = z.infer<typeof FirewallAdvancedSettingsSchema>;
 export type FirewallTrafficRuleCounter = z.infer<typeof FirewallTrafficRuleCounterSchema>;
+export type RenderedConfig = z.infer<typeof RenderedConfigSchema>;
 export type FirewallNATRuleCounter = z.infer<typeof FirewallNATRuleCounterSchema>;
 export type FirewallLiveHitEvent = z.infer<typeof FirewallLiveHitEventSchema>;
 export type FirewallLiveHitsResponse = z.infer<typeof FirewallLiveHitsResponseSchema>;

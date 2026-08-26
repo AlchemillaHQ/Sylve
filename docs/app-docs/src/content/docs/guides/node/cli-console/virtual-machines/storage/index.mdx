@@ -1,0 +1,305 @@
+---
+title: Storage
+description: Inspect, attach, edit, grow, and safely detach VM storage with the Sylve CLI and console.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Sylve supports managed raw disks, managed ZVOLs, retained downloaded images, and external ZFS filesystems. The storage inventory reports who owns each backing resource so scripts can distinguish VM attachments from the datasets and downloads behind them.
+
+:::caution[Power off the VM before changing storage]
+Listing storage is safe while a VM is running. Attach, edit, resize, and detach require a powered-off VM. Complete the shutdown or stop lifecycle task before submitting a storage mutation.
+:::
+
+## Inspect attached storage
+
+List the storage attached to VM `301`:
+
+```bash
+doas sylve vms storage list --rid 301
+```
+
+The final documentation inventory on Loki is:
+
+```text
+Storage for VM RID 301
+ID    NAME                 TYPE     EMULATION     SIZE       ENABLED    OWNERSHIP    BACKING
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+5                          raw      virtio-blk    4.0 GiB    true       managed      zroot/sylve/virtual-machines/301/raw-5
+6                          image    ahci-cd       -          true       retained     306a765d-c9d0-5d53-8a67-bd48b2e0adbe
+7     docs-data-renamed    raw      virtio-blk    2.0 GiB    false      managed      zroot/sylve/virtual-machines/301/raw-7
+8     docs-volume          zvol     nvme          2.0 GiB    true       managed      zroot/sylve/virtual-machines/301/zvol-8
+```
+
+Use JSON to obtain boot order, dataset GUID, download UUID, filesystem target, read-only state, backing path, and deletion policy:
+
+```bash
+doas sylve vms storage list --rid 301 --json
+```
+
+### Understand ownership
+
+| Ownership | Meaning |
+| --- | --- |
+| `managed` | Sylve created or imported the backing into the VM's managed namespace. Deletion requires the corresponding explicit VM deletion flag. |
+| `retained` | The attachment refers to a download or backing resource that remains independent of the VM. |
+| `external` | The attachment exposes an existing filesystem dataset. Sylve does not own or destroy that dataset. |
+
+The JSON field `deleteWithVmFlag` identifies the explicit deletion option for managed storage. Raw disks report `--delete-raw-disks`, while ZVOLs report `--delete-volumes`. Images and external filesystems do not report a VM deletion flag.
+
+## Attach a new raw disk
+
+A new raw disk requires a name, pool, size, and optional emulation:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type raw \
+  --name docs-data \
+  --pool zroot \
+  --size 1GiB \
+  --emulation virtio-blk \
+  --json
+```
+
+Loki created attachment `7` and its managed dataset:
+
+```json
+{
+  "attached": true,
+  "rid": 301,
+  "storage": {
+    "id": 7,
+    "name": "docs-data",
+    "type": "raw",
+    "emulation": "virtio-blk",
+    "pool": "zroot",
+    "size": 1073741824,
+    "enabled": true,
+    "bootOrder": 2,
+    "datasetGuid": "11325768801817074905",
+    "backing": "zroot/sylve/virtual-machines/301/raw-7",
+    "ownership": "managed",
+    "deleteWithVmFlag": "--delete-raw-disks"
+  }
+}
+```
+
+To import an existing raw disk file, replace `--size` with an absolute path:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type raw \
+  --name imported-disk \
+  --pool zroot \
+  --raw-path /root/images/disk.raw \
+  --emulation virtio-blk
+```
+
+The path is read on the Sylve host. It must be absolute and identify a regular file. `--raw-path` and `--size` cannot be combined.
+
+## Attach a new or existing ZVOL
+
+Create a new managed ZVOL:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type zvol \
+  --name docs-volume \
+  --pool zroot \
+  --size 1GiB \
+  --emulation nvme \
+  --json
+```
+
+The real result was attachment `8` backed by `zroot/sylve/virtual-machines/301/zvol-8`.
+
+Import an existing ZVOL by its ZFS GUID instead of supplying a size:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type zvol \
+  --name imported-volume \
+  --pool zroot \
+  --dataset-guid 1234567890123456789 \
+  --emulation nvme
+```
+
+:::caution[ZVOL import can relocate the source]
+When the source ZVOL is already in the target pool, Sylve may move or rename it into the VM's managed namespace. A cross-pool import is copied. Confirm the source and target pool before importing.
+:::
+
+## Attach downloaded media
+
+Attach a completed download by UUID:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type image \
+  --name docs-installer-copy \
+  --image-uuid 306a765d-c9d0-5d53-8a67-bd48b2e0adbe \
+  --emulation ahci-cd \
+  --json
+```
+
+`iso` is accepted as a type synonym for `image`. Image attachments default to `ahci-cd` when emulation is omitted. The download remains retained when the attachment or VM is removed.
+
+## Attach an external filesystem
+
+Filesystem storage exposes an existing ZFS filesystem to the guest through virtio-9p. Obtain its GUID from ZFS:
+
+```bash
+doas zfs get -H -o value guid zroot/docs-vm-share
+```
+
+Attach the dataset using a unique guest target name:
+
+```bash
+doas sylve vms storage attach \
+  --rid 301 \
+  --type filesystem \
+  --name docs-share \
+  --dataset-guid 4080324291302679523 \
+  --filesystem-target docs_share \
+  --read-only=true \
+  --json
+```
+
+Filesystem attachments always use `virtio-9p`. The target must be valid and unique within the VM. The returned ownership is `external`, and the dataset remains independent of the VM.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-storage-attach.cast"
+  title="Real managed raw and external filesystem attachment responses from powered-off VM 301."
+/>
+
+## Edit an attachment
+
+`storage edit` applies only the fields explicitly supplied. Supported changes include name, emulation, boot order, enabled state, size, filesystem target, and filesystem read-only state.
+
+Rename attachment `7`, move it later in boot order, and disable it:
+
+```bash
+doas sylve vms storage edit \
+  --rid 301 \
+  --storage-id 7 \
+  --name docs-data-renamed \
+  --boot-order 5 \
+  --enabled=false \
+  --json
+```
+
+Explicit `false` is different from omitting a Boolean flag. The real response preserved every unmentioned field and returned `"enabled": false`.
+
+Edit an external filesystem target and make it writable:
+
+```bash
+doas sylve vms storage edit \
+  --rid 301 \
+  --storage-id 10 \
+  --filesystem-target docs_share_rw \
+  --read-only=false \
+  --json
+```
+
+At least one change is required. Filesystem-only fields are rejected for other storage types by the service.
+
+## Grow a managed disk
+
+Use the focused resize command for raw disks and ZVOLs:
+
+```bash
+doas sylve vms storage resize \
+  --rid 301 \
+  --storage-id 7 \
+  --size 2GiB \
+  --json
+```
+
+The same operation grows a ZVOL:
+
+```bash
+doas sylve vms storage resize \
+  --rid 301 \
+  --storage-id 8 \
+  --size 2GiB \
+  --json
+```
+
+Both operations on Loki returned the new size as `2147483648` bytes.
+
+:::caution[Storage can grow but cannot shrink]
+The requested size is the new total size, not an amount to add. Raw disks and ZVOLs can only grow. Image and filesystem attachments cannot be resized. Growing the backing storage does not automatically expand partitions or filesystems inside the guest.
+:::
+
+## Detach without destroying backing
+
+Detach removes the VM attachment and its tracking metadata:
+
+```bash
+doas sylve vms storage detach \
+  --rid 301 \
+  --storage-id 9 \
+  --json
+```
+
+The response describes what was detached:
+
+```json
+{
+  "detached": true,
+  "rid": 301,
+  "storage": {
+    "id": 9,
+    "name": "docs-installer-copy",
+    "type": "image",
+    "downloadUuid": "306a765d-c9d0-5d53-8a67-bd48b2e0adbe",
+    "ownership": "retained"
+  }
+}
+```
+
+Detaching external filesystem attachment `10` likewise retained `zroot/docs-vm-share`. The image download, filesystem dataset, raw dataset, or ZVOL behind an attachment is never destroyed by `storage detach`.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-vms-storage-manage.cast"
+  title="A real safe filesystem detach followed by the final storage inventory on Loki."
+/>
+
+## Use the interactive console
+
+Console commands place the RID and storage ID after the leaf command while keeping modification options named:
+
+```text
+vms storage list 301
+vms storage attach 301 --type raw --name data --pool zroot --size 10GiB --emulation virtio-blk
+vms storage edit 301 7 --boot-order 5 --enabled=false
+vms storage resize 301 7 --size 20GiB
+vms storage detach 301 9 --json
+```
+
+The same validators and service operations are used by direct and console forms.
+
+## Attachment argument reference
+
+| Storage type | Required source | Compatible options | Default emulation |
+| --- | --- | --- | --- |
+| `raw` | `--pool` and exactly one of `--size` or `--raw-path` | `--name`, `--emulation` | `virtio-blk` |
+| `zvol` | `--pool` and exactly one of `--size` or `--dataset-guid` | `--name`, `--emulation` | `virtio-blk` |
+| `image` or `iso` | `--image-uuid` | `--name`, `--emulation` | `ahci-cd` |
+| `filesystem` | `--dataset-guid` and `--filesystem-target` | `--name`, `--read-only` | `virtio-9p` |
+
+Every attachment requires a non-empty name. Emulation values are `virtio-blk`, `ahci-hd`, `ahci-cd`, `nvme`, and `virtio-9p`, but `virtio-9p` is reserved for filesystem storage.
+
+## Safety summary
+
+- List operations may run while the VM is powered on.
+- All mutations require the VM to be powered off.
+- New raw disks and ZVOLs are managed by Sylve.
+- Downloads and external filesystem datasets remain retained.
+- Detach never destroys backing storage.
+- VM deletion retains storage unless an explicit managed-storage deletion flag is supplied.
+- Recheck the JSON ownership and backing fields before destructive VM deletion.

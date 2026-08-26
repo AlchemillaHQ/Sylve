@@ -272,82 +272,73 @@ func (s *Service) evaluateReplicationPolicyHA(
 }
 
 func (s *Service) buildReplicationHARuntimeSnapshot() replicationHARuntimeSnapshot {
-	snapshot := replicationHARuntimeSnapshot{
-		TotalVoters:     0,
-		OnlineVoters:    0,
-		QuorumRequired:  0,
-		LeaderHealthy:   false,
-		QuorumAvailable: false,
-	}
-
 	if s == nil || s.Raft == nil {
-		return snapshot
+		return replicationHARuntimeSnapshot{}
 	}
 
 	cfgFuture := s.Raft.GetConfiguration()
 	if err := cfgFuture.Error(); err != nil {
-		return snapshot
+		return replicationHARuntimeSnapshot{}
 	}
 
-	voterIDs := make([]string, 0)
-	for _, server := range cfgFuture.Configuration().Servers {
-		if server.Suffrage != raft.Voter {
-			continue
-		}
-		nodeID := strings.TrimSpace(string(server.ID))
-		if nodeID == "" {
-			continue
-		}
-		voterIDs = append(voterIDs, nodeID)
+	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderHealthy := strings.TrimSpace(string(leaderID)) != "" ||
+		strings.TrimSpace(string(leaderAddress)) != ""
+	if leaderHealthy && s.Raft.State() == raft.Leader {
+		leaderHealthy = s.Raft.VerifyLeader().Error() == nil
 	}
+	nodes, err := s.Nodes()
+	if err != nil {
+		nodes = nil
+	}
+	return replicationHARuntimeSnapshotFor(
+		cfgFuture.Configuration(),
+		nodes,
+		s.LocalNodeID(),
+		string(leaderID),
+		string(leaderAddress),
+		leaderHealthy,
+	)
+}
 
+func replicationHARuntimeSnapshotFor(
+	configuration raft.Configuration,
+	nodes []clusterModels.ClusterNode,
+	localNodeID string,
+	leaderNodeID string,
+	leaderAddress string,
+	leaderHealthy bool,
+) replicationHARuntimeSnapshot {
+	voterIDs := make([]string, 0, len(configuration.Servers))
+	for _, server := range configuration.Servers {
+		if server.Suffrage == raft.Voter && strings.TrimSpace(string(server.ID)) != "" {
+			voterIDs = append(voterIDs, strings.TrimSpace(string(server.ID)))
+		}
+	}
 	sort.Strings(voterIDs)
-	snapshot.TotalVoters = len(voterIDs)
+	snapshot := replicationHARuntimeSnapshot{TotalVoters: len(voterIDs)}
 	if snapshot.TotalVoters == 0 {
 		return snapshot
 	}
 
-	statusByNodeID := make(map[string]string, snapshot.TotalVoters)
-	nodes, nodesErr := s.Nodes()
-	if nodesErr == nil {
-		for _, node := range nodes {
-			statusByNodeID[strings.TrimSpace(node.NodeUUID)] = strings.ToLower(strings.TrimSpace(node.Status))
-		}
+	statusByNodeID := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		statusByNodeID[strings.TrimSpace(node.NodeUUID)] = strings.ToLower(strings.TrimSpace(node.Status))
 	}
-
-	localNodeID := strings.TrimSpace(s.LocalNodeID())
+	localNodeID = strings.TrimSpace(localNodeID)
 	for _, voterID := range voterIDs {
-		if voterID == localNodeID {
-			snapshot.OnlineVoters++
-			continue
-		}
-		if statusByNodeID[voterID] == "online" {
+		if voterID == localNodeID || statusByNodeID[voterID] == "online" {
 			snapshot.OnlineVoters++
 		}
 	}
 
 	snapshot.QuorumRequired = (snapshot.TotalVoters / 2) + 1
-	if snapshot.QuorumRequired <= 0 {
-		snapshot.QuorumRequired = 1
-	}
-
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
-	leaderNodeID := strings.TrimSpace(string(leaderID))
-	leaderAddressStr := strings.TrimSpace(string(leaderAddress))
-	snapshot.LeaderHealthy = leaderNodeID != "" || leaderAddressStr != ""
-	if snapshot.LeaderHealthy {
-		if s.Raft.State() == raft.Leader {
-			if err := s.Raft.VerifyLeader().Error(); err != nil {
-				snapshot.LeaderHealthy = false
-			}
-		}
-	}
-
-	if snapshot.LeaderHealthy && leaderNodeID != "" && leaderNodeID != localNodeID {
-		leaderStatus, ok := statusByNodeID[leaderNodeID]
-		if !ok || leaderStatus != "online" {
-			snapshot.LeaderHealthy = false
-		}
+	leaderNodeID = strings.TrimSpace(leaderNodeID)
+	snapshot.LeaderHealthy = leaderHealthy &&
+		(leaderNodeID != "" || strings.TrimSpace(leaderAddress) != "")
+	if snapshot.LeaderHealthy && leaderNodeID != "" && leaderNodeID != localNodeID &&
+		statusByNodeID[leaderNodeID] != "online" {
+		snapshot.LeaderHealthy = false
 	}
 
 	snapshot.QuorumAvailable = snapshot.LeaderHealthy && snapshot.OnlineVoters >= snapshot.QuorumRequired
@@ -355,12 +346,13 @@ func (s *Service) buildReplicationHARuntimeSnapshot() replicationHARuntimeSnapsh
 }
 
 func replicationPolicyEffectiveRunner(sourceMode, sourceNodeID, activeNodeID string) string {
-	mode := strings.ToLower(strings.TrimSpace(sourceMode))
+	_ = strings.ToLower(strings.TrimSpace(sourceMode))
 	sourceNodeID = strings.TrimSpace(sourceNodeID)
 	activeNodeID = strings.TrimSpace(activeNodeID)
-	if mode == clusterModels.ReplicationSourceModePinned {
-		return sourceNodeID
-	}
+	// The active owner is the only node allowed to read and replicate a
+	// protected guest. In pinned-primary mode SourceNodeID is the preferred
+	// failback destination; it must not keep running replication after the
+	// workload has failed over to another node.
 	if activeNodeID != "" {
 		return activeNodeID
 	}

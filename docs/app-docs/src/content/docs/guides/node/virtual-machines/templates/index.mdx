@@ -1,44 +1,95 @@
 ---
 title: Templates
-description: Learn how to use Sylve's templating features to quickly create VMs with pre-configured settings.
+description: Capture a VM as a reusable ZFS-backed template and create one or many independent VMs from it.
 ---
 
-Templates in Sylve are incredibly powerful. You can use them to create one or more VMs with pre-configured settings, such as the storage, CPU, memory, and more. 
+VM templates let you standardize an operating-system image and its Sylve configuration, then create new VMs from that known starting point. A template stores its own ZFS-backed copy of the source VM's cloneable storage. The source VM stays intact, and VMs created later have their own independent storage datasets.
 
-## Creating a Template
+## Prepare the source VM
 
-:::note
-You must turn off a VM before you can convert it to a template, this is enforced to ensure disk consistency.
-:::
-
-To create a template, you need a base VM that you can use as a blueprint. Once you have that you can right click on the VM you want to template and select "Convert To Template". This will create a new template based on the VM's current configuration. You can remove the VM after creating the template if you no longer need it, all templates are **full copies** meaning they are not linked to the original VM in any way.
-
-![Create Template](./convert-button.png)
-
-Once you click on the "Convert To Template" button, you'll be prompted to enter a name for your template. After you enter the name and confirm, the template will be created and you will see that in the left sidebar under the "Templates" section.
-
-![Create Template Modal](./convert-modal.png)
+Configure and test the VM as you want future VMs to begin. Install the operating system, apply updates, configure the boot disk and network interfaces, and optionally add Cloud-Init data.
 
 :::caution
-A few things are not copied over from the Base VM when creating a template, these include:
-
-- **TPM State**
-- **NVRAM State**
-- **Network Objects**: MAC Addresses are not copied over, this is to prevent conflicts when creating multiple VMs from the same template, Sylve will generate new MAC addresses for each network interface when creating a VM from a template.
+The source VM must be shut down before conversion. Sylve enforces this so its disk contents are captured from a stopped, consistent VM state.
 :::
 
-## Using a Template
+Templates require at least one managed **Raw Disk** or **ZFS Volume**. Filesystem shares and other non-cloneable storage are not captured. Sylve also checks that the source pools have enough free space to store the template copy.
 
-### Summary
+## Convert a VM to a template
 
-You can right click on a template and view it's summary, this will show you the template's configurations.
+Open the source VM's actions and choose **Convert to Template**. Enter a unique template name, then confirm the conversion. The new template appears in the sidebar's Templates section when its task completes.
 
-![Template Summary](./template-summary.png)
+![Stopped source VM action menu with Convert to Template available](./vm-template-convert-action.png)
 
-### Create VM from Template
+![Convert to Template dialog with a clear unique template name](./vm-template-convert.png)
 
-Creating a VM is trivial, you can pick `Single` or `Multiple`, in our case we opted for a single VM with the name `Alpine-2`. You also get to choose where the VMs storage will go.
+During conversion, Sylve copies each supported storage dataset to the template hierarchy on its original pool. The template is separate from the source VM, so you may keep, repurpose, or delete the original VM after checking that the template is usable.
 
-![Create VM from Template](./create-modal.png)
+### What the template retains
 
-Once you hit "Create VM", it will start the creating process and in a few seconds/minutes (depending on the template's size) your VM will be ready to use!
+The template preserves the VM's intended configuration, including CPU topology, RAM, storage layout and boot order, network switch connections and emulation, firmware, console configuration, Cloud-Init data, selected options, and supported device settings.
+
+### What each new VM receives instead
+
+Some values are intentionally regenerated or reset so copies do not conflict with the source or one another.
+
+| Setting | Behavior for a VM created from the template |
+| --- | --- |
+| **RID and name** | New values chosen in the creation dialog. |
+| **Storage** | New independent Raw Disk or ZFS Volume datasets, created from the template copy. |
+| **MAC addresses** | New unique MAC objects for every template network interface. |
+| **VNC port and password** | A new available port and a new generated password. |
+| **Start at Boot, Start Order, Wake on LAN** | Reset to disabled, order `0`, and disabled respectively. |
+| **CPU pinning and PCI passthrough assignments** | Not carried over. Assign them deliberately to each new VM. |
+| **TPM and firmware runtime state** | Fresh per-VM state. Do not expect enrolled TPM secrets or mutable firmware variables from the source VM to be reused. |
+
+## Inspect a template
+
+Open a template's **View** action to check it before deploying from it. The dialog groups the retained configuration into **Basic**, **Storage**, **Network**, and **Cloud-Init** tabs.
+
+Use this view to confirm the required disk layout and pool origin, that every required switch still exists, and that no credentials or machine-specific identity were accidentally left in Cloud-Init data.
+
+![Template View dialog with Basic details and tabs for Storage, Network, and Cloud-Init](./vm-template-view.png)
+
+## Create VMs from a template
+
+Choose **Create VM** on a template. The dialog loads the template and the node's available ZFS pools, then offers **Single** and **Multiple** creation modes.
+
+### Single VM
+
+Choose a unique **RID**, optionally set a name, and select a destination pool for every template storage item. Sylve suggests the original pool when it is available, but each disk can be mapped to a different available pool.
+
+![Create VM from template in Single mode with a new RID, name, and per-disk storage pool mappings](./vm-template-create-single.png)
+
+### Multiple VMs
+
+Choose a **Starting RID**, a **Count**, and an optional **Name Prefix**. Sylve creates a consecutive RID range. A batch can contain up to 200 VMs, and every RID and generated name must be available before creation begins.
+
+![Create VMs from template in Multiple mode with a RID range, name prefix, storage mappings, and Cloud-Init identity rewriting](./vm-template-create-multiple.png)
+
+| Field | Description |
+| --- | --- |
+| **RID / Starting RID** | The one RID, or first RID in the consecutive range. RIDs must be from `1` to `9999`. |
+| **Name / Name Prefix** | An optional name for one VM, or prefix used to name every VM in a batch. |
+| **Count** | Number of VMs in a multiple-creation batch, from 1 to 200. |
+| **Storage Pool Mapping** | Destination ZFS pool for each Raw Disk or ZFS Volume in the template. |
+
+### Cloud-Init identity rewriting
+
+If the template contains Cloud-Init data, you can enable **Rewrite cloud-init hostname + instance-id**. Sylve updates the metadata identity for each created VM so Cloud-Init treats it as a new instance. An optional **Identity Prefix** lets you choose the generated hostname prefix.
+
+Enable this when using a Cloud-Init image to create more than one instance. It avoids reusing the template's machine identity and helps first-boot configuration run as expected.
+
+## Preflight checks and recovery
+
+Before creating anything, Sylve checks the template storage datasets, selected pools and free capacity, RID and VM-name availability, and template network switches. If a check fails, no new VM is created. If a later creation step in a batch fails, Sylve cleans up VMs already created by that request.
+
+:::note
+Templates are node-local. Create the template and its VMs on the same node, or use the relevant migration and backup workflows to move workloads between nodes.
+:::
+
+## Delete a template
+
+Deleting a template removes its template storage datasets and its template definition. It does not delete VMs that were previously created from it because their storage is independent. Keep the template while you need to create more identical VMs or retain it as a reusable golden image.
+
+![Template deletion confirmation explaining that template storage is removed while existing VMs remain](./vm-template-delete.png)

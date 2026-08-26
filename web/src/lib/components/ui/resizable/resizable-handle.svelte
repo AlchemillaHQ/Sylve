@@ -1,16 +1,52 @@
 <script lang="ts">
 	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
 	import * as ResizablePrimitive from 'paneforge';
+	import { PersistedState } from 'runed';
 	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		withHandle = false,
+		gripPreferenceKey,
+		ondblclick,
 		...restProps
 	}: WithoutChildrenOrChild<ResizablePrimitive.PaneResizerProps> & {
 		withHandle?: boolean;
+		gripPreferenceKey?: string;
 	} = $props();
+
+	// svelte-ignore state_referenced_locally
+	const persistedGripVisible = gripPreferenceKey
+		? new PersistedState<boolean>(`sylve-resizable-grip-visible-v1:${gripPreferenceKey}`, true)
+		: undefined;
+	let localGripVisible = $state(true);
+	let gripVisible = $derived(persistedGripVisible?.current ?? localGripVisible);
+
+	function setGripVisible(visible: boolean) {
+		if (persistedGripVisible) {
+			persistedGripVisible.current = visible;
+			return;
+		}
+
+		localGripVisible = visible;
+	}
+
+	function handleDoubleClick(event: MouseEvent & { currentTarget: EventTarget & HTMLDivElement }) {
+		ondblclick?.(event);
+		if (event.defaultPrevented || !withHandle) return;
+
+		const clickedGrip =
+			event.target instanceof Element &&
+			event.target.closest('[data-slot="resizable-grip"]') !== null;
+
+		if (gripVisible) {
+			if (clickedGrip) setGripVisible(false);
+			return;
+		}
+
+		setGripVisible(true);
+	}
 </script>
 
 <ResizablePrimitive.PaneResizer
@@ -21,9 +57,13 @@
 		className
 	)}
 	{...restProps}
+	ondblclick={handleDoubleClick}
 >
-	{#if withHandle}
-		<div class="bg-border rounded-xs z-10 flex h-4 w-3 items-center justify-center border">
+	{#if withHandle && gripVisible}
+		<div
+			data-slot="resizable-grip"
+			class="bg-border rounded-xs z-10 flex h-4 w-3 items-center justify-center border"
+		>
 			<GripVerticalIcon class="size-2.5" />
 		</div>
 	{/if}

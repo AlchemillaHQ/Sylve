@@ -22,18 +22,24 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	jailService "github.com/alchemillahq/sylve/internal/services/jail"
 	"gorm.io/gorm"
 )
 
 var ErrSwitchNotFound = errors.New("switch_not_found")
 
 type jailConfigBuilder interface {
-	CreateJailConfig(data jailModels.Jail, mountPoint string, mac string) (string, error)
+	CreateJailConfig(data jailModels.Jail, mountPoint string) (string, error)
 }
 
 type jailDevfsCleaner interface {
 	RemoveDevfsRulesForCTID(ctid uint) error
+}
+
+type jailMetadataWriter interface {
+	WriteJailJSON(ctid uint) error
 }
 
 func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset string) error {
@@ -41,6 +47,19 @@ func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset 
 }
 
 func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Context, dataset string, restoreNetwork bool) error {
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, false)
+}
+
+func (s *Service) reconcileRestoredJailFromDatasetAsNew(ctx context.Context, dataset string, restoreNetwork bool) error {
+	return s.reconcileRestoredJailFromDatasetMode(ctx, dataset, restoreNetwork, true)
+}
+
+func (s *Service) reconcileRestoredJailFromDatasetMode(
+	ctx context.Context,
+	dataset string,
+	restoreNetwork bool,
+	strictAsNew bool,
+) error {
 	dataset = strings.TrimSpace(dataset)
 	if dataset == "" {
 		return nil
@@ -60,14 +79,17 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 	}
 	restored := &restoredMeta.Jail
 
-	if restored.CTID == 0 {
-		restored.CTID = fallbackCTID
-	}
+	rewriteRestoredJailMetadataIdentity(restoredMeta, fallbackCTID)
 	if restored.CTID == 0 {
 		return fmt.Errorf("restored_jail_ctid_missing")
 	}
+	if strictAsNew {
+		if err := s.writeJailMetadataToDisk(restoredMeta, mountPoint); err != nil {
+			return fmt.Errorf("failed_to_rewrite_restored_jail_metadata_identity: %w", err)
+		}
+	}
 
-	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork)
+	reconciled, err := s.upsertRestoredJailState(ctx, dataset, restoredMeta, restoreNetwork, strictAsNew)
 	if err != nil {
 		return err
 	}
@@ -78,6 +100,15 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 
 	if err := s.writeRestoredJailConfigFiles(reconciled, mountPoint); err != nil {
 		return err
+	}
+	if strictAsNew {
+		writer, ok := s.Jail.(jailMetadataWriter)
+		if !ok {
+			return fmt.Errorf("restored_jail_metadata_writer_unavailable")
+		}
+		if err := writer.WriteJailJSON(reconciled.CTID); err != nil {
+			return fmt.Errorf("failed_to_refresh_restored_jail_metadata: %w", err)
+		}
 	}
 
 	logger.L.Info().
@@ -91,6 +122,13 @@ func (s *Service) reconcileRestoredJailFromDatasetWithOptions(ctx context.Contex
 type restoredJailMetadata struct {
 	Jail      jailModels.Jail
 	Snapshots []jailModels.JailSnapshot
+}
+
+func rewriteRestoredJailMetadataIdentity(meta *restoredJailMetadata, ctid uint) {
+	if meta == nil || ctid == 0 {
+		return
+	}
+	meta.Jail.CTID = ctid
 }
 
 func (s *Service) readLocalRestoredJailMetadata(ctx context.Context, dataset string) (*restoredJailMetadata, string, error) {
@@ -145,6 +183,7 @@ func (s *Service) upsertRestoredJailState(
 	dataset string,
 	restoredMeta *restoredJailMetadata,
 	restoreNetwork bool,
+	strictAsNew bool,
 ) (*jailModels.Jail, error) {
 	if restoredMeta == nil {
 		return nil, fmt.Errorf("restored_jail_metadata_not_found")
@@ -172,6 +211,9 @@ func (s *Service) upsertRestoredJailState(
 	if restored.Type == "" {
 		restored.Type = jailModels.JailTypeFreeBSD
 	}
+	if restored.ExecTimeout == 0 {
+		restored.ExecTimeout = jailModels.DefaultExecTimeoutSeconds
+	}
 	if restored.StartAtBoot == nil {
 		v := false
 		restored.StartAtBoot = &v
@@ -183,7 +225,17 @@ func (s *Service) upsertRestoredJailState(
 
 	var reconciled jailModels.Jail
 	requiresStandardSwitchSync := false
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
+	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if strictAsNew {
+			var vmCount int64
+			if err := tx.Model(&vmModels.VM{}).Where("rid = ?", ctid).Count(&vmCount).Error; err != nil {
+				return fmt.Errorf("failed_to_lookup_existing_vm_by_rid: %w", err)
+			}
+			if vmCount > 0 {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", ctid)
+			}
+		}
+
 		var existing jailModels.Jail
 		existingFound := false
 		lookup := tx.Where("ct_id = ?", ctid).Limit(1).Find(&existing)
@@ -215,6 +267,7 @@ func (s *Service) upsertRestoredJailState(
 			DevFSRuleset:      restored.DevFSRuleset,
 			Fstab:             restored.Fstab,
 			CleanEnvironment:  restored.CleanEnvironment,
+			ExecTimeout:       restored.ExecTimeout,
 			AdditionalOptions: restored.AdditionalOptions,
 			AllowedOptions:    append([]string(nil), restored.AllowedOptions...),
 			MetadataMeta:      restored.MetadataMeta,
@@ -226,6 +279,9 @@ func (s *Service) upsertRestoredJailState(
 		}
 
 		if existingFound {
+			if strictAsNew {
+				return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=jail", ctid)
+			}
 			if err := tx.Model(&existing).Select(
 				"Name",
 				"Hostname",
@@ -243,6 +299,7 @@ func (s *Service) upsertRestoredJailState(
 				"DevFSRuleset",
 				"Fstab",
 				"CleanEnvironment",
+				"ExecTimeout",
 				"AdditionalOptions",
 				"AllowedOptions",
 				"MetadataMeta",
@@ -261,7 +318,7 @@ func (s *Service) upsertRestoredJailState(
 			}
 		}
 
-		hooks := normalizeRestoredJailHooks(baseJail.ID, restored.JailHooks)
+		hooks := normalizeRestoredJailHooks(baseJail.ID, baseJail.Type, restored.JailHooks)
 		storages := normalizeRestoredJailStorages(baseJail.ID, restored.Storages, basePool, datasetGUID)
 		var networks []jailModels.Network
 		requiresSwitchSync := false
@@ -441,9 +498,14 @@ func reconcileRestoredJailSnapshots(
 	return nil
 }
 
-func normalizeRestoredJailHooks(jailID uint, hooks []jailModels.JailHooks) []jailModels.JailHooks {
-	out := make([]jailModels.JailHooks, 0, len(hooks))
-	for _, hook := range hooks {
+func normalizeRestoredJailHooks(
+	jailID uint,
+	jailType jailModels.JailType,
+	hooks []jailModels.JailHooks,
+) []jailModels.JailHooks {
+	normalized, _ := jailService.NormalizeLegacyLifecycleHooks(jailType, hooks)
+	out := make([]jailModels.JailHooks, 0, len(normalized))
+	for _, hook := range normalized {
 		out = append(out, jailModels.JailHooks{
 			JailID:  jailID,
 			Phase:   hook.Phase,
@@ -1052,18 +1114,7 @@ func (s *Service) writeRestoredJailConfigFiles(jail *jailModels.Jail, mountPoint
 		return fmt.Errorf("failed_to_write_restored_jail_fstab: %w", err)
 	}
 
-	mac := ""
-	if len(jail.Networks) > 0 {
-		if jail.Networks[0].MacID == nil || *jail.Networks[0].MacID == 0 {
-			return fmt.Errorf("restored_jail_primary_network_missing_mac")
-		}
-		mac, err = s.getFirstObjectEntryValue(*jail.Networks[0].MacID)
-		if err != nil {
-			return fmt.Errorf("failed_to_resolve_restored_jail_primary_mac: %w", err)
-		}
-	}
-
-	cfg, err := builder.CreateJailConfig(*jail, mountPoint, mac)
+	cfg, err := builder.CreateJailConfig(*jail, mountPoint)
 	if err != nil {
 		return fmt.Errorf("failed_to_build_restored_jail_config: %w", err)
 	}
@@ -1074,20 +1125,6 @@ func (s *Service) writeRestoredJailConfigFiles(jail *jailModels.Jail, mountPoint
 	}
 
 	return nil
-}
-
-func (s *Service) getFirstObjectEntryValue(objectID uint) (string, error) {
-	var entry networkModels.ObjectEntry
-	if err := s.DB.Where("object_id = ?", objectID).Order("id ASC").First(&entry).Error; err != nil {
-		return "", err
-	}
-
-	value := strings.TrimSpace(entry.Value)
-	if value == "" {
-		return "", fmt.Errorf("network_object_entry_value_empty")
-	}
-
-	return value, nil
 }
 
 func (s *Service) restoreJailSwitchExists(tx *gorm.DB, switchID uint, switchType string) (bool, error) {

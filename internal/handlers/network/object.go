@@ -9,45 +9,113 @@
 package networkHandlers
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/alchemillahq/sylve/internal"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
 
 	"github.com/gin-gonic/gin"
 )
 
 type CreateOrEditNetworkObjectRequest struct {
-	Name   string   `json:"name" binding:"required"`
+	Name   string   `json:"name" binding:"required,max=128"`
 	Type   string   `json:"type" binding:"required"`
-	Values []string `json:"values" binding:"required"`
+	Values []string `json:"values" binding:"required,min=1,max=1024,dive,required,max=2048"`
 }
 
 type BulkDeleteNetworkObjectsRequest struct {
-	IDs []uint `json:"ids" binding:"required"`
+	IDs []uint `json:"ids" binding:"required,min=1,max=1024,unique,dive,gt=0"`
+}
+
+func bindNetworkObjectJSON(c *gin.Context, destination any) bool {
+	if err := c.ShouldBindJSON(destination); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			c.JSON(http.StatusRequestEntityTooLarge, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "network_object_request_too_large",
+				Error:   "network_object_request_too_large",
+				Data:    nil,
+			})
+			return false
+		}
+
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_request",
+			Error:   "invalid_network_object_request",
+			Data:    nil,
+		})
+		return false
+	}
+	return true
+}
+
+func networkObjectPathID(c *gin.Context) (uint, bool) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, strconv.IntSize)
+	if err != nil || id == 0 {
+		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			Status:  "error",
+			Message: "invalid_id",
+			Error:   "invalid_network_object_id",
+			Data:    nil,
+		})
+		return 0, false
+	}
+	return uint(id), true
+}
+
+func networkObjectErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, network.ErrNetworkObjectUpstream):
+		return http.StatusBadGateway
+	case errors.Is(err, network.ErrInvalidNetworkObject):
+		return http.StatusBadRequest
+	case errors.Is(err, network.ErrNetworkObjectNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, network.ErrNetworkObjectConflict):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func writeNetworkObjectError(c *gin.Context, message string, err error) {
+	status := networkObjectErrorStatus(err)
+	if status == http.StatusInternalServerError || status == http.StatusBadGateway {
+		logger.L.Error().Err(err).Str("operation", message).Msg("network_object_request_failed")
+	}
+
+	c.JSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   network.NetworkObjectErrorCode(err),
+		Data:    nil,
+	})
 }
 
 // @Summary List Network Objects
-// @Description List all network objects
+// @Description List all configured network objects and their current usage state
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Success 200 {object} internal.APIResponse[[]networkModels.Object] "Success"
-// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/object [get]
 func ListNetworkObjects(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		objects, err := svc.GetObjects()
 		if err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_get_network_objects")
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "failed_to_get_objects",
-				Error:   err.Error(),
+				Error:   "network_object_list_failed",
 				Data:    nil,
 			})
 			return
@@ -63,43 +131,37 @@ func ListNetworkObjects(svc *network.Service) gin.HandlerFunc {
 }
 
 // @Summary Create Network Object
-// @Description Create a new network object with specified type and values
+// @Description Create and validate a network object with the specified type and values
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body CreateOrEditNetworkObjectRequest true "Create Network Object Request"
-// @Success 200 {uint} uint "ID of the created network object"
-// @Failure 400 {string} string "Invalid request"
-// @Failure 500 {string} string "Internal server error"
+// @Success 201 {object} internal.APIResponse[uint] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
 // @Router /network/object [post]
 func CreateNetworkObject(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request CreateOrEditNetworkObjectRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindNetworkObjectJSON(c, &request) {
 			return
 		}
 
 		id, err := svc.CreateObject(request.Name, request.Type, request.Values)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_create_object",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			writeNetworkObjectError(c, "failed_to_create_object", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[uint]{
+		c.JSON(http.StatusCreated, internal.APIResponse[uint]{
 			Status:  "success",
-			Message: fmt.Sprintf("object_created: %d", id),
+			Message: "object_created",
 			Error:   "",
 			Data:    id,
 		})
@@ -107,48 +169,28 @@ func CreateNetworkObject(svc *network.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete Network Object
-// @Description Delete a network object by ID
+// @Description Delete one network object by its positive integer ID
 // @Tags Network
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Object ID"
-// @Success 200 {string} string "Object deleted successfully"
-// @Failure 400 {string} string "Invalid request"
-// @Failure 404 {string} string "Object not found"
-// @Failure 500 {string} string "Internal server error"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Param id path int true "Object ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /network/object/{id} [delete]
 func DeleteNetworkObject(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := c.Params.Get("id")
-		if err == false {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   "object ID is required",
-				Data:    nil,
-			})
+		id, ok := networkObjectPathID(c)
+		if !ok {
 			return
 		}
 
-		idInt, iErr := strconv.Atoi(id)
-		if iErr != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   "object ID must be an integer",
-				Data:    nil,
-			})
-			return
-		}
-
-		if err := svc.DeleteObject(uint(idInt)); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_delete_object",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.DeleteObject(id); err != nil {
+			writeNetworkObjectError(c, "failed_to_delete_object", err)
 			return
 		}
 
@@ -161,61 +203,38 @@ func DeleteNetworkObject(svc *network.Service) gin.HandlerFunc {
 	}
 }
 
-// @Summary Edit Network Object
-// @Description Edit an existing network object by ID
+// @Summary Update Network Object
+// @Description Replace an existing network object's name, type, and values
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param id path int true "Object ID"
-// @Param request body CreateOrEditNetworkObjectRequest true "Edit Network Object Request"
-// @Success 200 {string} string "Network object updated successfully"
-// @Failure 400 {string} string "Invalid request"
-// @Failure 404 {string} string "Object not found"
-// @Failure 500 {string} string "Internal server error"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Param id path int true "Object ID" minimum(1)
+// @Param request body CreateOrEditNetworkObjectRequest true "Update Network Object Request"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 502 {object} internal.APIResponse[any] "Bad Gateway"
 // @Router /network/object/{id} [put]
 func EditNetworkObject(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id, err := c.Params.Get("id")
-		if err == false {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   "object ID is required",
-				Data:    nil,
-			})
-			return
-		}
-
-		idInt, iErr := strconv.Atoi(id)
-		if iErr != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_id",
-				Error:   "object ID must be an integer",
-				Data:    nil,
-			})
+		id, ok := networkObjectPathID(c)
+		if !ok {
 			return
 		}
 
 		var request CreateOrEditNetworkObjectRequest
-		if err := c.ShouldBindJSON(&request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if !bindNetworkObjectJSON(c, &request) {
 			return
 		}
 
-		if err := svc.EditObject(uint(idInt), request.Name, request.Type, request.Values); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_edit_object",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.EditObject(id, request.Name, request.Type, request.Values); err != nil {
+			writeNetworkObjectError(c, "failed_to_edit_object", err)
 			return
 		}
 
@@ -229,36 +248,30 @@ func EditNetworkObject(svc *network.Service) gin.HandlerFunc {
 }
 
 // @Summary Bulk Delete Network Objects
-// @Description Delete multiple network objects by their IDs; fails if any object is in use
+// @Description Delete a validated collection of unused network objects as one operation
 // @Tags Network
 // @Accept json
 // @Produce json
 // @Security BearerAuth
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Param request body BulkDeleteNetworkObjectsRequest true "Bulk Delete Request"
-// @Success 200 {object} internal.APIResponse[any] "Objects deleted successfully"
-// @Failure 400 {object} internal.APIResponse[any] "Invalid request"
-// @Failure 500 {object} internal.APIResponse[any] "Internal server error"
-// @Router /network/object/bulk-delete [post]
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /network/object [delete]
 func BulkDeleteNetworkObjects(svc *network.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req BulkDeleteNetworkObjectsRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		var request BulkDeleteNetworkObjectsRequest
+		if !bindNetworkObjectJSON(c, &request) {
 			return
 		}
 
-		if err := svc.BulkDeleteObjects(req.IDs); err != nil {
-			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "failed_to_bulk_delete_objects",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+		if err := svc.BulkDeleteObjects(request.IDs); err != nil {
+			writeNetworkObjectError(c, "failed_to_bulk_delete_objects", err)
 			return
 		}
 

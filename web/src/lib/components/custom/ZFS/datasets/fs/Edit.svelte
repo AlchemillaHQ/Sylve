@@ -25,14 +25,14 @@
 
 	let { open = $bindable(), dataset, reload = $bindable() }: Props = $props();
 
-		// svelte-ignore state_referenced_locally
-		let options = {
-			atime: dataset.properties?.atime || 'on',
-			checksum: dataset.properties?.checksum || 'on',
-			compression: dataset.properties?.compression || 'lz4',
-			dedup: dataset.properties?.dedup || 'off',
-			readonly: dataset.properties?.readonly || 'off',
-			quota: dataset.properties?.quota
+	// svelte-ignore state_referenced_locally
+	let options = {
+		atime: dataset.properties?.atime || 'on',
+		checksum: dataset.properties?.checksum || 'on',
+		compression: dataset.properties?.compression || 'lz4',
+		dedup: dataset.properties?.dedup || 'off',
+		readonly: dataset.properties?.readonly || 'off',
+		quota: dataset.properties?.quota
 			? normalizeSizeInputExact(parseInt(dataset.properties.quota)) === '0 B'
 				? ''
 				: normalizeSizeInputExact(parseInt(dataset.properties.quota))
@@ -47,6 +47,10 @@
 	let properties = $state(options);
 	let compressionOpen = $state(false);
 	let recordsizeOpen = $state(false);
+	let managedDataset = $derived.by(() => {
+		const parts = dataset.name.replace(/^\/+|\/+$/g, '').split('/');
+		return parts.length >= 2 && parts[0] !== '' && parts[1] === 'sylve';
+	});
 
 	const recordsizeData = $derived.by(() => {
 		const base = zfsProperties.recordsize;
@@ -71,18 +75,20 @@
 			quota = toZfsBytesString(parsed);
 		}
 
-			const response = await editFileSystem(dataset.guid as string, {
-				atime: properties.atime,
-				checksum: properties.checksum,
-				compression: properties.compression,
-				dedup: properties.dedup,
-				readonly: properties.readonly,
-				quota: quota,
+		const editedProperties: Record<string, string> = {
+			atime: properties.atime,
+			checksum: properties.checksum,
+			compression: properties.compression,
+			dedup: properties.dedup,
+			readonly: properties.readonly,
+			quota: quota,
 			aclinherit: properties.aclinherit,
 			aclmode: properties.aclmode,
-			recordsize: properties.recordsize,
-			mountpoint: properties.mountpoint || ''
-		});
+			recordsize: properties.recordsize
+		};
+		if (!managedDataset) editedProperties.mountpoint = properties.mountpoint || '';
+
+		const response = await editFileSystem(dataset.guid as string, editedProperties);
 
 		reload = true;
 
@@ -226,18 +232,18 @@
 				</div>
 
 				<SimpleSelect
-						label="ACL Inherit"
-						placeholder="Select ACL Inherit"
-						options={zfsProperties.aclInherit}
-						bind:value={properties.aclinherit}
-						onChange={(value) => (properties.aclinherit = value)}
-						classes={{
-							parent: 'flex-1 min-w-0 space-y-1',
-							label: 'flex h-7 items-center whitespace-nowrap text-sm',
-							trigger:
-								'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
-						}}
-					/>
+					label="ACL Inherit"
+					placeholder="Select ACL Inherit"
+					options={zfsProperties.aclInherit}
+					bind:value={properties.aclinherit}
+					onChange={(value) => (properties.aclinherit = value)}
+					classes={{
+						parent: 'flex-1 min-w-0 space-y-1',
+						label: 'flex h-7 items-center whitespace-nowrap text-sm',
+						trigger:
+							'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+					}}
+				/>
 
 				<SimpleSelect
 					label="ACL Mode"
@@ -275,6 +281,7 @@
 						placeholder="/custom/mountpoint"
 						autocomplete="off"
 						bind:value={properties.mountpoint}
+						disabled={managedDataset}
 					/>
 				</div>
 			</div>

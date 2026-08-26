@@ -185,5 +185,3 @@ func TestVirtio9P_RemovesAllWhenEmpty(t *testing.T) {
 		t.Fatalf("expected no filesystem elements when empty, got: %s", updated)
 	}
 }
-
-

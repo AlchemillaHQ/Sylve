@@ -20,10 +20,9 @@ import (
 // @Summary Get Node Info
 // @Description Get the node information about the system (mainly for cluster stuff)
 // @Tags Info
-// @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.BasicInfo] "Success"
+// @Success 200 {object} internal.APIResponse[infoServiceInterfaces.NodeInfo] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/node [get]
 func NodeInfo(infoService *info.Service) gin.HandlerFunc {

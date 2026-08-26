@@ -5,45 +5,54 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { type Iface } from '$lib/types/network/iface';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import type { APIResponse } from '$lib/types/common';
+	import type { Column } from '$lib/types/components/tree-table';
+	import { type Iface, type IfaceRow } from '$lib/types/network/iface';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateTableData, getCleanIfaceData } from '$lib/utils/network/iface';
 	import { renderWithIcon } from '$lib/utils/table';
 	import type { CellComponent } from 'tabulator-tables';
 	import type { Jail } from '$lib/types/jail/jail';
-	import { getJails } from '$lib/api/jail/jail';
+	import { getJailsResult } from '$lib/api/jail/jail';
 	import { isMACNearOrEqual } from '$lib/utils/mac';
 	import type { VM } from '$lib/types/vm/vm';
-	import { getVMs } from '$lib/api/vm/vm';
+	import { getVMsResult } from '$lib/api/vm/vm';
 	import { getSwitches } from '$lib/api/network/switch';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { getWireGuardClients } from '$lib/api/network/wireguard';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { resource } from 'runed';
 
 	interface Data {
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 		jails: Jail[];
 		vms: VM[];
-		switches: SwitchList;
-		wgClients: WireGuardClient[];
+		switches: SwitchList | APIResponse;
+		wgClients: WireGuardClient[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
-
 	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	// svelte-ignore state_referenced_locally
+	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+	let initialWireGuardClients = $derived(
+		Array.isArray(data.wgClients) ? data.wgClients : ([] as WireGuardClient[])
+	);
+
 	let networkSwitches = resource(
 		() => 'network-switches',
 		async (key) => {
 			const res = await getSwitches();
-			if (isAPIResponse(res)) {
-				return data.switches;
+			if (!isSwitchList(res)) {
+				handleAPIError(res);
+				return lastGoodSwitches;
 			}
+			lastGoodSwitches = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.switches }
+		{ initialValue: lastGoodSwitches }
 	);
 
 	// svelte-ignore state_referenced_locally
@@ -52,33 +61,34 @@
 		async (key) => {
 			const res = await getWireGuardClients();
 			if (isAPIResponse(res)) {
-				return data.wgClients;
+				return initialWireGuardClients;
 			}
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.wgClients }
+		{ initialValue: initialWireGuardClients }
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
 		async (key) => {
 			const res = await getInterfaces();
 			if (isAPIResponse(res)) {
-				return data.interfaces;
+				handleAPIError(res);
+				return lastGoodInterfaces;
 			}
+			lastGoodInterfaces = res;
 			updateCache(key, res);
 			return res;
 		},
-		{ initialValue: data.interfaces }
+		{ initialValue: lastGoodInterfaces }
 	);
 
 	// svelte-ignore state_referenced_locally
 	let jails = resource(
 		() => 'jail-list',
 		async (key) => {
-			const res = await getJails();
+			const res = await getJailsResult();
 			if (isAPIResponse(res)) {
 				return data.jails;
 			}
@@ -92,7 +102,7 @@
 	let vms = resource(
 		() => 'vm-list',
 		async (key) => {
-			const res = await getVMs();
+			const res = await getVMsResult();
 			if (isAPIResponse(res)) {
 				return data.vms;
 			}
@@ -253,17 +263,16 @@
 	];
 
 	let tableData = $derived(generateTableData(columns, networkInterfaces.current));
-	let activeRow: Row[] | null = $state(null);
+	let activeRow: IfaceRow[] | null = $state(null);
 	let query: string = $state('');
 
 	let viewModal = $state({
 		title: '',
-		key: 'Attribute',
-		value: 'Value',
 		open: false,
 		KV: {},
 		type: 'kv'
 	});
+	let viewModalLabels = $derived({ key: 'Attribute', value: 'Value' });
 
 	function viewInterface(iface: string) {
 		const ifaceData = networkInterfaces.current.find((i: Iface) => i.name === iface);
@@ -298,8 +307,8 @@
 		titles={{
 			icon: 'carbon--network-interface',
 			main: viewModal.title,
-			key: viewModal.key,
-			value: viewModal.value
+			key: viewModalLabels.key,
+			value: viewModalLabels.value
 		}}
 		bind:open={viewModal.open}
 		KV={viewModal.KV}

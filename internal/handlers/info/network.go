@@ -18,19 +18,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type HistoricalNetworkInterfaceResponse struct {
-	Status  string                                             `json:"status"`
-	Message string                                             `json:"message"`
-	Error   string                                             `json:"error"`
-	Data    []infoServiceInterfaces.HistoricalNetworkInterface `json:"data"`
-}
-
 // @Summary Get Historical Network information
 // @Description Retrieves historical Network info
-// @Tags system
-// @Accept json
+// @Tags Info
 // @Produce json
-// @Success 200 {object} HistoricalNetworkInterfaceResponse
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]infoServiceInterfaces.HistoricalNetworkInterface] "Success"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /info/network-interfaces/historical [get]
 func HistoricalNetworkInterfacesInfoHandler(infoService *info.Service) gin.HandlerFunc {

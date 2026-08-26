@@ -9,26 +9,23 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
-	import type { GroupedByPool } from '$lib/types/zfs/dataset';
 	import {
 		normalizeSizeInputExact,
 		parseSizeInputToBytes,
 		toZfsBytesString
 	} from '$lib/utils/bytes';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
-	import { generatePassword } from '$lib/utils/string';
-	import { isValidDatasetName } from '$lib/utils/zfs';
+	import { generateZFSEncryptionKey, isValidDatasetName } from '$lib/utils/zfs';
 	import { createVolProps } from '$lib/utils/zfs/dataset/volume';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
-		grouped: GroupedByPool[];
 		reload?: boolean;
 	}
 
-	let { open = $bindable(), grouped, reload = $bindable() }: Props = $props();
+	let { open = $bindable(), reload = $bindable() }: Props = $props();
 
 	const pools = resource(
 		() => 'zfs-pools',
@@ -155,11 +152,11 @@
 
 		reload = true;
 
-		if (response.error) {
+		if (response.status !== 'success') {
+			handleAPIError(response);
 			toast.error('Failed to create volume', {
 				position: 'bottom-center'
 			});
-			handleAPIError(response);
 			return;
 		}
 
@@ -305,7 +302,7 @@
 
 							<Button
 								onclick={() => {
-									properties.encryptionKey = generatePassword();
+									properties.encryptionKey = generateZFSEncryptionKey();
 								}}
 							>
 								<span
@@ -313,11 +310,11 @@
 									tabindex="0"
 									class="icon-[fad--random-2dice] h-6 w-6"
 									onclick={() => {
-										properties.encryptionKey = generatePassword();
+										properties.encryptionKey = generateZFSEncryptionKey();
 									}}
 									onkeydown={(e) => {
 										if (e.key === 'Enter' || e.key === ' ') {
-											properties.encryptionKey = generatePassword();
+											properties.encryptionKey = generateZFSEncryptionKey();
 										}
 									}}
 								></span>

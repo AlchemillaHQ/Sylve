@@ -4,24 +4,30 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Progress } from '$lib/components/ui/progress/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
+	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { watch } from 'runed';
+	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { fade } from 'svelte/transition';
 
 	interface Props {
 		open: boolean;
 		pool: string;
+		hostname?: string;
 		onComplete: () => void;
 	}
 
-	let { open = $bindable(), pool, onComplete }: Props = $props();
+	let { open = $bindable(), pool, hostname, onComplete }: Props = $props();
 
 	let entries = $state<BootstrapEntry[]>([]);
 	let loading = $state(false);
+	let loadError = $state('');
 	let starting = $state<Record<string, boolean>>({});
 	let deleting = $state<Record<string, boolean>>({});
 	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let fetchController: AbortController | null = null;
 
 	const phaseMap: Record<string, { label: string; pct: number }> = {
 		'': { label: 'Queued...', pct: 0 },
@@ -50,26 +56,62 @@
 		return `${e.pool}:${e.name}`;
 	}
 
-	async function fetchEntries(minDelay = 0) {
-		if (!pool) return;
+	function responseError(response: APIResponse, fallback: string): string {
+		if (Array.isArray(response.error)) return response.error.join(', ');
+		return response.error || response.message || fallback;
+	}
+
+	function cancelFetch() {
+		fetchController?.abort();
+		fetchController = null;
+		loading = false;
+	}
+
+	async function fetchEntries(minDelay = 0, reportError = false): Promise<boolean> {
+		if (!pool) return false;
+		cancelFetch();
+		const controller = new AbortController();
+		fetchController = controller;
+		const requestedPool = pool;
+		const requestedHostname = hostname;
 		loading = true;
 		try {
 			const [result] = await Promise.all([
-				getBootstraps(pool),
+				getBootstraps(requestedPool, {
+					hostname: requestedHostname,
+					signal: controller.signal
+				}),
 				minDelay > 0 ? new Promise((r) => setTimeout(r, minDelay)) : Promise.resolve()
 			]);
+			if (controller.signal.aborted || requestedPool !== pool || requestedHostname !== hostname) {
+				return false;
+			}
+			if (isAPIResponse(result)) {
+				loadError = responseError(result, 'Failed to load bootstraps');
+				if (reportError) handleAPIError(result);
+				return false;
+			}
+
 			entries = result;
-		} catch {
-			// silently ignore polling errors
+			loadError = '';
+			return true;
+		} catch (error) {
+			if (isRequestCancellation(error)) return false;
+			loadError = error instanceof Error ? error.message : 'Failed to load bootstraps';
+			return false;
 		} finally {
-			loading = false;
+			if (fetchController === controller) {
+				fetchController = null;
+				loading = false;
+			}
 		}
 	}
 
 	function startPolling() {
 		stopPolling();
 		pollInterval = setInterval(async () => {
-			await fetchEntries();
+			const refreshed = await fetchEntries();
+			if (!refreshed) return;
 			if (!anyActive(entries)) {
 				stopPolling();
 				onComplete();
@@ -84,27 +126,40 @@
 		}
 	}
 
-	watch(
-		() => open,
-		(isOpen) => {
-			if (isOpen) {
-				void fetchEntries(600).then(() => {
-					if (anyActive(entries)) startPolling();
-				});
-			} else {
-				stopPolling();
-			}
+	watch([() => open, () => pool, () => hostname], ([isOpen]) => {
+		stopPolling();
+		cancelFetch();
+		entries = [];
+		loadError = '';
+		if (isOpen) {
+			void fetchEntries(600, true).then((refreshed) => {
+				if (refreshed && anyActive(entries)) startPolling();
+			});
 		}
-	);
+	});
+
+	onDestroy(() => {
+		stopPolling();
+		cancelFetch();
+	});
 
 	async function handleDelete(entry: BootstrapEntry) {
 		const key = entryKey(entry);
 		deleting[key] = true;
 		try {
-			await deleteBootstrap(entry.pool, entry.name);
-			await fetchEntries();
+			const response = await deleteBootstrap(entry.pool, entry.name, { hostname });
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error(`Failed to delete bootstrap: ${responseError(response, 'Unknown error')}`, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			if (!(await fetchEntries(0, true))) return;
 			onComplete();
 		} catch (e: unknown) {
+			if (isRequestCancellation(e)) return;
 			const msg = e instanceof Error ? e.message : String(e);
 			toast.error(`Failed to delete bootstrap: ${msg}`, { position: 'bottom-center' });
 		} finally {
@@ -116,15 +171,31 @@
 		const key = entryKey(entry);
 		starting[key] = true;
 		try {
-			await createBootstrap({
-				pool: entry.pool,
-				major: entry.major,
-				minor: entry.minor,
-				type: entry.type
-			});
-			await fetchEntries();
-			startPolling();
+			const response = await createBootstrap(
+				{
+					pool: entry.pool,
+					major: entry.major,
+					minor: entry.minor,
+					type: entry.type
+				},
+				{ hostname }
+			);
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error(`Bootstrap failed to start: ${responseError(response, 'Unknown error')}`, {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
+			if (!(await fetchEntries(0, true))) return;
+			if (anyActive(entries)) {
+				startPolling();
+			} else {
+				onComplete();
+			}
 		} catch (e: unknown) {
+			if (isRequestCancellation(e)) return;
 			const msg = e instanceof Error ? e.message : String(e);
 			toast.error(`Bootstrap failed to start: ${msg}`, { position: 'bottom-center' });
 		} finally {
@@ -167,6 +238,13 @@
 							<div class="mt-2 h-1.5 w-full rounded bg-muted"></div>
 						</div>
 					{/each}
+				{:else if loadError && entries.length === 0}
+					<div class="flex flex-col items-center gap-2 py-6 text-center text-sm text-destructive">
+						<span>{loadError}</span>
+						<Button size="sm" variant="outline" onclick={() => void fetchEntries(0, true)}>
+							Retry
+						</Button>
+					</div>
 				{:else if entries.length === 0}
 					<div class="py-6 text-center text-sm text-muted-foreground">
 						No supported versions available.
@@ -188,6 +266,10 @@
 											</span>
 										{:else if entry.status === 'failed'}
 											<span class="text-xs text-destructive">{entry.error || 'Unknown error'}</span>
+										{:else if entry.status === 'orphaned'}
+											<span class="text-xs text-amber-600 dark:text-amber-400">
+												Dataset exists without a bootstrap record. Delete it before recreating.
+											</span>
 										{/if}
 									</div>
 
@@ -208,7 +290,7 @@
 													size="sm"
 													variant="outline"
 													class="h-6 w-6 p-0"
-													disabled={deleting[key]}
+													disabled={deleting[key] || starting[key]}
 													onclick={() => handleDelete(entry)}
 													title="Delete bootstrap"
 												>
@@ -229,19 +311,61 @@
 												{entry.status === 'pending' ? 'Pending' : 'Running'}
 											</span>
 										{:else if entry.status === 'failed'}
-											<Button
-												size="icon"
-												variant="outline"
-												class="h-7 text-xs"
-												disabled={starting[key]}
-												onclick={() => handleBootstrap(entry)}
-											>
-												{#if starting[key]}
-													<span class="icon-[mdi--loading] h-3 w-3 animate-spin"></span>
-												{:else}
-													Retry
+											<div class="flex items-center gap-1.5">
+												{#if !entry.exists}
+													<Button
+														size="sm"
+														variant="outline"
+														class="h-7 text-xs"
+														disabled={starting[key] || deleting[key]}
+														onclick={() => handleBootstrap(entry)}
+													>
+														{#if starting[key]}
+															<span class="icon-[mdi--loading] h-3 w-3 animate-spin"></span>
+														{:else}
+															Retry
+														{/if}
+													</Button>
 												{/if}
-											</Button>
+												<Button
+													size="sm"
+													variant="outline"
+													class="h-7 w-7 p-0"
+													disabled={deleting[key] || starting[key]}
+													onclick={() => handleDelete(entry)}
+													title="Clear failed bootstrap"
+												>
+													{#if deleting[key]}
+														<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+													{:else}
+														<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"
+														></span>
+													{/if}
+												</Button>
+											</div>
+										{:else if entry.status === 'orphaned'}
+											<div class="flex items-center gap-1.5">
+												<span
+													class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+												>
+													Orphaned
+												</span>
+												<Button
+													size="sm"
+													variant="outline"
+													class="h-7 w-7 p-0"
+													disabled={deleting[key]}
+													onclick={() => handleDelete(entry)}
+													title="Delete orphaned bootstrap dataset"
+												>
+													{#if deleting[key]}
+														<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+													{:else}
+														<span class="icon-[mdi--trash-can-outline] h-4 w-4 text-destructive"
+														></span>
+													{/if}
+												</Button>
+											</div>
 										{:else}
 											<Button
 												size="sm"
@@ -281,6 +405,10 @@
 								{:else if entry.status === 'completed'}
 									<div class="mt-2">
 										<Progress value={100} max={100} class="h-1.5" progressClass="bg-green-600" />
+									</div>
+								{:else if entry.status === 'orphaned'}
+									<div class="mt-2">
+										<Progress value={100} max={100} class="h-1.5" progressClass="bg-amber-500" />
 									</div>
 								{/if}
 							</div>

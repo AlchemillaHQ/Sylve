@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { handleAPIResponse } from '$lib/api/common';
 	import { listDisks } from '$lib/api/disk/disk';
@@ -16,13 +26,14 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
 	import { zpoolUseableDisks, zpoolUseablePartitions } from '$lib/utils/disk';
-	import { updateCache } from '$lib/utils/http';
+	import { getAPIErrorText, updateCache } from '$lib/utils/http';
 	import {
 		generateTableData,
 		getPoolByDevice,
 		isPool,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
+	import { untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { storage } from '$lib';
@@ -46,19 +57,19 @@
 			return pools;
 		},
 		{
-			initialValue: data.pools
+			initialValue: untrack(() => data.pools)
 		}
 	);
 
 	const disks = resource(
-		() => 'disk-list',
+		() => 'disk-list-inventory',
 		async () => {
-			const disks = await listDisks();
-			updateCache('disk-list', disks);
+			const disks = await listDisks('none');
+			updateCache('disk-list-inventory', disks);
 			return disks;
 		},
 		{
-			initialValue: data.disks
+			initialValue: untrack(() => data.disks)
 		}
 	);
 
@@ -70,7 +81,7 @@
 		}
 	});
 
-	useInterval(5000, {
+	useInterval(60000, {
 		callback: async () => {
 			if (visible.current && !storage.idle) {
 				disks.refetch();
@@ -96,7 +107,7 @@
 	);
 
 	let activePool: Zpool | null = $derived.by(() => {
-		if (activeRow && isPool(pools.current, activeRow.name)) {
+		if (activeRow && typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)) {
 			return pools.current.find((p) => p.pool_guid === activeRow.guid) || null;
 		} else {
 			return null;
@@ -106,10 +117,12 @@
 	let replacing = $derived.by(() => {
 		if (tableData.rows.length > 0) {
 			const names = deepSearchKey(tableData.rows, 'name');
-			if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
-				return true;
-			} else {
-				return false;
+			if (names.every((name) => typeof name === 'string')) {
+				if (names.some((name) => name.includes('[OLD]') || name.includes('[NEW]'))) {
+					return true;
+				} else {
+					return false;
+				}
 			}
 		}
 
@@ -161,7 +174,7 @@
 
 {#snippet button(type: string)}
 	{#if activeRow && Object.keys(activeRow).length > 0}
-		{#if isPool(pools.current, activeRow.name)}
+		{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 			{#if type === 'pool-status'}
 				<Button
 					onclick={() => {
@@ -176,10 +189,10 @@
 			{/if}
 
 			{#if type === 'pool-scrub'}
-				{#if isPool(pools.current, activeRow.name)}
+				{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
 					<Button
 						onclick={async () => {
-							const response = await scrubPool(activeRow?.guid);
+							const response = await scrubPool(activeRow?.guid as string);
 							if (response.status === 'error') {
 								toast.error(parsePoolActionError(response), {
 									position: 'bottom-center'
@@ -235,10 +248,10 @@
 		{/if}
 
 		{#if type === 'pool-replace'}
-			{#if isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name) && usable.disks.length + usable.partitions.length > 0}
 				<Button
 					onclick={() => {
-						let pool = getPoolByDevice(pools.current, activeRow.name);
+						let pool = getPoolByDevice(pools.current, activeRow.name as string);
 						modals.replace.open = true;
 						modals.replace.data = {
 							pool: pool ? pools.current.find((p) => p.name === pool) || null : null,
@@ -263,7 +276,7 @@
 		{/if}
 
 		{#if type === 'pool-detach'}
-			{#if isReplaceableDevice(pools.current, activeRow.name)}
+			{#if typeof activeRow.name === 'string' && isReplaceableDevice(pools.current, activeRow.name)}
 				<Button
 					onclick={() => {
 						modals.detach.open = true;
@@ -329,10 +342,10 @@
 	}}
 	actions={{
 		onConfirm: async () => {
-			modals.delete.open = false;
-			let pool = $state.snapshot(activePool);
-			let response = await deletePool(pool?.guid as string);
+			const pool = $state.snapshot(activePool);
+			const response = await deletePool(pool?.guid as string);
 			reload = true;
+			if (response.status === 'success') modals.delete.open = false;
 			handleAPIResponse(response, {
 				success: `Pool ${pool?.name} deleted`,
 				error: parsePoolActionError(response)
@@ -355,16 +368,17 @@
 	confirmLabel="Detach"
 	actions={{
 		onConfirm: async () => {
-			modals.detach.open = false;
-			let pool = getPoolByDevice(pools.current, activeRow?.name);
+			const device = String(activeRow?.name || '');
+			const pool = getPoolByDevice(pools.current, device);
 			if (!pool) return;
 			const poolObj = pools.current.find((p) => p.name === pool);
 			if (!poolObj) return;
-			const response = await detachDevice(poolObj.guid, activeRow?.name as string);
+			const response = await detachDevice(poolObj.guid, device);
 			if (response.status === 'error') {
-				toast.error(response.error || 'Detach failed', { position: 'bottom-center' });
+				toast.error(getAPIErrorText(response, 'Detach failed'), { position: 'bottom-center' });
 			} else {
-				toast.success(`Detached ${activeRow?.name}`, { position: 'bottom-center' });
+				modals.detach.open = false;
+				toast.success(`Detached ${device}`, { position: 'bottom-center' });
 			}
 		},
 		onCancel: () => {

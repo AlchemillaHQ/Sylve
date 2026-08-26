@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { storage } from '$lib';
+	import { api } from '$lib/api/common';
+	import { isDemoMode } from '$lib/demo/runtime';
 	import type { Column, Row, TreeTableState } from '$lib/types/components/tree-table';
-	import { sha256 } from '$lib/utils/string';
+	import { resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { findRow, getAllRows } from '$lib/utils/tree-table';
 	import { watch, Debounced } from 'runed';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -79,10 +81,9 @@
 		tableState.current = { ...tableState.current, hiddenColumns };
 	}
 
-	let tableHolder: HTMLDivElement | null = null;
 	let tableInitialized = $state(false);
 	let scroll = $state([0, 0]);
-	let hash = $state('');
+	const ajaxHeaders: Record<string, string> = {};
 
 	const MIN_PAGE_SIZE = 10;
 	const MAX_PAGE_SIZE = 100;
@@ -138,7 +139,7 @@
 				if (query && query !== '') return;
 
 				if (data.rows.length === 0) {
-					table?.clearData();
+					if (!ajaxURL) table?.clearData();
 					return;
 				}
 
@@ -169,40 +170,72 @@
 		}
 	});
 
-	// https://10.10.30.103/ares/storage/zfs/datasets/snapshots
-	let hostname = new URL(location.href).pathname.split('/').filter(Boolean)[0];
+	function refreshAjaxHeaders() {
+		delete ajaxHeaders.Authorization;
+		delete ajaxHeaders['X-Current-Hostname'];
 
-	onMount(async () => {
-		hash = await sha256(storage.token || '', 1);
+		const token = storage.token?.trim();
+		const hostname = resolveNodeHostname(window.location.pathname);
+		if (token) ajaxHeaders.Authorization = `Bearer ${token}`;
+		if (hostname) ajaxHeaders['X-Current-Hostname'] = hostname;
+	}
 
-		/*
-        export interface AjaxContentType {
-    headers: JSONRecord;
-    body: (url: string, config: any, params: any) => any;
-}
-        */
+	function appendAjaxParam(search: URLSearchParams, key: string, value: unknown) {
+		if (value === undefined || value === null || value === '') return;
+		if (Array.isArray(value)) {
+			value.forEach((entry, index) => {
+				if (typeof entry === 'object' && entry !== null) {
+					Object.entries(entry).forEach(([childKey, childValue]) => {
+						appendAjaxParam(search, `${key}[${index}][${childKey}]`, childValue);
+					});
+					return;
+				}
+				appendAjaxParam(search, `${key}[${index}]`, entry);
+			});
+			return;
+		}
+		search.set(key, String(value));
+	}
 
+	async function requestDemoTable(url: string, params: Record<string, unknown>): Promise<unknown> {
+		const requestURL = new URL(url, window.location.origin);
+		Object.entries(params).forEach(([key, value]) => {
+			appendAjaxParam(requestURL.searchParams, key, value);
+		});
+		const response = await api.request({
+			url: `${requestURL.pathname}${requestURL.search}`,
+			method: 'GET',
+			headers: ajaxHeaders
+		});
+		return response.data;
+	}
+
+	onMount(() => {
 		if (tableComponent) {
 			const initialPageSize = estimateInitialPageSize();
 			currentPageSize = initialPageSize;
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
+				ajaxRequestFunc:
+					isDemoMode && ajaxURL
+						? async (url, _config, params) =>
+								requestDemoTable(url, params as Record<string, unknown>)
+						: undefined,
 				height: '100%',
 				ajaxResponse: function (url, params, response) {
 					return response.data;
 				},
 				ajaxParams: () => ({
-					hash,
 					...extraParams,
 					search: query || ''
 				}),
 				ajaxConfig: {
 					method: 'GET',
-					headers: {
-						...(hostname && {
-							'X-Current-Hostname': hostname
-						})
-					}
+					headers: ajaxHeaders
+				},
+				ajaxRequesting: () => {
+					refreshAjaxHeaders();
+					return true;
 				},
 				reactiveData: true,
 				columns: data.columns as ColumnDefinition[],
@@ -238,10 +271,7 @@
 
 		table?.on('tableBuilt', () => {
 			tableInitialized = true;
-			tableHolder = tableComponent?.querySelector(
-				'.tabulator-tableholder'
-			) as HTMLDivElement | null;
-
+			if (reload) reload = false;
 			const widths = tableState.current.columnWidths || {};
 			const persistedHidden = tableState.current.hiddenColumns || {};
 			table?.getColumns().forEach((col) => {
@@ -343,9 +373,20 @@
 	);
 
 	watch(
+		() => parentActiveRow,
+		(rows) => {
+			if (!table || !tableInitialized) return;
+			const selected = table.getSelectedRows();
+			if ((!rows || rows.length === 0) && selected.length > 0) {
+				table.deselectRow();
+			}
+		}
+	);
+
+	watch(
 		() => reload,
 		(newReload) => {
-			if (newReload) {
+			if (newReload && table && tableInitialized) {
 				table?.setData(ajaxURL!);
 				reload = false;
 			}

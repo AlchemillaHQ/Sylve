@@ -6,19 +6,22 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		sambaConfig: SambaConfig;
-		interfaces: Iface[];
+		interfaces: Iface[] | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
+	// svelte-ignore state_referenced_locally
+	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
 
 	// svelte-ignore state_referenced_locally
 	let sambaConfig = resource(
@@ -33,16 +36,21 @@
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	let networkInterfaces = resource(
 		() => 'network-interfaces',
-		async () => {
+		async (key) => {
 			const result = await getInterfaces();
-			updateCache('network-interfaces', result);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return lastGoodInterfaces;
+			}
+
+			lastGoodInterfaces = result;
+			updateCache(key, result);
 			return result;
 		},
 		{
-			initialValue: data.interfaces
+			initialValue: lastGoodInterfaces
 		}
 	);
 
@@ -140,6 +148,11 @@
 				id: generateNanoId(`${sambaConfig.current.appleExtensions}`),
 				property: 'Apple Extensions',
 				value: sambaConfig.current.appleExtensions ? 'Yes' : 'No'
+			},
+			{
+				id: generateNanoId(`${sambaConfig.current.advertiseMdns}`),
+				property: 'Advertise Samba Services (mDNS)',
+				value: sambaConfig.current.advertiseMdns ? 'Yes' : 'No'
 			}
 		]
 	});

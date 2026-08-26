@@ -8,47 +8,78 @@
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { actionVm, convertVMToTemplate, deleteVMTemplate, purgeVMRegistration } from '$lib/api/vm/vm';
+	import {
+		actionVm,
+		captureVMTemplate,
+		deleteVMTemplate,
+		purgeVMRegistration
+	} from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import { slide } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import {
+		isResourceTreeGroup,
+		type ResourceTreeDensity,
+		type ResourceTreeItem
+	} from '$lib/resource-tree';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
+	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
-	interface SidebarProps {
-		id: string;
-		label: string;
-		icon: string;
-		href?: string;
-		state?: 'active' | 'inactive' | 'orphan';
-		resourceId?: number;
-		resourceType?: 'vm' | 'jail' | 'jail-template' | 'vm-template';
-		nodeHostname?: string;
-		nextGuestId?: number;
-		children?: SidebarProps[];
-	}
+	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop';
 
 	interface Props {
-		item: SidebarProps;
+		item: ResourceTreeItem;
 		openIds: Set<string>;
 		onToggleId: (id: string) => void;
 		nextGuestId?: number;
+		canMigrate?: boolean;
+		onMigrate?: (item: ResourceTreeItem) => void;
+		density?: ResourceTreeDensity;
+		activeLifecycleGuests?: ActiveLifecycleGuest[];
 	}
 
-	let { item, openIds, onToggleId, nextGuestId = 100 }: Props = $props();
+	let {
+		item,
+		openIds,
+		onToggleId,
+		nextGuestId = 100,
+		canMigrate = false,
+		onMigrate,
+		density = 'comfortable',
+		activeLifecycleGuests = []
+	}: Props = $props();
 	let isOpen = $derived(openIds.has(item.id));
+	let isGroup = $derived(isResourceTreeGroup(item));
+	let isOfflineNode = $derived(item.icon === 'mdi--server-off');
+	let isCompact = $derived(density === 'compact');
+	let rowPaddingClass = $derived(isCompact ? 'py-0' : 'py-0.5');
+	let rowSpacingClass = $derived(isCompact ? 'my-0' : 'my-0.5');
+	let iconSizePx = $derived(isCompact ? 16 : 18);
+	let lifecycleActive = $derived(
+		item.resourceId !== undefined &&
+			item.nodeHostname !== undefined &&
+			(item.resourceType === 'vm' || item.resourceType === 'jail') &&
+			activeLifecycleGuests.some(
+				(guest) =>
+					guest.hostname === item.nodeHostname &&
+					guest.guestType === item.resourceType &&
+					guest.guestId === item.resourceId
+			)
+	);
 
-	const handleLabelClick = (e: MouseEvent) => {
+	const handleLabelClick = (e: Event) => {
 		e.preventDefault();
 		if (item.href) {
 			useSafeGoto(item.href, { replaceState: false, noScroll: false });
 		}
 	};
 
-	const handleIconClick = (e: MouseEvent) => {
+	const handleIconClick = (e: Event) => {
 		e.preventDefault();
 		e.stopPropagation();
 		if (item.children && item.children.length > 0) {
@@ -56,9 +87,21 @@
 		}
 	};
 
-	const sidebarActive = 'rounded-md bg-muted dark:bg-muted font-inter font-medium';
+	const handleGroupClick = (e: Event) => {
+		e.preventDefault();
+		onToggleId(item.id);
+	};
 
-	function isItemActive(menuItem: SidebarProps, currentUrl: string): boolean {
+	function statusDotClass(state?: 'active' | 'inactive' | 'orphan'): string | null {
+		if (state === 'active') return 'bg-green-500';
+		if (state === 'orphan') return 'bg-amber-500';
+		if (state === 'inactive') return 'bg-neutral-500';
+		return null;
+	}
+
+	const sidebarActive = 'rounded-md bg-muted font-inter font-medium';
+
+	function isItemActive(menuItem: ResourceTreeItem, currentUrl: string): boolean {
 		if (menuItem.href) {
 			if (currentUrl.startsWith(menuItem.href)) {
 				return true;
@@ -82,6 +125,7 @@
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
 	);
+	let actionInFlight = $state(false);
 	let lastActiveUrl = $derived.by(() => {
 		const segments = activeUrl.split('/');
 		return segments[segments.length - 1];
@@ -101,35 +145,92 @@
 	}
 
 	const openConvertTemplateDialog = () => {
+		if (item.state === 'active') {
+			toast.error(
+				item.resourceType === 'vm'
+					? 'VM must be shut off to capture as a template'
+					: 'Jail must be stopped to capture as a template',
+				{ position: 'bottom-center' }
+			);
+			return;
+		}
 		const baseName = baseGuestName(item.label) || 'template';
 		convertTemplateName = `${baseName} Template`;
 		convertTemplateOpen = true;
 	};
 
-	const handleActionClick = async (action: 'start' | 'reboot' | 'shutdown' | 'stop') => {
-		if (item.resourceId === undefined || item.resourceType === undefined) {
+	const handleActionClick = async (action: GuestAction) => {
+		if (
+			lifecycleActive ||
+			actionInFlight ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'jail' && item.resourceType !== 'vm')
+		) {
 			return;
 		}
 
-		if (item.resourceType === 'jail') {
-			if (action !== 'start' && action !== 'stop') {
+		const resourceType = item.resourceType;
+		const resourceId = item.resourceId;
+		const hostname = item.nodeHostname;
+		actionInFlight = true;
+
+		try {
+			let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
+			if (resourceType === 'jail') {
+				if (action !== 'start' && action !== 'stop') {
+					return;
+				}
+				result = await jailAction(resourceId, action, hostname);
+			} else {
+				result = await actionVm(resourceId, action, hostname);
+			}
+
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				toast.error(`Failed to ${action} ${resourceType === 'vm' ? 'VM' : 'jail'}`, {
+					position: 'bottom-center'
+				});
 				return;
 			}
-			await jailAction(item.resourceId, action, item.nodeHostname);
-		} else {
-			await actionVm(item.resourceId, action, item.nodeHostname);
+
+			reload.leftPanel = true;
+
+			console.log(`[cluster-tree] ${action} ${resourceType}`, {
+				id: resourceId,
+				hostname
+			});
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : `Failed to ${action} ${resourceType}`, {
+				position: 'bottom-center'
+			});
+		} finally {
+			actionInFlight = false;
 		}
-
-		reload.leftPanel = true;
-
-		console.log(`[cluster-tree] ${action} ${item.resourceType}`, {
-			id: item.resourceId,
-			hostname: item.nodeHostname
-		});
 	};
 
 	const handleConvertToTemplate = async () => {
-		if (!item.resourceId) return;
+		if (
+			convertTemplateLoading ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'vm' && item.resourceType !== 'jail')
+		) {
+			return;
+		}
+		if (item.state === 'active') {
+			toast.error(
+				item.resourceType === 'vm'
+					? 'VM must be shut off to capture as a template'
+					: 'Jail must be stopped to capture as a template',
+				{ position: 'bottom-center' }
+			);
+			return;
+		}
+
+		const resourceId = item.resourceId;
+		const resourceType = item.resourceType;
+		const hostname = item.nodeHostname;
 		const name = convertTemplateName.trim();
 		if (!name) {
 			toast.error('Template name is required', { position: 'bottom-center' });
@@ -139,52 +240,80 @@
 		convertTemplateLoading = true;
 		try {
 			const result =
-				item.resourceType === 'vm'
-					? await convertVMToTemplate(item.resourceId, { name }, item.nodeHostname)
-					: await convertJailToTemplate(item.resourceId, { name }, item.nodeHostname);
-			if (result.error) {
+				resourceType === 'vm'
+					? await captureVMTemplate(resourceId, { name }, hostname)
+					: await convertJailToTemplate(resourceId, { name }, hostname);
+			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				if (!Array.isArray(result.error)) {
-					const err = (result.error || '').toLowerCase();
-					if (err.includes('template_name_already_in_use')) {
-						toast.error('Template name already in use', { position: 'bottom-center' });
-						return;
-					}
-
-					if (err.includes('template_name_required')) {
-						toast.error('Template name is required', { position: 'bottom-center' });
-						return;
-					}
-
-					if (err.includes('vm_must_be_shut_off')) {
-						toast.error('VM must be shut off to convert to template', {
-							position: 'bottom-center'
-						});
-						return;
-					}
-
-					toast.error('Failed to convert to template', { position: 'bottom-center' });
+				const error = Array.isArray(result.error) ? result.error[0] : result.error;
+				const err = (error || '').toLowerCase();
+				if (err.includes('template_name_already_in_use')) {
+					toast.error('Template name already in use', { position: 'bottom-center' });
 					return;
 				}
+
+				if (err.includes('template_name_required')) {
+					toast.error('Template name is required', { position: 'bottom-center' });
+					return;
+				}
+
+				if (err.includes('vm_must_be_shut_off')) {
+					toast.error('VM must be shut off to capture as a template', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+				if (err.includes('jail_must_be_stopped')) {
+					toast.error('Jail must be stopped to capture as a template', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+
+				toast.error(
+					resourceType === 'vm'
+						? 'Failed to capture VM template'
+						: 'Failed to convert jail to template',
+					{ position: 'bottom-center' }
+				);
+				return;
 			}
 
 			convertTemplateOpen = false;
 			reload.leftPanel = true;
-			toast.success('Template conversion queued', { position: 'bottom-center' });
+			toast.success(
+				resourceType === 'vm' ? 'VM template capture queued' : 'Jail template conversion queued',
+				{ position: 'bottom-center' }
+			);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to capture template', {
+				position: 'bottom-center'
+			});
 		} finally {
 			convertTemplateLoading = false;
 		}
 	};
 
 	const handleDeleteTemplate = async () => {
-		if (!item.resourceId) return;
+		if (
+			deleteTemplateLoading ||
+			item.resourceId === undefined ||
+			!item.nodeHostname ||
+			(item.resourceType !== 'vm-template' && item.resourceType !== 'jail-template')
+		) {
+			return;
+		}
+		const resourceId = item.resourceId;
+		const resourceType = item.resourceType;
+		const hostname = item.nodeHostname;
 		deleteTemplateLoading = true;
 		try {
 			const result =
-				item.resourceType === 'vm-template'
-					? await deleteVMTemplate(item.resourceId, item.nodeHostname)
-					: await deleteJailTemplate(item.resourceId, item.nodeHostname);
-			if (result.error) {
+				resourceType === 'vm-template'
+					? await deleteVMTemplate(resourceId, hostname)
+					: await deleteJailTemplate(resourceId, hostname);
+			if (result.status === 'error') {
+				handleAPIError(result);
 				toast.error('Failed to delete template', { position: 'bottom-center' });
 				return;
 			}
@@ -192,16 +321,22 @@
 			deleteTemplateOpen = false;
 			reload.leftPanel = true;
 			toast.success('Template deleted', { position: 'bottom-center' });
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Failed to delete template', {
+				position: 'bottom-center'
+			});
 		} finally {
 			deleteTemplateLoading = false;
 		}
 	};
 
 	const handleRemoveVMEntry = async () => {
-		if (!item.resourceId) return;
+		const rid = item.resourceId;
+		const hostname = item.nodeHostname;
+		if (!rid || !hostname) return;
 		deleteVMLoading = true;
 		try {
-			const result = await purgeVMRegistration(item.resourceId, true, item.nodeHostname);
+			const result = await purgeVMRegistration(rid, true, hostname);
 			if (result.error) {
 				if (result.message === 'vm_not_orphaned' || result.error.includes('vm_not_orphaned')) {
 					deleteVMOpen = false;
@@ -218,10 +353,11 @@
 
 			deleteVMOpen = false;
 			reload.leftPanel = true;
+			await removeStaleCacheByRID(rid, hostname);
 			toast.success('VM entry removed (datasets preserved)', { position: 'bottom-center' });
 
 			if (item.href && activeUrl.startsWith(item.href.replace(/\/summary$/, ''))) {
-				useSafeGoto(`/${item.nodeHostname}/summary`, { replaceState: false, noScroll: false });
+				useSafeGoto(`/${hostname}/summary`, { replaceState: false, noScroll: false });
 			}
 		} finally {
 			deleteVMLoading = false;
@@ -230,88 +366,167 @@
 </script>
 
 <li class="w-full">
-	{#if hasContextMenu}
+	{#if isGroup}
+		<div
+			role="button"
+			tabindex="0"
+			class={`${rowSpacingClass} text-muted-foreground hover:bg-muted/40 dark:hover:bg-muted/40 flex w-full cursor-pointer items-center justify-between rounded-md px-1.5 ${rowPaddingClass}`}
+			onclick={handleGroupClick}
+			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleGroupClick(e) : null)}
+		>
+			<div class="flex min-w-0 items-center gap-1.5">
+				<span class={`icon-[${item.icon}] size-3.5 shrink-0`}></span>
+				<span class="truncate text-[11px] font-semibold tracking-wide uppercase">{item.label}</span>
+				<span class="text-muted-foreground/70 text-[10px] font-normal">{item.children?.length}</span
+				>
+			</div>
+			<div class="flex size-5 shrink-0 items-center justify-center">
+				<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+				></span>
+			</div>
+		</div>
+	{:else if hasContextMenu}
 		<ContextMenu.Root>
 			<ContextMenu.Trigger
 				role="button"
 				tabindex={0}
-				class={`my-0.5 flex w-full cursor-pointer items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
+				class={`${rowSpacingClass} data-[state=open]:bg-muted flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
 				onclick={handleLabelClick}
-				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
+				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 			>
-				<div class="flex items-center space-x-1 text-sm">
+				<div class="flex min-w-0 items-center space-x-1 text-sm">
 					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 						<div class="flex items-center space-x-1 text-sm">
 							<div class="relative">
-								<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-								{#if item.state && item.state === 'active'}
+								<span
+									class={`icon-[${item.icon}]`}
+									style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+								></span>
+								{#if statusDotClass(item.state)}
 									<div
-										class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
-									>
-										<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
-									</div>
+										class={`absolute -right-1 bottom-0.5 h-2 w-2 rounded-full ring-2 ring-background ${statusDotClass(item.state)}`}
+									></div>
 								{/if}
 							</div>
 						</div>
 					{:else}
-						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+						<span
+							class={`icon-[${item.icon}]`}
+							style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+						></span>
 					{/if}
-					<p class="font-inter cursor-pointer whitespace-nowrap">
+					<p
+						class="font-inter cursor-pointer truncate whitespace-nowrap"
+						title={item.meta ? `${item.label} · ${item.meta}` : item.label}
+					>
 						{item.label}
+						{#if item.meta}
+							<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span
+							>
+						{/if}
 					</p>
 				</div>
 
 				{#if item.children && item.children.length > 0}
-					<span
-						role="button"
-						tabindex="0"
-						class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
-						onclick={handleIconClick}
-						onkeydown={(e) =>
-							e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null}
-					></span>
+					<div class="flex shrink-0 items-center gap-0.5">
+						<span
+							role="button"
+							tabindex="0"
+							class="hover:bg-background flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
+							onclick={handleIconClick}
+							onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
+						>
+							<span
+								class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+							></span>
+						</span>
+					</div>
 				{/if}
 			</ContextMenu.Trigger>
 			<ContextMenu.Content>
 				{#if item.resourceType === 'jail'}
 					{#if item.state === 'active'}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('stop')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('stop')}
+						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
 					{:else}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('start')}
+						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
-					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+					{#if canMigrate && onMigrate}
+						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
+							Migrate
+						</ContextMenu.Item>
+					{/if}
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={item.state === 'active' || convertTemplateLoading}
+						onclick={() => openConvertTemplateDialog()}
+					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>
 				{:else if item.resourceType === 'vm'}
 					{#if item.state === 'active'}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('reboot')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('reboot')}
+						>
 							<span class="icon-[mdi--restart] h-4 w-4"></span>
 							Reboot
 						</ContextMenu.Item>
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('shutdown')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('shutdown')}
+						>
 							<span class="icon-[mdi--power] h-4 w-4"></span>
 							Shutdown
 						</ContextMenu.Item>
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('stop')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('stop')}
+						>
 							<span class="icon-[mdi--stop] h-4 w-4"></span>
 							Stop
 						</ContextMenu.Item>
 					{:else}
-						<ContextMenu.Item class="gap-2" onclick={() => void handleActionClick('start')}>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('start')}
+						>
 							<span class="icon-[mdi--play] h-4 w-4"></span>
 							Start
 						</ContextMenu.Item>
 					{/if}
 					<ContextMenu.Separator />
-					<ContextMenu.Item class="gap-2" onclick={() => openConvertTemplateDialog()}>
+					{#if canMigrate && onMigrate && item.state !== 'orphan'}
+						<ContextMenu.Item class="gap-2" onSelect={() => onMigrate(item)}>
+							<span class="icon-[mdi--swap-horizontal] h-4 w-4"></span>
+							Migrate
+						</ContextMenu.Item>
+					{/if}
+					<ContextMenu.Item
+						class="gap-2"
+						disabled={item.state === 'active' || convertTemplateLoading}
+						onclick={() => openConvertTemplateDialog()}
+					>
 						<span class="icon-[mdi--content-copy] h-4 w-4"></span>
 						Create Template
 					</ContextMenu.Item>
@@ -362,40 +577,59 @@
 		<div
 			role="button"
 			tabindex="0"
-			class={`my-0.5 flex w-full cursor-pointer items-center justify-between px-1.5 py-0.5 ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}`}
+			class={`${rowSpacingClass} flex w-full cursor-pointer items-center justify-between px-1.5 ${rowPaddingClass} ${isActive ? sidebarActive : 'hover:bg-muted dark:hover:bg-muted rounded-md'}${lastActiveUrl === item.label ? 'text-primary!' : ' '}${isOfflineNode ? ' opacity-60' : ''}`}
 			onclick={handleLabelClick}
-			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e as any) : null)}
+			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 		>
-			<div class="flex items-center space-x-1 text-sm">
+			<div class="flex min-w-0 items-center space-x-1 text-sm">
 				{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
 					<div class="flex items-center space-x-1 text-sm">
 						<div class="relative">
-							<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
-							{#if item.state && item.state === 'active'}
+							<span
+								class={`icon-[${item.icon}]`}
+								style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+							></span>
+							{#if statusDotClass(item.state)}
 								<div
-									class="absolute -right-1 bottom-0.5 flex h-2 w-2 items-center justify-center rounded-full bg-green-500"
-								>
-									<span class="icon-[mdi--play] h-2 w-2 text-white"></span>
-								</div>
+									class={`absolute -right-1 bottom-0.5 h-2 w-2 rounded-full ring-2 ring-background ${statusDotClass(item.state)}`}
+								></div>
 							{/if}
 						</div>
 					</div>
 				{:else}
-					<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>
+					<span
+						class={`icon-[${item.icon}]`}
+						style={`width: ${iconSizePx}px; height: ${iconSizePx}px;`}
+					></span>
 				{/if}
-				<p class="font-inter cursor-pointer whitespace-nowrap">
+				<p
+					class="font-inter cursor-pointer truncate whitespace-nowrap"
+					title={item.meta ? `${item.label} · ${item.meta}` : item.label}
+				>
 					{item.label}
+					{#if item.meta}
+						<span class="text-muted-foreground ml-1.5 text-[11px] font-normal">· {item.meta}</span>
+					{/if}
 				</p>
+				{#if isOfflineNode}
+					<span
+						class="bg-muted text-muted-foreground shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+						>Offline</span
+					>
+				{/if}
 			</div>
 
 			{#if item.children && item.children.length > 0}
 				<span
 					role="button"
 					tabindex="0"
-					class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5 cursor-pointer`}
+					class="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded"
 					onclick={handleIconClick}
-					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e as any) : null)}
-				></span>
+					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleIconClick(e) : null)}
+				>
+					<span class={`icon-[teenyicons--${isOpen ? 'down-solid' : 'right-solid'}] h-3.5 w-3.5`}
+					></span>
+				</span>
 			{/if}
 		</div>
 	{/if}
@@ -409,6 +643,10 @@
 				{openIds}
 				{onToggleId}
 				nextGuestId={item.nextGuestId ?? nextGuestId}
+				{canMigrate}
+				{onMigrate}
+				{density}
+				{activeLifecycleGuests}
 			/>
 		{/each}
 	</ul>
@@ -451,7 +689,7 @@
 					{#if convertTemplateLoading}
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
-						Convert
+						{item.resourceType === 'vm' ? 'Create Template' : 'Convert'}
 					{/if}
 				</Button>
 			</Dialog.Footer>
@@ -464,7 +702,7 @@
 		bind:open={deleteVMOpen}
 		customTitle={`Remove the stale inventory entry for <span class="font-semibold">${item.label}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes.`}
 		actions={{
-			onConfirm: () => void handleRemoveVMEntry(),
+			onConfirm: handleRemoveVMEntry,
 			onCancel: () => {
 				deleteVMOpen = false;
 			}
@@ -494,7 +732,7 @@
 		bind:open={deleteTemplateOpen}
 		names={{ parent: 'template', element: item.label }}
 		actions={{
-			onConfirm: () => void handleDeleteTemplate(),
+			onConfirm: handleDeleteTemplate,
 			onCancel: () => {
 				deleteTemplateOpen = false;
 			}
@@ -524,7 +762,7 @@
 		bind:open={deleteTemplateOpen}
 		names={{ parent: 'template', element: item.label }}
 		actions={{
-			onConfirm: () => void handleDeleteTemplate(),
+			onConfirm: handleDeleteTemplate,
 			onCancel: () => {
 				deleteTemplateOpen = false;
 			}

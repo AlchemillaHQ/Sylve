@@ -13,43 +13,56 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/hashicorp/raft"
 	"gorm.io/gorm"
 )
 
-func TestReplicationFreshnessWindowSeconds(t *testing.T) {
-	tests := []struct {
-		name    string
-		cron    string
-		wantMin int64
-		wantErr bool
-	}{
-		{name: "empty", cron: "", wantErr: true},
-		{name: "invalid", cron: "not-a-cron", wantErr: true},
-		{name: "every 1h", cron: "@every 1h", wantMin: 7200},
-		{name: "every 30m", cron: "@every 30m", wantMin: 3600},
-		{name: "every 5m hits floor", cron: "@every 5m", wantMin: 600},
-		{name: "every 1m floored to 10m", cron: "@every 1m", wantMin: 600},
-		{name: "every 10s floored to 10m", cron: "@every 10s", wantMin: 600},
-		{name: "standard daily", cron: "@daily", wantMin: 600},
-		{name: "standard hourly", cron: "@hourly", wantMin: 600},
+func TestReplicationGuestOwnerMatchesDetectsAmbiguousOwners(t *testing.T) {
+	resources := []clusterServiceInterfaces.NodeResources{
+		{NodeUUID: "node-b", VMs: []libvirtServiceInterfaces.SimpleList{{RID: 42}}},
+		{NodeUUID: "node-a", VMs: []libvirtServiceInterfaces.SimpleList{{RID: 42}}},
+		{NodeUUID: "node-c", Jails: []jailServiceInterfaces.SimpleList{{CTID: 77}}},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := replicationFreshnessWindowSeconds(tt.cron)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got window=%d", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got < tt.wantMin {
-				t.Fatalf("expected window >= %d, got %d", tt.wantMin, got)
-			}
-		})
+	vmOwners := replicationGuestOwnerMatches(resources, clusterModels.ReplicationGuestTypeVM, 42)
+	if len(vmOwners) != 2 || vmOwners[0] != "node-a" || vmOwners[1] != "node-b" {
+		t.Fatalf("expected both sorted VM owners, got %v", vmOwners)
+	}
+	jailOwners := replicationGuestOwnerMatches(resources, clusterModels.ReplicationGuestTypeJail, 77)
+	if len(jailOwners) != 1 || jailOwners[0] != "node-c" {
+		t.Fatalf("expected exact jail owner, got %v", jailOwners)
+	}
+	missing := replicationGuestOwnerMatches(resources, clusterModels.ReplicationGuestTypeVM, 999)
+	if len(missing) != 0 {
+		t.Fatalf("expected no owner, got %v", missing)
+	}
+}
+
+func TestRequireReplicationVMStorageEligibility(t *testing.T) {
+	resources := []clusterServiceInterfaces.NodeResources{
+		{
+			NodeUUID: "node-a",
+			VMs: []libvirtServiceInterfaces.SimpleList{
+				{RID: 42},
+				{RID: 43, HasEnabledFilesystemStorage: true},
+			},
+		},
+	}
+
+	if err := requireReplicationVMStorageEligibility(resources, "node-a", 42); err != nil {
+		t.Fatalf("eligible VM was rejected: %v", err)
+	}
+	if err := requireReplicationVMStorageEligibility(resources, "node-a", 43); err == nil || err.Error() != ReplicationVMFilesystemStorageUnsupported {
+		t.Fatalf("enabled filesystem storage was not rejected: %v", err)
+	}
+	if err := requireReplicationVMStorageEligibility(resources, "node-a", 999); err == nil {
+		t.Fatal("missing VM capability evidence was accepted")
+	}
+	if err := requireReplicationVMStorageEligibility(resources, "node-b", 42); err == nil {
+		t.Fatal("missing owner capability evidence was accepted")
 	}
 }
 
@@ -123,8 +136,14 @@ func TestGetReplicationLeaseByPolicyID(t *testing.T) {
 }
 
 func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationLease{})
+	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
 	s := &Service{DB: db}
+	if err := db.Create(&clusterModels.ReplicationPolicy{
+		ID: 10, Name: "lease-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 1000, ActiveNodeID: "node-1", OwnerEpoch: 1, Enabled: true,
+	}).Error; err != nil {
+		t.Fatalf("seed policy: %v", err)
+	}
 
 	now := time.Now()
 	t.Run("insert", func(t *testing.T) {
@@ -144,6 +163,14 @@ func TestUpsertReplicationLeaseBypassRaft(t *testing.T) {
 	})
 
 	t.Run("upsert update", func(t *testing.T) {
+		if err := db.Model(&clusterModels.ReplicationPolicy{}).Where("id = ?", 10).Updates(map[string]any{
+			"guest_type":     clusterModels.ReplicationGuestTypeJail,
+			"guest_id":       2000,
+			"active_node_id": "node-2",
+			"owner_epoch":    3,
+		}).Error; err != nil {
+			t.Fatalf("advance policy: %v", err)
+		}
 		err := s.UpsertReplicationLease(clusterModels.ReplicationLease{
 			PolicyID: 10, GuestType: clusterModels.ReplicationGuestTypeJail,
 			GuestID: 2000, OwnerNodeID: "node-2", OwnerEpoch: 3,
@@ -203,14 +230,24 @@ func TestListReplicationEvents(t *testing.T) {
 	for i := range events {
 		db.Create(&events[i])
 	}
+	if err := db.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 2, PolicyID: uintPtr(10), TransitionRunID: "transition-2",
+		EventType: "failover", Status: "success", StartedAt: now.Add(2 * time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("seed transition event: %v", err)
+	}
 
 	t.Run("all events no filter", func(t *testing.T) {
 		got, err := s.ListReplicationEvents(200, 0)
 		if err != nil {
 			t.Fatalf("list: %v", err)
 		}
-		if len(got) != 3 {
-			t.Fatalf("expected 3 events, got %d", len(got))
+		if len(got) != 4 {
+			t.Fatalf("expected 4 events, got %d", len(got))
+		}
+		if got[0].Scope != clusterModels.ReplicationEventScopeTransition ||
+			got[0].TransitionRunID != "transition-2" {
+			t.Fatalf("transition event was not merged correctly: %+v", got[0])
 		}
 	})
 
@@ -219,8 +256,8 @@ func TestListReplicationEvents(t *testing.T) {
 		if err != nil {
 			t.Fatalf("list by policy: %v", err)
 		}
-		if len(got) != 2 {
-			t.Fatalf("expected 2 events for policy 10, got %d", len(got))
+		if len(got) != 3 {
+			t.Fatalf("expected 3 events for policy 10, got %d", len(got))
 		}
 	})
 
@@ -242,6 +279,9 @@ func TestGetReplicationEventByID(t *testing.T) {
 	db.Create(&clusterModels.ReplicationEvent{
 		ID: 1, EventType: "run", Status: "success",
 	})
+	db.Create(&clusterModels.ReplicationTransitionEvent{
+		ID: 1, TransitionRunID: "transition-1", EventType: "failover", Status: "active",
+	})
 
 	event, err := s.GetReplicationEventByID(1)
 	if err != nil {
@@ -249,6 +289,13 @@ func TestGetReplicationEventByID(t *testing.T) {
 	}
 	if event.EventType != "run" {
 		t.Fatalf("type: %q", event.EventType)
+	}
+	transition, err := s.GetReplicationEventByScopedID(1, clusterModels.ReplicationEventScopeTransition)
+	if err != nil {
+		t.Fatalf("get transition: %v", err)
+	}
+	if transition.EventType != "failover" || transition.Scope != clusterModels.ReplicationEventScopeTransition {
+		t.Fatalf("transition mismatch: %+v", transition)
 	}
 
 	_, err = s.GetReplicationEventByID(0)
@@ -263,7 +310,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 
 	t.Run("create bypass with assigned ID", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-			ID: 100, EventType: "run", Status: "running",
+			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "running",
 		}, true)
 		if err != nil {
 			t.Fatalf("create: %v", err)
@@ -275,7 +322,7 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 
 	t.Run("update bypass", func(t *testing.T) {
 		id, err := s.CreateOrUpdateReplicationEvent(clusterModels.ReplicationEvent{
-			ID: 100, EventType: "run", Status: "success", Message: "done",
+			ID: 100, TransitionRunID: "transition-100", EventType: "run", Status: "success", Message: "done",
 		}, true)
 		if err != nil {
 			t.Fatalf("update: %v", err)
@@ -285,56 +332,10 @@ func TestCreateOrUpdateReplicationEventBypassRaft(t *testing.T) {
 		}
 		var event clusterModels.ReplicationEvent
 		db.First(&event, 100)
-		if event.Status != "success" || event.Message != "done" {
+		if event.Status != "success" || event.Message != "done" || event.TransitionRunID != "transition-100" {
 			t.Fatalf("not updated: status=%q msg=%q", event.Status, event.Message)
 		}
 	})
-}
-
-func TestUpsertLocalReplicationReceipt(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationReceipt{})
-	s := &Service{DB: db}
-
-	now := time.Now().UTC()
-	err := s.UpsertLocalReplicationReceipt(clusterModels.ReplicationReceipt{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		SourceNodeID: "n1", TargetNodeID: "n2", Status: "success",
-		LastAttemptAt: now,
-	})
-	if err != nil {
-		t.Fatalf("upsert: %v", err)
-	}
-	var receipt clusterModels.ReplicationReceipt
-	db.Where("policy_id = ? AND target_node_id = ?", 1, "n2").First(&receipt)
-	if receipt.Status != "success" {
-		t.Fatalf("status: %q", receipt.Status)
-	}
-	if receipt.LastAttemptAt.IsZero() {
-		t.Fatal("last_attempt_at not set")
-	}
-}
-
-func TestDeleteLocalReplicationReceiptsByPolicy(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationReceipt{})
-	s := &Service{DB: db}
-
-	now := time.Now()
-	for i := 0; i < 3; i++ {
-		db.Create(&clusterModels.ReplicationReceipt{
-			PolicyID: 10, GuestType: clusterModels.ReplicationGuestTypeVM,
-			GuestID: uint(100 + i), SourceNodeID: "n1", TargetNodeID: "n2",
-			Status: "success", LastAttemptAt: now,
-		})
-	}
-
-	if err := s.DeleteLocalReplicationReceiptsByPolicy(10); err != nil {
-		t.Fatalf("delete: %v", err)
-	}
-	var count int64
-	db.Model(&clusterModels.ReplicationReceipt{}).Where("policy_id = ?", 10).Count(&count)
-	if count != 0 {
-		t.Fatalf("expected all deleted, got %d", count)
-	}
 }
 
 func TestListClusterSSHIdentities(t *testing.T) {
@@ -399,45 +400,6 @@ func TestDeleteClusterSSHIdentityBypassRaft(t *testing.T) {
 	}
 }
 
-func TestDeleteClusterSSHIdentityWithInMemoryRaft(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ClusterSSHIdentity{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	if err := leader.service.UpsertClusterSSHIdentity(clusterModels.ClusterSSHIdentity{
-		NodeUUID: "raft-del", SSHHost: "10.0.0.1", PublicKey: "ssh-key",
-	}, false); err != nil {
-		t.Fatalf("create via raft: %v", err)
-	}
-
-	waitForClusterCondition(t, 8*time.Second, "identity replicated before delete", func() bool {
-		for _, n := range nodes {
-			var count int64
-			n.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-			if count != 1 {
-				return false
-			}
-		}
-		return true
-	})
-
-	if err := leader.service.DeleteClusterSSHIdentity("raft-del", false); err != nil {
-		t.Fatalf("delete via raft: %v", err)
-	}
-
-	waitForClusterCondition(t, 8*time.Second, "identity deleted on all nodes", func() bool {
-		for _, n := range nodes {
-			var count int64
-			n.service.DB.Model(&clusterModels.ClusterSSHIdentity{}).Count(&count)
-			if count != 0 {
-				return false
-			}
-		}
-		return true
-	})
-}
-
 func TestResolveSSHHostForNode(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
 	s := &Service{DB: db}
@@ -466,98 +428,18 @@ func TestResolveSSHHostForNode(t *testing.T) {
 }
 
 func TestResolveSSHHostForNodeViaRaftConfig(t *testing.T) {
-	nodes := setupClusterRaftTestNodes(t, 1, &clusterModels.ClusterNode{})
-	defer cleanupClusterRaftTestNodes(t, nodes)
-
-	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
-
-	host, err := leader.service.ResolveSSHHostForNode("node-1")
-	if err != nil {
-		t.Fatalf("resolve via raft: %v", err)
+	configuration := raft.Configuration{Servers: []raft.Server{
+		{ID: "node-1", Address: "192.0.2.10:7000", Suffrage: raft.Voter},
+		{ID: "node-2", Address: "node-2.internal", Suffrage: raft.Nonvoter},
+	}}
+	if host, found := resolveSSHHostFromRaftConfiguration("node-1", configuration); !found || host != "192.0.2.10" {
+		t.Fatalf("resolved host = %q, found=%t", host, found)
 	}
-	if host == "" {
-		t.Fatal("expected non-empty host from raft config")
+	if host, found := resolveSSHHostFromRaftConfiguration("node-2", configuration); !found || host != "node-2.internal" {
+		t.Fatalf("fallback address = %q, found=%t", host, found)
 	}
-}
-
-func TestPruneLocalReplicationReceipts(t *testing.T) {
-	db := newClusterServiceTestDB(t,
-		&clusterModels.ReplicationReceipt{},
-		&clusterModels.ReplicationPolicy{},
-		&clusterModels.ReplicationPolicyTarget{},
-	)
-	s := &Service{DB: db}
-
-	now := time.Now()
-
-	// seed a policy with a target
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "prune-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, SourceNodeID: "n1",
-		SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr: "* * * * *", OwnerEpoch: 1,
-	})
-	db.Create(&clusterModels.ReplicationPolicyTarget{
-		PolicyID: 1, NodeID: "node-target", Weight: 100,
-	})
-
-	// create receipt matching target
-	db.Create(&clusterModels.ReplicationReceipt{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		SourceNodeID: "n1", TargetNodeID: "node-target",
-		Status: "success", LastAttemptAt: now,
-	})
-	// create stale receipt with non-existent target node
-	db.Create(&clusterModels.ReplicationReceipt{
-		ID: 999, PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		SourceNodeID: "n1", TargetNodeID: "stale-node",
-		Status: "success", LastAttemptAt: now,
-	})
-
-	if err := s.PruneLocalReplicationReceipts(""); err != nil {
-		t.Fatalf("prune: %v", err)
-	}
-
-	// valid receipt should remain, stale should be removed
-	var receipts []clusterModels.ReplicationReceipt
-	db.Find(&receipts)
-	if len(receipts) != 1 {
-		t.Fatalf("expected 1 receipt after prune, got %d", len(receipts))
-	}
-	if receipts[0].TargetNodeID != "node-target" {
-		t.Fatalf("expected valid receipt, got target=%q", receipts[0].TargetNodeID)
-	}
-}
-
-func TestListReplicationReceipts(t *testing.T) {
-	db := newClusterServiceTestDB(t,
-		&clusterModels.ReplicationReceipt{},
-		&clusterModels.ReplicationPolicy{},
-	)
-	s := &Service{DB: db}
-
-	now := time.Now()
-	db.Create(&clusterModels.ReplicationReceipt{
-		PolicyID: 5, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		SourceNodeID: "n1", TargetNodeID: "n2", Status: "success", LastAttemptAt: now,
-	})
-
-	got, err := s.ListReplicationReceipts(0)
-	if err != nil {
-		t.Fatalf("list all: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 receipt, got %d", len(got))
-	}
-
-	got, err = s.ListReplicationReceipts(5)
-	if err != nil {
-		t.Fatalf("list by policy: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 receipt for policy 5, got %d", len(got))
+	if _, found := resolveSSHHostFromRaftConfiguration("missing", configuration); found {
+		t.Fatal("unexpected match for missing node")
 	}
 }
 

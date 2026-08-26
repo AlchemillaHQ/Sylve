@@ -129,3 +129,50 @@ func TestRequireLocalAdminRejectsNonAdmin(t *testing.T) {
 		t.Fatalf("expected_status_403_got: %d", status)
 	}
 }
+
+func TestRequireLocalAdminUsesSignedForwardedClaim(t *testing.T) {
+	service := newAuthzTestService(t)
+	gin.SetMode(gin.TestMode)
+
+	request := func(admin bool) int {
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Set("AuthType", "sylve")
+			c.Set("UserID", uint(99))
+			c.Set("AuthScope", "cluster")
+			c.Set("ClusterTokenUse", authSvc.ClusterTokenUseUserProxy)
+			c.Set("ProxyAdmin", admin)
+			c.Next()
+		})
+		router.Use(RequireLocalAdmin(service))
+		router.GET("/secure", func(c *gin.Context) { c.Status(http.StatusOK) })
+		return testutil.PerformRequest(t, router, http.MethodGet, "/secure", nil, nil).Code
+	}
+
+	if status := request(true); status != http.StatusOK {
+		t.Fatalf("signed forwarded admin status=%d", status)
+	}
+	if status := request(false); status != http.StatusForbidden {
+		t.Fatalf("forwarded non-admin status=%d", status)
+	}
+}
+
+func TestRequireLocalAdminForWritesAllowsReadsOnly(t *testing.T) {
+	service := newAuthzTestService(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("AuthType", "sylve")
+		c.Set("UserID", uint(1))
+		c.Next()
+	})
+	router.Use(RequireLocalAdminForWrites(service))
+	router.Any("/entries", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	if status := testutil.PerformRequest(t, router, http.MethodGet, "/entries", nil, nil).Code; status != http.StatusOK {
+		t.Fatalf("read status=%d", status)
+	}
+	if status := testutil.PerformRequest(t, router, http.MethodPost, "/entries", nil, nil).Code; status != http.StatusUnauthorized {
+		t.Fatalf("write status=%d", status)
+	}
+}

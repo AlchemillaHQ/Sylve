@@ -9,6 +9,10 @@
 package samba
 
 import (
+	"os"
+	"sync"
+	"time"
+
 	"github.com/alchemillahq/gzfs"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
@@ -19,11 +23,19 @@ import (
 var _ sambaServiceInterfaces.SambaServiceInterface = (*Service)(nil)
 
 type Service struct {
-	DB              *gorm.DB
-	TelemetryDB     *gorm.DB
-	ZFS             zfsServiceInterfaces.ZfsServiceInterface
-	GZFS            *gzfs.Client
-	OnConfigChange  func() error
+	DB                      *gorm.DB
+	TelemetryDB             *gorm.DB
+	ZFS                     zfsServiceInterfaces.ZfsServiceInterface
+	GZFS                    *gzfs.Client
+	OnConfigChange          func() error
+	EnsureMdnsEnabled       func(*gorm.DB) error
+	WithServiceSettingsLock func(func() error) error
+
+	auditFileOffset int64
+	auditFileMu     sync.Mutex
+	auditFile       *os.File
+	lastAuditLogID  int
+	recentMkdirs    map[string]time.Time
 }
 
 func NewSambaService(
@@ -33,10 +45,11 @@ func NewSambaService(
 	gzfs *gzfs.Client,
 ) sambaServiceInterfaces.SambaServiceInterface {
 	return &Service{
-		DB:          db,
-		TelemetryDB: telemetryDB,
-		ZFS:         zfs,
-		GZFS:        gzfs,
+		DB:           db,
+		TelemetryDB:  telemetryDB,
+		ZFS:          zfs,
+		GZFS:         gzfs,
+		recentMkdirs: make(map[string]time.Time),
 	}
 }
 

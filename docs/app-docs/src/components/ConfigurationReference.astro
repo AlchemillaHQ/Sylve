@@ -1,0 +1,75 @@
+<div class="config-reference not-content">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Object / parameter</th><th>Example</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr class="group"><th colspan="3"><code>config.json</code><span>Root configuration</span></th></tr>
+        <tr><th><span class="child">environment</span></th><td><code>"production"</code></td><td>Runtime mode: <code>production</code>, <code>development</code>, or <code>debug</code>.</td></tr>
+        <tr><th><span class="child">proxyToVite</span></th><td><code>false</code></td><td>Proxies frontend requests to Vite. Keep disabled in production.</td></tr>
+        <tr><th><span class="child">profile</span></th><td><code>false</code></td><td>Enables Go block and mutex profiling for diagnostics.</td></tr>
+        <tr><th><span class="child">ip</span></th><td><code>"0.0.0.0"</code></td><td>Bind address for the HTTP and HTTPS listeners.</td></tr>
+        <tr><th><span class="child">port</span></th><td><code>8181</code></td><td>HTTPS API and web-interface port. Set to <code>0</code> to disable.</td></tr>
+        <tr><th><span class="child">httpPort</span></th><td><code>8182</code></td><td>Plain HTTP port. Set to <code>0</code> to disable.</td></tr>
+        <tr><th><span class="child">logLevel</span></th><td><code>3</code></td><td><code>0</code> debug, <code>1</code> info, <code>2</code> warning, <code>3</code> error, <code>4</code> fatal, <code>5</code> panic.</td></tr>
+        <tr><th><span class="child">dataPath</span></th><td><code>"/var/db/sylve"</code></td><td>Stores databases, Raft state, downloads, uploads, and working data.</td></tr>
+        <tr><th><span class="child">trustedProxies</span></th><td><code>[]</code></td><td>Trusted proxy IP addresses or CIDR ranges. Keep empty unless required.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>auth</code><span>System authentication</span></th></tr>
+        <tr><th><span class="child">enablePAM</span></th><td><code>false</code></td><td>Allows authentication with FreeBSD system accounts when explicitly enabled. Disabled by default.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>admin</code><span>Built-in administrator</span></th></tr>
+        <tr><th><span class="child">email</span></th><td><code>"admin@sylve.local"</code></td><td>Email address assigned to the built-in administrator.</td></tr>
+        <tr><th><span class="child">password</span></th><td><code>"…"</code></td><td>Sets the initial password. It may be blank after initialization without clearing the stored hash.</td></tr>
+        <tr><th><span class="child">forcePasswordReset</span></th><td><code>false</code></td><td>Applies a non-empty configured password on the next startup, then clears itself.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>raft</code><span>Cluster state</span></th></tr>
+        <tr><th><span class="child">reset</span></th><td><code>false</code></td><td>Destructively resets this node's Raft state for deliberate cluster recovery.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>btt.rpc</code><span>Optional torrent RPC listener</span></th></tr>
+        <tr><th><span class="child">enabled</span></th><td><code>false</code></td><td>Enables the BTT RPC listener.</td></tr>
+        <tr><th><span class="child">address</span></th><td><code>"127.0.0.1"</code></td><td>RPC bind address. The field is named <code>address</code>, not <code>host</code>.</td></tr>
+        <tr><th><span class="child">port</span></th><td><code>6890</code></td><td>RPC listener port.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>btt.dht</code><span>Torrent peer discovery</span></th></tr>
+        <tr><th><span class="child">enabled</span></th><td><code>true</code></td><td>Enables BitTorrent DHT discovery for magnet downloads.</td></tr>
+        <tr><th><span class="child">port</span></th><td><code>7246</code></td><td>UDP port used for DHT peer discovery.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>jails</code><span>Jail integration</span></th></tr>
+        <tr><th><span class="child">disableDevFS</span></th><td><code>false</code></td><td>Disables Sylve-managed DevFS rules. Automatically disabled when Sylve runs in a Jail.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>zfs</code><span>Host tuning</span></th></tr>
+        <tr><th><span class="child">tune</span></th><td><code>true</code></td><td>Applies Sylve's recommended ZFS tuning during startup.</td></tr>
+
+        <tr class="group"><th colspan="3"><code>uploads</code><span>Transfer limits</span></th></tr>
+        <tr><th><span class="child">maxFileBytes</span></th><td><code>68719476736</code></td><td>Maximum accepted file size in bytes; this example is 64 GiB.</td></tr>
+        <tr><th><span class="child last">maxConcurrentTransfers</span></th><td><code>2</code></td><td>Maximum number of simultaneous upload transfers.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .config-reference {
+    --line: color-mix(in oklab, var(--sl-color-white) 14%, transparent);
+    --line-strong: color-mix(in oklab, var(--sl-color-white) 24%, transparent);
+    margin: 1.25rem 0 1.75rem;
+  }
+  .table-wrap { overflow-x:auto; border:1px solid var(--line-strong); border-radius:.35rem; }
+  table { width:100%; min-width:38rem; border-collapse:collapse; table-layout:fixed; background:var(--sl-color-bg); font-size:.73rem; }
+  thead th { padding:.8rem .9rem; border-right:1px solid var(--line); border-bottom:1px solid var(--line-strong); color:var(--sl-color-white); text-align:left; font-size:.68rem; }
+  thead th:first-child { width:27%; }
+  thead th:nth-child(2) { width:20%; }
+  thead th:last-child { width:53%; border-right:0; }
+  tbody th,tbody td { padding:.68rem .9rem; border-right:1px solid var(--line); border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  tbody td:last-child { border-right:0; color:var(--sl-color-gray-2); line-height:1.5; }
+  tbody th { color:var(--sl-color-white); font-weight:500; }
+  tbody tr:last-child > * { border-bottom:0; }
+  code { padding:.08rem .28rem; border:1px solid var(--line); border-radius:.2rem; background:color-mix(in oklab,var(--sl-color-white) 4%,transparent); color:var(--sl-color-white); font:.64rem var(--sl-font-mono); white-space:nowrap; }
+  .group th { padding:.62rem .9rem; border-right:0; background:color-mix(in oklab,var(--sl-color-white) 4%,transparent); }
+  .group:not(:first-child) th { border-top:1px solid var(--line-strong); }
+  .group span { margin-left:.65rem; color:var(--sl-color-gray-3); font-size:.65rem; font-weight:400; }
+  .child { position:relative; display:inline-block; padding-left:1.15rem; font-family:var(--sl-font-mono); font-size:.65rem; }
+  .child::before { position:absolute; top:-.75rem; bottom:-.75rem; left:.28rem; width:.55rem; border-bottom:1px solid var(--line-strong); border-left:1px solid var(--line-strong); content:""; }
+  td:nth-child(2) { color:var(--sl-color-gray-2); }
+  @media (max-width:40rem) { .table-wrap { margin-inline:-.5rem; } }
+</style>

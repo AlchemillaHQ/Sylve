@@ -27,7 +27,7 @@ type authForwardStub struct {
 	serviceInterfaces.AuthServiceInterface
 }
 
-func (authForwardStub) CreateClusterJWT(_ uint, _, _, _ string) (string, error) {
+func (authForwardStub) CreateUserProxyJWT(_ uint, _, _ string) (string, error) {
 	return "test-forward-token", nil
 }
 
@@ -52,11 +52,11 @@ func TestMapRaftAddrToAPI(t *testing.T) {
 }
 
 func TestResolveLeaderAPI(t *testing.T) {
-	t.Run("from nodes table", func(t *testing.T) {
+	t.Run("authoritative raft address ignores stale node API", func(t *testing.T) {
 		db2 := newClusterHandlerTestDB(t, &clusterModels.ClusterNode{})
 		s2 := &cluster.Service{DB: db2}
 		db2.Create(&clusterModels.ClusterNode{
-			NodeUUID: "leader-1", API: "10.0.0.1:8184",
+			NodeUUID: "leader-1", API: "203.0.113.99:9999",
 		})
 		base := resolveLeaderAPI(s2, "leader-1", "10.0.0.1:8180")
 		if base != "https://10.0.0.1:8184" {
@@ -123,9 +123,9 @@ func TestForwardToLeader(t *testing.T) {
 	db := newClusterHandlerTestDB(t, &clusterModels.ClusterNode{})
 
 	// stand up the target server first
-	var capturedPath, capturedBody string
+	var capturedURI, capturedBody string
 	forwardServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
+		capturedURI = r.URL.RequestURI()
 		bodyBytes := make([]byte, r.ContentLength)
 		if r.ContentLength > 0 {
 			r.Body.Read(bodyBytes)
@@ -137,6 +137,9 @@ func TestForwardToLeader(t *testing.T) {
 	defer forwardServer.Close()
 
 	forwardAddr := strings.TrimPrefix(forwardServer.URL, "https://")
+	originalResolver := resolveLeaderAPIForForward
+	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string { return forwardServer.URL }
+	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
 
 	r := setupSingleRaftForTest(t, "node-1")
 	defer func() { _ = r.Shutdown().Error() }()
@@ -151,19 +154,20 @@ func TestForwardToLeader(t *testing.T) {
 	w := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(w)
 	reqBody := `{"name":"test","mode":"dataset"}`
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/cluster/test-endpoint", strings.NewReader(reqBody))
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/cluster/test-endpoint?nodeId=node-2", strings.NewReader(reqBody))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 	ctx.Set("UserID", uint(1))
 	ctx.Set("Username", "admin")
-	ctx.Set("AuthType", "local")
+	ctx.Set("AuthType", "sylve")
+	ctx.Set("AuthScope", "local")
 
 	forwardToLeader(ctx, s)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if capturedPath != "/api/cluster/test-endpoint" {
-		t.Fatalf("expected forwarded path /api/cluster/test-endpoint, got %q", capturedPath)
+	if capturedURI != "/api/cluster/test-endpoint?nodeId=node-2" {
+		t.Fatalf("expected forwarded request URI with selected node, got %q", capturedURI)
 	}
 	if capturedBody != reqBody {
 		t.Fatalf("expected forwarded body %q, got %q", reqBody, capturedBody)
@@ -190,5 +194,35 @@ func TestForwardToLeaderBadAPIResolution(t *testing.T) {
 
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestForwardToLeaderRejectsOversizedBody(t *testing.T) {
+	r := setupSingleRaftForTest(t, "node-oversized")
+	defer func() { _ = r.Shutdown().Error() }()
+
+	originalResolver := resolveLeaderAPIForForward
+	resolveLeaderAPIForForward = func(*cluster.Service, string, string) string {
+		return "https://leader.invalid"
+	}
+	t.Cleanup(func() { resolveLeaderAPIForForward = originalResolver })
+
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/cluster/notes",
+		strings.NewReader(`{"title":"oversized"}`),
+	)
+	ctx.Request.Body = http.MaxBytesReader(w, ctx.Request.Body, 4)
+
+	forwardToLeader(ctx, &cluster.Service{Raft: r})
+
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"message":"request_body_too_large"`) {
+		t.Fatalf("unexpected oversized-body response: %s", w.Body.String())
 	}
 }

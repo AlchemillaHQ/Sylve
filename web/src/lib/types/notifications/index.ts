@@ -28,18 +28,28 @@ export const NotificationsCountSchema = z.object({
 	active: z.number()
 });
 
+export const NotificationsDismissAllSchema = z.object({
+	dismissed: z.number()
+});
+
 export const NotificationConfigSchema = z.object({
 	transports: z.array(
 		z.object({
 			id: z.number(),
 			name: z.string(),
-			type: z.enum(['ntfy', 'smtp', 'discord']),
+			type: z.enum(['ntfy', 'pushover', 'smtp', 'discord']),
 			enabled: z.boolean(),
 			ntfy: z
 				.object({
 					baseUrl: z.string(),
 					topic: z.string(),
 					hasAuthToken: z.boolean()
+				})
+				.optional(),
+			pushover: z
+				.object({
+					hasApiToken: z.boolean(),
+					hasUserKey: z.boolean()
 				})
 				.optional(),
 			email: z
@@ -72,6 +82,7 @@ export const NotificationRuleSchema = z.object({
 	active: z.boolean(),
 	uiEnabled: z.boolean(),
 	ntfyEnabled: z.boolean(),
+	pushoverEnabled: z.boolean().default(false),
 	emailEnabled: z.boolean(),
 	discordEnabled: z.boolean(),
 	config: z.string()
@@ -99,36 +110,38 @@ export const NotificationRulesConfigSchema = z.object({
 export type Notification = z.infer<typeof NotificationSchema>;
 export type NotificationsList = z.infer<typeof NotificationsListSchema>;
 export type NotificationsCount = z.infer<typeof NotificationsCountSchema>;
+export type NotificationsDismissAll = z.infer<typeof NotificationsDismissAllSchema>;
 export type NotificationConfig = z.infer<typeof NotificationConfigSchema>;
 export type NotificationRule = z.infer<typeof NotificationRuleSchema>;
 export type NotificationRuleTemplateTarget = z.infer<typeof NotificationRuleTemplateTargetSchema>;
 export type NotificationRuleTemplate = z.infer<typeof NotificationRuleTemplateSchema>;
 export type NotificationRulesConfig = z.infer<typeof NotificationRulesConfigSchema>;
 
-export type UpdateNotificationConfigInput = {
-	transports: Array<{
-		id?: number;
-		name: string;
-		type: 'ntfy' | 'smtp' | 'discord';
-		enabled: boolean;
-		ntfy: {
-			baseUrl: string;
-			topic: string;
-			authToken?: string;
-		} | null;
-		email: {
-			smtpHost: string;
-			smtpPort: number;
-			smtpUsername: string;
-			smtpFrom: string;
-			smtpUseTls: boolean;
-			recipients: string[];
-			smtpPassword?: string;
-		} | null;
-		discord: {
-			webhookUrl?: string;
-		} | null;
-	}>;
+export type NotificationTransportInput = {
+	name: string;
+	type: 'ntfy' | 'pushover' | 'smtp' | 'discord';
+	enabled: boolean;
+	ntfy: {
+		baseUrl: string;
+		topic: string;
+		authToken?: string;
+	} | null;
+	pushover: {
+		apiToken?: string;
+		userKey?: string;
+	} | null;
+	email: {
+		smtpHost: string;
+		smtpPort: number;
+		smtpUsername: string;
+		smtpFrom: string;
+		smtpUseTls: boolean;
+		recipients: string[];
+		smtpPassword?: string;
+	} | null;
+	discord: {
+		webhookUrl?: string;
+	} | null;
 };
 
 export type UpdateNotificationRulesInput = {
@@ -140,6 +153,7 @@ export type UpdateNotificationRulesInput = {
 		targetKey?: string;
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
+		pushoverEnabled: boolean;
 		emailEnabled: boolean;
 		discordEnabled: boolean;
 	}>;
@@ -150,6 +164,7 @@ export type CreateNotificationRuleInput = {
 	targetKey: string;
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
+	pushoverEnabled: boolean;
 	emailEnabled: boolean;
 	discordEnabled: boolean;
 };
@@ -157,7 +172,17 @@ export type CreateNotificationRuleInput = {
 export type UpdateNotificationRuleInput = {
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
+	pushoverEnabled: boolean;
 	emailEnabled: boolean;
 	discordEnabled: boolean;
 	config?: string;
+};
+
+export type BulkUpdateRulesInput = {
+	ids: number[];
+	uiEnabled?: boolean;
+	ntfyEnabled?: boolean;
+	pushoverEnabled?: boolean;
+	emailEnabled?: boolean;
+	discordEnabled?: boolean;
 };

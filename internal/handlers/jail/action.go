@@ -9,62 +9,103 @@
 package jailHandlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
 
 	"github.com/gin-gonic/gin"
 )
 
-type protectedJailMutationChecker interface {
-	CanMutateProtectedJail(ctID uint) (bool, error)
+type jailActionPreflightService interface {
+	GetJailByCTID(ctID uint) (*jailModels.Jail, error)
+	CanPerformJailAction(ctID uint, action string) (bool, error)
 }
 
-// @Summary Perform Jail Action
-// @Description Perform an action (start/stop) on a specific jail
+type jailLifecycleRequestService interface {
+	RequestAction(
+		ctx context.Context,
+		guestType string,
+		guestID uint,
+		action string,
+		source string,
+		requestedBy string,
+	) (*taskModels.GuestLifecycleTask, string, error)
+}
+
+type JailActionResponse struct {
+	TaskID  uint   `json:"taskId"`
+	CTID    uint   `json:"ctId"`
+	Action  string `json:"action"`
+	Outcome string `json:"outcome"`
+}
+
+// @Summary Queue a Jail lifecycle action
+// @Description Queue a start, stop, or restart action for a jail by its CTID
 // @Tags Jail
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Param ctId path int true "Container ID"
-// @Param action path string true "Action to perform (start/stop)"
-// @Success 200 {object} internal.APIResponse[string] "Success"
+// @Param ctid path int true "Jail CTID" minimum(1)
+// @Param action path string true "Lifecycle action" Enums(start,stop,restart)
+// @Success 202 {object} internal.APIResponse[JailActionResponse] "Accepted"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
-// @Router /jail/action/{action}/{ctId} [post]
-func JailAction(jailService protectedJailMutationChecker, lifecycleService *lifecycle.Service) gin.HandlerFunc {
+// @Router /jail/{ctid}/actions/{action} [post]
+func JailAction(
+	jailService jailActionPreflightService,
+	lifecycleService jailLifecycleRequestService,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctId, err := strconv.Atoi(c.Param("ctId"))
-		if err != nil {
-			c.JSON(400, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_ctid",
-				Error:   "invalid_ctid: " + err.Error(),
-				Data:    nil,
-			})
+		ctID, ok := parseJailCTID(c, "ctid")
+		if !ok {
 			return
 		}
 
-		action := c.Param("action")
+		action := strings.ToLower(strings.TrimSpace(c.Param("action")))
 		if action != "start" && action != "stop" && action != "restart" {
-			c.JSON(400, internal.APIResponse[any]{
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_action",
-				Error:   fmt.Sprintf("invalid_action: %s", action),
+				Error:   "Action must be one of start, stop, or restart",
 				Data:    nil,
 			})
 			return
 		}
 
-		allowed, leaseErr := jailService.CanMutateProtectedJail(uint(ctId))
+		jail, err := jailService.GetJailByCTID(ctID)
+		if err != nil {
+			if isJailNotFoundError(err) {
+				c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+					Status: "error", Message: "jail_not_found", Error: err.Error(), Data: nil,
+				})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "failed_to_find_jail", Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		if jail == nil {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{
+				Status: "error", Message: "jail_not_found", Error: "Jail not found", Data: nil,
+			})
+			return
+		}
+
+		allowed, leaseErr := jailService.CanPerformJailAction(ctID, action)
 		if leaseErr != nil {
-			c.JSON(500, internal.APIResponse[any]{
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "replication_lease_check_failed",
 				Error:   leaseErr.Error(),
@@ -73,10 +114,10 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 			return
 		}
 		if !allowed {
-			c.JSON(403, internal.APIResponse[any]{
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "standby_mode_edit_not_allowed",
-				Error:   "replication_lease_not_owned",
+				Message: "replication_lease_not_owned",
+				Error:   "This node does not own the right to perform this Jail action",
 				Data:    nil,
 			})
 			return
@@ -87,17 +128,21 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 		task, outcome, err := lifecycleService.RequestAction(
 			c.Request.Context(),
 			taskModels.GuestTypeJail,
-			uint(ctId),
+			ctID,
 			action,
 			taskModels.LifecycleTaskSourceUser,
 			username,
 		)
 
 		if err != nil {
-			if errors.Is(err, lifecycle.ErrTaskInProgress) {
+			if errors.Is(err, lifecycle.ErrTaskInProgress) || errors.Is(err, lifecycle.ErrMigrationActive) {
+				message := "lifecycle_task_in_progress"
+				if errors.Is(err, lifecycle.ErrMigrationActive) {
+					message = "migration_in_progress"
+				}
 				c.JSON(http.StatusConflict, internal.APIResponse[any]{
 					Status:  "error",
-					Message: "lifecycle_task_in_progress",
+					Message: message,
 					Error:   err.Error(),
 					Data:    nil,
 				})
@@ -123,18 +168,29 @@ func JailAction(jailService protectedJailMutationChecker, lifecycleService *life
 			return
 		}
 
-		if task != nil {
-			c.Set("AuditAsyncJobID", task.ID)
-			c.Set("AuditAsyncJobType", "jail_"+action)
+		if task == nil || task.ID == 0 {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "failed_to_enqueue_lifecycle_task",
+				Error:   "Lifecycle service returned no task",
+				Data:    nil,
+			})
+			return
 		}
 
-		c.JSON(http.StatusAccepted, internal.APIResponse[any]{
+		c.Set("AuditAsyncJobID", task.ID)
+		c.Set("AuditAsyncJobType", "jail_"+action)
+
+		c.JSON(http.StatusAccepted, internal.APIResponse[JailActionResponse]{
 			Status:  "success",
 			Message: fmt.Sprintf("jail_%s_queued", action),
-			Data: map[string]any{
-				"outcome": outcome,
+			Data: JailActionResponse{
+				TaskID:  task.ID,
+				CTID:    ctID,
+				Action:  action,
+				Outcome: outcome,
 			},
-			Error:   "",
+			Error: "",
 		})
 	}
 }

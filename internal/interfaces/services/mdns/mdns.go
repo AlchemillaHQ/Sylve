@@ -16,6 +16,7 @@ type MdnsRecordWithManaged struct {
 	mdnsModels.MdnsRecord
 	Managed bool   `json:"managed"`
 	Source  string `json:"source"`
+	Active  bool   `json:"active"`
 }
 
 type MdnsServiceInterface interface {

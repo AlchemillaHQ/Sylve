@@ -1,13 +1,11 @@
 <script lang="ts">
-	import { createCluster } from '$lib/api/cluster/cluster';
+	import { createCluster, refreshClusterAfterLifecycleChange } from '$lib/api/cluster/cluster';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { storage } from '$lib';
 	import { handleAPIError } from '$lib/utils/http';
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
-	import { logOut } from '$lib/api/auth';
 	import { watch } from 'runed';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
@@ -59,18 +57,13 @@
 				position: 'bottom-center'
 			});
 		} else {
-			if (typeof response.data === 'string') {
-				storage.clusterToken = response.data;
-			}
-
+			await refreshClusterAfterLifecycleChange();
 			toast.success('Cluster created', {
 				position: 'bottom-center'
 			});
 
 			open = false;
 			properties = options;
-
-			await logOut('Login required after initializing cluster');
 		}
 	}
 </script>

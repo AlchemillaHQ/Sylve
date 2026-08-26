@@ -19,11 +19,14 @@ import (
 )
 
 func newSchedulerTestDB(t *testing.T) *Service {
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{})
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.BackupJob{}, &clusterModels.BackupJobOperation{}, &clusterModels.BackupTarget{},
+		&clusterModels.ScheduledRunReceipt{}, &clusterModels.ScheduledRunResultOutbox{},
+	)
 	return &Service{
-		DB:               db,
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		DB:                db,
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 }
@@ -52,8 +55,8 @@ func TestNextRunTime(t *testing.T) {
 
 func TestIsLocalBackupJobRunner(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -83,8 +86,8 @@ func TestIsLocalBackupJobRunner(t *testing.T) {
 
 func TestReserveAndReleaseJob(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -140,8 +143,8 @@ func TestWorkloadOperationKey(t *testing.T) {
 
 func TestRunBackupSchedulerTickNoDB(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
@@ -233,6 +236,58 @@ func TestRunBackupSchedulerTickSkipsFutureJob(t *testing.T) {
 
 	if _, queued := svc.queuedJobs[3]; queued {
 		t.Fatal("future job should not be enqueued")
+	}
+}
+
+func TestAdvanceBackupJobScheduleAfterRestorePreventsImmediateBackup(t *testing.T) {
+	svc := newSchedulerTestDB(t)
+	target := clusterModels.BackupTarget{ID: 1, Name: "t1", SSHHost: "localhost", BackupRoot: "/backup"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatalf("failed to seed target: %v", err)
+	}
+
+	before := time.Now().UTC()
+	pastDue := before.Add(-time.Hour)
+	lastRun := before.Add(-time.Minute)
+	job := clusterModels.BackupJob{
+		ID: 7, Name: "restored-job", TargetID: 1, Mode: "dataset",
+		CronExpr: "0 0 * * *", Enabled: true, NextRunAt: &pastDue,
+		LastRunAt: &lastRun, LastStatus: "success", ScheduleRevision: 1,
+	}
+	if err := svc.DB.Create(&job).Error; err != nil {
+		t.Fatalf("failed to seed job: %v", err)
+	}
+	if err := svc.DB.Create(&clusterModels.BackupJobOperation{
+		JobID: job.ID, Token: "restore:local:schedule", Operation: clusterModels.BackupJobOperationRestore,
+		State: clusterModels.BackupJobOperationRunning, HolderNodeID: "local",
+		ScheduleRevision: 1, Revision: 2, AcquiredAt: before, UpdatedAt: before,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed restore operation: %v", err)
+	}
+
+	if err := svc.advanceBackupJobScheduleAfterRestore(&job); err != nil {
+		t.Fatalf("advance schedule after restore: %v", err)
+	}
+	if job.NextRunAt == nil || !job.NextRunAt.After(before) {
+		t.Fatalf("next run should be after restore completion, got %v", job.NextRunAt)
+	}
+
+	var updated clusterModels.BackupJob
+	if err := svc.DB.First(&updated, job.ID).Error; err != nil {
+		t.Fatalf("reload job: %v", err)
+	}
+	if updated.NextRunAt == nil || !updated.NextRunAt.After(before) {
+		t.Fatalf("persisted next run should be in the future, got %v", updated.NextRunAt)
+	}
+	if updated.LastRunAt == nil || !updated.LastRunAt.Equal(lastRun) || updated.LastStatus != "success" {
+		t.Fatalf("restore schedule update changed runtime result: %+v", updated)
+	}
+
+	if err := svc.runBackupSchedulerTick(context.Background()); err != nil {
+		t.Fatalf("scheduler tick failed: %v", err)
+	}
+	if _, queued := svc.queuedJobs[job.ID]; queued {
+		t.Fatal("restored job with a future next run should not be queued")
 	}
 }
 
@@ -330,8 +385,8 @@ func TestRunBackupSchedulerTickEnqueuesDueJob(t *testing.T) {
 
 func TestAcquireWorkloadOperation(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -364,8 +419,8 @@ func TestAcquireWorkloadOperation(t *testing.T) {
 
 func TestActiveJobIDs(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
@@ -383,8 +438,8 @@ func TestActiveJobIDs(t *testing.T) {
 
 func TestAcquireAndReleaseJob(t *testing.T) {
 	svc := &Service{
-		queuedJobs:       make(map[uint]struct{}),
-		runningJobs:      make(map[uint]struct{}),
+		queuedJobs:        make(map[uint]struct{}),
+		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 	}
 
