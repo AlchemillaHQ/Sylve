@@ -56,6 +56,7 @@ type DiskSmartSelfTestEvent struct {
 	ClaimedAt        *time.Time `json:"-" gorm:"index"`
 	DeliveryPlan     string     `json:"-" gorm:"type:text"`
 	DeliveredTargets string     `json:"-" gorm:"type:text"`
+	FailedTargets    string     `json:"-" gorm:"type:text"`
 	AttemptCount     uint       `json:"-" gorm:"not null;default:0"`
 	NextAttemptAt    *time.Time `json:"-" gorm:"index"`
 	DeliveryError    string     `json:"-" gorm:"type:text"`

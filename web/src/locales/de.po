@@ -2367,6 +2367,7 @@ msgstr "ZFS-Pools"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/routes/+page.svelte
@@ -8674,6 +8675,7 @@ msgstr "Verkehrsregeln"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Destination"
 msgstr "Ziel"
 
@@ -10591,6 +10593,7 @@ msgid "Auth Token"
 msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Token stored (leave blank to keep)"
 msgstr ""
 
@@ -10663,10 +10666,6 @@ msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Select or type recipients"
-msgstr ""
-
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-msgid "Recipients / Topic"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
@@ -17145,27 +17144,6 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#~ msgid "Shut Down"
-#~ msgstr ""
-
-#~ msgid "Starting..."
-#~ msgstr ""
-
-#~ msgid "Shutting down..."
-#~ msgstr ""
-
-#~ msgid "Stopping..."
-#~ msgstr ""
-
-#~ msgid "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
-#~ msgstr ""
-
-#~ msgid "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
-#~ msgstr ""
-
-#~ msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
-#~ msgstr ""
-
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "You have control"
 msgstr ""
@@ -17570,4 +17548,50 @@ msgstr ""
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval Type"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Pushover"
+msgstr ""
+
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "User / group key configured"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API token is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API token must be 30 letters or numbers"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User or group key is required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User or group key must be 30 letters or numbers"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API Token"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Required"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User / Group Key"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Key stored (leave blank to keep)"
 msgstr ""

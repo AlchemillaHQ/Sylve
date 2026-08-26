@@ -181,7 +181,7 @@ func DismissAll(service *notifications.Service) gin.HandlerFunc {
 }
 
 // @Summary List notification transports
-// @Description List administrator-visible notification transport configuration, including configured Discord webhook URLs
+// @Description List administrator-visible notification transport configuration, including credential-presence flags and configured Discord webhook URLs
 // @Tags Notifications
 // @Produce json
 // @Security BearerAuth
@@ -208,7 +208,7 @@ func GetTransports(service *notifications.Service) gin.HandlerFunc {
 }
 
 // @Summary Create a notification transport
-// @Description Create one ntfy, SMTP, or Discord notification transport
+// @Description Create one ntfy, Pushover, SMTP, or Discord notification transport
 // @Tags Notifications
 // @Accept json
 // @Produce json
@@ -244,7 +244,7 @@ func CreateTransport(service *notifications.Service) gin.HandlerFunc {
 }
 
 // @Summary Update a notification transport
-// @Description Replace the mutable configuration of one notification transport; omitted credentials remain unchanged and explicit empty credentials are cleared
+// @Description Replace the mutable configuration of one notification transport; omitted credentials remain unchanged, and blank required Pushover credentials are preserved
 // @Tags Notifications
 // @Accept json
 // @Produce json
@@ -541,7 +541,7 @@ func BulkUpdateRules(service *notifications.Service) gin.HandlerFunc {
 			return
 		}
 
-		updated, err := service.BulkUpdateRules(c.Request.Context(), ids, req.UIEnabled, req.NtfyEnabled, req.EmailEnabled, req.DiscordEnabled)
+		updated, err := service.BulkUpdateRules(c.Request.Context(), ids, req.UIEnabled, req.NtfyEnabled, req.PushoverEnabled, req.EmailEnabled, req.DiscordEnabled)
 		if err != nil {
 			writeNotificationServiceError(c, "bulk_update_rules", "failed_to_bulk_update_notification_rules", err)
 			return

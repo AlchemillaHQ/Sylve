@@ -69,11 +69,13 @@
 				const v = cell.getValue();
 				return v === 'ntfy'
 					? 'ntfy'
-					: v === 'smtp'
-						? 'SMTP'
-						: v === 'discord'
-							? 'Discord'
-							: v || '-';
+					: v === 'pushover'
+						? 'Pushover'
+						: v === 'smtp'
+							? 'SMTP'
+							: v === 'discord'
+								? 'Discord'
+								: v || '-';
 			}
 		},
 		{
@@ -83,7 +85,7 @@
 		},
 		{
 			field: 'details',
-			title: 'Recipients / Topic',
+			title: 'Destination',
 			formatter: (cell: CellComponent) => {
 				const v = cell.getValue();
 				return v || '-';
@@ -100,6 +102,8 @@
 				details = r.length <= 2 ? r.join(', ') : `${r[0]} ...+${r.length - 1} more`;
 			} else if (t.type === 'ntfy' && t.ntfy?.topic) {
 				details = t.ntfy.topic;
+			} else if (t.type === 'pushover') {
+				details = t.pushover?.hasUserKey ? 'User / group key configured' : '-';
 			} else if (t.type === 'discord') {
 				details = t.discord?.webhookUrl ? new URL(t.discord.webhookUrl).hostname : '-';
 			}

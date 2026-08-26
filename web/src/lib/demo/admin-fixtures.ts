@@ -355,6 +355,13 @@ function seedState(hostname: string): DemoAdminState {
 					recipients: ['admin@sylve.local'],
 					hasPassword: true
 				}
+			},
+			{
+				id: 3,
+				name: 'On-call Pushover',
+				type: 'pushover',
+				enabled: true,
+				pushover: { hasApiToken: true, hasUserKey: true }
 			}
 		],
 		rules: [
@@ -368,6 +375,7 @@ function seedState(hostname: string): DemoAdminState {
 				active: true,
 				uiEnabled: true,
 				ntfyEnabled: true,
+				pushoverEnabled: true,
 				emailEnabled: true,
 				discordEnabled: false,
 				config: ruleTemplates[0].defaultConfig ?? '{}'
@@ -382,6 +390,7 @@ function seedState(hostname: string): DemoAdminState {
 				active: true,
 				uiEnabled: true,
 				ntfyEnabled: true,
+				pushoverEnabled: false,
 				emailEnabled: false,
 				discordEnabled: false,
 				config: '{}'
@@ -478,6 +487,15 @@ function transportFromInput(
 						baseUrl: input.ntfy.baseUrl,
 						topic: input.ntfy.topic,
 						hasAuthToken: Boolean(input.ntfy.authToken) || previous?.ntfy?.hasAuthToken === true
+					}
+				}
+			: {}),
+		...(input.type === 'pushover' && input.pushover
+			? {
+					pushover: {
+						hasApiToken:
+							Boolean(input.pushover.apiToken) || previous?.pushover?.hasApiToken === true,
+						hasUserKey: Boolean(input.pushover.userKey) || previous?.pushover?.hasUserKey === true
 					}
 				}
 			: {}),
@@ -826,6 +844,7 @@ export function handleDemoAdminRequest<T = unknown>(
 			active: true,
 			uiEnabled: booleanValue(body, 'uiEnabled'),
 			ntfyEnabled: booleanValue(body, 'ntfyEnabled'),
+			pushoverEnabled: booleanValue(body, 'pushoverEnabled'),
 			emailEnabled: booleanValue(body, 'emailEnabled'),
 			discordEnabled: booleanValue(body, 'discordEnabled'),
 			config: template.defaultConfig ?? '{}'
@@ -839,7 +858,13 @@ export function handleDemoAdminRequest<T = unknown>(
 			const data = update as Record<string, unknown>;
 			const rule = state.rules.find((item) => item.id === Number(data.id));
 			if (!rule) continue;
-			for (const key of ['uiEnabled', 'ntfyEnabled', 'emailEnabled', 'discordEnabled'] as const)
+			for (const key of [
+				'uiEnabled',
+				'ntfyEnabled',
+				'pushoverEnabled',
+				'emailEnabled',
+				'discordEnabled'
+			] as const)
 				if (typeof data[key] === 'boolean') rule[key] = data[key];
 		}
 		return success(rulesConfig(state), 'notification_rules_updated') as DemoAdminResponse<T>;
@@ -852,7 +877,13 @@ export function handleDemoAdminRequest<T = unknown>(
 				'notification_rule_not_found',
 				'notification_rule_not_found'
 			) as DemoAdminResponse<T>;
-		for (const key of ['uiEnabled', 'ntfyEnabled', 'emailEnabled', 'discordEnabled'] as const)
+		for (const key of [
+			'uiEnabled',
+			'ntfyEnabled',
+			'pushoverEnabled',
+			'emailEnabled',
+			'discordEnabled'
+		] as const)
 			if (typeof body[key] === 'boolean') rule[key] = body[key];
 		if (typeof body.config === 'string') rule.config = body.config;
 		return success(rulesConfig(state), 'notification_rule_updated') as DemoAdminResponse<T>;
@@ -875,7 +906,13 @@ export function handleDemoAdminRequest<T = unknown>(
 	if (path === '/notifications/rules/bulk-update' && method === 'POST') {
 		const ids = new Set(Array.isArray(body.ids) ? body.ids.map(Number) : []);
 		for (const rule of state.rules.filter((item) => ids.has(item.id))) {
-			for (const key of ['uiEnabled', 'ntfyEnabled', 'emailEnabled', 'discordEnabled'] as const)
+			for (const key of [
+				'uiEnabled',
+				'ntfyEnabled',
+				'pushoverEnabled',
+				'emailEnabled',
+				'discordEnabled'
+			] as const)
 				if (typeof body[key] === 'boolean') rule[key] = body[key];
 		}
 		return success(rulesConfig(state), 'notification_rules_updated') as DemoAdminResponse<T>;

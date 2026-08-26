@@ -50,6 +50,7 @@ under sponsorship from the FreeBSD Foundation.
 		active: boolean;
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
+		pushoverEnabled: boolean;
 		emailEnabled: boolean;
 		discordEnabled: boolean;
 		config?: string;
@@ -64,6 +65,11 @@ under sponsorship from the FreeBSD Foundation.
 	}> = [
 		{ key: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
 		{ key: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+		{
+			key: 'pushoverEnabled',
+			label: 'Pushover',
+			icon: 'icon-[mdi--message-arrow-right-outline]'
+		},
 		{ key: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
 		{ key: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
 	];
@@ -117,7 +123,7 @@ under sponsorship from the FreeBSD Foundation.
 		{
 			field: 'uiEnabled',
 			title: 'Channels',
-			width: 200,
+			width: 310,
 			formatter: (cell: CellComponent) => {
 				const rowData = cell.getRow().getData() as RuleRow;
 				if (rowData.isTemplateRow) {
@@ -126,6 +132,11 @@ under sponsorship from the FreeBSD Foundation.
 				const channels: { field: keyof RuleRow; label: string; icon: string }[] = [
 					{ field: 'uiEnabled', label: 'In-App', icon: 'icon-[mdi--monitor]' },
 					{ field: 'ntfyEnabled', label: 'ntfy', icon: 'icon-[mdi--bell]' },
+					{
+						field: 'pushoverEnabled',
+						label: 'Pushover',
+						icon: 'icon-[mdi--message-arrow-right-outline]'
+					},
 					{ field: 'emailEnabled', label: 'Email', icon: 'icon-[mdi--email-outline]' },
 					{ field: 'discordEnabled', label: 'Discord', icon: 'icon-[mdi--discord]' }
 				];
@@ -152,6 +163,7 @@ under sponsorship from the FreeBSD Foundation.
 				active: true,
 				uiEnabled: false,
 				ntfyEnabled: false,
+				pushoverEnabled: false,
 				emailEnabled: false,
 				discordEnabled: false,
 				isTemplateRow: true,
@@ -170,6 +182,7 @@ under sponsorship from the FreeBSD Foundation.
 				active: rule.active,
 				uiEnabled: rule.uiEnabled,
 				ntfyEnabled: rule.ntfyEnabled,
+				pushoverEnabled: rule.pushoverEnabled ?? false,
 				emailEnabled: rule.emailEnabled,
 				discordEnabled: rule.discordEnabled,
 				config: rule.config,
@@ -185,6 +198,7 @@ under sponsorship from the FreeBSD Foundation.
 					active: true,
 					uiEnabled: false,
 					ntfyEnabled: false,
+					pushoverEnabled: false,
 					emailEnabled: false,
 					discordEnabled: false,
 					isTemplateRow: true,
@@ -242,6 +256,7 @@ under sponsorship from the FreeBSD Foundation.
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true
 		},
@@ -254,6 +269,7 @@ under sponsorship from the FreeBSD Foundation.
 			active: true,
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true,
 			config: ''
@@ -277,11 +293,13 @@ under sponsorship from the FreeBSD Foundation.
 				targetLabel: string;
 				uiEnabled: boolean;
 				ntfyEnabled: boolean;
+				pushoverEnabled: boolean;
 				emailEnabled: boolean;
 				discordEnabled: boolean;
 			}>,
 			uiEnabled: null as boolean | null,
 			ntfyEnabled: null as boolean | null,
+			pushoverEnabled: null as boolean | null,
 			emailEnabled: null as boolean | null,
 			discordEnabled: null as boolean | null
 		},
@@ -309,6 +327,7 @@ under sponsorship from the FreeBSD Foundation.
 	let editOriginal = $state({
 		uiEnabled: true,
 		ntfyEnabled: true,
+		pushoverEnabled: false,
 		emailEnabled: true,
 		discordEnabled: true,
 		config: ''
@@ -420,6 +439,7 @@ under sponsorship from the FreeBSD Foundation.
 			targetKey: '',
 			uiEnabled: true,
 			ntfyEnabled: true,
+			pushoverEnabled: false,
 			emailEnabled: true,
 			discordEnabled: true
 		};
@@ -444,6 +464,7 @@ under sponsorship from the FreeBSD Foundation.
 			active: selectedRule.active,
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
+			pushoverEnabled: selectedRule.pushoverEnabled,
 			emailEnabled: selectedRule.emailEnabled,
 			discordEnabled: selectedRule.discordEnabled,
 			config
@@ -452,6 +473,7 @@ under sponsorship from the FreeBSD Foundation.
 		editOriginal = {
 			uiEnabled: selectedRule.uiEnabled,
 			ntfyEnabled: selectedRule.ntfyEnabled,
+			pushoverEnabled: selectedRule.pushoverEnabled,
 			emailEnabled: selectedRule.emailEnabled,
 			discordEnabled: selectedRule.discordEnabled,
 			config
@@ -502,11 +524,13 @@ under sponsorship from the FreeBSD Foundation.
 				targetLabel: r.targetLabel,
 				uiEnabled: r.uiEnabled,
 				ntfyEnabled: r.ntfyEnabled,
+				pushoverEnabled: r.pushoverEnabled,
 				emailEnabled: r.emailEnabled,
 				discordEnabled: r.discordEnabled
 			})),
 			uiEnabled: null,
 			ntfyEnabled: null,
+			pushoverEnabled: null,
 			emailEnabled: null,
 			discordEnabled: null
 		};
@@ -529,6 +553,7 @@ under sponsorship from the FreeBSD Foundation.
 			targetKey: modals.create.targetKey,
 			uiEnabled: modals.create.uiEnabled,
 			ntfyEnabled: modals.create.ntfyEnabled,
+			pushoverEnabled: modals.create.pushoverEnabled,
 			emailEnabled: modals.create.emailEnabled,
 			discordEnabled: modals.create.discordEnabled
 		});
@@ -555,6 +580,7 @@ under sponsorship from the FreeBSD Foundation.
 		const response = await updateNotificationRule(modals.edit.id, {
 			uiEnabled: modals.edit.uiEnabled,
 			ntfyEnabled: modals.edit.ntfyEnabled,
+			pushoverEnabled: modals.edit.pushoverEnabled,
 			emailEnabled: modals.edit.emailEnabled,
 			discordEnabled: modals.edit.discordEnabled,
 			config: modals.edit.config
@@ -633,6 +659,8 @@ under sponsorship from the FreeBSD Foundation.
 		const payload: BulkUpdateRulesInput = { ids: modals.bulkUpdate.ids };
 		if (modals.bulkUpdate.uiEnabled !== null) payload.uiEnabled = modals.bulkUpdate.uiEnabled;
 		if (modals.bulkUpdate.ntfyEnabled !== null) payload.ntfyEnabled = modals.bulkUpdate.ntfyEnabled;
+		if (modals.bulkUpdate.pushoverEnabled !== null)
+			payload.pushoverEnabled = modals.bulkUpdate.pushoverEnabled;
 		if (modals.bulkUpdate.emailEnabled !== null)
 			payload.emailEnabled = modals.bulkUpdate.emailEnabled;
 		if (modals.bulkUpdate.discordEnabled !== null)
@@ -879,9 +907,10 @@ under sponsorship from the FreeBSD Foundation.
 
 				<div class="space-y-2 pt-1">
 					<p class="text-sm font-medium">Channels</p>
-					<div class="flex items-center gap-4">
+					<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
 						<CustomCheckbox label="In-App" bind:checked={modals.create.uiEnabled} />
 						<CustomCheckbox label="ntfy" bind:checked={modals.create.ntfyEnabled} />
+						<CustomCheckbox label="Pushover" bind:checked={modals.create.pushoverEnabled} />
 						<CustomCheckbox label="Email" bind:checked={modals.create.emailEnabled} />
 						<CustomCheckbox label="Discord" bind:checked={modals.create.discordEnabled} />
 					</div>
@@ -915,6 +944,7 @@ under sponsorship from the FreeBSD Foundation.
 			onReset={() => {
 				modals.edit.uiEnabled = editOriginal.uiEnabled;
 				modals.edit.ntfyEnabled = editOriginal.ntfyEnabled;
+				modals.edit.pushoverEnabled = editOriginal.pushoverEnabled;
 				modals.edit.emailEnabled = editOriginal.emailEnabled;
 				modals.edit.discordEnabled = editOriginal.discordEnabled;
 				modals.edit.config = editOriginal.config;
@@ -1045,9 +1075,10 @@ under sponsorship from the FreeBSD Foundation.
 
 			<div class="space-y-2 pt-1">
 				<p class="text-sm font-medium">Channels</p>
-				<div class="flex items-center gap-4">
+				<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
 					<CustomCheckbox label="In-App" bind:checked={modals.edit.uiEnabled} />
 					<CustomCheckbox label="ntfy" bind:checked={modals.edit.ntfyEnabled} />
+					<CustomCheckbox label="Pushover" bind:checked={modals.edit.pushoverEnabled} />
 					<CustomCheckbox label="Email" bind:checked={modals.edit.emailEnabled} />
 					<CustomCheckbox label="Discord" bind:checked={modals.edit.discordEnabled} />
 				</div>

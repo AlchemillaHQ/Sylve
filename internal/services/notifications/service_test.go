@@ -11,6 +11,9 @@ package notifications
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -528,6 +531,182 @@ func TestTransportConfigStoresRecipientsAndSecretFlags(t *testing.T) {
 	}
 }
 
+func TestPushoverTransportStoresRedactedCredentialsAndPreservesBlankEdits(t *testing.T) {
+	svc := newTestService(t)
+	apiToken := strings.Repeat("A", 30)
+	userKey := strings.Repeat("u", 30)
+
+	view := createTestTransports(t, svc, TransportInput{
+		Name:    "Pushover",
+		Type:    TransportTypePushover,
+		Enabled: true,
+		Pushover: &PushoverTransportConfigUpdate{
+			APIToken: &apiToken,
+			UserKey:  &userKey,
+		},
+	})
+	if len(view.Transports) != 1 || view.Transports[0].Pushover == nil {
+		t.Fatalf("unexpected pushover transport view: %+v", view.Transports)
+	}
+	if !view.Transports[0].Pushover.HasAPIToken || !view.Transports[0].Pushover.HasUserKey {
+		t.Fatalf("pushover credential flags not set: %+v", view.Transports[0].Pushover)
+	}
+
+	empty := ""
+	if _, err := svc.UpdateTransport(context.Background(), view.Transports[0].ID, TransportInput{
+		Name:    "Pushover renamed",
+		Type:    TransportTypePushover,
+		Enabled: false,
+		Pushover: &PushoverTransportConfigUpdate{
+			APIToken: &empty,
+			UserKey:  &empty,
+		},
+	}); err != nil {
+		t.Fatalf("update pushover transport with blank credentials: %v", err)
+	}
+
+	var stored models.NotificationTransportConfig
+	if err := svc.DB.First(&stored, view.Transports[0].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.PushoverAPIToken != apiToken || stored.PushoverUserKey != userKey {
+		t.Fatalf("blank edit replaced pushover credentials: token_match=%t user_key_match=%t", stored.PushoverAPIToken == apiToken, stored.PushoverUserKey == userKey)
+	}
+}
+
+func TestPushoverTargetedDeliveryUsesConfiguredTransport(t *testing.T) {
+	svc := newTestService(t)
+	apiToken := strings.Repeat("A", 30)
+	userKey := strings.Repeat("u", 30)
+	kind := "system.test.pushover"
+	rule := models.NotificationKindRule{Kind: kind, PushoverEnabled: true}
+	if err := svc.DB.Create(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.DB.Model(&rule).Update("ui_enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	view := createTestTransports(t, svc, TransportInput{
+		Name:    "Pushover",
+		Type:    TransportTypePushover,
+		Enabled: true,
+		Pushover: &PushoverTransportConfigUpdate{
+			APIToken: &apiToken,
+			UserKey:  &userKey,
+		},
+	})
+
+	calls := 0
+	svc.SetPushoverSender(func(_ context.Context, cfg models.NotificationTransportConfig, _ notifier.EventInput, gotToken, gotUserKey string) error {
+		calls++
+		if cfg.ID != view.Transports[0].ID || gotToken != apiToken || gotUserKey != userKey {
+			t.Fatalf("unexpected pushover sender arguments: id=%d token_match=%t user_key_match=%t", cfg.ID, gotToken == apiToken, gotUserKey == userKey)
+		}
+		return nil
+	})
+	input := notifier.EventInput{Kind: kind, Title: "Pushover test", Fingerprint: "pushover-test"}
+	targets, err := svc.DeliveryTargets(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantTarget := "pushover:" + strconv.FormatUint(uint64(view.Transports[0].ID), 10)
+	if len(targets) != 1 || targets[0] != wantTarget {
+		t.Fatalf("targets=%v want=%q", targets, wantTarget)
+	}
+	result, err := svc.EmitTarget(context.Background(), input, targets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || !result.SentPushover || result.FailedPushover {
+		t.Fatalf("calls=%d result=%+v", calls, result)
+	}
+}
+
+func TestSendPushoverUsesNormalPriorityAndUnicodeSafeLimits(t *testing.T) {
+	type requestData struct {
+		method      string
+		contentType string
+		token       string
+		user        string
+		title       string
+		message     string
+		priority    string
+	}
+	requests := make(chan requestData, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		requests <- requestData{
+			method:      r.Method,
+			contentType: r.Header.Get("Content-Type"),
+			token:       r.FormValue("token"),
+			user:        r.FormValue("user"),
+			title:       r.FormValue("title"),
+			message:     r.FormValue("message"),
+			priority:    r.FormValue("priority"),
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":1,"request":"request-id"}`))
+	}))
+	defer server.Close()
+
+	svc := NewService(nil)
+	svc.pushoverEndpoint = server.URL
+	apiToken := strings.Repeat("A", 30)
+	userKey := strings.Repeat("u", 30)
+	err := svc.sendPushover(context.Background(), models.NotificationTransportConfig{}, notifier.EventInput{
+		Title: strings.Repeat("界", pushoverTitleMaxRunes+1),
+		Body:  strings.Repeat("🙂", pushoverMessageMaxRunes+1),
+	}, apiToken, userKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := <-requests
+	if request.method != http.MethodPost || request.contentType != "application/x-www-form-urlencoded" {
+		t.Fatalf("unexpected request metadata: method=%q content_type=%q", request.method, request.contentType)
+	}
+	if request.token != apiToken || request.user != userKey || request.priority != "0" {
+		t.Fatalf("unexpected pushover fields: token_match=%t user_key_match=%t priority=%q", request.token == apiToken, request.user == userKey, request.priority)
+	}
+	if len([]rune(request.title)) != pushoverTitleMaxRunes || len([]rune(request.message)) != pushoverMessageMaxRunes {
+		t.Fatalf("title runes=%d message runes=%d", len([]rune(request.title)), len([]rune(request.message)))
+	}
+}
+
+func TestSendPushoverClassifiesProviderFailures(t *testing.T) {
+	apiToken := strings.Repeat("A", 30)
+	userKey := strings.Repeat("u", 30)
+	for _, test := range []struct {
+		name      string
+		status    int
+		body      string
+		permanent bool
+	}{
+		{name: "invalid credentials", status: http.StatusBadRequest, body: `{"status":0,"errors":["invalid"]}`, permanent: true},
+		{name: "quota exhausted", status: http.StatusTooManyRequests, body: `{"status":0,"errors":["quota"]}`, permanent: true},
+		{name: "provider rejection", status: http.StatusOK, body: `{"status":0,"errors":["invalid"]}`, permanent: true},
+		{name: "server unavailable", status: http.StatusServiceUnavailable, body: `{"status":0}`, permanent: false},
+		{name: "malformed success", status: http.StatusOK, body: `{`, permanent: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(test.status)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer server.Close()
+
+			svc := NewService(nil)
+			svc.pushoverEndpoint = server.URL
+			err := svc.sendPushover(context.Background(), models.NotificationTransportConfig{}, notifier.EventInput{Title: "test"}, apiToken, userKey)
+			if err == nil {
+				t.Fatal("expected pushover delivery error")
+			}
+			if got := notifier.IsPermanentDeliveryError(err); got != test.permanent {
+				t.Fatalf("permanent=%t want=%t err=%v", got, test.permanent, err)
+			}
+		})
+	}
+}
+
 func TestTransportMemberUpdatesPreserveOrClearCredentialsWithoutChangingOtherRows(t *testing.T) {
 	svc := newTestService(t)
 
@@ -882,6 +1061,9 @@ func TestGetRuleConfigAutoSyncsPools(t *testing.T) {
 		}
 		if !rule.UIEnabled || !rule.NtfyEnabled || !rule.EmailEnabled {
 			t.Fatalf("expected_default_enabled_rule got: %+v", rule)
+		}
+		if rule.PushoverEnabled {
+			t.Fatalf("expected_pushover_disabled_by_default got: %+v", rule)
 		}
 	}
 

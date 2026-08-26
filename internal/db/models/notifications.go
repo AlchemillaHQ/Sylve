@@ -44,16 +44,17 @@ type NotificationSuppression struct {
 }
 
 type NotificationKindRule struct {
-	ID             uint      `json:"id" gorm:"primaryKey"`
-	Kind           string    `json:"kind" gorm:"uniqueIndex;not null"`
-	UIEnabled      bool      `json:"uiEnabled" gorm:"not null;default:true"`
-	NtfyEnabled    bool      `json:"ntfyEnabled" gorm:"not null;default:false"`
-	EmailEnabled   bool      `json:"emailEnabled" gorm:"not null;default:false"`
-	DiscordEnabled bool      `json:"discordEnabled" gorm:"not null;default:false"`
-	UserDisabled   bool      `json:"userDisabled" gorm:"not null;default:false"`
-	Config         string    `json:"config" gorm:"type:json;default:'{}'"`
-	CreatedAt      time.Time `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt      time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID              uint      `json:"id" gorm:"primaryKey"`
+	Kind            string    `json:"kind" gorm:"uniqueIndex;not null"`
+	UIEnabled       bool      `json:"uiEnabled" gorm:"not null;default:true"`
+	NtfyEnabled     bool      `json:"ntfyEnabled" gorm:"not null;default:false"`
+	PushoverEnabled bool      `json:"pushoverEnabled" gorm:"not null;default:false"`
+	EmailEnabled    bool      `json:"emailEnabled" gorm:"not null;default:false"`
+	DiscordEnabled  bool      `json:"discordEnabled" gorm:"not null;default:false"`
+	UserDisabled    bool      `json:"userDisabled" gorm:"not null;default:false"`
+	Config          string    `json:"config" gorm:"type:json;default:'{}'"`
+	CreatedAt       time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt       time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 type NotificationTransportConfig struct {
@@ -64,6 +65,9 @@ type NotificationTransportConfig struct {
 	NtfyBaseURL       string    `json:"ntfyBaseUrl" gorm:"not null;default:https://ntfy.sh"`
 	NtfyTopic         string    `json:"ntfyTopic"`
 	NtfyAuthToken     string    `json:"-"`
+	PushoverEnabled   bool      `json:"pushoverEnabled" gorm:"not null;default:false"`
+	PushoverAPIToken  string    `json:"-"`
+	PushoverUserKey   string    `json:"-"`
 	EmailEnabled      bool      `json:"emailEnabled" gorm:"not null;default:false"`
 	SMTPHost          string    `json:"smtpHost"`
 	SMTPPort          int       `json:"smtpPort" gorm:"not null;default:587"`

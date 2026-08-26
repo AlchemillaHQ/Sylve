@@ -1149,6 +1149,64 @@ func TestSelfTestEventDeliveryRetriesOnlyFailedTarget(t *testing.T) {
 	}
 }
 
+func TestSelfTestEventDoesNotRetryPermanentlyFailedTarget(t *testing.T) {
+	service, _ := makeSelfTestScheduleService(t)
+	event := models.DiskSmartSelfTestEvent{
+		EventKey:   "permanent-target-failure",
+		ScheduleID: 1,
+		DiskKey:    "disk-key",
+		Device:     "ada0",
+		TestType:   "short",
+		Condition:  "self_test_failed",
+		Severity:   "critical",
+		Title:      "Self-test failed",
+	}
+	if err := service.DB.Create(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	emitter := &fakeTargetedScheduleEventEmitter{
+		targets: []string{"pushover:1", "ntfy:2"},
+		targetErrors: map[string]error{
+			"pushover:1": notifier.PermanentDeliveryError(errors.New("pushover_send_rejected")),
+			"ntfy:2":     errors.New("unavailable"),
+		},
+	}
+	notifier.SetEmitter(emitter)
+	defer notifier.SetEmitter(nil)
+	now := time.Now().UTC()
+	if err := service.runSelfTestEventRelayBatch(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	var stored models.DiskSmartSelfTestEvent
+	if err := service.DB.First(&stored, event.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	failedTargets, err := decodeSelfTestEventTargets(stored.FailedTargets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failedTargets) != 1 || failedTargets[0] != "pushover:1" {
+		t.Fatalf("failed_targets=%v", failedTargets)
+	}
+
+	delete(emitter.targetErrors, "ntfy:2")
+	if err := service.runSelfTestEventRelayBatch(context.Background(), stored.NextAttemptAt.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	emitter.mu.Lock()
+	defer emitter.mu.Unlock()
+	if emitter.targetCalls["pushover:1"] != 1 || emitter.targetCalls["ntfy:2"] != 2 {
+		t.Fatalf("calls=%v", emitter.targetCalls)
+	}
+	var count int64
+	if err := service.DB.Model(&models.DiskSmartSelfTestEvent{}).Where("id = ?", event.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("completed event count=%d", count)
+	}
+}
+
 func TestSelfTestEventCoalescesOlderLifecycleState(t *testing.T) {
 	service, _ := makeSelfTestScheduleService(t)
 	schedule := models.DiskSmartSelfTestSchedule{

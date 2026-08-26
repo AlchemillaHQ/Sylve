@@ -2367,6 +2367,7 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/routes/+page.svelte
@@ -8674,6 +8675,7 @@ msgstr "Traffic Rules"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
 msgid "Destination"
 msgstr "Destination"
 
@@ -10591,6 +10593,7 @@ msgid "Auth Token"
 msgstr "Auth Token"
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Token stored (leave blank to keep)"
 msgstr "Token stored (leave blank to keep)"
 
@@ -10664,10 +10667,6 @@ msgstr "Recipients"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Select or type recipients"
 msgstr "Select or type recipients"
-
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-msgid "Recipients / Topic"
-msgstr "Recipients / Topic"
 
 #: src/routes/[node]/+layout.svelte
 msgid "Transports"
@@ -17145,27 +17144,6 @@ msgstr "Rebooting..."
 msgid "Restart"
 msgstr "Restart"
 
-#~ msgid "Shut Down"
-#~ msgstr "Shut Down"
-
-#~ msgid "Starting..."
-#~ msgstr "Starting..."
-
-#~ msgid "Shutting down..."
-#~ msgstr "Shutting down..."
-
-#~ msgid "Stopping..."
-#~ msgstr "Stopping..."
-
-#~ msgid "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
-#~ msgstr "Start {0} {1}? Its configured services will start and the guest may immediately become reachable on the network."
-
-#~ msgid "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
-#~ msgstr "Shut down VM {0}? This sends a graceful shutdown request. Services and active sessions inside the VM will be interrupted as it powers off."
-
-#~ msgid "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
-#~ msgstr "Stop jail {0}? Running services and active sessions inside the jail will be interrupted."
-
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "You have control"
 msgstr "You have control"
@@ -17571,3 +17549,49 @@ msgstr "At least one retention value must be greater than zero"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 msgid "Interval Type"
 msgstr "Interval Type"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "Pushover"
+msgstr "Pushover"
+
+#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+msgid "User / group key configured"
+msgstr "User / group key configured"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API token is required"
+msgstr "Application API token is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API token must be 30 letters or numbers"
+msgstr "Application API token must be 30 letters or numbers"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User or group key is required"
+msgstr "User or group key is required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User or group key must be 30 letters or numbers"
+msgstr "User or group key must be 30 letters or numbers"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Application API Token"
+msgstr "Application API Token"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Required"
+msgstr "Required"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "User / Group Key"
+msgstr "User / Group Key"
+
+#: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+msgid "Key stored (leave blank to keep)"
+msgstr "Key stored (leave blank to keep)"

@@ -28,10 +28,11 @@ const (
 )
 
 const (
-	ChannelUI      = "ui"
-	ChannelNtfy    = "ntfy"
-	ChannelEmail   = "email"
-	ChannelDiscord = "discord"
+	ChannelUI       = "ui"
+	ChannelNtfy     = "ntfy"
+	ChannelPushover = "pushover"
+	ChannelEmail    = "email"
+	ChannelDiscord  = "discord"
 )
 
 type EventInput struct {
@@ -52,12 +53,15 @@ type EmitResult struct {
 	UIHandled             bool `json:"-"`
 	TransportConfigLoaded bool `json:"-"`
 	AttemptedNtfy         bool `json:"-"`
+	AttemptedPushover     bool `json:"-"`
 	AttemptedEmail        bool `json:"-"`
 	AttemptedDiscord      bool `json:"-"`
 	FailedNtfy            bool `json:"-"`
+	FailedPushover        bool `json:"-"`
 	FailedEmail           bool `json:"-"`
 	FailedDiscord         bool `json:"-"`
 	SentNtfy              bool `json:"sentNtfy"`
+	SentPushover          bool `json:"sentPushover"`
 	SentEmail             bool `json:"sentEmail"`
 	SentDiscord           bool `json:"sentDiscord"`
 }
@@ -70,6 +74,40 @@ type TargetedEmitter interface {
 	Emitter
 	DeliveryTargets(ctx context.Context, input EventInput) ([]string, error)
 	EmitTarget(ctx context.Context, input EventInput, target string) (EmitResult, error)
+}
+
+type permanentDeliveryError struct {
+	err error
+}
+
+func (e permanentDeliveryError) Error() string {
+	return e.err.Error()
+}
+
+func (e permanentDeliveryError) Unwrap() error {
+	return e.err
+}
+
+func (e permanentDeliveryError) PermanentDeliveryFailure() bool {
+	return true
+}
+
+// PermanentDeliveryError marks a transport error that must not be retried with
+// the same payload and credentials.
+func PermanentDeliveryError(err error) error {
+	if err == nil || IsPermanentDeliveryError(err) {
+		return err
+	}
+	return permanentDeliveryError{err: err}
+}
+
+// IsPermanentDeliveryError reports whether retrying a delivery without a
+// configuration or payload change cannot succeed.
+func IsPermanentDeliveryError(err error) bool {
+	var permanent interface {
+		PermanentDeliveryFailure() bool
+	}
+	return errors.As(err, &permanent) && permanent.PermanentDeliveryFailure()
 }
 
 var (

@@ -15,7 +15,7 @@
 	import { watch } from 'runed';
 	import { generatePassword } from '$lib/utils/string';
 
-	type TransportType = 'ntfy' | 'smtp' | 'discord';
+	type TransportType = 'ntfy' | 'pushover' | 'smtp' | 'discord';
 	type TransportForm = {
 		id?: number;
 		name: string;
@@ -25,6 +25,10 @@
 		ntfyTopic: string;
 		ntfyToken: string;
 		ntfyHasAuthToken: boolean;
+		pushoverApiToken: string;
+		pushoverHasApiToken: boolean;
+		pushoverUserKey: string;
+		pushoverHasUserKey: boolean;
 		smtpHost: string;
 		smtpPort: number;
 		smtpUsername: string;
@@ -49,6 +53,7 @@
 
 	let loading = $state(false);
 	let smtpRecipientsOpen = $state(false);
+	const pushoverCredentialPattern = /^[A-Za-z0-9]{30}$/;
 
 	function defaultForm(type: TransportType = 'smtp'): TransportForm {
 		return {
@@ -59,6 +64,10 @@
 			ntfyTopic: '',
 			ntfyToken: '',
 			ntfyHasAuthToken: false,
+			pushoverApiToken: '',
+			pushoverHasApiToken: false,
+			pushoverUserKey: '',
+			pushoverHasUserKey: false,
 			smtpHost: '',
 			smtpPort: 587,
 			smtpUsername: '',
@@ -94,6 +103,10 @@
 						ntfyTopic: editingTransport.ntfy?.topic ?? '',
 						ntfyToken: '',
 						ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+						pushoverApiToken: '',
+						pushoverHasApiToken: editingTransport.pushover?.hasApiToken ?? false,
+						pushoverUserKey: '',
+						pushoverHasUserKey: editingTransport.pushover?.hasUserKey ?? false,
 						smtpHost: editingTransport.email?.smtpHost ?? '',
 						smtpPort: editingTransport.email?.smtpPort ?? 587,
 						smtpUsername: editingTransport.email?.smtpUsername ?? '',
@@ -161,6 +174,15 @@
 							...(f.ntfyToken.trim().length > 0 ? { authToken: f.ntfyToken.trim() } : {})
 						}
 					: null,
+			pushover:
+				f.type === 'pushover'
+					? {
+							...(f.pushoverApiToken.trim().length > 0
+								? { apiToken: f.pushoverApiToken.trim() }
+								: {}),
+							...(f.pushoverUserKey.trim().length > 0 ? { userKey: f.pushoverUserKey.trim() } : {})
+						}
+					: null,
 			email:
 				f.type === 'smtp'
 					? {
@@ -195,6 +217,10 @@
 				ntfyTopic: editingTransport.ntfy?.topic ?? '',
 				ntfyToken: '',
 				ntfyHasAuthToken: editingTransport.ntfy?.hasAuthToken ?? false,
+				pushoverApiToken: '',
+				pushoverHasApiToken: editingTransport.pushover?.hasApiToken ?? false,
+				pushoverUserKey: '',
+				pushoverHasUserKey: editingTransport.pushover?.hasUserKey ?? false,
 				smtpHost: editingTransport.email?.smtpHost ?? '',
 				smtpPort: editingTransport.email?.smtpPort ?? 587,
 				smtpUsername: editingTransport.email?.smtpUsername ?? '',
@@ -244,6 +270,41 @@
 		} else if (form.type === 'ntfy') {
 			if (form.ntfyTopic.trim().length === 0) {
 				toast.error('Topic is required', { duration: 5000, position: 'bottom-center' });
+				return;
+			}
+		} else if (form.type === 'pushover') {
+			if (form.pushoverApiToken.trim().length === 0 && !form.pushoverHasApiToken) {
+				toast.error('Application API token is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (
+				form.pushoverApiToken.trim().length > 0 &&
+				!pushoverCredentialPattern.test(form.pushoverApiToken.trim())
+			) {
+				toast.error('Application API token must be 30 letters or numbers', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (form.pushoverUserKey.trim().length === 0 && !form.pushoverHasUserKey) {
+				toast.error('User or group key is required', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
+				return;
+			}
+			if (
+				form.pushoverUserKey.trim().length > 0 &&
+				!pushoverCredentialPattern.test(form.pushoverUserKey.trim())
+			) {
+				toast.error('User or group key must be 30 letters or numbers', {
+					duration: 5000,
+					position: 'bottom-center'
+				});
 				return;
 			}
 		} else if (form.type === 'discord') {
@@ -312,6 +373,7 @@
 					label="Type"
 					options={[
 						{ value: 'ntfy', label: 'ntfy' },
+						{ value: 'pushover', label: 'Pushover' },
 						{ value: 'smtp', label: 'SMTP' },
 						{ value: 'discord', label: 'Discord' }
 					]}
@@ -350,6 +412,26 @@
 						type="password"
 						bind:value={form.ntfyToken}
 						placeholder={form.ntfyHasAuthToken ? 'Token stored (leave blank to keep)' : 'Optional'}
+						revealOnFocus={true}
+					/>
+					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
+				</div>
+			{:else if form.type === 'pushover'}
+				<div class="space-y-3">
+					<CustomValueInput
+						label="Application API Token"
+						type="password"
+						bind:value={form.pushoverApiToken}
+						placeholder={form.pushoverHasApiToken
+							? 'Token stored (leave blank to keep)'
+							: 'Required'}
+						revealOnFocus={true}
+					/>
+					<CustomValueInput
+						label="User / Group Key"
+						type="password"
+						bind:value={form.pushoverUserKey}
+						placeholder={form.pushoverHasUserKey ? 'Key stored (leave blank to keep)' : 'Required'}
 						revealOnFocus={true}
 					/>
 					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />

@@ -104,9 +104,10 @@ type BulkDeleteRequest struct {
 }
 
 type BulkUpdateRulesRequest struct {
-	IDs            []int `json:"ids" binding:"required"`
-	UIEnabled      *bool `json:"uiEnabled"`
-	NtfyEnabled    *bool `json:"ntfyEnabled"`
-	EmailEnabled   *bool `json:"emailEnabled"`
-	DiscordEnabled *bool `json:"discordEnabled"`
+	IDs             []int `json:"ids" binding:"required"`
+	UIEnabled       *bool `json:"uiEnabled"`
+	NtfyEnabled     *bool `json:"ntfyEnabled"`
+	PushoverEnabled *bool `json:"pushoverEnabled"`
+	EmailEnabled    *bool `json:"emailEnabled"`
+	DiscordEnabled  *bool `json:"discordEnabled"`
 }

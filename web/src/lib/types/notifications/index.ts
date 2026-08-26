@@ -37,13 +37,19 @@ export const NotificationConfigSchema = z.object({
 		z.object({
 			id: z.number(),
 			name: z.string(),
-			type: z.enum(['ntfy', 'smtp', 'discord']),
+			type: z.enum(['ntfy', 'pushover', 'smtp', 'discord']),
 			enabled: z.boolean(),
 			ntfy: z
 				.object({
 					baseUrl: z.string(),
 					topic: z.string(),
 					hasAuthToken: z.boolean()
+				})
+				.optional(),
+			pushover: z
+				.object({
+					hasApiToken: z.boolean(),
+					hasUserKey: z.boolean()
 				})
 				.optional(),
 			email: z
@@ -76,6 +82,7 @@ export const NotificationRuleSchema = z.object({
 	active: z.boolean(),
 	uiEnabled: z.boolean(),
 	ntfyEnabled: z.boolean(),
+	pushoverEnabled: z.boolean().default(false),
 	emailEnabled: z.boolean(),
 	discordEnabled: z.boolean(),
 	config: z.string()
@@ -112,12 +119,16 @@ export type NotificationRulesConfig = z.infer<typeof NotificationRulesConfigSche
 
 export type NotificationTransportInput = {
 	name: string;
-	type: 'ntfy' | 'smtp' | 'discord';
+	type: 'ntfy' | 'pushover' | 'smtp' | 'discord';
 	enabled: boolean;
 	ntfy: {
 		baseUrl: string;
 		topic: string;
 		authToken?: string;
+	} | null;
+	pushover: {
+		apiToken?: string;
+		userKey?: string;
 	} | null;
 	email: {
 		smtpHost: string;
@@ -142,6 +153,7 @@ export type UpdateNotificationRulesInput = {
 		targetKey?: string;
 		uiEnabled: boolean;
 		ntfyEnabled: boolean;
+		pushoverEnabled: boolean;
 		emailEnabled: boolean;
 		discordEnabled: boolean;
 	}>;
@@ -152,6 +164,7 @@ export type CreateNotificationRuleInput = {
 	targetKey: string;
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
+	pushoverEnabled: boolean;
 	emailEnabled: boolean;
 	discordEnabled: boolean;
 };
@@ -159,6 +172,7 @@ export type CreateNotificationRuleInput = {
 export type UpdateNotificationRuleInput = {
 	uiEnabled: boolean;
 	ntfyEnabled: boolean;
+	pushoverEnabled: boolean;
 	emailEnabled: boolean;
 	discordEnabled: boolean;
 	config?: string;
@@ -168,6 +182,7 @@ export type BulkUpdateRulesInput = {
 	ids: number[];
 	uiEnabled?: boolean;
 	ntfyEnabled?: boolean;
+	pushoverEnabled?: boolean;
 	emailEnabled?: boolean;
 	discordEnabled?: boolean;
 };

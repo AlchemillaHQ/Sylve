@@ -38,16 +38,20 @@ import (
 )
 
 const (
-	defaultNtfyBaseURL = "https://ntfy.sh"
-	defaultSMTPPort    = 587
-	DefaultListLimit   = 50
-	MaxListLimit       = 500
+	defaultNtfyBaseURL      = "https://ntfy.sh"
+	defaultPushoverEndpoint = "https://api.pushover.net/1/messages.json"
+	defaultSMTPPort         = 587
+	pushoverTitleMaxRunes   = 250
+	pushoverMessageMaxRunes = 1024
+	DefaultListLimit        = 50
+	MaxListLimit            = 500
 )
 
 const (
-	TransportTypeNtfy    = "ntfy"
-	TransportTypeSMTP    = "smtp"
-	TransportTypeDiscord = "discord"
+	TransportTypeNtfy     = "ntfy"
+	TransportTypePushover = "pushover"
+	TransportTypeSMTP     = "smtp"
+	TransportTypeDiscord  = "discord"
 )
 
 const (
@@ -87,21 +91,31 @@ type diskSmartRuleConfig struct {
 	CriticalPercent float64 `json:"criticalPercent"`
 }
 
+type pushoverAPIResponse struct {
+	Status  int    `json:"status"`
+	Request string `json:"request"`
+}
+
 type NtfySender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, token string) error
+
+type PushoverSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, apiToken, userKey string) error
 
 type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, password string) error
 
 type DiscordSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, webhookURL string) error
 
 type Service struct {
-	DB          *gorm.DB
-	DiskService diskServiceInterfaces.DiskServiceInterface
-	httpClient  *http.Client
-	now         func() time.Time
+	DB               *gorm.DB
+	DiskService      diskServiceInterfaces.DiskServiceInterface
+	httpClient       *http.Client
+	pushoverEndpoint string
+	pushoverSlots    chan struct{}
+	now              func() time.Time
 
-	ntfySender    NtfySender
-	emailSender   EmailSender
-	discordSender DiscordSender
+	ntfySender     NtfySender
+	pushoverSender PushoverSender
+	emailSender    EmailSender
+	discordSender  DiscordSender
 
 	legacyDiskSmartMigrationMu   sync.Mutex
 	legacyDiskSmartMigrationDone bool
@@ -131,19 +145,25 @@ type TransportConfigView struct {
 }
 
 type TransportConfigEntryView struct {
-	ID      uint                        `json:"id"`
-	Name    string                      `json:"name"`
-	Type    string                      `json:"type"`
-	Enabled bool                        `json:"enabled"`
-	Ntfy    *NtfyTransportConfigView    `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigView   `json:"email,omitempty"`
-	Discord *DiscordTransportConfigView `json:"discord,omitempty"`
+	ID       uint                         `json:"id"`
+	Name     string                       `json:"name"`
+	Type     string                       `json:"type"`
+	Enabled  bool                         `json:"enabled"`
+	Ntfy     *NtfyTransportConfigView     `json:"ntfy,omitempty"`
+	Pushover *PushoverTransportConfigView `json:"pushover,omitempty"`
+	Email    *EmailTransportConfigView    `json:"email,omitempty"`
+	Discord  *DiscordTransportConfigView  `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigView struct {
 	BaseURL      string `json:"baseUrl"`
 	Topic        string `json:"topic"`
 	HasAuthToken bool   `json:"hasAuthToken"`
+}
+
+type PushoverTransportConfigView struct {
+	HasAPIToken bool `json:"hasApiToken"`
+	HasUserKey  bool `json:"hasUserKey"`
 }
 
 type EmailTransportConfigView struct {
@@ -161,18 +181,24 @@ type DiscordTransportConfigView struct {
 }
 
 type TransportInput struct {
-	Name    string                        `json:"name"`
-	Type    string                        `json:"type"`
-	Enabled bool                          `json:"enabled"`
-	Ntfy    *NtfyTransportConfigUpdate    `json:"ntfy,omitempty"`
-	Email   *EmailTransportConfigUpdate   `json:"email,omitempty"`
-	Discord *DiscordTransportConfigUpdate `json:"discord,omitempty"`
+	Name     string                         `json:"name"`
+	Type     string                         `json:"type"`
+	Enabled  bool                           `json:"enabled"`
+	Ntfy     *NtfyTransportConfigUpdate     `json:"ntfy,omitempty"`
+	Pushover *PushoverTransportConfigUpdate `json:"pushover,omitempty"`
+	Email    *EmailTransportConfigUpdate    `json:"email,omitempty"`
+	Discord  *DiscordTransportConfigUpdate  `json:"discord,omitempty"`
 }
 
 type NtfyTransportConfigUpdate struct {
 	BaseURL   string  `json:"baseUrl"`
 	Topic     string  `json:"topic"`
 	AuthToken *string `json:"authToken,omitempty"`
+}
+
+type PushoverTransportConfigUpdate struct {
+	APIToken *string `json:"apiToken,omitempty"`
+	UserKey  *string `json:"userKey,omitempty"`
 }
 
 type EmailTransportConfigUpdate struct {
@@ -195,18 +221,19 @@ type RuleConfigView struct {
 }
 
 type RuleConfigEntryView struct {
-	ID             uint   `json:"id"`
-	Kind           string `json:"kind"`
-	TemplateKey    string `json:"templateKey"`
-	TemplateLabel  string `json:"templateLabel"`
-	TargetKey      string `json:"targetKey"`
-	TargetLabel    string `json:"targetLabel"`
-	Active         bool   `json:"active"`
-	UIEnabled      bool   `json:"uiEnabled"`
-	NtfyEnabled    bool   `json:"ntfyEnabled"`
-	EmailEnabled   bool   `json:"emailEnabled"`
-	DiscordEnabled bool   `json:"discordEnabled"`
-	Config         string `json:"config"`
+	ID              uint   `json:"id"`
+	Kind            string `json:"kind"`
+	TemplateKey     string `json:"templateKey"`
+	TemplateLabel   string `json:"templateLabel"`
+	TargetKey       string `json:"targetKey"`
+	TargetLabel     string `json:"targetLabel"`
+	Active          bool   `json:"active"`
+	UIEnabled       bool   `json:"uiEnabled"`
+	NtfyEnabled     bool   `json:"ntfyEnabled"`
+	PushoverEnabled bool   `json:"pushoverEnabled"`
+	EmailEnabled    bool   `json:"emailEnabled"`
+	DiscordEnabled  bool   `json:"discordEnabled"`
+	Config          string `json:"config"`
 }
 
 type RuleTemplateView struct {
@@ -228,32 +255,35 @@ type RuleConfigUpdate struct {
 }
 
 type RuleConfigEntryUpdate struct {
-	ID             uint   `json:"id"`
-	Kind           string `json:"kind"`
-	Pool           string `json:"pool"`
-	TemplateKey    string `json:"templateKey"`
-	TargetKey      string `json:"targetKey"`
-	UIEnabled      bool   `json:"uiEnabled"`
-	NtfyEnabled    bool   `json:"ntfyEnabled"`
-	EmailEnabled   bool   `json:"emailEnabled"`
-	DiscordEnabled bool   `json:"discordEnabled"`
+	ID              uint   `json:"id"`
+	Kind            string `json:"kind"`
+	Pool            string `json:"pool"`
+	TemplateKey     string `json:"templateKey"`
+	TargetKey       string `json:"targetKey"`
+	UIEnabled       bool   `json:"uiEnabled"`
+	NtfyEnabled     bool   `json:"ntfyEnabled"`
+	PushoverEnabled bool   `json:"pushoverEnabled"`
+	EmailEnabled    bool   `json:"emailEnabled"`
+	DiscordEnabled  bool   `json:"discordEnabled"`
 }
 
 type RuleCreateInput struct {
-	TemplateKey    string `json:"templateKey"`
-	TargetKey      string `json:"targetKey"`
-	UIEnabled      bool   `json:"uiEnabled"`
-	NtfyEnabled    bool   `json:"ntfyEnabled"`
-	EmailEnabled   bool   `json:"emailEnabled"`
-	DiscordEnabled bool   `json:"discordEnabled"`
+	TemplateKey     string `json:"templateKey"`
+	TargetKey       string `json:"targetKey"`
+	UIEnabled       bool   `json:"uiEnabled"`
+	NtfyEnabled     bool   `json:"ntfyEnabled"`
+	PushoverEnabled bool   `json:"pushoverEnabled"`
+	EmailEnabled    bool   `json:"emailEnabled"`
+	DiscordEnabled  bool   `json:"discordEnabled"`
 }
 
 type RuleUpdateInput struct {
-	UIEnabled      bool   `json:"uiEnabled"`
-	NtfyEnabled    bool   `json:"ntfyEnabled"`
-	EmailEnabled   bool   `json:"emailEnabled"`
-	DiscordEnabled bool   `json:"discordEnabled"`
-	Config         string `json:"config"`
+	UIEnabled       bool   `json:"uiEnabled"`
+	NtfyEnabled     bool   `json:"ntfyEnabled"`
+	PushoverEnabled bool   `json:"pushoverEnabled"`
+	EmailEnabled    bool   `json:"emailEnabled"`
+	DiscordEnabled  bool   `json:"discordEnabled"`
+	Config          string `json:"config"`
 }
 
 type TestRuleInput struct {
@@ -269,10 +299,13 @@ func NewService(db *gorm.DB) *Service {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		now: time.Now,
+		pushoverEndpoint: defaultPushoverEndpoint,
+		pushoverSlots:    make(chan struct{}, 2),
+		now:              time.Now,
 	}
 
 	s.ntfySender = s.sendNtfy
+	s.pushoverSender = s.sendPushover
 	s.emailSender = s.sendEmail
 	s.discordSender = s.sendDiscord
 
@@ -366,6 +399,15 @@ func (s *Service) SetNtfySender(sender NtfySender) {
 	s.ntfySender = sender
 }
 
+func (s *Service) SetPushoverSender(sender PushoverSender) {
+	if sender == nil {
+		s.pushoverSender = s.sendPushover
+		return
+	}
+
+	s.pushoverSender = sender
+}
+
 func (s *Service) SetEmailSender(sender EmailSender) {
 	if sender == nil {
 		s.emailSender = s.sendEmail
@@ -407,6 +449,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	canSuppress := shouldPersistSuppressionForKind(normalized.Kind)
 	uiSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelUI)
 	ntfySelected := notificationChannelSelected(normalized.Channels, notifier.ChannelNtfy)
+	pushoverSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelPushover)
 	emailSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelEmail)
 	discordSelected := notificationChannelSelected(normalized.Channels, notifier.ChannelDiscord)
 
@@ -508,7 +551,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 	if uiSelected && kindRule.UIEnabled {
 		s.publishRefresh()
 	}
-	if !ntfySelected && !emailSelected && !discordSelected {
+	if !ntfySelected && !pushoverSelected && !emailSelected && !discordSelected {
 		return result, nil
 	}
 
@@ -534,6 +577,19 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 				result.SentNtfy = true
 			} else {
 				result.FailedNtfy = true
+				transportErr = err
+			}
+		case TransportTypePushover:
+			if !pushoverSelected || !cfg.PushoverEnabled || !kindRule.PushoverEnabled {
+				continue
+			}
+			apiToken := strings.TrimSpace(cfg.PushoverAPIToken)
+			userKey := strings.TrimSpace(cfg.PushoverUserKey)
+			result.AttemptedPushover = true
+			if err := s.pushoverSender(ctx, cfg, normalized, apiToken, userKey); err == nil {
+				result.SentPushover = true
+			} else {
+				result.FailedPushover = true
 				transportErr = err
 			}
 		case TransportTypeSMTP:
@@ -565,7 +621,7 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			}
 		}
 	}
-	if result.FailedNtfy || result.FailedEmail || result.FailedDiscord {
+	if result.FailedNtfy || result.FailedPushover || result.FailedEmail || result.FailedDiscord {
 		return result, fmt.Errorf("notification_delivery_failed: %w", transportErr)
 	}
 
@@ -605,11 +661,11 @@ func (s *Service) DeliveryTargets(ctx context.Context, input notifier.EventInput
 		return []string{}, nil
 	}
 
-	targets := make([]string, 0, 4)
+	targets := make([]string, 0, 5)
 	if kindRule.UIEnabled {
 		targets = append(targets, notifier.ChannelUI)
 	}
-	if !kindRule.NtfyEnabled && !kindRule.EmailEnabled && !kindRule.DiscordEnabled {
+	if !kindRule.NtfyEnabled && !kindRule.PushoverEnabled && !kindRule.EmailEnabled && !kindRule.DiscordEnabled {
 		return targets, nil
 	}
 
@@ -622,6 +678,10 @@ func (s *Service) DeliveryTargets(ctx context.Context, input notifier.EventInput
 		case TransportTypeNtfy:
 			if kindRule.NtfyEnabled && cfg.NtfyEnabled {
 				targets = append(targets, notificationDeliveryTarget(notifier.ChannelNtfy, cfg.ID))
+			}
+		case TransportTypePushover:
+			if kindRule.PushoverEnabled && cfg.PushoverEnabled && strings.TrimSpace(cfg.PushoverAPIToken) != "" && strings.TrimSpace(cfg.PushoverUserKey) != "" {
+				targets = append(targets, notificationDeliveryTarget(notifier.ChannelPushover, cfg.ID))
 			}
 		case TransportTypeSMTP:
 			if kindRule.EmailEnabled && cfg.EmailEnabled && len(cfg.EmailRecipients) > 0 {
@@ -662,7 +722,7 @@ func parseNotificationDeliveryTarget(target string) (string, uint, error) {
 		return target, 0, nil
 	}
 	channel, idValue, ok := strings.Cut(target, ":")
-	if !ok || channel != notifier.ChannelNtfy && channel != notifier.ChannelEmail && channel != notifier.ChannelDiscord {
+	if !ok || channel != notifier.ChannelNtfy && channel != notifier.ChannelPushover && channel != notifier.ChannelEmail && channel != notifier.ChannelDiscord {
 		return "", 0, fmt.Errorf("invalid_notification_delivery_target")
 	}
 	id, err := strconv.ParseUint(idValue, 10, 64)
@@ -850,6 +910,10 @@ func (s *Service) TestTransport(ctx context.Context, id uint) error {
 	case TransportTypeNtfy:
 		token := strings.TrimSpace(cfg.NtfyAuthToken)
 		return s.ntfySender(ctx, cfg, input, token)
+	case TransportTypePushover:
+		apiToken := strings.TrimSpace(cfg.PushoverAPIToken)
+		userKey := strings.TrimSpace(cfg.PushoverUserKey)
+		return s.pushoverSender(ctx, cfg, input, apiToken, userKey)
 	case TransportTypeSMTP:
 		password := strings.TrimSpace(cfg.SMTPPassword)
 		return s.emailSender(ctx, cfg, input, password)
@@ -1082,7 +1146,7 @@ func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInp
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		transportType := normalizeTransportType(input.Type)
-		if transportType != TransportTypeNtfy && transportType != TransportTypeSMTP && transportType != TransportTypeDiscord {
+		if transportType != TransportTypeNtfy && transportType != TransportTypePushover && transportType != TransportTypeSMTP && transportType != TransportTypeDiscord {
 			return fmt.Errorf("invalid_transport_type")
 		}
 
@@ -1106,6 +1170,9 @@ func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInp
 			cfg.NtfyEnabled = input.Enabled
 			cfg.NtfyBaseURL = normalizeNtfyBaseURL(input.Ntfy.BaseURL)
 			cfg.NtfyTopic = strings.TrimSpace(input.Ntfy.Topic)
+			cfg.PushoverEnabled = false
+			cfg.PushoverAPIToken = ""
+			cfg.PushoverUserKey = ""
 			cfg.EmailEnabled = false
 			cfg.SMTPHost = ""
 			cfg.SMTPPort = defaultSMTPPort
@@ -1119,6 +1186,51 @@ func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInp
 
 			if input.Ntfy.AuthToken != nil {
 				cfg.NtfyAuthToken = strings.TrimSpace(*input.Ntfy.AuthToken)
+			}
+		case TransportTypePushover:
+			if input.Pushover == nil {
+				return fmt.Errorf("pushover_config_required")
+			}
+
+			cfg.PushoverEnabled = input.Enabled
+			cfg.NtfyEnabled = false
+			cfg.NtfyBaseURL = defaultNtfyBaseURL
+			cfg.NtfyTopic = ""
+			cfg.NtfyAuthToken = ""
+			cfg.EmailEnabled = false
+			cfg.SMTPHost = ""
+			cfg.SMTPPort = defaultSMTPPort
+			cfg.SMTPUsername = ""
+			cfg.SMTPFrom = ""
+			cfg.SMTPUseTLS = true
+			cfg.EmailRecipients = []string{}
+			cfg.SMTPPassword = ""
+			cfg.DiscordEnabled = false
+			cfg.DiscordWebhookURL = ""
+
+			if input.Pushover.APIToken != nil {
+				apiToken := strings.TrimSpace(*input.Pushover.APIToken)
+				if apiToken != "" {
+					cfg.PushoverAPIToken = apiToken
+				}
+			}
+			if input.Pushover.UserKey != nil {
+				userKey := strings.TrimSpace(*input.Pushover.UserKey)
+				if userKey != "" {
+					cfg.PushoverUserKey = userKey
+				}
+			}
+			if cfg.PushoverAPIToken == "" {
+				return fmt.Errorf("pushover_api_token_required")
+			}
+			if !validPushoverCredential(cfg.PushoverAPIToken) {
+				return fmt.Errorf("invalid_pushover_api_token")
+			}
+			if cfg.PushoverUserKey == "" {
+				return fmt.Errorf("pushover_user_key_required")
+			}
+			if !validPushoverCredential(cfg.PushoverUserKey) {
+				return fmt.Errorf("invalid_pushover_user_key")
 			}
 		case TransportTypeSMTP:
 			if input.Email == nil {
@@ -1146,6 +1258,9 @@ func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInp
 			cfg.NtfyBaseURL = defaultNtfyBaseURL
 			cfg.NtfyTopic = ""
 			cfg.NtfyAuthToken = ""
+			cfg.PushoverEnabled = false
+			cfg.PushoverAPIToken = ""
+			cfg.PushoverUserKey = ""
 			cfg.DiscordEnabled = false
 			cfg.DiscordWebhookURL = ""
 
@@ -1162,6 +1277,9 @@ func (s *Service) saveTransport(ctx context.Context, id uint, input TransportInp
 			cfg.NtfyBaseURL = defaultNtfyBaseURL
 			cfg.NtfyTopic = ""
 			cfg.NtfyAuthToken = ""
+			cfg.PushoverEnabled = false
+			cfg.PushoverAPIToken = ""
+			cfg.PushoverUserKey = ""
 			cfg.EmailEnabled = false
 			cfg.SMTPHost = ""
 			cfg.SMTPPort = defaultSMTPPort
@@ -1305,6 +1423,7 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 
 			rule.UIEnabled = entry.UIEnabled
 			rule.NtfyEnabled = entry.NtfyEnabled
+			rule.PushoverEnabled = entry.PushoverEnabled
 			rule.EmailEnabled = entry.EmailEnabled
 			rule.DiscordEnabled = entry.DiscordEnabled
 			if err := tx.Save(rule).Error; err != nil {
@@ -1374,6 +1493,7 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 				existing.UserDisabled = false
 				existing.UIEnabled = input.UIEnabled
 				existing.NtfyEnabled = input.NtfyEnabled
+				existing.PushoverEnabled = input.PushoverEnabled
 				existing.EmailEnabled = input.EmailEnabled
 				existing.DiscordEnabled = input.DiscordEnabled
 				if existing.Config == "" && definition.DefaultConfig != "" {
@@ -1388,11 +1508,12 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 		}
 
 		record := models.NotificationKindRule{
-			Kind:           kind,
-			UIEnabled:      input.UIEnabled,
-			NtfyEnabled:    input.NtfyEnabled,
-			EmailEnabled:   input.EmailEnabled,
-			DiscordEnabled: input.DiscordEnabled,
+			Kind:            kind,
+			UIEnabled:       input.UIEnabled,
+			NtfyEnabled:     input.NtfyEnabled,
+			PushoverEnabled: input.PushoverEnabled,
+			EmailEnabled:    input.EmailEnabled,
+			DiscordEnabled:  input.DiscordEnabled,
 		}
 		return tx.Create(&record).Error
 	})
@@ -1438,6 +1559,7 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 
 		rule.UIEnabled = input.UIEnabled
 		rule.NtfyEnabled = input.NtfyEnabled
+		rule.PushoverEnabled = input.PushoverEnabled
 		rule.EmailEnabled = input.EmailEnabled
 		rule.DiscordEnabled = input.DiscordEnabled
 		if input.Config != "" {
@@ -1562,7 +1684,7 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 	return s.GetRuleConfig(ctx)
 }
 
-func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, ntfyEnabled, emailEnabled, discordEnabled *bool) (RuleConfigView, error) {
+func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, ntfyEnabled, pushoverEnabled, emailEnabled, discordEnabled *bool) (RuleConfigView, error) {
 	if s == nil || s.DB == nil {
 		return RuleConfigView{}, fmt.Errorf("notifications_service_not_initialized")
 	}
@@ -1594,6 +1716,9 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 			}
 			if ntfyEnabled != nil {
 				rule.NtfyEnabled = *ntfyEnabled
+			}
+			if pushoverEnabled != nil {
+				rule.PushoverEnabled = *pushoverEnabled
 			}
 			if emailEnabled != nil {
 				rule.EmailEnabled = *emailEnabled
@@ -1683,12 +1808,13 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 	}
 
 	rule = models.NotificationKindRule{
-		Kind:           kind,
-		UIEnabled:      true,
-		NtfyEnabled:    true,
-		EmailEnabled:   true,
-		DiscordEnabled: false,
-		Config:         defaultConfig,
+		Kind:            kind,
+		UIEnabled:       true,
+		NtfyEnabled:     true,
+		PushoverEnabled: false,
+		EmailEnabled:    true,
+		DiscordEnabled:  false,
+		Config:          defaultConfig,
 	}
 	if err := tx.Create(&rule).Error; err != nil {
 		return models.NotificationKindRule{}, err
@@ -1948,12 +2074,13 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 			continue
 		}
 		missing = append(missing, models.NotificationKindRule{
-			Kind:           kind,
-			UIEnabled:      true,
-			NtfyEnabled:    true,
-			EmailEnabled:   true,
-			DiscordEnabled: false,
-			Config:         defaultConfig,
+			Kind:            kind,
+			UIEnabled:       true,
+			NtfyEnabled:     true,
+			PushoverEnabled: false,
+			EmailEnabled:    true,
+			DiscordEnabled:  false,
+			Config:          defaultConfig,
 		})
 	}
 	if len(missing) > 0 {
@@ -2348,7 +2475,7 @@ func (s *Service) migrateLegacyDiskSmartSelfTestKinds(tx *gorm.DB) error {
 }
 
 func notificationRuleHasAutomaticDefaults(rule models.NotificationKindRule) bool {
-	if !rule.UIEnabled || !rule.NtfyEnabled || !rule.EmailEnabled || rule.DiscordEnabled || rule.UserDisabled {
+	if !rule.UIEnabled || !rule.NtfyEnabled || rule.PushoverEnabled || !rule.EmailEnabled || rule.DiscordEnabled || rule.UserDisabled {
 		return false
 	}
 	config := strings.TrimSpace(rule.Config)
@@ -2388,6 +2515,7 @@ func notificationRuleShouldReplace(current, candidate models.NotificationKindRul
 func copyNotificationRuleSettings(target *models.NotificationKindRule, source models.NotificationKindRule) {
 	target.UIEnabled = source.UIEnabled
 	target.NtfyEnabled = source.NtfyEnabled
+	target.PushoverEnabled = source.PushoverEnabled
 	target.EmailEnabled = source.EmailEnabled
 	target.DiscordEnabled = source.DiscordEnabled
 	target.UserDisabled = source.UserDisabled
@@ -2448,18 +2576,19 @@ func (s *Service) buildRuleConfigView(definitions []*ruleTemplateDefinition, def
 		}
 
 		view.Rules = append(view.Rules, RuleConfigEntryView{
-			ID:             rule.ID,
-			Kind:           rule.Kind,
-			TemplateKey:    templateKey,
-			TemplateLabel:  templateLabel,
-			TargetKey:      targetKey,
-			TargetLabel:    targetLabel,
-			Active:         active,
-			UIEnabled:      rule.UIEnabled,
-			NtfyEnabled:    rule.NtfyEnabled,
-			EmailEnabled:   rule.EmailEnabled,
-			DiscordEnabled: rule.DiscordEnabled,
-			Config:         rule.Config,
+			ID:              rule.ID,
+			Kind:            rule.Kind,
+			TemplateKey:     templateKey,
+			TemplateLabel:   templateLabel,
+			TargetKey:       targetKey,
+			TargetLabel:     targetLabel,
+			Active:          active,
+			UIEnabled:       rule.UIEnabled,
+			NtfyEnabled:     rule.NtfyEnabled,
+			PushoverEnabled: rule.PushoverEnabled,
+			EmailEnabled:    rule.EmailEnabled,
+			DiscordEnabled:  rule.DiscordEnabled,
+			Config:          rule.Config,
 		})
 	}
 
@@ -2569,9 +2698,11 @@ func normalizeTransportConfig(cfg *models.NotificationTransportConfig) bool {
 	updated := false
 	normalizedType := normalizeTransportType(cfg.Type)
 	if normalizedType == "" {
-		if cfg.NtfyEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
+		if cfg.NtfyEnabled && !cfg.PushoverEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
 			normalizedType = TransportTypeNtfy
-		} else if cfg.DiscordEnabled && !cfg.NtfyEnabled && !cfg.EmailEnabled {
+		} else if cfg.PushoverEnabled && !cfg.NtfyEnabled && !cfg.EmailEnabled && !cfg.DiscordEnabled {
+			normalizedType = TransportTypePushover
+		} else if cfg.DiscordEnabled && !cfg.NtfyEnabled && !cfg.PushoverEnabled && !cfg.EmailEnabled {
 			normalizedType = TransportTypeDiscord
 		} else {
 			normalizedType = TransportTypeSMTP
@@ -2674,6 +2805,10 @@ func (s *Service) toTransportConfigView(configs []models.NotificationTransportCo
 			entry.Enabled = cfg.NtfyEnabled
 			ntfy := s.toNtfyTransportConfigView(cfg)
 			entry.Ntfy = &ntfy
+		case TransportTypePushover:
+			entry.Enabled = cfg.PushoverEnabled
+			pushover := s.toPushoverTransportConfigView(cfg)
+			entry.Pushover = &pushover
 		case TransportTypeSMTP:
 			entry.Enabled = cfg.EmailEnabled
 			email := s.toEmailTransportConfigView(cfg)
@@ -2700,6 +2835,13 @@ func (s *Service) toNtfyTransportConfigView(cfg models.NotificationTransportConf
 		BaseURL:      normalizeNtfyBaseURL(cfg.NtfyBaseURL),
 		Topic:        strings.TrimSpace(cfg.NtfyTopic),
 		HasAuthToken: strings.TrimSpace(cfg.NtfyAuthToken) != "",
+	}
+}
+
+func (s *Service) toPushoverTransportConfigView(cfg models.NotificationTransportConfig) PushoverTransportConfigView {
+	return PushoverTransportConfigView{
+		HasAPIToken: strings.TrimSpace(cfg.PushoverAPIToken) != "",
+		HasUserKey:  strings.TrimSpace(cfg.PushoverUserKey) != "",
 	}
 }
 
@@ -2765,6 +2907,98 @@ func (s *Service) sendNtfy(ctx context.Context, cfg models.NotificationTransport
 	if res.StatusCode >= 400 {
 		logger.L.Error().Int("status_code", res.StatusCode).Str("transport_type", TransportTypeNtfy).Str("topic", topic).Msg("ntfy_non_200_response")
 		return fmt.Errorf("ntfy_send_failed_status_%d", res.StatusCode)
+	}
+
+	return nil
+}
+
+func (s *Service) sendPushover(ctx context.Context, _ models.NotificationTransportConfig, input notifier.EventInput, apiToken, userKey string) error {
+	apiToken = strings.TrimSpace(apiToken)
+	userKey = strings.TrimSpace(userKey)
+	if apiToken == "" {
+		return notifier.PermanentDeliveryError(fmt.Errorf("pushover_api_token_required"))
+	}
+	if !validPushoverCredential(apiToken) {
+		return notifier.PermanentDeliveryError(fmt.Errorf("invalid_pushover_api_token"))
+	}
+	if userKey == "" {
+		return notifier.PermanentDeliveryError(fmt.Errorf("pushover_user_key_required"))
+	}
+	if !validPushoverCredential(userKey) {
+		return notifier.PermanentDeliveryError(fmt.Errorf("invalid_pushover_user_key"))
+	}
+
+	title := truncateRunes(strings.TrimSpace(input.Title), pushoverTitleMaxRunes)
+	message := strings.TrimSpace(input.Body)
+	if message == "" {
+		message = title
+	}
+	message = truncateRunes(message, pushoverMessageMaxRunes)
+	if message == "" {
+		return notifier.PermanentDeliveryError(fmt.Errorf("pushover_message_required"))
+	}
+
+	values := url.Values{
+		"token":    []string{apiToken},
+		"user":     []string{userKey},
+		"title":    []string{title},
+		"message":  []string{message},
+		"priority": []string{"0"},
+	}
+	endpoint := strings.TrimSpace(s.pushoverEndpoint)
+	if endpoint == "" {
+		endpoint = defaultPushoverEndpoint
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(values.Encode()))
+	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypePushover).Msg("pushover_request_creation_failed")
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	if s.pushoverSlots != nil {
+		select {
+		case s.pushoverSlots <- struct{}{}:
+			defer func() { <-s.pushoverSlots }()
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	client := s.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		logger.L.Error().Err(err).Str("transport_type", TransportTypePushover).Msg("pushover_request_failed")
+		return err
+	}
+	defer res.Body.Close()
+	body, readErr := io.ReadAll(io.LimitReader(res.Body, 64*1024))
+
+	var response pushoverAPIResponse
+	decodeErr := json.Unmarshal(body, &response)
+	if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
+		logger.L.Error().Int("status_code", res.StatusCode).Str("transport_type", TransportTypePushover).Str("request_id", response.Request).Msg("pushover_request_rejected")
+		return notifier.PermanentDeliveryError(fmt.Errorf("pushover_send_failed_status_%d", res.StatusCode))
+	}
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		logger.L.Error().Int("status_code", res.StatusCode).Str("transport_type", TransportTypePushover).Str("request_id", response.Request).Msg("pushover_non_200_response")
+		return fmt.Errorf("pushover_send_failed_status_%d", res.StatusCode)
+	}
+	if readErr != nil {
+		logger.L.Error().Err(readErr).Str("transport_type", TransportTypePushover).Msg("pushover_response_read_failed")
+		return readErr
+	}
+	if decodeErr != nil {
+		logger.L.Error().Err(decodeErr).Str("transport_type", TransportTypePushover).Msg("pushover_response_decode_failed")
+		return fmt.Errorf("pushover_invalid_response")
+	}
+	if response.Status != 1 {
+		logger.L.Error().Str("transport_type", TransportTypePushover).Str("request_id", response.Request).Msg("pushover_request_rejected")
+		return notifier.PermanentDeliveryError(fmt.Errorf("pushover_send_rejected"))
 	}
 
 	return nil
@@ -3073,10 +3307,36 @@ func normalizeNtfyBaseURL(value string) string {
 	return strings.TrimRight(value, "/")
 }
 
+func validPushoverCredential(value string) bool {
+	if len(value) != 30 {
+		return false
+	}
+	for _, char := range value {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func truncateRunes(value string, maximum int) string {
+	if maximum <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maximum {
+		return value
+	}
+	return string(runes[:maximum])
+}
+
 func normalizeTransportType(value string) string {
 	switch strings.TrimSpace(strings.ToLower(value)) {
 	case TransportTypeNtfy:
 		return TransportTypeNtfy
+	case TransportTypePushover:
+		return TransportTypePushover
 	case TransportTypeSMTP:
 		return TransportTypeSMTP
 	case TransportTypeDiscord:

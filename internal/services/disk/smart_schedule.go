@@ -1632,16 +1632,27 @@ func (s *Service) deliverClaimedSelfTestEvent(ctx context.Context, event *models
 	if err == nil {
 		err = decodeErr
 	}
+	failed, decodeErr := decodeSelfTestEventTargets(event.FailedTargets)
+	if err == nil {
+		err = decodeErr
+	}
 	var deliveryErr error
 	deliveredSet := make(map[string]struct{}, len(delivered))
 	for _, deliveredTarget := range delivered {
 		deliveredSet[deliveredTarget] = struct{}{}
+	}
+	failedSet := make(map[string]struct{}, len(failed))
+	for _, failedTarget := range failed {
+		failedSet[failedTarget] = struct{}{}
 	}
 	for _, deliveryTarget := range plan {
 		if err != nil {
 			break
 		}
 		if _, ok := deliveredSet[deliveryTarget]; ok {
+			continue
+		}
+		if _, ok := failedSet[deliveryTarget]; ok {
 			continue
 		}
 		active, checkErr := s.renewSelfTestEventClaim(ctx, event.ID, token, time.Now().UTC())
@@ -1653,6 +1664,16 @@ func (s *Service) deliverClaimedSelfTestEvent(ctx context.Context, event *models
 			return s.deleteClaimedSelfTestEvent(ctx, event, token)
 		}
 		if _, emitErr := notifier.EmitTarget(ctx, input, deliveryTarget); emitErr != nil {
+			if notifier.IsPermanentDeliveryError(emitErr) {
+				failed = append(failed, deliveryTarget)
+				failedSet[deliveryTarget] = struct{}{}
+				event.FailedTargets, err = encodeSelfTestEventTargets(failed)
+				if err == nil {
+					err = s.updateClaimedSelfTestEvent(ctx, event.ID, token, map[string]any{"failed_targets": event.FailedTargets})
+				}
+				logger.L.Error().Err(emitErr).Str("event_key", event.EventKey).Str("delivery_target", deliveryTarget).Msg("disk_self_test_notification_permanently_failed")
+				continue
+			}
 			if deliveryErr == nil {
 				deliveryErr = emitErr
 			}
@@ -1668,7 +1689,17 @@ func (s *Service) deliverClaimedSelfTestEvent(ctx context.Context, event *models
 	if err == nil {
 		err = deliveryErr
 	}
-	if err == nil && len(deliveredSet) == len(plan) {
+	terminalTargets := 0
+	for _, deliveryTarget := range plan {
+		if _, ok := deliveredSet[deliveryTarget]; ok {
+			terminalTargets++
+			continue
+		}
+		if _, ok := failedSet[deliveryTarget]; ok {
+			terminalTargets++
+		}
+	}
+	if err == nil && terminalTargets == len(plan) {
 		return s.deleteClaimedSelfTestEvent(ctx, event, token)
 	}
 	event.AttemptCount++
@@ -1687,6 +1718,7 @@ func (s *Service) deliverClaimedSelfTestEvent(ctx context.Context, event *models
 		Where("id = ? AND claim_token = ?", event.ID, token).
 		Updates(map[string]any{
 			"delivered_targets": event.DeliveredTargets,
+			"failed_targets":    event.FailedTargets,
 			"attempt_count":     event.AttemptCount,
 			"next_attempt_at":   nextAttempt,
 			"delivery_error":    deliveryError,
