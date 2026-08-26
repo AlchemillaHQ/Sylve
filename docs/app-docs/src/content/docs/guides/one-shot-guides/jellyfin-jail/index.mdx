@@ -15,7 +15,7 @@ The Intel GPU steps are optional. They require a supported Intel integrated GPU,
 
 ## Changes from Simple Jail
 
-Use the same host networking, FreeBSD 15.x base, storage, network, startup behavior, and lifecycle hooks described in Simple Jail, except for the changes in this section.
+Use the same host networking, FreeBSD 15.x base, storage, network, and startup behavior described in Simple Jail, except for the changes in this section.
 
 ### Basic
 
@@ -69,7 +69,7 @@ If you do not want hardware transcoding, leave **Custom Devfs Ruleset** disabled
 
 ### Advanced
 
-Keep every default allowed option and lifecycle hook from [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). Additionally select **Memory Locking (`allow.mlock`)**, which permits the .NET runtime used by Jellyfin to lock memory.
+Keep every default allowed option and leave the custom lifecycle hooks disabled as described in [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). Additionally select **Memory Locking (`allow.mlock`)**, which permits the .NET runtime used by Jellyfin to lock memory.
 
 Finish creating and starting the jail, then note its assigned IP address. The remaining commands run as `root` inside the Jellyfin jail.
 

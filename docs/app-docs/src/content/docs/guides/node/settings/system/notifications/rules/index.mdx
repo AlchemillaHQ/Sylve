@@ -3,9 +3,11 @@ title: Notification Rules
 description: Choose which Sylve events appear in the UI or are delivered through external notification channels.
 ---
 
-Notification rules connect an event template and a target to delivery channels. A template describes the event family, such as a disk SMART condition or ZFS pool state. A target identifies the affected disk or pool. Each rule then controls whether that event appears in the Sylve interface or is delivered through ntfy, email, and Discord.
+Notification rules connect an event template and a target to delivery channels. A template describes the event family, such as a disk SMART condition or ZFS pool state. A target identifies the affected disk or pool. Each rule then controls whether that event appears in the Sylve interface or is delivered through ntfy, Pushover, email, and Discord.
 
-![Notification Rules table showing SMART and ZFS event rules, their targets, active state, and enabled delivery channels](./notifications-rules-overview.png)
+{/* Screenshot update needed: notifications-rules-overview.png. Capture the current Notification Rules table with the Channels column showing the Pushover icon alongside the other available channels on at least one rule. */}
+
+![Notification Rules table showing SMART and ZFS event rules with Pushover and other enabled delivery channels](./notifications-rules-overview.png)
 
 ## Create a rule
 
@@ -15,12 +17,15 @@ Select **New**, choose an available template and target, then choose the deliver
 | --- | --- |
 | UI | Creates an in-app notification visible in Sylve. No transport is required. |
 | ntfy | Sends to enabled ntfy transports. |
+| Pushover | Sends to enabled Pushover transports. |
 | Email | Sends to enabled SMTP transports. |
 | Discord | Sends to enabled Discord transports. |
 
 The available templates and targets are supplied by the node, so the list changes as hardware and pools change. Current templates include disk SMART temperature, wearout, health, NVMe, and self-test events, as well as ZFS pool state events.
 
-![New Notification Rule dialog with a selected event template, target, and UI, ntfy, email, and Discord delivery channels](./notifications-rule-create.png)
+{/* Screenshot update needed: notifications-rule-create.png. Capture the widened New Notification Rule dialog with a template and target selected and all five channel controls visible on one row: In-App, ntfy, Pushover, Email, and Discord. */}
+
+![New Notification Rule dialog with a selected event template, target, and In-App, ntfy, Pushover, Email, and Discord delivery channels](./notifications-rule-create.png)
 
 ## Test a rule
 
@@ -30,12 +35,14 @@ Use **Test** to select a template, target, and available condition, then send a 
 
 ## Edit, bulk update, and delete
 
-Select a rule to edit its channels or template configuration. Select multiple rules to apply the same channel choices in one bulk update, or to delete them together.
+Select a rule to edit its channels or template configuration. Select multiple rules to apply the same channel choices, including Pushover, in one bulk update, or to delete them together.
 
 Some rules are automatically managed while their target is active. Sylve prevents deleting an active auto-managed rule. Do not work around that protection by deleting the related target merely to remove the rule. Disable the channels instead if notifications are not wanted, or remove the resource only when it is genuinely no longer needed.
 
-![Bulk Update Rules dialog for applying delivery-channel settings to multiple notification rules](./notifications-rules-bulk-update.png)
+{/* Screenshot update needed: notifications-rules-bulk-update.png. Capture Bulk Update Rules with the Pushover control visible beside In-App, ntfy, Email, and Discord. */}
+
+![Bulk Update Rules dialog with Pushover and the other delivery-channel settings](./notifications-rules-bulk-update.png)
 
 :::note
-An enabled external channel needs at least one enabled transport of its matching type. For example, an Email-enabled rule needs an enabled SMTP transport.
+An enabled external channel needs at least one enabled transport of its matching type. For example, a Pushover-enabled rule needs an enabled Pushover transport, and an Email-enabled rule needs an enabled SMTP transport.
 :::

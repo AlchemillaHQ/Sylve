@@ -184,7 +184,9 @@ Lifecycle hooks run custom shell scripts at specific points while a jail starts 
 | **Stop** (`exec.stop`) | Jail | Stops services inside the jail. Replaces the normal stop command when enabled. |
 | **Post-stop** (`exec.poststop`) | Node | After the jail has stopped. |
 
-The **Start** and **Stop** phases are not additional callbacks. Enabling either replaces the corresponding default jail command, which is commonly `/bin/sh /etc/rc` or `/bin/sh /etc/rc.shutdown`. Include the normal behavior in your script if the jail still needs it.
+The **Start** and **Stop** phases are not additional callbacks. FreeBSD jails use `/bin/sh /etc/rc` and `/bin/sh /etc/rc.shutdown` automatically while these custom hooks are disabled. Enabling either hook replaces its corresponding default command. Include the normal behavior in your script if the jail still needs it.
+
+Older FreeBSD jail records that stored these standard commands as custom hooks are normalized automatically when Sylve starts. They may therefore appear disabled after an upgrade while retaining the same normal FreeBSD startup and shutdown behavior.
 
 For example, a custom Start script that preserves normal FreeBSD service startup could contain:
 

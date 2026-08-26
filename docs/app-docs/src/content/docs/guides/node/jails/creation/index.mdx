@@ -205,10 +205,10 @@ The Advanced tab controls the jail type, allowed capabilities, environment handl
 
 | Type | Default behavior |
 | --- | --- |
-| **FreeBSD** | Enables the normal FreeBSD capability set and configures `/bin/sh /etc/rc` and `/bin/sh /etc/rc.shutdown` as the start and stop scripts. |
-| **Linux** | Enables Linux compatibility mount capabilities and leaves the default start and stop scripts disabled. Linux jails require a compatible Linux root filesystem and host compatibility support. |
+| **FreeBSD** | Enables the normal FreeBSD capability set. Sylve automatically uses `/bin/sh /etc/rc` and `/bin/sh /etc/rc.shutdown` when no custom Start or Stop hook is enabled. |
+| **Linux** | Enables Linux compatibility mount capabilities and does not add the FreeBSD service commands. Linux jails require a compatible Linux root filesystem and host compatibility support. |
 
-Changing the type reapplies its default allowed options and start/stop hooks. Make this choice before customizing those fields.
+Changing the type reapplies its default allowed options. Make this choice before customizing those fields.
 
 ### Allowed options and clean environment
 
@@ -243,7 +243,9 @@ Each hook can be enabled independently:
 | **Stop (`exec.stop`)** | Runs inside the jail as its stop command. |
 | **Post-stop (`exec.poststop`)** | Runs on the host after the jail stops. |
 
-An enabled hook must contain a non-empty script. Host-side hooks run with host privileges, so treat their contents as privileged automation.
+An enabled hook must contain a non-empty script. For a FreeBSD jail, leave **Start** and **Stop** disabled to use the normal service lifecycle automatically. Enabling either one replaces its corresponding default command with the supplied script. Host-side hooks run with host privileges, so treat their contents as privileged automation.
+
+{/* Screenshot update needed: jail-create-advanced.png. Capture the current Advanced tab with Type set to FreeBSD, the default allowed options visible, and all lifecycle hooks disabled. The Start and Stop rows must not show /bin/sh /etc/rc or /bin/sh /etc/rc.shutdown as enabled custom hooks. */}
 
 <img
   src={advanced.src}

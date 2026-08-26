@@ -43,7 +43,9 @@ Filtered snapshots are usually owned by another Sylve subsystem, including VM sn
 
 Select **New**. Choose the pool, choose a filesystem or volume in that pool, give the snapshot a name or prefix, and configure the schedule. You can also open this same dialog from a selected filesystem or volume, where its dataset is already filled in.
 
-For a one-time snapshot, set **Interval** to **None**. For a recurring job, choose **Simple** or **Cron Expression** and optionally apply a retention policy.
+For a one-time snapshot, set **Interval Type** to **None**. For a recurring job, choose **Simple** or **Cron Expression** and optionally apply a retention policy.
+
+{/* Screenshot update needed: snapshots-create.png. Capture the current Create Snapshot dialog with Interval Type set to a recurring schedule and the Retention selector visible. Use either Simple retention with its current defaults or GFS retention with all current default values visible. */}
 
 <img src={snapshotsCreate.src} alt="Create Snapshot dialog in Sylve with a selected dataset, a periodic schedule, a retention policy, and Recursive enabled" />
 
@@ -52,7 +54,7 @@ For a one-time snapshot, set **Interval** to **None**. For a recurring job, choo
 | Name \| Prefix | Snapshot name for a one-time action, or the prefix used by a periodic job. | Required. One-time names must be unique on the dataset. Periodic snapshots receive a timestamp, such as `daily-2026-08-19-14-30`. |
 | Pool | Narrows the Dataset list. | Required. Select one of the pools configured for Sylve. |
 | Dataset | Filesystem or volume to snapshot. | Required. Only datasets in the selected pool are offered. |
-| Interval | Whether this is a one-time action or a periodic job. | **None**, **Simple**, or **Cron Expression**. None creates a snapshot immediately. |
+| Interval Type | Whether this is a one-time action or a periodic job. | **None**, **Simple**, or **Cron Expression**. None creates a snapshot immediately. |
 | Simple interval | Fixed periodic cadence. | Every Minute, Every Hour, Every Day, Every Week, Every Month, or Every Year. |
 | Cron Expression | Custom recurring schedule. | A standard five-field cron expression, for example `0 0 * * *` for midnight every day. A periodic job must use exactly one schedule type: Simple or Cron Expression. |
 | Retention | Automatic pruning policy for a periodic job. | **None**, **Simple**, or **GFS**. It appears after choosing a periodic interval. |
@@ -73,6 +75,8 @@ Sylve reserves the `ha_`, `bk_`, and `sylve-migrate-` name spaces for its own wo
 
 Choose a retention policy deliberately. A value of `0` means that specific limit does not keep snapshots. Simple and GFS retention cannot be combined in the same job.
 
+The form starts Simple retention at **Keep Last 24** and **Max Age 0 days**. GFS starts at **Keep Last 20**, **Hourly 24**, **Daily 7**, **Weekly 4**, **Monthly 12**, and **Yearly 3**. These are editable starting points, not fixed limits. Simple and GFS each require at least one value greater than `0` before the job can be saved.
+
 | Retention type | How Sylve retains snapshots |
 | --- | --- |
 | None | The scheduler creates snapshots but does not prune them. Monitor capacity and delete old snapshots manually. |
@@ -81,16 +85,27 @@ Choose a retention policy deliberately. A value of `0` means that specific limit
 
 ## View periodic jobs
 
-Select the clock button, then choose a pool, to open **View Snapshot Jobs**. The dialog lists each job's ID, dataset, prefix, interval or cron schedule, and last run time. Use the retention button on a row to change its retention values, or mark rows for deletion and select **Save Snapshot Jobs**.
+Select the clock button, then choose a pool, to open **View Snapshot Jobs**. The dialog lists each job's ID, dataset, prefix, interval or cron schedule, and two run times:
 
-<img src={snapshotsPeriodicJobs.src} alt="View Snapshot Jobs dialog in Sylve showing periodic snapshot jobs for a pool, including dataset, prefix, interval, last run, retention, and delete actions" />
+| Run time | Meaning |
+| --- | --- |
+| **Last** | When Sylve actually executed the most recent run. A new job that has not executed yet shows **Never**. Hover over it to see the actual time and the scheduled boundary handled by that run. |
+| **Next** | The next calculated schedule time. It can show **Unknown** when no valid time is available or **Due now** when the calculated time has arrived. |
 
-The retention button opens the **Retention Policies** dialog for that job. It shows the job's schedule and lets you choose **Simple** or **GFS** retention, then set the corresponding values described above.
+Run times are shown relatively, such as **5 minutes ago** or **in 20 minutes**. Hover over a known time to see its complete local date and time. Use the retention button on a row to change its schedule and retention settings, or mark rows for deletion and select **Save Snapshot Jobs**.
+
+{/* Screenshot update needed: snapshots-periodic-jobs.png. Capture the current View Snapshot Jobs dialog for a selected pool with at least two jobs. The Runs column should show stacked Last and Next values. Ideally include one completed job and one new job whose Last value is Never. Include the ID, Dataset, Prefix, Interval, retention, and delete controls. */}
+
+<img src={snapshotsPeriodicJobs.src} alt="View Snapshot Jobs dialog showing periodic jobs with stacked Last and Next run times" />
+
+The retention button opens the **Retention Policies** dialog for that job. It lets you change the interval type and schedule, then choose **None**, **Simple**, or **GFS** retention and edit the corresponding values described above. Recursive scope is not changed from this editor.
+
+{/* Screenshot update needed: snapshots-periodic-jobs-retention.png. Capture the current Retention Policies dialog opened from a job. Show Interval Type, its schedule control, the Retention selector, and the selected retention values. Keep the View Snapshot Jobs dialog visible behind it with the new Last and Next run display. */}
 
 <img src={snapshotsPeriodicJobsRetention.src} alt="Retention Policies dialog opened from a periodic snapshot job while the View Snapshot Jobs dialog remains visible" />
 
-:::caution
-The job editor currently saves retention changes. If you need a different schedule or recursive scope, create a replacement periodic job with the intended settings, then remove the old job after confirming it is no longer needed.
+:::note
+The job editor can change the schedule and retention policy, including disabling automatic pruning with **None**. To change recursive scope, create a replacement periodic job with the intended setting, then remove the old job after confirming it is no longer needed.
 :::
 
 ## Delete snapshots

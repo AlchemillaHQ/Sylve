@@ -252,15 +252,15 @@ Keep the standard FreeBSD runtime configuration:
 2. Keep the default **Allowed Options** selected, including **Mount devfs (`allow.mount.devfs`)**.
 3. Keep **Clean Environment** enabled.
 4. Leave **Additional Options** and both metadata fields disabled.
-5. Keep the default start hook enabled with `/bin/sh /etc/rc`.
-6. Keep the default stop hook enabled with `/bin/sh /etc/rc.shutdown`.
-7. Leave the other lifecycle hooks disabled.
+5. Leave every lifecycle hook disabled.
 
-The default devfs permission is important for DHCP because the FreeBSD DHCP client needs access to a BPF device. The default start and stop commands run the jail's normal FreeBSD service lifecycle. Do not remove these defaults for this guide.
+The default devfs permission is important for DHCP because the FreeBSD DHCP client needs access to a BPF device. With the custom Start and Stop hooks disabled, Sylve automatically runs `/bin/sh /etc/rc` when this FreeBSD jail starts and `/bin/sh /etc/rc.shutdown` when it stops.
+
+{/* Screenshot update needed: simple-jail-create-advanced.png. Capture the Advanced tab with FreeBSD selected, the default allowed options retained, Clean Environment enabled, and every lifecycle hook disabled. */}
 
 <img
   src={jailCreateAdvanced.src}
-  alt="Create Jail Advanced tab with FreeBSD selected, seven allowed options selected, Clean Environment enabled, and the default start hook enabled with /bin/sh /etc/rc"
+  alt="Create Jail Advanced tab with FreeBSD selected, the default allowed options retained, Clean Environment enabled, and all custom lifecycle hooks disabled"
 />
 
 ### Finish creation

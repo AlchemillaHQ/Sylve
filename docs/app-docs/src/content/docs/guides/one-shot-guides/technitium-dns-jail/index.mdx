@@ -36,7 +36,7 @@ The DHCP and SLAAC configuration from Simple Jail works for the initial installa
 
 ### Advanced
 
-Keep all the default allowed options and lifecycle hooks described in [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). In **Allowed Options**, additionally select **Memory Locking (`allow.mlock`)**. The .NET runtime needs permission to lock memory inside the jail.
+Keep the default allowed options and leave the custom lifecycle hooks disabled as described in [Simple Jail: Advanced](/guides/one-shot-guides/simple-jail/#advanced). In **Allowed Options**, additionally select **Memory Locking (`allow.mlock`)**. The .NET runtime needs permission to lock memory inside the jail.
 
 <div style="text-align: center;">
   <img src={memLockOption.src} alt="Allowed Options menu with Memory Locking (allow.mlock) selected for the Technitium jail" />

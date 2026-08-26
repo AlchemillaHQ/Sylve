@@ -23,7 +23,7 @@ The table inventories devices from every detected PCI domain and identifies each
 
 For most devices, use **Prepare Passthrough**. Select a host-owned device, select **Prepare Passthrough**, confirm the prompt, then restart the node.
 
-Preparation records the device in `/boot/loader.conf` so FreeBSD attaches it to the `ppt` driver during startup. Sylve also ensures the required passthrough driver is loaded. After the restart, Sylve recognizes the prepared device and adds it to its managed passthrough inventory.
+Preparation adds the device to the persistent `pptdevs` assignment in `/boot/loader.conf` so FreeBSD claims it for passthrough during startup. When at least one persistent assignment exists, Sylve also ensures that `vmm_load="YES"` is present because the `vmm` kernel module provides the required passthrough support. Sylve does not create or rewrite `ppt_load`; a separate `ppt_load="YES"` entry is not required. After the restart, Sylve recognizes the prepared device and adds it to its managed passthrough inventory.
 
 :::caution
 Strongly prefer **Prepare Passthrough** followed by a complete node restart. It is the cleanest path because FreeBSD assigns the device to `ppt` from boot, before the host has loaded and begun using its normal driver. In Sylve testing, moving an already-live device into `ppt` also caused issues on a running system. **Enable Passthrough** detaches a live device from the host immediately and is intended only for cases where you understand and accept that disruption.
