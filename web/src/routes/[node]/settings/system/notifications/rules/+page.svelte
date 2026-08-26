@@ -856,7 +856,7 @@ under sponsorship from the FreeBSD Foundation.
 {#if modals.create.open}
 	<Dialog.Root bind:open={modals.create.open}>
 		<Dialog.Content
-			class="sm:max-w-106.25"
+			class="sm:max-w-150"
 			onInteractOutside={(e) => e.preventDefault()}
 			showCloseButton={true}
 			onClose={() => (modals.create.open = false)}
@@ -907,7 +907,7 @@ under sponsorship from the FreeBSD Foundation.
 
 				<div class="space-y-2 pt-1">
 					<p class="text-sm font-medium">Channels</p>
-					<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 sm:flex-nowrap">
 						<CustomCheckbox label="In-App" bind:checked={modals.create.uiEnabled} />
 						<CustomCheckbox label="ntfy" bind:checked={modals.create.ntfyEnabled} />
 						<CustomCheckbox label="Pushover" bind:checked={modals.create.pushoverEnabled} />

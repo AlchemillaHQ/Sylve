@@ -414,7 +414,8 @@
 
 <Dialog.Root bind:open={createModal.open}>
 	<Dialog.Content
-		class="max-h-[90vh] min-w-1/3 overflow-y-auto p-6"
+		class="min-w-1/3"
+		showCloseButton={true}
 		onClose={() => {
 			createModal.open = false;
 		}}
@@ -459,15 +460,6 @@
 		</div>
 
 		<Dialog.Footer>
-			<Button
-				variant="outline"
-				disabled={createModal.creating}
-				onclick={() => {
-					createModal.open = false;
-				}}
-			>
-				Cancel
-			</Button>
 			<Button disabled={createModal.creating} onclick={onCreateSnapshot}>
 				{createModal.creating ? 'Creating...' : 'Create Snapshot'}
 			</Button>
