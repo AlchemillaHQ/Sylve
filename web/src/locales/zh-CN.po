@@ -17590,3 +17590,7 @@ msgstr ""
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 msgid "Key stored (leave blank to keep)"
 msgstr ""
+
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+msgid "Password changed. Please sign in again."
+msgstr ""

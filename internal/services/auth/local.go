@@ -223,11 +223,13 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		return s.editPamUser(user, opts)
 	}
 
-	if len(opts.Username) < 3 || len(opts.Username) > 128 {
-		return userValidationError("invalid_username_length")
-	}
-	if !utils.IsValidUsername(opts.Username) {
-		return userValidationError("invalid_username_format")
+	if opts.Username != user.Username {
+		if len(opts.Username) < 3 || len(opts.Username) > 128 {
+			return userValidationError("invalid_username_length")
+		}
+		if !utils.IsValidUsername(opts.Username) {
+			return userValidationError("invalid_username_format")
+		}
 	}
 	if opts.Email != "" && !utils.IsValidEmail(opts.Email) {
 		return userValidationError("invalid_email_format")

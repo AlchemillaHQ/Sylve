@@ -261,6 +261,40 @@ func TestEditUserHandlerMissingAdmin(t *testing.T) {
 	}
 }
 
+func TestEditUserHandlerChangesAdminPassword(t *testing.T) {
+	svc := newTestAuthService(t)
+	admin := models.User{
+		Username: "admin",
+		Email:    "admin@sylve.local",
+		Password: "old-hash",
+		Admin:    true,
+		Source:   "local",
+	}
+	if err := svc.DB.Create(&admin).Error; err != nil {
+		t.Fatalf("failed to seed admin: %v", err)
+	}
+	router := setupRouter(svc)
+
+	const newPassword = "new-admin-password"
+	w := performJSON(t, router, http.MethodPut, "/auth/users/1", map[string]any{
+		"username": "admin",
+		"email":    "admin@sylve.local",
+		"password": newPassword,
+		"admin":    true,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var updated models.User
+	if err := svc.DB.First(&updated, admin.ID).Error; err != nil {
+		t.Fatalf("reload admin: %v", err)
+	}
+	if updated.Password == "old-hash" || updated.Password == newPassword {
+		t.Fatal("admin password was not safely updated")
+	}
+}
+
 func TestEditUserHandlerNonExistentUser(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)
