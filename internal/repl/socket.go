@@ -164,7 +164,11 @@ func typedSocketOperationRequiresMutation(operation string) bool {
 		consoleprotocol.OperationNoteGet,
 		consoleprotocol.OperationTaskListActive,
 		consoleprotocol.OperationTaskListRecent,
-		consoleprotocol.OperationTaskGet:
+		consoleprotocol.OperationTaskGet,
+		consoleprotocol.OperationDatacenterNoteList,
+		consoleprotocol.OperationDatacenterNoteGet,
+		consoleprotocol.OperationDatacenterClusterStatus,
+		consoleprotocol.OperationDatacenterClusterMembers:
 		return false
 	default:
 		return true
@@ -334,6 +338,20 @@ func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketRespons
 			return processTaskRecentSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationTaskGet:
 			return processTaskGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteList:
+			return processDatacenterNoteListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteGet:
+			return processDatacenterNoteGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteAdd:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "create")
+		case consoleprotocol.OperationDatacenterNoteUpdate:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "update")
+		case consoleprotocol.OperationDatacenterNoteDelete:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "delete")
+		case consoleprotocol.OperationDatacenterClusterStatus:
+			return processDatacenterClusterStatusSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterMembers:
+			return processDatacenterClusterMembersSocketRequest(ctx, req.Payload)
 		default:
 			return socketResponse{Error: "unknown_operation"}
 		}

@@ -34,6 +34,7 @@ func parsePositiveUint(value string) (uint, error) {
 var commands = []cmdHelp{
 	{"help", "Show this help message"},
 	{"ping", "Check server connectivity"},
+	{"datacenter", "Manage replicated datacenter state"},
 	{"notes", "Manage notes"},
 	{"jails", "Manage jails"},
 	{"vms", "Manage virtual machines"},
@@ -77,6 +78,9 @@ func ExecuteLine(ctx *Context, line string) bool {
 	}
 
 	switch head {
+	case "datacenter":
+		handleDatacenter(ctx, args)
+
 	case "notes":
 		handleNotes(ctx, args)
 
@@ -132,7 +136,7 @@ func rawCommandRequiresMutation(parts []string) bool {
 	}
 	if len(args) == 0 {
 		switch head {
-		case "notes", "jails", "vms", "tasks", "switches", "objects", "downloads":
+		case "datacenter", "notes", "jails", "vms", "tasks", "switches", "objects", "downloads":
 			return false
 		}
 	}
@@ -141,6 +145,14 @@ func rawCommandRequiresMutation(parts []string) bool {
 		sub = strings.ToLower(strings.TrimSpace(args[0]))
 	}
 	switch head {
+	case "datacenter":
+		if len(args) < 2 {
+			return false
+		}
+		group := strings.ToLower(strings.TrimSpace(args[0]))
+		action := strings.ToLower(strings.TrimSpace(args[1]))
+		return !((group == "notes" && (action == "list" || action == "get")) ||
+			(group == "cluster" && (action == "status" || action == "members")))
 	case "notes":
 		return sub != "list" && sub != "get"
 	case "jails":

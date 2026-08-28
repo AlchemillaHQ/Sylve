@@ -38,6 +38,11 @@ type Cluster struct {
 	LeavePeerAddrs []byte `gorm:"type:blob" json:"-"`
 	LeaveLastError string `json:"-"`
 	LeaveAttempts  uint   `json:"-"`
+
+	ReaddressOldIP     string `json:"-"`
+	ReaddressNewIP     string `json:"-"`
+	ReaddressPhase     string `json:"-"`
+	ReaddressLastError string `json:"-"`
 }
 
 func publishClusterRefresh() {

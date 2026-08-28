@@ -70,8 +70,10 @@ type Service struct {
 	reconcilerOnce    sync.Once
 	joinComplete      atomic.Bool
 	leaveComplete     atomic.Bool
+	readdressRestart  atomic.Bool
 	joinCompleteHook  func()
 	leaveCompleteHook func()
+	readdressHook     func()
 
 	clusterStartHook func(ip string) error
 
@@ -85,6 +87,7 @@ type Service struct {
 	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
 	backupJobIDGenerator             func() (uint, error)
 	raftMembershipForNode            func(string) (RaftMembership, error)
+	readdressIdentityForNode         func(context.Context, string, raft.ServerAddress) (ReaddressIdentity, error)
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
@@ -97,6 +100,10 @@ func (s *Service) SetJoinCompleteHook(fn func()) {
 
 func (s *Service) SetLeaveCompleteHook(fn func()) {
 	s.leaveCompleteHook = fn
+}
+
+func (s *Service) SetReaddressRestartHook(fn func()) {
+	s.readdressHook = fn
 }
 
 func (s *Service) notifyLeaveComplete() {
@@ -116,6 +123,17 @@ func (s *Service) notifyJoinComplete() {
 	}
 	hook := s.joinCompleteHook
 	if hook == nil || !s.joinComplete.CompareAndSwap(false, true) {
+		return
+	}
+	go hook()
+}
+
+func (s *Service) notifyReaddressRestart() {
+	if s == nil || s.readdressRestart.Load() {
+		return
+	}
+	hook := s.readdressHook
+	if hook == nil || !s.readdressRestart.CompareAndSwap(false, true) {
 		return
 	}
 	go hook()
@@ -534,6 +552,10 @@ func markDeclusteredTx(tx *gorm.DB) error {
 	c.LeavePeerAddrs = nil
 	c.LeaveLastError = ""
 	c.LeaveAttempts = 0
+	c.ReaddressOldIP = ""
+	c.ReaddressNewIP = ""
+	c.ReaddressPhase = ""
+	c.ReaddressLastError = ""
 	return tx.Save(&c).Error
 }
 

@@ -98,6 +98,7 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 			},
 		},
 		Commands: []*cli.Command{
+			newDatacenterCommand(),
 			newNotesCommand(),
 			newJailsCommand(),
 			newVMsCommand(),

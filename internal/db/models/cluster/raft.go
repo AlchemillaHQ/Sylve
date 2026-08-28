@@ -245,6 +245,15 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			backupTargets = append(backupTargets, t.ToModel())
 		}
 		replicationPolicies, replicationTargets := dedupReplicationTargets(snap.ReplicationPolicies)
+		var crashRecoveryDisabled, poolHealthCheckDisabled []uint
+		for _, policy := range replicationPolicies {
+			if !policy.CrashRecovery {
+				crashRecoveryDisabled = append(crashRecoveryDisabled, policy.ID)
+			}
+			if !policy.PoolHealthCheck {
+				poolHealthCheckDisabled = append(poolHealthCheckDisabled, policy.ID)
+			}
+		}
 		transitionEvents := append([]ReplicationTransitionEvent(nil), snap.ReplicationTransitionEvents...)
 		transitionEventIDs := make(map[uint]struct{}, len(transitionEvents))
 		for _, event := range transitionEvents {
@@ -320,6 +329,14 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 					return err
 				}
 			}
+		}
+		if err := tx.Model(&ReplicationPolicy{}).Where("id IN ?", crashRecoveryDisabled).
+			UpdateColumn("crash_recovery", false).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&ReplicationPolicy{}).Where("id IN ?", poolHealthCheckDisabled).
+			UpdateColumn("pool_health_check", false).Error; err != nil {
+			return err
 		}
 
 		// Legacy snapshots mixed leader-local telemetry into replicated state.

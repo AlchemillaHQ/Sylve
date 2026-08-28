@@ -324,7 +324,7 @@ func (event ReplicationTransitionEvent) AsReplicationEvent() ReplicationEvent {
 }
 
 type ClusterSSHIdentity struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
+	ID        uint      `gorm:"primaryKey" json:"-"`
 	NodeUUID  string    `gorm:"uniqueIndex;not null" json:"nodeUUID"`
 	SSHUser   string    `gorm:"not null;default:root" json:"sshUser"`
 	SSHHost   string    `gorm:"not null" json:"sshHost"`

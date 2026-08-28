@@ -198,7 +198,7 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 			return nil, err
 		}
 	}
-	if err := db.Order("id ASC").Find(&snap.SSHIdentities).Error; err != nil {
+	if err := db.Order("node_uuid ASC").Find(&snap.SSHIdentities).Error; err != nil {
 		return nil, err
 	}
 	if err := db.Order("id ASC").Find(&snap.EncryptionKeys).Error; err != nil {

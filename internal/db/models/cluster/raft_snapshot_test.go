@@ -134,6 +134,12 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if err := sourceDB.Create(&policy).Error; err != nil {
 		t.Fatalf("failed to seed policy: %v", err)
 	}
+	if err := sourceDB.Model(&ReplicationPolicy{}).Where("id = ?", policy.ID).Updates(map[string]any{
+		"crash_recovery":    false,
+		"pool_health_check": false,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed policy zero values: %v", err)
+	}
 	if err := sourceDB.Create(&ReplicationPolicyTarget{
 		ID: 400, PolicyID: policy.ID, NodeID: "node-2",
 	}).Error; err != nil {
@@ -319,7 +325,8 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	var pols []ReplicationPolicy
 	destDB.Find(&pols)
-	if len(pols) != 1 || pols[0].Name != "r1" {
+	if len(pols) != 1 || pols[0].Name != "r1" ||
+		pols[0].CrashRecovery || pols[0].PoolHealthCheck {
 		t.Fatalf("policies mismatch: %+v", pols)
 	}
 	var replicationRuns []ReplicationRunOperation
@@ -391,6 +398,18 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	destDB.Find(&keys)
 	if len(keys) != 1 || keys[0].UUID != "key-1" {
 		t.Fatalf("encryption keys mismatch: %+v", keys)
+	}
+
+	_, sourceDigest, err := CaptureReplicatedStateDigest(sourceDB)
+	if err != nil {
+		t.Fatalf("capture source digest: %v", err)
+	}
+	_, destinationDigest, err := CaptureReplicatedStateDigest(destDB)
+	if err != nil {
+		t.Fatalf("capture destination digest: %v", err)
+	}
+	if sourceDigest != destinationDigest {
+		t.Fatalf("snapshot digest mismatch: source=%s destination=%s", sourceDigest, destinationDigest)
 	}
 }
 

@@ -104,6 +104,39 @@ func TestReplicatedStateDigestIsIndependentOfInsertionOrder(t *testing.T) {
 	}
 }
 
+func TestReplicatedStateDigestIgnoresSSHIdentitySurrogateIDs(t *testing.T) {
+	left := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	right := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	now := time.Date(2026, time.July, 30, 2, 3, 4, 0, time.UTC)
+
+	leftIdentities := []ClusterSSHIdentity{
+		{ID: 451, NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.2", SSHPort: 8183, PublicKey: "key-b", CreatedAt: now, UpdatedAt: now},
+		{ID: 5, NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.1", SSHPort: 8183, PublicKey: "key-a", CreatedAt: now, UpdatedAt: now},
+	}
+	rightIdentities := []ClusterSSHIdentity{
+		{ID: 9, NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.2", SSHPort: 8183, PublicKey: "key-b", CreatedAt: now, UpdatedAt: now},
+		{ID: 8, NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.1", SSHPort: 8183, PublicKey: "key-a", CreatedAt: now, UpdatedAt: now},
+	}
+	if err := left.Create(&leftIdentities).Error; err != nil {
+		t.Fatalf("seed left identities: %v", err)
+	}
+	if err := right.Create(&rightIdentities).Error; err != nil {
+		t.Fatalf("seed right identities: %v", err)
+	}
+
+	_, leftDigest, err := CaptureReplicatedStateDigest(left)
+	if err != nil {
+		t.Fatalf("capture left digest: %v", err)
+	}
+	_, rightDigest, err := CaptureReplicatedStateDigest(right)
+	if err != nil {
+		t.Fatalf("capture right digest: %v", err)
+	}
+	if leftDigest != rightDigest {
+		t.Fatalf("identity surrogate IDs changed digest: left=%s right=%s", leftDigest, rightDigest)
+	}
+}
+
 func TestClearReplicatedStatePreservesNodeLocalRows(t *testing.T) {
 	models := append(allSnapshotModels(),
 		&Cluster{},
