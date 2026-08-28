@@ -27,6 +27,22 @@ export const ClusterDetailsSchema = z.object({
 	partial: z.boolean()
 });
 
+export const ClusterJoinStatusSchema = z.object({
+	nodeId: z.string(),
+	nodeIp: z.string().optional(),
+	leaderIp: z.string().optional(),
+	leaderId: z.string().optional(),
+	leaderAddress: z.string().optional(),
+	phase: z.string(),
+	suffrage: z.string().optional(),
+	raftState: z.string().optional(),
+	appliedIndex: z.number().nonnegative(),
+	targetIndex: z.number().nonnegative().optional(),
+	attempts: z.number().int().nonnegative(),
+	retrying: z.boolean(),
+	lastError: z.string().optional()
+});
+
 export const ClusterNodeSchema = z.object({
 	id: z.number(),
 	nodeUUID: z.string(),
@@ -69,6 +85,7 @@ export const PeerRemovalConflictSchema = z.object({
 export type Cluster = z.infer<typeof ClusterSchema>;
 export type RaftNode = z.infer<typeof RaftNodeSchema>;
 export type ClusterDetails = z.infer<typeof ClusterDetailsSchema>;
+export type ClusterJoinStatus = z.infer<typeof ClusterJoinStatusSchema>;
 export type ClusterNode = z.infer<typeof ClusterNodeSchema>;
 export type NodeResource = z.infer<typeof NodeResourceSchema>;
 export type PeerRemovalDependency = z.infer<typeof PeerRemovalDependencySchema>;

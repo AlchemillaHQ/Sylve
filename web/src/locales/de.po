@@ -1524,10 +1524,6 @@ msgid "Unable to join cluster"
 msgstr "Beitritt zum Cluster nicht möglich"
 
 #: src/lib/components/custom/Cluster/Join.svelte
-msgid "Joined cluster"
-msgstr "Cluster beigetreten"
-
-#: src/lib/components/custom/Cluster/Join.svelte
 msgid "No Node ID available"
 msgstr "Keine Node-ID verfügbar"
 
@@ -5164,7 +5160,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -17596,4 +17592,21 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 msgid "Password changed. Please sign in again."
+msgstr ""
+
+#. 0: joinStatus.phase.replaceAll('_', ' ')
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Joining cluster: {0} <0/>"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Retrying automatically"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Join stopped"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/Join.svelte
+msgid "Cluster join started; state verification will continue in the background"
 msgstr ""

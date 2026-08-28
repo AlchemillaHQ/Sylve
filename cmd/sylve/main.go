@@ -189,6 +189,14 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	})
 
 	clusterSvc := cS.(*cluster.Service)
+	clusterSvc.SetJoinCompleteHook(func() {
+		if err := zeltaS.ReconcileBackupTargetSSHKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
+		}
+		if err := zeltaS.ReconcileEncryptionKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
+		}
+	})
 	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_cluster_ports")
 	}

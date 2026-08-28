@@ -84,7 +84,7 @@
 			}
 
 			await refreshClusterAfterLifecycleChange();
-			toast.success('Joined cluster', {
+			toast.success('Cluster join started; state verification will continue in the background', {
 				position: 'bottom-center'
 			});
 			open = false;

@@ -1,8 +1,10 @@
 import {
 	ClusterDetailsSchema,
+	ClusterJoinStatusSchema,
 	ClusterNodeSchema,
 	NodeResourceSchema,
 	type ClusterDetails,
+	type ClusterJoinStatus,
 	type ClusterNode,
 	type NodeResource
 } from '$lib/types/cluster/cluster';
@@ -48,6 +50,10 @@ export async function getDetailsData(options?: NodeAPIDataRequestOptions): Promi
 
 export async function getJoinKey(): Promise<z.infer<typeof JoinKeySchema> | APIResponse> {
 	return await apiRequestResult('/cluster/join-key', JoinKeySchema, 'GET');
+}
+
+export async function getJoinStatus(): Promise<ClusterJoinStatus | APIResponse> {
+	return await apiRequestResult('/cluster/join-status', ClusterJoinStatusSchema, 'GET');
 }
 
 export async function createCluster(ip: string): Promise<APIResponse> {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import {
 		getDetails,
+		getJoinStatus,
 		getNodes,
 		refreshClusterAfterLifecycleChange,
 		resetCluster
@@ -13,7 +14,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { ClusterDetails, ClusterNode } from '$lib/types/cluster/cluster';
+	import type { ClusterDetails, ClusterJoinStatus, ClusterNode } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { reload } from '$lib/stores/api.svelte';
 	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
@@ -45,6 +46,9 @@
 	);
 
 	let pendingRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+	let pendingJoinTimer: ReturnType<typeof setTimeout> | null = null;
+	let joinStatus = $state<ClusterJoinStatus | null>(null);
+	let joinStatusPollingActive = false;
 	let recoveryAttempts = 0;
 	let recoveryActive = false;
 
@@ -99,11 +103,43 @@
 		}
 	}
 
+	async function refreshJoinStatus() {
+		if (!joinStatusPollingActive) return;
+		if (!datacenter.current.cluster.enabled || datacenter.current.cluster.raftBootstrap === true) {
+			joinStatus = null;
+			return;
+		}
+
+		const result = await getJoinStatus();
+		if (!isAPIResponse(result)) {
+			joinStatus = result;
+		}
+		if (joinStatusPollingActive && (isAPIResponse(result) || joinStatus?.retrying)) {
+			pendingJoinTimer = setTimeout(() => {
+				void refreshJoinStatus();
+			}, 3000);
+		}
+	}
+
+	function stopJoinStatusPolling() {
+		joinStatusPollingActive = false;
+		if (pendingJoinTimer) {
+			clearTimeout(pendingJoinTimer);
+			pendingJoinTimer = null;
+		}
+	}
+
+	function startJoinStatusPolling() {
+		stopJoinStatusPolling();
+		joinStatusPollingActive = true;
+		void refreshJoinStatus();
+	}
+
 	watch(
 		() => reloadFlag,
 		() => {
 			if (reloadFlag) {
-				datacenter.refetch();
+				void datacenter.refetch().then(() => startJoinStatusPolling());
 				void nodes.refetch();
 				reloadFlag = false;
 				startRecovery();
@@ -114,7 +150,7 @@
 	watch(
 		() => reload.datacenterDetailsPulse,
 		() => {
-			datacenter.refetch();
+			void datacenter.refetch().then(() => startJoinStatusPolling());
 			void nodes.refetch();
 			startRecovery();
 		}
@@ -128,7 +164,11 @@
 	);
 
 	onMount(() => {
-		return () => stopRecovery();
+		startJoinStatusPolling();
+		return () => {
+			stopRecovery();
+			stopJoinStatusPolling();
+		};
 	});
 
 	let canReset = $derived(datacenter.current.cluster.enabled === true);
@@ -347,6 +387,29 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
+	{#if joinStatus && joinStatus.phase !== 'voter' && joinStatus.phase !== 'not_started'}
+		<div class="border-b bg-muted/40 px-3 py-2 text-sm">
+			<div class="flex items-center gap-2">
+				{#if joinStatus.retrying}
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+				{:else}
+					<span class="icon-[mdi--alert-circle-outline] h-4 w-4"></span>
+				{/if}
+				<span>
+					Joining cluster: {joinStatus.phase.replaceAll('_', ' ')}
+					{#if joinStatus.targetIndex}
+						({joinStatus.appliedIndex}/{joinStatus.targetIndex})
+					{/if}
+				</span>
+			</div>
+			{#if joinStatus.lastError}
+				<div class="mt-1 text-xs text-muted-foreground">
+					{joinStatus.retrying ? 'Retrying automatically' : 'Join stopped'}:
+					{joinStatus.lastError}
+				</div>
+			{/if}
+		</div>
+	{/if}
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
 

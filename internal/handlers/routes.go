@@ -837,6 +837,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
 		intraCluster.GET("/guest-identity-inventory", clusterHandlers.GuestIdentityInventoryInternal(clusterService))
+		intraCluster.GET("/join-progress", clusterHandlers.JoinProgressInternal(clusterService))
 		intraCluster.GET("/replicated-state", clusterHandlers.ReplicatedStateInternal(clusterService))
 		intraCluster.POST("/replicated-state-repair", clusterHandlers.ReplicatedStateRepairInternal(clusterService, zeltaService))
 		intraCluster.POST("/backup-job-safety-validation", clusterHandlers.ValidateBackupJobSafetyInternal(clusterService))
@@ -877,6 +878,7 @@ func RegisterRoutes(r *gin.Engine,
 	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
+		clusterLocal.GET("/join-status", clusterHandlers.GetJoinStatus(clusterService))
 		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
 		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))

@@ -432,15 +432,8 @@ func (s *Service) checkpointAndSnapshotLocked() error {
 	if s == nil || s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
 	}
-	if err := s.applyRaftCommandUnlocked(clusterModels.Command{
-		Type:   "cluster_state",
-		Action: "checkpoint",
-		Data:   []byte("{}"),
-	}); err != nil {
-		return fmt.Errorf("replicated_state_checkpoint_failed: %w", err)
-	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
-		return fmt.Errorf("replicated_state_barrier_failed: %w", err)
+	if err := s.checkpointReplicatedStateLocked(); err != nil {
+		return err
 	}
 	originalConfig := s.Raft.ReloadableConfig()
 	snapshotConfig := originalConfig
@@ -458,6 +451,23 @@ func (s *Service) checkpointAndSnapshotLocked() error {
 	}
 	if restoreConfigErr != nil {
 		return fmt.Errorf("replicated_state_snapshot_config_restore_failed: %w", restoreConfigErr)
+	}
+	return nil
+}
+
+func (s *Service) checkpointReplicatedStateLocked() error {
+	if s == nil || s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	if err := s.applyRaftCommandUnlocked(clusterModels.Command{
+		Type:   "cluster_state",
+		Action: "checkpoint",
+		Data:   []byte("{}"),
+	}); err != nil {
+		return fmt.Errorf("replicated_state_checkpoint_failed: %w", err)
+	}
+	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
+		return fmt.Errorf("replicated_state_barrier_failed: %w", err)
 	}
 	return nil
 }
@@ -577,6 +587,48 @@ func (s *Service) promoteCaughtUpNonvoterLocked(
 	}
 	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return verified, fmt.Errorf("replicated_state_promote_nonvoter_failed: %w", err)
+	}
+	if err := s.requestReplicatedStateRepair(
+		ctx,
+		strings.TrimSpace(string(server.ID)),
+		server.Address,
+		ReplicatedStateRepairRequest{
+			Action:         ReplicatedStateRepairUnfence,
+			ExpectedNodeID: strings.TrimSpace(string(server.ID)),
+		},
+	); err != nil {
+		return verified, fmt.Errorf("replicated_state_promote_unfence_failed: %w", err)
+	}
+	return verified, nil
+}
+
+func (s *Service) promoteVerifiedNonvoterLocked(
+	ctx context.Context,
+	server raft.Server,
+	reference ReplicatedStateDigest,
+	repairFenced bool,
+) (ReplicatedStateDigest, error) {
+	verified, err := s.fetchReplicatedStateDigest(
+		ctx,
+		strings.TrimSpace(string(server.ID)),
+		server.Address,
+		reference.AppliedIndex,
+	)
+	if err != nil {
+		return verified, fmt.Errorf("replicated_state_verification_failed: %w", err)
+	}
+	if verified.Digest != reference.Digest {
+		return verified, fmt.Errorf(
+			"replicated_state_digest_mismatch: expected=%s actual=%s",
+			reference.Digest,
+			verified.Digest,
+		)
+	}
+	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
+		return verified, fmt.Errorf("replicated_state_promote_nonvoter_failed: %w", err)
+	}
+	if !repairFenced {
+		return verified, nil
 	}
 	if err := s.requestReplicatedStateRepair(
 		ctx,

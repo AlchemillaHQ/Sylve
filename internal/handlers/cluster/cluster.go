@@ -9,12 +9,14 @@
 package clusterHandlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
@@ -39,13 +41,7 @@ type JoinClusterRequest struct {
 	ClusterKey string `json:"clusterKey" binding:"required"`
 }
 
-type AcceptJoinRequest struct {
-	NodeID      string                               `json:"nodeId" binding:"required"`
-	NodeIP      string                               `json:"nodeIp" binding:"required,ip"`
-	NodeVersion string                               `json:"nodeVersion" binding:"required"`
-	Preflight   bool                                 `json:"preflight"`
-	Inventory   cluster.GuestIdentityInventoryReport `json:"inventory"`
-}
+type AcceptJoinRequest = cluster.JoinAdmissionRequest
 
 type JoinKeyResponse struct {
 	Key string `json:"key"`
@@ -83,12 +79,27 @@ func fetchNodeVersionFromHealth(healthURL string, headers map[string]string) (st
 }
 
 func postJoinAdmission(
+	ctx context.Context,
 	url string,
 	payload AcceptJoinRequest,
 	headers map[string]string,
 ) (internal.APIResponse[cluster.GuestIdentityInventoryReport], int, error) {
 	var response internal.APIResponse[cluster.GuestIdentityInventoryReport]
-	body, statusCode, err := utils.HTTPPostJSONRead(url, payload, headers)
+	requestBody, err := json.Marshal(payload)
+	if err != nil {
+		return response, 0, err
+	}
+	httpResponse, err := utils.HTTPRequestReadContext(
+		ctx,
+		http.MethodPost,
+		url,
+		requestBody,
+		headers,
+		30*time.Second,
+		4<<20,
+	)
+	statusCode := httpResponse.StatusCode
+	body := httpResponse.Body
 	if len(body) > 0 {
 		if decodeErr := json.Unmarshal(body, &response); decodeErr != nil && err == nil {
 			return response, statusCode, fmt.Errorf("decode_join_admission_response_failed: %w", decodeErr)
@@ -96,6 +107,9 @@ func postJoinAdmission(
 	}
 	if err != nil {
 		return response, statusCode, err
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		return response, statusCode, fmt.Errorf("join_admission_http_status_%d", statusCode)
 	}
 	if response.Status != "success" {
 		return response, statusCode, fmt.Errorf("join_admission_rejected: %s", response.Error)
@@ -288,7 +302,6 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param request body JoinClusterRequest true "Join Cluster Request"
-// @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -405,7 +418,9 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			Preflight:   true,
 			Inventory:   inventory,
 		}
-		leaderResponse, statusCode, err := postJoinAdmission(acceptURL, admission, admissionHeaders)
+		leaderResponse, statusCode, err := postJoinAdmission(
+			c.Request.Context(), acceptURL, admission, admissionHeaders,
+		)
 		if err != nil {
 			if leaderResponse.Message != "" {
 				if statusCode < 400 {
@@ -443,8 +458,20 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			return
 		}
 
+		admission.Preflight = false
+		if err := cS.SaveJoinIntent(req.LeaderIP, clusterKey, admission); err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_join_intent_save_failed",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		_ = cS.MarkJoinIntentPhase(cluster.JoinPhaseStarting, nil)
 		err = cS.StartAsJoiner(fsm, req.NodeIP, clusterKey)
 		if err != nil {
+			_ = cS.MarkJoinIntentPhase(cluster.JoinPhaseFailed, err)
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "error_starting_joiner",
@@ -454,37 +481,43 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			return
 		}
 
-		admission.Preflight = false
-		leaderResponse, statusCode, err = postJoinAdmission(acceptURL, admission, admissionHeaders)
-		if err != nil {
-			if leaderResponse.Message != "" {
+		submission := cS.SubmitJoinIntent(c.Request.Context())
+		if submission.Err != nil && !submission.Retryable {
+			if submission.Response.Message != "" {
+				statusCode = submission.StatusCode
 				if statusCode < 400 {
 					statusCode = http.StatusConflict
 				}
-				c.JSON(statusCode, leaderResponse)
+				c.JSON(statusCode, submission.Response)
 				return
 			}
-			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
+			c.JSON(http.StatusConflict, internal.APIResponse[cluster.ClusterJoinStatus]{
 				Status:  "error",
-				Message: "cluster_join_outcome_uncertain",
-				Error:   err.Error(),
-				Data:    nil,
+				Message: "cluster_join_rejected",
+				Error:   submission.Err.Error(),
+				Data:    submission.Status,
 			})
 			return
 		}
 
-		if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
-			logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
+		status := submission.Status
+		if strings.TrimSpace(status.NodeID) == "" {
+			status, _ = cS.JoinStatus()
 		}
-		if err := zS.ReconcileEncryptionKeys(); err != nil {
-			logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
+		if status.Phase == cluster.JoinPhaseComplete && zS != nil {
+			if err := zS.ReconcileBackupTargetSSHKeys(); err != nil {
+				logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
+			}
+			if err := zS.ReconcileEncryptionKeys(); err != nil {
+				logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
+			}
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[any]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterJoinStatus]{
 			Status:  "success",
-			Message: "cluster_joined",
+			Message: "cluster_join_started",
 			Error:   "",
-			Data:    nil,
+			Data:    status,
 		})
 	}
 }
@@ -496,7 +529,6 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 // @Produce json
 // @Security ClusterKeyAuth
 // @Param request body AcceptJoinRequest true "Accept Join Request"
-// @Success 200 {object} internal.APIResponse[cluster.GuestIdentityInventoryReport] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -579,22 +611,53 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := cS.AcceptJoinInventory(
+		status, err := cS.StageJoinInventory(
 			c.Request.Context(),
 			req.NodeID,
 			req.NodeIP,
 			clusterKey,
 			req.Inventory,
-		); err != nil {
+		)
+		if err != nil {
 			writeJoinAdmissionError(c, err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[cluster.GuestIdentityInventoryReport]{
+		c.JSON(http.StatusAccepted, internal.APIResponse[cluster.ClusterJoinStatus]{
 			Status:  "success",
-			Message: "node_added_to_cluster",
+			Message: "cluster_join_started",
 			Error:   "",
-			Data:    req.Inventory,
+			Data:    status,
+		})
+	}
+}
+
+func GetJoinStatus(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		status, err := cS.JoinStatus()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_join_status_failed", Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterJoinStatus]{
+			Status: "success", Message: "cluster_join_status", Error: "", Data: status,
+		})
+	}
+}
+
+func JoinProgressInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		progress, err := cS.LocalJoinProgress(c.Query("expectedNodeId"))
+		if err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_join_progress_failed", Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[cluster.ClusterJoinProgress]{
+			Status: "success", Message: "cluster_join_progress", Error: "", Data: progress,
 		})
 	}
 }

@@ -860,6 +860,8 @@ func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealth
 
 func (s *Service) StartClusterMonitors(ctx context.Context) {
 	s.monitorOnce.Do(func() {
+		s.startJoinReconciler(ctx)
+
 		runPopulateClusterNodes := func() {
 			if err := s.PopulateClusterNodes(); err != nil {
 				if !strings.Contains(err.Error(), "raft_not_initialized") {

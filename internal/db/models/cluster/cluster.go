@@ -22,6 +22,15 @@ type Cluster struct {
 	RaftBootstrap *bool  `json:"raftBootstrap"`
 	RaftIP        string `json:"raftIP"`
 	RaftPort      int    `json:"raftPort"`
+
+	JoinLeaderIP    string `json:"-"`
+	JoinNodeID      string `json:"-"`
+	JoinNodeIP      string `json:"-"`
+	JoinNodeVersion string `json:"-"`
+	JoinInventory   []byte `gorm:"type:blob" json:"-"`
+	JoinPhase       string `json:"-"`
+	JoinLastError   string `json:"-"`
+	JoinAttempts    uint   `json:"-"`
 }
 
 func publishClusterRefresh() {

@@ -178,6 +178,14 @@ func hasExistingRaftState(dir string) bool {
 }
 
 func (s *Service) InitRaft(fsm raft.FSM) error {
+	if fsm != nil {
+		s.raftFSM = fsm
+		if dispatcher, ok := fsm.(*clusterModels.FSMDispatcher); ok {
+			s.stateFSM = dispatcher
+		} else {
+			s.stateFSM = nil
+		}
+	}
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
 		return err

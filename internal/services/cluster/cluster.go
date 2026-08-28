@@ -40,6 +40,7 @@ type Service struct {
 	JailService jailServiceInterfaces.JailServiceInterface
 
 	clusterJoinMu     sync.Mutex
+	joinLifecycleMu   sync.Mutex
 	backupJobRebindMu sync.Mutex
 	replicatedStateMu sync.RWMutex
 
@@ -62,12 +63,16 @@ type Service struct {
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int
 
-	embeddedSSHOnce sync.Once
-	monitorOnce     sync.Once
+	embeddedSSHOnce  sync.Once
+	monitorOnce      sync.Once
+	joinComplete     atomic.Bool
+	joinCompleteHook func()
 
 	clusterStartHook func(ip string) error
 
 	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
+	joinVersionForNode               func(context.Context, raft.Server, string) (string, error)
+	joinProgressForNode              func(context.Context, string, raft.ServerAddress, uint64) (ClusterJoinProgress, error)
 	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
 	backupTargetValidationAPIForNode func(string, raft.ServerAddress) (string, error)
 	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
@@ -76,6 +81,21 @@ type Service struct {
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
 	s.clusterStartHook = fn
+}
+
+func (s *Service) SetJoinCompleteHook(fn func()) {
+	s.joinCompleteHook = fn
+}
+
+func (s *Service) notifyJoinComplete() {
+	if s == nil || s.joinComplete.Load() {
+		return
+	}
+	hook := s.joinCompleteHook
+	if hook == nil || !s.joinComplete.CompareAndSwap(false, true) {
+		return
+	}
+	go hook()
 }
 
 func (s *Service) triggerClusterStart(ip string) error {
@@ -303,14 +323,23 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	// Persist clustered state only after Raft bootstrap, backfill, and snapshot
 	// have succeeded.
 	if err := s.DB.Model(&c).Updates(map[string]any{
-		"enabled":        true,
-		"key":            newKey,
-		"raft_bootstrap": &bootstrap,
-		"raft_ip":        ip,
-		"raft_port":      port,
+		"enabled":           true,
+		"key":               newKey,
+		"raft_bootstrap":    &bootstrap,
+		"raft_ip":           ip,
+		"raft_port":         port,
+		"join_leader_ip":    "",
+		"join_node_id":      "",
+		"join_node_ip":      "",
+		"join_node_version": "",
+		"join_inventory":    nil,
+		"join_phase":        "",
+		"join_last_error":   "",
+		"join_attempts":     0,
 	}).Error; err != nil {
 		return err
 	}
+	s.joinComplete.Store(true)
 
 	if err := s.EnsureAndPublishLocalSSHIdentity(); err != nil {
 		logger.L.Warn().Err(err).Msg("Cluster SSH identity publish deferred during cluster creation")
@@ -346,6 +375,9 @@ func (s *Service) rollbackJoinPreparation(
 }
 
 func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+
 	if !utils.IsValidIP(ip) {
 		return errors.New("invalid_ip_address")
 	}
@@ -455,6 +487,15 @@ func (s *Service) MarkDeclustered() error {
 	c.RaftBootstrap = nil
 	c.RaftIP = ""
 	c.RaftPort = ClusterRaftPort
+	c.JoinLeaderIP = ""
+	c.JoinNodeID = ""
+	c.JoinNodeIP = ""
+	c.JoinNodeVersion = ""
+	c.JoinInventory = nil
+	c.JoinPhase = ""
+	c.JoinLastError = ""
+	c.JoinAttempts = 0
+	s.joinComplete.Store(false)
 
 	if err := s.DB.Save(&c).Error; err != nil {
 		return err
