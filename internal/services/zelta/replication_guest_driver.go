@@ -226,8 +226,8 @@ func (d vmReplicationGuestDriver) replicationSourceDatasets(ctx context.Context,
 	return sources, nil
 }
 
-func (d vmReplicationGuestDriver) demote(_ context.Context, guestID uint, transitionRunID string) error {
-	return d.service.stopVMIfPresentForTransition(guestID, transitionRunID)
+func (d vmReplicationGuestDriver) demote(ctx context.Context, guestID uint, transitionRunID string) error {
+	return d.service.stopVMIfPresentForTransitionContext(ctx, guestID, transitionRunID)
 }
 
 func (d vmReplicationGuestDriver) selfFence(

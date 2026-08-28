@@ -307,6 +307,8 @@
 
 	const methodPathToActionMap: Record<string, Record<string, string>> = {
 		DELETE: {
+			'/api/cluster/reset-node': 'Cluster - Leave Cluster',
+			'/api/cluster/reset-node/force': 'Cluster - Force Local Reset',
 			'/api/vm/templates/:id': 'VM Template - Delete',
 			'/api/jail/templates/:id': 'Jail Template - Delete',
 			'/api/vm/:id/snapshots/:id': 'VM Snapshot - Delete',
@@ -343,6 +345,8 @@
 			'/api/network/dhcp/lease/:id': 'DHCP Lease - Delete Static'
 		},
 		POST: {
+			'/api/cluster/remove-node': 'Cluster - Remove Node',
+			'/api/cluster/remove-node/force': 'Cluster - Force Remove Node',
 			'/api/auth/login': 'Login',
 			'/api/auth/logout': 'Logout',
 			'/api/vm': 'VM - Create',

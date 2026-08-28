@@ -31,6 +31,13 @@ type Cluster struct {
 	JoinPhase       string `json:"-"`
 	JoinLastError   string `json:"-"`
 	JoinAttempts    uint   `json:"-"`
+
+	LeaveID        string `json:"-"`
+	LeavePhase     string `json:"-"`
+	LeaveLeaderIP  string `json:"-"`
+	LeavePeerAddrs []byte `gorm:"type:blob" json:"-"`
+	LeaveLastError string `json:"-"`
+	LeaveAttempts  uint   `json:"-"`
 }
 
 func publishClusterRefresh() {

@@ -141,6 +141,10 @@ func authenticateClusterHeader(c *gin.Context, authService *authSvc.Service) (bo
 		abortAuthentication(c, http.StatusForbidden, "cluster_token_forbidden")
 		return true, false
 	}
+	if err := authService.AuthorizeClusterIssuer(claims, c.Request.Method, c.Request.URL.Path); err != nil {
+		abortAuthentication(c, http.StatusForbidden, "cluster_token_issuer_forbidden")
+		return true, false
+	}
 
 	c.Set("Token", clusterJWT)
 	c.Set("AuthScope", "cluster")
@@ -149,6 +153,7 @@ func authenticateClusterHeader(c *gin.Context, authService *authSvc.Service) (bo
 	c.Set("Username", claims.Username)
 	c.Set("AuthType", claims.AuthType)
 	c.Set("ProxyAdmin", claims.Admin)
+	c.Set("IssuerNodeID", claims.IssuerNodeID)
 	return true, true
 }
 

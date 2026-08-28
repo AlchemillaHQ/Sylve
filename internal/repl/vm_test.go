@@ -427,7 +427,7 @@ func TestGetVMTemplateReturnsFullStableTemplate(t *testing.T) {
 
 func TestRollbackVMSnapshotPassesExplicitAcknowledgement(t *testing.T) {
 	service := &vmSnapshotServiceStub{}
-	output, err := rollbackVMSnapshot(service, 745, 3, true)
+	output, err := rollbackVMSnapshot(context.Background(), service, 745, 3, true)
 	if err != nil || !service.destroyNewer || !output.RolledBack || output.NewerSnapshotsDestroyed != 2 || output.Warnings == nil {
 		t.Fatalf("output = %#v, service = %#v, err = %v", output, service, err)
 	}

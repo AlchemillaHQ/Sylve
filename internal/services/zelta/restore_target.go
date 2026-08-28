@@ -636,6 +636,12 @@ func (s *Service) handleRestoreFromTargetQueue(
 	ctx context.Context,
 	payload restoreFromTargetPayload,
 ) (retErr error) {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	handle, payload, execute, err := s.prepareQueuedBackupTargetRestoreOperation(ctx, payload)
 	if err != nil {
 		logger.L.Warn().
@@ -1081,7 +1087,7 @@ func (s *Service) runRestoreFromTargetVM(
 			return
 		}
 		if vmRestoreFence.wasRunning {
-			if restartErr := s.startVMIfPresent(vmRestoreFence.guestID); restartErr != nil {
+			if restartErr := s.startVMIfPresentContext(ctx, vmRestoreFence.guestID); restartErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("restore_vm_restart_failed: %w", restartErr))
 			}
 		}
@@ -1110,7 +1116,7 @@ func (s *Service) runRestoreFromTargetVM(
 		if strictAsNew {
 			return fmt.Errorf("guest_id_already_in_use: guest_id=%d guest_type=vm", destRID)
 		}
-		vmRuntimeGuard, err := s.prepareInPlaceVMRestore(destRID, primaryDestination)
+		vmRuntimeGuard, err := s.prepareInPlaceVMRestoreContext(ctx, destRID, primaryDestination)
 		if err != nil {
 			return err
 		}
@@ -1460,7 +1466,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 				return
 			}
 			if jailRestoreFence.wasRunning && jailSafeToRestart {
-				if restartErr := s.Jail.JailAction(int(jailRestoreFence.guestID), "start"); restartErr != nil {
+				if restartErr := s.jailActionContext(ctx, int(jailRestoreFence.guestID), "start"); restartErr != nil {
 					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
 				}
 			}

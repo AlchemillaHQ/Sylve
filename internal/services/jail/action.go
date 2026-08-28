@@ -27,16 +27,41 @@ import (
 )
 
 func (s *Service) JailAction(ctId int, action string) error {
-	return s.jailAction(ctId, action, "")
+	return s.JailActionContext(context.Background(), ctId, action)
+}
+
+func (s *Service) JailActionContext(ctx context.Context, ctId int, action string) error {
+	return s.jailActionContext(ctx, ctId, action, "")
 }
 
 // JailActionForReplication is the transition engine's narrowly scoped action
 // path. The persisted transition run ID is checked by the cluster ownership
 // guard; callers cannot bypass the durable lock with node identity alone.
 func (s *Service) JailActionForReplication(ctId int, action, transitionRunID string) error {
+	return s.JailActionForReplicationContext(context.Background(), ctId, action, transitionRunID)
+}
+
+func (s *Service) JailActionForReplicationContext(
+	ctx context.Context,
+	ctId int,
+	action string,
+	transitionRunID string,
+) error {
 	transitionRunID = strings.TrimSpace(transitionRunID)
 	if transitionRunID == "" {
 		return fmt.Errorf("replication_transition_run_id_required")
+	}
+	return s.jailActionContext(ctx, ctId, action, transitionRunID)
+}
+
+func (s *Service) jailActionContext(ctx context.Context, ctId int, action, transitionRunID string) error {
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
 	}
 	return s.jailAction(ctId, action, transitionRunID)
 }

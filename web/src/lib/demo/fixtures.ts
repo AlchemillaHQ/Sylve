@@ -2092,8 +2092,28 @@ export async function handleDemoRequest<T = unknown>(
 	if (path === '/cluster/join-key' && method === 'GET') {
 		return success({ key: 'sylve-demo-cluster-key-7F4C2A91' }) as DemoClientResponse<T>;
 	}
+	if (path === '/cluster/leave-status' && method === 'GET') {
+		return success({
+			enabled: true,
+			leaveId: '',
+			phase: '',
+			leaderIp: '',
+			lastError: '',
+			attempts: 0,
+			localNodeId: clusterDetails.nodeId
+		}) as DemoClientResponse<T>;
+	}
 	if (path === '/cluster/reset-node' && method === 'DELETE') {
-		return mutationSuccess('raft_node_reset') as DemoClientResponse<T>;
+		return mutationSuccess('cluster_leave_completed') as DemoClientResponse<T>;
+	}
+	if (path === '/cluster/reset-node/force' && method === 'DELETE') {
+		return mutationSuccess('cluster_local_reset_forced') as DemoClientResponse<T>;
+	}
+	if (path === '/cluster/remove-node' && method === 'POST') {
+		return mutationSuccess('peer_removed') as DemoClientResponse<T>;
+	}
+	if (path === '/cluster/remove-node/force' && method === 'POST') {
+		return mutationSuccess('peer_force_removed') as DemoClientResponse<T>;
 	}
 	if (path === '/cluster/nodes') return success(liveNodes()) as DemoClientResponse<T>;
 	if (path === '/cluster/resources') {

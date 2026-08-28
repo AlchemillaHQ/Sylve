@@ -90,11 +90,27 @@ type Service struct {
 	GZFS          *gzfs.Client
 	WorkloadGuard guestWorkloadGurad
 
-	activeMu  sync.Mutex
-	active    map[uint]struct{}
-	cutoverMu sync.Mutex
+	activeMu     sync.Mutex
+	active       map[uint]struct{}
+	cutoverMu    sync.Mutex
+	mutationGate interface {
+		EnterMutation(context.Context) (context.Context, func(), error)
+	}
 
 	preCutoverSnapshotCleanup func(context.Context, taskModels.GuestLifecycleTask, migrationPayload) error
+}
+
+func (s *Service) SetMutationAdmission(gate interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}) {
+	s.mutationGate = gate
+}
+
+func (s *Service) enterMutation(ctx context.Context) (context.Context, func(), error) {
+	if s == nil || s.mutationGate == nil {
+		return ctx, func() {}, nil
+	}
+	return s.mutationGate.EnterMutation(ctx)
 }
 
 func NewService(
@@ -861,6 +877,12 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if !s.beginMigrationExecution(taskID) {
 		return &migrationRecoveryPendingError{cause: ErrMigrationInProgress}
 	}

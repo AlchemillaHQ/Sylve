@@ -2,21 +2,31 @@
 	import {
 		getDetails,
 		getJoinStatus,
+		getLeaveStatus,
 		getNodes,
 		refreshClusterAfterLifecycleChange,
 		resetCluster
 	} from '$lib/api/cluster/cluster';
 	import Create from '$lib/components/custom/Cluster/Create.svelte';
+	import ForceReset from '$lib/components/custom/Cluster/ForceReset.svelte';
 	import Join from '$lib/components/custom/Cluster/Join.svelte';
 	import JoinInformation from '$lib/components/custom/Cluster/JoinInformation.svelte';
+	import JoinProgress from '$lib/components/custom/Cluster/JoinProgress.svelte';
+	import LeaveProgress from '$lib/components/custom/Cluster/LeaveProgress.svelte';
 	import RemovePeer from '$lib/components/custom/Cluster/RemovePeer.svelte';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import type { ClusterDetails, ClusterJoinStatus, ClusterNode } from '$lib/types/cluster/cluster';
+	import type {
+		ClusterDetails,
+		ClusterJoinStatus,
+		ClusterLeaveStatus,
+		ClusterNode
+	} from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { reload } from '$lib/stores/api.svelte';
+	import { getClusterLeaveErrorMessage } from '$lib/utils/cluster';
 	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -47,8 +57,16 @@
 
 	let pendingRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingJoinTimer: ReturnType<typeof setTimeout> | null = null;
+	let pendingLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let joinStatus = $state<ClusterJoinStatus | null>(null);
+	let leaveStatus = $state<ClusterLeaveStatus | null>(null);
+	let activeJoinStatus = $derived(
+		joinStatus && joinStatus.phase !== 'voter' && joinStatus.phase !== 'not_started'
+			? joinStatus
+			: null
+	);
 	let joinStatusPollingActive = false;
+	let leaveStatusPollingActive = false;
 	let recoveryAttempts = 0;
 	let recoveryActive = false;
 
@@ -135,11 +153,51 @@
 		void refreshJoinStatus();
 	}
 
+	async function refreshLeaveStatus() {
+		if (!leaveStatusPollingActive) return;
+		const wasActive = Boolean(leaveStatus?.phase);
+		const result = await getLeaveStatus();
+		if (!isAPIResponse(result)) {
+			leaveStatus = result;
+			if (
+				wasActive !== Boolean(result.phase) ||
+				result.enabled !== datacenter.current.cluster.enabled
+			) {
+				await Promise.allSettled([datacenter.refetch(), nodes.refetch()]);
+			}
+		}
+		if (
+			leaveStatusPollingActive &&
+			(isAPIResponse(result) || leaveStatus?.phase || datacenter.current.cluster.enabled)
+		) {
+			pendingLeaveTimer = setTimeout(() => {
+				void refreshLeaveStatus();
+			}, 3000);
+		}
+	}
+
+	function stopLeaveStatusPolling() {
+		leaveStatusPollingActive = false;
+		if (pendingLeaveTimer) {
+			clearTimeout(pendingLeaveTimer);
+			pendingLeaveTimer = null;
+		}
+	}
+
+	function startLeaveStatusPolling() {
+		stopLeaveStatusPolling();
+		leaveStatusPollingActive = true;
+		void refreshLeaveStatus();
+	}
+
 	watch(
 		() => reloadFlag,
 		() => {
 			if (reloadFlag) {
-				void datacenter.refetch().then(() => startJoinStatusPolling());
+				void datacenter.refetch().then(() => {
+					startJoinStatusPolling();
+					startLeaveStatusPolling();
+				});
 				void nodes.refetch();
 				reloadFlag = false;
 				startRecovery();
@@ -150,7 +208,10 @@
 	watch(
 		() => reload.datacenterDetailsPulse,
 		() => {
-			void datacenter.refetch().then(() => startJoinStatusPolling());
+			void datacenter.refetch().then(() => {
+				startJoinStatusPolling();
+				startLeaveStatusPolling();
+			});
 			void nodes.refetch();
 			startRecovery();
 		}
@@ -165,9 +226,11 @@
 
 	onMount(() => {
 		startJoinStatusPolling();
+		startLeaveStatusPolling();
 		return () => {
 			stopRecovery();
 			stopJoinStatusPolling();
+			stopLeaveStatusPolling();
 		};
 	});
 
@@ -186,7 +249,9 @@
 	let activeRows = $state<Array<Row & { leader: boolean }> | null>(null);
 	let selectedPeerRow = $derived<(Row & { leader: boolean }) | null>(activeRows?.[0] ?? null);
 
-	let canRemovePeer = $derived(isLeaderUi && selectedPeerRow !== null && !selectedPeerRow.leader);
+	let canRemovePeer = $derived(
+		isLeaderUi && !leaveStatus?.phase && selectedPeerRow !== null && !selectedPeerRow.leader
+	);
 
 	let nodes = resource(
 		() => 'cluster-nodes',
@@ -227,6 +292,9 @@
 			open: false
 		},
 		reset: {
+			open: false
+		},
+		forceReset: {
 			open: false
 		},
 		remove: {
@@ -369,6 +437,9 @@
 				case 'reset':
 					modals.reset.open = true;
 					break;
+				case 'force-reset':
+					modals.forceReset.open = true;
+					break;
 				case 'remove':
 					modals.remove.open = true;
 					break;
@@ -387,31 +458,18 @@
 {/snippet}
 
 <div class="flex h-full w-full flex-col">
-	{#if joinStatus && joinStatus.phase !== 'voter' && joinStatus.phase !== 'not_started'}
-		<div class="border-b bg-muted/40 px-3 py-2 text-sm">
-			<div class="flex items-center gap-2">
-				{#if joinStatus.retrying}
-					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
-				{:else}
-					<span class="icon-[mdi--alert-circle-outline] h-4 w-4"></span>
-				{/if}
-				<span>
-					Joining cluster: {joinStatus.phase.replaceAll('_', ' ')}
-					{#if joinStatus.targetIndex}
-						({joinStatus.appliedIndex}/{joinStatus.targetIndex})
-					{/if}
-				</span>
-			</div>
-			{#if joinStatus.lastError}
-				<div class="mt-1 text-xs text-muted-foreground">
-					{joinStatus.retrying ? 'Retrying automatically' : 'Join stopped'}:
-					{joinStatus.lastError}
-				</div>
-			{/if}
-		</div>
-	{/if}
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
+		{#if activeJoinStatus}
+			<JoinProgress status={activeJoinStatus} />
+		{/if}
+		{#if leaveStatus?.phase}
+			<LeaveProgress
+				status={leaveStatus}
+				onRetry={() => (modals.reset.open = true)}
+				onForceReset={() => (modals.forceReset.open = true)}
+			/>
+		{/if}
 
 		{#if !canCreate}
 			<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
@@ -431,11 +489,11 @@
 			{@render button('join', 'grommet-icons--cluster', 'Join Cluster', !canJoin)}
 		{/if}
 
-		{#if canReset}
-			{@render button('reset', 'mdi--refresh', 'Reset Cluster State', !canReset)}
+		{#if canReset && !leaveStatus?.phase}
+			{@render button('reset', 'mdi--refresh', 'Leave / Reset Cluster', !canReset)}
 		{/if}
 
-		{#if isLeaderUi && canRemovePeer}
+		{#if canRemovePeer}
 			{@render button('remove', 'mdi--account-remove-outline', 'Remove Peer', false)}
 		{/if}
 	</div>
@@ -465,25 +523,21 @@
 			const response = await resetCluster();
 			reloadFlag = true;
 			if (response.error) {
-				if (response.error.includes('leader_cannot_reset_while_other_nodes_exist')) {
-					toast.error('Leader cannot exit when followers are present', {
-						position: 'bottom-center'
-					});
-
-					modals.reset.open = false;
-					return;
-				}
-
+				startLeaveStatusPolling();
 				handleAPIError(response);
-				toast.error('Failed to reset cluster', {
+				const detail = Array.isArray(response.error)
+					? response.error.join(', ')
+					: String(response.error || response.message);
+				toast.error(getClusterLeaveErrorMessage(`${response.message}: ${detail}`), {
 					position: 'bottom-center'
 				});
+				modals.reset.open = false;
 				return;
 			}
 
 			await refreshClusterAfterLifecycleChange();
 			modals.reset.open = false;
-			toast.success('Cluster reset', {
+			toast.success('Cluster leave completed', {
 				position: 'bottom-center'
 			});
 		},
@@ -492,3 +546,9 @@
 		}
 	}}
 ></AlertDialog>
+
+<ForceReset
+	bind:open={modals.forceReset.open}
+	bind:reload={reloadFlag}
+	nodeId={leaveStatus?.localNodeId || datacenter.current.nodeId}
+/>

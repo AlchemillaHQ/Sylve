@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 func TestExecuteLineExitAndQuitDoNotShutdown(t *testing.T) {
@@ -68,6 +70,23 @@ func TestExecuteLineWritesOutputToContextWriter(t *testing.T) {
 	}
 	if strings.TrimSpace(out.String()) != "pong" {
 		t.Fatalf("expected pong output, got %q", out.String())
+	}
+}
+
+func TestExecuteLineFenceAllowsInspectionAndRejectsMutation(t *testing.T) {
+	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
+	var out bytes.Buffer
+	ctx := &Context{Cluster: service, Out: &out}
+
+	ExecuteLine(ctx, "ping")
+	if strings.TrimSpace(out.String()) != "pong" {
+		t.Fatalf("read-only output = %q", out.String())
+	}
+
+	out.Reset()
+	ExecuteLine(ctx, `notes add "title" "body"`)
+	if !strings.Contains(out.String(), clusterService.ErrNodeLeaveFenced.Error()) {
+		t.Fatalf("mutation was not fenced: %q", out.String())
 	}
 }
 

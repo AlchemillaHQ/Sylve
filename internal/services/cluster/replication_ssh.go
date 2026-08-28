@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -51,6 +52,20 @@ func (s *Service) ClusterSSHPrivateKeyPath() (string, error) {
 		return "", err
 	}
 	return privatePath, nil
+}
+
+func (s *Service) CleanLocalClusterSSHKeys() error {
+	dataPath, err := config.GetDataPath()
+	if err != nil {
+		return fmt.Errorf("cluster_ssh_data_path_failed: %w", err)
+	}
+	dir := filepath.Join(filepath.Clean(dataPath), clusterSSHDirName)
+	for _, name := range []string{clusterSSHPrivateFileName, clusterSSHPublicFileName} {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("cluster_ssh_key_remove_failed: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *Service) ensureLocalClusterSSHKeyPair() (string, string, string, error) {
@@ -167,6 +182,42 @@ func (s *Service) EnsureAndPublishLocalSSHIdentity() error {
 		}
 	}
 
+	return nil
+}
+
+func (s *Service) ReconcileOrphanedClusterSSHIdentities(ctx context.Context) error {
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
+	if s.Raft == nil || s.Raft.State() != raft.Leader {
+		return nil
+	}
+	future := s.Raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return err
+	}
+	members := make(map[string]struct{}, len(future.Configuration().Servers))
+	for _, server := range future.Configuration().Servers {
+		members[strings.TrimSpace(string(server.ID))] = struct{}{}
+	}
+	var identities []clusterModels.ClusterSSHIdentity
+	if err := s.DB.WithContext(ctx).Order("node_uuid ASC").Find(&identities).Error; err != nil {
+		return err
+	}
+	for _, identity := range identities {
+		nodeID := strings.TrimSpace(identity.NodeUUID)
+		if _, present := members[nodeID]; present {
+			continue
+		}
+		if err := s.DeleteClusterSSHIdentity(nodeID, false); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

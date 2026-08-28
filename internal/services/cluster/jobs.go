@@ -11,6 +11,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -860,13 +861,14 @@ func (s *Service) fanOutHealthSync(payload []clusterServiceInterfaces.NodeHealth
 
 func (s *Service) StartClusterMonitors(ctx context.Context) {
 	s.monitorOnce.Do(func() {
-		s.startJoinReconciler(ctx)
-
 		runPopulateClusterNodes := func() {
 			if err := s.PopulateClusterNodes(); err != nil {
 				if !strings.Contains(err.Error(), "raft_not_initialized") {
 					logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
 				}
+			}
+			if err := s.ReconcileOrphanedClusterSSHIdentities(ctx); err != nil && !errors.Is(err, ErrNodeLeaveFenced) {
+				logger.L.Warn().Err(err).Msg("cluster_ssh_identity_reconciliation_failed")
 			}
 		}
 
@@ -909,12 +911,25 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-timer.C:
-					if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
-						logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+					_, release, err := s.EnterMutation(ctx)
+					if err == nil {
+						if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
+							logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+						}
+						release()
+					} else if !errors.Is(err, ErrNodeLeaveFenced) {
+						logger.L.Error().Err(err).Msg("failed_to_admit_replicated_retention")
 					}
 					timer.Reset(replicatedRetentionInterval)
 				}
 			}
 		}()
+	})
+}
+
+func (s *Service) StartMembershipReconcilers(ctx context.Context) {
+	s.reconcilerOnce.Do(func() {
+		s.startLeaveReconciler(ctx)
+		s.startJoinReconciler(ctx)
 	})
 }

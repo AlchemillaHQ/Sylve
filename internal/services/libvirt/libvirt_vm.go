@@ -789,15 +789,40 @@ func storageIDFromDataset(datasetName, prefix string) int {
 }
 
 func (s *Service) LvVMAction(vm vmModels.VM, action string) error {
-	return s.lvVMAction(vm, action, "")
+	return s.LvVMActionContext(context.Background(), vm, action)
+}
+
+func (s *Service) LvVMActionContext(ctx context.Context, vm vmModels.VM, action string) error {
+	return s.lvVMActionContext(ctx, vm, action, "")
 }
 
 // LvVMActionForReplication authorizes exactly one persisted transition run.
 // Normal VM actions continue through the non-bypass ownership guard.
 func (s *Service) LvVMActionForReplication(vm vmModels.VM, action, transitionRunID string) error {
+	return s.LvVMActionForReplicationContext(context.Background(), vm, action, transitionRunID)
+}
+
+func (s *Service) LvVMActionForReplicationContext(
+	ctx context.Context,
+	vm vmModels.VM,
+	action string,
+	transitionRunID string,
+) error {
 	transitionRunID = strings.TrimSpace(transitionRunID)
 	if transitionRunID == "" {
 		return fmt.Errorf("replication_transition_run_id_required")
+	}
+	return s.lvVMActionContext(ctx, vm, action, transitionRunID)
+}
+
+func (s *Service) lvVMActionContext(ctx context.Context, vm vmModels.VM, action, transitionRunID string) error {
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
 	}
 	return s.lvVMAction(vm, action, transitionRunID)
 }

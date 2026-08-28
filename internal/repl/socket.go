@@ -129,6 +129,49 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 }
 
 func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
+	if req.Operation == "" || !typedSocketOperationRequiresMutation(req.Operation) || ctx == nil || ctx.Cluster == nil {
+		return processSocketRequestAdmitted(ctx, req)
+	}
+	admittedCtx, release, err := ctx.Cluster.EnterMutation(operationContext(ctx))
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	defer release()
+	localCtx := *ctx
+	localCtx.mutationContext = admittedCtx
+	return processSocketRequestAdmitted(&localCtx, req)
+}
+
+func typedSocketOperationRequiresMutation(operation string) bool {
+	switch operation {
+	case consoleprotocol.OperationStatus,
+		consoleprotocol.OperationJailList,
+		consoleprotocol.OperationJailGet,
+		consoleprotocol.OperationJailNetworks,
+		consoleprotocol.OperationBootstrapList,
+		consoleprotocol.OperationVMList,
+		consoleprotocol.OperationVMGet,
+		consoleprotocol.OperationVMNetworks,
+		consoleprotocol.OperationVMStorageList,
+		consoleprotocol.OperationVMSnapshotList,
+		consoleprotocol.OperationVMTemplateList,
+		consoleprotocol.OperationVMTemplateGet,
+		consoleprotocol.OperationVMQGAInfo,
+		consoleprotocol.OperationSwitchList,
+		consoleprotocol.OperationObjectList,
+		consoleprotocol.OperationDownloadList,
+		consoleprotocol.OperationNoteList,
+		consoleprotocol.OperationNoteGet,
+		consoleprotocol.OperationTaskListActive,
+		consoleprotocol.OperationTaskListRecent,
+		consoleprotocol.OperationTaskGet:
+		return false
+	default:
+		return true
+	}
+}
+
+func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketResponse {
 	if req.Operation != "" {
 		switch req.Operation {
 		case consoleprotocol.OperationStatus:

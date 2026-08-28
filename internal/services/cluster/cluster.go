@@ -39,10 +39,12 @@ type Service struct {
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
 
-	clusterJoinMu     sync.Mutex
-	joinLifecycleMu   sync.Mutex
-	backupJobRebindMu sync.Mutex
-	replicatedStateMu sync.RWMutex
+	clusterJoinMu         sync.Mutex
+	membershipLifecycleMu sync.Mutex
+	leaveInitiationMu     sync.Mutex
+	backupJobRebindMu     sync.Mutex
+	replicatedStateMu     sync.RWMutex
+	mutationGate          *MutationGate
 
 	raftFSM            raft.FSM
 	stateFSM           *clusterModels.FSMDispatcher
@@ -63,10 +65,13 @@ type Service struct {
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int
 
-	embeddedSSHOnce  sync.Once
-	monitorOnce      sync.Once
-	joinComplete     atomic.Bool
-	joinCompleteHook func()
+	embeddedSSHOnce   sync.Once
+	monitorOnce       sync.Once
+	reconcilerOnce    sync.Once
+	joinComplete      atomic.Bool
+	leaveComplete     atomic.Bool
+	joinCompleteHook  func()
+	leaveCompleteHook func()
 
 	clusterStartHook func(ip string) error
 
@@ -75,8 +80,11 @@ type Service struct {
 	joinProgressForNode              func(context.Context, string, raft.ServerAddress, uint64) (ClusterJoinProgress, error)
 	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
 	backupTargetValidationAPIForNode func(string, raft.ServerAddress) (string, error)
+	leaveMembershipForNode           func(context.Context, clusterModels.Cluster, string) (MembershipStatus, error)
+	leaveRemovalForNode              func(context.Context, string, RemoveMembershipRequest) error
 	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
 	backupJobIDGenerator             func() (uint, error)
+	raftMembershipForNode            func(string) (RaftMembership, error)
 }
 
 func (s *Service) SetClusterStartHook(fn func(ip string) error) {
@@ -85,6 +93,21 @@ func (s *Service) SetClusterStartHook(fn func(ip string) error) {
 
 func (s *Service) SetJoinCompleteHook(fn func()) {
 	s.joinCompleteHook = fn
+}
+
+func (s *Service) SetLeaveCompleteHook(fn func()) {
+	s.leaveCompleteHook = fn
+}
+
+func (s *Service) notifyLeaveComplete() {
+	if s == nil || s.leaveComplete.Load() {
+		return
+	}
+	hook := s.leaveCompleteHook
+	if hook == nil || !s.leaveComplete.CompareAndSwap(false, true) {
+		return
+	}
+	go hook()
 }
 
 func (s *Service) notifyJoinComplete() {
@@ -118,12 +141,13 @@ func (s *Service) triggerClusterStart(ip string) error {
 
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
 	return &Service{
-		DB:          db,
-		Raft:        nil,
-		RaftID:      nil,
-		NodeID:      "",
-		AuthService: authService,
-		JailService: jailService,
+		DB:           db,
+		Raft:         nil,
+		RaftID:       nil,
+		NodeID:       "",
+		AuthService:  authService,
+		JailService:  jailService,
+		mutationGate: NewMutationGate(),
 
 		peerProbeFailureStreak: make(map[string]int),
 	}
@@ -477,11 +501,20 @@ func (s *Service) MarkClustered() error {
 }
 
 func (s *Service) MarkDeclustered() error {
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		return markDeclusteredTx(tx)
+	})
+	if err == nil {
+		s.joinComplete.Store(false)
+	}
+	return err
+}
+
+func markDeclusteredTx(tx *gorm.DB) error {
 	var c clusterModels.Cluster
-	if err := s.DB.First(&c).Error; err != nil {
+	if err := tx.First(&c).Error; err != nil {
 		return err
 	}
-
 	c.Enabled = false
 	c.Key = ""
 	c.RaftBootstrap = nil
@@ -495,13 +528,13 @@ func (s *Service) MarkDeclustered() error {
 	c.JoinPhase = ""
 	c.JoinLastError = ""
 	c.JoinAttempts = 0
-	s.joinComplete.Store(false)
-
-	if err := s.DB.Save(&c).Error; err != nil {
-		return err
-	}
-
-	return nil
+	c.LeaveID = ""
+	c.LeavePhase = ""
+	c.LeaveLeaderIP = ""
+	c.LeavePeerAddrs = nil
+	c.LeaveLastError = ""
+	c.LeaveAttempts = 0
+	return tx.Save(&c).Error
 }
 
 func (s *Service) ListBackupTargetsForSync() ([]clusterModels.BackupTarget, error) {

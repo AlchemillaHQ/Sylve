@@ -191,11 +191,11 @@ func vmsSnapshotList(ctx *Context, rid uint, jsonMode bool) {
 	println(ctx, formatVMSnapshotList(rid, snapshots))
 }
 
-func createVMSnapshot(service vmSnapshotService, rid uint, name, description string) (*vmModels.VMSnapshot, error) {
+func createVMSnapshot(ctx context.Context, service vmSnapshotService, rid uint, name, description string) (*vmModels.VMSnapshot, error) {
 	if service == nil {
 		return nil, fmt.Errorf("vm_service_unavailable")
 	}
-	created, err := service.CreateVMSnapshot(context.Background(), rid, name, description)
+	created, err := service.CreateVMSnapshot(ctx, rid, name, description)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_create_vm_snapshot: %w", err)
 	}
@@ -210,7 +210,7 @@ func vmsSnapshotCreate(ctx *Context, rid uint, name, description string, jsonMod
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	created, err := createVMSnapshot(service, rid, name, description)
+	created, err := createVMSnapshot(operationContext(ctx), service, rid, name, description)
 	if err != nil {
 		printOperationError(ctx, jsonMode, "Error creating VM snapshot", err)
 		return
@@ -222,12 +222,12 @@ func vmsSnapshotCreate(ctx *Context, rid uint, name, description string, jsonMod
 	println(ctx, styledSuccessf("Snapshot %d (%s) created for VM %d.", created.ID, created.Name, rid))
 }
 
-func rollbackVMSnapshot(service vmSnapshotService, rid, snapshotID uint, destroyNewer bool) (consoleprotocol.VMSnapshotRollbackOutput, error) {
+func rollbackVMSnapshot(ctx context.Context, service vmSnapshotService, rid, snapshotID uint, destroyNewer bool) (consoleprotocol.VMSnapshotRollbackOutput, error) {
 	output := consoleprotocol.VMSnapshotRollbackOutput{RID: rid, SnapshotID: snapshotID, Warnings: []string{}}
 	if service == nil {
 		return output, fmt.Errorf("vm_service_unavailable")
 	}
-	result, err := service.RollbackVMSnapshotWithDestroyNewer(context.Background(), rid, snapshotID, destroyNewer)
+	result, err := service.RollbackVMSnapshotWithDestroyNewer(ctx, rid, snapshotID, destroyNewer)
 	if err != nil {
 		return output, fmt.Errorf("failed_to_rollback_vm_snapshot: %w", err)
 	}
@@ -260,7 +260,7 @@ func vmsSnapshotRollback(ctx *Context, rid, snapshotID uint, destroyNewer, jsonM
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	output, err := rollbackVMSnapshot(service, rid, snapshotID, destroyNewer)
+	output, err := rollbackVMSnapshot(operationContext(ctx), service, rid, snapshotID, destroyNewer)
 	if err != nil {
 		printOperationError(ctx, jsonMode, "Error rolling back VM snapshot", err)
 		return
@@ -272,12 +272,12 @@ func vmsSnapshotRollback(ctx *Context, rid, snapshotID uint, destroyNewer, jsonM
 	println(ctx, formatVMSnapshotRollback(output))
 }
 
-func deleteVMSnapshot(service vmSnapshotService, rid, snapshotID uint) (consoleprotocol.VMSnapshotDeleteOutput, error) {
+func deleteVMSnapshot(ctx context.Context, service vmSnapshotService, rid, snapshotID uint) (consoleprotocol.VMSnapshotDeleteOutput, error) {
 	output := consoleprotocol.VMSnapshotDeleteOutput{RID: rid, SnapshotID: snapshotID}
 	if service == nil {
 		return output, fmt.Errorf("vm_service_unavailable")
 	}
-	if err := service.DeleteVMSnapshot(context.Background(), rid, snapshotID); err != nil {
+	if err := service.DeleteVMSnapshot(ctx, rid, snapshotID); err != nil {
 		return output, fmt.Errorf("failed_to_delete_vm_snapshot: %w", err)
 	}
 	output.Deleted = true
@@ -289,7 +289,7 @@ func vmsSnapshotDelete(ctx *Context, rid, snapshotID uint, jsonMode bool) {
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	output, err := deleteVMSnapshot(service, rid, snapshotID)
+	output, err := deleteVMSnapshot(operationContext(ctx), service, rid, snapshotID)
 	if err != nil {
 		printOperationError(ctx, jsonMode, "Error deleting VM snapshot", err)
 		return
@@ -625,7 +625,7 @@ func vmsTemplateCapture(ctx *Context, rid uint, request libvirtServiceInterfaces
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := queueVMTemplateConvert(context.Background(), service, lifecycle, rid, request)
+	output, err := queueVMTemplateConvert(operationContext(ctx), service, lifecycle, rid, request)
 	printVMTemplateTask(ctx, output, err, jsonMode)
 }
 
@@ -668,7 +668,7 @@ func vmsTemplateCreate(ctx *Context, templateID uint, request libvirtServiceInte
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := queueVMTemplateCreate(context.Background(), service, lifecycle, templateID, request)
+	output, err := queueVMTemplateCreate(operationContext(ctx), service, lifecycle, templateID, request)
 	printVMTemplateTask(ctx, output, err, jsonMode)
 }
 
@@ -721,7 +721,7 @@ func vmsTemplateDelete(ctx *Context, templateID uint, jsonMode bool) {
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := deleteVMTemplate(context.Background(), service, lifecycle, templateID)
+	output, err := deleteVMTemplate(operationContext(ctx), service, lifecycle, templateID)
 	if err != nil {
 		printOperationError(ctx, jsonMode, "Error deleting VM template", err)
 		return
@@ -805,7 +805,7 @@ func processVMSnapshotCreateSocketRequest(ctx *Context, payload json.RawMessage)
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	created, err := createVMSnapshot(service, request.RID, name, description)
+	created, err := createVMSnapshot(operationContext(ctx), service, request.RID, name, description)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
@@ -824,7 +824,7 @@ func processVMSnapshotRollbackSocketRequest(ctx *Context, payload json.RawMessag
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	output, err := rollbackVMSnapshot(service, request.RID, request.SnapshotID, request.DestroyNewer)
+	output, err := rollbackVMSnapshot(operationContext(ctx), service, request.RID, request.SnapshotID, request.DestroyNewer)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
@@ -843,7 +843,7 @@ func processVMSnapshotDeleteSocketRequest(ctx *Context, payload json.RawMessage)
 	if ctx != nil {
 		service = ctx.VirtualMachine
 	}
-	output, err := deleteVMSnapshot(service, request.RID, request.SnapshotID)
+	output, err := deleteVMSnapshot(operationContext(ctx), service, request.RID, request.SnapshotID)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
@@ -900,7 +900,7 @@ func processVMTemplateConvertSocketRequest(ctx *Context, payload json.RawMessage
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := queueVMTemplateConvert(context.Background(), service, lifecycle, request.RID, normalized)
+	output, err := queueVMTemplateConvert(operationContext(ctx), service, lifecycle, request.RID, normalized)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
@@ -926,7 +926,7 @@ func processVMTemplateCreateSocketRequest(ctx *Context, payload json.RawMessage)
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := queueVMTemplateCreate(context.Background(), service, lifecycle, request.TemplateID, normalized)
+	output, err := queueVMTemplateCreate(operationContext(ctx), service, lifecycle, request.TemplateID, normalized)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}
@@ -948,7 +948,7 @@ func processVMTemplateDeleteSocketRequest(ctx *Context, payload json.RawMessage)
 		service = ctx.VirtualMachine
 		lifecycle = ctx.Lifecycle
 	}
-	output, err := deleteVMTemplate(context.Background(), service, lifecycle, request.TemplateID)
+	output, err := deleteVMTemplate(operationContext(ctx), service, lifecycle, request.TemplateID)
 	if err != nil {
 		return socketResponse{Error: err.Error()}
 	}

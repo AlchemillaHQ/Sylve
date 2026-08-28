@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/go-hclog"
@@ -43,6 +44,15 @@ type clusterRaftTestNode struct {
 	transport *raft.InmemTransport
 	raft      *raft.Raft
 	service   *Service
+}
+
+func newOpenTestMutationGate(t *testing.T) *MutationGate {
+	t.Helper()
+	gate := NewMutationGate()
+	if err := gate.Open(); err != nil {
+		t.Fatal(err)
+	}
+	return gate
 }
 
 func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clusterRaftTestNode {
@@ -79,11 +89,15 @@ func newClusterRaftTestNode(t *testing.T, id string, migrateModels ...any) *clus
 		transport: transport,
 		raft:      r,
 		service: &Service{
-			DB:       db,
-			Raft:     r,
-			NodeID:   id,
-			raftFSM:  fsm,
-			stateFSM: fsm,
+			DB:           db,
+			Raft:         r,
+			NodeID:       id,
+			raftFSM:      fsm,
+			stateFSM:     fsm,
+			mutationGate: newOpenTestMutationGate(t),
+			joinVersionForNode: func(context.Context, raft.Server, string) (string, error) {
+				return cmd.Version, nil
+			},
 			backupTargetValidator: func(context.Context, *clusterModels.BackupTarget) error {
 				return nil
 			},

@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -15,6 +16,15 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/hashicorp/raft"
 )
+
+func TestIntegrationFencedLeaderSkipsBackupJobRebindReconciliation(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	leader.service.mutationGate.Close()
+	if err := leader.service.reconcilePendingBackupJobRunnerRebinds(context.Background()); !errors.Is(err, ErrNodeLeaveFenced) {
+		t.Fatalf("reconcile error=%v", err)
+	}
+}
 
 func applyBackupJobRebindTestLeaderCommand(
 	t *testing.T,

@@ -49,6 +49,11 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		{path: "/api/auth/passkeys/register/finish", want: true},
 		{path: "/api/cluster", want: true},
 		{path: "/api/cluster/join", want: true},
+		{path: "/api/cluster/remove-node", want: false},
+		{path: "/api/cluster/remove-node/force", want: false},
+		{path: "/api/cluster/reset-node", want: false},
+		{path: "/api/cluster/reset-node/force", want: false},
+		{path: "/api/cluster/remove-node/force/extra", want: true},
 		{path: "/api/cluster/backups/jobs", want: false},
 		{path: "/api/dynamic-dns/entries", want: true},
 		{path: "/api/certificates", want: true},
@@ -65,6 +70,40 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		if got := shouldRedactAuditPayload(tc.path); got != tc.want {
 			t.Fatalf("path=%s expected=%v got=%v", tc.path, tc.want, got)
 		}
+	}
+}
+
+func TestClusterLifecycleAuditSanitizesOnlySecrets(t *testing.T) {
+	payload := sanitizeAuditPayloadForPath(
+		"/api/cluster/remove-node/force",
+		map[string]interface{}{
+			"nodeId":                 "node-2",
+			"leaveId":                "leave-1",
+			"phase":                  "removing",
+			"targetExternallyFenced": true,
+			"clusterKey":             "secret-key",
+			"nested": map[string]interface{}{
+				"kind":  "backup_job",
+				"id":    "7",
+				"role":  "runner",
+				"state": "running",
+				"token": "secret-token",
+			},
+		},
+	)
+	result, ok := payload.(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected payload type: %T", payload)
+	}
+	if result["nodeId"] != "node-2" || result["leaveId"] != "leave-1" || result["phase"] != "removing" {
+		t.Fatalf("safe lifecycle fields were lost: %#v", result)
+	}
+	if result["clusterKey"] != "[REDACTED]" {
+		t.Fatalf("cluster key was not redacted: %#v", result)
+	}
+	nested, ok := result["nested"].(map[string]interface{})
+	if !ok || nested["kind"] != "backup_job" || nested["token"] != "[REDACTED]" {
+		t.Fatalf("nested lifecycle fields were not sanitized: %#v", result)
 	}
 }
 

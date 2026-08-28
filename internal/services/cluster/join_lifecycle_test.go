@@ -24,7 +24,7 @@ func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
-	service := &Service{DB: db, NodeID: "joining-node"}
+	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
 	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
 		NodeID: "joining-node", GuestType: clusterModels.ReplicationGuestTypeVM,
 		GuestID: 42, RecordID: 7, Name: "vm-42",
@@ -56,7 +56,7 @@ func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 		t.Fatalf("persisted inventory digest = %s, want %s", persistedReport.Digest, report.Digest)
 	}
 
-	restarted := &Service{DB: db, NodeID: "joining-node"}
+	restarted := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
 	status, err := restarted.JoinStatus()
 	if err != nil {
 		t.Fatalf("join status after restart: %v", err)
@@ -109,7 +109,7 @@ func TestSubmitJoinIntentKeepsRetryableTransportFailure(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
-	service := &Service{DB: db, NodeID: "joining-node"}
+	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
 	request := JoinAdmissionRequest{
 		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
 		Inventory: BuildGuestIdentityInventoryReport(nil),

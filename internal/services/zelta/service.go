@@ -126,14 +126,17 @@ const (
 )
 
 type Service struct {
-	DB          *gorm.DB
-	TelemetryDB *gorm.DB
-	Cluster     *cluster.Service
-	Jail        jailServiceInterfaces.JailServiceInterface
-	Network     networkServiceInterfaces.NetworkServiceInterface
-	VM          libvirtServiceInterfaces.LibvirtServiceInterface
-	GZFS        *gzfs.Client
-	startedAt   time.Time
+	DB           *gorm.DB
+	TelemetryDB  *gorm.DB
+	Cluster      *cluster.Service
+	Jail         jailServiceInterfaces.JailServiceInterface
+	Network      networkServiceInterfaces.NetworkServiceInterface
+	VM           libvirtServiceInterfaces.LibvirtServiceInterface
+	GZFS         *gzfs.Client
+	startedAt    time.Time
+	mutationGate interface {
+		EnterMutation(context.Context) (context.Context, func(), error)
+	}
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -190,6 +193,84 @@ type Service struct {
 	restoreJobRun                     func(context.Context, *clusterModels.BackupJob, string, string) error
 	restoreFromTargetOperationEnqueue func(context.Context, string, any) error
 	restoreFromTargetRun              func(context.Context, *clusterModels.BackupTarget, restoreFromTargetPayload) error
+}
+
+func (s *Service) SetMutationAdmission(gate interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}) {
+	s.mutationGate = gate
+}
+
+func (s *Service) enterMutation(ctx context.Context) (context.Context, func(), error) {
+	if s == nil || s.mutationGate == nil {
+		return ctx, func() {}, nil
+	}
+	return s.mutationGate.EnterMutation(ctx)
+}
+
+func (s *Service) withMutation(ctx context.Context, operation func(context.Context) error) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	return operation(admittedCtx)
+}
+
+func (s *Service) jailActionContext(ctx context.Context, ctID int, action string) error {
+	if contextual, ok := s.Jail.(interface {
+		JailActionContext(context.Context, int, string) error
+	}); ok {
+		return contextual.JailActionContext(ctx, ctID, action)
+	}
+	return s.Jail.JailAction(ctID, action)
+}
+
+func (s *Service) jailActionForReplicationContext(
+	ctx context.Context,
+	ctID int,
+	action string,
+	transitionRunID string,
+) error {
+	if contextual, ok := s.Jail.(interface {
+		JailActionForReplicationContext(context.Context, int, string, string) error
+	}); ok {
+		return contextual.JailActionForReplicationContext(ctx, ctID, action, transitionRunID)
+	}
+	if transition, ok := s.Jail.(interface {
+		JailActionForReplication(int, string, string) error
+	}); ok {
+		return transition.JailActionForReplication(ctID, action, transitionRunID)
+	}
+	return fmt.Errorf("jail_replication_transition_action_unavailable")
+}
+
+func (s *Service) vmActionContext(ctx context.Context, vm vmModels.VM, action string) error {
+	if contextual, ok := s.VM.(interface {
+		LvVMActionContext(context.Context, vmModels.VM, string) error
+	}); ok {
+		return contextual.LvVMActionContext(ctx, vm, action)
+	}
+	return s.VM.LvVMAction(vm, action)
+}
+
+func (s *Service) vmActionForReplicationContext(
+	ctx context.Context,
+	vm vmModels.VM,
+	action string,
+	transitionRunID string,
+) error {
+	if contextual, ok := s.VM.(interface {
+		LvVMActionForReplicationContext(context.Context, vmModels.VM, string, string) error
+	}); ok {
+		return contextual.LvVMActionForReplicationContext(ctx, vm, action, transitionRunID)
+	}
+	if transition, ok := s.VM.(interface {
+		LvVMActionForReplication(vmModels.VM, string, string) error
+	}); ok {
+		return transition.LvVMActionForReplication(vm, action, transitionRunID)
+	}
+	return fmt.Errorf("vm_replication_transition_action_unavailable")
 }
 
 type BackupEventProgress struct {
@@ -351,6 +432,12 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 
 func (s *Service) RegisterJobs() {
 	db.QueueRegisterJSON(backupJobQueueName, func(ctx context.Context, payload backupJobPayload) (retErr error) {
+		admittedCtx, release, err := s.enterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
 		if payload.JobID == 0 {
 			logger.L.Warn().Msg("queued_backup_job_invalid_payload_job_id")
 			return nil
@@ -541,22 +628,22 @@ func (s *Service) Run(ctx context.Context) {
 }
 
 func (s *Service) StartBackupScheduler(ctx context.Context) {
-	if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_ssh_keys")
-	}
-
-	if err := s.ReconcileEncryptionKeys(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_encryption_keys")
-	}
-
-	s.AutoDiscoverAndRegisterKeys(ctx)
-
-	if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
-	}
-	if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
-		logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability")
-	}
+	_ = s.withMutation(ctx, func(ctx context.Context) error {
+		if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_ssh_keys")
+		}
+		if err := s.ReconcileEncryptionKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_encryption_keys")
+		}
+		s.AutoDiscoverAndRegisterKeys(ctx)
+		if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_cleanup_stale_backup_events")
+		}
+		if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+			logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability")
+		}
+		return nil
+	})
 
 	ticker := time.NewTicker(30 * time.Second)
 	cleanupTicker := time.NewTicker(5 * time.Minute)
@@ -572,24 +659,33 @@ func (s *Service) StartBackupScheduler(ctx context.Context) {
 				logger.L.Warn().Err(err).Msg("backup_scheduler_tick_failed")
 			}
 		case <-cleanupTicker.C:
-			if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
-				logger.L.Warn().Err(err).Msg("periodic_backup_target_ssh_key_reconcile_failed")
-			}
-			if err := s.ReconcileEncryptionKeys(); err != nil {
-				logger.L.Warn().Err(err).Msg("periodic_encryption_key_reconcile_failed")
-			}
-			s.AutoDiscoverAndRegisterKeys(ctx)
-			if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
-				logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")
-			}
-			if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
-				logger.L.Warn().Err(err).Msg("periodic_restore_observability_reconcile_failed")
-			}
+			_ = s.withMutation(ctx, func(ctx context.Context) error {
+				if err := s.ReconcileBackupTargetSSHKeys(); err != nil {
+					logger.L.Warn().Err(err).Msg("periodic_backup_target_ssh_key_reconcile_failed")
+				}
+				if err := s.ReconcileEncryptionKeys(); err != nil {
+					logger.L.Warn().Err(err).Msg("periodic_encryption_key_reconcile_failed")
+				}
+				s.AutoDiscoverAndRegisterKeys(ctx)
+				if err := s.CleanupStaleEvents(ctx, 15*time.Minute); err != nil {
+					logger.L.Warn().Err(err).Msg("periodic_stale_event_cleanup_failed")
+				}
+				if err := s.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+					logger.L.Warn().Err(err).Msg("periodic_restore_observability_reconcile_failed")
+				}
+				return nil
+			})
 		}
 	}
 }
 
 func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if s.DB == nil {
 		return nil
 	}
@@ -785,6 +881,12 @@ func (s *Service) runBackupJobWithToken(
 	job *clusterModels.BackupJob,
 	operationToken string,
 ) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if job == nil || job.ID == 0 {
 		return fmt.Errorf("backup_job_required")
 	}
@@ -1202,7 +1304,7 @@ func (s *Service) runBackupJobCore(
 		}
 	}
 
-	guestRestore, guestStoppedByBackup, quiesceErr := s.quiesceBackupGuest(job, vmRID)
+	guestRestore, guestStoppedByBackup, quiesceErr := s.quiesceBackupGuestContext(ctx, job, vmRID)
 	if quiesceErr != nil {
 		runErr = quiesceErr
 		output = appendOutput(output, runErr.Error())
@@ -1960,10 +2062,22 @@ func datasetWithinAnyRoot(dataset string, roots []string) bool {
 }
 
 func (s *Service) stopVMIfPresent(rid uint) error {
-	return s.stopVMIfPresentForTransition(rid, "")
+	return s.stopVMIfPresentContext(context.Background(), rid)
 }
 
 func (s *Service) stopVMIfPresentForTransition(rid uint, transitionRunID string) error {
+	return s.stopVMIfPresentForTransitionContext(context.Background(), rid, transitionRunID)
+}
+
+func (s *Service) stopVMIfPresentContext(ctx context.Context, rid uint) error {
+	return s.stopVMIfPresentForTransitionContext(ctx, rid, "")
+}
+
+func (s *Service) stopVMIfPresentForTransitionContext(
+	ctx context.Context,
+	rid uint,
+	transitionRunID string,
+) error {
 	if rid == 0 || s.VM == nil {
 		return nil
 	}
@@ -1990,13 +2104,9 @@ func (s *Service) stopVMIfPresentForTransition(rid uint, transitionRunID string)
 	transitionRunID = strings.TrimSpace(transitionRunID)
 	var stopErr error
 	if transitionRunID == "" {
-		stopErr = s.VM.LvVMAction(*vm, "stop")
-	} else if transitionVM, ok := s.VM.(interface {
-		LvVMActionForReplication(vmModels.VM, string, string) error
-	}); ok {
-		stopErr = transitionVM.LvVMActionForReplication(*vm, "stop", transitionRunID)
+		stopErr = s.vmActionContext(ctx, *vm, "stop")
 	} else {
-		return fmt.Errorf("vm_replication_transition_action_unavailable")
+		stopErr = s.vmActionForReplicationContext(ctx, *vm, "stop", transitionRunID)
 	}
 	if stopErr != nil {
 		lower := strings.ToLower(stopErr.Error())
@@ -2028,6 +2138,10 @@ func (s *Service) stopVMIfPresentForTransition(rid uint, transitionRunID string)
 }
 
 func (s *Service) startVMIfPresent(rid uint) error {
+	return s.startVMIfPresentContext(context.Background(), rid)
+}
+
+func (s *Service) startVMIfPresentContext(ctx context.Context, rid uint) error {
 	if rid == 0 || s.VM == nil {
 		return nil
 	}
@@ -2040,7 +2154,7 @@ func (s *Service) startVMIfPresent(rid uint) error {
 		return nil
 	}
 
-	return s.VM.LvVMAction(*vm, "start")
+	return s.vmActionContext(ctx, *vm, "start")
 }
 
 func isVMDomainNotFoundError(err error) bool {

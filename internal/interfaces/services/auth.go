@@ -17,11 +17,12 @@ import (
 )
 
 type CustomClaims struct {
-	UserID   uint   `json:"userId"`
-	Username string `json:"username"`
-	AuthType string `json:"authType"`
-	TokenUse string `json:"tokenUse,omitempty"`
-	Admin    bool   `json:"admin,omitempty"`
+	UserID       uint   `json:"userId"`
+	Username     string `json:"username"`
+	AuthType     string `json:"authType"`
+	TokenUse     string `json:"tokenUse,omitempty"`
+	Admin        bool   `json:"admin,omitempty"`
+	IssuerNodeID string `json:"issuerNodeId,omitempty"`
 }
 
 type ScopedValidationResult struct {

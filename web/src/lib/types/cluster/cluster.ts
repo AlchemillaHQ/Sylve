@@ -43,6 +43,16 @@ export const ClusterJoinStatusSchema = z.object({
 	lastError: z.string().optional()
 });
 
+export const ClusterLeaveStatusSchema = z.object({
+	enabled: z.boolean(),
+	leaveId: z.string(),
+	phase: z.string(),
+	leaderIp: z.string(),
+	lastError: z.string(),
+	attempts: z.number().int().nonnegative(),
+	localNodeId: z.string()
+});
+
 export const ClusterNodeSchema = z.object({
 	id: z.number(),
 	nodeUUID: z.string(),
@@ -86,6 +96,7 @@ export type Cluster = z.infer<typeof ClusterSchema>;
 export type RaftNode = z.infer<typeof RaftNodeSchema>;
 export type ClusterDetails = z.infer<typeof ClusterDetailsSchema>;
 export type ClusterJoinStatus = z.infer<typeof ClusterJoinStatusSchema>;
+export type ClusterLeaveStatus = z.infer<typeof ClusterLeaveStatusSchema>;
 export type ClusterNode = z.infer<typeof ClusterNodeSchema>;
 export type NodeResource = z.infer<typeof NodeResourceSchema>;
 export type PeerRemovalDependency = z.infer<typeof PeerRemovalDependencySchema>;

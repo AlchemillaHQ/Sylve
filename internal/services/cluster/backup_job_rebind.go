@@ -631,6 +631,11 @@ func (s *Service) reconcilePendingBackupJobRunnerRebinds(ctx context.Context) er
 	if s == nil || s.DB == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
 		return nil
 	}
+	ctx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("backup_job_runner_rebind_leader_barrier_failed: %w", err)
 	}
@@ -763,6 +768,9 @@ func (s *Service) StartBackupJobRunnerRebindReconciler(ctx context.Context) {
 		reconcileCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		if err := s.reconcilePendingBackupJobRunnerRebinds(reconcileCtx); err != nil {
+			if errors.Is(err, ErrNodeLeaveFenced) {
+				return
+			}
 			logger.L.Warn().Err(err).Msg("backup_job_runner_rebind_reconciliation_pending")
 		}
 	}

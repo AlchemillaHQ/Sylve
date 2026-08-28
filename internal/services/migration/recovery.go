@@ -208,6 +208,13 @@ func (s *Service) ReconcileMigrationOperations(ctx context.Context) error {
 	if s == nil || s.DB == nil || s.Cluster == nil || s.WorkloadGuard == nil {
 		return fmt.Errorf("migration_reconciliation_unavailable")
 	}
+	baseCtx := ctx
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID == "" {
 		return fmt.Errorf("local_node_id_unavailable")
@@ -225,7 +232,12 @@ func (s *Service) ReconcileMigrationOperations(ctx context.Context) error {
 			continue
 		}
 		go func() {
-			if err := s.reconcileMigrationOperation(ctx, operation); err != nil {
+			operationCtx, operationRelease, admissionErr := s.enterMutation(baseCtx)
+			if admissionErr != nil {
+				return
+			}
+			defer operationRelease()
+			if err := s.reconcileMigrationOperation(operationCtx, operation); err != nil {
 				// The lifecycle worker may have claimed the task after the active
 				// check above. Its execution guard is authoritative; this is an
 				// expected deferral, not a recovery failure.

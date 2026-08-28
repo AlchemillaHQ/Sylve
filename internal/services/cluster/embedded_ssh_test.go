@@ -88,7 +88,15 @@ func TestExitCodeFromErr(t *testing.T) {
 
 func TestEmbeddedSSHPublicKeyCallback(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &clusterModels.ClusterSSHIdentity{})
-	svc := &Service{DB: db}
+	svc := &Service{
+		DB: db,
+		raftMembershipForNode: func(nodeID string) (RaftMembership, error) {
+			if nodeID != "node-a" {
+				return RaftMembership{}, fmt.Errorf("not_current")
+			}
+			return RaftMembership{NodeID: nodeID, Suffrage: "voter"}, nil
+		},
+	}
 
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

@@ -850,7 +850,7 @@ func (s *Service) phaseStopSource(ctx context.Context, mp *migrationPayload, tas
 			}
 			return state != goLibvirt.DomainShutoff, nil
 		}
-		stopSource = func() error { return s.Libvirt.PerformAction(task.GuestID, "stop") }
+		stopSource = func() error { return s.Libvirt.PerformActionContext(ctx, task.GuestID, "stop") }
 	case taskModels.GuestTypeJail:
 		if s.Jail == nil {
 			return fmt.Errorf("jail_runtime_service_unavailable")
@@ -862,7 +862,7 @@ func (s *Service) phaseStopSource(ctx context.Context, mp *migrationPayload, tas
 			}
 			return active, nil
 		}
-		stopSource = func() error { return s.Jail.JailAction(int(task.GuestID), "stop") }
+		stopSource = func() error { return s.Jail.JailActionContext(ctx, int(task.GuestID), "stop") }
 	default:
 		return fmt.Errorf("unsupported_guest_type: %s", task.GuestType)
 	}

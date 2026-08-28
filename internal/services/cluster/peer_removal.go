@@ -75,6 +75,10 @@ func appendPeerRemovalDependency(
 }
 
 func (s *Service) peerRemovalDependencies(nodeID string) ([]PeerRemovalDependency, error) {
+	return s.replicatedPeerRemovalDependencies(nodeID)
+}
+
+func (s *Service) replicatedPeerRemovalDependencies(nodeID string) ([]PeerRemovalDependency, error) {
 	nodeID = strings.TrimSpace(nodeID)
 	if s == nil || s.DB == nil {
 		return nil, fmt.Errorf("cluster_service_unavailable")
@@ -84,36 +88,6 @@ func (s *Service) peerRemovalDependencies(nodeID string) ([]PeerRemovalDependenc
 	}
 
 	dependencies := make([]PeerRemovalDependency, 0)
-
-	if s.DB.Migrator().HasTable(&clusterModels.ClusterNode{}) {
-		var nodes []clusterModels.ClusterNode
-		if err := s.DB.Where("node_uuid = ?", nodeID).Find(&nodes).Error; err != nil {
-			return nil, fmt.Errorf("scan_peer_guest_dependencies: %w", err)
-		}
-		guestIDs := make(map[uint]struct{})
-		for _, node := range nodes {
-			for _, guestID := range node.GuestIDs {
-				if guestID != 0 {
-					guestIDs[guestID] = struct{}{}
-				}
-			}
-		}
-		sortedGuestIDs := make([]uint, 0, len(guestIDs))
-		for guestID := range guestIDs {
-			sortedGuestIDs = append(sortedGuestIDs, guestID)
-		}
-		sort.Slice(sortedGuestIDs, func(i, j int) bool { return sortedGuestIDs[i] < sortedGuestIDs[j] })
-		for _, guestID := range sortedGuestIDs {
-			appendPeerRemovalDependency(
-				&dependencies,
-				PeerRemovalDependencyGuest,
-				guestID,
-				"",
-				"registered",
-				"",
-			)
-		}
-	}
 
 	if s.DB.Migrator().HasTable(&clusterModels.BackupJob{}) {
 		var jobs []clusterModels.BackupJob

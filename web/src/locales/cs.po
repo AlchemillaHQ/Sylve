@@ -1034,6 +1034,7 @@ msgstr "Resetovat"
 
 #: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
@@ -1291,14 +1292,6 @@ msgstr "Vytvořit klastr"
 msgid "Join Cluster"
 msgstr "Přidat do klastru"
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Leader cannot exit when followers are present"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Failed to reset cluster"
-msgstr "Klastr se nepodařilo resetovat"
-
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Note deleted"
 msgstr "Poznámka smazána"
@@ -1520,10 +1513,6 @@ msgid "Cluster Key is required"
 msgstr "Je zapotřebí klíč klastru"
 
 #: src/lib/components/custom/Cluster/Join.svelte
-msgid "Unable to join cluster"
-msgstr "Nebylo možné se přidat do clusteru"
-
-#: src/lib/components/custom/Cluster/Join.svelte
 msgid "No Node ID available"
 msgstr ""
 
@@ -1662,6 +1651,8 @@ msgstr "Opravdu to chcete?"
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+#: src/lib/components/custom/Cluster/ForceReset.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -8528,10 +8519,6 @@ msgstr ""
 msgid "Unused"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/Join.svelte
-msgid "Version mismatch: this node and the leader must run the same Sylve version"
-msgstr ""
-
 #: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Failed to import storage"
 msgstr ""
@@ -9957,6 +9944,7 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Charts/LineBrush/Single.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
@@ -16938,10 +16926,6 @@ msgstr ""
 msgid "This action cannot be undone. It permanently removes the managed Unix account and its home directory, along with the Sylve user record."
 msgstr ""
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Cluster reset"
-msgstr ""
-
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Unable to load cluster key"
 msgstr ""
@@ -17436,10 +17420,6 @@ msgid "Node <0/> will no longer participate in quorum. This action cannot be und
 msgstr ""
 
 #: src/routes/datacenter/cluster/+page.svelte
-msgid "Reset Cluster State"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
 msgid "This will reset all clustered data and configuration on THIS node, including all notes, backup targets, jobs and events. This action cannot be undone."
 msgstr ""
 
@@ -17597,19 +17577,229 @@ msgstr ""
 msgid "Password changed. Please sign in again."
 msgstr ""
 
-#. 0: joinStatus.phase.replaceAll('_', ' ')
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Joining cluster: {0} <0/>"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Retrying automatically"
-msgstr ""
-
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Join stopped"
-msgstr ""
-
 #: src/lib/components/custom/Cluster/Join.svelte
 msgid "Cluster join started; state verification will continue in the background"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Leave Cluster"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Force Local Reset"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Remove Node"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Cluster - Force Remove Node"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Leave / Reset Cluster"
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster leave completed"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Raft cannot commit removal without quorum"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Failed to force remove peer"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Peer membership force removed; target cleanup is not confirmed"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Force Remove Peer"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "This removes only Raft membership for <0/>."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "The target is not contacted or cleaned. Force removal cannot bypass missing Raft quorum."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "The node still owns cluster resources"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "The target's power, storage, or network is externally fenced"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Removing…"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
+msgid "Force Remove Membership"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Local cluster state reset"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Force Local Reset"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "This only resets this machine."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "It does not remove this node from surviving Raft membership. Keep duplicate workloads and shared storage isolated."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Type the local Node ID to confirm"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Remote membership is repaired or will be repaired separately"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Duplicate workloads and shared storage are externally fenced"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Resetting…"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "View Cluster Join Progress"
+msgstr ""
+
+#. 0: phase.label
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Cluster Join: {0}"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Cluster State"
+msgstr ""
+
+#. 0: status.appliedIndex.toLocaleString(); 1: status.targetIndex?.toLocaleString()
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Synchronized {0} of {1} entries"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Retrying Automatically"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Action Required"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Technical Details"
+msgstr ""
+
+#. 0: status.attempts.toLocaleString()
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Attempt {0}"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "View Cluster Leave Progress"
+msgstr ""
+
+#. 0: phase.label
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Cluster Leave: {0}"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Attention Required"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Retry Leave"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/LeaveProgress.svelte
+msgid "Force Local Reset…"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Lifecycle Task"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "State Repair"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "<0/> Removing node safely"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "The target is fencing local work and leaving Raft."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "The target was unreachable before removal started."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Fix connectivity and retry, or externally fence the target before force removal."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "The removal outcome is uncertain."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Do not force remove or immediately retry. Check the target's leave status first."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Membership was removed, but target cleanup is unconfirmed."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Keep the target isolated and inspect its local leave status before using it again."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "The target is still running active work."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Close open consoles or wait for running operations on the target, then retry."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Sylve could not verify every member version."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Make sure the remaining cluster members are online and reachable, then retry."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Every participating node must run the same Sylve version."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Upgrade the reported member and retry."
+msgstr ""
+
+#: src/lib/components/custom/Cluster/RemovePeer.svelte
+msgid "Force Remove…"
 msgstr ""

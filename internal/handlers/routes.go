@@ -122,6 +122,7 @@ func RegisterRoutes(r *gin.Engine,
 	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
+	api.Use(middleware.ClusterMutationAdmission(clusterService))
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
 	publicAuth := api.Group("/auth")
@@ -861,7 +862,8 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
-		intraCluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
+		intraCluster.POST("/leave", clusterHandlers.StartLeaveInternal(clusterService))
+		intraCluster.POST("/remove-peer", clusterHandlers.RemoveMembershipInternal(clusterService))
 	}
 
 	clusterAdmission := api.Group("/cluster")
@@ -869,6 +871,7 @@ func RegisterRoutes(r *gin.Engine,
 	clusterAdmission.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	clusterAdmission.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	clusterAdmission.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+	clusterAdmission.POST("/membership-status", clusterHandlers.MembershipStatus(clusterService))
 
 	clusterLocal := api.Group("/cluster")
 	clusterLocal.Use(middleware.EnsureAuthenticated(authService))
@@ -879,10 +882,13 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
 		clusterLocal.GET("/join-status", clusterHandlers.GetJoinStatus(clusterService))
+		clusterLocal.GET("/leave-status", clusterHandlers.GetLeaveStatus(clusterService))
 		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
 		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
-		clusterLocal.POST("/remove-node", clusterHandlers.RemovePeer(clusterService))
+		clusterLocal.DELETE("/reset-node/force", clusterHandlers.ForceResetRaftNode(clusterService))
+		clusterLocal.POST("/remove-node", clusterHandlers.RemoveNode(clusterService))
+		clusterLocal.POST("/remove-node/force", clusterHandlers.ForceRemoveNode(clusterService))
 	}
 
 	clusterAdmin := api.Group("/cluster")

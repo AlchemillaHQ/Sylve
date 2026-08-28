@@ -496,7 +496,7 @@ type targetMigrationImportOperations struct {
 	RuntimeState           func(uint) (targetMigrationRuntimeState, error)
 	Import                 func(context.Context, uint, []string) ([]string, error)
 	SetIntentionalStop     func(uint, bool) error
-	Start                  func(uint) error
+	Start                  func(context.Context, uint) error
 }
 
 type targetMigrationGuestLockEntry struct {
@@ -696,7 +696,7 @@ func targetMigrationImportHandler(ops targetMigrationImportOperations) gin.Handl
 			return
 		}
 
-		if err := ops.Start(req.GuestID); err != nil {
+		if err := ops.Start(c.Request.Context(), req.GuestID); err != nil {
 			// Starting a guest and delivering the HTTP response are not atomic.
 			// If the exact guest is active under the same still-applied cutover
 			// guard, a retry is complete rather than a second destructive import.
@@ -826,7 +826,9 @@ func IntraClusterImportVM(
 			}
 			return libvirtService.WriteVMJson(guestID)
 		}
-		ops.Start = func(guestID uint) error { return libvirtService.PerformAction(guestID, "start") }
+		ops.Start = func(ctx context.Context, guestID uint) error {
+			return libvirtService.PerformActionContext(ctx, guestID, "start")
+		}
 	}
 	return targetMigrationImportHandler(ops)
 }
@@ -1011,7 +1013,9 @@ func IntraClusterImportJail(
 			}
 			return jailService.WriteJailJSON(guestID)
 		}
-		ops.Start = func(guestID uint) error { return jailService.JailAction(int(guestID), "start") }
+		ops.Start = func(ctx context.Context, guestID uint) error {
+			return jailService.JailActionContext(ctx, int(guestID), "start")
+		}
 	}
 	return targetMigrationImportHandler(ops)
 }

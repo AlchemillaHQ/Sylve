@@ -91,8 +91,8 @@ func (s *Service) SaveJoinIntent(
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("cluster_service_not_initialized")
 	}
-	s.joinLifecycleMu.Lock()
-	defer s.joinLifecycleMu.Unlock()
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 	leaderIP = strings.TrimSpace(leaderIP)
 	if net.ParseIP(leaderIP) == nil {
 		return fmt.Errorf("invalid_leader_ip")
@@ -382,8 +382,15 @@ func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResu
 		result.Err = fmt.Errorf("cluster_service_not_initialized")
 		return result
 	}
-	s.joinLifecycleMu.Lock()
-	defer s.joinLifecycleMu.Unlock()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		result.Err = err
+		return result
+	}
+	defer release()
+	ctx = admittedCtx
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 	var record clusterModels.Cluster
 	if err := s.DB.First(&record).Error; err != nil {
 		result.Err = err

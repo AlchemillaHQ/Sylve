@@ -58,8 +58,11 @@ type Service struct {
 	torrentClient    torrentRuntime
 	newTorrentClient torrentRuntimeFactory
 
-	VMService   libvirtServiceInterfaces.LibvirtServiceInterface
-	JailService jailServiceInterfaces.JailServiceInterface
+	VMService    libvirtServiceInterfaces.LibvirtServiceInterface
+	JailService  jailServiceInterfaces.JailServiceInterface
+	mutationGate interface {
+		EnterMutation(context.Context) (context.Context, func(), error)
+	}
 
 	wolStartVMFn   func(vm vmModels.VM) error
 	wolStartJailFn func(ctid int) error
@@ -100,6 +103,12 @@ type Service struct {
 	uploadNowFn        func() time.Time
 	uploadHostnameFn   func() (string, error)
 	uploadStagingDirFn func() string
+}
+
+func (s *Service) SetMutationAdmission(gate interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}) {
+	s.mutationGate = gate
 }
 
 func NewUtilitiesService(

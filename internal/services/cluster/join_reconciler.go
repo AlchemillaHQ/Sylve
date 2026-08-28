@@ -220,6 +220,12 @@ func (s *Service) reconcileLocalJoinIntent(ctx context.Context) {
 }
 
 func (s *Service) runJoinReconciliation(ctx context.Context) {
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return
+	}
+	defer release()
+	ctx = admittedCtx
 	s.reconcileLocalJoinIntent(ctx)
 	s.reconcileLeaderPendingJoins(ctx)
 }

@@ -542,6 +542,9 @@ func (s *Service) repairReplicatedStateMemberLocked(
 		}
 	}()
 
+	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
+		return ReplicatedStateDigest{}, err
+	}
 	if err := s.Raft.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
 		return ReplicatedStateDigest{}, fmt.Errorf("replicated_state_repair_remove_failed: %w", err)
 	}
@@ -552,6 +555,9 @@ func (s *Service) repairReplicatedStateMemberLocked(
 	}); err != nil {
 		return ReplicatedStateDigest{}, fmt.Errorf("replicated_state_repair_reset_failed: %w", err)
 	}
+	if err := s.checkUniformVersionsLocked(ctx, &server, ""); err != nil {
+		return ReplicatedStateDigest{}, err
+	}
 	if err := s.Raft.AddNonvoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return ReplicatedStateDigest{}, fmt.Errorf("replicated_state_repair_add_nonvoter_failed: %w", err)
 	}
@@ -561,6 +567,9 @@ func (s *Service) repairReplicatedStateMemberLocked(
 		Suffrage: raft.Nonvoter,
 	}, reference)
 	if err != nil {
+		return verified, err
+	}
+	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return verified, err
 	}
 	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
@@ -583,6 +592,9 @@ func (s *Service) promoteCaughtUpNonvoterLocked(
 ) (ReplicatedStateDigest, error) {
 	verified, err := s.waitForMemberDigest(ctx, server, reference)
 	if err != nil {
+		return verified, err
+	}
+	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return verified, err
 	}
 	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
@@ -623,6 +635,9 @@ func (s *Service) promoteVerifiedNonvoterLocked(
 			reference.Digest,
 			verified.Digest,
 		)
+	}
+	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
+		return verified, err
 	}
 	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
 		return verified, fmt.Errorf("replicated_state_promote_nonvoter_failed: %w", err)

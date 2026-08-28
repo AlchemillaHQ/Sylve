@@ -94,9 +94,13 @@ func (s *Service) embeddedSSHPublicKeyCallback(conn ssh.ConnMetadata, presentedK
 		}
 
 		if bytes.Equal(parsedKey.Marshal(), presentedKey.Marshal()) {
+			nodeID := strings.TrimSpace(identity.NodeUUID)
+			if _, err := s.ResolveCurrentRaftMember(nodeID); err != nil {
+				return nil, fmt.Errorf("cluster_member_required: %w", err)
+			}
 			return &ssh.Permissions{
 				Extensions: map[string]string{
-					"node_uuid": identity.NodeUUID,
+					"node_uuid": nodeID,
 				},
 			}, nil
 		}
@@ -123,10 +127,14 @@ func (s *Service) embeddedSSHAcceptLoop(ctx context.Context, listener net.Listen
 func (s *Service) handleEmbeddedSSHConn(ctx context.Context, rawConn net.Conn, serverConfig *ssh.ServerConfig) {
 	defer rawConn.Close()
 
-	_, chans, reqs, err := ssh.NewServerConn(rawConn, serverConfig)
+	serverConn, chans, reqs, err := ssh.NewServerConn(rawConn, serverConfig)
 	if err != nil {
 		logger.L.Warn().Err(err).Msg("embedded_ssh_handshake_failed")
 		return
+	}
+	nodeID := ""
+	if serverConn.Permissions != nil {
+		nodeID = strings.TrimSpace(serverConn.Permissions.Extensions["node_uuid"])
 	}
 	go ssh.DiscardRequests(reqs)
 
@@ -142,7 +150,7 @@ func (s *Service) handleEmbeddedSSHConn(ctx context.Context, rawConn net.Conn, s
 			continue
 		}
 
-		go s.handleEmbeddedSSHSession(ctx, channel, requests)
+		go s.handleEmbeddedSSHSession(ctx, nodeID, channel, requests)
 	}
 }
 
@@ -191,7 +199,12 @@ func exitCodeFromErr(err error) uint32 {
 	return 1
 }
 
-func (s *Service) handleEmbeddedSSHSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request) {
+func (s *Service) handleEmbeddedSSHSession(
+	ctx context.Context,
+	nodeID string,
+	channel ssh.Channel,
+	requests <-chan *ssh.Request,
+) {
 	defer channel.Close()
 
 	execReceived := false
@@ -215,15 +228,25 @@ func (s *Service) handleEmbeddedSSHSession(ctx context.Context, channel ssh.Chan
 				_ = req.Reply(false, nil)
 				return
 			}
+			if _, err := s.ResolveCurrentRaftMember(nodeID); err != nil {
+				_ = req.Reply(false, nil)
+				return
+			}
+			admittedCtx, release, err := s.EnterMutation(ctx)
+			if err != nil {
+				_ = req.Reply(false, nil)
+				return
+			}
 
 			_ = req.Reply(true, nil)
 
-			cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+			cmd := exec.CommandContext(admittedCtx, "/bin/sh", "-c", command)
 			cmd.Stdin = channel
 			cmd.Stdout = channel
 			cmd.Stderr = channel.Stderr()
 
 			runErr := cmd.Run()
+			release()
 			exitCode := exitCodeFromErr(runErr)
 			_, _ = channel.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{Status: exitCode}))
 			return

@@ -209,8 +209,14 @@ func (s *Service) PreflightJoinInventory(
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) (GuestIdentityInventoryReport, error) {
-	s.joinLifecycleMu.Lock()
-	defer s.joinLifecycleMu.Unlock()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return GuestIdentityInventoryReport{}, err
+	}
+	defer release()
+	ctx = admittedCtx
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 
 	combined, _, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	return combined, err
@@ -226,8 +232,14 @@ func (s *Service) StageJoinInventory(
 		NodeIP: strings.TrimSpace(nodeIP),
 		Phase:  JoinPhaseStaged,
 	}
-	s.joinLifecycleMu.Lock()
-	defer s.joinLifecycleMu.Unlock()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return status, err
+	}
+	defer release()
+	ctx = admittedCtx
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 
 	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	if err != nil {
@@ -273,6 +285,10 @@ func (s *Service) StageJoinInventory(
 			status.Suffrage = raftSuffrageName(existingServer.Suffrage)
 			return nil
 		}
+		candidate := raft.Server{ID: serverID, Address: serverAddress, Suffrage: raft.Nonvoter}
+		if err := s.checkUniformVersionsLocked(ctx, &candidate, ""); err != nil {
+			return err
+		}
 
 		s.replicatedStateMu.Lock()
 		defer s.replicatedStateMu.Unlock()
@@ -311,9 +327,15 @@ func (s *Service) finalizeStagedJoin(
 ) error {
 	ctx, cancel := withReplicatedStateTimeout(ctx)
 	defer cancel()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 
-	s.joinLifecycleMu.Lock()
-	defer s.joinLifecycleMu.Unlock()
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 
 	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	if err != nil {
@@ -384,6 +406,9 @@ func (s *Service) finalizeStagedJoin(
 		if server.Suffrage == raft.Voter {
 			verifiedIndex = s.Raft.AppliedIndex()
 			return nil
+		}
+		if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
+			return err
 		}
 		if err := s.checkpointReplicatedStateLocked(); err != nil {
 			return err

@@ -399,7 +399,7 @@ func (s *Service) runRestoreJob(
 				return
 			}
 			if jailRestoreFence.wasRunning && jailSafeToRestart {
-				if restartErr := s.Jail.JailAction(int(jailRestoreFence.guestID), "start"); restartErr != nil {
+				if restartErr := s.jailActionContext(ctx, int(jailRestoreFence.guestID), "start"); restartErr != nil {
 					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
 				}
 			}
@@ -1362,6 +1362,12 @@ func (s *Service) registerRestoreJob() {
 }
 
 func (s *Service) handleRestoreJobQueue(ctx context.Context, payload restoreJobPayload) (retErr error) {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if payload.JobID == 0 {
 		logger.L.Warn().Msg("queued_restore_job_invalid_payload_job_id")
 		return nil

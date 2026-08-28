@@ -122,7 +122,7 @@ func (s *Service) prepareInPlaceJailRestore(ctx context.Context, dataset string)
 		Uint("ct_id", ctID).
 		Str("dataset", dataset).
 		Msg("stopping_jail_before_restore_cutover")
-	if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
+	if err := s.jailActionContext(ctx, int(ctID), "stop"); err != nil {
 		return nil, fmt.Errorf(
 			"restore_jail_stop_failed: dataset=%s ct_id=%d: %w",
 			dataset,
@@ -131,7 +131,7 @@ func (s *Service) prepareInPlaceJailRestore(ctx context.Context, dataset string)
 		)
 	}
 	guard.restart = func() error {
-		return s.Jail.JailAction(int(ctID), "start")
+		return s.jailActionContext(ctx, int(ctID), "start")
 	}
 	if err := s.waitForJailRestoreStopped(quiesceCtx, ctID); err != nil {
 		primary, _ := guard.restoreAfterFailure(err)
@@ -199,6 +199,14 @@ func waitForRestoreJailRetry(ctx context.Context) bool {
 }
 
 func (s *Service) prepareInPlaceVMRestore(vmID uint, dataset string) (*restoreRuntimeGuard, error) {
+	return s.prepareInPlaceVMRestoreContext(context.Background(), vmID, dataset)
+}
+
+func (s *Service) prepareInPlaceVMRestoreContext(
+	ctx context.Context,
+	vmID uint,
+	dataset string,
+) (*restoreRuntimeGuard, error) {
 	dataset = normalizeRestoreDestinationDataset(dataset)
 	if vmID == 0 {
 		return nil, fmt.Errorf("restore_vm_identity_invalid")
@@ -218,11 +226,11 @@ func (s *Service) prepareInPlaceVMRestore(vmID uint, dataset string) (*restoreRu
 	if wasShutOff {
 		return guard, nil
 	}
-	if err := s.stopVMIfPresent(vmID); err != nil {
+	if err := s.stopVMIfPresentContext(ctx, vmID); err != nil {
 		return nil, fmt.Errorf("restore_vm_stop_failed: guest_id=%d: %w", vmID, err)
 	}
 	guard.restart = func() error {
-		return s.startVMIfPresent(vmID)
+		return s.startVMIfPresentContext(ctx, vmID)
 	}
 	return guard, nil
 }

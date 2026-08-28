@@ -10,7 +10,6 @@ package repl
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -392,7 +391,7 @@ func createVM(ctx *Context, request libvirtServiceInterfaces.CreateVMRequest) (v
 		return vmCreateResult{}, fmt.Errorf("vm_service_unavailable")
 	}
 
-	if err := ctx.VirtualMachine.CreateVM(request, context.Background()); err != nil {
+	if err := ctx.VirtualMachine.CreateVM(request, operationContext(ctx)); err != nil {
 		return vmCreateResult{}, fmt.Errorf("failed_to_create_vm: %w", err)
 	}
 	vm, err := ctx.VirtualMachine.GetVMByRID(*request.RID)
@@ -439,7 +438,7 @@ func requestVMAction(ctx *Context, rid uint, action string) (vmActionResult, err
 	}
 
 	task, outcome, err := ctx.Lifecycle.RequestAction(
-		context.Background(), "vm", rid, action, "user", "console",
+		operationContext(ctx), "vm", rid, action, "user", "console",
 	)
 	if err != nil {
 		return vmActionResult{}, fmt.Errorf("failed_to_%s_vm: %w", action, err)
@@ -467,7 +466,7 @@ func attachVMNetwork(ctx *Context, request libvirtServiceInterfaces.NetworkAttac
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
-	network, err := ctx.VirtualMachine.NetworkAttach(request, context.Background())
+	network, err := ctx.VirtualMachine.NetworkAttach(request, operationContext(ctx))
 	if err != nil {
 		return vmNetworkAttachResult{}, fmt.Errorf("failed_to_attach_vm_network: %w", err)
 	}
@@ -509,7 +508,7 @@ func detachVMNetwork(ctx *Context, rid, networkID uint) (vmNetworkDetachResult, 
 	if err := ctx.VirtualMachine.NetworkDetach(libvirtServiceInterfaces.NetworkDetachRequest{
 		RID:       rid,
 		NetworkID: networkID,
-	}, context.Background()); err != nil {
+	}, operationContext(ctx)); err != nil {
 		return vmNetworkDetachResult{}, fmt.Errorf("failed_to_detach_vm_network: %w", err)
 	}
 	retained := []uint{}
@@ -532,7 +531,7 @@ func deleteVM(ctx *Context, rid uint, deleteMACs, deleteRawDisks, deleteVolumes 
 		deleteMACs,
 		deleteRawDisks,
 		deleteVolumes,
-		context.Background(),
+		operationContext(ctx),
 	)
 	if err != nil {
 		return vmDeleteResult{}, fmt.Errorf("failed_to_delete_vm: %w", err)

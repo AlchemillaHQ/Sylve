@@ -915,11 +915,6 @@ func ReplicationEventProgressByID(cS *cluster.Service, zS *zelta.Service) gin.Ha
 
 func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
-			forwardToLeader(c, cS)
-			return
-		}
-
 		var req clusterModels.ClusterSSHIdentity
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -928,6 +923,18 @@ func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 				Error:   err.Error(),
 				Data:    nil,
 			})
+			return
+		}
+		if strings.TrimSpace(req.NodeUUID) == "" ||
+			strings.TrimSpace(req.NodeUUID) != strings.TrimSpace(c.GetString("IssuerNodeID")) {
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_ssh_identity_issuer_mismatch",
+				Error: "cluster_ssh_identity_issuer_mismatch", Data: nil,
+			})
+			return
+		}
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
 			return
 		}
 

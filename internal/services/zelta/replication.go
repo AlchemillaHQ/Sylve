@@ -461,6 +461,12 @@ func (s *Service) registerReplicationJob() {
 }
 
 func (s *Service) handleReplicationJob(ctx context.Context, payload replicationJobPayload) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if payload.PolicyID == 0 {
 		logger.L.Warn().Msg("queued_replication_policy_invalid_payload_discarded")
 		return nil
@@ -506,6 +512,12 @@ func (s *Service) handleReplicationJob(ctx context.Context, payload replicationJ
 
 func (s *Service) registerReplicationFailoverJob() {
 	db.QueueRegisterJSON(replicationFailoverJobQueueName, func(ctx context.Context, payload replicationFailoverJobPayload) error {
+		admittedCtx, release, err := s.enterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
 		if payload.PolicyID == 0 {
 			logger.L.Warn().Msg("queued_failover_invalid_payload_discarded")
 			return nil
@@ -519,7 +531,7 @@ func (s *Service) registerReplicationFailoverJob() {
 			return nil
 		}
 
-		err := s.requestReplicationPolicyFailover(
+		err = s.requestReplicationPolicyFailover(
 			ctx,
 			payload.PolicyID,
 			strings.TrimSpace(payload.TargetNodeID),
@@ -728,30 +740,43 @@ func runReplicationPeriodicLoop(ctx context.Context, interval time.Duration, ope
 	}
 }
 
+func (s *Service) runReplicationMutation(
+	ctx context.Context,
+	message string,
+	operation func(context.Context) error,
+) {
+	err := s.withMutation(ctx, operation)
+	if err == nil || errors.Is(err, clusterService.ErrNodeLeaveFenced) {
+		return
+	}
+	logger.L.Warn().Err(err).Msg(message)
+}
+
 func (s *Service) runReplicationLeaseRenewalLoop(ctx context.Context) {
 	runReplicationPeriodicLoop(ctx, replicationLeaseRenewalInterval, func(ctx context.Context) {
-		if err := s.runReplicationLeaseRenewalTick(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_lease_renewal_tick_failed")
-		}
+		s.runReplicationMutation(ctx, "replication_lease_renewal_tick_failed", s.runReplicationLeaseRenewalTick)
 	})
 }
 
 func (s *Service) runReplicationSelfFenceLoop(ctx context.Context) {
 	runReplicationPeriodicLoop(ctx, replicationSelfFenceInterval, func(ctx context.Context) {
-		if err := s.selfFenceExpiredLeases(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_self_fence_check_failed")
-		}
+		s.runReplicationMutation(ctx, "replication_self_fence_check_failed", s.selfFenceExpiredLeases)
 	})
 }
 
 func (s *Service) runReplicationSchedulingLoop(ctx context.Context) {
 	runReplicationPeriodicLoop(ctx, 5*time.Second, func(ctx context.Context) {
-		if err := s.recoverCrashedReplicationGuests(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_crash_recovery_failed")
-		}
-		if err := s.runReplicationSchedulerTick(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_scheduler_tick_failed")
-		}
+		s.runReplicationMutation(ctx, "replication_scheduling_tick_failed", func(ctx context.Context) error {
+			if !s.replicationStartupIsReady() {
+				if err := s.PrepareReplicationStartup(ctx); err != nil {
+					return err
+				}
+			}
+			if err := s.recoverCrashedReplicationGuests(ctx); err != nil {
+				return err
+			}
+			return s.runReplicationSchedulerTick(ctx)
+		})
 	})
 }
 
@@ -763,25 +788,28 @@ func (s *Service) runReplicationLeaderControlLoop(ctx context.Context) {
 			s.resetForcedPromotionObservations()
 			return
 		}
-		if err := s.runTransitionRecoveryTick(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_transition_recovery_tick_failed")
-		}
-		if err := s.runFailoverControllerTick(ctx); err != nil {
-			logger.L.Warn().Err(err).Msg("replication_failover_tick_failed")
-		}
+		s.runReplicationMutation(ctx, "replication_leader_control_tick_failed", func(ctx context.Context) error {
+			if err := s.runTransitionRecoveryTick(ctx); err != nil {
+				return err
+			}
+			return s.runFailoverControllerTick(ctx)
+		})
 	})
 }
 
 func (s *Service) runReplicationMaintenanceLoop(ctx context.Context) {
 	lastSSHSync := time.Time{}
 	runReplicationPeriodicLoop(ctx, 5*time.Second, func(ctx context.Context) {
-		now := s.now().UTC()
-		if s.Cluster != nil && now.Sub(lastSSHSync) > 30*time.Second {
-			if err := s.Cluster.EnsureAndPublishLocalSSHIdentity(); err != nil {
-				logger.L.Warn().Err(err).Msg("cluster_ssh_identity_sync_failed")
+		s.runReplicationMutation(ctx, "replication_maintenance_tick_failed", func(context.Context) error {
+			now := s.now().UTC()
+			if s.Cluster != nil && now.Sub(lastSSHSync) > 30*time.Second {
+				if err := s.Cluster.EnsureAndPublishLocalSSHIdentity(); err != nil {
+					return err
+				}
+				lastSSHSync = now
 			}
-			lastSSHSync = now
-		}
+			return nil
+		})
 	})
 }
 
@@ -1672,6 +1700,12 @@ func (s *Service) runReplicationSchedulerTickWithHA(
 	ctx context.Context,
 	evaluate replicationPolicyHAEvaluator,
 ) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if s.DB == nil || s.Cluster == nil {
 		return nil
 	}
@@ -2511,6 +2545,12 @@ func (s *Service) runReplicationPolicyWithToken(
 	policy *clusterModels.ReplicationPolicy,
 	operationToken string,
 ) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if policy == nil || policy.ID == 0 {
 		return fmt.Errorf("invalid_policy")
 	}
@@ -8668,15 +8708,9 @@ func (s *Service) activateReplicationJail(
 		return nil
 	}
 	if strings.TrimSpace(transitionRunID) != "" {
-		transitionJail, ok := s.Jail.(interface {
-			JailActionForReplication(int, string, string) error
-		})
-		if !ok {
-			return fmt.Errorf("jail_replication_transition_action_unavailable")
-		}
-		return transitionJail.JailActionForReplication(int(ctID), "start", transitionRunID)
+		return s.jailActionForReplicationContext(ctx, int(ctID), "start", transitionRunID)
 	}
-	return s.Jail.JailAction(int(ctID), "start")
+	return s.jailActionContext(ctx, int(ctID), "start")
 }
 
 func (s *Service) activateReplicationVM(
@@ -8714,7 +8748,7 @@ func (s *Service) activateReplicationVMWithRegistrationRecovery(
 	if running && desiredRunning {
 		return nil
 	}
-	if err := s.stopVMIfPresent(rid); err != nil {
+	if err := s.stopVMIfPresentContext(ctx, rid); err != nil {
 		return err
 	}
 
@@ -8759,15 +8793,9 @@ func (s *Service) activateReplicationVMWithRegistrationRecovery(
 
 	var startErr error
 	if strings.TrimSpace(transitionRunID) != "" {
-		transitionVM, ok := s.VM.(interface {
-			LvVMActionForReplication(vmModels.VM, string, string) error
-		})
-		if !ok {
-			return fmt.Errorf("vm_replication_transition_action_unavailable")
-		}
-		startErr = transitionVM.LvVMActionForReplication(*vm, "start", transitionRunID)
+		startErr = s.vmActionForReplicationContext(ctx, *vm, "start", transitionRunID)
 	} else {
-		startErr = s.VM.LvVMAction(*vm, "start")
+		startErr = s.vmActionContext(ctx, *vm, "start")
 	}
 	if startErr != nil {
 		s.cleanupOrphanedVMRegistration(rid)
@@ -10510,7 +10538,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 				Int("crash_miss", int(crashVal)).
 				Msg("replication_guest_crashed_attempting_local_restart")
 
-			if err := s.restartReplicationGuestLocally(policy.GuestType, policy.GuestID); err != nil {
+			if err := s.restartReplicationGuestLocally(ctx, policy.GuestType, policy.GuestID); err != nil {
 				logger.L.Warn().
 					Err(err).
 					Uint("policy_id", policy.ID).
@@ -10568,7 +10596,7 @@ func shouldAttemptLocalCrashRestart(crashObservation uint64, crashLimit int) boo
 	return crashLimit > 0 && crashObservation > 0 && crashObservation <= uint64(crashLimit)
 }
 
-func (s *Service) restartReplicationGuestLocally(guestType string, guestID uint) error {
+func (s *Service) restartReplicationGuestLocally(ctx context.Context, guestType string, guestID uint) error {
 	switch strings.TrimSpace(guestType) {
 	case clusterModels.ReplicationGuestTypeVM:
 		if s.VM == nil {
@@ -10581,12 +10609,12 @@ func (s *Service) restartReplicationGuestLocally(guestType string, guestID uint)
 		if vm == nil {
 			return fmt.Errorf("vm_not_found")
 		}
-		return s.VM.LvVMAction(*vm, "start")
+		return s.vmActionContext(ctx, *vm, "start")
 	case clusterModels.ReplicationGuestTypeJail:
 		if s.Jail == nil {
 			return fmt.Errorf("jail_service_unavailable")
 		}
-		return s.Jail.JailAction(int(guestID), "start")
+		return s.jailActionContext(ctx, int(guestID), "start")
 	default:
 		return fmt.Errorf("unknown_guest_type")
 	}
