@@ -350,6 +350,7 @@
 	});
 
 	let busy = $state(false);
+	let clusterLeaveRestart = $derived(connection.plannedRestart !== null);
 </script>
 
 <svelte:head>
@@ -403,18 +404,34 @@
 						<div
 							class="flex flex-col items-center gap-3 rounded-xl border bg-background/90 px-10 py-8 shadow-2xl"
 						>
-							<span class="icon-[mdi--connection] w-16 h-16"></span>
-							<p class="text-xl font-semibold text-foreground">Connection lost</p>
-							<p class="text-sm text-muted-foreground">Trying to reconnect to the server&hellip;</p>
+							<span
+								class={clusterLeaveRestart
+									? 'icon-[mdi--restart] h-16 w-16 animate-spin'
+									: 'icon-[mdi--connection] h-16 w-16'}
+							></span>
+							<p class="text-xl font-semibold text-foreground">
+								{clusterLeaveRestart ? 'Restarting Sylve' : 'Connection lost'}
+							</p>
+							<p class="text-sm text-muted-foreground">
+								{clusterLeaveRestart
+									? 'This node left the cluster. The page will refresh automatically.'
+									: 'Trying to reconnect to the server…'}
+							</p>
 							<div class="mt-1 flex gap-1">
 								<span
-									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:0ms]"
+									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:0ms]"
+									class:bg-primary={clusterLeaveRestart}
+									class:bg-red-500={!clusterLeaveRestart}
 								></span>
 								<span
-									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:150ms]"
+									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:150ms]"
+									class:bg-primary={clusterLeaveRestart}
+									class:bg-red-500={!clusterLeaveRestart}
 								></span>
 								<span
-									class="inline-block h-2 w-2 animate-bounce rounded-full bg-red-500 [animation-delay:300ms]"
+									class="inline-block h-2 w-2 animate-bounce rounded-full [animation-delay:300ms]"
+									class:bg-primary={clusterLeaveRestart}
+									class:bg-red-500={!clusterLeaveRestart}
 								></span>
 							</div>
 						</div>

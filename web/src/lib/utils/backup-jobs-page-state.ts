@@ -68,6 +68,7 @@ function syntheticLocalNode(nodeUUID: string, hostname: string): ClusterNode {
 		nodeUUID,
 		status: 'online',
 		hostname,
+		sylveVersion: '',
 		api: '',
 		cpu: 0,
 		cpuUsage: 0,

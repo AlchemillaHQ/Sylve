@@ -15,6 +15,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	hub "github.com/alchemillahq/sylve/internal/events"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 )
 
 func TestStatusFromHealth(t *testing.T) {
@@ -86,13 +87,15 @@ func TestApplyProbeHysteresis(t *testing.T) {
 func TestHasSignificantChange(t *testing.T) {
 	cur := curInfo{
 		api: "10.0.0.1:8184", canonHost: "host.example.com", healthOK: true,
-		cpu: 8, cpuUsage: 10.0, memory: 8192, memUsage: 20.0,
+		sylveVersion: "0.3.1",
+		cpu:          8, cpuUsage: 10.0, memory: 8192, memUsage: 20.0,
 		disk: 102400, diskUsage: 30.0, guestIDs: []uint{1, 2},
 	}
 
 	ex := clusterModels.ClusterNode{
 		Status: "online", API: "10.0.0.1:8184", Hostname: "host.example.com",
-		CPU: 8, CPUUsage: 10.0, Memory: 8192, MemoryUsage: 20.0,
+		SylveVersion: "0.3.1",
+		CPU:          8, CPUUsage: 10.0, Memory: 8192, MemoryUsage: 20.0,
 		Disk: 102400, DiskUsage: 30.0, GuestIDs: []uint{1, 2},
 	}
 
@@ -116,6 +119,12 @@ func TestHasSignificantChange(t *testing.T) {
 	exHost.Hostname = "other.example.com"
 	if !hasSignificantChange(cur, exHost) {
 		t.Fatal("hostname change should be significant")
+	}
+
+	exVersion := ex
+	exVersion.SylveVersion = "0.3.0"
+	if !hasSignificantChange(cur, exVersion) {
+		t.Fatal("version change should be significant")
 	}
 
 	exGuests := ex
@@ -195,13 +204,13 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	current := map[string]curInfo{
 		"node-1": {
 			nodeUUID: "node-1", api: "https://node-1:8184",
-			canonHost: "node-1.local", healthOK: true,
+			canonHost: "node-1.local", healthOK: true, sylveVersion: "0.3.1",
 			cpu: 4, cpuUsage: 25.5, memory: 8192, memUsage: 50.0,
 			disk: 100000, diskUsage: 30.0, guestIDs: []uint{1, 2},
 		},
 		"node-2": {
 			nodeUUID: "node-2", api: "https://node-2:8184",
-			canonHost: "node-2.local", healthOK: true,
+			canonHost: "node-2.local", healthOK: true, sylveVersion: "0.3.1",
 			cpu: 8, cpuUsage: 10.0, memory: 16384, memUsage: 25.0,
 			disk: 200000, diskUsage: 15.0, guestIDs: []uint{3},
 		},
@@ -223,6 +232,35 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 		t.Fatal("expected changed=false for unchanged nodes")
 	}
 
+	updated := current["node-1"]
+	updated.sylveVersion = "0.3.2"
+	current["node-1"] = updated
+	changed, err = s.persistCurrentClusterNodes(current)
+	if err != nil || !changed {
+		t.Fatalf("version update: changed=%t error=%v", changed, err)
+	}
+	var node clusterModels.ClusterNode
+	if err := db.Where("node_uuid = ?", "node-1").First(&node).Error; err != nil {
+		t.Fatalf("read updated node: %v", err)
+	}
+	if node.SylveVersion != "0.3.2" {
+		t.Fatalf("version = %q, want 0.3.2", node.SylveVersion)
+	}
+	offline := current["node-1"]
+	offline.healthOK = false
+	offline.sylveVersion = ""
+	current["node-1"] = offline
+	changed, err = s.persistCurrentClusterNodes(current)
+	if err != nil || !changed {
+		t.Fatalf("offline update: changed=%t error=%v", changed, err)
+	}
+	if err := db.Where("node_uuid = ?", "node-1").First(&node).Error; err != nil {
+		t.Fatalf("read offline node: %v", err)
+	}
+	if node.SylveVersion != "0.3.2" {
+		t.Fatalf("offline version = %q, want retained 0.3.2", node.SylveVersion)
+	}
+
 	var count int64
 	db.Model(&clusterModels.ClusterNode{}).Count(&count)
 	if count != 2 {
@@ -240,5 +278,38 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	db.Model(&clusterModels.ClusterNode{}).Count(&count)
 	if count != 1 {
 		t.Fatalf("expected 1 node after removal, got %d", count)
+	}
+}
+
+func TestSyncClusterHealthPersistsSylveVersion(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
+	s := &Service{DB: db, NodeID: "node-1"}
+
+	err := s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
+		NodeUUID: "node-2", SylveVersion: "0.3.1", Status: nodeStatusOnline,
+	}})
+	if err != nil {
+		t.Fatalf("sync cluster health: %v", err)
+	}
+
+	var node clusterModels.ClusterNode
+	if err := db.Where("node_uuid = ?", "node-2").First(&node).Error; err != nil {
+		t.Fatalf("read synced node: %v", err)
+	}
+	if node.SylveVersion != "0.3.1" {
+		t.Fatalf("version = %q, want 0.3.1", node.SylveVersion)
+	}
+
+	err = s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
+		NodeUUID: "node-2", SylveVersion: "0.3.2", Status: nodeStatusOnline,
+	}})
+	if err != nil {
+		t.Fatalf("update cluster health: %v", err)
+	}
+	if err := db.Where("node_uuid = ?", "node-2").First(&node).Error; err != nil {
+		t.Fatalf("read updated sync node: %v", err)
+	}
+	if node.SylveVersion != "0.3.2" {
+		t.Fatalf("updated version = %q, want 0.3.2", node.SylveVersion)
 	}
 }

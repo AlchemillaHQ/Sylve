@@ -4,6 +4,7 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { connection, planClusterLeaveRestart } from '$lib/stores/api.svelte';
 	import { getClusterLeaveErrorMessage } from '$lib/utils/cluster';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -12,11 +13,11 @@
 
 	interface Props {
 		open: boolean;
-		reload: boolean;
 		nodeId: string;
+		onRestart: () => void;
 	}
 
-	let { open = $bindable(), reload = $bindable(), nodeId }: Props = $props();
+	let { open = $bindable(), nodeId, onRestart }: Props = $props();
 	let confirmation = $state('');
 	let membershipAcknowledged = $state(false);
 	let workloadsFenced = $state(false);
@@ -41,9 +42,11 @@
 	async function confirm() {
 		if (!confirmed || busy) return;
 		busy = true;
+		const ownsRestartPlan = planClusterLeaveRestart();
 		try {
 			const response = await forceResetCluster(nodeId, membershipAcknowledged, workloadsFenced);
 			if (response.error) {
+				if (ownsRestartPlan) connection.plannedRestart = null;
 				handleAPIError(response);
 				const detail = Array.isArray(response.error)
 					? response.error.join(', ')
@@ -53,10 +56,12 @@
 				});
 				return;
 			}
+			onRestart();
 			await refreshClusterAfterLifecycleChange();
-			reload = true;
 			open = false;
-			toast.success('Local cluster state reset', { position: 'bottom-center' });
+			toast.success('Local cluster state reset. Sylve is restarting…', {
+				position: 'bottom-center'
+			});
 		} finally {
 			busy = false;
 		}

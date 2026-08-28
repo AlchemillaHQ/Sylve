@@ -19,8 +19,17 @@ export const reload = $state({
 });
 
 export const connection = $state({
-	sseConnected: null as boolean | null
+	sseConnected: null as boolean | null,
+	plannedRestart: null as null | {
+		disconnectObserved: boolean;
+	}
 });
+
+export function planClusterLeaveRestart(): boolean {
+	const ownsRestartPlan = connection.plannedRestart === null;
+	connection.plannedRestart ??= { disconnectObserved: connection.sseConnected === false };
+	return ownsRestartPlan;
+}
 
 export const jailPowerSignal = $state({
 	token: 0,

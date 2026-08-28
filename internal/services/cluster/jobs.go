@@ -33,11 +33,12 @@ import (
 )
 
 type curInfo struct {
-	nodeUUID  string
-	api       string
-	canonHost string
-	rawHost   string
-	healthOK  bool
+	nodeUUID     string
+	api          string
+	canonHost    string
+	rawHost      string
+	healthOK     bool
+	sylveVersion string
 
 	cpu      int
 	cpuUsage float64
@@ -122,17 +123,18 @@ func (s *Service) applyProbeHysteresis(peerKey, observedStatus string) string {
 
 func currentToClusterNode(cur curInfo) clusterModels.ClusterNode {
 	return clusterModels.ClusterNode{
-		NodeUUID:    cur.nodeUUID,
-		Hostname:    preferredHostname(cur),
-		API:         cur.api,
-		Status:      statusFromHealth(cur.healthOK),
-		CPU:         cur.cpu,
-		CPUUsage:    cur.cpuUsage,
-		Memory:      cur.memory,
-		MemoryUsage: cur.memUsage,
-		Disk:        cur.disk,
-		DiskUsage:   cur.diskUsage,
-		GuestIDs:    cur.guestIDs,
+		NodeUUID:     cur.nodeUUID,
+		Hostname:     preferredHostname(cur),
+		SylveVersion: cur.sylveVersion,
+		API:          cur.api,
+		Status:       statusFromHealth(cur.healthOK),
+		CPU:          cur.cpu,
+		CPUUsage:     cur.cpuUsage,
+		Memory:       cur.memory,
+		MemoryUsage:  cur.memUsage,
+		Disk:         cur.disk,
+		DiskUsage:    cur.diskUsage,
+		GuestIDs:     cur.guestIDs,
 	}
 }
 
@@ -156,6 +158,9 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 
 	if cur.canonHost != "" {
 		updates["hostname"] = cur.canonHost
+	}
+	if cur.sylveVersion != "" {
+		updates["sylve_version"] = cur.sylveVersion
 	}
 
 	if cur.cpu > 0 {
@@ -196,6 +201,9 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	hostname := preferredHostname(cur)
 
 	if ex.Hostname != hostname {
+		return true
+	}
+	if cur.sylveVersion != "" && ex.SylveVersion != cur.sylveVersion {
 		return true
 	}
 
@@ -298,6 +306,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 			if err == nil {
 				ci.healthOK = true
 				ci.canonHost = nodeInfo.Hostname
+				ci.sylveVersion = nodeInfo.SylveVersion
 				ci.cpu = int(nodeInfo.LogicalCores)
 				ci.cpuUsage = nodeInfo.CPUUsage
 				ci.memory = nodeInfo.RAMTotal
@@ -454,17 +463,18 @@ func (s *Service) PopulateClusterNodes() error {
 			syncPayload = make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
 			for _, node := range nodes {
 				syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-					NodeUUID:    node.NodeUUID,
-					Hostname:    node.Hostname,
-					API:         node.API,
-					Status:      node.Status,
-					CPU:         node.CPU,
-					CPUUsage:    node.CPUUsage,
-					Memory:      node.Memory,
-					MemoryUsage: node.MemoryUsage,
-					Disk:        node.Disk,
-					DiskUsage:   node.DiskUsage,
-					GuestIDs:    node.GuestIDs,
+					NodeUUID:     node.NodeUUID,
+					Hostname:     node.Hostname,
+					SylveVersion: node.SylveVersion,
+					API:          node.API,
+					Status:       node.Status,
+					CPU:          node.CPU,
+					CPUUsage:     node.CPUUsage,
+					Memory:       node.Memory,
+					MemoryUsage:  node.MemoryUsage,
+					Disk:         node.Disk,
+					DiskUsage:    node.DiskUsage,
+					GuestIDs:     node.GuestIDs,
 				})
 			}
 		}
@@ -477,17 +487,18 @@ func (s *Service) PopulateClusterNodes() error {
 		syncPayload = make([]clusterServiceInterfaces.NodeHealthSync, 0, len(current))
 		for _, cur := range current {
 			syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-				NodeUUID:    cur.nodeUUID,
-				Hostname:    preferredHostname(cur),
-				API:         cur.api,
-				Status:      statusFromHealth(cur.healthOK),
-				CPU:         cur.cpu,
-				CPUUsage:    cur.cpuUsage,
-				Memory:      cur.memory,
-				MemoryUsage: cur.memUsage,
-				Disk:        cur.disk,
-				DiskUsage:   cur.diskUsage,
-				GuestIDs:    cur.guestIDs,
+				NodeUUID:     cur.nodeUUID,
+				Hostname:     preferredHostname(cur),
+				SylveVersion: cur.sylveVersion,
+				API:          cur.api,
+				Status:       statusFromHealth(cur.healthOK),
+				CPU:          cur.cpu,
+				CPUUsage:     cur.cpuUsage,
+				Memory:       cur.memory,
+				MemoryUsage:  cur.memUsage,
+				Disk:         cur.disk,
+				DiskUsage:    cur.diskUsage,
+				GuestIDs:     cur.guestIDs,
 			})
 		}
 	}
@@ -808,17 +819,18 @@ func (s *Service) syncClusterHealthToFollowers() {
 	syncPayload := make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
 	for _, node := range nodes {
 		syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-			NodeUUID:    node.NodeUUID,
-			Hostname:    node.Hostname,
-			API:         node.API,
-			Status:      node.Status,
-			CPU:         node.CPU,
-			CPUUsage:    node.CPUUsage,
-			Memory:      node.Memory,
-			MemoryUsage: node.MemoryUsage,
-			Disk:        node.Disk,
-			DiskUsage:   node.DiskUsage,
-			GuestIDs:    node.GuestIDs,
+			NodeUUID:     node.NodeUUID,
+			Hostname:     node.Hostname,
+			SylveVersion: node.SylveVersion,
+			API:          node.API,
+			Status:       node.Status,
+			CPU:          node.CPU,
+			CPUUsage:     node.CPUUsage,
+			Memory:       node.Memory,
+			MemoryUsage:  node.MemoryUsage,
+			Disk:         node.Disk,
+			DiskUsage:    node.DiskUsage,
+			GuestIDs:     node.GuestIDs,
 		})
 	}
 

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/cmd"
 	infoServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/info"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/shirou/gopsutil/cpu"
@@ -76,6 +77,7 @@ func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 	}
 
 	nodeInfo.Hostname = hostname
+	nodeInfo.SylveVersion = cmd.Version
 
 	nodeInfo.LogicalCores = logicalCoreCount()
 

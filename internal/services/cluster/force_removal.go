@@ -116,6 +116,7 @@ func (s *Service) ForceRemovePeer(ctx context.Context, request ForceRemovePeerRe
 	if err := s.ClearClusterNode(nodeID); err != nil {
 		logger.L.Warn().Err(err).Str("node_id", nodeID).Msg("cluster_node_health_cleanup_deferred")
 	}
+	s.EmitLeftPanelRefreshClusterWide("cluster_membership_changed")
 	return ClusterLeaveResult{MembershipRemoved: true}, nil
 }
 

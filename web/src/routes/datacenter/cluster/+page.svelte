@@ -25,7 +25,7 @@
 		ClusterNode
 	} from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
-	import { reload } from '$lib/stores/api.svelte';
+	import { connection, planClusterLeaveRestart, reload } from '$lib/stores/api.svelte';
 	import { getClusterLeaveErrorMessage } from '$lib/utils/cluster';
 	import { handleAPIError, isAPIResponse, removeCache, updateCache } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
@@ -60,6 +60,7 @@
 	let pendingLeaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let joinStatus = $state<ClusterJoinStatus | null>(null);
 	let leaveStatus = $state<ClusterLeaveStatus | null>(null);
+	let leaveRestarting = $state(false);
 	let activeJoinStatus = $derived(
 		joinStatus && joinStatus.phase !== 'voter' && joinStatus.phase !== 'not_started'
 			? joinStatus
@@ -153,12 +154,27 @@
 		void refreshJoinStatus();
 	}
 
+	function showClusterLeaveRestart() {
+		planClusterLeaveRestart();
+		leaveRestarting = true;
+		stopRecovery();
+		stopJoinStatusPolling();
+		stopLeaveStatusPolling();
+	}
+
 	async function refreshLeaveStatus() {
 		if (!leaveStatusPollingActive) return;
 		const wasActive = Boolean(leaveStatus?.phase);
 		const result = await getLeaveStatus();
 		if (!isAPIResponse(result)) {
 			leaveStatus = result;
+			if (result.phase) {
+				planClusterLeaveRestart();
+			} else if (!result.enabled && datacenter.current.cluster.enabled) {
+				showClusterLeaveRestart();
+			} else if (!leaveRestarting && connection.plannedRestart) {
+				connection.plannedRestart = null;
+			}
 			if (
 				wasActive !== Boolean(result.phase) ||
 				result.enabled !== datacenter.current.cluster.enabled
@@ -194,12 +210,13 @@
 		() => reloadFlag,
 		() => {
 			if (reloadFlag) {
+				reloadFlag = false;
+				if (leaveRestarting) return;
 				void datacenter.refetch().then(() => {
 					startJoinStatusPolling();
 					startLeaveStatusPolling();
 				});
 				void nodes.refetch();
-				reloadFlag = false;
 				startRecovery();
 			}
 		}
@@ -208,6 +225,7 @@
 	watch(
 		() => reload.datacenterDetailsPulse,
 		() => {
+			if (leaveRestarting) return;
 			void datacenter.refetch().then(() => {
 				startJoinStatusPolling();
 				startLeaveStatusPolling();
@@ -220,7 +238,8 @@
 	watch(
 		() => reload.datacenterNodesPulse,
 		() => {
-			void nodes.refetch();
+			if (leaveRestarting) return;
+			void Promise.allSettled([datacenter.refetch(), nodes.refetch()]);
 		}
 	);
 
@@ -328,20 +347,6 @@
 				}
 			},
 			{
-				field: 'id',
-				title: 'Node ID',
-				formatter: (cell: CellComponent) => {
-					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
-				}
-			},
-			{
-				field: 'address',
-				title: 'Address',
-				formatter: (cell: CellComponent) => {
-					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
-				}
-			},
-			{
 				field: 'status',
 				title: 'Status',
 				formatter: (cell: CellComponent) => {
@@ -375,6 +380,20 @@
 				}
 			},
 			{
+				field: 'sylveVersion',
+				title: 'Sylve Version',
+				formatter: (cell: CellComponent) => {
+					return `<span class="font-mono text-xs">${esc(cell.getValue() || '—')}</span>`;
+				}
+			},
+			{
+				field: 'address',
+				title: 'Address',
+				formatter: (cell: CellComponent) => {
+					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
+				}
+			},
+			{
 				field: 'guestCount',
 				title: 'Guests',
 				formatter: (cell: CellComponent) => {
@@ -395,6 +414,13 @@
 				field: 'diskUsage',
 				title: 'Disk',
 				formatter: usageCell
+			},
+			{
+				field: 'id',
+				title: 'Node ID',
+				formatter: (cell: CellComponent) => {
+					return `<span class="font-mono text-xs">${esc(cell.getValue())}</span>`;
+				}
 			}
 		];
 
@@ -409,6 +435,7 @@
 				address: node.address,
 				suffrage: node.suffrage,
 				hostname: health?.hostname ?? '',
+				sylveVersion: health?.sylveVersion ?? '',
 				status: health?.status ?? 'offline',
 				guestCount: node.guestIDs?.length ?? health?.guestIDs?.length ?? 0,
 				cpuUsage: health?.cpuUsage ?? 0,
@@ -459,52 +486,64 @@
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
-		<Search bind:query />
-		{#if activeJoinStatus}
-			<JoinProgress status={activeJoinStatus} />
-		{/if}
-		{#if leaveStatus?.phase}
-			<LeaveProgress
-				status={leaveStatus}
-				onRetry={() => (modals.reset.open = true)}
-				onForceReset={() => (modals.forceReset.open = true)}
-			/>
-		{/if}
+		{#if !leaveRestarting}
+			<Search bind:query />
+			{#if activeJoinStatus}
+				<JoinProgress status={activeJoinStatus} />
+			{/if}
+			{#if leaveStatus?.phase}
+				<LeaveProgress
+					status={leaveStatus}
+					onRetry={() => (modals.reset.open = true)}
+					onForceReset={() => (modals.forceReset.open = true)}
+				/>
+			{/if}
 
-		{#if !canCreate}
-			<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
-				<div class="flex items-center">
-					<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
+			{#if !canCreate}
+				<Button onclick={() => (modals.view.open = true)} size="sm" class="h-6  ">
+					<div class="flex items-center">
+						<span class="icon-[mdi--eye] mr-1 h-4 w-4"></span>
 
-					<span>View Join Information</span>
-				</div>
-			</Button>
-		{/if}
+						<span>View Join Information</span>
+					</div>
+				</Button>
+			{/if}
 
-		{#if canCreate}
-			{@render button('create', 'oui--ml-create-population-job', 'Create Cluster', !canCreate)}
-		{/if}
+			{#if canCreate}
+				{@render button('create', 'oui--ml-create-population-job', 'Create Cluster', !canCreate)}
+			{/if}
 
-		{#if canJoin}
-			{@render button('join', 'grommet-icons--cluster', 'Join Cluster', !canJoin)}
-		{/if}
+			{#if canJoin}
+				{@render button('join', 'grommet-icons--cluster', 'Join Cluster', !canJoin)}
+			{/if}
 
-		{#if canReset && !leaveStatus?.phase}
-			{@render button('reset', 'mdi--refresh', 'Leave / Reset Cluster', !canReset)}
-		{/if}
+			{#if canReset && !leaveStatus?.phase}
+				{@render button('reset', 'mdi--refresh', 'Leave / Reset Cluster', !canReset)}
+			{/if}
 
-		{#if canRemovePeer}
-			{@render button('remove', 'mdi--account-remove-outline', 'Remove Peer', false)}
+			{#if canRemovePeer}
+				{@render button('remove', 'mdi--account-remove-outline', 'Remove Peer', false)}
+			{/if}
 		{/if}
 	</div>
 
-	<TreeTable
-		data={table}
-		name="cluster-nodes-tt"
-		bind:query
-		bind:parentActiveRow={activeRows}
-		multipleSelect={false}
-	/>
+	{#if leaveRestarting}
+		<div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
+			<span class="icon-[mdi--restart] h-10 w-10 animate-spin text-muted-foreground"></span>
+			<p class="font-medium">Restarting Sylve</p>
+			<p class="text-sm text-muted-foreground">
+				This node left the cluster. The page will refresh automatically.
+			</p>
+		</div>
+	{:else}
+		<TreeTable
+			data={table}
+			name="cluster-nodes-tt"
+			bind:query
+			bind:parentActiveRow={activeRows}
+			multipleSelect={false}
+		/>
+	{/if}
 </div>
 
 <Create bind:open={modals.create.open} bind:reload={reloadFlag} />
@@ -520,9 +559,12 @@
 	customTitle="This will reset all clustered data and configuration on THIS node, including all notes, backup targets, jobs and events. This action cannot be undone."
 	actions={{
 		onConfirm: async () => {
+			const ownsRestartPlan = planClusterLeaveRestart();
+			stopLeaveStatusPolling();
 			const response = await resetCluster();
-			reloadFlag = true;
 			if (response.error) {
+				if (ownsRestartPlan) connection.plannedRestart = null;
+				reloadFlag = true;
 				startLeaveStatusPolling();
 				handleAPIError(response);
 				const detail = Array.isArray(response.error)
@@ -535,9 +577,10 @@
 				return;
 			}
 
+			showClusterLeaveRestart();
 			await refreshClusterAfterLifecycleChange();
 			modals.reset.open = false;
-			toast.success('Cluster leave completed', {
+			toast.success('Cluster leave completed. Sylve is restarting…', {
 				position: 'bottom-center'
 			});
 		},
@@ -549,6 +592,6 @@
 
 <ForceReset
 	bind:open={modals.forceReset.open}
-	bind:reload={reloadFlag}
 	nodeId={leaveStatus?.localNodeId || datacenter.current.nodeId}
+	onRestart={showClusterLeaveRestart}
 />

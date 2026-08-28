@@ -16,6 +16,7 @@ import (
 
 type NodeInfo struct {
 	Hostname     string  `json:"hostname"`
+	SylveVersion string  `json:"sylveVersion"`
 	LogicalCores int16   `json:"logicalCores"`
 	CPUUsage     float64 `json:"cpuUsage"`
 	RAMTotal     uint64  `json:"ramTotal"`

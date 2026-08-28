@@ -113,5 +113,6 @@ func (s *Service) RemoveMembership(
 	if err := s.ClearClusterNode(nodeID); err != nil {
 		logger.L.Warn().Err(err).Str("node_id", nodeID).Msg("cluster_node_health_cleanup_deferred")
 	}
+	s.EmitLeftPanelRefreshClusterWide("cluster_membership_changed")
 	return nil
 }

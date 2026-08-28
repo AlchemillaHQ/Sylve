@@ -32,17 +32,18 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 			incomingUUIDs = append(incomingUUIDs, node.NodeUUID)
 
 			insertRows = append(insertRows, clusterModels.ClusterNode{
-				NodeUUID:    node.NodeUUID,
-				Hostname:    node.Hostname,
-				API:         node.API,
-				Status:      node.Status,
-				CPU:         node.CPU,
-				CPUUsage:    node.CPUUsage,
-				Memory:      node.Memory,
-				MemoryUsage: node.MemoryUsage,
-				Disk:        node.Disk,
-				DiskUsage:   node.DiskUsage,
-				GuestIDs:    node.GuestIDs,
+				NodeUUID:     node.NodeUUID,
+				Hostname:     node.Hostname,
+				SylveVersion: node.SylveVersion,
+				API:          node.API,
+				Status:       node.Status,
+				CPU:          node.CPU,
+				CPUUsage:     node.CPUUsage,
+				Memory:       node.Memory,
+				MemoryUsage:  node.MemoryUsage,
+				Disk:         node.Disk,
+				DiskUsage:    node.DiskUsage,
+				GuestIDs:     node.GuestIDs,
 			})
 		}
 
@@ -50,7 +51,7 @@ func (s *Service) SyncClusterHealth(payload []clusterServiceInterfaces.NodeHealt
 			if err := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "node_uuid"}},
 				DoUpdates: clause.AssignmentColumns([]string{
-					"hostname", "api", "status", "cpu", "cpu_usage",
+					"hostname", "sylve_version", "api", "status", "cpu", "cpu_usage",
 					"memory", "memory_usage", "disk", "disk_usage", "guest_ids", "updated_at",
 				}),
 			}).Create(&insertRows).Error; err != nil {

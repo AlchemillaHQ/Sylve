@@ -11,6 +11,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	hub "github.com/alchemillahq/sylve/internal/events"
 	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
@@ -144,9 +145,12 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		}
 	}
 
+	events, unsubscribe := hub.SSE.Subscribe()
+	defer unsubscribe()
 	if err := leader.service.RemoveMembership(context.Background(), request, removed.id); err != nil {
 		t.Fatalf("RemoveMembership after drain: %v", err)
 	}
+	waitForClusterEvent(t, events, "left-panel-refresh")
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
 }
 
@@ -287,6 +291,8 @@ func TestIntegrationRaftForceRemovePeerRemovesExternallyFencedMember(t *testing.
 	}); err == nil || !strings.Contains(err.Error(), "cluster_force_target_fence_ack_required") {
 		t.Fatalf("missing acknowledgement error=%v", err)
 	}
+	events, unsubscribe := hub.SSE.Subscribe()
+	defer unsubscribe()
 	result, err := leader.service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
 		NodeID:                 target.id,
 		TargetExternallyFenced: true,
@@ -297,7 +303,24 @@ func TestIntegrationRaftForceRemovePeerRemovesExternallyFencedMember(t *testing.
 	if !result.MembershipRemoved || result.CleanupAcknowledged {
 		t.Fatalf("result=%+v", result)
 	}
+	waitForClusterEvent(t, events, "left-panel-refresh")
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+}
+
+func waitForClusterEvent(t *testing.T, events <-chan hub.Event, eventType string) {
+	t.Helper()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-events:
+			if event.Type == eventType {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s event", eventType)
+		}
+	}
 }
 
 func TestForceRemovePeerRequiresConsensus(t *testing.T) {

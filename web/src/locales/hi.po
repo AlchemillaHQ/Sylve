@@ -1170,6 +1170,7 @@ msgid "Boot Mode"
 msgstr "बूट मोड"
 
 #: src/routes/[node]/summary/+page.svelte
+#: src/routes/datacenter/cluster/+page.svelte
 msgid "Sylve Version"
 msgstr "सिल्वे संस्करण"
 
@@ -17598,9 +17599,8 @@ msgstr ""
 msgid "Leave / Reset Cluster"
 msgstr ""
 
-#: src/routes/datacenter/cluster/+page.svelte
-msgid "Cluster leave completed"
-msgstr ""
+#~ msgid "Cluster leave completed"
+#~ msgstr ""
 
 #: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
 msgid "Raft cannot commit removal without quorum"
@@ -17642,9 +17642,8 @@ msgstr ""
 msgid "Force Remove Membership"
 msgstr ""
 
-#: src/lib/components/custom/Cluster/ForceReset.svelte
-msgid "Local cluster state reset"
-msgstr ""
+#~ msgid "Local cluster state reset"
+#~ msgstr ""
 
 #: src/lib/components/custom/Cluster/ForceReset.svelte
 #: src/lib/components/custom/Cluster/ForceReset.svelte
@@ -17800,3 +17799,24 @@ msgstr ""
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Force Remove…"
 msgstr ""
+
+#: src/routes/+layout.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Restarting Sylve"
+msgstr ""
+
+#: src/routes/+layout.svelte
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "This node left the cluster. The page will refresh automatically."
+msgstr ""
+
+#: src/routes/datacenter/cluster/+page.svelte
+msgid "Cluster leave completed. Sylve is restarting…"
+msgstr ""
+
+#: src/lib/components/custom/Cluster/ForceReset.svelte
+msgid "Local cluster state reset. Sylve is restarting…"
+msgstr ""
+
+#~ msgid "Version"
+#~ msgstr ""

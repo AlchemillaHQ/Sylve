@@ -55,7 +55,7 @@
 		{/if}
 
 		<div class="flex justify-end gap-2">
-			<Button size="sm" variant="outline" onclick={onRetry}>Retry Leave</Button>
+			<Button size="sm" variant="secondary" onclick={onRetry}>Retry Leave</Button>
 			<Button size="sm" variant="destructive" onclick={onForceReset}>Force Local Reset…</Button>
 		</div>
 	</Popover.Content>
