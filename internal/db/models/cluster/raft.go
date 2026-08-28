@@ -202,7 +202,9 @@ func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]Replication
 	seenPair := make(map[string]struct{})
 
 	for _, payload := range payloads {
-		replicationPolicies = append(replicationPolicies, payload.Policy)
+		policy := payload.Policy
+		policy.Targets = nil
+		replicationPolicies = append(replicationPolicies, policy)
 		for _, t := range payload.Targets {
 			t.PolicyID = payload.Policy.ID
 			if t.ID != 0 {

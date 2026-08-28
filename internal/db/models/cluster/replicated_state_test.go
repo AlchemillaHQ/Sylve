@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"gorm.io/gorm"
 )
 
 func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T) {
@@ -104,7 +105,7 @@ func TestReplicatedStateDigestIsIndependentOfInsertionOrder(t *testing.T) {
 	}
 }
 
-func TestReplicatedStateDigestIgnoresSSHIdentitySurrogateIDs(t *testing.T) {
+func TestReplicatedStateDigestIgnoresSurrogateIDs(t *testing.T) {
 	left := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	right := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
 	now := time.Date(2026, time.July, 30, 2, 3, 4, 0, time.UTC)
@@ -117,12 +118,58 @@ func TestReplicatedStateDigestIgnoresSSHIdentitySurrogateIDs(t *testing.T) {
 		{ID: 9, NodeUUID: "node-b", SSHUser: "root", SSHHost: "10.0.0.2", SSHPort: 8183, PublicKey: "key-b", CreatedAt: now, UpdatedAt: now},
 		{ID: 8, NodeUUID: "node-a", SSHUser: "root", SSHHost: "10.0.0.1", SSHPort: 8183, PublicKey: "key-a", CreatedAt: now, UpdatedAt: now},
 	}
-	if err := left.Create(&leftIdentities).Error; err != nil {
-		t.Fatalf("seed left identities: %v", err)
+	policies := []ReplicationPolicy{
+		{
+			ID: 20, Name: "policy-a", GuestType: ReplicationGuestTypeVM, GuestID: 20,
+			SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
+			SourceMode: ReplicationSourceModeFollowActive, FailbackMode: ReplicationFailbackManual,
+			FailoverMode: ReplicationFailoverManual, CronExpr: "*/5 * * * *", Enabled: true,
+			ProtectionState: ReplicationProtectionStateArmed, TransitionState: ReplicationTransitionStateNone,
+			CreatedAt: now, UpdatedAt: now,
+		},
+		{
+			ID: 21, Name: "policy-b", GuestType: ReplicationGuestTypeJail, GuestID: 21,
+			SourceNodeID: "node-b", ActiveNodeID: "node-b", OwnerEpoch: 1,
+			SourceMode: ReplicationSourceModeFollowActive, FailbackMode: ReplicationFailbackManual,
+			FailoverMode: ReplicationFailoverManual, CronExpr: "*/10 * * * *", Enabled: true,
+			ProtectionState: ReplicationProtectionStateArmed, TransitionState: ReplicationTransitionStateNone,
+			CreatedAt: now, UpdatedAt: now,
+		},
 	}
-	if err := right.Create(&rightIdentities).Error; err != nil {
-		t.Fatalf("seed right identities: %v", err)
+	leftTargets := []ReplicationPolicyTarget{
+		{ID: 900, PolicyID: 20, NodeID: "node-b", Weight: 90, CreatedAt: now, UpdatedAt: now},
+		{ID: 4, PolicyID: 20, NodeID: "node-a", Weight: 100, CreatedAt: now, UpdatedAt: now},
 	}
+	rightTargets := []ReplicationPolicyTarget{
+		{ID: 5, PolicyID: 20, NodeID: "node-b", Weight: 90, CreatedAt: now, UpdatedAt: now},
+		{ID: 800, PolicyID: 20, NodeID: "node-a", Weight: 100, CreatedAt: now, UpdatedAt: now},
+	}
+	leftLeases := []ReplicationLease{
+		{ID: 901, PolicyID: 20, GuestType: ReplicationGuestTypeVM, GuestID: 20, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
+		{ID: 6, PolicyID: 21, GuestType: ReplicationGuestTypeJail, GuestID: 21, OwnerNodeID: "node-b", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
+	}
+	rightLeases := []ReplicationLease{
+		{ID: 7, PolicyID: 20, GuestType: ReplicationGuestTypeVM, GuestID: 20, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
+		{ID: 850, PolicyID: 21, GuestType: ReplicationGuestTypeJail, GuestID: 21, OwnerNodeID: "node-b", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour), Version: 1, CreatedAt: now, UpdatedAt: now},
+	}
+	leftKeys := []EncryptionKey{
+		{ID: 902, UUID: "key-b", KeyData: "secret-b", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
+		{ID: 8, UUID: "key-a", KeyData: "secret-a", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
+	}
+	rightKeys := []EncryptionKey{
+		{ID: 9, UUID: "key-b", KeyData: "secret-b", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
+		{ID: 820, UUID: "key-a", KeyData: "secret-a", KeyFormat: "passphrase", CreatedAt: now, UpdatedAt: now},
+	}
+	seed := func(db *gorm.DB, identities []ClusterSSHIdentity, targets []ReplicationPolicyTarget, leases []ReplicationLease, keys []EncryptionKey) {
+		t.Helper()
+		for _, value := range []any{&policies, &identities, &targets, &leases, &keys} {
+			if err := db.Create(value).Error; err != nil {
+				t.Fatalf("seed %T: %v", value, err)
+			}
+		}
+	}
+	seed(left, leftIdentities, leftTargets, leftLeases, leftKeys)
+	seed(right, rightIdentities, rightTargets, rightLeases, rightKeys)
 
 	_, leftDigest, err := CaptureReplicatedStateDigest(left)
 	if err != nil {
@@ -133,7 +180,7 @@ func TestReplicatedStateDigestIgnoresSSHIdentitySurrogateIDs(t *testing.T) {
 		t.Fatalf("capture right digest: %v", err)
 	}
 	if leftDigest != rightDigest {
-		t.Fatalf("identity surrogate IDs changed digest: left=%s right=%s", leftDigest, rightDigest)
+		t.Fatalf("surrogate IDs changed digest: left=%s right=%s", leftDigest, rightDigest)
 	}
 }
 
