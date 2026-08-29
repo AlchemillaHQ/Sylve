@@ -132,6 +132,8 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	firstAddresses := consoleJailVNETAddressesWithOffset(suite.runID, 30)
 	secondAddresses := consoleJailVNETAddressesWithOffset(suite.runID, 40)
 
+	t.Cleanup(func() { cleanupObject(t, suite, standardSwitchMACObjectName(secondSwitchName)) })
+	t.Cleanup(func() { cleanupObject(t, suite, standardSwitchMACObjectName(firstSwitchName)) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, secondSwitchName) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, firstSwitchName) })
 	t.Cleanup(func() { cleanupConsoleVM(t, suite, rid) })
@@ -422,8 +424,10 @@ func createConsoleVMTestSwitch(
 	name, network4 string,
 ) networkModels.StandardSwitch {
 	t.Helper()
+	bridgeMACObject := createConsoleStandardSwitchMACObject(t, suite, name)
 	output := runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", name,
+		"--mac-source", "object", "--mac-object", strconv.FormatUint(uint64(bridgeMACObject.ID), 10),
 		"--network4-manual", network4, "--private", "--disable-ipv6", "--json")
 	var result switchMutationResult
 	if err := json.Unmarshal([]byte(output), &result); err != nil {
@@ -493,12 +497,15 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	switchName := "vm-switch-" + suite.runID
 	addresses := consoleJailVNETAddressesWithOffset(suite.runID, 10)
 
+	bridgeMACObject := createConsoleStandardSwitchMACObject(t, suite, switchName)
+	t.Cleanup(func() { cleanupObject(t, suite, bridgeMACObject.Name) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleVM(t, suite, retainedRID) })
 	t.Cleanup(func() { cleanupConsoleVM(t, suite, rid) })
 
 	output := runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", switchName,
+		"--mac-source", "object", "--mac-object", strconv.FormatUint(uint64(bridgeMACObject.ID), 10),
 		"--network4-manual", addresses.bridgeIPv4CIDR,
 		"--private", "--disable-ipv6", "--json")
 	var switchResult switchMutationResult

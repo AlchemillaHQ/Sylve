@@ -226,14 +226,17 @@ func TestFullAcceptanceJailWithStaticVNETNetwork(t *testing.T) {
 	addresses := consoleJailVNETAddresses(suite.runID)
 	switchName := "jail-vnet-switch-" + suite.runID
 	jailName := "jail-vnet-" + suite.runID
+	bridgeMACObject := createConsoleStandardSwitchMACObject(t, suite, switchName)
 
-	// Register the switch cleanup first so the jail and its epairs are removed before it.
+	// Register object, switch, then jail cleanup so dependencies unwind in reverse.
+	t.Cleanup(func() { cleanupObject(t, suite, bridgeMACObject.Name) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleJail(t, suite, ctid) })
 
 	output := runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", switchName,
 		"--network4-manual", addresses.bridgeIPv4CIDR,
+		"--mac-source", "object", "--mac-object", strconv.FormatUint(uint64(bridgeMACObject.ID), 10),
 		"--network6-manual", addresses.bridgeIPv6CIDR,
 		"--private", "--json")
 	var createdSwitch struct {
@@ -460,6 +463,7 @@ func TestFullAcceptanceJailObjectReferenceWorkflow(t *testing.T) {
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", switchName,
+		"--mac-source", "object", "--mac-object", strconv.FormatUint(uint64(namedMAC.ID), 10),
 		"--network4", strconv.FormatUint(uint64(networkObject.ID), 10),
 		"--private", "--disable-ipv6", "--json")
 	var createdSwitch switchMutationResult
@@ -884,11 +888,15 @@ func TestFullAcceptanceJailWithDHCPSLAACNetworkConfiguration(t *testing.T) {
 	ctid := consoleIntegrationJailCTID(t, suite, 5)
 	switchName := "jail-auto-switch-" + suite.runID
 	jailName := "jail-auto-" + suite.runID
+	bridgeMACObject := createConsoleStandardSwitchMACObject(t, suite, switchName)
 
+	t.Cleanup(func() { cleanupObject(t, suite, bridgeMACObject.Name) })
 	t.Cleanup(func() { cleanupStandardSwitch(t, suite, switchName) })
 	t.Cleanup(func() { cleanupConsoleJail(t, suite, ctid) })
 
-	output := runREPLCommand(t, suite.socketPath, "switches create standard "+switchName+" --private --json")
+	output := runREPLCommand(t, suite.socketPath, "switches create standard "+switchName+
+		" --mac-source object --mac-object "+strconv.FormatUint(uint64(bridgeMACObject.ID), 10)+
+		" --private --json")
 	var createdSwitch struct {
 		Created bool   `json:"created"`
 		ID      uint   `json:"id"`
