@@ -168,7 +168,8 @@ func typedSocketOperationRequiresMutation(operation string) bool {
 		consoleprotocol.OperationDatacenterNoteList,
 		consoleprotocol.OperationDatacenterNoteGet,
 		consoleprotocol.OperationDatacenterClusterStatus,
-		consoleprotocol.OperationDatacenterClusterMembers:
+		consoleprotocol.OperationDatacenterClusterMembers,
+		consoleprotocol.OperationDatacenterClusterReaddress:
 		return false
 	default:
 		return true
@@ -352,6 +353,10 @@ func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketRespons
 			return processDatacenterClusterStatusSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationDatacenterClusterMembers:
 			return processDatacenterClusterMembersSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterReaddress:
+			return processDatacenterClusterReaddressSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterRepairAddress:
+			return processDatacenterClusterRepairAddressSocketRequest(ctx, req.Payload)
 		default:
 			return socketResponse{Error: "unknown_operation"}
 		}

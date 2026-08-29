@@ -30,6 +30,7 @@ type CommandStatus struct {
 	JoinPhase      string `json:"joinPhase,omitempty"`
 	LeavePhase     string `json:"leavePhase,omitempty"`
 	ReaddressPhase string `json:"readdressPhase,omitempty"`
+	ReaddressError string `json:"readdressError,omitempty"`
 	Partial        bool   `json:"partial"`
 }
 
@@ -60,6 +61,7 @@ func (s *Service) CommandStatus() (CommandStatus, error) {
 		JoinPhase:      strings.TrimSpace(record.JoinPhase),
 		LeavePhase:     strings.TrimSpace(record.LeavePhase),
 		ReaddressPhase: strings.TrimSpace(record.ReaddressPhase),
+		ReaddressError: strings.TrimSpace(record.ReaddressLastError),
 	}
 	if !record.Enabled {
 		return result, nil

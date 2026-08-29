@@ -9,13 +9,15 @@
 package console
 
 const (
-	OperationDatacenterNoteList       = "datacenter.notes.list"
-	OperationDatacenterNoteGet        = "datacenter.notes.get"
-	OperationDatacenterNoteAdd        = "datacenter.notes.add"
-	OperationDatacenterNoteUpdate     = "datacenter.notes.update"
-	OperationDatacenterNoteDelete     = "datacenter.notes.delete"
-	OperationDatacenterClusterStatus  = "datacenter.cluster.status"
-	OperationDatacenterClusterMembers = "datacenter.cluster.members"
+	OperationDatacenterNoteList             = "datacenter.notes.list"
+	OperationDatacenterNoteGet              = "datacenter.notes.get"
+	OperationDatacenterNoteAdd              = "datacenter.notes.add"
+	OperationDatacenterNoteUpdate           = "datacenter.notes.update"
+	OperationDatacenterNoteDelete           = "datacenter.notes.delete"
+	OperationDatacenterClusterStatus        = "datacenter.cluster.status"
+	OperationDatacenterClusterMembers       = "datacenter.cluster.members"
+	OperationDatacenterClusterReaddress     = "datacenter.cluster.readdress"
+	OperationDatacenterClusterRepairAddress = "datacenter.cluster.repair-address"
 )
 
 type DatacenterNoteListPayload struct {
@@ -41,4 +43,17 @@ type DatacenterNoteMutationResult struct {
 
 type DatacenterClusterReadPayload struct {
 	JSON bool `json:"json"`
+}
+
+type DatacenterClusterReaddressPayload struct {
+	NewIP           string `json:"newIp"`
+	AllowDisruption bool   `json:"allowDisruption"`
+	JSON            bool   `json:"json"`
+}
+
+type DatacenterClusterRepairAddressPayload struct {
+	NodeID          string `json:"nodeId"`
+	NewIP           string `json:"newIp"`
+	AllowDisruption bool   `json:"allowDisruption"`
+	JSON            bool   `json:"json"`
 }

@@ -203,8 +203,14 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	clusterSvc.SetLeaveCompleteHook(func() {
 		requestSelfRestart(selfRestartRequests)
 	})
+	clusterSvc.SetReaddressRestartHook(func() {
+		requestSelfRestart(selfRestartRequests)
+	})
 	if err := clusterSvc.InitializeLeaveRuntime(); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed_to_initialize_cluster_leave_runtime")
+	}
+	if err := clusterSvc.InitializeReaddressRuntime(); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_initialize_cluster_readdress_runtime")
 	}
 	clusterSvc.SetJoinCompleteHook(func() {
 		if err := zeltaS.ReconcileBackupTargetSSHKeys(); err != nil {
@@ -561,6 +567,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				logger.L.Error().Err(err).Msg("failed_to_start_cluster_listeners_at_startup")
 			}
 		}
+		clusterSvc.StartReaddressReconciler(qCtx)
 	}
 
 	selfRestartRequested := false

@@ -133,6 +133,10 @@ func (s *Service) checkJoinInventory(
 	if err := ctx.Err(); err != nil {
 		return GuestIdentityInventoryReport{}, false, err
 	}
+	nodeIP, err := normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
+	if err != nil {
+		return GuestIdentityInventoryReport{}, false, err
+	}
 
 	details, err := s.GetClusterDetails()
 	if err != nil {

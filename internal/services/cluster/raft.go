@@ -53,7 +53,19 @@ func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, erro
 		return nil, fmt.Errorf("Could not resolve address: %s", err)
 	}
 
-	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, raftTransportMaxPool, raftTransportTimeout, os.Stdout)
+	if s.addressProvider == nil {
+		s.addressProvider = newRaftAddressProvider()
+	}
+	t, err := raft.NewTCPTransportWithConfig(bindAddr, tcpAddr, &raft.NetworkTransportConfig{
+		ServerAddressProvider: s.addressProvider,
+		MaxPool:               raftTransportMaxPool,
+		Timeout:               raftTransportTimeout,
+		Logger: hclog.New(&hclog.LoggerOptions{
+			Name:   "raft-net",
+			Output: os.Stdout,
+			Level:  hclog.Error,
+		}),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
 	}
@@ -74,6 +86,11 @@ func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 }
 
 func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*raft.Raft, error) {
+	var err error
+	raftIP, err = normalizeClusterIPv4(raftIP, "invalid_ip_address")
+	if err != nil {
+		return nil, err
+	}
 	if fsm == nil {
 		return nil, fmt.Errorf("raft_fsm_required")
 	}

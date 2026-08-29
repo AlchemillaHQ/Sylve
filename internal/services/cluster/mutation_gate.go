@@ -11,11 +11,26 @@ package cluster
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
+
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 var ErrNodeLeaveFenced = errors.New("node_leave_fenced")
+
+type nodeReaddressFencedError struct{}
+
+func (nodeReaddressFencedError) Error() string {
+	return "node_readdress_fenced"
+}
+
+func (nodeReaddressFencedError) Is(target error) bool {
+	return target == ErrNodeLeaveFenced
+}
+
+var ErrNodeReaddressFenced error = nodeReaddressFencedError{}
 
 type mutationGateState uint8
 
@@ -132,7 +147,18 @@ func (s *Service) EnterMutation(ctx context.Context) (context.Context, func(), e
 	if s == nil || s.mutationGate == nil {
 		return ctx, nil, ErrNodeLeaveFenced
 	}
-	return s.mutationGate.Enter(ctx)
+	admittedCtx, release, err := s.mutationGate.Enter(ctx)
+	if err == nil || s.DB == nil {
+		return admittedCtx, release, err
+	}
+	var record struct {
+		ReaddressPhase string
+	}
+	if s.DB.Model(&clusterModels.Cluster{}).Select("readdress_phase").First(&record).Error == nil &&
+		strings.TrimSpace(record.ReaddressPhase) != "" {
+		return admittedCtx, release, ErrNodeReaddressFenced
+	}
+	return admittedCtx, release, err
 }
 
 func (s *Service) DrainMutations(ctx context.Context) error {

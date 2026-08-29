@@ -152,7 +152,7 @@ func rawCommandRequiresMutation(parts []string) bool {
 		group := strings.ToLower(strings.TrimSpace(args[0]))
 		action := strings.ToLower(strings.TrimSpace(args[1]))
 		return !((group == "notes" && (action == "list" || action == "get")) ||
-			(group == "cluster" && (action == "status" || action == "members")))
+			(group == "cluster" && (action == "status" || action == "members" || action == "readdress")))
 	case "notes":
 		return sub != "list" && sub != "get"
 	case "jails":

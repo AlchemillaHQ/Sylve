@@ -47,6 +47,44 @@ func TestCreateClusterRejectsPayloadWithoutIP(t *testing.T) {
 	}
 }
 
+func TestClusterLifecycleRejectsIPv6(t *testing.T) {
+	router := newClusterLifecycleValidationRouter()
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "create", path: "/cluster", body: `{"ip":"2001:db8::10"}`},
+		{
+			name: "join leader", path: "/cluster/join",
+			body: `{"nodeId":"node-1","nodeIp":"192.0.2.20","leaderIp":"2001:db8::10","clusterKey":"secret"}`,
+		},
+		{
+			name: "join node", path: "/cluster/join",
+			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","leaderIp":"192.0.2.10","clusterKey":"secret"}`,
+		},
+		{
+			name: "accept join", path: "/cluster/accept-join",
+			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","nodeVersion":"test"}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := performJSONRequest(t, router, http.MethodPost, test.path, []byte(test.body))
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			var body handlerAPIResponse[any]
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Message != "cluster_ipv6_unsupported" {
+				t.Fatalf("message=%q body=%s", body.Message, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestJoinClusterRejectsLegacyLeaderApiPayload(t *testing.T) {
 	r := newClusterLifecycleValidationRouter()
 

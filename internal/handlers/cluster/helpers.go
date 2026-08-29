@@ -71,6 +71,15 @@ func writeClusterJSONBindError(c *gin.Context, err error, invalidMessage string)
 	})
 }
 
+func writeClusterIPv6Unsupported(c *gin.Context, field string) {
+	c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+		Status:  "error",
+		Message: "cluster_ipv6_unsupported",
+		Error:   field + "_must_be_ipv4",
+		Data:    nil,
+	})
+}
+
 var clusterForwardHTTP = func(
 	ctx context.Context,
 	method string,

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -43,6 +44,7 @@ func TestClusterMutationAdmissionClassification(t *testing.T) {
 		{http.MethodGet, "/api/vm/1/console", true},
 		{http.MethodPost, "/api/auth/login", false},
 		{http.MethodPost, "/api/intra-cluster/leave", false},
+		{http.MethodPost, "/api/intra-cluster/readdress-member", false},
 		{http.MethodPost, "/api/cluster/membership-status", false},
 		{http.MethodPost, "/api/cluster/remove-node/force", true},
 		{http.MethodDelete, "/api/cluster/reset-node", false},
@@ -54,6 +56,18 @@ func TestClusterMutationAdmissionClassification(t *testing.T) {
 		if got := clusterMutationRequiresAdmission(test.method, test.path); got != test.want {
 			t.Fatalf("%s %s = %v, want %v", test.method, test.path, got, test.want)
 		}
+	}
+}
+
+func TestClusterMutationAdmissionReportsReaddressFence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stub := &mutationAdmissionStub{err: cluster.ErrNodeReaddressFenced}
+	router := gin.New()
+	router.Use(ClusterMutationAdmission(stub))
+	router.POST("/api/vm", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	response := testutil.PerformRequest(t, router, http.MethodPost, "/api/vm", nil, nil)
+	if response.Code != http.StatusLocked || !strings.Contains(response.Body.String(), "node_readdress_fenced") {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 	}
 }
 

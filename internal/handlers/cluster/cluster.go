@@ -269,6 +269,10 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
 			return
 		}
+		if !utils.IsValidIPv4(req.IP) {
+			writeClusterIPv6Unsupported(c, "cluster_ip")
+			return
+		}
 
 		if err := cS.CreateCluster(req.IP, fsm); err != nil {
 			var conflict *cluster.GuestIdentityInventoryConflictError
@@ -324,6 +328,14 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 				Error:   "leader_ip_must_be_valid",
 				Data:    nil,
 			})
+			return
+		}
+		if !utils.IsValidIPv4(req.LeaderIP) {
+			writeClusterIPv6Unsupported(c, "leader_ip")
+			return
+		}
+		if !utils.IsValidIPv4(req.NodeIP) {
+			writeClusterIPv6Unsupported(c, "node_ip")
 			return
 		}
 
@@ -542,6 +554,10 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 		var req AcceptJoinRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			writeClusterJSONBindError(c, err, "invalid_request_payload")
+			return
+		}
+		if !utils.IsValidIPv4(req.NodeIP) {
+			writeClusterIPv6Unsupported(c, "node_ip")
 			return
 		}
 
@@ -1028,6 +1044,40 @@ func MembershipStatus(cS *cluster.Service) gin.HandlerFunc {
 		}
 		c.JSON(http.StatusOK, internal.APIResponse[cluster.MembershipStatus]{
 			Status: "success", Message: "cluster_membership_status", Error: "", Data: status,
+		})
+	}
+}
+
+func ReaddressIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		identity, err := cS.LocalReaddressIdentity()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_readdress_identity_unavailable", Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[cluster.ReaddressIdentity]{
+			Status: "success", Message: "cluster_readdress_identity", Error: "", Data: identity,
+		})
+	}
+}
+
+func ReaddressMemberInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request cluster.MemberAddressChangeRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
+			return
+		}
+		if err := cS.CommitMemberAddress(c.Request.Context(), request, c.GetString("IssuerNodeID")); err != nil {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status: "error", Message: "cluster_readdress_failed", Error: err.Error(), Data: nil,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "cluster_readdress_membership_committed", Error: "", Data: nil,
 		})
 	}
 }

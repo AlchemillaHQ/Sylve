@@ -93,20 +93,21 @@ func (s *Service) SaveJoinIntent(
 	}
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
-	leaderIP = strings.TrimSpace(leaderIP)
-	if net.ParseIP(leaderIP) == nil {
-		return fmt.Errorf("invalid_leader_ip")
+	var err error
+	leaderIP, err = normalizeClusterIPv4(leaderIP, "invalid_leader_ip")
+	if err != nil {
+		return err
 	}
 	clusterKey = strings.TrimSpace(clusterKey)
 	if clusterKey == "" {
 		return fmt.Errorf("invalid_cluster_key")
 	}
 	request.NodeID = strings.TrimSpace(request.NodeID)
-	request.NodeIP = strings.TrimSpace(request.NodeIP)
-	request.NodeVersion = strings.TrimSpace(request.NodeVersion)
-	if net.ParseIP(request.NodeIP) == nil {
-		return fmt.Errorf("invalid_joining_node_ip")
+	request.NodeIP, err = normalizeClusterIPv4(request.NodeIP, "invalid_joining_node_ip")
+	if err != nil {
+		return err
 	}
+	request.NodeVersion = strings.TrimSpace(request.NodeVersion)
 	canonical, err := canonicalSubmittedGuestIdentityInventory(request.NodeID, request.Inventory)
 	if err != nil {
 		return err

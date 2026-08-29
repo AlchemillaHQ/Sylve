@@ -45,6 +45,7 @@ type Service struct {
 	backupJobRebindMu     sync.Mutex
 	replicatedStateMu     sync.RWMutex
 	mutationGate          *MutationGate
+	addressProvider       *raftAddressProvider
 
 	raftFSM            raft.FSM
 	stateFSM           *clusterModels.FSMDispatcher
@@ -68,6 +69,7 @@ type Service struct {
 	embeddedSSHOnce   sync.Once
 	monitorOnce       sync.Once
 	reconcilerOnce    sync.Once
+	readdressOnce     sync.Once
 	joinComplete      atomic.Bool
 	leaveComplete     atomic.Bool
 	readdressRestart  atomic.Bool
@@ -159,13 +161,14 @@ func (s *Service) triggerClusterStart(ip string) error {
 
 func NewClusterService(db *gorm.DB, authService serviceInterfaces.AuthServiceInterface, jailService jailServiceInterfaces.JailServiceInterface) clusterServiceInterfaces.ClusterServiceInterface {
 	return &Service{
-		DB:           db,
-		Raft:         nil,
-		RaftID:       nil,
-		NodeID:       "",
-		AuthService:  authService,
-		JailService:  jailService,
-		mutationGate: NewMutationGate(),
+		DB:              db,
+		Raft:            nil,
+		RaftID:          nil,
+		NodeID:          "",
+		AuthService:     authService,
+		JailService:     jailService,
+		mutationGate:    NewMutationGate(),
+		addressProvider: newRaftAddressProvider(),
 
 		peerProbeFailureStreak: make(map[string]int),
 	}
@@ -307,6 +310,11 @@ func (s *Service) stopRaftRuntime() error {
 }
 
 func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
+	var err error
+	ip, err = normalizeClusterIPv4(ip, "invalid_ip_address")
+	if err != nil {
+		return err
+	}
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
 	}
@@ -420,8 +428,10 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
 
-	if !utils.IsValidIP(ip) {
-		return errors.New("invalid_ip_address")
+	var err error
+	ip, err = normalizeClusterIPv4(ip, "invalid_ip_address")
+	if err != nil {
+		return err
 	}
 
 	port := ClusterRaftPort

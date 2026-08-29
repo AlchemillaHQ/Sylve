@@ -124,7 +124,47 @@ func newDatacenterClusterCommand() *cli.Command {
 						consoleprotocol.DatacenterClusterReadPayload{JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
+			{
+				Name:  "readdress",
+				Usage: "Change this member's cluster IP",
+				Flags: []cli.Flag{
+					datacenterJSONFlag(),
+					&cli.StringFlag{Name: "new-ip", Usage: "new locally assigned cluster IP", Required: true},
+					clusterDisruptionFlag(),
+				},
+				Action: func(_ context.Context, command *cli.Command) error {
+					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterReaddress,
+						consoleprotocol.DatacenterClusterReaddressPayload{
+							NewIP: command.String("new-ip"), AllowDisruption: command.Bool("allow-disruption"),
+							JSON: command.Bool("json"),
+						}, command.Bool("json"))
+				},
+			},
+			{
+				Name:  "repair-address",
+				Usage: "Repair a recovered member's Raft address",
+				Flags: []cli.Flag{
+					datacenterJSONFlag(),
+					&cli.StringFlag{Name: "node-id", Usage: "existing member Node ID", Required: true},
+					&cli.StringFlag{Name: "new-ip", Usage: "recovered member's new cluster IP", Required: true},
+					clusterDisruptionFlag(),
+				},
+				Action: func(_ context.Context, command *cli.Command) error {
+					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterRepairAddress,
+						consoleprotocol.DatacenterClusterRepairAddressPayload{
+							NodeID: command.String("node-id"), NewIP: command.String("new-ip"),
+							AllowDisruption: command.Bool("allow-disruption"), JSON: command.Bool("json"),
+						}, command.Bool("json"))
+				},
+			},
+			newDatacenterClusterRecoverIPCommand(),
 		},
+	}
+}
+
+func clusterDisruptionFlag() cli.Flag {
+	return &cli.BoolFlag{
+		Name: "allow-disruption", Usage: "acknowledge that cluster connectivity may be interrupted", Required: true,
 	}
 }
 

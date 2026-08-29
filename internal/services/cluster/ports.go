@@ -9,6 +9,7 @@
 package cluster
 
 import (
+	"errors"
 	"net"
 	"strconv"
 	"strings"
@@ -26,4 +27,16 @@ func ClusterAPIHost(ip string) string {
 
 func RaftServerAddress(ip string) string {
 	return net.JoinHostPort(strings.TrimSpace(ip), strconv.Itoa(ClusterRaftPort))
+}
+
+func normalizeClusterIPv4(value string, invalidCode string) (string, error) {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	if ip == nil {
+		return "", errors.New(invalidCode)
+	}
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return "", errors.New("cluster_ipv6_unsupported")
+	}
+	return ipv4.String(), nil
 }

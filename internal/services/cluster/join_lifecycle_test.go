@@ -88,6 +88,34 @@ func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 	}
 }
 
+func TestJoinIntentRejectsIPv6WithoutPersisting(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, NodeID: "joining-node"}
+	request := JoinAdmissionRequest{
+		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
+		Inventory: BuildGuestIdentityInventoryReport(nil),
+	}
+	if err := service.SaveJoinIntent("2001:db8::10", "cluster-key", request); err == nil ||
+		err.Error() != "cluster_ipv6_unsupported" {
+		t.Fatalf("leader IPv6 error = %v", err)
+	}
+	request.NodeIP = "2001:db8::20"
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
+		err.Error() != "cluster_ipv6_unsupported" {
+		t.Fatalf("node IPv6 error = %v", err)
+	}
+	var record clusterModels.Cluster
+	if err := db.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.JoinPhase != "" || record.JoinLeaderIP != "" || record.JoinNodeIP != "" {
+		t.Fatalf("IPv6 join intent was persisted: %+v", record)
+	}
+}
+
 func TestLeaderIPFromNotLeaderError(t *testing.T) {
 	tests := map[string]string{
 		"not_leader; leader_addr=10.1.32.230:8180; leader_id=node-a": "10.1.32.230",

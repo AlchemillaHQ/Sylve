@@ -9,12 +9,25 @@
 package cluster
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/hashicorp/raft"
 )
+
+func TestClusterLifecycleRejectsIPv6BeforeStateAccess(t *testing.T) {
+	service := &Service{}
+	for name, err := range map[string]error{
+		"create": service.CreateCluster("2001:db8::10", nil),
+		"join":   service.StartAsJoiner(nil, "2001:db8::20", "secret"),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "cluster_ipv6_unsupported") {
+			t.Fatalf("%s error = %v", name, err)
+		}
+	}
+}
 
 func TestGetClusterDetailsRaftNotInit(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})

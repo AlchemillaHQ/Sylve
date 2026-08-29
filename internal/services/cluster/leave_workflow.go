@@ -88,6 +88,13 @@ func (s *Service) prepareLocalLeave(
 	if err != nil {
 		return GuestIdentityInventoryReport{}, err
 	}
+	record, err := s.loadClusterRecord()
+	if err != nil {
+		return GuestIdentityInventoryReport{}, err
+	}
+	if strings.TrimSpace(record.ReaddressPhase) != "" {
+		return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_readdress_in_progress")
+	}
 	if status.Phase != "" {
 		s.mutationGate.Close()
 		if status.LeaveID != strings.TrimSpace(leaveID) {
@@ -98,10 +105,6 @@ func (s *Service) prepareLocalLeave(
 	if !status.Enabled {
 		if requireEnabled {
 			return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_not_enabled")
-		}
-		record, err := s.loadClusterRecord()
-		if err != nil {
-			return GuestIdentityInventoryReport{}, err
 		}
 		pendingJoin := strings.TrimSpace(record.JoinNodeID) != "" || strings.TrimSpace(record.JoinPhase) != ""
 		if !pendingJoin {
@@ -131,6 +134,15 @@ func (s *Service) prepareLocalLeave(
 	status, err = s.LeaveStatus()
 	if err != nil {
 		return GuestIdentityInventoryReport{}, err
+	}
+	record, err = s.loadClusterRecord()
+	if err != nil {
+		return GuestIdentityInventoryReport{}, err
+	}
+	if strings.TrimSpace(record.ReaddressPhase) != "" {
+		reopen = false
+		s.mutationGate.Close()
+		return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_readdress_in_progress")
 	}
 	if status.Phase != "" {
 		if status.LeaveID != strings.TrimSpace(leaveID) {

@@ -106,21 +106,82 @@ func handleDatacenterCluster(ctx *Context, args []string, jsonMode bool) {
 		printSubHelp(ctx, "datacenter cluster", []cmdHelp{
 			{"status", "Show local cluster and consensus status"},
 			{"members", "List authoritative Raft members"},
+			{"readdress --new-ip <ip> --allow-disruption", "Change this member's cluster IP"},
+			{"repair-address --node-id <uuid> --new-ip <ip> --allow-disruption", "Repair a recovered member's address"},
 		})
-		return
-	}
-	if len(args) != 1 {
-		println(ctx, styledErrorf("Usage: datacenter cluster %s", args[0]))
 		return
 	}
 	switch args[0] {
 	case "status":
+		if len(args) != 1 {
+			println(ctx, styledErrorf("Usage: datacenter cluster status"))
+			return
+		}
 		datacenterClusterStatus(ctx, jsonMode)
 	case "members":
+		if len(args) != 1 {
+			println(ctx, styledErrorf("Usage: datacenter cluster members"))
+			return
+		}
 		datacenterClusterMembers(ctx, jsonMode)
+	case "readdress":
+		newIP, _, allow, err := parseClusterAddressFlags(args[1:], false)
+		if err != nil {
+			println(ctx, styledErrorf("Usage: datacenter cluster readdress --new-ip <ip> --allow-disruption"))
+			return
+		}
+		datacenterClusterReaddress(ctx, newIP, allow, jsonMode)
+	case "repair-address":
+		newIP, nodeID, allow, err := parseClusterAddressFlags(args[1:], true)
+		if err != nil {
+			println(ctx, styledErrorf("Usage: datacenter cluster repair-address --node-id <uuid> --new-ip <ip> --allow-disruption"))
+			return
+		}
+		datacenterClusterRepairAddress(ctx, nodeID, newIP, allow, jsonMode)
 	default:
 		println(ctx, styledErrorf("Unknown datacenter cluster command: '%s'.", args[0]))
 	}
+}
+
+func parseClusterAddressFlags(args []string, requireNodeID bool) (string, string, bool, error) {
+	var newIP string
+	var nodeID string
+	allowDisruption := false
+	for index := 0; index < len(args); index++ {
+		switch args[index] {
+		case "--allow-disruption":
+			if allowDisruption {
+				return "", "", false, fmt.Errorf("duplicate_flag")
+			}
+			allowDisruption = true
+		case "--new-ip", "--node-id":
+			if index+1 >= len(args) {
+				return "", "", false, fmt.Errorf("flag_value_required")
+			}
+			name, value := args[index], strings.TrimSpace(args[index+1])
+			index++
+			if value == "" {
+				return "", "", false, fmt.Errorf("flag_value_required")
+			}
+			if name == "--new-ip" {
+				if newIP != "" {
+					return "", "", false, fmt.Errorf("duplicate_flag")
+				}
+				newIP = value
+			} else {
+				if nodeID != "" {
+					return "", "", false, fmt.Errorf("duplicate_flag")
+				}
+				nodeID = value
+			}
+		default:
+			return "", "", false, fmt.Errorf("unknown_flag")
+		}
+	}
+	if newIP == "" || !allowDisruption || (requireNodeID && nodeID == "") || (!requireNodeID && nodeID != "") {
+		return "", "", false, fmt.Errorf("required_flag_missing")
+	}
+	return newIP, nodeID, allowDisruption, nil
 }
 
 func datacenterNotesList(ctx *Context, jsonMode bool) {
@@ -250,6 +311,62 @@ func datacenterClusterMembers(ctx *Context, jsonMode bool) {
 	println(ctx, formatDatacenterClusterMembers(members))
 }
 
+func datacenterClusterReaddress(ctx *Context, newIP string, allowDisruption bool, jsonMode bool) {
+	result, err := readdressDatacenterCluster(ctx, clusterService.ReaddressRequest{
+		NewIP: newIP, AllowDisruption: allowDisruption,
+	})
+	if err != nil {
+		printOperationError(ctx, jsonMode, "Error changing cluster address", err)
+		return
+	}
+	if jsonMode {
+		println(ctx, mustJSON(result))
+		return
+	}
+	println(ctx, formatDatacenterClusterReaddress(result, false))
+}
+
+func datacenterClusterRepairAddress(
+	ctx *Context,
+	nodeID string,
+	newIP string,
+	allowDisruption bool,
+	jsonMode bool,
+) {
+	result, err := repairDatacenterClusterAddress(ctx, clusterService.RepairAddressRequest{
+		NodeID: nodeID, NewIP: newIP, AllowDisruption: allowDisruption,
+	})
+	if err != nil {
+		printOperationError(ctx, jsonMode, "Error repairing cluster address", err)
+		return
+	}
+	if jsonMode {
+		println(ctx, mustJSON(result))
+		return
+	}
+	println(ctx, formatDatacenterClusterReaddress(result, true))
+}
+
+func readdressDatacenterCluster(
+	ctx *Context,
+	request clusterService.ReaddressRequest,
+) (clusterService.ReaddressResult, error) {
+	if ctx == nil || ctx.Cluster == nil {
+		return clusterService.ReaddressResult{}, fmt.Errorf("cluster_service_unavailable")
+	}
+	return ctx.Cluster.ReaddressLocal(operationContext(ctx), request)
+}
+
+func repairDatacenterClusterAddress(
+	ctx *Context,
+	request clusterService.RepairAddressRequest,
+) (clusterService.ReaddressResult, error) {
+	if ctx == nil || ctx.Cluster == nil {
+		return clusterService.ReaddressResult{}, fmt.Errorf("cluster_service_unavailable")
+	}
+	return ctx.Cluster.RepairMemberAddress(operationContext(ctx), request)
+}
+
 func getDatacenterClusterStatus(ctx *Context) (clusterService.CommandStatus, error) {
 	if ctx == nil || ctx.Cluster == nil {
 		return clusterService.CommandStatus{}, fmt.Errorf("cluster_service_unavailable")
@@ -277,6 +394,7 @@ func formatDatacenterClusterStatus(status clusterService.CommandStatus) string {
 		styledKeyValue("Join phase:", valueOrDash(status.JoinPhase)),
 		styledKeyValue("Leave phase:", valueOrDash(status.LeavePhase)),
 		styledKeyValue("Readdress phase:", valueOrDash(status.ReaddressPhase)),
+		styledKeyValue("Readdress error:", valueOrDash(status.ReaddressError)),
 		styledKeyValue("Partial:", strconv.FormatBool(status.Partial)),
 	}, "\n")
 }
@@ -297,6 +415,22 @@ func formatDatacenterClusterMembers(members []clusterService.CommandMember) stri
 		})
 	}
 	return styledTable([]string{"HOSTNAME", "NODE ID", "ADDRESS", "STATUS", "SUFFRAGE", "VERSION", "LEADER", "GUESTS"}, rows)
+}
+
+func formatDatacenterClusterReaddress(result clusterService.ReaddressResult, repaired bool) string {
+	title := styledSuccessf("Cluster address change prepared.")
+	if repaired {
+		title = styledSuccessf("Cluster member address repaired.")
+	}
+	return strings.Join([]string{
+		title,
+		styledKeyValue("Node ID:", result.NodeID),
+		styledKeyValue("Old IP:", valueOrDash(result.OldIP)),
+		styledKeyValue("New IP:", result.NewIP),
+		styledKeyValue("Phase:", valueOrDash(result.Phase)),
+		styledKeyValue("Membership committed:", strconv.FormatBool(result.MembershipCommitted)),
+		styledKeyValue("Restart requested:", strconv.FormatBool(result.RestartRequested)),
+	}, "\n")
 }
 
 func valueOrDash(value string) string {
@@ -366,4 +500,32 @@ func processDatacenterClusterMembersSocketRequest(ctx *Context, payload json.Raw
 		return socketResponse{Error: err.Error()}
 	}
 	return operationSuccess(request.JSON, members, formatDatacenterClusterMembers(members))
+}
+
+func processDatacenterClusterReaddressSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
+	var request consoleprotocol.DatacenterClusterReaddressPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_datacenter_cluster_readdress_request: " + err.Error()}
+	}
+	result, err := readdressDatacenterCluster(ctx, clusterService.ReaddressRequest{
+		NewIP: request.NewIP, AllowDisruption: request.AllowDisruption,
+	})
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	return operationSuccess(request.JSON, result, formatDatacenterClusterReaddress(result, false))
+}
+
+func processDatacenterClusterRepairAddressSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {
+	var request consoleprotocol.DatacenterClusterRepairAddressPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_datacenter_cluster_repair_address_request: " + err.Error()}
+	}
+	result, err := repairDatacenterClusterAddress(ctx, clusterService.RepairAddressRequest{
+		NodeID: request.NodeID, NewIP: request.NewIP, AllowDisruption: request.AllowDisruption,
+	})
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	return operationSuccess(request.JSON, result, formatDatacenterClusterReaddress(result, true))
 }

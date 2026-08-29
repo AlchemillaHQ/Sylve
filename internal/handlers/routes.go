@@ -865,6 +865,8 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/leave", clusterHandlers.StartLeaveInternal(clusterService))
 		intraCluster.POST("/remove-peer", clusterHandlers.RemoveMembershipInternal(clusterService))
 		intraCluster.POST("/note-mutation", clusterHandlers.MutateNoteInternal(clusterService))
+		intraCluster.GET("/readdress-identity", clusterHandlers.ReaddressIdentityInternal(clusterService))
+		intraCluster.POST("/readdress-member", clusterHandlers.ReaddressMemberInternal(clusterService))
 	}
 
 	clusterAdmission := api.Group("/cluster")

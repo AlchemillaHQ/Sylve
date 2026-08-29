@@ -24,14 +24,15 @@ type mutationAdmission interface {
 
 var mutationAdmissionBypass = map[string]map[string]struct{}{
 	http.MethodPost: {
-		"/api/auth/login":                 {},
-		"/api/auth/passkeys/login/begin":  {},
-		"/api/auth/passkeys/login/finish": {},
-		"/api/auth/logout":                {},
-		"/api/auth/sse-tokens":            {},
-		"/api/basic/system/reboot":        {},
-		"/api/intra-cluster/leave":        {},
-		"/api/cluster/membership-status":  {},
+		"/api/auth/login":                     {},
+		"/api/auth/passkeys/login/begin":      {},
+		"/api/auth/passkeys/login/finish":     {},
+		"/api/auth/logout":                    {},
+		"/api/auth/sse-tokens":                {},
+		"/api/basic/system/reboot":            {},
+		"/api/intra-cluster/leave":            {},
+		"/api/intra-cluster/readdress-member": {},
+		"/api/cluster/membership-status":      {},
 	},
 	http.MethodDelete: {
 		"/api/cluster/reset-node":       {},
@@ -60,7 +61,9 @@ func ClusterMutationAdmission(service mutationAdmission) gin.HandlerFunc {
 		ctx, release, err := service.EnterMutation(c.Request.Context())
 		if err != nil {
 			code := "node_leave_fenced"
-			if !errors.Is(err, cluster.ErrNodeLeaveFenced) {
+			if errors.Is(err, cluster.ErrNodeReaddressFenced) {
+				code = "node_readdress_fenced"
+			} else if !errors.Is(err, cluster.ErrNodeLeaveFenced) {
 				code = "mutation_admission_failed"
 			}
 			c.AbortWithStatusJSON(http.StatusLocked, internal.APIResponse[any]{
