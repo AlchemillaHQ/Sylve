@@ -19,7 +19,9 @@
 	let triggerClass = $derived(
 		cn(
 			buttonVariants({ variant: 'outline', size: 'sm' }),
-			'h-6 max-w-72 gap-1.5 border-amber-500/50 px-2 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-400'
+			'h-6 max-w-72 gap-1.5 px-2 text-xs',
+			friendlyError &&
+				'border-amber-500/50 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400'
 		)
 	);
 </script>
@@ -54,9 +56,11 @@
 			</details>
 		{/if}
 
-		<div class="flex justify-end gap-2">
-			<Button size="sm" variant="secondary" onclick={onRetry}>Retry Leave</Button>
-			<Button size="sm" variant="destructive" onclick={onForceReset}>Force Local Reset…</Button>
-		</div>
+		{#if friendlyError}
+			<div class="flex justify-end gap-2">
+				<Button size="sm" variant="secondary" onclick={onRetry}>Retry Leave</Button>
+				<Button size="sm" variant="destructive" onclick={onForceReset}>Force Local Reset…</Button>
+			</div>
+		{/if}
 	</Popover.Content>
 </Popover.Root>
