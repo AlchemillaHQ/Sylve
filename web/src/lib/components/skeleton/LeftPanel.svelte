@@ -75,7 +75,7 @@
 		if (routeHost && routeHost !== 'datacenter' && routeHost !== 'login') {
 			return routeHost;
 		}
-		return storage.hostname || 'default-node';
+		return storage.localHostname || storage.hostname || 'default-node';
 	});
 
 	let enabledServices = $derived(getEnabledServicesForHostname(node));

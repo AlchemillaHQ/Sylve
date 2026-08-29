@@ -17599,9 +17599,6 @@ msgstr "Cluster - Force Remove Node"
 msgid "Leave / Reset Cluster"
 msgstr "Leave / Reset Cluster"
 
-#~ msgid "Cluster leave completed"
-#~ msgstr "Cluster leave completed"
-
 #: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
 msgid "Raft cannot commit removal without quorum"
 msgstr "Raft cannot commit removal without quorum"
@@ -17641,9 +17638,6 @@ msgstr "Removing…"
 #: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
 msgid "Force Remove Membership"
 msgstr "Force Remove Membership"
-
-#~ msgid "Local cluster state reset"
-#~ msgstr "Local cluster state reset"
 
 #: src/lib/components/custom/Cluster/ForceReset.svelte
 #: src/lib/components/custom/Cluster/ForceReset.svelte
@@ -17817,6 +17811,3 @@ msgstr "Cluster leave completed. Sylve is restarting…"
 #: src/lib/components/custom/Cluster/ForceReset.svelte
 msgid "Local cluster state reset. Sylve is restarting…"
 msgstr "Local cluster state reset. Sylve is restarting…"
-
-#~ msgid "Version"
-#~ msgstr "Version"

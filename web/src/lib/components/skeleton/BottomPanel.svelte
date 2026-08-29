@@ -164,7 +164,7 @@
 	watch(
 		() => storage.hostname,
 		(hostname) => {
-			if (!selectedHostname && hostname) {
+			if (hostname && (!clustered || !selectedHostname)) {
 				selectedHostname = hostname;
 			}
 		}
