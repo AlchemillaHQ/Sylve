@@ -565,9 +565,10 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		if err := d.First(&clusterRecord).Error; err == nil && clusterRecord.Enabled && clusterRecord.RaftIP != "" {
 			if err := startClusterListeners(clusterRecord.RaftIP); err != nil {
 				logger.L.Error().Err(err).Msg("failed_to_start_cluster_listeners_at_startup")
+			} else {
+				clusterSvc.StartReaddressReconciler(qCtx)
 			}
 		}
-		clusterSvc.StartReaddressReconciler(qCtx)
 	}
 
 	selfRestartRequested := false

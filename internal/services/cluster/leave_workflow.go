@@ -312,7 +312,6 @@ func (s *Service) transferLeadershipForLeave(
 		return "", fmt.Errorf("cluster_leave_leadership_transfer_unavailable")
 	}
 	sort.Slice(candidates, func(i, j int) bool { return string(candidates[i].ID) < string(candidates[j].ID) })
-	target := candidates[0]
 
 	s.clusterJoinMu.Lock()
 	if s.Raft == nil || s.Raft.State() != raft.Leader {
@@ -339,10 +338,32 @@ func (s *Service) transferLeadershipForLeave(
 			Dependencies: dependencies,
 		}}
 	}
-	err = s.Raft.LeadershipTransferToServer(target.ID, target.Address).Error()
+	transferred := false
+	var transferErr error
+	for _, candidate := range candidates {
+		if s.Raft.State() != raft.Leader {
+			leaderAddress, leaderID := s.Raft.LeaderWithID()
+			s.clusterJoinMu.Unlock()
+			if leaderID != "" && strings.TrimSpace(string(leaderID)) != localNodeID && leaderAddress != "" {
+				return strings.TrimSpace(raftAddressHost(string(leaderAddress))), nil
+			}
+			return "", fmt.Errorf("cluster_leave_leadership_transfer_unconfirmed")
+		}
+		for attempt := 0; attempt < 3; attempt++ {
+			transferErr = s.Raft.LeadershipTransferToServer(candidate.ID, candidate.Address).Error()
+			if !errors.Is(transferErr, raft.ErrLeadershipTransferInProgress) {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if transferErr == nil {
+			transferred = true
+			break
+		}
+	}
 	s.clusterJoinMu.Unlock()
-	if err != nil {
-		return "", fmt.Errorf("cluster_leave_leadership_transfer_failed: %w", err)
+	if !transferred {
+		return "", fmt.Errorf("cluster_leave_leadership_transfer_failed: %w", transferErr)
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, leaveLeaderWaitTimeout)
@@ -351,8 +372,8 @@ func (s *Service) transferLeadershipForLeave(
 	defer ticker.Stop()
 	for {
 		leaderAddress, leaderID := s.Raft.LeaderWithID()
-		if leaderID == target.ID && leaderAddress == target.Address {
-			return strings.TrimSpace(raftAddressHost(string(target.Address))), nil
+		if leaderID != "" && strings.TrimSpace(string(leaderID)) != localNodeID && leaderAddress != "" {
+			return strings.TrimSpace(raftAddressHost(string(leaderAddress))), nil
 		}
 		select {
 		case <-waitCtx.Done():

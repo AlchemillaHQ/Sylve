@@ -31061,6 +31061,9 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 },
+                "sylveVersion": {
+                    "type": "string"
+                },
                 "updatedAt": {
                     "type": "string"
                 }
@@ -34060,6 +34063,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },
@@ -34687,6 +34693,9 @@ const docTemplate = `{
                 },
                 "ramUsage": {
                     "type": "number"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },

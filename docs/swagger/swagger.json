@@ -31055,6 +31055,9 @@
                 "status": {
                     "type": "string"
                 },
+                "sylveVersion": {
+                    "type": "string"
+                },
                 "updatedAt": {
                     "type": "string"
                 }
@@ -34054,6 +34057,9 @@
                 },
                 "status": {
                     "type": "string"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },
@@ -34681,6 +34687,9 @@
                 },
                 "ramUsage": {
                     "type": "number"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },

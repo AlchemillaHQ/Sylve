@@ -286,10 +286,10 @@ func (s *Service) advanceLocalReaddress(
 		}
 		return result, err
 	case ReaddressPhaseMembershipCommitted:
-		if err := s.persistLocalRebound(record); err != nil {
+		if err := s.persistMembershipCommitted(record); err != nil {
 			return result, err
 		}
-		result.Phase = ReaddressPhaseLocalRebound
+		result.Phase = ReaddressPhaseMembershipCommitted
 		result.MembershipCommitted = true
 		result.RestartRequested = true
 		s.notifyReaddressRestart()
@@ -315,30 +315,24 @@ func (s *Service) advanceLocalReaddress(
 			return result, fmt.Errorf("cluster_readdress_membership_update_uncertain: %w", err)
 		}
 	}
-	if err := s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
-		"readdress_phase":      ReaddressPhaseMembershipCommitted,
-		"readdress_last_error": "",
-	}).Error; err != nil {
+	if err := s.persistMembershipCommitted(record); err != nil {
 		return result, err
 	}
-	if err := s.persistLocalRebound(record); err != nil {
-		return result, err
-	}
-	result.Phase = ReaddressPhaseLocalRebound
+	result.Phase = ReaddressPhaseMembershipCommitted
 	result.MembershipCommitted = true
 	result.RestartRequested = true
 	s.notifyReaddressRestart()
 	return result, nil
 }
 
-func (s *Service) persistLocalRebound(record clusterModels.Cluster) error {
+func (s *Service) persistMembershipCommitted(record clusterModels.Cluster) error {
 	newIP, err := normalizeReaddressIP(record.ReaddressNewIP)
 	if err != nil {
 		return err
 	}
 	return s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
 		"raft_ip":              newIP,
-		"readdress_phase":      ReaddressPhaseLocalRebound,
+		"readdress_phase":      ReaddressPhaseMembershipCommitted,
 		"readdress_last_error": "",
 	}).Error
 }
@@ -455,6 +449,32 @@ func (s *Service) completeLocalReaddressIfCommitted() (bool, error) {
 	return true, nil
 }
 
+func (s *Service) repairSoleMemberReaddress(ctx context.Context, record clusterModels.Cluster) error {
+	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+		return nil
+	}
+	future := s.Raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return err
+	}
+	servers := future.Configuration().Servers
+	if len(servers) != 1 {
+		return nil
+	}
+	server := servers[0]
+	localNodeID := strings.TrimSpace(s.LocalNodeID())
+	if strings.TrimSpace(string(server.ID)) != localNodeID || server.Suffrage != raft.Voter ||
+		!sameReaddressIP(raftAddressHost(string(server.Address)), record.ReaddressOldIP) {
+		return nil
+	}
+	return s.commitMemberAddress(ctx, MemberAddressChangeRequest{
+		NodeID:          localNodeID,
+		OldIP:           record.ReaddressOldIP,
+		NewIP:           record.ReaddressNewIP,
+		AllowDisruption: true,
+	}, localNodeID, false)
+}
+
 func (s *Service) StartReaddressReconciler(ctx context.Context) {
 	if s == nil {
 		return
@@ -490,7 +510,14 @@ func (s *Service) reconcileReaddress(ctx context.Context) bool {
 	case ReaddressPhasePrepared:
 		_, err = s.ReaddressLocal(ctx, ReaddressRequest{NewIP: record.ReaddressNewIP, AllowDisruption: true})
 	case ReaddressPhaseLocalRebound:
-		_, err = s.completeLocalReaddressIfCommitted()
+		s.membershipLifecycleMu.Lock()
+		if !s.localMembershipHasAddress(s.LocalNodeID(), record.ReaddressNewIP) {
+			err = s.repairSoleMemberReaddress(ctx, record)
+		}
+		if err == nil {
+			_, err = s.completeLocalReaddressIfCommitted()
+		}
+		s.membershipLifecycleMu.Unlock()
 	default:
 		return false
 	}

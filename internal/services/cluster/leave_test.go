@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -371,6 +372,54 @@ func TestIntegrationActiveLeavingLeaderTransfersAndConfirmsLostResponse(t *testi
 	}
 	assertLeaveWorkflowCompleted(t, target, result)
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+}
+
+func TestIntegrationLeaderLeaveTriesAnotherTransferCandidate(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(
+		t,
+		3,
+		&clusterModels.Cluster{},
+		&clusterModels.ClusterNode{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+		&taskModels.GuestLifecycleTask{},
+	)
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.Cluster{
+			Enabled: true, Key: "cluster-key", RaftIP: node.id, RaftPort: ClusterRaftPort,
+		}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	candidates := make([]*clusterRaftTestNode, 0, 2)
+	for _, node := range nodes {
+		if node.id != leader.id {
+			candidates = append(candidates, node)
+		}
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
+	unavailable := candidates[0]
+	expectedLeader := candidates[1]
+	unavailable.transport.DisconnectAll()
+	for _, node := range nodes {
+		node.transport.Disconnect(unavailable.addr)
+	}
+
+	future := leader.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		t.Fatal(err)
+	}
+	leaderIP, err := leader.service.transferLeadershipForLeave(context.Background(), future.Configuration(), leader.id)
+	if err != nil {
+		t.Fatalf("transfer leadership: %v", err)
+	}
+	if leaderIP != raftAddressHost(string(expectedLeader.addr)) {
+		t.Fatalf("leader IP = %q, want %q", leaderIP, raftAddressHost(string(expectedLeader.addr)))
+	}
+	if elected := waitForClusterRaftLeader(t, []*clusterRaftTestNode{leader, expectedLeader}, 8*time.Second); elected.id != expectedLeader.id {
+		t.Fatalf("leader = %s, want %s", elected.id, expectedLeader.id)
+	}
 }
 
 func TestIntegrationActiveLeavingLeaderWithoutSuccessorStaysFenced(t *testing.T) {

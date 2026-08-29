@@ -2393,6 +2393,8 @@ definitions:
         type: string
       status:
         type: string
+      sylveVersion:
+        type: string
       updatedAt:
         type: string
     type: object
@@ -4405,6 +4407,8 @@ definitions:
         type: string
       status:
         type: string
+      sylveVersion:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources:
     properties:
@@ -4825,6 +4829,8 @@ definitions:
         type: integer
       ramUsage:
         type: number
+      sylveVersion:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.RAMInfo:
     properties:

@@ -111,7 +111,7 @@ func TestValidateRecoveryIdentity(t *testing.T) {
 	}
 }
 
-func TestCommitMemberAddressUpdatesExistingVoterWithoutChangingNodeID(t *testing.T) {
+func TestReconcileSoleMemberReaddressUpdatesExistingVoterAndReopens(t *testing.T) {
 	database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
 	if err := database.Create(&clusterModels.Cluster{
 		Enabled: true, RaftIP: "192.0.2.20", ReaddressOldIP: "192.0.2.10",
@@ -159,12 +159,7 @@ func TestCommitMemberAddressUpdatesExistingVoterWithoutChangingNodeID(t *testing
 	}
 
 	service := &Service{DB: database, Raft: instance, NodeID: "node-1", mutationGate: NewMutationGate()}
-	err = service.commitMemberAddress(context.Background(), MemberAddressChangeRequest{
-		NodeID: "node-1", OldIP: "192.0.2.10", NewIP: "192.0.2.20", AllowDisruption: true,
-	}, "node-1", false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	service.reconcileReaddress(context.Background())
 	future := instance.GetConfiguration()
 	if err := future.Error(); err != nil {
 		t.Fatal(err)
@@ -175,10 +170,6 @@ func TestCommitMemberAddressUpdatesExistingVoterWithoutChangingNodeID(t *testing
 	}
 	if server.ID != "node-1" || server.Address != "192.0.2.20:8180" || server.Suffrage != raft.Voter {
 		t.Fatalf("server = %+v", server)
-	}
-	completed, err := service.completeLocalReaddressIfCommitted()
-	if err != nil || !completed {
-		t.Fatalf("completed=%v err=%v", completed, err)
 	}
 	if _, release, err := service.EnterMutation(context.Background()); err != nil {
 		t.Fatalf("mutation gate did not reopen: %v", err)
@@ -191,5 +182,42 @@ func TestCommitMemberAddressUpdatesExistingVoterWithoutChangingNodeID(t *testing
 	}
 	if record.ReaddressPhase != "" || record.ReaddressOldIP != "" || record.ReaddressNewIP != "" {
 		t.Fatalf("pending state was not cleared: %+v", record)
+	}
+}
+
+func TestMembershipCommittedRetryRemainsFencedUntilRestart(t *testing.T) {
+	database := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	record := clusterModels.Cluster{
+		Enabled: true, RaftIP: "192.0.2.10", ReaddressOldIP: "192.0.2.10",
+		ReaddressNewIP: "192.0.2.20", ReaddressPhase: ReaddressPhaseMembershipCommitted,
+	}
+	if err := database.Create(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	restarted := make(chan struct{}, 1)
+	service := &Service{DB: database, NodeID: "node-1", mutationGate: NewMutationGate()}
+	service.SetReaddressRestartHook(func() { restarted <- struct{}{} })
+
+	result, err := service.advanceLocalReaddress(context.Background(), record, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Phase != ReaddressPhaseMembershipCommitted || !result.MembershipCommitted || !result.RestartRequested {
+		t.Fatalf("result = %+v", result)
+	}
+	select {
+	case <-restarted:
+	case <-time.After(time.Second):
+		t.Fatal("restart was not requested")
+	}
+	var current clusterModels.Cluster
+	if err := database.First(&current).Error; err != nil {
+		t.Fatal(err)
+	}
+	if current.RaftIP != "192.0.2.20" || current.ReaddressPhase != ReaddressPhaseMembershipCommitted {
+		t.Fatalf("state = %+v", current)
+	}
+	if _, _, err := service.EnterMutation(context.Background()); !errors.Is(err, ErrNodeReaddressFenced) {
+		t.Fatalf("gate error = %v", err)
 	}
 }
