@@ -1438,16 +1438,17 @@ func TestEditStandardBridgeRecreatesWhenDisablingDHCPAndPreservesExtraMembers(t 
 			switch lookup {
 			case 1:
 				return &iface.Interface{
-					Name: name,
+					Name:  name,
+					Ether: testStandardSwitchMAC,
 					BridgeMembers: []iface.BridgeMember{
 						{Name: "em0"},
 						{Name: "tap0"},
 					},
 				}, nil
 			case 2:
-				return &iface.Interface{Name: name}, nil
+				return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
 			default:
-				return &iface.Interface{Name: name}, nil
+				return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
 			}
 		},
 		deleteBridge: func(sw networkModels.StandardSwitch) error {
