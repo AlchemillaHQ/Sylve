@@ -53,12 +53,16 @@ func (s *Service) CommandStatus() (CommandStatus, error) {
 	if err := s.DB.First(&record).Error; err != nil {
 		return CommandStatus{}, err
 	}
+	joinPhase := strings.TrimSpace(record.JoinPhase)
+	if !record.HasIncompleteJoin() {
+		joinPhase = ""
+	}
 	result := CommandStatus{
 		Enabled:        record.Enabled,
 		NodeID:         strings.TrimSpace(s.LocalNodeID()),
 		RaftIP:         strings.TrimSpace(record.RaftIP),
 		RaftState:      "standalone",
-		JoinPhase:      strings.TrimSpace(record.JoinPhase),
+		JoinPhase:      joinPhase,
 		LeavePhase:     strings.TrimSpace(record.LeavePhase),
 		ReaddressPhase: strings.TrimSpace(record.ReaddressPhase),
 		ReaddressError: strings.TrimSpace(record.ReaddressLastError),

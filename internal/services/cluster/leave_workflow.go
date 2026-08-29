@@ -106,7 +106,7 @@ func (s *Service) prepareLocalLeave(
 		if requireEnabled {
 			return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_not_enabled")
 		}
-		pendingJoin := strings.TrimSpace(record.JoinNodeID) != "" || strings.TrimSpace(record.JoinPhase) != ""
+		pendingJoin := record.HasIncompleteJoin()
 		if !pendingJoin {
 			return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_not_enabled")
 		}
@@ -229,7 +229,7 @@ func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) 
 	if err != nil {
 		return ClusterLeaveResult{}, err
 	}
-	pendingJoin := strings.TrimSpace(record.JoinNodeID) != "" || strings.TrimSpace(record.JoinPhase) != ""
+	pendingJoin := record.HasIncompleteJoin()
 	if !status.Enabled && !pendingJoin {
 		return ClusterLeaveResult{Status: status, CleanupAcknowledged: true}, nil
 	}

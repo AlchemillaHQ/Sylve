@@ -219,7 +219,7 @@ func (s *Service) preflightLocalReaddress(ctx context.Context, record clusterMod
 	if sameReaddressIP(record.RaftIP, newIP) {
 		return fmt.Errorf("cluster_readdress_ip_unchanged")
 	}
-	if strings.TrimSpace(record.JoinPhase) != "" || strings.TrimSpace(record.JoinNodeID) != "" {
+	if record.HasIncompleteJoin() {
 		return fmt.Errorf("cluster_readdress_join_conflict")
 	}
 	if strings.TrimSpace(record.LeavePhase) != "" {

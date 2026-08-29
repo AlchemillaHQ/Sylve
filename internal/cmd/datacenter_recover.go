@@ -155,7 +155,7 @@ func applyOfflineClusterIPRecovery(
 		if !record.Enabled {
 			return fmt.Errorf("cluster_not_enabled")
 		}
-		if strings.TrimSpace(record.JoinPhase) != "" || strings.TrimSpace(record.LeavePhase) != "" {
+		if record.HasIncompleteJoin() || strings.TrimSpace(record.LeavePhase) != "" {
 			return fmt.Errorf("cluster_readdress_lifecycle_conflict")
 		}
 		phase := strings.TrimSpace(record.ReaddressPhase)

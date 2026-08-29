@@ -21,7 +21,10 @@ import (
 
 func TestApplyOfflineClusterIPRecoveryPreservesStateAndIsIdempotent(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &clusterModels.ClusterNote{})
-	if err := database.Create(&clusterModels.Cluster{Enabled: true, RaftIP: "192.0.2.10"}).Error; err != nil {
+	if err := database.Create(&clusterModels.Cluster{
+		Enabled: true, RaftIP: "192.0.2.10", JoinNodeID: "node-2",
+		JoinPhase: clusterModels.JoinPhaseComplete,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Create(&clusterModels.ClusterNote{Title: "keep", Content: "retained"}).Error; err != nil {
@@ -61,6 +64,28 @@ func TestApplyOfflineClusterIPRecoveryPreservesStateAndIsIdempotent(t *testing.T
 	}
 	if _, err := applyOfflineClusterIPRecovery(database, "node-2", "192.0.2.30"); err == nil {
 		t.Fatal("expected a conflicting pending recovery to fail")
+	}
+}
+
+func TestApplyOfflineClusterIPRecoveryRejectsIncompleteJoin(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{})
+	if err := database.Create(&clusterModels.Cluster{
+		Enabled: true, RaftIP: "192.0.2.10", JoinNodeID: "node-2", JoinPhase: "catching_up",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := applyOfflineClusterIPRecovery(database, "node-2", "192.0.2.20")
+	if err == nil || err.Error() != "cluster_readdress_lifecycle_conflict" {
+		t.Fatalf("recovery error = %v", err)
+	}
+
+	var record clusterModels.Cluster
+	if err := database.First(&record).Error; err != nil {
+		t.Fatal(err)
+	}
+	if record.RaftIP != "192.0.2.10" || record.ReaddressPhase != "" {
+		t.Fatalf("record changed after rejected recovery: %+v", record)
 	}
 }
 

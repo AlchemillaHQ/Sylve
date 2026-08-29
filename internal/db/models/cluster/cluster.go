@@ -9,11 +9,14 @@
 package clusterModels
 
 import (
+	"strings"
 	"time"
 
 	hub "github.com/alchemillahq/sylve/internal/events"
 	"gorm.io/gorm"
 )
+
+const JoinPhaseComplete = "voter"
 
 type Cluster struct {
 	ID            uint   `gorm:"primaryKey" json:"id"`
@@ -43,6 +46,11 @@ type Cluster struct {
 	ReaddressNewIP     string `json:"-"`
 	ReaddressPhase     string `json:"-"`
 	ReaddressLastError string `json:"-"`
+}
+
+func (c Cluster) HasIncompleteJoin() bool {
+	phase := strings.TrimSpace(c.JoinPhase)
+	return phase != JoinPhaseComplete && (phase != "" || strings.TrimSpace(c.JoinNodeID) != "")
 }
 
 func publishClusterRefresh() {

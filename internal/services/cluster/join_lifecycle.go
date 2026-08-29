@@ -33,7 +33,7 @@ const (
 	JoinPhaseSubmitting  = "submitting"
 	JoinPhaseStaged      = "staged_nonvoter"
 	JoinPhaseCatchingUp  = "catching_up"
-	JoinPhaseComplete    = "voter"
+	JoinPhaseComplete    = clusterModels.JoinPhaseComplete
 	JoinPhaseStalled     = "stalled"
 	JoinPhaseFailed      = "failed"
 
