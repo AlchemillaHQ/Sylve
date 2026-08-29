@@ -244,7 +244,6 @@
 		return '';
 	});
 
-	/* svelte-ignore state_referenced_locally */
 	let bridgeMACObjectModal = $state({
 		open: false,
 		prefill: { name: '', type: 'MAC(s)', value: '' }
