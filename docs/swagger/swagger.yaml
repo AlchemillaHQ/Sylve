@@ -3742,6 +3742,8 @@ definitions:
         type: boolean
       bindInterfacesOnly:
         type: boolean
+      extraGlobalConfig:
+        type: string
       id:
         type: integer
       interfaces:
@@ -9306,6 +9308,8 @@ definitions:
         type: boolean
       bindInterfacesOnly:
         type: boolean
+      extraGlobalConfig:
+        type: string
       interfaces:
         type: string
       serverString:
@@ -21948,6 +21952,14 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":

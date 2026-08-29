@@ -18497,6 +18497,18 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -33083,6 +33095,9 @@ const docTemplate = `{
                 "bindInterfacesOnly": {
                     "type": "boolean"
                 },
+                "extraGlobalConfig": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -41397,6 +41412,9 @@ const docTemplate = `{
                 },
                 "bindInterfacesOnly": {
                     "type": "boolean"
+                },
+                "extraGlobalConfig": {
+                    "type": "string"
                 },
                 "interfaces": {
                     "type": "string"

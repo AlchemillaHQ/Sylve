@@ -410,6 +410,45 @@ func TestSanitizeDownloadAuditResponseRedactsSourceURL(t *testing.T) {
 	}
 }
 
+func TestSambaExtraGlobalConfigIsRedactedFromAuditPayloads(t *testing.T) {
+	t.Parallel()
+
+	request, ok := sanitizeAuditPayloadForPath(
+		"/api/samba/config",
+		map[string]interface{}{
+			"workgroup":         "WORKGROUP",
+			"extraGlobalConfig": "include = /private/smb.conf",
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sanitized request map, got %T", request)
+	}
+	if request["extraGlobalConfig"] != "[REDACTED]" {
+		t.Fatalf("extra global config was not redacted from request: %#v", request)
+	}
+	if request["workgroup"] != "WORKGROUP" {
+		t.Fatalf("safe Samba setting was not preserved: %#v", request)
+	}
+
+	response, ok := sanitizeAuditResponseForPath(
+		"/api/samba/config",
+		map[string]interface{}{
+			"status": "success",
+			"data": map[string]interface{}{
+				"workgroup":         "WORKGROUP",
+				"extraGlobalConfig": "include = /private/smb.conf",
+			},
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected sanitized response map, got %T", response)
+	}
+	data, ok := response["data"].(map[string]interface{})
+	if !ok || data["extraGlobalConfig"] != "[REDACTED]" {
+		t.Fatalf("extra global config was not redacted from response: %#v", response)
+	}
+}
+
 func TestSanitizeAuditPayloadForVMCloudInitRedactsOnlyDocuments(t *testing.T) {
 	t.Parallel()
 

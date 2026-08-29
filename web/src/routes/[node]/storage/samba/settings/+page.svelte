@@ -153,6 +153,11 @@
 				id: generateNanoId(`${sambaConfig.current.advertiseMdns}`),
 				property: 'Advertise Samba Services (mDNS)',
 				value: sambaConfig.current.advertiseMdns ? 'Yes' : 'No'
+			},
+			{
+				id: generateNanoId(`extra-global-config-${sambaConfig.current.extraGlobalConfig !== ''}`),
+				property: 'Extra Global Configuration',
+				value: sambaConfig.current.extraGlobalConfig ? 'Configured' : 'Not Configured'
 			}
 		]
 	});

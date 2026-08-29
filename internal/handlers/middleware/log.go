@@ -149,6 +149,7 @@ func isSensitiveAuditKey(key string) bool {
 		"sshkey",
 		"credential",
 		"credentials",
+		"extraglobalconfig",
 		"sessiondata",
 		"assertion",
 		"challenge",

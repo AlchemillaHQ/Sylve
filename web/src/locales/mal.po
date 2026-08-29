@@ -5158,7 +5158,7 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "പുതുക്കുക "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6270,10 +6270,12 @@ msgstr "സ്റ്റോറേജ് വേർപെടുത്തുന്�
 msgid "Storage detached"
 msgstr "സ്റ്റോറേജ് വേർപെടുത്തി"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Configured"
 msgstr "ക്രമീകരിച്ചു"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
@@ -17881,4 +17883,13 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Effective MAC: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Extra Global Configuration"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+msgid "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
 msgstr ""

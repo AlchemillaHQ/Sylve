@@ -17,4 +17,5 @@ type SambaSettings struct {
 	BindInterfacesOnly bool   `json:"bindInterfacesOnly"`
 	AppleExtensions    bool   `json:"appleExtensions" gorm:"default:false"`
 	AdvertiseMdns      bool   `json:"advertiseMdns" gorm:"default:true"`
+	ExtraGlobalConfig  string `json:"extraGlobalConfig" gorm:"type:text;not null;default:''"`
 }

@@ -5158,7 +5158,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6268,10 +6268,12 @@ msgstr "卸离存储失败"
 msgid "Storage detached"
 msgstr "存储已卸离"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Configured"
 msgstr "已配置"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
@@ -17878,4 +17880,13 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Effective MAC: <0/>"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Extra Global Configuration"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Config.svelte
+msgid "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
 msgstr ""

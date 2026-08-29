@@ -5158,8 +5158,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
-msgstr "Update "
+msgid "Update"
+msgstr "Update"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -6270,10 +6270,12 @@ msgstr "Failed to detach storage"
 msgid "Storage detached"
 msgstr "Storage detached"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Configured"
 msgstr "Configured"
 
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Not Configured"
@@ -17882,3 +17884,12 @@ msgstr "Create object"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Effective MAC: <0/>"
 msgstr "Effective MAC: <0/>"
+
+#: src/lib/components/custom/Samba/Config.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+msgid "Extra Global Configuration"
+msgstr "Extra Global Configuration"
+
+#: src/lib/components/custom/Samba/Config.svelte
+msgid "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
+msgstr "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."

@@ -57,7 +57,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/migration"
 	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
-	"github.com/alchemillahq/sylve/internal/services/samba"
+	sambaServicePkg "github.com/alchemillahq/sylve/internal/services/samba"
 	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesServicePkg "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
@@ -107,7 +107,7 @@ func RegisterRoutes(r *gin.Engine,
 	utilitiesService *utilitiesServicePkg.Service,
 	systemService *systemServicePkg.Service,
 	libvirtService *libvirt.Service,
-	sambaService *samba.Service,
+	sambaService *sambaServicePkg.Service,
 	mdnsService *mdns.Service,
 	dynamicDNSService *dynamicdns.Service,
 	certificateService *certificates.Service,
@@ -272,10 +272,14 @@ func RegisterRoutes(r *gin.Engine,
 	samba := api.Group("/samba")
 	samba.Use(middleware.EnsureAuthenticated(authService))
 	samba.Use(EnsureCorrectHost(db, authService))
+	samba.Use(middleware.LimitRequestBody(sambaServicePkg.MaxRequestBodyBytes))
 	samba.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
-		samba.PUT("/config", sambaHandlers.SetGlobalConfig(sambaService))
+		samba.PUT("/config",
+			middleware.RequireLocalAdmin(authService),
+			sambaHandlers.SetGlobalConfig(sambaService),
+		)
 
 		samba.GET("/shares", sambaHandlers.GetShares(sambaService))
 		samba.POST("/shares", sambaHandlers.CreateShare(sambaService))

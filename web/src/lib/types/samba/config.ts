@@ -8,7 +8,8 @@ export const SambaConfigSchema = z.object({
 	interfaces: z.string().default('lo0'),
 	bindInterfacesOnly: z.boolean().default(true),
 	appleExtensions: z.boolean().default(false),
-	advertiseMdns: z.boolean().default(true)
+	advertiseMdns: z.boolean().default(true),
+	extraGlobalConfig: z.string().default('')
 });
 
 export type SambaConfig = z.infer<typeof SambaConfigSchema>;

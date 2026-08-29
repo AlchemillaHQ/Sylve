@@ -1069,7 +1069,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 			interfaces: 'vm-production,bridge-lab',
 			bindInterfacesOnly: true,
 			appleExtensions: true,
-			advertiseMdns: true
+			advertiseMdns: true,
+			extraGlobalConfig: ''
 		},
 		sambaShares: [
 			{
@@ -2712,7 +2713,8 @@ export function handleDemoStorageRequest<T = unknown>(
 				state.sambaConfig.bindInterfacesOnly
 			),
 			appleExtensions: booleanValue(body, 'appleExtensions', state.sambaConfig.appleExtensions),
-			advertiseMdns: booleanValue(body, 'advertiseMdns', state.sambaConfig.advertiseMdns)
+			advertiseMdns: booleanValue(body, 'advertiseMdns', state.sambaConfig.advertiseMdns),
+			extraGlobalConfig: stringValue(body, 'extraGlobalConfig', state.sambaConfig.extraGlobalConfig)
 		};
 		return mutationSuccess('samba_config_updated') as DemoStorageResponse<T>;
 	}
