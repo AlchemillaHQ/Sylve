@@ -13,6 +13,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"gorm.io/gorm"
 )
 
@@ -94,7 +95,9 @@ func (s *Service) isMigrationExecutionActive(taskID uint) bool {
 }
 
 func shouldLogMigrationRecoveryError(err error) bool {
-	return err != nil && !errors.Is(err, ErrMigrationInProgress)
+	return err != nil &&
+		!errors.Is(err, ErrMigrationInProgress) &&
+		!errors.Is(err, clusterService.ErrNodeLeaveFenced)
 }
 
 func (s *Service) exactMigrationOperationForTask(task taskModels.GuestLifecycleTask, targetNodeID, token string) (*clusterModels.ReplicationGuestOperation, error) {
@@ -199,7 +202,7 @@ func (s *Service) StartRecoveryTicker(ctx context.Context) {
 }
 
 func (s *Service) scheduleMigrationRecovery(ctx context.Context) {
-	if err := s.ReconcileMigrationOperations(ctx); err != nil {
+	if err := s.ReconcileMigrationOperations(ctx); shouldLogMigrationRecoveryError(err) {
 		logger.L.Error().Err(err).Msg("migration_operation_reconciliation_failed")
 	}
 }
