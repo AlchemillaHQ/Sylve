@@ -18,6 +18,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -30,6 +31,98 @@ var (
 	dhclientRuntimeDir       = "/var/run/dhclient"
 	dhclientNaturalExitGrace = 2 * time.Second
 )
+
+func desiredStandardSwitchMAC(sw networkModels.StandardSwitch) (string, error) {
+	switch sw.BridgeMACMode {
+	case networkModels.StandardSwitchMACModePort:
+		sourceSelected := false
+		for _, port := range sw.Ports {
+			if port.Name == sw.BridgeMACSourcePort {
+				sourceSelected = true
+				break
+			}
+		}
+		if !sourceSelected {
+			return "", fmt.Errorf("bridge MAC source port %q is not selected", sw.BridgeMACSourcePort)
+		}
+
+		interfaceObj, err := syncIfaceGet(sw.BridgeMACSourcePort)
+		if err != nil {
+			return "", fmt.Errorf("inspect bridge MAC source port %q: %w", sw.BridgeMACSourcePort, err)
+		}
+		if interfaceObj == nil {
+			return "", fmt.Errorf("bridge MAC source port %q not found", sw.BridgeMACSourcePort)
+		}
+		mac := interfaceObj.Ether
+		if strings.TrimSpace(mac) == "" {
+			mac = interfaceObj.HWAddr
+		}
+		normalized, err := normalizeStandardSwitchMAC(mac)
+		if err != nil {
+			return "", fmt.Errorf("invalid MAC on source port %q: %w", sw.BridgeMACSourcePort, err)
+		}
+		return normalized, nil
+
+	case networkModels.StandardSwitchMACModeObject:
+		if sw.BridgeMACObjectID == nil || *sw.BridgeMACObjectID == 0 {
+			return "", fmt.Errorf("bridge MAC object is missing")
+		}
+		if sw.BridgeMACObject == nil || sw.BridgeMACObject.ID != *sw.BridgeMACObjectID {
+			return "", fmt.Errorf("bridge MAC object %d is not loaded", *sw.BridgeMACObjectID)
+		}
+		if sw.BridgeMACObject.Type != "Mac" || len(sw.BridgeMACObject.Entries) != 1 {
+			return "", fmt.Errorf("bridge MAC object %d must contain exactly one MAC", *sw.BridgeMACObjectID)
+		}
+		normalized, err := normalizeStandardSwitchMAC(sw.BridgeMACObject.Entries[0].Value)
+		if err != nil {
+			return "", fmt.Errorf("invalid bridge MAC object %d: %w", *sw.BridgeMACObjectID, err)
+		}
+		return normalized, nil
+
+	default:
+		return "", fmt.Errorf("invalid bridge MAC source mode %q", sw.BridgeMACMode)
+	}
+}
+
+func currentInterfaceMAC(interfaceObj *iface.Interface) (string, error) {
+	if interfaceObj == nil {
+		return "", fmt.Errorf("interface not found")
+	}
+	mac := interfaceObj.Ether
+	if strings.TrimSpace(mac) == "" {
+		mac = interfaceObj.HWAddr
+	}
+	return normalizeStandardSwitchMAC(mac)
+}
+
+func applyStandardSwitchMAC(sw networkModels.StandardSwitch) (bool, error) {
+	desired, err := desiredStandardSwitchMAC(sw)
+	if err != nil {
+		return false, err
+	}
+
+	currentInterface, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return false, fmt.Errorf("inspect bridge %q MAC: %w", sw.BridgeName, err)
+	}
+	current, currentErr := currentInterfaceMAC(currentInterface)
+	if currentErr == nil && current == desired {
+		return false, nil
+	}
+
+	if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "ether", desired); err != nil {
+		return false, fmt.Errorf("set bridge %q MAC to %s: %w", sw.BridgeName, desired, err)
+	}
+	verifiedInterface, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return false, fmt.Errorf("verify bridge %q MAC: %w", sw.BridgeName, err)
+	}
+	verified, err := currentInterfaceMAC(verifiedInterface)
+	if err != nil || verified != desired {
+		return false, fmt.Errorf("verify bridge %q MAC: got %q, want %q", sw.BridgeName, verified, desired)
+	}
+	return true, nil
+}
 
 func dhclientPIDPath(br string) string {
 	return filepath.Join(dhclientRuntimeDir, "dhclient."+br+".pid")

@@ -49,7 +49,7 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 
 	err := command.Run(context.Background(), []string{
 		"switches", "create", "--type", "standard", "--name", "private-lan",
-		"--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false", "--disable-bridge-offloads",
+		"--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("run switch create command: %v", err)
@@ -65,6 +65,9 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 	}
 	if len(got.Standard.Ports) != 2 || got.Standard.Ports[1] != "igb1" {
 		t.Fatalf("unexpected standard ports: %#v", got.Standard.Ports)
+	}
+	if got.Standard.BridgeMAC.Mode != "port" || got.Standard.BridgeMAC.Port != "igb0" {
+		t.Fatalf("unexpected bridge MAC source: %#v", got.Standard.BridgeMAC)
 	}
 }
 

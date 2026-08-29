@@ -9,6 +9,8 @@
 package db
 
 import (
+	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -61,6 +64,36 @@ func TestNormalizeDownloadUncategorizedType(t *testing.T) {
 	}
 	if migrationCount != 1 {
 		t.Fatalf("migration count=%d want 1", migrationCount)
+	}
+}
+
+func TestClearManagedBridgeMACInheritanceOverride(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.SystemTunable{})
+	managed := models.SystemTunable{Name: models.SystemTunableBridgeInheritMACOID, Value: "1"}
+	other := models.SystemTunable{Name: "kern.alpha", Value: "2"}
+	if err := dbConn.Create(&managed).Error; err != nil {
+		t.Fatalf("seed managed bridge tunable: %v", err)
+	}
+	if err := dbConn.Create(&other).Error; err != nil {
+		t.Fatalf("seed unrelated tunable: %v", err)
+	}
+
+	if err := clearManagedBridgeMACInheritanceOverride(dbConn); err != nil {
+		t.Fatalf("clear managed bridge tunable: %v", err)
+	}
+	if err := clearManagedBridgeMACInheritanceOverride(dbConn); err != nil {
+		t.Fatalf("repeat managed bridge tunable cleanup: %v", err)
+	}
+
+	var managedCount, otherCount int64
+	if err := dbConn.Model(&models.SystemTunable{}).Where("name = ?", models.SystemTunableBridgeInheritMACOID).Count(&managedCount).Error; err != nil {
+		t.Fatalf("count managed bridge tunables: %v", err)
+	}
+	if err := dbConn.Model(&models.SystemTunable{}).Where("name = ?", other.Name).Count(&otherCount).Error; err != nil {
+		t.Fatalf("count unrelated tunables: %v", err)
+	}
+	if managedCount != 0 || otherCount != 1 {
+		t.Fatalf("managed count=%d other count=%d, want 0 and 1", managedCount, otherCount)
 	}
 }
 
@@ -661,5 +694,164 @@ func TestBackfillTemplateSourceGuestIDsBackfillsOnlyUnambiguousMatches(t *testin
 	}
 	if migrationCount != 1 {
 		t.Fatalf("expected migration row to stay single after rerun, got %d", migrationCount)
+	}
+}
+
+func TestMigrateStandardSwitchMACSources(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t,
+		&models.Migrations{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+
+	existingMACObject := networkModels.Object{
+		Name:    "existing-bridge-mac",
+		Type:    "Mac",
+		Entries: []networkModels.ObjectEntry{{Value: "02:00:00:00:00:99"}},
+	}
+	if err := dbConn.Create(&existingMACObject).Error; err != nil {
+		t.Fatalf("seed existing MAC object: %v", err)
+	}
+
+	liveWithPorts := networkModels.StandardSwitch{Name: "live-with-ports", BridgeName: "bridge-live-ports", MTU: 1500}
+	missingWithPorts := networkModels.StandardSwitch{Name: "missing-with-ports", BridgeName: "bridge-missing", MTU: 1500}
+	livePortless := networkModels.StandardSwitch{Name: "live-portless", BridgeName: "bridge-live-portless", MTU: 1500}
+	invalidRuntime := networkModels.StandardSwitch{Name: "invalid-runtime", BridgeName: "bridge-invalid", MTU: 1500}
+	explicit := networkModels.StandardSwitch{
+		Name:              "explicit",
+		BridgeName:        "bridge-explicit",
+		MTU:               1500,
+		BridgeMACMode:     networkModels.StandardSwitchMACModeObject,
+		BridgeMACObjectID: &existingMACObject.ID,
+	}
+	for _, sw := range []*networkModels.StandardSwitch{
+		&liveWithPorts,
+		&missingWithPorts,
+		&livePortless,
+		&invalidRuntime,
+		&explicit,
+	} {
+		if err := dbConn.Create(sw).Error; err != nil {
+			t.Fatalf("seed standard switch %q: %v", sw.Name, err)
+		}
+	}
+
+	ports := []networkModels.NetworkPort{
+		{Name: "em0", SwitchID: liveWithPorts.ID},
+		{Name: "em1", SwitchID: liveWithPorts.ID},
+		{Name: "ix1", SwitchID: missingWithPorts.ID},
+		{Name: "ix0", SwitchID: missingWithPorts.ID},
+	}
+	for i := range ports {
+		if err := dbConn.Create(&ports[i]).Error; err != nil {
+			t.Fatalf("seed network port %q: %v", ports[i].Name, err)
+		}
+	}
+
+	interfaces := map[string]net.HardwareAddr{
+		"bridge-live-ports":    {0x58, 0x9c, 0xfc, 0x10, 0x44, 0xd6},
+		"bridge-live-portless": {0x58, 0x9c, 0xfc, 0x10, 0x05, 0xf0},
+		"bridge-invalid":       {0x01, 0x00, 0x00, 0x00, 0x00, 0x01},
+		"em0":                  {0x02, 0x00, 0x00, 0x00, 0x00, 0x11},
+		"em1":                  {0x58, 0x9c, 0xfc, 0x10, 0x44, 0xd6},
+	}
+	var interfaceLookups []string
+	originalInterfaceByName := bridgeMigrationInterfaceByName
+	bridgeMigrationInterfaceByName = func(name string) (*net.Interface, error) {
+		interfaceLookups = append(interfaceLookups, name)
+		hardwareAddr, ok := interfaces[name]
+		if !ok {
+			return nil, errors.New("interface not present")
+		}
+		return &net.Interface{Name: name, HardwareAddr: hardwareAddr}, nil
+	}
+	t.Cleanup(func() { bridgeMigrationInterfaceByName = originalInterfaceByName })
+
+	if err := migrateStandardSwitchMACSources(dbConn); err != nil {
+		t.Fatalf("migrate standard switch MAC sources: %v", err)
+	}
+
+	loadObjectSource := func(switchID uint) (networkModels.StandardSwitch, networkModels.Object) {
+		t.Helper()
+		var stored networkModels.StandardSwitch
+		if err := dbConn.First(&stored, switchID).Error; err != nil {
+			t.Fatalf("load migrated switch %d: %v", switchID, err)
+		}
+		if stored.BridgeMACMode != networkModels.StandardSwitchMACModeObject ||
+			stored.BridgeMACSourcePort != "" ||
+			stored.BridgeMACObjectID == nil {
+			t.Fatalf("switch %d did not receive an object-only MAC source: %+v", switchID, stored)
+		}
+		var object networkModels.Object
+		if err := dbConn.Preload("Entries").First(&object, *stored.BridgeMACObjectID).Error; err != nil {
+			t.Fatalf("load bridge MAC object for switch %d: %v", switchID, err)
+		}
+		if object.Type != "Mac" || len(object.Entries) != 1 {
+			t.Fatalf("bridge MAC object for switch %d must contain one MAC: %+v", switchID, object)
+		}
+		return stored, object
+	}
+
+	_, liveWithPortsObject := loadObjectSource(liveWithPorts.ID)
+	if got, want := liveWithPortsObject.Entries[0].Value, "58:9c:fc:10:44:d6"; got != want {
+		t.Fatalf("live bridge MAC was not preserved: got %q want %q", got, want)
+	}
+
+	_, livePortlessObject := loadObjectSource(livePortless.ID)
+	if got, want := livePortlessObject.Entries[0].Value, "58:9c:fc:10:05:f0"; got != want {
+		t.Fatalf("live portless bridge MAC was not preserved: got %q want %q", got, want)
+	}
+
+	for _, switchID := range []uint{missingWithPorts.ID, invalidRuntime.ID} {
+		_, generatedObject := loadObjectSource(switchID)
+		generatedMAC, err := net.ParseMAC(generatedObject.Entries[0].Value)
+		if err != nil || !validBridgeMigrationMAC(generatedMAC) || generatedMAC[0]&0x02 == 0 {
+			t.Fatalf(
+				"generated MAC for switch %d is not locally administered unicast: value=%q err=%v",
+				switchID,
+				generatedObject.Entries[0].Value,
+				err,
+			)
+		}
+	}
+
+	for _, lookup := range interfaceLookups {
+		switch lookup {
+		case "em0", "em1", "ix0", "ix1":
+			t.Fatalf("legacy migration inferred identity from member port %q", lookup)
+		}
+	}
+
+	var storedExplicit networkModels.StandardSwitch
+	if err := dbConn.First(&storedExplicit, explicit.ID).Error; err != nil {
+		t.Fatalf("load explicit switch: %v", err)
+	}
+	if storedExplicit.BridgeMACMode != networkModels.StandardSwitchMACModeObject ||
+		storedExplicit.BridgeMACObjectID == nil ||
+		*storedExplicit.BridgeMACObjectID != existingMACObject.ID {
+		t.Fatalf("explicit source was changed: %+v", storedExplicit)
+	}
+
+	var objectCountBefore int64
+	if err := dbConn.Model(&networkModels.Object{}).Count(&objectCountBefore).Error; err != nil {
+		t.Fatalf("count objects before repeated migration: %v", err)
+	}
+	if err := migrateStandardSwitchMACSources(dbConn); err != nil {
+		t.Fatalf("repeat standard switch MAC migration: %v", err)
+	}
+	var objectCountAfter, migrationCount int64
+	if err := dbConn.Model(&networkModels.Object{}).Count(&objectCountAfter).Error; err != nil {
+		t.Fatalf("count objects after repeated migration: %v", err)
+	}
+	if objectCountAfter != objectCountBefore {
+		t.Fatalf("repeated migration created objects: before=%d after=%d", objectCountBefore, objectCountAfter)
+	}
+	if err := dbConn.Model(&models.Migrations{}).Where("name = ?", "standard_switch_mac_source_v1").Count(&migrationCount).Error; err != nil {
+		t.Fatalf("count standard switch MAC migration markers: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("migration marker count=%d want 1", migrationCount)
 	}
 }

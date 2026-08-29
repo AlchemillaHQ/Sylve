@@ -302,6 +302,7 @@ msgid "Login"
 msgstr "लॉगिन"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Standard Switch"
 msgstr "स्टैंडर्ड स्विच"
 
@@ -2218,7 +2219,11 @@ msgstr "नेटवर्क"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "MAC(s)"
 msgstr "मैक"
 
@@ -4046,6 +4051,7 @@ msgstr "डिफ़ॉल्ट नियमसेट के लिए खा�
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Mac"
 msgstr "MAC"
 
@@ -5152,7 +5158,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -14294,6 +14300,7 @@ msgid "Download Certificate & Key"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
 msgid "Unavailable"
@@ -17810,4 +17817,68 @@ msgstr ""
 
 #: src/lib/components/custom/Cluster/ForceReset.svelte
 msgid "Local cluster state reset. Sylve is restarting…"
+msgstr ""
+
+#: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
+msgid "A bridge MAC object must contain exactly one MAC address"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select one of the switch ports as the MAC source"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "The selected source port does not have a valid unicast MAC address"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select a valid single-value MAC object"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Choose how the bridge MAC address is sourced"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Bridge MAC source"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use port MAC"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Keep the bridge identity tied to one selected port."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use MAC object"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use an explicit MAC, including on a portless switch."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "MAC source port"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select one of the switch ports"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "MAC address object"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Select a single-value MAC object"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Create object"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Effective MAC: <0/>"
 msgstr ""

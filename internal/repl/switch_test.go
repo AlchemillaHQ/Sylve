@@ -18,7 +18,7 @@ import (
 
 func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	request, err := buildConsoleSwitchCreateRequest([]string{
-		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--private", "--dhcp=false", "--disable-bridge-offloads",
+		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -35,6 +35,9 @@ func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	if len(request.Standard.Ports) != 2 || request.Standard.Ports[1] != "igb1" {
 		t.Fatalf("unexpected standard ports: %#v", request.Standard.Ports)
 	}
+	if request.Standard.BridgeMAC.Mode != "port" || request.Standard.BridgeMAC.Port != "igb0" {
+		t.Fatalf("unexpected bridge MAC source: %#v", request.Standard.BridgeMAC)
+	}
 }
 
 func TestBuildConsoleSwitchCreateRequestManual(t *testing.T) {
@@ -48,11 +51,11 @@ func TestBuildConsoleSwitchCreateRequestManual(t *testing.T) {
 }
 
 func TestBuildConsoleSwitchCreateRequestAllowsPortlessStandardSwitch(t *testing.T) {
-	request, err := buildConsoleSwitchCreateRequest([]string{"standard", "isolated", "--private"})
+	request, err := buildConsoleSwitchCreateRequest([]string{"standard", "isolated", "--private", "--mac-source", "object", "--mac-object", "9"})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
-	if request.Standard == nil || !request.Standard.Private || len(request.Standard.Ports) != 0 {
+	if request.Standard == nil || !request.Standard.Private || len(request.Standard.Ports) != 0 || request.Standard.BridgeMAC.MACObjectID != 9 {
 		t.Fatalf("unexpected portless standard request: %#v", request.Standard)
 	}
 }

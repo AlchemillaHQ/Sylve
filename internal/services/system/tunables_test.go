@@ -152,6 +152,20 @@ func TestListTunablesPaginatedClampsOutOfRangePage(t *testing.T) {
 	}
 }
 
+func TestListTunablesMarksManagedBridgeMACIdentityReadOnly(t *testing.T) {
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: models.SystemTunableBridgeInheritMACOID, Value: "0", Type: "int", Writable: true},
+	}, nil)
+
+	response, err := service.ListTunablesPaginated(1, 25, "name", "asc", "", false)
+	if err != nil {
+		t.Fatalf("listing tunables failed: %v", err)
+	}
+	if len(response.Data) != 1 || response.Data[0].Writable {
+		t.Fatalf("managed bridge MAC tunable must be read-only: %+v", response.Data)
+	}
+}
+
 func TestSetTunablePersistsDesiredRuntimeValue(t *testing.T) {
 	service := newTunablesTestService(t, []sysctl.Tunable{
 		{Name: "kern.alpha", Value: "old", Type: "string", Writable: true},
@@ -376,5 +390,51 @@ func TestSetTunableSerializesConcurrentRuntimeAndPersistenceUpdates(t *testing.T
 	}
 	if stored.Value != "2" {
 		t.Fatalf("persisted value = %q; want 2", stored.Value)
+	}
+}
+
+func TestSetTunableRejectsManagedBridgeMACIdentityOID(t *testing.T) {
+	const name = models.SystemTunableBridgeInheritMACOID
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: name, Value: "0", Type: "int", Writable: true},
+	}, nil)
+	service.tunRead = func(string) (string, error) {
+		t.Fatal("managed bridge MAC tunable must be rejected before runtime read")
+		return "", nil
+	}
+	service.tunApply = func(string, string) error {
+		t.Fatal("managed bridge MAC tunable must not be changed")
+		return nil
+	}
+
+	err := service.SetTunable(name, "1")
+	if code := TunableErrorCode(err); code != ErrTunableNotWritable.Error() {
+		t.Fatalf("error=%v code=%q, want %q", err, code, ErrTunableNotWritable)
+	}
+	var count int64
+	if err := service.DB.Model(&models.SystemTunable{}).Where("name = ?", name).Count(&count).Error; err != nil {
+		t.Fatalf("count managed tunable rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("managed bridge MAC tunable was persisted %d times", count)
+	}
+}
+
+func TestReapplyStoredTunablesSkipsManagedBridgeMACIdentityOID(t *testing.T) {
+	service := newTunablesTestService(t, nil, []models.SystemTunable{
+		{Name: models.SystemTunableBridgeInheritMACOID, Value: "1"},
+		{Name: "kern.alpha", Value: "2"},
+	})
+	var applied []string
+	service.tunApply = func(name, value string) error {
+		applied = append(applied, name+"="+value)
+		return nil
+	}
+
+	if err := service.ReapplyStoredTunables(); err != nil {
+		t.Fatalf("reapply stored tunables: %v", err)
+	}
+	if !reflect.DeepEqual(applied, []string{"kern.alpha=2"}) {
+		t.Fatalf("reapplied tunables=%v, want only kern.alpha", applied)
 	}
 }

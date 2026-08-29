@@ -32641,6 +32641,18 @@ const docTemplate = `{
                 "addressObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "bridgeMacMode": {
+                    "type": "string"
+                },
+                "bridgeMacObject": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
+                },
+                "bridgeMacObjectId": {
+                    "type": "integer"
+                },
+                "bridgeMacSourcePort": {
+                    "type": "string"
+                },
                 "bridgeName": {
                     "type": "string"
                 },
@@ -32722,6 +32734,20 @@ const docTemplate = `{
                 },
                 "vlan": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource": {
+            "type": "object",
+            "properties": {
+                "macObjectId": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
                 }
             }
         },
@@ -41142,6 +41168,9 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "bridgeMac": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
+                },
                 "defaultRoute": {
                     "type": "boolean"
                 },
@@ -41224,6 +41253,9 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "bridgeMac": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
+                },
                 "defaultRoute": {
                     "type": "boolean"
                 },

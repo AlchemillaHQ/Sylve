@@ -89,6 +89,9 @@ func (s *Service) configuredTunables(stored map[string]string) ([]sysctl.Tunable
 			continue
 		}
 		tunable.Value = value
+		if name == models.SystemTunableBridgeInheritMACOID {
+			tunable.Writable = false
+		}
 		configured = append(configured, tunable)
 	}
 	return configured, nil
@@ -125,6 +128,9 @@ func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, sear
 		v, configured := stored[t.Name]
 		if configured {
 			t.Value = v
+		}
+		if t.Name == models.SystemTunableBridgeInheritMACOID {
+			t.Writable = false
 		}
 		if needle != "" && !strings.Contains(strings.ToLower(t.Name), needle) {
 			continue
@@ -237,6 +243,9 @@ func (s *Service) SetTunable(name, value string) error {
 	if name == "" {
 		return ErrTunableNameRequired
 	}
+	if name == models.SystemTunableBridgeInheritMACOID {
+		return fmt.Errorf("%w: %s is managed by standard switch MAC identity", ErrTunableNotWritable, name)
+	}
 
 	t, found, err := s.findTunable(name)
 	if err != nil {
@@ -292,6 +301,9 @@ func (s *Service) ReapplyStoredTunables() error {
 	}
 
 	for _, r := range rows {
+		if r.Name == models.SystemTunableBridgeInheritMACOID {
+			continue
+		}
 		if err := s.setTunableRuntimeValue(r.Name, r.Value); err != nil {
 			logger.L.Error().Msgf("Error re-applying stored tunable %s=%s: %v", r.Name, r.Value, err)
 		}

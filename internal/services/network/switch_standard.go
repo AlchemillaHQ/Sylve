@@ -54,6 +54,7 @@ func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) 
 		Preload("Network6Obj.Entries").
 		Preload("GatewayAddressObj.Entries").
 		Preload("Gateway6AddressObj.Entries").
+		Preload("BridgeMACObject.Entries").
 		Find(&switches).Error; err != nil {
 		return nil, err
 	}
@@ -185,6 +186,7 @@ func (s *Service) NewStandardSwitch(
 	gateway4ID uint,
 	gateway6ID uint,
 	ports []string,
+	macSource networkModels.StandardSwitchMACSource,
 	private bool,
 	dhcp bool,
 	disableIPv6 bool,
@@ -213,6 +215,7 @@ func (s *Service) NewStandardSwitch(
 		gateway4ID:            gateway4ID,
 		gateway6ID:            gateway6ID,
 		ports:                 ports,
+		macSource:             macSource,
 		private:               private,
 		dhcp:                  dhcp,
 		disableIPv6:           disableIPv6,
@@ -336,6 +339,7 @@ func (s *Service) EditStandardSwitch(
 	gateway4ID uint,
 	gateway6ID uint,
 	ports []string,
+	macSource networkModels.StandardSwitchMACSource,
 	private bool,
 	dhcp bool,
 	disableIPv6 bool,
@@ -360,6 +364,7 @@ func (s *Service) EditStandardSwitch(
 		gateway4ID:            gateway4ID,
 		gateway6ID:            gateway6ID,
 		ports:                 ports,
+		macSource:             macSource,
 		private:               private,
 		dhcp:                  dhcp,
 		disableIPv6:           disableIPv6,
@@ -406,6 +411,9 @@ func (s *Service) EditStandardSwitch(
 		"gateway_manual":             input.manual.Gateway4,
 		"network6_manual":            input.manual.Network6,
 		"gateway6_manual":            input.manual.Gateway6,
+		"bridge_mac_mode":            input.macSource.Mode,
+		"bridge_mac_source_port":     input.macSource.Port,
+		"bridge_mac_object_id":       nullableID(input.macSource.MACObjectID),
 	}
 	if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 		return fmt.Errorf("update standard switch: %w", err)
@@ -481,6 +489,7 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			Preload("Network6Obj.Entries").
 			Preload("GatewayAddressObj.Entries").
 			Preload("Gateway6AddressObj.Entries").
+			Preload("BridgeMACObject.Entries").
 			Find(&switches).Error; err != nil {
 			return fmt.Errorf("db_error_checking_switches: %v", err)
 		}
@@ -510,6 +519,7 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			Preload("Network6Obj.Entries").
 			Preload("GatewayAddressObj.Entries").
 			Preload("Gateway6AddressObj.Entries").
+			Preload("BridgeMACObject.Entries").
 			First(&newSw, sw.ID).Error; err != nil {
 			return fmt.Errorf("switch_not_found")
 		}
@@ -582,6 +592,9 @@ func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
 		if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
 			return fmt.Errorf("sync_standard_switches: bring up member %s: %v", member, err)
 		}
+	}
+	if _, err := applyStandardSwitchMAC(sw); err != nil {
+		return fmt.Errorf("sync_standard_switches: verify %s MAC after preserved members: %v", sw.BridgeName, err)
 	}
 
 	return nil
@@ -677,6 +690,9 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 	if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "mtu", strconv.Itoa(mtu)); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_mtu: %v", err)
 	}
+	if _, err := applyStandardSwitchMAC(sw); err != nil {
+		return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_mac: %v", err)
+	}
 
 	network4, gateway4 := sw.Network(4), sw.Gateway(4)
 	assignableNetwork4 := utils.IsAssignableIPv4CIDR(network4)
@@ -713,6 +729,9 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		if err := addBridgeMember(sw.BridgeName, port.Name, mtu, sw.VLAN, sw.DisableBridgeOffloads); err != nil {
 			return fmt.Errorf("create_standard_bridge: %v", err)
 		}
+	}
+	if _, err := applyStandardSwitchMAC(sw); err != nil {
+		return fmt.Errorf("create_standard_bridge: failed_to_verify_bridge_mac_after_members: %v", err)
 	}
 
 	if assignableNetwork4 && gateway4 != "" {
@@ -754,6 +773,20 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 	if ifaceObj == nil {
 		return fmt.Errorf("edit_standard_bridge: interface %s not found", br)
+	}
+	desiredMAC, err := desiredStandardSwitchMAC(newSw)
+	if err != nil {
+		return fmt.Errorf("edit_standard_bridge: resolve bridge MAC: %v", err)
+	}
+	currentMAC, currentMACErr := currentInterfaceMAC(ifaceObj)
+	macWillChange := currentMACErr != nil || currentMAC != desiredMAC
+	if macWillChange && (oldSw.DHCP || newSw.DHCP) {
+		if err := stopDhclient(br); err != nil {
+			return fmt.Errorf("edit_standard_bridge: stop DHCP before MAC change: %v", err)
+		}
+	}
+	if _, err := applyStandardSwitchMAC(newSw); err != nil {
+		return fmt.Errorf("edit_standard_bridge: set bridge MAC: %v", err)
 	}
 	if oldSw.DHCP && !newSw.DHCP {
 		managedMembers := standardSwitchManagedMembers(oldSw)
@@ -943,6 +976,9 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 			return fmt.Errorf("edit_standard_bridge: add port %s: %v", p.Name, err)
 		}
 	}
+	if _, err := applyStandardSwitchMAC(newSw); err != nil {
+		return fmt.Errorf("edit_standard_bridge: verify bridge MAC after members: %v", err)
+	}
 
 	if utils.IsAssignableIPv4CIDR(new4Network) && new4Gateway != "" {
 		if _, err := addRouteIfMissing("add", "-net", new4Network, new4Gateway); err != nil {
@@ -982,6 +1018,9 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		if _, err := syncRunCommand("/sbin/ifconfig", m, "up"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: bring up member %s: %v", m, err)
 		}
+	}
+	if _, err := applyStandardSwitchMAC(newSw); err != nil {
+		return fmt.Errorf("edit_standard_bridge: verify bridge MAC after transient members: %v", err)
 	}
 
 	if _, err := syncRunCommand("/sbin/ifconfig", br, "up"); err != nil {
@@ -1222,7 +1261,12 @@ func runDhclient(br string, timeout int) error {
 		return fmt.Errorf("dhclient: inspect existing client for %s: %v", br, err)
 	}
 	if running {
-		return nil
+		if len(interfaceObj.IPv4) > 0 {
+			return nil
+		}
+		if err := stopDhclient(br); err != nil {
+			return fmt.Errorf("dhclient: restart unbound client for %s: %v", br, err)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeout))
