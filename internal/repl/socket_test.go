@@ -19,6 +19,7 @@ import (
 	"time"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 func TestProcessSocketRequestCommandRequired(t *testing.T) {
@@ -48,6 +49,26 @@ func TestProcessSocketRequestRejectsUnknownOperation(t *testing.T) {
 	resp := processSocketRequest(&Context{}, socketRequest{Operation: "unknown"})
 	if resp.Error != "unknown_operation" {
 		t.Fatalf("expected unknown_operation, got %q", resp.Error)
+	}
+}
+
+func TestProcessSocketRequestFenceIsExactAndFailsClosed(t *testing.T) {
+	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
+	ctx := &Context{Cluster: service}
+
+	readResponse := processSocketRequest(ctx, socketRequest{Operation: consoleprotocol.OperationStatus})
+	if readResponse.Error == clusterService.ErrNodeLeaveFenced.Error() {
+		t.Fatal("read-only operation was fenced")
+	}
+
+	mutationResponse := processSocketRequest(ctx, socketRequest{Operation: consoleprotocol.OperationNoteAdd})
+	if mutationResponse.Error != clusterService.ErrNodeLeaveFenced.Error() {
+		t.Fatalf("mutation error = %q", mutationResponse.Error)
+	}
+
+	unknownResponse := processSocketRequest(ctx, socketRequest{Operation: "unknown"})
+	if unknownResponse.Error != clusterService.ErrNodeLeaveFenced.Error() {
+		t.Fatalf("unknown operation did not fail closed: %q", unknownResponse.Error)
 	}
 }
 

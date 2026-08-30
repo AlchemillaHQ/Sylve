@@ -11,6 +11,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -32,11 +33,12 @@ import (
 )
 
 type curInfo struct {
-	nodeUUID  string
-	api       string
-	canonHost string
-	rawHost   string
-	healthOK  bool
+	nodeUUID     string
+	api          string
+	canonHost    string
+	rawHost      string
+	healthOK     bool
+	sylveVersion string
 
 	cpu      int
 	cpuUsage float64
@@ -121,17 +123,18 @@ func (s *Service) applyProbeHysteresis(peerKey, observedStatus string) string {
 
 func currentToClusterNode(cur curInfo) clusterModels.ClusterNode {
 	return clusterModels.ClusterNode{
-		NodeUUID:    cur.nodeUUID,
-		Hostname:    preferredHostname(cur),
-		API:         cur.api,
-		Status:      statusFromHealth(cur.healthOK),
-		CPU:         cur.cpu,
-		CPUUsage:    cur.cpuUsage,
-		Memory:      cur.memory,
-		MemoryUsage: cur.memUsage,
-		Disk:        cur.disk,
-		DiskUsage:   cur.diskUsage,
-		GuestIDs:    cur.guestIDs,
+		NodeUUID:     cur.nodeUUID,
+		Hostname:     preferredHostname(cur),
+		SylveVersion: cur.sylveVersion,
+		API:          cur.api,
+		Status:       statusFromHealth(cur.healthOK),
+		CPU:          cur.cpu,
+		CPUUsage:     cur.cpuUsage,
+		Memory:       cur.memory,
+		MemoryUsage:  cur.memUsage,
+		Disk:         cur.disk,
+		DiskUsage:    cur.diskUsage,
+		GuestIDs:     cur.guestIDs,
 	}
 }
 
@@ -155,6 +158,9 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 
 	if cur.canonHost != "" {
 		updates["hostname"] = cur.canonHost
+	}
+	if cur.sylveVersion != "" {
+		updates["sylve_version"] = cur.sylveVersion
 	}
 
 	if cur.cpu > 0 {
@@ -195,6 +201,9 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 	hostname := preferredHostname(cur)
 
 	if ex.Hostname != hostname {
+		return true
+	}
+	if cur.sylveVersion != "" && ex.SylveVersion != cur.sylveVersion {
 		return true
 	}
 
@@ -297,6 +306,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 			if err == nil {
 				ci.healthOK = true
 				ci.canonHost = nodeInfo.Hostname
+				ci.sylveVersion = nodeInfo.SylveVersion
 				ci.cpu = int(nodeInfo.LogicalCores)
 				ci.cpuUsage = nodeInfo.CPUUsage
 				ci.memory = nodeInfo.RAMTotal
@@ -453,17 +463,18 @@ func (s *Service) PopulateClusterNodes() error {
 			syncPayload = make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
 			for _, node := range nodes {
 				syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-					NodeUUID:    node.NodeUUID,
-					Hostname:    node.Hostname,
-					API:         node.API,
-					Status:      node.Status,
-					CPU:         node.CPU,
-					CPUUsage:    node.CPUUsage,
-					Memory:      node.Memory,
-					MemoryUsage: node.MemoryUsage,
-					Disk:        node.Disk,
-					DiskUsage:   node.DiskUsage,
-					GuestIDs:    node.GuestIDs,
+					NodeUUID:     node.NodeUUID,
+					Hostname:     node.Hostname,
+					SylveVersion: node.SylveVersion,
+					API:          node.API,
+					Status:       node.Status,
+					CPU:          node.CPU,
+					CPUUsage:     node.CPUUsage,
+					Memory:       node.Memory,
+					MemoryUsage:  node.MemoryUsage,
+					Disk:         node.Disk,
+					DiskUsage:    node.DiskUsage,
+					GuestIDs:     node.GuestIDs,
 				})
 			}
 		}
@@ -476,17 +487,18 @@ func (s *Service) PopulateClusterNodes() error {
 		syncPayload = make([]clusterServiceInterfaces.NodeHealthSync, 0, len(current))
 		for _, cur := range current {
 			syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-				NodeUUID:    cur.nodeUUID,
-				Hostname:    preferredHostname(cur),
-				API:         cur.api,
-				Status:      statusFromHealth(cur.healthOK),
-				CPU:         cur.cpu,
-				CPUUsage:    cur.cpuUsage,
-				Memory:      cur.memory,
-				MemoryUsage: cur.memUsage,
-				Disk:        cur.disk,
-				DiskUsage:   cur.diskUsage,
-				GuestIDs:    cur.guestIDs,
+				NodeUUID:     cur.nodeUUID,
+				Hostname:     preferredHostname(cur),
+				SylveVersion: cur.sylveVersion,
+				API:          cur.api,
+				Status:       statusFromHealth(cur.healthOK),
+				CPU:          cur.cpu,
+				CPUUsage:     cur.cpuUsage,
+				Memory:       cur.memory,
+				MemoryUsage:  cur.memUsage,
+				Disk:         cur.disk,
+				DiskUsage:    cur.diskUsage,
+				GuestIDs:     cur.guestIDs,
 			})
 		}
 	}
@@ -807,17 +819,18 @@ func (s *Service) syncClusterHealthToFollowers() {
 	syncPayload := make([]clusterServiceInterfaces.NodeHealthSync, 0, len(nodes))
 	for _, node := range nodes {
 		syncPayload = append(syncPayload, clusterServiceInterfaces.NodeHealthSync{
-			NodeUUID:    node.NodeUUID,
-			Hostname:    node.Hostname,
-			API:         node.API,
-			Status:      node.Status,
-			CPU:         node.CPU,
-			CPUUsage:    node.CPUUsage,
-			Memory:      node.Memory,
-			MemoryUsage: node.MemoryUsage,
-			Disk:        node.Disk,
-			DiskUsage:   node.DiskUsage,
-			GuestIDs:    node.GuestIDs,
+			NodeUUID:     node.NodeUUID,
+			Hostname:     node.Hostname,
+			SylveVersion: node.SylveVersion,
+			API:          node.API,
+			Status:       node.Status,
+			CPU:          node.CPU,
+			CPUUsage:     node.CPUUsage,
+			Memory:       node.Memory,
+			MemoryUsage:  node.MemoryUsage,
+			Disk:         node.Disk,
+			DiskUsage:    node.DiskUsage,
+			GuestIDs:     node.GuestIDs,
 		})
 	}
 
@@ -866,6 +879,9 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 					logger.L.Error().Err(err).Msg("Failed to populate cluster nodes")
 				}
 			}
+			if err := s.ReconcileOrphanedClusterSSHIdentities(ctx); err != nil && !errors.Is(err, ErrNodeLeaveFenced) {
+				logger.L.Warn().Err(err).Msg("cluster_ssh_identity_reconciliation_failed")
+			}
 		}
 
 		runPopulateClusterNodes()
@@ -907,12 +923,25 @@ func (s *Service) StartClusterMonitors(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case <-timer.C:
-					if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
-						logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+					_, release, err := s.EnterMutation(ctx)
+					if err == nil {
+						if err := s.EnforceReplicatedRetention(time.Now().UTC()); err != nil {
+							logger.L.Error().Err(err).Msg("failed_to_enforce_replicated_retention")
+						}
+						release()
+					} else if !errors.Is(err, ErrNodeLeaveFenced) {
+						logger.L.Error().Err(err).Msg("failed_to_admit_replicated_retention")
 					}
 					timer.Reset(replicatedRetentionInterval)
 				}
 			}
 		}()
+	})
+}
+
+func (s *Service) StartMembershipReconcilers(ctx context.Context) {
+	s.reconcilerOnce.Do(func() {
+		s.startLeaveReconciler(ctx)
+		s.startJoinReconciler(ctx)
 	})
 }

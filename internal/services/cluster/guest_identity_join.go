@@ -133,6 +133,10 @@ func (s *Service) checkJoinInventory(
 	if err := ctx.Err(); err != nil {
 		return GuestIdentityInventoryReport{}, false, err
 	}
+	nodeIP, err := normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
+	if err != nil {
+		return GuestIdentityInventoryReport{}, false, err
+	}
 
 	details, err := s.GetClusterDetails()
 	if err != nil {
@@ -209,49 +213,148 @@ func (s *Service) PreflightJoinInventory(
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) (GuestIdentityInventoryReport, error) {
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return GuestIdentityInventoryReport{}, err
+	}
+	defer release()
+	ctx = admittedCtx
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 
 	combined, _, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	return combined, err
 }
 
-// AcceptJoinInventory repeats the inexpensive inventory check immediately
-// before membership changes, then adds the node without replacing conflicts.
-func (s *Service) AcceptJoinInventory(
+func (s *Service) StageJoinInventory(
+	ctx context.Context,
+	nodeID, nodeIP, providedKey string,
+	submitted GuestIdentityInventoryReport,
+) (ClusterJoinStatus, error) {
+	status := ClusterJoinStatus{
+		NodeID: strings.TrimSpace(nodeID),
+		NodeIP: strings.TrimSpace(nodeIP),
+		Phase:  JoinPhaseStaged,
+	}
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return status, err
+	}
+	defer release()
+	ctx = admittedCtx
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
+
+	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
+	if err != nil {
+		return status, err
+	}
+	if alreadyVoter {
+		status.Phase = JoinPhaseComplete
+		status.Suffrage = raftSuffrageName(raft.Voter)
+		if err := s.PopulateClusterNodes(); err != nil {
+			logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join_retry")
+		}
+		return status, nil
+	}
+
+	serverID := raft.ServerID(strings.TrimSpace(nodeID))
+	serverAddress := raft.ServerAddress(RaftServerAddress(nodeIP))
+	err = func() error {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+
+		configurationFuture := s.Raft.GetConfiguration()
+		if err := configurationFuture.Error(); err != nil {
+			return fmt.Errorf("get_config_failed: %w", err)
+		}
+		existingServer, err := resolveJoinMembership(
+			configurationFuture.Configuration(),
+			s.guestIdentityInventoryLocalNodeID(),
+			nodeID,
+			serverAddress,
+		)
+		if err != nil {
+			return err
+		}
+		if existingServer != nil {
+			if existingServer.Suffrage == raft.Voter {
+				status.Phase = JoinPhaseComplete
+				status.Suffrage = raftSuffrageName(raft.Voter)
+				return nil
+			}
+			if existingServer.Suffrage != raft.Nonvoter && existingServer.Suffrage != raft.Staging {
+				return fmt.Errorf("joining_node_membership_not_promotable")
+			}
+			status.Suffrage = raftSuffrageName(existingServer.Suffrage)
+			return nil
+		}
+		candidate := raft.Server{ID: serverID, Address: serverAddress, Suffrage: raft.Nonvoter}
+		if err := s.checkUniformVersionsLocked(ctx, &candidate, ""); err != nil {
+			return err
+		}
+
+		s.replicatedStateMu.Lock()
+		defer s.replicatedStateMu.Unlock()
+		if err := s.checkpointAndSnapshotLocked(); err != nil {
+			return err
+		}
+		if err := s.Raft.AddNonvoter(serverID, serverAddress, 0, raftApplyTimeout).Error(); err != nil {
+			return fmt.Errorf("add_nonvoter_failed: %w", err)
+		}
+		status.Suffrage = raftSuffrageName(raft.Nonvoter)
+		status.TargetIndex = s.Raft.AppliedIndex()
+		return nil
+	}()
+	if err != nil {
+		return status, err
+	}
+	if status.Phase == JoinPhaseComplete {
+		if err := s.PopulateClusterNodes(); err != nil {
+			logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join_retry")
+		}
+		return status, nil
+	}
+
+	logger.L.Info().
+		Str("node_id", status.NodeID).
+		Str("address", string(serverAddress)).
+		Uint64("target_index", status.TargetIndex).
+		Msg("cluster_join_staged_nonvoter")
+	return status, nil
+}
+
+func (s *Service) finalizeStagedJoin(
 	ctx context.Context,
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) error {
 	ctx, cancel := withReplicatedStateTimeout(ctx)
 	defer cancel()
+	admittedCtx, release, err := s.EnterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-	s.replicatedStateMu.Lock()
-	defer s.replicatedStateMu.Unlock()
+	s.membershipLifecycleMu.Lock()
+	defer s.membershipLifecycleMu.Unlock()
 
 	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
 	if err != nil {
 		return err
 	}
 	if alreadyVoter {
-		if _, err := s.resyncClusterStateLocked(ctx); err != nil {
-			return err
-		}
-		if err := s.PopulateClusterNodes(); err != nil {
-			logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join_retry")
-		}
 		return nil
 	}
 
-	serverID := raft.ServerID(strings.TrimSpace(nodeID))
 	serverAddress := raft.ServerAddress(RaftServerAddress(nodeIP))
 	configurationFuture := s.Raft.GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
 		return fmt.Errorf("get_config_failed: %w", err)
 	}
-	existingServer, err := resolveJoinMembership(
+	server, err := resolveJoinMembership(
 		configurationFuture.Configuration(),
 		s.guestIdentityInventoryLocalNodeID(),
 		nodeID,
@@ -260,33 +363,88 @@ func (s *Service) AcceptJoinInventory(
 	if err != nil {
 		return err
 	}
-	if err := s.checkpointAndSnapshotLocked(); err != nil {
-		return err
+	if server == nil {
+		return fmt.Errorf("joining_node_not_staged")
 	}
-	reference, err := s.LocalReplicatedStateDigest(
-		ctx,
-		s.guestIdentityInventoryLocalNodeID(),
-		s.Raft.AppliedIndex(),
-	)
+	if server.Suffrage != raft.Nonvoter && server.Suffrage != raft.Staging {
+		return fmt.Errorf("joining_node_membership_not_promotable")
+	}
+	targetIndex := s.Raft.AppliedIndex()
+	progress, err := s.fetchJoinProgress(ctx, strings.TrimSpace(nodeID), server.Address, targetIndex)
+	if err != nil {
+		return fmt.Errorf("replicated_state_catchup_failed: %w", err)
+	}
+	if progress.AppliedIndex < targetIndex {
+		return fmt.Errorf(
+			"replicated_state_catchup_pending: target=%d applied=%d",
+			targetIndex,
+			progress.AppliedIndex,
+		)
+	}
+
+	verifiedIndex := progress.AppliedIndex
+	err = func() error {
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		s.replicatedStateMu.Lock()
+		defer s.replicatedStateMu.Unlock()
+		if s.Raft == nil || s.Raft.State() != raft.Leader {
+			return fmt.Errorf("not_leader")
+		}
+		configurationFuture = s.Raft.GetConfiguration()
+		if err := configurationFuture.Error(); err != nil {
+			return fmt.Errorf("get_config_failed: %w", err)
+		}
+		server, err = resolveJoinMembership(
+			configurationFuture.Configuration(),
+			s.guestIdentityInventoryLocalNodeID(),
+			nodeID,
+			serverAddress,
+		)
+		if err != nil {
+			return err
+		}
+		if server == nil {
+			return fmt.Errorf("joining_node_not_staged")
+		}
+		if server.Suffrage == raft.Voter {
+			verifiedIndex = s.Raft.AppliedIndex()
+			return nil
+		}
+		if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
+			return err
+		}
+		if err := s.checkpointReplicatedStateLocked(); err != nil {
+			return err
+		}
+		reference, err := s.LocalReplicatedStateDigest(
+			ctx,
+			s.guestIdentityInventoryLocalNodeID(),
+			s.Raft.AppliedIndex(),
+		)
+		if err != nil {
+			return err
+		}
+		verificationCtx, verificationCancel := context.WithTimeout(ctx, joinFinalVerificationTimeout)
+		defer verificationCancel()
+		verified, err := s.promoteVerifiedNonvoterLocked(
+			verificationCtx,
+			*server,
+			reference,
+			progress.RepairFenced,
+		)
+		verifiedIndex = verified.AppliedIndex
+		return err
+	}()
 	if err != nil {
 		return err
 	}
-	if existingServer == nil {
-		if err := s.Raft.AddNonvoter(serverID, serverAddress, 0, raftApplyTimeout).Error(); err != nil {
-			return fmt.Errorf("add_nonvoter_failed: %w", err)
-		}
-		existingServer = &raft.Server{
-			ID:       serverID,
-			Address:  serverAddress,
-			Suffrage: raft.Nonvoter,
-		}
-	}
-	if existingServer.Suffrage != raft.Nonvoter && existingServer.Suffrage != raft.Staging {
-		return fmt.Errorf("joining_node_membership_not_promotable")
-	}
-	if _, err := s.promoteCaughtUpNonvoterLocked(ctx, *existingServer, reference); err != nil {
-		return err
-	}
+
+	logger.L.Info().
+		Str("node_id", strings.TrimSpace(nodeID)).
+		Str("address", string(serverAddress)).
+		Uint64("verified_index", verifiedIndex).
+		Msg("cluster_join_promoted_voter")
 
 	// Do not make the joining node wait for the normal monitor interval before
 	// it receives the initial node-health snapshot.
@@ -294,4 +452,16 @@ func (s *Service) AcceptJoinInventory(
 		logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join")
 	}
 	return nil
+}
+
+func (s *Service) AcceptJoinInventory(
+	ctx context.Context,
+	nodeID, nodeIP, providedKey string,
+	submitted GuestIdentityInventoryReport,
+) error {
+	status, err := s.StageJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
+	if err != nil || status.Phase == JoinPhaseComplete {
+		return err
+	}
+	return s.finalizeStagedJoin(ctx, nodeID, nodeIP, providedKey, submitted)
 }

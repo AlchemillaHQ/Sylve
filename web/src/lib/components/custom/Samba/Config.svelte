@@ -45,7 +45,8 @@
 		},
 		bindInterfacesOnly: sambaConfig.bindInterfacesOnly,
 		appleExtensions: sambaConfig.appleExtensions,
-		advertiseMdns: sambaConfig.advertiseMdns
+		advertiseMdns: sambaConfig.advertiseMdns,
+		extraGlobalConfig: sambaConfig.extraGlobalConfig
 	};
 
 	let properties = $state(options);
@@ -65,7 +66,8 @@
 				interfaces: properties.interfaces.combobox.values.join(','),
 				bindInterfacesOnly: properties.bindInterfacesOnly,
 				appleExtensions: properties.appleExtensions,
-				advertiseMdns: properties.advertiseMdns
+				advertiseMdns: properties.advertiseMdns,
+				extraGlobalConfig: properties.extraGlobalConfig
 			});
 
 			reload = true;
@@ -98,7 +100,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="sm:max-w-2xl"
+		class="max-h-[90vh] overflow-y-auto sm:max-w-2xl"
 		showCloseButton={true}
 		showResetButton={true}
 		onReset={() => (properties = options)}
@@ -174,6 +176,17 @@
 				classes="flex items-center gap-2"
 			/>
 		</div>
+
+		<CustomValueInput
+			label="Extra Global Configuration"
+			placeholder="vfs mkdir use tmp name = no"
+			hint="Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
+			bind:value={properties.extraGlobalConfig}
+			classes="space-y-1.5"
+			type="textarea"
+			textAreaClasses="h-36 font-mono text-xs"
+			disabled={isSaving}
+		/>
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">

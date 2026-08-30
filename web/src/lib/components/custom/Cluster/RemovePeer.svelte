@@ -7,6 +7,7 @@
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
+	import ForceRemovePeer from './ForceRemovePeer.svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -19,6 +20,9 @@
 
 	let busy = $state(false);
 	let conflict: PeerRemovalConflict | null = $state(null);
+	let outcome = $state('');
+	let outcomeDetail = $state('');
+	let forceOpen = $state(false);
 
 	const dependencyLabels: Record<string, string> = {
 		guest: 'Guest',
@@ -29,7 +33,9 @@
 		replication_operation: 'Replication Operation',
 		restore_operation: 'Restore Operation',
 		guest_operation: 'Guest Operation',
-		runner_rebind: 'Runner Rebind'
+		runner_rebind: 'Runner Rebind',
+		lifecycle_task: 'Lifecycle Task',
+		state_repair: 'State Repair'
 	};
 
 	watch(
@@ -37,6 +43,8 @@
 		(isOpen) => {
 			if (isOpen) {
 				conflict = null;
+				outcome = '';
+				outcomeDetail = '';
 				busy = false;
 			}
 		}
@@ -54,6 +62,8 @@
 		if (!node || busy) return;
 		busy = true;
 		conflict = null;
+		outcome = '';
+		outcomeDetail = '';
 
 		const removedVoter = String(node.suffrage ?? '').toLowerCase() === 'voter';
 
@@ -64,6 +74,24 @@
 				if (response.message === 'peer_removal_blocked') {
 					const parsed = PeerRemovalConflictSchema.safeParse(response.data);
 					conflict = parsed.success ? parsed.data : null;
+					return;
+				}
+				if (
+					response.message === 'cluster_target_unreachable' ||
+					response.message === 'cluster_removal_start_uncertain' ||
+					response.message === 'cluster_removal_cleanup_unconfirmed' ||
+					response.message === 'cluster_leave_active_mutations' ||
+					response.message === 'cluster_version_mismatch' ||
+					response.message === 'cluster_version_check_unavailable'
+				) {
+					outcome = response.message;
+					outcomeDetail = Array.isArray(response.error)
+						? response.error.join(', ')
+						: String(response.error);
+					if (response.message === 'cluster_removal_cleanup_unconfirmed') {
+						await refreshClusterAfterLifecycleChange();
+						reload = true;
+					}
 					return;
 				}
 
@@ -114,7 +142,57 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		{#if conflict}
+		{#if busy}
+			<div class="rounded-md border bg-muted/40 p-4 text-sm">
+				<div class="flex items-center gap-2 font-medium">
+					<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+					Removing node safely
+				</div>
+				<p class="mt-1 text-muted-foreground">The target is fencing local work and leaving Raft.</p>
+			</div>
+		{:else if outcome}
+			<div class="grid gap-3 text-sm">
+				<div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+					{#if outcome === 'cluster_target_unreachable'}
+						<p class="font-medium">The target was unreachable before removal started.</p>
+						<p class="mt-1 text-muted-foreground">
+							Fix connectivity and retry, or externally fence the target before force removal.
+						</p>
+					{:else if outcome === 'cluster_removal_start_uncertain'}
+						<p class="font-medium">The removal outcome is uncertain.</p>
+						<p class="mt-1 text-muted-foreground">
+							Do not force remove or immediately retry. Check the target's leave status first.
+						</p>
+					{:else if outcome === 'cluster_removal_cleanup_unconfirmed'}
+						<p class="font-medium">Membership was removed, but target cleanup is unconfirmed.</p>
+						<p class="mt-1 text-muted-foreground">
+							Keep the target isolated and inspect its local leave status before using it again.
+						</p>
+					{:else if outcome === 'cluster_leave_active_mutations'}
+						<p class="font-medium">The target is still running active work.</p>
+						<p class="mt-1 text-muted-foreground">
+							Close open consoles or wait for running operations on the target, then retry.
+						</p>
+					{:else if outcome === 'cluster_version_check_unavailable'}
+						<p class="font-medium">Sylve could not verify every member version.</p>
+						<p class="mt-1 text-muted-foreground">
+							Make sure the remaining cluster members are online and reachable, then retry.
+						</p>
+					{:else}
+						<p class="font-medium">Every participating node must run the same Sylve version.</p>
+						<p class="mt-1 text-muted-foreground">Upgrade the reported member and retry.</p>
+					{/if}
+				</div>
+				{#if outcomeDetail}
+					<details class="text-xs text-muted-foreground">
+						<summary class="cursor-pointer select-none">Technical Details</summary>
+						<p class="mt-1.5 max-h-24 overflow-auto rounded bg-muted p-2 font-mono break-all">
+							{outcomeDetail}
+						</p>
+					</details>
+				{/if}
+			</div>
+		{:else if conflict}
 			<div class="grid gap-3">
 				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm">
 					<p class="font-medium text-red-600 dark:text-red-400">
@@ -168,7 +246,24 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				{#if conflict}
+				{#if outcome}
+					<Button onclick={() => (open = false)} size="sm" variant="outline">Close</Button>
+					{#if outcome === 'cluster_leave_active_mutations' || outcome === 'cluster_version_check_unavailable'}
+						<Button onclick={confirm} size="sm">Retry</Button>
+					{/if}
+					{#if outcome === 'cluster_target_unreachable'}
+						<Button
+							onclick={() => {
+								open = false;
+								forceOpen = true;
+							}}
+							size="sm"
+							variant="destructive"
+						>
+							Force Remove…
+						</Button>
+					{/if}
+				{:else if conflict}
 					<Button
 						onclick={() => {
 							conflict = null;
@@ -195,3 +290,5 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<ForceRemovePeer bind:open={forceOpen} bind:reload {node} />

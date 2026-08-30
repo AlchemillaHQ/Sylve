@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getJWTClaims, logOut } from '$lib/api/auth';
 	import { createUser, editUser } from '$lib/api/auth/local';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -86,6 +87,9 @@
 		const requestEdit = edit;
 		const requestUserID = requestEdit ? user?.id : undefined;
 		if (requestEdit && requestUserID === undefined) return;
+		const currentUserID = getJWTClaims()?.custom_claims.userId;
+		const requiresReauthentication =
+			requestEdit && Boolean(properties.password) && currentUserID === requestUserID;
 
 		const payload = {
 			fullName: properties.fullName,
@@ -100,7 +104,10 @@
 		try {
 			const response =
 				requestEdit && requestUserID !== undefined
-					? await editUser(requestUserID, payload, { hostname: requestHostname })
+					? await editUser(requestUserID, payload, {
+							hostname: requestHostname,
+							skipAuditLog: requiresReauthentication
+						})
 					: await createUser(payload, { hostname: requestHostname });
 
 			if (
@@ -116,6 +123,11 @@
 				toast.error(edit ? 'Failed to edit user' : 'Failed to create user', {
 					position: 'bottom-center'
 				});
+				return;
+			}
+
+			if (requiresReauthentication) {
+				await logOut('Password changed. Please sign in again.');
 				return;
 			}
 

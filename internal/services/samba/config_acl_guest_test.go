@@ -179,6 +179,41 @@ func TestGlobalConfigMapToGuestIsConditional(t *testing.T) {
 	}
 }
 
+func TestGlobalConfigAppendsExtraGlobalConfigVerbatim(t *testing.T) {
+	svc, _ := newSambaServiceWithMockRunner(t)
+
+	defaultConfig, err := svc.GlobalConfig()
+	if err != nil {
+		t.Fatalf("GlobalConfig failed: %v", err)
+	}
+	if strings.Contains(defaultConfig, "Extra global configuration supplied through Sylve") {
+		t.Fatalf("empty extra global config changed generated output:\n%s", defaultConfig)
+	}
+
+	var settings sambaModels.SambaSettings
+	if err := svc.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed loading samba settings: %v", err)
+	}
+	raw := "  vfs mkdir use tmp name = no\n\nworkgroup = EXPERT_OVERRIDE"
+	settings.ExtraGlobalConfig = raw
+	if err := svc.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed saving extra global config: %v", err)
+	}
+
+	cfg, err := svc.GlobalConfig()
+	if err != nil {
+		t.Fatalf("GlobalConfig failed: %v", err)
+	}
+
+	wantSuffix := "inherit acls = yes\n\n# Extra global configuration supplied through Sylve\n" + raw + "\n"
+	if !strings.HasSuffix(cfg, wantSuffix) {
+		t.Fatalf("extra global config was not appended verbatim:\n%s", cfg)
+	}
+	if strings.Index(cfg, raw) < strings.Index(cfg, "workgroup = WORKGROUP") {
+		t.Fatalf("extra global config must follow Sylve-managed global settings:\n%s", cfg)
+	}
+}
+
 func TestShareConfigGuestOnlyDoesNotEmitUserLists(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)
 	ctx := context.Background()
@@ -640,5 +675,63 @@ func TestWriteConfigValidatesBeforeReplacingActiveConfig(t *testing.T) {
 	}
 	if wroteActiveConfig {
 		t.Fatal("active Samba configuration was replaced after testparm failure")
+	}
+}
+
+func TestWriteConfigValidatesAndWritesExtraGlobalConfig(t *testing.T) {
+	svc, _ := newSambaServiceWithMockRunner(t)
+
+	var settings sambaModels.SambaSettings
+	if err := svc.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed loading samba settings: %v", err)
+	}
+	settings.ExtraGlobalConfig = "vfs mkdir use tmp name = no\ninclude = /usr/local/etc/smb4-extra.conf"
+	if err := svc.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed saving extra global config: %v", err)
+	}
+
+	originalConfigPath := sambaConfigFilePath
+	originalTestparmPath := sambaTestparmPath
+	originalRunCommand := sambaRunCommand
+	originalAtomicWriteFile := sambaAtomicWriteFile
+	t.Cleanup(func() {
+		sambaConfigFilePath = originalConfigPath
+		sambaTestparmPath = originalTestparmPath
+		sambaRunCommand = originalRunCommand
+		sambaAtomicWriteFile = originalAtomicWriteFile
+	})
+
+	sambaConfigFilePath = filepath.Join(t.TempDir(), "smb4.conf")
+	sambaTestparmPath = "/usr/local/bin/testparm"
+	var validatedConfig string
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		if command != sambaTestparmPath || len(args) != 2 || args[0] != "-s" {
+			t.Fatalf("unexpected testparm invocation: %q %v", command, args)
+		}
+		data, err := os.ReadFile(args[1])
+		if err != nil {
+			t.Fatalf("failed reading candidate Samba config: %v", err)
+		}
+		validatedConfig = string(data)
+		return "", nil
+	}
+
+	var writtenConfig string
+	sambaAtomicWriteFile = func(path string, data []byte, perm os.FileMode) error {
+		if path != sambaConfigFilePath {
+			t.Fatalf("unexpected active config path: %q", path)
+		}
+		writtenConfig = string(data)
+		return nil
+	}
+
+	if err := svc.WriteConfig(context.Background(), false); err != nil {
+		t.Fatalf("WriteConfig failed: %v", err)
+	}
+	if validatedConfig != writtenConfig {
+		t.Fatal("validated Samba config differs from the config written atomically")
+	}
+	if !strings.Contains(writtenConfig, settings.ExtraGlobalConfig) {
+		t.Fatalf("written Samba config omitted extra global config:\n%s", writtenConfig)
 	}
 }

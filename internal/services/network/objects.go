@@ -183,6 +183,9 @@ func (s *Service) populateObjectUsage(objects []networkModels.Object) error {
 			return err
 		}
 	}
+	if err := markFromColumn("standard_switches", "bridge_mac_object_id", "switch"); err != nil {
+		return err
+	}
 
 	// Static route references must remain valid when their backing objects change.
 	for _, column := range []string{"destination_obj_id", "gateway_obj_id"} {
@@ -434,6 +437,20 @@ func (s *Service) isObjectReferencedByDHCP(id uint) (bool, error) {
 		return false, err
 	}
 
+	return count > 0, nil
+}
+
+func (s *Service) isObjectReferencedByStandardSwitchMAC(id uint) (bool, error) {
+	const table = "standard_switches"
+	const column = "bridge_mac_object_id"
+	if !s.DB.Migrator().HasTable(table) || !s.DB.Migrator().HasColumn(table, column) {
+		return false, nil
+	}
+
+	var count int64
+	if err := s.DB.Table(table).Where(column+" = ?", id).Count(&count).Error; err != nil {
+		return false, err
+	}
 	return count > 0, nil
 }
 
@@ -831,6 +848,30 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 	if used && object.Type != oType {
 		return networkObjectConflict("network_object_type_in_use", nil)
+	}
+
+	switchMACReferenced, err := s.isObjectReferencedByStandardSwitchMAC(id)
+	if err != nil {
+		return err
+	}
+	if switchMACReferenced {
+		if oType != "Mac" {
+			return networkObjectConflict("network_object_type_in_use", nil)
+		}
+		if len(values) != 1 || len(object.Entries) != 1 {
+			return networkObjectConflict("network_object_switch_requires_one_mac", nil)
+		}
+		currentMAC, currentErr := normalizeStandardSwitchMAC(object.Entries[0].Value)
+		requestedMAC, requestedErr := normalizeStandardSwitchMAC(values[0])
+		if currentErr != nil || requestedErr != nil {
+			return networkObjectConflict(
+				"network_object_switch_requires_one_mac",
+				errors.Join(currentErr, requestedErr),
+			)
+		}
+		if currentMAC != requestedMAC {
+			return networkObjectConflict("network_object_switch_mac_in_use", nil)
+		}
 	}
 
 	dhcpReferenced, err := s.isObjectReferencedByDHCP(id)

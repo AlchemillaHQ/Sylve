@@ -9,7 +9,6 @@
 package repl
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -96,7 +95,7 @@ func createJail(ctx *Context, request jailServiceInterfaces.CreateJailRequest) (
 	if request.CTID == nil {
 		return jailCreateResult{}, fmt.Errorf("invalid_jail_create_request: missing_ctid")
 	}
-	if err := ctx.Jail.CreateJail(context.Background(), request); err != nil {
+	if err := ctx.Jail.CreateJail(operationContext(ctx), request); err != nil {
 		return jailCreateResult{}, fmt.Errorf("failed_to_create_jail: %w", err)
 	}
 
@@ -749,7 +748,7 @@ func listBootstraps(ctx *Context, pool string) ([]jailServiceInterfaces.Bootstra
 		return nil, fmt.Errorf("jail_service_unavailable")
 	}
 
-	entries, err := ctx.Jail.ListBootstraps(context.Background(), pool)
+	entries, err := ctx.Jail.ListBootstraps(operationContext(ctx), pool)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_list_bootstraps: %w", err)
 	}
@@ -801,7 +800,7 @@ func createBootstrap(
 	if ctx == nil || ctx.Jail == nil {
 		return jailBootstrapCreateResponse{}, fmt.Errorf("jail_service_unavailable")
 	}
-	createResult, err := ctx.Jail.CreateBootstrap(context.Background(), request)
+	createResult, err := ctx.Jail.CreateBootstrap(operationContext(ctx), request)
 	if err != nil {
 		return jailBootstrapCreateResponse{}, fmt.Errorf("failed_to_create_bootstrap: %w", err)
 	}
@@ -891,7 +890,7 @@ func deleteBootstrap(ctx *Context, pool, name string) (jailBootstrapDeleteResult
 	if ctx == nil || ctx.Jail == nil {
 		return jailBootstrapDeleteResult{}, fmt.Errorf("jail_service_unavailable")
 	}
-	deleteResult, err := ctx.Jail.DeleteBootstrap(context.Background(), pool, name)
+	deleteResult, err := ctx.Jail.DeleteBootstrap(operationContext(ctx), pool, name)
 	if err != nil {
 		return jailBootstrapDeleteResult{}, fmt.Errorf("failed_to_delete_bootstrap: %w", err)
 	}
@@ -949,7 +948,7 @@ func requestJailAction(ctx *Context, ctid uint, action string) (jailActionResult
 	}
 
 	task, outcome, err := ctx.Lifecycle.RequestAction(
-		context.Background(), "jail", ctid, action, "user", "console",
+		operationContext(ctx), "jail", ctid, action, "user", "console",
 	)
 	if err != nil {
 		return jailActionResult{}, fmt.Errorf("failed_to_%s_jail: %w", action, err)
@@ -1001,7 +1000,7 @@ func requestJailActionAll(ctx *Context, action string) ([]jailActionResult, erro
 			Action: action,
 		}
 		task, outcome, err := ctx.Lifecycle.RequestAction(
-			context.Background(), "jail", j.CTID, action, "user", "console",
+			operationContext(ctx), "jail", j.CTID, action, "user", "console",
 		)
 		if err != nil {
 			r.Error = err.Error()
@@ -1051,7 +1050,7 @@ func deleteJail(ctx *Context, ctid uint, purge bool) (jailDeleteResult, error) {
 	if ctx == nil || ctx.Jail == nil {
 		return jailDeleteResult{}, fmt.Errorf("jail_service_unavailable")
 	}
-	if err := ctx.Jail.DeleteJail(context.Background(), ctid, true, purge); err != nil {
+	if err := ctx.Jail.DeleteJail(operationContext(ctx), ctid, true, purge); err != nil {
 		return jailDeleteResult{}, fmt.Errorf("failed_to_delete_jail: %w", err)
 	}
 	return jailDeleteResult{Deleted: true, CTID: ctid}, nil

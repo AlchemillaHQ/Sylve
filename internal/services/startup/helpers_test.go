@@ -320,3 +320,32 @@ func TestSysctlSyncSetsJailEnforceStatfs(t *testing.T) {
 		t.Fatalf("expected security.jail.enforce_statfs to be set to 1, got %d", value)
 	}
 }
+
+func TestSysctlSyncDisablesBridgeMACInheritance(t *testing.T) {
+	previousGet := startupGetSysctlInt64
+	previousSet := startupSetSysctlInt32
+	t.Cleanup(func() {
+		startupGetSysctlInt64 = previousGet
+		startupSetSysctlInt32 = previousSet
+	})
+
+	setValues := map[string]int32{}
+	startupGetSysctlInt64 = func(name string) (int64, error) {
+		if name == "net.fibs" {
+			return 8, nil
+		}
+		return 0, nil
+	}
+	startupSetSysctlInt32 = func(name string, value int32) error {
+		setValues[name] = value
+		return nil
+	}
+
+	svc := &Service{}
+	if err := svc.SysctlSync(); err != nil {
+		t.Fatalf("sysctl sync: %v", err)
+	}
+	if value, ok := setValues["net.link.bridge.inherit_mac"]; !ok || value != 0 {
+		t.Fatalf("net.link.bridge.inherit_mac=(%d,%v), want (0,true)", value, ok)
+	}
+}

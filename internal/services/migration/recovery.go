@@ -13,6 +13,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"gorm.io/gorm"
 )
 
@@ -94,7 +95,9 @@ func (s *Service) isMigrationExecutionActive(taskID uint) bool {
 }
 
 func shouldLogMigrationRecoveryError(err error) bool {
-	return err != nil && !errors.Is(err, ErrMigrationInProgress)
+	return err != nil &&
+		!errors.Is(err, ErrMigrationInProgress) &&
+		!errors.Is(err, clusterService.ErrNodeLeaveFenced)
 }
 
 func (s *Service) exactMigrationOperationForTask(task taskModels.GuestLifecycleTask, targetNodeID, token string) (*clusterModels.ReplicationGuestOperation, error) {
@@ -199,7 +202,7 @@ func (s *Service) StartRecoveryTicker(ctx context.Context) {
 }
 
 func (s *Service) scheduleMigrationRecovery(ctx context.Context) {
-	if err := s.ReconcileMigrationOperations(ctx); err != nil {
+	if err := s.ReconcileMigrationOperations(ctx); shouldLogMigrationRecoveryError(err) {
 		logger.L.Error().Err(err).Msg("migration_operation_reconciliation_failed")
 	}
 }
@@ -208,6 +211,13 @@ func (s *Service) ReconcileMigrationOperations(ctx context.Context) error {
 	if s == nil || s.DB == nil || s.Cluster == nil || s.WorkloadGuard == nil {
 		return fmt.Errorf("migration_reconciliation_unavailable")
 	}
+	baseCtx := ctx
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
 	if localNodeID == "" {
 		return fmt.Errorf("local_node_id_unavailable")
@@ -225,7 +235,12 @@ func (s *Service) ReconcileMigrationOperations(ctx context.Context) error {
 			continue
 		}
 		go func() {
-			if err := s.reconcileMigrationOperation(ctx, operation); err != nil {
+			operationCtx, operationRelease, admissionErr := s.enterMutation(baseCtx)
+			if admissionErr != nil {
+				return
+			}
+			defer operationRelease()
+			if err := s.reconcileMigrationOperation(operationCtx, operation); err != nil {
 				// The lifecycle worker may have claimed the task after the active
 				// check above. Its execution guard is authoritative; this is an
 				// expected deferral, not a recovery failure.

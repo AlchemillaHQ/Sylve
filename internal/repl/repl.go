@@ -9,6 +9,7 @@
 package repl
 
 import (
+	"context"
 	"io"
 	"os"
 
@@ -38,6 +39,14 @@ type Context struct {
 	Out            io.Writer
 
 	pendingSerialConsole *consoleprotocol.VMSerialConsoleLaunch
+	mutationContext      context.Context
+}
+
+func operationContext(ctx *Context) context.Context {
+	if ctx != nil && ctx.mutationContext != nil {
+		return ctx.mutationContext
+	}
+	return context.Background()
 }
 
 func (ctx *Context) queueSerialConsole(launch consoleprotocol.VMSerialConsoleLaunch) {

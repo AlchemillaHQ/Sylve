@@ -3,12 +3,16 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	hub "github.com/alchemillahq/sylve/internal/events"
+	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
 )
 
@@ -16,6 +20,7 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(
 		t,
 		3,
+		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupJob{},
@@ -23,6 +28,11 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
 	)
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-key"}).Error; err != nil {
+			t.Fatalf("seed cluster record: %v", err)
+		}
+	}
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var removed *clusterRaftTestNode
@@ -72,7 +82,15 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		}
 	}
 
-	err := leader.service.RemovePeer(raft.ServerID(removed.id))
+	leader.service.joinVersionForNode = func(context.Context, raft.Server, string) (string, error) {
+		return cmd.Version, nil
+	}
+	request := RemoveMembershipRequest{
+		LeaveID:   uuid.NewString(),
+		NodeID:    removed.id,
+		Inventory: BuildGuestIdentityInventoryReport(nil),
+	}
+	err := leader.service.RemoveMembership(context.Background(), request, removed.id)
 	var blocked *PeerRemovalBlockedError
 	if !errors.As(err, &blocked) {
 		t.Fatalf("RemovePeer error = %v, want PeerRemovalBlockedError", err)
@@ -81,7 +99,6 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		t.Fatalf("blocked node = %q, want %q", blocked.Conflict.NodeID, removed.id)
 	}
 	wantKinds := map[string]bool{
-		PeerRemovalDependencyGuest:                true,
 		PeerRemovalDependencyBackupJob:            true,
 		PeerRemovalDependencyReplicationPolicy:    true,
 		PeerRemovalDependencyReplicationLease:     true,
@@ -128,10 +145,28 @@ func TestIntegrationRaftRemovePeerReportsDependenciesAndDrains(t *testing.T) {
 		}
 	}
 
-	if err := leader.service.RemovePeer(raft.ServerID(removed.id)); err != nil {
-		t.Fatalf("RemovePeer after drain: %v", err)
+	events, unsubscribe := hub.SSE.Subscribe()
+	defer unsubscribe()
+	if err := leader.service.RemoveMembership(context.Background(), request, removed.id); err != nil {
+		t.Fatalf("RemoveMembership after drain: %v", err)
 	}
+	waitForClusterEvent(t, events, "left-panel-refresh")
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+}
+
+func TestRemoveMembershipReportsAllSubmittedGuests(t *testing.T) {
+	service := &Service{mutationGate: newOpenTestMutationGate(t)}
+	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{
+		{NodeID: "node-2", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 10, Name: "vm"},
+		{NodeID: "node-2", GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 20, Name: "jail"},
+	})
+	err := service.RemoveMembership(context.Background(), RemoveMembershipRequest{
+		LeaveID: uuid.NewString(), NodeID: "node-2", Inventory: report,
+	}, "node-2")
+	var blocked *PeerRemovalBlockedError
+	if !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 2 {
+		t.Fatalf("error=%v conflict=%+v", err, blocked)
+	}
 }
 
 func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
@@ -144,6 +179,11 @@ func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 		&clusterModels.ReplicationLease{},
 		&clusterModels.ReplicationGuestOperation{},
 	)
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&clusterModels.Cluster{Enabled: true, Key: "cluster-key"}).Error; err != nil {
+			t.Fatalf("seed cluster record: %v", err)
+		}
+	}
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	var removed *clusterRaftTestNode
@@ -156,14 +196,17 @@ func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 	if removed == nil {
 		t.Fatal("removed peer not found")
 	}
-	if err := leader.service.RemovePeer(raft.ServerID(removed.id)); err != nil {
-		t.Fatalf("RemovePeer: %v", err)
+	leader.service.joinVersionForNode = func(context.Context, raft.Server, string) (string, error) {
+		return cmd.Version, nil
+	}
+	if err := leader.service.RemoveMembership(context.Background(), RemoveMembershipRequest{
+		LeaveID:   uuid.NewString(),
+		NodeID:    removed.id,
+		Inventory: BuildGuestIdentityInventoryReport(nil),
+	}, removed.id); err != nil {
+		t.Fatalf("RemoveMembership: %v", err)
 	}
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
-	if err := leader.service.DB.Create(&clusterModels.Cluster{ID: 1, Enabled: true}).Error; err != nil {
-		t.Fatalf("seed cluster state: %v", err)
-	}
-
 	now := time.Now().UTC()
 	checks := map[string]func() error{
 		"backup acquire": func() error {
@@ -227,5 +270,95 @@ func TestIntegrationRaftRemovedPeerCannotStartRuntimeWork(t *testing.T) {
 				t.Fatalf("error = %v, want removed-voter rejection", err)
 			}
 		})
+	}
+}
+
+func TestIntegrationRaftForceRemovePeerRemovesExternallyFencedMember(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	var target *clusterRaftTestNode
+	for _, node := range nodes {
+		if node.id != leader.id {
+			target = node
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("target unavailable")
+	}
+	if _, err := leader.service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
+		NodeID: target.id,
+	}); err == nil || !strings.Contains(err.Error(), "cluster_force_target_fence_ack_required") {
+		t.Fatalf("missing acknowledgement error=%v", err)
+	}
+	events, unsubscribe := hub.SSE.Subscribe()
+	defer unsubscribe()
+	result, err := leader.service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
+		NodeID:                 target.id,
+		TargetExternallyFenced: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.MembershipRemoved || result.CleanupAcknowledged {
+		t.Fatalf("result=%+v", result)
+	}
+	waitForClusterEvent(t, events, "left-panel-refresh")
+	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+}
+
+func waitForClusterEvent(t *testing.T, events <-chan hub.Event, eventType string) {
+	t.Helper()
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-events:
+			if event.Type == eventType {
+				return
+			}
+		case <-timer.C:
+			t.Fatalf("timed out waiting for %s event", eventType)
+		}
+	}
+}
+
+func TestForceRemovePeerRequiresConsensus(t *testing.T) {
+	service := &Service{NodeID: "node-1", mutationGate: newOpenTestMutationGate(t)}
+	_, err := service.ForceRemovePeer(context.Background(), ForceRemovePeerRequest{
+		NodeID:                 "node-2",
+		TargetExternallyFenced: true,
+	})
+	var consensusErr *ClusterConsensusError
+	if !errors.As(err, &consensusErr) {
+		t.Fatalf("error = %v, want ClusterConsensusError", err)
+	}
+}
+
+func TestIntegrationRaftForceRemovePeerDoesNotBypassQuorum(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	var target *clusterRaftTestNode
+	for _, node := range nodes {
+		if node.id != leader.id {
+			target = node
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("target unavailable")
+	}
+	leader.transport.DisconnectAll()
+	target.transport.DisconnectAll()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	defer cancel()
+	_, err := leader.service.ForceRemovePeer(ctx, ForceRemovePeerRequest{
+		NodeID:                 target.id,
+		TargetExternallyFenced: true,
+	})
+	var consensusErr *ClusterConsensusError
+	if !errors.As(err, &consensusErr) {
+		t.Fatalf("error = %v, want ClusterConsensusError", err)
 	}
 }

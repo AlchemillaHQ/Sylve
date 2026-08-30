@@ -57,6 +57,14 @@ func (s *Service) processQueuedWolTask(ctx context.Context, payload wolProcessPa
 	if payload.WoLID == 0 {
 		return fmt.Errorf("invalid_wol_payload_id")
 	}
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
+	}
 
 	var wol utilitiesModels.WoL
 	if err := s.DB.WithContext(ctx).First(&wol, payload.WoLID).Error; err != nil {
@@ -71,7 +79,7 @@ func (s *Service) processQueuedWolTask(ctx context.Context, payload wolProcessPa
 		return nil
 	}
 
-	status := s.processWolTask(wol)
+	status := s.processWolTaskContext(ctx, wol)
 	if status == "" {
 		status = "failed_to_resolve_guest: empty_status"
 	}
@@ -84,6 +92,10 @@ func (s *Service) processQueuedWolTask(ctx context.Context, payload wolProcessPa
 }
 
 func (s *Service) processWolTask(wol utilitiesModels.WoL) string {
+	return s.processWolTaskContext(context.Background(), wol)
+}
+
+func (s *Service) processWolTaskContext(ctx context.Context, wol utilitiesModels.WoL) string {
 	candidates, err := s.resolveWoLCandidates(wol.Mac)
 	if err != nil {
 		logger.L.Warn().Err(err).Str("mac", wol.Mac).Msg("failed_to_resolve_guest_for_wol")
@@ -122,11 +134,11 @@ func (s *Service) processWolTask(wol utilitiesModels.WoL) string {
 	selected := eligible[0]
 	switch selected.kind {
 	case wolGuestVM:
-		if err := s.startVMForWoL(selected.vm); err != nil {
+		if err := s.startVMForWoLContext(ctx, selected.vm); err != nil {
 			return fmt.Sprintf("failed_to_start_vm: %s", err.Error())
 		}
 	case wolGuestJail:
-		if err := s.startJailForWoL(selected.jail); err != nil {
+		if err := s.startJailForWoLContext(ctx, selected.jail); err != nil {
 			return fmt.Sprintf("failed_to_start_jail: %s", err.Error())
 		}
 	default:
@@ -165,6 +177,10 @@ func (s *Service) resolveWoLCandidates(mac string) ([]wolGuestCandidate, error) 
 }
 
 func (s *Service) startVMForWoL(vm vmModels.VM) error {
+	return s.startVMForWoLContext(context.Background(), vm)
+}
+
+func (s *Service) startVMForWoLContext(ctx context.Context, vm vmModels.VM) error {
 	if s.wolStartVMFn != nil {
 		return s.wolStartVMFn(vm)
 	}
@@ -173,10 +189,19 @@ func (s *Service) startVMForWoL(vm vmModels.VM) error {
 		return fmt.Errorf("vm_service_unavailable")
 	}
 
+	if contextual, ok := s.VMService.(interface {
+		LvVMActionContext(context.Context, vmModels.VM, string) error
+	}); ok {
+		return contextual.LvVMActionContext(ctx, vm, "start")
+	}
 	return s.VMService.LvVMAction(vm, "start")
 }
 
 func (s *Service) startJailForWoL(jail jailModels.Jail) error {
+	return s.startJailForWoLContext(context.Background(), jail)
+}
+
+func (s *Service) startJailForWoLContext(ctx context.Context, jail jailModels.Jail) error {
 	if s.wolStartJailFn != nil {
 		return s.wolStartJailFn(int(jail.CTID))
 	}
@@ -185,6 +210,11 @@ func (s *Service) startJailForWoL(jail jailModels.Jail) error {
 		return fmt.Errorf("jail_service_unavailable")
 	}
 
+	if contextual, ok := s.JailService.(interface {
+		JailActionContext(context.Context, int, string) error
+	}); ok {
+		return contextual.JailActionContext(ctx, int(jail.CTID), "start")
+	}
 	return s.JailService.JailAction(int(jail.CTID), "start")
 }
 

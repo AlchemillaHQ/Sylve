@@ -64,6 +64,10 @@ type guestLifecycleExecPayload struct {
 
 type MigrationExecutor func(ctx context.Context, taskID uint) error
 
+type mutationAdmission interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}
+
 type Service struct {
 	DB          *gorm.DB
 	TelemetryDB *gorm.DB
@@ -73,8 +77,10 @@ type Service struct {
 	createMu sync.Mutex
 
 	vmActionFn          func(rid uint, action string) error
+	vmActionContextFn   func(context.Context, uint, string) error
 	vmStateFn           func(rid uint) (int, error)
 	jailActionFn        func(ctid int, action string) error
+	jailActionContextFn func(context.Context, int, string) error
 	jailActiveFn        func(ctid uint) (bool, error)
 	startupGuestReadyFn func(guestType string, guestID uint) (bool, error)
 
@@ -84,7 +90,8 @@ type Service struct {
 	vmTemplateConvertFn func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
 
-	migrateFn MigrationExecutor
+	migrateFn    MigrationExecutor
+	mutationGate mutationAdmission
 }
 
 func (s *Service) SetMigrationExecutor(fn MigrationExecutor) {
@@ -93,6 +100,10 @@ func (s *Service) SetMigrationExecutor(fn MigrationExecutor) {
 
 func (s *Service) SetStartupGuestReadinessChecker(fn func(string, uint) (bool, error)) {
 	s.startupGuestReadyFn = fn
+}
+
+func (s *Service) SetMutationAdmission(gate mutationAdmission) {
+	s.mutationGate = gate
 }
 
 func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
@@ -105,6 +116,7 @@ func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.S
 
 	if libvirtService != nil {
 		s.vmActionFn = libvirtService.PerformAction
+		s.vmActionContextFn = libvirtService.PerformActionContext
 		s.vmStateFn = func(rid uint) (int, error) {
 			state, err := libvirtService.GetDomainState(int(rid))
 			return int(state), err
@@ -115,6 +127,7 @@ func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.S
 
 	if jailService != nil {
 		s.jailActionFn = jailService.JailAction
+		s.jailActionContextFn = jailService.JailActionContext
 		s.jailActiveFn = jailService.IsJailActive
 		s.jailTemplateConvertFn = jailService.ConvertJailToTemplate
 		s.jailTemplateCreateFn = jailService.CreateJailsFromTemplate
@@ -283,6 +296,14 @@ func (s *Service) RegisterJobs() {
 			logger.L.Warn().Msg("guest_lifecycle_exec_invalid_task_id")
 			return nil
 		}
+		if s.mutationGate != nil {
+			admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+			if err != nil {
+				return err
+			}
+			defer release()
+			ctx = admittedCtx
+		}
 
 		if err := s.ExecuteTask(ctx, payload.TaskID); err != nil {
 			logger.L.Warn().Err(err).Uint("task_id", payload.TaskID).Msg("guest_lifecycle_exec_failed")
@@ -379,6 +400,14 @@ func (s *Service) createTask(
 	payload string,
 	enqueue bool,
 ) (*taskModels.GuestLifecycleTask, string, error) {
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		defer release()
+		ctx = admittedCtx
+	}
 	guestType = normalizeGuestType(guestType)
 	action = normalizeAction(action)
 	source = normalizeSource(source)
@@ -512,6 +541,14 @@ func (s *Service) getConflictingActiveTask(guestType string, guestID uint, actio
 }
 
 func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
+	}
 	task := taskModels.GuestLifecycleTask{}
 	if err := s.DB.First(&task, taskID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -640,6 +677,9 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 			}
 		}
 
+		if s.vmActionContextFn != nil {
+			return s.vmActionContextFn(ctx, task.GuestID, task.Action)
+		}
 		return s.vmActionFn(task.GuestID, task.Action)
 
 	case taskModels.GuestTypeJail:
@@ -663,6 +703,9 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 			}
 		}
 
+		if s.jailActionContextFn != nil {
+			return s.jailActionContextFn(ctx, int(task.GuestID), task.Action)
+		}
 		return s.jailActionFn(int(task.GuestID), task.Action)
 
 	case taskModels.GuestTypeJailTemplate:

@@ -223,6 +223,11 @@ func buildStandardSwitchCreateRequest(
 	} else if ports != nil {
 		request.Ports = append(request.Ports, (*ports)...)
 	}
+	bridgeMAC, err := standardSwitchMACSourceOption(options, true)
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	request.BridgeMAC = *bridgeMAC
 	if request.Private, err = switchCreateBoolOption(options, "--private"); err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
 	}
@@ -292,6 +297,9 @@ var standardSwitchEditOptionNames = map[string]bool{
 	"--network6-manual":         true,
 	"--gateway6-manual":         true,
 	"--ports":                   true,
+	"--mac-source":              true,
+	"--mac-source-port":         true,
+	"--mac-object":              true,
 	"--private":                 true,
 	"--dhcp":                    true,
 	"--disable-ipv6":            true,
@@ -376,6 +384,9 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 	if request.Ports, err = switchEditPortsOption(options); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
+	if request.BridgeMAC, err = standardSwitchMACSourceOption(options, false); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
 	if request.Private, err = switchEditBoolOption(options, "--private"); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
@@ -398,6 +409,47 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
 	}
 	return request, nil
+}
+
+func standardSwitchMACSourceOption(
+	options map[string]string,
+	required bool,
+) (*consoleprotocol.StandardSwitchMACSourceRequest, error) {
+	modeValue, modeSet := options["--mac-source"]
+	portValue, portSet := options["--mac-source-port"]
+	objectValue, objectSet := options["--mac-object"]
+	if !modeSet && !portSet && !objectSet {
+		if required {
+			return nil, fmt.Errorf("--mac-source is required for standard switches")
+		}
+		return nil, nil
+	}
+	if !modeSet {
+		return nil, fmt.Errorf("--mac-source is required when changing the bridge MAC source")
+	}
+
+	switch strings.ToLower(strings.TrimSpace(modeValue)) {
+	case "port":
+		port := strings.TrimSpace(portValue)
+		if !portSet || port == "" {
+			return nil, fmt.Errorf("--mac-source-port is required when --mac-source=port")
+		}
+		if objectSet {
+			return nil, fmt.Errorf("--mac-object is only valid when --mac-source=object")
+		}
+		return &consoleprotocol.StandardSwitchMACSourceRequest{Mode: "port", Port: port}, nil
+	case "object":
+		if portSet {
+			return nil, fmt.Errorf("--mac-source-port is only valid when --mac-source=port")
+		}
+		objectID, err := strconv.ParseUint(strings.TrimSpace(objectValue), 10, 64)
+		if !objectSet || err != nil || objectID == 0 {
+			return nil, fmt.Errorf("--mac-object must be a positive object ID when --mac-source=object")
+		}
+		return &consoleprotocol.StandardSwitchMACSourceRequest{Mode: "object", MACObjectID: uint(objectID)}, nil
+	default:
+		return nil, fmt.Errorf("--mac-source must be port or object")
+	}
 }
 
 func switchEditIntOption(options map[string]string, name string) (*int, error) {
@@ -546,6 +598,11 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			Network6: standard.Network6Manual,
 			Gateway6: standard.Gateway6Manual,
 		}
+		macSource := networkModels.StandardSwitchMACSource{
+			Mode:        standard.BridgeMAC.Mode,
+			Port:        standard.BridgeMAC.Port,
+			MACObjectID: standard.BridgeMAC.MACObjectID,
+		}
 		id, err := ctx.Network.NewStandardSwitch(
 			standard.Name,
 			standard.MTU,
@@ -555,6 +612,7 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			standard.Gateway4,
 			standard.Gateway6,
 			standard.Ports,
+			macSource,
 			standard.Private,
 			standard.DHCP,
 			standard.DisableIPv6,
@@ -605,6 +663,7 @@ type standardSwitchEditConfig struct {
 	DisableBridgeOffloads bool
 	DHCP                  bool
 	Ports                 []string
+	MACSource             networkModels.StandardSwitchMACSource
 }
 
 func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switchEditResult, error) {
@@ -645,6 +704,7 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 			config.Gateway4,
 			config.Gateway6,
 			config.Ports,
+			config.MACSource,
 			config.Private,
 			config.DHCP,
 			config.DisableIPv6,
@@ -729,6 +789,13 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 		DisableBridgeOffloads: switchModel.DisableBridgeOffloads,
 		DHCP:                  switchModel.DHCP,
 		Ports:                 make([]string, 0, len(switchModel.Ports)),
+		MACSource: networkModels.StandardSwitchMACSource{
+			Mode: switchModel.BridgeMACMode,
+			Port: switchModel.BridgeMACSourcePort,
+		},
+	}
+	if switchModel.BridgeMACObjectID != nil {
+		config.MACSource.MACObjectID = *switchModel.BridgeMACObjectID
 	}
 	if switchModel.NetworkID != nil {
 		config.Network4 = *switchModel.NetworkID
@@ -765,6 +832,13 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	if request.Ports != nil {
 		config.Ports = append([]string(nil), (*request.Ports)...)
 	}
+	if request.BridgeMAC != nil {
+		config.MACSource = networkModels.StandardSwitchMACSource{
+			Mode:        request.BridgeMAC.Mode,
+			Port:        request.BridgeMAC.Port,
+			MACObjectID: request.BridgeMAC.MACObjectID,
+		}
+	}
 	if request.Private != nil {
 		config.Private = *request.Private
 	}
@@ -782,9 +856,6 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	}
 	if request.DisableBridgeOffloads != nil {
 		config.DisableBridgeOffloads = *request.DisableBridgeOffloads
-	}
-	if len(config.Ports) == 0 {
-		return fmt.Errorf("switch_ports_required")
 	}
 	if request.DHCP == nil && switchEditIPv4AddressProvided(request) {
 		config.DHCP = false
@@ -842,6 +913,7 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.Network6Manual != nil ||
 		request.Gateway6Manual != nil ||
 		request.Ports != nil ||
+		request.BridgeMAC != nil ||
 		request.Private != nil ||
 		request.DHCP != nil ||
 		request.DisableIPv6 != nil ||

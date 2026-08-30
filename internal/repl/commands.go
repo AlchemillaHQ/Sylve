@@ -34,6 +34,7 @@ func parsePositiveUint(value string) (uint, error) {
 var commands = []cmdHelp{
 	{"help", "Show this help message"},
 	{"ping", "Check server connectivity"},
+	{"datacenter", "Manage replicated datacenter state"},
 	{"notes", "Manage notes"},
 	{"jails", "Manage jails"},
 	{"vms", "Manage virtual machines"},
@@ -62,8 +63,24 @@ func ExecuteLine(ctx *Context, line string) bool {
 
 	head := parts[0]
 	args := parts[1:]
+	if rawCommandRequiresMutation(parts) && ctx != nil && ctx.Cluster != nil {
+		admittedCtx, release, err := ctx.Cluster.EnterMutation(operationContext(ctx))
+		if err != nil {
+			println(ctx, styledErrorf("%v", err))
+			return true
+		}
+		previous := ctx.mutationContext
+		ctx.mutationContext = admittedCtx
+		defer func() {
+			ctx.mutationContext = previous
+			release()
+		}()
+	}
 
 	switch head {
+	case "datacenter":
+		handleDatacenter(ctx, args)
+
 	case "notes":
 		handleNotes(ctx, args)
 
@@ -105,6 +122,60 @@ func ExecuteLine(ctx *Context, line string) bool {
 		printf(ctx, "Unknown command: '%s'. Type 'help'.\n", head)
 	}
 
+	return true
+}
+
+func rawCommandRequiresMutation(parts []string) bool {
+	if len(parts) == 0 {
+		return false
+	}
+	head := strings.ToLower(strings.TrimSpace(parts[0]))
+	args := parts[1:]
+	if head == "help" || head == "ping" || head == "quit" || head == "exit" || head == "shutdown" {
+		return false
+	}
+	if len(args) == 0 {
+		switch head {
+		case "datacenter", "notes", "jails", "vms", "tasks", "switches", "objects", "downloads":
+			return false
+		}
+	}
+	sub := ""
+	if len(args) != 0 {
+		sub = strings.ToLower(strings.TrimSpace(args[0]))
+	}
+	switch head {
+	case "datacenter":
+		if len(args) < 2 {
+			return false
+		}
+		group := strings.ToLower(strings.TrimSpace(args[0]))
+		action := strings.ToLower(strings.TrimSpace(args[1]))
+		return !((group == "notes" && (action == "list" || action == "get")) ||
+			(group == "cluster" && (action == "status" || action == "members" || action == "readdress")))
+	case "notes":
+		return sub != "list" && sub != "get"
+	case "jails":
+		return sub != "list" && sub != "get" && sub != "networks" &&
+			!(sub == "bootstrap" && len(args) > 1 && strings.EqualFold(args[1], "list"))
+	case "vms":
+		if sub == "list" || sub == "get" {
+			return false
+		}
+		if _, err := parsePositiveUint(sub); err == nil && len(args) == 1 {
+			return false
+		}
+		if len(args) > 1 {
+			action := strings.ToLower(strings.TrimSpace(args[1]))
+			return !((sub == "storage" || sub == "snapshots" || sub == "network") && action == "list") &&
+				!(sub == "templates" && (action == "list" || action == "get")) &&
+				!(sub == "qga" && action == "info")
+		}
+	case "tasks":
+		return sub != "active" && sub != "recent" && sub != "get"
+	case "switches", "objects", "downloads":
+		return sub != "list"
+	}
 	return true
 }
 

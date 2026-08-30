@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -44,6 +45,30 @@ type standardSwitchInput struct {
 	defaultRoute          bool
 	disableBridgeOffloads bool
 	manual                networkModels.StandardSwitchManualAddresses
+	macSource             networkModels.StandardSwitchMACSource
+}
+
+func normalizeStandardSwitchMAC(value string) (string, error) {
+	hardwareAddress, err := net.ParseMAC(strings.TrimSpace(value))
+	if err != nil || len(hardwareAddress) != 6 {
+		return "", invalidStandardSwitch("invalid_standard_switch_mac_address", err)
+	}
+	if hardwareAddress[0]&1 != 0 {
+		return "", invalidStandardSwitch("invalid_standard_switch_mac_address", nil)
+	}
+
+	allZero := true
+	for _, octet := range hardwareAddress {
+		if octet != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero {
+		return "", invalidStandardSwitch("invalid_standard_switch_mac_address", nil)
+	}
+
+	return hardwareAddress.String(), nil
 }
 
 func normalizeStandardSwitchName(name string) (string, error) {
@@ -74,6 +99,82 @@ func normalizeStandardSwitchPorts(ports []string) ([]string, error) {
 	}
 
 	return normalized, nil
+}
+
+func (s *Service) validateStandardSwitchMACSource(
+	source networkModels.StandardSwitchMACSource,
+	ports []string,
+) (networkModels.StandardSwitchMACSource, error) {
+	source.Mode = strings.ToLower(strings.TrimSpace(source.Mode))
+	source.Port = strings.TrimSpace(source.Port)
+
+	switch source.Mode {
+	case networkModels.StandardSwitchMACModePort:
+		if source.Port == "" {
+			return source, invalidStandardSwitch("standard_switch_mac_port_required", nil)
+		}
+		if source.MACObjectID != 0 {
+			return source, invalidStandardSwitch("standard_switch_mac_source_conflict", nil)
+		}
+
+		selected := false
+		for _, port := range ports {
+			if port == source.Port {
+				selected = true
+				break
+			}
+		}
+		if !selected {
+			return source, invalidStandardSwitch("standard_switch_mac_port_not_selected", nil)
+		}
+
+		interfaceObj, err := syncIfaceGet(source.Port)
+		if err != nil {
+			if isInterfaceMissingError(err) {
+				return source, invalidStandardSwitch("standard_switch_mac_port_not_found", err)
+			}
+			return source, fmt.Errorf("inspect standard switch MAC source port %q: %w", source.Port, err)
+		}
+		if interfaceObj == nil {
+			return source, invalidStandardSwitch("standard_switch_mac_port_not_found", nil)
+		}
+		mac := interfaceObj.Ether
+		if strings.TrimSpace(mac) == "" {
+			mac = interfaceObj.HWAddr
+		}
+		if _, err := normalizeStandardSwitchMAC(mac); err != nil {
+			return source, err
+		}
+		return source, nil
+
+	case networkModels.StandardSwitchMACModeObject:
+		if source.Port != "" {
+			return source, invalidStandardSwitch("standard_switch_mac_source_conflict", nil)
+		}
+		if source.MACObjectID == 0 {
+			return source, invalidStandardSwitch("standard_switch_mac_object_required", nil)
+		}
+
+		var object networkModels.Object
+		if err := s.DB.Preload("Entries").First(&object, source.MACObjectID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return source, invalidStandardSwitch("invalid_standard_switch_mac_object", err)
+			}
+			return source, fmt.Errorf("load standard switch MAC object: %w", err)
+		}
+		if object.Type != "Mac" || len(object.Entries) != 1 {
+			return source, invalidStandardSwitch("invalid_standard_switch_mac_object", nil)
+		}
+		if _, err := normalizeStandardSwitchMAC(object.Entries[0].Value); err != nil {
+			return source, err
+		}
+		return source, nil
+
+	case "":
+		return source, invalidStandardSwitch("standard_switch_mac_source_required", nil)
+	default:
+		return source, invalidStandardSwitch("invalid_standard_switch_mac_mode", nil)
+	}
 }
 
 func (s *Service) validateStandardSwitchObject(id uint, objectType string, family int, field string) (string, error) {
@@ -212,6 +313,11 @@ func (s *Service) validateStandardSwitchInput(
 		return input, conflictErr
 	} else if len(conflicts) > 0 {
 		return input, standardSwitchConflict("standard_switch_port_conflict", nil)
+	}
+
+	input.macSource, err = s.validateStandardSwitchMACSource(input.macSource, input.ports)
+	if err != nil {
+		return input, err
 	}
 
 	for _, port := range input.ports {

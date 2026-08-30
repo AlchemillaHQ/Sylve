@@ -375,3 +375,27 @@ func TestStandardSwitchHandlersReturnNotFoundForMissingSwitch(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateStandardSwitchRequiresExplicitBridgeMACSource(t *testing.T) {
+	r, _ := setupStandardSwitchCreateRouter(t)
+
+	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte("{\"name\":\"sw-missing-mac\",\"private\":true,\"disableIPv6\":true,\"ports\":[]}"))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if code := standardSwitchResponseError(t, rr); code != "standard_switch_mac_source_required" {
+		t.Fatalf("expected explicit MAC-source error, got %q", code)
+	}
+}
+
+func TestUpdateStandardSwitchRequiresExplicitBridgeMACSource(t *testing.T) {
+	r, _ := setupStandardSwitchUpdateRouter(t)
+
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte("{\"mtu\":1500,\"private\":true,\"disableIPv6\":true,\"ports\":[]}"))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if code := standardSwitchResponseError(t, rr); code != "standard_switch_mac_source_required" {
+		t.Fatalf("expected explicit MAC-source error, got %q", code)
+	}
+}

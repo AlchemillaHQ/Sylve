@@ -18,6 +18,7 @@
 		isValidIPv4,
 		isValidIPv6,
 		isValidMACAddress,
+		isValidUnicastMACAddress,
 		isValidPortNumber
 	} from '$lib/utils/string';
 
@@ -86,7 +87,9 @@
 		edit: boolean;
 		id?: number;
 		networkObjects: NetworkObject[];
-		afterChange: () => void;
+		afterChange: () => void | Promise<void>;
+		singleMAC?: boolean;
+		onCreated?: (id: number) => void | Promise<void>;
 		prefill?: {
 			name: string;
 			type: string;
@@ -100,8 +103,13 @@
 		id,
 		networkObjects,
 		afterChange,
+		singleMAC = false,
+		onCreated = () => {},
 		prefill = $bindable()
 	}: Props = $props();
+
+	/* svelte-ignore state_referenced_locally */
+	let initialGeneratedMAC = $state(singleMAC && !edit ? generateUnicastMAC() : '');
 
 	let editingObject: NetworkObject | null = $derived.by(() => {
 		if (edit && id) {
@@ -151,7 +159,7 @@
 		type: {
 			combobox: {
 				open: false,
-				value: editingObject ? oType : prefill ? prefill.type : '',
+				value: editingObject ? oType : singleMAC ? 'MAC(s)' : prefill ? prefill.type : '',
 				options: generateComboboxOptions(objectTypeOptions as string[])
 			}
 		},
@@ -205,14 +213,18 @@
 				open: false,
 				value: editingObject
 					? optionsSelected
-					: prefill
-						? prefill.type === 'MAC(s)'
-							? optionsSelected
-							: ([] as string[])
-						: ([] as string[]),
+					: singleMAC
+						? [initialGeneratedMAC]
+						: prefill?.type === 'MAC(s)' && prefill.value
+							? [prefill.value]
+							: ([] as string[]),
 				options: editingObject
 					? [...generateComboboxOptions(optionsSelected)]
-					: ([] as { label: string; value: string }[])
+					: singleMAC
+						? generateComboboxOptions([initialGeneratedMAC])
+						: prefill?.type === 'MAC(s)' && prefill.value
+							? generateComboboxOptions([prefill.value])
+							: ([] as { label: string; value: string }[])
 			}
 		},
 		duids: {
@@ -438,8 +450,15 @@
 			const macs = Array.from(new Set(properties.macs.combobox.value));
 			properties.macs.combobox.value = macs;
 
+			if (singleMAC && macs.length !== 1) {
+				toast.error('A bridge MAC object must contain exactly one MAC address', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+
 			for (const mac of macs) {
-				if (!isValidMACAddress(mac)) {
+				if (!isValidMACAddress(mac) || (singleMAC && !isValidUnicastMACAddress(mac))) {
 					error = `Invalid MAC address: ${mac}`;
 					break;
 				}
@@ -602,6 +621,7 @@
 				return 'Cannot change the MAC object of an active VM';
 			case 'network_object_vm_requires_one_mac':
 			case 'network_object_dhcp_requires_one_mac':
+			case 'network_object_switch_requires_one_mac':
 				return 'This object is in use and must contain exactly one MAC address';
 			case 'network_object_switch_requires_one_host':
 			case 'network_object_dhcp_requires_one_host':
@@ -662,7 +682,8 @@
 				prefill.value = (response as number).toString();
 			}
 
-			afterChange();
+			await afterChange();
+			await onCreated(response);
 			open = false;
 		}
 	}
@@ -702,13 +723,18 @@
 				position: 'bottom-center'
 			});
 
-			afterChange();
+			await afterChange();
 			open = false;
 		}
 	}
 
 	function addRandomMAC() {
 		const newMac = generateUnicastMAC();
+		if (singleMAC) {
+			properties.macs.combobox.options = [{ label: newMac, value: newMac }];
+			properties.macs.combobox.value = [newMac];
+			return;
+		}
 		properties.macs.combobox.options.push({ label: newMac, value: newMac });
 		properties.macs.combobox.value.push(newMac);
 	}
@@ -749,6 +775,7 @@
 				classes="flex-1 space-y-1"
 				placeholder="Select type"
 				width="w-3/4"
+				disabled={singleMAC}
 			></ComboBox>
 		</div>
 

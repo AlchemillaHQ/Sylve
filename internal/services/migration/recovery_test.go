@@ -14,6 +14,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -347,6 +348,9 @@ func TestMigrationRecoveryErrorLoggingClassification(t *testing.T) {
 	}
 	if shouldLogMigrationRecoveryError(&migrationRecoveryPendingError{cause: ErrMigrationInProgress}) {
 		t.Fatal("active execution deferral should not be logged as a recovery failure")
+	}
+	if shouldLogMigrationRecoveryError(clusterService.ErrNodeReaddressFenced) {
+		t.Fatal("cluster lifecycle fence should not be logged as a recovery failure")
 	}
 	if !shouldLogMigrationRecoveryError(&migrationRecoveryPendingError{cause: errors.New("leader unavailable")}) {
 		t.Fatal("unexpected recovery failure should remain visible")

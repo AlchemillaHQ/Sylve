@@ -53,8 +53,9 @@ func (ZFSCacheInvalidation) TableName() string {
 }
 
 const (
-	SystemTunableARCMaxOID       = "vfs.zfs.arc.max"
-	SystemTunableLegacyARCMaxOID = "vfs.zfs.arc_max"
+	SystemTunableARCMaxOID           = "vfs.zfs.arc.max"
+	SystemTunableLegacyARCMaxOID     = "vfs.zfs.arc_max"
+	SystemTunableBridgeInheritMACOID = "net.link.bridge.inherit_mac"
 )
 
 type SystemTunable struct {

@@ -148,6 +148,23 @@ func CreateNote(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+func MutateNoteInternal(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request cluster.NoteMutation
+		if err := c.ShouldBindJSON(&request); err != nil {
+			writeClusterJSONBindError(c, err, "invalid_request")
+			return
+		}
+		if err := cS.ApplyNoteMutation(c.Request.Context(), request, false); err != nil {
+			writeNoteMutationError(c, "note_mutation_failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status: "success", Message: "note_mutated", Error: "", Data: nil,
+		})
+	}
+}
+
 // @Summary Update a Cluster Note
 // @Description Update an existing note by positive ID
 // @Tags Cluster

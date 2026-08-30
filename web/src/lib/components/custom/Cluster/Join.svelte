@@ -5,6 +5,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import { handleAPIError } from '$lib/utils/http';
+	import { getClusterJoinErrorMessage } from '$lib/utils/cluster';
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { storage } from '$lib';
@@ -29,16 +30,8 @@
 	let loading = $state(false);
 
 	function getJoinErrorMessage(response: { message?: string; error?: string | string[] }): string {
-		const backendReportedMismatch =
-			response.message === 'cluster_version_mismatch' ||
-			(typeof response.error === 'string' && response.error.includes('leader=')) ||
-			(Array.isArray(response.error) && response.error.some((item) => item.includes('leader=')));
-
-		if (backendReportedMismatch) {
-			return 'Version mismatch: this node and the leader must run the same Sylve version';
-		}
-
-		return 'Unable to join cluster';
+		const details = Array.isArray(response.error) ? response.error.join(' ') : response.error || '';
+		return getClusterJoinErrorMessage(`${response.message || ''} ${details}`, false);
 	}
 
 	async function join() {
@@ -84,7 +77,7 @@
 			}
 
 			await refreshClusterAfterLifecycleChange();
-			toast.success('Joined cluster', {
+			toast.success('Cluster join started; state verification will continue in the background', {
 				position: 'bottom-center'
 			});
 			open = false;

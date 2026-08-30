@@ -47,6 +47,44 @@ func TestCreateClusterRejectsPayloadWithoutIP(t *testing.T) {
 	}
 }
 
+func TestClusterLifecycleRejectsIPv6(t *testing.T) {
+	router := newClusterLifecycleValidationRouter()
+	tests := []struct {
+		name string
+		path string
+		body string
+	}{
+		{name: "create", path: "/cluster", body: `{"ip":"2001:db8::10"}`},
+		{
+			name: "join leader", path: "/cluster/join",
+			body: `{"nodeId":"node-1","nodeIp":"192.0.2.20","leaderIp":"2001:db8::10","clusterKey":"secret"}`,
+		},
+		{
+			name: "join node", path: "/cluster/join",
+			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","leaderIp":"192.0.2.10","clusterKey":"secret"}`,
+		},
+		{
+			name: "accept join", path: "/cluster/accept-join",
+			body: `{"nodeId":"node-1","nodeIp":"2001:db8::20","nodeVersion":"test"}`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := performJSONRequest(t, router, http.MethodPost, test.path, []byte(test.body))
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+			var body handlerAPIResponse[any]
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Message != "cluster_ipv6_unsupported" {
+				t.Fatalf("message=%q body=%s", body.Message, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestJoinClusterRejectsLegacyLeaderApiPayload(t *testing.T) {
 	r := newClusterLifecycleValidationRouter()
 
@@ -176,5 +214,72 @@ func TestJoinLeaderAPIHostUsesClusterHTTPSPort(t *testing.T) {
 				t.Fatalf("expected cluster HTTPS port %d, got %s", cluster.ClusterEmbeddedHTTPSPort, port)
 			}
 		})
+	}
+}
+
+func TestJoinProgressInternalReportsIdentityAndIndexes(t *testing.T) {
+	raftNode := setupSingleRaftForTest(t, "node-progress")
+	defer func() { _ = raftNode.Shutdown().Error() }()
+	service := &cluster.Service{Raft: raftNode, NodeID: "node-progress"}
+
+	router := gin.New()
+	router.GET("/intra-cluster/join-progress", JoinProgressInternal(service))
+	response := performJSONRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/intra-cluster/join-progress?expectedNodeId=node-progress",
+		nil,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body handlerAPIResponse[cluster.ClusterJoinProgress]
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode progress response: %v", err)
+	}
+	if body.Data.NodeID != "node-progress" || body.Data.AppliedIndex == 0 || body.Data.LastIndex == 0 {
+		t.Fatalf("join progress = %+v", body.Data)
+	}
+
+	mismatch := performJSONRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/intra-cluster/join-progress?expectedNodeId=other-node",
+		nil,
+	)
+	if mismatch.Code != http.StatusConflict {
+		t.Fatalf("mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
+	}
+}
+
+func TestGetJoinStatusReturnsDurableIntent(t *testing.T) {
+	db := newClusterHandlerTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{RaftPort: cluster.ClusterRaftPort}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+	service := &cluster.Service{DB: db, NodeID: "joining-node"}
+	request := cluster.JoinAdmissionRequest{
+		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
+		Inventory: cluster.BuildGuestIdentityInventoryReport(nil),
+	}
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err != nil {
+		t.Fatalf("save intent: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/cluster/join-status", GetJoinStatus(service))
+	response := performJSONRequest(t, router, http.MethodGet, "/cluster/join-status", nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body handlerAPIResponse[cluster.ClusterJoinStatus]
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if body.Data.NodeID != "joining-node" || body.Data.Phase != cluster.JoinPhaseIntentSaved ||
+		!body.Data.Retrying {
+		t.Fatalf("join status = %+v", body.Data)
 	}
 }

@@ -9,7 +9,6 @@
 package repl
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -496,7 +495,7 @@ func attachVMStorage(
 	if ctx == nil || ctx.VirtualMachine == nil {
 		return vmStorageAttachResult{}, fmt.Errorf("vm_service_unavailable")
 	}
-	storage, err := ctx.VirtualMachine.StorageAttach(request, context.Background())
+	storage, err := ctx.VirtualMachine.StorageAttach(request, operationContext(ctx))
 	if err != nil {
 		return vmStorageAttachResult{}, fmt.Errorf("failed_to_attach_vm_storage: %w", err)
 	}
@@ -524,7 +523,7 @@ func updateVMStorage(
 	}
 	request.RID = rid
 	request.ID = storageID
-	storage, err := ctx.VirtualMachine.StorageUpdate(request, context.Background())
+	storage, err := ctx.VirtualMachine.StorageUpdate(request, operationContext(ctx))
 	if err != nil {
 		return vmStorageUpdateResult{}, fmt.Errorf("failed_to_update_vm_storage: %w", err)
 	}
@@ -561,7 +560,7 @@ func detachVMStorage(ctx *Context, rid, storageID uint) (vmStorageDetachResult, 
 	}
 	if err := ctx.VirtualMachine.StorageDetach(libvirtServiceInterfaces.StorageDetachRequest{
 		RID: rid, StorageID: storageID,
-	}, context.Background()); err != nil {
+	}, operationContext(ctx)); err != nil {
 		return vmStorageDetachResult{}, fmt.Errorf("failed_to_detach_vm_storage: %w", err)
 	}
 	return vmStorageDetachResult{Detached: true, RID: rid, Storage: detached}, nil
@@ -584,7 +583,7 @@ func updateVMNetwork(
 	if err != nil {
 		return vmNetworkUpdateResult{}, err
 	}
-	network, err := ctx.VirtualMachine.NetworkUpdate(request, context.Background())
+	network, err := ctx.VirtualMachine.NetworkUpdate(request, operationContext(ctx))
 	if err != nil {
 		return vmNetworkUpdateResult{}, fmt.Errorf("failed_to_update_vm_network: %w", err)
 	}
@@ -635,7 +634,7 @@ func previewVMDeletion(
 		return libvirtService.VMRemovalPreview{}, fmt.Errorf("vm_service_unavailable")
 	}
 	preview, err := ctx.VirtualMachine.PreviewVMRemoval(
-		rid, deleteMACs, deleteRawDisks, deleteVolumes, context.Background(),
+		rid, deleteMACs, deleteRawDisks, deleteVolumes, operationContext(ctx),
 	)
 	if err != nil {
 		return libvirtService.VMRemovalPreview{}, fmt.Errorf("failed_to_preview_vm_deletion: %w", err)

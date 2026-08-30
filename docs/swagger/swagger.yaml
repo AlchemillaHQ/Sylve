@@ -1463,6 +1463,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult
   : properties:
       data:
@@ -2381,6 +2392,8 @@ definitions:
       nodeUUID:
         type: string
       status:
+        type: string
+      sylveVersion:
         type: string
       updatedAt:
         type: string
@@ -3432,6 +3445,14 @@ definitions:
         type: integer
       addressObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      bridgeMacMode:
+        type: string
+      bridgeMacObject:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      bridgeMacObjectId:
+        type: integer
+      bridgeMacSourcePort:
+        type: string
       bridgeName:
         type: string
       createdAt:
@@ -3490,6 +3511,15 @@ definitions:
         type: string
       vlan:
         type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource:
+    properties:
+      macObjectId:
+        type: integer
+      mode:
+        type: string
+      port:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.StaticRoute:
     properties:
@@ -3712,6 +3742,8 @@ definitions:
         type: boolean
       bindInterfacesOnly:
         type: boolean
+      extraGlobalConfig:
+        type: string
       id:
         type: integer
       interfaces:
@@ -4394,6 +4426,8 @@ definitions:
         type: string
       status:
         type: string
+      sylveVersion:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_cluster.NodeResources:
     properties:
@@ -4814,6 +4848,8 @@ definitions:
         type: integer
       ramUsage:
         type: number
+      sylveVersion:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_info.RAMInfo:
     properties:
@@ -6913,6 +6949,32 @@ definitions:
       warning:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult:
+    properties:
+      cleanupAcknowledged:
+        type: boolean
+      membershipRemoved:
+        type: boolean
+      status:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus'
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus:
+    properties:
+      attempts:
+        type: integer
+      enabled:
+        type: boolean
+      lastError:
+        type: string
+      leaderIp:
+        type: string
+      leaveId:
+        type: string
+      localNodeId:
+        type: string
+      phase:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult:
     properties:
       address:
@@ -6942,6 +7004,22 @@ definitions:
         type: integer
       referenceDigest:
         type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest:
+    properties:
+      nodeId:
+        type: string
+      remoteMembershipAcknowledged:
+        type: boolean
+      workloadsExternallyFenced:
+        type: boolean
+    type: object
+  github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest:
+    properties:
+      nodeId:
+        type: string
+      targetExternallyFenced:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryConflict:
     properties:
@@ -9076,6 +9154,8 @@ definitions:
     type: object
   internal_handlers_network.CreateStandardSwitchRequest:
     properties:
+      bridgeMac:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
       defaultRoute:
         type: boolean
       dhcp:
@@ -9131,6 +9211,8 @@ definitions:
     type: object
   internal_handlers_network.UpdateStandardSwitchRequest:
     properties:
+      bridgeMac:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
       defaultRoute:
         type: boolean
       dhcp:
@@ -9226,6 +9308,8 @@ definitions:
         type: boolean
       bindInterfacesOnly:
         type: boolean
+      extraGlobalConfig:
+        type: string
       interfaces:
         type: string
       serverString:
@@ -11406,10 +11490,6 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_GuestIdentityInventoryReport'
         "400":
           description: Bad Request
           schema:
@@ -12786,10 +12866,6 @@ paths:
       produces:
       - application/json
       responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
           schema:
@@ -13133,6 +13209,104 @@ paths:
       security:
       - BearerAuth: []
       summary: Bulk Delete Cluster Notes
+      tags:
+      - Cluster
+  /cluster/remove-node:
+    post:
+      consumes:
+      - application/json
+      description: Ask an online peer to fence local work, leave Raft, and clear its
+        cluster state
+      parameters:
+      - description: Remove Peer Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_cluster.RemovePeerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Peer owns cluster resources
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Remove Peer
+      tags:
+      - Cluster
+  /cluster/remove-node/force:
+    post:
+      consumes:
+      - application/json
+      description: Remove an externally fenced, unavailable peer without contacting
+        it
+      parameters:
+      - description: Force Remove Peer Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict'
+        "503":
+          description: Consensus unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Force Remove Peer
       tags:
       - Cluster
   /cluster/replication/events:
@@ -13677,7 +13851,7 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Reset a Raft node by shutting it down and cleaning up its state
+      description: Safely remove this node from Raft and clear its local cluster state
       produces:
       - application/json
       responses:
@@ -13699,7 +13873,48 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
       - BearerAuth: []
-      summary: Reset Raft Node
+      summary: Leave Cluster
+      tags:
+      - Cluster
+  /cluster/reset-node/force:
+    delete:
+      consumes:
+      - application/json
+      description: Reset only the local cluster state after external fencing and membership
+        repair acknowledgement
+      parameters:
+      - description: Force Local Reset Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Force Local Cluster Reset
       tags:
       - Cluster
   /cluster/resources:
@@ -14976,50 +15191,6 @@ paths:
       summary: Open a host terminal WebSocket
       tags:
       - Info
-  /intra-cluster/remove-peer:
-    post:
-      consumes:
-      - application/json
-      description: Remove a peer from the cluster
-      parameters:
-      - description: Remove Peer Request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/internal_handlers_cluster.RemovePeerRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Success
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-        "409":
-          description: Peer owns cluster resources
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
-      security:
-      - ClusterTokenAuth: []
-      summary: Remove Peer
-      tags:
-      - Cluster
   /intra-cluster/sync-health:
     post:
       consumes:
@@ -21781,6 +21952,14 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Payload Too Large
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":

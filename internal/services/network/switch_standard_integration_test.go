@@ -68,6 +68,7 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 		0,
 		0,
 		[]string{},
+		createTestStandardSwitchMACSource(t, svc),
 		true,
 		false,
 		true,
@@ -94,6 +95,88 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 	if persisted.MTU != 9000 || !persisted.Private {
 		t.Fatalf("persisted switch = %#v, want updated MTU/private state", persisted)
 	}
+}
+
+func TestIntegrationStandardSwitchPortMACIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping standard switch MAC integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("standard switch MAC integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	bridgeName := fmt.Sprintf("sim%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
+	createPort := func(label string) string {
+		t.Helper()
+		output, err := utils.RunCommand("/sbin/ifconfig", "epair", "create")
+		if err != nil {
+			t.Fatalf("create %s epair: %v", label, err)
+		}
+		name := strings.TrimSpace(output)
+		if name == "" {
+			t.Fatalf("create %s epair returned an empty interface name", label)
+		}
+		return name
+	}
+
+	portA := createPort("source A")
+	portB := createPort("source B")
+	t.Cleanup(func() {
+		_, _ = exec.Command("/sbin/ifconfig", bridgeName, "destroy").CombinedOutput()
+		_, _ = exec.Command("/sbin/ifconfig", portA, "destroy").CombinedOutput()
+		_, _ = exec.Command("/sbin/ifconfig", portB, "destroy").CombinedOutput()
+	})
+
+	const (
+		macA = "02:00:00:00:a1:01"
+		macB = "02:00:00:00:b2:02"
+	)
+	for name, mac := range map[string]string{portA: macA, portB: macB} {
+		if _, err := utils.RunCommand("/sbin/ifconfig", name, "ether", mac, "up"); err != nil {
+			t.Fatalf("set %s MAC to %s: %v", name, mac, err)
+		}
+	}
+
+	sw := networkModels.StandardSwitch{
+		Name:                "integration-port-mac",
+		BridgeName:          bridgeName,
+		MTU:                 1500,
+		DisableIPv6:         true,
+		Ports:               []networkModels.NetworkPort{{Name: portB}, {Name: portA}},
+		BridgeMACMode:       networkModels.StandardSwitchMACModePort,
+		BridgeMACSourcePort: portA,
+	}
+	assertBridgeMAC := func(want string) {
+		t.Helper()
+		bridge, err := iface.Get(bridgeName)
+		if err != nil {
+			t.Fatalf("inspect bridge %s MAC: %v", bridgeName, err)
+		}
+		got, err := currentInterfaceMAC(bridge)
+		if err != nil || got != want {
+			t.Fatalf("bridge MAC=%q err=%v, want %q", got, err, want)
+		}
+	}
+
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create standard switch with reversed member order: %v", err)
+	}
+	assertBridgeMAC(macA)
+
+	if err := editStandardBridge(sw, sw); err != nil {
+		t.Fatalf("reconcile standard switch members: %v", err)
+	}
+	assertBridgeMAC(macA)
+
+	changed := sw
+	changed.BridgeMACSourcePort = portB
+	if err := editStandardBridge(sw, changed); err != nil {
+		t.Fatalf("change standard switch MAC source: %v", err)
+	}
+	assertBridgeMAC(macB)
 }
 
 func TestIntegrationStandardSwitchRebindsExistingDefaultRouteToBridge(t *testing.T) {
@@ -179,17 +262,32 @@ func TestIntegrationStandardSwitchRebindsExistingDefaultRouteToBridge(t *testing
 	})
 
 	sw := networkModels.StandardSwitch{
-		Name:          "integration-route-migration",
-		BridgeName:    bridgeName,
-		MTU:           1500,
-		NetworkManual: networkAddress,
-		GatewayManual: gatewayAddress,
-		DefaultRoute:  true,
-		DisableIPv6:   true,
-		Ports:         []networkModels.NetworkPort{{Name: portName}},
+		Name:                "integration-route-migration",
+		BridgeName:          bridgeName,
+		MTU:                 1500,
+		NetworkManual:       networkAddress,
+		GatewayManual:       gatewayAddress,
+		DefaultRoute:        true,
+		DisableIPv6:         true,
+		Ports:               []networkModels.NetworkPort{{Name: portName}},
+		BridgeMACMode:       networkModels.StandardSwitchMACModePort,
+		BridgeMACSourcePort: portName,
 	}
 	if err := createStandardBridge(sw); err != nil {
 		t.Fatalf("create standard switch over addressed port: %v", err)
+	}
+	bridge, err := iface.Get(bridgeName)
+	if err != nil {
+		t.Fatalf("inspect bridge MAC after member attach: %v", err)
+	}
+	sourcePort, err := iface.Get(portName)
+	if err != nil {
+		t.Fatalf("inspect source port MAC after member attach: %v", err)
+	}
+	bridgeMAC, bridgeMACErr := currentInterfaceMAC(bridge)
+	sourceMAC, sourceMACErr := currentInterfaceMAC(sourcePort)
+	if bridgeMACErr != nil || sourceMACErr != nil || bridgeMAC != sourceMAC {
+		t.Fatalf("bridge MAC=%q err=%v, source MAC=%q err=%v", bridgeMAC, bridgeMACErr, sourceMAC, sourceMACErr)
 	}
 
 	defaultRoute, err := runInFIB("/sbin/route", "-n", "get", "default")
@@ -289,6 +387,7 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	})
 
 	sw := networkModels.StandardSwitch{Name: "dhclient-integration", BridgeName: bridgeName, DHCP: true, DisableIPv6: true}
+	sw = withTestStandardSwitchMAC(sw)
 	if err := createStandardBridge(sw); err != nil {
 		t.Fatalf("create DHCP standard switch: %v", err)
 	}
@@ -297,8 +396,8 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	if err := runDhclient(bridgeName, 10); err != nil {
 		t.Fatalf("reconcile managed dhclient: %v", err)
 	}
-	if secondPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second); secondPID != firstPID {
-		t.Fatalf("managed dhclient PID changed from %d to %d", firstPID, secondPID)
+	if secondPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second); secondPID == firstPID {
+		t.Fatalf("unbound managed dhclient PID did not change from %d", firstPID)
 	}
 	if err := stopDhclient(bridgeName); err != nil {
 		t.Fatalf("stop managed dhclient: %v", err)
@@ -317,13 +416,17 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	if err := runDhclient(bridgeName, 10); err != nil {
 		t.Fatalf("reconcile legacy dhclient: %v", err)
 	}
+	restartedPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
+	if restartedPID == legacyPID {
+		t.Fatalf("unbound legacy dhclient PID did not change from %d", legacyPID)
+	}
 	mainPattern, _ := dhclientProcessPatterns(bridgeName)
 	output, err := syncRunCommandAllowExitCode("/bin/pgrep", []int{1}, "-f", "-x", mainPattern)
 	if err != nil {
-		t.Fatalf("list legacy dhclient processes: %v", err)
+		t.Fatalf("list restarted dhclient processes: %v", err)
 	}
-	if pids := strings.Fields(output); len(pids) != 1 || pids[0] != strconv.Itoa(legacyPID) {
-		t.Fatalf("legacy dhclient PIDs = %v, want [%d]", pids, legacyPID)
+	if pids := strings.Fields(output); len(pids) != 1 || pids[0] != strconv.Itoa(restartedPID) {
+		t.Fatalf("restarted dhclient PIDs = %v, want [%d]", pids, restartedPID)
 	}
 
 	if err := deleteStandardBridge(sw); err != nil {

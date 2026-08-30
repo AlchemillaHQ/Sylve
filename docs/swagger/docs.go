@@ -2451,12 +2451,6 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_GuestIdentityInventoryReport"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -4573,12 +4567,6 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
@@ -5097,6 +5085,156 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "Cluster consensus unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/cluster/remove-node": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ask an online peer to fence local work, leave Raft, and clear its cluster state",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Remove Peer",
+                "parameters": [
+                    {
+                        "description": "Remove Peer Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_cluster.RemovePeerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Peer owns cluster resources",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/cluster/remove-node/force": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove an externally fenced, unavailable peer without contacting it",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Force Remove Peer",
+                "parameters": [
+                    {
+                        "description": "Force Remove Peer Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict"
+                        }
+                    },
+                    "503": {
+                        "description": "Consensus unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -5934,7 +6072,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Reset a Raft node by shutting it down and cleaning up its state",
+                "description": "Safely remove this node from Raft and clear its local cluster state",
                 "consumes": [
                     "application/json"
                 ],
@@ -5944,10 +6082,73 @@ const docTemplate = `{
                 "tags": [
                     "Cluster"
                 ],
-                "summary": "Reset Raft Node",
+                "summary": "Leave Cluster",
                 "responses": {
                     "200": {
                         "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/cluster/reset-node/force": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reset only the local cluster state after external fencing and membership repair acknowledgement",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Force Local Cluster Reset",
+                "parameters": [
+                    {
+                        "description": "Force Local Reset Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -7957,75 +8158,6 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
-                        }
-                    }
-                }
-            }
-        },
-        "/intra-cluster/remove-peer": {
-            "post": {
-                "security": [
-                    {
-                        "ClusterTokenAuth": []
-                    }
-                ],
-                "description": "Remove a peer from the cluster",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Cluster"
-                ],
-                "summary": "Remove Peer",
-                "parameters": [
-                    {
-                        "description": "Remove Peer Request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/internal_handlers_cluster.RemovePeerRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
-                        }
-                    },
-                    "409": {
-                        "description": "Peer owns cluster resources",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_PeerRemovalConflict"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     }
                 }
@@ -18361,6 +18493,18 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -29531,6 +29675,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterStateResyncResult": {
             "type": "object",
             "properties": {
@@ -30910,6 +31071,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "sylveVersion": {
                     "type": "string"
                 },
                 "updatedAt": {
@@ -32489,6 +32653,18 @@ const docTemplate = `{
                 "addressObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "bridgeMacMode": {
+                    "type": "string"
+                },
+                "bridgeMacObject": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
+                },
+                "bridgeMacObjectId": {
+                    "type": "integer"
+                },
+                "bridgeMacSourcePort": {
+                    "type": "string"
+                },
                 "bridgeName": {
                     "type": "string"
                 },
@@ -32570,6 +32746,20 @@ const docTemplate = `{
                 },
                 "vlan": {
                     "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource": {
+            "type": "object",
+            "properties": {
+                "macObjectId": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
                 }
             }
         },
@@ -32904,6 +33094,9 @@ const docTemplate = `{
                 },
                 "bindInterfacesOnly": {
                     "type": "boolean"
+                },
+                "extraGlobalConfig": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
@@ -33911,6 +34104,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },
@@ -34538,6 +34734,9 @@ const docTemplate = `{
                 },
                 "ramUsage": {
                     "type": "number"
+                },
+                "sylveVersion": {
+                    "type": "string"
                 }
             }
         },
@@ -37664,6 +37863,46 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveResult": {
+            "type": "object",
+            "properties": {
+                "cleanupAcknowledged": {
+                    "type": "boolean"
+                },
+                "membershipRemoved": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "leaderIp": {
+                    "type": "string"
+                },
+                "leaveId": {
+                    "type": "string"
+                },
+                "localNodeId": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult": {
             "type": "object",
             "properties": {
@@ -37707,6 +37946,31 @@ const docTemplate = `{
                 },
                 "referenceDigest": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_cluster.ForceLocalResetRequest": {
+            "type": "object",
+            "properties": {
+                "nodeId": {
+                    "type": "string"
+                },
+                "remoteMembershipAcknowledged": {
+                    "type": "boolean"
+                },
+                "workloadsExternallyFenced": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_cluster.ForceRemovePeerRequest": {
+            "type": "object",
+            "properties": {
+                "nodeId": {
+                    "type": "string"
+                },
+                "targetExternallyFenced": {
+                    "type": "boolean"
                 }
             }
         },
@@ -40919,6 +41183,9 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "bridgeMac": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
+                },
                 "defaultRoute": {
                     "type": "boolean"
                 },
@@ -41001,6 +41268,9 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "bridgeMac": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
+                },
                 "defaultRoute": {
                     "type": "boolean"
                 },
@@ -41142,6 +41412,9 @@ const docTemplate = `{
                 },
                 "bindInterfacesOnly": {
                     "type": "boolean"
+                },
+                "extraGlobalConfig": {
+                    "type": "string"
                 },
                 "interfaces": {
                     "type": "string"

@@ -381,6 +381,33 @@ func TestEditUserCannotLockAdmin(t *testing.T) {
 	}
 }
 
+func TestEditUserCanChangeAdminPassword(t *testing.T) {
+	svc := newLocalTestService(t)
+	u := seedUser(t, svc, models.User{
+		Username: "admin",
+		Password: "old-hash",
+		Admin:    true,
+		Source:   "local",
+	})
+
+	const newPassword = "new-admin-password"
+	if err := svc.EditUser(u.ID, EditUserOpts{
+		Username: u.Username,
+		Password: newPassword,
+		Admin:    true,
+	}); err != nil {
+		t.Fatalf("change admin password: %v", err)
+	}
+
+	var updated models.User
+	if err := svc.DB.First(&updated, u.ID).Error; err != nil {
+		t.Fatalf("reload admin: %v", err)
+	}
+	if !svc.passwordHasher.Verify(newPassword, updated.Password) {
+		t.Fatal("updated admin password does not verify")
+	}
+}
+
 func TestEditUserInvalidUsernameFormat(t *testing.T) {
 	svc := newLocalTestService(t)
 	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})

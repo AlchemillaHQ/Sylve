@@ -12,6 +12,20 @@ import (
 	"time"
 )
 
+const (
+	StandardSwitchMACModePort   = "port"
+	StandardSwitchMACModeObject = "object"
+)
+
+// StandardSwitchMACSource is the explicit source of a managed bridge's host
+// MAC address. Exactly one of Port or MACObjectID is populated according to
+// Mode. It is also used as the service-layer mutation input.
+type StandardSwitchMACSource struct {
+	Mode        string `json:"mode"`
+	Port        string `json:"port,omitempty"`
+	MACObjectID uint   `json:"macObjectId,omitempty"`
+}
+
 type ManualSwitch struct {
 	ID     uint   `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name   string `json:"name" gorm:"unique;not null"`
@@ -47,6 +61,11 @@ type StandardSwitch struct {
 
 	Gateway6AddressID  *uint   `json:"gateway6AddressId" gorm:"column:gateway6_address_object_id"`
 	Gateway6AddressObj *Object `json:"gateway6AddressObj" gorm:"foreignKey:Gateway6AddressID"`
+
+	BridgeMACMode       string  `json:"bridgeMacMode" gorm:"column:bridge_mac_mode"`
+	BridgeMACSourcePort string  `json:"bridgeMacSourcePort" gorm:"column:bridge_mac_source_port"`
+	BridgeMACObjectID   *uint   `json:"bridgeMacObjectId" gorm:"column:bridge_mac_object_id;index"`
+	BridgeMACObject     *Object `json:"bridgeMacObject" gorm:"foreignKey:BridgeMACObjectID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
 	NetworkManual  string `json:"networkManual" gorm:"column:network_manual"`
 	Network6Manual string `json:"network6Manual" gorm:"column:network6_manual"`

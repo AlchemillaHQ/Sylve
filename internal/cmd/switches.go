@@ -56,6 +56,9 @@ func newSwitchesCommand() *cli.Command {
 					&cli.StringFlag{Name: "network6-manual", Usage: "Manual IPv6 CIDR"},
 					&cli.StringFlag{Name: "gateway6-manual", Usage: "Manual IPv6 gateway"},
 					&cli.StringFlag{Name: "ports", Usage: "Comma-separated physical ports"},
+					&cli.StringFlag{Name: "mac-source", Usage: "Bridge MAC source: port or object"},
+					&cli.StringFlag{Name: "mac-source-port", Usage: "Selected port whose MAC the bridge uses"},
+					&cli.IntFlag{Name: "mac-object", Usage: "Single-entry MAC object ID used by the bridge"},
 					&cli.BoolFlag{Name: "private", Usage: "Create a private standard switch"},
 					&cli.BoolFlag{Name: "dhcp", Usage: "Enable DHCP on a standard switch"},
 					&cli.BoolFlag{Name: "disable-ipv6", Usage: "Disable IPv6 on a standard switch"},
@@ -112,6 +115,9 @@ func newSwitchesCommand() *cli.Command {
 					&cli.StringFlag{Name: "network6-manual", Usage: "Manual IPv6 CIDR (empty clears)"},
 					&cli.StringFlag{Name: "gateway6-manual", Usage: "Manual IPv6 gateway (empty clears)"},
 					&cli.StringFlag{Name: "ports", Usage: "Comma-separated physical ports"},
+					&cli.StringFlag{Name: "mac-source", Usage: "Bridge MAC source: port or object"},
+					&cli.StringFlag{Name: "mac-source-port", Usage: "Selected port whose MAC the bridge uses"},
+					&cli.IntFlag{Name: "mac-object", Usage: "Single-entry MAC object ID used by the bridge"},
 					&cli.BoolFlag{Name: "private", Usage: "Set standard switch private mode"},
 					&cli.BoolFlag{Name: "dhcp", Usage: "Set standard switch DHCP mode"},
 					&cli.BoolFlag{Name: "disable-ipv6", Usage: "Set standard switch IPv6 disabled state"},
@@ -144,6 +150,9 @@ var standardSwitchCreateOptionNames = []string{
 	"network6-manual",
 	"gateway6-manual",
 	"ports",
+	"mac-source",
+	"mac-source-port",
+	"mac-object",
 	"private",
 	"dhcp",
 	"disable-ipv6",
@@ -217,6 +226,10 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 	if err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
 	}
+	bridgeMAC, err := switchCreateMACSource(command)
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
 
 	return consoleprotocol.StandardSwitchCreateRequest{
 		Name:                  name,
@@ -231,6 +244,7 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 		Network6Manual:        strings.TrimSpace(command.String("network6-manual")),
 		Gateway6Manual:        strings.TrimSpace(command.String("gateway6-manual")),
 		Ports:                 ports,
+		BridgeMAC:             bridgeMAC,
 		Private:               command.Bool("private"),
 		DHCP:                  command.Bool("dhcp"),
 		DisableIPv6:           command.Bool("disable-ipv6"),
@@ -238,6 +252,35 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 		DefaultRoute:          command.Bool("default-route"),
 		DisableBridgeOffloads: command.Bool("disable-bridge-offloads"),
 	}, nil
+}
+
+func switchCreateMACSource(command *cli.Command) (consoleprotocol.StandardSwitchMACSourceRequest, error) {
+	mode := strings.ToLower(strings.TrimSpace(command.String("mac-source")))
+	port := strings.TrimSpace(command.String("mac-source-port"))
+	objectValue := command.Int("mac-object")
+
+	switch mode {
+	case "port":
+		if port == "" {
+			return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source-port is required when --mac-source=port")
+		}
+		if command.IsSet("mac-object") {
+			return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-object is only valid when --mac-source=object")
+		}
+		return consoleprotocol.StandardSwitchMACSourceRequest{Mode: mode, Port: port}, nil
+	case "object":
+		if command.IsSet("mac-source-port") {
+			return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source-port is only valid when --mac-source=port")
+		}
+		if objectValue <= 0 {
+			return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-object must be a positive object ID when --mac-source=object")
+		}
+		return consoleprotocol.StandardSwitchMACSourceRequest{Mode: mode, MACObjectID: uint(objectValue)}, nil
+	case "":
+		return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source is required for standard switches")
+	default:
+		return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source must be port or object")
+	}
 }
 
 func standardSwitchCreateOptionsSet(command *cli.Command) bool {
@@ -344,6 +387,9 @@ func buildStandardSwitchEditRequest(command *cli.Command, id uint) (consoleproto
 	if request.Ports, err = optionalSwitchEditPorts(command); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
+	if request.BridgeMAC, err = optionalSwitchEditMACSource(command); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
 	request.Private = optionalSwitchEditBool(command, "private")
 	request.DHCP = optionalSwitchEditBool(command, "dhcp")
 	request.DisableIPv6 = optionalSwitchEditBool(command, "disable-ipv6")
@@ -355,6 +401,17 @@ func buildStandardSwitchEditRequest(command *cli.Command, id uint) (consoleproto
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
 	}
 	return request, nil
+}
+
+func optionalSwitchEditMACSource(command *cli.Command) (*consoleprotocol.StandardSwitchMACSourceRequest, error) {
+	if !command.IsSet("mac-source") && !command.IsSet("mac-source-port") && !command.IsSet("mac-object") {
+		return nil, nil
+	}
+	source, err := switchCreateMACSource(command)
+	if err != nil {
+		return nil, err
+	}
+	return &source, nil
 }
 
 func optionalSwitchEditInt(command *cli.Command, name string) (*int, error) {
@@ -422,6 +479,7 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.Network6Manual != nil ||
 		request.Gateway6Manual != nil ||
 		request.Ports != nil ||
+		request.BridgeMAC != nil ||
 		request.Private != nil ||
 		request.DHCP != nil ||
 		request.DisableIPv6 != nil ||

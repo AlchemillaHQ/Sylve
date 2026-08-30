@@ -189,6 +189,37 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	})
 
 	clusterSvc := cS.(*cluster.Service)
+	authSvc := aS.(*auth.Service)
+	if err := authSvc.SetClusterIssuerNodeID(clusterSvc.LocalNodeID()); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_configure_cluster_token_issuer")
+	}
+	authSvc.SetClusterIssuerVerifier(func(nodeID string) (auth.ClusterIssuerMembership, error) {
+		membership, err := clusterSvc.ResolveCurrentRaftMember(nodeID)
+		if err != nil {
+			return auth.ClusterIssuerMembership{}, err
+		}
+		return auth.ClusterIssuerMembership{Suffrage: membership.Suffrage}, nil
+	})
+	clusterSvc.SetLeaveCompleteHook(func() {
+		requestSelfRestart(selfRestartRequests)
+	})
+	clusterSvc.SetReaddressRestartHook(func() {
+		requestSelfRestart(selfRestartRequests)
+	})
+	if err := clusterSvc.InitializeLeaveRuntime(); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_initialize_cluster_leave_runtime")
+	}
+	if err := clusterSvc.InitializeReaddressRuntime(); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_initialize_cluster_readdress_runtime")
+	}
+	clusterSvc.SetJoinCompleteHook(func() {
+		if err := zeltaS.ReconcileBackupTargetSSHKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("backup_target_ssh_reconciliation_deferred_after_join")
+		}
+		if err := zeltaS.ReconcileEncryptionKeys(); err != nil {
+			logger.L.Warn().Err(err).Msg("encryption_key_reconciliation_deferred_after_join")
+		}
+	})
 	if err := clusterSvc.MigrateLegacyPorts(); err != nil {
 		logger.L.Fatal().Err(err).Msg("failed_to_migrate_legacy_cluster_ports")
 	}
@@ -196,7 +227,13 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
 	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
+	jailSvc.SetMutationAdmission(clusterSvc)
+	libvirtSvc.SetMutationAdmission(clusterSvc)
+	lifecycleSvc.SetMutationAdmission(clusterSvc)
+	zeltaS.SetMutationAdmission(clusterSvc)
 	migrationSvc := serviceRegistry.MigrationService
+	migrationSvc.SetMutationAdmission(clusterSvc)
+	utilitiesSvc.SetMutationAdmission(clusterSvc)
 	lifecycleSvc.SetMigrationExecutor(migrationSvc.ExecuteMigration)
 	lifecycleSvc.SetStartupGuestReadinessChecker(zeltaS.CanAutostartReplicationGuest)
 	refreshEmitter := func(reason string) {
@@ -239,6 +276,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		if err := cS.InitRaft(fsm); err != nil {
 			logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
 		}
+		clusterSvc.StartMembershipReconcilers(qCtx)
 
 		clusterTLSConfig, err = aS.GetClusterTLSConfig()
 		if err != nil {
@@ -296,53 +334,57 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)
 		}
 
-		operationReconcileCtx, operationReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
+		startupMutationCtx, startupMutationRelease, startupMutationErr := clusterSvc.EnterMutation(context.Background())
+		if startupMutationErr == nil {
+			operationReconcileCtx, operationReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
+			if err := zeltaS.ReconcileBackupJobOperationsAfterRestart(operationReconcileCtx); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_job_operations_after_restart")
+			}
+			if err := zeltaS.ReconcileReplicationRunsAfterRestart(operationReconcileCtx); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_runs_after_restart")
+			}
+			if err := zeltaS.DrainScheduledRunResultOutbox(); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
+			}
+			operationReconcileCancel()
+			targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
+			if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
+			}
+			targetRestoreReconcileCancel()
+			targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(startupMutationCtx, 30*time.Second)
+			if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
+			}
+			targetProvisionReconcileCancel()
+			if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
+			}
+			if err := zeltaS.PrepareReplicationStartup(startupMutationCtx); err != nil {
+				logger.L.Error().Err(err).Msg("replication_startup_fence_or_authority_failed")
+			}
+			enqueueCtx, enqueueCancel := context.WithTimeout(startupMutationCtx, 10*time.Second)
+			if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
+				logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
+			}
+			enqueueCancel()
+			if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
+			}
+			if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
+				logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
+			}
+			startupMutationRelease()
+		} else if !errors.Is(startupMutationErr, cluster.ErrNodeLeaveFenced) {
+			logger.L.Warn().Err(startupMutationErr).Msg("failed_to_admit_cluster_runtime_reconciliation")
 		}
-		if err := zeltaS.ReconcileReplicationRunsAfterRestart(operationReconcileCtx); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_runs_after_restart")
-		}
-		if err := zeltaS.DrainScheduledRunResultOutbox(); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_drain_scheduled_run_result_outbox_after_restart")
-		}
-		operationReconcileCancel()
-		targetRestoreReconcileCtx, targetRestoreReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		if err := zeltaS.ReconcileBackupTargetRestoreOperationsAfterRestart(targetRestoreReconcileCtx); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_restore_operations_after_restart")
-		}
-		targetRestoreReconcileCancel()
-		targetProvisionReconcileCtx, targetProvisionReconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		if err := zeltaS.ReconcileBackupTargetProvisionOperations(targetProvisionReconcileCtx); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_target_provision_operations_after_restart")
-		}
-		targetProvisionReconcileCancel()
 		go zeltaS.StartBackupTargetProvisionReconciler(qCtx)
-		if err := zeltaS.ReconcileRestoreObservabilityAfterRestart(); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_restore_observability_after_restart")
-		}
-		if err := zeltaS.PrepareReplicationStartup(context.Background()); err != nil {
-			logger.L.Error().Err(err).Msg("replication_startup_fence_or_authority_failed")
-		}
-
-		enqueueCtx, enqueueCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if enqueueErr := lifecycleSvc.EnqueueStartupAutostart(enqueueCtx); enqueueErr != nil {
-			logger.L.Warn().Err(enqueueErr).Msg("failed_to_enqueue_guest_autostart_sequence")
-		}
-		enqueueCancel()
 		queueRunnerDone := make(chan struct{})
 		queueDone = queueRunnerDone
 		go func() {
 			defer close(queueRunnerDone)
 			db.StartQueue(qCtx)
 		}()
-		if err := zeltaS.ReconcileReplicationEventsAfterRestart(); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_replication_events_after_restart")
-		}
-		if err := zeltaS.ReconcileBackupRunAudits(); err != nil {
-			logger.L.Warn().Err(err).Msg("failed_to_reconcile_backup_run_audits_after_restart")
-		}
-
 		if err := zelta.EnsureZeltaInstalled(); err != nil {
 			logger.L.Error().Err(err).Msg("Failed to install Zelta; skipping Zelta schedulers")
 		} else {
@@ -523,6 +565,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		if err := d.First(&clusterRecord).Error; err == nil && clusterRecord.Enabled && clusterRecord.RaftIP != "" {
 			if err := startClusterListeners(clusterRecord.RaftIP); err != nil {
 				logger.L.Error().Err(err).Msg("failed_to_start_cluster_listeners_at_startup")
+			} else {
+				clusterSvc.StartReaddressReconciler(qCtx)
 			}
 		}
 	}

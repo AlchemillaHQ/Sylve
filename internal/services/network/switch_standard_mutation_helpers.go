@@ -26,6 +26,7 @@ func loadStandardSwitch(db *gorm.DB, id uint) (networkModels.StandardSwitch, err
 		Preload("Network6Obj.Entries").
 		Preload("GatewayAddressObj.Entries").
 		Preload("Gateway6AddressObj.Entries").
+		Preload("BridgeMACObject.Entries").
 		First(&sw, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return networkModels.StandardSwitch{}, standardSwitchNotFound(err)
@@ -51,6 +52,11 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 		GatewayManual:         input.manual.Gateway4,
 		Network6Manual:        input.manual.Network6,
 		Gateway6Manual:        input.manual.Gateway6,
+		BridgeMACMode:         input.macSource.Mode,
+		BridgeMACSourcePort:   input.macSource.Port,
+	}
+	if input.macSource.MACObjectID != 0 {
+		sw.BridgeMACObjectID = &input.macSource.MACObjectID
 	}
 	if input.network4ID != 0 {
 		sw.NetworkID = &input.network4ID

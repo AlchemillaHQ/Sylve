@@ -60,6 +60,9 @@ type Service struct {
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
 	guestIdentityChecker      clusterServiceInterfaces.GuestIdentityAvailabilityChecker
+	mutationGate              interface {
+		EnterMutation(context.Context) (context.Context, func(), error)
+	}
 
 	usagePersistQueue   chan struct{}
 	usageRetentionQueue chan struct{}
@@ -70,6 +73,12 @@ type Service struct {
 	bootstrapHostReleaseFn func() (string, error)
 	hardwareOps            jailHardwareOps
 	optionOps              jailOptionHostOps
+}
+
+func (s *Service) SetMutationAdmission(gate interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}) {
+	s.mutationGate = gate
 }
 
 func (s *Service) SetGuestIdentityAvailabilityChecker(
@@ -577,11 +586,11 @@ type jailDeleteRuntime struct {
 	removeDevfs  func(uint) error
 }
 
-func (s *Service) hostJailDeleteRuntime() jailDeleteRuntime {
+func (s *Service) hostJailDeleteRuntime(ctx context.Context) jailDeleteRuntime {
 	return jailDeleteRuntime{
 		isRunning: s.IsJailRunning,
 		stop: func(ctID uint) error {
-			return s.JailAction(int(ctID), "stop")
+			return s.JailActionContext(ctx, int(ctID), "stop")
 		},
 		removeConfig: os.RemoveAll,
 		removeDevfs: func(ctID uint) error {
@@ -2053,7 +2062,7 @@ func (s *Service) DeleteJailWithWarnings(
 		ctID,
 		deleteMacs,
 		deleteRootFS,
-		s.hostJailDeleteRuntime(),
+		s.hostJailDeleteRuntime(ctx),
 	)
 }
 
@@ -2066,7 +2075,7 @@ func (s *Service) RetireJailLocalMetadata(ctx context.Context, ctID uint, delete
 		ctID,
 		deleteMacs,
 		false,
-		s.hostJailDeleteRuntime(),
+		s.hostJailDeleteRuntime(ctx),
 		true,
 	)
 	return err

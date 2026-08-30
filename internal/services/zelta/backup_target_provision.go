@@ -47,6 +47,12 @@ func (s *Service) executeBackupTargetProvisionOperation(
 	ctx context.Context,
 	operation *clusterModels.BackupTargetProvisionOperation,
 ) error {
+	admittedCtx, release, err := s.enterMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	ctx = admittedCtx
 	if s == nil || s.Cluster == nil || operation == nil {
 		return fmt.Errorf("backup_target_provision_service_unavailable")
 	}

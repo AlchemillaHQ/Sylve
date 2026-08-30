@@ -240,7 +240,7 @@ func (s *Service) RollbackJailSnapshot(
 				return
 			}
 
-			startErr := s.JailAction(int(ctID), "start")
+			startErr := s.JailActionContext(ctx, int(ctID), "start")
 			stateErr := s.waitForJailActiveState(ctID, true, 45*time.Second)
 			if stateErr != nil {
 				warning := fmt.Sprintf("jail_did_not_reach_active_state_after_snapshot_rollback: %v", stateErr)
@@ -268,7 +268,7 @@ func (s *Service) RollbackJailSnapshot(
 			result.Restarted = true
 		}()
 
-		if err := s.JailAction(int(ctID), "stop"); err != nil {
+		if err := s.JailActionContext(ctx, int(ctID), "stop"); err != nil {
 			return result, fmt.Errorf("failed_to_stop_jail_before_snapshot_rollback: %w", err)
 		}
 		if err := s.waitForJailActiveState(ctID, false, 30*time.Second); err != nil {

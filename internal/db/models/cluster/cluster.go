@@ -9,11 +9,14 @@
 package clusterModels
 
 import (
+	"strings"
 	"time"
 
 	hub "github.com/alchemillahq/sylve/internal/events"
 	"gorm.io/gorm"
 )
+
+const JoinPhaseComplete = "voter"
 
 type Cluster struct {
 	ID            uint   `gorm:"primaryKey" json:"id"`
@@ -22,6 +25,32 @@ type Cluster struct {
 	RaftBootstrap *bool  `json:"raftBootstrap"`
 	RaftIP        string `json:"raftIP"`
 	RaftPort      int    `json:"raftPort"`
+
+	JoinLeaderIP    string `json:"-"`
+	JoinNodeID      string `json:"-"`
+	JoinNodeIP      string `json:"-"`
+	JoinNodeVersion string `json:"-"`
+	JoinInventory   []byte `gorm:"type:blob" json:"-"`
+	JoinPhase       string `json:"-"`
+	JoinLastError   string `json:"-"`
+	JoinAttempts    uint   `json:"-"`
+
+	LeaveID        string `json:"-"`
+	LeavePhase     string `json:"-"`
+	LeaveLeaderIP  string `json:"-"`
+	LeavePeerAddrs []byte `gorm:"type:blob" json:"-"`
+	LeaveLastError string `json:"-"`
+	LeaveAttempts  uint   `json:"-"`
+
+	ReaddressOldIP     string `json:"-"`
+	ReaddressNewIP     string `json:"-"`
+	ReaddressPhase     string `json:"-"`
+	ReaddressLastError string `json:"-"`
+}
+
+func (c Cluster) HasIncompleteJoin() bool {
+	phase := strings.TrimSpace(c.JoinPhase)
+	return phase != JoinPhaseComplete && (phase != "" || strings.TrimSpace(c.JoinNodeID) != "")
 }
 
 func publishClusterRefresh() {

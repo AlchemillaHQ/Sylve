@@ -33,6 +33,10 @@ export const StandardSwitchSchema = z.object({
 	gatewayManual: nullableString,
 	gateway6Manual: nullableString,
 	ports: z.array(NetworkPortSchema),
+	bridgeMacMode: z.enum(['port', 'object']),
+	bridgeMacSourcePort: nullableString,
+	bridgeMacObjectId: z.number().int().positive().nullable(),
+	bridgeMacObject: NetworkObjectSchema.nullable(),
 	dhcp: z.boolean(),
 	slaac: z.boolean(),
 	disableIPv6: z.boolean(),
@@ -64,6 +68,10 @@ export interface SwitchRow extends Row {
 	vlan: number | '-';
 	ports: Array<{ name: string }>;
 	portsOnly: string[];
+	bridgeMacMode: 'port' | 'object';
+	bridgeMacSourcePort: string;
+	bridgeMacObjectId: number | null;
+	bridgeMacObject?: NetworkObject | null;
 	networkObj?: NetworkObject;
 	networkManual?: string;
 	network6Obj?: NetworkObject;

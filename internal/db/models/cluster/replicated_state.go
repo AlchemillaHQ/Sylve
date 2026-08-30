@@ -172,20 +172,28 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 	var policies []ReplicationPolicy
 	if err := db.
 		Preload("Targets", func(query *gorm.DB) *gorm.DB {
-			return query.Order("id ASC, node_id ASC")
+			return query.Order("node_id ASC")
 		}).
 		Order("id ASC").
 		Find(&policies).Error; err != nil {
 		return nil, err
 	}
 	for _, policy := range policies {
+		targets := policy.Targets
+		for i := range targets {
+			targets[i].ID = 0
+		}
+		policy.Targets = nil
 		snap.ReplicationPolicies = append(snap.ReplicationPolicies, ReplicationPolicyPayload{
 			Policy:  policy,
-			Targets: policy.Targets,
+			Targets: targets,
 		})
 	}
-	if err := db.Order("id ASC").Find(&snap.ReplicationLeases).Error; err != nil {
+	if err := db.Order("policy_id ASC").Find(&snap.ReplicationLeases).Error; err != nil {
 		return nil, err
+	}
+	for i := range snap.ReplicationLeases {
+		snap.ReplicationLeases[i].ID = 0
 	}
 	if err := db.Order("guest_type ASC, guest_id ASC").Find(&snap.GuestOperations).Error; err != nil {
 		return nil, err
@@ -198,11 +206,14 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 			return nil, err
 		}
 	}
-	if err := db.Order("id ASC").Find(&snap.SSHIdentities).Error; err != nil {
+	if err := db.Order("node_uuid ASC").Find(&snap.SSHIdentities).Error; err != nil {
 		return nil, err
 	}
-	if err := db.Order("id ASC").Find(&snap.EncryptionKeys).Error; err != nil {
+	if err := db.Order("uuid ASC").Find(&snap.EncryptionKeys).Error; err != nil {
 		return nil, err
+	}
+	for i := range snap.EncryptionKeys {
+		snap.EncryptionKeys[i].ID = 0
 	}
 	return snap, nil
 }

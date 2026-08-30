@@ -20,13 +20,14 @@ import (
 )
 
 type SambaConfigRequest struct {
-	UnixCharset        string `json:"unixCharset"`
-	Workgroup          string `json:"workgroup"`
-	ServerString       string `json:"serverString"`
-	Interfaces         string `json:"interfaces"`
-	BindInterfacesOnly bool   `json:"bindInterfacesOnly"`
-	AppleExtensions    bool   `json:"appleExtensions"`
-	AdvertiseMdns      bool   `json:"advertiseMdns"`
+	UnixCharset        string  `json:"unixCharset"`
+	Workgroup          string  `json:"workgroup"`
+	ServerString       string  `json:"serverString"`
+	Interfaces         string  `json:"interfaces"`
+	BindInterfacesOnly bool    `json:"bindInterfacesOnly"`
+	AppleExtensions    bool    `json:"appleExtensions"`
+	AdvertiseMdns      bool    `json:"advertiseMdns"`
+	ExtraGlobalConfig  *string `json:"extraGlobalConfig"`
 }
 
 func sambaConfigServiceErrorStatus(err error) int {
@@ -77,16 +78,28 @@ func GetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 // @Param request body SambaConfigRequest true "Samba global configuration"
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/config [put]
 func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req SambaConfigRequest
 		if err := strictJSONBind(c, &req); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+			status := http.StatusBadRequest
+			message := "invalid_request"
+			errorDetail := err.Error()
+			var maxBytesError *http.MaxBytesError
+			if errors.As(err, &maxBytesError) {
+				status = http.StatusRequestEntityTooLarge
+				message = "samba_request_too_large"
+				errorDetail = "Samba request body is too large"
+			}
+
+			c.JSON(status, internal.APIResponse[any]{
 				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
+				Message: message,
+				Error:   errorDetail,
 				Data:    nil,
 			})
 			return
@@ -101,7 +114,8 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 			req.Interfaces,
 			req.BindInterfacesOnly,
 			req.AppleExtensions,
-			req.AdvertiseMdns)
+			req.AdvertiseMdns,
+			req.ExtraGlobalConfig)
 
 		if err != nil {
 			c.JSON(sambaConfigServiceErrorStatus(err), internal.APIResponse[any]{

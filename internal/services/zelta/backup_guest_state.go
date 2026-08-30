@@ -5,6 +5,7 @@
 package zelta
 
 import (
+	"context"
 	"fmt"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -16,6 +17,14 @@ type backupGuestRestore func() error
 // actually stopped a running guest. A guest that was already stopped is left
 // stopped, and every later caller error can safely invoke the returned inverse.
 func (s *Service) quiesceBackupGuest(
+	job *clusterModels.BackupJob,
+	vmRID uint,
+) (backupGuestRestore, bool, error) {
+	return s.quiesceBackupGuestContext(context.Background(), job, vmRID)
+}
+
+func (s *Service) quiesceBackupGuestContext(
+	ctx context.Context,
 	job *clusterModels.BackupJob,
 	vmRID uint,
 ) (backupGuestRestore, bool, error) {
@@ -39,11 +48,11 @@ func (s *Service) quiesceBackupGuest(
 		if !wasRunning {
 			return nil, false, nil
 		}
-		if err := s.Jail.JailAction(int(ctID), "stop"); err != nil {
+		if err := s.jailActionContext(ctx, int(ctID), "stop"); err != nil {
 			return nil, false, fmt.Errorf("failed_to_stop_jail: %w", err)
 		}
 		return func() error {
-			return s.Jail.JailAction(int(ctID), "start")
+			return s.jailActionContext(ctx, int(ctID), "start")
 		}, true, nil
 
 	case clusterModels.BackupJobModeVM:
@@ -60,11 +69,11 @@ func (s *Service) quiesceBackupGuest(
 		if wasShutOff {
 			return nil, false, nil
 		}
-		if err := s.stopVMIfPresent(vmRID); err != nil {
+		if err := s.stopVMIfPresentContext(ctx, vmRID); err != nil {
 			return nil, false, fmt.Errorf("failed_to_stop_vm: %w", err)
 		}
 		return func() error {
-			return s.startVMIfPresent(vmRID)
+			return s.startVMIfPresentContext(ctx, vmRID)
 		}, true, nil
 	}
 

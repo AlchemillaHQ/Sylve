@@ -54,6 +54,9 @@ type Service struct {
 	leftPanelRefreshEmitter   func(reason string)
 
 	guestIdentityAvailabilityChecker clusterServiceInterfaces.GuestIdentityAvailabilityChecker
+	mutationGate                     interface {
+		EnterMutation(context.Context) (context.Context, func(), error)
+	}
 
 	preflightCreateVMTemplateFn func(
 		ctx context.Context,
@@ -70,6 +73,12 @@ type Service struct {
 	cleanupVMTemplateTargetFn func(ctx context.Context, rid uint)
 
 	GZFS *gzfs.Client
+}
+
+func (s *Service) SetMutationAdmission(gate interface {
+	EnterMutation(context.Context) (context.Context, func(), error)
+}) {
+	s.mutationGate = gate
 }
 
 func (s *Service) SetGuestIdentityAvailabilityChecker(

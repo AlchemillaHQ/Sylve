@@ -1220,6 +1220,18 @@ func (s *Service) cleanupVMMACObjects(cleanUpMacs bool, usedMACS []uint) error {
 }
 
 func (s *Service) PerformAction(rid uint, action string) error {
+	return s.PerformActionContext(context.Background(), rid, action)
+}
+
+func (s *Service) PerformActionContext(ctx context.Context, rid uint, action string) error {
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
+	}
 	var vm vmModels.VM
 
 	if err := s.DB.First(&vm, "rid = ?", rid).Error; err != nil {
@@ -1229,7 +1241,7 @@ func (s *Service) PerformAction(rid uint, action string) error {
 		return fmt.Errorf("failed_to_find_vm: %w", err)
 	}
 
-	err := s.LvVMAction(vm, action)
+	err := s.LvVMActionContext(ctx, vm, action)
 	if err != nil {
 		return fmt.Errorf("failed_to_perform_action: %w", err)
 	}

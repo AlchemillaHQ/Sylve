@@ -9,7 +9,9 @@
 package db
 
 import (
+	"crypto/rand"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -17,6 +19,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -33,6 +36,9 @@ func Fixups(db *gorm.DB) error {
 	if err := renameLegacyARCMaxTunable(db); err != nil {
 		return err
 	}
+	if err := clearManagedBridgeMACInheritanceOverride(db); err != nil {
+		return err
+	}
 	if err := replaceLegacyNetlinkEvents(db); err != nil {
 		return err
 	}
@@ -43,6 +49,9 @@ func Fixups(db *gorm.DB) error {
 		return err
 	}
 	if err := normalizeDownloadUncategorizedType(db); err != nil {
+		return err
+	}
+	if err := migrateStandardSwitchMACSources(db); err != nil {
 		return err
 	}
 
@@ -64,6 +73,129 @@ func Fixups(db *gorm.DB) error {
 	preserveAppleExtensionsToMdns(db)
 	cleanupStaleAvahi(db)
 
+	return nil
+}
+
+func validBridgeMigrationMAC(value net.HardwareAddr) bool {
+	if len(value) != 6 || value[0]&1 != 0 {
+		return false
+	}
+	for _, octet := range value {
+		if octet != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func generatedBridgeMigrationMAC() (string, error) {
+	mac := make([]byte, 6)
+	if _, err := rand.Read(mac); err != nil {
+		return "", fmt.Errorf("generate standard switch bridge MAC: %w", err)
+	}
+	mac[0] = (mac[0] | 0x02) & 0xfe
+	return net.HardwareAddr(mac).String(), nil
+}
+
+var bridgeMigrationInterfaceByName = net.InterfaceByName
+
+func existingBridgeMigrationMAC(bridgeName string) string {
+	bridge, err := bridgeMigrationInterfaceByName(bridgeName)
+	if err == nil && validBridgeMigrationMAC(bridge.HardwareAddr) {
+		return bridge.HardwareAddr.String()
+	}
+	return ""
+}
+
+func nextBridgeMACObjectName(tx *gorm.DB, switchID uint) (string, error) {
+	base := fmt.Sprintf("standard-switch-%d-bridge-mac", switchID)
+	for suffix := 0; suffix < 10000; suffix++ {
+		candidate := base
+		if suffix > 0 {
+			candidate = fmt.Sprintf("%s-%d", base, suffix+1)
+		}
+		var count int64
+		if err := tx.Model(&networkModels.Object{}).Where("name = ?", candidate).Count(&count).Error; err != nil {
+			return "", err
+		}
+		if count == 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("find unique bridge MAC object name for standard switch %d", switchID)
+}
+
+func migrateStandardSwitchMACSources(db *gorm.DB) error {
+	const migrationName = "standard_switch_mac_source_v1"
+	if !db.Migrator().HasTable(&networkModels.StandardSwitch{}) ||
+		!db.Migrator().HasColumn(&networkModels.StandardSwitch{}, "bridge_mac_mode") {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var applied int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", migrationName).Count(&applied).Error; err != nil {
+			return fmt.Errorf("check standard switch MAC migration: %w", err)
+		}
+		if applied > 0 {
+			return nil
+		}
+
+		var switches []networkModels.StandardSwitch
+		if err := tx.Order("id ASC").Find(&switches).Error; err != nil {
+			return fmt.Errorf("load legacy standard switches for MAC migration: %w", err)
+		}
+		for _, sw := range switches {
+			if strings.TrimSpace(sw.BridgeMACMode) != "" {
+				continue
+			}
+
+			mac := existingBridgeMigrationMAC(sw.BridgeName)
+			if mac == "" {
+				var err error
+				mac, err = generatedBridgeMigrationMAC()
+				if err != nil {
+					return err
+				}
+				logger.L.Warn().Uint("switchID", sw.ID).Str("bridge", sw.BridgeName).Str("mac", mac).Msg("standard_switch_mac_migration_generated_identity")
+			}
+			name, err := nextBridgeMACObjectName(tx, sw.ID)
+			if err != nil {
+				return err
+			}
+			object := networkModels.Object{
+				Name:    name,
+				Type:    "Mac",
+				Entries: []networkModels.ObjectEntry{{Value: mac}},
+			}
+			if err := tx.Create(&object).Error; err != nil {
+				return fmt.Errorf("create MAC object for legacy standard switch %d: %w", sw.ID, err)
+			}
+			if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", sw.ID).Updates(map[string]any{
+				"bridge_mac_mode":        networkModels.StandardSwitchMACModeObject,
+				"bridge_mac_source_port": "",
+				"bridge_mac_object_id":   object.ID,
+			}).Error; err != nil {
+				return fmt.Errorf("migrate standard switch %d to object MAC source: %w", sw.ID, err)
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: migrationName}).Error; err != nil {
+			return fmt.Errorf("record standard switch MAC migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func clearManagedBridgeMACInheritanceOverride(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&authModels.SystemTunable{}) {
+		return nil
+	}
+
+	if err := db.Where("name = ?", authModels.SystemTunableBridgeInheritMACOID).
+		Delete(&authModels.SystemTunable{}).Error; err != nil {
+		return fmt.Errorf("clear legacy bridge MAC inheritance override: %w", err)
+	}
 	return nil
 }
 

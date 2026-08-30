@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getDetails } from '$lib/api/cluster/cluster';
+	import { storage } from '$lib';
 	import Header from '$lib/components/custom/Header.svelte';
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
@@ -46,6 +47,17 @@
 
 	let details = $derived(clusterDetails.current);
 	let clustered = $derived(details?.cluster?.enabled === true);
+
+	watch(
+		() => details?.cluster?.enabled,
+		(enabled) => {
+			const localHostname = storage.localHostname?.trim();
+			if (enabled === false && localHostname && storage.hostname !== localHostname) {
+				storage.hostname = localHostname;
+			}
+		}
+	);
+
 	const resourceTreePreferences = new PersistedState<ResourceTreePreferences>(
 		'sylve-resource-tree-preferences-v1',
 		DEFAULT_RESOURCE_TREE_PREFERENCES

@@ -57,7 +57,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/migration"
 	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
-	"github.com/alchemillahq/sylve/internal/services/samba"
+	sambaServicePkg "github.com/alchemillahq/sylve/internal/services/samba"
 	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
 	utilitiesServicePkg "github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
@@ -107,7 +107,7 @@ func RegisterRoutes(r *gin.Engine,
 	utilitiesService *utilitiesServicePkg.Service,
 	systemService *systemServicePkg.Service,
 	libvirtService *libvirt.Service,
-	sambaService *samba.Service,
+	sambaService *sambaServicePkg.Service,
 	mdnsService *mdns.Service,
 	dynamicDNSService *dynamicdns.Service,
 	certificateService *certificates.Service,
@@ -122,6 +122,7 @@ func RegisterRoutes(r *gin.Engine,
 	telemetryDB *gorm.DB,
 ) {
 	api := r.Group("/api")
+	api.Use(middleware.ClusterMutationAdmission(clusterService))
 	uploadAdmission := semaphore.NewWeighted(config.GetUploadsConfig().MaxConcurrentTransfers)
 	api.GET("/auth/login/config", authHandlers.LoginConfigHandler())
 	publicAuth := api.Group("/auth")
@@ -271,10 +272,14 @@ func RegisterRoutes(r *gin.Engine,
 	samba := api.Group("/samba")
 	samba.Use(middleware.EnsureAuthenticated(authService))
 	samba.Use(EnsureCorrectHost(db, authService))
+	samba.Use(middleware.LimitRequestBody(sambaServicePkg.MaxRequestBodyBytes))
 	samba.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		samba.GET("/config", sambaHandlers.GetGlobalConfig(sambaService))
-		samba.PUT("/config", sambaHandlers.SetGlobalConfig(sambaService))
+		samba.PUT("/config",
+			middleware.RequireLocalAdmin(authService),
+			sambaHandlers.SetGlobalConfig(sambaService),
+		)
 
 		samba.GET("/shares", sambaHandlers.GetShares(sambaService))
 		samba.POST("/shares", sambaHandlers.CreateShare(sambaService))
@@ -837,6 +842,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))
 		intraCluster.POST("/ssh-reconcile", clusterHandlers.ReconcileClusterSSHNow(clusterService))
 		intraCluster.GET("/guest-identity-inventory", clusterHandlers.GuestIdentityInventoryInternal(clusterService))
+		intraCluster.GET("/join-progress", clusterHandlers.JoinProgressInternal(clusterService))
 		intraCluster.GET("/replicated-state", clusterHandlers.ReplicatedStateInternal(clusterService))
 		intraCluster.POST("/replicated-state-repair", clusterHandlers.ReplicatedStateRepairInternal(clusterService, zeltaService))
 		intraCluster.POST("/backup-job-safety-validation", clusterHandlers.ValidateBackupJobSafetyInternal(clusterService))
@@ -860,7 +866,11 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/replication-policy-state", clusterHandlers.UpdateReplicationPolicyStateInternal(clusterService))
 		intraCluster.POST("/backup-job-friendly-source", clusterHandlers.UpdateBackupJobFriendlySourceInternal(clusterService))
 		intraCluster.POST("/encryption-key/discover", clusterHandlers.DiscoverEncryptionKeyInternal(clusterService))
-		intraCluster.POST("/remove-peer", clusterHandlers.RemovePeer(clusterService))
+		intraCluster.POST("/leave", clusterHandlers.StartLeaveInternal(clusterService))
+		intraCluster.POST("/remove-peer", clusterHandlers.RemoveMembershipInternal(clusterService))
+		intraCluster.POST("/note-mutation", clusterHandlers.MutateNoteInternal(clusterService))
+		intraCluster.GET("/readdress-identity", clusterHandlers.ReaddressIdentityInternal(clusterService))
+		intraCluster.POST("/readdress-member", clusterHandlers.ReaddressMemberInternal(clusterService))
 	}
 
 	clusterAdmission := api.Group("/cluster")
@@ -868,6 +878,7 @@ func RegisterRoutes(r *gin.Engine,
 	clusterAdmission.Use(middleware.LimitRequestBody(authServicePkg.MaxRequestBodyBytes))
 	clusterAdmission.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	clusterAdmission.POST("/accept-join", clusterHandlers.AcceptJoin(clusterService))
+	clusterAdmission.POST("/membership-status", clusterHandlers.MembershipStatus(clusterService))
 
 	clusterLocal := api.Group("/cluster")
 	clusterLocal.Use(middleware.EnsureAuthenticated(authService))
@@ -877,10 +888,14 @@ func RegisterRoutes(r *gin.Engine,
 	clusterLocal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		clusterLocal.GET("/join-key", clusterHandlers.GetJoinKey(authService))
+		clusterLocal.GET("/join-status", clusterHandlers.GetJoinStatus(clusterService))
+		clusterLocal.GET("/leave-status", clusterHandlers.GetLeaveStatus(clusterService))
 		clusterLocal.POST("", clusterHandlers.CreateCluster(clusterService, fsm))
 		clusterLocal.POST("/join", clusterHandlers.JoinCluster(clusterService, zeltaService, fsm))
 		clusterLocal.DELETE("/reset-node", clusterHandlers.ResetRaftNode(clusterService))
-		clusterLocal.POST("/remove-node", clusterHandlers.RemovePeer(clusterService))
+		clusterLocal.DELETE("/reset-node/force", clusterHandlers.ForceResetRaftNode(clusterService))
+		clusterLocal.POST("/remove-node", clusterHandlers.RemoveNode(clusterService))
+		clusterLocal.POST("/remove-node/force", clusterHandlers.ForceRemoveNode(clusterService))
 	}
 
 	clusterAdmin := api.Group("/cluster")

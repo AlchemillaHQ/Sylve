@@ -62,6 +62,30 @@ type DemoNetworkState = {
 	dynamicDNSEntries: DynamicDNSEntry[];
 };
 
+type DemoStandardSwitchMACSource =
+	| { mode: 'port'; port: string }
+	| { mode: 'object'; macObjectId: number };
+
+function standardSwitchMACSource(
+	body: Record<string, unknown>
+): DemoStandardSwitchMACSource | null {
+	const raw = body.bridgeMac;
+	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+	const source = raw as Record<string, unknown>;
+	if (source.mode === 'port') {
+		const port = typeof source.port === 'string' ? source.port.trim() : '';
+		if (!port || source.macObjectId !== undefined) return null;
+		return { mode: 'port', port };
+	}
+	if (source.mode === 'object') {
+		const macObjectId = Number(source.macObjectId);
+		if (!Number.isSafeInteger(macObjectId) || macObjectId <= 0 || source.port !== undefined)
+			return null;
+		return { mode: 'object', macObjectId };
+	}
+	return null;
+}
+
 const createdAt = '2026-05-12T09:30:00.000Z';
 const updatedAt = '2026-08-14T08:45:00.000Z';
 const networkStates = new Map<string, DemoNetworkState>();
@@ -496,6 +520,10 @@ function createState(hostname: string): DemoNetworkState {
 			gatewayManual: '',
 			gateway6Manual: 'fd42:30::1',
 			ports: [{ id: 1, name: 'igb0', switchId: 1 }],
+			bridgeMacMode: 'port',
+			bridgeMacSourcePort: 'igb0',
+			bridgeMacObjectId: null,
+			bridgeMacObject: null,
 			dhcp: false,
 			slaac: true,
 			disableIPv6: false,
@@ -522,6 +550,10 @@ function createState(hostname: string): DemoNetworkState {
 			gatewayManual: '',
 			gateway6Manual: '',
 			ports: [{ id: 2, name: 'ix0', switchId: 2 }],
+			bridgeMacMode: 'port',
+			bridgeMacSourcePort: 'ix0',
+			bridgeMacObjectId: null,
+			bridgeMacObject: null,
 			dhcp: false,
 			slaac: false,
 			disableIPv6: true,
@@ -1064,6 +1096,7 @@ function refreshObjectUsage(state: DemoNetworkState) {
 		mark(sw.network6Obj?.id, 'Standard switch');
 		mark(sw.gatewayAddressObj?.id, 'Standard switch');
 		mark(sw.gateway6AddressObj?.id, 'Standard switch');
+		mark(sw.bridgeMacObjectId, 'Standard switch');
 	}
 	for (const lease of state.staticLeases) {
 		mark(lease.ipObjectId, 'DHCP lease');
@@ -1111,6 +1144,7 @@ function buildStandardSwitch(
 	state: DemoNetworkState,
 	id: number,
 	body: Record<string, unknown>,
+	macSource: DemoStandardSwitchMACSource,
 	existing?: StandardSwitch
 ): StandardSwitch {
 	const network4ID = nullableNumber(body, 'network4');
@@ -1129,6 +1163,8 @@ function buildStandardSwitch(
 	const gateway6Manual = stringValue(body, 'gateway6Manual', existing?.gateway6Manual ?? '');
 	const name = stringValue(body, 'name', existing?.name ?? `switch-${id}`).trim();
 	const ports = stringArray(body, 'ports');
+	const bridgeMacObjectId = macSource.mode === 'object' ? macSource.macObjectId : null;
+	const bridgeMacObject = objectByID(bridgeMacObjectId);
 
 	return {
 		id,
@@ -1150,6 +1186,10 @@ function buildStandardSwitch(
 		gatewayManual,
 		gateway6Manual,
 		ports: ports.map((port, index) => ({ id: id * 100 + index + 1, name: port, switchId: id })),
+		bridgeMacMode: macSource.mode,
+		bridgeMacSourcePort: macSource.mode === 'port' ? macSource.port : '',
+		bridgeMacObjectId,
+		bridgeMacObject,
 		dhcp: booleanValue(body, 'dhcp', existing?.dhcp ?? false),
 		slaac: booleanValue(body, 'slaac', existing?.slaac ?? false),
 		disableIPv6: booleanValue(body, 'disableIPv6', existing?.disableIPv6 ?? false),
@@ -1566,12 +1606,28 @@ export function handleDemoNetworkRequest<T = unknown>(
 		return mutationSuccess('manual_switch_deleted') as DemoNetworkResponse<T>;
 	}
 	if (path === '/network/switch/standard' && method === 'POST') {
+		const macSource = standardSwitchMACSource(body);
+		if (!macSource) {
+			return failure(
+				'failed_to_create_switch',
+				'standard_switch_mac_source_required',
+				400
+			) as DemoNetworkResponse<T>;
+		}
 		const id = nextID(state.switches.standard);
-		state.switches.standard.push(buildStandardSwitch(state, id, body));
+		state.switches.standard.push(buildStandardSwitch(state, id, body, macSource));
 		return success(id, 'standard_switch_created', 201) as DemoNetworkResponse<T>;
 	}
 	match = path.match(/^\/network\/switch\/standard\/(\d+)$/);
 	if (match && method === 'PUT') {
+		const macSource = standardSwitchMACSource(body);
+		if (!macSource) {
+			return failure(
+				'failed_to_update_switch',
+				'standard_switch_mac_source_required',
+				400
+			) as DemoNetworkResponse<T>;
+		}
 		const id = Number(match[1]);
 		const index = state.switches.standard.findIndex((item) => item.id === id);
 		if (index < 0)
@@ -1580,7 +1636,7 @@ export function handleDemoNetworkRequest<T = unknown>(
 				'standard_switch_not_found'
 			) as DemoNetworkResponse<T>;
 		const current = state.switches.standard[index];
-		const next = buildStandardSwitch(state, current.id, body, current);
+		const next = buildStandardSwitch(state, current.id, body, macSource, current);
 		Object.assign(current, next);
 		return mutationSuccess('standard_switch_updated') as DemoNetworkResponse<T>;
 	}

@@ -1095,3 +1095,58 @@ func TestBulkDeleteObjectsFirewallFailureRestoresEntireBatch(t *testing.T) {
 		t.Fatalf("expected the entire batch and its entries to be restored, got %+v", restored)
 	}
 }
+
+func TestStandardSwitchMACObjectUsageAndMutationProtection(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+
+	macObject := networkModels.Object{
+		Name:    "bridge-mac",
+		Type:    "Mac",
+		Entries: []networkModels.ObjectEntry{{Value: "02:00:00:00:00:41"}},
+	}
+	if err := db.Create(&macObject).Error; err != nil {
+		t.Fatalf("seed bridge MAC object: %v", err)
+	}
+	switchRow := networkModels.StandardSwitch{
+		Name:              "object-mac-switch",
+		BridgeName:        "bridge-object-mac",
+		MTU:               1500,
+		BridgeMACMode:     networkModels.StandardSwitchMACModeObject,
+		BridgeMACObjectID: &macObject.ID,
+	}
+	if err := db.Create(&switchRow).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+
+	used, owner, err := svc.IsObjectUsed(macObject.ID)
+	if err != nil {
+		t.Fatalf("inspect MAC object usage: %v", err)
+	}
+	if !used || owner != "switch" {
+		t.Fatalf("bridge MAC object usage=(%v,%q), want (true,switch)", used, owner)
+	}
+
+	if err := svc.DeleteObject(macObject.ID); NetworkObjectErrorCode(err) != "network_object_in_use" {
+		t.Fatalf("delete error=%v code=%q, want network_object_in_use", err, NetworkObjectErrorCode(err))
+	}
+	if err := svc.EditObject(macObject.ID, macObject.Name, "Mac", []string{"02:00:00:00:00:42"}); NetworkObjectErrorCode(err) != "network_object_switch_mac_in_use" {
+		t.Fatalf("MAC-change error=%v code=%q, want network_object_switch_mac_in_use", err, NetworkObjectErrorCode(err))
+	}
+	if err := svc.EditObject(macObject.ID, macObject.Name, "Mac", []string{"02:00:00:00:00:41", "02:00:00:00:00:42"}); NetworkObjectErrorCode(err) != "network_object_switch_requires_one_mac" {
+		t.Fatalf("multi-MAC error=%v code=%q, want network_object_switch_requires_one_mac", err, NetworkObjectErrorCode(err))
+	}
+	if err := svc.EditObject(macObject.ID, macObject.Name, "Host", []string{"192.0.2.10"}); NetworkObjectErrorCode(err) != "network_object_type_in_use" {
+		t.Fatalf("type-change error=%v code=%q, want network_object_type_in_use", err, NetworkObjectErrorCode(err))
+	}
+
+	if err := svc.EditObject(macObject.ID, "renamed-bridge-mac", "Mac", []string{"02:00:00:00:00:41"}); err != nil {
+		t.Fatalf("rename with unchanged MAC should succeed: %v", err)
+	}
+	var stored networkModels.Object
+	if err := db.Preload("Entries").First(&stored, macObject.ID).Error; err != nil {
+		t.Fatalf("reload renamed MAC object: %v", err)
+	}
+	if stored.Name != "renamed-bridge-mac" || len(stored.Entries) != 1 || stored.Entries[0].Value != "02:00:00:00:00:41" {
+		t.Fatalf("unexpected object after safe rename: %+v", stored)
+	}
+}

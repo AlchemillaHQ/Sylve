@@ -139,6 +139,9 @@ function clearConnectionLostTimer() {
 }
 
 function scheduleConnectionLost() {
+	if (connection.plannedRestart) {
+		connection.plannedRestart.disconnectObserved = true;
+	}
 	if (connection.sseConnected === false || connectionLostTimer) return;
 
 	connectionLostTimer = setTimeout(() => {
@@ -223,6 +226,11 @@ export async function startSSEEvents() {
 		connection.sseConnected = true;
 		connecting = false;
 		reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
+
+		if (connection.plannedRestart?.disconnectObserved) {
+			connection.plannedRestart = null;
+			window.location.reload();
+		}
 	};
 
 	connecting = false;
@@ -244,4 +252,5 @@ export function stopSSEEvents() {
 	connecting = false;
 	reconnectDelayMs = SSE_RECONNECT_INITIAL_MS;
 	connection.sseConnected = null;
+	connection.plannedRestart = null;
 }

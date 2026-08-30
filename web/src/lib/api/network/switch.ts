@@ -30,6 +30,10 @@ export type SwitchManualAddresses = {
 	gateway6: string;
 };
 
+export type StandardSwitchMACSource =
+	| { mode: 'port'; port: string }
+	| { mode: 'object'; macObjectId: number };
+
 const emptyManualAddresses: SwitchManualAddresses = {
 	network4: '',
 	gateway4: '',
@@ -47,6 +51,7 @@ export async function createSwitch(
 	gateway6: number,
 	privateSw: boolean,
 	ports: string[],
+	bridgeMac: StandardSwitchMACSource,
 	disableIPv6: boolean,
 	slaac: boolean,
 	dhcp: boolean,
@@ -64,6 +69,7 @@ export async function createSwitch(
 		gateway6,
 		private: privateSw,
 		ports,
+		bridgeMac,
 		dhcp,
 		disableIPv6,
 		slaac,
@@ -92,6 +98,7 @@ export async function updateSwitch(
 	gateway6: number,
 	privateSw: boolean,
 	ports: string[],
+	bridgeMac: StandardSwitchMACSource,
 	disableIPv6: boolean,
 	slaac: boolean,
 	dhcp: boolean,
@@ -108,6 +115,7 @@ export async function updateSwitch(
 		gateway6,
 		private: privateSw,
 		ports,
+		bridgeMac,
 		disableIPv6,
 		slaac,
 		dhcp,

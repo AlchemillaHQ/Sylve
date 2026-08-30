@@ -1,8 +1,12 @@
 import {
 	ClusterDetailsSchema,
+	ClusterJoinStatusSchema,
+	ClusterLeaveStatusSchema,
 	ClusterNodeSchema,
 	NodeResourceSchema,
 	type ClusterDetails,
+	type ClusterJoinStatus,
+	type ClusterLeaveStatus,
 	type ClusterNode,
 	type NodeResource
 } from '$lib/types/cluster/cluster';
@@ -50,6 +54,14 @@ export async function getJoinKey(): Promise<z.infer<typeof JoinKeySchema> | APIR
 	return await apiRequestResult('/cluster/join-key', JoinKeySchema, 'GET');
 }
 
+export async function getJoinStatus(): Promise<ClusterJoinStatus | APIResponse> {
+	return await apiRequestResult('/cluster/join-status', ClusterJoinStatusSchema, 'GET');
+}
+
+export async function getLeaveStatus(): Promise<ClusterLeaveStatus | APIResponse> {
+	return await apiRequestResult('/cluster/leave-status', ClusterLeaveStatusSchema, 'GET');
+}
+
 export async function createCluster(ip: string): Promise<APIResponse> {
 	return await apiRequest(
 		'/cluster',
@@ -77,7 +89,23 @@ export async function joinCluster(
 }
 
 export async function resetCluster(): Promise<APIResponse> {
-	return await apiRequest('/cluster/reset-node', APIResponseSchema, 'DELETE');
+	return await apiRequest('/cluster/reset-node', APIResponseSchema, 'DELETE', undefined, {
+		raw: true
+	});
+}
+
+export async function forceResetCluster(
+	nodeId: string,
+	remoteMembershipAcknowledged: boolean,
+	workloadsExternallyFenced: boolean
+): Promise<APIResponse> {
+	return await apiRequest(
+		'/cluster/reset-node/force',
+		APIResponseSchema,
+		'DELETE',
+		{ nodeId, remoteMembershipAcknowledged, workloadsExternallyFenced },
+		{ raw: true }
+	);
 }
 
 export async function removePeer(nodeId: string): Promise<APIResponse> {
@@ -86,6 +114,16 @@ export async function removePeer(nodeId: string): Promise<APIResponse> {
 		APIResponseSchema,
 		'POST',
 		{ nodeId },
+		{ raw: true }
+	);
+}
+
+export async function forceRemovePeer(nodeId: string): Promise<APIResponse> {
+	return await apiRequest(
+		'/cluster/remove-node/force',
+		APIResponseSchema,
+		'POST',
+		{ nodeId, targetExternallyFenced: true },
 		{ raw: true }
 	);
 }

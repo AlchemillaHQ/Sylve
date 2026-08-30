@@ -11,6 +11,7 @@ package middleware
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -50,6 +51,15 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 		t.Fatalf("seed admin: %v", err)
 	}
 	service := authSvc.NewAuthService(database).(*authSvc.Service)
+	if err := service.SetClusterIssuerNodeID("node-1"); err != nil {
+		t.Fatal(err)
+	}
+	service.SetClusterIssuerVerifier(func(nodeID string) (authSvc.ClusterIssuerMembership, error) {
+		if nodeID != "node-1" {
+			return authSvc.ClusterIssuerMembership{}, fmt.Errorf("not_current")
+		}
+		return authSvc.ClusterIssuerMembership{Suffrage: "voter"}, nil
+	})
 	_, localToken, err := service.CreateJWT(user.Username, "correct horse battery staple", "sylve", false)
 	if err != nil {
 		t.Fatalf("create local token: %v", err)

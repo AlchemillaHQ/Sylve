@@ -232,6 +232,91 @@ func TestFSMVersionedCommandsAreDeterministicAcrossSkewedClocks(t *testing.T) {
 	assertCompleteRowsEqual[BackupTarget](t, leftDB, restoreDB, "id = ?", 10)
 }
 
+func TestFSMDigestIgnoresSkewedSurrogateSequences(t *testing.T) {
+	leftDB, leftFSM := newSkewedDeterminismFSM(
+		t,
+		time.Date(2035, time.January, 1, 0, 0, 0, 0, time.UTC),
+	)
+	rightDB, rightFSM := newSkewedDeterminismFSM(
+		t,
+		time.Date(2045, time.January, 1, 0, 0, 0, 0, time.UTC),
+	)
+	now := time.Date(2026, time.August, 29, 3, 0, 0, 0, time.UTC)
+	policy := ReplicationPolicy{
+		ID: 40, Name: "sequence-test", GuestType: ReplicationGuestTypeVM, GuestID: 40,
+		SourceNodeID: "node-a", ActiveNodeID: "node-a", OwnerEpoch: 1,
+		SourceMode: ReplicationSourceModeFollowActive, FailbackMode: ReplicationFailbackManual,
+		FailoverMode: ReplicationFailoverManual, CronExpr: "*/5 * * * *",
+		CrashRecovery: true, CrashRestartMax: 3, PoolHealthCheck: true, PoolCapacityPct: 90,
+		Enabled: true, ProtectionState: ReplicationProtectionStateArmed,
+		TransitionState: ReplicationTransitionStateNone, CreatedAt: now, UpdatedAt: now,
+	}
+	for _, db := range []*gorm.DB{leftDB, rightDB} {
+		seed := policy
+		if err := db.Create(&seed).Error; err != nil {
+			t.Fatalf("seed policy: %v", err)
+		}
+	}
+
+	tombstones := []any{
+		&EncryptionKey{ID: 900, UUID: "deleted-key", KeyData: "deleted", KeyFormat: "passphrase"},
+		&ReplicationLease{ID: 800, PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID, OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Hour)},
+		&ReplicationPolicyTarget{ID: 700, PolicyID: policy.ID, NodeID: "deleted-node", Weight: 100},
+	}
+	for _, tombstone := range tombstones {
+		if err := leftDB.Create(tombstone).Error; err != nil {
+			t.Fatalf("seed %T sequence: %v", tombstone, err)
+		}
+		if err := leftDB.Delete(tombstone).Error; err != nil {
+			t.Fatalf("clear %T sequence row: %v", tombstone, err)
+		}
+	}
+
+	fsms := []*FSMDispatcher{leftFSM, rightFSM}
+	applyBoth := func(payload []byte) {
+		for _, fsm := range fsms {
+			applyDeterminismLog(t, fsm, payload, now)
+		}
+	}
+	applyBoth(deterministicCommandBytes(t, now, "replication_policy", "create", ReplicationPolicyPayload{
+		Policy: policy,
+		Targets: []ReplicationPolicyTarget{
+			{PolicyID: policy.ID, NodeID: "node-b", Weight: 90},
+			{PolicyID: policy.ID, NodeID: "node-c", Weight: 80},
+		},
+	}))
+	applyBoth(deterministicCommandBytes(t, now.Add(time.Second), "replication_lease", "upsert", ReplicationLease{
+		PolicyID: policy.ID, GuestType: policy.GuestType, GuestID: policy.GuestID,
+		OwnerNodeID: "node-a", OwnerEpoch: 1, ExpiresAt: now.Add(time.Minute), Version: 1,
+	}))
+	applyBoth(deterministicCommandBytes(t, now.Add(2*time.Second), "encryption_key", "upsert", EncryptionKey{
+		UUID: "active-key", KeyData: "active-secret", KeyFormat: "passphrase",
+	}))
+
+	assertDifferentID := func(model any, query string, args ...any) {
+		t.Helper()
+		var leftID, rightID uint
+		if err := leftDB.Model(model).Select("id").Where(query, args...).Scan(&leftID).Error; err != nil {
+			t.Fatalf("load left %T ID: %v", model, err)
+		}
+		if err := rightDB.Model(model).Select("id").Where(query, args...).Scan(&rightID).Error; err != nil {
+			t.Fatalf("load right %T ID: %v", model, err)
+		}
+		if leftID == 0 || rightID == 0 || leftID == rightID {
+			t.Fatalf("%T IDs did not reproduce sequence skew: left=%d right=%d", model, leftID, rightID)
+		}
+	}
+	assertDifferentID(&ReplicationPolicyTarget{}, "policy_id = ? AND node_id = ?", policy.ID, "node-b")
+	assertDifferentID(&ReplicationLease{}, "policy_id = ?", policy.ID)
+	assertDifferentID(&EncryptionKey{}, "uuid = ?", "active-key")
+
+	leftDigest, _ := snapshotDigest(t, leftFSM)
+	rightDigest, _ := snapshotDigest(t, rightFSM)
+	if leftDigest != rightDigest {
+		t.Fatalf("sequence-skewed state digests differ: left=%x right=%x", leftDigest, rightDigest)
+	}
+}
+
 func TestFSMTransitionRecoveryDeadlineSurvivesReplay(t *testing.T) {
 	leftDB, leftFSM := newSkewedDeterminismFSM(t, time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC))
 	rightDB, rightFSM := newSkewedDeterminismFSM(t, time.Date(2040, time.January, 1, 0, 0, 0, 0, time.UTC))

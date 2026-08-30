@@ -11,9 +11,11 @@
 package integration
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -47,6 +49,7 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	manualName := "switch-manual-" + suite.runID
 	networkName := "switch-network-" + suite.runID
 	gatewayName := "switch-gateway-" + suite.runID
+	bridgeMACObjectName := standardSwitchMACObjectName(standardName)
 	network4, gateway4, route4 := switchTestNetwork(suite.runID)
 	if switchRouteExists(t, route4) {
 		t.Fatalf("refusing to use existing route %s", route4)
@@ -54,6 +57,7 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupManualSwitch(t, suite, manualName)
 		cleanupStandardSwitch(t, suite, standardName)
+		cleanupObject(t, suite, bridgeMACObjectName)
 		cleanupSwitchRoute(t, route4, gateway4)
 		cleanupObject(t, suite, networkName)
 		cleanupObject(t, suite, gatewayName)
@@ -72,9 +76,11 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 		t.Fatalf("REPL network object create output = %q", output)
 	}
 	networkObject := objectByName(t, suite.database, networkName)
+	bridgeMACObject := createConsoleStandardSwitchMACObject(t, suite, standardName)
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"switches", "create", "--type", "standard", "--name", standardName,
+		"--mac-source", "object", "--mac-object", strconv.FormatUint(uint64(bridgeMACObject.ID), 10),
 		"--network4", strconv.FormatUint(uint64(networkObject.ID), 10),
 		"--gateway4", strconv.FormatUint(uint64(gatewayObject.ID), 10),
 		"--private", "--disable-ipv6", "--json")
@@ -87,10 +93,12 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	}
 
 	var standard networkModels.StandardSwitch
-	if err := suite.database.Preload("Ports").First(&standard, createdStandard.ID).Error; err != nil {
+	if err := suite.database.Preload("Ports").Preload("BridgeMACObject.Entries").First(&standard, createdStandard.ID).Error; err != nil {
 		t.Fatalf("load created standard switch: %v", err)
 	}
 	if standard.Name != standardName || !standard.Private || !standard.DisableIPv6 || len(standard.Ports) != 0 ||
+		standard.BridgeMACMode != networkModels.StandardSwitchMACModeObject ||
+		standard.BridgeMACObjectID == nil || *standard.BridgeMACObjectID != bridgeMACObject.ID ||
 		standard.NetworkID == nil || *standard.NetworkID != networkObject.ID ||
 		standard.GatewayAddressID == nil || *standard.GatewayAddressID != gatewayObject.ID {
 		t.Fatalf("created standard switch = %#v", standard)
@@ -101,6 +109,9 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	}
 	if !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
 		t.Fatalf("created bridge = %#v", bridge)
+	}
+	if bridge.Ether != bridgeMACObject.Entries[0].Value {
+		t.Fatalf("created bridge MAC = %q, want %q", bridge.Ether, bridgeMACObject.Entries[0].Value)
 	}
 	if !switchRouteExists(t, route4) {
 		t.Fatalf("route %s was not created for standard switch", route4)
@@ -182,6 +193,37 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	if err := suite.database.First(&networkModels.Object{}, gatewayObject.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("gateway object after delete error = %v, want not found", err)
 	}
+}
+
+func standardSwitchMACObjectName(switchName string) string {
+	return switchName + "-bridge-mac"
+}
+
+func createConsoleStandardSwitchMACObject(
+	t *testing.T,
+	suite *consoleIntegrationSuite,
+	switchName string,
+) networkModels.Object {
+	t.Helper()
+
+	name := standardSwitchMACObjectName(switchName)
+	digest := sha256.Sum256([]byte(name))
+	mac := net.HardwareAddr(digest[:6])
+	mac[0] = (mac[0] | 0x02) & 0xfe
+
+	id, err := suite.network.CreateObject(name, "Mac", []string{mac.String()})
+	if err != nil {
+		t.Fatalf("create Standard Switch MAC object %q: %v", name, err)
+	}
+
+	var object networkModels.Object
+	if err := suite.database.Preload("Entries").First(&object, id).Error; err != nil {
+		t.Fatalf("load Standard Switch MAC object %q: %v", name, err)
+	}
+	if object.Type != "Mac" || len(object.Entries) != 1 || object.Entries[0].Value != mac.String() {
+		t.Fatalf("Standard Switch MAC object = %#v", object)
+	}
+	return object
 }
 
 func cleanupManualSwitch(t *testing.T, suite *consoleIntegrationSuite, name string) {

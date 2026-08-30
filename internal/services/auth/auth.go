@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -54,10 +55,17 @@ func (e *LoginRateLimitError) Error() string {
 }
 
 type Service struct {
-	DB             *gorm.DB
-	passwordHasher passwordHasher
-	loginMu        sync.Mutex
-	loginAttempts  map[string]*loginAttempt
+	DB                    *gorm.DB
+	passwordHasher        passwordHasher
+	loginMu               sync.Mutex
+	loginAttempts         map[string]*loginAttempt
+	clusterIdentityMu     sync.RWMutex
+	clusterIssuerNodeID   string
+	clusterIssuerVerifier func(string) (ClusterIssuerMembership, error)
+}
+
+type ClusterIssuerMembership struct {
+	Suffrage string
 }
 
 type passwordHasher interface {
@@ -96,6 +104,66 @@ func newAuthService(db *gorm.DB, hasher passwordHasher) *Service {
 		DB:             db,
 		passwordHasher: hasher,
 		loginAttempts:  make(map[string]*loginAttempt),
+	}
+}
+
+func (s *Service) SetClusterIssuerNodeID(nodeID string) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("cluster_issuer_node_id_required")
+	}
+	s.clusterIdentityMu.Lock()
+	s.clusterIssuerNodeID = nodeID
+	s.clusterIdentityMu.Unlock()
+	return nil
+}
+
+func (s *Service) SetClusterIssuerVerifier(verifier func(string) (ClusterIssuerMembership, error)) {
+	s.clusterIdentityMu.Lock()
+	s.clusterIssuerVerifier = verifier
+	s.clusterIdentityMu.Unlock()
+}
+
+func (s *Service) AuthorizeClusterIssuer(
+	claims serviceInterfaces.CustomClaims,
+	method string,
+	path string,
+) error {
+	issuerNodeID := strings.TrimSpace(claims.IssuerNodeID)
+	if issuerNodeID == "" {
+		return fmt.Errorf("cluster_token_issuer_required")
+	}
+	s.clusterIdentityMu.RLock()
+	verifier := s.clusterIssuerVerifier
+	s.clusterIdentityMu.RUnlock()
+	if verifier == nil {
+		return fmt.Errorf("cluster_token_issuer_verifier_unavailable")
+	}
+	membership, err := verifier(issuerNodeID)
+	if err != nil {
+		return fmt.Errorf("cluster_token_issuer_not_current: %w", err)
+	}
+	suffrage := strings.ToLower(strings.TrimSpace(membership.Suffrage))
+	switch claims.TokenUse {
+	case ClusterTokenUseUserProxy:
+		if claims.UserID == 0 && !claims.Admin {
+			return nil
+		}
+		if suffrage != "voter" {
+			return fmt.Errorf("cluster_token_issuer_not_voter")
+		}
+		return nil
+	case ClusterTokenUseInternalControl:
+		if suffrage == "voter" {
+			return nil
+		}
+		if (suffrage == "nonvoter" || suffrage == "staging") && method == http.MethodPost &&
+			(path == "/api/intra-cluster/ssh-identity" || path == "/api/intra-cluster/remove-peer") {
+			return nil
+		}
+		return fmt.Errorf("cluster_token_issuer_not_voter")
+	default:
+		return fmt.Errorf("invalid_cluster_token_use")
 	}
 }
 
@@ -380,6 +448,16 @@ func (s *Service) createClusterJWTWithUse(
 	default:
 		return "", fmt.Errorf("invalid_cluster_token_use")
 	}
+	s.clusterIdentityMu.RLock()
+	issuerNodeID := strings.TrimSpace(s.clusterIssuerNodeID)
+	s.clusterIdentityMu.RUnlock()
+	if issuerNodeID == "" {
+		issuerNodeID, err = utils.GetSystemUUID()
+		if err != nil || strings.TrimSpace(issuerNodeID) == "" {
+			return "", fmt.Errorf("cluster_issuer_node_id_unavailable")
+		}
+		issuerNodeID = strings.TrimSpace(issuerNodeID)
+	}
 
 	now := time.Now()
 
@@ -390,11 +468,12 @@ func (s *Service) createClusterJWTWithUse(
 			ID:        uuid.NewString(),
 		},
 		CustomClaims: serviceInterfaces.CustomClaims{
-			UserID:   userId,
-			Username: username,
-			AuthType: authType,
-			TokenUse: tokenUse,
-			Admin:    admin,
+			UserID:       userId,
+			Username:     username,
+			AuthType:     authType,
+			TokenUse:     tokenUse,
+			Admin:        admin,
+			IssuerNodeID: issuerNodeID,
 		},
 	}
 

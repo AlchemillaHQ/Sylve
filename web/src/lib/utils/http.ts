@@ -34,7 +34,7 @@ export type APIRequestOptions = {
 
 export type NodeAPIRequestOptions = Pick<
 	APIRequestOptions,
-	'hostname' | 'signal' | 'preserveErrors'
+	'hostname' | 'signal' | 'preserveErrors' | 'skipAuditLog'
 >;
 
 export type APIDataRequestOptions = Omit<APIRequestOptions, 'raw' | 'preserveErrors'>;

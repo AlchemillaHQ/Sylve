@@ -84,7 +84,7 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			return nil, nil
 		},
 		SetIntentionalStop: func(uint, bool) error { return nil },
-		Start: func(uint) error {
+		Start: func(context.Context, uint) error {
 			active.Store(true)
 			return nil
 		},
@@ -171,7 +171,7 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					intentionalStop = stopped
 					return nil
 				},
-				Start: func(uint) error {
+				Start: func(context.Context, uint) error {
 					starts++
 					active = true
 					return nil
@@ -423,7 +423,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 							return []string{"test-warning"}, nil
 						},
 						SetIntentionalStop: func(uint, bool) error { return nil },
-						Start: func(uint) error {
+						Start: func(context.Context, uint) error {
 							starts++
 							active = true
 							if test.startActivatesWithErr {

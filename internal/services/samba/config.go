@@ -45,6 +45,10 @@ func invalidGlobalConfig(format string, args ...any) error {
 }
 
 const (
+	// MaxRequestBodyBytes bounds JSON request processing while leaving ample room
+	// for administrator-supplied global Samba configuration.
+	MaxRequestBodyBytes int64 = 1 * 1024 * 1024
+
 	sambaACLType    = "nfsv4"
 	sambaACLMode    = "restricted"
 	sambaACLInherit = "passthrough"
@@ -133,7 +137,8 @@ func (s *Service) SetGlobalConfig(
 	interfaces string,
 	bindInterfacesOnly bool,
 	appleExtensions bool,
-	advertiseMdns bool) error {
+	advertiseMdns bool,
+	extraGlobalConfig *string) error {
 	if unixCharset == "" || workgroup == "" || serverString == "" {
 		return invalidGlobalConfig("unixCharset, workgroup, and serverString cannot be empty")
 	}
@@ -192,6 +197,9 @@ func (s *Service) SetGlobalConfig(
 			settings.BindInterfacesOnly = bindInterfacesOnly
 			settings.AppleExtensions = appleExtensions
 			settings.AdvertiseMdns = advertiseMdns
+			if extraGlobalConfig != nil {
+				settings.ExtraGlobalConfig = *extraGlobalConfig
+			}
 
 			if err := tx.Save(&settings).Error; err != nil {
 				return fmt.Errorf("failed to update Samba settings: %w", err)
@@ -566,6 +574,16 @@ func (s *Service) GlobalConfig() (string, error) {
 		config += "ea support = yes\n"
 	}
 	config += "inherit acls = yes\n"
+
+	if settings.ExtraGlobalConfig != "" {
+		// This is an administrator escape hatch. Keep the text opaque here and
+		// let testparm evaluate it as part of the complete generated file.
+		config += "\n# Extra global configuration supplied through Sylve\n"
+		config += settings.ExtraGlobalConfig
+		if !strings.HasSuffix(settings.ExtraGlobalConfig, "\n") {
+			config += "\n"
+		}
+	}
 
 	return config, nil
 }

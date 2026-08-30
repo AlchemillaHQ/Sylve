@@ -89,6 +89,7 @@ func setAppleExtensions(t *testing.T, service *Service, enabled bool) error {
 		true,
 		enabled,
 		true,
+		nil,
 	)
 }
 
@@ -102,6 +103,7 @@ func TestSetGlobalConfigClassifiesInvalidInput(t *testing.T) {
 		false,
 		false,
 		true,
+		nil,
 	)
 	if !errors.Is(err, ErrInvalidGlobalConfig) {
 		t.Fatalf("expected ErrInvalidGlobalConfig, got %v", err)
@@ -136,6 +138,85 @@ func appleExtensionsEnabled(t *testing.T, service *Service) bool {
 		t.Fatalf("failed to load samba settings: %v", err)
 	}
 	return settings.AppleExtensions
+}
+
+func extraGlobalConfigValue(t *testing.T, service *Service) string {
+	t.Helper()
+
+	var settings sambaModels.SambaSettings
+	if err := service.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed to load samba settings: %v", err)
+	}
+	return settings.ExtraGlobalConfig
+}
+
+func setExtraGlobalConfigValue(t *testing.T, service *Service, value string) {
+	t.Helper()
+
+	var settings sambaModels.SambaSettings
+	if err := service.DB.First(&settings).Error; err != nil {
+		t.Fatalf("failed to load samba settings: %v", err)
+	}
+	settings.ExtraGlobalConfig = value
+	if err := service.DB.Save(&settings).Error; err != nil {
+		t.Fatalf("failed to save extra global config: %v", err)
+	}
+}
+
+func TestSetGlobalConfigPreservesExtraGlobalConfigWhenOmitted(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
+
+	const existing = "vfs mkdir use tmp name = no"
+	setExtraGlobalConfigValue(t, service, existing)
+
+	if err := setAppleExtensions(t, service, true); err != nil {
+		t.Fatalf("failed to update Samba configuration: %v", err)
+	}
+	if got := extraGlobalConfigValue(t, service); got != existing {
+		t.Fatalf("extra global config changed when omitted: got %q want %q", got, existing)
+	}
+}
+
+func TestSetGlobalConfigUpdatesAndClearsExtraGlobalConfig(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
+
+	raw := "vfs mkdir use tmp name = no\nworkgroup = EXPERT_OVERRIDE"
+	if err := service.SetGlobalConfig(
+		context.Background(),
+		"UTF-8",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"lo0",
+		true,
+		false,
+		true,
+		&raw,
+	); err != nil {
+		t.Fatalf("failed to update extra global config: %v", err)
+	}
+	if got := extraGlobalConfigValue(t, service); got != raw {
+		t.Fatalf("extra global config was not persisted verbatim: got %q want %q", got, raw)
+	}
+
+	empty := ""
+	if err := service.SetGlobalConfig(
+		context.Background(),
+		"UTF-8",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"lo0",
+		true,
+		false,
+		true,
+		&empty,
+	); err != nil {
+		t.Fatalf("failed to clear extra global config: %v", err)
+	}
+	if got := extraGlobalConfigValue(t, service); got != "" {
+		t.Fatalf("extra global config was not cleared: %q", got)
+	}
 }
 
 func TestSetGlobalConfigEnablesMdnsForAppleTransition(t *testing.T) {
@@ -195,6 +276,7 @@ func TestSetGlobalConfigDisablesOnlyManagedAdvertising(t *testing.T) {
 		true,
 		true,
 		false,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("failed to disable automatic advertising: %v", err)
@@ -257,11 +339,24 @@ func TestSetGlobalConfigRollsBackWhenMdnsEnableFails(t *testing.T) {
 func TestSetGlobalConfigRollsBackWhenConfigWriteFails(t *testing.T) {
 	stubGlobalConfigDependencies(t)
 	service, _ := newAppleMdnsTestService(t, false, []models.AvailableService{models.SambaServer})
+	const existing = "vfs mkdir use tmp name = no"
+	setExtraGlobalConfigValue(t, service, existing)
 	sambaWriteConfig = func(*Service, context.Context, bool) error {
 		return errors.New("testparm failed")
 	}
 
-	if err := setAppleExtensions(t, service, true); err == nil {
+	replacement := "workgroup = SHOULD_ROLL_BACK"
+	if err := service.SetGlobalConfig(
+		context.Background(),
+		"UTF-8",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"lo0",
+		true,
+		true,
+		true,
+		&replacement,
+	); err == nil {
 		t.Fatal("expected Samba config write failure")
 	}
 
@@ -270,6 +365,9 @@ func TestSetGlobalConfigRollsBackWhenConfigWriteFails(t *testing.T) {
 	}
 	if count := mdnsServiceCount(t, service); count != 0 {
 		t.Fatalf("expected mDNS enablement to be rolled back, got %d entries", count)
+	}
+	if got := extraGlobalConfigValue(t, service); got != existing {
+		t.Fatalf("extra global config was not rolled back: got %q want %q", got, existing)
 	}
 }
 

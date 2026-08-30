@@ -34,6 +34,12 @@ func (s *Service) setReplicationStartupReady(ready bool) {
 	s.replicationFenceMu.Unlock()
 }
 
+func (s *Service) replicationStartupIsReady() bool {
+	s.replicationFenceMu.Lock()
+	defer s.replicationFenceMu.Unlock()
+	return s.replicationStartupReady
+}
+
 func (s *Service) localOwnedReplicationPolicyIDs(ctx context.Context, localNodeID string) ([]uint, error) {
 	var policies []clusterModels.ReplicationPolicy
 	if err := s.DB.WithContext(ctx).Where("enabled = ?", true).Find(&policies).Error; err != nil {

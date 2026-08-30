@@ -217,6 +217,12 @@ export function isValidMACAddress(mac: string): boolean {
 	return isMACAddress(mac, { no_colons: false });
 }
 
+export function isValidUnicastMACAddress(mac: string): boolean {
+	if (!isValidMACAddress(mac)) return false;
+	const octets = mac.split(':').map((octet) => Number.parseInt(octet, 16));
+	return (octets[0] & 1) === 0 && octets.some((octet) => octet !== 0);
+}
+
 export function isValidDUID(duid: string): boolean {
 	if (typeof duid !== 'string') return false;
 
@@ -296,8 +302,7 @@ export function generateUnicastMAC() {
 	const mac = new Uint8Array(6);
 	crypto.getRandomValues(mac);
 
-	mac[0] &= 0xfe;
-	mac[0] &= 0xfc;
+	mac[0] = (mac[0] | 0x02) & 0xfe;
 
 	return Array.from(mac)
 		.map((b) => b.toString(16).padStart(2, '0'))

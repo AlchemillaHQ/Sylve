@@ -9,13 +9,13 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -53,7 +53,19 @@ func (s *Service) initRaftTransport(raftIP string) (*raft.NetworkTransport, erro
 		return nil, fmt.Errorf("Could not resolve address: %s", err)
 	}
 
-	t, err := raft.NewTCPTransport(bindAddr, tcpAddr, raftTransportMaxPool, raftTransportTimeout, os.Stdout)
+	if s.addressProvider == nil {
+		s.addressProvider = newRaftAddressProvider()
+	}
+	t, err := raft.NewTCPTransportWithConfig(bindAddr, tcpAddr, &raft.NetworkTransportConfig{
+		ServerAddressProvider: s.addressProvider,
+		MaxPool:               raftTransportMaxPool,
+		Timeout:               raftTransportTimeout,
+		Logger: hclog.New(&hclog.LoggerOptions{
+			Name:   "raft-net",
+			Output: os.Stdout,
+			Level:  hclog.Error,
+		}),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_create_transport: %v", err)
 	}
@@ -74,6 +86,11 @@ func (s *Service) setupRaft(bootstrap bool, fsm raft.FSM) (*raft.Raft, error) {
 }
 
 func (s *Service) setupRaftAtIP(bootstrap bool, fsm raft.FSM, raftIP string) (*raft.Raft, error) {
+	var err error
+	raftIP, err = normalizeClusterIPv4(raftIP, "invalid_ip_address")
+	if err != nil {
+		return nil, err
+	}
 	if fsm == nil {
 		return nil, fmt.Errorf("raft_fsm_required")
 	}
@@ -178,6 +195,14 @@ func hasExistingRaftState(dir string) bool {
 }
 
 func (s *Service) InitRaft(fsm raft.FSM) error {
+	if fsm != nil {
+		s.raftFSM = fsm
+		if dispatcher, ok := fsm.(*clusterModels.FSMDispatcher); ok {
+			s.stateFSM = dispatcher
+		} else {
+			s.stateFSM = nil
+		}
+	}
 	var c clusterModels.Cluster
 	if err := s.DB.First(&c).Error; err != nil {
 		return err
@@ -213,161 +238,36 @@ func (s *Service) InitRaft(fsm raft.FSM) error {
 	return nil
 }
 
-func (s *Service) RemovePeer(id raft.ServerID) error {
-	s.clusterJoinMu.Lock()
-	defer s.clusterJoinMu.Unlock()
-
-	if s.Raft == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-	if s.Raft.State() != raft.Leader {
-		return fmt.Errorf("not_leader")
-	}
-
-	nodeID := strings.TrimSpace(string(id))
-	if nodeID == "" {
-		return fmt.Errorf("peer_node_id_required")
-	}
-	configurationFuture := s.Raft.GetConfiguration()
-	if err := configurationFuture.Error(); err != nil {
-		return fmt.Errorf("failed_to_get_raft_configuration: %w", err)
-	}
-	currentMember := false
-	for _, server := range configurationFuture.Configuration().Servers {
-		if strings.TrimSpace(string(server.ID)) == nodeID {
-			currentMember = true
-			break
-		}
-	}
-	if !currentMember {
-		return nil
-	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
-		return fmt.Errorf("peer_removal_leader_barrier_failed: %w", err)
-	}
-	dependencies, err := s.peerRemovalDependencies(nodeID)
-	if err != nil {
-		return err
-	}
-	if len(dependencies) != 0 {
-		return &PeerRemovalBlockedError{
-			Conflict: PeerRemovalConflict{
-				NodeID:       nodeID,
-				Dependencies: dependencies,
-			},
-		}
-	}
-
-	fut := s.Raft.RemoveServer(id, 0, 8*time.Second)
-
-	if fut.Error() != nil {
-		return fmt.Errorf("failed_to_remove_peer: %v", fut.Error())
-	}
-
-	return nil
-}
-
 func (s *Service) ClearClusterNode(id string) error {
 	return s.DB.Exec("DELETE FROM cluster_nodes WHERE node_uuid = ?", id).Error
 }
 
-func (s *Service) ResetRaftNode() error {
-	if s.Raft == nil {
-		return fmt.Errorf("raft_not_initialized")
-	}
-
-	if s.Raft.State() == raft.Leader {
-		detail := s.Detail()
-		if detail == nil {
-			return fmt.Errorf("unable_to_get_node_detail")
-		}
-
-		cfgFuture := s.Raft.GetConfiguration()
-		if err := cfgFuture.Error(); err != nil {
-			return fmt.Errorf("failed_to_get_raft_configuration: %v", err)
-		}
-
-		for _, server := range cfgFuture.Configuration().Servers {
-			if server.ID != raft.ServerID(detail.NodeID) {
-				return fmt.Errorf("leader_cannot_reset_while_other_nodes_exist")
-			}
-		}
-	}
-
-	if s.Raft.State() != raft.Leader {
-		nodeId := s.Detail().NodeID
-
-		leaderAddr := s.Raft.Leader()
-
-		if leaderAddr == "" {
-			return fmt.Errorf("no_leader_found_manual_reset_required")
-		}
-
-		host, _, err := net.SplitHostPort(string(leaderAddr))
-		if err != nil {
-			return fmt.Errorf("failed_to_split_leader_address: %v", err)
-		}
-
-		hostname, err := utils.GetSystemHostname()
-		if err != nil {
-			return fmt.Errorf("failed_to_get_system_hostname: %v", err)
-		}
-
-		clusterToken, err := s.AuthService.CreateInternalClusterJWT(hostname)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_cluster_token: %v", err)
-		}
-
-		payload := map[string]interface{}{
-			"nodeId": nodeId,
-		}
-
-		headers := map[string]string{
-			"Accept":          "application/json",
-			"Content-Type":    "application/json",
-			"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-		}
-
-		err = utils.HTTPPostJSON(
-			fmt.Sprintf("https://%s/api/intra-cluster/remove-peer", ClusterAPIHost(host)), payload, headers)
-
-		if err != nil {
-			return fmt.Errorf("failed_to_remove_peer_from_leader: %v", err)
-		}
-	}
-
-	if r := s.Raft; r != nil {
-		_ = r.Shutdown().Error()
-		s.Raft = nil
-	}
-
-	if t := s.Transport; t != nil {
-		_ = t.Close()
-		s.Transport = nil
-	}
-
-	if err := s.MarkDeclustered(); err != nil {
-		return err
-	}
-
-	if err := s.ClearClusteredData(); err != nil {
-		return err
-	}
-
-	if err := s.DB.Exec("DELETE FROM cluster_nodes").Error; err != nil {
-		return fmt.Errorf("failed_to_clean_cluster_nodes: %v", err)
-	}
-
-	return s.CleanRaftDir()
-}
-
 func (s *Service) CleanRaftDir() error {
-	raftDir, _ := config.GetRaftPath()
-	err := utils.RemoveDirContents(raftDir)
-
+	raftDir, err := config.GetRaftPath()
 	if err != nil {
+		return fmt.Errorf("failed_to_get_raft_dir: %w", err)
+	}
+	raftDir = filepath.Clean(strings.TrimSpace(raftDir))
+	dataPath, err := config.GetDataPath()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_data_dir: %w", err)
+	}
+	expected := filepath.Join(filepath.Clean(dataPath), "raft")
+	if raftDir == "." || raftDir == string(filepath.Separator) || raftDir != expected {
+		return fmt.Errorf("invalid_raft_dir")
+	}
+	info, err := os.Stat(raftDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed_to_stat_raft_dir: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("raft_path_not_directory")
+	}
+	if err := utils.RemoveDirContents(raftDir); err != nil {
 		return fmt.Errorf("failed_to_clean_raft_dir: %w", err)
 	}
-
 	return nil
 }

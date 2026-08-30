@@ -53,6 +53,18 @@ func isMetadataOnlyUploadAuditPath(path string) bool {
 		path == "/api/utilities/downloader-uploads"
 }
 
+func isClusterLifecycleAuditPath(path string) bool {
+	switch strings.TrimSpace(path) {
+	case "/api/cluster/remove-node",
+		"/api/cluster/remove-node/force",
+		"/api/cluster/reset-node",
+		"/api/cluster/reset-node/force":
+		return true
+	default:
+		return false
+	}
+}
+
 func shouldRedactAuditPayload(path string) bool {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -65,7 +77,9 @@ func shouldRedactAuditPayload(path string) bool {
 		path == "/api/auth/passkeys/register/finish" ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
-		(auditPathMatches(path, "/api/cluster") && !auditPathMatches(path, "/api/cluster/backups"))
+		(auditPathMatches(path, "/api/cluster") &&
+			!auditPathMatches(path, "/api/cluster/backups") &&
+			!isClusterLifecycleAuditPath(path))
 }
 
 func shouldRedactAuditResponse(path string) bool {
@@ -135,6 +149,7 @@ func isSensitiveAuditKey(key string) bool {
 		"sshkey",
 		"credential",
 		"credentials",
+		"extraglobalconfig",
 		"sessiondata",
 		"assertion",
 		"challenge",

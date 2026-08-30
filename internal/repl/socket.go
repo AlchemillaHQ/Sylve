@@ -129,6 +129,54 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 }
 
 func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
+	if req.Operation == "" || !typedSocketOperationRequiresMutation(req.Operation) || ctx == nil || ctx.Cluster == nil {
+		return processSocketRequestAdmitted(ctx, req)
+	}
+	admittedCtx, release, err := ctx.Cluster.EnterMutation(operationContext(ctx))
+	if err != nil {
+		return socketResponse{Error: err.Error()}
+	}
+	defer release()
+	localCtx := *ctx
+	localCtx.mutationContext = admittedCtx
+	return processSocketRequestAdmitted(&localCtx, req)
+}
+
+func typedSocketOperationRequiresMutation(operation string) bool {
+	switch operation {
+	case consoleprotocol.OperationStatus,
+		consoleprotocol.OperationJailList,
+		consoleprotocol.OperationJailGet,
+		consoleprotocol.OperationJailNetworks,
+		consoleprotocol.OperationBootstrapList,
+		consoleprotocol.OperationVMList,
+		consoleprotocol.OperationVMGet,
+		consoleprotocol.OperationVMNetworks,
+		consoleprotocol.OperationVMStorageList,
+		consoleprotocol.OperationVMSnapshotList,
+		consoleprotocol.OperationVMTemplateList,
+		consoleprotocol.OperationVMTemplateGet,
+		consoleprotocol.OperationVMQGAInfo,
+		consoleprotocol.OperationSwitchList,
+		consoleprotocol.OperationObjectList,
+		consoleprotocol.OperationDownloadList,
+		consoleprotocol.OperationNoteList,
+		consoleprotocol.OperationNoteGet,
+		consoleprotocol.OperationTaskListActive,
+		consoleprotocol.OperationTaskListRecent,
+		consoleprotocol.OperationTaskGet,
+		consoleprotocol.OperationDatacenterNoteList,
+		consoleprotocol.OperationDatacenterNoteGet,
+		consoleprotocol.OperationDatacenterClusterStatus,
+		consoleprotocol.OperationDatacenterClusterMembers,
+		consoleprotocol.OperationDatacenterClusterReaddress:
+		return false
+	default:
+		return true
+	}
+}
+
+func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketResponse {
 	if req.Operation != "" {
 		switch req.Operation {
 		case consoleprotocol.OperationStatus:
@@ -291,6 +339,24 @@ func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
 			return processTaskRecentSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationTaskGet:
 			return processTaskGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteList:
+			return processDatacenterNoteListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteGet:
+			return processDatacenterNoteGetSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterNoteAdd:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "create")
+		case consoleprotocol.OperationDatacenterNoteUpdate:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "update")
+		case consoleprotocol.OperationDatacenterNoteDelete:
+			return processDatacenterNoteMutationSocketRequest(ctx, req.Payload, "delete")
+		case consoleprotocol.OperationDatacenterClusterStatus:
+			return processDatacenterClusterStatusSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterMembers:
+			return processDatacenterClusterMembersSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterReaddress:
+			return processDatacenterClusterReaddressSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterRepairAddress:
+			return processDatacenterClusterRepairAddressSocketRequest(ctx, req.Payload)
 		default:
 			return socketResponse{Error: "unknown_operation"}
 		}
