@@ -1633,6 +1633,7 @@ msgstr "Abmelden"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/settings/system/services/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -3354,6 +3355,7 @@ msgstr "Überprüfen"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
@@ -16496,6 +16498,7 @@ msgstr ""
 msgid "{0} {1} {2} from {3} {4}"
 msgstr ""
 
+#: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "U-Boot (Default)"
@@ -17456,6 +17459,7 @@ msgid "The selected {0} {1} currently {2} IP addresses assigned. Continuing will
 msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Applying…"
 msgstr ""
 
@@ -17907,4 +17911,38 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 Default Route"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Failed to determine selected node architecture"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Unable to determine selected node architecture"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Waiting for selected node architecture"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 aliases"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 aliases"
+msgstr ""
+
+#. 0: member
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Sylve could not inspect the effective rc.conf settings for {0}."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Sylve could not inspect current runtime bridge ownership."
+msgstr ""
+
+#. 0: details
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "The selected ports have configuration outside Sylve's managed Standard Switches.<br>{0}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime."
 msgstr ""

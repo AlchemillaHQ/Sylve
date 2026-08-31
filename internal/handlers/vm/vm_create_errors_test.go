@@ -75,6 +75,18 @@ func TestClassifyCreateVMError(t *testing.T) {
 			wantCode:   "vm_create_dependency_not_ready",
 		},
 		{
+			name:       "UEFI is unavailable on arm64",
+			err:        fmt.Errorf("uefi_firmware_not_available_on_arm64"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "uefi_firmware_not_available_on_arm64",
+		},
+		{
+			name:       "U-Boot is unavailable off arm64",
+			err:        fmt.Errorf("uboot_only_available_on_arm64"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "uboot_only_available_on_arm64",
+		},
+		{
 			name:       "libvirt domain already exists maps to vm id exists",
 			err:        fmt.Errorf("failed_to_create_lv_vm: failed to define VM domain: domain '801' already exists"),
 			wantStatus: http.StatusConflict,

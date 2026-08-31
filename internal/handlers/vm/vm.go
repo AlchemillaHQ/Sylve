@@ -154,6 +154,8 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"storage_size_greater_than_available":              {},
 	"switch_not_found":                                 {},
 	"unsupported_download_type":                        {},
+	"uboot_only_available_on_arm64":                    {},
+	"uefi_firmware_not_available_on_arm64":             {},
 	"vnc_password_cannot_contain_commas":               {},
 	"vnc_password_required":                            {},
 	"vnc_port_must_be_between_1_and_65535":             {},

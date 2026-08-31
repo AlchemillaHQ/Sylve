@@ -182,6 +182,10 @@ const vmCreateErrorMessageByCode: Record<string, string> = {
 	iso_or_image_not_found: 'Selected ISO/image could not be found or resolved on disk',
 	unsupported_download_type:
 		'Selected media source type is unsupported. Re-import the image as HTTP/path/torrent download',
+	uboot_only_available_on_arm64:
+		'U-Boot firmware is only available on ARM64 nodes. Select UEFI or None',
+	uefi_firmware_not_available_on_arm64:
+		'UEFI firmware is not available on ARM64 nodes. Select U-Boot or None',
 	mac_object_already_in_use: 'Selected MAC object is already in use by another guest',
 	media_not_cloud_init_capable: 'Selected media is not marked as cloud-init capable',
 	no_emulation_type_selected: 'No storage emulation type selected',

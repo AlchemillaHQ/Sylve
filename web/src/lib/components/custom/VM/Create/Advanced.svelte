@@ -14,6 +14,8 @@
 	import { resource, watch } from 'runed';
 	import { getTemplates } from '$lib/api/utilities/cloud-init';
 	import type { CloudInitTemplate } from '$lib/types/utilities/cloud-init';
+	import type { Architecture } from '$lib/types/info/cpu';
+	import type { VMBootRom } from '$lib/types/vm/vm';
 	import { resolutions } from '$lib/utils/vm/vnc';
 	import {
 		handleAPIError,
@@ -24,6 +26,7 @@
 
 	interface Props {
 		node: string;
+		architecture: Architecture | undefined;
 		vncEnabled: boolean;
 		serial: boolean;
 		vncPort: number;
@@ -35,7 +38,7 @@
 		bootOrder: number;
 		tpmEmulation: boolean;
 		timeOffset: 'utc' | 'localtime';
-		bootRom: 'uefi' | 'none';
+		bootRom: VMBootRom;
 		cloudInit: {
 			enabled: boolean;
 			data: string;
@@ -50,6 +53,7 @@
 
 	let {
 		node,
+		architecture,
 		vncEnabled = $bindable(),
 		serial = $bindable(),
 		vncPort = $bindable(),
@@ -80,10 +84,17 @@
 		{ label: 'UTC', value: 'utc' },
 		{ label: 'Local Time', value: 'localtime' }
 	];
-	const bootRoms = [
-		{ label: 'UEFI (Default)', value: 'uefi' },
-		{ label: 'None', value: 'none' }
-	];
+	let bootRoms = $derived(
+		architecture === 'arm64'
+			? [
+					{ label: 'U-Boot (Default)', value: 'uboot' },
+					{ label: 'None', value: 'none' }
+				]
+			: [
+					{ label: 'UEFI (Default)', value: 'uefi' },
+					{ label: 'None', value: 'none' }
+				]
+	);
 
 	let resolutionOpen = $state(false);
 
@@ -215,6 +226,7 @@
 			placeholder="Select Boot ROM"
 			triggerWidth="w-full"
 			width="w-full"
+			disabled={!architecture}
 		></ComboBox>
 
 		<ComboBox

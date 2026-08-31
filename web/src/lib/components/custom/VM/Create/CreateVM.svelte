@@ -28,7 +28,9 @@
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings';
+	import { getCPUInfoResult } from '$lib/api/info/cpu';
 	import type { BasicSettings } from '$lib/types/system/settings';
+	import type { Architecture } from '$lib/types/info/cpu';
 	import { type CPUPin, type CreateData, type VMBootRom } from '$lib/types/vm/vm';
 	import {
 		handleAPIError,
@@ -50,16 +52,11 @@
 		minimize: boolean;
 	}
 
-	type CreateBootRom = Exclude<VMBootRom, 'uboot'>;
-	type CreateVMFormData = Omit<CreateData, 'advanced'> & {
-		advanced: Omit<CreateData['advanced'], 'bootRom'> & { bootRom: CreateBootRom };
-	};
-
 	let { open = $bindable(), minimize = $bindable() }: Props = $props();
 
 	const defaultDemoProfile = demoVMProfiles[0];
 	// @wc-ignore
-	let options: CreateVMFormData = {
+	let options: CreateData = {
 		name: '',
 		id: 0,
 		description: isDemoMode ? defaultDemoProfile.description : '',
@@ -111,7 +108,7 @@
 		}
 	};
 
-	let modal: CreateVMFormData = $state(options);
+	let modal: CreateData = $state(options);
 	let demoProfileId = $state(defaultDemoProfile.id);
 	const emptyBasicSettings: BasicSettings = { pools: [], services: [], initialized: false };
 	let lastGoodNetworkSwitches = emptySwitchList();
@@ -242,6 +239,55 @@
 		{ initialValue: emptyBasicSettings }
 	);
 
+	type NodeArchitecture = {
+		node: string;
+		architecture: Architecture;
+	};
+
+	const nodeArchitecture = resource(
+		() => modal.node || '__default__',
+		async (selectedNode, _previousNode, { signal }): Promise<NodeArchitecture | null> => {
+			const hostname = selectedNode === '__default__' ? undefined : selectedNode;
+			try {
+				const result = await getCPUInfoResult({ hostname, signal });
+				if (isAPIResponse(result)) {
+					handleAPIError(result);
+					return null;
+				}
+
+				return { node: selectedNode, architecture: result.architecture };
+			} catch (error) {
+				if (isRequestCancellation(error)) return null;
+				toast.error('Failed to determine selected node architecture', {
+					position: 'bottom-center'
+				});
+				return null;
+			}
+		},
+		{ initialValue: null as NodeArchitecture | null }
+	);
+
+	let selectedNodeArchitecture = $derived.by((): Architecture | undefined => {
+		const selectedNode = modal.node || '__default__';
+		return nodeArchitecture.current?.node === selectedNode
+			? nodeArchitecture.current.architecture
+			: undefined;
+	});
+
+	function reconcileBootROM(architecture: Architecture | undefined) {
+		if (!architecture || modal.advanced.bootRom === 'none') return;
+
+		const defaultBootROM: VMBootRom = architecture === 'arm64' ? 'uboot' : 'uefi';
+		if (modal.advanced.bootRom !== defaultBootROM) {
+			modal.advanced.bootRom = defaultBootROM;
+		}
+	}
+
+	watch(
+		() => selectedNodeArchitecture,
+		(architecture) => reconcileBootROM(architecture)
+	);
+
 	watch([() => open, () => minimize], ([open, minimize]) => {
 		if (open && !minimize) {
 			networkObjects.refetch();
@@ -253,6 +299,7 @@
 			jails.refetch();
 			clusterNodes.refetch();
 			basicSettings.refetch();
+			nodeArchitecture.refetch();
 		}
 	});
 
@@ -342,6 +389,13 @@
 	);
 
 	async function create() {
+		if (!isDemoMode && !selectedNodeArchitecture) {
+			toast.error('Unable to determine selected node architecture', {
+				position: 'bottom-center'
+			});
+			return;
+		}
+
 		const data: CreateData = $state.snapshot(modal);
 		if (!isValidCreateData(data, downloadsByUtype.current || [])) return;
 
@@ -369,6 +423,7 @@
 
 	function resetModal() {
 		modal = options;
+		reconcileBootROM(selectedNodeArchitecture);
 		if (isDemoMode) {
 			demoProfileId = defaultDemoProfile.id;
 			selectDemoProfile(defaultDemoProfile);
@@ -514,6 +569,7 @@
 									<div in:fade={{ duration: 200 }}>
 										<Advanced
 											node={modal.node}
+											architecture={selectedNodeArchitecture}
 											bind:vncEnabled={modal.advanced.vncEnabled}
 											bind:serial={modal.advanced.serial}
 											bind:vncPort={modal.advanced.vncPort}
@@ -543,7 +599,16 @@
 
 		<Dialog.Footer>
 			<div class="flex w-full justify-end md:flex-row">
-				<Button size="sm" type="button" class="h-8" onclick={() => create()} disabled={loading}>
+				<Button
+					size="sm"
+					type="button"
+					class="h-8"
+					onclick={() => create()}
+					disabled={loading || (!isDemoMode && !selectedNodeArchitecture)}
+					title={!isDemoMode && !selectedNodeArchitecture
+						? 'Waiting for selected node architecture'
+						: undefined}
+				>
 					{#if loading}
 						<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
 					{:else}
