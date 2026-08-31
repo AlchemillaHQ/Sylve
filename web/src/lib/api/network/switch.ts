@@ -56,8 +56,10 @@ export async function createSwitch(
 	slaac: boolean,
 	dhcp: boolean,
 	defaultRoute: boolean,
+	defaultRoute6: boolean,
 	disableBridgeOffloads: boolean,
-	manual: SwitchManualAddresses = emptyManualAddresses
+	manual: SwitchManualAddresses = emptyManualAddresses,
+	confirmRCConflicts = false
 ): Promise<number | APIResponse> {
 	const body = {
 		name,
@@ -74,7 +76,9 @@ export async function createSwitch(
 		disableIPv6,
 		slaac,
 		defaultRoute,
+		defaultRoute6,
 		disableBridgeOffloads,
+		confirmRCConflicts,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,
@@ -103,8 +107,10 @@ export async function updateSwitch(
 	slaac: boolean,
 	dhcp: boolean,
 	defaultRoute: boolean,
+	defaultRoute6: boolean,
 	disableBridgeOffloads: boolean,
-	manual: SwitchManualAddresses = emptyManualAddresses
+	manual: SwitchManualAddresses = emptyManualAddresses,
+	confirmRCConflicts = false
 ): Promise<APIResponse> {
 	const body = {
 		mtu,
@@ -120,7 +126,9 @@ export async function updateSwitch(
 		slaac,
 		dhcp,
 		defaultRoute,
+		defaultRoute6,
 		disableBridgeOffloads,
+		confirmRCConflicts,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,

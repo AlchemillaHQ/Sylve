@@ -47,6 +47,7 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 		DisableIPv6:           input.disableIPv6,
 		SLAAC:                 input.slaac,
 		DefaultRoute:          input.defaultRoute,
+		DefaultRoute6:         input.defaultRoute6,
 		DisableBridgeOffloads: input.disableBridgeOffloads,
 		NetworkManual:         input.manual.Network4,
 		GatewayManual:         input.manual.Gateway4,

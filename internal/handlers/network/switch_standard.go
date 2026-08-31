@@ -37,8 +37,10 @@ type CreateStandardSwitchRequest struct {
 	SLAAC                 *bool                                 `json:"slaac"`
 	Private               *bool                                 `json:"private" binding:"required"`
 	DefaultRoute          *bool                                 `json:"defaultRoute"`
+	DefaultRoute6         *bool                                 `json:"defaultRoute6"`
 	DisableBridgeOffloads *bool                                 `json:"disableBridgeOffloads"`
 	DHCP                  *bool                                 `json:"dhcp"`
+	ConfirmRCConflicts    *bool                                 `json:"confirmRCConflicts"`
 	Ports                 []string                              `json:"ports"`
 	BridgeMAC             networkModels.StandardSwitchMACSource `json:"bridgeMac"`
 }
@@ -60,7 +62,9 @@ type UpdateStandardSwitchRequest struct {
 	Ports                 []string                              `json:"ports"`
 	DHCP                  *bool                                 `json:"dhcp"`
 	DefaultRoute          *bool                                 `json:"defaultRoute"`
+	DefaultRoute6         *bool                                 `json:"defaultRoute6"`
 	DisableBridgeOffloads *bool                                 `json:"disableBridgeOffloads"`
+	ConfirmRCConflicts    *bool                                 `json:"confirmRCConflicts"`
 	BridgeMAC             networkModels.StandardSwitchMACSource `json:"bridgeMac"`
 }
 
@@ -129,6 +133,15 @@ func writeStandardSwitchError(c *gin.Context, message string, err error) {
 	})
 }
 
+func writeStandardSwitchRCConflictConfirmation(c *gin.Context, conflicts []network.StandardSwitchRCConflict) {
+	c.JSON(http.StatusConflict, internal.APIResponse[[]network.StandardSwitchRCConflict]{
+		Status:  "error",
+		Message: "standard_switch_rc_conflicts_require_confirmation",
+		Error:   "standard_switch_rc_conflicts_require_confirmation",
+		Data:    conflicts,
+	})
+}
+
 func optionalInt(value *int) int {
 	if value == nil {
 		return 0
@@ -188,6 +201,18 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			return
 		}
 
+		conflicts, err := networkService.StandardSwitchRCConflicts(
+			0, request.Name, optionalInt(request.VLAN), request.Ports,
+		)
+		if err != nil {
+			writeStandardSwitchError(c, "failed_to_create_switch", err)
+			return
+		}
+		if len(conflicts) > 0 && !optionalBool(request.ConfirmRCConflicts) {
+			writeStandardSwitchRCConflictConfirmation(c, conflicts)
+			return
+		}
+
 		id, err := networkService.NewStandardSwitch(request.Name,
 			optionalInt(request.MTU),
 			optionalInt(request.VLAN),
@@ -202,6 +227,7 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			optionalBool(request.DisableIPv6),
 			optionalBool(request.SLAAC),
 			optionalBool(request.DefaultRoute),
+			optionalBool(request.DefaultRoute6),
 			optionalBool(request.DisableBridgeOffloads),
 			standardSwitchManualAddresses(
 				request.Network4Manual,
@@ -289,7 +315,29 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		err := networkService.EditStandardSwitch(
+		conflicts, err := networkService.StandardSwitchRCConflicts(
+			id, "", optionalInt(request.VLAN), request.Ports,
+		)
+		if err != nil {
+			writeStandardSwitchError(c, "failed_to_update_switch", err)
+			return
+		}
+		if len(conflicts) > 0 && !optionalBool(request.ConfirmRCConflicts) {
+			writeStandardSwitchRCConflictConfirmation(c, conflicts)
+			return
+		}
+
+		defaultRoute6 := optionalBool(request.DefaultRoute6)
+		if request.DefaultRoute6 == nil {
+			existing, err := networkService.GetStandardSwitch(id)
+			if err != nil {
+				writeStandardSwitchError(c, "failed_to_update_switch", err)
+				return
+			}
+			defaultRoute6 = existing.DefaultRoute6
+		}
+
+		err = networkService.EditStandardSwitch(
 			id,
 			optionalInt(request.MTU),
 			optionalInt(request.VLAN),
@@ -304,6 +352,7 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			optionalBool(request.DisableIPv6),
 			optionalBool(request.SLAAC),
 			optionalBool(request.DefaultRoute),
+			defaultRoute6,
 			optionalBool(request.DisableBridgeOffloads),
 			standardSwitchManualAddresses(
 				request.Network4Manual,

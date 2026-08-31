@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -24,6 +25,9 @@ import (
 
 type syncStubSet struct {
 	ifaceGet                func(string) (*iface.Interface, error)
+	inspectRCModes          func(string) (standardSwitchMemberRCModes, error)
+	solicitRouter           func(string) error
+	setSysctlInt32          func(string, int32) error
 	createBridge            func(networkModels.StandardSwitch) error
 	editBridge              func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
 	deleteBridge            func(networkModels.StandardSwitch) error
@@ -84,6 +88,9 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	t.Helper()
 
 	origIfaceGet := syncIfaceGet
+	origInspectRCModes := syncInspectStandardSwitchRCModes
+	origSolicitRouter := syncSolicitRouterAdvertisement
+	origSetSysctlInt32 := syncSetSysctlInt32
 	origCreate := syncCreateBridge
 	origEdit := syncEditBridge
 	origDelete := syncDeleteBridge
@@ -93,6 +100,9 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origStopDhclient := syncStopDhclient
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
+		syncInspectStandardSwitchRCModes = origInspectRCModes
+		syncSolicitRouterAdvertisement = origSolicitRouter
+		syncSetSysctlInt32 = origSetSysctlInt32
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
 		syncDeleteBridge = origDelete
@@ -101,6 +111,22 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 		syncRunCommandWithContext = origRunWithContext
 		syncStopDhclient = origStopDhclient
 	})
+	syncInspectStandardSwitchRCModes = func(string) (standardSwitchMemberRCModes, error) {
+		return standardSwitchMemberRCModes{}, nil
+	}
+	if stubs.inspectRCModes != nil {
+		syncInspectStandardSwitchRCModes = stubs.inspectRCModes
+	}
+	syncSolicitRouterAdvertisement = func(string) error {
+		return nil
+	}
+	if stubs.solicitRouter != nil {
+		syncSolicitRouterAdvertisement = stubs.solicitRouter
+	}
+	syncSetSysctlInt32 = func(string, int32) error { return nil }
+	if stubs.setSysctlInt32 != nil {
+		syncSetSysctlInt32 = stubs.setSysctlInt32
+	}
 
 	simulatedInterfaces := map[string]*iface.Interface{}
 	macOverrides := map[string]string{}
@@ -175,10 +201,14 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 func useTestDhclientRuntimeDir(t *testing.T) string {
 	t.Helper()
 
-	original := dhclientRuntimeDir
-	dhclientRuntimeDir = filepath.Join(t.TempDir(), "dhclient")
+	originalRuntimeDir := dhclientRuntimeDir
+	originalSystemConfigPath := dhclientSystemConfigPath
+	testRoot := t.TempDir()
+	dhclientRuntimeDir = filepath.Join(testRoot, "dhclient")
+	dhclientSystemConfigPath = filepath.Join(testRoot, "dhclient.conf")
 	t.Cleanup(func() {
-		dhclientRuntimeDir = original
+		dhclientRuntimeDir = originalRuntimeDir
+		dhclientSystemConfigPath = originalSystemConfigPath
 	})
 	return dhclientRuntimeDir
 }
@@ -497,6 +527,7 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err == nil {
@@ -524,6 +555,7 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 		0,
 		[]string{"em0"},
 		createTestStandardSwitchMACSource(t, svc),
+		false,
 		false,
 		false,
 		false,
@@ -572,6 +604,7 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		0,
 		[]string{"em0"},
 		createTestStandardSwitchMACSource(t, svc),
+		false,
 		false,
 		false,
 		false,
@@ -1371,7 +1404,7 @@ func TestRunDhclientRecognizesLegacyBoundClientWithoutPIDFile(t *testing.T) {
 		},
 	})
 
-	if err := runDhclient("vm-legacy", 10); err != nil {
+	if err := runDhclient("vm-legacy", 10, true); err != nil {
 		t.Fatalf("recognize legacy dhclient: %v", err)
 	}
 }
@@ -1739,7 +1772,7 @@ func TestEditStandardBridgeDisablesIPv6WhenFlagFlipsTrue(t *testing.T) {
 		if cmd == "/sbin/route -6 delete -net 2001:db8:2::1/64 2001:db8:2::ff" {
 			sawDelRoute = true
 		}
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 -accept_rtadv ifdisabled" {
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 no_radr -accept_rtadv ifdisabled" {
 			sawIfDisabled = true
 		}
 	}
@@ -1993,6 +2026,7 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		true,
 		networkModels.StandardSwitchManualAddresses{
 			Network4: "10.81.0.254/24",
@@ -2062,6 +2096,7 @@ func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
 	)
 	if err == nil {
@@ -2114,6 +2149,7 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 		0,
 		[]string{},
 		createTestStandardSwitchMACSource(t, svc),
+		false,
 		false,
 		false,
 		false,
@@ -2183,6 +2219,7 @@ func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
 		0,
 		[]string{},
 		createTestStandardSwitchMACSource(t, svc),
+		false,
 		false,
 		false,
 		false,
@@ -2362,6 +2399,7 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 		false,
 		false,
 		false,
+		false,
 		true,
 		networkModels.StandardSwitchManualAddresses{},
 	)
@@ -2450,6 +2488,7 @@ func TestEditStandardSwitchRollsBackDatabaseAndRestoresRuntime(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		true,
 		networkModels.StandardSwitchManualAddresses{},
 	)
@@ -2522,6 +2561,7 @@ func TestEditStandardSwitchCreatesUpdatedRuntimeWhenBridgeIsMissing(t *testing.T
 		true,
 		false,
 		false,
+		false,
 		true,
 		networkModels.StandardSwitchManualAddresses{},
 	)
@@ -2592,6 +2632,7 @@ func TestEditStandardSwitchMissingRuntimeFailureRestoresPreviousWithoutDelete(t 
 		false,
 		false,
 		true,
+		false,
 		false,
 		false,
 		true,
@@ -3110,7 +3151,7 @@ func TestRunDhclientRestartsRunningClientWithoutAddress(t *testing.T) {
 		},
 	})
 
-	if err := runDhclient("vm-unbound", 10); err != nil {
+	if err := runDhclient("vm-unbound", 10, true); err != nil {
 		t.Fatalf("restart unbound dhclient: %v", err)
 	}
 	if stopSignals != 1 {
@@ -3155,6 +3196,7 @@ func TestNewStandardSwitchPersistsSelectedPortMACSource(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		networkModels.StandardSwitchManualAddresses{},
 	)
 	if err != nil {
@@ -3170,5 +3212,662 @@ func TestNewStandardSwitchPersistsSelectedPortMACSource(t *testing.T) {
 	}
 	if len(stored.Ports) != 1 || stored.Ports[0].Name != "em0" {
 		t.Fatalf("selected port not persisted with MAC source: %+v", stored.Ports)
+	}
+}
+
+func TestSolicitStandardSwitchRouterAdvertisementUsesBoundedImmediateRTSol(t *testing.T) {
+	stubSyncFunctions(t, syncStubSet{
+		runCommandWithContext: func(ctx context.Context, command string, args ...string) (string, error) {
+			if _, bounded := ctx.Deadline(); !bounded {
+				t.Fatal("router solicitation context must have a deadline")
+			}
+			if command != "/sbin/rtsol" {
+				t.Fatalf("router solicitation command = %q, want /sbin/rtsol", command)
+			}
+			if got := strings.Join(args, " "); got != "-i vm-slaac" {
+				t.Fatalf("router solicitation arguments = %q, want %q", got, "-i vm-slaac")
+			}
+			return "", nil
+		},
+	})
+
+	if err := solicitStandardSwitchRouterAdvertisement("vm-slaac"); err != nil {
+		t.Fatalf("solicit router advertisement: %v", err)
+	}
+}
+
+func TestCreateStandardBridgeSLAACAcceptsDefaultRouterAndSolicitsAfterAttach(t *testing.T) {
+	operations := make([]string, 0)
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge401\n", nil
+			}
+			return "", nil
+		},
+		stopDhclient: func(string) error { return nil },
+		solicitRouter: func(bridge string) error {
+			operations = append(operations, "/sbin/rtsol -i "+bridge)
+			return errors.New("no router advertisement received")
+		},
+	})
+
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "slaac-create",
+		BridgeName:    "vm-slaac-create",
+		MTU:           1500,
+		SLAAC:         true,
+		DefaultRoute6: true,
+		Ports:         []networkModels.NetworkPort{{Name: "em0"}},
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create SLAAC standard switch: %v", err)
+	}
+
+	enable := "/sbin/ifconfig vm-slaac-create inet6 auto_linklocal -ifdisabled -no_radr accept_rtadv"
+	if commandIndex(operations, enable) == -1 {
+		t.Fatalf("SLAAC did not explicitly accept default routers: %v", operations)
+	}
+	memberUp := commandIndex(operations, "/sbin/ifconfig em0 up")
+	solicit := commandIndex(operations, "/sbin/rtsol -i vm-slaac-create")
+	if memberUp == -1 || solicit <= memberUp {
+		t.Fatalf("router solicitation must follow member activation: %v", operations)
+	}
+}
+
+func TestEditStandardBridgeSLAACAcceptsDefaultRouterAndSolicitsAfterBridgeUp(t *testing.T) {
+	operations := make([]string, 0)
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			operations = append(operations, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+		solicitRouter: func(bridge string) error {
+			operations = append(operations, "/sbin/rtsol -i "+bridge)
+			return nil
+		},
+	})
+
+	oldSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:       "slaac-edit-old",
+		BridgeName: "vm-slaac-edit",
+	})
+	newSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "slaac-edit-new",
+		BridgeName:    "vm-slaac-edit",
+		SLAAC:         true,
+		DefaultRoute6: true,
+	})
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("edit SLAAC standard switch: %v", err)
+	}
+
+	enable := "/sbin/ifconfig vm-slaac-edit inet6 auto_linklocal -ifdisabled -no_radr accept_rtadv"
+	if commandIndex(operations, enable) == -1 {
+		t.Fatalf("SLAAC edit did not explicitly accept default routers: %v", operations)
+	}
+	bridgeUp := commandIndex(operations, "/sbin/ifconfig vm-slaac-edit up")
+	solicit := commandIndex(operations, "/sbin/rtsol -i vm-slaac-edit")
+	if bridgeUp == -1 || solicit <= bridgeUp {
+		t.Fatalf("router solicitation must follow bridge activation: %v", operations)
+	}
+}
+func TestValidateStandardSwitchRouteOwnership(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    standardSwitchInput
+		existing *networkModels.StandardSwitch
+		wantCode string
+	}{
+		{
+			name:  "DHCP may own the IPv4 default route",
+			input: standardSwitchInput{dhcp: true, defaultRoute: true},
+		},
+		{
+			name:  "SLAAC may own the IPv6 default route",
+			input: standardSwitchInput{slaac: true, defaultRoute6: true},
+		},
+		{
+			name: "static IPv6 may own the IPv6 default route",
+			input: standardSwitchInput{
+				defaultRoute6: true,
+				manual: networkModels.StandardSwitchManualAddresses{
+					Network6: "2001:db8::10/64",
+					Gateway6: "2001:db8::1",
+				},
+			},
+		},
+		{
+			name:     "static IPv6 ownership requires a gateway",
+			input:    standardSwitchInput{defaultRoute6: true},
+			wantCode: "standard_switch_default_route6_requires_ipv6_gateway",
+		},
+		{
+			name:     "disabled IPv6 cannot own a default route",
+			input:    standardSwitchInput{disableIPv6: true, defaultRoute6: true},
+			wantCode: "standard_switch_ipv6_default_route_requires_ipv6",
+		},
+		{
+			name:     "IPv4 owner must be unique",
+			input:    standardSwitchInput{dhcp: true, defaultRoute: true},
+			existing: &networkModels.StandardSwitch{DefaultRoute: true},
+			wantCode: "standard_switch_default_route_conflict",
+		},
+		{
+			name:     "IPv6 owner must be unique",
+			input:    standardSwitchInput{slaac: true, defaultRoute6: true},
+			existing: &networkModels.StandardSwitch{DefaultRoute6: true},
+			wantCode: "standard_switch_default_route6_conflict",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := newNetworkServiceForTest(
+				t,
+				&networkModels.StandardSwitch{},
+				&networkModels.Object{},
+				&networkModels.ObjectEntry{},
+			)
+			test.input.macSource = createTestStandardSwitchMACSource(t, svc)
+			if test.existing != nil {
+				if err := db.Create(test.existing).Error; err != nil {
+					t.Fatalf("seed existing route owner: %v", err)
+				}
+			}
+
+			_, err := svc.validateStandardSwitchInput(0, "vm-route-owner", test.input)
+			if test.wantCode == "" {
+				if err != nil {
+					t.Fatalf("validate route owner: %v", err)
+				}
+				return
+			}
+			if err == nil || StandardSwitchErrorCode(err) != test.wantCode {
+				t.Fatalf("validation error=%v code=%q, want %q", err, StandardSwitchErrorCode(err), test.wantCode)
+			}
+		})
+	}
+}
+
+func TestRunDhclientWithoutRouteOwnershipUsesScopedConfig(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/route -n get default" {
+				return "gateway: 192.0.2.1\ninterface: vm-secondary\n", nil
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(string, []int, ...string) (string, error) {
+			return "", nil
+		},
+		runCommandWithContext: func(_ context.Context, command string, args ...string) (string, error) {
+			operations = append(operations, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := runDhclient("vm-secondary", 10, false); err != nil {
+		t.Fatalf("start non-owner dhclient: %v", err)
+	}
+
+	configPath := dhclientConfigPath("vm-secondary")
+	contents, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read non-owner dhclient config: %v", err)
+	}
+	if got := string(contents); got != dhclientNoDefaultRouteConfig {
+		t.Fatalf("dhclient config=%q want %q", got, dhclientNoDefaultRouteConfig)
+	}
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("stat non-owner dhclient config: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("dhclient config permissions=%#o want 0600", got)
+	}
+
+	remove := commandIndex(operations, "/sbin/route delete default 192.0.2.1")
+	launch := commandIndex(
+		operations,
+		"/sbin/dhclient -b -p "+dhclientPIDPath("vm-secondary")+
+			" -c "+configPath+" vm-secondary",
+	)
+	if remove == -1 || launch <= remove {
+		t.Fatalf("non-owner route must be removed before dhclient launch: %v", operations)
+	}
+}
+
+func TestRunDhclientRestartsWhenRouteOwnershipChanges(t *testing.T) {
+	runtimeDir := useTestDhclientRuntimeDir(t)
+	skipDhclientNaturalExitGrace(t)
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatalf("create dhclient runtime directory: %v", err)
+	}
+	if err := os.WriteFile(
+		dhclientConfigPath("vm-policy-change"),
+		[]byte(dhclientNoDefaultRouteConfig),
+		0o600,
+	); err != nil {
+		t.Fatalf("seed non-owner dhclient config: %v", err)
+	}
+
+	running := true
+	stopSignals := 0
+	var launches []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name: name,
+				IPv4: []iface.IPv4{{IP: net.ParseIP("192.0.2.20")}},
+			}, nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, _ ...string) (string, error) {
+			switch command {
+			case "/bin/pgrep":
+				if running {
+					return "3172\n", nil
+				}
+			case "/bin/pkill":
+				stopSignals++
+				running = false
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(_ context.Context, command string, args ...string) (string, error) {
+			launches = append(launches, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := runDhclient("vm-policy-change", 10, true); err != nil {
+		t.Fatalf("change dhclient route ownership: %v", err)
+	}
+	if stopSignals != 1 {
+		t.Fatalf("dhclient stop signals=%d want 1", stopSignals)
+	}
+	if _, err := os.Stat(dhclientConfigPath("vm-policy-change")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("non-owner config still exists after owner transition: %v", err)
+	}
+	want := "/sbin/dhclient -b -p " + dhclientPIDPath("vm-policy-change") + " vm-policy-change"
+	if len(launches) != 1 || launches[0] != want {
+		t.Fatalf("dhclient launches=%v want [%q]", launches, want)
+	}
+}
+
+func TestCreateStandardBridgeSLAACNonOwnerDoesNotAcceptDefaultRouter(t *testing.T) {
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge402\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:       "slaac-non-owner",
+		BridgeName: "vm-slaac-non-owner",
+		MTU:        1500,
+		SLAAC:      true,
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create non-owner SLAAC switch: %v", err)
+	}
+
+	disableDefault := "/sbin/ifconfig vm-slaac-non-owner inet6 auto_linklocal -ifdisabled no_radr accept_rtadv"
+	if commandIndex(operations, disableDefault) == -1 {
+		t.Fatalf("SLAAC non-owner did not suppress default routers: %v", operations)
+	}
+	for _, operation := range operations {
+		if strings.Contains(operation, " -no_radr ") {
+			t.Fatalf("SLAAC non-owner accepted default routers: %v", operations)
+		}
+	}
+}
+
+func TestEditStandardBridgeSLAACOwnerToNonOwnerRemovesDefaultRoute(t *testing.T) {
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/route -6 -n get default" {
+				return "gateway: fe80::1%vm-slaac-change\ninterface: vm-slaac-change\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	oldSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "slaac-owner",
+		BridgeName:    "vm-slaac-change",
+		SLAAC:         true,
+		DefaultRoute6: true,
+	})
+	newSw := oldSw
+	newSw.Name = "slaac-non-owner"
+	newSw.DefaultRoute6 = false
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("remove SLAAC route ownership: %v", err)
+	}
+	if commandIndex(
+		operations,
+		"/sbin/route -6 delete default fe80::1%vm-slaac-change",
+	) == -1 {
+		t.Fatalf("old SLAAC default route was not removed: %v", operations)
+	}
+}
+
+func TestCreateStandardBridgeInstallsStaticIPv6DefaultRoute(t *testing.T) {
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/ifconfig bridge create" {
+				return "bridge403\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:           "static-ipv6-owner",
+		BridgeName:     "vm-static-ipv6",
+		MTU:            1500,
+		Network6Manual: "2001:db8::10/64",
+		Gateway6Manual: "2001:db8::1",
+		DefaultRoute6:  true,
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create static IPv6 route owner: %v", err)
+	}
+	if commandIndex(operations, "/sbin/route -6 add default 2001:db8::1") == -1 {
+		t.Fatalf("static IPv6 default route was not installed: %v", operations)
+	}
+}
+func TestEditStandardBridgeSLAACOwnerToStaticOwnerReplacesDefaultRoute(t *testing.T) {
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/route -6 -n get default" {
+				return "gateway: fe80::1%vm-slaac-static\ninterface: vm-slaac-static\n", nil
+			}
+			return "", nil
+		},
+	})
+
+	oldSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "slaac-owner",
+		BridgeName:    "vm-slaac-static",
+		SLAAC:         true,
+		DefaultRoute6: true,
+	})
+	newSw := oldSw
+	newSw.Name = "static-owner"
+	newSw.SLAAC = false
+	newSw.Network6Manual = "2001:db8::10/64"
+	newSw.Gateway6Manual = "2001:db8::1"
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("replace SLAAC default route with static route: %v", err)
+	}
+	remove := commandIndex(
+		operations,
+		"/sbin/route -6 delete default fe80::1%vm-slaac-static",
+	)
+	add := commandIndex(operations, "/sbin/route -6 add default 2001:db8::1")
+	if remove == -1 || add <= remove {
+		t.Fatalf("SLAAC default route must be removed before static replacement: %v", operations)
+	}
+}
+func TestRunDhclientBoundNonOwnerRemovesDriftedDefaultWithoutRestart(t *testing.T) {
+	runtimeDir := useTestDhclientRuntimeDir(t)
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatalf("create dhclient runtime directory: %v", err)
+	}
+	if err := configureDhclientRoutePolicy("vm-bound-secondary", false); err != nil {
+		t.Fatalf("configure non-owner dhclient policy: %v", err)
+	}
+
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name: name,
+				IPv4: []iface.IPv4{{IP: net.ParseIP("192.0.2.30")}},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/route -n get default" {
+				return "gateway: 192.0.2.1\ninterface: vm-bound-secondary\n", nil
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, _ ...string) (string, error) {
+			if command == "/bin/pkill" {
+				t.Fatal("bound non-owner dhclient must not be restarted")
+			}
+			return "3172\n", nil
+		},
+		runCommandWithContext: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("bound non-owner dhclient must not be launched again")
+			return "", nil
+		},
+	})
+
+	if err := runDhclient("vm-bound-secondary", 10, false); err != nil {
+		t.Fatalf("reconcile bound non-owner dhclient: %v", err)
+	}
+	if commandIndex(operations, "/sbin/route delete default 192.0.2.1") == -1 {
+		t.Fatalf("drifted non-owner default route was not removed: %v", operations)
+	}
+}
+
+func TestDhclientNonOwnerPolicyPreservesSystemConfiguration(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+	if err := os.MkdirAll(dhclientRuntimeDir, 0o755); err != nil {
+		t.Fatalf("create dhclient runtime directory: %v", err)
+	}
+	const systemConfig = "send host-name \"sylve-node\";\nrequest subnet-mask, domain-name;\n"
+	if err := os.WriteFile(dhclientSystemConfigPath, []byte(systemConfig), 0o600); err != nil {
+		t.Fatalf("write system dhclient config: %v", err)
+	}
+	if err := configureDhclientRoutePolicy("vm-secondary", false); err != nil {
+		t.Fatalf("configure non-owner policy: %v", err)
+	}
+
+	contents, err := os.ReadFile(dhclientConfigPath("vm-secondary"))
+	if err != nil {
+		t.Fatalf("read generated dhclient config: %v", err)
+	}
+	if want := dhclientNoDefaultRouteConfig + systemConfig; string(contents) != want {
+		t.Fatalf("generated dhclient config=%q want %q", contents, want)
+	}
+
+	if err := os.WriteFile(dhclientSystemConfigPath, []byte(systemConfig+"supersede domain-name \"example.test\";\n"), 0o600); err != nil {
+		t.Fatalf("change system dhclient config: %v", err)
+	}
+	matches, err := dhclientRoutePolicyMatches("vm-secondary", false)
+	if err != nil {
+		t.Fatalf("compare changed policy: %v", err)
+	}
+	if matches {
+		t.Fatal("generated policy unexpectedly matched changed system configuration")
+	}
+}
+
+func TestRunDhclientRestartsBoundOwnerWhenDefaultRouteIsMissing(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+	skipDhclientNaturalExitGrace(t)
+	running := true
+	stopSignals := 0
+	var launches []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, IPv4: []iface.IPv4{{IP: net.ParseIP("192.0.2.40")}}}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			if strings.Join(append([]string{command}, args...), " ") == "/sbin/route -n get default" {
+				return "route: route has not been found\n", errors.New("not in table")
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, _ ...string) (string, error) {
+			switch command {
+			case "/bin/pgrep":
+				if running {
+					return "4102\n", nil
+				}
+			case "/bin/pkill":
+				stopSignals++
+				running = false
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(_ context.Context, command string, args ...string) (string, error) {
+			launches = append(launches, strings.Join(append([]string{command}, args...), " "))
+			return "", nil
+		},
+	})
+
+	if err := runDhclient("vm-owner", 10, true); err != nil {
+		t.Fatalf("reconcile owner dhclient: %v", err)
+	}
+	if stopSignals != 1 || len(launches) != 1 {
+		t.Fatalf("stop signals=%d launches=%v, want one restart", stopSignals, launches)
+	}
+}
+
+func TestRemoveStandardSwitchRoutesLeavesExternalDefaultRoutesAlone(t *testing.T) {
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			switch full {
+			case "/sbin/route -n get default":
+				return "gateway: 192.0.2.1\ninterface: em0\n", nil
+			case "/sbin/route -6 -n get default":
+				return "gateway: 2001:db8::1\ninterface: em0\n", nil
+			default:
+				return "", nil
+			}
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		BridgeName:     "vm-route-owner",
+		NetworkManual:  "192.0.2.10/24",
+		GatewayManual:  "192.0.2.1",
+		Network6Manual: "2001:db8::10/64",
+		Gateway6Manual: "2001:db8::1",
+		DefaultRoute:   true,
+		DefaultRoute6:  true,
+	}
+	if err := removeStandardSwitchRoutes(sw); err != nil {
+		t.Fatalf("remove standard switch routes: %v", err)
+	}
+	for _, operation := range operations {
+		if strings.Contains(operation, " delete default") {
+			t.Fatalf("external default route was deleted: %v", operations)
+		}
+	}
+}
+
+func TestReconcileStandardSwitchRouteOwnerTreatsRouterSolicitationAsBestEffort(t *testing.T) {
+	_, db := newNetworkServiceForTest(t, &networkModels.StandardSwitch{})
+	if err := db.Create(&networkModels.StandardSwitch{
+		Name: "slaac-owner", BridgeName: "vm-slaac-owner", SLAAC: true, DefaultRoute6: true,
+	}).Error; err != nil {
+		t.Fatalf("seed SLAAC route owner: %v", err)
+	}
+
+	flagsApplied := false
+	stubSyncFunctions(t, syncStubSet{
+		setSysctlInt32: func(string, int32) error { return nil },
+		runCommand: func(command string, args ...string) (string, error) {
+			if command == "/sbin/ifconfig" && strings.Join(args, " ") ==
+				"vm-slaac-owner inet6 auto_linklocal -ifdisabled -no_radr accept_rtadv" {
+				flagsApplied = true
+			}
+			return "", nil
+		},
+		solicitRouter: func(string) error { return context.DeadlineExceeded },
+	})
+
+	if err := reconcileStandardSwitchAutomaticRouteOwners(db, false, true); err != nil {
+		t.Fatalf("best-effort router solicitation failed reconciliation: %v", err)
+	}
+	if !flagsApplied {
+		t.Fatal("SLAAC route-owner flags were not applied")
+	}
+}
+
+func TestCreateStandardBridgeManagesRFC6204W3OnlyForSLAACOwner(t *testing.T) {
+	for _, owner := range []bool{false, true} {
+		t.Run(fmt.Sprintf("owner_%t", owner), func(t *testing.T) {
+			setCalls := 0
+			stubSyncFunctions(t, syncStubSet{
+				setSysctlInt32: func(name string, value int32) error {
+					if name != "net.inet6.ip6.rfc6204w3" || value != 1 {
+						t.Fatalf("unexpected sysctl %s=%d", name, value)
+					}
+					setCalls++
+					return nil
+				},
+				runCommand: func(command string, args ...string) (string, error) {
+					if command == "/sbin/ifconfig" && strings.Join(args, " ") == "bridge create" {
+						return "bridge620\n", nil
+					}
+					return "", nil
+				},
+			})
+
+			sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+				Name: "slaac-rfc", BridgeName: "vm-slaac-rfc", MTU: 1500,
+				SLAAC: true, DefaultRoute6: owner,
+			})
+			if err := createStandardBridge(sw); err != nil {
+				t.Fatalf("create SLAAC bridge: %v", err)
+			}
+			wantCalls := 0
+			if owner {
+				wantCalls = 1
+			}
+			if setCalls != wantCalls {
+				t.Fatalf("RFC 6204 W-3 set calls=%d want %d", setCalls, wantCalls)
+			}
+		})
 	}
 }

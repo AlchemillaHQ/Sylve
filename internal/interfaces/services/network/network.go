@@ -37,6 +37,7 @@ type NetworkServiceInterface interface {
 		disableIPv6 bool,
 		slaac bool,
 		defaultRoute bool,
+		defaultRoute6 bool,
 		disableBridgeOffloads bool,
 		manual networkModels.StandardSwitchManualAddresses) (uint, error)
 
@@ -54,6 +55,7 @@ type NetworkServiceInterface interface {
 		disableIPv6 bool,
 		slaac bool,
 		defaultRoute bool,
+		defaultRoute6 bool,
 		disableBridgeOffloads bool,
 		manual networkModels.StandardSwitchManualAddresses) error
 	DeleteStandardSwitch(id uint) error

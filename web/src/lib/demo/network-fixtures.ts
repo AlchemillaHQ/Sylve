@@ -528,6 +528,7 @@ function createState(hostname: string): DemoNetworkState {
 			slaac: true,
 			disableIPv6: false,
 			defaultRoute: true,
+			defaultRoute6: true,
 			disableBridgeOffloads: true
 		},
 		{
@@ -558,6 +559,7 @@ function createState(hostname: string): DemoNetworkState {
 			slaac: false,
 			disableIPv6: true,
 			defaultRoute: false,
+			defaultRoute6: false,
 			disableBridgeOffloads: true
 		}
 	];
@@ -1194,6 +1196,7 @@ function buildStandardSwitch(
 		slaac: booleanValue(body, 'slaac', existing?.slaac ?? false),
 		disableIPv6: booleanValue(body, 'disableIPv6', existing?.disableIPv6 ?? false),
 		defaultRoute: booleanValue(body, 'defaultRoute', existing?.defaultRoute ?? false),
+		defaultRoute6: booleanValue(body, 'defaultRoute6', existing?.defaultRoute6 ?? false),
 		disableBridgeOffloads: booleanValue(
 			body,
 			'disableBridgeOffloads',

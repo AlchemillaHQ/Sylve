@@ -75,6 +75,7 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		networkModels.StandardSwitchManualAddresses{},
 	); err != nil {
 		t.Fatalf("edit standard switch with missing runtime: %v", err)
@@ -94,6 +95,97 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 	}
 	if persisted.MTU != 9000 || !persisted.Private {
 		t.Fatalf("persisted switch = %#v, want updated MTU/private state", persisted)
+	}
+}
+
+func TestIntegrationStandardSwitchSLAACAcceptsDefaultRouter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping standard switch SLAAC integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("standard switch SLAAC integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	bridgeName := fmt.Sprintf("sis%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
+	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
+		t.Fatalf("integration bridge name %s is unavailable: %v", bridgeName, err)
+	}
+	t.Cleanup(func() {
+		_, _ = exec.Command("/sbin/ifconfig", bridgeName, "destroy").CombinedOutput()
+	})
+
+	stubSyncFunctions(t, syncStubSet{
+		solicitRouter: func(string) error { return nil },
+	})
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "integration-slaac-default-router",
+		BridgeName:    bridgeName,
+		MTU:           1500,
+		SLAAC:         true,
+		DefaultRoute6: true,
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create SLAAC bridge: %v", err)
+	}
+
+	output, err := utils.RunCommand("/sbin/ifconfig", bridgeName)
+	if err != nil {
+		t.Fatalf("inspect SLAAC bridge flags: %v", err)
+	}
+	upperOutput := strings.ToUpper(output)
+	if !strings.Contains(upperOutput, "ACCEPT_RTADV") {
+		t.Fatalf("SLAAC bridge is not accepting router advertisements:\n%s", output)
+	}
+	if strings.Contains(upperOutput, "NO_RADR") {
+		t.Fatalf("SLAAC bridge excludes advertised routers from the default-router list:\n%s", output)
+	}
+}
+
+func TestIntegrationStandardSwitchSLAACNonOwnerSuppressesDefaultRouter(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping standard switch SLAAC integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("standard switch SLAAC integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	bridgeName := fmt.Sprintf("sin%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
+	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
+		t.Fatalf("integration bridge name %s is unavailable: %v", bridgeName, err)
+	}
+	t.Cleanup(func() {
+		_, _ = exec.Command("/sbin/ifconfig", bridgeName, "destroy").CombinedOutput()
+	})
+
+	stubSyncFunctions(t, syncStubSet{
+		solicitRouter: func(string) error { return nil },
+	})
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:       "integration-slaac-non-owner",
+		BridgeName: bridgeName,
+		MTU:        1500,
+		SLAAC:      true,
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create non-owner SLAAC bridge: %v", err)
+	}
+
+	output, err := utils.RunCommand("/sbin/ifconfig", bridgeName)
+	if err != nil {
+		t.Fatalf("inspect non-owner SLAAC bridge flags: %v", err)
+	}
+	upperOutput := strings.ToUpper(output)
+	if !strings.Contains(upperOutput, "ACCEPT_RTADV") {
+		t.Fatalf("non-owner SLAAC bridge is not accepting router advertisements:\n%s", output)
+	}
+	if !strings.Contains(upperOutput, "NO_RADR") {
+		t.Fatalf("non-owner SLAAC bridge can enter advertised routers in the default-router list:\n%s", output)
 	}
 }
 
@@ -393,7 +485,7 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	}
 	firstPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
 
-	if err := runDhclient(bridgeName, 10); err != nil {
+	if err := runDhclient(bridgeName, 10, true); err != nil {
 		t.Fatalf("reconcile managed dhclient: %v", err)
 	}
 	if secondPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second); secondPID == firstPID {
@@ -406,14 +498,14 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 		t.Fatalf("bridge disappeared while stopping dhclient: %v", err)
 	}
 
-	if err := runDhclient(bridgeName, 10); err != nil {
+	if err := runDhclient(bridgeName, 10, true); err != nil {
 		t.Fatalf("restart dhclient: %v", err)
 	}
 	legacyPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
 	if err := os.Remove(pidPath); err != nil {
 		t.Fatalf("remove PID file to emulate legacy client: %v", err)
 	}
-	if err := runDhclient(bridgeName, 10); err != nil {
+	if err := runDhclient(bridgeName, 10, true); err != nil {
 		t.Fatalf("reconcile legacy dhclient: %v", err)
 	}
 	restartedPID := waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)

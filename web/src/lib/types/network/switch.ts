@@ -13,6 +13,28 @@ export const NetworkPortSchema = z.object({
 	switchId: z.number().int().positive()
 });
 
+export const StandardSwitchRCConflictSchema = z.object({
+	code: z.enum([
+		'standard_switch_member_rc_l3_conflict',
+		'standard_switch_member_bridge_ownership_conflict',
+		'standard_switch_member_rc_inspection_unavailable',
+		'standard_switch_runtime_bridge_inspection_unavailable'
+	]),
+	port: z.string().optional(),
+	member: z.string().optional(),
+	conflictingBridge: z.string().optional(),
+	dhcp: z.boolean().optional(),
+	slaac: z.boolean().optional(),
+	staticIPv4: z.boolean().optional(),
+	staticIPv6: z.boolean().optional(),
+	aliasesIPv4: z.boolean().optional(),
+	aliasesIPv6: z.boolean().optional(),
+	rcConfigured: z.boolean().optional(),
+	runtimeAttached: z.boolean().optional()
+});
+
+export const StandardSwitchRCConflictsSchema = z.array(StandardSwitchRCConflictSchema);
+
 export const StandardSwitchSchema = z.object({
 	id: z.number().int().positive(),
 	name: z.string(),
@@ -41,6 +63,7 @@ export const StandardSwitchSchema = z.object({
 	slaac: z.boolean(),
 	disableIPv6: z.boolean(),
 	defaultRoute: z.boolean(),
+	defaultRoute6: z.boolean().default(false),
 	disableBridgeOffloads: z.boolean()
 });
 
@@ -57,6 +80,7 @@ export const SwitchListSchema = z.object({
 	manual: z.array(ManualSwitchSchema)
 });
 
+export type StandardSwitchRCConflict = z.infer<typeof StandardSwitchRCConflictSchema>;
 export type StandardSwitch = z.infer<typeof StandardSwitchSchema>;
 export type ManualSwitch = z.infer<typeof ManualSwitchSchema>;
 export type SwitchList = z.infer<typeof SwitchListSchema>;
@@ -85,6 +109,7 @@ export interface SwitchRow extends Row {
 	dhcp: boolean;
 	slaac: boolean;
 	defaultRoute: boolean;
+	defaultRoute6: boolean;
 	disableBridgeOffloads: boolean;
 	children?: SwitchRow[];
 }

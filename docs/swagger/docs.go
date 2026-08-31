@@ -32672,6 +32672,11 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "defaultRoute": {
+                    "description": "DefaultRoute owns the IPv4 default route for static or DHCP addressing.",
+                    "type": "boolean"
+                },
+                "defaultRoute6": {
+                    "description": "DefaultRoute6 owns the IPv6 default route for static or SLAAC addressing.",
                     "type": "boolean"
                 },
                 "dhcp": {
@@ -41186,7 +41191,13 @@ const docTemplate = `{
                 "bridgeMac": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
                 },
+                "confirmRCConflicts": {
+                    "type": "boolean"
+                },
                 "defaultRoute": {
+                    "type": "boolean"
+                },
+                "defaultRoute6": {
                     "type": "boolean"
                 },
                 "dhcp": {
@@ -41271,7 +41282,13 @@ const docTemplate = `{
                 "bridgeMac": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
                 },
+                "confirmRCConflicts": {
+                    "type": "boolean"
+                },
                 "defaultRoute": {
+                    "type": "boolean"
+                },
+                "defaultRoute6": {
                     "type": "boolean"
                 },
                 "dhcp": {

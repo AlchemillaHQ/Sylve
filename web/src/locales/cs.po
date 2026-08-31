@@ -2223,7 +2223,6 @@ msgstr "Síť/sítě"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "MAC(s)"
 msgstr "MAC adresa/adresy"
 
@@ -6033,10 +6032,6 @@ msgstr "Neplatné MTU"
 msgid "Invalid VLAN"
 msgstr "Neplatná VLAN"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "There is already a switch with a default route"
-msgstr "Už existuje přepínač s výchozí trasou"
-
 #. 0: normalizedName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
@@ -6083,10 +6078,6 @@ msgstr "Soukromé"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Disable IPV6"
 msgstr "Vypnout IPv6"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Default Route"
-msgstr "Výchozí trasa"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create Directory"
@@ -17895,4 +17886,28 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Config.svelte
 msgid "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Another switch already owns the IPv4 default route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Another switch already owns the IPv6 default route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use DHCP Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use RA Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 Default Route"
 msgstr ""

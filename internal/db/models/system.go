@@ -56,6 +56,7 @@ const (
 	SystemTunableARCMaxOID           = "vfs.zfs.arc.max"
 	SystemTunableLegacyARCMaxOID     = "vfs.zfs.arc_max"
 	SystemTunableBridgeInheritMACOID = "net.link.bridge.inherit_mac"
+	SystemTunableIPv6RFC6204W3OID    = "net.inet6.ip6.rfc6204w3"
 )
 
 type SystemTunable struct {

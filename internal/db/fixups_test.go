@@ -67,26 +67,32 @@ func TestNormalizeDownloadUncategorizedType(t *testing.T) {
 	}
 }
 
-func TestClearManagedBridgeMACInheritanceOverride(t *testing.T) {
+func TestClearManagedStandardSwitchTunableOverrides(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.SystemTunable{})
 	managed := models.SystemTunable{Name: models.SystemTunableBridgeInheritMACOID, Value: "1"}
+	managedIPv6 := models.SystemTunable{Name: models.SystemTunableIPv6RFC6204W3OID, Value: "0"}
 	other := models.SystemTunable{Name: "kern.alpha", Value: "2"}
 	if err := dbConn.Create(&managed).Error; err != nil {
 		t.Fatalf("seed managed bridge tunable: %v", err)
+	}
+	if err := dbConn.Create(&managedIPv6).Error; err != nil {
+		t.Fatalf("seed managed IPv6 tunable: %v", err)
 	}
 	if err := dbConn.Create(&other).Error; err != nil {
 		t.Fatalf("seed unrelated tunable: %v", err)
 	}
 
-	if err := clearManagedBridgeMACInheritanceOverride(dbConn); err != nil {
+	if err := clearManagedStandardSwitchTunableOverrides(dbConn); err != nil {
 		t.Fatalf("clear managed bridge tunable: %v", err)
 	}
-	if err := clearManagedBridgeMACInheritanceOverride(dbConn); err != nil {
+	if err := clearManagedStandardSwitchTunableOverrides(dbConn); err != nil {
 		t.Fatalf("repeat managed bridge tunable cleanup: %v", err)
 	}
 
 	var managedCount, otherCount int64
-	if err := dbConn.Model(&models.SystemTunable{}).Where("name = ?", models.SystemTunableBridgeInheritMACOID).Count(&managedCount).Error; err != nil {
+	if err := dbConn.Model(&models.SystemTunable{}).Where("name IN ?", []string{
+		models.SystemTunableBridgeInheritMACOID, models.SystemTunableIPv6RFC6204W3OID,
+	}).Count(&managedCount).Error; err != nil {
 		t.Fatalf("count managed bridge tunables: %v", err)
 	}
 	if err := dbConn.Model(&models.SystemTunable{}).Where("name = ?", other.Name).Count(&otherCount).Error; err != nil {
@@ -854,4 +860,98 @@ func TestMigrateStandardSwitchMACSources(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("migration marker count=%d want 1", migrationCount)
 	}
+}
+func TestMigrateStandardSwitchAutomaticRouteOwners(t *testing.T) {
+	t.Run("preserves static IPv4 owner and migrates SLAAC", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(
+			t,
+			&models.Migrations{},
+			&networkModels.StandardSwitch{},
+		)
+		switches := []networkModels.StandardSwitch{
+			{Name: "static-v4", BridgeName: "vm-static-v4", DefaultRoute: true},
+			{Name: "dhcp-secondary", BridgeName: "vm-dhcp-secondary", DHCP: true},
+			{Name: "slaac-owner", BridgeName: "vm-slaac-owner", SLAAC: true},
+			{Name: "slaac-disabled", BridgeName: "vm-slaac-disabled", SLAAC: true, DisableIPv6: true},
+		}
+		if err := dbConn.Create(&switches).Error; err != nil {
+			t.Fatalf("seed legacy standard switches: %v", err)
+		}
+
+		if err := migrateStandardSwitchAutomaticRouteOwners(dbConn); err != nil {
+			t.Fatalf("migrate automatic route owners: %v", err)
+		}
+		if err := migrateStandardSwitchAutomaticRouteOwners(dbConn); err != nil {
+			t.Fatalf("repeat automatic route-owner migration: %v", err)
+		}
+
+		var stored []networkModels.StandardSwitch
+		if err := dbConn.Order("id ASC").Find(&stored).Error; err != nil {
+			t.Fatalf("load migrated standard switches: %v", err)
+		}
+		if len(stored) != 4 {
+			t.Fatalf("migrated switch count=%d want 4", len(stored))
+		}
+		if !stored[0].DefaultRoute {
+			t.Fatal("existing static IPv4 owner was cleared")
+		}
+		if stored[1].DefaultRoute {
+			t.Fatal("DHCP switch displaced an existing static IPv4 owner")
+		}
+		if !stored[2].DefaultRoute6 {
+			t.Fatal("enabled legacy SLAAC switch did not retain default-router behavior")
+		}
+		if stored[3].DefaultRoute6 {
+			t.Fatal("IPv6-disabled SLAAC switch became an IPv6 route owner")
+		}
+
+		var markerCount int64
+		if err := dbConn.Model(&models.Migrations{}).
+			Where("name = ?", "standard_switch_automatic_route_owners_v1").
+			Count(&markerCount).Error; err != nil {
+			t.Fatalf("count automatic route-owner migration markers: %v", err)
+		}
+		if markerCount != 1 {
+			t.Fatalf("migration marker count=%d want 1", markerCount)
+		}
+	})
+
+	t.Run("retains ambiguous legacy automatic owners", func(t *testing.T) {
+		dbConn := testutil.NewSQLiteTestDB(
+			t,
+			&models.Migrations{},
+			&networkModels.StandardSwitch{},
+		)
+		switches := []networkModels.StandardSwitch{
+			{Name: "dhcp-a", BridgeName: "vm-dhcp-a", DHCP: true},
+			{Name: "dhcp-b", BridgeName: "vm-dhcp-b", DHCP: true},
+			{Name: "slaac-a", BridgeName: "vm-slaac-a", SLAAC: true},
+			{Name: "slaac-b", BridgeName: "vm-slaac-b", SLAAC: true},
+		}
+		if err := dbConn.Create(&switches).Error; err != nil {
+			t.Fatalf("seed ambiguous legacy switches: %v", err)
+		}
+
+		if err := migrateStandardSwitchAutomaticRouteOwners(dbConn); err != nil {
+			t.Fatalf("migrate ambiguous automatic owners: %v", err)
+		}
+
+		var stored []networkModels.StandardSwitch
+		if err := dbConn.Order("id ASC").Find(&stored).Error; err != nil {
+			t.Fatalf("load ambiguous migrated switches: %v", err)
+		}
+		if len(stored) != 4 {
+			t.Fatalf("migrated switch count=%d want 4", len(stored))
+		}
+		for index := 0; index < 2; index++ {
+			if !stored[index].DefaultRoute {
+				t.Fatalf("legacy DHCP switch %q lost automatic default-route behavior", stored[index].Name)
+			}
+		}
+		for index := 2; index < 4; index++ {
+			if !stored[index].DefaultRoute6 {
+				t.Fatalf("legacy SLAAC switch %q lost automatic default-router behavior", stored[index].Name)
+			}
+		}
+	})
 }

@@ -420,9 +420,26 @@ func TestSetTunableRejectsManagedBridgeMACIdentityOID(t *testing.T) {
 	}
 }
 
+func TestSetTunableRejectsManagedIPv6RouteOwnerOID(t *testing.T) {
+	const name = models.SystemTunableIPv6RFC6204W3OID
+	service := newTunablesTestService(t, []sysctl.Tunable{
+		{Name: name, Value: "0", Type: "int", Writable: true},
+	}, nil)
+	service.tunRead = func(string) (string, error) {
+		t.Fatal("managed IPv6 route-owner tunable must be rejected before runtime read")
+		return "", nil
+	}
+
+	err := service.SetTunable(name, "0")
+	if code := TunableErrorCode(err); code != ErrTunableNotWritable.Error() {
+		t.Fatalf("error=%v code=%q, want %q", err, code, ErrTunableNotWritable)
+	}
+}
+
 func TestReapplyStoredTunablesSkipsManagedBridgeMACIdentityOID(t *testing.T) {
 	service := newTunablesTestService(t, nil, []models.SystemTunable{
 		{Name: models.SystemTunableBridgeInheritMACOID, Value: "1"},
+		{Name: models.SystemTunableIPv6RFC6204W3OID, Value: "0"},
 		{Name: "kern.alpha", Value: "2"},
 	})
 	var applied []string

@@ -16,22 +16,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
+	"gorm.io/gorm"
 )
 
 var (
-	syncIfaceGet                = iface.Get
-	syncRunCommand              = utils.RunCommand
-	syncRunCommandAllowExitCode = utils.RunCommandAllowExitCode
-	syncRunCommandWithContext   = utils.RunCommandWithContext
-	syncCreateBridge            = createStandardBridge
-	syncEditBridge              = editStandardBridge
-	syncDeleteBridge            = deleteStandardBridge
-	syncStopDhclient            = stopDhclient
+	syncIfaceGet                   = iface.Get
+	syncRunCommand                 = utils.RunCommand
+	syncRunCommandAllowExitCode    = utils.RunCommandAllowExitCode
+	syncRunCommandWithContext      = utils.RunCommandWithContext
+	syncSolicitRouterAdvertisement = solicitStandardSwitchRouterAdvertisement
+	syncCreateBridge               = createStandardBridge
+	syncEditBridge                 = editStandardBridge
+	syncDeleteBridge               = deleteStandardBridge
+	syncStopDhclient               = stopDhclient
+	syncSetSysctlInt32             = sysctl.SetInt32
 )
+
+func ensureStandardSwitchIPv6RADefaultRouteSupport() error {
+	if err := syncSetSysctlInt32(models.SystemTunableIPv6RFC6204W3OID, 1); err != nil {
+		return fmt.Errorf("set %s=1: %w", models.SystemTunableIPv6RFC6204W3OID, err)
+	}
+	return nil
+}
 
 // Capability bits that FreeBSD if_bridge synchronizes across its members,
 // plus LRO, which if_bridge always strips.
@@ -64,6 +76,44 @@ func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) 
 		}
 	}
 	return switches, nil
+}
+
+func (s *Service) GetStandardSwitch(id uint) (networkModels.StandardSwitch, error) {
+	return loadStandardSwitch(s.DB, id)
+}
+
+func reconcileStandardSwitchAutomaticRouteOwners(db *gorm.DB, ipv4, ipv6 bool) error {
+	var switches []networkModels.StandardSwitch
+	if err := db.Order("id ASC").Find(&switches).Error; err != nil {
+		return fmt.Errorf("load standard switch route owners: %w", err)
+	}
+
+	var reconcileErrors []error
+	for _, sw := range switches {
+		if ipv4 && sw.DHCP && sw.DefaultRoute {
+			if err := runDhclient(sw.BridgeName, 10, true); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv4 route owner %s: %w", sw.BridgeName, err))
+			}
+		}
+
+		if ipv6 && sw.SLAAC && sw.DefaultRoute6 && !sw.DisableIPv6 {
+			if err := ensureStandardSwitchIPv6RADefaultRouteSupport(); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s: %w", sw.BridgeName, err))
+				continue
+			}
+			if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "-no_radr", "accept_rtadv"); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s flags: %w", sw.BridgeName, err))
+				continue
+			}
+			if err := syncSolicitRouterAdvertisement(sw.BridgeName); err != nil {
+				logger.L.Warn().
+					Err(err).
+					Str("bridge", sw.BridgeName).
+					Msg("standard_switch_slaac_router_solicitation_failed")
+			}
+		}
+	}
+	return errors.Join(reconcileErrors...)
 }
 
 func (s *Service) conflictingPortsForVLAN(ports []string, vlan int, excludeSwitchID *uint) ([]networkModels.NetworkPort, error) {
@@ -192,6 +242,7 @@ func (s *Service) NewStandardSwitch(
 	disableIPv6 bool,
 	slaac bool,
 	defaultRoute bool,
+	defaultRoute6 bool,
 	disableBridgeOffloads bool,
 	manual networkModels.StandardSwitchManualAddresses,
 ) (uint, error) {
@@ -221,6 +272,7 @@ func (s *Service) NewStandardSwitch(
 		disableIPv6:           disableIPv6,
 		slaac:                 slaac,
 		defaultRoute:          defaultRoute,
+		defaultRoute6:         defaultRoute6,
 		disableBridgeOffloads: disableBridgeOffloads,
 		manual:                manual,
 	})
@@ -258,6 +310,7 @@ func (s *Service) NewStandardSwitch(
 	if err != nil {
 		return 0, fmt.Errorf("reload created standard switch: %w", err)
 	}
+	warnStandardSwitchMemberRCConflicts(fresh)
 	if err := syncCreateBridge(fresh); err != nil {
 		return 0, fmt.Errorf("apply created standard switch: %w", err)
 	}
@@ -323,6 +376,11 @@ func (s *Service) DeleteStandardSwitch(id uint) error {
 	if err := tx.Delete(&sw).Error; err != nil {
 		return restoreAfterFailure("delete_switch", fmt.Errorf("delete standard switch: %w", err))
 	}
+	if sw.DefaultRoute || sw.DefaultRoute6 {
+		if err := reconcileStandardSwitchAutomaticRouteOwners(tx, sw.DefaultRoute, sw.DefaultRoute6); err != nil {
+			return restoreAfterFailure("delete_route_owner_reconcile", err)
+		}
+	}
 	if err := tx.Commit().Error; err != nil {
 		return restoreAfterFailure("delete_commit", fmt.Errorf("commit standard switch delete: %w", err))
 	}
@@ -345,6 +403,7 @@ func (s *Service) EditStandardSwitch(
 	disableIPv6 bool,
 	slaac bool,
 	defaultRoute bool,
+	defaultRoute6 bool,
 	disableBridgeOffloads bool,
 	manual networkModels.StandardSwitchManualAddresses,
 ) error {
@@ -370,6 +429,7 @@ func (s *Service) EditStandardSwitch(
 		disableIPv6:           disableIPv6,
 		slaac:                 slaac,
 		defaultRoute:          defaultRoute,
+		defaultRoute6:         defaultRoute6,
 		disableBridgeOffloads: disableBridgeOffloads,
 		manual:                manual,
 	})
@@ -402,6 +462,7 @@ func (s *Service) EditStandardSwitch(
 		"disable_ipv6":               input.disableIPv6,
 		"sla_ac":                     input.slaac,
 		"default_route":              input.defaultRoute,
+		"default_route6":             input.defaultRoute6,
 		"disable_bridge_offloads":    input.disableBridgeOffloads,
 		"network_object_id":          nullableID(input.network4ID),
 		"gateway_address_object_id":  nullableID(input.gateway4ID),
@@ -432,6 +493,7 @@ func (s *Service) EditStandardSwitch(
 	if err != nil {
 		return fmt.Errorf("reload updated standard switch: %w", err)
 	}
+	warnStandardSwitchMemberRCConflicts(after)
 	extraMembers, runtimeExists, err := snapshotStandardSwitchExtraMembers(before)
 	if err != nil {
 		return err
@@ -470,6 +532,13 @@ func (s *Service) EditStandardSwitch(
 		return restoreAfterFailure("update_runtime", fmt.Errorf("apply updated standard switch: %w", err))
 	}
 	runtimeApplied = true
+	reconcileIPv4Owner := before.DefaultRoute && !after.DefaultRoute
+	reconcileIPv6Owner := before.DefaultRoute6 && !after.DefaultRoute6
+	if reconcileIPv4Owner || reconcileIPv6Owner {
+		if err := reconcileStandardSwitchAutomaticRouteOwners(tx, reconcileIPv4Owner, reconcileIPv6Owner); err != nil {
+			return restoreAfterFailure("update_route_owner_reconcile", err)
+		}
+	}
 	if err := tx.Commit().Error; err != nil {
 		return restoreAfterFailure("update_commit", fmt.Errorf("commit standard switch update: %w", err))
 	}
@@ -496,13 +565,18 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 
 		var syncErrors []error
 		for _, current := range switches {
+			warnStandardSwitchMemberRCConflicts(current)
 			if err := syncStandardSwitchRuntime(current); err != nil {
 				syncErrors = append(syncErrors, err)
 			}
 		}
+		if err := reconcileStandardSwitchAutomaticRouteOwners(s.DB, true, true); err != nil {
+			syncErrors = append(syncErrors, err)
+		}
 		return errors.Join(syncErrors...)
 
 	case "create":
+		warnStandardSwitchMemberRCConflicts(*sw)
 		if err := syncCreateBridge(*sw); err != nil {
 			return err
 		}
@@ -523,6 +597,7 @@ func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action 
 			First(&newSw, sw.ID).Error; err != nil {
 			return fmt.Errorf("switch_not_found")
 		}
+		warnStandardSwitchMemberRCConflicts(newSw)
 		if err := syncEditBridge(*sw, newSw); err != nil {
 			return err
 		}
@@ -640,6 +715,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 	addedNetwork4Route := false
 	addedDefault4Route := false
 	addedNetwork6Route := false
+	addedDefault6Route := false
 	defer func() {
 		if retErr == nil {
 			return
@@ -647,6 +723,14 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 
 		if addedDefault4Route {
 			_ = deleteRouteIfPresent("delete", "default", sw.Gateway(4))
+		}
+		if addedDefault6Route {
+			_ = deleteRouteIfPresent(
+				"-6",
+				"delete",
+				"default",
+				normalizeIPv6GatewayForRoute(sw.Gateway(6), sw.BridgeName),
+			)
 		}
 		if addedNetwork4Route {
 			_ = deleteRouteIfPresent("delete", "-net", sw.Network(4), sw.Gateway(4))
@@ -703,7 +787,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 	}
 	network6, gateway6 := sw.Network(6), sw.Gateway(6)
 	if sw.DisableIPv6 {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "no_radr", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_disable_ipv6_flags: %v", err)
 		}
 	} else {
@@ -711,9 +795,18 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			return fmt.Errorf("create_standard_bridge: failed_to_enable_linklocal: %v", err)
 		}
 		if sw.SLAAC {
-			if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
+			routerPolicy := "no_radr"
+			if sw.DefaultRoute6 {
+				if err := ensureStandardSwitchIPv6RADefaultRouteSupport(); err != nil {
+					return fmt.Errorf("create_standard_bridge: enable IPv6 RA default route: %v", err)
+				}
+				routerPolicy = "-no_radr"
+			}
+			if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", routerPolicy, "accept_rtadv"); err != nil {
 				return fmt.Errorf("create_standard_bridge: failed_to_enable_slaac: %v", err)
 			}
+		} else if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "no_radr", "-accept_rtadv"); err != nil {
+			return fmt.Errorf("create_standard_bridge: failed_to_disable_slaac: %v", err)
 		}
 	}
 	assignableNetwork6 := utils.IsAssignableIPv6CIDR(network6)
@@ -732,6 +825,14 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 	}
 	if _, err := applyStandardSwitchMAC(sw); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_verify_bridge_mac_after_members: %v", err)
+	}
+	if sw.SLAAC && !sw.DisableIPv6 {
+		if err := syncSolicitRouterAdvertisement(sw.BridgeName); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Str("bridge", sw.BridgeName).
+				Msg("standard_switch_slaac_router_solicitation_failed")
+		}
 	}
 
 	if assignableNetwork4 && gateway4 != "" {
@@ -753,10 +854,16 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		if err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_add_network6_route: %v", err)
 		}
+		if sw.DefaultRoute6 {
+			addedDefault6Route, err = addDefaultRoute6IfMissing(routeGateway6, sw.BridgeName)
+			if err != nil {
+				return fmt.Errorf("create_standard_bridge: failed_to_add_default6_route: %v", err)
+			}
+		}
 	}
 
 	if sw.DHCP {
-		if err := runDhclient(sw.BridgeName, 10); err != nil {
+		if err := runDhclient(sw.BridgeName, 10, sw.DefaultRoute); err != nil {
 			return fmt.Errorf("create_standard_bridge: %v", err)
 		}
 	}
@@ -868,8 +975,8 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		}
 	}
 	if oldSw.DefaultRoute && old4Gateway != "" {
-		if err := deleteRouteIfPresent("delete", "default", old4Gateway); err != nil {
-			return fmt.Errorf("edit_standard_bridge: delete default route via %s: %v", old4Gateway, err)
+		if _, err := removeDefaultRouteForInterface("", br); err != nil {
+			return fmt.Errorf("edit_standard_bridge: delete IPv4 default route on %s: %v", br, err)
 		}
 	}
 
@@ -884,7 +991,7 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	old6Gateway, new6Gateway := oldSw.Gateway(6), newSw.Gateway(6)
 
 	if newSw.DisableIPv6 {
-		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "-accept_rtadv", "ifdisabled"); err != nil {
+		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "no_radr", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable IPv6: %v", err)
 		}
 
@@ -901,12 +1008,26 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 
 	if !newSw.DisableIPv6 && newSw.SLAAC {
-		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "accept_rtadv"); err != nil {
+		routerPolicy := "no_radr"
+		if newSw.DefaultRoute6 {
+			if err := ensureStandardSwitchIPv6RADefaultRouteSupport(); err != nil {
+				return fmt.Errorf("edit_standard_bridge: enable IPv6 RA default route: %v", err)
+			}
+			routerPolicy = "-no_radr"
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", routerPolicy, "accept_rtadv"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: enable SLAAC: %v", err)
 		}
 	} else if !newSw.DisableIPv6 {
-		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "-accept_rtadv"); err != nil {
+		if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", "auto_linklocal", "-ifdisabled", "no_radr", "-accept_rtadv"); err != nil {
 			return fmt.Errorf("edit_standard_bridge: disable SLAAC: %v", err)
+		}
+	}
+	removeSLAACDefault := newSw.SLAAC && !newSw.DefaultRoute6
+	relinquishedIPv6Default := oldSw.DefaultRoute6 && (!newSw.DefaultRoute6 || (oldSw.SLAAC && !newSw.SLAAC))
+	if removeSLAACDefault || relinquishedIPv6Default {
+		if _, err := removeDefaultRouteForInterface("-6", br); err != nil {
+			return fmt.Errorf("edit_standard_bridge: remove IPv6 default route: %v", err)
 		}
 	}
 
@@ -920,6 +1041,11 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		oldRouteGateway := normalizeIPv6GatewayForRoute(old6Gateway, br)
 		if err := deleteRouteIfPresent("-6", "delete", "-net", old6Network, oldRouteGateway); err != nil {
 			return fmt.Errorf("edit_standard_bridge: delete IPv6 route %s via %s: %v", old6Network, old6Gateway, err)
+		}
+		if oldSw.DefaultRoute6 {
+			if _, err := removeDefaultRouteForInterface("-6", br); err != nil {
+				return fmt.Errorf("edit_standard_bridge: delete IPv6 default route on %s: %v", br, err)
+			}
 		}
 	}
 
@@ -996,9 +1122,14 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		if _, err := addRouteIfMissing("-6", "add", "-net", new6Network, newRouteGateway); err != nil {
 			return fmt.Errorf("edit_standard_bridge: add IPv6 route %s via %s: %v", new6Network, new6Gateway, err)
 		}
+		if newSw.DefaultRoute6 {
+			if _, err := addDefaultRoute6IfMissing(newRouteGateway, br); err != nil {
+				return fmt.Errorf("edit_standard_bridge: add IPv6 default route via %s: %v", new6Gateway, err)
+			}
+		}
 	}
 
-	// 6) re-attach only non-DB members (e.g. taps), skip old/new DB ports
+	// 6) re-attach only non-DB members
 	for _, m := range original {
 		if oldSet[m] || newSet[m] {
 			continue
@@ -1026,8 +1157,16 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	if _, err := syncRunCommand("/sbin/ifconfig", br, "up"); err != nil {
 		return fmt.Errorf("edit_standard_bridge: failed to bring up bridge: %v", err)
 	}
+	if newSw.SLAAC && !newSw.DisableIPv6 {
+		if err := syncSolicitRouterAdvertisement(br); err != nil {
+			logger.L.Warn().
+				Err(err).
+				Str("bridge", br).
+				Msg("standard_switch_slaac_router_solicitation_failed")
+		}
+	}
 	if newSw.DHCP {
-		if err := runDhclient(newSw.BridgeName, 10); err != nil {
+		if err := runDhclient(newSw.BridgeName, 10, newSw.DefaultRoute); err != nil {
 			return fmt.Errorf("edit_standard_bridge: %v", err)
 		}
 	}
@@ -1245,7 +1384,20 @@ func removeBridgeMember(br, portName string, vlan int) error {
 	return nil
 }
 
-func runDhclient(br string, timeout int) error {
+const standardSwitchRouterSolicitationTimeout = 5 * time.Second
+
+func solicitStandardSwitchRouterAdvertisement(br string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), standardSwitchRouterSolicitationTimeout)
+	defer cancel()
+
+	// Do not use rtsol -F here: that option disables IPv6 forwarding.
+	if _, err := syncRunCommandWithContext(ctx, "/sbin/rtsol", "-i", br); err != nil {
+		return fmt.Errorf("solicit IPv6 router advertisement on %s: %w", br, err)
+	}
+	return nil
+}
+
+func runDhclient(br string, timeout int, useDefaultRoute bool) error {
 	interfaceObj, err := syncIfaceGet(br)
 	if err != nil {
 		return fmt.Errorf("dhclient: failed to get interface %s: %v", br, err)
@@ -1260,19 +1412,46 @@ func runDhclient(br string, timeout int) error {
 	if err != nil {
 		return fmt.Errorf("dhclient: inspect existing client for %s: %v", br, err)
 	}
-	if running {
-		if len(interfaceObj.IPv4) > 0 {
+	policyMatches, err := dhclientRoutePolicyMatches(br, useDefaultRoute)
+	if err != nil {
+		return fmt.Errorf("dhclient: inspect route policy for %s: %v", br, err)
+	}
+	if !useDefaultRoute {
+		if _, err := removeDefaultRouteForInterface("", br); err != nil {
+			return fmt.Errorf("dhclient: remove default route for %s: %v", br, err)
+		}
+	}
+	if running && len(interfaceObj.IPv4) > 0 && policyMatches {
+		if !useDefaultRoute {
 			return nil
 		}
-		if err := stopDhclient(br); err != nil {
-			return fmt.Errorf("dhclient: restart unbound client for %s: %v", br, err)
+		_, routeExists, err := defaultRouteInterface("")
+		if err != nil {
+			return fmt.Errorf("dhclient: inspect default route for %s: %v", br, err)
 		}
+		if routeExists {
+			// Routes on other interfaces are outside this managed switch's ownership.
+			return nil
+		}
+	}
+	if running {
+		if err := stopDhclient(br); err != nil {
+			return fmt.Errorf("dhclient: restart client for %s: %v", br, err)
+		}
+	}
+	if err := configureDhclientRoutePolicy(br, useDefaultRoute); err != nil {
+		return fmt.Errorf("dhclient: configure route policy for %s: %v", br, err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeout))
 	defer cancel()
 
-	_, err = syncRunCommandWithContext(ctx, "/sbin/dhclient", "-b", "-p", dhclientPIDPath(br), br)
+	args := []string{"-b", "-p", dhclientPIDPath(br)}
+	if !useDefaultRoute {
+		args = append(args, "-c", dhclientConfigPath(br))
+	}
+	args = append(args, br)
+	_, err = syncRunCommandWithContext(ctx, "/sbin/dhclient", args...)
 	if err != nil {
 		logger.L.Debug().Msgf("dhclient: failed to run dhclient for %s: %v", br, err)
 		if strings.Contains(err.Error(), "dhclient already running") {

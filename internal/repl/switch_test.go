@@ -18,7 +18,7 @@ import (
 
 func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	request, err := buildConsoleSwitchCreateRequest([]string{
-		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--disable-bridge-offloads",
+		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--default-route", "--default-route6", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -31,6 +31,9 @@ func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	}
 	if !request.Standard.DisableBridgeOffloads {
 		t.Fatalf("expected bridge offloads to be disabled: %#v", request.Standard)
+	}
+	if !request.Standard.DefaultRoute || !request.Standard.DefaultRoute6 {
+		t.Fatalf("expected both route-owner flags: %#v", request.Standard)
 	}
 	if len(request.Standard.Ports) != 2 || request.Standard.Ports[1] != "igb1" {
 		t.Fatalf("unexpected standard ports: %#v", request.Standard.Ports)
@@ -93,7 +96,7 @@ func TestBuildConsoleSwitchEditRequestStandard(t *testing.T) {
 
 func TestBuildConsoleSwitchEditRequestAcceptsFlagStyleBooleans(t *testing.T) {
 	request, err := buildConsoleSwitchEditRequest([]string{
-		"standard", "7", "--dhcp", "--private=false", "--slaac", "false", "--disable-bridge-offloads",
+		"standard", "7", "--dhcp", "--private=false", "--slaac", "false", "--default-route6", "--disable-bridge-offloads",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -109,6 +112,9 @@ func TestBuildConsoleSwitchEditRequestAcceptsFlagStyleBooleans(t *testing.T) {
 	}
 	if request.Standard.DisableBridgeOffloads == nil || !*request.Standard.DisableBridgeOffloads {
 		t.Fatalf("bridge offload flag was not parsed: %#v", request.Standard)
+	}
+	if request.Standard.DefaultRoute6 == nil || !*request.Standard.DefaultRoute6 {
+		t.Fatalf("IPv6 route-owner flag was not parsed: %#v", request.Standard)
 	}
 }
 

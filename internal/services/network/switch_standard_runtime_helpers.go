@@ -29,6 +29,7 @@ const (
 
 var (
 	dhclientRuntimeDir       = "/var/run/dhclient"
+	dhclientSystemConfigPath = "/etc/dhclient.conf"
 	dhclientNaturalExitGrace = 2 * time.Second
 )
 
@@ -124,8 +125,59 @@ func applyStandardSwitchMAC(sw networkModels.StandardSwitch) (bool, error) {
 	return true, nil
 }
 
+const dhclientNoDefaultRouteConfig = "ignore routers, classless-routes;\n"
+
+func desiredDhclientRoutePolicy() ([]byte, error) {
+	systemConfig, err := os.ReadFile(dhclientSystemConfigPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	config := make([]byte, 0, len(dhclientNoDefaultRouteConfig)+len(systemConfig))
+	config = append(config, dhclientNoDefaultRouteConfig...)
+	config = append(config, systemConfig...)
+	return config, nil
+}
+
 func dhclientPIDPath(br string) string {
 	return filepath.Join(dhclientRuntimeDir, "dhclient."+br+".pid")
+}
+
+func dhclientConfigPath(br string) string {
+	return filepath.Join(dhclientRuntimeDir, "dhclient."+br+".no-default.conf")
+}
+
+func dhclientRoutePolicyMatches(br string, useDefaultRoute bool) (bool, error) {
+	contents, err := os.ReadFile(dhclientConfigPath(br))
+	if errors.Is(err, os.ErrNotExist) {
+		return useDefaultRoute, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if useDefaultRoute {
+		return false, nil
+	}
+	desired, err := desiredDhclientRoutePolicy()
+	if err != nil {
+		return false, err
+	}
+	return string(contents) == string(desired), nil
+}
+
+func configureDhclientRoutePolicy(br string, useDefaultRoute bool) error {
+	path := dhclientConfigPath(br)
+	if useDefaultRoute {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	desired, err := desiredDhclientRoutePolicy()
+	if err != nil {
+		return err
+	}
+	return utils.AtomicWriteFile(path, desired, 0o600)
 }
 
 func ensureDhclientRuntimeDir() error {
@@ -288,6 +340,102 @@ func addDefaultRouteIfMissing(gateway, bridgeName string) (bool, error) {
 	return false, nil
 }
 
+func addDefaultRoute6IfMissing(gateway, bridgeName string) (bool, error) {
+	output, err := syncRunCommand("/sbin/route", "-6", "add", "default", gateway)
+	if err == nil {
+		return true, nil
+	}
+	if !routeAlreadyExists(output, err) {
+		return false, err
+	}
+
+	existingOutput, inspectErr := syncRunCommand("/sbin/route", "-6", "-n", "get", "default")
+	if inspectErr != nil {
+		return false, fmt.Errorf("inspect existing IPv6 default route: %w", inspectErr)
+	}
+	existingGateway, found := routeGetField(existingOutput, "gateway")
+	if !found {
+		return false, fmt.Errorf("inspect existing IPv6 default route: gateway not found")
+	}
+	if existingGateway != gateway {
+		return false, fmt.Errorf(
+			"IPv6 default route already exists via %s, requested %s",
+			existingGateway,
+			gateway,
+		)
+	}
+	existingInterface, found := routeGetField(existingOutput, "interface")
+	if !found {
+		return false, fmt.Errorf("inspect existing IPv6 default route: interface not found")
+	}
+	if existingInterface != bridgeName {
+		return false, fmt.Errorf(
+			"IPv6 default route already exists on interface %s, requested %s",
+			existingInterface,
+			bridgeName,
+		)
+	}
+	return false, nil
+}
+
+func removeDefaultRouteForInterface(familyFlag, interfaceName string) (bool, error) {
+	getArgs := []string{"-n"}
+	if familyFlag != "" {
+		getArgs = append([]string{familyFlag}, getArgs...)
+	}
+	getArgs = append(getArgs, "get", "default")
+	output, err := syncRunCommand("/sbin/route", getArgs...)
+	if err != nil {
+		if routeIsMissing(output, err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspect default route: %w", err)
+	}
+
+	currentInterface, found := routeGetField(output, "interface")
+	if !found {
+		return false, fmt.Errorf("inspect default route: interface not found")
+	}
+	if currentInterface != interfaceName {
+		return false, nil
+	}
+
+	deleteArgs := make([]string, 0, 4)
+	if familyFlag != "" {
+		deleteArgs = append(deleteArgs, familyFlag)
+	}
+	deleteArgs = append(deleteArgs, "delete", "default")
+	if gateway, gatewayFound := routeGetField(output, "gateway"); gatewayFound {
+		deleteArgs = append(deleteArgs, gateway)
+	}
+	deleteOutput, deleteErr := syncRunCommand("/sbin/route", deleteArgs...)
+	if deleteErr != nil && !routeIsMissing(deleteOutput, deleteErr) {
+		return false, deleteErr
+	}
+	return deleteErr == nil, nil
+}
+
+func defaultRouteInterface(familyFlag string) (string, bool, error) {
+	getArgs := []string{"-n"}
+	if familyFlag != "" {
+		getArgs = append([]string{familyFlag}, getArgs...)
+	}
+	getArgs = append(getArgs, "get", "default")
+	output, err := syncRunCommand("/sbin/route", getArgs...)
+	if err != nil {
+		if routeIsMissing(output, err) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("inspect default route: %w", err)
+	}
+
+	currentInterface, found := routeGetField(output, "interface")
+	if !found {
+		return "", false, fmt.Errorf("inspect default route: interface not found")
+	}
+	return currentInterface, true, nil
+}
+
 func deleteRouteIfPresent(args ...string) error {
 	output, err := syncRunCommand("/sbin/route", args...)
 	if err != nil && !routeIsMissing(output, err) {
@@ -299,8 +447,8 @@ func deleteRouteIfPresent(args ...string) error {
 func removeStandardSwitchRoutes(sw networkModels.StandardSwitch) error {
 	var routeErrors []error
 	network4, gateway4 := sw.Network(4), sw.Gateway(4)
-	if sw.DefaultRoute && gateway4 != "" {
-		if err := deleteRouteIfPresent("delete", "default", gateway4); err != nil {
+	if sw.DefaultRoute {
+		if _, err := removeDefaultRouteForInterface("", sw.BridgeName); err != nil {
 			routeErrors = append(routeErrors, fmt.Errorf("delete IPv4 default route: %w", err))
 		}
 	}
@@ -311,9 +459,14 @@ func removeStandardSwitchRoutes(sw networkModels.StandardSwitch) error {
 	}
 
 	network6, gateway6 := sw.Network(6), sw.Gateway(6)
-	if network6 != "" && gateway6 != "" {
-		gateway6 = normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
-		if err := deleteRouteIfPresent("-6", "delete", "-net", network6, gateway6); err != nil {
+	routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
+	if sw.DefaultRoute6 {
+		if _, err := removeDefaultRouteForInterface("-6", sw.BridgeName); err != nil {
+			routeErrors = append(routeErrors, fmt.Errorf("delete IPv6 default route: %w", err))
+		}
+	}
+	if network6 != "" && routeGateway6 != "" {
+		if err := deleteRouteIfPresent("-6", "delete", "-net", network6, routeGateway6); err != nil {
 			routeErrors = append(routeErrors, fmt.Errorf("delete IPv6 network route: %w", err))
 		}
 	}
@@ -395,8 +548,12 @@ func stopDhclient(br string) error {
 		}
 	}
 
+	var cleanupErrors []error
 	if err := os.Remove(dhclientPIDPath(br)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove dhclient PID file for %s: %w", br, err)
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("remove dhclient PID file for %s: %w", br, err))
 	}
-	return nil
+	if err := os.Remove(dhclientConfigPath(br)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("remove dhclient config for %s: %w", br, err))
+	}
+	return errors.Join(cleanupErrors...)
 }

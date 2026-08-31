@@ -43,6 +43,7 @@ type standardSwitchInput struct {
 	disableIPv6           bool
 	slaac                 bool
 	defaultRoute          bool
+	defaultRoute6         bool
 	disableBridgeOffloads bool
 	manual                networkModels.StandardSwitchManualAddresses
 	macSource             networkModels.StandardSwitchMACSource
@@ -245,10 +246,6 @@ func (s *Service) validateStandardSwitchInput(
 	input.disableIPv6 = modes.disableIPv6
 	input.slaac = modes.slaac
 	input.manual = modes.manual
-	if input.dhcp {
-		input.defaultRoute = false
-	}
-
 	manual, err := validateStandardSwitchManual(
 		input.network4ID,
 		input.gateway4ID,
@@ -297,8 +294,14 @@ func (s *Service) validateStandardSwitchInput(
 	if gateway6 != "" && network6 == "" {
 		return input, invalidStandardSwitch("standard_switch_ipv6_gateway_requires_network", nil)
 	}
-	if input.defaultRoute && (network4 == "" || gateway4 == "") {
+	if input.defaultRoute && !input.dhcp && (network4 == "" || gateway4 == "") {
 		return input, invalidStandardSwitch("standard_switch_default_route_requires_ipv4_gateway", nil)
+	}
+	if input.defaultRoute6 && input.disableIPv6 {
+		return input, invalidStandardSwitch("standard_switch_ipv6_default_route_requires_ipv6", nil)
+	}
+	if input.defaultRoute6 && !input.slaac && (network6 == "" || gateway6 == "") {
+		return input, invalidStandardSwitch("standard_switch_default_route6_requires_ipv6_gateway", nil)
 	}
 
 	input.ports, err = normalizeStandardSwitchPorts(input.ports)
@@ -358,6 +361,19 @@ func (s *Service) validateStandardSwitchInput(
 		}
 		if count > 0 {
 			return input, standardSwitchConflict("standard_switch_default_route_conflict", nil)
+		}
+	}
+	if input.defaultRoute6 {
+		query := s.DB.Model(&networkModels.StandardSwitch{}).Where("default_route6 = ?", true)
+		if excludeID != 0 {
+			query = query.Where("id <> ?", excludeID)
+		}
+		var count int64
+		if err := query.Count(&count).Error; err != nil {
+			return input, fmt.Errorf("check standard switch IPv6 default route conflict: %w", err)
+		}
+		if count > 0 {
+			return input, standardSwitchConflict("standard_switch_default_route6_conflict", nil)
 		}
 	}
 

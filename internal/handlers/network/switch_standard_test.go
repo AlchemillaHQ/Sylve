@@ -52,6 +52,33 @@ func standardSwitchResponseError(t *testing.T, rr *httptest.ResponseRecorder) st
 	return resp.Error
 }
 
+func TestWriteStandardSwitchRCConflictConfirmation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rr := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rr)
+	writeStandardSwitchRCConflictConfirmation(c, []network.StandardSwitchRCConflict{{
+		Code: "standard_switch_member_rc_l3_conflict", Port: "em0", Member: "em0", DHCP: true,
+	}})
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status=%d want %d body=%s", rr.Code, http.StatusConflict, rr.Body.String())
+	}
+	var response struct {
+		Status  string                             `json:"status"`
+		Message string                             `json:"message"`
+		Error   string                             `json:"error"`
+		Data    []network.StandardSwitchRCConflict `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode conflict confirmation: %v", err)
+	}
+	if response.Status != "error" || response.Message != "standard_switch_rc_conflicts_require_confirmation" ||
+		response.Error != response.Message || len(response.Data) != 1 || !response.Data[0].DHCP ||
+		response.Data[0].Member != "em0" {
+		t.Fatalf("unexpected conflict confirmation: %#v", response)
+	}
+}
+
 func TestCreateStandardSwitchDoesNotPanicWhenOptionalIPv6FieldsMissing(t *testing.T) {
 	db := newNetworkHandlerTestDB(t,
 		&networkModels.Object{},
@@ -72,6 +99,7 @@ func TestCreateStandardSwitchDoesNotPanicWhenOptionalIPv6FieldsMissing(t *testin
 		"name": "switch-a",
 		"vlan": 5000,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"]
 	}`))
 
@@ -115,6 +143,7 @@ func TestCreateStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 	body := fmt.Sprintf(`{
 		"name": "sw-conflict",
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"network4": %d,
 		"network4Manual": "10.0.0.1/24"
@@ -135,6 +164,7 @@ func TestCreateStandardSwitchForwardsManualValidation(t *testing.T) {
 	body := `{
 		"name": "sw-bad-manual",
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"network4Manual": "not-a-cidr"
 	}`
@@ -154,6 +184,7 @@ func TestCreateStandardSwitchDHCPClearsIPv4Manual(t *testing.T) {
 	body := `{
 		"name": "sw-dhcp",
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"dhcp": true,
 		"network4Manual": "garbage4",
@@ -176,6 +207,7 @@ func TestCreateStandardSwitchDisableIPv6KeepsIPv4Manual(t *testing.T) {
 	body := `{
 		"name": "sw-no-ipv6",
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"disableIPv6": true,
 		"network4Manual": "garbage4"
@@ -193,6 +225,7 @@ func TestCreateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	body := `{
 		"name": "sw-slaac",
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"slaac": true,
 		"network4Manual": "garbage4"
@@ -201,6 +234,23 @@ func TestCreateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
 	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected SLAAC to leave IPv4 manual intact and fail validation, got %q", e)
+	}
+}
+
+func TestCreateStandardSwitchForwardsIPv6RouteOwnership(t *testing.T) {
+	r, _ := setupStandardSwitchCreateRouter(t)
+
+	body := `{
+		"name": "sw-disabled-ipv6-owner",
+		"private": false,
+		"confirmRCConflicts": true,
+		"disableIPv6": true,
+		"defaultRoute6": true
+	}`
+
+	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(body))
+	if e := standardSwitchResponseError(t, rr); e != "standard_switch_ipv6_default_route_requires_ipv6" {
+		t.Fatalf("expected IPv6 route-owner validation error, got %q", e)
 	}
 }
 
@@ -241,6 +291,7 @@ func TestUpdateStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 	body := fmt.Sprintf(`{
 		"mtu": 1500,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"network4": %d,
 		"network4Manual": "10.0.0.1/24"
@@ -261,6 +312,7 @@ func TestUpdateStandardSwitchForwardsManualValidation(t *testing.T) {
 	body := `{
 		"mtu": 1500,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"network4Manual": "not-a-cidr"
 	}`
@@ -280,6 +332,7 @@ func TestUpdateStandardSwitchDHCPClearsIPv4Manual(t *testing.T) {
 	body := `{
 		"mtu": 1500,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"dhcp": true,
 		"network4Manual": "garbage4",
@@ -302,6 +355,7 @@ func TestUpdateStandardSwitchDisableIPv6KeepsIPv4Manual(t *testing.T) {
 	body := `{
 		"mtu": 1500,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"disableIPv6": true,
 		"network4Manual": "garbage4"
@@ -319,6 +373,7 @@ func TestUpdateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	body := `{
 		"mtu": 1500,
 		"private": false,
+		"confirmRCConflicts": true,
 		"ports": ["em0"],
 		"slaac": true,
 		"network4Manual": "garbage4"
@@ -327,6 +382,23 @@ func TestUpdateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(body))
 	if e := standardSwitchResponseError(t, rr); e != "invalid_standard_switch_network4_manual" {
 		t.Fatalf("expected SLAAC to leave IPv4 manual intact and fail validation, got %q", e)
+	}
+}
+
+func TestUpdateStandardSwitchPreservesOmittedIPv6RouteOwnership(t *testing.T) {
+	r, db := setupStandardSwitchUpdateRouter(t)
+	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", 1).Update("default_route6", true).Error; err != nil {
+		t.Fatalf("seed IPv6 route ownership: %v", err)
+	}
+
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(`{
+		"private": false,
+		"confirmRCConflicts": true,
+		"disableIPv6": true,
+		"ports": []
+	}`))
+	if code := standardSwitchResponseError(t, rr); code != "standard_switch_ipv6_default_route_requires_ipv6" {
+		t.Fatalf("omitted defaultRoute6 was not preserved: status=%d code=%q body=%s", rr.Code, code, rr.Body.String())
 	}
 }
 

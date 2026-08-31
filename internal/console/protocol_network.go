@@ -45,6 +45,7 @@ type StandardSwitchCreateRequest struct {
 	SLAAC                 bool                           `json:"slaac"`
 	Private               bool                           `json:"private"`
 	DefaultRoute          bool                           `json:"defaultRoute"`
+	DefaultRoute6         bool                           `json:"defaultRoute6"`
 	DisableBridgeOffloads bool                           `json:"disableBridgeOffloads"`
 	DHCP                  bool                           `json:"dhcp"`
 	Ports                 []string                       `json:"ports"`
@@ -85,6 +86,7 @@ type StandardSwitchEditRequest struct {
 	SLAAC                 *bool                           `json:"slaac,omitempty"`
 	Private               *bool                           `json:"private,omitempty"`
 	DefaultRoute          *bool                           `json:"defaultRoute,omitempty"`
+	DefaultRoute6         *bool                           `json:"defaultRoute6,omitempty"`
 	DisableBridgeOffloads *bool                           `json:"disableBridgeOffloads,omitempty"`
 	DHCP                  *bool                           `json:"dhcp,omitempty"`
 	Ports                 *[]string                       `json:"ports,omitempty"`

@@ -72,9 +72,12 @@ type StandardSwitch struct {
 	GatewayManual  string `json:"gatewayManual" gorm:"column:gateway_manual"`
 	Gateway6Manual string `json:"gateway6Manual" gorm:"column:gateway6_manual"`
 
-	DisableIPv6  bool `json:"disableIPv6" gorm:"default:false"`
-	Private      bool `json:"private" gorm:"default:false"`
+	DisableIPv6 bool `json:"disableIPv6" gorm:"default:false"`
+	Private     bool `json:"private" gorm:"default:false"`
+	// DefaultRoute owns the IPv4 default route for static or DHCP addressing.
 	DefaultRoute bool `json:"defaultRoute" gorm:"default:false"`
+	// DefaultRoute6 owns the IPv6 default route for static or SLAAC addressing.
+	DefaultRoute6 bool `json:"defaultRoute6" gorm:"default:false"`
 	// DisableBridgeOffloads keeps FreeBSD from changing bridge-member
 	// capabilities as transient tap and epair interfaces come and go.
 	// Sorts flapping issues (Please tell @hayzam if you faced flapping before/after enabling this option).

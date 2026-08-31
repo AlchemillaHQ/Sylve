@@ -23,6 +23,17 @@ import (
 
 const tunablesCacheTTL = 5 * time.Second
 
+func managedStandardSwitchTunable(name string) (string, bool) {
+	switch name {
+	case models.SystemTunableBridgeInheritMACOID:
+		return "standard switch MAC identity", true
+	case models.SystemTunableIPv6RFC6204W3OID:
+		return "standard switch IPv6 route ownership", true
+	default:
+		return "", false
+	}
+}
+
 type TunablesResponse struct {
 	LastPage int              `json:"last_page"`
 	Data     []sysctl.Tunable `json:"data"`
@@ -89,7 +100,7 @@ func (s *Service) configuredTunables(stored map[string]string) ([]sysctl.Tunable
 			continue
 		}
 		tunable.Value = value
-		if name == models.SystemTunableBridgeInheritMACOID {
+		if _, managed := managedStandardSwitchTunable(name); managed {
 			tunable.Writable = false
 		}
 		configured = append(configured, tunable)
@@ -129,7 +140,7 @@ func (s *Service) ListTunablesPaginated(page, size int, sortField, sortDir, sear
 		if configured {
 			t.Value = v
 		}
-		if t.Name == models.SystemTunableBridgeInheritMACOID {
+		if _, managed := managedStandardSwitchTunable(t.Name); managed {
 			t.Writable = false
 		}
 		if needle != "" && !strings.Contains(strings.ToLower(t.Name), needle) {
@@ -243,8 +254,8 @@ func (s *Service) SetTunable(name, value string) error {
 	if name == "" {
 		return ErrTunableNameRequired
 	}
-	if name == models.SystemTunableBridgeInheritMACOID {
-		return fmt.Errorf("%w: %s is managed by standard switch MAC identity", ErrTunableNotWritable, name)
+	if owner, managed := managedStandardSwitchTunable(name); managed {
+		return fmt.Errorf("%w: %s is managed by %s", ErrTunableNotWritable, name, owner)
 	}
 
 	t, found, err := s.findTunable(name)
@@ -301,7 +312,7 @@ func (s *Service) ReapplyStoredTunables() error {
 	}
 
 	for _, r := range rows {
-		if r.Name == models.SystemTunableBridgeInheritMACOID {
+		if _, managed := managedStandardSwitchTunable(r.Name); managed {
 			continue
 		}
 		if err := s.setTunableRuntimeValue(r.Name, r.Value); err != nil {

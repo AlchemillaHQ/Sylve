@@ -3,7 +3,7 @@ title: Switches
 description: Inspect standard and manual network switches from the Sylve CLI and interactive console.
 ---
 
-import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+import AsciinemaPlayer from "../../../../../../../components/AsciinemaPlayer.astro";
 
 Switches connect Jails and Virtual Machines to the host network. Sylve supports standard switches that it manages and manual switches that register an existing FreeBSD bridge.
 
@@ -65,14 +65,14 @@ Network and gateway options can reference reusable object IDs. Create those obje
 
 Standard switch creation supports:
 
-| Setting | Flags |
-| --- | --- |
-| Link configuration | `--mtu`, `--vlan`, `--ports` |
-| IPv4 objects | `--network4`, `--gateway4` |
-| IPv6 objects | `--network6`, `--gateway6` |
-| Manual addressing | `--network4-manual`, `--gateway4-manual`, `--network6-manual`, `--gateway6-manual` |
-| Address behavior | `--dhcp`, `--slaac`, `--disable-ipv6`, `--default-route` |
-| Isolation and hardware | `--private`, `--disable-bridge-offloads` |
+| Setting                    | Flags                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------- |
+| Link configuration         | `--mtu`, `--vlan`, `--ports`                                                       |
+| IPv4 objects               | `--network4`, `--gateway4`                                                         |
+| IPv6 objects               | `--network6`, `--gateway6`                                                         |
+| Manual addressing          | `--network4-manual`, `--gateway4-manual`, `--network6-manual`, `--gateway6-manual` |
+| Address and route behavior | `--dhcp`, `--slaac`, `--disable-ipv6`, `--default-route`, `--default-route6`       |
+| Isolation and hardware     | `--private`, `--disable-bridge-offloads`                                           |
 
 `--ports` is a comma-separated list of physical interface names. Object-backed and manual address fields represent alternative inputs; use the form appropriate to the switch configuration.
 
@@ -83,8 +83,14 @@ doas sylve switches create \
   --type standard \
   --name guests-auto \
   --dhcp \
-  --slaac
+  --slaac \
+  --default-route \
+  --default-route6
 ```
+
+`--default-route` selects the one Standard Switch allowed to install the node's IPv4 default route, including a route learned through DHCP. `--default-route6` independently selects the one switch allowed to install a static IPv6 default route or accept an RA-advertised default router. DHCP and SLAAC still acquire addresses when their route-owner flag is omitted.
+
+Only one configured owner is allowed per address family. The IPv4 and IPv6 owners may be the same switch or different switches.
 
 ## Manual switches
 

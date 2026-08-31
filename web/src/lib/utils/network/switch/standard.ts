@@ -151,13 +151,28 @@ export function generateTableData(switches: SwitchList | undefined): {
 		},
 		{
 			field: 'defaultRoute',
-			title: 'Default Route',
+			title: 'IPv4 Default Route',
 			visible: false,
 			formatter: (cell: CellComponent) => {
 				const row = cell.getRow();
 				const data = row.getData();
 
 				if (data.defaultRoute) {
+					return renderWithIcon('lets-icons:check-fill', 'Yes');
+				}
+
+				return renderWithIcon('gridicons:cross-circle', 'No');
+			}
+		},
+		{
+			field: 'defaultRoute6',
+			title: 'IPv6 Default Route',
+			visible: false,
+			formatter: (cell: CellComponent) => {
+				const row = cell.getRow();
+				const data = row.getData();
+
+				if (data.defaultRoute6) {
 					return renderWithIcon('lets-icons:check-fill', 'Yes');
 				}
 
@@ -208,6 +223,7 @@ export function generateTableData(switches: SwitchList | undefined): {
 				disableIPv6: sw.disableIPv6 || false,
 				slaac: sw.slaac || false,
 				defaultRoute: sw.defaultRoute || false,
+				defaultRoute6: sw.defaultRoute6 || false,
 				disableBridgeOffloads: sw.disableBridgeOffloads || false
 			});
 		}

@@ -2223,7 +2223,6 @@ msgstr "नेटवर्क"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "MAC(s)"
 msgstr "मैक"
 
@@ -6031,10 +6030,6 @@ msgstr "अमान्य MTU"
 msgid "Invalid VLAN"
 msgstr "अमान्य VLAN"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "There is already a switch with a default route"
-msgstr "डिफ़ॉल्ट रूट के साथ पहले से ही एक स्विच मौजूद है"
-
 #. 0: normalizedName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
@@ -6081,10 +6076,6 @@ msgstr "निजी"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Disable IPV6"
 msgstr "IPv6 अक्षम करें"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Default Route"
-msgstr "डिफ़ॉल्ट रूट"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create Directory"
@@ -17892,4 +17883,28 @@ msgstr ""
 
 #: src/lib/components/custom/Samba/Config.svelte
 msgid "Advanced: appended verbatim to Samba's [global] section. Sylve checks the complete file with testparm before applying it, but does not validate these settings. They can override managed values or disrupt Samba."
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Another switch already owns the IPv4 default route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Another switch already owns the IPv6 default route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use DHCP Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Use RA Default Route"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 Default Route"
 msgstr ""

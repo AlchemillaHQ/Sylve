@@ -26,6 +26,8 @@
 	import {
 		emptySwitchList,
 		isSwitchList,
+		StandardSwitchRCConflictsSchema,
+		type StandardSwitchRCConflict,
 		type SwitchList,
 		type SwitchRow
 	} from '$lib/types/network/switch';
@@ -138,6 +140,7 @@
 			dhcp: false,
 			slaac: false,
 			defaultRoute: false,
+			defaultRoute6: false,
 			disableBridgeOffloads: true
 		},
 		editSwitch: {
@@ -159,6 +162,7 @@
 			dhcp: false,
 			slaac: false,
 			defaultRoute: false,
+			defaultRoute6: false,
 			disableBridgeOffloads: false
 		},
 		deleteSwitch: {
@@ -246,7 +250,7 @@
 
 	let bridgeMACObjectModal = $state({
 		open: false,
-		prefill: { name: '', type: 'MAC(s)', value: '' }
+		prefill: { name: '', type: '', value: '' }
 	});
 
 	function openBridgeMACObjectCreator() {
@@ -293,6 +297,48 @@
 		return `The selected ${noun} ${portList} currently ${addressRemovalWarning.ports.length === 1 ? 'has' : 'have'} IP addresses assigned. Continuing will convert the ${noun} to bridge members and remove assigned addresses. If your browser connection uses one of these interfaces, connectivity may be interrupted. Ensure the switch has the replacement management address and that console access is available.`;
 	});
 
+	let rcConflictWarning = $state({
+		open: false,
+		conflicts: [] as StandardSwitchRCConflict[]
+	});
+
+	function rcConflictDetail(conflict: StandardSwitchRCConflict): string {
+		const member = `<b>${escapeHTML(conflict.member || conflict.port || 'selected interface')}</b>`;
+		switch (conflict.code) {
+			case 'standard_switch_member_rc_l3_conflict': {
+				const modes = [
+					conflict.dhcp ? 'DHCP' : '',
+					conflict.slaac ? 'SLAAC' : '',
+					conflict.staticIPv4 ? 'static IPv4' : '',
+					conflict.staticIPv6 ? 'static IPv6' : '',
+					conflict.aliasesIPv4 ? 'IPv4 aliases' : '',
+					conflict.aliasesIPv6 ? 'IPv6 aliases' : ''
+				].filter(Boolean);
+				return `${member} has external rc.conf layer-3 configuration (${modes.join(', ')}).`;
+			}
+			case 'standard_switch_member_bridge_ownership_conflict':
+				return `${member} is also assigned to bridge <b>${escapeHTML(conflict.conflictingBridge || 'unknown')}</b>.`;
+			case 'standard_switch_member_rc_inspection_unavailable':
+				return `Sylve could not inspect the effective rc.conf settings for ${member}.`;
+			default:
+				return 'Sylve could not inspect current runtime bridge ownership.';
+		}
+	}
+
+	let rcConflictWarningMessage = $derived.by(() => {
+		const details = rcConflictWarning.conflicts.map(rcConflictDetail).join('<br>');
+		return `The selected ports have configuration outside Sylve's managed Standard Switches.<br>${details}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime.`;
+	});
+
+	function showRCConflictWarning(response: APIResponse): boolean {
+		if (response.error !== 'standard_switch_rc_conflicts_require_confirmation') return false;
+		const parsed = StandardSwitchRCConflictsSchema.safeParse(response.data);
+		if (!parsed.success || parsed.data.length === 0) return false;
+		rcConflictWarning.conflicts = parsed.data;
+		rcConflictWarning.open = true;
+		return true;
+	}
+
 	function selectedBridgeMembers(ports: string[], vlan: number): string[] {
 		return ports.map((port) => (vlan > 0 ? `${port}.${vlan}` : port));
 	}
@@ -326,7 +372,7 @@
 		}
 	);
 
-	async function confirmAction(addressRemovalConfirmed = false) {
+	async function confirmAction(addressRemovalConfirmed = false, rcConflictsConfirmed = false) {
 		if (saving) return;
 
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
@@ -401,7 +447,6 @@
 
 			if (
 				(confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') &&
-				!activeModal.dhcp &&
 				activeModal.defaultRoute
 			) {
 				const existingSwitch = switches.current?.standard?.find(
@@ -410,7 +455,24 @@
 				);
 
 				if (existingSwitch) {
-					toast.error('There is already a switch with a default route', {
+					toast.error('Another switch already owns the IPv4 default route', {
+						position: 'bottom-center'
+					});
+					return;
+				}
+			}
+
+			if (
+				(confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') &&
+				activeModal.defaultRoute6
+			) {
+				const existingSwitch = switches.current?.standard?.find(
+					(sw) =>
+						sw.defaultRoute6 && !(confirmModals.active === 'editSwitch' && sw.id === activeRow?.id)
+				);
+
+				if (existingSwitch) {
+					toast.error('Another switch already owns the IPv6 default route', {
 						position: 'bottom-center'
 					});
 					return;
@@ -508,11 +570,14 @@
 						activeModal.slaac,
 						activeModal.dhcp,
 						activeModal.defaultRoute,
+						activeModal.defaultRoute6,
 						activeModal.disableBridgeOffloads,
-						manual
+						manual,
+						rcConflictsConfirmed
 					);
 
 					if (isAPIResponse(created)) {
+						if (showRCConflictWarning(created)) return;
 						handleAPIError(created);
 						toast.error('Error creating switch', { position: 'bottom-center' });
 						return;
@@ -537,11 +602,14 @@
 						activeModal.slaac,
 						activeModal.dhcp,
 						activeModal.defaultRoute,
+						activeModal.defaultRoute6,
 						activeModal.disableBridgeOffloads,
-						manual
+						manual,
+						rcConflictsConfirmed
 					);
 
 					if (edited.status !== 'success') {
+						if (showRCConflictWarning(edited)) return;
 						handleAPIError(edited);
 						toast.error('Error updating switch', { position: 'bottom-center' });
 						return;
@@ -650,6 +718,7 @@
 			confirmModals.editSwitch.dhcp = (activeRow.dhcp as boolean) || false;
 			confirmModals.editSwitch.slaac = (activeRow.slaac as boolean) || false;
 			confirmModals.editSwitch.defaultRoute = (activeRow.defaultRoute as boolean) || false;
+			confirmModals.editSwitch.defaultRoute6 = (activeRow.defaultRoute6 as boolean) || false;
 			confirmModals.editSwitch.disableBridgeOffloads =
 				(activeRow.disableBridgeOffloads as boolean) || false;
 
@@ -666,9 +735,11 @@
 			confirmModals.deleteSwitch.open = false;
 			confirmModals.editSwitch.open = false;
 			addressRemovalWarning.open = false;
+			rcConflictWarning.open = false;
 		}
 		addressRemovalWarning.ports = [];
 		addressRemovalWarning.inspectionUnavailable = false;
+		rcConflictWarning.conflicts = [];
 
 		confirmModals.newSwitch.name = '';
 		confirmModals.newSwitch.mtu = '';
@@ -678,6 +749,7 @@
 		confirmModals.newSwitch.dhcp = false;
 		confirmModals.newSwitch.slaac = false;
 		confirmModals.newSwitch.defaultRoute = false;
+		confirmModals.newSwitch.defaultRoute6 = false;
 		confirmModals.newSwitch.disableBridgeOffloads = true;
 		confirmModals.newSwitch.bridgeMacMode = '';
 
@@ -691,6 +763,7 @@
 		confirmModals.editSwitch.dhcp = false;
 		confirmModals.editSwitch.slaac = false;
 		confirmModals.editSwitch.defaultRoute = false;
+		confirmModals.editSwitch.defaultRoute6 = false;
 		confirmModals.editSwitch.disableBridgeOffloads = false;
 		confirmModals.editSwitch.bridgeMacMode = '';
 
@@ -725,10 +798,12 @@
 		(nwDisableIPv6, editDisableIPv6) => {
 			if (nwDisableIPv6) {
 				confirmModals.newSwitch.slaac = false;
+				confirmModals.newSwitch.defaultRoute6 = false;
 			}
 
 			if (editDisableIPv6) {
 				confirmModals.editSwitch.slaac = false;
+				confirmModals.editSwitch.defaultRoute6 = false;
 			}
 		}
 	);
@@ -739,12 +814,6 @@
 			if (nwDHCP || editDHCP) {
 				comboBoxes.ipv4.value = '';
 				comboBoxes.ipv4Gw.value = '';
-
-				if (nwDHCP) {
-					confirmModals.newSwitch.defaultRoute = false;
-				} else if (editDHCP) {
-					confirmModals.editSwitch.defaultRoute = false;
-				}
 			}
 		}
 	);
@@ -1051,10 +1120,20 @@
 						title="Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
 					></CustomCheckbox>
 
-					{#if !confirmModals[confirmModals.active].dhcp}
+					<CustomCheckbox
+						label={confirmModals[confirmModals.active].dhcp
+							? 'Use DHCP Default Route'
+							: 'IPv4 Default Route'}
+						bind:checked={confirmModals[confirmModals.active].defaultRoute}
+						classes="flex items-center gap-2 mt-1"
+					></CustomCheckbox>
+
+					{#if !confirmModals[confirmModals.active].disableIPv6}
 						<CustomCheckbox
-							label="Default Route"
-							bind:checked={confirmModals[confirmModals.active].defaultRoute}
+							label={confirmModals[confirmModals.active].slaac
+								? 'Use RA Default Route'
+								: 'IPv6 Default Route'}
+							bind:checked={confirmModals[confirmModals.active].defaultRoute6}
 							classes="flex items-center gap-2 mt-1"
 						></CustomCheckbox>
 					{/if}
@@ -1131,6 +1210,24 @@
 			addressRemovalWarning.open = false;
 			addressRemovalWarning.ports = [];
 			addressRemovalWarning.inspectionUnavailable = false;
+		}
+	}}
+></AlertDialog>
+
+<AlertDialog
+	bind:open={rcConflictWarning.open}
+	customTitle={rcConflictWarningMessage}
+	confirmLabel="Continue"
+	loadingLabel="Applying…"
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: async () => {
+			await confirmAction(true, true);
+			rcConflictWarning.open = false;
+		},
+		onCancel: () => {
+			rcConflictWarning.open = false;
+			rcConflictWarning.conflicts = [];
 		}
 	}}
 ></AlertDialog>

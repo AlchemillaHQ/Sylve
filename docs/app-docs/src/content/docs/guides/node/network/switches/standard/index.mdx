@@ -11,12 +11,16 @@ A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one wh
 
 If an upstream router or gateway is connected through a physical NIC on the node, add that NIC to the switch as a **Port**. Put the node's address configuration on the Standard Switch itself: either select or type static addresses and gateways, or enable **DHCP** and let the bridge obtain IPv4 configuration from the upstream network. The physical port remains unaddressed as a bridge member.
 
-An existing DHCP or static `ifconfig_<port>` entry may remain in `/etc/rc.conf`. FreeBSD can use it to configure the bare NIC during early boot; after networking is up, Sylve stops any DHCP client on the selected bridge member, clears its live addresses, and applies the Standard Switch configuration to the bridge. Sylve does not rewrite the `rc.conf` entry. Do not also configure the Sylve-generated bridge in `rc.conf`.
+Sylve does not rewrite `rc.conf`. Keep the selected physical port's rc configuration at layer 2 only, for example `ifconfig_igb0="up"`, or omit it. Remove DHCP, static addresses, aliases, and `accept_rtadv` from that port. Otherwise FreeBSD can start a second DHCP or SLAAC client on the bridge member after a link event, competing with the bridge for addresses and default routes. Before create or update, Sylve reports detected effective `rc.conf` conflicts and requires explicit confirmation. Confirmation does not modify the external configuration.
+
+The same confirmation reports when a selected port is configured with `addm` on another cloned bridge or is currently attached to another bridge. These checks apply only while managing Standard Switches. Register an externally managed `rc.conf` bridge as a Manual Switch instead; Sylve does not rewrite or reconcile Manual Switch configuration.
+
+Do not configure the Sylve-generated bridge in `rc.conf` either.
 
 :::danger
 Adding an interface as a Standard Switch **Port clears every IPv4 and IPv6 address from that underlying interface, including aliases**, before it is attached to the bridge. Sylve does not copy its current address configuration to the bridge automatically.
 
-If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's live IP configuration on the bridge; an `rc.conf` entry for the physical port serves only as the early-boot or fallback configuration described above.
+If you are connected to Sylve through that interface, expect the connection to drop while the change is applied. Configure the intended address, gateway, DHCP, or SLAAC mode on the Standard Switch in the same operation, and use out-of-band access or a maintenance window if losing network access would be disruptive. After creation, manage the node's live IP configuration on the bridge, not the physical member.
 :::
 
 ## Address objects first
@@ -48,28 +52,45 @@ Open **Network → Switches → Standard** and select **New**. The modal creates
 
 ### Fields
 
-| Field                   | Meaning                                                                                                                                      |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Name**                | A unique Sylve switch name. Sylve derives a bridge name from it; do not rely on that generated bridge name as a user-facing identifier.      |
-| **MTU**                 | The bridge MTU. Leave the default unless every link in the path is configured for a different value.                                         |
-| **VLAN**                | Optional VLAN tag applied when Sylve creates member interfaces for the selected ports.                                                       |
-| **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                           |
-| **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                    |
+| Field                   | Meaning                                                                                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Name**                | A unique Sylve switch name. Sylve derives a bridge name from it; do not rely on that generated bridge name as a user-facing identifier.                                               |
+| **MTU**                 | The bridge MTU. Leave the default unless every link in the path is configured for a different value.                                                                                  |
+| **VLAN**                | Optional VLAN tag applied when Sylve creates member interfaces for the selected ports.                                                                                                |
+| **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                                                                    |
+| **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                                                             |
 | **Ports**               | Interfaces that Sylve will attach to the bridge. **Sylve clears all IPv4 and IPv6 addresses from each selected port before attachment.** Configure the address on the bridge instead. |
 
 ### Checkboxes
 
-| Checkbox                    | Effect                                                                                                                                                                                                                                                                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Private**                 | Prevents traffic between guests attached to the same switch while retaining communication with physical interfaces attached to it.                                                                                                                                                                                                   |
-| **DHCP**                    | Makes the **bridge a DHCP client** for IPv4. Sylve requests IPv4 configuration from an external DHCP server and clears static IPv4 network/gateway selections. It does not start a DHCP server.                                                                                                                                      |
-| **SLAAC**                   | Makes the **bridge an IPv6 SLAAC client**. Sylve accepts router advertisements from an external IPv6 router and clears static IPv6 selections. It does not provide router advertisements or act as a DHCPv6 server.                                                                                                                  |
-| **Disable IPv6**            | Disables IPv6 on the bridge and turns off SLAAC. Use only when IPv6 truly must not be present.                                                                                                                                                                                                                                       |
-| **Disable Bridge Offloads** | Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. This is enabled by default and recommended: it avoids link flaps while VM `tap` and jail `epair` ports come and go. Turning it off stops enforcement; it does not re-enable capabilities already disabled. |
-| **Default Route**           | Installs this switch's static IPv4 gateway as the node's default route. It requires an IPv4 address and gateway, is unavailable with DHCP, and only one Standard Switch may own it.                                                                                                                                                  |
+| Checkbox                    | Effect                                                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Private**                 | Prevents traffic between guests attached to the same switch while retaining communication with physical interfaces attached to it.                                                                                                                                                                                                     |
+| **DHCP**                    | Makes the **bridge a DHCP client** for IPv4. Sylve requests an IPv4 address from an external DHCP server and clears static IPv4 network/gateway selections. It does not start a DHCP server. Whether DHCP may supply the node's default route is controlled separately.                                                                |
+| **SLAAC**                   | Makes the **bridge an IPv6 SLAAC client**. Sylve solicits and accepts router advertisements for address configuration and clears static IPv6 selections. It does not provide router advertisements or act as a DHCPv6 server. Whether the router enters FreeBSD's Default Router List is controlled separately.                        |
+| **Disable IPv6**            | Disables IPv6 on the bridge and turns off SLAAC. Use only when IPv6 truly must not be present.                                                                                                                                                                                                                                         |
+| **Disable Bridge Offloads** | Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. This is enabled by default and recommended: it avoids link flaps while VM `tap` and jail `epair` ports come and go. Turning it off stops enforcement; it does not re-enable capabilities already disabled.   |
+| **IPv4 Default Route**      | Makes this switch the node's IPv4 default-route owner. With static addressing, Sylve installs the configured IPv4 gateway. With DHCP, the label becomes **Use DHCP Default Route** and Sylve accepts DHCP router information; non-owner DHCP switches still obtain addresses but suppress the DHCP router and classless-route options. |
+| **IPv6 Default Route**      | Makes this switch the node's IPv6 default-route owner. With static addressing, Sylve installs the configured IPv6 gateway. With SLAAC, the label becomes **Use RA Default Route** and Sylve permits advertised routers to enter FreeBSD's Default Router List; non-owners still configure SLAAC addresses.                             |
 
 :::note
 DHCP and SLAAC here are host-side client modes for the bridge. To serve leases or DNS to guests, configure the separate **DHCP & DNS** features after creating the switch.
+:::
+
+IPv4 and IPv6 ownership are independent: one Standard Switch may own both families, or different switches may own one family each. Sylve permits at most one configured owner per family for newly created or edited switches.
+
+For a non-owner DHCP switch, Sylve starts that bridge's client with a generated per-interface configuration that ignores only `routers` and `classless-routes`. The rest of `/etc/dhclient.conf` is included, so settings such as DNS, hostname, and requested lease options keep their administrator-defined behavior. On the next switch reconciliation, changes to `/etc/dhclient.conf` cause the managed client to restart with the updated effective configuration. FreeBSD presents DHCP option 121 as one `classless-routes` value, so non-owner mode suppresses all routes from that option, not just a default route it may contain; configure any required routes separately in Sylve.
+
+When a SLAAC switch owns the IPv6 default route, Sylve enables FreeBSD's RFC 6204 W-3 behavior immediately before applying that managed owner and soliciting a router advertisement. Sylve does not enable it unconditionally during startup when there is no managed SLAAC route owner.
+
+:::caution[Route ownership after an upgrade]
+The database upgrade preserves existing automatic behavior rather than silently choosing an uplink:
+
+- If no static IPv4 owner already exists, existing DHCP switches retain permission to install an IPv4 default route.
+- Existing enabled SLAAC switches retain permission to accept advertised IPv6 default routers.
+
+If more than one legacy candidate exists for either family, Sylve logs an ambiguity warning. Clear the route-owner checkbox on every extra switch, then leave it selected on the intended uplink.
+
 :::
 
 ## Verify and use it

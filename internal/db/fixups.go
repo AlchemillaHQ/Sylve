@@ -36,7 +36,7 @@ func Fixups(db *gorm.DB) error {
 	if err := renameLegacyARCMaxTunable(db); err != nil {
 		return err
 	}
-	if err := clearManagedBridgeMACInheritanceOverride(db); err != nil {
+	if err := clearManagedStandardSwitchTunableOverrides(db); err != nil {
 		return err
 	}
 	if err := replaceLegacyNetlinkEvents(db); err != nil {
@@ -52,6 +52,9 @@ func Fixups(db *gorm.DB) error {
 		return err
 	}
 	if err := migrateStandardSwitchMACSources(db); err != nil {
+		return err
+	}
+	if err := migrateStandardSwitchAutomaticRouteOwners(db); err != nil {
 		return err
 	}
 
@@ -187,14 +190,86 @@ func migrateStandardSwitchMACSources(db *gorm.DB) error {
 	})
 }
 
-func clearManagedBridgeMACInheritanceOverride(db *gorm.DB) error {
+func migrateStandardSwitchAutomaticRouteOwners(db *gorm.DB) error {
+	const migrationName = "standard_switch_automatic_route_owners_v1"
+	if !db.Migrator().HasTable(&networkModels.StandardSwitch{}) ||
+		!db.Migrator().HasColumn(&networkModels.StandardSwitch{}, "default_route6") {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		var applied int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", migrationName).Count(&applied).Error; err != nil {
+			return fmt.Errorf("check standard switch route-owner migration: %w", err)
+		}
+		if applied > 0 {
+			return nil
+		}
+
+		var switches []networkModels.StandardSwitch
+		if err := tx.Order("id ASC").Find(&switches).Error; err != nil {
+			return fmt.Errorf("load standard switches for route-owner migration: %w", err)
+		}
+
+		ipv4OwnerExists := false
+		dhcpIDs := make([]uint, 0)
+		slaacIDs := make([]uint, 0)
+		for _, sw := range switches {
+			if sw.DefaultRoute {
+				ipv4OwnerExists = true
+			}
+			if sw.DHCP {
+				dhcpIDs = append(dhcpIDs, sw.ID)
+			}
+			if sw.SLAAC && !sw.DisableIPv6 {
+				slaacIDs = append(slaacIDs, sw.ID)
+			}
+		}
+
+		if !ipv4OwnerExists && len(dhcpIDs) > 0 {
+			if err := tx.Model(&networkModels.StandardSwitch{}).
+				Where("id IN ?", dhcpIDs).
+				Update("default_route", true).Error; err != nil {
+				return fmt.Errorf("migrate DHCP default-route owners: %w", err)
+			}
+			if len(dhcpIDs) > 1 {
+				logger.L.Warn().
+					Interface("switchIDs", dhcpIDs).
+					Msg("standard_switch_ipv4_default_route_migration_ambiguous")
+			}
+		}
+		if len(slaacIDs) > 0 {
+			if err := tx.Model(&networkModels.StandardSwitch{}).
+				Where("id IN ?", slaacIDs).
+				Update("default_route6", true).Error; err != nil {
+				return fmt.Errorf("migrate SLAAC default-route owners: %w", err)
+			}
+			if len(slaacIDs) > 1 {
+				logger.L.Warn().
+					Interface("switchIDs", slaacIDs).
+					Msg("standard_switch_ipv6_default_route_migration_ambiguous")
+			}
+		}
+
+		if err := tx.Create(&authModels.Migrations{Name: migrationName}).Error; err != nil {
+			return fmt.Errorf("record standard switch route-owner migration: %w", err)
+		}
+		return nil
+	})
+}
+
+func clearManagedStandardSwitchTunableOverrides(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&authModels.SystemTunable{}) {
 		return nil
 	}
 
-	if err := db.Where("name = ?", authModels.SystemTunableBridgeInheritMACOID).
+	managedOIDs := []string{
+		authModels.SystemTunableBridgeInheritMACOID,
+		authModels.SystemTunableIPv6RFC6204W3OID,
+	}
+	if err := db.Where("name IN ?", managedOIDs).
 		Delete(&authModels.SystemTunable{}).Error; err != nil {
-		return fmt.Errorf("clear legacy bridge MAC inheritance override: %w", err)
+		return fmt.Errorf("clear managed standard switch tunable overrides: %w", err)
 	}
 	return nil
 }
