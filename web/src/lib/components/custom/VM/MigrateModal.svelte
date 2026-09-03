@@ -151,8 +151,10 @@
 		(o) => {
 			if (o) {
 				resumeExistingMigration();
-			} else {
+			} else if (migrating) {
 				stopPolling();
+			} else {
+				resetState();
 			}
 		}
 	);
@@ -260,7 +262,7 @@
 	});
 
 	async function onTargetSelect(nodeUuid: string) {
-		if (nodeUuid === selectedNodeUuid && (validation || validating)) return;
+		if (nodeUuid === selectedNodeUuid && validating) return;
 		const requestGeneration = ++validationRequestGeneration;
 		selectedNodeUuid = nodeUuid;
 		error = '';

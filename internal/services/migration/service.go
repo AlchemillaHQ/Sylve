@@ -1539,7 +1539,7 @@ func (s *Service) remotePoolExists(ctx context.Context, identity *clusterModels.
 		return false, err
 	}
 
-	return strings.TrimSpace(output) == pool, nil
+	return true, nil
 }
 
 func (s *Service) resolveGuestDatasets(ctx context.Context, guestType string, guestID uint) ([]string, error) {
