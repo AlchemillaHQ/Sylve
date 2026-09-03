@@ -334,7 +334,11 @@
 
 	function validate(): string {
 		if (!properties.username) return 'Username is required';
-		if (!isValidUsername(properties.username)) return 'Invalid username format';
+		if (
+			!(edit && user && properties.username === user.username) &&
+			!isValidUsername(properties.username)
+		)
+			return 'Invalid username format';
 		if (edit && user && users.some((u) => u.id !== user!.id && u.username === properties.username))
 			return 'Username already exists';
 		if (!edit && users.some((u) => u.username === properties.username))
@@ -349,8 +353,10 @@
 		if (properties.password.length > 128) return 'Password must be 128 characters or fewer';
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
-		if (properties.uid < 1000) return 'UID must be 1000 or higher';
-		if (properties.uid > 65533) return 'UID must be 65533 or lower';
+		if (user?.username !== 'root') {
+			if (properties.uid < 1000) return 'UID must be 1000 or higher';
+			if (properties.uid > 65533) return 'UID must be 65533 or lower';
+		}
 		if (edit && user?.disablePassword && !properties.disablePassword && !properties.password)
 			return 'Set a password to enable password authentication';
 		if (edit && properties.sambaAction.value === 'upsert' && !properties.password)
