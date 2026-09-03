@@ -1,0 +1,225 @@
+---
+title: Simple Samba Share
+description: Create a private Samba share and connect to it from GNOME and macOS.
+---
+
+import sambaServiceEnabled from './simple-samba-service-enabled.png';
+import sambaSettings from './simple-samba-settings.png';
+import createPamUser from './simple-samba-create-pam-user.png';
+import createPamUserGroups from './simple-samba-create-pam-user-groups.png';
+import importPamUser from './simple-samba-import-pam-user.png';
+import importCreateCredential from './simple-samba-import-create-credential.png';
+import createFilesystem from './simple-samba-create-filesystem.png';
+import shareDetails from './simple-samba-share-details.png';
+import shareAccess from './simple-samba-share-access.png';
+import shareOptions from './simple-samba-share-options.png';
+import shareReady from './simple-samba-share-ready.png';
+import gnomeConnect from './simple-samba-gnome-connect.png';
+import gnomeAuthentication from './simple-samba-gnome-authentication.png';
+import gnomeMounted from './simple-samba-gnome-mounted.png';
+import macosConnect from './simple-samba-macos-connect.png';
+import macosAuthentication from './simple-samba-macos-authentication.png';
+import macosMounted from './simple-samba-macos-mounted.png';
+
+This guide creates a private SMB file share from start to finish. You will enable Samba, prepare a user who can authenticate, create a ZFS filesystem for the files, publish it as an authenticated share, and connect from GNOME or macOS.
+
+The examples use these values:
+
+| Item                   | Example        |
+| ---------------------- | -------------- |
+| ZFS pool               | `zroot`        |
+| Filesystem             | `zroot/shared` |
+| Share name             | `Shared`       |
+| PAM and Samba username | `alex`         |
+| Sylve node address     | `10.10.30.103` |
+
+Replace them with values appropriate for your node and network. The client must be able to reach TCP port `445` on the Sylve node.
+
+## Before you begin
+
+You need an initialized Sylve node with:
+
+- A ZFS pool selected for management.
+- The **Samba Server** service enabled.
+- A Samba 4XX package installed on FreeBSD.
+- A network address reachable from the client computer.
+
+If this is a new installation, select the storage pool and **Samba Server** during [Initialization](/guides/). Sylve checks for an installed Samba 4XX package before it accepts the configuration. For example, install the package available for your FreeBSD release as `root`:
+
+```sh
+pkg install samba419
+```
+
+If the node is already initialized, open **Settings → System → Services**, select **Samba Server**, and select **Enable Samba Server**. Restart the node after changing the service setting. After signing in again, the **Storage → Samba** section should appear in the navigation.
+
+<img src={sambaServiceEnabled.src} alt="Sylve System Services page with Samba Server selected, its status shown as Enabled, and the Disable Samba Server action available" />
+
+Open **Storage → Samba → Settings** and review the server identity and selected interfaces. The defaults are suitable for a simple share. Keep **Advertise Samba (mDNS)** enabled if you want compatible clients to discover the server automatically. Direct connections by IP address work without discovery.
+
+<img src={sambaSettings.src} alt="Update Samba Configuration dialog using the WORKGROUP workgroup, lo0 and bridge0 interfaces, interface binding, Apple extensions, mDNS advertising, and an optional extra global directive" />
+
+The screenshot includes an example under **Extra Global Configuration**. This advanced field is optional and can remain empty for the share created in this guide.
+
+## Prepare an account
+
+An authenticated share needs three related pieces:
+
+| Item             | Purpose                                                                 |
+| ---------------- | ----------------------------------------------------------------------- |
+| PAM user         | Provides the Unix account and identity used for filesystem permissions. |
+| Samba user       | Stores the SMB password for the same username.                          |
+| Share permission | Grants that user read or write access to this specific share.           |
+
+A Local user alone is not enough. Use **Settings → Authentication → Users → PAM** and either create a new account or import an existing Unix account.
+
+### Option A: Create a new PAM user
+
+Select **New** and configure the **Identity** tab:
+
+1. Enter the person's full name and a username. This guide uses `alex`.
+2. Enter and confirm a password of 8 to 128 characters.
+3. Leave **Admin** disabled unless this person must administer Sylve.
+4. Enable **Samba User**.
+
+The submitted password becomes the Unix/PAM password, Sylve password, and initial Samba password. Samba keeps its own credential, so later password changes are not synchronized automatically.
+
+<img src={createPamUser.src} alt="Create PAM User dialog on the Identity tab with the alex username, matching masked passwords, Admin disabled, and Samba User enabled" />
+
+On the **Groups** tab, enable **Create new primary group** for a simple per-user account. Keep the default UID, `/nonexistent` home directory, `/bin/sh` shell, and Security settings unless the account also needs an interactive Unix login. Select **Create**.
+
+<img src={createPamUserGroups.src} alt="Create PAM User dialog on the Groups tab with no auxiliary groups selected and Create new primary group enabled" />
+
+Continue to [Create the filesystem](#create-the-filesystem).
+
+### Option B: Import an existing Unix account
+
+If `alex` already exists on FreeBSD, select **Import**, choose the account, and select **Import**. The optional **Sylve Password** controls Sylve sign-in only. It does not set the Unix password and does not create a Samba credential.
+
+<img src={importPamUser.src} alt="Import Unix User dialog with alex selected, Unix account details shown, the optional Sylve password empty, and Admin disabled" />
+
+After importing, select `alex` in the PAM Users table and choose **Edit**. On the **Identity** tab:
+
+1. Enter and confirm the password that the person should use for this SMB share.
+2. Set **Samba action** to **Create or update Samba user**.
+3. Save the user.
+
+This creates the missing Samba credential without replacing the existing Unix account, groups, or home directory. The password entered while editing also updates the managed Unix/PAM and Sylve password for this account.
+
+<img src={importCreateCredential.src} alt="Edit PAM User dialog for alex with matching masked passwords, Create or update Samba user selected, and Admin disabled" />
+
+For several people, create or import each PAM user with a Samba credential, add them to a managed group, and grant the group access to the share. See [Groups](/guides/node/settings/authentication/groups/) for that workflow.
+
+## Create the filesystem
+
+Open **Storage → ZFS → Datasets → File Systems** and select **New**. Configure the filesystem:
+
+1. Enter `shared` as **Name**.
+2. Select `zroot`, or your chosen pool or parent filesystem, as **Parent**.
+3. Keep **Compression** enabled.
+4. Leave **Deduplication** off.
+5. Leave **Custom Mount Point** empty so ZFS chooses the normal mount point.
+6. Keep the remaining defaults and select **Create**.
+
+The result in this example is `zroot/shared`. Use a dedicated filesystem rather than the pool root. A dedicated filesystem can have its own quota, snapshots, encryption policy, and permissions.
+
+<img src={createFilesystem.src} alt="Create Filesystem dialog for shared under zroot with compression enabled, deduplication and encryption disabled, passthrough ACL settings, the default 128K record size, and no custom mount point" />
+
+If you enable encryption, store the passphrase safely. The filesystem must be unlocked and mounted before Samba can publish it. See [Filesystems](/guides/node/storage/zfs/datasets/filesystems/) for every property.
+
+## Create the authenticated share
+
+Open **Storage → Samba → Shares**, select **New**, and complete each tab.
+
+### Details
+
+1. Enter `Shared` as **Name**.
+2. Select `zroot/shared` as **Dataset**.
+3. Keep **Enabled** selected.
+
+The share name is what clients see. A mounted filesystem can be assigned to only one Samba share.
+
+<img src={shareDetails.src} alt="Create Samba Share dialog on the Details tab with Shared as the name, zroot/shared as the dataset, and the share enabled" />
+
+### Access
+
+1. Select **Authenticated**.
+2. Add `alex` to **Write Users**.
+3. Leave **Read Users**, **Read Groups**, and **Write Groups** empty.
+
+Authenticated access requires at least one user or group. Adding `alex` to **Write Users** permits reading and writing. If a principal appears in both read and write selections, write access takes precedence.
+
+<img src={shareAccess.src} alt="Create Samba Share dialog on the Access tab with Authenticated access selected and alex selected as the only write user" />
+
+### Options
+
+For a normal private file share, leave **Time Machine** and **Audit logging** disabled. Keep **Create Mask** at `0664` and **Directory Mask** at `2775`, then select **Create Share**.
+
+Sylve applies the required NFSv4 ACL properties and access entries to the selected filesystem, validates the generated Samba configuration, and reloads Samba. Do not manually change the Sylve-managed share section in `smb4.conf`.
+
+<img src={shareOptions.src} alt="Create Samba Share Options tab with Time Machine and auditing disabled, default permission masks, and the Shared authenticated-share summary" />
+
+Confirm that the Shares table shows `Shared` as enabled, with `alex` under write access and the expected mount point.
+
+<img src={shareReady.src} alt="Sylve Samba Shares page showing the enabled Shared share mounted at /zroot/shared with alex granted write access" />
+
+## Connect from GNOME
+
+These steps use the Files application included with GNOME:
+
+1. Open **Files**.
+2. Select **Other Locations** in the sidebar.
+3. In **Connect to Server**, enter `smb://10.10.30.103/Shared` using your node's address and share name.
+4. Select **Connect**.
+5. Choose **Registered User**, enter `alex` and the Samba password, then connect.
+
+If the dialog asks for a domain, use the Samba workgroup shown under **Storage → Samba → Settings**. The default is commonly `WORKGROUP`.
+
+<img src={gnomeConnect.src} alt="GNOME Files Network page with smb://10.10.30.103/Shared entered in the server address field" />
+
+<img src={gnomeAuthentication.src} alt="GNOME Files authentication dialog for the Shared share with Registered User selected, alex as the username, WORKGROUP as the domain, and a masked password" />
+
+The share appears in the Files sidebar after it mounts. Create a small test folder or file to confirm that `alex` has write access.
+
+<img src={gnomeMounted.src} alt="GNOME Files displaying the mounted Shared share with a Test folder and TEST_FILE.txt visible" />
+
+## Connect from macOS
+
+1. Open **Finder**.
+2. Choose **Go → Connect to Server**, or press `Command-K`.
+3. Enter `smb://alex@10.10.30.103/Shared` using your Samba username, node address, and share name.
+4. Select **Connect**.
+5. Choose **Registered User** if prompted, confirm that the name is `alex`, enter the Samba password, then select **Connect**.
+
+<img src={macosConnect.src} alt="macOS Finder Connect to Server window with smb://alex@10.10.30.103/Shared entered as the server address" />
+
+<img src={macosAuthentication.src} alt="macOS Samba authentication dialog for 10.10.30.103 with Registered User selected, alex as the account name, a masked password, and keychain storage disabled" />
+
+The mounted share appears under **Locations** in Finder. Create a small test folder or file to verify write access, then eject the share when finished.
+
+<img src={macosMounted.src} alt="macOS Finder displaying the mounted Shared share from 10.10.30.103 with a Test folder and TEST_FILE.txt visible" />
+
+## Troubleshooting
+
+### The Samba section is missing
+
+Open **Settings → System → Services** and confirm that **Samba Server** is enabled, then restart the node. If enabling it fails, install a Samba 4XX package and retry.
+
+### The username and password are rejected
+
+Confirm that the person is a PAM user, not only a Local user. Edit the PAM user, enter a password, select **Create or update Samba user**, and save. Use that most recently submitted password from the client.
+
+### The share is visible but access is denied
+
+Edit the share and confirm that **Authenticated** is selected and the user is listed under **Read Users** or **Write Users**, either directly or through an assigned group. A Samba credential authenticates the user, but it does not grant access to every share.
+
+### The filesystem does not appear in the Dataset list
+
+The dataset must be a mounted ZFS filesystem. Sylve excludes pool roots, boot-environment datasets, `pool/sylve/...` datasets, unmounted filesystems, and filesystems already assigned to another Samba share.
+
+### The client cannot find the server
+
+Connect directly with `smb://<node-ip>/Shared`. Confirm that the client can reach the node and TCP port `445`. Automatic discovery also requires **Advertise Samba (mDNS)** in Samba Settings and the node-wide **mDNS Discovery** service.
+
+On macOS, include the Samba username in the address, such as `smb://alex@10.10.30.103/Shared`. A `parse_dfs_path_strict` message containing only the server address can appear when Finder probes the server without a complete share path. It does not require disabling DFS when the username-qualified share address connects successfully.
+
+For advanced access modes, Time Machine, audit logging, and permission masks, see [Samba Shares](/guides/node/storage/samba/shares/).

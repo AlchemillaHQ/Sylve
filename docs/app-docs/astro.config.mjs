@@ -437,6 +437,7 @@ export default defineConfig({
                                 'guides/one-shot-guides/jellyfin-jail',
                                 'guides/one-shot-guides/rocky-linux-jail',
                                 'guides/one-shot-guides/kde-desktop-jail',
+                                'guides/one-shot-guides/simple-samba-share',
                             ],
                         },
                         {
