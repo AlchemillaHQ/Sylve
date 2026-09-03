@@ -1668,9 +1668,12 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -10337,6 +10340,9 @@ msgid "New folder name"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Confirm"
 msgstr ""
 
@@ -17575,6 +17581,28 @@ msgstr ""
 msgid "Key stored (leave blank to keep)"
 msgstr ""
 
+#~ msgid "Are you sure you want to stop the running VM?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to {0} the running VM?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to <0/> the running VM?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to stop the running Jail?"
+#~ msgstr ""
+
+#~ msgid "Are you sure you want to STOP the running Jail?"
+#~ msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "STOP the running Jail?"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "<0/> the running VM?"
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 msgid "Password changed. Please sign in again."
 msgstr ""
