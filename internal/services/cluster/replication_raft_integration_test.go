@@ -247,6 +247,8 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		&clusterModels.ReplicationPolicy{},
 		&clusterModels.ReplicationPolicyTarget{},
 		&clusterModels.ReplicationLease{},
+		&clusterModels.GuestIdentityRegistry{},
+		&clusterModels.GuestIdentityClaim{},
 	)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 
@@ -274,6 +276,18 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		}).Error; err != nil {
 			t.Fatalf("seed lease on %s: %v", node.id, err)
 		}
+		if err := node.service.DB.Create(&clusterModels.GuestIdentityRegistry{
+			ID: clusterModels.GuestIdentityRegistryID, Version: clusterModels.GuestIdentityRegistryVersion,
+			Phase: clusterModels.GuestIdentityRegistryPhaseActive,
+		}).Error; err != nil {
+			t.Fatalf("seed guest identity registry on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&clusterModels.GuestIdentityClaim{
+			GuestID: 100, GuestKind: clusterModels.ReplicationGuestTypeVM, OwnerNodeID: "node-1",
+			Token: "claim-generation-1",
+		}).Error; err != nil {
+			t.Fatalf("seed guest identity claim on %s: %v", node.id, err)
+		}
 	}
 
 	source := "node-2"
@@ -293,6 +307,10 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 		},
 		ProtectionState: clusterModels.ReplicationProtectionStateSuspended,
 	}
+	expectedClaimToken, err := guestIdentityOwnershipMoveToken("replication:run-raft:node-1:node-2:2")
+	if err != nil {
+		t.Fatalf("build expected claim token: %v", err)
+	}
 	if err := leader.service.CommitReplicationOwnershipTransition(payload, false); err != nil {
 		t.Fatalf("commit ownership through Raft: %v", err)
 	}
@@ -311,6 +329,11 @@ func TestIntegrationRaftReplicationOwnershipAndTargetReadiness(t *testing.T) {
 			var lease clusterModels.ReplicationLease
 			if err := node.service.DB.Where("policy_id = ?", 1).First(&lease).Error; err != nil ||
 				lease.OwnerNodeID != "node-2" || lease.OwnerEpoch != 2 {
+				return false
+			}
+			var claim clusterModels.GuestIdentityClaim
+			if err := node.service.DB.First(&claim, 100).Error; err != nil ||
+				claim.OwnerNodeID != "node-2" || claim.Token != expectedClaimToken {
 				return false
 			}
 		}

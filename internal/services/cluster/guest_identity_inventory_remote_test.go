@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -83,7 +84,7 @@ func newGuestIdentityInventoryTestService(t *testing.T, nodeID string) *Service 
 	}
 }
 
-func TestCollectClusterGuestIdentityInventoriesFromConfiguration(t *testing.T) {
+func TestCollectAvailableGuestIdentityInventoriesFromConfiguration(t *testing.T) {
 	t.Run("combines voter inventories", func(t *testing.T) {
 		service := newGuestIdentityInventoryTestService(t, "node-local")
 		if err := service.DB.Create(&vmModels.VM{RID: 100, Name: "local-vm"}).Error; err != nil {
@@ -102,7 +103,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfiguration(t *testing.T) {
 			return sim.Addr(), nil
 		}
 
-		reports, combined, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		reports, combined, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			context.Background(),
 			guestIdentityInventoryTestConfiguration("node-local", "node-remote"),
 		)
@@ -126,7 +127,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfiguration(t *testing.T) {
 			t.Fatalf("seed local VM: %v", err)
 		}
 
-		reports, combined, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		reports, combined, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			context.Background(),
 			guestIdentityInventoryTestConfiguration("node-local"),
 		)
@@ -139,7 +140,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfiguration(t *testing.T) {
 	})
 }
 
-func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *testing.T) {
+func TestCollectAvailableGuestIdentityInventoriesFromConfigurationReportsErrors(t *testing.T) {
 	responses := []struct {
 		name      string
 		response  func(http.ResponseWriter, *http.Request)
@@ -179,15 +180,12 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 				return sim.Addr(), nil
 			}
 
-			reports, combined, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+			_, _, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 				context.Background(),
 				guestIdentityInventoryTestConfiguration("node-local", "node-remote"),
 			)
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("error = %v, want %s", err, test.wantError)
-			}
-			if reports != nil || combined.Digest != "" {
-				t.Fatalf("partial inventory escaped: reports=%+v combined=%+v", reports, combined)
 			}
 		})
 	}
@@ -198,7 +196,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 		service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
 			return "127.0.0.1:65530", nil
 		}
-		_, _, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		_, _, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			context.Background(),
 			guestIdentityInventoryTestConfiguration("node-local", "node-remote"),
 		)
@@ -211,7 +209,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 		service := newGuestIdentityInventoryTestService(t, "node-local")
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, _, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		_, _, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			ctx,
 			guestIdentityInventoryTestConfiguration("node-local"),
 		)
@@ -222,7 +220,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 
 	t.Run("ambiguous topology", func(t *testing.T) {
 		service := newGuestIdentityInventoryTestService(t, "not-a-voter")
-		_, _, err := service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		_, _, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			context.Background(),
 			guestIdentityInventoryTestConfiguration("node-a", "node-b"),
 		)
@@ -234,7 +232,7 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 		service.guestIdentityInventoryAPIForNode = func(string, raft.ServerAddress) (string, error) {
 			return "127.0.0.1:65530", nil
 		}
-		_, _, err = service.collectClusterGuestIdentityInventoriesFromConfiguration(
+		_, _, err = service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 			context.Background(),
 			guestIdentityInventoryTestConfiguration("node-a", "node-b", "node-c"),
 		)
@@ -242,6 +240,42 @@ func TestCollectClusterGuestIdentityInventoriesFromConfigurationFailsClosed(t *t
 			t.Fatalf("error = %v, want shared endpoint ambiguity", err)
 		}
 	})
+}
+
+func TestCollectAvailableGuestIdentityInventoriesKeepsReachableReports(t *testing.T) {
+	service := newGuestIdentityInventoryTestService(t, "node-local")
+	service.AuthService = &guestIdentityInventoryAuthStub{}
+
+	reachable := newClusterPeerSimulator()
+	defer reachable.Close()
+	registerGuestIdentityInventoryPeer(t, reachable, "node-reachable", []GuestIdentityInventoryEntry{{
+		NodeID: "node-reachable", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 88, RecordID: 1, Name: "reachable-vm",
+	}})
+	service.guestIdentityInventoryAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
+		switch nodeID {
+		case "node-reachable":
+			return reachable.Addr(), nil
+		case "node-unavailable":
+			return "", fmt.Errorf("node unavailable")
+		default:
+			return "", fmt.Errorf("unexpected node %s", nodeID)
+		}
+	}
+
+	reports, combined, err := service.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
+		context.Background(),
+		guestIdentityInventoryTestConfiguration("node-local", "node-reachable", "node-unavailable"),
+	)
+	if err == nil || !strings.Contains(err.Error(), "node unavailable") {
+		t.Fatalf("partial collection error = %v, want unavailable voter", err)
+	}
+	if len(reports) != 2 {
+		t.Fatalf("reachable reports = %d, want local and reachable voter", len(reports))
+	}
+	if len(combined.Entries) != 1 || combined.Entries[0].GuestID != 88 {
+		t.Fatalf("combined reachable inventory = %+v", combined)
+	}
 }
 
 func TestFetchRemoteGuestIdentityInventoryRejectsUntrustedReport(t *testing.T) {

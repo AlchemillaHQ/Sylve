@@ -23,12 +23,14 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -718,12 +720,14 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(
 		t,
+		&clusterModels.Cluster{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&jailModels.Network{},
 		&jailModels.JailHooks{},
 		&jailModels.JailStats{},
 		&jailModels.JailSnapshot{},
+		&vmModels.VM{},
 		&utilitiesModels.Downloads{},
 	)
 
@@ -742,6 +746,8 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, pool)
+	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	svc.SetGuestIdentityCoordinator(identity)
 
 	const ctid uint = 770
 	const resolvConf = "nameserver 1.1.1.1\nnameserver 1.0.0.1\n"
@@ -781,6 +787,11 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 	}
 	if string(gotResolv) != resolvConf {
 		t.Fatalf("expected resolv.conf content %q, got %q", resolvConf, string(gotResolv))
+	}
+	if _, err := identity.ReserveGuestIdentities(
+		context.Background(), clusterModels.ReplicationGuestTypeVM, []uint{ctid},
+	); err == nil || !strings.Contains(err.Error(), clusterModels.ErrGuestIdentityAlreadyInUse.Error()) {
+		t.Fatalf("created jail did not retain shared guest ID: %v", err)
 	}
 }
 
@@ -1140,6 +1151,7 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 
 	db := testutil.NewSQLiteTestDB(
 		t,
+		&clusterModels.Cluster{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&jailModels.Network{},
@@ -1150,6 +1162,7 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
 		&networkModels.DHCPStaticLease{},
+		&vmModels.VM{},
 		&vmModels.Network{},
 		&utilitiesModels.Downloads{},
 	)
@@ -1161,6 +1174,8 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 	rootDataset := fmt.Sprintf("%s/sylve/jails/%d", pool, ctid)
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, pool)
+	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	svc.SetGuestIdentityCoordinator(identity)
 
 	baseDir := filepath.Join(tmp, "base")
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
@@ -1183,6 +1198,15 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 
 	if runner.hasDataset(rootDataset) {
 		t.Fatalf("expected rollback to remove root dataset %q after post-commit failure", rootDataset)
+	}
+	reused, reserveErr := identity.ReserveGuestIdentities(
+		context.Background(), clusterModels.ReplicationGuestTypeVM, []uint{ctid},
+	)
+	if reserveErr != nil {
+		t.Fatalf("reuse ID after jail rollback: %v", reserveErr)
+	}
+	if releaseErr := identity.ReleaseGuestIdentities(context.Background(), reused); releaseErr != nil {
+		t.Fatalf("release reuse probe: %v", releaseErr)
 	}
 }
 

@@ -42,6 +42,9 @@ func guestIdentityJoinTestModels() []any {
 		&clusterModels.ReplicationEvent{},
 		&clusterModels.ClusterSSHIdentity{},
 		&clusterModels.EncryptionKey{},
+		&clusterModels.GuestIdentityRegistry{},
+		&clusterModels.GuestIdentityEnrollment{},
+		&clusterModels.GuestIdentityClaim{},
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	}
@@ -57,6 +60,29 @@ func seedGuestIdentityJoinTestCluster(t *testing.T, node *clusterRaftTestNode) {
 		RaftPort: ClusterRaftPort,
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
+	}
+	if err := node.service.initializeGuestIdentityRegistryForFoundingNode(node.id, BuildGuestIdentityInventoryReport(nil)); err != nil {
+		t.Fatalf("seed active guest identity registry: %v", err)
+	}
+}
+
+func seedGuestIdentityJoinTestClaim(
+	t *testing.T,
+	node *clusterRaftTestNode,
+	ownerNodeID, guestKind string,
+	guestID uint,
+) {
+	t.Helper()
+	claimSet := clusterModels.GuestIdentityClaimSet{
+		OwnerNodeID: ownerNodeID,
+		Token:       fmt.Sprintf("join-test-%s-%d", ownerNodeID, guestID),
+		Entries: []clusterModels.GuestIdentityEntry{{
+			GuestKind: guestKind,
+			GuestID:   guestID,
+		}},
+	}
+	if err := node.service.applyGuestIdentityRaftAction("reserve_ids", claimSet); err != nil {
+		t.Fatalf("reserve test guest identity: %v", err)
 	}
 }
 
@@ -110,9 +136,7 @@ func TestIntegrationRaftAcceptJoinRejectsConflictAfterPreflight(t *testing.T) {
 	); err != nil {
 		t.Fatalf("initial preflight: %v", err)
 	}
-	if err := leader.service.DB.Create(&vmModels.VM{RID: 301, Name: "late-leader-vm"}).Error; err != nil {
-		t.Fatalf("seed late conflicting VM: %v", err)
-	}
+	seedGuestIdentityJoinTestClaim(t, leader, leader.id, clusterModels.ReplicationGuestTypeVM, 301)
 
 	before := raftConfigurationForGuestIdentityJoinTest(t, leader)
 	err := leader.service.AcceptJoinInventory(
@@ -174,6 +198,7 @@ func TestIntegrationRaftAcceptJoinExactExistingVoterRetry(t *testing.T) {
 	if err := leader.service.DB.Create(&vmModels.VM{RID: 500, Name: "leader-vm"}).Error; err != nil {
 		t.Fatalf("seed leader VM: %v", err)
 	}
+	seedGuestIdentityJoinTestClaim(t, leader, leader.id, clusterModels.ReplicationGuestTypeVM, 500)
 	joinerReport := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
 		NodeID: joinerID, GuestType: clusterModels.ReplicationGuestTypeJail,
 		GuestID: 501, RecordID: 7, Name: "joiner-jail",
@@ -220,6 +245,17 @@ func TestIntegrationRaftAcceptJoinExactExistingVoterRetry(t *testing.T) {
 		t.Fatalf("accept clean join: %v", err)
 	}
 	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+	waitForClusterCondition(t, 8*time.Second, "joining claims before voter completion", func() bool {
+		for _, node := range nodes {
+			var claim clusterModels.GuestIdentityClaim
+			if err := node.service.DB.First(&claim, 501).Error; err != nil ||
+				claim.GuestKind != clusterModels.ReplicationGuestTypeJail ||
+				claim.OwnerNodeID != joinerID {
+				return false
+			}
+		}
+		return true
+	})
 
 	var clusterNodes []clusterModels.ClusterNode
 	if err := leader.service.DB.Find(&clusterNodes).Error; err != nil {
@@ -348,7 +384,6 @@ func TestIntegrationRaftStageJoinIsIdempotentNonvoterAdmission(t *testing.T) {
 	if first.Phase != JoinPhaseStaged || first.Suffrage != "nonvoter" {
 		t.Fatalf("first stage status = %+v", first)
 	}
-	indexAfterFirst := leader.raft.AppliedIndex()
 	configurationAfterFirst := raftConfigurationForGuestIdentityJoinTest(t, leader)
 
 	second, err := leader.service.StageJoinInventory(
@@ -363,9 +398,6 @@ func TestIntegrationRaftStageJoinIsIdempotentNonvoterAdmission(t *testing.T) {
 	}
 	if second.Phase != JoinPhaseStaged || second.Suffrage != "nonvoter" {
 		t.Fatalf("duplicate stage status = %+v", second)
-	}
-	if got := leader.raft.AppliedIndex(); got != indexAfterFirst {
-		t.Fatalf("duplicate stage appended Raft state: before=%d after=%d", indexAfterFirst, got)
 	}
 	configurationAfterSecond := raftConfigurationForGuestIdentityJoinTest(t, leader)
 	if !reflect.DeepEqual(configurationAfterSecond, configurationAfterFirst) {

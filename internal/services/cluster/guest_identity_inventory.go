@@ -19,8 +19,6 @@ import (
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"gorm.io/gorm"
 )
 
@@ -30,7 +28,7 @@ const (
 	GuestIdentityInventoryConflictInvalidNodeID    = "invalid_node_id"
 	GuestIdentityInventoryConflictSharedGuestID    = "shared_guest_id"
 
-	guestIdentityInventoryMaxID          = 9999
+	guestIdentityInventoryMaxID          = clusterModels.GuestIdentityMaxID
 	guestIdentityInventoryMaxNodeIDBytes = 128
 )
 
@@ -58,9 +56,10 @@ type GuestIdentityInventoryConflict struct {
 // record IDs and names are informational and may change without changing guest
 // identity.
 type GuestIdentityInventoryReport struct {
-	Entries   []GuestIdentityInventoryEntry    `json:"entries"`
-	Conflicts []GuestIdentityInventoryConflict `json:"conflicts"`
-	Digest    string                           `json:"digest"`
+	Entries          []GuestIdentityInventoryEntry    `json:"entries"`
+	Conflicts        []GuestIdentityInventoryConflict `json:"conflicts"`
+	Digest           string                           `json:"digest"`
+	InFlightGuestIDs []uint                           `json:"inFlightGuestIds,omitempty"`
 }
 
 // GuestIdentityInventorySnapshot identifies the node that produced a durable
@@ -111,8 +110,7 @@ func guestIdentityInventoryEntryConflicts(entry GuestIdentityInventoryEntry) []s
 	if entry.GuestID == 0 || entry.GuestID > guestIdentityInventoryMaxID {
 		reasons = append(reasons, GuestIdentityInventoryConflictInvalidGuestID)
 	}
-	if entry.GuestType != clusterModels.ReplicationGuestTypeVM &&
-		entry.GuestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidGuestIdentityKind(entry.GuestType) {
 		reasons = append(reasons, GuestIdentityInventoryConflictInvalidGuestType)
 	}
 	if entry.NodeID == "" || len([]byte(entry.NodeID)) > guestIdentityInventoryMaxNodeIDBytes {
@@ -214,46 +212,20 @@ func ScanLocalGuestIdentityInventory(db *gorm.DB, nodeID string) (GuestIdentityI
 
 	entries := make([]GuestIdentityInventoryEntry, 0)
 	err := db.Transaction(func(tx *gorm.DB) error {
-		var vms []struct {
-			ID   uint
-			RID  uint `gorm:"column:rid"`
-			Name string
-		}
-		if err := tx.Model(&vmModels.VM{}).
-			Select("id", "rid", "name").
-			Order("rid ASC, id ASC").
-			Scan(&vms).Error; err != nil {
-			return fmt.Errorf("scan_vm_guest_identity_inventory: %w", err)
-		}
-		for _, vm := range vms {
-			entries = append(entries, GuestIdentityInventoryEntry{
-				NodeID:    nodeID,
-				GuestType: clusterModels.ReplicationGuestTypeVM,
-				GuestID:   vm.RID,
-				RecordID:  vm.ID,
-				Name:      vm.Name,
-			})
-		}
-
-		var jails []struct {
-			ID   uint
-			CTID uint `gorm:"column:ct_id"`
-			Name string
-		}
-		if err := tx.Model(&jailModels.Jail{}).
-			Select("id", "ct_id", "name").
-			Order("ct_id ASC, id ASC").
-			Scan(&jails).Error; err != nil {
-			return fmt.Errorf("scan_jail_guest_identity_inventory: %w", err)
-		}
-		for _, jail := range jails {
-			entries = append(entries, GuestIdentityInventoryEntry{
-				NodeID:    nodeID,
-				GuestType: clusterModels.ReplicationGuestTypeJail,
-				GuestID:   jail.CTID,
-				RecordID:  jail.ID,
-				Name:      jail.Name,
-			})
+		for _, provider := range registeredLocalGuestIdentityProviders() {
+			kind := provider.Kind()
+			if !clusterModels.ValidGuestIdentityKind(kind) {
+				return fmt.Errorf("registered_guest_identity_kind_invalid: %s", kind)
+			}
+			scanned, err := provider.ScanLocalIdentities(tx)
+			if err != nil {
+				return err
+			}
+			for i := range scanned {
+				scanned[i].NodeID = nodeID
+				scanned[i].GuestType = kind
+			}
+			entries = append(entries, scanned...)
 		}
 
 		return nil
@@ -263,6 +235,26 @@ func ScanLocalGuestIdentityInventory(db *gorm.DB, nodeID string) (GuestIdentityI
 	}
 
 	return BuildGuestIdentityInventoryReport(entries), nil
+}
+
+func (s *Service) localGuestIdentityInventoryReport(
+	ctx context.Context,
+	nodeID string,
+) (GuestIdentityInventoryReport, error) {
+	s.guestIdentityRuntimeMu.Lock()
+	defer s.guestIdentityRuntimeMu.Unlock()
+	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), nodeID)
+	if err != nil {
+		return GuestIdentityInventoryReport{}, err
+	}
+	report.InFlightGuestIDs = make([]uint, 0, len(s.guestIdentityLocalReservations))
+	for guestID := range s.guestIdentityLocalReservations {
+		report.InFlightGuestIDs = append(report.InFlightGuestIDs, guestID)
+	}
+	sort.Slice(report.InFlightGuestIDs, func(i, j int) bool {
+		return report.InFlightGuestIDs[i] < report.InFlightGuestIDs[j]
+	})
+	return report, nil
 }
 
 // LocalGuestIdentityInventory scans only durable VM and jail registrations and
@@ -282,7 +274,7 @@ func (s *Service) LocalGuestIdentityInventory(ctx context.Context) (GuestIdentit
 	if nodeID == "" {
 		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_node_id_unavailable")
 	}
-	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), nodeID)
+	report, err := s.localGuestIdentityInventoryReport(ctx, nodeID)
 	if err != nil {
 		return GuestIdentityInventorySnapshot{}, fmt.Errorf("guest_identity_inventory_local_scan_failed: %w", err)
 	}
@@ -290,9 +282,6 @@ func (s *Service) LocalGuestIdentityInventory(ctx context.Context) (GuestIdentit
 	return GuestIdentityInventorySnapshot{NodeID: nodeID, Report: report}, nil
 }
 
-// RequireGuestIDAvailable checks the shared VM RID/jail CTID namespace. A
-// standalone node reads only its local database; a clustered node reads every
-// current voter through the authenticated inventory endpoint.
 func (s *Service) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
 	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
 }
@@ -362,6 +351,29 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 		requested[guestID] = struct{}{}
 	}
 
+	clustered, err := s.guestIdentityClustered(ctx)
+	if err != nil {
+		return err
+	}
+	if clustered {
+		claims, err := s.ListGuestIdentityClaims(ctx)
+		if err != nil {
+			return err
+		}
+		for _, claim := range claims {
+			if _, exists := requested[claim.GuestID]; exists {
+				return fmt.Errorf(
+					"%w: guest_id=%d node_id=%s guest_type=%s",
+					clusterModels.ErrGuestIdentityAlreadyInUse,
+					claim.GuestID,
+					claim.OwnerNodeID,
+					claim.GuestKind,
+				)
+			}
+		}
+		return nil
+	}
+
 	report, _, err := s.strictGuestIdentityInventoryReport(ctx)
 	if err != nil {
 		return err
@@ -393,12 +405,25 @@ func (s *Service) RequireGuestPlacement(
 	expectedNodeID string,
 ) error {
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	if guestType != clusterModels.ReplicationGuestTypeVM &&
-		guestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidGuestIdentityKind(guestType) {
 		return fmt.Errorf("invalid_guest_type")
 	}
 	if guestID == 0 || guestID > guestIdentityInventoryMaxID {
 		return fmt.Errorf("invalid_guest_id")
+	}
+
+	clustered, err := s.guestIdentityClustered(ctx)
+	if err != nil {
+		return err
+	}
+	if clustered {
+		_, err := s.GuestIdentityClaim(
+			ctx,
+			guestType,
+			guestID,
+			strings.TrimSpace(expectedNodeID),
+		)
+		return err
 	}
 
 	report, localNodeID, err := s.strictGuestIdentityInventoryReport(ctx)

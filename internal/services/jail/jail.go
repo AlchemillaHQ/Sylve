@@ -22,6 +22,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -60,6 +61,7 @@ type Service struct {
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)
 	guestIdentityChecker      clusterServiceInterfaces.GuestIdentityAvailabilityChecker
+	guestIdentityCoordinator  clusterServiceInterfaces.GuestIdentityCoordinator
 	mutationGate              interface {
 		EnterMutation(context.Context) (context.Context, func(), error)
 	}
@@ -85,6 +87,13 @@ func (s *Service) SetGuestIdentityAvailabilityChecker(
 	checker clusterServiceInterfaces.GuestIdentityAvailabilityChecker,
 ) {
 	s.guestIdentityChecker = checker
+}
+
+func (s *Service) SetGuestIdentityCoordinator(
+	coordinator clusterServiceInterfaces.GuestIdentityCoordinator,
+) {
+	s.guestIdentityCoordinator = coordinator
+	s.guestIdentityChecker = coordinator
 }
 
 func NewJailService(
@@ -1450,6 +1459,23 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			return fmt.Errorf("replication_lease_not_owned")
 		}
 	}
+	var identityReservation *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		reserved, reserveErr := s.guestIdentityCoordinator.ReserveGuestIdentities(ctx, clusterModels.ReplicationGuestTypeJail, []uint{ctid})
+		if reserveErr != nil {
+			return reserveErr
+		}
+		identityReservation = &reserved
+	}
+	defer func() {
+		if identityReservation == nil || err == nil {
+			return
+		}
+		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+		}
+	}()
+
 	autoCreatedIDs := make([]uint, 0, 5)
 
 	defer func() {
@@ -1875,6 +1901,13 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		return
 	}
 
+	if identityReservation != nil {
+		if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, *identityReservation); finalizeErr != nil {
+			return fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr)
+		}
+		identityReservation = nil
+	}
+
 	return nil
 }
 
@@ -2057,13 +2090,39 @@ func (s *Service) DeleteJailWithWarnings(
 	deleteMacs bool,
 	deleteRootFS bool,
 ) (jailServiceInterfaces.DeleteJailResult, error) {
-	return s.deleteJailWithRuntime(
+	var identityClaim *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		claim, claimErr := s.guestIdentityCoordinator.GuestIdentityClaim(ctx, clusterModels.ReplicationGuestTypeJail, ctID, "")
+		if claimErr != nil {
+			return jailServiceInterfaces.DeleteJailResult{}, claimErr
+		}
+		identityClaim = &claim
+	}
+
+	result, err := s.deleteJailWithRuntimeOptionsAndIdentity(
 		ctx,
 		ctID,
 		deleteMacs,
 		deleteRootFS,
 		s.hostJailDeleteRuntime(ctx),
+		false,
+		identityClaim,
 	)
+	if err != nil {
+		if identityClaim != nil && !identityClaim.Clustered {
+			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
+				return result, errors.Join(err, fmt.Errorf("guest_identity_local_guard_release_failed: %w", releaseErr))
+			}
+		}
+		return result, err
+	}
+	if identityClaim == nil {
+		return result, nil
+	}
+	if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
+		return result, fmt.Errorf("guest_identity_release_pending: %w", releaseErr)
+	}
+	return result, nil
 }
 
 // RetireJailLocalMetadata is the narrow internal path used after migration or
@@ -2106,6 +2165,26 @@ func (s *Service) deleteJailWithRuntimeOptions(
 	runtime jailDeleteRuntime,
 	allowReplicationPolicy bool,
 ) (jailServiceInterfaces.DeleteJailResult, error) {
+	return s.deleteJailWithRuntimeOptionsAndIdentity(
+		ctx,
+		ctID,
+		deleteMacs,
+		deleteRootFS,
+		runtime,
+		allowReplicationPolicy,
+		nil,
+	)
+}
+
+func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
+	ctx context.Context,
+	ctID uint,
+	deleteMacs bool,
+	deleteRootFS bool,
+	runtime jailDeleteRuntime,
+	allowReplicationPolicy bool,
+	identityClaim *clusterServiceInterfaces.GuestIdentityReservation,
+) (jailServiceInterfaces.DeleteJailResult, error) {
 	result := jailServiceInterfaces.DeleteJailResult{
 		Warnings:         make([]string, 0),
 		RetainedDatasets: make([]string, 0),
@@ -2143,6 +2222,20 @@ func (s *Service) deleteJailWithRuntimeOptions(
 	plan, err := s.loadJailDeletePlan(ctx, ctID)
 	if err != nil {
 		return result, err
+	}
+
+	if identityClaim != nil {
+		if len(identityClaim.Entries) != 1 ||
+			identityClaim.Entries[0].GuestKind != clusterModels.ReplicationGuestTypeJail ||
+			identityClaim.Entries[0].GuestID != plan.ctID ||
+			strings.TrimSpace(identityClaim.OwnerNodeID) == "" {
+			return result, fmt.Errorf("%w: jail_release_claim_mismatch", clusterModels.ErrGuestIdentityClaimConflict)
+		}
+		if identityClaim.Clustered {
+			if strings.TrimSpace(identityClaim.Token) == "" {
+				return result, fmt.Errorf("%w: jail_release_claim_token_missing", clusterModels.ErrGuestIdentityClaimConflict)
+			}
+		}
 	}
 
 	if err := ensureJailStoppedForDelete(ctx, ctID, runtime); err != nil {

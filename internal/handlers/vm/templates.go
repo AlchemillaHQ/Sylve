@@ -79,7 +79,11 @@ func vmTemplatePreflightStatusCode(err error) int {
 	switch vmTemplateErrorCode(err) {
 	case "replication_lease_not_owned":
 		return http.StatusForbidden
-	case "guest_identity_inventory_unavailable":
+	case "guest_identity_inventory_unavailable",
+		"guest_identity_registry_initializing",
+		"guest_identity_cluster_formation_in_progress",
+		"cluster_consensus_unavailable",
+		"guest_identity_release_failed":
 		return http.StatusServiceUnavailable
 	case "vm_not_found",
 		"template_not_found",
@@ -92,6 +96,7 @@ func vmTemplatePreflightStatusCode(err error) int {
 		return http.StatusNotFound
 	case "template_name_already_in_use",
 		"guest_id_already_in_use",
+		"guest_identity_claim_conflict",
 		"guest_identity_inventory_conflict",
 		"rid_range_contains_used_values",
 		"vm_name_already_in_use",

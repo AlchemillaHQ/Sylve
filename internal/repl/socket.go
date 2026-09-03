@@ -169,6 +169,7 @@ func typedSocketOperationRequiresMutation(operation string) bool {
 		consoleprotocol.OperationDatacenterNoteGet,
 		consoleprotocol.OperationDatacenterClusterStatus,
 		consoleprotocol.OperationDatacenterClusterMembers,
+		consoleprotocol.OperationDatacenterClusterGuestIDsList,
 		consoleprotocol.OperationDatacenterClusterReaddress:
 		return false
 	default:
@@ -353,6 +354,10 @@ func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketRespons
 			return processDatacenterClusterStatusSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationDatacenterClusterMembers:
 			return processDatacenterClusterMembersSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterGuestIDsList:
+			return processDatacenterClusterGuestIDsListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationDatacenterClusterGuestIDReclaim:
+			return processDatacenterClusterGuestIDReclaimSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationDatacenterClusterReaddress:
 			return processDatacenterClusterReaddressSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationDatacenterClusterRepairAddress:

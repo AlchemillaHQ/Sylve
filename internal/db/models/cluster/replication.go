@@ -368,6 +368,7 @@ type ReplicationOwnershipTransitionPayload struct {
 	Lease                          ReplicationLease            `json:"lease"`
 	Transition                     ReplicationPolicyTransition `json:"transition"`
 	ProtectionState                string                      `json:"protectionState,omitempty"`
+	GuestIdentityMove              *GuestIdentityMoveOwner     `json:"guestIdentityMove,omitempty"`
 }
 
 // ReplicationDisabledOwnerReassignment moves the dormant ownership metadata
@@ -385,6 +386,7 @@ type ReplicationDisabledOwnerReassignment struct {
 	RunID                string                    `json:"runId"`
 	OperationToken       string                    `json:"operationToken"`
 	OccurredAt           time.Time                 `json:"occurredAt"`
+	GuestIdentityMove    *GuestIdentityMoveOwner   `json:"guestIdentityMove,omitempty"`
 }
 
 // ReplicationTargetReadinessUpdate updates one target without rewriting the
@@ -1944,6 +1946,16 @@ func applyReplicationOwnershipTransition(db *gorm.DB, payload *ReplicationOwners
 			return fmt.Errorf("replication_transition_lease_mismatch")
 		}
 
+		if err := moveReplicationPolicyGuestIdentityClaimTxn(
+			tx,
+			&policy,
+			payload.ExpectedActiveNodeID,
+			payload.ActiveNodeID,
+			payload.GuestIdentityMove,
+		); err != nil {
+			return err
+		}
+
 		updates := map[string]any{
 			"active_node_id":    payload.ActiveNodeID,
 			"owner_epoch":       payload.OwnerEpoch,
@@ -2068,6 +2080,16 @@ func reassignDisabledReplicationPolicyOwner(
 		}
 		if currentOwner != payload.ExpectedActiveNodeID || policy.OwnerEpoch != payload.ExpectedOwnerEpoch {
 			return fmt.Errorf("replication_ownership_cas_conflict")
+		}
+
+		if err := moveReplicationPolicyGuestIdentityClaimTxn(
+			tx,
+			&policy,
+			payload.ExpectedActiveNodeID,
+			payload.ActiveNodeID,
+			payload.GuestIdentityMove,
+		); err != nil {
+			return err
 		}
 
 		updates := map[string]any{

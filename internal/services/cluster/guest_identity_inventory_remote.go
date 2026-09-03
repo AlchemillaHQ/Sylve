@@ -11,6 +11,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -232,16 +233,45 @@ func (s *Service) fetchRemoteGuestIdentityInventory(
 			nodeID,
 		)
 	}
+	inFlight := append([]uint(nil), report.InFlightGuestIDs...)
+	sort.Slice(inFlight, func(i, j int) bool { return inFlight[i] < inFlight[j] })
+	for i, guestID := range inFlight {
+		if guestID == 0 || guestID > guestIdentityInventoryMaxID ||
+			(i > 0 && inFlight[i-1] == guestID) {
+			return GuestIdentityInventoryReport{}, fmt.Errorf(
+				"guest_identity_inventory_remote_in_flight_invalid: node_id=%s",
+				nodeID,
+			)
+		}
+	}
+	canonical.InFlightGuestIDs = inFlight
 
 	return canonical, nil
 }
 
-// collectClusterGuestIdentityInventoriesStrict reads the current Raft voter
-// set, scans this node's durable registrations directly, and obtains every
-// remote voter's typed inventory through its authenticated API. Transport,
-// decoding, response-status, and node-identity ambiguity errors abort the
-// entire collection; callers never receive a partial inventory as success.
-func (s *Service) collectClusterGuestIdentityInventoriesStrict(
+func combineGuestIdentityInventoryReports(
+	reports map[string]GuestIdentityInventoryReport,
+) GuestIdentityInventoryReport {
+	entries := make([]GuestIdentityInventoryEntry, 0)
+	inFlightSet := make(map[uint]struct{})
+	for _, report := range reports {
+		entries = append(entries, report.Entries...)
+		for _, guestID := range report.InFlightGuestIDs {
+			inFlightSet[guestID] = struct{}{}
+		}
+	}
+	combined := BuildGuestIdentityInventoryReport(entries)
+	combined.InFlightGuestIDs = make([]uint, 0, len(inFlightSet))
+	for guestID := range inFlightSet {
+		combined.InFlightGuestIDs = append(combined.InFlightGuestIDs, guestID)
+	}
+	sort.Slice(combined.InFlightGuestIDs, func(i, j int) bool {
+		return combined.InFlightGuestIDs[i] < combined.InFlightGuestIDs[j]
+	})
+	return combined
+}
+
+func (s *Service) collectClusterGuestIdentityInventoriesAvailable(
 	ctx context.Context,
 ) (map[string]GuestIdentityInventoryReport, GuestIdentityInventoryReport, error) {
 	if s == nil || s.DB == nil {
@@ -266,10 +296,23 @@ func (s *Service) collectClusterGuestIdentityInventoriesStrict(
 			err,
 		)
 	}
-	return s.collectClusterGuestIdentityInventoriesFromConfiguration(ctx, configurationFuture.Configuration())
+	return s.collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
+		ctx,
+		configurationFuture.Configuration(),
+	)
 }
 
-func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
+func (s *Service) collectClusterGuestIdentityInventoriesStrict(
+	ctx context.Context,
+) (map[string]GuestIdentityInventoryReport, GuestIdentityInventoryReport, error) {
+	reports, combined, err := s.collectClusterGuestIdentityInventoriesAvailable(ctx)
+	if err != nil {
+		return nil, GuestIdentityInventoryReport{}, err
+	}
+	return reports, combined, nil
+}
+
+func (s *Service) collectClusterGuestIdentityInventoriesAvailableFromConfiguration(
 	ctx context.Context,
 	configuration raft.Configuration,
 ) (map[string]GuestIdentityInventoryReport, GuestIdentityInventoryReport, error) {
@@ -294,7 +337,7 @@ func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
 		return nil, GuestIdentityInventoryReport{}, err
 	}
 
-	localReport, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), localNodeID)
+	localReport, err := s.localGuestIdentityInventoryReport(ctx, localNodeID)
 	if err != nil {
 		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
 			"guest_identity_inventory_local_scan_failed: node_id=%s: %w",
@@ -302,21 +345,21 @@ func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
 			err,
 		)
 	}
-
 	reports := make(map[string]GuestIdentityInventoryReport, len(voters))
 	reports[localNodeID] = localReport
-	combinedEntries := append([]GuestIdentityInventoryEntry(nil), localReport.Entries...)
 
 	remoteVoters := make([]guestIdentityInventoryVoter, 0, len(voters)-1)
 	remoteEndpoints := make(map[string]string, len(voters)-1)
 	endpointOwners := make(map[string]string, len(voters)-1)
+	collectionErrors := make([]error, 0)
 	for _, voter := range voters {
 		if voter.nodeID == localNodeID {
 			continue
 		}
 		endpoint, err := s.guestIdentityInventoryRemoteAPI(voter.nodeID, voter.address)
 		if err != nil {
-			return nil, GuestIdentityInventoryReport{}, err
+			collectionErrors = append(collectionErrors, err)
+			continue
 		}
 		if owner, exists := endpointOwners[endpoint]; exists {
 			return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
@@ -332,25 +375,27 @@ func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
 	}
 
 	if len(remoteVoters) == 0 {
-		return reports, BuildGuestIdentityInventoryReport(combinedEntries), nil
+		return reports, combineGuestIdentityInventoryReports(reports), errors.Join(collectionErrors...)
 	}
 	if s.AuthService == nil {
-		return nil, GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_inventory_auth_service_unavailable")
+		return reports, combineGuestIdentityInventoryReports(reports),
+			errors.Join(append(collectionErrors, fmt.Errorf("guest_identity_inventory_auth_service_unavailable"))...)
 	}
 	clusterToken, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {
-		return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
-			"guest_identity_inventory_cluster_token_failed: %w",
-			err,
-		)
+		return reports, combineGuestIdentityInventoryReports(reports), errors.Join(append(
+			collectionErrors,
+			fmt.Errorf("guest_identity_inventory_cluster_token_failed: %w", err),
+		)...)
 	}
 
 	for _, voter := range remoteVoters {
 		if err := ctx.Err(); err != nil {
-			return nil, GuestIdentityInventoryReport{}, fmt.Errorf(
+			collectionErrors = append(collectionErrors, fmt.Errorf(
 				"guest_identity_inventory_collection_canceled: %w",
 				err,
-			)
+			))
+			break
 		}
 		report, err := s.fetchRemoteGuestIdentityInventory(
 			ctx,
@@ -359,11 +404,10 @@ func (s *Service) collectClusterGuestIdentityInventoriesFromConfiguration(
 			clusterToken,
 		)
 		if err != nil {
-			return nil, GuestIdentityInventoryReport{}, err
+			collectionErrors = append(collectionErrors, err)
+			continue
 		}
 		reports[voter.nodeID] = report
-		combinedEntries = append(combinedEntries, report.Entries...)
 	}
-
-	return reports, BuildGuestIdentityInventoryReport(combinedEntries), nil
+	return reports, combineGuestIdentityInventoryReports(reports), errors.Join(collectionErrors...)
 }

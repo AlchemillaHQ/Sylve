@@ -21,6 +21,9 @@ import (
 
 func allSnapshotModels() []any {
 	return []any{
+		&GuestIdentityRegistry{},
+		&GuestIdentityEnrollment{},
+		&GuestIdentityClaim{},
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},

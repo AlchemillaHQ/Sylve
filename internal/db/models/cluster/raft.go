@@ -139,6 +139,9 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 // ClusterSnapshot represents the state that will be snapshotted/restored.
 type ClusterSnapshot struct {
+	GuestIdentityRegistries       []GuestIdentityRegistry            `json:"guestIdentityRegistries"`
+	GuestIdentityEnrollments      []GuestIdentityEnrollment          `json:"guestIdentityEnrollments"`
+	GuestIdentityClaims           []GuestIdentityClaim               `json:"guestIdentityClaims"`
 	Notes                         []ClusterNote                      `json:"notes"`
 	Options                       []ClusterOption                    `json:"options"`
 	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
@@ -232,6 +235,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	if err := json.NewDecoder(rc).Decode(&snap); err != nil {
 		return err
 	}
+	if err := ValidateGuestIdentitySnapshot(&snap); err != nil {
+		return err
+	}
 	restoreDB := f.DB.Session(&gorm.Session{
 		NowFunc: func() time.Time { return legacyCommandTime },
 	})
@@ -274,6 +280,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			transitionEventIDs[event.ID] = struct{}{}
 		}
 		createSets := []restoreSet{
+			{"guest_identity_registries", snap.GuestIdentityRegistries, 1},
+			{"guest_identity_enrollments", snap.GuestIdentityEnrollments, 200},
+			{"guest_identity_claims", snap.GuestIdentityClaims, 500},
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			{"encryption_keys", snap.EncryptionKeys, 200},
 		}
@@ -364,6 +373,8 @@ func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {
 func (s *ClusterSnapshot) Release() {}
 
 func RegisterDefaultHandlers(fsm *FSMDispatcher) {
+	RegisterGuestIdentityRegistryHandler(fsm)
+
 	fsm.Register("cluster_state", func(_ *gorm.DB, action string, _ json.RawMessage) error {
 		if action != "checkpoint" {
 			return fmt.Errorf("unsupported_cluster_state_action_%s", action)

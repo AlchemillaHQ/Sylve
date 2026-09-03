@@ -212,7 +212,7 @@ func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
 
 	service := &Service{DB: db, NodeID: "clustered-node"}
 	err := service.RequireGuestIDAvailable(t.Context(), 702)
-	if err == nil || !strings.Contains(err.Error(), "guest_identity_inventory_unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "cluster_consensus_unavailable") {
 		t.Fatalf("clustered check without Raft error = %v", err)
 	}
 }

@@ -234,12 +234,20 @@ func classifyCreateVMError(err error) (int, string) {
 	switch {
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "guest_identity_registry_initializing"),
+		strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
+		return http.StatusServiceUnavailable, "guest_identity_registry_initializing"
+	case strings.Contains(errText, "cluster_consensus_unavailable"),
+		strings.Contains(errText, "guest_identity_release_failed"):
+		return http.StatusServiceUnavailable, "cluster_consensus_unavailable"
 	case strings.Contains(errText, "guest_identity_inventory_unavailable"):
 		return http.StatusServiceUnavailable, "guest_identity_inventory_unavailable"
 	case strings.Contains(errText, "guest_identity_inventory_scan_failed"):
 		return http.StatusInternalServerError, "guest_identity_inventory_scan_failed"
 	case strings.Contains(errText, "guest_identity_inventory_conflict"):
 		return http.StatusConflict, "guest_identity_inventory_conflict"
+	case strings.Contains(errText, "guest_identity_claim_conflict"):
+		return http.StatusConflict, "guest_identity_claim_conflict"
 	case strings.Contains(errText, "guest_id_already_in_use"):
 		return http.StatusConflict, "guest_id_already_in_use"
 	}
@@ -332,6 +340,14 @@ func classifyRemoveVMError(err error, fallback string) (int, string) {
 		return http.StatusNotFound, "vm_not_found"
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "guest_identity_registry_initializing"),
+		strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
+		return http.StatusServiceUnavailable, "guest_identity_registry_initializing"
+	case strings.Contains(errText, "cluster_consensus_unavailable"),
+		strings.Contains(errText, "guest_identity_release_pending"):
+		return http.StatusServiceUnavailable, "cluster_consensus_unavailable"
+	case strings.Contains(errText, "guest_identity_claim_conflict"):
+		return http.StatusConflict, "guest_identity_claim_conflict"
 	case strings.Contains(errText, "guest_delete_requires_replication_policy_removed"):
 		return http.StatusConflict, "guest_delete_requires_replication_policy_removed"
 	case strings.Contains(errText, "replication_storage_topology_change_requires_policy_disabled"):

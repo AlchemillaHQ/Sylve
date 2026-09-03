@@ -165,6 +165,8 @@ func TestProcessSocketRequestOperationsRequirePayload(t *testing.T) {
 		{consoleprotocol.OperationTaskListRecent, "invalid_task_recent_request: payload_required"},
 		{consoleprotocol.OperationTaskGet, "invalid_task_get_request: payload_required"},
 		{consoleprotocol.OperationStatus, "invalid_status_request: payload_required"},
+		{consoleprotocol.OperationDatacenterClusterGuestIDsList, "invalid_datacenter_cluster_guest_ids_list_request: payload_required"},
+		{consoleprotocol.OperationDatacenterClusterGuestIDReclaim, "invalid_datacenter_cluster_guest_id_reclaim_request: payload_required"},
 	}
 
 	for _, testCase := range testCases {

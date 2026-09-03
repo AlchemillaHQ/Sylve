@@ -181,6 +181,16 @@ func (s *Service) ValidateMigration(ctx context.Context, req migrationIface.Migr
 		return result, nil
 	}
 	localNodeID := strings.TrimSpace(detail.NodeID)
+	if err := s.Cluster.RequireGuestPlacement(
+		ctx,
+		req.GuestType,
+		req.GuestID,
+		localNodeID,
+	); err != nil {
+		result.Allowed = false
+		result.Reasons = append(result.Reasons, fmt.Sprintf("guest_identity_source_placement_invalid: %v", err))
+		return result, nil
+	}
 
 	req.TargetNodeUUID = strings.TrimSpace(req.TargetNodeUUID)
 	if req.TargetNodeUUID == localNodeID {

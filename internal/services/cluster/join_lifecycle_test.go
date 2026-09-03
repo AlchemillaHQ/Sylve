@@ -12,17 +12,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
 
 func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{
 		Enabled: false, Key: "standalone-key", RaftPort: ClusterRaftPort,
 	}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
+	}
+	if err := db.Create(&vmModels.VM{RID: 42, Name: "vm-42"}).Error; err != nil {
+		t.Fatalf("seed joining VM: %v", err)
 	}
 	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
 	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
@@ -64,6 +70,16 @@ func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 	if status.Phase != JoinPhaseIntentSaved || status.NodeID != "joining-node" || !status.Retrying {
 		t.Fatalf("join status after restart = %+v", status)
 	}
+	if _, err := restarted.ReserveGuestIdentities(
+		t.Context(), clusterModels.ReplicationGuestTypeJail, []uint{43},
+	); err == nil || !strings.Contains(err.Error(), "cluster_formation_in_progress") {
+		t.Fatalf("create during durable join intent error = %v", err)
+	}
+	if _, err := restarted.GuestIdentityClaim(
+		t.Context(), clusterModels.ReplicationGuestTypeVM, 42, "",
+	); err == nil || !strings.Contains(err.Error(), "cluster_formation_in_progress") {
+		t.Fatalf("delete during durable join intent error = %v", err)
+	}
 
 	if err := restarted.MarkJoinIntentPhase(JoinPhaseStalled, errors.New("temporary outage")); err != nil {
 		t.Fatalf("mark stalled intent: %v", err)
@@ -88,8 +104,53 @@ func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 	}
 }
 
+func TestJoinIntentFinalInventoryCheckRejectsChangedOrInFlightInventory(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
+	if err := db.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+	service := &Service{DB: db, NodeID: "joining-node"}
+	request := JoinAdmissionRequest{
+		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3",
+		Inventory: BuildGuestIdentityInventoryReport(nil),
+	}
+
+	if err := db.Create(&vmModels.VM{RID: 44, Name: "late-vm"}).Error; err != nil {
+		t.Fatalf("seed changed inventory: %v", err)
+	}
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
+		!strings.Contains(err.Error(), "joining_inventory_changed_before_start") {
+		t.Fatalf("changed inventory join error = %v", err)
+	}
+	if err := db.Delete(&vmModels.VM{}, "rid = ?", 44).Error; err != nil {
+		t.Fatalf("remove changed inventory: %v", err)
+	}
+
+	reservation, err := service.ReserveGuestIdentities(
+		t.Context(), clusterModels.ReplicationGuestTypeVM, []uint{45},
+	)
+	if err != nil {
+		t.Fatalf("reserve in-flight identity: %v", err)
+	}
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", request); err == nil ||
+		!strings.Contains(err.Error(), "guest_identity_mutation_in_progress") {
+		t.Fatalf("in-flight inventory join error = %v", err)
+	}
+	if err := service.ReleaseGuestIdentities(t.Context(), reservation); err != nil {
+		t.Fatalf("release in-flight identity: %v", err)
+	}
+
+	var record clusterModels.Cluster
+	if err := db.First(&record).Error; err != nil {
+		t.Fatalf("reload rejected join: %v", err)
+	}
+	if record.HasIncompleteJoin() {
+		t.Fatalf("rejected join intent was persisted: %+v", record)
+	}
+}
+
 func TestJoinIntentRejectsIPv6WithoutPersisting(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{RaftPort: ClusterRaftPort}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +192,7 @@ func TestLeaderIPFromNotLeaderError(t *testing.T) {
 }
 
 func TestSubmitJoinIntentKeepsRetryableTransportFailure(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.Cluster{})
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{
 		Enabled: true, RaftPort: ClusterRaftPort,
 	}).Error; err != nil {

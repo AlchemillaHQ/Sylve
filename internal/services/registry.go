@@ -183,10 +183,10 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	certificateService := certificates.NewService(db)
 	iscsiService := NewService[iscsi.Service](db)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
-	libvirtService.(*libvirt.Service).SetGuestIdentityAvailabilityChecker(
+	libvirtService.(*libvirt.Service).SetGuestIdentityCoordinator(
 		clusterService.(*cluster.Service),
 	)
-	jailService.(*jail.Service).SetGuestIdentityAvailabilityChecker(
+	jailService.(*jail.Service).SetGuestIdentityCoordinator(
 		clusterService.(*cluster.Service),
 	)
 	diskService := NewService[disk.Service](db, zfsService, gzfs)

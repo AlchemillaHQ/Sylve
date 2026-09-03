@@ -16,12 +16,14 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -281,6 +283,44 @@ func TestCreateVMStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("VM rows after rejected create = %d, want 0", count)
+	}
+}
+
+func TestCreateVMFailureReleasesStandaloneGuestIdentityAfterRollback(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&clusterModels.Cluster{},
+		&vmModels.VM{},
+		&vmModels.VMStorageDataset{},
+		&jailModels.Jail{},
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+	)
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
+	svc.SetGuestIdentityCoordinator(identity)
+
+	req := testCreateRequest(517, 0)
+	vncEnabled := false
+	req.VNCEnabled = &vncEnabled
+	req.VNCBind = "127.0.0.1"
+	req.VNCPassword = ""
+	req.VNCResolution = ""
+	req.SwitchName = "missing-switch"
+	req.SwitchEmulationType = "virtio-net"
+
+	err := svc.CreateVM(req, context.Background())
+	if err == nil || !strings.Contains(err.Error(), "switch_not_found") {
+		t.Fatalf("post-reservation create error = %v", err)
+	}
+	reused, err := identity.ReserveGuestIdentities(
+		context.Background(), clusterModels.ReplicationGuestTypeJail, []uint{517},
+	)
+	if err != nil {
+		t.Fatalf("reuse ID after VM rollback: %v", err)
+	}
+	if err := identity.ReleaseGuestIdentities(context.Background(), reused); err != nil {
+		t.Fatalf("release reuse probe: %v", err)
 	}
 }
 

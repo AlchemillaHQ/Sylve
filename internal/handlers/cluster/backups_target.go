@@ -819,13 +819,18 @@ func restoreFromTargetEnqueueError(err error) (int, string) {
 		strings.Contains(message, "restore_destination_already_running"):
 		return http.StatusConflict, "restore_destination_already_running"
 	case strings.Contains(message, "guest_id_already_in_use"),
+		strings.Contains(message, "guest_identity_claim_conflict"),
 		strings.Contains(message, "guest_identity_inventory_conflict"),
 		strings.Contains(message, "restore_destination_guest_dataset_exists"):
 		return http.StatusConflict, "restore_guest_destination_conflict"
-	case strings.Contains(message, "guest_identity_inventory_unavailable"):
+	case strings.Contains(message, "guest_identity_inventory_unavailable"),
+		strings.Contains(message, "guest_identity_registry_initializing"),
+		strings.Contains(message, "guest_identity_cluster_formation_in_progress"):
 		return http.StatusServiceUnavailable, "restore_guest_identity_unavailable"
 	case strings.Contains(message, "leader_not_available"),
 		strings.Contains(message, "not_leader"),
+		strings.Contains(message, "cluster_consensus_unavailable"),
+		strings.Contains(message, "guest_identity_release_failed"),
 		strings.Contains(message, "raft_"),
 		strings.Contains(message, "replication_control_"),
 		strings.Contains(message, "request timed out"),

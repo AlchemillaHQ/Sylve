@@ -10,8 +10,12 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/urfave/cli/v3"
 )
 
@@ -158,6 +162,56 @@ func newDatacenterClusterCommand() *cli.Command {
 				},
 			},
 			newDatacenterClusterRecoverIPCommand(),
+			newDatacenterClusterGuestIDsCommand(),
+		},
+	}
+}
+
+func newDatacenterClusterGuestIDsCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "guest-ids",
+		Usage: "Inspect and recover shared guest ID claims",
+		Commands: []*cli.Command{
+			{
+				Name:  "list",
+				Usage: "List shared guest ID claims",
+				Flags: []cli.Flag{datacenterJSONFlag()},
+				Action: func(_ context.Context, command *cli.Command) error {
+					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterGuestIDsList,
+						consoleprotocol.DatacenterClusterReadPayload{JSON: command.Bool("json")}, command.Bool("json"))
+				},
+			},
+			{
+				Name:  "reclaim",
+				Usage: "Reclaim an orphaned shared guest ID claim",
+				Flags: []cli.Flag{
+					datacenterJSONFlag(),
+					&cli.IntFlag{Name: "id", Usage: "guest ID", Required: true},
+					&cli.BoolFlag{Name: "force", Usage: "allow unavailable voters after externally fencing them"},
+					&cli.StringFlag{Name: "confirm", Usage: "exact guest ID required with --force"},
+				},
+				Action: func(_ context.Context, command *cli.Command) error {
+					guestID, err := commandPositiveUint(command, "id")
+					if err != nil {
+						return err
+					}
+					if guestID > clusterModels.GuestIdentityMaxID {
+						return fmt.Errorf("--id must be between 1 and %d", clusterModels.GuestIdentityMaxID)
+					}
+					force := command.Bool("force")
+					confirmation := strings.TrimSpace(command.String("confirm"))
+					if force && confirmation != strconv.FormatUint(uint64(guestID), 10) {
+						return fmt.Errorf("--confirm must equal --id when --force is set")
+					}
+					if !force && command.IsSet("confirm") {
+						return fmt.Errorf("--confirm requires --force")
+					}
+					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
+						consoleprotocol.DatacenterClusterGuestIDReclaimPayload{
+							GuestID: guestID, Force: force, Confirmation: confirmation, JSON: command.Bool("json"),
+						}, command.Bool("json"))
+				},
+			},
 		},
 	}
 }

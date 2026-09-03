@@ -18,10 +18,12 @@ import (
 	"strings"
 	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -1355,7 +1357,7 @@ func (s *Service) PreflightCreateVMsFromTemplate(ctx context.Context, templateID
 	return err
 }
 
-func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error {
+func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) (err error) {
 	preflightFn := s.preflightCreateVMsFromTemplate
 	if s.preflightCreateVMTemplateFn != nil {
 		preflightFn = s.preflightCreateVMTemplateFn
@@ -1365,6 +1367,27 @@ func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, re
 	if err != nil {
 		return err
 	}
+	var identityReservation *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		rids := make([]uint, 0, len(plan.Targets))
+		for _, target := range plan.Targets {
+			rids = append(rids, target.RID)
+		}
+		reserved, reserveErr := s.guestIdentityCoordinator.ReserveGuestIdentities(ctx, clusterModels.ReplicationGuestTypeVM, rids)
+		if reserveErr != nil {
+			return reserveErr
+		}
+		identityReservation = &reserved
+	}
+	defer func() {
+		if identityReservation == nil || err == nil {
+			return
+		}
+		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+		}
+	}()
+
 	createTargetFn := s.createVMFromTemplateTarget
 	if s.createVMTemplateTargetFn != nil {
 		createTargetFn = s.createVMTemplateTargetFn
@@ -1384,6 +1407,13 @@ func (s *Service) CreateVMsFromTemplate(ctx context.Context, templateID uint, re
 			return err
 		}
 		createdTargets = append(createdTargets, target)
+	}
+
+	if identityReservation != nil {
+		if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, *identityReservation); finalizeErr != nil {
+			return fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr)
+		}
+		identityReservation = nil
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("vm_template_create_%d", templateID))

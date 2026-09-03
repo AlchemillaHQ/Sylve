@@ -10,13 +10,16 @@ package libvirt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -71,14 +74,39 @@ func (s *Service) RemoveVMWithWarnings(
 		return result, err
 	}
 
-	return s.removeVMWithWarnings(
+	var identityClaim *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		claim, claimErr := s.guestIdentityCoordinator.GuestIdentityClaim(ctx, clusterModels.ReplicationGuestTypeVM, rid, "")
+		if claimErr != nil {
+			return result, claimErr
+		}
+		identityClaim = &claim
+	}
+
+	result, err := s.removeVMWithWarningsWithIdentity(
 		rid,
 		cleanUpMacs,
 		deleteRawDisks,
 		deleteVolumes,
 		ctx,
 		s.removeLvVmWithoutCRUDLock,
+		identityClaim,
 	)
+	if err != nil {
+		if identityClaim != nil && !identityClaim.Clustered {
+			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
+				return result, errors.Join(err, fmt.Errorf("guest_identity_local_guard_release_failed: %w", releaseErr))
+			}
+		}
+		return result, err
+	}
+	if identityClaim == nil {
+		return result, nil
+	}
+	if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
+		return result, fmt.Errorf("guest_identity_release_pending: %w", releaseErr)
+	}
+	return result, nil
 }
 
 func emptyVMRemovalResult() VMRemovalResult {
@@ -97,6 +125,26 @@ func (s *Service) removeVMWithWarnings(
 	deleteVolumes bool,
 	ctx context.Context,
 	removeRuntime func(uint) error,
+) (VMRemovalResult, error) {
+	return s.removeVMWithWarningsWithIdentity(
+		rid,
+		cleanUpMacs,
+		deleteRawDisks,
+		deleteVolumes,
+		ctx,
+		removeRuntime,
+		nil,
+	)
+}
+
+func (s *Service) removeVMWithWarningsWithIdentity(
+	rid uint,
+	cleanUpMacs bool,
+	deleteRawDisks bool,
+	deleteVolumes bool,
+	ctx context.Context,
+	removeRuntime func(uint) error,
+	identityClaim *clusterServiceInterfaces.GuestIdentityReservation,
 ) (VMRemovalResult, error) {
 	result := emptyVMRemovalResult()
 	if s == nil || s.DB == nil {
@@ -140,6 +188,20 @@ func (s *Service) removeVMWithWarnings(
 	usedMACs := prepared.usedMACs
 	plan := prepared.plan
 	result.RetainedDatasets = append(result.RetainedDatasets, plan.retainedDatasets...)
+
+	if identityClaim != nil {
+		if len(identityClaim.Entries) != 1 ||
+			identityClaim.Entries[0].GuestKind != clusterModels.ReplicationGuestTypeVM ||
+			identityClaim.Entries[0].GuestID != vm.RID ||
+			strings.TrimSpace(identityClaim.OwnerNodeID) == "" {
+			return result, fmt.Errorf("%w: vm_release_claim_mismatch", clusterModels.ErrGuestIdentityClaimConflict)
+		}
+		if identityClaim.Clustered {
+			if strings.TrimSpace(identityClaim.Token) == "" {
+				return result, fmt.Errorf("%w: vm_release_claim_token_missing", clusterModels.ErrGuestIdentityClaimConflict)
+			}
+		}
+	}
 
 	if err := removeRuntime(rid); err != nil {
 		return emptyVMRemovalResult(), fmt.Errorf("failed_to_remove_lv_vm: %w", err)
@@ -234,7 +296,10 @@ func (s *Service) prepareVMRemoval(
 	return prepared, nil
 }
 
-func (s *Service) removeVMIdentityTransaction(ctx context.Context, vm vmModels.VM) error {
+func (s *Service) removeVMIdentityTransaction(
+	ctx context.Context,
+	vm vmModels.VM,
+) error {
 	if vm.ID == 0 || vm.RID == 0 {
 		return fmt.Errorf("invalid_vm_identity")
 	}

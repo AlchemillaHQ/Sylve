@@ -18,8 +18,10 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -28,6 +30,9 @@ import (
 func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context) ([]string, error) {
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	isOrphan, err := s.isLocalVMOrphan(rid)
@@ -44,6 +49,26 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	if err := s.requireVMMutationOwnership(rid); err != nil {
 		return nil, err
 	}
+	if err := s.RequireVMDeletionDetached(rid); err != nil {
+		return nil, err
+	}
+
+	var identityClaim *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		claim, claimErr := s.guestIdentityCoordinator.GuestIdentityClaim(
+			ctx,
+			clusterModels.ReplicationGuestTypeVM,
+			rid,
+			"",
+		)
+		if claimErr != nil {
+			return nil, claimErr
+		}
+		identityClaim = &claim
+		if claim.Clustered && (len(claim.Entries) != 1 || strings.TrimSpace(claim.Token) == "") {
+			return nil, fmt.Errorf("%w: vm_force_release_claim_invalid", clusterModels.ErrGuestIdentityClaimConflict)
+		}
+	}
 
 	warnings := make([]string, 0)
 
@@ -58,6 +83,27 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	s.forceRemoveVMRuntimeArtifacts(rid, &warnings)
 	s.forceRemoveVMZFSDatasets(ctx, rid, &warnings)
 	s.forceRemoveVMDBRecords(rid, cleanUpMacs, &warnings)
+
+	var registrationCount int64
+	registrationErr := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&registrationCount).Error
+	if registrationErr != nil {
+		appendForceRemoveWarning(&warnings, rid, "failed_to_verify_vm_registration_removed", registrationErr)
+	}
+	if identityClaim != nil {
+		canRelease := !identityClaim.Clustered ||
+			registrationErr == nil && registrationCount == 0 && len(warnings) == 0
+		if canRelease {
+			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
+				appendForceRemoveWarning(&warnings, rid, "guest_identity_release_pending", releaseErr)
+			}
+		} else if registrationErr == nil {
+			reason := "guest_identity_release_deferred_canonical_registration_present"
+			if registrationCount == 0 {
+				reason = "guest_identity_release_deferred_cleanup_incomplete"
+			}
+			appendForceRemoveWarning(&warnings, rid, reason, nil)
+		}
+	}
 
 	return warnings, nil
 }

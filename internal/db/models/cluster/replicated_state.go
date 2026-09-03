@@ -27,6 +27,9 @@ type ReplicatedStateTable struct {
 }
 
 var replicatedStateManifest = []ReplicatedStateTable{
+	{Table: "guest_identity_claims", Model: &GuestIdentityClaim{}, SnapshotField: "GuestIdentityClaims"},
+	{Table: "guest_identity_enrollments", Model: &GuestIdentityEnrollment{}, SnapshotField: "GuestIdentityEnrollments"},
+	{Table: "guest_identity_registries", Model: &GuestIdentityRegistry{}, SnapshotField: "GuestIdentityRegistries"},
 	{Table: "scheduled_run_receipts", Model: &ScheduledRunReceipt{}, SnapshotField: "ScheduledRunReceipts"},
 	{Table: "replication_run_operations", Model: &ReplicationRunOperation{}, SnapshotField: "ReplicationRunOperations"},
 	{Table: "backup_job_runner_rebind_items", Model: &BackupJobRunnerRebindItem{}, SnapshotField: "BackupJobRebindItems"},
@@ -92,6 +95,9 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 	}
 
 	snap := &ClusterSnapshot{
+		GuestIdentityRegistries:       []GuestIdentityRegistry{},
+		GuestIdentityEnrollments:      []GuestIdentityEnrollment{},
+		GuestIdentityClaims:           []GuestIdentityClaim{},
 		Notes:                         []ClusterNote{},
 		Options:                       []ClusterOption{},
 		BackupTargets:                 []BackupTargetReplicationPayload{},
@@ -114,6 +120,21 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 		EncryptionKeys:                []EncryptionKey{},
 	}
 
+	if db.Migrator().HasTable(&GuestIdentityRegistry{}) {
+		if err := db.Order("id ASC").Find(&snap.GuestIdentityRegistries).Error; err != nil {
+			return nil, err
+		}
+	}
+	if db.Migrator().HasTable(&GuestIdentityEnrollment{}) {
+		if err := db.Order("node_id ASC").Find(&snap.GuestIdentityEnrollments).Error; err != nil {
+			return nil, err
+		}
+	}
+	if db.Migrator().HasTable(&GuestIdentityClaim{}) {
+		if err := db.Order("guest_id ASC").Find(&snap.GuestIdentityClaims).Error; err != nil {
+			return nil, err
+		}
+	}
 	if err := db.Order("id ASC").Find(&snap.Notes).Error; err != nil {
 		return nil, err
 	}

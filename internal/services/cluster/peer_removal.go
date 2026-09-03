@@ -88,6 +88,22 @@ func (s *Service) replicatedPeerRemovalDependencies(nodeID string) ([]PeerRemova
 	}
 
 	dependencies := make([]PeerRemovalDependency, 0)
+	if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityClaim{}) {
+		var claims []clusterModels.GuestIdentityClaim
+		if err := s.DB.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
+			return nil, fmt.Errorf("scan_peer_guest_identity_claims: %w", err)
+		}
+		for _, claim := range claims {
+			appendPeerRemovalDependency(
+				&dependencies,
+				PeerRemovalDependencyGuest,
+				claim.GuestID,
+				"",
+				claim.GuestKind,
+				"claimed",
+			)
+		}
+	}
 
 	if s.DB.Migrator().HasTable(&clusterModels.BackupJob{}) {
 		var jobs []clusterModels.BackupJob

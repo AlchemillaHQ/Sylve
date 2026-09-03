@@ -101,6 +101,13 @@ func (s *Service) ForceRemovePeer(ctx context.Context, request ForceRemovePeerRe
 	if err != nil {
 		return ClusterLeaveResult{}, err
 	}
+	nonGuestDependencies := dependencies[:0]
+	for _, dependency := range dependencies {
+		if dependency.Kind != PeerRemovalDependencyGuest {
+			nonGuestDependencies = append(nonGuestDependencies, dependency)
+		}
+	}
+	dependencies = nonGuestDependencies
 	if len(dependencies) != 0 {
 		return ClusterLeaveResult{}, &PeerRemovalBlockedError{Conflict: PeerRemovalConflict{
 			NodeID:       nodeID,

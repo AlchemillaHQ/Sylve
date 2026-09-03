@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,11 +19,13 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -886,6 +889,23 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			return err
 		}
 	}
+	var identityReservation *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		reserved, reserveErr := s.guestIdentityCoordinator.ReserveGuestIdentities(ctx, clusterModels.ReplicationGuestTypeVM, []uint{rid})
+		if reserveErr != nil {
+			return reserveErr
+		}
+		identityReservation = &reserved
+	}
+	defer func() {
+		if identityReservation == nil || err == nil {
+			return
+		}
+		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+		}
+	}()
+
 	autoCreatedMACIDs := make([]uint, 0, 1)
 	cleanupRIDArtifacts := false
 
@@ -1164,6 +1184,13 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 
 	if err := s.WriteVMJson(rid); err != nil {
 		logger.L.Error().Err(err).Msg("failed to write VM JSON after creation")
+	}
+
+	if identityReservation != nil {
+		if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, *identityReservation); finalizeErr != nil {
+			return fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr)
+		}
+		identityReservation = nil
 	}
 
 	return nil

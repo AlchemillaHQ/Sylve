@@ -471,6 +471,25 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 
 		admission.Preflight = false
 		if err := cS.SaveJoinIntent(req.LeaderIP, clusterKey, admission); err != nil {
+			var conflict *cluster.GuestIdentityInventoryConflictError
+			if errors.As(err, &conflict) {
+				writeJoinAdmissionError(c, err)
+				return
+			}
+			for _, message := range []string{
+				"joining_inventory_changed_before_start",
+				"guest_identity_mutation_in_progress",
+			} {
+				if strings.Contains(err.Error(), message) {
+					c.JSON(http.StatusConflict, internal.APIResponse[any]{
+						Status:  "error",
+						Message: message,
+						Error:   err.Error(),
+						Data:    nil,
+					})
+					return
+				}
+			}
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "cluster_join_intent_save_failed",

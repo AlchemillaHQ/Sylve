@@ -6630,6 +6630,12 @@ func (s *Service) MigrateGuestOwnership(
 	}
 
 	errs := make([]string, 0)
+	if len(policies) == 0 {
+		if err := s.Cluster.MoveGuestIdentityOwner(ctx, guestType, guestID, newOwnerNodeID, operationToken); err != nil {
+			errs = append(errs, fmt.Sprintf("guest_identity: %v", err))
+		}
+	}
+
 	for i := range policies {
 		var err error
 		if policies[i].Enabled {
@@ -8673,6 +8679,9 @@ func (s *Service) activateReplicationJail(
 	transitionRunID string,
 	desiredRunning bool,
 ) error {
+	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeJail, ctID); err != nil {
+		return err
+	}
 	running, stateErr := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeJail, ctID)
 	if stateErr != nil {
 		return fmt.Errorf("check_jail_state_before_activation_failed: %w", stateErr)
@@ -8729,6 +8738,9 @@ func (s *Service) activateReplicationVMWithRegistrationRecovery(
 	desiredRunning bool,
 	recoverMissingRegistration bool,
 ) error {
+	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeVM, rid); err != nil {
+		return err
+	}
 	running, stateErr := s.isReplicationGuestRunning(clusterModels.ReplicationGuestTypeVM, rid)
 	if stateErr != nil {
 		return fmt.Errorf("check_vm_state_before_activation_failed: %w", stateErr)

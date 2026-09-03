@@ -18,11 +18,13 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -1150,7 +1152,7 @@ func runJailTemplateCreatePlan(
 	return nil
 }
 
-func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) error {
+func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, req CreateFromTemplateRequest) (err error) {
 	s.createMutex.Lock()
 	defer s.createMutex.Unlock()
 
@@ -1158,6 +1160,26 @@ func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, 
 	if err != nil {
 		return err
 	}
+	var identityReservation *clusterServiceInterfaces.GuestIdentityReservation
+	if s.guestIdentityCoordinator != nil {
+		ctids := make([]uint, 0, len(targets))
+		for _, target := range targets {
+			ctids = append(ctids, target.CTID)
+		}
+		reserved, reserveErr := s.guestIdentityCoordinator.ReserveGuestIdentities(ctx, clusterModels.ReplicationGuestTypeJail, ctids)
+		if reserveErr != nil {
+			return reserveErr
+		}
+		identityReservation = &reserved
+	}
+	defer func() {
+		if identityReservation == nil || err == nil {
+			return
+		}
+		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
+		}
+	}()
 
 	if err := runJailTemplateCreatePlan(
 		ctx,
@@ -1166,10 +1188,24 @@ func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, 
 			return s.createJailFromTemplateTarget(createCtx, template, target)
 		},
 		func(cleanupCtx context.Context, target createTarget) error {
-			return s.DeleteJail(cleanupCtx, target.CTID, true, true)
+			_, cleanupErr := s.deleteJailWithRuntime(
+				cleanupCtx,
+				target.CTID,
+				true,
+				true,
+				s.hostJailDeleteRuntime(cleanupCtx),
+			)
+			return cleanupErr
 		},
 	); err != nil {
 		return err
+	}
+
+	if identityReservation != nil {
+		if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, *identityReservation); finalizeErr != nil {
+			return fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr)
+		}
+		identityReservation = nil
 	}
 
 	s.emitLeftPanelRefresh(fmt.Sprintf("jail_template_create_%d", templateID))

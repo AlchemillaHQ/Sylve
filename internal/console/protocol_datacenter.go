@@ -9,15 +9,17 @@
 package console
 
 const (
-	OperationDatacenterNoteList             = "datacenter.notes.list"
-	OperationDatacenterNoteGet              = "datacenter.notes.get"
-	OperationDatacenterNoteAdd              = "datacenter.notes.add"
-	OperationDatacenterNoteUpdate           = "datacenter.notes.update"
-	OperationDatacenterNoteDelete           = "datacenter.notes.delete"
-	OperationDatacenterClusterStatus        = "datacenter.cluster.status"
-	OperationDatacenterClusterMembers       = "datacenter.cluster.members"
-	OperationDatacenterClusterReaddress     = "datacenter.cluster.readdress"
-	OperationDatacenterClusterRepairAddress = "datacenter.cluster.repair-address"
+	OperationDatacenterNoteList              = "datacenter.notes.list"
+	OperationDatacenterNoteGet               = "datacenter.notes.get"
+	OperationDatacenterNoteAdd               = "datacenter.notes.add"
+	OperationDatacenterNoteUpdate            = "datacenter.notes.update"
+	OperationDatacenterNoteDelete            = "datacenter.notes.delete"
+	OperationDatacenterClusterStatus         = "datacenter.cluster.status"
+	OperationDatacenterClusterMembers        = "datacenter.cluster.members"
+	OperationDatacenterClusterReaddress      = "datacenter.cluster.readdress"
+	OperationDatacenterClusterRepairAddress  = "datacenter.cluster.repair-address"
+	OperationDatacenterClusterGuestIDsList   = "datacenter.cluster.guest-ids.list"
+	OperationDatacenterClusterGuestIDReclaim = "datacenter.cluster.guest-ids.reclaim"
 )
 
 type DatacenterNoteListPayload struct {
@@ -56,4 +58,21 @@ type DatacenterClusterRepairAddressPayload struct {
 	NewIP           string `json:"newIp"`
 	AllowDisruption bool   `json:"allowDisruption"`
 	JSON            bool   `json:"json"`
+}
+
+type DatacenterClusterGuestIdentityClaim struct {
+	GuestID     uint   `json:"guestId"`
+	GuestKind   string `json:"guestKind"`
+	OwnerNodeID string `json:"ownerNodeId"`
+}
+
+type DatacenterClusterGuestIDReclaimPayload struct {
+	GuestID      uint   `json:"guestId"`
+	Force        bool   `json:"force"`
+	Confirmation string `json:"confirmation,omitempty"`
+	JSON         bool   `json:"json"`
+}
+
+type DatacenterClusterGuestIDReclaimResult struct {
+	GuestID uint `json:"guestId"`
 }

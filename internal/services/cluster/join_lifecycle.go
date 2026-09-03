@@ -117,6 +117,22 @@ func (s *Service) SaveJoinIntent(
 		return fmt.Errorf("marshal_join_inventory: %w", err)
 	}
 
+	s.guestIdentityRuntimeMu.Lock()
+	defer s.guestIdentityRuntimeMu.Unlock()
+	if s.guestIdentityClusterFormation || len(s.guestIdentityLocalReservations) != 0 {
+		return fmt.Errorf("guest_identity_mutation_in_progress")
+	}
+	latest, err := ScanLocalGuestIdentityInventory(s.DB, request.NodeID)
+	if err != nil {
+		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
+	}
+	if err := requireCleanGuestIdentityInventory(latest); err != nil {
+		return err
+	}
+	if latest.Digest != canonical.Digest {
+		return fmt.Errorf("joining_inventory_changed_before_start")
+	}
+
 	var record clusterModels.Cluster
 	if err := s.DB.First(&record).Error; err != nil {
 		return err

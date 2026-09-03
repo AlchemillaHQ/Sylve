@@ -943,5 +943,6 @@ func (s *Service) StartMembershipReconcilers(ctx context.Context) {
 	s.reconcilerOnce.Do(func() {
 		s.startLeaveReconciler(ctx)
 		s.startJoinReconciler(ctx)
+		s.startGuestIdentityReconciler(ctx)
 	})
 }

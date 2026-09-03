@@ -29,7 +29,45 @@ func TestParseClusterAddressFlagsRequiresAcknowledgement(t *testing.T) {
 	}
 }
 
-func TestReaddressCommandsUseCorrectMutationAdmission(t *testing.T) {
+func TestParseGuestIdentityReclaimFlags(t *testing.T) {
+	guestID, force, confirmation, err := parseGuestIdentityReclaimFlags([]string{"--id", "505"})
+	if err != nil || guestID != 505 || force || confirmation != "" {
+		t.Fatalf("guestID=%d force=%v confirmation=%q err=%v", guestID, force, confirmation, err)
+	}
+	guestID, force, confirmation, err = parseGuestIdentityReclaimFlags([]string{
+		"--force", "--confirm", "506", "--id", "506",
+	})
+	if err != nil || guestID != 506 || !force || confirmation != "506" {
+		t.Fatalf("guestID=%d force=%v confirmation=%q err=%v", guestID, force, confirmation, err)
+	}
+	invalid := [][]string{
+		{},
+		{"--id", "0"},
+		{"--id", "10000"},
+		{"--id", "505", "--force"},
+		{"--id", "505", "--force", "--confirm", "506"},
+		{"--id", "505", "--confirm", "505"},
+	}
+	for _, args := range invalid {
+		if _, _, _, err := parseGuestIdentityReclaimFlags(args); err == nil {
+			t.Fatalf("expected validation error for %v", args)
+		}
+	}
+}
+
+func TestDatacenterClusterCommandsUseCorrectMutationAdmission(t *testing.T) {
+	if rawCommandRequiresMutation([]string{"datacenter", "cluster", "guest-ids", "list"}) {
+		t.Fatal("guest ID list must not use mutation admission")
+	}
+	if !rawCommandRequiresMutation([]string{"datacenter", "cluster", "guest-ids", "reclaim", "--id", "505"}) {
+		t.Fatal("guest ID reclaim must use ordinary mutation admission")
+	}
+	if typedSocketOperationRequiresMutation(consoleprotocol.OperationDatacenterClusterGuestIDsList) {
+		t.Fatal("typed guest ID list must not use mutation admission")
+	}
+	if !typedSocketOperationRequiresMutation(consoleprotocol.OperationDatacenterClusterGuestIDReclaim) {
+		t.Fatal("typed guest ID reclaim must use ordinary mutation admission")
+	}
 	if rawCommandRequiresMutation([]string{"datacenter", "cluster", "readdress", "--new-ip", "192.0.2.20", "--allow-disruption"}) {
 		t.Fatal("readdress must drain its own mutation gate")
 	}
@@ -41,6 +79,45 @@ func TestReaddressCommandsUseCorrectMutationAdmission(t *testing.T) {
 	}
 	if !typedSocketOperationRequiresMutation(consoleprotocol.OperationDatacenterClusterRepairAddress) {
 		t.Fatal("typed peer repair must use ordinary mutation admission")
+	}
+}
+
+func TestGuestIdentityReclaimSocketRejectsUnsafeRequests(t *testing.T) {
+	tests := []consoleprotocol.DatacenterClusterGuestIDReclaimPayload{
+		{},
+		{GuestID: 10000},
+		{GuestID: 505, Force: true},
+		{GuestID: 505, Force: true, Confirmation: "506"},
+		{GuestID: 505, Confirmation: "505"},
+	}
+	for _, request := range tests {
+		payload, err := json.Marshal(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := processDatacenterClusterGuestIDReclaimSocketRequest(nil, payload)
+		if !strings.Contains(response.Error, "invalid_datacenter_cluster_guest_id_reclaim_request") {
+			t.Fatalf("request=%+v error=%q", request, response.Error)
+		}
+	}
+}
+
+func TestGuestIdentityClaimConsoleShapeOmitsToken(t *testing.T) {
+	claims := []consoleprotocol.DatacenterClusterGuestIdentityClaim{{
+		GuestID: 505, GuestKind: "jail", OwnerNodeID: "node-2",
+	}}
+	encoded, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "token") {
+		t.Fatalf("claim JSON exposes token: %s", encoded)
+	}
+	formatted := formatDatacenterClusterGuestIDClaims(claims)
+	for _, expected := range []string{"505", "jail", "node-2"} {
+		if !strings.Contains(formatted, expected) {
+			t.Fatalf("formatted claims %q missing %q", formatted, expected)
+		}
 	}
 }
 

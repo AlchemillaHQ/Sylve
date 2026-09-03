@@ -39,13 +39,16 @@ type Service struct {
 	AuthService serviceInterfaces.AuthServiceInterface
 	JailService jailServiceInterfaces.JailServiceInterface
 
-	clusterJoinMu         sync.Mutex
-	membershipLifecycleMu sync.Mutex
-	leaveInitiationMu     sync.Mutex
-	backupJobRebindMu     sync.Mutex
-	replicatedStateMu     sync.RWMutex
-	mutationGate          *MutationGate
-	addressProvider       *raftAddressProvider
+	clusterJoinMu                  sync.Mutex
+	membershipLifecycleMu          sync.Mutex
+	leaveInitiationMu              sync.Mutex
+	backupJobRebindMu              sync.Mutex
+	replicatedStateMu              sync.RWMutex
+	mutationGate                   *MutationGate
+	addressProvider                *raftAddressProvider
+	guestIdentityRuntimeMu         sync.Mutex
+	guestIdentityLocalReservations map[uint]string
+	guestIdentityClusterFormation  bool
 
 	raftFSM            raft.FSM
 	stateFSM           *clusterModels.FSMDispatcher
@@ -80,6 +83,11 @@ type Service struct {
 	clusterStartHook func(ip string) error
 
 	guestIdentityInventoryAPIForNode func(string, raft.ServerAddress) (string, error)
+	guestIdentityControlForNode      func(
+		context.Context,
+		string,
+		GuestIdentityControlRequest,
+	) (GuestIdentityControlResponse, error)
 	joinVersionForNode               func(context.Context, raft.Server, string) (string, error)
 	joinProgressForNode              func(context.Context, string, raft.ServerAddress, uint64) (ClusterJoinProgress, error)
 	backupJobValidationAPIForNode    func(string, raft.ServerAddress) (string, error)
@@ -318,6 +326,22 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if s.Raft != nil {
 		return errors.New("raft_already_initialized")
 	}
+	s.guestIdentityRuntimeMu.Lock()
+	if s.guestIdentityClusterFormation {
+		s.guestIdentityRuntimeMu.Unlock()
+		return errors.New("guest_identity_cluster_formation_in_progress")
+	}
+	if len(s.guestIdentityLocalReservations) != 0 {
+		s.guestIdentityRuntimeMu.Unlock()
+		return errors.New("guest_identity_mutation_in_progress")
+	}
+	s.guestIdentityClusterFormation = true
+	s.guestIdentityRuntimeMu.Unlock()
+	defer func() {
+		s.guestIdentityRuntimeMu.Lock()
+		s.guestIdentityClusterFormation = false
+		s.guestIdentityRuntimeMu.Unlock()
+	}()
 	localNodeID := s.guestIdentityInventoryLocalNodeID()
 	if localNodeID == "" {
 		return errors.New("local_node_id_unavailable")
@@ -343,6 +367,9 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if c.Enabled {
 		return errors.New("cluster already exists")
 	}
+	if c.HasIncompleteJoin() {
+		return errors.New("cluster_join_in_progress")
+	}
 	if dir, _ := config.GetRaftPath(); hasExistingRaftState(dir) {
 		return errors.New("raft_state_already_exists")
 	}
@@ -364,6 +391,9 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 
 	if becameLeader {
 		if err := s.snapshotPreClusterState(); err != nil {
+			return err
+		}
+		if err := s.initializeGuestIdentityRegistryForFoundingNode(localNodeID, localInventory); err != nil {
 			return err
 		}
 	} else {

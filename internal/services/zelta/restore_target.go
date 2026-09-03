@@ -146,11 +146,17 @@ func (s *Service) requireOOBGuestRestoreAvailable(
 	if destination == nil {
 		return nil
 	}
-	if s == nil || s.Cluster == nil {
-		return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
-	}
-	if err := s.Cluster.RequireGuestIDAvailable(ctx, destination.GuestID); err != nil {
-		return err
+	if _, reserved := restoreGuestIdentityReservationFromContext(
+		ctx,
+		destination.Kind,
+		destination.GuestID,
+	); !reserved {
+		if s == nil || s.Cluster == nil {
+			return fmt.Errorf("guest_identity_inventory_scan_failed: cluster_service_not_initialized")
+		}
+		if err := s.Cluster.RequireGuestIDAvailable(ctx, destination.GuestID); err != nil {
+			return err
+		}
 	}
 
 	if checkDatasets {
@@ -1071,6 +1077,22 @@ func (s *Service) runRestoreFromTargetVM(
 			return fmt.Errorf("restore_vm_manifest_mismatch")
 		}
 	}
+
+	var guestIdentityReservation *restoreGuestIdentityReservation
+	if strictAsNew {
+		var reserveErr error
+		ctx, guestIdentityReservation, reserveErr = s.reserveGuestIdentityForRestore(
+			ctx,
+			clusterModels.ReplicationGuestTypeVM,
+			destRID,
+		)
+		if reserveErr != nil {
+			return reserveErr
+		}
+		defer func() {
+			s.releaseGuestIdentityReservationAfterError(ctx, guestIdentityReservation, &retErr)
+		}()
+	}
 	vmRestoreFence, err := s.acquireVMRestoreFence(ctx, destRID, event.ID)
 	if err != nil {
 		return fmt.Errorf("acquire_vm_restore_fence_failed: %w", err)
@@ -1198,6 +1220,12 @@ func (s *Service) runRestoreFromTargetVM(
 			return fmt.Errorf("reconcile_restored_vm_failed: %w; rollback_failed: %v", reconcileErr, rollbackErr)
 		}
 		return fmt.Errorf("reconcile_restored_vm_failed: %w", reconcileErr)
+	}
+
+	if strictAsNew {
+		if err := s.finalizeGuestIdentityRestore(ctx, guestIdentityReservation); err != nil {
+			return err
+		}
 	}
 
 	if jobID != nil && *jobID > 0 {
@@ -1388,6 +1416,41 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	restorePath := destinationDataset + ".restoring"
 	stagingIdentity := newRestoreStagingIdentity(jobID, target.ID, destinationDataset)
 	destinationKind, destinationGuestID := inferRestoreDatasetKind(destinationDataset)
+	isJailDestination := destinationKind == clusterModels.BackupJobModeJail
+	isGuestDestination := isJailDestination || destinationKind == clusterModels.BackupJobModeVM
+	strictAsNew := jobID == nil && isGuestDestination
+	var guestIdentityReservation *restoreGuestIdentityReservation
+	if strictAsNew {
+		oobDestination := &oobGuestRestoreDestination{
+			Kind:    destinationKind,
+			GuestID: destinationGuestID,
+			Dataset: destinationDataset,
+		}
+		if destinationKind == clusterModels.BackupJobModeVM {
+			if _, inherited := restoreGuestIdentityReservationFromContext(
+				ctx,
+				destinationKind,
+				destinationGuestID,
+			); !inherited {
+				return "", fmt.Errorf("restore_vm_guest_identity_reservation_missing")
+			}
+		}
+		var reserveErr error
+		ctx, guestIdentityReservation, reserveErr = s.reserveGuestIdentityForRestore(
+			ctx,
+			destinationKind,
+			destinationGuestID,
+		)
+		if reserveErr != nil {
+			return "", reserveErr
+		}
+		defer func() {
+			s.releaseGuestIdentityReservationAfterError(ctx, guestIdentityReservation, &retErr)
+		}()
+		if err := s.requireOOBGuestRestoreAvailable(ctx, oobDestination, nil, true); err != nil {
+			return "", err
+		}
+	}
 
 	activeEventID := uint(0)
 	ownsEvent := false
@@ -1542,24 +1605,8 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		return "", restoreErr
 	}
 
-	isJailDestination := destinationKind == clusterModels.BackupJobModeJail
-	isGuestDestination := isJailDestination || destinationKind == clusterModels.BackupJobModeVM
 	if destinationKind == clusterModels.BackupJobModeDataset {
 		if err := s.requireNoManagedGuestsWithinRestore(ctx, destinationDataset); err != nil {
-			restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, err)
-			recordRestoreFailure(restoreErr)
-			return "", restoreErr
-		}
-	}
-	strictAsNew := jobID == nil && isGuestDestination
-	var oobDestination *oobGuestRestoreDestination
-	if strictAsNew {
-		oobDestination = &oobGuestRestoreDestination{
-			Kind:    destinationKind,
-			GuestID: destinationGuestID,
-			Dataset: destinationDataset,
-		}
-		if err := s.requireOOBGuestRestoreAvailable(ctx, oobDestination, nil, true); err != nil {
 			restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, err)
 			recordRestoreFailure(restoreErr)
 			return "", restoreErr
@@ -1722,6 +1769,14 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 				destExists,
 				err,
 			)
+			recordRestoreFailure(restoreErr)
+			return "", restoreErr
+		}
+	}
+
+	if strictAsNew {
+		if err := s.finalizeGuestIdentityRestore(ctx, guestIdentityReservation); err != nil {
+			restoreErr = err
 			recordRestoreFailure(restoreErr)
 			return "", restoreErr
 		}

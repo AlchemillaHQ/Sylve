@@ -143,6 +143,15 @@ func writeBackupJobError(c *gin.Context, operation string, err error) {
 		status = http.StatusConflict
 		message = "backup_job_id_conflict"
 		detail = message
+	case strings.Contains(errorText, "guest_identity_inventory_unavailable"),
+		strings.Contains(errorText, "guest_identity_registry_initializing"),
+		strings.Contains(errorText, "guest_identity_cluster_formation_in_progress"),
+		strings.Contains(errorText, "cluster_consensus_unavailable"),
+		strings.Contains(errorText, "backup_job_runner_placement_invalid") &&
+			(errors.Is(err, raft.ErrNotLeader) || errors.Is(err, raft.ErrLeadershipLost)):
+		status = http.StatusServiceUnavailable
+		message = "backup_job_runner_inventory_unavailable"
+		detail = message
 	case strings.Contains(errorText, "backup_target_disabled"),
 		strings.Contains(errorText, "_conflict"),
 		strings.Contains(errorText, "_immutable"),
@@ -166,10 +175,6 @@ func writeBackupJobError(c *gin.Context, operation string, err error) {
 		} else if err != nil {
 			detail = err.Error()
 		}
-	case strings.Contains(errorText, "guest_identity_inventory_unavailable"):
-		status = http.StatusServiceUnavailable
-		message = "backup_job_runner_inventory_unavailable"
-		detail = message
 	case errors.As(err, &validationRejected),
 		strings.Contains(errorText, "invalid_"),
 		strings.Contains(errorText, "_invalid"),
@@ -1000,7 +1005,14 @@ func RestoreBackupJob(cS *cluster.Service, zS backupJobRestoreService) gin.Handl
 					message := "restore_guest_id_conflict"
 					detail := err.Error()
 					switch {
-					case strings.Contains(err.Error(), "guest_identity_inventory_unavailable"):
+					case strings.Contains(err.Error(), "guest_identity_inventory_unavailable"),
+						strings.Contains(err.Error(), "guest_identity_registry_initializing"),
+						strings.Contains(err.Error(), "guest_identity_cluster_formation_in_progress"),
+						strings.Contains(err.Error(), "cluster_consensus_unavailable"),
+						errors.Is(err, raft.ErrNotLeader),
+						errors.Is(err, raft.ErrLeadershipLost),
+						errors.Is(err, raft.ErrRaftShutdown),
+						errors.Is(err, raft.ErrEnqueueTimeout):
 						status = http.StatusServiceUnavailable
 						message = "restore_guest_identity_unavailable"
 					case strings.Contains(err.Error(), "guest_identity_inventory_scan_failed"):

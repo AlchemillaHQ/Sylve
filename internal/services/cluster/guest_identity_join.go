@@ -67,15 +67,6 @@ func canonicalSubmittedGuestIdentityInventory(
 	return canonical, nil
 }
 
-func mergeGuestIdentityInventoryReports(
-	left, right GuestIdentityInventoryReport,
-) GuestIdentityInventoryReport {
-	entries := make([]GuestIdentityInventoryEntry, 0, len(left.Entries)+len(right.Entries))
-	entries = append(entries, left.Entries...)
-	entries = append(entries, right.Entries...)
-	return BuildGuestIdentityInventoryReport(entries)
-}
-
 func validateJoinMembership(
 	configuration raft.Configuration,
 	localNodeID, joiningNodeID string,
@@ -183,31 +174,17 @@ func (s *Service) checkJoinInventory(
 		return GuestIdentityInventoryReport{}, false, err
 	}
 
-	reports, current, err := s.collectClusterGuestIdentityInventoriesStrict(ctx)
+	claims, err := s.authoritativeGuestIdentityClaims()
 	if err != nil {
 		return GuestIdentityInventoryReport{}, false, err
 	}
-	if err := requireCleanGuestIdentityInventory(current); err != nil {
+	combined, err := validateJoinInventoryAgainstClaims(strings.TrimSpace(nodeID), canonicalJoiner, claims, existingServer)
+	if err != nil {
 		return GuestIdentityInventoryReport{}, false, err
 	}
-
-	if existingServer != nil && existingServer.Suffrage == raft.Voter {
-		existing, exists := reports[strings.TrimSpace(nodeID)]
-		if !exists || existing.Digest != canonicalJoiner.Digest {
-			return GuestIdentityInventoryReport{}, false, fmt.Errorf("joining_inventory_changed_for_existing_voter")
-		}
-		return current, true, nil
-	}
-
-	combined := mergeGuestIdentityInventoryReports(current, canonicalJoiner)
-	if err := requireCleanGuestIdentityInventory(combined); err != nil {
-		return GuestIdentityInventoryReport{}, false, err
-	}
-	return combined, false, nil
+	return combined, existingServer != nil && existingServer.Suffrage == raft.Voter, nil
 }
 
-// PreflightJoinInventory checks the joining node's submitted inventory against
-// every current cluster member before the joining node changes local state.
 func (s *Service) PreflightJoinInventory(
 	ctx context.Context,
 	nodeID, nodeIP, providedKey string,
@@ -368,6 +345,13 @@ func (s *Service) finalizeStagedJoin(
 	}
 	if server.Suffrage != raft.Nonvoter && server.Suffrage != raft.Staging {
 		return fmt.Errorf("joining_node_membership_not_promotable")
+	}
+	canonicalJoiner, err := canonicalSubmittedGuestIdentityInventory(nodeID, submitted)
+	if err != nil {
+		return err
+	}
+	if err := s.admitStagedJoinGuestIdentities(ctx, nodeID, canonicalJoiner); err != nil {
+		return err
 	}
 	targetIndex := s.Raft.AppliedIndex()
 	progress, err := s.fetchJoinProgress(ctx, strings.TrimSpace(nodeID), server.Address, targetIndex)

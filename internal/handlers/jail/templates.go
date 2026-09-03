@@ -80,7 +80,12 @@ func jailTemplatePreflightStatusCode(err error) int {
 	switch jailTemplateErrorCode(err) {
 	case "replication_lease_not_owned":
 		return http.StatusForbidden
-	case "guest_identity_inventory_unavailable", "template_network_service_unavailable":
+	case "guest_identity_inventory_unavailable",
+		"guest_identity_registry_initializing",
+		"guest_identity_cluster_formation_in_progress",
+		"cluster_consensus_unavailable",
+		"guest_identity_release_failed",
+		"template_network_service_unavailable":
 		return http.StatusServiceUnavailable
 	case "jail_not_found",
 		"template_not_found",
@@ -93,6 +98,7 @@ func jailTemplatePreflightStatusCode(err error) int {
 		return http.StatusNotFound
 	case "template_name_already_in_use",
 		"guest_id_already_in_use",
+		"guest_identity_claim_conflict",
 		"guest_identity_inventory_conflict",
 		"ctid_range_contains_used_values",
 		"jail_name_already_in_use",

@@ -54,6 +54,7 @@ type Service struct {
 	leftPanelRefreshEmitter   func(reason string)
 
 	guestIdentityAvailabilityChecker clusterServiceInterfaces.GuestIdentityAvailabilityChecker
+	guestIdentityCoordinator         clusterServiceInterfaces.GuestIdentityCoordinator
 	mutationGate                     interface {
 		EnterMutation(context.Context) (context.Context, func(), error)
 	}
@@ -85,6 +86,13 @@ func (s *Service) SetGuestIdentityAvailabilityChecker(
 	checker clusterServiceInterfaces.GuestIdentityAvailabilityChecker,
 ) {
 	s.guestIdentityAvailabilityChecker = checker
+}
+
+func (s *Service) SetGuestIdentityCoordinator(
+	coordinator clusterServiceInterfaces.GuestIdentityCoordinator,
+) {
+	s.guestIdentityCoordinator = coordinator
+	s.guestIdentityAvailabilityChecker = coordinator
 }
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {

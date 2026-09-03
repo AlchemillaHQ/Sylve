@@ -20,11 +20,30 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
+
+func (s *Service) requireLocalGuestIdentityPlacement(
+	ctx context.Context,
+	guestKind string,
+	guestID uint,
+) error {
+	if s == nil || s.Cluster == nil {
+		return fmt.Errorf("guest_identity_cluster_service_unavailable")
+	}
+	localNodeID := strings.TrimSpace(s.Cluster.LocalNodeID())
+	if localNodeID == "" {
+		return fmt.Errorf("guest_identity_local_node_id_unavailable")
+	}
+	if err := s.Cluster.RequireGuestPlacement(ctx, guestKind, guestID, localNodeID); err != nil {
+		return fmt.Errorf("guest_identity_local_placement_invalid: %w", err)
+	}
+	return nil
+}
 
 func (s *Service) ImportMigratedVMWithRoots(
 	ctx context.Context,
@@ -33,6 +52,9 @@ func (s *Service) ImportMigratedVMWithRoots(
 ) (warnings []string, err error) {
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeVM, rid); err != nil {
+		return nil, err
 	}
 	// Keep target-side VNC selection and VM registration in one critical
 	// section so concurrent migrations cannot both claim the same free port.
@@ -149,6 +171,9 @@ func (s *Service) ImportMigratedJailWithRoots(
 ) (warnings []string, err error) {
 	if ctID == 0 {
 		return nil, fmt.Errorf("invalid_jail_ctid")
+	}
+	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeJail, ctID); err != nil {
+		return nil, err
 	}
 
 	roots, err = s.ValidateMigratedJailRoots(ctx, ctID, roots)

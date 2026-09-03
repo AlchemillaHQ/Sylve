@@ -881,6 +881,17 @@ func (s *Service) CommitReplicationOwnershipTransition(
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
+	operationKey := fmt.Sprintf("replication:%s:%s:%s:%d", payload.ExpectedTransitionRunID, payload.ExpectedActiveNodeID, payload.ActiveNodeID, payload.OwnerEpoch)
+	identityMove, err := s.replicationPolicyGuestIdentityMove(
+		payload.PolicyID,
+		payload.ExpectedActiveNodeID,
+		payload.ActiveNodeID,
+		operationKey,
+	)
+	if err != nil {
+		return err
+	}
+	payload.GuestIdentityMove = identityMove
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
 	nodeIDs := []string{payload.ActiveNodeID, payload.Lease.OwnerNodeID}
@@ -920,6 +931,17 @@ func (s *Service) ReassignDisabledReplicationPolicyOwner(
 	if err := s.requireReplicationRaftLeader(); err != nil {
 		return err
 	}
+	operationKey := fmt.Sprintf("replication-disabled:%s:%s:%s:%d", payload.RunID, payload.ExpectedActiveNodeID, payload.ActiveNodeID, payload.OwnerEpoch)
+	identityMove, err := s.replicationPolicyGuestIdentityMove(
+		payload.PolicyID,
+		payload.ExpectedActiveNodeID,
+		payload.ActiveNodeID,
+		operationKey,
+	)
+	if err != nil {
+		return err
+	}
+	payload.GuestIdentityMove = identityMove
 	s.clusterJoinMu.Lock()
 	defer s.clusterJoinMu.Unlock()
 	nodeIDs := []string{payload.ActiveNodeID, payload.SourceNodeID}

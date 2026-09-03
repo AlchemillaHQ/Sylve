@@ -19,13 +19,58 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 )
 
-func TestDatacenterClusterAddressCommandsSendGuardedTypedOperations(t *testing.T) {
+func TestDatacenterClusterCommandsSendTypedOperations(t *testing.T) {
 	tests := []struct {
 		name          string
 		args          []string
 		wantOperation string
 		validate      func(*testing.T, json.RawMessage)
 	}{
+		{
+			name:          "guest ID list",
+			args:          []string{"datacenter", "cluster", "guest-ids", "list", "--json"},
+			wantOperation: consoleprotocol.OperationDatacenterClusterGuestIDsList,
+			validate: func(t *testing.T, payload json.RawMessage) {
+				var request consoleprotocol.DatacenterClusterReadPayload
+				if err := json.Unmarshal(payload, &request); err != nil {
+					t.Fatal(err)
+				}
+				if !request.JSON {
+					t.Fatalf("payload = %+v", request)
+				}
+			},
+		},
+		{
+			name:          "guest ID reclaim",
+			args:          []string{"datacenter", "cluster", "guest-ids", "reclaim", "--id", "505"},
+			wantOperation: consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
+			validate: func(t *testing.T, payload json.RawMessage) {
+				var request consoleprotocol.DatacenterClusterGuestIDReclaimPayload
+				if err := json.Unmarshal(payload, &request); err != nil {
+					t.Fatal(err)
+				}
+				if request.GuestID != 505 || request.Force || request.Confirmation != "" {
+					t.Fatalf("payload = %+v", request)
+				}
+			},
+		},
+		{
+			name: "forced guest ID reclaim",
+			args: []string{
+				"datacenter", "cluster", "guest-ids", "reclaim", "--id", "506",
+				"--force", "--confirm", "506", "--json",
+			},
+			wantOperation: consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
+			validate: func(t *testing.T, payload json.RawMessage) {
+				var request consoleprotocol.DatacenterClusterGuestIDReclaimPayload
+				if err := json.Unmarshal(payload, &request); err != nil {
+					t.Fatal(err)
+				}
+				if request.GuestID != 506 || !request.Force || request.Confirmation != "506" || !request.JSON {
+					t.Fatalf("payload = %+v", request)
+				}
+			},
+		},
 		{
 			name:          "readdress",
 			args:          []string{"datacenter", "cluster", "readdress", "--new-ip", "192.0.2.20", "--allow-disruption"},
@@ -104,6 +149,20 @@ func TestDatacenterClusterAddressCommandsSendGuardedTypedOperations(t *testing.T
 			}
 			test.validate(t, request.Payload)
 		})
+	}
+}
+
+func TestDatacenterClusterGuestIDReclaimValidatesConfirmation(t *testing.T) {
+	tests := [][]string{
+		{"sylve", "datacenter", "cluster", "guest-ids", "reclaim", "--id", "10000"},
+		{"sylve", "datacenter", "cluster", "guest-ids", "reclaim", "--id", "505", "--force"},
+		{"sylve", "datacenter", "cluster", "guest-ids", "reclaim", "--id", "505", "--force", "--confirm", "506"},
+		{"sylve", "datacenter", "cluster", "guest-ids", "reclaim", "--id", "505", "--confirm", "505"},
+	}
+	for _, args := range tests {
+		if err := newRootCommand(nil, func() bool { return true }).Run(context.Background(), args); err == nil {
+			t.Fatalf("expected guest ID reclaim validation error for %q", args)
+		}
 	}
 }
 

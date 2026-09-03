@@ -16,6 +16,8 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
@@ -255,7 +257,7 @@ func TestJoinProgressInternalReportsIdentityAndIndexes(t *testing.T) {
 }
 
 func TestGetJoinStatusReturnsDurableIntent(t *testing.T) {
-	db := newClusterHandlerTestDB(t, &clusterModels.Cluster{})
+	db := newClusterHandlerTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&clusterModels.Cluster{RaftPort: cluster.ClusterRaftPort}).Error; err != nil {
 		t.Fatalf("seed cluster: %v", err)
 	}
