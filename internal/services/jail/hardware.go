@@ -378,6 +378,41 @@ func (s *Service) selectJailHardwareCPUSet(ctID uint, cores, logicalCores int) (
 	return selected, nil
 }
 
+func (s *Service) NormalizeRestoredJailHardware(data *jailModels.Jail) error {
+	if data == nil || data.CTID == 0 {
+		return fmt.Errorf("restored_jail_hardware_state_invalid")
+	}
+
+	enabled := data.ResourceLimits == nil || *data.ResourceLimits
+	data.ResourceLimits = &enabled
+	if !enabled {
+		data.Cores = 0
+		data.CPUSet = []int{}
+		data.Memory = 0
+		return nil
+	}
+	if data.Cores < 0 {
+		return fmt.Errorf("restored_jail_hardware_state_invalid")
+	}
+	if data.Cores == 0 {
+		data.CPUSet = []int{}
+		return nil
+	}
+
+	logicalCores := s.jailHardwareOps().HostLogicalCores()
+	cpuSet, err := s.selectJailHardwareCPUSet(data.CTID, data.Cores, logicalCores)
+	if err != nil {
+		return fmt.Errorf(
+			"restored_jail_cpu_capacity_insufficient: requested=%d available=%d: %w",
+			data.Cores,
+			logicalCores,
+			err,
+		)
+	}
+	data.CPUSet = cpuSet
+	return nil
+}
+
 func loadJailForHardware(db *gorm.DB, ctID uint) (*jailModels.Jail, error) {
 	var jail jailModels.Jail
 	err := db.Preload("Storages").Where("ct_id = ?", ctID).First(&jail).Error

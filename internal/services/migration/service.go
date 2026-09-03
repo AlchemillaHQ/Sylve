@@ -707,11 +707,19 @@ func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterMod
 func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNode clusterModels.ClusterNode) []string {
 	var reasons []string
 	var sourceJail jailModels.Jail
-	if err := s.DB.Select("id").Where("ct_id = ?", ctID).First(&sourceJail).Error; err != nil {
+	if err := s.DB.Select("id", "resource_limits", "cores").Where("ct_id = ?", ctID).First(&sourceJail).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return []string{"jail_not_found"}
 		}
 		return []string{fmt.Sprintf("jail_lookup_failed: %v", err)}
+	}
+	resourceLimits := sourceJail.ResourceLimits == nil || *sourceJail.ResourceLimits
+	if resourceLimits && sourceJail.Cores > 0 && targetNode.CPU > 0 && sourceJail.Cores > targetNode.CPU {
+		return []string{fmt.Sprintf(
+			"target_cpu_capacity_insufficient: requested=%d available=%d",
+			sourceJail.Cores,
+			targetNode.CPU,
+		)}
 	}
 
 	identity, sshErr := s.getNodeSSHIdentity(targetNode.NodeUUID)

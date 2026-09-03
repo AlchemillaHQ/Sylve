@@ -68,7 +68,7 @@ func TestTargetMigrationImportSerializesSameGuest(t *testing.T) {
 			}
 			return targetMigrationRuntimeInactive, nil
 		},
-		Import: func(context.Context, uint, []string) ([]string, error) {
+		Import: func(context.Context, uint, []string, ...string) ([]string, error) {
 			if imports.Add(1) == 1 {
 				close(entered)
 			}
@@ -163,7 +163,7 @@ func TestTargetMigrationImportPreservesStoppedState(t *testing.T) {
 					}
 					return targetMigrationRuntimeInactive, nil
 				},
-				Import: func(context.Context, uint, []string) ([]string, error) {
+				Import: func(context.Context, uint, []string, ...string) ([]string, error) {
 					imports++
 					return nil, nil
 				},
@@ -412,7 +412,7 @@ func TestTargetMigrationImportIsTokenScopedAndIdempotentForVMAndJail(t *testing.
 							}
 							return targetMigrationRuntimeInactive, nil
 						},
-						Import: func(context.Context, uint, []string) ([]string, error) {
+						Import: func(context.Context, uint, []string, ...string) ([]string, error) {
 							imports++
 							if test.importRemovesGuard {
 								if err := db.Where("guest_type = ? AND guest_id = ?", guestType, uint(1)).

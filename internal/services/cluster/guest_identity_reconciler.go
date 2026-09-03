@@ -100,6 +100,21 @@ func enrolledGuestIdentityNodes(db *gorm.DB) (map[string]struct{}, error) {
 	return enrolled, nil
 }
 
+func guestIdentityRegistryBootstrapBlockedByCutoverMigration(ctx context.Context, db *gorm.DB) (bool, error) {
+	if db == nil || !db.Migrator().HasTable(&clusterModels.ReplicationGuestOperation{}) {
+		return false, nil
+	}
+	var count int64
+	err := db.WithContext(ctx).
+		Model(&clusterModels.ReplicationGuestOperation{}).
+		Where("operation = ? AND state = ?",
+			clusterModels.ReplicationGuestOperationMigration,
+			clusterModels.ReplicationGuestOperationCutover,
+		).
+		Count(&count).Error
+	return count > 0, err
+}
+
 func (s *Service) guestIdentityInventoryForVoter(
 	ctx context.Context,
 	voter guestIdentityInventoryVoter,
@@ -184,6 +199,13 @@ func (s *Service) ReconcileGuestIdentityRegistry(ctx context.Context) error {
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return fmt.Errorf("guest_identity_registry_read_failed: %w", err)
+	}
+	blocked, err := guestIdentityRegistryBootstrapBlockedByCutoverMigration(ctx, s.DB)
+	if err != nil {
+		return fmt.Errorf("guest_identity_registry_migration_check_failed: %w", err)
+	}
+	if blocked {
+		return clusterModels.ErrGuestIdentityRegistryInitializing
 	}
 
 	configurationFuture := s.Raft.GetConfiguration()

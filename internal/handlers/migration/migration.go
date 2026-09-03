@@ -494,7 +494,7 @@ type targetMigrationImportOperations struct {
 	Authorize              func(context.Context, uint, string) error
 	ValidateRoots          func(context.Context, uint, []string) ([]string, error)
 	RuntimeState           func(uint) (targetMigrationRuntimeState, error)
-	Import                 func(context.Context, uint, []string) ([]string, error)
+	Import                 func(context.Context, uint, []string, ...string) ([]string, error)
 	SetIntentionalStop     func(uint, bool) error
 	Start                  func(context.Context, uint) error
 }
@@ -644,7 +644,7 @@ func targetMigrationImportHandler(ops targetMigrationImportOperations) gin.Handl
 			return
 		}
 
-		warnings, err := ops.Import(c.Request.Context(), req.GuestID, roots)
+		warnings, err := ops.Import(c.Request.Context(), req.GuestID, roots, req.OperationToken)
 		if err != nil {
 			logger.L.Warn().Err(err).
 				Str("guest_type", ops.GuestType).

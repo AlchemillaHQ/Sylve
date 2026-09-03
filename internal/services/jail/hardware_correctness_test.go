@@ -366,3 +366,68 @@ func TestCreateHardwareConfigUsesPersistedCPUSet(t *testing.T) {
 		t.Fatalf("memory config was not rounded up consistently: %q", memoryConfig)
 	}
 }
+
+func TestNormalizeRestoredJailHardwareForDestination(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	enabled := true
+	if err := db.Create(&jailModels.Jail{
+		CTID:           22,
+		Name:           "jail-22",
+		Type:           jailModels.JailTypeFreeBSD,
+		ResourceLimits: &enabled,
+		Cores:          1,
+		CPUSet:         []int{0},
+	}).Error; err != nil {
+		t.Fatalf("seed existing jail: %v", err)
+	}
+
+	service := &Service{
+		DB:             db,
+		ctidHashByCTID: make(map[uint]string),
+		hardwareOps:    &fakeJailHardwareOps{logicalCores: 2},
+	}
+	restored := jailModels.Jail{
+		CTID:           23,
+		ResourceLimits: &enabled,
+		Cores:          1,
+		Memory:         1024 * 1024 * 1024,
+	}
+	if err := service.NormalizeRestoredJailHardware(&restored); err != nil {
+		t.Fatalf("NormalizeRestoredJailHardware failed: %v", err)
+	}
+	if len(restored.CPUSet) != 1 || restored.CPUSet[0] != 1 {
+		t.Fatalf("destination CPU set = %v, want [1]", restored.CPUSet)
+	}
+	if _, _, err := service.CreateHardwareConfig(restored); err != nil {
+		t.Fatalf("normalized hardware configuration was rejected: %v", err)
+	}
+}
+
+func TestNormalizeRestoredJailHardwareCanonicalizesDisabledLimits(t *testing.T) {
+	disabled := false
+	service := &Service{}
+	restored := jailModels.Jail{
+		CTID:           23,
+		ResourceLimits: &disabled,
+		Cores:          2,
+		CPUSet:         []int{0, 1},
+		Memory:         1024 * 1024 * 1024,
+	}
+	if err := service.NormalizeRestoredJailHardware(&restored); err != nil {
+		t.Fatalf("NormalizeRestoredJailHardware failed: %v", err)
+	}
+	if restored.Cores != 0 || len(restored.CPUSet) != 0 || restored.Memory != 0 {
+		t.Fatalf("disabled hardware limits were not canonicalized: %+v", restored)
+	}
+}
+
+func TestNormalizeRestoredJailHardwareRejectsInsufficientDestinationCPU(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	enabled := true
+	service := &Service{DB: db, hardwareOps: &fakeJailHardwareOps{logicalCores: 2}}
+	restored := jailModels.Jail{CTID: 23, ResourceLimits: &enabled, Cores: 3}
+	err := service.NormalizeRestoredJailHardware(&restored)
+	if err == nil || !strings.Contains(err.Error(), "restored_jail_cpu_capacity_insufficient") {
+		t.Fatalf("insufficient CPU error = %v", err)
+	}
+}

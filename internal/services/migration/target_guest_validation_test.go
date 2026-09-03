@@ -162,3 +162,23 @@ func TestValidateJailPreflightRejectsNonexistentCTIDBeforeRemoteChecks(t *testin
 		t.Fatalf("reasons = %v, want [jail_not_found]", reasons)
 	}
 }
+
+func TestValidateJailPreflightRejectsInsufficientTargetCPU(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{})
+	enabled := true
+	if err := db.Create(&jailModels.Jail{
+		CTID:           23,
+		Name:           "jail-23",
+		Type:           jailModels.JailTypeFreeBSD,
+		ResourceLimits: &enabled,
+		Cores:          4,
+	}).Error; err != nil {
+		t.Fatalf("seed jail: %v", err)
+	}
+	svc := &Service{DB: db}
+
+	reasons := svc.validateJailPreflight(context.Background(), 23, clusterModels.ClusterNode{CPU: 2})
+	if len(reasons) != 1 || reasons[0] != "target_cpu_capacity_insufficient: requested=4 available=2" {
+		t.Fatalf("reasons = %v", reasons)
+	}
+}

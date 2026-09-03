@@ -42,6 +42,10 @@ type jailMetadataWriter interface {
 	WriteJailJSON(ctid uint) error
 }
 
+type jailHardwareNormalizer interface {
+	NormalizeRestoredJailHardware(data *jailModels.Jail) error
+}
+
 func (s *Service) reconcileRestoredJailFromDataset(ctx context.Context, dataset string) error {
 	return s.reconcileRestoredJailFromDatasetWithOptions(ctx, dataset, true)
 }
@@ -221,6 +225,13 @@ func (s *Service) upsertRestoredJailState(
 	if restored.ResourceLimits == nil {
 		v := true
 		restored.ResourceLimits = &v
+	}
+	normalizer, ok := s.Jail.(jailHardwareNormalizer)
+	if !ok {
+		return nil, fmt.Errorf("restored_jail_hardware_normalizer_unavailable")
+	}
+	if err := normalizer.NormalizeRestoredJailHardware(restored); err != nil {
+		return nil, fmt.Errorf("failed_to_normalize_restored_jail_hardware: %w", err)
 	}
 
 	var reconciled jailModels.Jail

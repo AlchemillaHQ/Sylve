@@ -217,6 +217,154 @@ func TestIntegrationRaftGuestIdentityEnrollmentAcrossAvailabilityWindows(t *test
 	}
 }
 
+func TestIntegrationRaftGuestIdentityBootstrapWaitsForSealedMigration(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityRaftIntegrationModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	now := time.Now().UTC()
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      23,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source-node:23",
+		OwnerNodeID:  "source-node",
+		TargetNodeID: "target-node",
+		TaskID:       23,
+		AcquiredAt:   now,
+		SealedAt:     &now,
+	}
+	if err := leader.service.DB.Create(&operation).Error; err != nil {
+		t.Fatalf("seed cutover migration: %v", err)
+	}
+
+	err := leader.service.ReconcileGuestIdentityRegistry(context.Background())
+	if !errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
+		t.Fatalf("reconcile with cutover migration error = %v", err)
+	}
+	var enrollmentCount int64
+	if err := leader.service.DB.Model(&clusterModels.GuestIdentityEnrollment{}).Count(&enrollmentCount).Error; err != nil {
+		t.Fatalf("count enrollments: %v", err)
+	}
+	if enrollmentCount != 0 {
+		t.Fatalf("enrollments during cutover = %d, want 0", enrollmentCount)
+	}
+
+	if err := leader.service.DB.Delete(&operation).Error; err != nil {
+		t.Fatalf("complete cutover migration: %v", err)
+	}
+	if err := leader.service.ReconcileGuestIdentityRegistry(context.Background()); err != nil {
+		t.Fatalf("reconcile after cutover: %v", err)
+	}
+	var registry clusterModels.GuestIdentityRegistry
+	if err := leader.service.DB.First(&registry, clusterModels.GuestIdentityRegistryID).Error; err != nil {
+		t.Fatalf("load registry: %v", err)
+	}
+	if registry.Phase != clusterModels.GuestIdentityRegistryPhaseActive {
+		t.Fatalf("registry phase = %q, want active", registry.Phase)
+	}
+}
+
+func TestIntegrationRaftGuestIdentityMoveDefersToSealedMigrationBeforeBootstrap(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2, guestIdentityRaftIntegrationModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	target := nodes[0]
+	if target == leader {
+		target = nodes[1]
+	}
+	now := time.Now().UTC()
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      23,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source-node:23",
+		OwnerNodeID:  leader.id,
+		TargetNodeID: target.id,
+		TaskID:       23,
+		AcquiredAt:   now,
+		SealedAt:     &now,
+	}
+	if err := leader.service.DB.Create(&operation).Error; err != nil {
+		t.Fatalf("seed cutover migration: %v", err)
+	}
+
+	if err := leader.service.MoveGuestIdentityOwner(
+		context.Background(),
+		clusterModels.ReplicationGuestTypeJail,
+		23,
+		target.id,
+		operation.Token,
+	); err != nil {
+		t.Fatalf("defer ownership to sealed migration: %v", err)
+	}
+	var claimCount int64
+	if err := leader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).Count(&claimCount).Error; err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if claimCount != 0 {
+		t.Fatalf("claims before bootstrap = %d, want 0", claimCount)
+	}
+}
+
+func TestReplicationPolicyGuestIdentityMoveDefersOnlyExactSealedMigration(t *testing.T) {
+	db := newClusterServiceTestDB(
+		t,
+		&clusterModels.GuestIdentityRegistry{},
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationGuestOperation{},
+	)
+	policy := clusterModels.ReplicationPolicy{
+		Name:         "jail-23",
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      23,
+		SourceNodeID: "source-node",
+		ActiveNodeID: "source-node",
+		CronExpr:     "0 * * * *",
+	}
+	if err := db.Create(&policy).Error; err != nil {
+		t.Fatalf("seed replication policy: %v", err)
+	}
+	now := time.Now().UTC()
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      23,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source-node:23",
+		OwnerNodeID:  "source-node",
+		TargetNodeID: "target-node",
+		TaskID:       23,
+		AcquiredAt:   now,
+		SealedAt:     &now,
+	}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatalf("seed cutover migration: %v", err)
+	}
+	service := &Service{DB: db}
+
+	move, err := service.replicationPolicyGuestIdentityMove(
+		policy.ID,
+		"source-node",
+		"target-node",
+		"migration-disabled-owner",
+	)
+	if err != nil || move != nil {
+		t.Fatalf("exact sealed migration move = %+v, %v", move, err)
+	}
+	if err := db.Model(&operation).Update("target_node_id", "other-node").Error; err != nil {
+		t.Fatalf("change cutover target: %v", err)
+	}
+	_, err = service.replicationPolicyGuestIdentityMove(
+		policy.ID,
+		"source-node",
+		"target-node",
+		"migration-disabled-owner",
+	)
+	if !errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
+		t.Fatalf("nonmatching migration error = %v", err)
+	}
+}
+
 func TestIntegrationRaftGuestIdentityConcurrentCrossKindReservation(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 3, guestIdentityRaftIntegrationModels()...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)

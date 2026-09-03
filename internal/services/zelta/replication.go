@@ -9451,6 +9451,7 @@ func (s *Service) isLocalMigrationCutoverTarget(
 	guestType string,
 	guestID uint,
 	localNodeID string,
+	operationTokens ...string,
 ) (bool, error) {
 	if s == nil || s.DB == nil || guestID == 0 || !replicationguard.GuestOperationSchemaReady(s.DB) {
 		return false, nil
@@ -9468,9 +9469,16 @@ func (s *Service) isLocalMigrationCutoverTarget(
 		return false, nil
 	}
 
-	return operation.Operation == clusterModels.ReplicationGuestOperationMigration &&
+	matches := operation.Operation == clusterModels.ReplicationGuestOperationMigration &&
 		operation.State == clusterModels.ReplicationGuestOperationCutover &&
-		strings.TrimSpace(operation.TargetNodeID) == strings.TrimSpace(localNodeID), nil
+		strings.TrimSpace(operation.TargetNodeID) == strings.TrimSpace(localNodeID)
+	if !matches || len(operationTokens) == 0 {
+		return matches, nil
+	}
+	if len(operationTokens) != 1 || strings.TrimSpace(operationTokens[0]) == "" {
+		return false, nil
+	}
+	return strings.TrimSpace(operation.Token) == strings.TrimSpace(operationTokens[0]), nil
 }
 
 func (s *Service) replicationGuestRegistrationStatus(guestType string, guestID uint) (bool, error) {

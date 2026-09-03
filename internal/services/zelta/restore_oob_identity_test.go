@@ -395,7 +395,10 @@ func TestOOBJailReconcileNeverUpdatesExistingDestinationRecord(t *testing.T) {
 		t.Fatalf("seed existing jail: %v", err)
 	}
 
-	service := &Service{DB: database}
+	service := &Service{
+		DB:   database,
+		Jail: &restoredJailHardwareNormalizerStub{},
+	}
 	_, err := service.upsertRestoredJailState(
 		t.Context(),
 		"tank/sylve/jails/108",

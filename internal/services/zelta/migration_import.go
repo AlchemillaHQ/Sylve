@@ -31,6 +31,7 @@ func (s *Service) requireLocalGuestIdentityPlacement(
 	ctx context.Context,
 	guestKind string,
 	guestID uint,
+	operationTokens ...string,
 ) error {
 	if s == nil || s.Cluster == nil {
 		return fmt.Errorf("guest_identity_cluster_service_unavailable")
@@ -39,21 +40,39 @@ func (s *Service) requireLocalGuestIdentityPlacement(
 	if localNodeID == "" {
 		return fmt.Errorf("guest_identity_local_node_id_unavailable")
 	}
-	if err := s.Cluster.RequireGuestPlacement(ctx, guestKind, guestID, localNodeID); err != nil {
-		return fmt.Errorf("guest_identity_local_placement_invalid: %w", err)
+	placementErr := s.Cluster.RequireGuestPlacement(ctx, guestKind, guestID, localNodeID)
+	if placementErr == nil {
+		return nil
 	}
-	return nil
+	if errors.Is(placementErr, clusterModels.ErrGuestIdentityRegistryInitializing) && len(operationTokens) == 1 {
+		operationToken := strings.TrimSpace(operationTokens[0])
+		if operationToken != "" {
+			cutoverTarget, err := s.isLocalMigrationCutoverTarget(
+				ctx, guestKind, guestID, localNodeID, operationToken,
+			)
+			if err != nil {
+				return fmt.Errorf("guest_identity_migration_placement_check_failed: %w", err)
+			}
+			if cutoverTarget {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("guest_identity_local_placement_invalid: %w", placementErr)
 }
 
 func (s *Service) ImportMigratedVMWithRoots(
 	ctx context.Context,
 	rid uint,
 	roots []string,
+	operationTokens ...string,
 ) (warnings []string, err error) {
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}
-	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeVM, rid); err != nil {
+	if err := s.requireLocalGuestIdentityPlacement(
+		ctx, clusterModels.ReplicationGuestTypeVM, rid, operationTokens...,
+	); err != nil {
 		return nil, err
 	}
 	// Keep target-side VNC selection and VM registration in one critical
@@ -168,11 +187,14 @@ func (s *Service) ImportMigratedJailWithRoots(
 	ctx context.Context,
 	ctID uint,
 	roots []string,
+	operationTokens ...string,
 ) (warnings []string, err error) {
 	if ctID == 0 {
 		return nil, fmt.Errorf("invalid_jail_ctid")
 	}
-	if err := s.requireLocalGuestIdentityPlacement(ctx, clusterModels.ReplicationGuestTypeJail, ctID); err != nil {
+	if err := s.requireLocalGuestIdentityPlacement(
+		ctx, clusterModels.ReplicationGuestTypeJail, ctID, operationTokens...,
+	); err != nil {
 		return nil, err
 	}
 

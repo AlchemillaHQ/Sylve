@@ -10,7 +10,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -65,6 +68,47 @@ func TestActivateMigratedDatasetRootsFailsOnAnyRoot(t *testing.T) {
 	}
 	if !reflect.DeepEqual(visited, roots) {
 		t.Fatalf("visited roots = %v, want %v", visited, roots)
+	}
+}
+
+func TestLocalMigrationCutoverTargetRequiresExactOperationToken(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.ReplicationGuestOperation{})
+	now := time.Now().UTC()
+	if err := db.Create(&clusterModels.ReplicationGuestOperation{
+		GuestType:    clusterModels.ReplicationGuestTypeJail,
+		GuestID:      23,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationCutover,
+		Token:        "migration:source-node:23",
+		OwnerNodeID:  "source-node",
+		TargetNodeID: "target-node",
+		TaskID:       23,
+		AcquiredAt:   now,
+		SealedAt:     &now,
+	}).Error; err != nil {
+		t.Fatalf("seed cutover migration: %v", err)
+	}
+	service := &Service{DB: db}
+
+	allowed, err := service.isLocalMigrationCutoverTarget(
+		context.Background(),
+		clusterModels.ReplicationGuestTypeJail,
+		23,
+		"target-node",
+		"migration:source-node:23",
+	)
+	if err != nil || !allowed {
+		t.Fatalf("exact cutover authorization = %v, %v", allowed, err)
+	}
+	allowed, err = service.isLocalMigrationCutoverTarget(
+		context.Background(),
+		clusterModels.ReplicationGuestTypeJail,
+		23,
+		"target-node",
+		"wrong-token",
+	)
+	if err != nil || allowed {
+		t.Fatalf("wrong-token cutover authorization = %v, %v", allowed, err)
 	}
 }
 

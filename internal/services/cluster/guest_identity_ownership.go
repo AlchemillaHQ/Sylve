@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -105,6 +106,30 @@ func (s *Service) replicationPolicyGuestIdentityMove(
 	if err := s.DB.First(&policy, policyID).Error; err != nil {
 		return nil, fmt.Errorf("replication_policy_guest_identity_lookup_failed: %w", err)
 	}
+	var registry clusterModels.GuestIdentityRegistry
+	registryResult := s.DB.Where("id = ?", clusterModels.GuestIdentityRegistryID).Limit(1).Find(&registry)
+	if registryResult.Error != nil {
+		return nil, fmt.Errorf("guest_identity_registry_read_failed: %w", registryResult.Error)
+	}
+	if registryResult.RowsAffected == 0 || registry.Phase != clusterModels.GuestIdentityRegistryPhaseActive {
+		var operation clusterModels.ReplicationGuestOperation
+		operationResult := s.DB.Where(
+			"guest_type = ? AND guest_id = ? AND operation = ? AND state = ? AND owner_node_id = ? AND target_node_id = ?",
+			policy.GuestType,
+			policy.GuestID,
+			clusterModels.ReplicationGuestOperationMigration,
+			clusterModels.ReplicationGuestOperationCutover,
+			expectedOwnerNodeID,
+			newOwnerNodeID,
+		).Limit(1).Find(&operation)
+		if operationResult.Error != nil {
+			return nil, fmt.Errorf("guest_identity_migration_operation_lookup_failed: %w", operationResult.Error)
+		}
+		if operationResult.RowsAffected == 1 {
+			return nil, nil
+		}
+		return nil, clusterModels.ErrGuestIdentityRegistryInitializing
+	}
 	move, err := s.authoritativeGuestIdentityMove(
 		policy.GuestType,
 		policy.GuestID,
@@ -160,6 +185,14 @@ func (s *Service) MoveGuestIdentityOwner(
 		operationToken,
 	)
 	if err != nil {
+		if errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {
+			s.clusterJoinMu.Lock()
+			defer s.clusterJoinMu.Unlock()
+			if err := s.RequireCurrentRaftVoter(newOwnerNodeID); err != nil {
+				return fmt.Errorf("guest_identity_move_target_not_current_voter: %w", err)
+			}
+			return nil
+		}
 		return err
 	}
 

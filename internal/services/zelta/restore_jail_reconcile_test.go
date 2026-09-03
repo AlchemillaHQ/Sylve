@@ -14,8 +14,21 @@ import (
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"gorm.io/gorm"
 )
+
+type restoredJailHardwareNormalizerStub struct {
+	jailServiceInterfaces.JailServiceInterface
+	calls  int
+	cpuSet []int
+}
+
+func (s *restoredJailHardwareNormalizerStub) NormalizeRestoredJailHardware(data *jailModels.Jail) error {
+	s.calls++
+	data.CPUSet = append([]int(nil), s.cpuSet...)
+	return nil
+}
 
 func TestNormalizeRestoredSwitchType(t *testing.T) {
 	if normalizeRestoredSwitchType("manual") != "manual" {
@@ -89,6 +102,49 @@ func TestNormalizeRestoredJailStorages(t *testing.T) {
 	}
 	if !storages[0].IsBase || storages[0].Pool != "zroot" {
 		t.Fatalf("base pool should be overridden: %+v", storages[0])
+	}
+}
+
+func TestUpsertRestoredJailStateNormalizesHardwareBeforePersistence(t *testing.T) {
+	service, db := newTestZeltaServiceWithDB(
+		t,
+		&jailModels.Jail{},
+		&jailModels.Storage{},
+		&jailModels.JailHooks{},
+		&jailModels.JailSnapshot{},
+		&jailModels.Network{},
+	)
+	normalizer := &restoredJailHardwareNormalizerStub{cpuSet: []int{1}}
+	service.Jail = normalizer
+	enabled := true
+
+	reconciled, err := service.upsertRestoredJailState(
+		t.Context(),
+		"tank/sylve/jails/23",
+		&restoredJailMetadata{Jail: jailModels.Jail{
+			CTID:           23,
+			Name:           "jail-23",
+			Type:           jailModels.JailTypeFreeBSD,
+			ResourceLimits: &enabled,
+			Cores:          1,
+			Memory:         1024 * 1024 * 1024,
+		}},
+		false,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("upsertRestoredJailState failed: %v", err)
+	}
+	if normalizer.calls != 1 || len(reconciled.CPUSet) != 1 || reconciled.CPUSet[0] != 1 {
+		t.Fatalf("normalizer calls=%d reconciled CPU set=%v", normalizer.calls, reconciled.CPUSet)
+	}
+
+	var persisted jailModels.Jail
+	if err := db.Where("ct_id = ?", 23).First(&persisted).Error; err != nil {
+		t.Fatalf("load reconciled jail: %v", err)
+	}
+	if len(persisted.CPUSet) != 1 || persisted.CPUSet[0] != 1 {
+		t.Fatalf("persisted CPU set = %v, want [1]", persisted.CPUSet)
 	}
 }
 
