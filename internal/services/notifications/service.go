@@ -43,6 +43,8 @@ const (
 	defaultSMTPPort         = 587
 	pushoverTitleMaxRunes   = 250
 	pushoverMessageMaxRunes = 1024
+	pushoverMaxAttempts     = 3
+	pushoverRetryDelay      = 5 * time.Second
 	DefaultListLimit        = 50
 	MaxListLimit            = 500
 )
@@ -105,12 +107,13 @@ type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfi
 type DiscordSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, webhookURL string) error
 
 type Service struct {
-	DB               *gorm.DB
-	DiskService      diskServiceInterfaces.DiskServiceInterface
-	httpClient       *http.Client
-	pushoverEndpoint string
-	pushoverSlots    chan struct{}
-	now              func() time.Time
+	DB                *gorm.DB
+	DiskService       diskServiceInterfaces.DiskServiceInterface
+	httpClient        *http.Client
+	pushoverEndpoint  string
+	pushoverSlots     chan struct{}
+	pushoverRetryWait time.Duration
+	now               func() time.Time
 
 	ntfySender     NtfySender
 	pushoverSender PushoverSender
@@ -299,9 +302,10 @@ func NewService(db *gorm.DB) *Service {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		pushoverEndpoint: defaultPushoverEndpoint,
-		pushoverSlots:    make(chan struct{}, 2),
-		now:              time.Now,
+		pushoverEndpoint:  defaultPushoverEndpoint,
+		pushoverSlots:     make(chan struct{}, 2),
+		pushoverRetryWait: pushoverRetryDelay,
+		now:               time.Now,
 	}
 
 	s.ntfySender = s.sendNtfy
@@ -2913,6 +2917,26 @@ func (s *Service) sendNtfy(ctx context.Context, cfg models.NotificationTransport
 }
 
 func (s *Service) sendPushover(ctx context.Context, _ models.NotificationTransportConfig, input notifier.EventInput, apiToken, userKey string) error {
+	var deliveryErr error
+	for attempt := 0; attempt < pushoverMaxAttempts; attempt++ {
+		deliveryErr = s.sendPushoverAttempt(ctx, input, apiToken, userKey)
+		if deliveryErr == nil || notifier.IsPermanentDeliveryError(deliveryErr) || attempt == pushoverMaxAttempts-1 {
+			return deliveryErr
+		}
+
+		timer := time.NewTimer(s.pushoverRetryWait * time.Duration(1<<attempt))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	return deliveryErr
+}
+
+func (s *Service) sendPushoverAttempt(ctx context.Context, input notifier.EventInput, apiToken, userKey string) error {
 	apiToken = strings.TrimSpace(apiToken)
 	userKey = strings.TrimSpace(userKey)
 	if apiToken == "" {

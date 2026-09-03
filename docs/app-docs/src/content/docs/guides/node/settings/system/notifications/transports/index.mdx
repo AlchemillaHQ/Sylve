@@ -58,6 +58,8 @@ Treat the credentials and URLs in transport forms as secrets. Tokens, Pushover k
 
 Pushover transports use the same **Test** action. A successful test should appear in the Pushover application associated with the configured user or group key.
 
+Temporary Pushover connection, response, and server failures are retried twice after the initial request, with waits of 5 and 10 seconds. Requests rejected with a `4xx` response or a response status other than `1` are not retried. If all three attempts fail, the delivery returns an error and is not queued for later.
+
 ## Manage transports
 
 The table shows the status, type, name, and destination details for each transport. For Pushover, Sylve confirms that a user or group key is configured without revealing it. Select one transport to edit, test, or delete it.

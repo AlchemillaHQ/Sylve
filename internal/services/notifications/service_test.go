@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -680,15 +681,18 @@ func TestSendPushoverClassifiesProviderFailures(t *testing.T) {
 		status    int
 		body      string
 		permanent bool
+		attempts  int32
 	}{
-		{name: "invalid credentials", status: http.StatusBadRequest, body: `{"status":0,"errors":["invalid"]}`, permanent: true},
-		{name: "quota exhausted", status: http.StatusTooManyRequests, body: `{"status":0,"errors":["quota"]}`, permanent: true},
-		{name: "provider rejection", status: http.StatusOK, body: `{"status":0,"errors":["invalid"]}`, permanent: true},
-		{name: "server unavailable", status: http.StatusServiceUnavailable, body: `{"status":0}`, permanent: false},
-		{name: "malformed success", status: http.StatusOK, body: `{`, permanent: false},
+		{name: "invalid credentials", status: http.StatusBadRequest, body: `{"status":0,"errors":["invalid"]}`, permanent: true, attempts: 1},
+		{name: "quota exhausted", status: http.StatusTooManyRequests, body: `{"status":0,"errors":["quota"]}`, permanent: true, attempts: 1},
+		{name: "provider rejection", status: http.StatusOK, body: `{"status":0,"errors":["invalid"]}`, permanent: true, attempts: 1},
+		{name: "server unavailable", status: http.StatusServiceUnavailable, body: `{"status":0}`, permanent: false, attempts: 3},
+		{name: "malformed success", status: http.StatusOK, body: `{`, permanent: false, attempts: 3},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			var attempts atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				attempts.Add(1)
 				w.WriteHeader(test.status)
 				_, _ = w.Write([]byte(test.body))
 			}))
@@ -696,6 +700,7 @@ func TestSendPushoverClassifiesProviderFailures(t *testing.T) {
 
 			svc := NewService(nil)
 			svc.pushoverEndpoint = server.URL
+			svc.pushoverRetryWait = 0
 			err := svc.sendPushover(context.Background(), models.NotificationTransportConfig{}, notifier.EventInput{Title: "test"}, apiToken, userKey)
 			if err == nil {
 				t.Fatal("expected pushover delivery error")
@@ -703,7 +708,42 @@ func TestSendPushoverClassifiesProviderFailures(t *testing.T) {
 			if got := notifier.IsPermanentDeliveryError(err); got != test.permanent {
 				t.Fatalf("permanent=%t want=%t err=%v", got, test.permanent, err)
 			}
+			if got := attempts.Load(); got != test.attempts {
+				t.Fatalf("attempts=%d want=%d", got, test.attempts)
+			}
 		})
+	}
+}
+
+func TestSendPushoverSucceedsAfterTemporaryFailures(t *testing.T) {
+	apiToken := strings.Repeat("A", 30)
+	userKey := strings.Repeat("u", 30)
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if attempts.Add(1) < pushoverMaxAttempts {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":0}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":1,"request":"request-id"}`))
+	}))
+	defer server.Close()
+
+	svc := NewService(nil)
+	svc.pushoverEndpoint = server.URL
+	svc.pushoverRetryWait = 0
+	err := svc.sendPushover(
+		context.Background(),
+		models.NotificationTransportConfig{},
+		notifier.EventInput{Title: "test"},
+		apiToken,
+		userKey,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := attempts.Load(); got != pushoverMaxAttempts {
+		t.Fatalf("attempts=%d want=%d", got, pushoverMaxAttempts)
 	}
 }
 
