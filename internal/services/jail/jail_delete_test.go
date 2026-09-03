@@ -20,8 +20,10 @@ import (
 	"testing"
 	"time"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -141,6 +143,18 @@ type jailDeleteNetworkService struct {
 	jailNetworkValidationFakeNetworkService
 	deletedEpairs []string
 	deleteErr     error
+}
+
+type rejectingJailDeleteIdentityCoordinator struct {
+	clusterServiceInterfaces.GuestIdentityCoordinator
+	err error
+}
+
+func (c *rejectingJailDeleteIdentityCoordinator) ValidateGuestIdentityClaim(
+	context.Context,
+	clusterServiceInterfaces.GuestIdentityReservation,
+) error {
+	return c.err
 }
 
 func (s *jailDeleteNetworkService) DeleteEpair(name string) error {
@@ -263,6 +277,55 @@ func TestDeleteJailReportsEpairCleanupRefusalAndRemovesIdentity(t *testing.T) {
 		t.Fatalf("warnings = %v, want epair cleanup warning", result.Warnings)
 	}
 	assertJailDeleteGraphAbsent(t, db, jailID, ctID)
+}
+
+func TestDeleteJailRevalidatesIdentityBeforeRuntime(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := newJailDeleteTestDB(t)
+	const ctID uint = 644
+	jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+	validationErr := errors.New("claim changed")
+	service := &Service{
+		DB: db,
+		guestIdentityCoordinator: &rejectingJailDeleteIdentityCoordinator{
+			err: validationErr,
+		},
+	}
+	claim := clusterServiceInterfaces.GuestIdentityReservation{
+		OwnerNodeID:         "node-a",
+		Token:               "raft-token",
+		LocalOperationToken: "local-token",
+		Clustered:           true,
+		Entries: []clusterServiceInterfaces.GuestIdentityReference{{
+			GuestKind: clusterModels.ReplicationGuestTypeJail,
+			GuestID:   ctID,
+		}},
+	}
+	runtimeCalled := false
+	runtime := inactiveJailDeleteRuntime()
+	runtime.isRunning = func(uint) (bool, error) {
+		runtimeCalled = true
+		return false, nil
+	}
+
+	_, err := service.deleteJailWithRuntimeOptionsAndIdentity(
+		t.Context(),
+		ctID,
+		false,
+		false,
+		runtime,
+		false,
+		&claim,
+	)
+	if !errors.Is(err, validationErr) {
+		t.Fatalf("identity validation error = %v", err)
+	}
+	if runtimeCalled {
+		t.Fatal("runtime deletion ran after identity validation failed")
+	}
+	if count := countJailDeleteRows(t, db, &jailModels.Jail{}, "id = ?", jailID); count != 1 {
+		t.Fatalf("jail registration count = %d, want 1", count)
+	}
 }
 
 func TestDeleteJailRuntimeFailuresKeepIdentityAndSkipStorageCleanup(t *testing.T) {

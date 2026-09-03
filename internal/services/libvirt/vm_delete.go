@@ -10,7 +10,6 @@ package libvirt
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -81,6 +80,7 @@ func (s *Service) RemoveVMWithWarnings(
 			return result, claimErr
 		}
 		identityClaim = &claim
+		defer s.guestIdentityCoordinator.CancelGuestIdentityClaim(claim)
 	}
 
 	result, err := s.removeVMWithWarningsWithIdentity(
@@ -93,11 +93,6 @@ func (s *Service) RemoveVMWithWarnings(
 		identityClaim,
 	)
 	if err != nil {
-		if identityClaim != nil && !identityClaim.Clustered {
-			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
-				return result, errors.Join(err, fmt.Errorf("guest_identity_local_guard_release_failed: %w", releaseErr))
-			}
-		}
 		return result, err
 	}
 	if identityClaim == nil {
@@ -159,6 +154,11 @@ func (s *Service) removeVMWithWarningsWithIdentity(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if identityClaim != nil {
+		if err := s.guestIdentityCoordinator.ValidateGuestIdentityClaim(ctx, *identityClaim); err != nil {
+			return result, fmt.Errorf("guest_identity_claim_revalidation_failed: %w", err)
+		}
+	}
 
 	s.crudMutex.Lock()
 	crudSectionHeld := true
@@ -202,7 +202,6 @@ func (s *Service) removeVMWithWarningsWithIdentity(
 			}
 		}
 	}
-
 	if err := removeRuntime(rid); err != nil {
 		return emptyVMRemovalResult(), fmt.Errorf("failed_to_remove_lv_vm: %w", err)
 	}

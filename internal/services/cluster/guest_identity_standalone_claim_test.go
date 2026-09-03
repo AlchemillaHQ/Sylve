@@ -32,10 +32,13 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 	if err != nil {
 		t.Fatalf("claim standalone VM for deletion: %v", err)
 	}
-	if claim.Clustered || strings.TrimSpace(claim.Token) == "" {
+	if claim.Clustered || strings.TrimSpace(claim.Token) == "" ||
+		claim.LocalOperationToken != claim.Token {
 		t.Fatalf("standalone deletion guard = %+v", claim)
 	}
-
+	if err := service.ValidateGuestIdentityClaim(t.Context(), claim); err != nil {
+		t.Fatalf("validate standalone deletion guard: %v", err)
+	}
 	service.guestIdentityRuntimeMu.Lock()
 	guardToken := service.guestIdentityLocalReservations[902]
 	service.guestIdentityRuntimeMu.Unlock()
@@ -49,6 +52,17 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 		"",
 	); err == nil || !strings.Contains(err.Error(), "local_mutation_in_progress") {
 		t.Fatalf("second standalone deletion claim error = %v", err)
+	}
+	mismatchedClaim := claim
+	mismatchedClaim.LocalOperationToken = "different-local-operation"
+	service.CancelGuestIdentityClaim(mismatchedClaim)
+	if _, err := service.GuestIdentityClaim(
+		t.Context(),
+		clusterModels.ReplicationGuestTypeVM,
+		902,
+		"",
+	); err == nil || !strings.Contains(err.Error(), "local_mutation_in_progress") {
+		t.Fatalf("claim after mismatched cancel error = %v", err)
 	}
 
 	if err := service.ReleaseGuestIdentities(t.Context(), claim); err != nil {

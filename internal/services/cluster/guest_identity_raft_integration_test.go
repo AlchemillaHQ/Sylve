@@ -282,6 +282,112 @@ func TestIntegrationRaftGuestIdentityConcurrentCrossKindReservation(t *testing.T
 	})
 }
 
+func TestIntegrationRaftGuestIdentityLocalLifecycleGuard(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityRaftIntegrationModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	initializeActiveGuestIdentityRegistryForTest(t, leader, nodes)
+	enableClusteredGuestIdentityServicesForTest(t, nodes)
+	ctx := context.Background()
+
+	reservation, err := leader.service.ReserveGuestIdentities(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		[]uint{530},
+	)
+	if err != nil {
+		t.Fatalf("reserve create identity: %v", err)
+	}
+	if _, err := leader.service.GuestIdentityClaim(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+		"",
+	); err == nil || !errors.Is(err, clusterModels.ErrGuestIdentityClaimConflict) ||
+		!strings.Contains(err.Error(), "local_mutation_in_progress") {
+		t.Fatalf("delete claim during create error = %v", err)
+	}
+	if err := leader.service.FinalizeGuestIdentities(ctx, reservation); err != nil {
+		t.Fatalf("finalize create identity: %v", err)
+	}
+
+	claim, err := leader.service.GuestIdentityClaim(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("claim identity for deletion: %v", err)
+	}
+	if claim.Token != reservation.Token ||
+		strings.TrimSpace(claim.LocalOperationToken) == "" ||
+		claim.LocalOperationToken == claim.Token {
+		t.Fatalf("deletion claim tokens = %+v", claim)
+	}
+	if err := leader.service.ValidateGuestIdentityClaim(ctx, claim); err != nil {
+		t.Fatalf("validate deletion claim: %v", err)
+	}
+	if _, err := leader.service.GuestIdentityClaim(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+		"",
+	); err == nil || !strings.Contains(err.Error(), "local_mutation_in_progress") {
+		t.Fatalf("second deletion claim error = %v", err)
+	}
+
+	wrongClaim := claim
+	wrongClaim.LocalOperationToken = uuid.NewString()
+	leader.service.CancelGuestIdentityClaim(wrongClaim)
+	if _, err := leader.service.GuestIdentityClaim(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+		"",
+	); err == nil || !strings.Contains(err.Error(), "local_mutation_in_progress") {
+		t.Fatalf("claim after mismatched cancel error = %v", err)
+	}
+
+	if _, err := leader.service.HandleGuestIdentityControl(ctx, leader.id, GuestIdentityControlRequest{
+		Operation:   guestIdentityControlRelease,
+		Reservation: reservation,
+	}); err != nil {
+		t.Fatalf("replace claim release: %v", err)
+	}
+	replacement := guestIdentityControlReservation(
+		leader.id,
+		uuid.NewString(),
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+	)
+	if _, err := leader.service.HandleGuestIdentityControl(ctx, leader.id, GuestIdentityControlRequest{
+		Operation:   guestIdentityControlReserve,
+		Reservation: replacement,
+	}); err != nil {
+		t.Fatalf("replace claim reserve: %v", err)
+	}
+	if err := leader.service.ValidateGuestIdentityClaim(ctx, claim); err == nil ||
+		!errors.Is(err, clusterModels.ErrGuestIdentityClaimConflict) ||
+		!strings.Contains(err.Error(), "claim_changed") {
+		t.Fatalf("stale claim validation error = %v", err)
+	}
+
+	leader.service.CancelGuestIdentityClaim(claim)
+	replacementClaim, err := leader.service.GuestIdentityClaim(
+		ctx,
+		clusterModels.ReplicationGuestTypeVM,
+		530,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("claim replacement identity: %v", err)
+	}
+	if replacementClaim.Token != replacement.Token {
+		t.Fatalf("replacement token = %q, want %q", replacementClaim.Token, replacement.Token)
+	}
+	leader.service.CancelGuestIdentityClaim(replacementClaim)
+}
+
 func TestIntegrationRaftGuestIdentityManualReclaim(t *testing.T) {
 	nodes := setupClusterRaftTestNodes(t, 1, guestIdentityRaftIntegrationModels()...)
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)

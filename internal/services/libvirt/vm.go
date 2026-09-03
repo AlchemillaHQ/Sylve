@@ -1293,10 +1293,11 @@ func (s *Service) UpdateDescription(rid uint, description string) error {
 		return fmt.Errorf("invalid_description")
 	}
 
-	vm.Description = description
-
-	if err := s.DB.Save(&vm).Error; err != nil {
-		return fmt.Errorf("failed_to_update_vm_description: %w", err)
+	if err := s.requireVMMutationOwnership(rid); err != nil {
+		return err
+	}
+	if err := s.updateVMDescriptionRow(vm.ID, rid, description); err != nil {
+		return err
 	}
 
 	err := s.WriteVMJson(rid)
@@ -1304,6 +1305,19 @@ func (s *Service) UpdateDescription(rid uint, description string) error {
 		logger.L.Error().Err(err).Msg("failed to write VM JSON after description update")
 	}
 
+	return nil
+}
+
+func (s *Service) updateVMDescriptionRow(vmID uint, rid uint, description string) error {
+	result := s.DB.Model(&vmModels.VM{}).
+		Where("id = ? AND rid = ?", vmID, rid).
+		Update("description", description)
+	if result.Error != nil {
+		return fmt.Errorf("failed_to_update_vm_description: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("vm_not_found: %d", rid)
+	}
 	return nil
 }
 

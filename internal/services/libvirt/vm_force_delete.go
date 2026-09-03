@@ -65,8 +65,16 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 			return nil, claimErr
 		}
 		identityClaim = &claim
-		if claim.Clustered && (len(claim.Entries) != 1 || strings.TrimSpace(claim.Token) == "") {
+		defer s.guestIdentityCoordinator.CancelGuestIdentityClaim(claim)
+		if len(claim.Entries) != 1 ||
+			claim.Entries[0].GuestKind != clusterModels.ReplicationGuestTypeVM ||
+			claim.Entries[0].GuestID != rid ||
+			strings.TrimSpace(claim.OwnerNodeID) == "" ||
+			claim.Clustered && strings.TrimSpace(claim.Token) == "" {
 			return nil, fmt.Errorf("%w: vm_force_release_claim_invalid", clusterModels.ErrGuestIdentityClaimConflict)
+		}
+		if err := s.guestIdentityCoordinator.ValidateGuestIdentityClaim(ctx, claim); err != nil {
+			return nil, fmt.Errorf("guest_identity_claim_revalidation_failed: %w", err)
 		}
 	}
 
@@ -131,7 +139,6 @@ func (s *Service) PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, err
 	if s == nil || s.DB == nil {
 		return nil, fmt.Errorf("libvirt_service_not_initialized")
 	}
-
 	var registrationCount int64
 	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&registrationCount).Error; err != nil {
 		return nil, fmt.Errorf("failed_to_check_vm_registration: %w", err)
@@ -147,7 +154,6 @@ func (s *Service) PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, err
 	if !isOrphan {
 		return nil, fmt.Errorf("vm_not_orphaned")
 	}
-
 	warnings := make([]string, 0)
 
 	if _, err := s.ensureConnection(); err == nil {

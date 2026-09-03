@@ -23,6 +23,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"gorm.io/gorm"
@@ -172,6 +173,22 @@ type vmDeleteSeed struct {
 	ZVolDataset  string
 	SnapshotName string
 	MACObjectID  uint
+}
+
+type rejectingVMDeleteIdentityCoordinator struct {
+	clusterServiceInterfaces.GuestIdentityCoordinator
+	err        error
+	onValidate func()
+}
+
+func (c *rejectingVMDeleteIdentityCoordinator) ValidateGuestIdentityClaim(
+	context.Context,
+	clusterServiceInterfaces.GuestIdentityReservation,
+) error {
+	if c.onValidate != nil {
+		c.onValidate()
+	}
+	return c.err
 }
 
 func newVMDeleteTestDB(t *testing.T) *gorm.DB {
@@ -460,6 +477,62 @@ func TestRemoveVMWithWarningsRuntimeFailureKeepsIdentityAndSkipsStorage(t *testi
 	}
 	if len(result.Warnings) != 0 || len(result.RetainedDatasets) != 0 {
 		t.Fatalf("failure returned a success result: %+v", result)
+	}
+	assertVMDeleteGraphCounts(t, db, seed, 1)
+}
+
+func TestRemoveVMWithWarningsRevalidatesIdentityBeforeRuntime(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	seed := seedVMDeleteGraph(t, db, 714, "tank", false)
+	validationErr := errors.New("claim changed")
+	service := &Service{DB: db}
+	validationRanWithoutVMLocks := false
+	service.guestIdentityCoordinator = &rejectingVMDeleteIdentityCoordinator{
+		err: validationErr,
+		onValidate: func() {
+			if !service.crudMutex.TryLock() {
+				return
+			}
+			defer service.crudMutex.Unlock()
+			if !service.actionMutex.TryLock() {
+				return
+			}
+			service.actionMutex.Unlock()
+			validationRanWithoutVMLocks = true
+		},
+	}
+	claim := clusterServiceInterfaces.GuestIdentityReservation{
+		OwnerNodeID:         "node-a",
+		Token:               "raft-token",
+		LocalOperationToken: "local-token",
+		Clustered:           true,
+		Entries: []clusterServiceInterfaces.GuestIdentityReference{{
+			GuestKind: clusterModels.ReplicationGuestTypeVM,
+			GuestID:   seed.VM.RID,
+		}},
+	}
+	runtimeCalled := false
+
+	_, err := service.removeVMWithWarningsWithIdentity(
+		seed.VM.RID,
+		false,
+		false,
+		false,
+		t.Context(),
+		func(uint) error {
+			runtimeCalled = true
+			return nil
+		},
+		&claim,
+	)
+	if !errors.Is(err, validationErr) {
+		t.Fatalf("identity validation error = %v", err)
+	}
+	if runtimeCalled {
+		t.Fatal("runtime removal ran after identity validation failed")
+	}
+	if !validationRanWithoutVMLocks {
+		t.Fatal("identity validation ran while a VM mutex was held")
 	}
 	assertVMDeleteGraphCounts(t, db, seed, 1)
 }

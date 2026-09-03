@@ -417,7 +417,7 @@ func (s *Service) RequireGuestPlacement(
 		return err
 	}
 	if clustered {
-		_, err := s.GuestIdentityClaim(
+		_, err := s.readGuestIdentityClaim(
 			ctx,
 			guestType,
 			guestID,

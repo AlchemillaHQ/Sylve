@@ -17,10 +17,11 @@ type GuestIdentityReference struct {
 }
 
 type GuestIdentityReservation struct {
-	OwnerNodeID string                   `json:"ownerNodeId"`
-	Token       string                   `json:"token,omitempty"`
-	Entries     []GuestIdentityReference `json:"entries"`
-	Clustered   bool                     `json:"clustered"`
+	OwnerNodeID         string                   `json:"ownerNodeId"`
+	Token               string                   `json:"token,omitempty"`
+	LocalOperationToken string                   `json:"-"`
+	Entries             []GuestIdentityReference `json:"entries"`
+	Clustered           bool                     `json:"clustered"`
 }
 
 type GuestIdentityCoordinator interface {
@@ -44,6 +45,11 @@ type GuestIdentityCoordinator interface {
 		guestID uint,
 		expectedOwnerNodeID string,
 	) (GuestIdentityReservation, error)
+	ValidateGuestIdentityClaim(
+		ctx context.Context,
+		reservation GuestIdentityReservation,
+	) error
+	CancelGuestIdentityClaim(reservation GuestIdentityReservation)
 	MoveGuestIdentityOwner(
 		ctx context.Context,
 		guestKind string,

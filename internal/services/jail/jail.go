@@ -2097,6 +2097,7 @@ func (s *Service) DeleteJailWithWarnings(
 			return jailServiceInterfaces.DeleteJailResult{}, claimErr
 		}
 		identityClaim = &claim
+		defer s.guestIdentityCoordinator.CancelGuestIdentityClaim(claim)
 	}
 
 	result, err := s.deleteJailWithRuntimeOptionsAndIdentity(
@@ -2109,11 +2110,6 @@ func (s *Service) DeleteJailWithWarnings(
 		identityClaim,
 	)
 	if err != nil {
-		if identityClaim != nil && !identityClaim.Clustered {
-			if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityClaim); releaseErr != nil {
-				return result, errors.Join(err, fmt.Errorf("guest_identity_local_guard_release_failed: %w", releaseErr))
-			}
-		}
 		return result, err
 	}
 	if identityClaim == nil {
@@ -2195,6 +2191,11 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if identityClaim != nil {
+		if err := s.guestIdentityCoordinator.ValidateGuestIdentityClaim(ctx, *identityClaim); err != nil {
+			return result, fmt.Errorf("guest_identity_claim_revalidation_failed: %w", err)
+		}
+	}
 	if !allowReplicationPolicy && replicationguard.GuestOperationSchemaReady(s.DB) {
 		allowed, leaseErr := s.canMutateProtectedJail(ctID)
 		if leaseErr != nil {
@@ -2237,7 +2238,6 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 			}
 		}
 	}
-
 	if err := ensureJailStoppedForDelete(ctx, ctID, runtime); err != nil {
 		return result, err
 	}

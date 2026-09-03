@@ -121,3 +121,48 @@ func TestUpdateDescriptionAcceptsEmptyAndRejectsOversizedValue(t *testing.T) {
 		t.Fatalf("description changed after rejected update: %q", refreshed.Description)
 	}
 }
+
+func TestUpdateVMDescriptionRowDoesNotRestoreDeletedIdentity(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	service := &Service{DB: db}
+	deleted := vmModels.VM{ID: 120, RID: 915, Name: "deleted", Description: "original"}
+	if err := db.Create(&deleted).Error; err != nil {
+		t.Fatalf("seed deleted VM: %v", err)
+	}
+	if err := db.Delete(&vmModels.VM{}, deleted.ID).Error; err != nil {
+		t.Fatalf("delete VM: %v", err)
+	}
+
+	err := service.updateVMDescriptionRow(deleted.ID, deleted.RID, "stale update")
+	if err == nil || !strings.Contains(err.Error(), "vm_not_found") {
+		t.Fatalf("stale update error = %v", err)
+	}
+	var count int64
+	if err := db.Model(&vmModels.VM{}).Where("rid = ?", deleted.RID).Count(&count).Error; err != nil {
+		t.Fatalf("count deleted VM: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("deleted VM was restored: count=%d", count)
+	}
+}
+
+func TestUpdateVMDescriptionRowDoesNotTouchReplacementIdentity(t *testing.T) {
+	db := newVMDeleteTestDB(t)
+	service := &Service{DB: db}
+	replacement := vmModels.VM{ID: 122, RID: 916, Name: "replacement", Description: "replacement description"}
+	if err := db.Create(&replacement).Error; err != nil {
+		t.Fatalf("seed replacement VM: %v", err)
+	}
+
+	err := service.updateVMDescriptionRow(121, replacement.RID, "stale update")
+	if err == nil || !strings.Contains(err.Error(), "vm_not_found") {
+		t.Fatalf("stale replacement update error = %v", err)
+	}
+	var refreshed vmModels.VM
+	if err := db.First(&refreshed, replacement.ID).Error; err != nil {
+		t.Fatalf("reload replacement VM: %v", err)
+	}
+	if refreshed.Description != replacement.Description {
+		t.Fatalf("replacement description = %q, want %q", refreshed.Description, replacement.Description)
+	}
+}
