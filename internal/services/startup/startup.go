@@ -201,7 +201,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	if slices.Contains(basicSettings.Services, models.WireGuard) {
 		if err := s.Network.EnableWireGuardService(dCtx); err != nil {
-			return fmt.Errorf("failed to enable wireguard service: %w", err)
+			logger.L.Error().Err(err).Msg("failed_to_enable_wireguard_service_on_startup")
 		}
 	}
 

@@ -110,9 +110,7 @@ func (s *Service) runWireGuardMonitor(ctx context.Context) {
 			if !s.isWireGuardServiceEnabled() {
 				continue
 			}
-			if err := s.refreshWireGuardClientEndpoints(); err != nil {
-				logger.L.Debug().Err(err).Msg("failed to refresh wireguard client endpoints")
-			}
+			s.retryWireGuardRuntime()
 		}
 	}
 }
@@ -456,18 +454,57 @@ func equalStringSlice(a []string, b []string) bool {
 	return true
 }
 
-func (s *Service) refreshWireGuardClientEndpoints() error {
+func (s *Service) retryWireGuardRuntime() {
+	runtimeChanged := s.retryWireGuardServerRuntime()
+	clientsChanged, err := s.refreshWireGuardClientEndpoints()
+	if err != nil {
+		logger.L.Debug().Err(err).Msg("failed to refresh wireguard client endpoints")
+	}
+	if !runtimeChanged && !clientsChanged {
+		return
+	}
+	if err := s.ReconcileManagedRoutes(); err != nil {
+		logger.L.Debug().Err(err).Msg("failed to reconcile managed routes after wireguard recovery")
+	}
+}
+
+func (s *Service) retryWireGuardServerRuntime() bool {
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+
+	var server networkModels.WireGuardServer
+	if err := s.DB.Preload("Peers").First(&server).Error; err != nil {
+		if err != gorm.ErrRecordNotFound {
+			logger.L.Debug().Err(err).Msg("failed to load wireguard server for retry")
+		}
+		return false
+	}
+	if !server.Enabled || wireGuardInterfaceExists(wireGuardServerInterfaceName) {
+		return false
+	}
+	if err := s.applyWireGuardServerRuntime(&server); err != nil {
+		logger.L.Debug().Err(err).Msg("failed to retry wireguard server runtime")
+		return false
+	}
+	_ = s.DB.Model(&server).Update("restarted_at", wireGuardCurrentTime()).Error
+
+	return true
+}
+
+func (s *Service) refreshWireGuardClientEndpoints() (bool, error) {
 	s.wireGuardClientMutationMutex.Lock()
 	defer s.wireGuardClientMutationMutex.Unlock()
 
 	var clients []networkModels.WireGuardClient
 	if err := s.DB.Where("enabled = ?", true).Find(&clients).Error; err != nil {
-		return err
+		return false, err
 	}
+	runtimeChanged := false
 
 	for _, client := range clients {
 		resolved, err := resolveEndpointIPs(client.EndpointHost)
 		if err != nil {
+			logger.L.Debug().Err(err).Uint("client_id", client.ID).Str("endpoint", client.EndpointHost).Msg("failed to resolve wireguard client endpoint")
 			continue
 		}
 
@@ -477,17 +514,20 @@ func (s *Service) refreshWireGuardClientEndpoints() error {
 		s.wgEndpointCache[cacheKey] = resolved
 		s.wgMonitorMutex.Unlock()
 
-		if len(previous) == 0 || equalStringSlice(previous, resolved) {
+		interfaceMissing := !wireGuardInterfaceExists(wireGuardClientInterfaceName(client.ID))
+		endpointChanged := len(previous) > 0 && !equalStringSlice(previous, resolved)
+		if !interfaceMissing && !endpointChanged {
 			continue
 		}
 
 		if err := s.applyWireGuardClientRuntime(&client); err != nil {
-			logger.L.Debug().Err(err).Msg("failed to reapply wireguard client after endpoint change")
+			logger.L.Debug().Err(err).Uint("client_id", client.ID).Str("endpoint", client.EndpointHost).Msg("failed to retry wireguard client runtime")
 			continue
 		}
 
 		_ = s.DB.Model(&client).Update("restarted_at", wireGuardCurrentTime()).Error
+		runtimeChanged = true
 	}
 
-	return nil
+	return runtimeChanged, nil
 }

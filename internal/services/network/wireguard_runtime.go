@@ -767,14 +767,12 @@ func (s *Service) EnableWireGuardService(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.syncWireGuardRuntime(); err != nil {
-		return errors.Join(err, s.teardownWireGuardRuntime())
-	}
+	runtimeErr := s.syncWireGuardRuntime()
 
 	var server networkModels.WireGuardServer
 	serverErr := s.DB.First(&server).Error
 	if serverErr != nil && !errors.Is(serverErr, gorm.ErrRecordNotFound) {
-		return errors.Join(serverErr, s.teardownWireGuardRuntime())
+		return errors.Join(runtimeErr, serverErr, s.teardownWireGuardRuntime())
 	}
 	var configuredServer *networkModels.WireGuardServer
 	active := false
@@ -783,11 +781,11 @@ func (s *Service) EnableWireGuardService(ctx context.Context) error {
 		active = server.Enabled
 	}
 	if err := s.syncWireGuardManagedFirewallRules(configuredServer, active); err != nil {
-		return errors.Join(err, s.teardownWireGuardRuntime())
+		return errors.Join(runtimeErr, err, s.teardownWireGuardRuntime())
 	}
 
 	s.StartWireGuardMonitor(ctx)
-	return nil
+	return runtimeErr
 }
 
 func (s *Service) DisableWireGuardService(ctx context.Context) error {
@@ -820,6 +818,7 @@ func (s *Service) DisableWireGuardService(ctx context.Context) error {
 func (s *Service) syncWireGuardRuntime() error {
 	s.wireGuardClientMutationMutex.Lock()
 	defer s.wireGuardClientMutationMutex.Unlock()
+	var errs []error
 
 	managedIfaces, err := listManagedWireGuardInterfaces()
 	if err != nil {
@@ -841,34 +840,35 @@ func (s *Service) syncWireGuardRuntime() error {
 	} else {
 		if server.Enabled {
 			if err := s.applyWireGuardServerRuntime(&server); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("wireguard_server_runtime_sync_failed: %w", err))
 			}
 		} else {
 			if err := s.teardownWireGuardServerRuntime(&server); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("wireguard_server_runtime_teardown_failed: %w", err))
 			}
 		}
 	}
 
 	var clients []networkModels.WireGuardClient
 	if err := s.DB.Find(&clients).Error; err != nil {
-		return err
+		errs = append(errs, err)
+		return errors.Join(errs...)
 	}
 
 	for i := range clients {
 		client := clients[i]
 		if client.Enabled {
 			if err := s.applyWireGuardClientRuntime(&client); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("wireguard_client_runtime_sync_failed client_id=%d endpoint=%s: %w", client.ID, client.EndpointHost, err))
 			}
 		} else {
 			if err := s.teardownWireGuardClientRuntime(&client); err != nil {
-				return err
+				errs = append(errs, fmt.Errorf("wireguard_client_runtime_teardown_failed client_id=%d: %w", client.ID, err))
 			}
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
 func listManagedWireGuardInterfaces() ([]string, error) {

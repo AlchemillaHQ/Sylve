@@ -637,6 +637,124 @@ func TestListManagedWireGuardInterfacesFiltersAndSorts(t *testing.T) {
 	}
 }
 
+func TestWireGuardRuntimeIsolatesFailuresAndRetries(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.WireGuardServer{},
+		&networkModels.WireGuardServerPeer{},
+		&networkModels.WireGuardClient{},
+		&networkModels.StaticRoute{},
+	)
+	runtime := stubWireGuardServerRuntime(t)
+	svc.wgEndpointCache = make(map[string][]string)
+
+	serverKey := mustGenerateWireGuardPrivateKey(t)
+	server := networkModels.WireGuardServer{
+		Enabled:    true,
+		Port:       51820,
+		Addresses:  []string{"10.70.0.1/24"},
+		PrivateKey: serverKey.String(),
+		PublicKey:  serverKey.PublicKey().String(),
+	}
+	if err := db.Create(&server).Error; err != nil {
+		t.Fatalf("failed to seed wireguard server: %v", err)
+	}
+
+	failedClient := wireGuardRuntimeClient(t, 31, "office.invalid")
+	healthyClient := wireGuardRuntimeClient(t, 32, "198.51.100.10")
+	if err := db.Create(&failedClient).Error; err != nil {
+		t.Fatalf("failed to seed failing client: %v", err)
+	}
+	if err := db.Create(&healthyClient).Error; err != nil {
+		t.Fatalf("failed to seed healthy client: %v", err)
+	}
+
+	route := networkModels.StaticRoute{
+		Name:            "wireguard route",
+		Enabled:         true,
+		DestinationType: staticRouteDestinationNetwork,
+		Destination:     "10.80.0.0/24",
+		Family:          staticRouteFamilyINET,
+		NextHopMode:     staticRouteNextHopInterface,
+		Interface:       wireGuardClientInterfaceName(failedClient.ID),
+	}
+	if err := db.Create(&route).Error; err != nil {
+		t.Fatalf("failed to seed static route: %v", err)
+	}
+
+	previousLookupIP := wireGuardLookupIP
+	previousResolveUDP := wireGuardResolveUDP
+	previousRouteRunCommand := staticRouteRunCommand
+	t.Cleanup(func() {
+		wireGuardLookupIP = previousLookupIP
+		wireGuardResolveUDP = previousResolveUDP
+		staticRouteRunCommand = previousRouteRunCommand
+	})
+
+	dnsAvailable := false
+	wireGuardLookupIP = func(host string) ([]net.IP, error) {
+		if host == failedClient.EndpointHost && !dnsAvailable {
+			return nil, errors.New("dns unavailable")
+		}
+		return []net.IP{net.ParseIP("203.0.113.20")}, nil
+	}
+	wireGuardResolveUDP = func(_ string, address string) (*net.UDPAddr, error) {
+		if strings.Contains(address, failedClient.EndpointHost) && !dnsAvailable {
+			return nil, errors.New("dns unavailable")
+		}
+		return &net.UDPAddr{IP: net.ParseIP("203.0.113.20"), Port: 51820}, nil
+	}
+
+	routeAdds := 0
+	staticRouteRunCommand = func(string, ...string) (string, error) {
+		routeAdds++
+		return "", nil
+	}
+
+	err := svc.syncWireGuardRuntime()
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("client_id=%d", failedClient.ID)) {
+		t.Fatalf("expected failing client error, got: %v", err)
+	}
+	if runtime.interfaceExists(wireGuardClientInterfaceName(failedClient.ID)) {
+		t.Fatal("failing client interface should not exist")
+	}
+	if !runtime.interfaceExists(wireGuardClientInterfaceName(healthyClient.ID)) {
+		t.Fatal("healthy client interface should remain active")
+	}
+
+	dnsAvailable = true
+	delete(runtime.ifaces, wireGuardServerInterfaceName)
+	svc.retryWireGuardRuntime()
+
+	if !runtime.interfaceExists(wireGuardServerInterfaceName) {
+		t.Fatal("wireguard server interface was not restored")
+	}
+	if !runtime.interfaceExists(wireGuardClientInterfaceName(failedClient.ID)) {
+		t.Fatal("wireguard client interface was not restored")
+	}
+	if routeAdds != 1 {
+		t.Fatalf("expected one route reconciliation, got %d", routeAdds)
+	}
+}
+
+func wireGuardRuntimeClient(t *testing.T, id uint, endpoint string) networkModels.WireGuardClient {
+	t.Helper()
+
+	privateKey := mustGenerateWireGuardPrivateKey(t)
+	peerKey := mustGenerateWireGuardPrivateKey(t)
+	return networkModels.WireGuardClient{
+		ID:            id,
+		Enabled:       true,
+		Name:          fmt.Sprintf("client-%d", id),
+		EndpointHost:  endpoint,
+		EndpointPort:  51820,
+		PrivateKey:    privateKey.String(),
+		PublicKey:     privateKey.PublicKey().String(),
+		PeerPublicKey: peerKey.PublicKey().String(),
+		AllowedIPs:    []string{fmt.Sprintf("10.%d.0.0/16", id)},
+		Addresses:     []string{fmt.Sprintf("172.20.%d.2/32", id)},
+	}
+}
+
 func mustGenerateWireGuardPrivateKey(t *testing.T) wgtypes.Key {
 	t.Helper()
 
