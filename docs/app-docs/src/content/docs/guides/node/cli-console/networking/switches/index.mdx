@@ -45,20 +45,26 @@ Enter `switches` without a subcommand in the console to display the syntax suppo
 
 ## Standard switches
 
-A standard switch is managed by Sylve. It can define bridge ports, MTU, VLAN, IPv4 and IPv6 addressing, gateways, DHCP, SLAAC, default-route behavior, and bridge offload settings.
+A standard switch is managed by Sylve. It can define bridge ports, a persistent bridge MAC source, MTU, VLAN, IPv4 and IPv6 addressing, gateways, DHCP, SLAAC, default-route behavior, and bridge offload settings.
 
 A standard switch does not require a port at creation time. This is useful for private guest networks or when ports will be attached later.
 
-The basic direct command is:
+Every new Standard Switch requires an explicit bridge MAC source. The source can be one selected physical port or a single-entry MAC object. For a portless switch, create a MAC object first and note its ID.
+
+The basic direct command for a portless switch is:
 
 ```bash
-doas sylve switches create --type standard --name guests
+doas sylve switches create \
+  --type standard \
+  --name guests \
+  --mac-source object \
+  --mac-object 12
 ```
 
 Inside the console:
 
 ```text
-switches create standard guests
+switches create standard guests --mac-source object --mac-object 12
 ```
 
 Network and gateway options can reference reusable object IDs. Create those objects first and note their IDs. Manual CIDR and gateway values are available when an object is unnecessary.
@@ -71,6 +77,7 @@ Standard switch creation supports:
 | IPv4 objects               | `--network4`, `--gateway4`                                                         |
 | IPv6 objects               | `--network6`, `--gateway6`                                                         |
 | Manual addressing          | `--network4-manual`, `--gateway4-manual`, `--network6-manual`, `--gateway6-manual` |
+| Bridge MAC identity        | `--mac-source`, plus `--mac-source-port` or `--mac-object`                         |
 | Address and route behavior | `--dhcp`, `--slaac`, `--disable-ipv6`, `--default-route`, `--default-route6`       |
 | Isolation and hardware     | `--private`, `--disable-bridge-offloads`                                           |
 
@@ -82,6 +89,8 @@ For example, create a standard switch that requests IPv4 through DHCP and IPv6 t
 doas sylve switches create \
   --type standard \
   --name guests-auto \
+  --mac-source object \
+  --mac-object 12 \
   --dhcp \
   --slaac \
   --default-route \
@@ -91,6 +100,8 @@ doas sylve switches create \
 `--default-route` selects the one Standard Switch allowed to install the node's IPv4 default route, including a route learned through DHCP. `--default-route6` independently selects the one switch allowed to install a static IPv6 default route or accept an RA-advertised default router. DHCP and SLAAC still acquire addresses when their route-owner flag is omitted.
 
 Only one configured owner is allowed per address family. The IPv4 and IPv6 owners may be the same switch or different switches.
+
+Use `--mac-source port --mac-source-port igb0` when `igb0` is included in `--ports` and the bridge should use that interface's MAC. Use `--mac-source object --mac-object 12` for a stable explicit identity, including every portless switch. The MAC object must contain exactly one valid non-zero unicast address.
 
 ## Manual switches
 
@@ -125,7 +136,9 @@ The console uses positional identifiers:
 switches edit standard 1 --mtu 1400
 ```
 
-Edits are partial. Only supplied options are changed. Console boolean options accept either the flag itself, such as `--dhcp`, or an explicit value such as `--dhcp=false`. Standard switch edits still validate the resulting port and address configuration before applying it.
+Edits are partial. Only supplied options are changed. Console boolean options accept either the flag itself, such as `--dhcp`, or an explicit value such as `--dhcp=false`. Standard switch edits still validate the resulting port, address, and bridge MAC configuration before applying it.
+
+Changing the bridge MAC source is also a partial edit. Supply `--mac-source` together with its matching source option. If you replace the port list and the current MAC source is a port, keep that source port in the new list or change the MAC source in the same edit.
 
 Set an object ID to `0` to clear that object reference, and supply an empty manual value to clear it. When editing `--ports`, provide the complete replacement list. Manual-switch edits accept only `--name` and `--bridge`.
 

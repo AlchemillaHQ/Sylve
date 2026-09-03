@@ -14,7 +14,7 @@ Network objects are named, reusable values for addresses, networks, ports, ident
 | **Host(s)** | `192.0.2.25` | Firewall addresses, routes, jail addresses and gateways, switches, DHCP lease IPs. |
 | **Network(s)** | `10.30.40.1/24` | Firewall addresses, route destinations, and switch networks. |
 | **Port(s)** | `443`, `8000:8010` | Firewall traffic and NAT rule ports. |
-| **MAC(s)** | `02:00:00:00:00:25` | VM and jail NICs, DHCP static leases. |
+| **MAC(s)** | `02:00:00:00:00:25` | VM and jail NICs, DHCP static leases, and Standard Switch bridge identities. |
 | **DUID(s)** | `00:04:...` | DHCPv6 static leases. |
 | **FQDN(s)** | `updates.example.net` | Firewall address matching; resolved and refreshed automatically. |
 | **List(s)** | `https://example.net/deny.txt` | Firewall address matching; downloaded and refreshed automatically. |
@@ -44,3 +44,5 @@ FQDN and List objects resolve or download their data on creation. The **Refresh*
 Select one row to reveal **Edit** and **Delete**. Editing is the right way to change a value in one place, but changing the type of an in-use object is rejected. DHCP leases require exactly one Host, MAC, or DUID value; route objects also require one value.
 
 Select multiple unused rows to reveal **Bulk Delete**. Sylve checks every selected object first and blocks deletion if any is used by a firewall rule, DHCP lease, VM, jail, switch, or static route. Bulk deletion is all-or-nothing.
+
+A MAC object used as a Standard Switch's bridge identity must contain exactly one valid non-zero unicast address. While that object is in use, Sylve prevents edits that would violate the single-value requirement.

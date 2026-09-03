@@ -86,6 +86,14 @@ The releases are built using GitHub actions and does **NOT** involve any manual 
 
 We recommend first getting your system up and running with a `pkg` installation, and then replacing the binary with the latest release from GitHub if you want to stay on the bleeding edge. This is because the `pkg` version may lag behind the latest nightly release, and you may want to take advantage of new features or bug fixes (which we do support and recommend).
 
+Before replacing the packaged binary, lock the Sylve package:
+
+```bash
+pkg lock -y sylve
+```
+
+The package database still considers `/usr/local/sbin/sylve` part of the installed Sylve package. Locking it prevents a later `pkg upgrade` from silently replacing your GitHub release with the repository version. Other system packages can continue to update normally.
+
 You can visit the [releases page](https://github.com/AlchemillaHQ/Sylve/releases) and download the latest release for your architecture. Once downloaded, you can move the `sylve` binary to a location in your `PATH`, such as `/usr/local/bin`. The below commands will do this for you:
 
 ```bash
@@ -96,6 +104,13 @@ mv sylve /usr/local/sbin/
 ```
 
 Should get you the absolute latest release, but if you want to get a specific version, just replace `tip` with the version tag you want to install for instance `v0.3.0`.
+
+Keep the package locked while managing the binary from GitHub Releases. To return to the FreeBSD package version, unlock and reinstall it explicitly:
+
+```bash
+pkg unlock -y sylve
+pkg install -f sylve
+```
 
 ### Building from Source
 

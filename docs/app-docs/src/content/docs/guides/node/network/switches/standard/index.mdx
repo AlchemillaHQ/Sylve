@@ -3,8 +3,8 @@ title: Standard Switches
 description: Create and manage a FreeBSD bridge with Sylve.
 ---
 
-import objects from "./objects-table.webp";
-import createSwitch from "./add.webp";
+import objects from "./standard-switch-network-objects.png";
+import createSwitch from "./standard-switch-create.png";
 import switchTable from "./table.webp";
 
 A Standard Switch is a FreeBSD bridge that Sylve creates and manages. Use one when you want Sylve; not `rc.conf` or another configuration system; to own the bridge, its selected physical ports, host addresses, VLAN handling, and lifecycle.
@@ -25,21 +25,24 @@ If you are connected to Sylve through that interface, expect the connection to d
 
 ## Address objects first
 
-For a dual-stack LAN, create four one-entry objects before opening the switch modal:
+For a dual-stack LAN with a portless bridge, create these one-entry objects before opening the switch modal:
 
-| Object             | Type    | Example value     | Used for                                            |
-| ------------------ | ------- | ----------------- | --------------------------------------------------- |
-| `LAN Network`      | Network | `192.168.12.1/24` | The IPv4 address and prefix assigned to the bridge. |
-| `LAN Gateway`      | Host    | `192.168.12.1`    | The IPv4 next-hop gateway.                          |
-| `LAN IPv6 Network` | Network | `fd12::1/64`      | The IPv6 address and prefix assigned to the bridge. |
-| `LAN IPv6 Gateway` | Host    | `fd12::1`         | The IPv6 next-hop gateway.                          |
+| Object             | Type    | Example value       | Used for                                             |
+| ------------------ | ------- | ------------------- | ---------------------------------------------------- |
+| `LAN Network`      | Network | `192.168.67.1/24`   | The IPv4 address and prefix assigned to the bridge.  |
+| `LAN Gateway`      | Host    | `192.168.67.1`      | The IPv4 next-hop gateway.                           |
+| `LAN IPv6 Network` | Network | `fd12:6767::1/64`   | The IPv6 address and prefix assigned to the bridge.  |
+| `LAN IPv6 Gateway` | Host    | `fd12:6767::1`      | The IPv6 next-hop gateway.                           |
+| `LAN Switch MAC`   | MAC     | `02:00:00:00:67:01` | The stable link-layer identity of a portless bridge. |
 
 <img
   src={objects.src}
-  alt="Network Objects table containing example LAN IPv4 and IPv6 network and gateway objects"
+  alt="Network Objects table containing LAN IPv4 and IPv6 network and gateway objects plus a single-entry LAN Switch MAC object"
 />
 
 Use a **Network** object for the address _on the bridge_, expressed in CIDR notation; not the bare subnet base such as `10.20.30.0/24`. Use a **Host** object for each gateway. The switch form also accepts a typed CIDR for Network and a typed IP address for Gateway, but objects are preferred: they provide one reusable, inspectable source of truth for addresses used elsewhere in Sylve.
+
+A Standard Switch also requires an explicit bridge MAC source. A bridge with physical ports can inherit the MAC of one selected port. A portless bridge must use a single-entry **MAC** object. The address must be a valid non-zero unicast MAC. A locally administered address whose first octet is `02`, such as the example above, is appropriate when it is unique on your network.
 
 ## Create the switch
 
@@ -47,7 +50,7 @@ Open **Network → Switches → Standard** and select **New**. The modal creates
 
 <img
   src={createSwitch.src}
-  alt="Create Standard Switch modal with LAN name, address object selections, and Disable Bridge Offloads enabled"
+  alt="Create Standard Switch dialog for a portless LAN bridge using IPv4 and IPv6 objects, an explicit MAC object, and disabled bridge offloads"
 />
 
 ### Fields
@@ -60,6 +63,9 @@ Open **Network → Switches → Standard** and select **New**. The modal creates
 | **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                                                                    |
 | **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                                                             |
 | **Ports**               | Interfaces that Sylve will attach to the bridge. **Sylve clears all IPv4 and IPv6 addresses from each selected port before attachment.** Configure the address on the bridge instead. |
+| **Bridge MAC source**   | Select **Use port MAC** and one of the switch ports, or select **Use MAC object** and a single-entry MAC object. The form displays the effective MAC before saving.                   |
+
+The bridge MAC is persistent configuration, not a cosmetic label. Keeping it stable avoids the bridge changing identity when ports are reordered, link state changes, or a portless switch is recreated. If you use **Use port MAC**, the source must remain one of the switch's selected ports. Use a MAC object when the identity must remain independent of physical hardware.
 
 ### Checkboxes
 
@@ -91,6 +97,10 @@ The database upgrade preserves existing automatic behavior rather than silently 
 
 If more than one legacy candidate exists for either family, Sylve logs an ambiguity warning. Clear the route-owner checkbox on every extra switch, then leave it selected on the intended uplink.
 
+:::
+
+:::note[Existing switches after upgrading]
+During the upgrade, Sylve records each existing Standard Switch's current bridge MAC in a generated single-entry MAC object. If the running bridge has no usable unicast MAC, Sylve generates one. Review the new object and keep its value unique, especially when restoring or cloning node configuration.
 :::
 
 ## Verify and use it

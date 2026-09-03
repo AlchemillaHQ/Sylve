@@ -8,13 +8,13 @@ import sambaSettingsUpdate from './samba-settings-update.png';
 
 The Samba Settings page shows the active global configuration. Select **Update** to change it. These settings control the SMB server as a whole, while share-specific access and options are configured on the [Shares](/guides/node/storage/samba/shares/) page.
 
-<img src={sambaSettingsOverview.src} alt="Sylve Samba Settings page showing Unix Charset, Workgroup, Server String, Interfaces, Bind Interfaces Only, Apple Extensions, and Advertise Samba mDNS values" />
+<img src={sambaSettingsOverview.src} alt="Samba Settings table showing the server identity, interface restrictions, Apple extensions, mDNS advertisement, and Extra Global Configuration status" />
 
 ## Update Samba settings
 
 Changing settings validates the requested values, rewrites the Samba configuration, and reloads Samba. If selected interfaces no longer exist, Sylve removes them from the saved selection. If no valid interface remains, it falls back to `lo0`.
 
-<img src={sambaSettingsUpdate.src} alt="Update Samba Configuration dialog with a workgroup, server string, selected network interfaces, Bind Interfaces Only, Apple Extensions, and Advertise Samba mDNS options" />
+<img src={sambaSettingsUpdate.src} alt="Update Samba Configuration dialog with server identity, interface restrictions, Apple extensions, mDNS advertisement, and an extra global Samba directive" />
 
 | Option | Behavior |
 | --- | --- |
@@ -25,6 +25,11 @@ Changing settings validates the requested values, rewrites the Samba configurati
 | Bind Interfaces Only | Restricts Samba to the selected interfaces. Enable this when the SMB service must not listen on other node interfaces. |
 | Apple Extensions | Enables Apple-focused SMB extensions, including the `fruit` and `streams_xattr` modules on shares. It is required before a share can expose the Time Machine option. |
 | Advertise Samba (mDNS) | Controls whether Sylve publishes its managed Samba discovery records through mDNS. When enabled, Sylve ensures the mDNS service is enabled and rebuilds the advertisements after saving. This is enabled by default. |
+| Extra Global Configuration | Optional advanced Samba directives appended verbatim to the generated `[global]` section. Enter one directive per line. The Settings table reports only whether this field is configured. |
+
+:::caution[Extra global configuration can override managed settings]
+Sylve checks the complete generated file with `testparm` before applying it, but does not interpret or validate individual directives in **Extra Global Configuration**. Later values can override Sylve-managed values, expose data, weaken authentication, or prevent Samba from working as expected. Use this field only for a Samba option that Sylve does not expose, and test client access after saving.
+:::
 
 :::note[mDNS behavior]
 **Advertise Samba (mDNS)** controls Samba discovery independently of Apple Extensions. Disabling it removes Sylve-managed Samba advertisements without disabling the mDNS service itself. Enabling it ensures mDNS is available and publishes applicable records: `_smb._tcp` for enabled Samba shares, plus Apple device and Time Machine records when Apple Extensions and Time Machine shares are enabled.

@@ -1,0 +1,114 @@
+---
+title: Data Center
+description: Manage Data Center notes and inspect or recover cluster membership from the CLI and interactive console.
+---
+
+The `datacenter` command group manages replicated notes and provides cluster inspection and address-recovery tools. Most commands contact the running Sylve daemon through its local console socket. The exception is `cluster recover-ip`, which operates on a stopped node.
+
+:::caution[Cluster recovery commands can interrupt service]
+Read-only `status`, `members`, `notes list`, and `notes get` operations are safe for inspection. Readdressing a member, repairing its address, or changing replicated notes modifies shared Data Center state. Back up Sylve's configuration and data path before cluster recovery work.
+:::
+
+## Manage Data Center notes
+
+List or read replicated notes with direct commands:
+
+```bash
+doas sylve datacenter notes list
+doas sylve datacenter notes get --id 4
+```
+
+Create, update, or delete a note with explicit flags:
+
+```bash
+doas sylve datacenter notes add --title "Maintenance" --content "Rack work on Friday"
+doas sylve datacenter notes update --id 4 --title "Maintenance" --content "Rack work at 20:00"
+doas sylve datacenter notes delete --id 4
+```
+
+The interactive console uses positional values instead:
+
+```text
+datacenter notes list
+datacenter notes get 4
+datacenter notes add "Maintenance" "Rack work on Friday"
+datacenter notes update 4 "Maintenance" "Rack work at 20:00"
+datacenter notes delete 4
+```
+
+These are the same notes shown under **Data Center → Notes**. Mutations are committed through the cluster leader and therefore require working quorum.
+
+## Inspect cluster state
+
+Show the local member's cluster, consensus, and lifecycle state:
+
+```bash
+doas sylve datacenter cluster status
+```
+
+List the authoritative Raft membership, including addresses, suffrage, versions, and the current leader:
+
+```bash
+doas sylve datacenter cluster members
+```
+
+Use `--json` with either direct command when a script needs structured output. The same read-only commands work inside the console:
+
+```text
+datacenter cluster status
+datacenter cluster members
+```
+
+`status` exposes active join, leave, and readdress phases. Check it before repeating a recovery command after a timeout. A timeout does not prove that the earlier operation failed.
+
+## Change a healthy member's cluster IP
+
+Use `readdress` while the old cluster address still works and the cluster has quorum:
+
+```bash
+doas sylve datacenter cluster readdress \
+  --new-ip 192.0.2.24 \
+  --allow-disruption
+```
+
+The new address must be an IPv4 address assigned locally, must not already belong to another member, and must be able to bind Sylve's cluster ports. The local member must be a voter, every participating member must run the same Sylve version, and no join, leave, state-repair, or conflicting mutation may be active. If the member is the leader, Sylve first transfers leadership to another voter.
+
+The command commits the new Raft address and requests a Sylve restart. Expect the web interface, console socket, and cluster connectivity to be interrupted. Update the host's network configuration before running the command so the new IP remains assigned after reboot.
+
+Inside the interactive console, use the same flags:
+
+```text
+datacenter cluster readdress --new-ip 192.0.2.24 --allow-disruption
+```
+
+## Recover a member whose old IP is unavailable
+
+Use this two-stage procedure only when a clustered node can no longer start on or reach its recorded IP.
+
+1. Stop Sylve on the affected node and ensure its new IPv4 address is configured locally.
+2. Run the offline recovery command on that node:
+
+   ```bash
+   doas service sylve stop
+   doas sylve datacenter cluster recover-ip \
+     --new-ip 192.0.2.24 \
+     --allow-disruption
+   ```
+
+3. Start Sylve on the recovered node. Keep it isolated from workloads until membership is repaired.
+4. Copy the printed Node ID and repair command. Run the repair from a healthy cluster member with working quorum:
+
+   ```bash
+   doas sylve datacenter cluster repair-address \
+     --node-id 550e8400-e29b-41d4-a716-446655440000 \
+     --new-ip 192.0.2.24 \
+     --allow-disruption
+   ```
+
+5. Run `cluster status` and `cluster members` to confirm the new address, leader, and membership.
+
+`recover-ip` is a direct CLI command only because it requires the daemon and its console socket to be stopped. It updates the affected node's local recovery state but does not rewrite Raft membership. `repair-address` verifies the recovered node's identity at its new address before committing the membership change. It cannot bypass missing quorum.
+
+:::danger
+Do not use `recover-ip` to clone cluster state or introduce a second copy of a node. Keep duplicate workloads and shared storage fenced throughout recovery. If membership repair cannot be completed, follow the force-reset guidance in the [Cluster guide](/guides/data-center/cluster/) instead of allowing two copies of the same member to operate.
+:::

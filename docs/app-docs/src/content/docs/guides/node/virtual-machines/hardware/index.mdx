@@ -28,7 +28,11 @@ Select an entry in the table, then choose **Edit** to open its configuration. Th
 
 ### CPU topology and pinning
 
-Set the number of **sockets**, **cores**, and **threads**. Their product is the total number of vCPUs presented to the guest. For example, `1 × 4 × 2` presents eight vCPUs.
+Set the number of **sockets**, **cores**, and **threads per core**. Their product is the total number of vCPUs presented to the guest. For example, `1 × 4 × 2` presents eight vCPUs.
+
+:::tip[Do not enter the total vCPU count twice]
+For a 16-vCPU guest with one thread per core, configure `1 × 16 × 1`: one socket, 16 cores, and one thread per core. Setting both **Cores** and **Threads** to `16` creates `1 × 16 × 16`, or 256 vCPUs. Use more than one thread per core only when you deliberately want that topology exposed to the guest.
+:::
 
 Optionally choose host logical CPUs in **CPU Selector** to pin individual guest vCPUs. Pinning is useful for workloads that need predictable CPU placement. Sylve validates the selected topology and rejects duplicate pins, pins outside the host CPU range, pin counts larger than the VM's vCPU count, and pins already reserved by another VM.
 
@@ -68,7 +72,7 @@ Enable **Serial Console** to add a serial device to the VM. The guest operating 
 
 ## PCI passthrough
 
-PCI passthrough gives a VM direct access to a prepared physical device, such as a GPU, NIC, storage controller, or USB controller. First prepare the device under [PCI Passthrough](/guides/node/settings/system/pci-passthrough/), restart the node as recommended there, then select it here.
+PCI passthrough gives a VM direct access to a prepared physical device, such as a GPU, NIC, storage controller, or USB controller. First prepare the device under [PCI Passthrough](/guides/node/settings/pci-passthrough/), restart the node as recommended there, then select it here.
 
 The picker identifies devices that are already assigned to another VM. A device assigned to a stopped VM can be reassigned after you remove it from that VM. A device in use by a running VM cannot be used elsewhere, and Sylve prevents the conflicting VM from starting.
 

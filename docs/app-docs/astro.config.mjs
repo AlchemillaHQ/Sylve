@@ -348,6 +348,7 @@ export default defineConfig({
                                     items: [
                                         'guides/node/cli-console/getting-started',
                                         'guides/node/cli-console/tasks',
+                                        'guides/node/cli-console/data-center',
                                         {
                                             label: 'Networking',
                                             collapsed: true,

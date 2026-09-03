@@ -87,6 +87,10 @@ The selected MAC address cannot already belong to another network interface. Sel
 
 Set the CPU topology and memory allocation for the guest. Each CPU field must be at least one, so one socket, one core, and one thread creates a single vCPU.
 
+:::tip[Think in sockets × cores × threads per core]
+The **Threads** value is the number of threads for each core, not the VM's total thread count. For a 16-vCPU guest with one thread per core, use `1 × 16 × 1`: one socket, 16 cores, and one thread per core. Do not use `1 × 16 × 16`, which presents 256 vCPUs because all three values are multiplied.
+:::
+
 | Field | Purpose |
 | --- | --- |
 | **CPU Sockets, Cores, and Threads** | Defines the topology reported to the guest. Their product is the VM's vCPU count. |
@@ -117,7 +121,7 @@ The Advanced tab controls the VM console, boot firmware, startup behavior, and o
 | **Enable VNC** | Enables the graphical VNC console. Set its resolution, bind IP, port, and password here. The password generator creates a strong value that you can replace. |
 | **VNC Wait** | Makes the VM wait for a VNC framebuffer connection during startup. |
 | **Serial Console** | Provides a serial console for guests configured to use one. |
-| **Boot ROM** | Select **UEFI** for modern UEFI-capable guests, or **None** when the guest does not need a boot ROM. |
+| **Boot ROM** | Firmware choices follow the selected node's architecture: **UEFI (Default)** on `amd64`, **U-Boot (Default)** on `arm64`, or **None** when the guest does not need Sylve-managed firmware. The wizard waits until it can determine the node architecture before enabling creation. |
 | **Clock Offset** | Presents the guest RTC as **UTC** or **Local Time**. Choose the convention expected by the guest operating system. |
 | **Start On Boot** | Starts the VM automatically when its node starts. |
 | **Startup/Shutdown Order** | Sets the relative order used for managed startup and shutdown. |
@@ -128,7 +132,7 @@ The Advanced tab controls the VM console, boot firmware, startup behavior, and o
 
 <img
   src={advancedConsole.src}
-  alt="Create VM wizard on the Advanced tab showing VNC, UEFI firmware, clock, and startup settings"
+  alt="Create VM wizard on an AMD64 node showing VNC, UEFI firmware, clock, and startup settings"
 />
 
 ### Cloud-init
