@@ -15,6 +15,25 @@ import (
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 )
 
+func (s *Service) phaseOwnershipTransfer(
+	ctx context.Context,
+	mp *migrationPayload,
+	task taskModels.GuestLifecycleTask,
+	operationToken string,
+) error {
+	if s.WorkloadGuard == nil {
+		return fmt.Errorf("migration_identity_ownership_guard_unavailable")
+	}
+
+	if err := s.WorkloadGuard.MoveGuestIdentityOwner(
+		ctx, task.GuestType, task.GuestID, mp.TargetNodeUUID, operationToken,
+	); err != nil {
+		return fmt.Errorf("migration_identity_ownership_transfer_failed: %w", err)
+	}
+
+	return nil
+}
+
 func (s *Service) phasePolicyAdjustment(
 	ctx context.Context,
 	mp *migrationPayload,

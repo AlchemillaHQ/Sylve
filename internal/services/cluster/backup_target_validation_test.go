@@ -115,6 +115,199 @@ func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
 	}
 }
 
+func TestGuestBackupTargetMigrationPreflightCoversVMAndJail(t *testing.T) {
+	tests := []struct {
+		name      string
+		guestType string
+		guestID   uint
+		matching  clusterModels.BackupJob
+		disabled  clusterModels.BackupJob
+		unrelated clusterModels.BackupJob
+	}{
+		{
+			name:      "vm",
+			guestType: clusterModels.BackupJobModeVM,
+			guestID:   100,
+			matching: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/100",
+				Recursive: true,
+			},
+			disabled: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/100",
+				Recursive: true,
+			},
+			unrelated: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/101",
+				Recursive: true,
+			},
+		},
+		{
+			name:      "jail",
+			guestType: clusterModels.BackupJobModeJail,
+			guestID:   200,
+			matching: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeJail, JailRootDataset: "tank/sylve/jails/200",
+			},
+			disabled: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeJail, JailRootDataset: "tank/sylve/jails/200",
+			},
+			unrelated: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeJail, JailRootDataset: "tank/sylve/jails/201",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+			targets := []clusterModels.BackupTarget{
+				{ID: 1, Name: "required", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true},
+				{ID: 2, Name: "disabled-job", SSHHost: "root@disabled", BackupRoot: "tank/disabled", Enabled: true},
+				{ID: 3, Name: "other-guest", SSHHost: "root@other", BackupRoot: "tank/other", Enabled: true},
+			}
+			if err := db.Create(&targets).Error; err != nil {
+				t.Fatalf("seed targets: %v", err)
+			}
+
+			matching := test.matching
+			matching.ID = 1
+			matching.Name = "matching"
+			matching.TargetID = 1
+			matching.RunnerNodeID = "source-node"
+			matching.Enabled = true
+			duplicate := matching
+			duplicate.ID = 2
+			duplicate.Name = "matching-duplicate"
+			disabled := test.disabled
+			disabled.ID = 3
+			disabled.Name = "disabled"
+			disabled.TargetID = 2
+			disabled.RunnerNodeID = "source-node"
+			disabled.Enabled = false
+			unrelated := test.unrelated
+			unrelated.ID = 4
+			unrelated.Name = "unrelated"
+			unrelated.TargetID = 3
+			unrelated.RunnerNodeID = "source-node"
+			unrelated.Enabled = true
+			if err := db.Create(&[]clusterModels.BackupJob{matching, duplicate, disabled, unrelated}).Error; err != nil {
+				t.Fatalf("seed jobs: %v", err)
+			}
+
+			calls := make(map[uint]int)
+			service := &Service{DB: db, NodeID: "target-node"}
+			service.SetBackupTargetValidator(func(_ context.Context, target *clusterModels.BackupTarget) error {
+				calls[target.ID]++
+				return errors.New("SSH authentication failed")
+			})
+			err := service.CheckGuestBackupTargetsForMigration(
+				context.Background(), test.guestType, test.guestID, "target-node",
+			)
+			if err == nil || !strings.Contains(err.Error(), "migration_backup_target_preflight_failed") ||
+				!strings.Contains(err.Error(), `target="required"`) ||
+				!strings.Contains(err.Error(), "SSH authentication failed") {
+				t.Fatalf("preflight error = %v", err)
+			}
+			if calls[1] != 1 || calls[2] != 0 || calls[3] != 0 {
+				t.Fatalf("target validation calls = %v", calls)
+			}
+		})
+	}
+}
+
+func TestGuestBackupTargetMigrationPreflightRejectsDisabledTarget(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	if err := db.Create(&clusterModels.BackupTarget{
+		ID: 9, Name: "disabled-target", SSHHost: "root@backup", BackupRoot: "tank/backups",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&clusterModels.BackupJob{
+		ID: 10, Name: "jail-backup", TargetID: 9, RunnerNodeID: "source-node",
+		Mode: clusterModels.BackupJobModeJail, JailRootDataset: "tank/sylve/jails/23", Enabled: true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, NodeID: "target-node"}
+	err := service.CheckGuestBackupTargetsForMigration(
+		context.Background(), clusterModels.BackupJobModeJail, 23, "target-node",
+	)
+	if err == nil || !strings.Contains(err.Error(), "backup_target_disabled") {
+		t.Fatalf("preflight error = %v", err)
+	}
+}
+
+func TestIntegrationGuestBackupTargetMigrationPreflightRunsFromFollower(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{})
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	var source, target *clusterRaftTestNode
+	for _, node := range nodes {
+		if node == leader {
+			continue
+		}
+		if source == nil {
+			source = node
+		} else {
+			target = node
+		}
+	}
+	if source == nil || target == nil {
+		t.Fatal("source and target followers are required")
+	}
+
+	backupTarget := clusterModels.BackupTarget{
+		ID: 31, Name: "remote", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	backupJob := clusterModels.BackupJob{
+		ID: 32, Name: "vm-backup", TargetID: backupTarget.ID, RunnerNodeID: source.id,
+		Mode: clusterModels.BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/300",
+		Recursive: true, Enabled: true,
+	}
+	for _, node := range nodes {
+		if err := node.service.DB.Create(&backupTarget).Error; err != nil {
+			t.Fatalf("seed target on %s: %v", node.id, err)
+		}
+		if err := node.service.DB.Create(&backupJob).Error; err != nil {
+			t.Fatalf("seed job on %s: %v", node.id, err)
+		}
+	}
+
+	target.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
+		return errors.New("backup host rejected this node")
+	})
+	sim := newClusterPeerSimulator()
+	defer sim.Close()
+	registerBackupTargetValidationPeer(t, sim, target.service)
+	source.service.AuthService = clusterAuthStub{}
+	source.service.backupTargetValidationAPIForNode = func(nodeID string, _ raft.ServerAddress) (string, error) {
+		if nodeID != target.id {
+			return "", errors.New("unexpected validation node")
+		}
+		return sim.Addr(), nil
+	}
+
+	err := source.service.CheckGuestBackupTargetsForMigration(
+		context.Background(), clusterModels.BackupJobModeVM, 300, target.id,
+	)
+	if err == nil || !strings.Contains(err.Error(), "backup host rejected this node") {
+		t.Fatalf("preflight error = %v", err)
+	}
+
+	target.service.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
+	if err := source.service.CheckGuestBackupTargetsForMigration(
+		context.Background(), clusterModels.BackupJobModeVM, 300, target.id,
+	); err != nil {
+		t.Fatalf("preflight after target recovery: %v", err)
+	}
+	var readinessRows int64
+	if err := source.service.DB.Model(&clusterModels.BackupTargetNodeReadiness{}).Count(&readinessRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if readinessRows != 0 {
+		t.Fatalf("read-only preflight persisted %d readiness rows", readinessRows)
+	}
+}
+
 func TestBackupTargetValidationReceiptRejectsStaleOrExtendedReadiness(t *testing.T) {
 	now := time.Now().UTC()
 	request := BackupTargetValidationRequest{

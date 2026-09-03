@@ -82,6 +82,14 @@ func TestCleanupOrphanedVMRegistration(t *testing.T) {
 
 func TestMigrateGuestOwnership_InputGuards(t *testing.T) {
 	s := &Service{}
+	if err := s.MoveGuestIdentityOwner(context.Background(), "", 0, "", ""); err == nil {
+		t.Fatal("expected identity ownership error for empty inputs")
+	}
+	if err := s.MoveGuestIdentityOwner(
+		context.Background(), "vm", 100, "node-b", "migration:node-a:100",
+	); err == nil {
+		t.Fatal("expected identity ownership error when cluster service is unavailable")
+	}
 
 	if err := s.MigrateGuestOwnership(context.Background(), "", 0, ""); err == nil {
 		t.Fatal("expected error for empty inputs")

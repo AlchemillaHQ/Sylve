@@ -274,11 +274,12 @@ func (s *Service) prepareBackupJobRunnerRebind(
 			validationWG.Add(1)
 			go func(index int) {
 				defer validationWG.Done()
-				_, _, validationErr := s.validateBackupJobOnRunner(
+				_, _, validationErr := s.validateBackupJobOnRunnerWithTarget(
 					validationCtx,
 					&matchedJobs[index],
 					false,
 					authority.authorization,
+					matchedJobs[index].Enabled,
 				)
 				if validationErr != nil {
 					preflightErrors[index] = boundedBackupJobRunnerRebindError(validationErr)
@@ -512,7 +513,9 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
 		return err
 	}
-	validation, placementFence, err := s.validateBackupJobOnRunner(ctx, &candidate, false, authorization)
+	validation, placementFence, err := s.validateBackupJobOnRunnerWithTarget(
+		ctx, &candidate, false, authorization, job.Enabled,
+	)
 	if err != nil {
 		if isPermanentBackupJobRunnerRebindError(err) {
 			// A semantic rejection is still a bound target-runner receipt: node
@@ -549,7 +552,7 @@ func (s *Service) reconcileBackupJobRunnerRebindItem(
 		return err
 	}
 	targetReadiness := validation.TargetReadiness
-	if targetReadiness == nil {
+	if job.Enabled && targetReadiness == nil {
 		err := fmt.Errorf("backup_target_readiness_job_receipt_missing")
 		_ = s.proposeBackupJobRunnerRebindPending(operation.Token, item, err)
 		return err

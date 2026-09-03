@@ -12,6 +12,10 @@ import (
 )
 
 type migrationWorkloadGuardStub struct {
+	identityErr    error
+	identityToken  string
+	identityCalls  int
+	identityFn     func(context.Context, string, uint, string, string) error
 	ownershipErr   error
 	ownershipToken string
 	ownershipCalls int
@@ -46,6 +50,21 @@ func (m *migrationWorkloadGuardStub) WaitGuestMigrationInterlockApplied(context.
 	return nil
 }
 
+func (m *migrationWorkloadGuardStub) MoveGuestIdentityOwner(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	targetNodeID string,
+	token string,
+) error {
+	m.identityCalls++
+	m.identityToken = token
+	if m.identityFn != nil {
+		return m.identityFn(ctx, guestType, guestID, targetNodeID, token)
+	}
+	return m.identityErr
+}
+
 func (m *migrationWorkloadGuardStub) AbortGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, token string) error {
 	if m.abortFn != nil {
 		return m.abortFn(ctx, guestType, guestID, token)
@@ -77,6 +96,26 @@ func (m *migrationWorkloadGuardStub) MigrateGuestOwnership(
 		return m.ownershipFn(ctx, guestType, guestID, newOwnerNodeID, token)
 	}
 	return m.ownershipErr
+}
+
+func TestPhaseOwnershipTransferFailsClosed(t *testing.T) {
+	task := taskModels.GuestLifecycleTask{GuestType: taskModels.GuestTypeVM, GuestID: 501}
+	mp := &migrationPayload{TargetNodeUUID: "node-b"}
+
+	if err := (&Service{}).phaseOwnershipTransfer(context.Background(), mp, task, "migration:node-a:1"); err == nil ||
+		!strings.Contains(err.Error(), "guard_unavailable") {
+		t.Fatalf("missing ownership guard was not fatal: %v", err)
+	}
+
+	stub := &migrationWorkloadGuardStub{identityErr: errors.New("raft unavailable")}
+	svc := &Service{WorkloadGuard: stub}
+	if err := svc.phaseOwnershipTransfer(context.Background(), mp, task, "migration:node-a:1"); err == nil ||
+		!strings.Contains(err.Error(), "raft unavailable") {
+		t.Fatalf("identity ownership failure was swallowed: %v", err)
+	}
+	if stub.identityCalls != 1 || stub.identityToken != "migration:node-a:1" {
+		t.Fatalf("unexpected identity call: calls=%d token=%q", stub.identityCalls, stub.identityToken)
+	}
 }
 
 func TestPhasePolicyAdjustmentFailsClosed(t *testing.T) {

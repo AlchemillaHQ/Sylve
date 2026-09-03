@@ -43,8 +43,9 @@ const (
 	PhaseInitialReplicaton = "initial_replication"
 	PhaseStopSource        = "stop_source"
 	PhaseFinalSync         = "final_sync"
-	PhasePolicyAdjustment  = "policy_adjustment"
+	PhaseOwnershipTransfer = "ownership_transfer"
 	PhaseStartTarget       = "start_target"
+	PhasePolicyAdjustment  = "policy_adjustment"
 	PhaseCleanupSource     = "cleanup_source"
 	PhaseFinalize          = "finalize"
 )
@@ -76,6 +77,7 @@ type guestWorkloadGurad interface {
 	PrepareGuestBackupJobRunnerRebind(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
 	SealGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, token string) error
 	WaitGuestMigrationInterlockApplied(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
+	MoveGuestIdentityOwner(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
 	AbortGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, token string) error
 	CompleteGuestMigrationInterlock(ctx context.Context, guestType string, guestID uint, targetNodeID string, token string) error
 	MigrateGuestOwnership(ctx context.Context, guestType string, guestID uint, newOwnerNodeID string, operationToken ...string) error
@@ -258,6 +260,14 @@ func (s *Service) ValidateMigration(ctx context.Context, req migrationIface.Migr
 	if s.hasRunningBackupEventForGuest(req.GuestType, req.GuestID) {
 		result.Allowed = false
 		result.Reasons = append(result.Reasons, "guest_has_running_backup_event")
+		return result, nil
+	}
+
+	if err := s.Cluster.CheckGuestBackupTargetsForMigration(
+		ctx, req.GuestType, req.GuestID, req.TargetNodeUUID,
+	); err != nil {
+		result.Allowed = false
+		result.Reasons = append(result.Reasons, err.Error())
 		return result, nil
 	}
 
@@ -831,6 +841,11 @@ func (s *Service) phaseFinalCutoverRevalidation(
 	if !strings.EqualFold(strings.TrimSpace(targetNode.Status), "online") {
 		return ErrTargetNodeOffline
 	}
+	if err := s.Cluster.CheckGuestBackupTargetsForMigration(
+		ctx, task.GuestType, task.GuestID, mp.TargetNodeUUID,
+	); err != nil {
+		return err
+	}
 	if err := s.requireTargetGuestRecordAbsent(ctx, targetNode, task.GuestID); err != nil {
 		return fmt.Errorf("migration_cutover_target_revalidation_failed: %w", err)
 	}
@@ -1231,15 +1246,15 @@ func (s *Service) executeSealedMigration(
 		}
 	}
 
-	if mp.Phase == PhaseStartTarget || migrationPhaseAtOrBefore(mp.Phase, PhasePolicyAdjustment) {
-		mp.Phase = PhasePolicyAdjustment
-		mp.PhaseMessage = "adjusting_cluster_policies"
+	if mp.Phase == PhaseStartTarget || migrationPhaseAtOrBefore(mp.Phase, PhaseOwnershipTransfer) {
+		mp.Phase = PhaseOwnershipTransfer
+		mp.PhaseMessage = "transferring_guest_identity"
 		if err := s.persistTaskPhase(task.ID, *mp); err != nil {
-			return fmt.Errorf("migration_policy_adjustment_checkpoint_failed: %w", err)
+			return fmt.Errorf("migration_ownership_transfer_checkpoint_failed: %w", err)
 		}
-		if err := s.phasePolicyAdjustment(ctx, mp, task, operationToken); err != nil {
+		if err := s.phaseOwnershipTransfer(ctx, mp, task, operationToken); err != nil {
 			s.updateTaskFailed(task.ID, err.Error())
-			return fmt.Errorf("migration_policy_adjustment_failed: %w", err)
+			return fmt.Errorf("migration_ownership_transfer_failed: %w", err)
 		}
 	}
 
@@ -1255,6 +1270,18 @@ func (s *Service) executeSealedMigration(
 		if err := s.phaseStartTarget(ctx, mp, task, operationToken); err != nil {
 			s.updateTaskFailed(task.ID, err.Error())
 			return err
+		}
+	}
+
+	if migrationPhaseAtOrBefore(mp.Phase, PhasePolicyAdjustment) {
+		mp.Phase = PhasePolicyAdjustment
+		mp.PhaseMessage = "adjusting_cluster_policies"
+		if err := s.persistTaskPhase(task.ID, *mp); err != nil {
+			return fmt.Errorf("migration_policy_adjustment_checkpoint_failed: %w", err)
+		}
+		if err := s.phasePolicyAdjustment(ctx, mp, task, operationToken); err != nil {
+			s.updateTaskFailed(task.ID, err.Error())
+			return fmt.Errorf("migration_policy_adjustment_failed: %w", err)
 		}
 	}
 
@@ -1305,12 +1332,13 @@ func (s *Service) executeSealedMigration(
 
 func migrationPhaseAtOrBefore(current, target string) bool {
 	order := map[string]int{
-		PhaseStopSource:       0,
-		PhaseFinalSync:        1,
-		PhasePolicyAdjustment: 2,
-		PhaseStartTarget:      3,
-		PhaseCleanupSource:    4,
-		PhaseFinalize:         5,
+		PhaseStopSource:        0,
+		PhaseFinalSync:         1,
+		PhaseOwnershipTransfer: 2,
+		PhaseStartTarget:       3,
+		PhasePolicyAdjustment:  4,
+		PhaseCleanupSource:     5,
+		PhaseFinalize:          6,
 	}
 	currentRank, ok := order[current]
 	if !ok {

@@ -68,3 +68,91 @@ func TestGuestMigrationInterlockApplyBarriersUseExactLocalState(t *testing.T) {
 		t.Fatalf("cutover apply barrier rejected exact row: %v", err)
 	}
 }
+func TestIntegrationMoveGuestIdentityOwnerMovesDisabledPolicyAtomically(t *testing.T) {
+	fx := SetupZeltaClusterFixture(
+		t,
+		2,
+		&clusterModels.GuestIdentityRegistry{},
+		&clusterModels.GuestIdentityClaim{},
+	)
+	leader := fx.LeaderNode()
+	if leader == nil {
+		t.Fatal("leader unavailable")
+	}
+	var target *zeltaRaftNode
+	for _, node := range fx.Nodes {
+		if node != leader {
+			target = node
+			break
+		}
+	}
+	if target == nil {
+		t.Fatal("target unavailable")
+	}
+
+	now := time.Now().UTC()
+	policy := clusterModels.ReplicationPolicy{
+		ID: 41, Name: "disabled-migration-policy",
+		GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 501,
+		SourceNodeID: leader.id, ActiveNodeID: leader.id, OwnerEpoch: 1,
+		SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
+		FailbackMode: clusterModels.ReplicationFailbackManual,
+		FailoverMode: clusterModels.ReplicationFailoverManual,
+		CronExpr:     "0 * * * *", Enabled: false,
+		ProtectionState: clusterModels.ReplicationProtectionStateUnprotected,
+		TransitionState: clusterModels.ReplicationTransitionStateNone,
+	}
+	operation := clusterModels.ReplicationGuestOperation{
+		GuestType: policy.GuestType, GuestID: policy.GuestID,
+		Operation: clusterModels.ReplicationGuestOperationMigration,
+		State:     clusterModels.ReplicationGuestOperationCutover,
+		Token:     "migration:source:501", OwnerNodeID: leader.id, TargetNodeID: target.id,
+		TaskID: 501, AcquiredAt: now, SealedAt: &now,
+	}
+	for _, node := range fx.Nodes {
+		if err := node.db.Create(&clusterModels.GuestIdentityRegistry{
+			ID:      clusterModels.GuestIdentityRegistryID,
+			Version: clusterModels.GuestIdentityRegistryVersion,
+			Phase:   clusterModels.GuestIdentityRegistryPhaseActive,
+		}).Error; err != nil {
+			t.Fatalf("seed registry on %s: %v", node.id, err)
+		}
+		if err := node.db.Create(&clusterModels.GuestIdentityClaim{
+			GuestID: policy.GuestID, GuestKind: policy.GuestType,
+			OwnerNodeID: leader.id, Token: "claim-generation-1",
+		}).Error; err != nil {
+			t.Fatalf("seed claim on %s: %v", node.id, err)
+		}
+		if err := node.db.Create(&policy).Error; err != nil {
+			t.Fatalf("seed policy on %s: %v", node.id, err)
+		}
+		if err := node.db.Create(&operation).Error; err != nil {
+			t.Fatalf("seed operation on %s: %v", node.id, err)
+		}
+	}
+
+	service := &Service{DB: leader.db, Cluster: leader.cService}
+	if err := service.MoveGuestIdentityOwner(
+		context.Background(), policy.GuestType, policy.GuestID, target.id, operation.Token,
+	); err != nil {
+		t.Fatalf("move migration ownership: %v", err)
+	}
+	fx.WaitForCondition(8*time.Second, "disabled policy ownership replication", func() bool {
+		for _, node := range fx.Nodes {
+			var gotPolicy clusterModels.ReplicationPolicy
+			var claim clusterModels.GuestIdentityClaim
+			if node.db.First(&gotPolicy, policy.ID).Error != nil ||
+				node.db.First(&claim, policy.GuestID).Error != nil ||
+				gotPolicy.ActiveNodeID != target.id || gotPolicy.SourceNodeID != target.id ||
+				gotPolicy.OwnerEpoch != 2 || claim.OwnerNodeID != target.id {
+				return false
+			}
+		}
+		return true
+	})
+	if err := service.MoveGuestIdentityOwner(
+		context.Background(), policy.GuestType, policy.GuestID, target.id, operation.Token,
+	); err != nil {
+		t.Fatalf("replay migration ownership: %v", err)
+	}
+}

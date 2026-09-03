@@ -1254,6 +1254,7 @@ func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gi
 			GuestID        uint   `json:"guest_id"`
 			NewOwnerNodeID string `json:"new_owner_node_id"`
 			OperationToken string `json:"operation_token"`
+			OwnershipOnly  bool   `json:"ownership_only"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil || req.GuestID == 0 ||
 			strings.TrimSpace(req.NewOwnerNodeID) == "" || strings.TrimSpace(req.OperationToken) == "" {
@@ -1266,9 +1267,17 @@ func ReassignReplicationOwnerInternal(cS *cluster.Service, zS *zelta.Service) gi
 			return
 		}
 
-		if err := zS.MigrateGuestOwnership(
-			c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken,
-		); err != nil {
+		var err error
+		if req.OwnershipOnly {
+			err = zS.MoveGuestIdentityOwner(
+				c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken,
+			)
+		} else {
+			err = zS.MigrateGuestOwnership(
+				c.Request.Context(), req.GuestType, req.GuestID, req.NewOwnerNodeID, req.OperationToken,
+			)
+		}
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "reassign_replication_owner_failed",

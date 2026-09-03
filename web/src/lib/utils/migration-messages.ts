@@ -38,6 +38,8 @@ const REASON_MESSAGES: Record<string, string | ReasonFormatter> = {
 		'A replication job is currently running for this guest. Wait for it to finish, then retry.',
 	guest_has_running_backup_event:
 		'A backup job is currently running for this guest. Wait for it to finish, then retry.',
+	migration_backup_target_preflight_failed: (d) =>
+		`The destination node cannot use a required backup target${d ? `: ${d}` : ''}.`,
 	guest_has_active_lifecycle_task: 'Another lifecycle task is already running for this guest.',
 	guest_has_active_transition: 'This guest has an active HA transition in progress.',
 	replication_policy_must_be_disabled_before_migration:

@@ -318,6 +318,114 @@ func (s *Service) ValidateBackupTargetOnNode(
 			return update, fmt.Errorf("backup_target_validation_leader_barrier_failed: %w", err)
 		}
 	}
+	update, err := s.checkBackupTargetOnNode(ctx, targetID, nodeID, localValidator)
+	if err != nil {
+		return update, err
+	}
+	if err := s.UpdateBackupTargetNodeReadiness(update, s.Raft == nil); err != nil {
+		return update, err
+	}
+	return update, backupTargetReadinessOutcome(&update)
+}
+
+func (s *Service) CheckBackupTargetOnNode(
+	ctx context.Context,
+	targetID uint,
+	nodeID string,
+) (clusterModels.BackupTargetNodeReadinessUpdate, error) {
+	update, err := s.checkBackupTargetOnNode(ctx, targetID, nodeID, s.backupTargetValidator)
+	if err != nil {
+		return update, err
+	}
+	return update, backupTargetReadinessOutcome(&update)
+}
+
+func (s *Service) CheckGuestBackupTargetsForMigration(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	targetNodeID string,
+) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("migration_backup_target_preflight_unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	targetNodeID = strings.TrimSpace(targetNodeID)
+	if !clusterModels.ValidGuestIdentityKind(guestType) || guestID == 0 ||
+		guestID > clusterModels.GuestIdentityMaxID || targetNodeID == "" {
+		return fmt.Errorf("migration_backup_target_preflight_invalid")
+	}
+
+	var jobs []clusterModels.BackupJob
+	if err := s.DB.WithContext(ctx).Where("enabled = ?", true).Order("id ASC").Find(&jobs).Error; err != nil {
+		return fmt.Errorf("migration_backup_target_preflight_job_lookup_failed: %w", err)
+	}
+	targetSet := make(map[uint]struct{})
+	for i := range jobs {
+		jobGuestType, jobGuestID := clusterModels.BackupJobGuestIdentity(&jobs[i])
+		if jobGuestType != guestType || jobGuestID != guestID {
+			continue
+		}
+		if jobs[i].TargetID == 0 {
+			return fmt.Errorf("migration_backup_target_preflight_failed: job=%q target_id_required", jobs[i].Name)
+		}
+		targetSet[jobs[i].TargetID] = struct{}{}
+	}
+	if len(targetSet) == 0 {
+		return nil
+	}
+
+	targetIDs := make([]uint, 0, len(targetSet))
+	for targetID := range targetSet {
+		targetIDs = append(targetIDs, targetID)
+	}
+	sort.Slice(targetIDs, func(i, j int) bool { return targetIDs[i] < targetIDs[j] })
+
+	failures := make([]string, 0)
+	for _, targetID := range targetIDs {
+		var target clusterModels.BackupTarget
+		result := s.DB.WithContext(ctx).Where("id = ?", targetID).Limit(1).Find(&target)
+		if result.Error != nil {
+			return fmt.Errorf("migration_backup_target_preflight_target_lookup_failed: target_id=%d: %w", targetID, result.Error)
+		}
+		if result.RowsAffected == 0 {
+			failures = append(failures, fmt.Sprintf("target_id=%d backup_target_not_found", targetID))
+			continue
+		}
+		label := fmt.Sprintf("target=%q target_id=%d node_id=%s", target.Name, target.ID, targetNodeID)
+		if !target.Enabled {
+			failures = append(failures, fmt.Sprintf("%s: backup_target_disabled", label))
+			continue
+		}
+		if _, err := s.CheckBackupTargetOnNode(ctx, target.ID, targetNodeID); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", label, err))
+		}
+	}
+	if len(failures) != 0 {
+		return fmt.Errorf("migration_backup_target_preflight_failed: %s", strings.Join(failures, " | "))
+	}
+	return nil
+}
+
+func (s *Service) checkBackupTargetOnNode(
+	ctx context.Context,
+	targetID uint,
+	nodeID string,
+	localValidator func(context.Context, *clusterModels.BackupTarget) error,
+) (clusterModels.BackupTargetNodeReadinessUpdate, error) {
+	var update clusterModels.BackupTargetNodeReadinessUpdate
+	if s == nil || s.DB == nil {
+		return update, fmt.Errorf("backup_target_validation_service_unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var target clusterModels.BackupTarget
 	targetResult := s.DB.WithContext(ctx).Where("id = ?", targetID).Limit(1).Find(&target)
 	if targetResult.Error != nil {
@@ -350,10 +458,7 @@ func (s *Service) ValidateBackupTargetOnNode(
 		if err := validateBackupTargetReadinessReceipt(request, &update); err != nil {
 			return update, err
 		}
-		if err := s.UpdateBackupTargetNodeReadiness(update, true); err != nil {
-			return update, err
-		}
-		return update, backupTargetReadinessOutcome(&update)
+		return update, nil
 	}
 	if nodeID == "" {
 		return update, fmt.Errorf("backup_target_validation_node_id_required")
@@ -383,10 +488,7 @@ func (s *Service) ValidateBackupTargetOnNode(
 	if err := validateBackupTargetReadinessReceipt(request, &update); err != nil {
 		return update, err
 	}
-	if err := s.UpdateBackupTargetNodeReadiness(update, false); err != nil {
-		return update, err
-	}
-	return update, backupTargetReadinessOutcome(&update)
+	return update, nil
 }
 
 func (s *Service) backupTargetValidationAPI(nodeID string, address raft.ServerAddress) (string, error) {

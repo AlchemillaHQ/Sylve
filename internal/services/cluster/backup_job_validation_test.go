@@ -54,6 +54,34 @@ func TestValidateBackupJobSafetyLocalReturnsBoundReceipt(t *testing.T) {
 	}
 }
 
+func TestValidateBackupJobOnRunnerCanSkipDisabledTargetConnectivity(t *testing.T) {
+	service := newManagedDatasetGuardTestService(t)
+	service.NodeID = "node-runner"
+	seedManagedDatasetGuardGuests(t, service)
+	job := &clusterModels.BackupJob{
+		Name: "disabled-vm-backup", TargetID: 999, RunnerNodeID: "node-runner",
+		Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/200",
+		Recursive: true, Enabled: false,
+	}
+
+	result, _, err := service.validateBackupJobOnRunnerWithTarget(
+		context.Background(), job, true, BackupJobPlacementAuthorization{}, false,
+	)
+	if err != nil {
+		t.Fatalf("validate disabled job without target connectivity: %v", err)
+	}
+	if !result.Valid || result.TargetReadiness != nil {
+		t.Fatalf("unexpected disabled-job validation receipt: %+v", result)
+	}
+
+	_, _, err = service.validateBackupJobOnRunner(
+		context.Background(), job, true, BackupJobPlacementAuthorization{},
+	)
+	if err == nil || !strings.Contains(err.Error(), "backup_target_not_found") {
+		t.Fatalf("enabled target validation error = %v", err)
+	}
+}
+
 func TestValidateBackupJobSafetyLocalUsesRunnerManagedInventory(t *testing.T) {
 	service := newManagedDatasetGuardTestService(t)
 	service.NodeID = "node-runner"

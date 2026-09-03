@@ -1564,6 +1564,9 @@ function refreshDemoMigrationTask(task: DemoLifecycleTask): void {
 	} else if (elapsed >= 6_600) {
 		phase = 'start_target';
 		message = 'starting_guest_on_target';
+	} else if (elapsed >= 5_900) {
+		phase = 'ownership_transfer';
+		message = 'transferring_guest_identity';
 	} else if (elapsed >= 4_800) {
 		phase = 'final_sync';
 		message = 'performing_final_incremental_sync: disk0 (88%)';

@@ -43,6 +43,7 @@
 		'initial_replication',
 		'stop_source',
 		'final_sync',
+		'ownership_transfer',
 		'start_target',
 		'policy_adjustment',
 		'cleanup_source',
@@ -54,6 +55,7 @@
 		initial_replication: 'Initial replication',
 		stop_source: 'Stop source',
 		final_sync: 'Final sync',
+		ownership_transfer: 'Transfer ownership',
 		start_target: 'Start on target',
 		policy_adjustment: 'Policy adjustment',
 		cleanup_source: 'Cleanup source',
@@ -416,28 +418,8 @@
 	}
 
 	function phaseStatus(phase: string): 'done' | 'active' | 'pending' {
-		const ci = PHASE_ORDER.indexOf(
-			currentPhase as
-				| 'preflight'
-				| 'initial_replication'
-				| 'stop_source'
-				| 'final_sync'
-				| 'start_target'
-				| 'policy_adjustment'
-				| 'cleanup_source'
-				| 'finalize'
-		);
-		const pi = PHASE_ORDER.indexOf(
-			phase as
-				| 'preflight'
-				| 'initial_replication'
-				| 'stop_source'
-				| 'final_sync'
-				| 'start_target'
-				| 'policy_adjustment'
-				| 'cleanup_source'
-				| 'finalize'
-		);
+		const ci = PHASE_ORDER.indexOf(currentPhase as (typeof PHASE_ORDER)[number]);
+		const pi = PHASE_ORDER.indexOf(phase as (typeof PHASE_ORDER)[number]);
 		if (ci >= 0 && pi >= 0) {
 			if (pi < ci) return 'done';
 			if (pi === ci) return 'active';

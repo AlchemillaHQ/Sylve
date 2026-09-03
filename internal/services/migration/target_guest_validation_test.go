@@ -14,6 +14,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -180,5 +181,68 @@ func TestValidateJailPreflightRejectsInsufficientTargetCPU(t *testing.T) {
 	reasons := svc.validateJailPreflight(context.Background(), 23, clusterModels.ClusterNode{CPU: 2})
 	if len(reasons) != 1 || reasons[0] != "target_cpu_capacity_insufficient: requested=4 available=2" {
 		t.Fatalf("reasons = %v", reasons)
+	}
+}
+
+func TestPhasePreflightRejectsUnreachableGuestBackupTarget(t *testing.T) {
+	tests := []struct {
+		name      string
+		guestType string
+		guestID   uint
+		job       clusterModels.BackupJob
+	}{
+		{
+			name:      "vm",
+			guestType: clusterModels.BackupJobModeVM,
+			guestID:   100,
+			job: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeVM, SourceDataset: "tank/sylve/virtual-machines/100",
+				Recursive: true,
+			},
+		},
+		{
+			name:      "jail",
+			guestType: clusterModels.BackupJobModeJail,
+			guestID:   200,
+			job: clusterModels.BackupJob{
+				Mode: clusterModels.BackupJobModeJail, JailRootDataset: "tank/sylve/jails/200",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t,
+				&clusterModels.ClusterNode{}, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{},
+			)
+			if err := db.Create(&clusterModels.ClusterNode{NodeUUID: "target-node"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&clusterModels.BackupTarget{
+				ID: 1, Name: "required", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			job := test.job
+			job.ID = 1
+			job.Name = "guest-backup"
+			job.TargetID = 1
+			job.RunnerNodeID = "source-node"
+			job.Enabled = true
+			if err := db.Create(&job).Error; err != nil {
+				t.Fatal(err)
+			}
+			clusterSvc := &clusterService.Service{DB: db, NodeID: "target-node"}
+			clusterSvc.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error {
+				return errors.New("backup target unreachable")
+			})
+			svc := &Service{DB: db, Cluster: clusterSvc}
+			err := svc.phasePreflight(context.Background(), &migrationPayload{TargetNodeUUID: "target-node"}, taskModels.GuestLifecycleTask{
+				GuestType: test.guestType, GuestID: test.guestID,
+			})
+			if err == nil || !strings.Contains(err.Error(), "migration_backup_target_preflight_failed") {
+				t.Fatalf("preflight error = %v", err)
+			}
+		})
 	}
 }

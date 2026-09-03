@@ -176,6 +176,11 @@ func (s *Service) phasePreflight(ctx context.Context, mp *migrationPayload, task
 	if err := s.DB.Where("node_uuid = ?", mp.TargetNodeUUID).First(&targetNode).Error; err != nil {
 		return fmt.Errorf("target_node_not_found: %w", err)
 	}
+	if err := s.Cluster.CheckGuestBackupTargetsForMigration(
+		ctx, task.GuestType, task.GuestID, mp.TargetNodeUUID,
+	); err != nil {
+		return err
+	}
 	if err := s.requireTargetGuestRecordAbsent(ctx, targetNode, task.GuestID); err != nil {
 		return err
 	}

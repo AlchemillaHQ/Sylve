@@ -234,11 +234,14 @@ func TestReconcileTerminalPreCutoverTaskRetainsGuardWhenSnapshotCleanupFails(t *
 }
 
 func TestMigrationPhaseResumeOrdering(t *testing.T) {
-	if !migrationPhaseAtOrBefore(PhasePolicyAdjustment, PhaseStartTarget) {
-		t.Fatal("ownership transfer would not precede target import")
+	if !migrationPhaseAtOrBefore(PhaseOwnershipTransfer, PhaseStartTarget) {
+		t.Fatal("identity ownership transfer would not precede target import")
 	}
-	if migrationPhaseAtOrBefore(PhaseStartTarget, PhasePolicyAdjustment) {
+	if migrationPhaseAtOrBefore(PhaseStartTarget, PhaseOwnershipTransfer) {
 		t.Fatal("ordinary phase ordering would move backward from target import")
+	}
+	if !migrationPhaseAtOrBefore(PhaseStartTarget, PhasePolicyAdjustment) {
+		t.Fatal("backup policy adjustment would precede target import")
 	}
 	if !migrationPhaseAtOrBefore(PhasePolicyAdjustment, PhaseCleanupSource) {
 		t.Fatal("resume would skip pending source cleanup")
@@ -287,7 +290,7 @@ func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.
 			operationToken := fmt.Sprintf("migration:node-a:%d", task.ID)
 			ownershipTransfers := make(chan struct{}, 2)
 			guard := &migrationWorkloadGuardStub{
-				ownershipFn: func(_ context.Context, guestType string, guestID uint, newOwnerNodeID, token string) error {
+				identityFn: func(_ context.Context, guestType string, guestID uint, newOwnerNodeID, token string) error {
 					if guestType != test.guestType || guestID != task.GuestID ||
 						newOwnerNodeID != "node-b" || token != operationToken {
 						t.Errorf(
@@ -355,7 +358,7 @@ func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.
 				TargetNodeUUID:     "node-b",
 				OperationToken:     operationToken,
 				OriginalRunning:    &originalRunning,
-				Phase:              PhasePolicyAdjustment,
+				Phase:              PhaseOwnershipTransfer,
 				SourceDatasetRoots: []string{test.dataset},
 			}
 
@@ -371,8 +374,9 @@ func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.
 			if err == nil || !strings.Contains(err.Error(), "migration_cleanup_unavailable") {
 				t.Fatalf("target import retry result = %v", err)
 			}
-			if importRequests != 2 || guard.ownershipCalls != 2 {
-				t.Fatalf("calls = imports:%d ownership:%d, want 2 each", importRequests, guard.ownershipCalls)
+			if importRequests != 2 || guard.identityCalls != 2 || guard.ownershipCalls != 1 {
+				t.Fatalf("calls = imports:%d identity:%d policies:%d, want 2/2/1",
+					importRequests, guard.identityCalls, guard.ownershipCalls)
 			}
 		})
 	}
@@ -509,8 +513,9 @@ func TestSealedMigrationRequiresDurableCheckpointBeforeEveryPhase(t *testing.T) 
 	}{
 		{PhaseStopSource, "migration_stop_source_checkpoint_failed"},
 		{PhaseFinalSync, "migration_final_sync_checkpoint_failed"},
+		{PhaseOwnershipTransfer, "migration_ownership_transfer_checkpoint_failed"},
+		{PhaseStartTarget, "migration_ownership_transfer_checkpoint_failed"},
 		{PhasePolicyAdjustment, "migration_policy_adjustment_checkpoint_failed"},
-		{PhaseStartTarget, "migration_policy_adjustment_checkpoint_failed"},
 		{PhaseCleanupSource, "migration_source_cleanup_checkpoint_failed"},
 		{PhaseFinalize, "migration_finalize_checkpoint_failed"},
 	} {

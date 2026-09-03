@@ -6575,6 +6575,83 @@ func (s *Service) PrepareGuestBackupJobRunnerRebind(
 	)
 }
 
+func (s *Service) MoveGuestIdentityOwner(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newOwnerNodeID string,
+	operationToken string,
+) error {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	newOwnerNodeID = strings.TrimSpace(newOwnerNodeID)
+	operationToken = strings.TrimSpace(operationToken)
+	if guestType == "" || guestID == 0 || newOwnerNodeID == "" || operationToken == "" {
+		return fmt.Errorf("invalid_migrate_identity_ownership_input")
+	}
+	if s == nil || s.DB == nil || s.Cluster == nil || s.Cluster.Raft == nil {
+		return fmt.Errorf("cluster_service_unavailable")
+	}
+
+	if s.Cluster.Raft.State() != raft.Leader {
+		_, leaderID := s.Cluster.Raft.LeaderWithID()
+		leaderNodeID := strings.TrimSpace(string(leaderID))
+		if leaderNodeID == "" {
+			return fmt.Errorf("leader_not_available")
+		}
+		return s.forwardRaftVoterControlWithRetry(
+			leaderNodeID,
+			"replication-reassign-owner",
+			map[string]any{
+				"guest_type":        guestType,
+				"guest_id":          guestID,
+				"new_owner_node_id": newOwnerNodeID,
+				"operation_token":   operationToken,
+				"ownership_only":    true,
+			},
+			replicationControlDefaultTimeout,
+		)
+	}
+	return s.moveGuestPlacementOwnership(ctx, guestType, guestID, newOwnerNodeID, operationToken)
+}
+
+func (s *Service) moveGuestPlacementOwnership(
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newOwnerNodeID string,
+	operationToken string,
+) error {
+	var policies []clusterModels.ReplicationPolicy
+	if err := s.DB.
+		Preload("Targets").
+		Where("guest_type = ? AND guest_id = ?", guestType, guestID).
+		Find(&policies).Error; err != nil {
+		return fmt.Errorf("lookup_replication_policies_failed: %w", err)
+	}
+
+	errs := make([]string, 0)
+	if len(policies) == 0 {
+		if err := s.Cluster.MoveGuestIdentityOwner(ctx, guestType, guestID, newOwnerNodeID, operationToken); err != nil {
+			errs = append(errs, fmt.Sprintf("guest_identity: %v", err))
+		}
+	}
+	for i := range policies {
+		var err error
+		if policies[i].Enabled {
+			err = fmt.Errorf("replication_policy_must_be_disabled_before_migration")
+		} else {
+			err = s.reassignDisabledReplicationPolicyOwner(&policies[i], newOwnerNodeID, operationToken)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("policy_%d: %v", policies[i].ID, err))
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("migrate_guest_placement_ownership_partial_failure: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 func (s *Service) MigrateGuestOwnership(
 	ctx context.Context,
 	guestType string,
@@ -6591,7 +6668,7 @@ func (s *Service) MigrateGuestOwnership(
 	if guestType == "" || guestID == 0 || newOwnerNodeID == "" || operationToken == "" {
 		return fmt.Errorf("invalid_migrate_ownership_input")
 	}
-	if s.Cluster == nil || s.Cluster.Raft == nil {
+	if s == nil || s.DB == nil || s.Cluster == nil || s.Cluster.Raft == nil {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
 
@@ -6621,33 +6698,10 @@ func (s *Service) MigrateGuestOwnership(
 		return fmt.Errorf("ready_backup_job_runner_rebind_failed: %w", err)
 	}
 
-	var policies []clusterModels.ReplicationPolicy
-	if err := s.DB.
-		Preload("Targets").
-		Where("guest_type = ? AND guest_id = ?", guestType, guestID).
-		Find(&policies).Error; err != nil {
-		return fmt.Errorf("lookup_replication_policies_failed: %w", err)
-	}
-
 	errs := make([]string, 0)
-	if len(policies) == 0 {
-		if err := s.Cluster.MoveGuestIdentityOwner(ctx, guestType, guestID, newOwnerNodeID, operationToken); err != nil {
-			errs = append(errs, fmt.Sprintf("guest_identity: %v", err))
-		}
+	if err := s.moveGuestPlacementOwnership(ctx, guestType, guestID, newOwnerNodeID, operationToken); err != nil {
+		errs = append(errs, fmt.Sprintf("ownership: %v", err))
 	}
-
-	for i := range policies {
-		var err error
-		if policies[i].Enabled {
-			err = fmt.Errorf("replication_policy_must_be_disabled_before_migration")
-		} else {
-			err = s.reassignDisabledReplicationPolicyOwner(&policies[i], newOwnerNodeID, operationToken)
-		}
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("policy_%d: %v", policies[i].ID, err))
-		}
-	}
-
 	if err := s.Cluster.ReconcileBackupJobRunnerRebind(ctx, operationToken); err != nil {
 		errs = append(errs, fmt.Sprintf("backup_jobs: %v", err))
 	}

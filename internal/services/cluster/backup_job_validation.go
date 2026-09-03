@@ -621,6 +621,16 @@ func (s *Service) validateBackupJobOnRunner(
 	bypassRaft bool,
 	authorization BackupJobPlacementAuthorization,
 ) (BackupJobSafetyValidationResult, *clusterModels.BackupJobPlacementFence, error) {
+	return s.validateBackupJobOnRunnerWithTarget(ctx, job, bypassRaft, authorization, true)
+}
+
+func (s *Service) validateBackupJobOnRunnerWithTarget(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	bypassRaft bool,
+	authorization BackupJobPlacementAuthorization,
+	validateTarget bool,
+) (BackupJobSafetyValidationResult, *clusterModels.BackupJobPlacementFence, error) {
 	var empty BackupJobSafetyValidationResult
 	if job == nil {
 		return empty, nil, fmt.Errorf("backup_job_required")
@@ -632,20 +642,23 @@ func (s *Service) validateBackupJobOnRunner(
 	if runnerNodeID == "" {
 		return empty, nil, fmt.Errorf("backup_runner_node_id_required")
 	}
-	if job.TargetID == 0 {
-		return empty, nil, fmt.Errorf("target_id_required")
-	}
-	var target clusterModels.BackupTarget
-	if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return empty, nil, fmt.Errorf("backup_target_not_found")
+	targetFingerprint := ""
+	if validateTarget {
+		if job.TargetID == 0 {
+			return empty, nil, fmt.Errorf("target_id_required")
 		}
-		return empty, nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
+		var target clusterModels.BackupTarget
+		if err := s.DB.WithContext(ctx).First(&target, job.TargetID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return empty, nil, fmt.Errorf("backup_target_not_found")
+			}
+			return empty, nil, fmt.Errorf("backup_target_lookup_failed: %w", err)
+		}
+		if !target.Enabled {
+			return empty, nil, fmt.Errorf("backup_target_disabled")
+		}
+		targetFingerprint = clusterModels.BackupTargetConnectivityFingerprint(&target)
 	}
-	if !target.Enabled {
-		return empty, nil, fmt.Errorf("backup_target_disabled")
-	}
-	targetFingerprint := clusterModels.BackupTargetConnectivityFingerprint(&target)
 	validateAndRecord := func(
 		request BackupJobSafetyValidationRequest,
 		result BackupJobSafetyValidationResult,
@@ -668,8 +681,10 @@ func (s *Service) validateBackupJobOnRunner(
 
 	if bypassRaft || s.Raft == nil {
 		request := backupJobValidationRequest(job, runnerNodeID, 0)
-		request.TargetID = target.ID
-		request.TargetFingerprint = targetFingerprint
+		if validateTarget {
+			request.TargetID = job.TargetID
+			request.TargetFingerprint = targetFingerprint
+		}
 		result, err := s.ValidateBackupJobSafetyLocal(ctx, request)
 		if err != nil {
 			return empty, nil, err
@@ -691,8 +706,10 @@ func (s *Service) validateBackupJobOnRunner(
 	for attempt := 0; attempt < 3; attempt++ {
 		minimumIndex := s.Raft.AppliedIndex()
 		request := backupJobValidationRequest(job, runnerNodeID, minimumIndex)
-		request.TargetID = target.ID
-		request.TargetFingerprint = targetFingerprint
+		if validateTarget {
+			request.TargetID = job.TargetID
+			request.TargetFingerprint = targetFingerprint
+		}
 		var result BackupJobSafetyValidationResult
 		if local {
 			result, err = s.ValidateBackupJobSafetyLocal(ctx, request)
