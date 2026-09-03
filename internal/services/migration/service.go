@@ -43,8 +43,8 @@ const (
 	PhaseInitialReplicaton = "initial_replication"
 	PhaseStopSource        = "stop_source"
 	PhaseFinalSync         = "final_sync"
-	PhaseStartTarget       = "start_target"
 	PhasePolicyAdjustment  = "policy_adjustment"
+	PhaseStartTarget       = "start_target"
 	PhaseCleanupSource     = "cleanup_source"
 	PhaseFinalize          = "finalize"
 )
@@ -1223,6 +1223,18 @@ func (s *Service) executeSealedMigration(
 		}
 	}
 
+	if mp.Phase == PhaseStartTarget || migrationPhaseAtOrBefore(mp.Phase, PhasePolicyAdjustment) {
+		mp.Phase = PhasePolicyAdjustment
+		mp.PhaseMessage = "adjusting_cluster_policies"
+		if err := s.persistTaskPhase(task.ID, *mp); err != nil {
+			return fmt.Errorf("migration_policy_adjustment_checkpoint_failed: %w", err)
+		}
+		if err := s.phasePolicyAdjustment(ctx, mp, task, operationToken); err != nil {
+			s.updateTaskFailed(task.ID, err.Error())
+			return fmt.Errorf("migration_policy_adjustment_failed: %w", err)
+		}
+	}
+
 	if migrationPhaseAtOrBefore(mp.Phase, PhaseStartTarget) {
 		mp.Phase = PhaseStartTarget
 		mp.PhaseMessage = "importing_stopped_guest_on_target"
@@ -1235,18 +1247,6 @@ func (s *Service) executeSealedMigration(
 		if err := s.phaseStartTarget(ctx, mp, task, operationToken); err != nil {
 			s.updateTaskFailed(task.ID, err.Error())
 			return err
-		}
-	}
-
-	if migrationPhaseAtOrBefore(mp.Phase, PhasePolicyAdjustment) {
-		mp.Phase = PhasePolicyAdjustment
-		mp.PhaseMessage = "adjusting_cluster_policies"
-		if err := s.persistTaskPhase(task.ID, *mp); err != nil {
-			return fmt.Errorf("migration_policy_adjustment_checkpoint_failed: %w", err)
-		}
-		if err := s.phasePolicyAdjustment(ctx, mp, task, operationToken); err != nil {
-			s.updateTaskFailed(task.ID, err.Error())
-			return fmt.Errorf("migration_policy_adjustment_failed: %w", err)
 		}
 	}
 
@@ -1299,8 +1299,8 @@ func migrationPhaseAtOrBefore(current, target string) bool {
 	order := map[string]int{
 		PhaseStopSource:       0,
 		PhaseFinalSync:        1,
-		PhaseStartTarget:      2,
-		PhasePolicyAdjustment: 3,
+		PhasePolicyAdjustment: 2,
+		PhaseStartTarget:      3,
 		PhaseCleanupSource:    4,
 		PhaseFinalize:         5,
 	}

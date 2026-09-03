@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -232,14 +234,147 @@ func TestReconcileTerminalPreCutoverTaskRetainsGuardWhenSnapshotCleanupFails(t *
 }
 
 func TestMigrationPhaseResumeOrdering(t *testing.T) {
-	if migrationPhaseAtOrBefore(PhasePolicyAdjustment, PhaseStartTarget) {
-		t.Fatal("resume would repeat an already completed target start")
+	if !migrationPhaseAtOrBefore(PhasePolicyAdjustment, PhaseStartTarget) {
+		t.Fatal("ownership transfer would not precede target import")
+	}
+	if migrationPhaseAtOrBefore(PhaseStartTarget, PhasePolicyAdjustment) {
+		t.Fatal("ordinary phase ordering would move backward from target import")
 	}
 	if !migrationPhaseAtOrBefore(PhasePolicyAdjustment, PhaseCleanupSource) {
 		t.Fatal("resume would skip pending source cleanup")
 	}
 	if !migrationPhaseAtOrBefore("", PhaseStopSource) {
 		t.Fatal("unknown sealed phase must resume from source stop")
+	}
+}
+
+func TestSealedMigrationTransfersOwnershipBeforeTargetImportAndRetry(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		guestType string
+		path      string
+		dataset   string
+	}{
+		{
+			name:      "vm",
+			guestType: taskModels.GuestTypeVM,
+			path:      "/api/intra-cluster/migration/import-vm",
+			dataset:   "zroot/sylve/virtual-machines/940",
+		},
+		{
+			name:      "jail",
+			guestType: taskModels.GuestTypeJail,
+			path:      "/api/intra-cluster/migration/import-jail",
+			dataset:   "zroot/sylve/jails/940",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t,
+				&taskModels.GuestLifecycleTask{},
+				&clusterModels.ClusterNode{},
+			)
+			task := taskModels.GuestLifecycleTask{
+				GuestType: test.guestType,
+				GuestID:   940,
+				Action:    "migrate",
+				Source:    taskModels.LifecycleTaskSourceUser,
+				Status:    taskModels.LifecycleTaskStatusRunning,
+			}
+			if err := db.Create(&task).Error; err != nil {
+				t.Fatalf("seed migration task: %v", err)
+			}
+
+			operationToken := fmt.Sprintf("migration:node-a:%d", task.ID)
+			ownershipTransfers := make(chan struct{}, 2)
+			guard := &migrationWorkloadGuardStub{
+				ownershipFn: func(_ context.Context, guestType string, guestID uint, newOwnerNodeID, token string) error {
+					if guestType != test.guestType || guestID != task.GuestID ||
+						newOwnerNodeID != "node-b" || token != operationToken {
+						t.Errorf(
+							"ownership transfer = (%q, %d, %q, %q)",
+							guestType,
+							guestID,
+							newOwnerNodeID,
+							token,
+						)
+					}
+					ownershipTransfers <- struct{}{}
+					return nil
+				},
+			}
+
+			importRequests := 0
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != test.path {
+					t.Errorf("target import request = %s %s", r.Method, r.URL.Path)
+				}
+				select {
+				case <-ownershipTransfers:
+				default:
+					t.Error("target import ran before ownership transfer")
+				}
+
+				var request struct {
+					GuestID            uint     `json:"guestId"`
+					OperationToken     string   `json:"operationToken"`
+					StartGuest         *bool    `json:"startGuest"`
+					SourceDatasetRoots []string `json:"sourceDatasetRoots"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Errorf("decode target import request: %v", err)
+				}
+				importRequests++
+				if importRequests == 1 {
+					http.Error(w, "temporary target failure", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(targetMigrationImportReceipt{
+					Status:             "success",
+					GuestID:            request.GuestID,
+					OperationToken:     request.OperationToken,
+					StartGuest:         request.StartGuest,
+					SourceDatasetRoots: request.SourceDatasetRoots,
+				})
+			}))
+			defer server.Close()
+
+			if err := db.Create(&clusterModels.ClusterNode{
+				NodeUUID: "node-b",
+				API:      strings.TrimPrefix(server.URL, "https://"),
+			}).Error; err != nil {
+				t.Fatalf("seed target node: %v", err)
+			}
+			svc := &Service{
+				DB:            db,
+				Cluster:       &clusterService.Service{AuthService: &migrationTargetAuthStub{}},
+				WorkloadGuard: guard,
+			}
+			originalRunning := false
+			payload := migrationPayload{
+				TargetNodeUUID:     "node-b",
+				OperationToken:     operationToken,
+				OriginalRunning:    &originalRunning,
+				Phase:              PhasePolicyAdjustment,
+				SourceDatasetRoots: []string{test.dataset},
+			}
+
+			err := svc.executeSealedMigration(t.Context(), task, &payload, operationToken)
+			if err == nil || !strings.Contains(err.Error(), "import_on_target_failed") {
+				t.Fatalf("first target import result = %v", err)
+			}
+			if payload.Phase != PhaseStartTarget {
+				t.Fatalf("phase after target failure = %q", payload.Phase)
+			}
+
+			err = svc.executeSealedMigration(t.Context(), task, &payload, operationToken)
+			if err == nil || !strings.Contains(err.Error(), "migration_cleanup_unavailable") {
+				t.Fatalf("target import retry result = %v", err)
+			}
+			if importRequests != 2 || guard.ownershipCalls != 2 {
+				t.Fatalf("calls = imports:%d ownership:%d, want 2 each", importRequests, guard.ownershipCalls)
+			}
+		})
 	}
 }
 
@@ -374,8 +509,8 @@ func TestSealedMigrationRequiresDurableCheckpointBeforeEveryPhase(t *testing.T) 
 	}{
 		{PhaseStopSource, "migration_stop_source_checkpoint_failed"},
 		{PhaseFinalSync, "migration_final_sync_checkpoint_failed"},
-		{PhaseStartTarget, "migration_start_target_checkpoint_failed"},
 		{PhasePolicyAdjustment, "migration_policy_adjustment_checkpoint_failed"},
+		{PhaseStartTarget, "migration_policy_adjustment_checkpoint_failed"},
 		{PhaseCleanupSource, "migration_source_cleanup_checkpoint_failed"},
 		{PhaseFinalize, "migration_finalize_checkpoint_failed"},
 	} {

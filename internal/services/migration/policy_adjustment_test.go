@@ -15,6 +15,7 @@ type migrationWorkloadGuardStub struct {
 	ownershipErr   error
 	ownershipToken string
 	ownershipCalls int
+	ownershipFn    func(context.Context, string, uint, string, string) error
 	abortFn        func(context.Context, string, uint, string) error
 	completeFn     func(context.Context, string, uint, string, string) error
 }
@@ -60,15 +61,20 @@ func (m *migrationWorkloadGuardStub) CompleteGuestMigrationInterlock(ctx context
 }
 
 func (m *migrationWorkloadGuardStub) MigrateGuestOwnership(
-	_ context.Context,
-	_ string,
-	_ uint,
-	_ string,
+	ctx context.Context,
+	guestType string,
+	guestID uint,
+	newOwnerNodeID string,
 	operationToken ...string,
 ) error {
 	m.ownershipCalls++
+	token := ""
 	if len(operationToken) == 1 {
-		m.ownershipToken = operationToken[0]
+		token = operationToken[0]
+		m.ownershipToken = token
+	}
+	if m.ownershipFn != nil {
+		return m.ownershipFn(ctx, guestType, guestID, newOwnerNodeID, token)
 	}
 	return m.ownershipErr
 }
