@@ -58,40 +58,60 @@ type restoreJobPayload struct {
 	AuditOperationID string `json:"audit_operation_id,omitempty"`
 }
 
-// ListRemoteSnapshots SSHs to the backup target and lists snapshots for a job's destination dataset.
-func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.BackupJob) ([]SnapshotInfo, error) {
+func backupJobSnapshotTarget(job *clusterModels.BackupJob) (clusterModels.BackupTarget, string, error) {
+	if job == nil {
+		return clusterModels.BackupTarget{}, "", fmt.Errorf("backup_job_required")
+	}
 	target := job.Target
 	if target.SSHHost == "" {
-		return nil, fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
+		return clusterModels.BackupTarget{}, "", fmt.Errorf("failed_to_list_remote_snapshots: target SSH host is empty (target not loaded?)")
 	}
 	_, rootDataset, err := canonicalizeBackupTarget(&target)
 	if err != nil {
-		return nil, err
+		return clusterModels.BackupTarget{}, "", err
 	}
 	remoteDataset := remoteDatasetForJob(job)
 	parsedRemoteDataset, err := remoteexec.ParseZFSDataset(remoteDataset)
 	if err != nil {
-		return nil, fmt.Errorf("remote_dataset_invalid: %w", err)
+		return clusterModels.BackupTarget{}, "", fmt.Errorf("remote_dataset_invalid: %w", err)
 	}
 	if !parsedRemoteDataset.Within(rootDataset) {
-		return nil, fmt.Errorf("remote_dataset_outside_backup_root")
+		return clusterModels.BackupTarget{}, "", fmt.Errorf("remote_dataset_outside_backup_root")
 	}
-	remoteDataset = parsedRemoteDataset.String()
+	return target, parsedRemoteDataset.String(), nil
+}
+
+func (s *Service) listBackupJobSnapshotCandidates(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	target *clusterModels.BackupTarget,
+	remoteDataset string,
+) ([]SnapshotInfo, error) {
+	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, target, remoteDataset)
+	if err != nil {
+		return nil, err
+	}
+	snapshots = filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots)
+	snapshots = filterBackupSnapshots(snapshots)
+	return filterSnapshotsForBackupJob(snapshots, job.ID), nil
+}
+
+func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.BackupJob) ([]SnapshotInfo, error) {
+	target, remoteDataset, err := backupJobSnapshotTarget(job)
+	if err != nil {
+		return nil, err
+	}
 	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&target)
 	if err != nil {
 		return nil, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
 	defer releaseTargetKey()
 
-	snapshots, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	snapshots, err := s.listBackupJobSnapshotCandidates(ctx, job, &target, remoteDataset)
 	if err != nil {
 		return nil, err
 	}
-
-	filtered := filterSnapshotsForRestoreJob(job, target.BackupRoot, snapshots)
-	filtered = filterBackupSnapshots(filtered)
-	filtered = filterSnapshotsForBackupJob(filtered, job.ID)
-	filtered, err = s.filterRestorableBackupSnapshots(ctx, job, filtered)
+	filtered, err := s.filterRestorableBackupSnapshots(ctx, job, snapshots)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_validate_backup_restore_points: %w", err)
 	}
@@ -106,6 +126,60 @@ func (s *Service) ListRemoteSnapshots(ctx context.Context, job *clusterModels.Ba
 	}
 
 	return filtered, nil
+}
+
+func (s *Service) ListRemoteSnapshotsPage(
+	ctx context.Context,
+	job *clusterModels.BackupJob,
+	request SnapshotPageRequest,
+) (SnapshotPage, error) {
+	started := time.Now()
+	request, err := NewSnapshotPageRequest(request.Limit, request.Cursor)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	target, remoteDataset, err := backupJobSnapshotTarget(job)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	releaseTargetKey, err := s.acquireBackupTargetSSHKey(&target)
+	if err != nil {
+		return SnapshotPage{}, fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
+	}
+	defer releaseTargetKey()
+
+	candidates, err := s.listBackupJobSnapshotCandidates(ctx, job, &target, remoteDataset)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	if job.Mode == clusterModels.BackupJobModeVM {
+		candidates = collapseSnapshotsByShortName(candidates)
+	}
+	pageCandidates, nextCursor, hasMore, err := paginateSnapshotCandidates(candidates, request)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	items, err := s.filterRestorableBackupSnapshots(ctx, job, pageCandidates)
+	if err != nil {
+		return SnapshotPage{}, fmt.Errorf("failed_to_validate_backup_restore_points: %w", err)
+	}
+
+	childCount := s.remoteDatasetChildCount(ctx, &target, remoteDataset)
+	for i := range items {
+		items[i].ChildCount = childCount
+	}
+	page := SnapshotPage{Items: items, NextCursor: nextCursor, HasMore: hasMore}
+	logger.L.Debug().
+		Uint("job_id", job.ID).
+		Int("candidate_count", len(candidates)).
+		Int("page_candidate_count", len(pageCandidates)).
+		Int("returned_count", len(items)).
+		Int("limit", request.Limit).
+		Bool("continued", request.Cursor != "").
+		Bool("has_more", hasMore).
+		Int64("duration_ms", time.Since(started).Milliseconds()).
+		Msg("backup_restore_snapshot_page_listed")
+	return page, nil
 }
 
 // EnqueueRestoreJob enqueues a restore job for async execution via goqite.

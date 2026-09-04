@@ -17949,3 +17949,39 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "The selected ports have configuration outside Sylve's managed Standard Switches.<br>{0}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime."
 msgstr ""
+
+#: src/lib/components/custom/VM/MigrateModal.svelte
+msgid "Transfer ownership"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Remove all backup jobs before deleting this jail"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/+layout.svelte
+#: src/routes/[node]/vm/[rid]/summary/+page.svelte
+msgid "Remove all backup jobs before deleting this VM"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Count-based retention is disabled. Backup snapshots will continue accumulating on the source and target until they are removed manually or this setting changes."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+msgid "Target pruning is disabled. Local snapshots follow the keep-last value, but remote recovery points will continue accumulating."
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Failed to load older snapshots"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Loading older backups"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Load older backups"
+msgstr ""

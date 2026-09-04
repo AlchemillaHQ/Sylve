@@ -923,6 +923,22 @@
 				/>
 			</div>
 
+			{#if Number.parseInt(form.pruneKeepLast || '0', 10) <= 0}
+				<div
+					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400"
+				>
+					Count-based retention is disabled. Backup snapshots will continue accumulating on the
+					source and target until they are removed manually or this setting changes.
+				</div>
+			{:else if !form.pruneTarget}
+				<div
+					class="rounded-md border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-700 dark:text-yellow-400"
+				>
+					Target pruning is disabled. Local snapshots follow the keep-last value, but remote
+					recovery points will continue accumulating.
+				</div>
+			{/if}
+
 			<div class="rounded-md bg-muted p-3 text-sm">
 				<p class="font-medium">Job Summary</p>
 				<ul class="mt-2 list-inside list-disc space-y-1 text-muted-foreground">

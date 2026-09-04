@@ -39,6 +39,16 @@ Select **New** and choose a target, runner, and backup mode.
 - Keep **Recursive backup** enabled for virtual machines. Disabling it would omit child disk datasets, and Sylve prevents that for VM jobs.
 - Enable **Prune on target** only after choosing a retention count that matches your recovery policy. A value of `0` does not enforce a keep-last limit.
 
+### Large snapshot histories
+
+Sylve does not impose a fixed maximum on backup recovery points. The restore selector loads the newest 100 points first; choose **Load older backups** to continue through the history without making one request validate and return every snapshot.
+
+Retention still matters for capacity and routine maintenance. Each successful backup pass selects at most 64 expired generations and applies the budget at generation boundaries, so every eligible snapshot object for a selected generation enters the same pass. Safety-protected incremental bases can remain. If a larger backlog exists, the backup event includes `backup_prune_deferred` and later successful runs continue draining it.
+
+With **Keep Last Snapshots** set to `0`, count-based cleanup is disabled on both the source and target. With a positive value and **Prune on target** disabled, the source follows the keep-last value while target recovery points continue accumulating.
+
+The out-of-band target browser discovers dataset roots without counting every snapshot first. Snapshot counts are therefore omitted until a dataset is selected, when its recovery points are fetched in the same paged form.
+
 ### Encrypted sources
 
 Sylve detects encryption at the start of a backup run. For a recursive job, it checks every included dataset. For a virtual machine, it checks every storage root belonging to that VM, including roots on other pools. If any included source is encrypted, its ZFS key must already be loaded on the runner node. A missing or unavailable key stops the run before data is backed up; load the key with ZFS and run the job again.

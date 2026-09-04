@@ -6,7 +6,7 @@ import {
 	BackupJobSchema,
 	BackupTargetDatasetInfoSchema,
 	BackupTargetSchema,
-	SnapshotInfoSchema,
+	SnapshotPageSchema,
 	type BackupJailMetadataInfo,
 	type BackupVMMetadataInfo,
 	type BackupEvent,
@@ -15,7 +15,7 @@ import {
 	type BackupJob,
 	type BackupTargetDatasetInfo,
 	type BackupTarget,
-	type SnapshotInfo
+	type SnapshotPage
 } from '$lib/types/cluster/backups';
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
@@ -66,9 +66,11 @@ export type RestoreFromTargetInput = {
 };
 
 export type BackupJobSnapshotsResult = {
-	snapshots: SnapshotInfo[];
+	page: SnapshotPage;
 	error: string;
 };
+
+const emptySnapshotPage = (): SnapshotPage => ({ items: [], nextCursor: '', hasMore: false });
 
 export async function listBackupTargets(): Promise<BackupTarget[]> {
 	return await apiRequestData('/cluster/backups/targets', z.array(BackupTargetSchema), 'GET');
@@ -220,29 +222,39 @@ export async function getBackupEventProgress(
 	);
 }
 
-export async function listBackupJobSnapshots(jobId: number): Promise<BackupJobSnapshotsResult> {
+export async function listBackupJobSnapshots(
+	jobId: number,
+	cursor = '',
+	limit = 100
+): Promise<BackupJobSnapshotsResult> {
+	const params = new URLSearchParams();
+	params.set('limit', String(limit));
+	if (cursor.trim() !== '') params.set('cursor', cursor.trim());
 	const response = await apiRequest(
-		`/cluster/backups/jobs/${jobId}/snapshots`,
-		z.array(SnapshotInfoSchema),
+		`/cluster/backups/jobs/${jobId}/snapshots?${params.toString()}`,
+		SnapshotPageSchema,
 		'GET',
 		undefined,
 		{ raw: true }
 	);
 
 	if (!isAPIResponse(response)) {
-		return { snapshots: [], error: 'Failed to load snapshots from the backup target' };
+		return { page: emptySnapshotPage(), error: 'Failed to load snapshots from the backup target' };
 	}
 
 	if (response.status === 'error') {
-		return { snapshots: [], error: getAPIErrorText(response, 'Failed to load snapshots') };
+		return {
+			page: emptySnapshotPage(),
+			error: getAPIErrorText(response, 'Failed to load snapshots')
+		};
 	}
 
-	const snapshots = z.array(SnapshotInfoSchema).safeParse(response.data);
-	if (!snapshots.success) {
-		return { snapshots: [], error: 'Invalid snapshot response from the backup target' };
+	const page = SnapshotPageSchema.safeParse(response.data);
+	if (!page.success) {
+		return { page: emptySnapshotPage(), error: 'Invalid snapshot response from the backup target' };
 	}
 
-	return { snapshots: snapshots.data, error: '' };
+	return { page: page.data, error: '' };
 }
 
 export async function restoreBackupJob(
@@ -274,13 +286,17 @@ export async function listBackupTargetDatasets(
 
 export async function listBackupTargetDatasetSnapshots(
 	targetId: number,
-	dataset: string
-): Promise<SnapshotInfo[]> {
+	dataset: string,
+	cursor = '',
+	limit = 100
+): Promise<SnapshotPage> {
 	const params = new URLSearchParams();
 	params.set('dataset', dataset);
+	params.set('limit', String(limit));
+	if (cursor.trim() !== '') params.set('cursor', cursor.trim());
 	return await apiRequestData(
 		`/cluster/backups/targets/${targetId}/datasets/snapshots?${params.toString()}`,
-		z.array(SnapshotInfoSchema),
+		SnapshotPageSchema,
 		'GET'
 	);
 }

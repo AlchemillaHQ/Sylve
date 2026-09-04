@@ -829,7 +829,9 @@ func extractGuestFromDatasetPath(dataset string) (string, uint) {
 // @Produce json
 // @Security BearerAuth
 // @Param id path int true "Backup Job ID"
-// @Success 200 {object} internal.APIResponse[[]zelta.SnapshotInfo] "Success"
+// @Param limit query int false "Maximum snapshots to return" default(100) minimum(1) maximum(500)
+// @Param cursor query string false "Opaque continuation cursor"
+// @Success 200 {object} internal.APIResponse[zelta.SnapshotPage] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -852,6 +854,11 @@ func BackupJobSnapshots(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 			return
 		}
 
+		pageRequest, ok := backupSnapshotPageRequest(c)
+		if !ok {
+			return
+		}
+
 		job, err := cS.GetBackupJobByID(uint(id64))
 		if err != nil {
 			writeBackupJobError(c, "backup_job_lookup_failed", err)
@@ -861,16 +868,16 @@ func BackupJobSnapshots(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		defer cancel()
 
-		snapshots, err := zS.ListRemoteSnapshots(ctx, job)
+		page, err := zS.ListRemoteSnapshotsPage(ctx, job, pageRequest)
 		if err != nil {
 			writeBackupTargetRemoteReadError(c, "list_snapshots_failed", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, internal.APIResponse[[]zelta.SnapshotInfo]{
+		c.JSON(http.StatusOK, internal.APIResponse[zelta.SnapshotPage]{
 			Status:  "success",
 			Message: "snapshots_listed",
-			Data:    snapshots,
+			Data:    page,
 		})
 	}
 }

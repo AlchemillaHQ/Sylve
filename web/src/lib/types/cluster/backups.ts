@@ -92,6 +92,12 @@ export const SnapshotInfoSchema = z.object({
 	childCount: z.number().int().nonnegative().default(0)
 });
 
+export const SnapshotPageSchema = z.object({
+	items: z.array(SnapshotInfoSchema).default([]),
+	nextCursor: z.string().optional().default(''),
+	hasMore: z.boolean().default(false)
+});
+
 export const BackupTargetDatasetInfoSchema = z.object({
 	name: z.string(),
 	encrypted: z.boolean().default(false),
@@ -100,6 +106,7 @@ export const BackupTargetDatasetInfoSchema = z.object({
 	lineage: z.enum(['active', 'rotated', 'preserved', 'other']).optional().default('active'),
 	outOfBand: z.boolean().optional().default(false),
 	snapshotCount: z.number().int().nonnegative().default(0),
+	snapshotCountKnown: z.boolean().optional().default(true),
 	kind: z.enum(['dataset', 'jail', 'vm']).default('dataset'),
 	jailCtId: z.number().int().nonnegative().optional(),
 	vmRid: z.number().int().nonnegative().optional()
@@ -123,6 +130,7 @@ export type BackupJob = z.infer<typeof BackupJobSchema>;
 export type BackupEvent = z.infer<typeof BackupEventSchema>;
 export type BackupEventProgress = z.infer<typeof BackupEventProgressSchema>;
 export type SnapshotInfo = z.infer<typeof SnapshotInfoSchema>;
+export type SnapshotPage = z.infer<typeof SnapshotPageSchema>;
 export type BackupTargetDatasetInfo = z.infer<typeof BackupTargetDatasetInfoSchema>;
 export type BackupJailMetadataInfo = z.infer<typeof BackupJailMetadataInfoSchema>;
 export type BackupVMMetadataInfo = z.infer<typeof BackupVMMetadataInfoSchema>;
@@ -159,5 +167,6 @@ export interface RestoreTargetDatasetGroup {
 	jailCtId: number;
 	vmRid: number;
 	totalSnapshots: number;
+	snapshotCountKnown: boolean;
 	encrypted: boolean;
 }

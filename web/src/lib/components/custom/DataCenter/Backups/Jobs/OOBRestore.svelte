@@ -75,6 +75,11 @@
 
 	let datasets = $state<BackupTargetDatasetInfo[]>([]);
 	let snapshots = $state<SnapshotInfo[]>([]);
+	let nextSnapshotCursor = $state('');
+	let hasMoreSnapshots = $state(false);
+	let loadingOlderSnapshots = $state(false);
+	let olderSnapshotsError = $state('');
+	let snapshotLoadRevision = 0;
 	let jailMetadata = $state<BackupJailMetadataInfo | null>(null);
 	let vmMetadata = $state<BackupVMMetadataInfo | null>(null);
 	let error = $state('');
@@ -117,6 +122,7 @@
 
 	function formatRestoreTargetDatasetLabel(group: RestoreTargetDatasetGroup): string {
 		const label = group.jobLabel ? `${group.label} · ${group.jobLabel}` : group.label;
+		if (!group.snapshotCountKnown) return label;
 		return `${label} (${formatSnapshotCount(group.totalSnapshots)})`;
 	}
 
@@ -157,6 +163,7 @@
 				jailCtId: number;
 				vmRid: number;
 				totalSnapshots: number;
+				snapshotCountKnown: boolean;
 				encrypted: boolean;
 			}
 		>();
@@ -172,12 +179,14 @@
 					jailCtId: item.jailCtId || 0,
 					vmRid: item.vmRid || 0,
 					totalSnapshots: item.snapshotCount || 0,
+					snapshotCountKnown: item.snapshotCountKnown,
 					encrypted: item.encrypted
 				});
 				continue;
 			}
 			existing.datasets.push(item);
 			existing.totalSnapshots += item.snapshotCount || 0;
+			existing.snapshotCountKnown &&= item.snapshotCountKnown;
 			existing.encrypted ||= item.encrypted;
 			if (existing.kind !== 'jail' && item.kind === 'jail') existing.kind = 'jail';
 			if (!existing.jailCtId && item.jailCtId) existing.jailCtId = item.jailCtId;
@@ -211,6 +220,7 @@
 				jailCtId: entry.jailCtId,
 				vmRid: entry.vmRid,
 				totalSnapshots,
+				snapshotCountKnown: entry.snapshotCountKnown,
 				encrypted: entry.encrypted
 			});
 		}
@@ -319,6 +329,7 @@
 
 	function resetState(close: boolean = true) {
 		targetLoadRevision += 1;
+		snapshotLoadRevision += 1;
 		loadingDatasets = false;
 		loadingSnapshots = false;
 		loadingCluster = false;
@@ -339,6 +350,10 @@
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
+		nextSnapshotCursor = '';
+		hasMoreSnapshots = false;
+		loadingOlderSnapshots = false;
+		olderSnapshotsError = '';
 		jailMetadata = null;
 		vmMetadata = null;
 		error = '';
@@ -364,6 +379,10 @@
 		showActiveOnly = true;
 		datasets = [];
 		snapshots = [];
+		nextSnapshotCursor = '';
+		hasMoreSnapshots = false;
+		loadingOlderSnapshots = false;
+		olderSnapshotsError = '';
 		jailMetadata = null;
 		vmMetadata = null;
 		clusterDetails = null;
@@ -382,6 +401,7 @@
 
 	async function onTargetChange() {
 		const loadRevision = ++targetLoadRevision;
+		snapshotLoadRevision += 1;
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId) {
 			runningJobStatusAvailable = false;
@@ -400,6 +420,10 @@
 		destinationDataset = '';
 		datasets = [];
 		snapshots = [];
+		nextSnapshotCursor = '';
+		hasMoreSnapshots = false;
+		loadingOlderSnapshots = false;
+		olderSnapshotsError = '';
 		jailMetadata = null;
 		vmMetadata = null;
 
@@ -452,15 +476,27 @@
 		}
 	}
 
+	function prependUniqueSnapshots(older: SnapshotInfo[], current: SnapshotInfo[]): SnapshotInfo[] {
+		const seen = new Set(current.map((item) => item.name || item.shortName));
+		return [...older.filter((item) => !seen.has(item.name || item.shortName)), ...current];
+	}
+
 	async function onDatasetChange() {
 		const parsedTargetId = Number.parseInt(targetId || '0', 10);
 		if (!parsedTargetId || !dataset) return;
+		const selectedDataset = dataset;
+		const targetRevision = targetLoadRevision;
+		const snapshotRevision = ++snapshotLoadRevision;
 		const selectedGroup = restoreTargetDatasetGroups.find(
-			(entry) => entry.representativeDataset === dataset
+			(entry) => entry.representativeDataset === selectedDataset
 		);
 		if (!selectedGroup?.encrypted) encryptionKey = '';
 
 		loadingSnapshots = true;
+		loadingOlderSnapshots = false;
+		olderSnapshotsError = '';
+		nextSnapshotCursor = '';
+		hasMoreSnapshots = false;
 		error = '';
 		selectedGeneration = '';
 		snapshot = '';
@@ -469,22 +505,32 @@
 		vmMetadata = null;
 
 		const selectedTarget = targets.find((entry) => entry.id === parsedTargetId);
-		const parsedSourceGuest = parseGuestFromDatasetPath(dataset);
+		const parsedSourceGuest = parseGuestFromDatasetPath(selectedDataset);
 		if (parsedSourceGuest.kind === 'jail') {
-			destinationDataset = inferJailDestinationDataset(selectedTarget, dataset);
+			destinationDataset = inferJailDestinationDataset(selectedTarget, selectedDataset);
 		} else if (parsedSourceGuest.kind === 'vm') {
-			destinationDataset = inferVMDestinationDataset(selectedTarget, dataset);
+			destinationDataset = inferVMDestinationDataset(selectedTarget, selectedDataset);
 		} else {
 			destinationDataset = '';
 		}
 
 		try {
-			const [snapshotItems, jailMetadataInfo, vmMetadataInfo] = await Promise.all([
-				listBackupTargetDatasetSnapshots(parsedTargetId, dataset),
-				getBackupTargetJailMetadata(parsedTargetId, dataset),
-				getBackupTargetVMMetadata(parsedTargetId, dataset)
+			const [snapshotPage, jailMetadataInfo, vmMetadataInfo] = await Promise.all([
+				listBackupTargetDatasetSnapshots(parsedTargetId, selectedDataset),
+				getBackupTargetJailMetadata(parsedTargetId, selectedDataset),
+				getBackupTargetVMMetadata(parsedTargetId, selectedDataset)
 			]);
+			if (
+				targetRevision !== targetLoadRevision ||
+				snapshotRevision !== snapshotLoadRevision ||
+				selectedDataset !== dataset
+			) {
+				return;
+			}
+			const snapshotItems = snapshotPage.items;
 			snapshots = snapshotItems;
+			nextSnapshotCursor = snapshotPage.nextCursor;
+			hasMoreSnapshots = snapshotPage.hasMore && snapshotPage.nextCursor !== '';
 			if (snapshotItems.length > 0) {
 				const latest = snapshotItems[snapshotItems.length - 1];
 				selectedGeneration = snapshotGenerationKey(latest);
@@ -503,9 +549,61 @@
 				if (pool) destinationDataset = `${pool}/sylve/virtual-machines/${vmMetadataInfo.rid}`;
 			}
 		} catch (e: unknown) {
-			error = (e as { message?: string })?.message || 'Failed to load dataset details';
+			if (targetRevision === targetLoadRevision && snapshotRevision === snapshotLoadRevision) {
+				error = (e as { message?: string })?.message || 'Failed to load dataset details';
+			}
 		} finally {
-			loadingSnapshots = false;
+			if (targetRevision === targetLoadRevision && snapshotRevision === snapshotLoadRevision) {
+				loadingSnapshots = false;
+			}
+		}
+	}
+
+	async function loadOlderSnapshots() {
+		const parsedTargetId = Number.parseInt(targetId || '0', 10);
+		if (
+			!parsedTargetId ||
+			!dataset ||
+			!hasMoreSnapshots ||
+			!nextSnapshotCursor ||
+			loadingOlderSnapshots
+		) {
+			return;
+		}
+		const selectedDataset = dataset;
+		const cursor = nextSnapshotCursor;
+		const targetRevision = targetLoadRevision;
+		const snapshotRevision = snapshotLoadRevision;
+		loadingOlderSnapshots = true;
+		olderSnapshotsError = '';
+
+		try {
+			const page = await listBackupTargetDatasetSnapshots(parsedTargetId, selectedDataset, cursor);
+			if (
+				targetRevision !== targetLoadRevision ||
+				snapshotRevision !== snapshotLoadRevision ||
+				selectedDataset !== dataset
+			) {
+				return;
+			}
+			const hadSnapshots = snapshots.length > 0;
+			snapshots = prependUniqueSnapshots(page.items, snapshots);
+			if (!hadSnapshots && page.items.length > 0) {
+				const latest = page.items[page.items.length - 1];
+				selectedGeneration = snapshotGenerationKey(latest);
+				snapshot = latest.name || latest.shortName;
+			}
+			nextSnapshotCursor = page.nextCursor;
+			hasMoreSnapshots = page.hasMore && page.nextCursor !== '';
+		} catch (e: unknown) {
+			if (targetRevision === targetLoadRevision && snapshotRevision === snapshotLoadRevision) {
+				olderSnapshotsError =
+					(e as { message?: string })?.message || 'Failed to load older snapshots';
+			}
+		} finally {
+			if (targetRevision === targetLoadRevision && snapshotRevision === snapshotLoadRevision) {
+				loadingOlderSnapshots = false;
+			}
 		}
 	}
 
@@ -805,6 +903,30 @@
 						onChange={() => {}}
 						disabled={loadingSnapshots || visibleSnapshots.length === 0}
 					/>
+				</div>
+			{/if}
+
+			{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
+				<div class="space-y-2 text-center">
+					{#if hasMoreSnapshots}
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onclick={() => void loadOlderSnapshots()}
+							disabled={loadingOlderSnapshots}
+						>
+							{#if loadingOlderSnapshots}
+								<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+								<span>Loading older backups</span>
+							{:else}
+								<span>Load older backups</span>
+							{/if}
+						</Button>
+					{/if}
+					{#if olderSnapshotsError}
+						<p class="text-sm text-red-500">{olderSnapshotsError}</p>
+					{/if}
 				</div>
 			{/if}
 

@@ -686,19 +686,6 @@ definitions:
       status:
         type: string
     type: object
-  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotInfo'
-        type: array
-      error:
-        type: string
-      message:
-        type: string
-      status:
-        type: string
-    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_pkg_network_iface_Interface:
     properties:
       data:
@@ -1643,6 +1630,17 @@ definitions:
   : properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.ReplicationEventProgress'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage'
       error:
         type: string
       message:
@@ -7062,6 +7060,10 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry'
         type: array
+      inFlightGuestIds:
+        items:
+          type: integer
+        type: array
     type: object
   github_com_alchemillahq_sylve_internal_services_cluster.PeerRemovalConflict:
     properties:
@@ -7735,6 +7737,8 @@ definitions:
         type: boolean
       snapshotCount:
         type: integer
+      snapshotCountKnown:
+        type: boolean
       suffix:
         type: string
       vmRid:
@@ -7800,6 +7804,17 @@ definitions:
         type: string
       used:
         description: space used
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage:
+    properties:
+      hasMore:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotInfo'
+        type: array
+      nextCursor:
         type: string
     type: object
   github_com_alchemillahq_sylve_pkg_network_iface.BridgeMember:
@@ -12154,13 +12169,24 @@ paths:
         name: id
         required: true
         type: integer
+      - default: 100
+        description: Maximum snapshots to return
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - description: Opaque continuation cursor
+        in: query
+        name: cursor
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage'
         "400":
           description: Bad Request
           schema:
@@ -12533,13 +12559,24 @@ paths:
         name: dataset
         required: true
         type: string
+      - default: 100
+        description: Maximum snapshots to return
+        in: query
+        maximum: 500
+        minimum: 1
+        name: limit
+        type: integer
+      - description: Opaque continuation cursor
+        in: query
+        name: cursor
+        type: string
       produces:
       - application/json
       responses:
         "200":
           description: Success
           schema:
-            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo'
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage'
         "400":
           description: Bad Request
           schema:

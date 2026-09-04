@@ -45,6 +45,11 @@
 	let selectedSnapshot = $state('');
 	let encryptionKey = $state('');
 	let error = $state('');
+	let olderSnapshotsError = $state('');
+	let nextSnapshotCursor = $state('');
+	let hasMoreSnapshots = $state(false);
+	let loadingOlderSnapshots = $state(false);
+	let snapshotLoadRevision = 0;
 	let clusterDetails = $state<ClusterDetails | null>(null);
 
 	let nodeNameById = $derived.by(() => {
@@ -148,8 +153,15 @@
 		);
 	}
 
+	function prependUniqueSnapshots(older: SnapshotInfo[], current: SnapshotInfo[]): SnapshotInfo[] {
+		const seen = new Set(current.map((item) => item.name));
+		return [...older.filter((item) => !seen.has(item.name)), ...current];
+	}
+
 	async function loadSnapshots() {
 		if (!selectedJob) return;
+		const job = selectedJob;
+		const revision = ++snapshotLoadRevision;
 
 		loading = true;
 		jobRunning = false;
@@ -158,22 +170,30 @@
 		selectedSnapshot = '';
 		encryptionKey = '';
 		error = '';
+		olderSnapshotsError = '';
+		nextSnapshotCursor = '';
+		hasMoreSnapshots = false;
+		loadingOlderSnapshots = false;
 		restoring = false;
 		clusterDetails = null;
 
 		try {
 			const [snapshotResult, runningJobIds] = await Promise.all([
-				listBackupJobSnapshots(selectedJob.id),
-				getTargetRunningJobIds(selectedJob.targetId)
+				listBackupJobSnapshots(job.id),
+				getTargetRunningJobIds(job.targetId)
 			]);
+			if (revision !== snapshotLoadRevision) return;
 			if (snapshotResult.error) {
 				error = snapshotResult.error;
 				return;
 			}
 
-			const items = snapshotResult.snapshots;
-			jobRunning = runningJobIds.includes(selectedJob.id);
+			const page = snapshotResult.page;
+			const items = page.items;
+			jobRunning = runningJobIds.includes(job.id);
 			if (!jobRunning) {
+				nextSnapshotCursor = page.nextCursor;
+				hasMoreSnapshots = page.hasMore && page.nextCursor !== '';
 				snapshots = items;
 				if (items.length > 0) {
 					const latest = items[items.length - 1];
@@ -182,9 +202,45 @@
 				}
 			}
 		} catch (e: unknown) {
-			error = (e as { message?: string })?.message || 'Failed to load snapshots';
+			if (revision === snapshotLoadRevision) {
+				error = (e as { message?: string })?.message || 'Failed to load snapshots';
+			}
 		} finally {
-			loading = false;
+			if (revision === snapshotLoadRevision) loading = false;
+		}
+	}
+
+	async function loadOlderSnapshots() {
+		if (!selectedJob || !hasMoreSnapshots || !nextSnapshotCursor || loadingOlderSnapshots) return;
+		const jobId = selectedJob.id;
+		const cursor = nextSnapshotCursor;
+		const revision = snapshotLoadRevision;
+		loadingOlderSnapshots = true;
+		olderSnapshotsError = '';
+
+		try {
+			const result = await listBackupJobSnapshots(jobId, cursor);
+			if (revision !== snapshotLoadRevision) return;
+			if (result.error) {
+				olderSnapshotsError = result.error;
+				return;
+			}
+			const hadSnapshots = snapshots.length > 0;
+			snapshots = prependUniqueSnapshots(result.page.items, snapshots);
+			if (!hadSnapshots && result.page.items.length > 0) {
+				const latest = result.page.items[result.page.items.length - 1];
+				selectedGeneration = snapshotGenerationKey(latest);
+				selectedSnapshot = latest.name;
+			}
+			nextSnapshotCursor = result.page.nextCursor;
+			hasMoreSnapshots = result.page.hasMore && result.page.nextCursor !== '';
+		} catch (e: unknown) {
+			if (revision === snapshotLoadRevision) {
+				olderSnapshotsError =
+					(e as { message?: string })?.message || 'Failed to load older snapshots';
+			}
+		} finally {
+			if (revision === snapshotLoadRevision) loadingOlderSnapshots = false;
 		}
 	}
 
@@ -277,7 +333,10 @@
 	);
 
 	watch([() => open, () => selectedJob?.id || 0], ([isOpen]) => {
-		if (!isOpen) return;
+		if (!isOpen) {
+			snapshotLoadRevision++;
+			return;
+		}
 		void loadSnapshots();
 	});
 </script>
@@ -317,7 +376,7 @@
 					/>
 					<p class="mt-1">{error}</p>
 				</div>
-			{:else if snapshots.length === 0}
+			{:else if snapshots.length === 0 && !hasMoreSnapshots}
 				<div class="rounded-md bg-muted p-4 text-center text-sm text-muted-foreground">
 					No snapshots found on the backup target. Run a backup first.
 				</div>
@@ -405,6 +464,30 @@
 								{/each}
 							</tbody>
 						</table>
+					</div>
+				{/if}
+
+				{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
+					<div class="space-y-2 text-center">
+						{#if hasMoreSnapshots}
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onclick={() => void loadOlderSnapshots()}
+								disabled={loadingOlderSnapshots}
+							>
+								{#if loadingOlderSnapshots}
+									<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
+									<span>Loading older backups</span>
+								{:else}
+									<span>Load older backups</span>
+								{/if}
+							</Button>
+						{/if}
+						{#if olderSnapshotsError}
+							<p class="text-sm text-red-500">{olderSnapshotsError}</p>
+						{/if}
 					</div>
 				{/if}
 

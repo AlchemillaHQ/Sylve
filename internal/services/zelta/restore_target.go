@@ -42,16 +42,17 @@ type restoreFromTargetPayload struct {
 }
 
 type BackupTargetDatasetInfo struct {
-	Name          string `json:"name"` // full remote dataset path
-	Encrypted     bool   `json:"encrypted"`
-	Suffix        string `json:"suffix"`
-	BaseSuffix    string `json:"baseSuffix"`
-	Lineage       string `json:"lineage"` // "active" | "rotated" | "other"
-	OutOfBand     bool   `json:"outOfBand"`
-	SnapshotCount int    `json:"snapshotCount"`
-	Kind          string `json:"kind"` // "dataset" | "jail" | "vm"
-	JailCTID      uint   `json:"jailCtId,omitempty"`
-	VMRID         uint   `json:"vmRid,omitempty"`
+	Name               string `json:"name"` // full remote dataset path
+	Encrypted          bool   `json:"encrypted"`
+	Suffix             string `json:"suffix"`
+	BaseSuffix         string `json:"baseSuffix"`
+	Lineage            string `json:"lineage"` // "active" | "rotated" | "other"
+	OutOfBand          bool   `json:"outOfBand"`
+	SnapshotCount      int    `json:"snapshotCount"`
+	SnapshotCountKnown bool   `json:"snapshotCountKnown"`
+	Kind               string `json:"kind"` // "dataset" | "jail" | "vm"
+	JailCTID           uint   `json:"jailCtId,omitempty"`
+	VMRID              uint   `json:"vmRid,omitempty"`
 }
 
 type BackupJailMetadataInfo struct {
@@ -213,6 +214,7 @@ func (s *Service) preflightOOBGuestRestoreDestination(
 }
 
 func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) ([]BackupTargetDatasetInfo, error) {
+	started := time.Now()
 	target, _, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
 	if err != nil {
 		return nil, err
@@ -224,43 +226,143 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		return nil, fmt.Errorf("failed_to_list_target_datasets: %w", err)
 	}
 
-	snapOutput, err := s.runTargetZFSList(ctx, &target, "-t", "snapshot", "-r", "-Hp", "-o", "name", target.BackupRoot)
+	markerOutput, err := s.runTargetSSH(
+		ctx,
+		&target,
+		"zfs", "get", "-H", "-p", "-r", "-t", "filesystem", "-s", "local", "-o", "name,value",
+		"sylve:backup_job_id", target.BackupRoot,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed_to_list_target_snapshots: %w", err)
+		return nil, fmt.Errorf("failed_to_list_target_dataset_markers: %w", err)
 	}
 
-	snapshotCountByDataset := make(map[string]int)
-	for _, line := range strings.Split(strings.TrimSpace(snapOutput), "\n") {
-		name := strings.TrimSpace(line)
-		if name == "" {
-			continue
-		}
-		idx := strings.Index(name, "@")
-		if idx <= 0 {
-			continue
-		}
-		if !isBackupSnapshotShortName(name[idx+1:]) {
-			continue
-		}
-		ds := strings.TrimSpace(name[:idx])
-		if ds == "" {
-			continue
-		}
-		snapshotCountByDataset[ds]++
-	}
+	datasets := buildBackupTargetDatasetInfos(target.BackupRoot, fsOutput, markerOutput)
+	logger.L.Debug().
+		Uint("target_id", targetID).
+		Int("dataset_count", len(datasets)).
+		Int64("duration_ms", time.Since(started).Milliseconds()).
+		Msg("backup_target_datasets_discovered")
+	return datasets, nil
+}
 
-	datasets := []BackupTargetDatasetInfo{}
+func parseRemoteBackupDatasetMarkers(output string) map[string]struct{} {
+	markers := make(map[string]struct{})
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 2 {
+			continue
+		}
+		jobID, err := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 64)
+		if err != nil || jobID == 0 {
+			continue
+		}
+		dataset := normalizeDatasetPath(fields[0])
+		if dataset != "" {
+			markers[dataset] = struct{}{}
+		}
+	}
+	return markers
+}
+
+func isConventionalBackupLineageDataset(suffix string) bool {
+	parts := strings.Split(strings.Trim(normalizeDatasetPath(suffix), "/"), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	parent := strings.ToLower(strings.TrimSpace(parts[len(parts)-2]))
+	if !((strings.HasPrefix(parent, "j-") && len(parent) > 2) ||
+		(strings.HasPrefix(parent, "job-") && len(parent) > 4)) {
+		return false
+	}
+	leaf := strings.ToLower(strings.TrimSpace(parts[len(parts)-1]))
+	return leaf == "active" || strings.HasPrefix(leaf, "active_gen-") || strings.HasPrefix(leaf, "active.pre_")
+}
+
+func backupDatasetExplicitRootAncestors(
+	backupRoot string,
+	explicitRoots map[string]struct{},
+) map[string]struct{} {
+	ancestors := make(map[string]struct{})
+	for root := range explicitRoots {
+		current := normalizeDatasetPath(root)
+		for current != "" && current != backupRoot {
+			slash := strings.LastIndex(current, "/")
+			if slash < 0 {
+				break
+			}
+			current = current[:slash]
+			if current != backupRoot && datasetWithinRoot(backupRoot, current) {
+				ancestors[current] = struct{}{}
+			}
+		}
+	}
+	return ancestors
+}
+
+func backupDatasetHasExplicitRootAncestor(
+	dataset string,
+	backupRoot string,
+	explicitRoots map[string]struct{},
+) bool {
+	current := normalizeDatasetPath(dataset)
+	for current != "" && current != backupRoot {
+		slash := strings.LastIndex(current, "/")
+		if slash < 0 {
+			return false
+		}
+		current = current[:slash]
+		if _, exists := explicitRoots[current]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func buildBackupTargetDatasetInfos(backupRoot, fsOutput, markerOutput string) []BackupTargetDatasetInfo {
+	backupRoot = normalizeDatasetPath(backupRoot)
+	type remoteDataset struct {
+		name      string
+		encrypted bool
+	}
+	entries := make([]remoteDataset, 0)
+	known := make(map[string]struct{})
 	for _, line := range strings.Split(strings.TrimSpace(fsOutput), "\n") {
 		dataset, encrypted := parseRemoteDatasetEncryption(line)
-		if dataset == "" {
+		dataset = normalizeDatasetPath(dataset)
+		if dataset == "" || dataset == backupRoot || !datasetWithinRoot(backupRoot, dataset) {
 			continue
 		}
-		snapCount := snapshotCountByDataset[dataset]
-		if snapCount < 1 {
+		if _, exists := known[dataset]; exists {
 			continue
+		}
+		known[dataset] = struct{}{}
+		entries = append(entries, remoteDataset{name: dataset, encrypted: encrypted})
+	}
+
+	explicitRoots := make(map[string]struct{})
+	for dataset := range parseRemoteBackupDatasetMarkers(markerOutput) {
+		if _, exists := known[dataset]; exists {
+			explicitRoots[dataset] = struct{}{}
+		}
+	}
+	for _, entry := range entries {
+		if isConventionalBackupLineageDataset(relativeDatasetSuffix(backupRoot, entry.name)) {
+			explicitRoots[entry.name] = struct{}{}
+		}
+	}
+
+	managedAncestors := backupDatasetExplicitRootAncestors(backupRoot, explicitRoots)
+	datasets := make([]BackupTargetDatasetInfo, 0, len(entries))
+	for _, entry := range entries {
+		_, explicit := explicitRoots[entry.name]
+		if !explicit && len(explicitRoots) > 0 {
+			_, managedAncestor := managedAncestors[entry.name]
+			if managedAncestor || backupDatasetHasExplicitRootAncestor(entry.name, backupRoot, explicitRoots) {
+				continue
+			}
 		}
 
-		suffix := relativeDatasetSuffix(target.BackupRoot, dataset)
+		suffix := relativeDatasetSuffix(backupRoot, entry.name)
 		lineage, outOfBand, baseSuffix := classifyDatasetLineage(suffix)
 		kind, guestID := inferRestoreDatasetKind(baseSuffix)
 		if kind != clusterModels.BackupJobModeJail && kind != clusterModels.BackupJobModeVM {
@@ -277,16 +379,17 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 		}
 
 		datasets = append(datasets, BackupTargetDatasetInfo{
-			Name:          dataset,
-			Encrypted:     encrypted,
-			Suffix:        suffix,
-			BaseSuffix:    baseSuffix,
-			Lineage:       lineage,
-			OutOfBand:     outOfBand,
-			SnapshotCount: snapCount,
-			Kind:          kind,
-			JailCTID:      jailCTID,
-			VMRID:         vmRID,
+			Name:               entry.name,
+			Encrypted:          entry.encrypted,
+			Suffix:             suffix,
+			BaseSuffix:         baseSuffix,
+			Lineage:            lineage,
+			OutOfBand:          outOfBand,
+			SnapshotCount:      0,
+			SnapshotCountKnown: false,
+			Kind:               kind,
+			JailCTID:           jailCTID,
+			VMRID:              vmRID,
 		})
 	}
 
@@ -304,14 +407,10 @@ func (s *Service) ListRemoteTargetDatasets(ctx context.Context, targetID uint) (
 			return leftRank < rightRank
 		}
 
-		if left.SnapshotCount != right.SnapshotCount {
-			return left.SnapshotCount > right.SnapshotCount
-		}
-
 		return left.Suffix < right.Suffix
 	})
 
-	return datasets, nil
+	return datasets
 }
 
 func parseRemoteDatasetEncryption(line string) (dataset string, encrypted bool) {
@@ -359,6 +458,65 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 	}
 
 	return snapshots, nil
+}
+
+func (s *Service) ListRemoteTargetDatasetSnapshotsPage(
+	ctx context.Context,
+	targetID uint,
+	remoteDataset string,
+	request SnapshotPageRequest,
+) (SnapshotPage, error) {
+	started := time.Now()
+	request, err := NewSnapshotPageRequest(request.Limit, request.Cursor)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	remoteDataset = parsedRemoteDataset.String()
+	target, rootDataset, releaseTargetKey, err := s.getRestoreTargetWithKey(targetID)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	defer releaseTargetKey()
+
+	if !parsedRemoteDataset.Within(rootDataset) {
+		return SnapshotPage{}, fmt.Errorf("remote_dataset_outside_backup_root")
+	}
+
+	candidates, err := s.listRemoteSnapshotsWithLineage(ctx, &target, remoteDataset)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	candidates = filterBackupSnapshots(candidates)
+	kind, _ := inferRestoreDatasetKind(relativeDatasetSuffix(target.BackupRoot, remoteDataset))
+	if kind == clusterModels.BackupJobModeVM {
+		candidates = collapseSnapshotsByShortName(candidates)
+	}
+	pageCandidates, nextCursor, hasMore, err := paginateSnapshotCandidates(candidates, request)
+	if err != nil {
+		return SnapshotPage{}, err
+	}
+	items, err := s.filterRestorableTargetSnapshots(ctx, &target, kind, pageCandidates)
+	if err != nil {
+		return SnapshotPage{}, fmt.Errorf("failed_to_validate_target_restore_points: %w", err)
+	}
+
+	page := SnapshotPage{Items: items, NextCursor: nextCursor, HasMore: hasMore}
+	logger.L.Debug().
+		Uint("target_id", targetID).
+		Str("dataset", remoteDatasetForLog(remoteDataset)).
+		Int("candidate_count", len(candidates)).
+		Int("page_candidate_count", len(pageCandidates)).
+		Int("returned_count", len(items)).
+		Int("limit", request.Limit).
+		Bool("continued", request.Cursor != "").
+		Bool("has_more", hasMore).
+		Int64("duration_ms", time.Since(started).Milliseconds()).
+		Msg("backup_target_snapshot_page_listed")
+	return page, nil
 }
 
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {

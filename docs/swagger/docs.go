@@ -3453,13 +3453,28 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum snapshots to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque continuation cursor",
+                        "name": "cursor",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage"
                         }
                     },
                     "400": {
@@ -4036,13 +4051,28 @@ const docTemplate = `{
                         "name": "dataset",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "maximum": 500,
+                        "minimum": 1,
+                        "type": "integer",
+                        "default": 100,
+                        "description": "Maximum snapshots to return",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque continuation cursor",
+                        "name": "cursor",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Success",
                         "schema": {
-                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo"
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage"
                         }
                     },
                     "400": {
@@ -28475,26 +28505,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zelta_SnapshotInfo": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotInfo"
-                    }
-                },
-                "error": {
-                    "type": "string"
-                },
-                "message": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_pkg_network_iface_Interface": {
             "type": "object",
             "properties": {
@@ -29952,6 +29962,23 @@ const docTemplate = `{
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.ReplicationEventProgress"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zelta_SnapshotPage": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage"
                 },
                 "error": {
                     "type": "string"
@@ -38033,6 +38060,12 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry"
                     }
+                },
+                "inFlightGuestIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },
@@ -39049,6 +39082,9 @@ const docTemplate = `{
                 "snapshotCount": {
                     "type": "integer"
                 },
+                "snapshotCountKnown": {
+                    "type": "boolean"
+                },
                 "suffix": {
                     "type": "string"
                 },
@@ -39142,6 +39178,23 @@ const docTemplate = `{
                 },
                 "used": {
                     "description": "space used",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage": {
+            "type": "object",
+            "properties": {
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotInfo"
+                    }
+                },
+                "nextCursor": {
                     "type": "string"
                 }
             }
