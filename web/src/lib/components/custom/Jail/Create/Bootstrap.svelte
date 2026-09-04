@@ -128,14 +128,17 @@
 
 	watch([() => open, () => pool, () => hostname], ([isOpen]) => {
 		stopPolling();
+		if (!isOpen) {
+			fetchController?.abort();
+			fetchController = null;
+			return;
+		}
 		cancelFetch();
 		entries = [];
 		loadError = '';
-		if (isOpen) {
-			void fetchEntries(600, true).then((refreshed) => {
-				if (refreshed && anyActive(entries)) startPolling();
-			});
-		}
+		void fetchEntries(600, true).then((refreshed) => {
+			if (refreshed && anyActive(entries)) startPolling();
+		});
 	});
 
 	onDestroy(() => {
@@ -204,7 +207,15 @@
 	}
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root
+	bind:open
+	onOpenChangeComplete={(isOpen) => {
+		if (isOpen) return;
+		entries = [];
+		loadError = '';
+		loading = false;
+	}}
+>
 	<Dialog.Content
 		class="fixed left-1/2 top-1/2 flex w-[90%] max-w-xl -translate-x-1/2 -translate-y-1/2 transform flex-col gap-0 p-5 transition-all duration-300 ease-in-out"
 		showCloseButton={true}
