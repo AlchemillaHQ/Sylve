@@ -377,6 +377,7 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 		true,
 		false,
 		nil,
+		nil,
 	)
 	if err == nil || !strings.Contains(err.Error(), "restore_encryption_key_required") {
 		t.Fatalf("expected restore activation failure, got %v", err)

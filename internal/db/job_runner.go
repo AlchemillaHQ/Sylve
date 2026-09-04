@@ -146,6 +146,9 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 	if m == nil {
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
 
 	var qm queueJobMessage
 	if err := gob.NewDecoder(bytes.NewReader(m.Body)).Decode(&qm); err != nil {
@@ -202,7 +205,7 @@ func (r *jobRunner) receiveAndRun(ctx context.Context, wg *sync.WaitGroup) {
 			}
 		}()
 
-		jobCtx, cancel := context.WithCancel(context.Background())
+		jobCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 
 		go func() {

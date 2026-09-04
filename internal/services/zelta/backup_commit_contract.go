@@ -122,53 +122,6 @@ func (s *Service) requireRemoteBackupRestoreCommit(
 	return metadata, nil
 }
 
-func (s *Service) verifyRemoteBackupRestoreManifest(
-	ctx context.Context,
-	job *clusterModels.BackupJob,
-	remoteDataset string,
-	snapshotName string,
-	metadata backupCommitMetadata,
-) error {
-	if job == nil {
-		return fmt.Errorf("backup_job_required")
-	}
-	if !backupSnapshotRequiresCommit(job.ID, snapshotName) {
-		return nil
-	}
-	if job.Mode == clusterModels.BackupJobModeVM {
-		// VM manifests span multiple independent roots and are checked by the
-		// all-roots preflight. Every staged root is additionally GUID-verified.
-		return nil
-	}
-	if len(metadata.Roots) != 1 {
-		return fmt.Errorf("restore_backup_commit_root_count_invalid")
-	}
-	entries, err := s.remoteBackupManifestEntries(
-		ctx,
-		&job.Target,
-		remoteDataset,
-		metadata.Roots[0],
-		snapshotName,
-		metadata.Recursive,
-	)
-	if err != nil {
-		return fmt.Errorf("restore_backup_manifest_read_failed: %w", err)
-	}
-	manifest, err := buildBackupManifest(
-		metadata.JobID,
-		snapshotName,
-		metadata.Recursive,
-		entries,
-	)
-	if err != nil {
-		return fmt.Errorf("restore_backup_manifest_invalid: %w", err)
-	}
-	if len(manifest.Entries) != metadata.EntryCount || backupManifestHash(manifest) != metadata.ManifestHash {
-		return fmt.Errorf("restore_backup_manifest_mismatch")
-	}
-	return nil
-}
-
 func (s *Service) requireRemoteBackupRestoreCommitBySnapshot(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
@@ -208,44 +161,4 @@ func (s *Service) requireRemoteBackupRestoreCommitBySnapshot(
 		return backupCommitMetadata{}, fmt.Errorf("restore_backup_commit_snapshot_mismatch")
 	}
 	return metadata, nil
-}
-
-func (s *Service) filterRestorableBackupSnapshots(
-	ctx context.Context,
-	job *clusterModels.BackupJob,
-	snapshots []SnapshotInfo,
-) ([]SnapshotInfo, error) {
-	if job == nil {
-		return nil, fmt.Errorf("backup_job_required")
-	}
-	filtered := make([]SnapshotInfo, 0, len(snapshots))
-	for _, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		if !backupSnapshotRequiresCommit(job.ID, shortName) {
-			snapshot.Legacy = true
-			filtered = append(filtered, snapshot)
-			continue
-		}
-		remoteDataset := snapshotDatasetName(snapshot.Name)
-		if remoteDataset == "" {
-			remoteDataset = normalizeDatasetPath(snapshot.Dataset)
-		}
-		metadata, err := s.requireRemoteBackupRestoreCommit(
-			ctx,
-			job,
-			remoteDataset,
-			shortName,
-		)
-		if err != nil {
-			// A c1 snapshot without a valid commit marker is an interrupted or
-			// tampered backup. It must not be advertised as a restore point.
-			if strings.Contains(err.Error(), "get_backup_commit_metadata_failed") {
-				return nil, err
-			}
-			continue
-		}
-		snapshot.Committed = metadata.Version == backupCommitVersion
-		filtered = append(filtered, snapshot)
-	}
-	return filtered, nil
 }

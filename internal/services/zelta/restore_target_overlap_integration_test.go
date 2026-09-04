@@ -231,6 +231,7 @@ exec "$SYLVE_OVERLAP_REAL_ZFS" "$@"
 		false,
 		false,
 		nil,
+		nil,
 	)
 	if err == nil || !strings.Contains(err.Error(), "snapshot_not_found_on_target") {
 		t.Fatalf("restore did not fail closed after pre-send prune: %v", err)

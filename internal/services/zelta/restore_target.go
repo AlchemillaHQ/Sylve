@@ -361,56 +361,6 @@ func (s *Service) ListRemoteTargetDatasetSnapshots(ctx context.Context, targetID
 	return snapshots, nil
 }
 
-// filterRestorableTargetSnapshots applies the commit contract to out-of-band
-// target browsing. Dataset and jail restore points created before c1 remain
-// visible for compatibility. VM restore requires a c1 root-set manifest, so a
-// legacy VM snapshot can never be advertised as restorable.
-func (s *Service) filterRestorableTargetSnapshots(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	datasetKind string,
-	snapshots []SnapshotInfo,
-) ([]SnapshotInfo, error) {
-	filtered := make([]SnapshotInfo, 0, len(snapshots))
-	for _, snapshot := range snapshots {
-		shortName := snapshotShortName(snapshot)
-		_, commitRequired, parseErr := backupCommitJobIDFromSnapshot(shortName)
-		if parseErr != nil {
-			// A malformed c1-looking name is neither a valid legacy point nor a
-			// committed point. Do not expose it through restore discovery.
-			continue
-		}
-		if !commitRequired {
-			if datasetKind == clusterModels.BackupJobModeVM {
-				continue
-			}
-			snapshot.Legacy = true
-			filtered = append(filtered, snapshot)
-			continue
-		}
-
-		remoteDataset := snapshotDatasetName(snapshot.Name)
-		if remoteDataset == "" {
-			remoteDataset = normalizeDatasetPath(snapshot.Dataset)
-		}
-		metadata, err := s.requireRemoteBackupRestoreCommitBySnapshot(
-			ctx,
-			target,
-			remoteDataset,
-			shortName,
-		)
-		if err != nil {
-			if strings.Contains(err.Error(), "get_backup_commit_metadata_failed") {
-				return nil, err
-			}
-			continue
-		}
-		snapshot.Committed = metadata.Version == backupCommitVersion
-		filtered = append(filtered, snapshot)
-	}
-	return filtered, nil
-}
-
 func (s *Service) GetRemoteTargetJailMetadata(ctx context.Context, targetID uint, remoteDataset string) (*BackupJailMetadataInfo, error) {
 	parsedRemoteDataset, err := requiredRemoteDataset(remoteDataset)
 	if err != nil {
@@ -822,7 +772,7 @@ func (s *Service) runRestoreFromTarget(ctx context.Context, target *clusterModel
 		return s.runRestoreFromTargetVM(ctx, target, payload, nil)
 	}
 
-	_, err = s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil)
+	_, err = s.runRestoreFromTargetSingleDataset(ctx, target, payload, nil, true, false, false, nil, nil)
 	return err
 }
 
@@ -1005,19 +955,23 @@ func (s *Service) runRestoreFromTargetVM(
 			return err
 		}
 	}
-	resolvedRemoteRoots := make(map[string]string, len(rootPlans))
+	preparedRootPlans := make(map[string]remoteRestoreDatasetPlan, len(rootPlans))
 	generationSelections := make([]restoreTargetGenerationSelection, 0, len(rootPlans))
 	var committedMetadata *backupCommitMetadata
 	committedEntries := make([]backupManifestEntry, 0)
 	for _, plan := range rootPlans {
-		resolved, err := s.resolveRemoteDatasetForSnapshot(ctx, target, plan.remote, snapshot)
+		prepared, err := s.prepareTargetRestoreDatasetPlan(
+			ctx,
+			target,
+			plan.remote,
+			snapshot,
+			true,
+		)
 		if err != nil {
-			return fmt.Errorf("resolve_restore_snapshot_dataset_failed: dataset=%s: %w", plan.remote, err)
+			return fmt.Errorf("restore_vm_root_preflight_failed: dataset=%s: %w", plan.remote, err)
 		}
-		metadata, err := s.requireRemoteBackupRestoreCommitBySnapshot(ctx, target, resolved, snapshot)
-		if err != nil {
-			return fmt.Errorf("restore_vm_root_commit_invalid: dataset=%s: %w", plan.remote, err)
-		}
+		resolved := prepared.resolvedRemoteDataset
+		metadata := prepared.commitMetadata
 		if metadata.Version == backupCommitVersion {
 			if jobID != nil && *jobID > 0 && metadata.JobID != *jobID {
 				return fmt.Errorf("restore_vm_root_commit_job_mismatch: dataset=%s", plan.remote)
@@ -1032,29 +986,24 @@ func (s *Service) runRestoreFromTargetVM(
 			if canonicalRoot == "" {
 				return fmt.Errorf("restore_vm_root_commit_mapping_invalid: dataset=%s", plan.remote)
 			}
-			part, err := s.remoteBackupManifestEntries(
-				ctx,
-				target,
-				resolved,
+			part, err := prepared.manifestInventory.manifestEntries(
 				canonicalRoot,
 				snapshot,
 				metadata.Recursive,
+				false,
 			)
 			if err != nil {
 				return fmt.Errorf("restore_vm_root_manifest_read_failed: dataset=%s: %w", plan.remote, err)
 			}
 			committedEntries = append(committedEntries, part...)
 		}
-		if _, err := s.recursiveRestoreManifestRemote(ctx, target, resolved, snapshot); err != nil {
-			return fmt.Errorf("restore_preflight_recursive_snapshot_failed: dataset=%s: %w", plan.remote, err)
-		}
-		resolvedRemoteRoots[plan.remote] = resolved
+		preparedRootPlans[plan.remote] = prepared
 		generationSelections = append(generationSelections, restoreTargetGenerationSelection{
 			ActiveDataset:   plan.remote,
 			SelectedDataset: resolved,
 		})
-
 	}
+
 	if committedMetadata != nil {
 		if len(committedMetadata.Roots) != len(rootPlans) {
 			return fmt.Errorf(
@@ -1109,7 +1058,10 @@ func (s *Service) runRestoreFromTargetVM(
 			return
 		}
 		if vmRestoreFence.wasRunning {
-			if restartErr := s.startVMIfPresentContext(ctx, vmRestoreFence.guestID); restartErr != nil {
+			restartCtx, restartCancel := guestStateRecoveryContext(ctx)
+			restartErr := s.startVMIfPresentContext(restartCtx, vmRestoreFence.guestID)
+			restartCancel()
+			if restartErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("restore_vm_restart_failed: %w", restartErr))
 			}
 		}
@@ -1164,6 +1116,11 @@ func (s *Service) runRestoreFromTargetVM(
 		disableNetworkRestore := false
 		runPayload.RestoreNetwork = &disableNetworkRestore
 
+		prepared, ok := preparedRootPlans[plan.remote]
+		if !ok {
+			return fmt.Errorf("prepared_vm_restore_plan_missing: dataset=%s", plan.remote)
+		}
+
 		backupDataset, err := s.runRestoreFromTargetSingleDataset(
 			ctx,
 			target,
@@ -1173,6 +1130,7 @@ func (s *Service) runRestoreFromTargetVM(
 			true,
 			false,
 			&event.ID,
+			&prepared,
 		)
 		if err != nil {
 			rollbackErr := rollbackAppliedBackups()
@@ -1232,9 +1190,6 @@ func (s *Service) runRestoreFromTargetVM(
 		// Remote generation activation is deliberately deferred until every local
 		// root and VM metadata have activated successfully. The helper rolls back
 		// any earlier remote swaps if a later swap fails.
-		for idx := range generationSelections {
-			generationSelections[idx].SelectedDataset = resolvedRemoteRoots[generationSelections[idx].ActiveDataset]
-		}
 		if _, err := s.activateTargetGenerationsForRestore(ctx, target, generationSelections); err != nil {
 			rollbackErr := rollbackAppliedBackups()
 			if rollbackErr != nil {
@@ -1340,6 +1295,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	keepBackup bool,
 	activateRemoteGeneration bool,
 	sharedEventID *uint,
+	preparedPlan *remoteRestoreDatasetPlan,
 ) (backupResult string, retErr error) {
 	remoteDataset := strings.TrimSpace(payload.RemoteDataset)
 	preferredRemoteDataset := remoteDataset
@@ -1369,45 +1325,28 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		snapshot = "@" + snapshot
 	}
 
-	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, target, remoteDataset, snapshot)
-	if err != nil {
-		return "", fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
-	}
-	remoteDataset = resolvedRemoteDataset
-	commitMetadata, err := s.requireRemoteBackupRestoreCommitBySnapshot(ctx, target, remoteDataset, snapshot)
-	if err != nil {
-		return "", err
-	}
-	if commitMetadata.Version == backupCommitVersion && len(commitMetadata.Roots) == 1 {
-		entries, err := s.remoteBackupManifestEntries(
+	var restorePlan remoteRestoreDatasetPlan
+	var err error
+	if preparedPlan != nil {
+		if normalizeDatasetPath(preparedPlan.preferredRemoteDataset) != normalizeDatasetPath(preferredRemoteDataset) ||
+			strings.TrimSpace(preparedPlan.snapshot) != snapshot {
+			return "", fmt.Errorf("prepared_restore_plan_input_mismatch")
+		}
+		restorePlan = *preparedPlan
+	} else {
+		restorePlan, err = s.prepareTargetRestoreDatasetPlan(
 			ctx,
 			target,
-			remoteDataset,
-			commitMetadata.Roots[0],
+			preferredRemoteDataset,
 			snapshot,
-			commitMetadata.Recursive,
+			true,
 		)
 		if err != nil {
-			return "", fmt.Errorf("restore_backup_manifest_read_failed: %w", err)
-		}
-		manifest, err := buildBackupManifest(
-			commitMetadata.JobID,
-			snapshot,
-			commitMetadata.Recursive,
-			entries,
-		)
-		if err != nil {
-			return "", fmt.Errorf("restore_backup_manifest_invalid: %w", err)
-		}
-		if len(manifest.Entries) != commitMetadata.EntryCount ||
-			backupManifestHash(manifest) != commitMetadata.ManifestHash {
-			return "", fmt.Errorf("restore_backup_manifest_mismatch")
+			return "", err
 		}
 	}
-	expectedManifest, err := s.recursiveRestoreManifestRemote(ctx, target, remoteDataset, snapshot)
-	if err != nil {
-		return "", fmt.Errorf("restore_preflight_recursive_snapshot_failed: %w", err)
-	}
+	remoteDataset = restorePlan.resolvedRemoteDataset
+	expectedManifest := restorePlan.expectedManifest
 
 	remoteEndpoint, err := canonicalZeltaSnapshotEndpoint(target, remoteDataset, snapshot)
 	if err != nil {
@@ -1529,7 +1468,10 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 				return
 			}
 			if jailRestoreFence.wasRunning && jailSafeToRestart {
-				if restartErr := s.jailActionContext(ctx, int(jailRestoreFence.guestID), "start"); restartErr != nil {
+				restartCtx, restartCancel := guestStateRecoveryContext(ctx)
+				restartErr := s.jailActionContext(restartCtx, int(jailRestoreFence.guestID), "start")
+				restartCancel()
+				if restartErr != nil {
 					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
 				}
 			}
@@ -1561,6 +1503,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	}
 	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", receiveTopOptions)
 	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+	if err := s.recheckRemoteRestoreDatasetPlan(ctx, target, restorePlan); err != nil {
+		restoreErr = fmt.Errorf("restore_preflight_recheck_failed: %w", err)
+		recordRestoreFailure(restoreErr)
+		return "", restoreErr
+	}
 	output, restoreErr = runZeltaWithEnvStreaming(
 		ctx,
 		extraEnv,

@@ -587,14 +587,20 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	for _, ns := range startedServers {
 		if err := ns.srv.Shutdown(ctx); err != nil {
-			logger.L.Error().Err(err).Msgf("%s server forced to shutdown", ns.name)
+			logger.L.Error().Err(err).Msgf("%s server graceful shutdown timed out", ns.name)
+			if closeErr := ns.srv.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+				logger.L.Error().Err(closeErr).Msgf("%s server forced shutdown failed", ns.name)
+			}
 		}
 	}
 
 	clusterHTTPSMu.Lock()
 	if activeClusterHTTPS != nil {
 		if err := activeClusterHTTPS.Shutdown(ctx); err != nil {
-			logger.L.Error().Err(err).Msg("Intra-cluster HTTPS server forced to shutdown")
+			logger.L.Error().Err(err).Msg("Intra-cluster HTTPS server graceful shutdown timed out")
+			if closeErr := activeClusterHTTPS.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+				logger.L.Error().Err(closeErr).Msg("Intra-cluster HTTPS server forced shutdown failed")
+			}
 		}
 	}
 	clusterHTTPSMu.Unlock()
@@ -607,9 +613,12 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		shutdownFenceCancel()
 	}
 	if queueDone != nil {
-		logger.L.Info().Msg("Waiting for in-flight queue jobs to finish")
-		<-queueDone
-		logger.L.Info().Msg("Queue stopped properly")
+		logger.L.Info().Dur("timeout", queueShutdownTimeout).Msg("Waiting for in-flight queue jobs to finish")
+		if waitForQueueShutdown(queueDone, queueShutdownTimeout) {
+			logger.L.Info().Msg("Queue stopped properly")
+		} else {
+			logger.L.Error().Dur("timeout", queueShutdownTimeout).Msg("queue_shutdown_timed_out")
+		}
 	}
 
 	wg.Wait()

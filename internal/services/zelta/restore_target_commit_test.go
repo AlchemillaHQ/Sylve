@@ -21,40 +21,12 @@ type restoreVirtualizationEnabledStub struct {
 
 func (restoreVirtualizationEnabledStub) IsVirtualizationEnabled() bool { return true }
 
-func backupCommitMetadataTestOutput(t *testing.T, metadata backupCommitMetadata) string {
-	t.Helper()
-	properties, err := backupCommitProperties(metadata)
-	if err != nil {
-		t.Fatalf("commit properties: %v", err)
-	}
-	var output strings.Builder
-	for _, property := range properties {
-		parts := strings.SplitN(property, "=", 2)
-		output.WriteString(parts[0])
-		output.WriteByte('\t')
-		output.WriteString(parts[1])
-		output.WriteString("\tlocal")
-		output.WriteByte('\n')
-	}
-	return output.String()
-}
-
-func uncommittedBackupMetadataTestOutput() string {
-	var output strings.Builder
-	for _, property := range backupCommitPropertyNames() {
-		output.WriteString(property)
-		output.WriteString("\t-\t-\n")
-	}
-	return output.String()
-}
-
 func TestFilterRestorableTargetSnapshotsHidesUncommittedAndLegacyVM(t *testing.T) {
 	const (
-		remoteRoot        = "backup/root"
-		legacyName        = "bk_j1_legacy"
-		uncommittedName   = "bk_j1_c1_interrupted"
-		committedName     = "bk_j1_c1_committed"
-		metadataGetPrefix = "zfs get -H -p -o property,value,source "
+		remoteRoot      = "backup/root"
+		legacyName      = "bk_j1_legacy"
+		uncommittedName = "bk_j1_c1_interrupted"
+		committedName   = "bk_j1_c1_committed"
 	)
 
 	manifest, err := buildBackupManifest(1, committedName, true, []backupManifestEntry{
@@ -63,8 +35,13 @@ func TestFilterRestorableTargetSnapshotsHidesUncommittedAndLegacyVM(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	committedOutput := backupCommitMetadataTestOutput(t, newBackupCommitMetadata(manifest))
-	properties := strings.Join(backupCommitPropertyNames(), ",")
+	remoteNames := []string{
+		remoteRoot + "@" + uncommittedName,
+		remoteRoot + "@" + committedName,
+	}
+	metadataBySnapshot := map[string]backupCommitMetadata{
+		remoteRoot + "@" + committedName: newBackupCommitMetadata(manifest),
+	}
 
 	tests := []struct {
 		name        string
@@ -79,16 +56,7 @@ func TestFilterRestorableTargetSnapshotsHidesUncommittedAndLegacyVM(t *testing.T
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			harness := newFakeSSHHarness(t)
-			harness.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
-				metadataGetPrefix + properties + " " + remoteRoot + "@" + uncommittedName: {{
-					Stdout:   uncommittedBackupMetadataTestOutput(),
-					ExitCode: 0,
-				}},
-				metadataGetPrefix + properties + " " + remoteRoot + "@" + committedName: {{
-					Stdout:   committedOutput,
-					ExitCode: 0,
-				}},
-			}})
+			harness.SetScenario(backupCommitBatchScenario(t, remoteNames, metadataBySnapshot))
 
 			snapshots := []SnapshotInfo{
 				{Name: remoteRoot + "@" + legacyName, ShortName: "@" + legacyName, Dataset: remoteRoot},

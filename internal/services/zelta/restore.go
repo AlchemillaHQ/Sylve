@@ -280,44 +280,18 @@ func (s *Service) runRestoreJob(
 		return s.runRestoreVMJob(ctx, job, snapshot, remoteDataset, sourceDataset)
 	}
 
-	resolvedRemoteDataset, err := s.resolveRemoteDatasetForSnapshot(ctx, &job.Target, remoteDataset, snapshot)
-	if err != nil {
-		return fmt.Errorf("resolve_restore_snapshot_dataset_failed: %w", err)
-	}
-	parsedResolvedRemoteDataset, err := remoteexec.ParseZFSDataset(resolvedRemoteDataset)
-	if err != nil {
-		return fmt.Errorf("resolved_remote_dataset_invalid: %w", err)
-	}
-	_, targetRoot, err := canonicalizeBackupTarget(&job.Target)
-	if err != nil || !parsedResolvedRemoteDataset.Within(targetRoot) {
-		if err == nil {
-			err = fmt.Errorf("dataset_outside_backup_root")
-		}
-		return fmt.Errorf("resolved_remote_dataset_invalid: %w", err)
-	}
-	remoteDataset = parsedResolvedRemoteDataset.String()
-	commitMetadata, err := s.requireRemoteBackupRestoreCommit(ctx, job, remoteDataset, snapshot)
-	if err != nil {
-		return err
-	}
-	if err := s.verifyRemoteBackupRestoreManifest(ctx, job, remoteDataset, snapshot, commitMetadata); err != nil {
-		return err
-	}
-	restoreRecursive := job.Recursive
-	if backupSnapshotRequiresCommit(job.ID, snapshot) {
-		restoreRecursive = commitMetadata.Recursive
-	}
-
-	expectedRestoreManifest, err := s.restoreManifestRemote(
+	restorePlan, err := s.prepareJobRestoreDatasetPlan(
 		ctx,
-		&job.Target,
+		job,
 		remoteDataset,
 		snapshot,
-		restoreRecursive,
 	)
 	if err != nil {
-		return fmt.Errorf("restore_preflight_snapshot_failed: %w", err)
+		return err
 	}
+	remoteDataset = restorePlan.resolvedRemoteDataset
+	restoreRecursive := restorePlan.restoreRecursive
+	expectedRestoreManifest := restorePlan.expectedManifest
 
 	// Build the remote source endpoint with snapshot suffix:
 	// e.g. root@192.168.180.1:zroot/sylve-backups/jails/105@zelta_2026-02-18_12.00.00
@@ -399,7 +373,10 @@ func (s *Service) runRestoreJob(
 				return
 			}
 			if jailRestoreFence.wasRunning && jailSafeToRestart {
-				if restartErr := s.jailActionContext(ctx, int(jailRestoreFence.guestID), "start"); restartErr != nil {
+				restartCtx, restartCancel := guestStateRecoveryContext(ctx)
+				restartErr := s.jailActionContext(restartCtx, int(jailRestoreFence.guestID), "start")
+				restartCancel()
+				if restartErr != nil {
 					retErr = errors.Join(retErr, fmt.Errorf("restore_jail_restart_failed: %w", restartErr))
 				}
 			}
@@ -445,6 +422,12 @@ func (s *Service) runRestoreJob(
 	}
 	extraEnv = setEnvValue(extraEnv, "ZELTA_RECV_TOP", receiveTopOptions)
 	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
+
+	if err := s.recheckRemoteRestoreDatasetPlan(ctx, &job.Target, restorePlan); err != nil {
+		restoreErr = fmt.Errorf("restore_preflight_recheck_failed: %w", err)
+		s.finalizeRestoreEvent(&event, restoreErr, output)
+		return restoreErr
+	}
 
 	restoreArgs := restoreZeltaArgs(remoteEndpoint, restorePath, restoreRecursive)
 	output, restoreErr = runZeltaWithEnvStreaming(
@@ -906,105 +889,6 @@ type restoreDatasetManifestEntry struct {
 	Suffix       string
 	Type         string
 	SnapshotGUID string
-}
-
-// recursiveRestoreManifestRemote proves that the selected snapshot exists on
-// every filesystem and volume currently in the remote tree. Zelta otherwise
-// skips an individual descendant with no source snapshot while allowing the
-// overall command to succeed. Snapshot GUIDs bind the post-receive check to the
-// exact selected restore point, not merely a reused snapshot name.
-func (s *Service) recursiveRestoreManifestRemote(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	remoteRoot string,
-	snapshot string,
-) ([]restoreDatasetManifestEntry, error) {
-	return s.restoreManifestRemote(ctx, target, remoteRoot, snapshot, true)
-}
-
-// restoreManifestRemote builds the exact dataset/snapshot generation expected
-// in staging. Recursive restores cover the full source tree. Nonrecursive
-// restores deliberately prove only the selected root; the staging verifier
-// still inspects the full received tree and rejects any unexpected descendant.
-func (s *Service) restoreManifestRemote(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	remoteRoot string,
-	snapshot string,
-	recursive bool,
-) ([]restoreDatasetManifestEntry, error) {
-	parsedRemoteRoot, err := canonicalTargetDataset(target, remoteRoot)
-	if err != nil {
-		return nil, fmt.Errorf("remote_restore_root_invalid: %w", err)
-	}
-	snapshot, err = normalizeSnapshotName(snapshot)
-	if err != nil {
-		return nil, err
-	}
-	remoteRoot = parsedRemoteRoot.String()
-
-	datasetArgs := []string{"zfs", "list", "-H", "-p"}
-	if recursive {
-		datasetArgs = append(datasetArgs, "-r")
-	}
-	datasetArgs = append(datasetArgs, "-t", "filesystem,volume", "-o", "name,type", remoteRoot)
-	datasetOutput, err := s.runTargetSSH(ctx, target, datasetArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("list_restore_dataset_tree_failed: %w", err)
-	}
-	manifest, err := parseRestoreDatasetTree(datasetOutput, remoteRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	snapshotArgs := []string{"zfs", "list", "-H", "-p"}
-	if recursive {
-		snapshotArgs = append(snapshotArgs, "-r")
-		snapshotArgs = append(snapshotArgs, "-t", "snapshot", "-o", "name,guid", remoteRoot)
-	} else {
-		snapshotArgs = append(
-			snapshotArgs,
-			"-t", "snapshot", "-o", "name,guid", remoteRoot+snapshot,
-		)
-	}
-	snapshotOutput, err := s.runTargetSSH(ctx, target, snapshotArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("list_restore_snapshot_tree_failed: %w", err)
-	}
-	guids, err := parseReplicationSnapshotTreeGUIDs(
-		snapshotOutput,
-		remoteRoot,
-		strings.TrimPrefix(snapshot, "@"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("parse_restore_snapshot_tree_failed: %w", err)
-	}
-
-	missing := make([]string, 0)
-	for idx := range manifest {
-		dataset := datasetForRestoreManifestSuffix(remoteRoot, manifest[idx].Suffix)
-		guid := strings.TrimSpace(guids[dataset])
-		if guid == "" {
-			missing = append(missing, dataset)
-			continue
-		}
-		manifest[idx].SnapshotGUID = guid
-	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		mode := "nonrecursive"
-		if recursive {
-			mode = "recursive"
-		}
-		return nil, fmt.Errorf(
-			"%s_restore_snapshot_incomplete: snapshot=%s missing_datasets=%s",
-			mode,
-			snapshot,
-			strings.Join(missing, ","),
-		)
-	}
-
-	return manifest, nil
 }
 
 func (s *Service) verifyRecursiveRestoreManifest(
@@ -1741,66 +1625,6 @@ func canonicalRestoreJobInput(
 		return "", "", "", fmt.Errorf("destination_dataset_invalid: %w", err)
 	}
 	return parsedRemote.String(), snapshot, parsedDestination.String(), nil
-}
-
-func (s *Service) resolveRemoteDatasetForSnapshot(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	preferredDataset string,
-	snapshot string,
-) (string, error) {
-	preferredDataset = strings.TrimSpace(preferredDataset)
-	snapshot = strings.TrimSpace(snapshot)
-	if preferredDataset == "" {
-		return "", fmt.Errorf("remote_dataset_required")
-	}
-	if snapshot == "" || snapshot == "@" {
-		return "", fmt.Errorf("snapshot_required")
-	}
-	if !strings.HasPrefix(snapshot, "@") {
-		snapshot = "@" + snapshot
-	}
-
-	if !datasetWithinRoot(target.BackupRoot, preferredDataset) {
-		return "", fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-
-	lineageSnapshots, err := s.listRemoteSnapshotsWithLineage(ctx, target, preferredDataset)
-	if err != nil {
-		return "", err
-	}
-	if len(lineageSnapshots) == 0 {
-		return "", fmt.Errorf("snapshot_not_found_on_target")
-	}
-
-	preferredFullName := preferredDataset + snapshot
-	for _, info := range lineageSnapshots {
-		if strings.TrimSpace(info.Name) == preferredFullName {
-			return preferredDataset, nil
-		}
-	}
-
-	resolvedDataset := ""
-	for _, info := range lineageSnapshots {
-		if strings.TrimSpace(info.ShortName) != snapshot {
-			continue
-		}
-		dataset := snapshotDatasetName(info.Name)
-		if dataset == "" {
-			continue
-		}
-		// listRemoteSnapshotsWithLineage returns oldest→newest; last match wins.
-		resolvedDataset = dataset
-	}
-
-	if resolvedDataset == "" {
-		return "", fmt.Errorf("snapshot_not_found_on_target")
-	}
-	if !datasetWithinRoot(target.BackupRoot, resolvedDataset) {
-		return "", fmt.Errorf("remote_dataset_outside_backup_root")
-	}
-
-	return resolvedDataset, nil
 }
 
 func snapshotDatasetName(fullSnapshotName string) string {

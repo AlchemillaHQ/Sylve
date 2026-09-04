@@ -128,67 +128,6 @@ func snapshotNames(snapshots []SnapshotInfo) []string {
 	return names
 }
 
-// backupRetentionEligibleSnapshotProofs makes both the commit marker and its
-// exact current manifest authoritative for automatic retention. Interrupted or
-// tampered c1 generations are neither counted toward keep-last nor selected for
-// deletion. Legacy pre-c1 restore points remain restorable, but are preserved
-// because their ownership cannot be proven strongly enough for deletion.
-func (s *Service) backupRetentionEligibleSnapshotProofs(
-	ctx context.Context,
-	job *clusterModels.BackupJob,
-	commitRoot string,
-	remoteSnapshots []SnapshotInfo,
-	scopes []backupScope,
-) (backupRetentionProofSet, error) {
-	proofs := newBackupRetentionProofSet()
-	if job == nil {
-		return proofs, fmt.Errorf("backup_job_required")
-	}
-	commitRoot = normalizeDatasetPath(commitRoot)
-	if commitRoot == "" {
-		return proofs, fmt.Errorf("backup_retention_remote_root_required")
-	}
-
-	jobPrefix := backupSnapshotPrefixForJob(job.ID)
-	seen := make(map[string]struct{})
-	for _, snapshot := range remoteSnapshots {
-		shortName := strings.TrimPrefix(snapshotShortName(snapshot), "@")
-		if !isBKSnapshotShortName(shortName, jobPrefix) {
-			continue
-		}
-		if _, ok := seen[shortName]; ok {
-			continue
-		}
-		seen[shortName] = struct{}{}
-		if !backupSnapshotRequiresCommit(job.ID, shortName) {
-			// Prefix ownership was the old contract and is not sufficient proof
-			// for destructive cleanup. Keep legacy points indefinitely.
-			continue
-		}
-		metadata, err := s.requireRemoteBackupRestoreCommit(ctx, job, commitRoot, shortName)
-		if err != nil {
-			if strings.Contains(err.Error(), "backup_snapshot_not_committed") &&
-				!strings.Contains(err.Error(), "get_backup_commit_metadata_failed") {
-				continue
-			}
-			return proofs, fmt.Errorf("backup_retention_commit_state_unavailable: snapshot=%s: %w", shortName, err)
-		}
-		manifestJob := *job
-		manifestJob.Recursive = metadata.Recursive
-		manifest, err := s.buildRemoteBackupManifest(ctx, &manifestJob, shortName, scopes)
-		if err != nil {
-			return proofs, fmt.Errorf("backup_retention_manifest_unavailable: snapshot=%s: %w", shortName, err)
-		}
-		if len(manifest.Entries) != metadata.EntryCount || backupManifestHash(manifest) != metadata.ManifestHash {
-			return proofs, fmt.Errorf("backup_retention_manifest_mismatch: snapshot=%s", shortName)
-		}
-		if err := addBackupManifestRetentionProofs(&proofs, job, manifest, scopes); err != nil {
-			return proofs, fmt.Errorf("backup_retention_manifest_proof_invalid: snapshot=%s: %w", shortName, err)
-		}
-	}
-	return proofs, nil
-}
-
 func parseExactSnapshotGUID(output, expectedSnapshot string) (string, error) {
 	expectedSnapshot = strings.TrimSpace(expectedSnapshot)
 	lines := make([]string, 0, 1)

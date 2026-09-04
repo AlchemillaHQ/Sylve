@@ -43,12 +43,13 @@ func TestBackupRetentionPreservesLegacySnapshotsWithoutOwnershipProof(t *testing
 
 	svc := &Service{}
 	job := &clusterModels.BackupJob{ID: 1}
-	proofs, err := svc.backupRetentionEligibleSnapshotProofs(
+	proofs, err := svc.backupRetentionEligibleSnapshotProofsFromInventories(
 		context.Background(),
 		job,
 		"backup/root",
 		[]SnapshotInfo{{Name: "backup/root@bk_j1_legacy", ShortName: "@bk_j1_legacy"}},
 		[]backupScope{{sourceDataset: "pool/source", destSuffix: "root"}},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("legacy retention classification: %v", err)

@@ -315,56 +315,6 @@ func buildLocalRetentionPruneCandidates(snapshots []SnapshotInfo, keepCount int,
 	return candidates
 }
 
-func (s *Service) localRetentionProtectSet(
-	ctx context.Context,
-	target *clusterModels.BackupTarget,
-	localRootDataset string,
-	remoteActiveDataset string,
-	snapPrefix string,
-	localSnapshots []SnapshotInfo,
-) (map[string]struct{}, error) {
-	protect := make(map[string]struct{})
-
-	newestPerDataset := make(map[string]SnapshotInfo)
-	for _, snap := range localSnapshots {
-		if !isBKSnapshotShortName(snapshotShortName(snap), snapPrefix) {
-			continue
-		}
-		dataset := snapshotDatasetName(snap.Name)
-		if dataset == "" {
-			dataset = normalizeDatasetPath(snap.Dataset)
-		}
-		newestPerDataset[dataset] = snap
-	}
-	for _, snap := range newestPerDataset {
-		if isValidZFSSnapshotName(snap.Name) {
-			protect[snap.Name] = struct{}{}
-		}
-	}
-
-	remoteActiveDataset = normalizeDatasetPath(remoteActiveDataset)
-	if target != nil && remoteActiveDataset != "" {
-		remoteSnaps, err := s.listRemoteSnapshotsForDatasetRecursive(ctx, target, remoteActiveDataset)
-		if err != nil {
-			return protect, fmt.Errorf("list_recursive_remote_retention_snapshots_failed: %w", err)
-		}
-		bases := latestCommonBackupSnapshotsByDataset(
-			localSnapshots,
-			remoteSnaps,
-			localRootDataset,
-			remoteActiveDataset,
-			snapPrefix,
-		)
-		for _, base := range bases {
-			if isValidZFSSnapshotName(base.Name) {
-				protect[base.Name] = struct{}{}
-			}
-		}
-	}
-
-	return protect, nil
-}
-
 func (s *Service) findForeignTargetSnapshots(
 	ctx context.Context,
 	job *clusterModels.BackupJob,
@@ -417,12 +367,14 @@ func (s *Service) findForeignTargetSnapshots(
 			unmatched = append(unmatched, snapshot)
 		}
 	}
-	proofs, err := s.backupRetentionEligibleSnapshotProofs(
+	proofs, err := s.backupRetentionEligibleSnapshotProofsForPreflight(
 		ctx,
 		job,
 		activeDataset,
 		unmatched,
 		scopes,
+		activeDataset,
+		remoteSnaps,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("prove_target_only_backup_snapshots_failed: %w", err)

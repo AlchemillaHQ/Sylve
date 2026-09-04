@@ -273,7 +273,7 @@ func TestJobRunnerPoisonDeleteFailureLeavesMessageForRetry(t *testing.T) {
 	}
 }
 
-func TestJobRunnerAllowsInFlightJobsToFinishAfterShutdown(t *testing.T) {
+func TestJobRunnerCancelsInFlightJobsDuringShutdown(t *testing.T) {
 	sqlDB, err := sql.Open("sqlite3", ":memory:?_journal=WAL&_timeout=5000&_fk=true")
 	if err != nil {
 		t.Fatalf("failed to open sqlite db: %v", err)
@@ -289,7 +289,6 @@ func TestJobRunnerAllowsInFlightJobsToFinishAfterShutdown(t *testing.T) {
 		Name:    "jobs",
 		Timeout: 25 * time.Millisecond,
 	})
-
 	runner := newJobRunner(jobRunnerOpts{
 		Queue:        queue,
 		PollInterval: 5 * time.Millisecond,
@@ -297,23 +296,15 @@ func TestJobRunnerAllowsInFlightJobsToFinishAfterShutdown(t *testing.T) {
 	})
 
 	started := make(chan struct{})
-	finished := make(chan struct{})
-	unblock := make(chan struct{})
-	errCh := make(chan error, 1)
-
+	handlerErr := make(chan error, 1)
 	runner.Register("long-job", func(ctx context.Context, _ []byte) error {
 		close(started)
-		<-unblock
-		if ctx.Err() != nil {
-			errCh <- ctx.Err()
-		}
-		close(finished)
-		return nil
+		<-ctx.Done()
+		handlerErr <- ctx.Err()
+		return ctx.Err()
 	})
 
 	runCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	runnerDone := make(chan struct{})
 	go func() {
 		runner.Start(runCtx)
@@ -323,35 +314,23 @@ func TestJobRunnerAllowsInFlightJobsToFinishAfterShutdown(t *testing.T) {
 	if err := createJobMessage(context.Background(), queue, "long-job", nil); err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
-
 	select {
 	case <-started:
 	case <-time.After(500 * time.Millisecond):
+		cancel()
 		t.Fatal("timed out waiting for job to start")
 	}
 
 	cancel()
 
 	select {
-	case <-runnerDone:
-		t.Fatal("runner exited before in-flight job finished")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	close(unblock)
-
-	select {
-	case <-finished:
+	case err := <-handlerErr:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected canceled job context, got %v", err)
+		}
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("timed out waiting for in-flight job to finish")
+		t.Fatal("timed out waiting for job cancellation")
 	}
-
-	select {
-	case err := <-errCh:
-		t.Fatalf("expected in-flight job context to remain alive after shutdown, got %v", err)
-	default:
-	}
-
 	select {
 	case <-runnerDone:
 	case <-time.After(500 * time.Millisecond):

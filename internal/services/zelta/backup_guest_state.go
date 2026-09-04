@@ -7,11 +7,18 @@ package zelta
 import (
 	"context"
 	"fmt"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
 
 type backupGuestRestore func() error
+
+const guestStateRecoveryTimeout = 15 * time.Second
+
+func guestStateRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), guestStateRecoveryTimeout)
+}
 
 // quiesceBackupGuest returns an inverse operation only when this backup
 // actually stopped a running guest. A guest that was already stopped is left
@@ -52,7 +59,9 @@ func (s *Service) quiesceBackupGuestContext(
 			return nil, false, fmt.Errorf("failed_to_stop_jail: %w", err)
 		}
 		return func() error {
-			return s.jailActionContext(ctx, int(ctID), "start")
+			restoreCtx, cancel := guestStateRecoveryContext(ctx)
+			defer cancel()
+			return s.jailActionContext(restoreCtx, int(ctID), "start")
 		}, true, nil
 
 	case clusterModels.BackupJobModeVM:
@@ -73,7 +82,9 @@ func (s *Service) quiesceBackupGuestContext(
 			return nil, false, fmt.Errorf("failed_to_stop_vm: %w", err)
 		}
 		return func() error {
-			return s.startVMIfPresentContext(ctx, vmRID)
+			restoreCtx, cancel := guestStateRecoveryContext(ctx)
+			defer cancel()
+			return s.startVMIfPresentContext(restoreCtx, vmRID)
 		}, true, nil
 	}
 

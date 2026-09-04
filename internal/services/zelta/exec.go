@@ -292,88 +292,6 @@ func isBenignPipeReadError(err error) bool {
 		strings.Contains(lower, "use of closed file")
 }
 
-func (s *Service) PruneCandidatesWithTarget(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string, keepLast int) ([]string, string, error) {
-	if keepLast < 0 {
-		return nil, "", fmt.Errorf("invalid_prune_keep_last")
-	}
-	source, err := remoteexec.ParseZFSDataset(sourceDataset)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid_prune_source_dataset: %w", err)
-	}
-	zeltaEndpoint, err := canonicalZeltaEndpoint(target, destSuffix)
-	if err != nil {
-		return nil, "", err
-	}
-	extraEnv := s.buildZeltaEnv(target)
-
-	output, err := runZeltaWithEnv(
-		ctx,
-		extraEnv,
-		"prune",
-		"--no-ranges",
-		fmt.Sprintf("--keep-snap-num=%d", keepLast),
-		"--keep-snap-days=0",
-		source.String(),
-		zeltaEndpoint,
-	)
-	if err != nil {
-		return nil, output, err
-	}
-
-	lines := strings.Split(output, "\n")
-	candidates := make([]string, 0, len(lines))
-	for _, line := range lines {
-		name := parsePruneCandidateLine(line)
-		if name == "" {
-			continue
-		}
-		candidates = append(candidates, name)
-	}
-
-	return candidates, output, nil
-}
-
-func (s *Service) PruneTargetCandidatesWithSource(ctx context.Context, target *clusterModels.BackupTarget, sourceDataset, destSuffix string, keepLast int) ([]string, string, error) {
-	if keepLast < 0 {
-		return nil, "", fmt.Errorf("invalid_prune_keep_last")
-	}
-	source, err := remoteexec.ParseZFSDataset(sourceDataset)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid_prune_source_dataset: %w", err)
-	}
-	remoteSource, err := canonicalZeltaEndpoint(target, destSuffix)
-	if err != nil {
-		return nil, "", err
-	}
-	extraEnv := s.buildZeltaEnv(target)
-
-	output, err := runZeltaWithEnv(
-		ctx,
-		extraEnv,
-		"prune",
-		"--no-ranges",
-		fmt.Sprintf("--keep-snap-num=%d", keepLast),
-		"--keep-snap-days=0",
-		remoteSource,
-		source.String(),
-	)
-	if err != nil {
-		return nil, output, err
-	}
-
-	lines := strings.Split(output, "\n")
-	candidates := make([]string, 0, len(lines))
-	for _, line := range lines {
-		name := parsePruneCandidateLine(line)
-		if name == "" {
-			continue
-		}
-		candidates = append(candidates, name)
-	}
-
-	return candidates, output, nil
-}
-
 func (s *Service) DestroySnapshots(ctx context.Context, snapshots []string) error {
 	for _, snapshot := range snapshots {
 		snap, err := remoteexec.ParseZFSSnapshot(snapshot)
@@ -419,21 +337,4 @@ func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clus
 func isValidZFSSnapshotName(name string) bool {
 	_, err := remoteexec.ParseZFSSnapshot(name)
 	return err == nil
-}
-
-func parsePruneCandidateLine(line string) string {
-	name := strings.TrimSpace(line)
-	if name == "" {
-		return ""
-	}
-
-	if strings.HasPrefix(strings.ToLower(name), "notice:") {
-		name = strings.TrimSpace(name[len("notice:"):])
-	}
-
-	if !isValidZFSSnapshotName(name) {
-		return ""
-	}
-
-	return name
 }

@@ -131,7 +131,9 @@ func (s *Service) prepareInPlaceJailRestore(ctx context.Context, dataset string)
 		)
 	}
 	guard.restart = func() error {
-		return s.jailActionContext(ctx, int(ctID), "start")
+		recoveryCtx, cancel := guestStateRecoveryContext(ctx)
+		defer cancel()
+		return s.jailActionContext(recoveryCtx, int(ctID), "start")
 	}
 	if err := s.waitForJailRestoreStopped(quiesceCtx, ctID); err != nil {
 		primary, _ := guard.restoreAfterFailure(err)
@@ -230,7 +232,9 @@ func (s *Service) prepareInPlaceVMRestoreContext(
 		return nil, fmt.Errorf("restore_vm_stop_failed: guest_id=%d: %w", vmID, err)
 	}
 	guard.restart = func() error {
-		return s.startVMIfPresentContext(ctx, vmID)
+		recoveryCtx, cancel := guestStateRecoveryContext(ctx)
+		defer cancel()
+		return s.startVMIfPresentContext(recoveryCtx, vmID)
 	}
 	return guard, nil
 }

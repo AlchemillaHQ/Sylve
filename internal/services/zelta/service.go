@@ -1603,132 +1603,117 @@ func (s *Service) runBackupJobCore(
 			runErr = fmt.Errorf("backup_prune_commit_coordinator_failed: %w", coordinatorErr)
 			output = appendOutput(output, runErr.Error())
 		}
-		retentionCommitRoot := ""
+
+		var retentionInventories []backupRetentionScopeInventory
 		if runErr == nil {
+			retentionInventories, coordinatorErr = s.loadBackupRetentionScopeInventories(ctx, job, backupScopes)
+			if coordinatorErr != nil {
+				output = appendOutput(output, fmt.Sprintf(
+					"backup_prune_skipped_commit_inventory_failed: error=%v",
+					coordinatorErr,
+				))
+				logger.L.Warn().
+					Err(coordinatorErr).
+					Uint("job_id", job.ID).
+					Msg("backup_prune_commit_inventory_failed")
+			}
+		}
+
+		retentionCommitRoot := ""
+		var retentionProofs backupRetentionProofSet
+		if runErr == nil && coordinatorErr == nil {
 			retentionCommitRoot = remoteActiveDatasetForSuffix(
 				job.Target.BackupRoot,
 				backupScopes[commitCoordinator].destSuffix,
 			)
-		}
-		for _, scope := range backupScopes {
-			if runErr != nil {
-				break
-			}
-			scopeSource := normalizeDatasetPath(scope.sourceDataset)
-			scopeDestSuffix := normalizeDatasetPath(scope.destSuffix)
-			if scopeSource == "" {
-				logger.L.Warn().Uint("job_id", job.ID).Msg("backup_prune_skipped_invalid_scope_source_dataset")
-				continue
-			}
-
-			localSnapshots, localListErr := s.listLocalSnapshotsForDataset(ctx, scopeSource)
-			if localListErr != nil {
-				logger.L.Warn().Err(localListErr).Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_local_snapshot_list_failed")
-			}
-			remoteActiveDataset := remoteActiveDatasetForSuffix(job.Target.BackupRoot, scopeDestSuffix)
-			remoteSnapshots, remoteListErr := s.listRemoteSnapshotsForDatasetRecursive(ctx, &job.Target, remoteActiveDataset)
-			if remoteListErr != nil {
-				output = appendOutput(output, fmt.Sprintf(
-					"backup_prune_skipped_commit_inventory_failed: source=%s error=%v",
-					scopeSource,
-					remoteListErr,
-				))
-				logger.L.Warn().Err(remoteListErr).Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_commit_inventory_failed")
-				continue
-			}
-			retentionProofs, retentionErr := s.backupRetentionEligibleSnapshotProofs(
-				ctx,
-				job,
-				retentionCommitRoot,
-				remoteSnapshots,
-				backupScopes,
-			)
-			if retentionErr != nil {
-				output = appendOutput(output, fmt.Sprintf(
-					"backup_prune_skipped_commit_validation_failed: source=%s error=%v",
-					scopeSource,
-					retentionErr,
-				))
-				logger.L.Warn().Err(retentionErr).Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_commit_validation_failed")
-				continue
-			}
-			retentionRemoteSnapshots := filterBackupSnapshotsByProof(remoteSnapshots, retentionProofs.Target)
-			retentionLocalSnapshots := filterBackupSnapshotsByProof(localSnapshots, retentionProofs.Source)
-
-			_, pruneOutput, pruneErr := s.PruneCandidatesWithTarget(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
-			output = appendOutput(output, pruneOutput)
-			if pruneErr != nil {
-				logger.L.Warn().Err(pruneErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("dest_suffix", scopeDestSuffix).Msg("backup_prune_scan_failed")
-			}
-
-			var pruneCandidates []string
-			if localListErr == nil {
-				protect, protectErr := s.localRetentionProtectSet(
+			commitSnapshots, ok := backupRetentionSnapshotsForRoot(retentionInventories, retentionCommitRoot)
+			if !ok {
+				coordinatorErr = fmt.Errorf("backup_retention_commit_inventory_missing")
+			} else {
+				retentionProofs, coordinatorErr = s.backupRetentionEligibleSnapshotProofsFromInventories(
 					ctx,
-					&job.Target,
-					scopeSource,
-					remoteActiveDataset,
-					backupSnapPrefix,
-					localSnapshots,
+					job,
+					retentionCommitRoot,
+					commitSnapshots,
+					backupScopes,
+					backupRetentionManifestInventories(retentionInventories),
 				)
-				if protectErr != nil {
-					output = appendOutput(output, fmt.Sprintf(
-						"backup_prune_local_skipped_base_protection_failed: source=%s error=%v",
-						scopeSource,
-						protectErr,
-					))
+			}
+			if coordinatorErr != nil {
+				output = appendOutput(output, fmt.Sprintf(
+					"backup_prune_skipped_commit_validation_failed: error=%v",
+					coordinatorErr,
+				))
+				logger.L.Warn().
+					Err(coordinatorErr).
+					Uint("job_id", job.ID).
+					Msg("backup_prune_commit_validation_failed")
+			}
+		}
+
+		if runErr == nil && coordinatorErr == nil {
+			for _, inventory := range retentionInventories {
+				scopeSource := inventory.sourceRoot
+				retentionRemoteSnapshots := filterBackupSnapshotsByProof(
+					inventory.remoteSnapshots,
+					retentionProofs.Target,
+				)
+				retentionLocalSnapshots := filterBackupSnapshotsByProof(
+					inventory.localSnapshots,
+					retentionProofs.Source,
+				)
+
+				var pruneCandidates []string
+				if inventory.localSnapshotErr != nil {
 					logger.L.Warn().
-						Err(protectErr).
+						Err(inventory.localSnapshotErr).
 						Uint("job_id", job.ID).
 						Str("source", scopeSource).
-						Msg("backup_prune_local_skipped_base_protection_failed")
+						Msg("backup_prune_local_snapshot_list_failed")
 				} else {
-					pruneCandidates = buildLocalRetentionPruneCandidates(retentionLocalSnapshots, job.PruneKeepLast, protect, backupSnapPrefix)
+					protect := localRetentionProtectSetFromSnapshots(
+						scopeSource,
+						inventory.remoteRoot,
+						backupSnapPrefix,
+						inventory.localSnapshots,
+						inventory.remoteSnapshots,
+					)
+					pruneCandidates = buildLocalRetentionPruneCandidates(
+						retentionLocalSnapshots,
+						job.PruneKeepLast,
+						protect,
+						backupSnapPrefix,
+					)
 				}
-			}
 
-			if len(pruneCandidates) > 0 {
-				if err := s.destroyLocalBackupSnapshotsWithProof(ctx, pruneCandidates, retentionProofs.Source); err != nil {
-					logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(pruneCandidates)).Msg("backup_prune_destroy_failed")
+				if len(pruneCandidates) > 0 {
+					if err := s.destroyLocalBackupSnapshotsWithProof(ctx, pruneCandidates, retentionProofs.Source); err != nil {
+						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(pruneCandidates)).Msg("backup_prune_destroy_failed")
+					} else {
+						logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(pruneCandidates)).Msg("backup_prune_completed")
+					}
 				} else {
-					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(pruneCandidates)).Msg("backup_prune_completed")
+					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_no_candidates")
 				}
-			} else {
-				logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_no_candidates")
-			}
 
-			if !job.PruneTarget {
-				continue
-			}
-
-			remoteDataset := remoteActiveDataset
-			if remoteDataset == "" {
-				logger.L.Warn().Uint("job_id", job.ID).Str("source", scopeSource).Msg("backup_prune_target_skipped_remote_dataset_empty")
-				continue
-			}
-
-			targetPruneCandidates, targetPruneOutput, targetPruneErr := s.PruneTargetCandidatesWithSource(ctx, &job.Target, scopeSource, scopeDestSuffix, 0)
-			output = appendOutput(output, targetPruneOutput)
-
-			if targetPruneErr != nil {
-				logger.L.Warn().Err(targetPruneErr).Uint("job_id", job.ID).Str("source", scopeSource).Str("dest_suffix", scopeDestSuffix).Msg("backup_prune_target_scan_failed")
-			} else {
-				targetPruneCandidates = buildBKRetentionPruneCandidates(
+				if !job.PruneTarget {
+					continue
+				}
+				targetPruneCandidates := buildBKRetentionPruneCandidates(
 					retentionRemoteSnapshots,
 					job.PruneKeepLast,
 					snapshotCandidateSet(snapshotNames(retentionRemoteSnapshots)),
 					backupSnapPrefix,
 				)
-			}
-
-			if len(targetPruneCandidates) > 0 {
-				if err := s.destroyTargetBackupSnapshotsWithProof(ctx, &job.Target, targetPruneCandidates, retentionProofs.Target); err != nil {
-					logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(targetPruneCandidates)).Msg("backup_prune_target_destroy_failed")
+				if len(targetPruneCandidates) > 0 {
+					if err := s.destroyTargetBackupSnapshotsWithProof(ctx, &job.Target, targetPruneCandidates, retentionProofs.Target); err != nil {
+						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(targetPruneCandidates)).Msg("backup_prune_target_destroy_failed")
+					} else {
+						logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(targetPruneCandidates)).Msg("backup_prune_target_completed")
+					}
 				} else {
-					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(targetPruneCandidates)).Msg("backup_prune_target_completed")
+					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
 				}
-			} else {
-				logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
 			}
 		}
 	}
