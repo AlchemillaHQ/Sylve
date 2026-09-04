@@ -775,14 +775,20 @@
 
 	watch([() => open, () => targetOptions.length], ([isOpen]) => {
 		if (!isOpen) {
-			resetState(false);
+			targetLoadRevision += 1;
+			snapshotLoadRevision += 1;
 			return;
 		}
 		void initializeModal();
 	});
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root
+	bind:open
+	onOpenChangeComplete={(isOpen) => {
+		if (!isOpen) resetState(false);
+	}}
+>
 	<Dialog.Content class="w-full max-w-2xl! overflow-hidden p-6" showCloseButton={true}>
 		<Dialog.Header>
 			<Dialog.Title>
@@ -868,7 +874,7 @@
 				</div>
 			{/if}
 
-			{#if !loadingSnapshots && snapshots.length === 0 && dataset}
+			{#if !loadingSnapshots && snapshots.length === 0 && dataset && !hasMoreSnapshots}
 				<div
 					class="rounded-md border border-blue-500/30 bg-blue-500/10 p-3 text-center text-sm text-blue-700"
 				>
@@ -876,56 +882,75 @@
 				</div>
 			{/if}
 
-			{#if loadingSnapshots || snapshots.length > 0}
-				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-					<SimpleSelect
-						label="Generation"
-						placeholder={loadingSnapshots
-							? 'Loading generations...'
-							: generationOptions.length === 0
-								? 'No generations found'
-								: 'Select generation'}
-						options={generationOptions}
-						bind:value={selectedGeneration}
-						onChange={onGenerationChange}
-						disabled={loadingSnapshots || generationOptions.length === 0}
-					/>
+			{#if loadingSnapshots || snapshots.length > 0 || hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
+				<div class="space-y-1">
+					{#if loadingSnapshots || snapshots.length > 0}
+						<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+							<SimpleSelect
+								label="Generation"
+								placeholder={loadingSnapshots
+									? 'Loading generations...'
+									: generationOptions.length === 0
+										? 'No generations found'
+										: 'Select generation'}
+								options={generationOptions}
+								bind:value={selectedGeneration}
+								onChange={onGenerationChange}
+								disabled={loadingSnapshots || generationOptions.length === 0}
+							/>
 
-					<SimpleSelect
-						label="Snapshot"
-						placeholder={loadingSnapshots
-							? 'Loading snapshots...'
-							: visibleSnapshots.length === 0
-								? 'No snapshots found'
-								: 'Select snapshot'}
-						options={snapshotOptions}
-						bind:value={snapshot}
-						onChange={() => {}}
-						disabled={loadingSnapshots || visibleSnapshots.length === 0}
-					/>
-				</div>
-			{/if}
-
-			{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
-				<div class="space-y-2 text-center">
-					{#if hasMoreSnapshots}
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							onclick={() => void loadOlderSnapshots()}
-							disabled={loadingOlderSnapshots}
-						>
-							{#if loadingOlderSnapshots}
-								<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
-								<span>Loading older backups</span>
-							{:else}
-								<span>Load older backups</span>
-							{/if}
-						</Button>
+							<SimpleSelect
+								label="Snapshot"
+								placeholder={loadingSnapshots
+									? 'Loading snapshots...'
+									: visibleSnapshots.length === 0
+										? 'No snapshots found'
+										: 'Select snapshot'}
+								options={snapshotOptions}
+								bind:value={snapshot}
+								onChange={() => {}}
+								disabled={loadingSnapshots || visibleSnapshots.length === 0}
+							/>
+						</div>
 					{/if}
-					{#if olderSnapshotsError}
-						<p class="text-sm text-red-500">{olderSnapshotsError}</p>
+
+					{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
+						<div
+							class="flex min-h-8 items-center justify-between gap-3 rounded-md bg-muted/40 pl-2 text-xs"
+						>
+							<div class="min-w-0 flex-1 text-muted-foreground" aria-live="polite">
+								{#if olderSnapshotsError}
+									<span class="block truncate text-red-500" title={olderSnapshotsError}
+										>{olderSnapshotsError}</span
+									>
+								{:else}
+									<span
+										>{snapshots.length} {snapshots.length === 1 ? 'backup' : 'backups'} loaded</span
+									>
+								{/if}
+							</div>
+							{#if hasMoreSnapshots}
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="h-8 shrink-0 rounded-none rounded-r-md border-l border-border px-3 text-xs text-foreground"
+									onclick={() => void loadOlderSnapshots()}
+									disabled={loadingOlderSnapshots}
+								>
+									{#if loadingOlderSnapshots}
+										<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
+										<span>Loading</span>
+									{:else if olderSnapshotsError}
+										<span class="icon-[mdi--refresh] h-3.5 w-3.5"></span>
+										<span>Retry</span>
+									{:else}
+										<span class="icon-[mdi--chevron-down] h-3.5 w-3.5"></span>
+										<span>Load older</span>
+									{/if}
+								</Button>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			{/if}

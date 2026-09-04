@@ -399,97 +399,114 @@
 					</div>
 				{/if}
 
-				{#if visibleSnapshots.length === 0}
-					<div class="rounded-md bg-muted p-4 text-center text-sm text-muted-foreground">
-						No snapshots found in the selected generation.
-					</div>
-				{:else}
-					<div class="max-h-72 overflow-auto rounded-md border">
-						<table class="w-full text-sm">
-							<thead class="sticky top-0 bg-muted">
-								<tr>
-									<th class="w-8 p-2"></th>
-									<th class="p-2 text-left font-medium">Backup Date</th>
-									<th class="p-2 text-right font-medium">Used</th>
-									<th class="p-2 text-right font-medium">Refer</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each [...visibleSnapshots].reverse() as snapshot (snapshot.name)}
-									{@const generation = snapshotGenerationTag(snapshot)}
-									{@const generationAlias = generationLabelFromKey(
-										generation,
-										generationAliasByTag
-									)}
-									<tr
-										class="cursor-pointer border-t transition-colors hover:bg-accent {selectedSnapshot ===
-										snapshot.name
-											? 'bg-accent'
-											: ''}"
-										onclick={() => (selectedSnapshot = snapshot.name)}
-										title={snapshot.name}
-									>
-										<td class="p-2 text-center">
-											{#if selectedSnapshot === snapshot.name}
-												<span class="icon-[mdi--radiobox-marked] h-4 w-4 text-primary"></span>
-											{:else}
-												<span class="icon-[mdi--radiobox-blank] h-4 w-4 text-muted-foreground"
-												></span>
-											{/if}
-										</td>
-										<td class="p-2 text-xs text-muted-foreground"
-											><span class="inline-flex items-center gap-1">
-												{#if snapshotLineageMarker(snapshot) !== 'CURR'}
-													{@const lineageIcon = snapshotLineageIcon(snapshot)}
-													<span
-														class={`${lineageIcon.icon} h-3.5 w-3.5 ${lineageIcon.className}`}
-														title={`${snapshotLineageLabel(snapshot)} (${snapshotLineageMarker(snapshot)})`}
+				<div class="flex max-h-72 flex-col overflow-hidden rounded-md border">
+					{#if visibleSnapshots.length === 0}
+						<div class="bg-muted p-4 text-center text-sm text-muted-foreground">
+							No snapshots found in the selected generation.
+						</div>
+					{:else}
+						<div class="min-h-0 overflow-auto">
+							<table class="w-full text-sm">
+								<thead class="sticky top-0 z-10 bg-muted">
+									<tr>
+										<th class="w-8 p-2"></th>
+										<th class="p-2 text-left font-medium">Backup Date</th>
+										<th class="p-2 text-right font-medium">Used</th>
+										<th class="p-2 text-right font-medium">Refer</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each [...visibleSnapshots].reverse() as snapshot (snapshot.name)}
+										{@const generation = snapshotGenerationTag(snapshot)}
+										{@const generationAlias = generationLabelFromKey(
+											generation,
+											generationAliasByTag
+										)}
+										<tr
+											class="cursor-pointer border-t transition-colors hover:bg-accent {selectedSnapshot ===
+											snapshot.name
+												? 'bg-accent'
+												: ''}"
+											onclick={() => (selectedSnapshot = snapshot.name)}
+											title={snapshot.name}
+										>
+											<td class="p-2 text-center">
+												{#if selectedSnapshot === snapshot.name}
+													<span class="icon-[mdi--radiobox-marked] h-4 w-4 text-primary"></span>
+												{:else}
+													<span class="icon-[mdi--radiobox-blank] h-4 w-4 text-muted-foreground"
 													></span>
 												{/if}
-												<span>{formatRestoreSnapshotDate(snapshot)}</span>
-												{#if snapshotLineageMarker(snapshot) !== 'CURR' && generation && generation !== 'active'}
-													<code class="rounded bg-background px-1 text-[10px] text-foreground"
-														>{generationAlias}</code
-													>
-												{/if}
-											</span></td
-										>
-										<td class="p-2 text-right text-xs text-muted-foreground"
-											>{formatBytesBinary(snapshot.used)}</td
-										>
-										<td class="p-2 text-right text-xs text-muted-foreground"
-											>{formatBytesBinary(snapshot.refer)}</td
-										>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					</div>
-				{/if}
+											</td>
+											<td class="p-2 text-xs text-muted-foreground"
+												><span class="inline-flex items-center gap-1">
+													{#if snapshotLineageMarker(snapshot) !== 'CURR'}
+														{@const lineageIcon = snapshotLineageIcon(snapshot)}
+														<span
+															class={`${lineageIcon.icon} h-3.5 w-3.5 ${lineageIcon.className}`}
+															title={`${snapshotLineageLabel(snapshot)} (${snapshotLineageMarker(snapshot)})`}
+														></span>
+													{/if}
+													<span>{formatRestoreSnapshotDate(snapshot)}</span>
+													{#if snapshotLineageMarker(snapshot) !== 'CURR' && generation && generation !== 'active'}
+														<code class="rounded bg-background px-1 text-[10px] text-foreground"
+															>{generationAlias}</code
+														>
+													{/if}
+												</span></td
+											>
+											<td class="p-2 text-right text-xs text-muted-foreground"
+												>{formatBytesBinary(snapshot.used)}</td
+											>
+											<td class="p-2 text-right text-xs text-muted-foreground"
+												>{formatBytesBinary(snapshot.refer)}</td
+											>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					{/if}
 
-				{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
-					<div class="space-y-2 text-center">
-						{#if hasMoreSnapshots}
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onclick={() => void loadOlderSnapshots()}
-								disabled={loadingOlderSnapshots}
-							>
-								{#if loadingOlderSnapshots}
-									<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
-									<span>Loading older backups</span>
+					{#if hasMoreSnapshots || loadingOlderSnapshots || olderSnapshotsError}
+						<div
+							class="flex min-h-8 shrink-0 items-center justify-between gap-3 border-t bg-muted/40 pl-2 text-xs"
+						>
+							<div class="min-w-0 flex-1 text-muted-foreground" aria-live="polite">
+								{#if olderSnapshotsError}
+									<span class="block truncate text-red-500" title={olderSnapshotsError}
+										>{olderSnapshotsError}</span
+									>
 								{:else}
-									<span>Load older backups</span>
+									<span
+										>{snapshots.length} {snapshots.length === 1 ? 'backup' : 'backups'} loaded</span
+									>
 								{/if}
-							</Button>
-						{/if}
-						{#if olderSnapshotsError}
-							<p class="text-sm text-red-500">{olderSnapshotsError}</p>
-						{/if}
-					</div>
-				{/if}
+							</div>
+							{#if hasMoreSnapshots}
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="h-8 shrink-0 rounded-none rounded-r-md border-l border-border px-3 text-xs text-foreground"
+									onclick={() => void loadOlderSnapshots()}
+									disabled={loadingOlderSnapshots}
+								>
+									{#if loadingOlderSnapshots}
+										<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
+										<span>Loading</span>
+									{:else if olderSnapshotsError}
+										<span class="icon-[mdi--refresh] h-3.5 w-3.5"></span>
+										<span>Retry</span>
+									{:else}
+										<span class="icon-[mdi--chevron-down] h-3.5 w-3.5"></span>
+										<span>Load older</span>
+									{/if}
+								</Button>
+							{/if}
+						</div>
+					{/if}
+				</div>
 
 				{#if selectedSnapshotInfo?.encrypted || selectedJob?.encrypted}
 					<div class="space-y-1">

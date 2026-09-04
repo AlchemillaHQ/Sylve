@@ -9944,6 +9944,8 @@ msgstr "Unbekannter Fehler"
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Charts/LineBrush/Single.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Initialization/Initialize.svelte
@@ -17973,12 +17975,19 @@ msgstr ""
 msgid "Failed to load older snapshots"
 msgstr ""
 
+#. 0: snapshots.length; 1: snapshots.length === 1 ? 'backup' \\: 'backups'
+#. 0: snapshots.length; 1: snapshots.length === 1 ? 'backup' \\: 'backups'
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Loading older backups"
+msgid "{0} {1} loaded"
 msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
-msgid "Load older backups"
+msgid "Loading"
+msgstr ""
+
+#: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
+#: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+msgid "Load older"
 msgstr ""
