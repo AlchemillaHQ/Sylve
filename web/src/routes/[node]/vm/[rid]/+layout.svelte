@@ -247,13 +247,15 @@
 			if (result.status === 'error') {
 				await Promise.all([vm.refetch(), domain.refetch()]);
 				toast.error(
-					result.message === 'guest_delete_requires_replication_policy_removed'
-						? 'Remove the replication policy before deleting this VM'
-						: wasPurgeOnly
-							? 'Error removing VM entry'
-							: wasForceDelete
-								? 'Error force deleting VM'
-								: 'Error deleting VM',
+					result.message === 'guest_delete_requires_backup_jobs_removed'
+						? 'Remove all backup jobs before deleting this VM'
+						: result.message === 'guest_delete_requires_replication_policy_removed'
+							? 'Remove the replication policy before deleting this VM'
+							: wasPurgeOnly
+								? 'Error removing VM entry'
+								: wasForceDelete
+									? 'Error force deleting VM'
+									: 'Error deleting VM',
 					{
 						duration: 5000,
 						position: 'bottom-center'

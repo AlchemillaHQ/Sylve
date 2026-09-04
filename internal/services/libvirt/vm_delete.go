@@ -48,6 +48,8 @@ type vmRemovalPreparation struct {
 	plan     vmStorageRemovalPlan
 }
 
+const vmRootDatasetDestroyMaxAttempts = 3
+
 func (s *Service) RemoveVMWithWarnings(
 	rid uint,
 	cleanUpMacs bool,
@@ -634,10 +636,10 @@ func (s *Service) cleanupRequestedVMStorage(ctx context.Context, plan vmStorageR
 			continue
 		}
 
-		hasChildren, inspectErr := s.vmRootDatasetHasChildren(ctx, rootDataset)
-		if inspectErr != nil {
-			if !isVMDatasetNotFoundError(inspectErr) {
-				appendStorageCleanupWarning(&warnings, rootDataset, inspectErr)
+		hasChildren, destroyErr := s.destroyEmptyVMRootDataset(ctx, rootDataset)
+		if destroyErr != nil {
+			if !isVMDatasetNotFoundError(destroyErr) {
+				appendStorageCleanupWarning(&warnings, rootDataset, destroyErr)
 				appendUniqueString(&leftovers, rootDataset)
 			}
 			continue
@@ -648,29 +650,90 @@ func (s *Service) cleanupRequestedVMStorage(ctx context.Context, plan vmStorageR
 				fmt.Sprintf("storage_cleanup_incomplete: root_not_empty: %s", rootDataset),
 			)
 			appendUniqueString(&leftovers, rootDataset)
-			continue
-		}
-
-		root, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
-		if err != nil {
-			if isVMDatasetNotFoundError(err) {
-				continue
-			}
-			appendStorageCleanupWarning(&warnings, rootDataset, err)
-			appendUniqueString(&leftovers, rootDataset)
-			continue
-		}
-		if root == nil {
-			continue
-		}
-		if err := root.Destroy(ctx, false, false); err != nil {
-			appendStorageCleanupWarning(&warnings, rootDataset, err)
-			appendUniqueString(&leftovers, rootDataset)
 		}
 	}
 
 	sort.Strings(leftovers)
 	return warnings, leftovers
+}
+
+func (s *Service) destroyEmptyVMRootDataset(ctx context.Context, rootDataset string) (bool, error) {
+	rootDataset = strings.TrimSpace(rootDataset)
+	if rootDataset == "" {
+		return false, fmt.Errorf("vm_root_dataset_required")
+	}
+	var lastErr error
+	for attempt := 0; attempt < vmRootDatasetDestroyMaxAttempts; attempt++ {
+		hasChildren, err := s.vmRootDatasetHasChildren(ctx, rootDataset)
+		if err != nil {
+			return false, err
+		}
+		if hasChildren {
+			return true, nil
+		}
+
+		snapshots, err := s.GZFS.ZFS.ListWithPrefix(ctx, gzfs.DatasetTypeSnapshot, rootDataset, true)
+		if err != nil {
+			return false, err
+		}
+		directSnapshots := make([]*gzfs.Dataset, 0, len(snapshots))
+		for _, snapshot := range snapshots {
+			if snapshot == nil {
+				continue
+			}
+			name := strings.TrimSpace(snapshot.Name)
+			separator := strings.LastIndex(name, "@")
+			if separator <= 0 || name[:separator] != rootDataset {
+				continue
+			}
+			directSnapshots = append(directSnapshots, snapshot)
+		}
+		sort.Slice(directSnapshots, func(i, j int) bool {
+			return directSnapshots[i].Name < directSnapshots[j].Name
+		})
+		for _, snapshot := range directSnapshots {
+			if err := snapshot.Destroy(ctx, false, false); err != nil {
+				if isVMDatasetNotFoundError(err) {
+					continue
+				}
+				return false, fmt.Errorf("vm_root_snapshot_destroy_failed: %s: %w", snapshot.Name, err)
+			}
+		}
+
+		hasChildren, err = s.vmRootDatasetHasChildren(ctx, rootDataset)
+		if err != nil {
+			return false, err
+		}
+		if hasChildren {
+			return true, nil
+		}
+
+		root, err := s.GZFS.ZFS.Get(ctx, rootDataset, false)
+		if err != nil {
+			return false, err
+		}
+		if root == nil {
+			return false, nil
+		}
+		if err := root.Destroy(ctx, false, false); err == nil {
+			return false, nil
+		} else if !vmRootDatasetDestroyRetryable(err) {
+			return false, err
+		} else {
+			lastErr = err
+		}
+	}
+	return false, lastErr
+}
+
+func vmRootDatasetDestroyRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	return strings.Contains(text, "filesystem has children") ||
+		strings.Contains(text, "dataset has children") ||
+		strings.Contains(text, "snapshot") && strings.Contains(text, "exist")
 }
 
 func vmStorageRemovalPlanNeedsCleanup(plan vmStorageRemovalPlan) bool {

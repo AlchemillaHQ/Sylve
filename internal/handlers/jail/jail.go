@@ -385,6 +385,8 @@ func classifyDeleteJailError(err error) (int, string) {
 		return http.StatusConflict, "guest_identity_claim_conflict"
 	case strings.Contains(errText, "guest_delete_requires_replication_policy_removed"):
 		return http.StatusConflict, "guest_delete_requires_replication_policy_removed"
+	case strings.Contains(errText, "guest_delete_requires_backup_jobs_removed"):
+		return http.StatusConflict, "guest_delete_requires_backup_jobs_removed"
 	case strings.Contains(errText, "replication_storage_topology_change_requires_policy_disabled"):
 		return http.StatusConflict, "replication_storage_topology_change_requires_policy_disabled"
 	case strings.Contains(errText, "jail_failed_to_stop_before_delete"),

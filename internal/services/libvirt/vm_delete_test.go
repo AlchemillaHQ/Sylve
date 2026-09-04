@@ -84,6 +84,92 @@ func TestShouldPreserveVMStorageRootDataset(t *testing.T) {
 	}
 }
 
+func TestDestroyEmptyVMRootDatasetRemovesExternalSnapshotsExactly(t *testing.T) {
+	root := "tank/sylve/virtual-machines/726"
+	runner := &storageTestZFSRunner{datasets: map[string]storageTestDataset{
+		root: {
+			name: root, pool: "tank", guid: "root-guid", kind: gzfs.DatasetTypeFilesystem,
+		},
+		root + "@autosnap_2026-09-03_23:30:00_hourly": {
+			name: root + "@autosnap_2026-09-03_23:30:00_hourly", pool: "tank",
+			guid: "hourly-guid", kind: gzfs.DatasetTypeSnapshot,
+		},
+		root + "@backup_external": {
+			name: root + "@backup_external", pool: "tank",
+			guid: "backup-guid", kind: gzfs.DatasetTypeSnapshot,
+		},
+	}}
+	service := &Service{GZFS: gzfs.NewClient(gzfs.Options{Runner: runner})}
+
+	hasChildren, err := service.destroyEmptyVMRootDataset(t.Context(), root)
+	if err != nil {
+		t.Fatalf("destroy root with external snapshots: %v", err)
+	}
+	if hasChildren {
+		t.Fatal("snapshot-only root reported a child filesystem or volume")
+	}
+	if len(runner.datasets) != 0 {
+		t.Fatalf("datasets retained after cleanup: %+v", runner.datasets)
+	}
+
+	destroyed := make([]string, 0, 3)
+	for _, command := range runner.commands {
+		if len(command) == 0 || command[0] != "destroy" {
+			continue
+		}
+		for _, argument := range command[1:] {
+			if argument == "-r" || argument == "-R" || argument == "-f" {
+				t.Fatalf("unsafe root cleanup command: %v", command)
+			}
+		}
+		destroyed = append(destroyed, command[len(command)-1])
+	}
+	want := []string{
+		root + "@autosnap_2026-09-03_23:30:00_hourly",
+		root + "@backup_external",
+		root,
+	}
+	if !slices.Equal(destroyed, want) {
+		t.Fatalf("destroy targets = %v, want %v", destroyed, want)
+	}
+}
+
+func TestDestroyEmptyVMRootDatasetPreservesUnknownChildren(t *testing.T) {
+	root := "tank/sylve/virtual-machines/727"
+	child := root + "/user-kept"
+	snapshot := root + "@autosnap_external"
+	runner := &storageTestZFSRunner{datasets: map[string]storageTestDataset{
+		root: {
+			name: root, pool: "tank", guid: "root-guid", kind: gzfs.DatasetTypeFilesystem,
+		},
+		child: {
+			name: child, pool: "tank", guid: "child-guid", kind: gzfs.DatasetTypeFilesystem,
+		},
+		snapshot: {
+			name: snapshot, pool: "tank", guid: "snapshot-guid", kind: gzfs.DatasetTypeSnapshot,
+		},
+	}}
+	service := &Service{GZFS: gzfs.NewClient(gzfs.Options{Runner: runner})}
+
+	hasChildren, err := service.destroyEmptyVMRootDataset(t.Context(), root)
+	if err != nil {
+		t.Fatalf("inspect root with unknown child: %v", err)
+	}
+	if !hasChildren {
+		t.Fatal("unknown child did not retain VM root")
+	}
+	for _, name := range []string{root, child, snapshot} {
+		if _, exists := runner.datasets[name]; !exists {
+			t.Fatalf("preserved dataset %q was destroyed", name)
+		}
+	}
+	for _, command := range runner.commands {
+		if len(command) > 0 && command[0] == "destroy" {
+			t.Fatalf("destroy ran while an unknown child existed: %v", command)
+		}
+	}
+}
+
 func TestBuildVMStorageRemovalPlanTreatsFilesystemAsIntentionallyRetained(t *testing.T) {
 	vm := vmModels.VM{
 		RID: 709,
@@ -205,6 +291,7 @@ func newVMDeleteTestDB(t *testing.T) *gorm.DB {
 		&vmModels.VMCPUPinning{},
 		&vmModels.VMSnapshot{},
 		&vmModels.VM{},
+		&clusterModels.BackupJob{},
 	)
 }
 
@@ -626,6 +713,41 @@ func TestIntegrationRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
 		}
 		if _, err := client.ZFS.Get(t.Context(), rootDataset, false); err == nil || !isVMDatasetNotFoundError(err) {
 			t.Fatalf("VM root with cleaned tracked snapshot still exists or lookup failed unexpectedly: %v", err)
+		}
+		assertVMDeleteGraphCounts(t, db, seed, 0)
+	})
+
+	t.Run("external root snapshots are removed with selected storage", func(t *testing.T) {
+		db := newVMDeleteTestDB(t)
+		seed := seedVMDeleteGraph(t, db, 725, pool, false)
+		zfstest.EnsureDataset(t, client, seed.RawDataset)
+		rootDataset := fmt.Sprintf("%s/sylve/virtual-machines/%d", pool, seed.VM.RID)
+		root, err := client.ZFS.Get(t.Context(), rootDataset, false)
+		if err != nil || root == nil {
+			t.Fatalf("get VM root before external snapshots: %v", err)
+		}
+		for _, snapshotName := range []string{
+			"autosnap_2026-09-03_23:30:00_hourly",
+			"autosnap_2026-09-03_23:30:00_daily",
+			"backup_external",
+		} {
+			if _, err := root.Snapshot(t.Context(), snapshotName, false); err != nil {
+				t.Fatalf("create external snapshot %s: %v", snapshotName, err)
+			}
+		}
+
+		service := &Service{DB: db, GZFS: client}
+		result, err := service.removeVMWithWarnings(
+			seed.VM.RID, false, true, false, t.Context(), func(uint) error { return nil },
+		)
+		if err != nil {
+			t.Fatalf("delete VM with external snapshots: %v", err)
+		}
+		if len(result.Warnings) != 0 || len(result.RetainedDatasets) != 0 {
+			t.Fatalf("unexpected cleanup result: %+v", result)
+		}
+		if _, err := client.ZFS.Get(t.Context(), rootDataset, false); err == nil || !isVMDatasetNotFoundError(err) {
+			t.Fatalf("VM root with external snapshots still exists or lookup failed unexpectedly: %v", err)
 		}
 		assertVMDeleteGraphCounts(t, db, seed, 0)
 	})

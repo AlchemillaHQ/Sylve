@@ -1972,10 +1972,10 @@ func (s *Service) loadJailDeletePlan(ctx context.Context, ctID uint) (jailDelete
 func (s *Service) deleteJailDatabaseGraph(
 	ctx context.Context,
 	plan jailDeletePlan,
-	allowReplicationPolicy bool,
+	internalCleanupBypass bool,
 ) error {
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if !allowReplicationPolicy {
+		if !internalCleanupBypass {
 			if err := requireJailDeletionDetachedDB(tx, plan.ctID); err != nil {
 				return err
 			}
@@ -1993,10 +1993,7 @@ func (s *Service) deleteJailDatabaseGraph(
 			return fmt.Errorf("failed_to_delete_jail_snapshots: %w", err)
 		}
 		storageDB := tx
-		if allowReplicationPolicy {
-			// Replication/migration retirement removes only stale local metadata.
-			// Its explicit caller has already handled ownership and storage; the
-			// normal topology hook must not reinterpret this as a user mutation.
+		if internalCleanupBypass {
 			storageDB = tx.Session(&gorm.Session{SkipHooks: true})
 		}
 		if err := storageDB.Where("jid = ?", plan.jailID).Delete(&jailModels.Storage{}).Error; err != nil {
@@ -2090,6 +2087,9 @@ func (s *Service) DeleteJailWithWarnings(
 	deleteMacs bool,
 	deleteRootFS bool,
 ) (jailServiceInterfaces.DeleteJailResult, error) {
+	if err := s.RequireJailDeletionDetached(ctID); err != nil {
+		return jailServiceInterfaces.DeleteJailResult{}, err
+	}
 	var identityClaim *clusterServiceInterfaces.GuestIdentityReservation
 	if s.guestIdentityCoordinator != nil {
 		claim, claimErr := s.guestIdentityCoordinator.GuestIdentityClaim(ctx, clusterModels.ReplicationGuestTypeJail, ctID, "")
@@ -2159,7 +2159,7 @@ func (s *Service) deleteJailWithRuntimeOptions(
 	deleteMacs bool,
 	deleteRootFS bool,
 	runtime jailDeleteRuntime,
-	allowReplicationPolicy bool,
+	internalCleanupBypass bool,
 ) (jailServiceInterfaces.DeleteJailResult, error) {
 	return s.deleteJailWithRuntimeOptionsAndIdentity(
 		ctx,
@@ -2167,7 +2167,7 @@ func (s *Service) deleteJailWithRuntimeOptions(
 		deleteMacs,
 		deleteRootFS,
 		runtime,
-		allowReplicationPolicy,
+		internalCleanupBypass,
 		nil,
 	)
 }
@@ -2178,7 +2178,7 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 	deleteMacs bool,
 	deleteRootFS bool,
 	runtime jailDeleteRuntime,
-	allowReplicationPolicy bool,
+	internalCleanupBypass bool,
 	identityClaim *clusterServiceInterfaces.GuestIdentityReservation,
 ) (jailServiceInterfaces.DeleteJailResult, error) {
 	result := jailServiceInterfaces.DeleteJailResult{
@@ -2196,7 +2196,7 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 			return result, fmt.Errorf("guest_identity_claim_revalidation_failed: %w", err)
 		}
 	}
-	if !allowReplicationPolicy && replicationguard.GuestOperationSchemaReady(s.DB) {
+	if !internalCleanupBypass && replicationguard.GuestOperationSchemaReady(s.DB) {
 		allowed, leaseErr := s.canMutateProtectedJail(ctID)
 		if leaseErr != nil {
 			return result, fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
@@ -2214,7 +2214,7 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 		}
 	}()
 
-	if !allowReplicationPolicy {
+	if !internalCleanupBypass {
 		if err := requireJailDeletionDetachedDB(s.DB.WithContext(ctx), ctID); err != nil {
 			return result, err
 		}
@@ -2281,7 +2281,7 @@ func (s *Service) deleteJailWithRuntimeOptionsAndIdentity(
 		if err := runtime.removeDevfs(ctID); err != nil {
 			return fmt.Errorf("failed_to_remove_jail_devfs_rules: %w", err)
 		}
-		if err := s.deleteJailDatabaseGraph(ctx, plan, allowReplicationPolicy); err != nil {
+		if err := s.deleteJailDatabaseGraph(ctx, plan, internalCleanupBypass); err != nil {
 			return err
 		}
 		return nil

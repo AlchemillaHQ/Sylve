@@ -902,7 +902,14 @@ func (s *Service) createJailFromTemplateTarget(
 		defer cancel()
 
 		if cleanupCreatedJail {
-			if err := s.DeleteJail(cleanupCtx, target.CTID, true, true); err != nil {
+			if _, err := s.deleteJailWithRuntimeOptions(
+				cleanupCtx,
+				target.CTID,
+				true,
+				true,
+				s.hostJailDeleteRuntime(cleanupCtx),
+				true,
+			); err != nil {
 				logger.L.Warn().Err(err).Uint("ctid", target.CTID).Msg("jail_template_target_cleanup_failed")
 				retErr = errors.Join(retErr, fmt.Errorf("failed_to_cleanup_template_created_jail: %w", err))
 			}
@@ -1188,12 +1195,13 @@ func (s *Service) CreateJailsFromTemplate(ctx context.Context, templateID uint, 
 			return s.createJailFromTemplateTarget(createCtx, template, target)
 		},
 		func(cleanupCtx context.Context, target createTarget) error {
-			_, cleanupErr := s.deleteJailWithRuntime(
+			_, cleanupErr := s.deleteJailWithRuntimeOptions(
 				cleanupCtx,
 				target.CTID,
 				true,
 				true,
 				s.hostJailDeleteRuntime(cleanupCtx),
+				true,
 			)
 			return cleanupErr
 		},

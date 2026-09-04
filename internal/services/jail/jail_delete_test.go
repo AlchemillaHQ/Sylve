@@ -43,6 +43,7 @@ func newJailDeleteTestDB(t *testing.T) *gorm.DB {
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
+		&clusterModels.BackupJob{},
 	)
 }
 

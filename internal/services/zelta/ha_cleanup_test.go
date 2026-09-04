@@ -21,9 +21,15 @@ import (
 
 type orphanCleanupStubVM struct {
 	libvirtServiceInterfaces.LibvirtServiceInterface
-	domainErr   error
-	purgeCalled bool
-	purgedRID   uint
+	domainErr             error
+	purgeCalled           bool
+	retirementPurgeCalled bool
+	purgedRID             uint
+}
+
+func (s *orphanCleanupStubVM) PurgeVMRegistrationForRetirement(rid uint, _ bool) ([]string, error) {
+	s.retirementPurgeCalled = true
+	return s.PurgeVMRegistration(rid, true)
 }
 
 func (s *orphanCleanupStubVM) GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error) {
@@ -75,6 +81,9 @@ func TestCleanupOrphanedVMRegistration(t *testing.T) {
 			}
 			if tc.wantPurge && stub.purgedRID != tc.queryRID {
 				t.Fatalf("purged rid=%d, want %d", stub.purgedRID, tc.queryRID)
+			}
+			if tc.wantPurge && !stub.retirementPurgeCalled {
+				t.Fatal("retirement-specific registration purge was not used")
 			}
 		})
 	}

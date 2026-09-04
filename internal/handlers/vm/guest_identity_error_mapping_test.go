@@ -36,6 +36,7 @@ func TestVMGuestIdentityErrorMappings(t *testing.T) {
 		{"cluster_consensus_unavailable: no leader", http.StatusServiceUnavailable, "cluster_consensus_unavailable"},
 		{"guest_identity_release_pending: raft shutdown", http.StatusServiceUnavailable, "cluster_consensus_unavailable"},
 		{"guest_identity_claim_conflict: wrong owner", http.StatusConflict, "guest_identity_claim_conflict"},
+		{"guest_delete_requires_backup_jobs_removed", http.StatusConflict, "guest_delete_requires_backup_jobs_removed"},
 	}
 	for _, test := range removeCases {
 		status, code := classifyRemoveVMError(errors.New(test.err), "failed_to_remove_vm")

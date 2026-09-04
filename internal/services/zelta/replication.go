@@ -8901,7 +8901,16 @@ func (s *Service) cleanupOrphanedVMRegistration(rid uint) {
 		return // libvirt unreachable / other error -> cannot confirm orphan, leave it
 	}
 
-	warnings, purgeErr := s.VM.PurgeVMRegistration(rid, true)
+	type retirementRegistrationPurger interface {
+		PurgeVMRegistrationForRetirement(rid uint, cleanUpMacs bool) ([]string, error)
+	}
+	warnings := make([]string, 0)
+	var purgeErr error
+	if purger, ok := s.VM.(retirementRegistrationPurger); ok {
+		warnings, purgeErr = purger.PurgeVMRegistrationForRetirement(rid, true)
+	} else {
+		warnings, purgeErr = s.VM.PurgeVMRegistration(rid, true)
+	}
 	if purgeErr != nil {
 		logger.L.Warn().Err(purgeErr).Uint("rid", rid).Msg("failed_to_purge_orphaned_vm_after_failed_activation")
 		return

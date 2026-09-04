@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -116,7 +117,7 @@ func TestForceAndPurgeRefuseCleanupWhenOrphanStateCannotBeVerified(t *testing.T)
 
 	for index, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
+			db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &clusterModels.BackupJob{})
 			rid := uint(702 + index)
 			if err := db.Create(&vmModels.VM{RID: rid, Name: tt.name}).Error; err != nil {
 				t.Fatalf("seed VM: %v", err)

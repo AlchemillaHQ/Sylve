@@ -240,9 +240,11 @@
 			if (result.status === 'error') {
 				await Promise.allSettled([jail.refetch(), jState.refetch()]);
 				toast.error(
-					result.message === 'guest_delete_requires_replication_policy_removed'
-						? 'Remove the replication policy before deleting this jail'
-						: 'Error deleting jail',
+					result.message === 'guest_delete_requires_backup_jobs_removed'
+						? 'Remove all backup jobs before deleting this jail'
+						: result.message === 'guest_delete_requires_replication_policy_removed'
+							? 'Remove the replication policy before deleting this jail'
+							: 'Error deleting jail',
 					{
 						duration: 5000,
 						position: 'bottom-center'

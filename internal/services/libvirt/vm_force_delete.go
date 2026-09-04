@@ -34,6 +34,9 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := s.RequireVMDeletionDetached(rid); err != nil {
+		return nil, err
+	}
 
 	isOrphan, err := s.isLocalVMOrphan(rid)
 	if err != nil {
@@ -47,9 +50,6 @@ func (s *Service) ForceRemoveVM(rid uint, cleanUpMacs bool, ctx context.Context)
 	}
 
 	if err := s.requireVMMutationOwnership(rid); err != nil {
-		return nil, err
-	}
-	if err := s.RequireVMDeletionDetached(rid); err != nil {
 		return nil, err
 	}
 
@@ -133,6 +133,30 @@ func (s *Service) isLocalVMOrphan(rid uint) (bool, error) {
 }
 
 func (s *Service) PurgeVMRegistration(rid uint, cleanUpMacs bool) ([]string, error) {
+	if rid == 0 {
+		return nil, fmt.Errorf("invalid_vm_rid")
+	}
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("libvirt_service_not_initialized")
+	}
+	var registrationCount int64
+	if err := s.DB.Model(&vmModels.VM{}).Where("rid = ?", rid).Count(&registrationCount).Error; err != nil {
+		return nil, fmt.Errorf("failed_to_check_vm_registration: %w", err)
+	}
+	if registrationCount == 0 {
+		return nil, fmt.Errorf("vm_not_found: %d", rid)
+	}
+	if err := s.RequireVMDeletionDetached(rid); err != nil {
+		return nil, err
+	}
+	return s.purgeVMRegistrationLocal(rid, cleanUpMacs)
+}
+
+func (s *Service) PurgeVMRegistrationForRetirement(rid uint, cleanUpMacs bool) ([]string, error) {
+	return s.purgeVMRegistrationLocal(rid, cleanUpMacs)
+}
+
+func (s *Service) purgeVMRegistrationLocal(rid uint, cleanUpMacs bool) ([]string, error) {
 	if rid == 0 {
 		return nil, fmt.Errorf("invalid_vm_rid")
 	}

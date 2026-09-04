@@ -72,6 +72,7 @@ type storageTestDataset struct {
 type storageTestZFSRunner struct {
 	datasets   map[string]storageTestDataset
 	failRename bool
+	commands   [][]string
 }
 
 func (r *storageTestZFSRunner) Run(
@@ -85,6 +86,7 @@ func (r *storageTestZFSRunner) Run(
 	if len(args) == 0 {
 		return nil
 	}
+	r.commands = append(r.commands, append([]string(nil), args...))
 
 	switch args[0] {
 	case "rename":
@@ -148,6 +150,10 @@ func (r *storageTestZFSRunner) writeList(stdout io.Writer, args []string) error 
 			matches := dataset.name == target
 			if recursive {
 				matches = matches || strings.HasPrefix(dataset.name, target+"/")
+				if dataset.kind == gzfs.DatasetTypeSnapshot {
+					datasetName := strings.SplitN(dataset.name, "@", 2)[0]
+					matches = matches || datasetName == target || strings.HasPrefix(datasetName, target+"/")
+				}
 			}
 			if !matches {
 				continue
