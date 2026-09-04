@@ -4,8 +4,8 @@ description: Create a simple virtual machine in Sylve.
 ---
 
 import HostBridgeDiagram from "./HostBridgeDiagram.svelte";
-import standardSwitchCreate from "./simple-vm-standard-switch-create.png";
-import standardSwitchReady from "./simple-vm-standard-switch-ready.png";
+import standardSwitchCreate from "../simple-jail/simple-jail-standard-switch-create.png";
+import standardSwitchExternalConfigurationWarning from "../simple-jail/simple-jail-standard-switch-address-warning.png";
 import debianDownloadCreate from "./simple-vm-debian-download-create.png";
 import debianDownloadReady from "./simple-vm-debian-download-ready.png";
 import vmCreateBasic from "./simple-vm-create-basic.png";
@@ -89,7 +89,7 @@ In this guide, Sylve will create and manage that bridge as a **Standard Switch**
 
 Your interface may have a different name. Open **Network → Interfaces** and identify the physical interface that currently provides network access before continuing. Substitute that name wherever this guide uses `em0`.
 
-### Check the current host configuration
+### Record the current host configuration
 
 This guide assumes that `em0` is already configured in `/etc/rc.conf` with either DHCP or a static address. A DHCP configuration commonly looks like this:
 
@@ -106,34 +106,53 @@ defaultrouter="192.168.1.1"
 
 Use the values already assigned to your node. Do not copy the example address unless it matches your network.
 
+Before creating the switch, remove the physical port's DHCP, static address, aliases, and IPv6 router-advertisement settings from `/etc/rc.conf`. For this guide, `em0` should either be omitted or retained only as a layer-2 interface:
+
+```ini
+ifconfig_em0="up"
+```
+
+For a static configuration, also remove the old `defaultrouter` entry after recording its value. The Standard Switch will own the host address and default route after creation. Editing `rc.conf` does not remove the address from the currently running interface, so do not restart networking between this step and creating the switch.
+
+:::caution[Keep local or out-of-band access available]
+The web connection may drop when the live address moves from the physical interface to the new bridge. Keep a local console or another management path available until the switch is verified.
+:::
+
 ### Create a Standard Switch
 
 Open **Network → Switches → Standard**, select **New**, and configure the switch:
 
-1. Enter `LAN / WAN` as the switch name.
-2. Select `em0`, or your equivalent physical interface, under **Ports**.
-3. If `em0` currently uses DHCP, enable **DHCP** on the switch.
-4. If `em0` has a static address, enter that same address in CIDR notation under **IPv4 Network**, enter its gateway under **IPv4 Gateway**, and enable **Default Route**.
-5. Leave **Disable Bridge Offloads** enabled.
-6. Select **Create**.
+1. Enter `WAN` as the switch name.
+2. Leave **MTU** and **VLAN** at their defaults unless your physical network requires different values.
+3. If `em0` currently uses DHCP, enable **DHCP**. Enable **Use DHCP Default Route** because this is the node's uplink.
+4. If `em0` has a static address, enter that same host address in CIDR notation under **IPv4 Network**, enter its next-hop router under **IPv4 Gateway**, and enable **IPv4 Default Route**.
+5. Select `em0`, or your equivalent physical interface, under **Ports**.
+6. Under **Bridge MAC source**, select **Use port MAC**, then select `em0` as the **MAC source port**. Confirm that an **Effective MAC** is shown.
+7. Leave **Private** disabled so guests can communicate through the physical network.
+8. Leave **Disable Bridge Offloads** enabled.
+9. Select **Create**.
 
 <img
   src={standardSwitchCreate.src}
-  alt="Create Standard Switch dialog with LAN / WAN as the name, em0 selected as a port, and the host's IPv4 configuration applied to the switch"
+  alt="Create Standard Switch dialog for WAN with em0 selected as the port and bridge MAC source, DHCP and its default route enabled, and bridge offloads disabled"
 />
 
-When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. The existing `ifconfig_em0` entry may remain in `/etc/rc.conf` as an early-boot or fallback configuration, but do not add the Sylve-managed bridge to `rc.conf`.
+Because `em0` still has its live management address, Sylve warns that converting it to a bridge member will remove that address. Confirm that the replacement configuration is present on the switch, then select **Continue**.
+
+If a second warning says that `em0` has configuration outside Sylve's managed Standard Switches, select **Cancel** and check `rc.conf` again. Do not continue until DHCP, static addresses, aliases, `accept_rtadv`, and ownership by any other bridge have been removed from the physical port. Sylve's confirmation does not rewrite that external configuration. The example below reports that `em0` is still assigned to `bridge0`.
+
+<img
+  src={standardSwitchExternalConfigurationWarning.src}
+  alt="Standard Switch warning that em0 has configuration outside Sylve and is already assigned to bridge0"
+/>
+
+When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. Keep layer-3 configuration off `em0`, and do not add the Sylve-managed bridge to `rc.conf`. Sylve manages the bridge from the saved Standard Switch configuration.
 
 :::danger[Expect a brief network interruption]
 Moving the interface into the switch interrupts connectivity while its address is transferred to the bridge. If you are managing the node through `em0`, use local or out-of-band access, or perform this step during a maintenance window. An incorrect address or gateway can make the web interface unreachable.
 :::
 
-After connectivity returns, confirm that the `LAN / WAN` switch appears in the Standard Switches table and shows the expected port and address configuration.
-
-<img
-  src={standardSwitchReady.src}
-  alt="Standard Switches table showing the completed LAN / WAN switch with em0 and its assigned IPv4 configuration"
-/>
+After connectivity returns, confirm that the `WAN` switch appears in the Standard Switches table. It should show `em0` under **Ports** and either **DHCP** or the configured static address under **IPv4**. A DHCP lease is not guaranteed to reuse the node's previous address, so reconnect using the address assigned to the bridge if it changes.
 
 For a complete explanation of every field and network mode, see [Standard Switches](/guides/node/network/switches/standard/).
 
@@ -218,15 +237,15 @@ Debian supports the NVMe controller without additional drivers. The ISO is insta
 
 Connect the VM to the Standard Switch created earlier:
 
-1. Select `LAN / WAN` under **Switch**.
+1. Select `WAN` under **Switch**.
 2. Select **VirtIO** as the emulation type.
 3. Leave **MAC Address** unselected so Sylve generates and manages a unique address automatically.
 
-VirtIO gives Debian an efficient paravirtualized network adapter. Selecting `LAN / WAN` plugs that adapter into the software bridge, allowing the installer and the finished guest to reach the same upstream network as the host.
+VirtIO gives Debian an efficient paravirtualized network adapter. Selecting `WAN` plugs that adapter into the software bridge, allowing the installer and the finished guest to reach the same upstream network as the host.
 
 <img
   src={vmCreateNetwork.src}
-  alt="Create VM wizard Network tab with the LAN / WAN Standard Switch selected, VirtIO emulation, and no manually selected MAC address"
+  alt="Create VM wizard Network tab with WAN selected, VirtIO emulation, and no manually selected MAC address"
 />
 
 ### Hardware
@@ -347,4 +366,4 @@ Start the VM again, open **Console**, and sign in to the GNOME desktop with the 
   alt="Sylve VNC console showing the first successful Debian GNOME desktop login"
 />
 
-The VM is now installed and connected through the `LAN / WAN` Standard Switch. For more detail about graphical and serial access, see [VM Console](/guides/node/virtual-machines/console/). For disk and installation-media management, see [VM Storage](/guides/node/virtual-machines/storage/).
+The VM is now installed and connected through the `WAN` Standard Switch. For more detail about graphical and serial access, see [VM Console](/guides/node/virtual-machines/console/). For disk and installation-media management, see [VM Storage](/guides/node/virtual-machines/storage/).

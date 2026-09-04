@@ -121,7 +121,7 @@ Stop the jail, then select **Delete** to open the confirmation dialog. Deletion 
 When **Delete Root Filesystem** is disabled, the dataset remains at `<pool>/sylve/jails/<Jail ID>`. Recover or remove it manually before creating another jail with that ID.
 :::
 
-Deletion is rejected while any replication policy still references the jail, including a disabled policy. Remove the policy before deleting the guest so a future workload cannot inherit stale replication identity.
+Deletion is rejected while any backup job or replication policy still references the jail, including disabled jobs or policies. Delete those jobs and remove the replication policy before deleting the guest so a future workload cannot inherit its backup or replication identity.
 
 After registration removal, storage or MAC cleanup can still encounter an error. Sylve reports incomplete cleanup and retained datasets in a notification so they can be handled manually rather than presenting partial cleanup as complete success.
 
@@ -131,5 +131,5 @@ After registration removal, storage or MAC cleanup can still encounter an error.
 2. Review historical CPU and memory patterns before changing limits.
 3. Check lifecycle logs when a start or stop task behaves unexpectedly.
 4. Stop the jail before maintenance that changes storage, network, or low-level options.
-5. Remove replication policy before deletion.
+5. Delete backup jobs and remove the replication policy before deletion.
 6. Decide explicitly whether the root dataset and MAC objects should be retained.

@@ -130,9 +130,9 @@ External filesystem attachments and download-backed images are retained regardle
 
 Deleting only one managed storage type can preserve the common VM root because retained siblings still live below it. Trust the dry-run plan rather than assuming the root will be removed.
 
-## Remove replication policy first
+## Remove backup jobs and replication policy first
 
-Deletion and dry-run are rejected while any replication policy still owns the VM RID, including a disabled policy. Remove the policy before deleting the VM so a future guest cannot inherit stale replication identity.
+Deletion and dry-run are rejected while any backup job or replication policy still references the VM RID, including disabled jobs or policies. Delete those jobs and remove the policy before deleting the VM so a future guest cannot inherit its backup or replication identity.
 
 ## Recover an orphaned registration
 
@@ -171,12 +171,12 @@ vms delete 302 --delete-macs --delete-raw-disks --delete-volumes --json
 vms purge 304 --delete-macs --json
 ```
 
-Direct and console modes use the same preview, ownership, replication, and orphan checks.
+Direct and console modes use the same preview, ownership, backup-job, replication, and orphan checks.
 
 ## Safe workflow
 
 1. Confirm the RID and inspect the VM's storage and network attachments.
-2. Remove any replication policy that references the VM.
+2. Delete every backup job and remove any replication policy that references the VM.
 3. Run `delete --dry-run --json` with the intended cleanup flags.
 4. Review every deletion, retention, snapshot, and warning list.
 5. Run the identical command without `--dry-run`.

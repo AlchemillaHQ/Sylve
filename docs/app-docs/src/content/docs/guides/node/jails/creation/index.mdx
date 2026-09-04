@@ -11,7 +11,7 @@ import network from './jail-create-network.png';
 import networkObject from './jail-create-network-object.png';
 import dns from './jail-create-dns.png';
 import hardware from './jail-create-hardware.png';
-import advanced from './jail-create-advanced.png';
+import advanced from '../../../one-shot-guides/simple-jail/simple-jail-create-advanced.png';
 
 Select **Create Jail** from the Jails page to open the creation wizard. Sylve creates a dedicated ZFS dataset, copies the selected root filesystem into it, writes the jail configuration, and prepares the initial network and runtime files in one operation.
 
@@ -245,11 +245,9 @@ Each hook can be enabled independently:
 
 An enabled hook must contain a non-empty script. For a FreeBSD jail, leave **Start** and **Stop** disabled to use the normal service lifecycle automatically. Enabling either one replaces its corresponding default command with the supplied script. Host-side hooks run with host privileges, so treat their contents as privileged automation.
 
-{/* Screenshot update needed: jail-create-advanced.png. Capture the current Advanced tab with Type set to FreeBSD, the default allowed options visible, and all lifecycle hooks disabled. The Start and Stop rows must not show /bin/sh /etc/rc or /bin/sh /etc/rc.shutdown as enabled custom hooks. */}
-
 <img
   src={advanced.src}
-  alt="Create Jail wizard on the Advanced tab showing jail type, allowed options, clean environment, metadata, and lifecycle hooks"
+  alt="Create Jail Advanced tab with FreeBSD selected, the default allowed options retained, Clean Environment enabled, and all custom lifecycle hooks disabled"
 />
 
 ## Finish creation

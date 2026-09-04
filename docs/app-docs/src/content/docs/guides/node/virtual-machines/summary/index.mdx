@@ -73,7 +73,11 @@ To enable this feature for a VM, use [VM Options](/guides/node/virtual-machines/
 
 Select **Delete** for a stopped VM to open its removal confirmation. Choose whether Sylve should also delete the VM's managed MAC objects, raw disks, and ZFS volumes.
 
+Deletion is rejected while any backup job or replication policy still references the VM, including disabled jobs or policies. Delete those jobs and remove the replication policy before deleting the guest so a future workload cannot inherit its backup or replication identity.
+
 If you leave raw disks or volumes unselected, Sylve retains them as unmanaged ZFS data. Remove or reconcile that storage before reusing the same VM ID, otherwise it can conflict with the new VM's expected dataset layout.
+
+When every child storage dataset under a selected VM root is removed, Sylve also removes snapshots directly attached to that empty root before destroying it. Any storage that could not be removed is reported for manual cleanup.
 
 An error state exposes **Force Delete** for best-effort cleanup. An orphaned state instead offers **Remove stale entry**, which removes only the local inventory and libvirt-domain record while preserving ZFS data and leaving other nodes untouched. Use these recovery actions only after confirming the VM's actual state and storage location.
 

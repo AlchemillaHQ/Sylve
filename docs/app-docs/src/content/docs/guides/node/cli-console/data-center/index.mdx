@@ -1,12 +1,12 @@
 ---
 title: Data Center
-description: Manage Data Center notes and inspect or recover cluster membership from the CLI and interactive console.
+description: Manage Data Center notes, shared guest IDs, and cluster recovery from the CLI and interactive console.
 ---
 
-The `datacenter` command group manages replicated notes and provides cluster inspection and address-recovery tools. Most commands contact the running Sylve daemon through its local console socket. The exception is `cluster recover-ip`, which operates on a stopped node.
+The `datacenter` command group manages replicated notes and provides cluster inspection, shared guest-ID recovery, and address-recovery tools. Most commands contact the running Sylve daemon through its local console socket. The exception is `cluster recover-ip`, which operates on a stopped node.
 
 :::caution[Cluster recovery commands can interrupt service]
-Read-only `status`, `members`, `notes list`, and `notes get` operations are safe for inspection. Readdressing a member, repairing its address, or changing replicated notes modifies shared Data Center state. Back up Sylve's configuration and data path before cluster recovery work.
+Read-only `status`, `members`, `guest-ids list`, `notes list`, and `notes get` operations are safe for inspection. Reclaiming a guest ID, readdressing a member, repairing its address, or changing replicated notes modifies shared Data Center state. Back up Sylve's configuration and data path before cluster recovery work.
 :::
 
 ## Manage Data Center notes
@@ -60,6 +60,50 @@ datacenter cluster members
 ```
 
 `status` exposes active join, leave, and readdress phases. Check it before repeating a recovery command after a timeout. A timeout does not prove that the earlier operation failed.
+
+## Inspect and reclaim shared guest IDs
+
+VM RIDs and Jail CTIDs share one cluster-wide range from `1` through `9999`. Sylve records each claimed ID in replicated cluster state so two nodes cannot create different guests with the same numeric identity.
+
+List the current claims before investigating an ID conflict:
+
+```bash
+doas sylve datacenter cluster guest-ids list
+```
+
+Add `--json` for structured output. The interactive console form is:
+
+```text
+datacenter cluster guest-ids list
+```
+
+Use `reclaim` only when a claim is orphaned and the VM or jail no longer exists anywhere in the cluster:
+
+```bash
+doas sylve datacenter cluster guest-ids reclaim --id 505
+```
+
+The normal reclaim requires a clean inventory from the cluster and is rejected if the ID is registered on any reporting node or involved in an active operation. It also requires working cluster consensus.
+
+If a voter is permanently unavailable, externally fence that node first. Then acknowledge the risk by repeating the exact guest ID:
+
+```bash
+doas sylve datacenter cluster guest-ids reclaim \
+  --id 505 \
+  --force \
+  --confirm 505
+```
+
+The same flags work in the interactive console:
+
+```text
+datacenter cluster guest-ids reclaim --id 505
+datacenter cluster guest-ids reclaim --id 505 --force --confirm 505
+```
+
+:::danger[Do not reclaim an ID that may still exist]
+Forced reclaim allows unavailable voters after they have been fenced. It does not prove that their guest storage or runtime has been removed. Reusing a live guest's ID can create conflicting ownership and unsafe lifecycle actions.
+:::
 
 ## Change a healthy member's cluster IP
 

@@ -41,7 +41,7 @@ Select **New** and choose a target, runner, and backup mode.
 
 ### Large snapshot histories
 
-Sylve does not impose a fixed maximum on backup recovery points. The restore selector loads the newest 100 points first; choose **Load older backups** to continue through the history without making one request validate and return every snapshot.
+Sylve does not impose a fixed maximum on backup recovery points. The restore selector loads the newest 100 points first; choose **Load older** to continue through the history without making one request validate and return every snapshot.
 
 Retention still matters for capacity and routine maintenance. Each successful backup pass selects at most 64 expired generations and applies the budget at generation boundaries, so every eligible snapshot object for a selected generation enters the same pass. Safety-protected incremental bases can remain. If a larger backlog exists, the backup event includes `backup_prune_deferred` and later successful runs continue draining it.
 

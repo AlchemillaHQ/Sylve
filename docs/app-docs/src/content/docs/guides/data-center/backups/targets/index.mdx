@@ -37,6 +37,8 @@ In a cluster, each participating node needs to be able to reach the target with 
 
 Validation does not send a backup. It is a safe way to check the selected node's path to the remote ZFS target before assigning or running a job.
 
+VM and jail migrations also validate the destination's access to every target used by an enabled backup job for that guest. The check runs during the initial preflight and again before cutover. Migration is blocked if a required target is missing, disabled, unreachable, or cannot use the configured SSH and ZFS path from the destination node.
+
 ![Backup target validation showing the selected cluster node and a Ready connectivity result](./backups-target-validate.png)
 
 ## Edit, disable, and delete

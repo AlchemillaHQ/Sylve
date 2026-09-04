@@ -98,7 +98,7 @@ doas sylve jails delete --ctid 101
 
 Without `--purge`, Sylve removes the Jail configuration but retains the root dataset. This is the safer default when data may still be needed.
 
-If the Jail is running, deletion stops it before removing its configuration. Deletion also removes its generated runtime networking and cleans up its associated MAC objects when they are no longer in use. Remove any replication policy for the CTID first; even a disabled policy prevents deletion so a future Jail cannot inherit stale replication identity.
+If the Jail is running, deletion stops it before removing its configuration. Deletion also removes its generated runtime networking and cleans up its associated MAC objects when they are no longer in use. Delete every backup job and remove any replication policy for the CTID first. Disabled jobs and policies still prevent deletion so a future Jail cannot inherit their backup or replication identity.
 
 To remove the configuration and destroy the root dataset:
 

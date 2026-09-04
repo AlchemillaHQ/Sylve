@@ -33,6 +33,8 @@ The page refreshes visible client status every two seconds. Use the enable switc
 | **Disconnected** | The client is enabled but the remote endpoint is not currently reachable or has not completed a handshake. |
 | **Disabled** | The client is stored but its tunnel interface is not active. |
 
+Sylve retries enabled clients every 30 seconds when a transient startup or endpoint-resolution problem leaves their runtime interface missing. It also resolves hostname endpoints again and reapplies a client when the resolved address changes. Managed routes are reconciled after recovery, so a brief DNS or network failure does not require recreating the client.
+
 ## Import or enter a client configuration
 
 Choose **New Client**. The quickest route is to import the standard `.conf` or `.txt` file supplied by the remote WireGuard administrator. You can also paste the same configuration text. Sylve reads common `[Interface]` and `[Peer]` values and fills the form.

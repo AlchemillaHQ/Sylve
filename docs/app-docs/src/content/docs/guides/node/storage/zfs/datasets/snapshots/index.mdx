@@ -45,9 +45,7 @@ Select **New**. Choose the pool, choose a filesystem or volume in that pool, giv
 
 For a one-time snapshot, set **Interval Type** to **None**. For a recurring job, choose **Simple** or **Cron Expression** and optionally apply a retention policy.
 
-{/* Screenshot update needed: snapshots-create.png. Capture the current Create Snapshot dialog with Interval Type set to a recurring schedule and the Retention selector visible. Use either Simple retention with its current defaults or GFS retention with all current default values visible. */}
-
-<img src={snapshotsCreate.src} alt="Create Snapshot dialog in Sylve with a selected dataset, a periodic schedule, a retention policy, and Recursive enabled" />
+<img src={snapshotsCreate.src} alt="Create Snapshot dialog for zroot/home/zed with an hourly schedule, Simple retention keeping the latest 24 snapshots, and Recursive disabled" />
 
 | Option | What it controls | Available values or behavior |
 | --- | --- | --- |
@@ -94,15 +92,11 @@ Select the clock button, then choose a pool, to open **View Snapshot Jobs**. The
 
 Run times are shown relatively, such as **5 minutes ago** or **in 20 minutes**. Hover over a known time to see its complete local date and time. Use the retention button on a row to change its schedule and retention settings, or mark rows for deletion and select **Save Snapshot Jobs**.
 
-{/* Screenshot update needed: snapshots-periodic-jobs.png. Capture the current View Snapshot Jobs dialog for a selected pool with at least two jobs. The Runs column should show stacked Last and Next values. Ideally include one completed job and one new job whose Last value is Never. Include the ID, Dataset, Prefix, Interval, retention, and delete controls. */}
-
-<img src={snapshotsPeriodicJobs.src} alt="View Snapshot Jobs dialog showing periodic jobs with stacked Last and Next run times" />
+<img src={snapshotsPeriodicJobs.src} alt="View Snapshot Jobs dialog showing daily and hourly jobs with stacked Last and Next run times, retention controls, and delete controls" />
 
 The retention button opens the **Retention Policies** dialog for that job. It lets you change the interval type and schedule, then choose **None**, **Simple**, or **GFS** retention and edit the corresponding values described above. Recursive scope is not changed from this editor.
 
-{/* Screenshot update needed: snapshots-periodic-jobs-retention.png. Capture the current Retention Policies dialog opened from a job. Show Interval Type, its schedule control, the Retention selector, and the selected retention values. Keep the View Snapshot Jobs dialog visible behind it with the new Last and Next run display. */}
-
-<img src={snapshotsPeriodicJobsRetention.src} alt="Retention Policies dialog opened from a periodic snapshot job while the View Snapshot Jobs dialog remains visible" />
+<img src={snapshotsPeriodicJobsRetention.src} alt="Retention Policies dialog for an hourly snapshot job using Simple retention to keep the latest 24 snapshots while the jobs dialog remains visible behind it" />
 
 :::note
 The job editor can change the schedule and retention policy, including disabling automatic pruning with **None**. To change recursive scope, create a replacement periodic job with the intended setting, then remove the old job after confirming it is no longer needed.

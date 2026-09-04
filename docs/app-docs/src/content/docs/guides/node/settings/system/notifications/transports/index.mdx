@@ -5,8 +5,6 @@ description: Configure the destinations that deliver Sylve notifications outside
 
 Notification transports are delivery destinations. Create one or more transports before enabling an external channel in a notification rule. Sylve can deliver to the web interface, ntfy, Pushover, SMTP email, and Discord. The web interface is configured per rule and does not need a transport.
 
-{/* Screenshot update needed: notifications-transports-overview.png. Capture the Notification Transports table with enabled examples of ntfy, Pushover, SMTP, and Discord. The Pushover row should show User / group key configured in the Destination column. */}
-
 ![Notification Transports table showing enabled ntfy, Pushover, SMTP, and Discord delivery destinations](./notifications-transports-overview.png)
 
 ## Create a transport
@@ -30,7 +28,7 @@ For SMTP recipients, Sylve offers email addresses saved on local and PAM user re
 
 Create an application in Pushover, then enter its **Application API Token** and the **User / Group Key** that should receive messages. Treat both values as secrets.
 
-{/* Screenshot needed: notifications-transport-create-pushover.png. Capture the New Notification Transport form with Type set to Pushover, a clear transport name, both credential fields populated or masked, and Enabled selected. */}
+![New Pushover transport form with a transport name, masked application token and user or group key, and Enabled selected](./notifications-transport-create-pushover.png)
 
 ### SMTP transport
 

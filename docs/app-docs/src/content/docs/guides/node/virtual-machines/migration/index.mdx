@@ -66,8 +66,9 @@ Prepare the destination before beginning:
 | **Matching ZFS pool names** | Every pool used by the VM's managed storage must exist on the target with the same name. Sylve transfers the dataset into its existing pool namespace rather than choosing a replacement pool. See [ZFS Pools](/guides/node/storage/zfs/pools/). |
 | **No guest-ID collision** | The VM ID must not already be used on the target by either a VM or a jail. VM and jail IDs share one cluster-wide namespace. |
 | **Working cluster connectivity** | Sylve uses the cluster's authenticated node-to-node access to check pools and transfer storage. The target must be reachable and support the current migration checks. |
+| **Usable backup targets** | Every target used by an enabled backup job for this VM must exist, be enabled, and validate successfully from the destination node. |
 | **No competing work** | A running lifecycle task, backup event, replication event, HA transition, or another migration for this VM blocks the move. Wait for it to finish. |
-| **Replication fully disabled** | A VM protected by a replication policy cannot be migrated. Disable its policy and wait until its policy removal and replication lease are fully cleared before retrying. |
+| **Replication fully disabled** | Disable the VM's replication policy. If policy deletion or another transition is active, wait for it and the replication lease to clear before retrying. A stable disabled policy can remain and follows the VM to the destination. |
 
 The target selector lists only other online nodes. Selecting one automatically runs preflight validation. The **Migrate** button remains disabled until validation allows the move.
 
@@ -98,12 +99,13 @@ The progress dialog reports these phases:
 
 | Phase | What Sylve does |
 | --- | --- |
-| **Preflight check** | Rechecks target readiness and the VM configuration. |
+| **Preflight check** | Rechecks target readiness, the VM configuration, and backup targets used by enabled jobs for this VM. |
 | **Initial replication** | Creates migration snapshots and transfers the VM's managed dataset roots to the target while the source can still be running. |
 | **Stop source** | Records whether the VM was running and stops it when necessary. |
 | **Final sync** | Transfers the changes made since the initial replication. This is part of the outage window. |
+| **Transfer ownership** | Moves the VM's shared guest-ID claim to the destination before the VM is imported there. |
 | **Start on target** | Imports the VM on the target. A VM that was running on the source is started; a VM that was already stopped remains stopped. |
-| **Policy adjustment** | Moves the cluster's workload ownership to the target. |
+| **Policy adjustment** | Reassigns any disabled replication policy and rebinds the VM's backup-job runners to the destination. |
 | **Cleanup source** | Removes the migrated VM datasets and local VM metadata from the source. |
 | **Finalize** | Confirms that the migration guard has been released and marks the task complete. |
 

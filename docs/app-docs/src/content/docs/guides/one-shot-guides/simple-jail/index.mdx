@@ -4,16 +4,18 @@ description: Create a FreeBSD jail in Sylve and use it to run AdGuard Home.
 ---
 
 import HostBridgeDiagram from "../simple-virtual-machine/HostBridgeDiagram.svelte";
-import standardSwitchCreate from "../simple-virtual-machine/simple-vm-standard-switch-create.png";
-import standardSwitchReady from "../simple-virtual-machine/simple-vm-standard-switch-ready.png";
 import jailBootstrap from "../../node/jails/creation/jail-create-bootstrap.png";
 import jailStorage from "../../node/jails/creation/jail-create-storage.png";
 import jailCreateBasic from "./simple-jail-create-basic.png";
 import jailCreateNetwork from "./simple-jail-create-network.png";
 import jailCreateHardware from "./simple-jail-create-hardware.png";
 import jailCreateAdvanced from "./simple-jail-create-advanced.png";
+import jailCreatedSummary from "./simple-jail-created-summary.png";
+import jailConsoleNetwork from "./simple-jail-console-network.png";
 import adGuardHomeSetup from "./simple-jail-adguard-home-setup.png";
 import adGuardHomeDashboard from "./simple-jail-adguard-home-dashboard.png";
+import standardSwitchCreate from "./simple-jail-standard-switch-create.png";
+import standardSwitchExternalConfigurationWarning from "./simple-jail-standard-switch-address-warning.png";
 
 This guide is written for people starting from absolute zero and walks through the entire process from installation onward. If you have already completed some of the setup, use the page outline on the right to jump directly to the section relevant to you.
 
@@ -88,7 +90,7 @@ For every switch-backed VNET jail, Sylve creates an `epair`, which is a connecte
 
 Your interface may have a different name. Open **Network → Interfaces** and identify the physical interface that currently provides network access before continuing. Substitute that name wherever this guide uses `em0`.
 
-### Check the current host configuration
+### Record the current host configuration
 
 This guide assumes that `em0` is already configured in `/etc/rc.conf` with either DHCP or a static address. A DHCP configuration commonly looks like this:
 
@@ -105,34 +107,53 @@ defaultrouter="192.168.1.1"
 
 Use the values already assigned to your node. Do not copy the example address unless it matches your network.
 
+Before creating the switch, remove the physical port's DHCP, static address, aliases, and IPv6 router-advertisement settings from `/etc/rc.conf`. For this guide, `em0` should either be omitted or retained only as a layer-2 interface:
+
+```ini
+ifconfig_em0="up"
+```
+
+For a static configuration, also remove the old `defaultrouter` entry after recording its value. The Standard Switch will own the host address and default route after creation. Editing `rc.conf` does not remove the address from the currently running interface, so do not restart networking between this step and creating the switch.
+
+:::caution[Keep local or out-of-band access available]
+The web connection may drop when the live address moves from the physical interface to the new bridge. Keep a local console or another management path available until the switch is verified.
+:::
+
 ### Create a Standard Switch
 
 Open **Network → Switches → Standard**, select **New**, and configure the switch:
 
-1. Enter `LAN / WAN` as the switch name.
-2. Select `em0`, or your equivalent physical interface, under **Ports**.
-3. If `em0` currently uses DHCP, enable **DHCP** on the switch.
-4. If `em0` has a static address, enter that same address in CIDR notation under **IPv4 Network**, enter its gateway under **IPv4 Gateway**, and enable **Default Route**.
-5. Leave **Disable Bridge Offloads** enabled.
-6. Select **Create**.
+1. Enter `WAN` as the switch name.
+2. Leave **MTU** and **VLAN** at their defaults unless your physical network requires different values.
+3. If `em0` currently uses DHCP, enable **DHCP**. Enable **Use DHCP Default Route** because this is the node's uplink.
+4. If `em0` has a static address, enter that same host address in CIDR notation under **IPv4 Network**, enter its next-hop router under **IPv4 Gateway**, and enable **IPv4 Default Route**.
+5. Select `em0`, or your equivalent physical interface, under **Ports**.
+6. Under **Bridge MAC source**, select **Use port MAC**, then select `em0` as the **MAC source port**. Confirm that an **Effective MAC** is shown.
+7. Leave **Private** disabled so guests can communicate through the physical network.
+8. Leave **Disable Bridge Offloads** enabled.
+9. Select **Create**.
 
 <img
   src={standardSwitchCreate.src}
-  alt="Create Standard Switch dialog with LAN / WAN as the name, em0 selected as a port, and the host's IPv4 configuration applied to the switch"
+  alt="Create Standard Switch dialog for WAN with em0 selected as the port and bridge MAC source, DHCP and its default route enabled, and bridge offloads disabled"
 />
 
-When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. The existing `ifconfig_em0` entry may remain in `/etc/rc.conf` as an early-boot or fallback configuration, but do not add the Sylve-managed bridge to `rc.conf`.
+Because `em0` still has its live management address, Sylve warns that converting it to a bridge member will remove that address. Confirm that the replacement configuration is present on the switch, then select **Continue**.
+
+If a second warning says that `em0` has configuration outside Sylve's managed Standard Switches, select **Cancel** and check `rc.conf` again. Do not continue until DHCP, static addresses, aliases, `accept_rtadv`, and ownership by any other bridge have been removed from the physical port. Sylve's confirmation does not rewrite that external configuration. The example below reports that `em0` is still assigned to `bridge0`.
+
+<img
+  src={standardSwitchExternalConfigurationWarning.src}
+  alt="Standard Switch warning that em0 has configuration outside Sylve and is already assigned to bridge0"
+/>
+
+When the switch is created, Sylve clears the live addresses from `em0`, attaches it to a managed FreeBSD bridge, and applies the selected network configuration to that bridge. Keep layer-3 configuration off `em0`, and do not add the Sylve-managed bridge to `rc.conf`. Sylve manages the bridge from the saved Standard Switch configuration.
 
 :::danger[Expect a brief network interruption]
 Moving the interface into the switch interrupts connectivity while its address is transferred to the bridge. If you are managing the node through `em0`, use local or out-of-band access, or perform this step during a maintenance window. An incorrect address or gateway can make the web interface unreachable.
 :::
 
-After connectivity returns, confirm that the `LAN / WAN` switch appears in the Standard Switches table and shows the expected port and address configuration.
-
-<img
-  src={standardSwitchReady.src}
-  alt="Standard Switches table showing the completed LAN / WAN switch with em0 and its assigned IPv4 configuration"
-/>
+After connectivity returns, confirm that the `WAN` switch appears in the Standard Switches table. It should show `em0` under **Ports** and either **DHCP** or the configured static address under **IPv4**. A DHCP lease is not guaranteed to reuse the node's previous address, so reconnect using the address assigned to the bridge if it changes.
 
 For a complete explanation of every field and network mode, see [Standard Switches](/guides/node/network/switches/standard/).
 
@@ -171,7 +192,7 @@ You only need to bootstrap a particular FreeBSD release and variant once per ZFS
 
 ## Create the jail
 
-The creation wizard groups the jail's identity, root filesystem, network, resource limits, and runtime behavior into separate tabs. The values below create a small FreeBSD jail for AdGuard Home with one CPU core, 1 GiB of memory, and its own DHCP address on the `LAN / WAN` switch.
+The creation wizard groups the jail's identity, root filesystem, network, resource limits, and runtime behavior into separate tabs. The values below create a small FreeBSD jail for AdGuard Home with one CPU core, 1 GiB of memory, and its own DHCP address on the `WAN` switch.
 
 ### Basic
 
@@ -209,7 +230,7 @@ Sylve creates the jail root at `<pool>/sylve/jails/<Jail ID>` and copies the sel
 
 Connect the jail to the Standard Switch created earlier:
 
-1. Select `LAN / WAN`, or the equivalent network-facing switch on your node. The example screenshot uses an existing manual switch named `WAN`.
+1. Select `WAN`, or the equivalent network-facing Standard Switch on your node.
 2. Enable **DHCP**.
 3. Enable **SLAAC**.
 4. Leave **IPv4 Network**, **IPv4 Gateway**, **IPv6 Network**, and **IPv6 Gateway** empty.
@@ -223,7 +244,7 @@ If your network does not provide DHCP or IPv6 router advertisements, use static 
 
 <img
   src={jailCreateNetwork.src}
-  alt="Create Jail Network tab with the WAN manual switch selected, DHCP and SLAAC enabled, manual addresses empty, VLAN set to 0, and Populate DNS Resolver Configuration disabled"
+  alt="Create Jail Network tab with WAN selected, DHCP and SLAAC enabled, address fields empty, VLAN set to 0, and DNS resolver configuration disabled"
 />
 
 ### Hardware
@@ -256,8 +277,6 @@ Keep the standard FreeBSD runtime configuration:
 
 The default devfs permission is important for DHCP because the FreeBSD DHCP client needs access to a BPF device. With the custom Start and Stop hooks disabled, Sylve automatically runs `/bin/sh /etc/rc` when this FreeBSD jail starts and `/bin/sh /etc/rc.shutdown` when it stops.
 
-{/* Screenshot update needed: simple-jail-create-advanced.png. Capture the Advanced tab with FreeBSD selected, the default allowed options retained, Clean Environment enabled, and every lifecycle hook disabled. */}
-
 <img
   src={jailCreateAdvanced.src}
   alt="Create Jail Advanced tab with FreeBSD selected, the default allowed options retained, Clean Environment enabled, and all custom lifecycle hooks disabled"
@@ -269,13 +288,16 @@ Review every tab, then select **Create Jail**. Sylve verifies the identity, pool
 
 Creation can take time because Sylve creates a new ZFS dataset and copies the complete bootstrap into it. Keep the page open until the request finishes. When creation succeeds, `AdguardHome` appears beneath the selected node in the sidebar.
 
-{/* Screenshot needed: simple-jail-created-summary.png. Exact contents: The new AdguardHome Summary page before its first start, showing the jail name, Stopped status, one configured CPU core, 1 GiB memory limit, the Primary DNS server description, Start action, and no error notification. */}
-
 For a detailed reference covering every field in the wizard, see [Jail Creation](/guides/node/jails/creation/).
 
 ## Start and verify the jail
 
 Open the new jail's **Summary** page, select **Start**, and wait for the lifecycle task to finish. Confirm that the status changes to **Running** before continuing. A successful queue response means the task was accepted, so wait for the final state rather than opening the console immediately.
+
+<img
+  src={jailCreatedSummary.src}
+  alt="AdguardHome jail Summary page showing a running jail with one CPU core, a 1 GiB memory limit, and its Primary DNS server description"
+/>
 
 If the jail does not start, select **View Logs** on the Summary page and inspect the lifecycle output. The most common causes in this workflow are an incomplete bootstrap, an unavailable switch port, or DHCP failing because the default devfs permission was removed.
 
@@ -305,14 +327,17 @@ netstat -rn
 
 Find the non-loopback interface and note its `inet` address. DHCP should also have installed a default IPv4 route. Then test the address path and DNS resolution separately:
 
+<img
+  src={jailConsoleNetwork.src}
+  alt="AdguardHome Jail Console showing the FreeBSD version, hostname, DHCP address, and default IPv4 route"
+/>
+
 ```sh
 ping -c 3 1.1.1.1
 ping -c 3 freebsd.org
 ```
 
 If the first test fails, check the DHCP lease, switch, bridge port, and upstream network. If the first succeeds but the second fails, inspect `/etc/resolv.conf` and the DNS configuration chosen during creation.
-
-{/* Screenshot needed: simple-jail-console-network.png. Exact contents: The Sylve Jail Console connected to AdguardHome, showing successful freebsd-version and hostname output, a non-loopback DHCP IPv4 address in ifconfig, a default route in netstat -rn, and successful ping results for both 1.1.1.1 and freebsd.org. */}
 
 For more detail about connection controls and the shared administrative shell, see [Jail Console](/guides/node/jails/console/).
 
@@ -398,4 +423,4 @@ For a safe first test, change the DNS server on one computer or phone to the jai
 This guide initially uses DHCP because it makes the first jail easy to start. Before configuring your router or several devices to use AdGuard Home, reserve the jail's current address in your DHCP server or change the jail to an appropriate static address from its [Network](/guides/node/jails/network/) page. If the DNS server's address changes, clients configured with the old address can lose name resolution.
 :::
 
-The jail is now running AdGuard Home in an independently addressed FreeBSD userland on the `LAN / WAN` Standard Switch. Use its [Summary](/guides/node/jails/summary/) page for lifecycle controls and logs, [Network](/guides/node/jails/network/) for later interface changes, and [Snapshots](/guides/node/jails/snapshots/) or [Backups](/guides/node/jails/backups/) before making important configuration changes.
+The jail is now running AdGuard Home in an independently addressed FreeBSD userland on the `WAN` Standard Switch. Use its [Summary](/guides/node/jails/summary/) page for lifecycle controls and logs, [Network](/guides/node/jails/network/) for later interface changes, and [Snapshots](/guides/node/jails/snapshots/) or [Backups](/guides/node/jails/backups/) before making important configuration changes.

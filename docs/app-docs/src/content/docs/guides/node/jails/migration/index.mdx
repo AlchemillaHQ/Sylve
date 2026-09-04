@@ -25,8 +25,8 @@ Migration is a staged operation:
 2. It sends the initial ZFS data while the source jail can remain running.
 3. It validates the destination again immediately before cutover.
 4. It stops a running jail and sends the final incremental changes.
-5. It imports the jail on the target and restores its previous running or stopped state.
-6. It moves cluster ownership and removes the source copy only after the destination is committed.
+5. It transfers the shared guest-ID claim to the destination, then imports the jail there and restores its previous running or stopped state.
+6. It updates the remaining cluster placement state and removes the source copy only after the destination is committed.
 
 The initial transfer usually contains most of the data. The interruption window begins when the source is stopped and includes the final sync and destination startup.
 
@@ -44,6 +44,7 @@ The migration does not rewrite host-specific paths or devices. Review these sett
 | --- | --- |
 | **ZFS pool** | The pool containing the jail's managed root must exist on the target with the same name. |
 | **Network bridges** | Every bridge used by a jail interface must already exist on the target. |
+| **CPU assignment** | Sylve recalculates the jail's CPU set for the target while preserving its configured core count. The destination must have enough logical CPUs for that allocation. |
 | **Fstab host paths** | Any host path referenced by a custom fstab entry must exist on the target. Preflight does not validate these paths. |
 | **Devfs devices** | Devices exposed by custom devfs rules must exist and be appropriate on the target. Preflight does not validate equivalent hardware. |
 | **Host-dependent hook scripts** | Host-side lifecycle hooks must be valid on the destination node. |
@@ -99,8 +100,9 @@ Prepare and verify the target before beginning:
 | **Matching network bridges** | Each bridge used by the jail must exist on the destination. Recreate the corresponding [Standard Switch](/guides/node/network/switches/standard/) or [Manual Switch](/guides/node/network/switches/manual/) there first. |
 | **No guest-ID collision** | The Jail ID must not already be used by a jail or VM on the target. VM IDs and Jail IDs share one guest namespace. |
 | **Working cluster connectivity** | Sylve uses authenticated node-to-node access to inspect the target and transfer ZFS data. |
+| **Usable backup targets** | Every target used by an enabled backup job for this jail must exist, be enabled, and validate successfully from the destination node. |
 | **No competing work** | A lifecycle task, backup event, replication event, HA transition, or another migration for this jail blocks the move. |
-| **Replication fully disabled** | Disable the jail's replication policy and wait for policy removal and lease cleanup to finish before migrating. |
+| **Replication fully disabled** | Disable the jail's replication policy. If policy deletion or another transition is active, wait for it and the replication lease to clear before retrying. A stable disabled policy can remain and follows the jail to the destination. |
 
 The **Migrate** action remains disabled until validation allows the move. Validation is repeated before cutover so a target that became unavailable or incompatible during the initial transfer does not proceed silently.
 
@@ -114,6 +116,7 @@ Common blocking results include:
 - A required network bridge is missing or cannot be checked.
 - The target already contains a VM or jail with the same numeric ID.
 - The target is offline or cluster authentication is unavailable.
+- A target used by an enabled backup job is missing, disabled, or cannot be validated from the destination.
 - Another lifecycle, backup, replication, HA, or migration operation is active.
 - A replication policy or replication lease still protects the jail.
 
@@ -151,12 +154,13 @@ The dialog changes to a phase-by-phase progress view after the task is queued. D
 
 | Phase | What Sylve does |
 | --- | --- |
-| **Preflight check** | Rechecks cluster state, target readiness, guest identity, storage pools, and network bridges. |
+| **Preflight check** | Rechecks cluster state, target readiness, guest identity, storage pools, network bridges, and backup targets used by enabled jobs for this jail. |
 | **Initial replication** | Creates migration snapshots and transfers the managed jail dataset root recursively while the source can remain running. |
 | **Stop source** | Records whether the jail was running and stops it when required for cutover. |
 | **Final sync** | Transfers changes made since the initial replication. This phase is part of the interruption window. |
+| **Transfer ownership** | Moves the jail's shared guest-ID claim to the destination before the jail is imported there. |
 | **Start on target** | Imports the jail metadata and datasets. A previously running jail is started; a stopped jail remains stopped. |
-| **Policy adjustment** | Moves cluster workload ownership to the destination. |
+| **Policy adjustment** | Reassigns any disabled replication policy and rebinds the jail's backup-job runners to the destination. |
 | **Cleanup source** | Removes migrated jail datasets and local jail metadata from the source. |
 | **Finalize** | Confirms that migration protection has been released and marks the task complete. |
 
@@ -186,6 +190,7 @@ After a successful move, Sylve opens the jail on its target node. Verify:
 3. VNET interfaces use the intended destination bridges.
 4. Static addressing, DHCP, SLAAC, and resolver behavior still work as expected.
 5. Custom fstab mounts, devfs devices, and host-side lifecycle hooks are valid on the destination.
-6. The [Jail Console](/guides/node/jails/console/) opens and the workload's services are healthy.
+6. The assigned CPU set matches the destination topology and the intended core count.
+7. The [Jail Console](/guides/node/jails/console/) opens and the workload's services are healthy.
 
 The completed task can still report warnings. Sylve shows them in a notification before redirecting to the jail's Summary page on the destination.

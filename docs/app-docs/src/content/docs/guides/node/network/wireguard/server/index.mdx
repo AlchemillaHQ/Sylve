@@ -60,6 +60,8 @@ After initialization, the page shows the server state, tunnel details, transfer 
 
 The peer table is where you can see whether each device is enabled, its most recent handshake, and the traffic it has sent and received. A peer that has not recently handshaken may simply be offline or asleep, especially on a phone.
 
+If a temporary startup problem prevents an enabled server from creating `wgs0`, Sylve keeps the saved configuration and retries the runtime setup every 30 seconds while the WireGuard system service remains enabled. After recovery, it reconciles the managed routes automatically. Persistent errors still require correcting the reported interface, key, address, firewall, or network problem.
+
 <img
   src={peerTable.src}
   alt="WireGuard server peer table showing peer status, assigned addresses, last handshake, and transfer counters"

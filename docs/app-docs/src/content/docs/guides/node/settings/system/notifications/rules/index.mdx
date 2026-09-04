@@ -5,9 +5,7 @@ description: Choose which Sylve events appear in the UI or are delivered through
 
 Notification rules connect an event template and a target to delivery channels. A template describes the event family, such as a disk SMART condition or ZFS pool state. A target identifies the affected disk or pool. Each rule then controls whether that event appears in the Sylve interface or is delivered through ntfy, Pushover, email, and Discord.
 
-{/* Screenshot update needed: notifications-rules-overview.png. Capture the current Notification Rules table with the Channels column showing the Pushover icon alongside the other available channels on at least one rule. */}
-
-![Notification Rules table showing SMART and ZFS event rules with Pushover and other enabled delivery channels](./notifications-rules-overview.png)
+![Notification Rules table showing SMART event rules with In-App, ntfy, Pushover, Email, and Discord channel statuses](./notifications-rules-overview.png)
 
 ## Create a rule
 
@@ -23,9 +21,7 @@ Select **New**, choose an available template and target, then choose the deliver
 
 The available templates and targets are supplied by the node, so the list changes as hardware and pools change. Current templates include disk SMART temperature, wearout, health, NVMe, and self-test events, as well as ZFS pool state events.
 
-{/* Screenshot update needed: notifications-rule-create.png. Capture the widened New Notification Rule dialog with a template and target selected and all five channel controls visible on one row: In-App, ntfy, Pushover, Email, and Discord. */}
-
-![New Notification Rule dialog with a selected event template, target, and In-App, ntfy, Pushover, Email, and Discord delivery channels](./notifications-rule-create.png)
+![New Notification Rule dialog with the ZFS Pool State template selected, the target selector awaiting a choice, and all five delivery channels enabled](./notifications-rule-create.png)
 
 ## Test a rule
 
@@ -39,9 +35,7 @@ Select a rule to edit its channels or template configuration. Select multiple ru
 
 Some rules are automatically managed while their target is active. Sylve prevents deleting an active auto-managed rule. Do not work around that protection by deleting the related target merely to remove the rule. Disable the channels instead if notifications are not wanted, or remove the resource only when it is genuinely no longer needed.
 
-{/* Screenshot update needed: notifications-rules-bulk-update.png. Capture Bulk Update Rules with the Pushover control visible beside In-App, ntfy, Email, and Discord. */}
-
-![Bulk Update Rules dialog with Pushover and the other delivery-channel settings](./notifications-rules-bulk-update.png)
+![Bulk Update Notification Channels dialog for three selected rules with Enable, Disable, and No Change controls for all five channels](./notifications-rules-bulk-update.png)
 
 :::note
 An enabled external channel needs at least one enabled transport of its matching type. For example, a Pushover-enabled rule needs an enabled Pushover transport, and an Email-enabled rule needs an enabled SMTP transport.
