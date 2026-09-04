@@ -112,9 +112,33 @@ func sortedBackupInventoryDatasets(datasets map[string]string) []string {
 	return names
 }
 
+func successfulExactSnapshotListRows(output string, expectedSnapshots []string) (string, error) {
+	expected := make(map[string]struct{}, len(expectedSnapshots))
+	for _, snapshot := range expectedSnapshots {
+		expected[snapshot] = struct{}{}
+	}
+
+	var rows strings.Builder
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) != 2 {
+			continue
+		}
+		if _, ok := expected[fields[0]]; !ok {
+			return "", fmt.Errorf("unexpected_restore_snapshot_entry:%s", fields[0])
+		}
+		rows.WriteString(fields[0])
+		rows.WriteByte('\t')
+		rows.WriteString(fields[1])
+		rows.WriteByte('\n')
+	}
+	return rows.String(), nil
+}
+
 // loadRemoteRestoreSnapshotInventory lists current topology once and then asks
 // ZFS for only the selected snapshot on each dataset. It never enumerates the
-// retained snapshot history.
+// retained snapshot history. A missing selected snapshot leaves partial list
+// output, which is retained so the complete missing-dataset error can be built.
 func (s *Service) loadRemoteRestoreSnapshotInventory(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
@@ -143,6 +167,7 @@ func (s *Service) loadRemoteRestoreSnapshotInventory(
 
 	datasetNames := sortedBackupInventoryDatasets(datasets)
 	guidsByName := make(map[string]map[string]string)
+	missingDatasets := make([]string, 0)
 	for start := 0; start < len(datasetNames); start += backupCommitMetadataBatchSize {
 		end := start + backupCommitMetadataBatchSize
 		if end > len(datasetNames) {
@@ -156,7 +181,13 @@ func (s *Service) loadRemoteRestoreSnapshotInventory(
 		args = append(args, exactSnapshots...)
 		snapshotOutput, listErr := s.runTargetSSH(ctx, target, args...)
 		if listErr != nil {
-			return remoteBackupManifestInventory{}, fmt.Errorf("list_restore_snapshot_tree_failed: %w", listErr)
+			if !remoteSnapshotMissingError(listErr) {
+				return remoteBackupManifestInventory{}, fmt.Errorf("list_restore_snapshot_tree_failed: %w", listErr)
+			}
+			snapshotOutput, err = successfulExactSnapshotListRows(snapshotOutput, exactSnapshots)
+			if err != nil {
+				return remoteBackupManifestInventory{}, err
+			}
 		}
 		batch, parseErr := parseBackupSnapshotGUIDInventory(snapshotOutput, remoteRoot)
 		if parseErr != nil {
@@ -178,6 +209,30 @@ func (s *Service) loadRemoteRestoreSnapshotInventory(
 				current[dataset] = guid
 			}
 		}
+
+		missingBeforeBatch := len(missingDatasets)
+		shortName := strings.TrimPrefix(snapshot, "@")
+		for _, dataset := range datasetNames[start:end] {
+			if strings.TrimSpace(batch[shortName][dataset]) == "" {
+				missingDatasets = append(missingDatasets, dataset)
+			}
+		}
+		if listErr != nil && len(missingDatasets) == missingBeforeBatch {
+			return remoteBackupManifestInventory{}, fmt.Errorf("list_restore_snapshot_tree_failed: %w", listErr)
+		}
+	}
+	if len(missingDatasets) > 0 {
+		sort.Strings(missingDatasets)
+		mode := "nonrecursive"
+		if recursive {
+			mode = "recursive"
+		}
+		return remoteBackupManifestInventory{}, fmt.Errorf(
+			"%s_restore_snapshot_incomplete: snapshot=%s missing_datasets=%s",
+			mode,
+			snapshot,
+			strings.Join(missingDatasets, ","),
+		)
 	}
 	return newRemoteBackupManifestInventory(remoteRoot, datasets, guidsByName)
 }
