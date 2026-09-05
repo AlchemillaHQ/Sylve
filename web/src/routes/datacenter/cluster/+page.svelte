@@ -122,6 +122,14 @@
 		}
 	}
 
+	function formatSylveBuild(version: unknown, commit: unknown): string {
+		const normalizedVersion = String(version ?? '').trim();
+		const normalizedCommit = String(commit ?? '').trim();
+		if (!normalizedVersion) return '—';
+		if (!normalizedCommit || normalizedCommit.toLowerCase() === 'unknown') return normalizedVersion;
+		return `${normalizedVersion} - ${normalizedCommit}`;
+	}
+
 	async function refreshJoinStatus() {
 		if (!joinStatusPollingActive) return;
 		if (!datacenter.current.cluster.enabled || datacenter.current.cluster.raftBootstrap === true) {
@@ -383,7 +391,8 @@
 				field: 'sylveVersion',
 				title: 'Sylve Version',
 				formatter: (cell: CellComponent) => {
-					return `<span class="font-mono text-xs">${esc(cell.getValue() || '—')}</span>`;
+					const data = cell.getRow().getData() as Row;
+					return `<span class="font-mono text-xs">${esc(formatSylveBuild(cell.getValue(), data.sylveCommit))}</span>`;
 				}
 			},
 			{
@@ -436,6 +445,7 @@
 				suffrage: node.suffrage,
 				hostname: health?.hostname ?? '',
 				sylveVersion: health?.sylveVersion ?? '',
+				sylveCommit: health?.sylveCommit ?? '',
 				status: health?.status ?? 'offline',
 				guestCount: node.guestIDs?.length ?? health?.guestIDs?.length ?? 0,
 				cpuUsage: health?.cpuUsage ?? 0,

@@ -572,10 +572,23 @@ func formatDatacenterClusterMembers(members []clusterService.CommandMember) stri
 		}
 		rows = append(rows, []string{
 			valueOrDash(member.Hostname), member.NodeID, member.Address, member.Status,
-			member.Suffrage, valueOrDash(member.SylveVersion), leader, strconv.Itoa(member.GuestCount),
+			member.Suffrage, formatSylveBuild(member.SylveVersion, member.SylveCommit), leader,
+			strconv.Itoa(member.GuestCount),
 		})
 	}
 	return styledTable([]string{"HOSTNAME", "NODE ID", "ADDRESS", "STATUS", "SUFFRAGE", "VERSION", "LEADER", "GUESTS"}, rows)
+}
+
+func formatSylveBuild(version, commit string) string {
+	version = strings.TrimSpace(version)
+	commit = strings.TrimSpace(commit)
+	if version == "" {
+		return "—"
+	}
+	if commit == "" || strings.EqualFold(commit, "unknown") {
+		return version
+	}
+	return version + " - " + commit
 }
 
 func formatDatacenterClusterGuestIDClaims(claims []consoleprotocol.DatacenterClusterGuestIdentityClaim) string {

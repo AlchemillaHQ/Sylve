@@ -78,6 +78,7 @@ func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 
 	nodeInfo.Hostname = hostname
 	nodeInfo.SylveVersion = cmd.Version
+	nodeInfo.SylveCommit = cmd.Commit
 
 	nodeInfo.LogicalCores = logicalCoreCount()
 

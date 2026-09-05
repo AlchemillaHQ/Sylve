@@ -12,6 +12,7 @@ type NodeHealthSync struct {
 	NodeUUID     string  `json:"nodeUuid"`
 	Hostname     string  `json:"hostname"`
 	SylveVersion string  `json:"sylveVersion"`
+	SylveCommit  string  `json:"sylveCommit"`
 	API          string  `json:"api"`
 	Status       string  `json:"status"`
 	CPU          int     `json:"cpu"`

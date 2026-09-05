@@ -59,6 +59,7 @@ export const ClusterNodeSchema = z.object({
 	status: z.string(),
 	hostname: z.string(),
 	sylveVersion: z.string().default(''),
+	sylveCommit: z.string().default(''),
 	api: z.string(),
 	cpu: z.number(),
 	cpuUsage: z.number(),

@@ -16,6 +16,7 @@ type ClusterNode struct {
 	Status       string    `json:"status"`
 	Hostname     string    `json:"hostname"`
 	SylveVersion string    `json:"sylveVersion"`
+	SylveCommit  string    `json:"sylveCommit"`
 	API          string    `json:"api"`
 	CPU          int       `json:"cpu"`
 	CPUUsage     float64   `json:"cpuUsage"`

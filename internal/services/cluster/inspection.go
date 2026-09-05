@@ -41,6 +41,7 @@ type CommandMember struct {
 	Status       string `json:"status"`
 	Suffrage     string `json:"suffrage"`
 	SylveVersion string `json:"sylveVersion,omitempty"`
+	SylveCommit  string `json:"sylveCommit,omitempty"`
 	IsLeader     bool   `json:"isLeader"`
 	GuestCount   int    `json:"guestCount"`
 }
@@ -136,6 +137,7 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 			Status:       strings.TrimSpace(node.Status),
 			Suffrage:     raftSuffrageName(server.Suffrage),
 			SylveVersion: strings.TrimSpace(node.SylveVersion),
+			SylveCommit:  strings.TrimSpace(node.SylveCommit),
 			IsLeader:     server.ID == leaderID,
 			GuestCount:   len(node.GuestIDs),
 		}
@@ -148,6 +150,9 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 			}
 			if member.SylveVersion == "" {
 				member.SylveVersion = cmd.Version
+			}
+			if member.SylveCommit == "" {
+				member.SylveCommit = cmd.Commit
 			}
 			if member.Hostname == "" {
 				if detail := s.Detail(); detail != nil {

@@ -87,15 +87,15 @@ func TestApplyProbeHysteresis(t *testing.T) {
 func TestHasSignificantChange(t *testing.T) {
 	cur := curInfo{
 		api: "10.0.0.1:8184", canonHost: "host.example.com", healthOK: true,
-		sylveVersion: "0.3.1",
-		cpu:          8, cpuUsage: 10.0, memory: 8192, memUsage: 20.0,
+		sylveVersion: "0.3.1", sylveCommit: "abc1234",
+		cpu: 8, cpuUsage: 10.0, memory: 8192, memUsage: 20.0,
 		disk: 102400, diskUsage: 30.0, guestIDs: []uint{1, 2},
 	}
 
 	ex := clusterModels.ClusterNode{
 		Status: "online", API: "10.0.0.1:8184", Hostname: "host.example.com",
-		SylveVersion: "0.3.1",
-		CPU:          8, CPUUsage: 10.0, Memory: 8192, MemoryUsage: 20.0,
+		SylveVersion: "0.3.1", SylveCommit: "abc1234",
+		CPU: 8, CPUUsage: 10.0, Memory: 8192, MemoryUsage: 20.0,
 		Disk: 102400, DiskUsage: 30.0, GuestIDs: []uint{1, 2},
 	}
 
@@ -125,6 +125,12 @@ func TestHasSignificantChange(t *testing.T) {
 	exVersion.SylveVersion = "0.3.0"
 	if !hasSignificantChange(cur, exVersion) {
 		t.Fatal("version change should be significant")
+	}
+
+	exCommit := ex
+	exCommit.SylveCommit = "def5678"
+	if !hasSignificantChange(cur, exCommit) {
+		t.Fatal("commit change should be significant")
 	}
 
 	exGuests := ex
@@ -204,13 +210,13 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	current := map[string]curInfo{
 		"node-1": {
 			nodeUUID: "node-1", api: "https://node-1:8184",
-			canonHost: "node-1.local", healthOK: true, sylveVersion: "0.3.1",
+			canonHost: "node-1.local", healthOK: true, sylveVersion: "0.3.1", sylveCommit: "abc1234",
 			cpu: 4, cpuUsage: 25.5, memory: 8192, memUsage: 50.0,
 			disk: 100000, diskUsage: 30.0, guestIDs: []uint{1, 2},
 		},
 		"node-2": {
 			nodeUUID: "node-2", api: "https://node-2:8184",
-			canonHost: "node-2.local", healthOK: true, sylveVersion: "0.3.1",
+			canonHost: "node-2.local", healthOK: true, sylveVersion: "0.3.1", sylveCommit: "abc1234",
 			cpu: 8, cpuUsage: 10.0, memory: 16384, memUsage: 25.0,
 			disk: 200000, diskUsage: 15.0, guestIDs: []uint{3},
 		},
@@ -234,6 +240,7 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 
 	updated := current["node-1"]
 	updated.sylveVersion = "0.3.2"
+	updated.sylveCommit = "def5678"
 	current["node-1"] = updated
 	changed, err = s.persistCurrentClusterNodes(current)
 	if err != nil || !changed {
@@ -246,9 +253,13 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	if node.SylveVersion != "0.3.2" {
 		t.Fatalf("version = %q, want 0.3.2", node.SylveVersion)
 	}
+	if node.SylveCommit != "def5678" {
+		t.Fatalf("commit = %q, want def5678", node.SylveCommit)
+	}
 	offline := current["node-1"]
 	offline.healthOK = false
 	offline.sylveVersion = ""
+	offline.sylveCommit = ""
 	current["node-1"] = offline
 	changed, err = s.persistCurrentClusterNodes(current)
 	if err != nil || !changed {
@@ -259,6 +270,9 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	}
 	if node.SylveVersion != "0.3.2" {
 		t.Fatalf("offline version = %q, want retained 0.3.2", node.SylveVersion)
+	}
+	if node.SylveCommit != "def5678" {
+		t.Fatalf("offline commit = %q, want retained def5678", node.SylveCommit)
 	}
 
 	var count int64
@@ -281,12 +295,12 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	}
 }
 
-func TestSyncClusterHealthPersistsSylveVersion(t *testing.T) {
+func TestSyncClusterHealthPersistsSylveBuild(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.ClusterNode{})
 	s := &Service{DB: db, NodeID: "node-1"}
 
 	err := s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
-		NodeUUID: "node-2", SylveVersion: "0.3.1", Status: nodeStatusOnline,
+		NodeUUID: "node-2", SylveVersion: "0.3.1", SylveCommit: "abc1234", Status: nodeStatusOnline,
 	}})
 	if err != nil {
 		t.Fatalf("sync cluster health: %v", err)
@@ -299,9 +313,12 @@ func TestSyncClusterHealthPersistsSylveVersion(t *testing.T) {
 	if node.SylveVersion != "0.3.1" {
 		t.Fatalf("version = %q, want 0.3.1", node.SylveVersion)
 	}
+	if node.SylveCommit != "abc1234" {
+		t.Fatalf("commit = %q, want abc1234", node.SylveCommit)
+	}
 
 	err = s.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{{
-		NodeUUID: "node-2", SylveVersion: "0.3.2", Status: nodeStatusOnline,
+		NodeUUID: "node-2", SylveVersion: "0.3.2", SylveCommit: "def5678", Status: nodeStatusOnline,
 	}})
 	if err != nil {
 		t.Fatalf("update cluster health: %v", err)
@@ -311,5 +328,8 @@ func TestSyncClusterHealthPersistsSylveVersion(t *testing.T) {
 	}
 	if node.SylveVersion != "0.3.2" {
 		t.Fatalf("updated version = %q, want 0.3.2", node.SylveVersion)
+	}
+	if node.SylveCommit != "def5678" {
+		t.Fatalf("updated commit = %q, want def5678", node.SylveCommit)
 	}
 }

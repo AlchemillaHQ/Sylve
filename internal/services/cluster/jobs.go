@@ -39,6 +39,7 @@ type curInfo struct {
 	rawHost      string
 	healthOK     bool
 	sylveVersion string
+	sylveCommit  string
 
 	cpu      int
 	cpuUsage float64
@@ -126,6 +127,7 @@ func currentToClusterNode(cur curInfo) clusterModels.ClusterNode {
 		NodeUUID:     cur.nodeUUID,
 		Hostname:     preferredHostname(cur),
 		SylveVersion: cur.sylveVersion,
+		SylveCommit:  cur.sylveCommit,
 		API:          cur.api,
 		Status:       statusFromHealth(cur.healthOK),
 		CPU:          cur.cpu,
@@ -161,6 +163,9 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 	}
 	if cur.sylveVersion != "" {
 		updates["sylve_version"] = cur.sylveVersion
+	}
+	if cur.healthOK {
+		updates["sylve_commit"] = cur.sylveCommit
 	}
 
 	if cur.cpu > 0 {
@@ -204,6 +209,9 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 		return true
 	}
 	if cur.sylveVersion != "" && ex.SylveVersion != cur.sylveVersion {
+		return true
+	}
+	if cur.healthOK && ex.SylveCommit != cur.sylveCommit {
 		return true
 	}
 
@@ -307,6 +315,7 @@ func (s *Service) collectCurrentClusterInfo(cfg raft.Configuration, clusterToken
 				ci.healthOK = true
 				ci.canonHost = nodeInfo.Hostname
 				ci.sylveVersion = nodeInfo.SylveVersion
+				ci.sylveCommit = nodeInfo.SylveCommit
 				ci.cpu = int(nodeInfo.LogicalCores)
 				ci.cpuUsage = nodeInfo.CPUUsage
 				ci.memory = nodeInfo.RAMTotal
@@ -466,6 +475,7 @@ func (s *Service) PopulateClusterNodes() error {
 					NodeUUID:     node.NodeUUID,
 					Hostname:     node.Hostname,
 					SylveVersion: node.SylveVersion,
+					SylveCommit:  node.SylveCommit,
 					API:          node.API,
 					Status:       node.Status,
 					CPU:          node.CPU,
@@ -490,6 +500,7 @@ func (s *Service) PopulateClusterNodes() error {
 				NodeUUID:     cur.nodeUUID,
 				Hostname:     preferredHostname(cur),
 				SylveVersion: cur.sylveVersion,
+				SylveCommit:  cur.sylveCommit,
 				API:          cur.api,
 				Status:       statusFromHealth(cur.healthOK),
 				CPU:          cur.cpu,
@@ -822,6 +833,7 @@ func (s *Service) syncClusterHealthToFollowers() {
 			NodeUUID:     node.NodeUUID,
 			Hostname:     node.Hostname,
 			SylveVersion: node.SylveVersion,
+			SylveCommit:  node.SylveCommit,
 			API:          node.API,
 			Status:       node.Status,
 			CPU:          node.CPU,

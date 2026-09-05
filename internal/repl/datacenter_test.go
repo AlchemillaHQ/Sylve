@@ -121,6 +121,24 @@ func TestGuestIdentityClaimConsoleShapeOmitsToken(t *testing.T) {
 	}
 }
 
+func TestFormatSylveBuild(t *testing.T) {
+	tests := []struct {
+		version string
+		commit  string
+		want    string
+	}{
+		{version: "0.3.0", commit: "21a5f0f", want: "0.3.0 - 21a5f0f"},
+		{version: "0.3.0", commit: "unknown", want: "0.3.0"},
+		{version: "0.3.0", want: "0.3.0"},
+		{commit: "21a5f0f", want: "—"},
+	}
+	for _, test := range tests {
+		if got := formatSylveBuild(test.version, test.commit); got != test.want {
+			t.Fatalf("formatSylveBuild(%q, %q) = %q, want %q", test.version, test.commit, got, test.want)
+		}
+	}
+}
+
 func TestAddressSocketOperationsRejectMissingAcknowledgement(t *testing.T) {
 	service := clusterService.NewClusterService(nil, nil, nil).(*clusterService.Service)
 	if err := service.ReopenMutations(); err != nil {
