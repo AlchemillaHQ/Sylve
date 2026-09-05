@@ -91,7 +91,7 @@
 		"tabulator-tables": "^6.3.1",
 		"v86": "^0.5.432",
 		"validator": "^13.15.20",
-		"wuchale": "^0.22.4",
+		"wuchale": "^0.23.0",
 		"zod": "^3.25.67"
 	},
 	"overrides": {
