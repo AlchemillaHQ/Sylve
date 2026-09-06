@@ -46,6 +46,9 @@ var (
 	wireGuardLookPath            = exec.LookPath
 	wireGuardCurrentTime         = wireGuardNow
 	wireGuardRuntimeOS           = runtime.GOOS
+	wireGuardReadDevice          = func(s *Service, iface string) (*wgtypes.Device, error) {
+		return s.readWireGuardDeviceWithClient(iface)
+	}
 )
 
 func wireGuardClientInterfaceName(id uint) string {

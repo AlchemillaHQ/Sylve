@@ -34,8 +34,40 @@ func (s *Service) GetWireGuardClients() ([]networkModels.WireGuardClient, error)
 	if err := s.DB.Find(&clients).Error; err != nil {
 		return nil, err
 	}
+	s.overlayWireGuardClientRuntime(clients)
 
 	return clients, nil
+}
+
+func (s *Service) overlayWireGuardClientRuntime(clients []networkModels.WireGuardClient) {
+	now := wireGuardCurrentTime()
+
+	s.wgMetricsMutex.RLock()
+	defer s.wgMetricsMutex.RUnlock()
+
+	for i := range clients {
+		client := &clients[i]
+		client.RuntimeState = networkModels.WireGuardClientRuntimeUnknown
+
+		cached, ok := s.wgClientMetricsCache[client.ID]
+		if !ok {
+			continue
+		}
+
+		client.RX = cached.rx
+		client.TX = cached.tx
+		client.LastHandshake = cached.lastHandshake
+		if cached.runtimeState != "" {
+			client.RuntimeState = cached.runtimeState
+		}
+		if !cached.runtimeObservedAt.IsZero() {
+			observedAt := cached.runtimeObservedAt
+			client.RuntimeObservedAt = &observedAt
+		}
+		if client.Enabled && !cached.restartedAt.IsZero() && !now.Before(cached.restartedAt) {
+			client.Uptime = uint64(now.Sub(cached.restartedAt) / time.Second)
+		}
+	}
 }
 
 func cloneWireGuardClient(client *networkModels.WireGuardClient) networkModels.WireGuardClient {

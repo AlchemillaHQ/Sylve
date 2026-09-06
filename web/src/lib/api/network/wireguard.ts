@@ -122,14 +122,17 @@ export const wireGuardServerPeers = {
 	}
 };
 
-export async function getWireGuardClients(): Promise<WireGuardClient[] | APIResponse> {
+export async function getWireGuardClients(
+	signal?: AbortSignal
+): Promise<WireGuardClient[] | APIResponse> {
 	const response = await apiRequest(
 		'/network/wireguard/clients',
 		APIResponseSchema,
 		'GET',
 		undefined,
 		{
-			raw: true
+			raw: true,
+			signal
 		}
 	);
 	if (!isAPIResponse(response)) {

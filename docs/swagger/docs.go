@@ -31100,6 +31100,9 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 },
+                "sylveCommit": {
+                    "type": "string"
+                },
                 "sylveVersion": {
                     "type": "string"
                 },
@@ -32927,6 +32930,12 @@ const docTemplate = `{
                 "routeAllowedIPs": {
                     "type": "boolean"
                 },
+                "runtimeObservedAt": {
+                    "type": "string"
+                },
+                "runtimeState": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState"
+                },
                 "rx": {
                     "type": "integer"
                 },
@@ -32940,6 +32949,21 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "available",
+                "missing",
+                "error"
+            ],
+            "x-enum-varnames": [
+                "WireGuardClientRuntimeUnknown",
+                "WireGuardClientRuntimeAvailable",
+                "WireGuardClientRuntimeMissing",
+                "WireGuardClientRuntimeError"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_network.WireGuardServer": {
             "type": "object",
@@ -33893,6 +33917,9 @@ const docTemplate = `{
                 "estimatedBytes": {
                     "type": "integer"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "pool": {
                     "type": "string"
                 },
@@ -34135,6 +34162,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "sylveCommit": {
                     "type": "string"
                 },
                 "sylveVersion": {
@@ -34766,6 +34796,9 @@ const docTemplate = `{
                 },
                 "ramUsage": {
                     "type": "number"
+                },
+                "sylveCommit": {
+                    "type": "string"
                 },
                 "sylveVersion": {
                     "type": "string"

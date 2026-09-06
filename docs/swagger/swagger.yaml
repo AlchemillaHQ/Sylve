@@ -2391,6 +2391,8 @@ definitions:
         type: string
       status:
         type: string
+      sylveCommit:
+        type: string
       sylveVersion:
         type: string
       updatedAt:
@@ -3613,6 +3615,10 @@ definitions:
         type: string
       routeAllowedIPs:
         type: boolean
+      runtimeObservedAt:
+        type: string
+      runtimeState:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState'
       rx:
         type: integer
       tx:
@@ -3622,6 +3628,18 @@ definitions:
       uptime:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState:
+    enum:
+    - unknown
+    - available
+    - missing
+    - error
+    type: string
+    x-enum-varnames:
+    - WireGuardClientRuntimeUnknown
+    - WireGuardClientRuntimeAvailable
+    - WireGuardClientRuntimeMissing
+    - WireGuardClientRuntimeError
   github_com_alchemillahq_sylve_internal_db_models_network.WireGuardServer:
     properties:
       addresses:
@@ -4263,6 +4281,8 @@ definitions:
         type: boolean
       estimatedBytes:
         type: integer
+      name:
+        type: string
       pool:
         type: string
       recordSize:
@@ -4428,6 +4448,8 @@ definitions:
       nodeUuid:
         type: string
       status:
+        type: string
+      sylveCommit:
         type: string
       sylveVersion:
         type: string
@@ -4851,6 +4873,8 @@ definitions:
         type: integer
       ramUsage:
         type: number
+      sylveCommit:
+        type: string
       sylveVersion:
         type: string
     type: object

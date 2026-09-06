@@ -53,6 +53,13 @@ export const WireGuardServerSchema = z.object({
 	updatedAt: z.string()
 });
 
+export const WireGuardClientRuntimeStateSchema = z.enum([
+	'unknown',
+	'available',
+	'missing',
+	'error'
+]);
+
 export const WireGuardClientSchema = z.object({
 	id: z.number().int(),
 	enabled: z.boolean(),
@@ -76,6 +83,8 @@ export const WireGuardClientSchema = z.object({
 	uptime: z.number().int().nonnegative(),
 	lastHandshake: z.string(),
 	restartedAt: z.string(),
+	runtimeState: WireGuardClientRuntimeStateSchema.optional(),
+	runtimeObservedAt: z.string().nullable().optional(),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });
@@ -90,6 +99,10 @@ export type WireGuardClientStatus = z.infer<typeof WireGuardClientStatusSchema>;
 export function wireGuardClientStatus(client: WireGuardClient): WireGuardClientStatus {
 	if (!client.enabled) {
 		return 'disabled';
+	}
+
+	if (client.runtimeState === 'missing' || client.runtimeState === 'error') {
+		return 'disconnected';
 	}
 
 	const handshake = Date.parse(client.lastHandshake);

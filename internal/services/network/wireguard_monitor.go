@@ -90,17 +90,7 @@ func (s *Service) runWireGuardMonitor(ctx context.Context) {
 			s.flushWireGuardMetrics()
 			return
 		case <-metricsTicker.C:
-			if !s.isWireGuardServiceEnabled() {
-				continue
-			}
-
-			inited, _ := s.isWireGuardServerInitialized()
-			if !inited {
-				continue
-			}
-
-			s.collectWireGuardServerMetrics()
-			s.collectWireGuardClientMetrics()
+			s.collectWireGuardMetrics()
 		case <-flushTicker.C:
 			if !s.isWireGuardServiceEnabled() {
 				continue
@@ -113,6 +103,22 @@ func (s *Service) runWireGuardMonitor(ctx context.Context) {
 			s.retryWireGuardRuntime()
 		}
 	}
+}
+
+func (s *Service) collectWireGuardMetrics() {
+	if !s.isWireGuardServiceEnabled() {
+		return
+	}
+
+	serverInitialized, err := s.isWireGuardServerInitialized()
+	if err != nil {
+		logger.L.Debug().Err(err).Msg("failed to check wireguard server state while collecting metrics")
+	} else if serverInitialized {
+		s.collectWireGuardServerMetrics()
+	}
+
+	// Outbound clients are independent from the optional WireGuard server.
+	s.collectWireGuardClientMetrics()
 }
 
 // seedWireGuardMetricsCache loads current DB state into memory once so that
@@ -166,6 +172,7 @@ func (s *Service) seedWireGuardMetricsCache() {
 			kernelLastTX:  c.KernelLastTX,
 			lastHandshake: c.LastHandshake,
 			restartedAt:   c.RestartedAt,
+			runtimeState:  networkModels.WireGuardClientRuntimeUnknown,
 		}
 	}
 }
@@ -281,14 +288,25 @@ func (s *Service) collectWireGuardClientMetrics() {
 
 	for id, cc := range s.wgClientMetricsCache {
 		interfaceName := wireGuardClientInterfaceName(id)
-		if !wireGuardInterfaceExists(interfaceName) {
+		cc.runtimeObservedAt = wireGuardCurrentTime()
+
+		interfaceExists, err := wireGuardInterfaceExistsNativeOrShell(interfaceName)
+		if err != nil {
+			cc.runtimeState = networkModels.WireGuardClientRuntimeError
+			logger.L.Debug().Err(err).Str("interface", interfaceName).Msg("failed to inspect wireguard client interface")
+			continue
+		}
+		if !interfaceExists {
+			cc.runtimeState = networkModels.WireGuardClientRuntimeMissing
 			continue
 		}
 
-		dev, err := s.readWireGuardDeviceWithClient(interfaceName)
+		dev, err := wireGuardReadDevice(s, interfaceName)
 		if err != nil {
+			cc.runtimeState = networkModels.WireGuardClientRuntimeError
 			continue
 		}
+		cc.runtimeState = networkModels.WireGuardClientRuntimeAvailable
 
 		var kernelRX, kernelTX uint64
 		lastHandshake := time.Time{}
@@ -430,6 +448,7 @@ func (s *Service) resyncMetricsCacheAfterFlush() {
 				kernelLastTX:  c.KernelLastTX,
 				lastHandshake: c.LastHandshake,
 				restartedAt:   c.RestartedAt,
+				runtimeState:  networkModels.WireGuardClientRuntimeUnknown,
 			}
 		} else {
 			s.wgClientMetricsCache[c.ID].restartedAt = c.RestartedAt

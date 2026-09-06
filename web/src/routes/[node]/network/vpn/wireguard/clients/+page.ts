@@ -1,12 +1,13 @@
 import { getWireGuardClients } from '$lib/api/network/wireguard';
-import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
+
+const WIREGUARD_RUNTIME_CACHE_TTL = 5_000;
 
 export async function load() {
 	const clients = await cachedFetch(
 		'network-vpn-wireguard-clients',
 		async () => await getWireGuardClients(),
-		SEVEN_DAYS
+		WIREGUARD_RUNTIME_CACHE_TTL
 	);
 
 	return {

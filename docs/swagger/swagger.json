@@ -31094,6 +31094,9 @@
                 "status": {
                     "type": "string"
                 },
+                "sylveCommit": {
+                    "type": "string"
+                },
                 "sylveVersion": {
                     "type": "string"
                 },
@@ -32921,6 +32924,12 @@
                 "routeAllowedIPs": {
                     "type": "boolean"
                 },
+                "runtimeObservedAt": {
+                    "type": "string"
+                },
+                "runtimeState": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState"
+                },
                 "rx": {
                     "type": "integer"
                 },
@@ -32934,6 +32943,21 @@
                     "type": "integer"
                 }
             }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.WireGuardClientRuntimeState": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "available",
+                "missing",
+                "error"
+            ],
+            "x-enum-varnames": [
+                "WireGuardClientRuntimeUnknown",
+                "WireGuardClientRuntimeAvailable",
+                "WireGuardClientRuntimeMissing",
+                "WireGuardClientRuntimeError"
+            ]
         },
         "github_com_alchemillahq_sylve_internal_db_models_network.WireGuardServer": {
             "type": "object",
@@ -33887,6 +33911,9 @@
                 "estimatedBytes": {
                     "type": "integer"
                 },
+                "name": {
+                    "type": "string"
+                },
                 "pool": {
                     "type": "string"
                 },
@@ -34129,6 +34156,9 @@
                     "type": "string"
                 },
                 "status": {
+                    "type": "string"
+                },
+                "sylveCommit": {
                     "type": "string"
                 },
                 "sylveVersion": {
@@ -34760,6 +34790,9 @@
                 },
                 "ramUsage": {
                     "type": "number"
+                },
+                "sylveCommit": {
+                    "type": "string"
                 },
                 "sylveVersion": {
                     "type": "string"

@@ -15,6 +15,7 @@ import (
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 
@@ -51,14 +52,16 @@ type wgServerMetricsCache struct {
 // wgClientMetricsCache holds in-memory RX/TX state for a single outbound
 // WireGuard client interface.
 type wgClientMetricsCache struct {
-	id            uint
-	rx            uint64
-	tx            uint64
-	kernelLastRX  uint64
-	kernelLastTX  uint64
-	lastHandshake time.Time
-	restartedAt   time.Time
-	dirty         bool
+	id                uint
+	rx                uint64
+	tx                uint64
+	kernelLastRX      uint64
+	kernelLastTX      uint64
+	lastHandshake     time.Time
+	restartedAt       time.Time
+	runtimeState      networkModels.WireGuardClientRuntimeState
+	runtimeObservedAt time.Time
+	dirty             bool
 }
 
 type Service struct {
@@ -82,7 +85,7 @@ type Service struct {
 	wgMonitorCancel              context.CancelFunc
 	wgClient                     *wgctrl.Client
 	wgClientMutex                sync.Mutex
-	wgMetricsMutex               sync.Mutex
+	wgMetricsMutex               sync.RWMutex
 	wgEndpointCache              map[string][]string
 	wgServerCache                *wgServerMetricsCache
 	wgClientMetricsCache         map[uint]*wgClientMetricsCache

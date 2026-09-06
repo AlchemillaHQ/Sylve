@@ -24,14 +24,16 @@ The remote WireGuard administrator or VPN provider gives you a configuration fil
 
 ## Status and controls
 
-The page refreshes visible client status every two seconds. Use the enable switch to bring a stored client up or down, **Edit** to change it, and **Delete** to remove its configuration and tunnel interface.
+The page refreshes visible client status every two seconds. The node samples WireGuard runtime state every five seconds, so a new handshake or transfer normally appears within a few seconds. Use the enable switch to bring a stored client up or down, **Edit** to change it, and **Delete** to remove its configuration and tunnel interface.
 
 | Status | Meaning |
 | --- | --- |
 | **Active** | The interface is up and the remote peer has recently completed a handshake. |
 | **Idle** | The interface is up, but no recent peer handshake is available. This can be normal for an on-demand tunnel. |
-| **Disconnected** | The client is enabled but the remote endpoint is not currently reachable or has not completed a handshake. |
+| **Disconnected** | The client is enabled but its interface is unavailable, its runtime state cannot be read, or its latest handshake is stale. |
 | **Disabled** | The client is stored but its tunnel interface is not active. |
+
+Transfer values are cumulative for the managed client across interface restarts. By comparison, `wg show` reports counters for the current interface lifetime.
 
 Sylve retries enabled clients every 30 seconds when a transient startup or endpoint-resolution problem leaves their runtime interface missing. It also resolves hostname endpoints again and reapplies a client when the resolved address changes. Managed routes are reconciled after recovery, so a brief DNS or network failure does not require recreating the client.
 

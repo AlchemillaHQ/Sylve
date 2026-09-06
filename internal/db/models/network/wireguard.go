@@ -10,6 +10,15 @@ package networkModels
 
 import "time"
 
+type WireGuardClientRuntimeState string
+
+const (
+	WireGuardClientRuntimeUnknown   WireGuardClientRuntimeState = "unknown"
+	WireGuardClientRuntimeAvailable WireGuardClientRuntimeState = "available"
+	WireGuardClientRuntimeMissing   WireGuardClientRuntimeState = "missing"
+	WireGuardClientRuntimeError     WireGuardClientRuntimeState = "error"
+)
+
 type WireGuardServer struct {
 	ID uint `json:"id" gorm:"primaryKey"`
 
@@ -101,6 +110,9 @@ type WireGuardClient struct {
 	Uptime        uint64    `json:"uptime"`
 	LastHandshake time.Time `json:"lastHandshake"`
 	RestartedAt   time.Time `json:"restartedAt"`
+
+	RuntimeState      WireGuardClientRuntimeState `json:"runtimeState,omitempty" gorm:"-"`
+	RuntimeObservedAt *time.Time                  `json:"runtimeObservedAt,omitempty" gorm:"-"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

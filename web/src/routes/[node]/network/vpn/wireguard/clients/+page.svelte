@@ -22,9 +22,9 @@
 	// svelte-ignore state_referenced_locally
 	const clientsResource = resource(
 		() => 'network-vpn-wireguard-clients',
-		async (key) => {
-			const result = await getWireGuardClients();
-			updateCache(key, result);
+		async (key, _previousKey, { signal }) => {
+			const result = await getWireGuardClients(signal);
+			await updateCache(key, result);
 			return result;
 		},
 		{
@@ -34,7 +34,7 @@
 
 	useInterval(2000, {
 		callback: async () => {
-			if (!storage.visible) return;
+			if (!storage.visible || clientsResource.loading) return;
 			await clientsResource.refetch();
 		}
 	});
