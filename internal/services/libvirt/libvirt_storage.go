@@ -21,9 +21,11 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/zfsutil"
+	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -39,6 +41,92 @@ func detachedVMStorageContext(parent context.Context) (context.Context, context.
 		parent = context.Background()
 	}
 	return context.WithTimeout(context.WithoutCancel(parent), vmStorageCleanupTimeout)
+}
+
+type storageImageSource struct {
+	path        string
+	format      qemuimg.DiskFormat
+	virtualSize int64
+}
+
+func isOpticalStorageImage(path string) bool {
+	if strings.EqualFold(filepath.Ext(path), ".iso") {
+		return true
+	}
+
+	mime, err := sniffMediaMIME(path)
+	if err != nil {
+		return false
+	}
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	return strings.Contains(mime, "iso9660") || strings.Contains(mime, "cd-image")
+}
+
+func inspectStorageImageSource(path string) (storageImageSource, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return storageImageSource{}, fmt.Errorf("source_file_missing")
+	}
+
+	fileInfo, err := os.Stat(path)
+	if err != nil || !fileInfo.Mode().IsRegular() {
+		return storageImageSource{}, fmt.Errorf("source_file_missing")
+	}
+	if isOpticalStorageImage(path) {
+		return storageImageSource{}, fmt.Errorf("optical_media_requires_read_only_attachment")
+	}
+
+	imageInfo, err := inspectDiskImageFormat(path)
+	if err != nil || imageInfo == nil {
+		return storageImageSource{}, fmt.Errorf("unsupported_disk_image_format")
+	}
+	format := qemuimg.DiskFormat(strings.ToLower(strings.TrimSpace(imageInfo.Format)))
+	if !format.Valid() {
+		return storageImageSource{}, fmt.Errorf("unsupported_disk_image_format")
+	}
+	if strings.TrimSpace(imageInfo.BackingFilename) != "" ||
+		strings.TrimSpace(imageInfo.FullBackingFilename) != "" {
+		return storageImageSource{}, fmt.Errorf("unsafe_disk_image_backing_chain")
+	}
+
+	virtualSize := imageInfo.VirtualSize
+	if virtualSize <= 0 {
+		virtualSize = fileInfo.Size()
+	}
+	if virtualSize <= 0 {
+		return storageImageSource{}, fmt.Errorf("invalid_source_virtual_size")
+	}
+
+	return storageImageSource{
+		path:        path,
+		format:      format,
+		virtualSize: virtualSize,
+	}, nil
+}
+
+func writeStorageImageToTarget(
+	ctx context.Context,
+	sourcePath string,
+	targetPath string,
+	format qemuimg.DiskFormat,
+) error {
+	if format == qemuimg.FormatRaw {
+		if err := flashImageToDiskCtx(ctx, sourcePath, targetPath); err != nil {
+			return fmt.Errorf("failed_to_copy_source_image: %w", err)
+		}
+		return nil
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := convertDiskImageToRawCtx(ctx, sourcePath, targetPath, qemuimg.FormatRaw); err != nil {
+		return fmt.Errorf("failed_to_convert_source_image: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func isValidFilesystemTargetName(target string) bool {
@@ -759,8 +847,10 @@ type storageRuntimeHooks struct {
 		ctx context.Context,
 		db *gorm.DB,
 	) (vmModels.Storage, bool, error)
-	syncVMDisks func(ctx context.Context, db *gorm.DB, rid uint) error
-	copyFile    func(src, dst string) error
+	syncVMDisks                  func(ctx context.Context, db *gorm.DB, rid uint) error
+	destroyManagedStorageDataset func(context.Context, uint, vmModels.Storage) error
+	copyFile                     func(src, dst string) error
+	writeImage                   func(context.Context, string, string, qemuimg.DiskFormat) error
 }
 
 func (s *Service) normalizeStorageRuntimeHooks(hooks storageRuntimeHooks) storageRuntimeHooks {
@@ -780,9 +870,21 @@ func (s *Service) normalizeStorageRuntimeHooks(hooks storageRuntimeHooks) storag
 			return s.syncVMDisksWithDB(ctx, db, rid)
 		}
 	}
+	if hooks.destroyManagedStorageDataset == nil {
+		hooks.destroyManagedStorageDataset = func(
+			ctx context.Context,
+			rid uint,
+			storage vmModels.Storage,
+		) error {
+			return s.destroyManagedStorageDataset(ctx, rid, storage)
+		}
+	}
 
 	if hooks.copyFile == nil {
 		hooks.copyFile = utils.CopyFile
+	}
+	if hooks.writeImage == nil {
+		hooks.writeImage = writeStorageImageToTarget
 	}
 
 	return hooks
@@ -806,30 +908,17 @@ func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, st
 		return fmt.Errorf("gzfs_not_initialized")
 	}
 
-	var datasetType gzfs.DatasetType
-	var datasetPath string
+	datasetPath, err := managedStorageDatasetForBackingDeletion(storage, rid)
+	if err != nil {
+		return err
+	}
 
-	datasetPath = storage.Dataset.Name
-	if datasetPath == "" {
-		switch storage.Type {
-		case vmModels.VMStorageTypeRaw:
-			datasetType = gzfs.DatasetTypeFilesystem
-			datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", storage.Pool, rid, storage.ID)
-		case vmModels.VMStorageTypeZVol:
-			datasetType = gzfs.DatasetTypeVolume
-			datasetPath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d", storage.Pool, rid, storage.ID)
-		default:
-			return nil
-		}
-	} else {
-		switch storage.Type {
-		case vmModels.VMStorageTypeRaw:
-			datasetType = gzfs.DatasetTypeFilesystem
-		case vmModels.VMStorageTypeZVol:
-			datasetType = gzfs.DatasetTypeVolume
-		default:
-			return nil
-		}
+	var datasetType gzfs.DatasetType
+	switch storage.Type {
+	case vmModels.VMStorageTypeRaw:
+		datasetType = gzfs.DatasetTypeFilesystem
+	case vmModels.VMStorageTypeZVol:
+		datasetType = gzfs.DatasetTypeVolume
 	}
 
 	datasets, err := s.GZFS.ZFS.ListByType(ctx, datasetType, false, datasetPath)
@@ -844,6 +933,9 @@ func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, st
 		if ds == nil {
 			continue
 		}
+		if ds.Name != datasetPath {
+			return fmt.Errorf("unsafe_managed_storage_backing: expected %s, got %s", datasetPath, ds.Name)
+		}
 
 		if err := ds.Destroy(ctx, true, false); err != nil {
 			return fmt.Errorf("failed_to_destroy_storage_dataset_%s: %w", ds.Name, err)
@@ -851,6 +943,37 @@ func (s *Service) destroyManagedStorageDataset(ctx context.Context, rid uint, st
 	}
 
 	return nil
+}
+
+func managedStorageDatasetForBackingDeletion(storage vmModels.Storage, rid uint) (string, error) {
+	if storage.Type != vmModels.VMStorageTypeRaw && storage.Type != vmModels.VMStorageTypeZVol {
+		return "", fmt.Errorf("backing_deletion_not_supported: %s", storage.Type)
+	}
+	if rid == 0 || storage.ID == 0 {
+		return "", fmt.Errorf("unsafe_managed_storage_backing: missing storage identity")
+	}
+
+	pool := strings.TrimSpace(storage.Pool)
+	if pool == "" {
+		pool = strings.TrimSpace(storage.Dataset.Pool)
+	}
+	if pool == "" || strings.Contains(pool, "/") {
+		return "", fmt.Errorf("unsafe_managed_storage_backing: invalid pool")
+	}
+	if datasetPool := strings.TrimSpace(storage.Dataset.Pool); datasetPool != "" && datasetPool != pool {
+		return "", fmt.Errorf("unsafe_managed_storage_backing: dataset pool mismatch")
+	}
+
+	kind := "raw"
+	if storage.Type == vmModels.VMStorageTypeZVol {
+		kind = "zvol"
+	}
+	expected := fmt.Sprintf("%s/sylve/virtual-machines/%d/%s-%d", pool, rid, kind, storage.ID)
+	if actual := strings.TrimSpace(storage.Dataset.Name); actual != "" && actual != expected {
+		return "", fmt.Errorf("unsafe_managed_storage_backing: expected %s, got %s", expected, actual)
+	}
+
+	return expected, nil
 }
 
 func (s *Service) StorageDetach(
@@ -877,8 +1000,17 @@ func (s *Service) StorageDetach(
 		return fmt.Errorf("failed_to_get_vm_by_id: %w", err)
 	}
 	var storage vmModels.Storage
-	if err := s.DB.Select("id").First(&storage, "id = ? AND vm_id = ?", req.StorageID, vm.ID).Error; err != nil {
+	if err := s.DB.Preload("Dataset").
+		First(&storage, "id = ? AND vm_id = ?", req.StorageID, vm.ID).Error; err != nil {
 		return fmt.Errorf("failed_to_find_storage_record: %w", err)
+	}
+	if req.DeleteBacking {
+		if _, err := managedStorageDatasetForBackingDeletion(storage, req.RID); err != nil {
+			return err
+		}
+		if s.GZFS == nil || s.GZFS.ZFS == nil {
+			return fmt.Errorf("gzfs_not_initialized")
+		}
 	}
 	if err := s.requireVMStorageTopologyMutable(req.RID); err != nil {
 		return err
@@ -891,7 +1023,6 @@ func (s *Service) StorageDetach(
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
 	}
-
 	if !off {
 		return fmt.Errorf("domain_state_not_shutoff: %d", req.RID)
 	}
@@ -901,15 +1032,91 @@ func (s *Service) StorageDetach(
 		return fmt.Errorf("failed_to_capture_domain_xml: %w", err)
 	}
 
-	err = s.storageDetachApply(ctx, req, vm.ID, storageRuntimeHooks{})
+	if !req.DeleteBacking {
+		err = s.storageDetachApply(ctx, req, vm.ID, storageRuntimeHooks{})
+		if err == nil {
+			return nil
+		}
+		if restoreErr := s.restoreVMStorageMutation(req.RID, oldXML); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("storage_reconciliation_failed: %w", restoreErr))
+		}
+		return err
+	}
+
+	disconnected, err := s.storageDeleteBackingApply(ctx, req, vm.ID, storageRuntimeHooks{})
 	if err == nil {
 		return nil
 	}
-
+	if disconnected {
+		return err
+	}
 	if restoreErr := s.restoreVMStorageMutation(req.RID, oldXML); restoreErr != nil {
 		return errors.Join(err, fmt.Errorf("storage_reconciliation_failed: %w", restoreErr))
 	}
 	return err
+}
+
+func (s *Service) storageDeleteBackingApply(
+	ctx context.Context,
+	req libvirtServiceInterfaces.StorageDetachRequest,
+	vmID uint,
+	hooks storageRuntimeHooks,
+) (bool, error) {
+	if !req.DeleteBacking {
+		return false, fmt.Errorf("invalid_delete_backing")
+	}
+	hooks = s.normalizeStorageRuntimeHooks(hooks)
+
+	storage, err := s.storageDisconnectForBackingDeletionApply(ctx, req, vmID, hooks)
+	if err != nil {
+		return false, err
+	}
+	if err := hooks.destroyManagedStorageDataset(ctx, req.RID, storage); err != nil {
+		return true, fmt.Errorf("failed_to_destroy_storage_backing: %w", err)
+	}
+	if err := s.storageDetachApply(ctx, req, vmID, hooks); err != nil {
+		return true, err
+	}
+
+	return true, nil
+}
+
+func (s *Service) storageDisconnectForBackingDeletionApply(
+	ctx context.Context,
+	req libvirtServiceInterfaces.StorageDetachRequest,
+	vmID uint,
+	hooks storageRuntimeHooks,
+) (vmModels.Storage, error) {
+	var committed vmModels.Storage
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		var storage vmModels.Storage
+		if err := tx.
+			Preload("Dataset").
+			First(&storage, "id = ? AND vm_id = ?", req.StorageID, vmID).
+			Error; err != nil {
+			return fmt.Errorf("failed_to_find_storage_record: %w", err)
+		}
+		if _, err := managedStorageDatasetForBackingDeletion(storage, req.RID); err != nil {
+			return err
+		}
+
+		if storage.Enable {
+			storage.Enable = false
+			if err := tx.Save(&storage).Error; err != nil {
+				return fmt.Errorf("failed_to_disconnect_storage_record: %w", err)
+			}
+		}
+		if err := hooks.syncVMDisks(ctx, tx, req.RID); err != nil {
+			return fmt.Errorf("failed_to_sync_vm_disks: %w", err)
+		}
+
+		committed = storage
+		return nil
+	}); err != nil {
+		return vmModels.Storage{}, err
+	}
+
+	return committed, nil
 }
 
 func (s *Service) storageDetachApply(
@@ -1397,13 +1604,49 @@ func (s *Service) storageNewTxWithState(
 		if err != nil {
 			return fmt.Errorf("failed_to_create_vm_disk: %w", err)
 		}
+		var diskPath string
 		if storage.Type == vmModels.VMStorageTypeRaw {
-			diskPath, err := s.resolveRawStorageImagePath(ctx, tx, vm.RID, storage)
+			diskPath, err = s.resolveRawStorageImagePath(ctx, tx, vm.RID, storage)
 			if err != nil {
 				return err
 			}
-			if info, err := os.Stat(diskPath); err != nil || !info.Mode().IsRegular() {
+			if info, statErr := os.Stat(diskPath); statErr != nil || !info.Mode().IsRegular() {
 				return fmt.Errorf("created_disk_path_does_not_exist_after_creation: %s", diskPath)
+			}
+		} else if req.ImageSourcePath != "" {
+			datasetName := strings.TrimSpace(storage.Dataset.Name)
+			if datasetName == "" {
+				return fmt.Errorf("created_zvol_dataset_name_missing")
+			}
+			diskPath = filepath.Join("/dev/zvol", datasetName)
+		}
+
+		if req.ImageSourcePath != "" {
+			format := qemuimg.DiskFormat(strings.ToLower(strings.TrimSpace(req.ImageSourceFormat)))
+			if !format.Valid() {
+				return fmt.Errorf("unsupported_disk_image_format")
+			}
+
+			writePath := diskPath
+			if storage.Type == vmModels.VMStorageTypeRaw {
+				writePath += ".importing"
+				state.rawTempPath = writePath
+				if err := utils.CreateOrResizeFile(writePath, 0); err != nil {
+					return fmt.Errorf("failed_to_prepare_raw_import_file: %w", err)
+				}
+			}
+			if err := hooks.writeImage(ctx, req.ImageSourcePath, writePath, format); err != nil {
+				return err
+			}
+
+			if storage.Type == vmModels.VMStorageTypeRaw {
+				if err := utils.CreateOrResizeFile(writePath, storage.Size); err != nil {
+					return fmt.Errorf("failed_to_resize_imported_raw_file: %w", err)
+				}
+				if err := os.Rename(writePath, diskPath); err != nil {
+					return fmt.Errorf("failed_to_replace_imported_raw_file: %w", err)
+				}
+				state.rawTempPath = ""
 			}
 		}
 
@@ -1497,6 +1740,108 @@ func (s *Service) storageAttachApply(
 	return state.storage, nil
 }
 
+func (s *Service) CreateStorageFromImage(
+	req libvirtServiceInterfaces.CreateStorageFromImageRequest,
+	ctx context.Context,
+) (*vmModels.Storage, error) {
+	if s == nil || s.DB == nil {
+		return nil, fmt.Errorf("db_not_initialized")
+	}
+
+	req.DownloadUUID = strings.TrimSpace(req.DownloadUUID)
+	if req.DownloadUUID == "" {
+		return nil, fmt.Errorf("download_uuid_required")
+	}
+
+	db := s.DB.WithContext(ctx)
+	var download utilitiesModels.Downloads
+	if err := db.Where("uuid = ?", req.DownloadUUID).First(&download).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("download_not_found")
+		}
+		return nil, fmt.Errorf("failed_to_find_download: %w", err)
+	}
+	if download.Status != utilitiesModels.DownloadStatusDone {
+		return nil, fmt.Errorf("download_not_ready")
+	}
+
+	sourcePath, err := s.findISOByUUIDWithDB(db, req.DownloadUUID, true)
+	if err != nil {
+		return nil, fmt.Errorf("source_file_missing")
+	}
+	source, err := inspectStorageImageSource(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+
+	switch req.StorageType {
+	case libvirtServiceInterfaces.StorageTypeRaw,
+		libvirtServiceInterfaces.StorageTypeZVOL:
+	default:
+		return nil, fmt.Errorf("invalid_storage_type: %s", req.StorageType)
+	}
+	switch req.Emulation {
+	case libvirtServiceInterfaces.VirtIOStorageEmulation,
+		libvirtServiceInterfaces.AHCIHDStorageEmulation,
+		libvirtServiceInterfaces.NVMEStorageEmulation:
+	default:
+		return nil, fmt.Errorf("invalid_storage_emulation: %s", req.Emulation)
+	}
+
+	targetSize := source.virtualSize
+	if req.Size != nil {
+		targetSize = *req.Size
+	}
+	if targetSize < source.virtualSize {
+		return nil, fmt.Errorf(
+			"target_size_too_small: target_size=%d source_virtual_size=%d",
+			targetSize,
+			source.virtualSize,
+		)
+	}
+	if targetSize <= 0 {
+		return nil, fmt.Errorf("invalid_size")
+	}
+
+	pool := strings.TrimSpace(req.Pool)
+	return s.StorageAttach(libvirtServiceInterfaces.StorageAttachRequest{
+		AttachType:        libvirtServiceInterfaces.StorageAttachTypeNew,
+		RID:               req.RID,
+		Name:              req.Name,
+		Pool:              &pool,
+		StorageType:       req.StorageType,
+		Emulation:         req.Emulation,
+		Size:              &targetSize,
+		RecordSize:        req.RecordSize,
+		VolBlockSize:      req.VolBlockSize,
+		BootOrder:         req.BootOrder,
+		ImageSourcePath:   source.path,
+		ImageSourceFormat: string(source.format),
+	}, ctx)
+}
+
+func isStorageEmulationCompatible(
+	storageType libvirtServiceInterfaces.StorageType,
+	emulation libvirtServiceInterfaces.StorageEmulationType,
+) bool {
+	switch storageType {
+	case libvirtServiceInterfaces.StorageTypeRaw,
+		libvirtServiceInterfaces.StorageTypeZVOL:
+		return emulation == libvirtServiceInterfaces.VirtIOStorageEmulation ||
+			emulation == libvirtServiceInterfaces.AHCIHDStorageEmulation ||
+			emulation == libvirtServiceInterfaces.NVMEStorageEmulation
+	case libvirtServiceInterfaces.StorageTypeDiskImage:
+		return emulation == libvirtServiceInterfaces.VirtIOStorageEmulation ||
+			emulation == libvirtServiceInterfaces.AHCIHDStorageEmulation ||
+			emulation == libvirtServiceInterfaces.AHCICDStorageEmulation ||
+			emulation == libvirtServiceInterfaces.NVMEStorageEmulation
+	case libvirtServiceInterfaces.StorageTypeFilesystem:
+		return emulation == libvirtServiceInterfaces.VirtIO9PStorageEmulation
+	default:
+		return false
+	}
+}
+
 func (s *Service) StorageAttach(
 	req libvirtServiceInterfaces.StorageAttachRequest,
 	ctx context.Context,
@@ -1527,6 +1872,8 @@ func (s *Service) StorageAttach(
 	req.Dataset = strings.TrimSpace(req.Dataset)
 	req.UUID = strings.TrimSpace(req.UUID)
 	req.FilesystemTarget = strings.TrimSpace(req.FilesystemTarget)
+	req.ImageSourcePath = strings.TrimSpace(req.ImageSourcePath)
+	req.ImageSourceFormat = strings.ToLower(strings.TrimSpace(req.ImageSourceFormat))
 	if req.Pool != nil {
 		pool := strings.TrimSpace(*req.Pool)
 		req.Pool = &pool
@@ -1558,12 +1905,19 @@ func (s *Service) StorageAttach(
 	default:
 		return nil, fmt.Errorf("invalid_storage_emulation: %s", req.Emulation)
 	}
-	if req.StorageType == libvirtServiceInterfaces.StorageTypeFilesystem {
-		if req.Emulation != libvirtServiceInterfaces.VirtIO9PStorageEmulation {
-			return nil, fmt.Errorf("invalid_storage_emulation")
-		}
-	} else if req.Emulation == libvirtServiceInterfaces.VirtIO9PStorageEmulation {
+	if !isStorageEmulationCompatible(req.StorageType, req.Emulation) {
 		return nil, fmt.Errorf("invalid_storage_emulation")
+	}
+	if req.ImageSourcePath != "" {
+		if req.AttachType != libvirtServiceInterfaces.StorageAttachTypeNew ||
+			(req.StorageType != libvirtServiceInterfaces.StorageTypeRaw &&
+				req.StorageType != libvirtServiceInterfaces.StorageTypeZVOL) {
+			return nil, fmt.Errorf("invalid_image_source_target")
+		}
+		if !filepath.IsAbs(req.ImageSourcePath) ||
+			!qemuimg.DiskFormat(req.ImageSourceFormat).Valid() {
+			return nil, fmt.Errorf("invalid_image_source")
+		}
 	}
 
 	switch req.AttachType {
@@ -1753,12 +2107,10 @@ func (s *Service) StorageUpdate(
 		default:
 			return nil, fmt.Errorf("invalid_storage_emulation")
 		}
-		if current.Type == vmModels.VMStorageTypeFilesystem &&
-			*req.Emulation != libvirtServiceInterfaces.VirtIO9PStorageEmulation {
-			return nil, fmt.Errorf("invalid_storage_emulation")
-		}
-		if current.Type != vmModels.VMStorageTypeFilesystem &&
-			*req.Emulation == libvirtServiceInterfaces.VirtIO9PStorageEmulation {
+		if !isStorageEmulationCompatible(
+			libvirtServiceInterfaces.StorageType(current.Type),
+			*req.Emulation,
+		) {
 			return nil, fmt.Errorf("invalid_storage_emulation")
 		}
 	}

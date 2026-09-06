@@ -57,6 +57,7 @@ type LibvirtServiceInterface interface {
 	GetNextBootOrderIndex(vmId int) (int, error)
 	ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error)
 	StorageAttach(req StorageAttachRequest, ctx context.Context) (*vmModels.Storage, error)
+	CreateStorageFromImage(req CreateStorageFromImageRequest, ctx context.Context) (*vmModels.Storage, error)
 	StorageUpdate(req StorageUpdateRequest, ctx context.Context) (*vmModels.Storage, error)
 	CreateStorageParent(rid uint, poolName string, ctx context.Context) error
 

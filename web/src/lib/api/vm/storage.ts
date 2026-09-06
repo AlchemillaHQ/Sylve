@@ -9,12 +9,16 @@ type StorageAttachBase = {
 	volBlockSize?: number;
 };
 
-type BlockStorageAttachBase = StorageAttachBase & {
+type WritableStorageAttachBase = StorageAttachBase & {
+	emulation: Exclude<VMStorageEmulationType, 'virtio-9p' | 'ahci-cd'>;
+};
+
+type MediaStorageAttachBase = StorageAttachBase & {
 	emulation: Exclude<VMStorageEmulationType, 'virtio-9p'>;
 };
 
 export type StorageAttachRequest =
-	| (BlockStorageAttachBase & {
+	| (WritableStorageAttachBase & {
 			attachType: 'new';
 			storageType: 'raw' | 'zvol';
 			pool: string;
@@ -28,23 +32,35 @@ export type StorageAttachRequest =
 			filesystemTarget: string;
 			readOnly: boolean;
 	  })
-	| (BlockStorageAttachBase & {
+	| (WritableStorageAttachBase & {
 			attachType: 'import';
 			storageType: 'raw';
 			pool: string;
 			rawPath: string;
 	  })
-	| (BlockStorageAttachBase & {
+	| (WritableStorageAttachBase & {
 			attachType: 'import';
 			storageType: 'zvol';
 			pool: string;
 			dataset: string;
 	  })
-	| (BlockStorageAttachBase & {
+	| (MediaStorageAttachBase & {
 			attachType: 'import';
 			storageType: 'image';
 			downloadUUID: string;
 	  });
+
+export type StorageFromImageRequest = {
+	downloadUUID: string;
+	name: string;
+	pool: string;
+	storageType: 'raw' | 'zvol';
+	size?: number;
+	recordSize?: number;
+	volBlockSize?: number;
+	emulation: Exclude<VMStorageEmulationType, 'virtio-9p' | 'ahci-cd'>;
+	bootOrder?: number;
+};
 
 export type StorageUpdateRequest = {
 	name?: string;
@@ -67,6 +83,17 @@ export async function storageAttach(
 	});
 }
 
+export async function createStorageFromImage(
+	rid: number,
+	request: StorageFromImageRequest,
+	options?: NodeAPIRequestOptions
+): Promise<VMStorage | APIResponse> {
+	return await apiRequest(`/vm/${rid}/storage/from-image`, VMStorageSchema, 'POST', request, {
+		...options,
+		preserveErrors: true
+	});
+}
+
 export async function storageUpdate(
 	rid: number,
 	storageId: number,
@@ -79,18 +106,25 @@ export async function storageUpdate(
 	});
 }
 
-export async function storageDetach(
+export type StorageDeleteOptions = NodeAPIRequestOptions & {
+	deleteBacking?: boolean;
+};
+
+export async function storageDelete(
 	rid: number,
 	storageId: number,
-	options?: NodeAPIRequestOptions
+	options?: StorageDeleteOptions
 ): Promise<APIResponse> {
+	const { deleteBacking = false, ...requestOptions } = options ?? {};
+	const query = deleteBacking ? '?deleteBacking=true' : '';
+
 	return await apiRequest(
-		`/vm/${rid}/storage/${storageId}`,
+		`/vm/${rid}/storage/${storageId}${query}`,
 		APIResponseSchema,
 		'DELETE',
 		undefined,
 		{
-			...options,
+			...requestOptions,
 			preserveErrors: true
 		}
 	);

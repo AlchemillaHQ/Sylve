@@ -1004,6 +1004,7 @@ func (s *Service) createVMFromTemplateTarget(
 
 				createdStorage := vmModels.Storage{
 					VMID:         vm.ID,
+					Name:         storage.Name,
 					Type:         storage.Type,
 					Pool:         pool,
 					Size:         storage.Size,
@@ -1321,6 +1322,7 @@ func (s *Service) ConvertVMToTemplate(
 
 		templateStorages = append(templateStorages, vmModels.VMTemplateStorage{
 			SourceStorageID: storage.ID,
+			Name:            storage.Name,
 			Type:            storage.Type,
 			Emulation:       storage.Emulation,
 			Pool:            storage.Pool,

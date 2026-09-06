@@ -2,8 +2,11 @@ package exe
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewLocalExecutor(t *testing.T) {
@@ -70,5 +73,17 @@ func TestLocalExecutorRunCommandError(t *testing.T) {
 
 	if got := stderr.String(); got != "boom" {
 		t.Fatalf("expected stderr %q, got %q", "boom", got)
+	}
+}
+
+func TestLocalExecutorRunContextCancelsCommand(t *testing.T) {
+	executor := NewLocalExecutor()
+	ctx, cancel := context.WithCancel(context.Background())
+	timer := time.AfterFunc(50*time.Millisecond, cancel)
+	defer timer.Stop()
+
+	err := executor.RunContext(ctx, nil, nil, nil, "sleep", "10")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
 	}
 }

@@ -544,3 +544,80 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 		t.Fatalf("expected raw media flash path to be used")
 	}
 }
+
+func TestFindISOByUUID_TorrentSkipsNonImageFilesThatQemuTreatsAsRaw(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	svc := &Service{DB: db}
+
+	const uuid = "torrent-with-readme-before-image"
+	torrentRoot := filepath.Join(config.GetDownloadsPath("torrents"), uuid)
+	if err := os.MkdirAll(torrentRoot, 0o755); err != nil {
+		t.Fatalf("failed to create torrent directory: %v", err)
+	}
+
+	readmePath := filepath.Join(torrentRoot, "README.txt")
+	imagePath := filepath.Join(torrentRoot, "appliance.qcow2")
+	if err := os.WriteFile(readmePath, []byte("not a disk image"), 0o644); err != nil {
+		t.Fatalf("failed to create README: %v", err)
+	}
+	if err := os.WriteFile(imagePath, []byte("qcow2 image"), 0o644); err != nil {
+		t.Fatalf("failed to create disk image: %v", err)
+	}
+
+	download := utilitiesModels.Downloads{
+		UUID:     uuid,
+		Path:     torrentRoot,
+		Name:     "appliance-release",
+		Type:     utilitiesModels.DownloadTypeTorrent,
+		URL:      "magnet:?xt=urn:btih:appliance",
+		Progress: 100,
+		Size:     27,
+		UType:    utilitiesModels.DownloadUTypeOther,
+		Status:   utilitiesModels.DownloadStatusDone,
+	}
+	if err := db.Create(&download).Error; err != nil {
+		t.Fatalf("failed to seed download row: %v", err)
+	}
+	files := []utilitiesModels.DownloadedFile{
+		{DownloadID: int(download.ID), Name: "README.txt", Size: 16},
+		{DownloadID: int(download.ID), Name: "appliance.qcow2", Size: 11},
+	}
+	if err := db.Create(&files).Error; err != nil {
+		t.Fatalf("failed to seed torrent files: %v", err)
+	}
+
+	origInspect := inspectDiskImageFormat
+	origSniff := sniffMediaMIME
+	inspectedReadme := false
+	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+		switch path {
+		case readmePath:
+			inspectedReadme = true
+			return &qemuimg.ImageInfo{Format: "raw"}, nil
+		case imagePath:
+			return &qemuimg.ImageInfo{Format: "qcow2"}, nil
+		default:
+			return nil, fmt.Errorf("unexpected path: %s", path)
+		}
+	}
+	sniffMediaMIME = func(string) (string, error) {
+		return "", fmt.Errorf("unknown format")
+	}
+	t.Cleanup(func() {
+		inspectDiskImageFormat = origInspect
+		sniffMediaMIME = origSniff
+	})
+
+	resolvedPath, err := svc.FindISOByUUID(uuid, true)
+	if err != nil {
+		t.Fatalf("expected torrent disk image to resolve, got error: %v", err)
+	}
+	if resolvedPath != imagePath {
+		t.Fatalf("expected %q, got %q", imagePath, resolvedPath)
+	}
+	if inspectedReadme {
+		t.Fatal("non-image torrent file was passed to qemu-img")
+	}
+}

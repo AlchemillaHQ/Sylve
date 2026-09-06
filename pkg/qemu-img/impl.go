@@ -2,6 +2,7 @@ package qemuimg
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -15,6 +16,16 @@ type qimg struct {
 }
 
 func (q *qimg) run(in io.Reader, out io.Writer, cmd string, args ...string) (string, error) {
+	return q.runContext(context.Background(), in, out, cmd, args...)
+}
+
+func (q *qimg) runContext(
+	ctx context.Context,
+	in io.Reader,
+	out io.Writer,
+	cmd string,
+	args ...string,
+) (string, error) {
 	if q.sudo {
 		args = append([]string{cmd}, args...)
 		cmd = "sudo"
@@ -26,7 +37,7 @@ func (q *qimg) run(in io.Reader, out io.Writer, cmd string, args ...string) (str
 		cmdOut = &stdout
 	}
 
-	if err := q.exec.Run(in, cmdOut, &stderr, cmd, args...); err != nil {
+	if err := q.exec.RunContext(ctx, in, cmdOut, &stderr, cmd, args...); err != nil {
 		return "", fmt.Errorf("qemuimg: %w (%s)", err, strings.TrimSpace(stderr.String()))
 	}
 

@@ -1108,6 +1108,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 	var storages []vmModels.Storage
 	if data.StorageType != libvirtServiceInterfaces.StorageTypeNone {
 		storages = append(storages, vmModels.Storage{
+			Name:      "Primary disk",
 			Pool:      data.StoragePool,
 			Type:      vmModels.VMStorageType(data.StorageType),
 			Size:      int64(*data.StorageSize),
@@ -1119,6 +1120,7 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 
 	if data.ISO != "" && strings.ToLower(data.ISO) != "none" {
 		storages = append(storages, vmModels.Storage{
+			Name:         "Installation media",
 			DownloadUUID: data.ISO,
 			Type:         vmModels.VMStorageTypeDiskImage,
 			Size:         0,

@@ -7,12 +7,19 @@
 	import { cn } from '$lib/utils.js';
 	import { watch } from 'runed';
 
+	interface ComboBoxItem {
+		value: string;
+		label: string;
+		disabled?: boolean;
+		description?: string;
+	}
+
 	interface Props {
 		open: boolean;
 		label?: string;
 		labelStatus?: { text: string; className?: string };
 		value: string | string[];
-		data: { value: string; label: string }[];
+		data: ComboBoxItem[];
 		onValueChange?: (value: string | string[]) => void;
 		placeholder?: string;
 		disabled?: boolean;
@@ -72,7 +79,7 @@
 		}
 	);
 
-	const effectiveData = $derived.by(() => {
+	const effectiveData = $derived.by((): ComboBoxItem[] => {
 		if (allowCustom && !suppressCustomInData) {
 			if (!multiple && typeof value === 'string' && value && !data.some((d) => d.value === value)) {
 				return [{ value: value, label: value }, ...data];
@@ -96,6 +103,7 @@
 	});
 
 	function selectItem(val: string) {
+		if (effectiveData.find((item) => item.value === val)?.disabled) return;
 		if (multiple) {
 			const arr = Array.isArray(value) ? [...value] : [];
 			const idx = arr.indexOf(val);
@@ -227,9 +235,10 @@
 				<Command.Empty>No data</Command.Empty>
 				<div class="max-h-64 overflow-y-auto">
 					<Command.Group>
-						{#each filteredData as element (element.label)}
+						{#each filteredData as element (element.value)}
 							<Command.Item
 								class={commandClasses}
+								disabled={element.disabled}
 								value={element.value}
 								onSelect={() => selectItem(element.value)}
 								onkeydown={(e) => {
@@ -248,7 +257,16 @@
 												: 'opacity-0'
 									)}`}
 								></span>
-								{formatLabel(element.label)}
+								{#if element.description}
+									<span class="min-w-0 flex-1">
+										<span class="block truncate">{formatLabel(element.label)}</span>
+										<span class="block truncate text-xs text-muted-foreground">
+											{element.description}
+										</span>
+									</span>
+								{:else}
+									{formatLabel(element.label)}
+								{/if}
 							</Command.Item>
 						{/each}
 						{#if allowCustom && search.trim() && !data.some((d) => d.value === search.trim()) && !(multiple && Array.isArray(value) && value.includes(search.trim()))}

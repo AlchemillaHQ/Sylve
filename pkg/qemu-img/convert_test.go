@@ -1,6 +1,7 @@
 package qemuimg
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -104,6 +105,20 @@ func TestConvertPropagatesConvertFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	exec.assertDone(t)
+}
+
+func TestConvertContextStopsBeforeRunningCommand(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	exec := &scriptedExecutor{}
+	q := &qimg{exec: exec}
+
+	err := q.ConvertContext(ctx, "/tmp/in.qcow2", "/tmp/out.raw", FormatRaw)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
 	}
 	exec.assertDone(t)
 }

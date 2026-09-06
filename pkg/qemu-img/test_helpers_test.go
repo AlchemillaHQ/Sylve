@@ -1,6 +1,7 @@
 package qemuimg
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"reflect"
@@ -43,6 +44,20 @@ func (s *scriptedExecutor) Run(_ io.Reader, stdout io.Writer, stderr io.Writer, 
 	}
 
 	return call.err
+}
+
+func (s *scriptedExecutor) RunContext(
+	ctx context.Context,
+	stdin io.Reader,
+	stdout io.Writer,
+	stderr io.Writer,
+	cmd string,
+	args ...string,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Run(stdin, stdout, stderr, cmd, args...)
 }
 
 func (s *scriptedExecutor) assertDone(t *testing.T) {

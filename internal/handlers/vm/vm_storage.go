@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -26,6 +27,7 @@ import (
 type vmStorageService interface {
 	StorageDetach(req libvirtServiceInterfaces.StorageDetachRequest, ctx context.Context) error
 	StorageAttach(req libvirtServiceInterfaces.StorageAttachRequest, ctx context.Context) (*vmModels.Storage, error)
+	CreateStorageFromImage(req libvirtServiceInterfaces.CreateStorageFromImageRequest, ctx context.Context) (*vmModels.Storage, error)
 	StorageUpdate(req libvirtServiceInterfaces.StorageUpdateRequest, ctx context.Context) (*vmModels.Storage, error)
 }
 
@@ -86,18 +88,22 @@ func vmStorageErrorStatus(err error) int {
 		"invalid_pool", "invalid_size", "invalid_boot_order", "invalid_record_size",
 		"invalid_volblock_size", "invalid_raw_path", "raw_path_must_be_regular_file",
 		"filesystem_dataset_guid_required", "zvol_dataset_guid_required",
-		"download_uuid_required", "invalid_filesystem_target_name", "empty_storage_update"):
+		"download_uuid_required", "invalid_filesystem_target_name", "empty_storage_update",
+		"invalid_delete_backing", "backing_deletion_not_supported", "unsafe_managed_storage_backing",
+		"unsupported_disk_image_format", "optical_media_requires_read_only_attachment",
+		"unsafe_disk_image_backing_chain", "target_size_too_small",
+		"invalid_source_virtual_size"):
 		return http.StatusBadRequest
 	case vmStorageErrorHasCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
 	case vmStorageErrorHasCode(codes,
 		"vm_not_found", "storage_not_found", "pool_not_found", "raw_path_does_not_exist",
 		"zvol_dataset_not_found", "filesystem_dataset_not_found", "download_not_found",
-		"target_zvol_dataset_not_found", "zvol_dataset_not_found_in_pool"):
+		"source_file_missing", "target_zvol_dataset_not_found", "zvol_dataset_not_found_in_pool"):
 		return http.StatusNotFound
 	case vmStorageErrorHasCode(codes,
 		"replication_storage_topology_change_requires_policy_disabled",
-		"replication_run_in_progress",
+		"replication_run_in_progress", "download_not_ready",
 		"domain_state_not_shutoff", "boot_order_index_already_in_use",
 		"storage_dataset_already_exists", "zvol_dataset_already_attached",
 		"filesystem_target_already_in_use", "insufficient_space_in_pool",
@@ -167,15 +173,33 @@ func StorageDetach(libvirtService vmStorageService) gin.HandlerFunc {
 			return
 		}
 
-		req := libvirtServiceInterfaces.StorageDetachRequest{RID: rid, StorageID: storageID}
+		deleteBacking := false
+		if value := strings.TrimSpace(c.Query("deleteBacking")); value != "" {
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				writeVMStorageError(c, "invalid_request", errors.New("invalid_delete_backing"))
+				return
+			}
+			deleteBacking = parsed
+		}
+
+		req := libvirtServiceInterfaces.StorageDetachRequest{
+			RID:           rid,
+			StorageID:     storageID,
+			DeleteBacking: deleteBacking,
+		}
 		if err := libvirtService.StorageDetach(req, c.Request.Context()); err != nil {
-			writeVMStorageError(c, "storage_detach_failed", err)
+			writeVMStorageError(c, "storage_delete_failed", err)
 			return
 		}
 
+		message := "storage_detached"
+		if deleteBacking {
+			message = "storage_and_backing_deleted"
+		}
 		c.JSON(http.StatusOK, internal.APIResponse[any]{
 			Status:  "success",
-			Message: "storage_detached",
+			Message: message,
 			Data:    nil,
 			Error:   "",
 		})
@@ -228,6 +252,45 @@ func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 		c.JSON(http.StatusCreated, internal.APIResponse[vmModels.Storage]{
 			Status:  "success",
 			Message: "storage_attached",
+			Data:    *storage,
+			Error:   "",
+		})
+	}
+}
+
+// CreateStorageFromImage creates a writable managed disk from a Downloader image.
+func CreateStorageFromImage(libvirtService vmStorageService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, err := utils.ParamUint(c, "rid")
+		if err != nil {
+			writeVMStorageError(c, "invalid_request", errors.New("invalid_request: "+err.Error()))
+			return
+		}
+
+		var req libvirtServiceInterfaces.CreateStorageFromImageRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			writeVMStorageError(c, "invalid_request", errors.New("invalid_request: "+err.Error()))
+			return
+		}
+		req.RID = rid
+
+		storage, err := libvirtService.CreateStorageFromImage(req, c.Request.Context())
+		if err != nil {
+			writeVMStorageError(c, "storage_create_from_image_failed", err)
+			return
+		}
+		if storage == nil {
+			writeVMStorageError(
+				c,
+				"storage_create_from_image_failed",
+				errors.New("storage_create_from_image_returned_empty_result"),
+			)
+			return
+		}
+
+		c.JSON(http.StatusCreated, internal.APIResponse[vmModels.Storage]{
+			Status:  "success",
+			Message: "storage_created_from_image",
 			Data:    *storage,
 			Error:   "",
 		})

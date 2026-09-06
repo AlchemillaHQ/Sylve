@@ -26,6 +26,7 @@ msgstr "Konzole"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
@@ -322,14 +323,11 @@ msgstr "Správce souborů – smazat"
 msgid "File Explorer"
 msgstr "Správce souborů"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Filesystem"
 msgstr "ZFS souborový systém"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "ZFS Volume"
@@ -392,7 +390,6 @@ msgstr "Jail – zastavit"
 msgid "Downloader - Create Signed URL"
 msgstr "Nástroj pro stahování – vytvořit podepsanou URL"
 
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Storage - Detach"
 msgstr "Úložiště virt. stroje – odpojit"
@@ -805,8 +802,10 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/fs/Create.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Create.svelte
@@ -893,6 +892,7 @@ msgstr "Zobrazit"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
@@ -927,6 +927,7 @@ msgstr "Zobrazit"
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -983,7 +984,6 @@ msgid "Bulk Delete"
 msgstr "Dávkové smazání"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -1013,7 +1013,6 @@ msgstr "Dávkové smazání"
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1195,10 +1194,12 @@ msgstr "Odesláno"
 msgid "Monaco, Menlo, \"Courier New\", monospace"
 msgstr "Monaco, Menlo, „Courier New“, písmo s pevnou šířkou"
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/terminal/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Disconnect"
 msgstr "Odpojit"
 
@@ -1671,6 +1672,7 @@ msgstr "Opravdu to chcete?"
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -1712,9 +1714,10 @@ msgstr "Vytvořit oddíly"
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/FileExplorer/Toolbar.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Size"
 msgstr "Velikost"
 
@@ -1873,7 +1876,6 @@ msgstr "Nejdříve změněno"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
@@ -2001,7 +2003,7 @@ msgstr "Vytvořit Samba sdílení"
 
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Dataset"
@@ -2475,8 +2477,6 @@ msgstr "Upravit {0}"
 msgid "Enter ZFS Pools"
 msgstr "Zadejte ZFS fondy"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -2856,6 +2856,7 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
@@ -3738,10 +3739,6 @@ msgstr ""
 msgid "Requesting"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select Type"
-msgstr "Vybrat typ"
-
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Endpoint"
@@ -4013,8 +4010,6 @@ msgid "Memory Size"
 msgstr "Velikost paměti"
 
 #: src/lib/components/custom/Jail/Create/Hardware.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Boot Order"
@@ -4183,7 +4178,7 @@ msgstr "Jednoduchý Linux"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
@@ -4372,10 +4367,8 @@ msgstr ""
 
 #. 0: selectedNetwork.name
 #. 0: selectedSwitchName || 'Network'
-#. 0: selectedName
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Edit - {0}"
 msgstr "Upravit – {0}"
 
@@ -4425,7 +4418,6 @@ msgstr "Výchozí brána"
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Save Changes"
 msgstr "Uložit změnit"
 
@@ -4810,7 +4802,6 @@ msgid "Block devices managed by ZFS"
 msgstr "Bloková zařízení, spravovaná prostřednictvím ZFS"
 
 #: src/lib/components/custom/VM/Create/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Raw Disk"
 msgstr "Holý disk"
 
@@ -4896,17 +4887,16 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Emulation"
 msgstr "Emulace"
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Select Emulation"
 msgstr "Vyberte emulaci"
 
@@ -4925,106 +4915,65 @@ msgstr "PCI zařízení změněna"
 msgid "PCI Devices"
 msgstr "PCI zařízení"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Invalid storage name"
 msgstr "Neplatný název úložiště"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "No ZFS pool selected"
 msgstr "Nevybrán žádný ZFS fond"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Boot order already in use"
 msgstr "Takové pořadí zavádění už je používáno"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "Invalid disk path"
 msgstr "Neplatný popis umístění disku"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "Unable to find disk"
 msgstr "Nebylo možné najít disk"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Please select a ZFS Volume"
 msgstr "Vyberte ZFS svazek"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Invalid size format"
 msgstr "Neplatný formát velikosti"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "New size cannot be smaller than current size"
 msgstr "Nová velikost nemůže být menší než ta stávající"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Failed to update storage"
 msgstr "Úložiště se nepodařilo zaktualizovat"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Storage updated"
 msgstr "Úložiště odpojeno"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "New Storage"
-msgstr "Nové úložiště"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "DB Storage"
 msgstr "Úložiště databáze"
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 msgid "Import"
 msgstr "Naimportovat"
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Disk Type"
-msgstr "Typ disku"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select Disk Type"
-msgstr "Vyberte typ disku"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Image"
-msgstr "Obraz"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 msgid "Select Pool"
 msgstr "Vybrat fond"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Raw Disk Path"
-msgstr "Popis umístění holého disku"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ZFS Volume"
-msgstr "Vybrat ZFS svazek"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "AHCI Hard Disk"
-msgstr "AHCI pevný disk"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "VirtIO Block"
-msgstr "VirtIO blokové"
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Attach Storage"
-msgstr "Připojit úložiště"
 
 #. 0: tpmEmulation ? 'enable' \\: 'disable'
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
@@ -6090,6 +6039,7 @@ msgid "Create File"
 msgstr "Vytvořit soubor"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Share"
 msgstr "Sdílení"
 
@@ -6234,10 +6184,8 @@ msgstr "Neznámá MAC adresa"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Detach"
 msgstr "Odpojit"
 
@@ -6252,18 +6200,6 @@ msgstr "Síť se nepodařilo odpojit"
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Network detached"
 msgstr "Síť odpojena"
-
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-msgid "VM must be shut off to attach storage"
-msgstr "Aby bylo možné připojit úložiště je třeba, aby virt. stroj byl vypnutý"
-
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-msgid "Failed to detach storage"
-msgstr "Úložiště se nepodařilo odpojit"
-
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-msgid "Storage detached"
-msgstr "Úložiště odpojeno"
 
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
@@ -6466,6 +6402,7 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Updating"
 msgstr ""
 
@@ -8065,10 +8002,6 @@ msgstr ""
 msgid "Add {0} to last VDEV"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Size (Read-only)"
-msgstr ""
-
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Template"
 msgstr ""
@@ -8211,6 +8144,8 @@ msgstr ""
 msgid "Storage #{0} ({1})"
 msgstr ""
 
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
 msgid "Select pool"
 msgstr ""
@@ -8332,17 +8267,7 @@ msgid "DHCP Lease - Delete Dynamic"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Enabled (Available to VM)"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "ISO/Image"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ISO/Image"
 msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/volumes/FlashFile.svelte
@@ -8473,7 +8398,6 @@ msgstr ""
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Saving..."
 msgstr ""
@@ -8521,38 +8445,21 @@ msgstr ""
 msgid "Unused"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to import storage"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "Storage imported"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "Please select a ZFS filesystem dataset"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Invalid 9P target name (letters, numbers, '.', '_' and '-' only)"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Failed to attach storage"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Storage attached"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Select ZFS filesystem"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Read-only share"
 msgstr ""
 
@@ -10505,11 +10412,6 @@ msgstr ""
 msgid "Time Machine Max Size (GB)"
 msgstr ""
 
-#. 0: escapeHTML(properties.detach.name); 1: escapeHTML(vm.current.name)
-#: src/routes/[node]/vm/[rid]/storage/+page.svelte
-msgid "This will detach the storage {0} from the VM <b>{1}</b>. The underlying disk dataset/file will NOT be deleted."
-msgstr ""
-
 #: src/lib/components/custom/Notifications/Bell.svelte
 msgid "Failed to dismiss notification"
 msgstr ""
@@ -11825,6 +11727,7 @@ msgstr ""
 msgid "Tunables"
 msgstr ""
 
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/routes/[node]/settings/system/tunables/+page.svelte
 msgid "Writable"
 msgstr ""
@@ -12740,6 +12643,7 @@ msgid "The device returned a self-test log with an invalid checksum."
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
 msgid "Result"
 msgstr ""
 
@@ -12770,6 +12674,7 @@ msgid "The {0} schedule for {1} will be removed. This does not stop or remove co
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "<0/> Deleting"
 msgstr ""
 
@@ -13110,10 +13015,6 @@ msgstr ""
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "VM deleted; storage retained at {0}"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Filesystem storage cannot be imported"
 msgstr ""
 
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -14303,6 +14204,7 @@ msgstr ""
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Unavailable"
 msgstr ""
 
@@ -15332,6 +15234,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/VM/Hardware/TPM.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 #: src/lib/components/custom/VM/Options/BootRom.svelte
@@ -16445,7 +16348,6 @@ msgid "Invalid virtual machine network"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Network.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
 msgid "Attaching..."
 msgstr ""
 
@@ -16461,20 +16363,12 @@ msgstr ""
 msgid "No RAM changes needed"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Please specify a valid boot order"
 msgstr ""
 
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Please select an ISO/Image"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
-msgid "Images must be imported"
-msgstr ""
-
-#: src/lib/components/custom/VM/Hardware/Storage.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Unable to find storage"
 msgstr ""
 
@@ -17251,7 +17145,9 @@ msgstr ""
 msgid "Advertise Samba (mDNS)"
 msgstr ""
 
+#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Connect"
 msgstr ""
 
@@ -17993,4 +17889,383 @@ msgstr ""
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 msgid "Load older"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Storage - Create From Image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/StorageChoiceStep.svelte
+msgid "Advanced host import"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Downloader media"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "ZFS filesystem"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Fresh allocation"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose an image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose a filesystem"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose a ZFS volume"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Enter a host path"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Read-only"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Please select a disk image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Invalid target size"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Please select an ISO or disk image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Failed to create disk from image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Failed to add storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Disk created"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Writable disk created"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Media attached"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Filesystem shared"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Add storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose the operation you want. The next screen only asks for what it needs."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Source disk image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose a completed download"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "No compatible completed downloads are available."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Attachment label"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "FreeBSD installer"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Backing"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Select backing"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Target size · optional"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Auto from image"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Leave blank to use the image virtual size. A larger disk does not automatically grow guest partitions."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Examples: 10 GiB, 512 MiB, or an exact byte count."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Boot order"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "This attachment is always read-only. It references the Downloader source and does not create a copy."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Guest-visible target"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Letters, numbers, periods, underscores, and hyphens only."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Host source"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Select source"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Regular RAW file"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Existing ZFS volume"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Destination pool"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Absolute host path"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Sylve copies this file into a new managed RAW disk. The source remains."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "ZFS volume"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Choose an unattached volume"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
+msgid "Operation preview"
+msgstr ""
+
+#. 0: rid
+#: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
+msgid "VM {0}"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "The Downloader source stays unchanged. Sylve creates a separate managed, writable disk."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "The source stays in Downloader and can be reused after this media is ejected."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "The ZFS dataset is shared in place; Sylve does not copy or take ownership of it."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "A same-pool volume is moved into Sylve's managed namespace. A cross-pool volume is copied."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "The host file remains unchanged after it is copied into managed storage."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Sylve owns and manages the new backing storage for this VM."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Save changes"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Eject"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Unshare"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "VM must be shut off to add storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Configuration"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Back to storage choices"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Back to choices"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Configure storage for this virtual machine."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Select emulation"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "VM Storage - Delete"
+msgstr ""
+
+#. 0: backingLabel(properties.diskType)
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Writable {0}"
+msgstr ""
+
+#. 0: selectedImageIsOptical ? 'CD' \\: 'disk'
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Read-only {0}"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Insert"
+msgstr ""
+
+#. 0: action
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "VM must be shut off to {0}"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Untitled storage"
+msgstr ""
+
+#. 0: label.toLowerCase()
+#. 0: label.toLowerCase()
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Failed to {0} storage"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Failed to delete storage"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Storage and backing data deleted"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Storage attachment deleted"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Edit storage"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Delete storage"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Delete storage?"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "The downloaded source will remain available in Downloader."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "The shared ZFS dataset will remain on the host."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Leave the option below off to keep the disk data on the host."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "<0/> will be removed from <1/>. <2/>"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Also permanently delete backing storage"
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "The backing storage and all data in it will be permanently destroyed. This cannot be undone."
+msgstr ""
+
+#: src/routes/[node]/vm/[rid]/storage/+page.svelte
+msgid "Delete storage and backing"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Installation media"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Filesystem share"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Unknown media"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Managed storage"
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Edit - "
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
+msgid "Compressed images must be extracted before they can be used here."
+msgstr ""
+
+#: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
+msgid "Size � read-only"
 msgstr ""

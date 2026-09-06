@@ -1,6 +1,8 @@
 package qemuimg
 
 import (
+	"context"
+
 	"github.com/alchemillahq/sylve/pkg/exe"
 )
 
@@ -19,6 +21,10 @@ func CheckTools() error {
 
 func Convert(src, dst string, outFmt DiskFormat) error {
 	return qi.Convert(src, dst, outFmt)
+}
+
+func ConvertContext(ctx context.Context, src, dst string, outFmt DiskFormat) error {
+	return qi.ConvertContext(ctx, src, dst, outFmt)
 }
 
 func Info(img string) (*ImageInfo, error) {

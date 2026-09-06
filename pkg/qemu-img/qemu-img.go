@@ -1,5 +1,7 @@
 package qemuimg
 
+import "context"
+
 const qemuImgPath = "/usr/local/bin/qemu-img"
 
 type QemuImg interface {
@@ -7,6 +9,7 @@ type QemuImg interface {
 	Info(path string) (*ImageInfo, error)
 	InfoBackingChain(path string) ([]*ImageInfo, error)
 	Convert(src, dst string, outFmt DiskFormat) error
+	ConvertContext(ctx context.Context, src, dst string, outFmt DiskFormat) error
 }
 
 func (q *qimg) CheckTools() error {

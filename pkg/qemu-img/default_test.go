@@ -1,6 +1,7 @@
 package qemuimg
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -44,6 +45,14 @@ func (s *stubQemuImg) Convert(src, dst string, outFmt DiskFormat) error {
 	return s.convertErr
 }
 
+func (s *stubQemuImg) ConvertContext(
+	_ context.Context,
+	src, dst string,
+	outFmt DiskFormat,
+) error {
+	return s.Convert(src, dst, outFmt)
+}
+
 func TestDefaultWrappersDelegateToConfiguredImplementation(t *testing.T) {
 	orig := qi
 	t.Cleanup(func() { qi = orig })
@@ -67,6 +76,9 @@ func TestDefaultWrappersDelegateToConfiguredImplementation(t *testing.T) {
 
 	if err := Convert("/tmp/a.qcow2", "/tmp/a.raw", FormatRaw); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := ConvertContext(context.Background(), "/tmp/a.qcow2", "/tmp/a.raw", FormatRaw); err != nil {
+		t.Fatalf("unexpected context conversion error: %v", err)
 	}
 
 	if !stub.checkToolsCalled {

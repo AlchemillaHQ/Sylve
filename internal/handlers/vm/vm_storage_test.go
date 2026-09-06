@@ -22,15 +22,18 @@ import (
 )
 
 type mockVMStorageService struct {
-	attachFn      func(libvirtServiceInterfaces.StorageAttachRequest, context.Context) (*vmModels.Storage, error)
-	updateFn      func(libvirtServiceInterfaces.StorageUpdateRequest, context.Context) (*vmModels.Storage, error)
-	detachFn      func(libvirtServiceInterfaces.StorageDetachRequest, context.Context) error
-	attachCalls   int
-	updateCalls   int
-	detachCalls   int
-	lastAttachReq *libvirtServiceInterfaces.StorageAttachRequest
-	lastUpdateReq *libvirtServiceInterfaces.StorageUpdateRequest
-	lastDetachReq *libvirtServiceInterfaces.StorageDetachRequest
+	attachFn          func(libvirtServiceInterfaces.StorageAttachRequest, context.Context) (*vmModels.Storage, error)
+	createFromImageFn func(libvirtServiceInterfaces.CreateStorageFromImageRequest, context.Context) (*vmModels.Storage, error)
+	updateFn          func(libvirtServiceInterfaces.StorageUpdateRequest, context.Context) (*vmModels.Storage, error)
+	detachFn          func(libvirtServiceInterfaces.StorageDetachRequest, context.Context) error
+	attachCalls       int
+	createImageCalls  int
+	updateCalls       int
+	detachCalls       int
+	lastAttachReq     *libvirtServiceInterfaces.StorageAttachRequest
+	lastCreateReq     *libvirtServiceInterfaces.CreateStorageFromImageRequest
+	lastUpdateReq     *libvirtServiceInterfaces.StorageUpdateRequest
+	lastDetachReq     *libvirtServiceInterfaces.StorageDetachRequest
 }
 
 func (m *mockVMStorageService) StorageAttach(
@@ -45,6 +48,24 @@ func (m *mockVMStorageService) StorageAttach(
 	}
 	return &vmModels.Storage{
 		ID:        44,
+		Name:      req.Name,
+		Type:      vmModels.VMStorageType(req.StorageType),
+		Emulation: vmModels.VMStorageEmulationType(req.Emulation),
+	}, nil
+}
+
+func (m *mockVMStorageService) CreateStorageFromImage(
+	req libvirtServiceInterfaces.CreateStorageFromImageRequest,
+	ctx context.Context,
+) (*vmModels.Storage, error) {
+	m.createImageCalls++
+	copied := req
+	m.lastCreateReq = &copied
+	if m.createFromImageFn != nil {
+		return m.createFromImageFn(req, ctx)
+	}
+	return &vmModels.Storage{
+		ID:        45,
 		Name:      req.Name,
 		Type:      vmModels.VMStorageType(req.StorageType),
 		Emulation: vmModels.VMStorageEmulationType(req.Emulation),
@@ -88,6 +109,7 @@ func newVMStorageRouter(storageSvc vmStorageService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.POST("/vm/:rid/storage", StorageAttach(storageSvc))
+	router.POST("/vm/:rid/storage/from-image", CreateStorageFromImage(storageSvc))
 	router.PATCH("/vm/:rid/storage/:storageId", StorageUpdate(storageSvc))
 	router.DELETE("/vm/:rid/storage/:storageId", StorageDetach(storageSvc))
 	return router
@@ -175,6 +197,107 @@ func TestStorageAttachAcceptsSupportedStorageTypesAndUsesPathRID(t *testing.T) {
 	}
 }
 
+func TestCreateStorageFromImageUsesPathRIDAndReturnsStorage(t *testing.T) {
+	t.Parallel()
+
+	service := &mockVMStorageService{}
+	body := []byte(`{
+		"rid": 999,
+		"downloadUUID": "image-uuid",
+		"name": "router-disk",
+		"pool": "tank",
+		"storageType": "zvol",
+		"size": 2147483648,
+		"emulation": "nvme",
+		"bootOrder": 2
+	}`)
+	response := testutil.PerformJSONRequest(
+		t,
+		newVMStorageRouter(service),
+		http.MethodPost,
+		"/vm/101/storage/from-image",
+		body,
+	)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d body=%s", response.Code, response.Body.String())
+	}
+	decoded := testutil.DecodeJSONResponse[vmStorageHandlerResponse](t, response)
+	if decoded.Status != "success" ||
+		decoded.Message != "storage_created_from_image" ||
+		decoded.Data.ID != 45 {
+		t.Fatalf("unexpected response: %+v", decoded)
+	}
+	if service.createImageCalls != 1 || service.lastCreateReq == nil {
+		t.Fatalf("expected one create-from-image call, got %d", service.createImageCalls)
+	}
+	if service.lastCreateReq.RID != 101 ||
+		service.lastCreateReq.DownloadUUID != "image-uuid" ||
+		service.lastCreateReq.StorageType != libvirtServiceInterfaces.StorageTypeZVOL ||
+		service.lastCreateReq.Emulation != libvirtServiceInterfaces.NVMEStorageEmulation {
+		t.Fatalf("unexpected bound request: %+v", service.lastCreateReq)
+	}
+}
+
+func TestCreateStorageFromImageRejectsInvalidPayloadBeforeService(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range [][]byte{
+		[]byte(`{"name":"disk","pool":"tank","storageType":"image","downloadUUID":"source","emulation":"nvme"}`),
+		[]byte(`{"name":"disk","pool":"tank","storageType":"raw","downloadUUID":"source","emulation":"ahci-cd"}`),
+		[]byte(`{"name":"disk","pool":"tank","storageType":"raw","emulation":"nvme"}`),
+	} {
+		service := &mockVMStorageService{}
+		response := testutil.PerformJSONRequest(
+			t,
+			newVMStorageRouter(service),
+			http.MethodPost,
+			"/vm/101/storage/from-image",
+			body,
+		)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d body=%s", response.Code, response.Body.String())
+		}
+		if service.createImageCalls != 0 {
+			t.Fatalf("invalid payload reached service %d times", service.createImageCalls)
+		}
+	}
+}
+
+func TestCreateStorageFromImageMapsStableServiceErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		err        error
+		wantStatus int
+	}{
+		{err: errors.New("target_size_too_small"), wantStatus: http.StatusBadRequest},
+		{err: errors.New("download_not_found"), wantStatus: http.StatusNotFound},
+		{err: errors.New("download_not_ready"), wantStatus: http.StatusConflict},
+	}
+
+	for _, tt := range tests {
+		service := &mockVMStorageService{
+			createFromImageFn: func(
+				libvirtServiceInterfaces.CreateStorageFromImageRequest,
+				context.Context,
+			) (*vmModels.Storage, error) {
+				return nil, tt.err
+			},
+		}
+		body := []byte(`{"name":"disk","pool":"tank","storageType":"raw","downloadUUID":"source","emulation":"nvme"}`)
+		response := testutil.PerformJSONRequest(
+			t,
+			newVMStorageRouter(service),
+			http.MethodPost,
+			"/vm/101/storage/from-image",
+			body,
+		)
+		if response.Code != tt.wantStatus {
+			t.Fatalf("expected status %d, got %d body=%s", tt.wantStatus, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestStorageAttachRejectsInvalidEnumsBeforeService(t *testing.T) {
 	t.Parallel()
 
@@ -240,16 +363,53 @@ func TestStorageUpdateRejectsEmptyOrInvalidPatch(t *testing.T) {
 func TestStorageDetachUsesNestedPathIdentity(t *testing.T) {
 	t.Parallel()
 
+	tests := []struct {
+		name              string
+		path              string
+		wantDeleteBacking bool
+	}{
+		{name: "metadata only by default", path: "/vm/101/storage/44"},
+		{name: "delete backing requested", path: "/vm/101/storage/44?deleteBacking=true", wantDeleteBacking: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			service := &mockVMStorageService{}
+			response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodDelete, tt.path, nil)
+			if response.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d body=%s", response.Code, response.Body.String())
+			}
+			if service.detachCalls != 1 || service.lastDetachReq == nil {
+				t.Fatalf("expected one service call, got %d", service.detachCalls)
+			}
+			if service.lastDetachReq.RID != 101 || service.lastDetachReq.StorageID != 44 {
+				t.Fatalf("unexpected detach identity: %+v", service.lastDetachReq)
+			}
+			if service.lastDetachReq.DeleteBacking != tt.wantDeleteBacking {
+				t.Fatalf("expected deleteBacking=%t, got %+v", tt.wantDeleteBacking, service.lastDetachReq)
+			}
+		})
+	}
+}
+
+func TestStorageDetachRejectsInvalidDeleteBacking(t *testing.T) {
+	t.Parallel()
+
 	service := &mockVMStorageService{}
-	response := testutil.PerformJSONRequest(t, newVMStorageRouter(service), http.MethodDelete, "/vm/101/storage/44", nil)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", response.Code, response.Body.String())
+	response := testutil.PerformJSONRequest(
+		t,
+		newVMStorageRouter(service),
+		http.MethodDelete,
+		"/vm/101/storage/44?deleteBacking=maybe",
+		nil,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", response.Code, response.Body.String())
 	}
-	if service.detachCalls != 1 || service.lastDetachReq == nil {
-		t.Fatalf("expected one service call, got %d", service.detachCalls)
-	}
-	if service.lastDetachReq.RID != 101 || service.lastDetachReq.StorageID != 44 {
-		t.Fatalf("unexpected detach identity: %+v", service.lastDetachReq)
+	if service.detachCalls != 0 {
+		t.Fatalf("invalid query reached service %d times", service.detachCalls)
 	}
 }
 
@@ -268,6 +428,9 @@ func TestStorageHandlerMapsServiceErrors(t *testing.T) {
 		{name: "nested capacity conflict", err: errors.New("failed_to_create_vm_disk: insufficient_space_in_pool: tank"), wantStatus: http.StatusConflict},
 		{name: "topology conflict", err: errors.New("replication_storage_topology_change_requires_policy_disabled"), wantStatus: http.StatusConflict},
 		{name: "replication running", err: errors.New("replication_run_in_progress"), wantStatus: http.StatusConflict},
+		{name: "unsupported backing deletion", err: errors.New("backing_deletion_not_supported: image"), wantStatus: http.StatusBadRequest},
+		{name: "unsafe backing deletion", err: errors.New("unsafe_managed_storage_backing: path mismatch"), wantStatus: http.StatusBadRequest},
+		{name: "invalid backing deletion query", err: errors.New("invalid_delete_backing"), wantStatus: http.StatusBadRequest},
 		{name: "unavailable", err: errors.New("failed_to_create_vm_disk: gzfs_not_initialized"), wantStatus: http.StatusServiceUnavailable},
 		{name: "internal", err: errors.New("failed_to_commit_storage_metadata"), wantStatus: http.StatusInternalServerError},
 	}

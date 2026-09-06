@@ -1,11 +1,16 @@
 package qemuimg
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
 
 func (q *qimg) Convert(src, dst string, outFmt DiskFormat) error {
+	return q.ConvertContext(context.Background(), src, dst, outFmt)
+}
+
+func (q *qimg) ConvertContext(ctx context.Context, src, dst string, outFmt DiskFormat) error {
 	src = strings.TrimSpace(src)
 	dst = strings.TrimSpace(dst)
 
@@ -27,7 +32,7 @@ func (q *qimg) Convert(src, dst string, outFmt DiskFormat) error {
 		)
 	}
 
-	info, err := q.Info(src)
+	info, err := q.infoContext(ctx, src)
 	if err != nil {
 		return fmt.Errorf("failed to read source image metadata: %w", err)
 	}
@@ -56,7 +61,7 @@ func (q *qimg) Convert(src, dst string, outFmt DiskFormat) error {
 		dst,
 	}
 
-	if _, err := q.run(nil, nil, qemuImgPath, args...); err != nil {
+	if _, err := q.runContext(ctx, nil, nil, qemuImgPath, args...); err != nil {
 		return fmt.Errorf(
 			"convert %q -> %q (srcFmt=%s, outFmt=%s) failed: %w",
 			src, dst, srcFmt, outFmt, err,

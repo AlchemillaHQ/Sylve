@@ -32,6 +32,7 @@ import (
 var flashImageToDiskCtx = utils.FlashImageToDiskCtx
 var inspectDiskImageFormat = qemuimg.Info
 var convertDiskImageToRaw = qemuimg.Convert
+var convertDiskImageToRawCtx = qemuimg.ConvertContext
 var sniffMediaMIME = func(path string) (string, error) {
 	mime, _, err := utils.SniffMIME(path)
 	return mime, err
@@ -126,7 +127,9 @@ func (s *Service) FindISOByUUID(uuid string, includeImg bool) (string, error) {
 func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool) (string, error) {
 	var download utilitiesModels.Downloads
 	if err := db.
-		Preload("Files").
+		Preload("Files", func(tx *gorm.DB) *gorm.DB {
+			return tx.Order("id ASC")
+		}).
 		Where("uuid = ?", uuid).
 		First(&download).Error; err != nil {
 		return "", fmt.Errorf("failed_to_find_download: %w", err)
@@ -192,6 +195,17 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 	isQemuUsableImage := func(p string) bool {
 		if !fileExists(p) {
 			return false
+		}
+
+		// qemu-img reports arbitrary regular files as raw images. Require a known
+		// disk-image suffix for discovered files. An explicitly recorded primary
+		// or extracted file may still be a raw image regardless of its filename.
+		switch strings.ToLower(filepath.Ext(p)) {
+		case ".img", ".raw", ".qcow", ".qcow2", ".qed", ".vdi", ".vmdk", ".vpc", ".vhd", ".vhdx":
+		default:
+			if p != strings.TrimSpace(download.Path) && p != strings.TrimSpace(download.ExtractedPath) {
+				return false
+			}
 		}
 
 		if cached, ok := qemuUsableCache[p]; ok {

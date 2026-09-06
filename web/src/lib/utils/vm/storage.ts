@@ -27,38 +27,40 @@ export function generateTableData(
 			title: 'Status',
 			formatter: (cell: CellComponent) => {
 				return cell.getValue() === true
-					? renderWithIcon('mdi:check-circle', 'Enabled', 'text-green-500')
-					: renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500');
+					? renderWithIcon('mdi:check-circle', 'Connected', 'text-green-500')
+					: renderWithIcon('mdi:circle-outline', 'Disconnected', 'text-muted-foreground');
 			}
 		},
 		{
 			field: 'type',
-			title: 'Type',
-			visible: false
+			title: 'Backing',
+			formatter: (cell: CellComponent) => {
+				switch (cell.getValue()) {
+					case 'zvol':
+						return renderWithIcon('carbon:volume-block-storage', 'ZVOL', 'text-muted-foreground');
+					case 'raw':
+						return renderWithIcon('carbon:document', 'RAW', 'text-muted-foreground');
+					case 'image':
+						return renderWithIcon('tdesign:cd-filled', 'Media', 'text-muted-foreground');
+					case 'filesystem':
+						return renderWithIcon('mdi:folder-network', '9P', 'text-muted-foreground');
+					default:
+						return '-';
+				}
+			}
+		},
+		{
+			field: 'access',
+			title: 'Access',
+			formatter: (cell: CellComponent) =>
+				cell.getValue() === 'ro'
+					? renderWithIcon('lucide:lock-keyhole', 'RO', 'text-muted-foreground', 'Read-only')
+					: renderWithIcon('lucide:lock-keyhole-open', 'RW', 'text-muted-foreground', 'Writable')
 		},
 		{
 			field: 'name',
 			title: 'Name',
-			formatter: (cell: CellComponent) => {
-				const value = escapeHTML(String(cell.getValue() ?? ''));
-				const row = cell.getRow().getData();
-
-				if (row.type === 'image') {
-					return renderWithIcon('tdesign:cd-filled', value, 'text-green-500', 'Installation Media');
-				} else if (row.type === 'zvol') {
-					return renderWithIcon(
-						'carbon:volume-block-storage',
-						value,
-						'text-blue-500',
-						'ZFS Volume'
-					);
-				} else if (row.type === 'raw') {
-					return renderWithIcon('carbon:volume-block-storage', value, 'text-blue-500', 'Raw Disk');
-				} else if (row.type === 'filesystem') {
-					return renderWithIcon('mdi:folder-network', value, 'text-amber-500', '9P Filesystem');
-				}
-				return value;
-			}
+			formatter: (cell: CellComponent) => escapeHTML(String(cell.getValue() ?? ''))
 		},
 		{
 			field: 'emulation',
@@ -125,10 +127,10 @@ export function generateTableData(
 
 		if (storage.type === 'image') {
 			const download = downloads.find((d) => storage.uuid === d.uuid);
-			name = download ? download.name : 'Unknown ISO';
+			const downloadName = download ? download.name : 'Unknown ISO';
 			size = download ? download.size : 0;
 
-			name = `${storage.name} (${name})`;
+			name = storage.name?.trim() ? `${storage.name.trim()} (${downloadName})` : downloadName;
 		} else if (storage.type === 'zvol' || storage.type === 'raw') {
 			if (storage.type === 'zvol') {
 				zvolCount++;
@@ -140,8 +142,7 @@ export function generateTableData(
 		} else if (storage.type === 'filesystem') {
 			const datasetName = storage.dataset?.name || 'Unknown dataset';
 			const target = storage.filesystemTarget || storage.name || `share-${storage.id}`;
-			const mode = storage.readOnly ? 'ro' : 'rw';
-			name = `${target} (${datasetName}, ${mode})`;
+			name = `${target} (${datasetName})`;
 			size = 0;
 		}
 
@@ -173,6 +174,7 @@ export function generateTableData(
 			id: storage.id,
 			enabled: storage.enable,
 			type: storage.type,
+			access: storage.type === 'image' || storage.readOnly ? 'ro' : 'rw',
 			emulation: storage.emulation,
 			bootorder: storage.type === 'filesystem' ? undefined : (storage.bootOrder ?? 0),
 			name: name,

@@ -312,7 +312,7 @@
 			'/api/vm/templates/:id': 'VM Template - Delete',
 			'/api/jail/templates/:id': 'Jail Template - Delete',
 			'/api/vm/:id/snapshots/:id': 'VM Snapshot - Delete',
-			'/api/vm/:id/storage/:id': 'VM Storage - Detach',
+			'/api/vm/:id/storage/:id': 'VM Storage - Delete',
 			'/api/vm/:id/networks/:id': 'VM Network - Detach',
 			'/api/vm/:id/registration': 'VM - Purge Registration',
 			'/api/vm/:id': 'VM - Delete',
@@ -352,6 +352,7 @@
 			'/api/vm': 'VM - Create',
 			'/api/jail': 'Jail - Create',
 			'/api/jail/:id/networks': 'Jail Network - Create',
+			'/api/vm/:id/storage/from-image': 'VM Storage - Create From Image',
 			'/api/vm/:id/storage': 'VM Storage - Attach',
 			'/api/vm/:id/networks': 'VM Network - Attach',
 			'/api/vm/:id/snapshots': 'VM Snapshot - Create',
@@ -523,7 +524,7 @@
 	type VMStorageAuditTarget = {
 		rid?: number;
 		storageId?: number;
-		action: 'Attach' | 'Update' | 'Detach';
+		action: 'Attach' | 'Update' | 'Connect' | 'Disconnect' | 'Delete' | 'Detach';
 	};
 
 	function vmStorageAuditTarget(
@@ -532,17 +533,26 @@
 		body: Record<string, unknown> | null | undefined
 	): VMStorageAuditTarget | null {
 		const upperMethod = method.toUpperCase();
-		let match = path.match(/^\/api\/vm\/(\d+)\/storage$/);
+		let match = path.match(/^\/api\/vm\/(\d+)\/storage(?:\/from-image)?$/);
 		if (match && upperMethod === 'POST') {
 			return { rid: Number(match[1]), action: 'Attach' };
 		}
 
 		match = path.match(/^\/api\/vm\/(\d+)\/storage\/(\d+)$/);
 		if (match && (upperMethod === 'PATCH' || upperMethod === 'DELETE')) {
+			let action: VMStorageAuditTarget['action'] = 'Update';
+			if (upperMethod === 'DELETE') {
+				action = 'Delete';
+			} else {
+				const bodyKeys = Object.keys(body || {});
+				if (typeof body?.enable === 'boolean' && bodyKeys.length === 1) {
+					action = body.enable ? 'Connect' : 'Disconnect';
+				}
+			}
 			return {
 				rid: Number(match[1]),
 				storageId: Number(match[2]),
-				action: upperMethod === 'PATCH' ? 'Update' : 'Detach'
+				action
 			};
 		}
 

@@ -9,7 +9,7 @@ func TestInfoSuccess(t *testing.T) {
 	exec := &scriptedExecutor{calls: []execCall{{
 		cmd:    "/usr/local/bin/qemu-img",
 		args:   []string{"info", "--output=json", "/tmp/a.qcow2"},
-		stdout: `{"filename":"/tmp/a.qcow2","format":"qcow2","virtual-size":1024}`,
+		stdout: `{"filename":"/tmp/a.qcow2","format":"qcow2","virtual-size":1024,"backing-filename":"base.raw","full-backing-filename":"/tmp/base.raw"}`,
 	}}}
 	q := &qimg{exec: exec}
 
@@ -19,6 +19,9 @@ func TestInfoSuccess(t *testing.T) {
 	}
 	if info.Filename != "/tmp/a.qcow2" || info.Format != "qcow2" || info.VirtualSize != 1024 {
 		t.Fatalf("unexpected parsed info: %#v", info)
+	}
+	if info.BackingFilename != "base.raw" || info.FullBackingFilename != "/tmp/base.raw" {
+		t.Fatalf("unexpected parsed backing file metadata: %#v", info)
 	}
 	exec.assertDone(t)
 }

@@ -230,6 +230,32 @@ func mustCountRows[T any](t *testing.T, db *gorm.DB) int64 {
 	return count
 }
 
+func TestStorageEmulationCompatibility(t *testing.T) {
+	tests := []struct {
+		storageType libvirtServiceInterfaces.StorageType
+		emulation   libvirtServiceInterfaces.StorageEmulationType
+		want        bool
+	}{
+		{libvirtServiceInterfaces.StorageTypeRaw, libvirtServiceInterfaces.NVMEStorageEmulation, true},
+		{libvirtServiceInterfaces.StorageTypeRaw, libvirtServiceInterfaces.AHCICDStorageEmulation, false},
+		{libvirtServiceInterfaces.StorageTypeZVOL, libvirtServiceInterfaces.VirtIOStorageEmulation, true},
+		{libvirtServiceInterfaces.StorageTypeZVOL, libvirtServiceInterfaces.AHCICDStorageEmulation, false},
+		{libvirtServiceInterfaces.StorageTypeDiskImage, libvirtServiceInterfaces.AHCICDStorageEmulation, true},
+		{libvirtServiceInterfaces.StorageTypeDiskImage, libvirtServiceInterfaces.VirtIO9PStorageEmulation, false},
+		{libvirtServiceInterfaces.StorageTypeFilesystem, libvirtServiceInterfaces.VirtIO9PStorageEmulation, true},
+		{libvirtServiceInterfaces.StorageTypeFilesystem, libvirtServiceInterfaces.AHCIHDStorageEmulation, false},
+	}
+
+	for _, tt := range tests {
+		name := fmt.Sprintf("%s/%s", tt.storageType, tt.emulation)
+		t.Run(name, func(t *testing.T) {
+			if got := isStorageEmulationCompatible(tt.storageType, tt.emulation); got != tt.want {
+				t.Fatalf("isStorageEmulationCompatible() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveFilesystemSourcePathLoadsDatasetRelationFromDB(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{})
 	datasetRecord := vmModels.VMStorageDataset{
@@ -1090,6 +1116,321 @@ func TestStorageDetachApplyDeletesOnlyMetadataOnSuccess(t *testing.T) {
 	}
 	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
 		t.Fatalf("expected dataset metadata deleted, found %d", got)
+	}
+}
+
+func TestManagedStorageDatasetForBackingDeletion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		storage vmModels.Storage
+		rid     uint
+		want    string
+		errCode string
+	}{
+		{
+			name: "raw dataset",
+			storage: vmModels.Storage{
+				ID: 3, Type: vmModels.VMStorageTypeRaw, Pool: "tank",
+				Dataset: vmModels.VMStorageDataset{Pool: "tank", Name: "tank/sylve/virtual-machines/601/raw-3"},
+			},
+			rid:  601,
+			want: "tank/sylve/virtual-machines/601/raw-3",
+		},
+		{
+			name:    "zvol canonical fallback",
+			storage: vmModels.Storage{ID: 4, Type: vmModels.VMStorageTypeZVol, Pool: "fast"},
+			rid:     602,
+			want:    "fast/sylve/virtual-machines/602/zvol-4",
+		},
+		{
+			name:    "downloaded media",
+			storage: vmModels.Storage{ID: 5, Type: vmModels.VMStorageTypeDiskImage},
+			rid:     603,
+			errCode: "backing_deletion_not_supported",
+		},
+		{
+			name:    "filesystem share",
+			storage: vmModels.Storage{ID: 6, Type: vmModels.VMStorageTypeFilesystem},
+			rid:     604,
+			errCode: "backing_deletion_not_supported",
+		},
+		{
+			name: "mismatched dataset path",
+			storage: vmModels.Storage{
+				ID: 7, Type: vmModels.VMStorageTypeRaw, Pool: "tank",
+				Dataset: vmModels.VMStorageDataset{Pool: "tank", Name: "tank/shared/important"},
+			},
+			rid:     605,
+			errCode: "unsafe_managed_storage_backing",
+		},
+		{
+			name:    "nested pool value",
+			storage: vmModels.Storage{ID: 8, Type: vmModels.VMStorageTypeRaw, Pool: "tank/guests"},
+			rid:     606,
+			errCode: "unsafe_managed_storage_backing",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := managedStorageDatasetForBackingDeletion(tt.storage, tt.rid)
+			if tt.errCode != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.errCode) {
+					t.Fatalf("expected %s, got path=%q err=%v", tt.errCode, got, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected valid managed backing: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestStorageDeleteBackingApplyRemovesBackingThenMetadata(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	storage := seedDetachStorage(t, db, 44, 514)
+	service := &Service{DB: db}
+	req := libvirtServiceInterfaces.StorageDetachRequest{
+		RID:           514,
+		StorageID:     storage.ID,
+		DeleteBacking: true,
+	}
+
+	syncCalls := 0
+	destroyCalls := 0
+	disconnected, err := service.storageDeleteBackingApply(
+		context.Background(),
+		req,
+		storage.VMID,
+		storageRuntimeHooks{
+			syncVMDisks: func(_ context.Context, tx *gorm.DB, _ uint) error {
+				syncCalls++
+				if syncCalls == 1 {
+					var current vmModels.Storage
+					if err := tx.First(&current, "id = ?", storage.ID).Error; err != nil {
+						t.Fatalf("failed to inspect disconnected storage: %v", err)
+					}
+					if current.Enable {
+						t.Fatal("backing deletion reached destroy before storage was disconnected")
+					}
+				}
+				return nil
+			},
+			destroyManagedStorageDataset: func(_ context.Context, rid uint, current vmModels.Storage) error {
+				destroyCalls++
+				if rid != req.RID || current.ID != storage.ID || current.Enable {
+					t.Fatalf("unexpected storage passed to destroy: rid=%d storage=%+v", rid, current)
+				}
+				return nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected successful backing deletion: %v", err)
+	}
+	if !disconnected {
+		t.Fatal("expected committed disconnected state")
+	}
+	if syncCalls != 2 || destroyCalls != 1 {
+		t.Fatalf("expected two syncs and one destroy, got sync=%d destroy=%d", syncCalls, destroyCalls)
+	}
+	if got := mustCountRows[vmModels.Storage](t, db); got != 0 {
+		t.Fatalf("expected storage metadata deleted, found %d", got)
+	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 0 {
+		t.Fatalf("expected dataset metadata deleted, found %d", got)
+	}
+}
+
+func TestStorageDeleteBackingApplyKeepsDisconnectedMetadataWhenDestroyFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	storage := seedDetachStorage(t, db, 45, 515)
+	service := &Service{DB: db}
+
+	disconnected, err := service.storageDeleteBackingApply(
+		context.Background(),
+		libvirtServiceInterfaces.StorageDetachRequest{
+			RID:           515,
+			StorageID:     storage.ID,
+			DeleteBacking: true,
+		},
+		storage.VMID,
+		storageRuntimeHooks{
+			syncVMDisks: func(context.Context, *gorm.DB, uint) error { return nil },
+			destroyManagedStorageDataset: func(context.Context, uint, vmModels.Storage) error {
+				return fmt.Errorf("boom_destroy")
+			},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "failed_to_destroy_storage_backing") {
+		t.Fatalf("expected backing destroy failure, got %v", err)
+	}
+	if !disconnected {
+		t.Fatal("expected the safe disconnected state to remain committed")
+	}
+
+	var current vmModels.Storage
+	if err := db.First(&current, "id = ?", storage.ID).Error; err != nil {
+		t.Fatalf("expected storage metadata to remain: %v", err)
+	}
+	if current.Enable {
+		t.Fatal("expected retained storage metadata to remain disconnected")
+	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 1 {
+		t.Fatalf("expected dataset metadata retained, found %d", got)
+	}
+}
+
+func TestStorageDeleteBackingApplyKeepsDisconnectedMetadataWhenFinalSyncFails(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	storage := seedDetachStorage(t, db, 46, 516)
+	service := &Service{DB: db}
+
+	syncCalls := 0
+	destroyCalls := 0
+	disconnected, err := service.storageDeleteBackingApply(
+		context.Background(),
+		libvirtServiceInterfaces.StorageDetachRequest{
+			RID:           516,
+			StorageID:     storage.ID,
+			DeleteBacking: true,
+		},
+		storage.VMID,
+		storageRuntimeHooks{
+			syncVMDisks: func(context.Context, *gorm.DB, uint) error {
+				syncCalls++
+				if syncCalls == 2 {
+					return fmt.Errorf("boom_final_sync")
+				}
+				return nil
+			},
+			destroyManagedStorageDataset: func(context.Context, uint, vmModels.Storage) error {
+				destroyCalls++
+				return nil
+			},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "failed_to_sync_vm_disks") {
+		t.Fatalf("expected final sync failure, got %v", err)
+	}
+	if !disconnected {
+		t.Fatal("expected the safe disconnected state to remain committed")
+	}
+	if syncCalls != 2 || destroyCalls != 1 {
+		t.Fatalf("unexpected call counts: sync=%d destroy=%d", syncCalls, destroyCalls)
+	}
+
+	var current vmModels.Storage
+	if err := db.First(&current, "id = ?", storage.ID).Error; err != nil {
+		t.Fatalf("expected rolled-back metadata to remain: %v", err)
+	}
+	if current.Enable {
+		t.Fatal("expected rolled-back metadata to remain disconnected")
+	}
+	if got := mustCountRows[vmModels.VMStorageDataset](t, db); got != 1 {
+		t.Fatalf("expected dataset metadata retained for retry, found %d", got)
+	}
+}
+
+func TestStorageDeleteBackingApplyRejectsExternalBackingTypes(t *testing.T) {
+	t.Parallel()
+
+	for _, storageType := range []vmModels.VMStorageType{
+		vmModels.VMStorageTypeDiskImage,
+		vmModels.VMStorageTypeFilesystem,
+	} {
+		storageType := storageType
+		t.Run(string(storageType), func(t *testing.T) {
+			t.Parallel()
+
+			db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+			storage := vmModels.Storage{
+				VMID: 47, Name: "external", Type: storageType, Enable: true,
+			}
+			if err := db.Create(&storage).Error; err != nil {
+				t.Fatalf("failed to seed external storage: %v", err)
+			}
+			service := &Service{DB: db}
+
+			disconnected, err := service.storageDeleteBackingApply(
+				context.Background(),
+				libvirtServiceInterfaces.StorageDetachRequest{
+					RID:           517,
+					StorageID:     storage.ID,
+					DeleteBacking: true,
+				},
+				storage.VMID,
+				storageRuntimeHooks{
+					syncVMDisks: func(context.Context, *gorm.DB, uint) error {
+						t.Fatal("sync must not run for external backing")
+						return nil
+					},
+					destroyManagedStorageDataset: func(context.Context, uint, vmModels.Storage) error {
+						t.Fatal("destroy must not run for external backing")
+						return nil
+					},
+				},
+			)
+			if err == nil || !strings.Contains(err.Error(), "backing_deletion_not_supported") {
+				t.Fatalf("expected backing deletion rejection, got %v", err)
+			}
+			if disconnected {
+				t.Fatal("external storage must not be disconnected by a rejected deletion")
+			}
+
+			var current vmModels.Storage
+			if err := db.First(&current, "id = ?", storage.ID).Error; err != nil {
+				t.Fatalf("expected storage metadata retained: %v", err)
+			}
+			if !current.Enable {
+				t.Fatal("expected rejected storage to remain connected")
+			}
+		})
+	}
+}
+
+func TestStorageDeleteBackingApplyRejectsUnsafeDatasetPath(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.Storage{}, &vmModels.VMStorageDataset{})
+	storage := seedDetachStorage(t, db, 48, 518)
+	if err := db.Model(&vmModels.VMStorageDataset{}).
+		Where("id = ?", *storage.DatasetID).
+		Update("name", "tank/shared/important").Error; err != nil {
+		t.Fatalf("failed to corrupt test dataset path: %v", err)
+	}
+	service := &Service{DB: db}
+
+	disconnected, err := service.storageDeleteBackingApply(
+		context.Background(),
+		libvirtServiceInterfaces.StorageDetachRequest{
+			RID:           518,
+			StorageID:     storage.ID,
+			DeleteBacking: true,
+		},
+		storage.VMID,
+		storageRuntimeHooks{
+			syncVMDisks: func(context.Context, *gorm.DB, uint) error {
+				t.Fatal("sync must not run for an unsafe path")
+				return nil
+			},
+			destroyManagedStorageDataset: func(context.Context, uint, vmModels.Storage) error {
+				t.Fatal("destroy must not run for an unsafe path")
+				return nil
+			},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "unsafe_managed_storage_backing") {
+		t.Fatalf("expected unsafe path rejection, got %v", err)
+	}
+	if disconnected {
+		t.Fatal("unsafe storage must not be disconnected")
 	}
 }
 

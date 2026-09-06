@@ -198,42 +198,104 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 	};
 }
 
-export function getISOs(
-	downloads: Download[],
-	includeImg: boolean = false
-): { label: string; value: string }[] {
-	const options: { label: string; value: string }[] = [];
+export interface DownloadImageOption {
+	label: string;
+	value: string;
+	disabled?: boolean;
+	description?: string;
+	kind: 'iso' | 'disk';
+}
+
+const diskImageExtensions = [
+	'.img',
+	'.raw',
+	'.qcow',
+	'.qcow2',
+	'.qed',
+	'.vdi',
+	'.vmdk',
+	'.vpc',
+	'.vhd',
+	'.vhdx'
+];
+const compressedExtensions = ['.gz', '.bz2', '.xz', '.zst', '.zstd', '.z'];
+
+function filename(path: string): string {
+	return path.split(/[\\/]/).filter(Boolean).pop() || path;
+}
+
+function imageKind(name: string, includeImg: boolean): DownloadImageOption['kind'] | null {
+	const normalizedName = name.toLowerCase();
+	if (normalizedName.endsWith('.iso')) return 'iso';
+	if (includeImg && diskImageExtensions.some((extension) => normalizedName.endsWith(extension))) {
+		return 'disk';
+	}
+	return null;
+}
+
+function compressedImageKind(
+	name: string,
+	includeImg: boolean
+): DownloadImageOption['kind'] | null {
+	const normalizedName = name.toLowerCase();
+	const compressionExtension = compressedExtensions.find((extension) =>
+		normalizedName.endsWith(extension)
+	);
+	if (!compressionExtension) return null;
+	return imageKind(name.slice(0, -compressionExtension.length), includeImg);
+}
+
+export function getISOs(downloads: Download[], includeImg: boolean = false): DownloadImageOption[] {
+	const options: DownloadImageOption[] = [];
 
 	for (const download of downloads || []) {
-		if (download.progress !== 100) continue;
+		if (download.progress !== 100 || download.status !== 'done') continue;
 
-		const addIfMatch = (name: string) => {
-			if (
-				name.endsWith('.iso') ||
-				(includeImg && (name.endsWith('.img') || name.endsWith('.raw')))
-			) {
-				options.push({ label: name, value: download.uuid });
-			}
+		const candidates: string[] = [];
+		const addCandidate = (path: string | undefined) => {
+			if (!path) return;
+			const name = filename(path.trim());
+			if (name && !candidates.includes(name)) candidates.push(name);
 		};
 
-		if (download.type === 'http') {
-			addIfMatch(download.name);
-			if (download.extractedPath) {
-				if (download.extractedPath.includes('/')) {
-					const parts = download.extractedPath.split('/');
-					addIfMatch(parts[parts.length - 1]);
-				} else {
-					addIfMatch(download.extractedPath);
-				}
-			}
-		} else if (download.type === 'torrent' && Array.isArray(download.files)) {
-			for (const file of download.files) {
-				addIfMatch(file.name);
-			}
-		} else if (download.type === 'path') {
-			addIfMatch(download.name);
+		// These paths reflect files on disk. The editable display name does not, so
+		// changing it must not make a compressed image appear usable.
+		addCandidate(download.extractedPath);
+		if (download.type === 'torrent') {
+			const files = [...(download.files || [])].sort((a, b) => a.id - b.id);
+			for (const file of files) addCandidate(file.name);
+		} else {
+			addCandidate(download.path);
 		}
+
+		let option: DownloadImageOption | null = null;
+		for (const name of candidates) {
+			const kind = imageKind(name, includeImg);
+			if (!kind) continue;
+			option = { label: name, value: download.uuid, kind };
+			break;
+		}
+
+		if (!option) {
+			for (const name of candidates) {
+				const kind = compressedImageKind(name, includeImg);
+				if (!kind) continue;
+				option = {
+					label: name,
+					value: download.uuid,
+					disabled: true,
+					description:
+						download.type === 'torrent'
+							? 'Extract externally, then add by path'
+							: 'Extract in Downloader first',
+					kind
+				};
+				break;
+			}
+		}
+
+		if (option) options.push(option);
 	}
 
-	return [...new Map(options.map((item) => [item['value'], item])).values()];
+	return options;
 }

@@ -2803,6 +2803,13 @@ export async function handleDemoRequest<T = unknown>(
 		updateDemoVMDetails(found.vm, match[2], requestPayload(config));
 		return mutationSuccess('vm_configuration_updated') as DemoClientResponse<T>;
 	}
+	match = path.match(/^\/vm\/(\d+)\/storage\/from-image$/);
+	if (match && method === 'POST') {
+		const found = findVM(Number(match[1]));
+		return (
+			found ? success(attachDemoVMStorage(found.vm, requestPayload(config))) : missing(path)
+		) as DemoClientResponse<T>;
+	}
 	match = path.match(/^\/vm\/(\d+)\/storage$/);
 	if (match && method === 'POST') {
 		const found = findVM(Number(match[1]));
@@ -2819,8 +2826,19 @@ export async function handleDemoRequest<T = unknown>(
 		const index = found.vm.storages!.findIndex((storage) => Number(storage.id) === storageId);
 		if (index === -1) return missing(path) as DemoClientResponse<T>;
 		if (method === 'DELETE') {
+			const storage = found.vm.storages![index];
+			const deleteBacking = parsed.searchParams.get('deleteBacking') === 'true';
+			if (deleteBacking && storage.type !== 'raw' && storage.type !== 'zvol') {
+				return failure(
+					'backing_deletion_not_supported',
+					'Backing deletion is only available for managed RAW and ZVOL disks.',
+					400
+				) as DemoClientResponse<T>;
+			}
 			found.vm.storages!.splice(index, 1);
-			return mutationSuccess('vm_storage_detached') as DemoClientResponse<T>;
+			return mutationSuccess(
+				deleteBacking ? 'vm_storage_and_backing_deleted' : 'vm_storage_deleted'
+			) as DemoClientResponse<T>;
 		}
 		const storage = found.vm.storages![index];
 		const payload = requestPayload(config);

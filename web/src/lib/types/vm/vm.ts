@@ -209,6 +209,7 @@ export const SimpleVmTemplateSchema = z.object({
 
 export const VMTemplateStorageSchema = z.object({
 	sourceStorageId: z.number().int(),
+	name: z.string().optional().default(''),
 	type: z.enum(['raw', 'zvol', 'image']),
 	emulation: z.enum(['virtio-blk', 'ahci-hd', 'ahci-cd', 'nvme']),
 	pool: z.string(),

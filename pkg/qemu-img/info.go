@@ -1,6 +1,7 @@
 package qemuimg
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 )
@@ -16,18 +17,24 @@ type FormatSpecific struct {
 }
 
 type ImageInfo struct {
-	Children       []ImageChild    `json:"children"`
-	VirtualSize    int64           `json:"virtual-size"`
-	Filename       string          `json:"filename"`
-	Format         string          `json:"format"`
-	ActualSize     int64           `json:"actual-size"`
-	ClusterSize    int64           `json:"cluster-size"`
-	DirtyFlag      bool            `json:"dirty-flag"`
-	FormatSpecific *FormatSpecific `json:"format-specific"`
+	Children            []ImageChild    `json:"children"`
+	VirtualSize         int64           `json:"virtual-size"`
+	Filename            string          `json:"filename"`
+	BackingFilename     string          `json:"backing-filename"`
+	FullBackingFilename string          `json:"full-backing-filename"`
+	Format              string          `json:"format"`
+	ActualSize          int64           `json:"actual-size"`
+	ClusterSize         int64           `json:"cluster-size"`
+	DirtyFlag           bool            `json:"dirty-flag"`
+	FormatSpecific      *FormatSpecific `json:"format-specific"`
 }
 
 func (q *qimg) Info(path string) (*ImageInfo, error) {
-	out, err := q.run(nil, nil, qemuImgPath, "info", "--output=json", path)
+	return q.infoContext(context.Background(), path)
+}
+
+func (q *qimg) infoContext(ctx context.Context, path string) (*ImageInfo, error) {
+	out, err := q.runContext(ctx, nil, nil, qemuImgPath, "info", "--output=json", path)
 	if err != nil {
 		return nil, err
 	}

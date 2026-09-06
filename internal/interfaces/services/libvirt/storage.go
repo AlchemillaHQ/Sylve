@@ -76,6 +76,24 @@ type StorageAttachRequest struct {
 	RecordSize   *int   `json:"recordSize"`
 	VolBlockSize *int   `json:"volBlockSize"`
 	BootOrder    *int   `json:"bootOrder"`
+
+	// ImageSourcePath and ImageSourceFormat are populated internally by
+	// CreateStorageFromImage. They are never accepted from API clients.
+	ImageSourcePath   string `json:"-"`
+	ImageSourceFormat string `json:"-"`
+}
+
+type CreateStorageFromImageRequest struct {
+	RID          uint                 `json:"-"`
+	DownloadUUID string               `json:"downloadUUID" binding:"required"`
+	Name         string               `json:"name" binding:"required"`
+	Pool         string               `json:"pool" binding:"required"`
+	StorageType  StorageType          `json:"storageType" binding:"required,oneof=raw zvol"`
+	Size         *int64               `json:"size"`
+	RecordSize   *int                 `json:"recordSize"`
+	VolBlockSize *int                 `json:"volBlockSize"`
+	Emulation    StorageEmulationType `json:"emulation" binding:"required,oneof=virtio-blk ahci-hd nvme"`
+	BootOrder    *int                 `json:"bootOrder"`
 }
 
 type StorageUpdateRequest struct {
@@ -91,6 +109,7 @@ type StorageUpdateRequest struct {
 }
 
 type StorageDetachRequest struct {
-	RID       uint `json:"-"`
-	StorageID uint `json:"-"`
+	RID           uint `json:"-"`
+	StorageID     uint `json:"-"`
+	DeleteBacking bool `json:"-"`
 }

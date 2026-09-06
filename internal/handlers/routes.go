@@ -612,6 +612,7 @@ func RegisterRoutes(r *gin.Engine,
 		vm.PATCH("/:rid/name", vmHandlers.UpdateVMName(libvirtService, clusterService))
 
 		vm.POST("/:rid/storage", vmHandlers.StorageAttach(libvirtService))
+		vm.POST("/:rid/storage/from-image", vmHandlers.CreateStorageFromImage(libvirtService))
 		vm.PATCH("/:rid/storage/:storageId", vmHandlers.StorageUpdate(libvirtService))
 		vm.DELETE("/:rid/storage/:storageId", vmHandlers.StorageDetach(libvirtService))
 

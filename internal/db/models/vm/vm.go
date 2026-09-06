@@ -36,6 +36,7 @@ const (
 
 type VMTemplateStorage struct {
 	SourceStorageID uint                   `json:"sourceStorageId"`
+	Name            string                 `json:"name"`
 	Type            VMStorageType          `json:"type"`
 	Emulation       VMStorageEmulationType `json:"emulation"`
 	Pool            string                 `json:"pool"`
