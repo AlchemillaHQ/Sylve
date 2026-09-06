@@ -5,6 +5,7 @@ description: Connect Sylve nodes into a shared Data Center.
 
 import QuorumCalculator from '../../../../../components/QuorumCalculator.astro';
 import clusterJoinWalkthrough from './cluster-join.mp4';
+import clusterOverview from './clustering-overview-v031.png';
 
 A Sylve cluster gives you one Data Center view for its member nodes. Cluster state backs shared features such as backup targets and jobs, while each node continues to run its own workloads and services.
 
@@ -41,7 +42,10 @@ Open **Data Center → Cluster** on the first node and select **Create Cluster**
 
 After creation, return to the Cluster page to see its member table. The leader is marked in the table, and **View Join Information** provides the values needed by another node.
 
-![Cluster member table showing three online voters, their Sylve versions, addresses, guest counts, resource usage, leader indicator, and cluster actions](./clustering-overview-v031.png)
+<img
+  src={clusterOverview.src}
+  alt="Cluster table showing altair as the single online voter and leader, with Sylve Version displaying 0.3.0 - 392ff93 alongside its address, guest count, and resource usage"
+/>
 
 ## Join another node
 
@@ -76,9 +80,11 @@ The **Cluster Join** progress control shows the current phase, synchronized Raft
 | **Address** | The Raft address used for cluster consensus. |
 | **Status** | Whether Sylve can currently see the member as online or offline. |
 | **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not; **Staging** is a temporary joining state. |
-| **Sylve Version** | Version reported by the member. Membership changes require every participating node to report the same version. |
+| **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. Membership changes require every participating node to report the same version. |
 | **Guests** | Number of guests currently associated with that member. |
 | **CPU**, **RAM**, **Disk** | The member's current reported resource usage. Use these indicators when deciding where work can move before planned maintenance. |
+
+Compare build commits as well as versions when checking an upgrade, especially with `tip` builds: two binaries can report the same release version but come from different commits. A missing commit does not prove that the builds match. You can also inspect reported commits with `sylve datacenter cluster members`; see the [Data Center CLI guide](/guides/node/cli-console/data-center/).
 
 ## Remove a peer
 
@@ -203,7 +209,7 @@ During the mixed-version window, avoid cluster configuration changes, peer remov
 
 ### After every node is upgraded
 
-- Confirm every member reports the same Sylve version and is online.
+- Confirm every member reports the same Sylve version and is online. Compare reported build commits too, especially when using `tip` builds.
 - Confirm the cluster has a leader and the expected voter and non-voter roles.
 - Review failed or interrupted tasks before resuming scheduled maintenance.
 - Verify important workloads, replication policies, backup jobs, and backup targets.

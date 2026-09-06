@@ -119,13 +119,25 @@ For torrents containing several files, expand the top-level row and select the i
 
 Sylve refuses to delete an item while it is pending or processing. It also refuses deletion when a VM currently references that download, or when it cannot safely prove which managed files belong to the entry. These checks prevent a cleanup action from removing media that a VM still needs or unrelated files on the node.
 
-Detach or replace any VM media that references the item, wait for active work to finish, then try deletion again. If the table reports retained paths after an unsuccessful cleanup, review those paths on the node before making manual changes.
+Remove or replace any VM media attachment that references the item, wait for active work to finish, then try deletion again. **Eject** alone is not enough: it keeps the attachment and its reference to the download. To remove that reference, shut the VM off and use **Delete** on its media row in **Storage**. Deleting the media attachment leaves the source in Downloader until you delete it here. If the table reports retained paths after an unsuccessful cleanup, review those paths on the node before making manual changes.
+
+## Use a downloaded image in a VM
+
+Wait for the download and any processing to reach **Done**, then shut the VM off and open **Storage → Add storage**:
+
+- Choose **Create disk from image** for a writable guest disk. Sylve copies or converts the selected disk image into a separate managed ZFS volume or RAW file. The Downloader source remains unchanged. You do not need to enable **Auto-convert to RAW** in Downloader solely for this workflow.
+- Choose **Attach read-only media** for an installer ISO. This references the download directly without creating a writable copy.
+
+Extract compressed disk images before selecting them. Torrent downloads do not support automatic extraction, so extract those images externally and add the extracted file by its node-local path. Images that depend on external backing files must be made self-contained first. Installer ISOs cannot be used with **Create disk from image**.
+
+For a writable disk, leave the optional target size empty to use the image's virtual capacity, or choose a larger capacity. A larger disk does not automatically expand partitions or filesystems inside the guest. See [VM Storage](/guides/node/virtual-machines/storage/) for the complete workflow.
 
 ## Practical examples
 
 | Goal | Source and settings |
 | --- | --- |
 | Boot a VM from a FreeBSD or Linux installer | Use the publisher's HTTPS ISO URL. Choose **Uncategorized** and leave processing disabled. |
+| Create a writable disk from an appliance image | Add the disk image as **Uncategorized**, extracting it if compressed. Once it is **Done**, use **Create disk from image** in VM Storage. Conversion to RAW in Downloader is not required. |
 | Create a VM from a cloud image with first-boot configuration | Add the publisher's cloud image by HTTPS or upload it. Choose **Cloud-Init** and enable **Auto-convert to RAW** if the source is not already RAW. |
 | Create a jail from a base archive | Add the base archive by HTTPS, local path, or upload. Choose **Base / RootFS**. Extraction is enabled automatically. |
 | Reuse an image already on the node | Enter the file's absolute node path, choose the appropriate type, and optionally process it. Sylve copies it into its managed library. |

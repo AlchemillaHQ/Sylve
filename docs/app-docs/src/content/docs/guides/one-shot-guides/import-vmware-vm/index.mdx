@@ -161,7 +161,7 @@ hayzam-pc :: ~/vmware/Alpine »
 
 This confirms that `Alpine.vmdk` is a split sparse disk backed by all three extent files. Its current VMware data occupies about 251 MiB, but its virtual size is 8 GiB. The converted RAW file therefore has an 8 GiB logical size, and the browser upload processes the full 8 GiB.
 
-Note the **virtual size**. It determines the logical size that the browser must upload and the space required for the managed Raw Disk copy.
+Note the **virtual size**. It determines the logical size that the browser must upload and the space required for the managed RAW disk copy.
 
 Convert the descriptor and its referenced extents into one RAW disk:
 
@@ -171,7 +171,7 @@ hayzam-pc :: ~/vmware/Alpine » qemu-img convert -p -f vmdk -O raw Alpine.vmdk A
 hayzam-pc :: ~/vmware/Alpine »
 ```
 
-The `-p` option shows progress. `-f vmdk` identifies the source format, and `-O raw` creates the format required by the Raw Disk import workflow.
+The `-p` option shows progress. `-f vmdk` identifies the source format, and `-O raw` creates the format required by the **Regular RAW file** option in **Advanced host import**.
 
 Verify the result by running `qemu-img info Alpine.raw`:
 
@@ -201,7 +201,7 @@ This guide assumes its mountpoint is:
 /zroot/imports
 ```
 
-Set **Custom Mount Point** to `/zroot/imports`. Use the actual mountpoint shown by Sylve when your pool is mounted somewhere else. The path must be absolute because the Raw Disk import workflow reads an existing regular file from the node.
+Set **Custom Mount Point** to `/zroot/imports`. Use the actual mountpoint shown by Sylve when your pool is mounted somewhere else. The path must be absolute because **Advanced host import** reads an existing regular file from the node.
 
 <img
   src={createImportsDataset.src}
@@ -238,7 +238,7 @@ When Sylve is accessed through a reverse proxy, the proxy may enforce a smaller 
 This UI workflow is practical for the small Alpine example. For a large VMware disk, use a transfer method that preserves sparse files, such as `rsync --sparse`, or copy a compressed image to the node and decompress it there. The final import source must still be an uncompressed RAW regular file at a known absolute path.
 :::
 
-The upload and Raw Disk import also coexist temporarily because Sylve copies the source into managed VM storage. Allow free space for both complete files before starting.
+The uploaded RAW file and its managed copy coexist temporarily because Sylve copies the source into managed VM storage. Allow free space for both complete files before starting.
 
 ## Create the VM definition
 
@@ -300,28 +300,31 @@ Select **Create** and wait for the empty VM definition to appear.
 
 ## Import the RAW boot disk
 
-Keep the VM shut off. Open its **Storage** page, select **New**, and choose **Import**.
+Keep the VM shut off. Open its **Storage** page, select **Add storage**, and choose **Advanced host import**.
 
 Configure the attachment:
 
-- **Storage Type:** **Raw Disk**
-- **Source Path:** `/zroot/imports/Alpine.raw`, or the actual absolute upload path
-- **Destination Pool:** the pool that will hold the VM's managed storage
+- **Name:** `From VMware`
+- **Host source:** **Regular RAW file**
+- **Absolute host path:** `/zroot/imports/Alpine.raw`, or the actual absolute upload path
+- **Destination pool:** `zroot`, or the pool that will hold the VM's managed storage
 - **Emulation:** **AHCI Hard Disk** for the first compatibility-oriented boot
-- **Boot Order:** `0`
+- **Boot order:** `0`, which is available because this VM has no other disks or media
 
-Sylve verifies that the source is a regular file, copies it into the VM's managed raw-disk location, and leaves the uploaded source file unchanged. Keep the browser open until the import task finishes.
+Review **Operation preview** and confirm that it describes copying the host RAW file into managed storage. Select **Import storage**. Sylve verifies that the source is a regular file, copies it into the VM's managed raw-disk location, and leaves the uploaded source file unchanged. Keep the dialog open and wait for completion before starting the VM.
 
 <img
   src={importRawDisk.src}
-  alt="New Storage dialog importing /zroot/imports/Alpine.raw into zroot as a Raw Disk with AHCI Hard Disk emulation and boot order 0"
+  alt="Advanced host import dialog for Alpine-VMware, importing /zroot/imports/Alpine.raw as From VMware into zroot with AHCI Hard Disk emulation and boot order 0, with a preview confirming the source remains unchanged"
 />
 
-Confirm that the imported disk appears as enabled storage before starting the VM.
+Confirm that the imported disk appears with **Status** set to **Connected**, **Backing** set to **RAW**, and **Access** set to **RW**. For this example, check the name `From VMware`, size **8 GiB**, emulation **AHCI Hard Disk**, and boot order **0**. The **Path** should point to the VM's managed disk, not `/zroot/imports/Alpine.raw`.
+
+**Connected** means the disk is included in the VM's configuration. It does not mean the VM is running. For other attachment options, see [VM Storage](/guides/node/virtual-machines/storage/).
 
 <img
   src={storageReady.src}
-  alt="Alpine VMware VM Storage page showing an enabled 8 GiB Raw Disk named From VMware with AHCI Hard Disk emulation and boot order 0"
+  alt="Storage page for the shut-off Alpine-VMware VM showing From VMware as a connected writable 8 GiB RAW disk with AHCI Hard Disk emulation, boot order 0, and a managed path under zroot/sylve/virtual-machines"
 />
 
 ## Perform the first boot

@@ -46,11 +46,13 @@ Show the local member's cluster, consensus, and lifecycle state:
 doas sylve datacenter cluster status
 ```
 
-List the authoritative Raft membership, including addresses, suffrage, versions, and the current leader:
+List the authoritative Raft membership, including addresses, suffrage (voting role), Sylve versions and build commits, and the current leader:
 
 ```bash
 doas sylve datacenter cluster members
 ```
+
+The **VERSION** column includes the reported build commit when available, for example `0.3.0 - 21a5f0f`. If the commit is missing or reported as `unknown`, only the version is shown. Comparing commits helps identify different builds that report the same version, particularly when using `tip` builds.
 
 Use `--json` with either direct command when a script needs structured output. The same read-only commands work inside the console:
 

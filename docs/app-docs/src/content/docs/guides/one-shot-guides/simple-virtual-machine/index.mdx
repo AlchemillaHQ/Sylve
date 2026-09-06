@@ -10,6 +10,7 @@ import debianDownloadCreate from "./simple-vm-debian-download-create.png";
 import debianDownloadReady from "./simple-vm-debian-download-ready.png";
 import vmCreateBasic from "./simple-vm-create-basic.png";
 import vmCreateStorage from "./simple-vm-create-storage.png";
+import vmEjectInstaller from "./simple-vm-eject-installer.png";
 import vmCreateNetwork from "./simple-vm-create-network.png";
 import vmCreateHardware from "./simple-vm-create-hardware.png";
 import vmCreateAdvanced from "./simple-vm-create-advanced.png";
@@ -222,15 +223,19 @@ Configure the VM's boot disk and attach the installer:
 
 1. Select **ZFS Volume**. This creates a ZFS-managed virtual block device for the guest.
 2. Select `debian-13.6.0-amd64-netinst.iso` under **Installation Media**.
-3. Select the ZFS pool that should contain the VM disk.
-4. Enter `48 G` for **Disk Size**.
-5. Select **NVMe** as the emulation type.
+3. Select `zroot` under **Storage Pool**, or the pool you want to use for the VM disk.
+4. Enter `48 GiB` for **Disk Size**.
+5. Select **NVMe** under **Emulation Type**.
 
 Debian supports the NVMe controller without additional drivers. The ISO is installation media, while the 48 GiB ZFS volume is the persistent disk onto which Debian will be installed.
 
+The creation wizard configures both attachments together. You do not need to use **Add storage** separately for this installation. After creation, the VM's **Storage** page lists the writable disk as **ZVOL** with **RW** access and the read-only ISO as **Media** with **RO** access.
+
+The screenshot below uses Debian 13.5 media. Select the installer downloaded earlier for this guide.
+
 <img
   src={vmCreateStorage.src}
-  alt="Create VM wizard Storage tab with ZFS Volume, the Debian 13.6 netinst ISO, a selected pool, a 48G disk, and NVMe emulation"
+  alt="Create Virtual Machine Storage tab with ZFS Volume selected, Debian 13.5 installation media, storage pool zroot, a 48 GiB disk, and NVMe emulation"
 />
 
 ### Network
@@ -353,11 +358,24 @@ Continue and allow Debian to install the selected packages and boot loader. The 
 
 When Debian reports that installation is complete, select **Continue** and allow the VM to reboot. If it returns to the installer instead of booting the installed system, stop the VM from Sylve before continuing.
 
-### Detach the installer ISO
+### Eject the installer ISO
 
-Once the VM is powered off, open its **Storage** page, select the Debian installer image, and choose **Detach**. Detaching removes the ISO from this VM but leaves the Downloader copy available for future installations.
+Once the VM is powered off, open its **Storage** page:
 
-Storage attachments cannot be changed while the VM is running. If Debian already booted successfully from the virtual disk, shut it down cleanly before detaching the ISO.
+1. Select the Debian installer ISO row. Confirm that **Backing** is **Media** and **Access** is **RO**, so you do not select the writable system disk.
+2. Select **Eject** and wait for the action to complete.
+3. Confirm that the media row now shows **Disconnected** and the system disk remains **Connected**.
+
+Ejecting leaves the attachment in the table and keeps the source ISO in Downloader. The VM will no longer boot from that media. To use it again, shut the VM off, select the same row, and choose **Insert**. You do not need to delete the attachment or add it again.
+
+Storage attachments cannot be changed while the VM is running. If Debian already booted successfully from the virtual disk, shut it down cleanly before ejecting the ISO.
+
+The example below uses a VM named `Debian-13` with Debian 13.5 media and a 32 GiB system disk. Select the installer media in your own VM, not its system disk.
+
+<img
+  src={vmEjectInstaller.src}
+  alt="Storage page for the shut-off Debian-13 VM with connected read-only Debian installer media selected and the Eject action visible, alongside a connected writable 32 GiB ZVOL disk"
+/>
 
 Start the VM again, open **Console**, and sign in to the GNOME desktop with the user account created during installation.
 
