@@ -355,6 +355,11 @@
 									<div class="bg-zinc-950 p-4 overflow-x-auto text-green-400 font-mono text-xs">
 										<pre>{template.fstab}</pre>
 									</div>
+									<div class="border-t bg-muted/30 px-4 py-2 text-muted-foreground text-xs">
+										Destinations beneath the captured jail root are automatically rebased to each
+										new jail's actual root mountpoint. For older templates where that root cannot be
+										recovered, entries are preserved but disabled for manual review.
+									</div>
 								</div>
 							{/if}
 						</Tabs.Content>

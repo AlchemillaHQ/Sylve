@@ -71,12 +71,23 @@ The saved configuration includes:
 - Jail type and Wake on LAN setting
 - Resource-limit state, CPU cores, and memory
 - IPv4 and IPv6 inheritance settings
-- Fstab and resolver content
+- Fstab content, its captured jail-root mountpoint, and resolver content
 - DevFS rules and clean-environment behavior
 - Execution timeout
 - Additional and allowed jail options
 - Metadata and lifecycle hooks
 - Network switch references, DHCP, SLAAC, and default-gateway behavior
+
+When a jail is created from the template, Sylve automatically rebases fstab destination
+mountpoints beneath the captured jail root onto the new jail's actual root mountpoint. It
+does not replace CTID text globally: source paths, mount options, comments, unrelated
+numbers, and destinations outside the captured jail root remain unchanged. This also
+supports creating the jail on a pool with a different mountpoint.
+
+For legacy templates that do not contain the captured root, Sylve first tries to recover it
+from the source jail. If the source no longer exists, jail creation still succeeds, but Sylve
+preserves the original fstab entries as comments with a warning. Review their destination
+paths and uncomment them when they are ready to use.
 
 ### What each new jail receives instead
 
@@ -208,7 +219,7 @@ Before starting a jail created from a template, check:
 2. The destination pool and base dataset.
 3. Every network interface and newly generated MAC object.
 4. Static IP and gateway configuration, which must be assigned separately.
-5. Fstab host paths and any storage that was not part of the captured base tree.
+5. External fstab source paths and any storage that was not part of the captured base tree.
 6. DevFS devices and node-dependent lifecycle hooks.
 7. Resource limits, resolver content, and advanced options.
 

@@ -192,6 +192,7 @@ type JailTemplate struct {
 	InheritIPv6 bool `json:"inheritIPv6"`
 
 	Fstab             string                `json:"fstab"`
+	FstabSourceRoot   string                `json:"-" gorm:"column:fstab_source_root"`
 	ResolvConf        string                `json:"resolvConf"`
 	DevFSRuleset      string                `json:"devfsRuleset"`
 	CleanEnvironment  bool                  `json:"cleanEnvironment"`

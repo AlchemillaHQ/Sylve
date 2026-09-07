@@ -59,6 +59,8 @@ func (f fakeSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, err
 type fakeDatasetInfo struct {
 	Used       uint64
 	Referenced uint64
+	GUID       string
+	Mountpoint string
 }
 
 type fakeGZFSRunner struct {
@@ -164,17 +166,26 @@ func parseTargetArg(args []string, flagsWithValues map[string]int) string {
 }
 
 func fakeDatasetJSON(name string, ds fakeDatasetInfo) map[string]any {
+	guid := ds.GUID
+	if guid == "" {
+		guid = "1"
+	}
+	mountpoint := ds.Mountpoint
+	if mountpoint == "" {
+		mountpoint = "/" + name
+	}
+
 	return map[string]any{
 		"name": name,
 		"pool": strings.SplitN(name, "/", 2)[0],
 		"type": string(gzfs.DatasetTypeFilesystem),
 		"properties": map[string]any{
 			"guid": map[string]any{
-				"value":  "1",
+				"value":  guid,
 				"source": map[string]any{"type": "default", "data": ""},
 			},
 			"mountpoint": map[string]any{
-				"value":  "/" + name,
+				"value":  mountpoint,
 				"source": map[string]any{"type": "default", "data": ""},
 			},
 			"used": map[string]any{
@@ -507,7 +518,7 @@ func TestPreflightConvertJailToTemplateInsufficientPoolSpace(t *testing.T) {
 
 	runner := &fakeGZFSRunner{
 		datasets: map[string]fakeDatasetInfo{
-			"zroot/sylve/jails/106": {Used: 200, Referenced: 200},
+			"zroot/sylve/jails/106": {Used: 200, Referenced: 200, GUID: "guid-j106"},
 		},
 		pools: map[string]uint64{
 			"zroot": 100,

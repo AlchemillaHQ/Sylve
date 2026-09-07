@@ -141,6 +141,45 @@ func (s *Service) validateJailTemplateNetworks(jailType jailModels.JailType, net
 	return nil
 }
 
+func (s *Service) resolveTemplateFstabSourceRoot(
+	ctx context.Context,
+	template *jailModels.JailTemplate,
+) error {
+	if template == nil || strings.TrimSpace(template.Fstab) == "" {
+		return nil
+	}
+
+	if strings.TrimSpace(template.FstabSourceRoot) != "" {
+		sourceRoot, err := normalizeTemplateFstabRoot(template.FstabSourceRoot)
+		if err != nil {
+			template.FstabSourceRoot = ""
+			return nil
+		}
+		template.FstabSourceRoot = sourceRoot
+		return nil
+	}
+
+	if template.SourceJailCTID == 0 {
+		return nil
+	}
+
+	var sourceJail jailModels.Jail
+	if err := s.DB.Preload("Storages").
+		First(&sourceJail, "ct_id = ?", template.SourceJailCTID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return fmt.Errorf("failed_to_resolve_template_fstab_source_root: %w", err)
+	}
+
+	sourceRoot, err := s.resolveJailRoot(ctx, &sourceJail)
+	if err != nil {
+		return nil
+	}
+	template.FstabSourceRoot = sourceRoot
+	return nil
+}
+
 func (s *Service) ensureNoActiveJailLifecycleTask(ctID uint) error {
 	var count int64
 	if err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
@@ -439,9 +478,11 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 	}
 
 	pool := ""
+	sourceGUID := ""
 	for _, st := range jail.Storages {
 		if st.IsBase {
 			pool = st.Pool
+			sourceGUID = st.GUID
 			break
 		}
 	}
@@ -456,6 +497,9 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 	}
 	if srcDS == nil {
 		return fmt.Errorf("source_jail_dataset_not_found")
+	}
+	if _, err := validateFilesystemDatasetMountpoint(srcDS, sourceDataset, sourceGUID); err != nil {
+		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
 	}
 
 	return s.checkPoolCapacity(ctx, pool, datasetEstimatedUsed(srcDS.Used, srcDS.Referenced))
@@ -476,9 +520,11 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 	}
 
 	pool := ""
+	sourceGUID := ""
 	for _, st := range jail.Storages {
 		if st.IsBase {
 			pool = st.Pool
+			sourceGUID = st.GUID
 			break
 		}
 	}
@@ -505,6 +551,10 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 	}
 	if srcDS == nil {
 		return fmt.Errorf("source_jail_dataset_not_found")
+	}
+	sourceRootMountpoint, err := validateFilesystemDatasetMountpoint(srcDS, sourceDataset, sourceGUID)
+	if err != nil {
+		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
 	}
 
 	if err := s.ensureFilesystemPath(ctx, templateParentDataset); err != nil {
@@ -595,6 +645,7 @@ func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req Conv
 		InheritIPv4:       jail.InheritIPv4,
 		InheritIPv6:       jail.InheritIPv6,
 		Fstab:             jail.Fstab,
+		FstabSourceRoot:   sourceRootMountpoint,
 		ResolvConf:        jail.ResolvConf,
 		DevFSRuleset:      jail.DevFSRuleset,
 		CleanEnvironment:  jail.CleanEnvironment,
@@ -951,6 +1002,18 @@ func (s *Service) createJailFromTemplateTarget(
 		return fmt.Errorf("failed_to_select_jail_template_cpu_set: %w", err)
 	}
 
+	rebasedFstab := template.Fstab
+	if strings.TrimSpace(rebasedFstab) != "" {
+		if strings.TrimSpace(template.FstabSourceRoot) == "" {
+			rebasedFstab = disableUnresolvedTemplateFstab(rebasedFstab)
+		} else {
+			rebasedFstab, err = rebaseTemplateFstab(rebasedFstab, template.FstabSourceRoot, mountPoint)
+			if err != nil {
+				return fmt.Errorf("failed_to_rebase_template_fstab: %w", err)
+			}
+		}
+	}
+
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		createdJail = jailModels.Jail{
 			Name:              target.Name,
@@ -967,7 +1030,7 @@ func (s *Service) createJailFromTemplateTarget(
 			CPUSet:            append([]int{}, cpuSet...),
 			Memory:            template.Memory,
 			DevFSRuleset:      template.DevFSRuleset,
-			Fstab:             template.Fstab,
+			Fstab:             rebasedFstab,
 			ResolvConf:        template.ResolvConf,
 			CleanEnvironment:  template.CleanEnvironment,
 			ExecTimeout:       template.ExecTimeout,
@@ -1117,6 +1180,9 @@ func (s *Service) preflightCreateJailsFromTemplate(ctx context.Context, template
 
 	targets, err := s.buildCreateTargets(ctx, template, req)
 	if err != nil {
+		return template, nil, err
+	}
+	if err := s.resolveTemplateFstabSourceRoot(ctx, &template); err != nil {
 		return template, nil, err
 	}
 	if err := s.preflightTemplateTargets(ctx, template, targets); err != nil {
