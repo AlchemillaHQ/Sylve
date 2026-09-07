@@ -5302,6 +5302,42 @@ definitions:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.VMTemplateStoragePoolAssignment'
         type: array
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CreateStorageFromImageRequest:
+    properties:
+      bootOrder:
+        type: integer
+      downloadUUID:
+        type: string
+      emulation:
+        allOf:
+        - $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageEmulationType'
+        enum:
+        - virtio-blk
+        - ahci-hd
+        - nvme
+      name:
+        type: string
+      pool:
+        type: string
+      recordSize:
+        type: integer
+      size:
+        type: integer
+      storageType:
+        allOf:
+        - $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.StorageType'
+        enum:
+        - raw
+        - zvol
+      volBlockSize:
+        type: integer
+    required:
+    - downloadUUID
+    - emulation
+    - name
+    - pool
+    - storageType
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CreateVMRequest:
     properties:
       acpi:
@@ -26313,8 +26349,11 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Detach a storage device from a shut-off virtual machine without
-        deleting its underlying dataset or file
+      description: Remove a storage attachment from a shut-off virtual machine. Backing
+        data is preserved by default. Set deleteBacking=true to permanently delete
+        the managed RAW file or ZFS volume as well. Backing deletion is not supported
+        for Downloader media or filesystem shares. Storage topology changes are blocked
+        while the VM is protected by replication.
       parameters:
       - description: Virtual Machine RID
         in: path
@@ -26328,6 +26367,12 @@ paths:
         name: storageId
         required: true
         type: integer
+      - default: false
+        description: Permanently delete managed RAW or ZVOL backing storage and its
+          data
+        in: query
+        name: deleteBacking
+        type: boolean
       produces:
       - application/json
       responses:
@@ -26365,7 +26410,7 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:
       - BearerAuth: []
-      summary: Detach storage from a virtual machine
+      summary: Delete a virtual machine storage attachment
       tags:
       - VM
     patch:
@@ -26434,6 +26479,74 @@ paths:
       security:
       - BearerAuth: []
       summary: Update virtual machine storage
+      tags:
+      - VM
+  /vm/{rid}/storage/from-image:
+    post:
+      consumes:
+      - application/json
+      description: Copy or convert a completed Downloader disk image into a writable
+        managed RAW file or ZFS volume and attach it to a shut-off virtual machine.
+        The source download remains unchanged. Omit size to use the image's virtual
+        capacity, or specify a larger size in bytes; guest partitions and filesystems
+        are not expanded automatically. Installer ISOs and images with external backing
+        files are rejected. Compressed images must be extracted first. Storage topology
+        changes are blocked while the VM is protected by replication.
+      parameters:
+      - description: Virtual Machine RID
+        in: path
+        minimum: 1
+        name: rid
+        required: true
+        type: integer
+      - description: Writable disk image import
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CreateStorageFromImageRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_vm_Storage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create virtual machine storage from a disk image
       tags:
       - VM
   /vm/{rid}/templates:

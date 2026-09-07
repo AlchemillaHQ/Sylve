@@ -149,14 +149,15 @@ func bindVMStoragePath(c *gin.Context) (uint, uint, bool) {
 	return rid, storageID, true
 }
 
-// @Summary Detach storage from a virtual machine
-// @Description Detach a storage device from a shut-off virtual machine without deleting its underlying dataset or file
+// @Summary Delete a virtual machine storage attachment
+// @Description Remove a storage attachment from a shut-off virtual machine. Backing data is preserved by default. Set deleteBacking=true to permanently delete the managed RAW file or ZFS volume as well. Backing deletion is not supported for Downloader media or filesystem shares. Storage topology changes are blocked while the VM is protected by replication.
 // @Tags VM
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param rid path int true "Virtual Machine RID" minimum(1)
 // @Param storageId path int true "Storage ID" minimum(1)
+// @Param deleteBacking query bool false "Permanently delete managed RAW or ZVOL backing storage and its data" default(false)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
@@ -259,6 +260,24 @@ func StorageAttach(libvirtService vmStorageService) gin.HandlerFunc {
 }
 
 // CreateStorageFromImage creates a writable managed disk from a Downloader image.
+// @Summary Create virtual machine storage from a disk image
+// @Description Copy or convert a completed Downloader disk image into a writable managed RAW file or ZFS volume and attach it to a shut-off virtual machine. The source download remains unchanged. Omit size to use the image's virtual capacity, or specify a larger size in bytes; guest partitions and filesystems are not expanded automatically. Installer ISOs and images with external backing files are rejected. Compressed images must be extracted first. Storage topology changes are blocked while the VM is protected by replication.
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Param request body libvirtServiceInterfaces.CreateStorageFromImageRequest true "Writable disk image import"
+// @Success 201 {object} internal.APIResponse[vmModels.Storage] "Created"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid}/storage/from-image [post]
 func CreateStorageFromImage(libvirtService vmStorageService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rid, err := utils.ParamUint(c, "rid")
