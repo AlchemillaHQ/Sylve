@@ -628,14 +628,6 @@ msgid "Sylve"
 msgstr "Sylve"
 
 #: src/lib/components/custom/About.svelte
-msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
-msgstr "Sylve <0>FreeBSD इकोसिस्टम</0> के लिए एक हल्का कंट्रोल प्लेन है, जो Bhyve, Jails, ZFS, PF और अन्य को एक सुव्यवस्थित मैनेजमेंट इंटरफेस में एकीकृत करता है। हाई-परफॉरमेंस Go बैकएंड और रिस्पॉन्सिव SvelteKit फ्रंटएंड द्वारा संचालित, यह जटिल इंफ्रास्ट्रक्चर को सरल बनाता है।"
-
-#: src/lib/components/custom/About.svelte
-msgid "Sponsors"
-msgstr "प्रायोजक"
-
-#: src/lib/components/custom/About.svelte
 msgid "Join us"
 msgstr "हमसे जुड़ें"
 
@@ -18265,4 +18257,20 @@ msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 msgid "Size � read-only"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Template/View.svelte
+msgid "Destinations beneath the captured jail root are automatically rebased to each new jail's actual root mountpoint. For older templates where that root cannot be recovered, entries are preserved but disabled for manual review."
+msgstr ""
+
+#: src/lib/components/custom/About.svelte
+msgid "Zelta"
+msgstr ""
+
+#: src/lib/components/custom/About.svelte
+msgid "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, unifying Bhyve, Jails, ZFS, Networking, and more into a streamlined management interface. Powered by a high-performance Go backend and a responsive SvelteKit frontend, it makes complex infrastructure simple."
+msgstr ""
+
+#: src/lib/components/custom/About.svelte
+msgid "Sponsors & Technologies"
 msgstr ""

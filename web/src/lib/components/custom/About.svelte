@@ -16,7 +16,8 @@
 			name: 'Alchemilla',
 			url: 'https://alchemilla.io',
 			light: '/logo/sponsors/Alchemilla-Dark.webp',
-			dark: '/logo/sponsors/Alchemilla-White.webp'
+			dark: '/logo/sponsors/Alchemilla-White.webp',
+			imageClass: 'h-10 w-full object-contain'
 		},
 		{
 			name: 'FreeBSD Foundation',
@@ -29,6 +30,14 @@
 			url: 'https://iptechnics.com',
 			light: '/logo/sponsors/IP-Technics-Dark.webp',
 			dark: '/logo/sponsors/IP-Technics-White.webp'
+		},
+		{
+			name: 'Zelta',
+			url: 'https://zelta.space',
+			light: '/logo/sponsors/Zelta-BlackYellow.svg',
+			dark: '/logo/sponsors/Zelta-BlackWhite.svg',
+			imageClass:
+				'h-10 w-full max-w-28 scale-125 rounded-sm object-cover brightness-0 dark:brightness-100'
 		}
 	];
 </script>
@@ -55,14 +64,14 @@
 		<div class="max-h-[80vh] overflow-y-auto px-6 pt-0 pb-6 space-y-5">
 			<p class="text-sm leading-relaxed text-foreground/80 text-justify">
 				Sylve is a lightweight control plane for the <strong>FreeBSD ecosystem</strong>, unifying
-				Bhyve, Jails, ZFS, PF, and more into a streamlined management interface. Powered by a
-				high-performance Go backend and a responsive SvelteKit frontend, it makes complex
+				Bhyve, Jails, ZFS, Networking, and more into a streamlined management interface. Powered by
+				a high-performance Go backend and a responsive SvelteKit frontend, it makes complex
 				infrastructure simple.
 			</p>
 
 			<div class="space-y-3">
 				<h3 class="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-					Sponsors
+					Sponsors & Technologies
 				</h3>
 
 				<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -70,28 +79,30 @@
 						<a
 							href={sponsor.url}
 							target="_blank"
+							rel="noopener noreferrer"
 							class="flex h-20 items-center justify-center rounded-md border bg-muted/5 p-3 transition-colors hover:bg-muted/20"
 							title={sponsor.name}
 						>
 							<img
 								src={mode.current === 'dark' ? sponsor.dark : sponsor.light}
 								alt={sponsor.name}
-								class="h-10 w-full object-contain"
+								class={sponsor.imageClass ?? 'h-10 w-full scale-110 object-contain'}
 							/>
 						</a>
 					{/each}
-
-					<a
-						href="https://github.com/sponsors/AlchemillaHQ"
-						target="_blank"
-						class="group flex h-20 flex-col items-center justify-center rounded-md border border-dashed border-primary/30 bg-primary/5 p-2 transition-all hover:border-primary/60 hover:bg-primary/10"
-					>
-						<span
-							class="icon-[mdi--heart] text-lg text-pink-500 group-hover:scale-110 transition-transform"
-						></span>
-						<span class="mt-1 text-[9px] font-bold uppercase text-primary">Join us</span>
-					</a>
 				</div>
+
+				<a
+					href="https://github.com/sponsors/AlchemillaHQ"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="group flex items-center justify-center gap-2 rounded-md border border-dashed border-primary/30 bg-primary/5 py-2 transition-colors hover:border-primary/60 hover:bg-primary/10"
+				>
+					<span
+						class="icon-[mdi--heart] text-sm text-pink-500 group-hover:scale-110 transition-transform"
+					></span>
+					<span class="text-[9px] font-bold uppercase text-primary">Join us</span>
+				</a>
 			</div>
 
 			<div class="rounded-md border bg-muted/10 px-4">
