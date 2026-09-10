@@ -180,11 +180,13 @@ type Service struct {
 
 	// Local dataset seams keep host-level ZFS tests scoped to disposable pools.
 	// Production leaves them nil and uses gzfs directly.
-	localFilesystemDatasetLister func(context.Context) ([]string, error)
-	localVolumeDatasetLister     func(context.Context) ([]string, error)
-	localDatasetUnmounter        func(context.Context, string, bool) error
-	localDatasetMounter          func(context.Context, string) error
-	replicationJailMountCleaner  func(context.Context, uint) error
+	localFilesystemDatasetLister      func(context.Context) ([]string, error)
+	localVolumeDatasetLister          func(context.Context) ([]string, error)
+	localDatasetUnmounter             func(context.Context, string, bool) error
+	localDatasetMounter               func(context.Context, string) error
+	replicationSnapshotDatasetState   func(context.Context, string) (string, string, error)
+	replicationJailMountCleaner       func(context.Context, uint) error
+	replicationSnapshotMetadataReader func(context.Context, string, string, string) ([]byte, bool, error)
 
 	backupOperationEnqueue            func(context.Context, string, any) error
 	replicationOperationEnqueue       func(context.Context, string, any) error
@@ -1108,6 +1110,17 @@ func (s *Service) runBackupJobCore(
 		}
 	}
 
+	if job.Mode == clusterModels.BackupJobModeVM || job.Mode == clusterModels.BackupJobModeJail {
+		metadataGuestID := jobGuestID
+		if job.Mode == clusterModels.BackupJobModeVM {
+			metadataGuestID = vmRID
+		}
+		if err := s.refreshGuestMetadata(job.Mode, metadataGuestID); err != nil {
+			runErr := fmt.Errorf("backup_%s_metadata_refresh_failed: %w", job.Mode, err)
+			return runErr
+		}
+	}
+
 	event.SourceDataset = sourceDataset
 
 	encryptionSources := []string{sourceDataset}
@@ -1575,8 +1588,38 @@ func (s *Service) runBackupJobCore(
 
 		if successfulSnapshotName == "" {
 			runErr = fmt.Errorf("backup_completed_without_verified_snapshot")
-		} else if _, commitErr := s.commitBackupSnapshot(ctx, job, successfulSnapshotName, backupScopes); commitErr != nil {
-			runErr = fmt.Errorf("backup_commit_failed: %w", commitErr)
+		} else {
+			if job.Mode == clusterModels.BackupJobModeVM || job.Mode == clusterModels.BackupJobModeJail {
+				metadataGuestID := jobGuestID
+				metadataSources := []string{sourceDataset}
+				if job.Mode == clusterModels.BackupJobModeVM {
+					metadataGuestID = vmRID
+					metadataSources = vmSourceDatasets
+				}
+				if metadataErr := s.validateBackupSnapshotNetworkMetadata(
+					ctx,
+					job.Mode,
+					metadataGuestID,
+					metadataSources,
+					successfulSnapshotName,
+				); metadataErr != nil {
+					cleanupErr := s.cleanupRejectedBackupSnapshot(
+						ctx,
+						job,
+						successfulSnapshotName,
+						backupScopes,
+					)
+					if cleanupErr != nil {
+						cleanupErr = fmt.Errorf("backup_stale_snapshot_cleanup_failed: %w", cleanupErr)
+					}
+					runErr = errors.Join(metadataErr, cleanupErr)
+				}
+			}
+			if runErr == nil {
+				if _, commitErr := s.commitBackupSnapshot(ctx, job, successfulSnapshotName, backupScopes); commitErr != nil {
+					runErr = fmt.Errorf("backup_commit_failed: %w", commitErr)
+				}
+			}
 		}
 		if runErr != nil {
 			output = appendOutput(output, runErr.Error())

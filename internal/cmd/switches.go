@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/urfave/cli/v3"
 )
 
@@ -66,6 +67,10 @@ func newSwitchesCommand() *cli.Command {
 					&cli.BoolFlag{Name: "default-route", Usage: "Install the standard switch IPv4 default route"},
 					&cli.BoolFlag{Name: "default-route6", Usage: "Install the standard switch IPv6 default route"},
 					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Disable bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on standard switch ports"},
+					&cli.BoolFlag{Name: "vlan-filtering", Usage: "Use FreeBSD 15 bridge VLAN filtering on a standard switch"},
+					&cli.IntFlag{Name: "default-access-vlan", Usage: "Default access VLAN inherited by VM TAPs (1-4094)"},
+					&cli.IntFlag{Name: "host-vlan", Usage: "VLAN used by the switch host interface (1-4094)"},
+					&cli.StringFlag{Name: "port-policies", Usage: "Physical-port policies, e.g. 'igb0=access:10;igb1=trunk:native=10:tagged=20,30-32'"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					request, err := buildSwitchCreatePayload(command)
@@ -126,6 +131,10 @@ func newSwitchesCommand() *cli.Command {
 					&cli.BoolFlag{Name: "default-route", Usage: "Set standard switch IPv4 default route state"},
 					&cli.BoolFlag{Name: "default-route6", Usage: "Set standard switch IPv6 default route state"},
 					&cli.BoolFlag{Name: "disable-bridge-offloads", Usage: "Set bridge port offload disabling"},
+					&cli.BoolFlag{Name: "vlan-filtering", Usage: "Set standard switch VLAN-filtering mode"},
+					&cli.IntFlag{Name: "default-access-vlan", Usage: "Set the default VM access VLAN; 0 clears it"},
+					&cli.IntFlag{Name: "host-vlan", Usage: "Set the switch host VLAN; 0 clears it"},
+					&cli.StringFlag{Name: "port-policies", Usage: "Replace physical-port policies"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
 					request, err := buildSwitchEditPayload(command)
@@ -162,6 +171,10 @@ var standardSwitchCreateOptionNames = []string{
 	"default-route",
 	"default-route6",
 	"disable-bridge-offloads",
+	"vlan-filtering",
+	"default-access-vlan",
+	"host-vlan",
+	"port-policies",
 }
 
 func buildSwitchCreatePayload(command *cli.Command) (consoleprotocol.SwitchCreatePayload, error) {
@@ -233,6 +246,18 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 	if err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
 	}
+	defaultAccessVLAN, err := switchCreateDefaultAccessVLAN(command)
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	hostVLAN, err := switchCreateHostVLAN(command)
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	portPolicies, err := bridgevlan.ParsePortPolicyAssignments(command.String("port-policies"))
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, fmt.Errorf("invalid --port-policies: %w", err)
+	}
 
 	return consoleprotocol.StandardSwitchCreateRequest{
 		Name:                  name,
@@ -255,7 +280,39 @@ func buildStandardSwitchCreateRequest(command *cli.Command, name string) (consol
 		DefaultRoute:          command.Bool("default-route"),
 		DefaultRoute6:         command.Bool("default-route6"),
 		DisableBridgeOffloads: command.Bool("disable-bridge-offloads"),
+		VLANFiltering:         command.Bool("vlan-filtering"),
+		DefaultAccessVLAN:     defaultAccessVLAN,
+		HostVLAN:              hostVLAN,
+		PortPolicies:          portPolicies,
 	}, nil
+}
+
+func switchCreateHostVLAN(command *cli.Command) (*int, error) {
+	if !command.IsSet("host-vlan") {
+		return nil, nil
+	}
+	value := command.Int("host-vlan")
+	if value == 0 {
+		return nil, nil
+	}
+	if !bridgevlan.ValidVLAN(value) {
+		return nil, fmt.Errorf("--host-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	return &value, nil
+}
+
+func switchCreateDefaultAccessVLAN(command *cli.Command) (*int, error) {
+	if !command.IsSet("default-access-vlan") {
+		return nil, nil
+	}
+	value := command.Int("default-access-vlan")
+	if value == 0 {
+		return nil, nil
+	}
+	if !bridgevlan.ValidVLAN(value) {
+		return nil, fmt.Errorf("--default-access-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	return &value, nil
 }
 
 func switchCreateMACSource(command *cli.Command) (consoleprotocol.StandardSwitchMACSourceRequest, error) {
@@ -344,6 +401,9 @@ func buildSwitchEditPayload(command *cli.Command) (consoleprotocol.SwitchEditPay
 		return consoleprotocol.SwitchEditPayload{Type: "standard", Standard: &request}, nil
 
 	case "manual":
+		if standardSwitchCreateOptionsSet(command) {
+			return consoleprotocol.SwitchEditPayload{}, fmt.Errorf("standard switch options are not valid for manual switches")
+		}
 		id, err := commandPositiveUint(command, "id")
 		if err != nil {
 			return consoleprotocol.SwitchEditPayload{}, err
@@ -401,11 +461,47 @@ func buildStandardSwitchEditRequest(command *cli.Command, id uint) (consoleproto
 	request.DefaultRoute = optionalSwitchEditBool(command, "default-route")
 	request.DefaultRoute6 = optionalSwitchEditBool(command, "default-route6")
 	request.DisableBridgeOffloads = optionalSwitchEditBool(command, "disable-bridge-offloads")
+	request.VLANFiltering = optionalSwitchEditBool(command, "vlan-filtering")
+	if request.DefaultAccessVLAN, err = optionalSwitchDefaultAccessVLAN(command); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if request.HostVLAN, err = optionalSwitchHostVLAN(command); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if command.IsSet("port-policies") {
+		policies, parseErr := bridgevlan.ParsePortPolicyAssignments(command.String("port-policies"))
+		if parseErr != nil {
+			return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("invalid --port-policies: %w", parseErr)
+		}
+		request.PortPolicies = &policies
+	}
 
 	if !standardSwitchEditChanged(request) {
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
 	}
 	return request, nil
+}
+
+func optionalSwitchHostVLAN(command *cli.Command) (*int, error) {
+	if !command.IsSet("host-vlan") {
+		return nil, nil
+	}
+	value := command.Int("host-vlan")
+	if value < 0 || value > bridgevlan.MaxVLAN {
+		return nil, fmt.Errorf("--host-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	return &value, nil
+}
+
+func optionalSwitchDefaultAccessVLAN(command *cli.Command) (*int, error) {
+	if !command.IsSet("default-access-vlan") {
+		return nil, nil
+	}
+	value := command.Int("default-access-vlan")
+	if value < 0 || value > bridgevlan.MaxVLAN {
+		return nil, fmt.Errorf("--default-access-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	return &value, nil
 }
 
 func optionalSwitchEditMACSource(command *cli.Command) (*consoleprotocol.StandardSwitchMACSourceRequest, error) {
@@ -491,5 +587,9 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.SLAAC != nil ||
 		request.DefaultRoute != nil ||
 		request.DefaultRoute6 != nil ||
-		request.DisableBridgeOffloads != nil
+		request.DisableBridgeOffloads != nil ||
+		request.VLANFiltering != nil ||
+		request.DefaultAccessVLAN != nil ||
+		request.HostVLAN != nil ||
+		request.PortPolicies != nil
 }

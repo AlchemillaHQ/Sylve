@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -6,7 +16,7 @@
 		label?: string;
 		icon?: string;
 		placeholder?: string;
-		options: Array<{ value: string; label: string }>;
+		options: Array<{ value: string; label: string; disabled?: boolean }>;
 		value: string;
 		classes?: { parent?: string; label?: string; trigger?: string };
 		onChange: (value: string) => void;
@@ -59,7 +69,12 @@
 
 		<Select.Content>
 			{#each options as option (option.value)}
-				<Select.Item value={option.value} label={option.label} title={option.label}>
+				<Select.Item
+					value={option.value}
+					label={option.label}
+					title={option.label}
+					disabled={option.disabled}
+				>
 					{option.label}
 				</Select.Item>
 			{/each}

@@ -93,6 +93,8 @@ type Interface struct {
 	Timeout       int            `json:"timeout"`
 	BridgeMembers []BridgeMember `json:"bridgeMembers"`
 	Groups        []string       `json:"groups"`
+	VLANParent    string         `json:"vlanParent,omitempty"`
+	VLANTag       int            `json:"vlanTag,omitempty"`
 
 	IPv4 []IPv4 `json:"ipv4"`
 	IPv6 []IPv6 `json:"ipv6"`

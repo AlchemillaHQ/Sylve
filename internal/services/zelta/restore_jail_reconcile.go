@@ -24,11 +24,52 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	jailService "github.com/alchemillahq/sylve/internal/services/jail"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
 
-var ErrSwitchNotFound = errors.New("switch_not_found")
+var ErrSwitchNotFound = networkAttachment.ErrSwitchNotFound
+
+var resolveRestoredJailNetworkAttachment = jailService.ResolveDesiredTargetNetworkAttachment
+
+func lockRestoredJailNetworkLifecycle(
+	db *gorm.DB,
+	networks []jailModels.Network,
+) (func(), error) {
+	resolver := networkAttachment.NewResolver(db)
+	bridges := make([]string, 0, len(networks))
+	for idx, network := range networks {
+		expected, err := jailService.NetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"restored_jail_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+		target, err := resolver.ResolveIdentityByName(expected.SwitchType, expected.SwitchName)
+		if err != nil {
+			if errors.Is(err, ErrSwitchNotFound) {
+				return nil, fmt.Errorf(
+					"restored_network_switch_not_found: network=%d: %w",
+					idx+1,
+					err,
+				)
+			}
+			return nil, fmt.Errorf(
+				"restored_jail_network_attachment_incompatible: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+		if target.Type == "standard" {
+			bridges = append(bridges, target.Bridge)
+		}
+	}
+	return bridgevlan.LockStandardSwitchLifecycle(bridges...), nil
+}
 
 type jailConfigBuilder interface {
 	CreateJailConfig(data jailModels.Jail, mountPoint string) (string, error)
@@ -234,8 +275,15 @@ func (s *Service) upsertRestoredJailState(
 		return nil, fmt.Errorf("failed_to_normalize_restored_jail_hardware: %w", err)
 	}
 
+	if restoreNetwork {
+		unlockNetworkLifecycle, lockErr := lockRestoredJailNetworkLifecycle(s.DB, restored.Networks)
+		if lockErr != nil {
+			return nil, lockErr
+		}
+		defer unlockNetworkLifecycle()
+	}
+
 	var reconciled jailModels.Jail
-	requiresStandardSwitchSync := false
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if strictAsNew {
 			var vmCount int64
@@ -332,15 +380,17 @@ func (s *Service) upsertRestoredJailState(
 		hooks := normalizeRestoredJailHooks(baseJail.ID, baseJail.Type, restored.JailHooks)
 		storages := normalizeRestoredJailStorages(baseJail.ID, restored.Storages, basePool, datasetGUID)
 		var networks []jailModels.Network
-		requiresSwitchSync := false
 		if restoreNetwork {
 			var err error
-			networks, requiresSwitchSync, err = s.normalizeRestoredJailNetworks(tx, ctid, baseJail.ID, restored.Networks)
+			networks, err = s.normalizeRestoredJailNetworks(
+				tx,
+				ctid,
+				baseJail.ID,
+				restored.Networks,
+			)
 			if err != nil {
 				return err
 			}
-			requiresStandardSwitchSync = requiresStandardSwitchSync || requiresSwitchSync
-
 			if err := tx.Where("jid = ?", baseJail.ID).Delete(&jailModels.Network{}).Error; err != nil {
 				return fmt.Errorf("failed_to_replace_restored_jail_networks: %w", err)
 			}
@@ -391,15 +441,6 @@ func (s *Service) upsertRestoredJailState(
 	})
 	if err != nil {
 		return nil, err
-	}
-
-	if requiresStandardSwitchSync && s.Network != nil {
-		if err := s.Network.SyncStandardSwitches(nil, "sync"); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("ctid", ctid).
-				Msg("failed_to_sync_standard_switches_after_restore_reconcile")
-		}
 	}
 
 	return &reconciled, nil
@@ -573,74 +614,70 @@ func normalizeRestoredJailStorages(jailID uint, storages []jailModels.Storage, p
 	return out
 }
 
-type restoredSwitchResolution struct {
-	ID   uint
-	Type string
-}
-
-func normalizeRestoredSwitchType(switchType string) string {
-	if strings.EqualFold(strings.TrimSpace(switchType), "manual") {
-		return "manual"
-	}
-	return "standard"
-}
-
-func restoredSwitchResolutionKey(net jailModels.Network) string {
-	switchType := normalizeRestoredSwitchType(net.SwitchType)
-	switchName := ""
-	switchBridge := ""
-
-	if switchType == "manual" {
-		if net.ManualSwitch != nil {
-			switchName = strings.ToLower(strings.TrimSpace(net.ManualSwitch.Name))
-			switchBridge = strings.ToLower(strings.TrimSpace(net.ManualSwitch.Bridge))
-		}
-	} else {
-		if net.StandardSwitch != nil {
-			switchName = strings.ToLower(strings.TrimSpace(net.StandardSwitch.Name))
-			switchBridge = strings.ToLower(strings.TrimSpace(net.StandardSwitch.BridgeName))
-		}
-	}
-
-	return fmt.Sprintf("%s:%d:%s:%s", switchType, net.SwitchID, switchName, switchBridge)
-}
-
-func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, networks []jailModels.Network) ([]jailModels.Network, bool, error) {
+func (s *Service) normalizeRestoredJailNetworks(
+	tx *gorm.DB,
+	ctid, jailID uint,
+	networks []jailModels.Network,
+) ([]jailModels.Network, error) {
 	out := make([]jailModels.Network, 0, len(networks))
 	usedNames := make(map[string]struct{})
-	resolvedSwitches := make(map[string]restoredSwitchResolution)
+	resolvedSwitches := make(map[string]networkAttachment.ResolvedSwitch)
 
 	for idx, net := range networks {
 		next := net
 		next.ID = 0
 		next.JailID = jailID
 
-		switchKey := restoredSwitchResolutionKey(next)
-		if resolved, ok := resolvedSwitches[switchKey]; ok {
-			next.SwitchID = resolved.ID
-			next.SwitchType = resolved.Type
-		} else {
-			resolvedSwitchID, resolvedSwitchType, err := s.ensureRestoredJailSwitch(
-				tx,
-				ctid,
-				idx,
-				next.SwitchType,
-				next.StandardSwitch,
-				next.ManualSwitch,
+		expected, err := jailService.NetworkAttachmentFromMetadata(next)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"restored_jail_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				err,
 			)
+		}
+		switchKey := expected.SwitchType + "\x00" + expected.SwitchName
+		resolved, ok := resolvedSwitches[switchKey]
+		if !ok {
+			resolved, err = resolveRestoredJailNetworkAttachment(tx, expected)
 			if err != nil {
 				if errors.Is(err, ErrSwitchNotFound) {
-					continue
+					return nil, fmt.Errorf(
+						"restored_network_switch_not_found: network=%d: %w",
+						idx+1,
+						err,
+					)
 				}
-				return nil, false, fmt.Errorf("failed_to_ensure_restored_jail_switch: %w", err)
+				return nil, fmt.Errorf(
+					"restored_jail_network_attachment_incompatible: network=%d: %w",
+					idx+1,
+					err,
+				)
 			}
-
-			next.SwitchID = resolvedSwitchID
-			next.SwitchType = resolvedSwitchType
-			resolvedSwitches[switchKey] = restoredSwitchResolution{
-				ID:   resolvedSwitchID,
-				Type: resolvedSwitchType,
+			resolvedSwitches[switchKey] = resolved
+		} else {
+			actual, contractErr := resolved.Contract(networkAttachment.KindJail, expected.VLANPolicy)
+			if contractErr != nil {
+				return nil, fmt.Errorf(
+					"restored_jail_network_attachment_incompatible: network=%d: %w",
+					idx+1,
+					contractErr,
+				)
 			}
+			if compareErr := networkAttachment.Compare(expected, actual); compareErr != nil {
+				return nil, fmt.Errorf(
+					"restored_jail_network_attachment_incompatible: network=%d: %w",
+					idx+1,
+					compareErr,
+				)
+			}
+		}
+		next.SwitchID = resolved.ID
+		next.SwitchType = resolved.Type
+		if expected.VLANPolicy == nil {
+			next.VLANPolicy = bridgevlan.PortPolicy{}
+		} else {
+			next.VLANPolicy = *expected.VLANPolicy
 		}
 
 		macObj, err := s.ensureRestoredNetworkObject(
@@ -651,7 +688,7 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			fmt.Sprintf("restored-jail-%d-mac", ctid),
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("failed_to_ensure_restored_mac_object: %w", err)
+			return nil, fmt.Errorf("failed_to_ensure_restored_mac_object: %w", err)
 		}
 		next.MacID = objectIDPtr(macObj)
 
@@ -663,7 +700,7 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			fmt.Sprintf("restored-jail-%d-ipv4", ctid),
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("failed_to_ensure_restored_ipv4_object: %w", err)
+			return nil, fmt.Errorf("failed_to_ensure_restored_ipv4_object: %w", err)
 		}
 		next.IPv4ID = objectIDPtr(ipv4Obj)
 
@@ -675,7 +712,7 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			fmt.Sprintf("restored-jail-%d-ipv4-gw", ctid),
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("failed_to_ensure_restored_ipv4_gateway_object: %w", err)
+			return nil, fmt.Errorf("failed_to_ensure_restored_ipv4_gateway_object: %w", err)
 		}
 		next.IPv4GwID = objectIDPtr(ipv4GWObj)
 
@@ -687,7 +724,7 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			fmt.Sprintf("restored-jail-%d-ipv6", ctid),
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("failed_to_ensure_restored_ipv6_object: %w", err)
+			return nil, fmt.Errorf("failed_to_ensure_restored_ipv6_object: %w", err)
 		}
 		next.IPv6ID = objectIDPtr(ipv6Obj)
 
@@ -699,7 +736,7 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 			fmt.Sprintf("restored-jail-%d-ipv6-gw", ctid),
 		)
 		if err != nil {
-			return nil, false, fmt.Errorf("failed_to_ensure_restored_ipv6_gateway_object: %w", err)
+			return nil, fmt.Errorf("failed_to_ensure_restored_ipv6_gateway_object: %w", err)
 		}
 		next.IPv6GwID = objectIDPtr(ipv6GWObj)
 
@@ -713,132 +750,14 @@ func (s *Service) normalizeRestoredJailNetworks(tx *gorm.DB, ctid, jailID uint, 
 
 		name, err := s.ensureUniqueRestoredJailNetworkName(tx, next.Name, jailID, ctid, idx, usedNames)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 		next.Name = name
 
 		out = append(out, next)
 	}
 
-	return out, false, nil
-}
-
-func (s *Service) ensureRestoredJailSwitch(
-	tx *gorm.DB,
-	ctid uint,
-	index int,
-	switchType string,
-	standardMetadata *networkModels.StandardSwitch,
-	manualMetadata *networkModels.ManualSwitch,
-) (uint, string, error) {
-	switchType = normalizeRestoredSwitchType(switchType)
-
-	switch switchType {
-	case "manual":
-		switchID, err := s.ensureRestoredManualSwitch(tx, ctid, index, 0, manualMetadata)
-		if err != nil {
-			return 0, "", err
-		}
-		return switchID, "manual", nil
-	default:
-		switchID, _, err := s.ensureRestoredStandardSwitch(tx, ctid, index, 0, standardMetadata)
-		if err != nil {
-			return 0, "", err
-		}
-		return switchID, "standard", nil
-	}
-}
-
-func (s *Service) ensureRestoredStandardSwitch(
-	tx *gorm.DB,
-	ctid uint,
-	index int,
-	_ uint,
-	metadata *networkModels.StandardSwitch,
-) (uint, bool, error) {
-	if metadata == nil {
-		return 0, false, ErrSwitchNotFound
-	}
-
-	name := strings.TrimSpace(metadata.Name)
-	if name != "" {
-		var byName networkModels.StandardSwitch
-		err := tx.
-			Where("name = ?", name).
-			First(&byName).Error
-		if err == nil {
-			return byName.ID, false, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_name: %w", err)
-		}
-	}
-
-	bridgeName := strings.TrimSpace(metadata.BridgeName)
-	if bridgeName != "" {
-		var byBridge networkModels.StandardSwitch
-		err := tx.Where("bridge_name = ?", bridgeName).First(&byBridge).Error
-		if err == nil {
-			return byBridge.ID, false, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, false, fmt.Errorf("failed_to_lookup_standard_switch_by_bridge: %w", err)
-		}
-	}
-
-	logger.L.Warn().
-		Uint("ctid", ctid).
-		Int("network_idx", index).
-		Str("switch_name", name).
-		Str("switch_bridge", bridgeName).
-		Msg("standard_switch_not_found_on_target_skipping_network")
-
-	return 0, false, ErrSwitchNotFound
-}
-
-func (s *Service) ensureRestoredManualSwitch(
-	tx *gorm.DB,
-	ctid uint,
-	index int,
-	_ uint,
-	metadata *networkModels.ManualSwitch,
-) (uint, error) {
-	if metadata == nil {
-		return 0, ErrSwitchNotFound
-	}
-
-	name := strings.TrimSpace(metadata.Name)
-	if name != "" {
-		var byName networkModels.ManualSwitch
-		err := tx.Where("name = ?", name).First(&byName).Error
-		if err == nil {
-			return byName.ID, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_name: %w", err)
-		}
-	}
-
-	bridge := strings.TrimSpace(metadata.Bridge)
-	if bridge != "" {
-		var byBridge networkModels.ManualSwitch
-		err := tx.Where("bridge = ?", bridge).First(&byBridge).Error
-		if err == nil {
-			return byBridge.ID, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, fmt.Errorf("failed_to_lookup_manual_switch_by_bridge: %w", err)
-		}
-	}
-
-	logger.L.Warn().
-		Uint("ctid", ctid).
-		Int("network_idx", index).
-		Str("switch_name", name).
-		Str("switch_bridge", bridge).
-		Msg("manual_switch_not_found_on_target_skipping_network")
-
-	return 0, ErrSwitchNotFound
+	return out, nil
 }
 
 func objectIDPtr(object *networkModels.Object) *uint {
@@ -1136,33 +1055,4 @@ func (s *Service) writeRestoredJailConfigFiles(jail *jailModels.Jail, mountPoint
 	}
 
 	return nil
-}
-
-func (s *Service) restoreJailSwitchExists(tx *gorm.DB, switchID uint, switchType string) (bool, error) {
-	if switchID == 0 {
-		return true, nil
-	}
-
-	switch strings.ToLower(strings.TrimSpace(switchType)) {
-	case "manual":
-		var manualSwitch networkModels.ManualSwitch
-		err := tx.First(&manualSwitch, switchID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	default:
-		var standardSwitch networkModels.StandardSwitch
-		err := tx.First(&standardSwitch, switchID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	}
 }

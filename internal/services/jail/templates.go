@@ -27,6 +27,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -119,22 +120,15 @@ func (s *Service) validateJailTemplateNetworks(jailType jailModels.JailType, net
 		if network.SwitchID == 0 {
 			continue
 		}
-		if s.NetworkService == nil {
-			return fmt.Errorf("template_network_service_unavailable")
+		candidate := jailModels.Network{
+			SwitchID: network.SwitchID, SwitchType: network.SwitchType,
+			VLANPolicy: network.VLANPolicy,
 		}
-
-		bridge, err := s.NetworkService.GetBridgeNameByIDType(
-			network.SwitchID,
-			strings.ToLower(strings.TrimSpace(network.SwitchType)),
-		)
-		if err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "not found") {
+		if _, _, err := ResolveDesiredNetworkAttachment(s.DB, &candidate); err != nil {
+			if errors.Is(err, networkAttachment.ErrSwitchNotFound) {
 				return fmt.Errorf("template_network_switch_not_found")
 			}
-			return fmt.Errorf("failed_to_validate_template_network_switch: %w", err)
-		}
-		if strings.TrimSpace(bridge) == "" {
-			return fmt.Errorf("template_network_switch_not_found")
+			return fmt.Errorf("invalid_template_network_vlan_policy: %w", err)
 		}
 	}
 
@@ -349,6 +343,7 @@ func (s *Service) buildTemplateNetworks(networks []jailModels.Network) []jailMod
 			DHCP:           n.DHCP,
 			SLAAC:          n.SLAAC,
 			DefaultGateway: n.DefaultGateway,
+			VLANPolicy:     n.VLANPolicy,
 		})
 	}
 	return out
@@ -1014,6 +1009,31 @@ func (s *Service) createJailFromTemplateTarget(
 		}
 	}
 
+	targetSwitchNames := make([]string, 0, len(template.Networks))
+	resolver := jailNetworkAttachmentResolver(s.DB)
+	for _, network := range template.Networks {
+		if network.SwitchID == 0 {
+			continue
+		}
+		sw, err := resolver.ResolveIdentityByID(network.SwitchType, network.SwitchID)
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_template_network_switch: %w", err)
+		}
+		targetSwitchNames = append(targetSwitchNames, sw.Name)
+	}
+	unlockSwitchLifecycle, err := s.lockJailStandardSwitchLifecycle(0, targetSwitchNames...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockSwitchLifecycle != nil {
+			unlockSwitchLifecycle()
+		}
+	}()
+	if err := s.validateJailTemplateNetworks(template.Type, template.Networks); err != nil {
+		return err
+	}
+
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		createdJail = jailModels.Jail{
 			Name:              target.Name,
@@ -1094,6 +1114,7 @@ func (s *Service) createJailFromTemplateTarget(
 				DHCP:           n.DHCP,
 				SLAAC:          n.SLAAC,
 				DefaultGateway: n.DefaultGateway,
+				VLANPolicy:     n.VLANPolicy,
 			}
 			if err := tx.Create(&network).Error; err != nil {
 				return fmt.Errorf("failed_to_create_template_network: %w", err)
@@ -1105,6 +1126,8 @@ func (s *Service) createJailFromTemplateTarget(
 	if err != nil {
 		return err
 	}
+	unlockSwitchLifecycle()
+	unlockSwitchLifecycle = nil
 	cleanupCreatedJail = true
 
 	jailsPath, err := config.GetJailsPath()

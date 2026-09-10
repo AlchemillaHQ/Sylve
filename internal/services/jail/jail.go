@@ -299,13 +299,6 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return fmt.Errorf("jail_with_ctid_already_exists")
 	}
 
-	if data.VLAN != nil {
-		vlan := *data.VLAN
-		if vlan < 0 || vlan > 4095 {
-			return fmt.Errorf("invalid_vlan")
-		}
-	}
-
 	if err := s.validateNoStaleJailCreateArtifacts(ctx, *data.CTID); err != nil {
 		return err
 	}
@@ -407,21 +400,22 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	}
 
 	if swAvailable {
-		found := false
-
-		var stdSwitch networkModels.StandardSwitch
-		if err := s.DB.First(&stdSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			found = true
+		switchID, switchType, _, err := findJailNetworkSwitch(s.DB, data.SwitchName)
+		if err != nil {
+			if errors.Is(err, errJailNetworkSwitchNotFound) {
+				return fmt.Errorf("standard_switch_not_found")
+			}
+			return err
 		}
-
-		var manualSwitch networkModels.ManualSwitch
-		if err := s.DB.First(&manualSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			found = true
+		network := jailModels.Network{SwitchID: switchID, SwitchType: switchType}
+		if data.VLANPolicy != nil {
+			network.VLANPolicy = *data.VLANPolicy
 		}
-
-		if !found {
-			return fmt.Errorf("standard_switch_not_found")
+		if _, _, err := ResolveDesiredNetworkAttachment(s.DB, &network); err != nil {
+			return err
 		}
+	} else if data.VLANPolicy != nil {
+		return fmt.Errorf("vlan_policy_requires_switch")
 	}
 
 	if data.MAC != nil {
@@ -1583,6 +1577,19 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		IsBase: true,
 	})
 
+	var unlockSwitchLifecycle func()
+	if strings.ToLower(data.SwitchName) != "inherit" && strings.ToLower(data.SwitchName) != "none" {
+		unlockSwitchLifecycle, err = s.lockJailStandardSwitchLifecycle(0, data.SwitchName)
+		if err != nil {
+			return err
+		}
+	}
+	defer func() {
+		if unlockSwitchLifecycle != nil {
+			unlockSwitchLifecycle()
+		}
+	}()
+
 	tx := s.DB.Begin()
 	if tx.Error != nil {
 		return fmt.Errorf("failed_to_begin_tx: %w", tx.Error)
@@ -1604,26 +1611,9 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			mac = uint(*data.MAC)
 		}
 
-		swType := ""
-		swName := ""
-		swID := uint(0)
-
-		var stdSwitch networkModels.StandardSwitch
-		if err = tx.First(&stdSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			swType = "standard"
-			swName = stdSwitch.Name
-			swID = stdSwitch.ID
-		}
-
-		var manualSwitch networkModels.ManualSwitch
-		if err = tx.First(&manualSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			swType = "manual"
-			swName = manualSwitch.Name
-			swID = manualSwitch.ID
-		}
-
-		if swType == "" {
-			err = fmt.Errorf("switch_not_found: %s", data.SwitchName)
+		swID, swType, swName, switchErr := findJailNetworkSwitch(tx, data.SwitchName)
+		if switchErr != nil {
+			err = switchErr
 			return
 		}
 
@@ -1699,14 +1689,6 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			slaac = *data.SLAAC
 		}
 
-		vlan := 0
-		if data.VLAN != nil {
-			vlan = *data.VLAN
-			if vlan < 0 || vlan > 4095 {
-				return fmt.Errorf("invalid_vlan")
-			}
-		}
-
 		// Create the network record first to get its ID
 		network := jailModels.Network{
 			Name:           fmt.Sprintf("Initial Switch - %s - %s", swName, data.Name),
@@ -1720,7 +1702,12 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			DHCP:           dhcp,
 			SLAAC:          slaac,
 			DefaultGateway: true,
-			VLAN:           &vlan,
+		}
+		if data.VLANPolicy != nil {
+			network.VLANPolicy = *data.VLANPolicy
+		}
+		if _, _, err = ResolveDesiredNetworkAttachment(tx, &network); err != nil {
+			return
 		}
 
 		if err = tx.Create(&network).Error; err != nil {
@@ -1791,6 +1778,10 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		}
 	}
 	txCommitted = true
+	if unlockSwitchLifecycle != nil {
+		unlockSwitchLifecycle()
+		unlockSwitchLifecycle = nil
+	}
 
 	if data.BootstrapName != "" {
 		identity, identityErr := canonicalBootstrapIdentity(data.Pool, data.BootstrapName)
@@ -2431,6 +2422,9 @@ func (s *Service) WriteJailJSON(ctId uint) error {
 
 	jail, err := s.GetJailByCTID(ctId)
 	if err != nil {
+		return err
+	}
+	if err := s.prepareJailNetworkMetadata(jail); err != nil {
 		return err
 	}
 

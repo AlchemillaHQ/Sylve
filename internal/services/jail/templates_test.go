@@ -26,6 +26,7 @@ import (
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
 
@@ -843,5 +844,29 @@ func TestValidateJailTemplateNetworksAllowsMultipleDHCPInterfaces(t *testing.T) 
 	})
 	if err != nil {
 		t.Fatalf("expected multiple DHCP interfaces with one default gateway to be accepted, got %v", err)
+	}
+}
+
+func TestJailTemplateNetworksPreserveAndValidateVLANPolicy(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
+	defaultVLAN := 10
+	switchModel := networkModels.StandardSwitch{
+		Name: "LAN", BridgeName: "bridge0", VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	untagged := 10
+	svc := &Service{DB: db, NetworkService: &jailNetworkValidationFakeNetworkService{}}
+	templateNetworks := svc.buildTemplateNetworks([]jailModels.Network{{
+		Name: "vnet0", SwitchID: switchModel.ID, SwitchType: "standard",
+		VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &untagged},
+	}})
+	if len(templateNetworks) != 1 || templateNetworks[0].VLANPolicy.Mode != bridgevlan.ModeAccess ||
+		templateNetworks[0].VLANPolicy.UntaggedVLAN == nil || *templateNetworks[0].VLANPolicy.UntaggedVLAN != 10 {
+		t.Fatalf("template networks = %+v", templateNetworks)
+	}
+	if err := svc.validateJailTemplateNetworks(jailModels.JailTypeFreeBSD, templateNetworks); err != nil {
+		t.Fatalf("validate template VLAN policy: %v", err)
 	}
 }

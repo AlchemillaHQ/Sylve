@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -17,10 +18,12 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gopkg.in/yaml.v3"
 )
 
@@ -98,6 +101,110 @@ func TestRewriteCloudInitMetadataIdentity_InvalidYAML(t *testing.T) {
 	_, err := rewriteCloudInitMetadataIdentity("local-hostname: [broken", "pref", "vm-a", 600)
 	if err == nil || !strings.Contains(err.Error(), "invalid_cloud_init_metadata_yaml") {
 		t.Fatalf("expected invalid_cloud_init_metadata_yaml, got %v", err)
+	}
+}
+
+func TestResolveVMTemplateNetworkSwitchIDsRequiresUsableVMAccessVLAN(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
+	switchModel := networkModels.StandardSwitch{
+		Name: "tenant", BridgeName: "vm-tenant", VLANFiltering: true,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed filtered switch: %v", err)
+	}
+	svc := &Service{DB: db}
+	networks := []vmModels.VMTemplateNetwork{{
+		Name: "vtnet0", SwitchName: switchModel.Name, SwitchType: "standard", Emulation: "virtio", Enable: true,
+	}}
+
+	if _, err := svc.resolveVMTemplateNetworkSwitchIDs(networks); err == nil ||
+		!strings.Contains(err.Error(), "filtered_switch_vm_default_access_vlan_required") {
+		t.Fatalf("missing default access VLAN error = %v", err)
+	}
+
+	defaultVLAN := 20
+	if err := db.Model(&networkModels.StandardSwitch{}).
+		Where("id = ?", switchModel.ID).
+		Update("default_access_vlan", defaultVLAN).Error; err != nil {
+		t.Fatalf("set default access VLAN: %v", err)
+	}
+	switchIDs, err := svc.resolveVMTemplateNetworkSwitchIDs(networks)
+	if err != nil {
+		t.Fatalf("resolve template network: %v", err)
+	}
+	if len(switchIDs) != 1 || switchIDs[0] != switchModel.ID {
+		t.Fatalf("switch IDs = %v, want [%d]", switchIDs, switchModel.ID)
+	}
+}
+
+func TestResolveVMTemplateNetworkSwitchIDsAllowsDisabledNICWithoutRuntimeValidation(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+	)
+	standard := networkModels.StandardSwitch{
+		Name: "tenant", BridgeName: "vm-tenant", VLANFiltering: true,
+	}
+	manual := networkModels.ManualSwitch{Name: "external", Bridge: "bridge0"}
+	if err := db.Create(&standard).Error; err != nil {
+		t.Fatalf("seed filtered switch: %v", err)
+	}
+	if err := db.Create(&manual).Error; err != nil {
+		t.Fatalf("seed Manual Switch: %v", err)
+	}
+
+	originalInspect := inspectVMBridgeVLAN
+	inspectCalls := 0
+	inspectVMBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		inspectCalls++
+		return bridgevlan.BridgeState{}, errors.New("runtime unavailable")
+	}
+	t.Cleanup(func() { inspectVMBridgeVLAN = originalInspect })
+
+	for _, test := range []struct {
+		name       string
+		switchName string
+		switchType string
+		switchID   uint
+	}{
+		{name: "standard", switchName: standard.Name, switchType: "standard", switchID: standard.ID},
+		{name: "manual", switchName: manual.Name, switchType: "manual", switchID: manual.ID},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			switchIDs, err := (&Service{DB: db}).resolveVMTemplateNetworkSwitchIDs([]vmModels.VMTemplateNetwork{{
+				Name: "vtnet0", SwitchName: test.switchName, SwitchType: test.switchType,
+				Emulation: "virtio", Enable: false,
+			}})
+			if err != nil {
+				t.Fatalf("resolve disabled template network: %v", err)
+			}
+			if len(switchIDs) != 1 || switchIDs[0] != test.switchID {
+				t.Fatalf("switch IDs = %v, want [%d]", switchIDs, test.switchID)
+			}
+		})
+	}
+	if inspectCalls != 0 {
+		t.Fatalf("disabled template networks performed %d runtime inspections", inspectCalls)
+	}
+}
+
+func TestSourceVMNetworksForTemplatePreservesEnableState(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
+	switchModel := networkModels.StandardSwitch{Name: "tenant", BridgeName: "vm-tenant"}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed Standard Switch: %v", err)
+	}
+	vm := vmModels.VM{Networks: []vmModels.Network{
+		{ID: 11, SwitchID: switchModel.ID, SwitchType: "standard", Emulation: "virtio", Enable: true},
+		{ID: 12, SwitchID: switchModel.ID, SwitchType: "standard", Emulation: "e1000", Enable: false},
+	}}
+
+	networks, err := (&Service{DB: db}).sourceVMNetworksForTemplate(vm)
+	if err != nil {
+		t.Fatalf("build template networks: %v", err)
+	}
+	if len(networks) != 2 || !networks[0].Enable || networks[1].Enable {
+		t.Fatalf("template network enable states = %#v", networks)
 	}
 }
 

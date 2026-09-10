@@ -24,6 +24,10 @@ import (
 
 var _ networkServiceInterfaces.NetworkServiceInterface = (*Service)(nil)
 
+type StandardSwitchConfig = networkServiceInterfaces.StandardSwitchConfig
+type CreateStandardSwitchRequest = networkServiceInterfaces.CreateStandardSwitchRequest
+type UpdateStandardSwitchRequest = networkServiceInterfaces.UpdateStandardSwitchRequest
+
 // wgPeerMetrics holds in-memory RX/TX state for a single WireGuard server peer.
 type wgPeerMetrics struct {
 	id            uint

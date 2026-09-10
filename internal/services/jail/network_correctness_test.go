@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package jail
 
@@ -12,6 +18,8 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -41,6 +49,8 @@ func newJailNetworkSyncFixture(t *testing.T, jailType jailModels.JailType, ctID 
 		&jailModels.JailSnapshot{},
 		&jailModels.Network{},
 		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
 		&networkModels.Object{},
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
@@ -56,6 +66,11 @@ func newJailNetworkSyncFixture(t *testing.T, jailType jailModels.JailType, ctID 
 
 	network := &jailNetworkValidationFakeNetworkService{entries: map[uint]string{}}
 	service := &Service{DB: db, NetworkService: network, ctidHashByCTID: make(map[uint]string)}
+	originalInspect := jailInspectBridgeVLAN
+	jailInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
+	t.Cleanup(func() { jailInspectBridgeVLAN = originalInspect })
 	attachJailRootTestFixture(t, service, db, jail.ID, ctID, mountPoint)
 	cfg, err := service.CreateJailConfig(jail, mountPoint)
 	if err != nil {
@@ -102,6 +117,274 @@ func (f *jailNetworkSyncFixture) addNetwork(t *testing.T, network jailModels.Net
 	}
 	f.jail.Networks = append(f.jail.Networks, network)
 	return network
+}
+
+func TestValidateJailNetworkVLANPolicy(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.ManualSwitch{})
+	defaultVLAN := 10
+	filtered := networkModels.ManualSwitch{Name: "filtered-policy", Bridge: "bridge-policy-filtered"}
+	unfiltered := networkModels.ManualSwitch{Name: "plain-policy", Bridge: "bridge-policy-plain"}
+	if err := db.Create(&filtered).Error; err != nil {
+		t.Fatalf("create filtered switch: %v", err)
+	}
+	if err := db.Create(&unfiltered).Error; err != nil {
+		t.Fatalf("create unfiltered switch: %v", err)
+	}
+	originalInspect := jailInspectBridgeVLAN
+	jailInspectBridgeVLAN = func(bridge string) (bridgevlan.BridgeState, error) {
+		if bridge == filtered.Bridge {
+			return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: defaultVLAN}, nil
+		}
+		return bridgevlan.BridgeState{}, nil
+	}
+	t.Cleanup(func() { jailInspectBridgeVLAN = originalInspect })
+
+	t.Run("normalizes access policy", func(t *testing.T) {
+		accessVLAN := 20
+		network := jailModels.Network{
+			SwitchID: filtered.ID, SwitchType: "manual",
+			VLANPolicy: bridgevlan.PortPolicy{Mode: " ACCESS ", UntaggedVLAN: &accessVLAN},
+		}
+		_, config, err := ResolveDesiredNetworkAttachment(db, &network)
+		if err != nil {
+			t.Fatalf("validate access policy: %v", err)
+		}
+		if !config.VLANFiltering || config.DefaultAccessVLAN == nil || *config.DefaultAccessVLAN != defaultVLAN {
+			t.Fatalf("switch VLAN config = %#v", config)
+		}
+		if network.VLANPolicy.Mode != bridgevlan.ModeAccess || network.VLANPolicy.UntaggedVLAN == nil || *network.VLANPolicy.UntaggedVLAN != accessVLAN || network.VLANPolicy.TaggedVLANs == nil {
+			t.Fatalf("normalized access policy = %#v", network.VLANPolicy)
+		}
+	})
+
+	t.Run("normalizes trunk policy", func(t *testing.T) {
+		nativeVLAN := 11
+		network := jailModels.Network{
+			SwitchID: filtered.ID, SwitchType: "manual",
+			VLANPolicy: bridgevlan.PortPolicy{
+				Mode: bridgevlan.ModeTrunk, UntaggedVLAN: &nativeVLAN, TaggedVLANs: []int{30, 20, 30},
+			},
+		}
+		if _, _, err := ResolveDesiredNetworkAttachment(db, &network); err != nil {
+			t.Fatalf("validate trunk policy: %v", err)
+		}
+		if got := fmt.Sprint(network.VLANPolicy.TaggedVLANs); got != "[20 30]" {
+			t.Fatalf("normalized tagged VLANs = %s, want [20 30]", got)
+		}
+	})
+
+	t.Run("requires policy on filtered switch", func(t *testing.T) {
+		network := jailModels.Network{SwitchID: filtered.ID, SwitchType: "manual"}
+		_, _, err := ResolveDesiredNetworkAttachment(db, &network)
+		if err == nil || !strings.Contains(err.Error(), "filtered_switch_vlan_policy_required") {
+			t.Fatalf("expected required policy error, got %v", err)
+		}
+	})
+
+	t.Run("rejects policy on unfiltered switch", func(t *testing.T) {
+		accessVLAN := 20
+		network := jailModels.Network{
+			SwitchID: unfiltered.ID, SwitchType: "manual",
+			VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &accessVLAN},
+		}
+		_, _, err := ResolveDesiredNetworkAttachment(db, &network)
+		if err == nil || !strings.Contains(err.Error(), "vlan_policy_requires_filtered_switch") {
+			t.Fatalf("expected unfiltered switch policy error, got %v", err)
+		}
+	})
+
+	t.Run("accepts empty policy on unfiltered switch", func(t *testing.T) {
+		network := jailModels.Network{SwitchID: unfiltered.ID, SwitchType: "manual"}
+		if _, _, err := ResolveDesiredNetworkAttachment(db, &network); err != nil {
+			t.Fatalf("validate empty policy: %v", err)
+		}
+	})
+}
+
+func TestConfigureJailFilteredMembersAppliesPolicyWhileDown(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7289)
+	defaultVLAN := 10
+	bridgeName := fmt.Sprintf("vm-sync-%d", fixture.jail.CTID)
+	jailInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: defaultVLAN}, nil
+	}
+	accessVLAN := 20
+	network := fixture.addNetwork(t, jailModels.Network{
+		Name: "filtered",
+		VLANPolicy: bridgevlan.PortPolicy{
+			Mode: bridgevlan.ModeAccess, UntaggedVLAN: &accessVLAN, TaggedVLANs: []int{},
+		},
+	})
+	epairA := fmt.Sprintf("%s_net%da", fixture.service.GetCTIDHash(fixture.jail.CTID), network.ID)
+
+	originalDown := jailSetFilteredMemberDown
+	originalConfigure := jailConfigureFilteredMember
+	originalPrivate := jailSetMemberPrivate
+	calls := make([]string, 0, 3)
+	jailSetFilteredMemberDown = func(member string) error {
+		if member != epairA {
+			t.Fatalf("lowered member = %q, want %q", member, epairA)
+		}
+		calls = append(calls, "down:"+member)
+		return nil
+	}
+	jailConfigureFilteredMember = func(
+		bridge, member string, expectedDefault *int, policy bridgevlan.PortPolicy,
+	) error {
+		if bridge != bridgeName || member != epairA {
+			t.Fatalf("configured target = %s/%s, want %s/%s", bridge, member, bridgeName, epairA)
+		}
+		if expectedDefault == nil || *expectedDefault != defaultVLAN {
+			t.Fatalf("default access VLAN = %v, want %d", expectedDefault, defaultVLAN)
+		}
+		if policy.Mode != bridgevlan.ModeAccess || policy.UntaggedVLAN == nil || *policy.UntaggedVLAN != accessVLAN {
+			t.Fatalf("configured policy = %#v", policy)
+		}
+		calls = append(calls, "configure:"+member)
+		return nil
+	}
+	jailSetMemberPrivate = func(bridge, member string, private bool) error {
+		if bridge != bridgeName || member != epairA || private {
+			t.Fatalf("private target = %s/%s private=%t", bridge, member, private)
+		}
+		calls = append(calls, "private:"+member)
+		return nil
+	}
+	t.Cleanup(func() {
+		jailSetFilteredMemberDown = originalDown
+		jailConfigureFilteredMember = originalConfigure
+		jailSetMemberPrivate = originalPrivate
+	})
+
+	if err := fixture.service.configureJailFilteredMembers(fixture.jail); err != nil {
+		t.Fatalf("configure filtered jail members: %v", err)
+	}
+	want := []string{"down:" + epairA, "configure:" + epairA, "private:" + epairA}
+	if fmt.Sprint(calls) != fmt.Sprint(want) {
+		t.Fatalf("operation order = %v, want %v", calls, want)
+	}
+}
+
+func TestSyncNetworkFilteredHookOnlyActivatesPreparedMember(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7290)
+	defaultVLAN := 10
+	jailInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: defaultVLAN}, nil
+	}
+	macID := fixture.addObject(t, "Mac", "02:00:00:00:72:90")
+	accessVLAN := 20
+	network := fixture.addNetwork(t, jailModels.Network{
+		Name: "filtered", MacID: &macID,
+		VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &accessVLAN, TaggedVLANs: []int{}},
+	})
+
+	originalValidate := jailValidateFilteredBridge
+	jailValidateFilteredBridge = func(bridge string, expected *int) (bridgevlan.BridgeState, error) {
+		if bridge != fmt.Sprintf("vm-sync-%d", fixture.jail.CTID) || expected == nil || *expected != defaultVLAN {
+			t.Fatalf("runtime validation = bridge %q, default VLAN %v", bridge, expected)
+		}
+		return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: defaultVLAN}, nil
+	}
+	t.Cleanup(func() { jailValidateFilteredBridge = originalValidate })
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync filtered jail network: %v", err)
+	}
+	preStartPath, err := fixture.service.GetHookScriptPath(fixture.jail.CTID, "pre-start")
+	if err != nil {
+		t.Fatalf("get pre-start hook: %v", err)
+	}
+	contentBytes, err := os.ReadFile(preStartPath)
+	if err != nil {
+		t.Fatalf("read pre-start hook: %v", err)
+	}
+	content := string(contentBytes)
+	epairA := fmt.Sprintf("%s_net%da", fixture.service.GetCTIDHash(fixture.jail.CTID), network.ID)
+	downIndex := strings.Index(content, fmt.Sprintf("ifconfig %s ether ", epairA))
+	upIndex := strings.Index(content, fmt.Sprintf("ifconfig %s up\n", epairA))
+	if downIndex < 0 || upIndex < 0 || downIndex >= upIndex {
+		t.Fatalf("filtered hook does not keep the member down until activation:\n%s", content)
+	}
+	if strings.Contains(content, "bridge-vlan-member") {
+		t.Fatalf("filtered hook still invokes the removed helper command:\n%s", content)
+	}
+	if strings.Contains(content, fmt.Sprintf("ifconfig vm-test addm %s", epairA)) {
+		t.Fatalf("filtered hook contains an unconfigured bridge attachment:\n%s", content)
+	}
+}
+
+func TestSyncNetworkPrivateStandardSwitchIsolatesMemberBeforeActivation(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7293)
+	switchRow := networkModels.StandardSwitch{
+		Name:       "private-standard",
+		BridgeName: "vm-private",
+		Private:    true,
+	}
+	if err := fixture.db.Create(&switchRow).Error; err != nil {
+		t.Fatalf("create private Standard Switch: %v", err)
+	}
+	mac := "02:00:00:00:72:93"
+	macID := fixture.addObject(t, "Mac", mac)
+	network := jailModels.Network{
+		JailID:     fixture.jail.ID,
+		Name:       "private",
+		SwitchID:   switchRow.ID,
+		SwitchType: "standard",
+		MacID:      &macID,
+	}
+	if err := fixture.db.Create(&network).Error; err != nil {
+		t.Fatalf("create private jail network: %v", err)
+	}
+	fixture.jail.Networks = append(fixture.jail.Networks, network)
+
+	if err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail); err != nil {
+		t.Fatalf("sync private jail network: %v", err)
+	}
+	preStartPath, err := fixture.service.GetHookScriptPath(fixture.jail.CTID, "pre-start")
+	if err != nil {
+		t.Fatalf("get pre-start hook: %v", err)
+	}
+	contentBytes, err := os.ReadFile(preStartPath)
+	if err != nil {
+		t.Fatalf("read pre-start hook: %v", err)
+	}
+	content := string(contentBytes)
+	epairA := fmt.Sprintf("%s_net%da", fixture.service.GetCTIDHash(fixture.jail.CTID), network.ID)
+	previousMAC, err := utils.PreviousMAC(mac)
+	if err != nil {
+		t.Fatalf("derive host epair MAC: %v", err)
+	}
+	commands := []string{
+		fmt.Sprintf("ifconfig %s ether %s down", epairA, previousMAC),
+		fmt.Sprintf("ifconfig %s addm %s", switchRow.BridgeName, epairA),
+		fmt.Sprintf("ifconfig %s private %s", switchRow.BridgeName, epairA),
+		fmt.Sprintf("ifconfig %s up", epairA),
+	}
+	previousIndex := -1
+	for _, command := range commands {
+		index := strings.Index(content, command)
+		if index < 0 {
+			t.Fatalf("pre-start hook is missing %q:\n%s", command, content)
+		}
+		if index <= previousIndex {
+			t.Fatalf("pre-start hook command %q is out of order:\n%s", command, content)
+		}
+		previousIndex = index
+	}
+}
+
+func TestSyncNetworkObservesManualSwitchRuntimeVLANMode(t *testing.T) {
+	fixture := newJailNetworkSyncFixture(t, jailModels.JailTypeFreeBSD, 7291)
+	macID := fixture.addObject(t, "Mac", "02:00:00:00:72:91")
+	fixture.addNetwork(t, jailModels.Network{Name: "plain", MacID: &macID})
+	jailInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{VLANFiltering: true}, nil
+	}
+
+	err := fixture.service.SyncNetwork(fixture.jail.CTID, fixture.jail)
+	if err == nil || !strings.Contains(err.Error(), "filtered_switch_vlan_policy_required") {
+		t.Fatalf("expected live filtered mode to require a policy, got %v", err)
+	}
 }
 
 func TestLoadJailNetworkRejectsCrossJailMembership(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
 type HookPhase struct {
@@ -62,7 +63,7 @@ type CreateJailRequest struct {
 	MAC    *int   `json:"mac"`
 	MACRaw string `json:"macRaw"`
 
-	VLAN *int `json:"vlan"`
+	VLANPolicy *bridgevlan.PortPolicy `json:"vlanPolicy"`
 
 	ResourceLimits *bool  `json:"resourceLimits"`
 	Cores          *int   `json:"cores"`
@@ -107,41 +108,41 @@ type State struct {
 }
 
 type AddJailNetworkRequest struct {
-	Name           string `json:"name" binding:"required"`
-	SwitchName     string `json:"switchName" binding:"required"`
-	MacID          *uint  `json:"macId"`
-	MACRaw         string `json:"macRaw"`
-	IP4            *uint  `json:"ip4"`
-	IP4Raw         string `json:"ip4Raw"`
-	IP4GW          *uint  `json:"ip4gw"`
-	IP4GwRaw       string `json:"ip4gwRaw"`
-	IP6            *uint  `json:"ip6"`
-	IP6Raw         string `json:"ip6Raw"`
-	IP6GW          *uint  `json:"ip6gw"`
-	IP6GwRaw       string `json:"ip6gwRaw"`
-	DHCP           *bool  `json:"dhcp"`
-	SLAAC          *bool  `json:"slaac"`
-	DefaultGateway *bool  `json:"defaultGateway"`
-	VLAN           *int   `json:"vlan"`
+	Name           string                 `json:"name" binding:"required"`
+	SwitchName     string                 `json:"switchName" binding:"required"`
+	MacID          *uint                  `json:"macId"`
+	MACRaw         string                 `json:"macRaw"`
+	IP4            *uint                  `json:"ip4"`
+	IP4Raw         string                 `json:"ip4Raw"`
+	IP4GW          *uint                  `json:"ip4gw"`
+	IP4GwRaw       string                 `json:"ip4gwRaw"`
+	IP6            *uint                  `json:"ip6"`
+	IP6Raw         string                 `json:"ip6Raw"`
+	IP6GW          *uint                  `json:"ip6gw"`
+	IP6GwRaw       string                 `json:"ip6gwRaw"`
+	DHCP           *bool                  `json:"dhcp"`
+	SLAAC          *bool                  `json:"slaac"`
+	DefaultGateway *bool                  `json:"defaultGateway"`
+	VLANPolicy     *bridgevlan.PortPolicy `json:"vlanPolicy"`
 }
 
 type EditJailNetworkRequest struct {
-	Name           *string `json:"name"`
-	SwitchName     *string `json:"switchName"`
-	MacID          *uint   `json:"macId"`
-	MACRaw         *string `json:"macRaw"`
-	IP4            *uint   `json:"ip4"`
-	IP4Raw         *string `json:"ip4Raw"`
-	IP4GW          *uint   `json:"ip4gw"`
-	IP4GwRaw       *string `json:"ip4gwRaw"`
-	IP6            *uint   `json:"ip6"`
-	IP6Raw         *string `json:"ip6Raw"`
-	IP6GW          *uint   `json:"ip6gw"`
-	IP6GwRaw       *string `json:"ip6gwRaw"`
-	DHCP           *bool   `json:"dhcp"`
-	SLAAC          *bool   `json:"slaac"`
-	DefaultGateway *bool   `json:"defaultGateway"`
-	VLAN           *int    `json:"vlan"`
+	Name           *string                `json:"name"`
+	SwitchName     *string                `json:"switchName"`
+	MacID          *uint                  `json:"macId"`
+	MACRaw         *string                `json:"macRaw"`
+	IP4            *uint                  `json:"ip4"`
+	IP4Raw         *string                `json:"ip4Raw"`
+	IP4GW          *uint                  `json:"ip4gw"`
+	IP4GwRaw       *string                `json:"ip4gwRaw"`
+	IP6            *uint                  `json:"ip6"`
+	IP6Raw         *string                `json:"ip6Raw"`
+	IP6GW          *uint                  `json:"ip6gw"`
+	IP6GwRaw       *string                `json:"ip6gwRaw"`
+	DHCP           *bool                  `json:"dhcp"`
+	SLAAC          *bool                  `json:"slaac"`
+	DefaultGateway *bool                  `json:"defaultGateway"`
+	VLANPolicy     *bridgevlan.PortPolicy `json:"vlanPolicy"`
 }
 
 type JailNetworkInheritanceResult struct {
@@ -172,6 +173,7 @@ type JailServiceInterface interface {
 	DeleteJail(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) error
 	DeleteJailWithWarnings(ctx context.Context, ctId uint, deleteMacs bool, deleteRootFS bool) (DeleteJailResult, error)
 	RetireJailLocalMetadata(ctx context.Context, ctId uint, deleteMacs bool) error
+	WriteJailJSON(ctId uint) error
 	StartStatsMonitoring(ctx context.Context)
 
 	StoreJailUsage() error

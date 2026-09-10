@@ -12,12 +12,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 func newNetworkHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
+	migrateModels = append(migrateModels, &networkModels.StandardSwitch{})
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 

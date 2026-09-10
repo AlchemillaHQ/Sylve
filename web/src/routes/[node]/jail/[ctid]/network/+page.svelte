@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { deleteNetwork, getJailByCTID } from '$lib/api/jail/jail';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -12,7 +22,12 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
+	import {
+		emptySwitchList,
+		isSwitchList,
+		type SwitchList,
+		type VLANPortPolicy
+	} from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { ipGatewayFormatter, macFormatter } from '$lib/utils/jail/network';
 	import { escapeHTML } from '$lib/utils/string';
@@ -156,12 +171,20 @@
 		}
 	});
 
+	function formatVLANPolicy(policy: VLANPortPolicy): string {
+		if (policy.mode === 'access') return `Access ${policy.untaggedVlan}`;
+		if (policy.mode !== 'trunk') return '-';
+
+		const native = policy.untaggedVlan === undefined ? '' : `native ${policy.untaggedVlan}; `;
+		return `Trunk ${native}tagged ${policy.taggedVlans.join(',')}`;
+	}
+
 	let table = $derived.by(() => {
 		const columns: Column[] = [
 			{ title: 'Name', field: 'name' },
 			{ title: 'Switch', field: 'switch' },
 			{ title: 'MAC', field: 'mac' },
-			{ title: 'VLAN', field: 'vlan' },
+			{ title: 'VLAN policy', field: 'vlanPolicy' },
 			{ title: 'IPv4', field: 'ipv4', formatter: 'html' },
 			{ title: 'IPv6', field: 'ipv6', formatter: 'html' }
 		];
@@ -177,7 +200,7 @@
 				name: network.name,
 				switch: switchName,
 				mac: macFormatter(currentObjects, network.macId || 0),
-				vlan: network.vlan === 0 ? '-' : network.vlan,
+				vlanPolicy: formatVLANPolicy(network.vlanPolicy),
 				ipv4: network.dhcp
 					? 'DHCP'
 					: network.ipv4Id

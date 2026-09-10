@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package jail
 
@@ -7,14 +13,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
 
@@ -25,9 +37,11 @@ type jailSnapshotRunnerDataset struct {
 }
 
 type jailSnapshotRunner struct {
-	datasets    map[string]jailSnapshotRunnerDataset
-	commands    [][]string
-	sawCanceled bool
+	datasets        map[string]jailSnapshotRunnerDataset
+	commands        [][]string
+	sawCanceled     bool
+	snapshotStarted chan<- struct{}
+	releaseSnapshot <-chan struct{}
 }
 
 func (r *jailSnapshotRunner) Run(
@@ -60,6 +74,20 @@ func (r *jailSnapshotRunner) Run(
 			datasets[datasetName] = jailSnapshotDatasetJSON(datasetName, dataset)
 		}
 		return json.NewEncoder(stdout).Encode(map[string]any{"datasets": datasets})
+	case "snapshot":
+		if r.snapshotStarted != nil {
+			close(r.snapshotStarted)
+			r.snapshotStarted = nil
+		}
+		if r.releaseSnapshot != nil {
+			<-r.releaseSnapshot
+		}
+		fullName := args[len(args)-1]
+		rootName := strings.SplitN(fullName, "@", 2)[0]
+		dataset := r.datasets[rootName]
+		dataset.datasetType = gzfs.DatasetTypeSnapshot
+		r.datasets[fullName] = dataset
+		return nil
 	case "destroy", "mount", "rollback":
 		return nil
 	default:
@@ -127,6 +155,119 @@ func jailSnapshotDatasetJSON(name string, dataset jailSnapshotRunnerDataset) map
 
 func newJailSnapshotTestService(runner *jailSnapshotRunner) *Service {
 	return &Service{GZFS: gzfs.NewClient(gzfs.Options{Runner: runner})}
+}
+
+func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
+	dataPath := t.TempDir()
+	t.Setenv("SYLVE_DATA_PATH", dataPath)
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&jailModels.JailHooks{},
+		&jailModels.Storage{},
+		&jailModels.Network{},
+		&jailModels.JailSnapshot{},
+		&jailModels.Jail{},
+	)
+	jail := jailModels.Jail{CTID: 451, Name: "snapshot-lock", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("create jail: %v", err)
+	}
+	if err := db.Create(&jailModels.Storage{
+		JailID: jail.ID, Pool: "tank", GUID: "1", Name: "root", IsBase: true,
+	}).Error; err != nil {
+		t.Fatalf("create jail storage: %v", err)
+	}
+	sw := networkModels.StandardSwitch{Name: "tenant", BridgeName: "vm-tenant-jail"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("create Standard Switch: %v", err)
+	}
+	if err := db.Create(&jailModels.Network{
+		JailID: jail.ID, Name: "vnet0", SwitchID: sw.ID, SwitchType: "standard",
+	}).Error; err != nil {
+		t.Fatalf("create jail network: %v", err)
+	}
+	jailConfigDir := filepath.Join(dataPath, "jails", "451")
+	if err := os.MkdirAll(jailConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jailConfigDir, "451.conf"), []byte("snapshot test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := "tank/sylve/jails/451"
+	snapshotStarted := make(chan struct{})
+	releaseSnapshot := make(chan struct{})
+	runner := &jailSnapshotRunner{
+		datasets: map[string]jailSnapshotRunnerDataset{
+			root: {datasetType: gzfs.DatasetTypeFilesystem, mountPoint: t.TempDir(), pool: "tank"},
+		},
+		snapshotStarted: snapshotStarted,
+		releaseSnapshot: releaseSnapshot,
+	}
+	service := newJailSnapshotTestService(runner)
+	service.DB = db
+	snapshotDone := make(chan error, 1)
+	go func() {
+		_, err := service.CreateJailSnapshot(context.Background(), jail.CTID, "locked", "")
+		snapshotDone <- err
+	}()
+
+	select {
+	case <-snapshotStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("jail snapshot did not reach the ZFS boundary")
+	}
+
+	actionAttempted := make(chan struct{})
+	actionAcquired := make(chan struct{})
+	go func() {
+		close(actionAttempted)
+		service.actionMutex.Lock()
+		close(actionAcquired)
+		service.actionMutex.Unlock()
+	}()
+	<-actionAttempted
+	select {
+	case <-actionAcquired:
+		t.Fatal("jail network mutation guard was released before the ZFS snapshot")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	lockAttempted := make(chan struct{})
+	lockAcquired := make(chan struct{})
+	go func() {
+		close(lockAttempted)
+		unlock := bridgevlan.LockStandardSwitchLifecycle(sw.BridgeName)
+		close(lockAcquired)
+		unlock()
+	}()
+	<-lockAttempted
+	select {
+	case <-lockAcquired:
+		t.Fatal("switch lifecycle lock was released before the ZFS snapshot")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseSnapshot)
+	if err := <-snapshotDone; err != nil {
+		t.Fatalf("create jail snapshot: %v", err)
+	}
+	for name, acquired := range map[string]<-chan struct{}{
+		"jail network mutation": actionAcquired,
+		"switch lifecycle":      lockAcquired,
+	} {
+		select {
+		case <-acquired:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s lock was not released after the jail snapshot", name)
+		}
+	}
 }
 
 func TestDetachedJailSnapshotContextSurvivesCanceledParent(t *testing.T) {
@@ -371,5 +512,23 @@ func TestNormalizeRestoredJailSnapshotStoragesRejectsDuplicateBaseDataset(t *tes
 	)
 	if err == nil || !strings.Contains(err.Error(), "restored_jail_storage_duplicate") {
 		t.Fatalf("duplicate root storage error = %v", err)
+	}
+}
+
+func TestNormalizeRestoredJailSnapshotNetworksRejectsMissingSwitch(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
+	attachment := networkAttachment.Contract{
+		Version:    networkAttachment.CurrentVersion,
+		Kind:       networkAttachment.KindJail,
+		SwitchName: "missing",
+		SwitchType: "standard",
+	}
+
+	_, err := (&Service{DB: db}).normalizeRestoredJailSnapshotNetworks([]jailModels.Network{{
+		Name:       "vnet0",
+		Attachment: &attachment,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "switch_not_found") {
+		t.Fatalf("missing switch error = %v", err)
 	}
 }

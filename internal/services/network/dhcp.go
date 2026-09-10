@@ -281,6 +281,11 @@ func loadDHCPStandardSwitches(tx *gorm.DB, ids []uint) ([]networkModels.Standard
 	if len(switches) != len(ids) {
 		return nil, invalidDHCPConfig("dhcp_standard_switch_not_found", nil)
 	}
+	for _, sw := range switches {
+		if sw.VLANFiltering && sw.HostVLAN == nil {
+			return nil, conflictingDHCPConfig("dhcp_filtered_standard_switch_l2_only", nil)
+		}
+	}
 	return switches, nil
 }
 
@@ -400,7 +405,9 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 
 	interfaces := make([]string, 0, len(current.StandardSwitches)+len(current.ManualSwitches))
 	for _, sw := range current.StandardSwitches {
-		interfaces = append(interfaces, sw.BridgeName)
+		if interfaceName := standardSwitchHostInterfaceName(sw); interfaceName != "" {
+			interfaces = append(interfaces, interfaceName)
+		}
 	}
 	for _, sw := range current.ManualSwitches {
 		interfaces = append(interfaces, sw.Bridge)
@@ -432,7 +439,7 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 	for _, r := range ranges {
 		var rangeInterface string
 		if r.StandardSwitch != nil {
-			rangeInterface = r.StandardSwitch.BridgeName
+			rangeInterface = standardSwitchHostInterfaceName(*r.StandardSwitch)
 		} else if r.ManualSwitch != nil {
 			rangeInterface = r.ManualSwitch.Bridge
 		} else {

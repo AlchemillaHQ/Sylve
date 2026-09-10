@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package zelta
 
@@ -11,6 +17,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/hashicorp/raft"
 )
 
@@ -298,7 +305,7 @@ func TestIntegrationRaftFollowerClaimRepublishesAfterApplyLag(t *testing.T) {
 }
 
 func TestIntegrationRaftCapturedQueueTokenExecutesExactlyOnce(t *testing.T) {
-	fx := SetupZeltaClusterFixture(t, 3)
+	fx := SetupZeltaClusterFixture(t, 3, &jailModels.Jail{}, &jailModels.Network{})
 
 	owner := fx.Nodes[0]
 	if owner.raft.State() != raft.Leader {
@@ -325,6 +332,12 @@ func TestIntegrationRaftCapturedQueueTokenExecutesExactlyOnce(t *testing.T) {
 		},
 	}
 	for _, node := range fx.Nodes {
+		if err := node.db.Create(&jailModels.Jail{
+			CTID: policy.GuestID,
+			Name: "captured-token-single-execution",
+		}).Error; err != nil {
+			t.Fatalf("seed jail on %s: %v", node.id, err)
+		}
 		nodePolicy := policy
 		nodePolicy.Targets = append([]clusterModels.ReplicationPolicyTarget(nil), policy.Targets...)
 		if err := clusterModels.UpsertReplicationPolicyTxn(node.db, &nodePolicy, nodePolicy.Targets); err != nil {
@@ -341,6 +354,7 @@ func TestIntegrationRaftCapturedQueueTokenExecutesExactlyOnce(t *testing.T) {
 
 	service := newTestZeltaService(owner.db)
 	service.Cluster = owner.cService
+	service.Jail = &replicationJailMetadataWriter{}
 	if err := service.validateLocalReplicationPolicyLease(&policy); err == nil ||
 		!strings.Contains(err.Error(), "replication_lease_expired") {
 		t.Fatalf("startup lease was not a fenced baseline: %v", err)

@@ -503,6 +503,12 @@ func (s *Service) resolveStaticRouteRefs(req *networkServiceInterfaces.UpsertSta
 	} else if resolved.Gateway != "" {
 		resolved.GatewayRaw = resolved.Gateway
 	}
+	if err := s.rejectFilteredStandardBridgeInterfaces(resolved.Interface, resolved.GatewayZone); err != nil {
+		if errors.Is(err, errFilteredStandardSwitchL2Only) {
+			return nil, invalidStaticRoute(err)
+		}
+		return nil, err
+	}
 
 	return &resolved, nil
 }

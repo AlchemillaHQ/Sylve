@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package libvirt
 
@@ -8,11 +14,107 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
+
+func TestCreateVMSnapshotHoldsSwitchLifecycleThroughZFSSnapshot(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := testutil.NewSQLiteTestDB(t,
+		&clusterModels.ReplicationPolicy{},
+		&clusterModels.ReplicationLease{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&vmModels.VMStorageDataset{},
+		&vmModels.Storage{},
+		&vmModels.Network{},
+		&vmModels.VMStats{},
+		&vmModels.VMCPUPinning{},
+		&vmModels.VMSnapshot{},
+		&vmModels.VM{},
+	)
+	vm := vmModels.VM{Name: "snapshot-lock", RID: 151}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("create VM: %v", err)
+	}
+	sw := networkModels.StandardSwitch{Name: "tenant", BridgeName: "vm-tenant"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("create Standard Switch: %v", err)
+	}
+	if err := db.Create(&vmModels.Network{
+		VMID: vm.ID, SwitchID: sw.ID, SwitchType: "standard", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("create VM network: %v", err)
+	}
+	if err := db.Create(&vmModels.Storage{
+		VMID: vm.ID, Type: vmModels.VMStorageTypeRaw, Pool: "tank", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("create VM storage: %v", err)
+	}
+
+	root := "tank/sylve/virtual-machines/151"
+	snapshotStarted := make(chan struct{})
+	releaseSnapshot := make(chan struct{})
+	runner := &storageTestZFSRunner{
+		datasets: map[string]storageTestDataset{
+			root: {
+				name: root, pool: "tank", kind: gzfs.DatasetTypeFilesystem,
+				mountpoint: t.TempDir(),
+			},
+		},
+		snapshotStarted: snapshotStarted,
+		releaseSnapshot: releaseSnapshot,
+	}
+	service := &Service{
+		DB:   db,
+		GZFS: gzfs.NewClient(gzfs.Options{Runner: runner}),
+	}
+	snapshotDone := make(chan error, 1)
+	go func() {
+		_, err := service.CreateVMSnapshot(context.Background(), vm.RID, "locked", "")
+		snapshotDone <- err
+	}()
+
+	select {
+	case <-snapshotStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("VM snapshot did not reach the ZFS boundary")
+	}
+
+	lockAttempted := make(chan struct{})
+	lockAcquired := make(chan struct{})
+	go func() {
+		close(lockAttempted)
+		unlock := bridgevlan.LockStandardSwitchLifecycle(sw.BridgeName)
+		close(lockAcquired)
+		unlock()
+	}()
+	<-lockAttempted
+	select {
+	case <-lockAcquired:
+		t.Fatal("switch lifecycle lock was released before the ZFS snapshot")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseSnapshot)
+	if err := <-snapshotDone; err != nil {
+		t.Fatalf("create VM snapshot: %v", err)
+	}
+	select {
+	case <-lockAcquired:
+	case <-time.After(2 * time.Second):
+		t.Fatal("switch lifecycle lock was not released after the VM snapshot")
+	}
+}
 
 func TestRollbackVMSnapshotRequiresAcknowledgementForNewerSnapshots(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VMSnapshot{})
@@ -215,5 +317,51 @@ func TestRestoredVMStorageDatasetMustBelongToRecordedRoot(t *testing.T) {
 	}
 	if datasetBelongsToVMRoots("tank/sylve/virtual-machines/42/raw-1", roots) {
 		t.Fatal("dataset from an unrecorded pool must not belong to the VM root")
+	}
+}
+
+func TestNormalizeRestoredVMNetworksRejectsChangedVLANAttachment(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&networkModels.StandardSwitch{},
+		&vmModels.Network{},
+	)
+	currentVLAN := 20
+	switchModel := networkModels.StandardSwitch{
+		Name: "LAN", BridgeName: "bridge0", VLANFiltering: true, DefaultAccessVLAN: &currentVLAN,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("create switch: %v", err)
+	}
+
+	attachment := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
+		SwitchName: switchModel.Name, SwitchType: "standard", VLANFiltering: false,
+	}
+	_, _, err := (&Service{DB: db}).normalizeRestoredVMNetworks(1, []vmModels.Network{{
+		SwitchID: switchModel.ID, SwitchType: "standard", Attachment: &attachment, Enable: true,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "vm_network_vlan_mode_mismatch") {
+		t.Fatalf("VLAN attachment mismatch error = %v", err)
+	}
+}
+
+func TestNormalizeRestoredVMNetworksRejectsMissingSwitch(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&networkModels.StandardSwitch{},
+		&vmModels.Network{},
+	)
+	attachment := networkAttachment.Contract{
+		Version:    networkAttachment.CurrentVersion,
+		Kind:       networkAttachment.KindVM,
+		SwitchName: "missing",
+		SwitchType: "standard",
+	}
+
+	_, _, err := (&Service{DB: db}).normalizeRestoredVMNetworks(1, []vmModels.Network{{
+		Enable:     true,
+		Attachment: &attachment,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "switch_not_found") {
+		t.Fatalf("missing switch error = %v", err)
 	}
 }

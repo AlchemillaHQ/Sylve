@@ -24,8 +24,8 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
 
@@ -90,6 +90,8 @@ func (s *Service) CreateJailSnapshot(
 ) (*jailModels.JailSnapshot, error) {
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
 
 	if ctID == 0 {
 		return nil, fmt.Errorf("invalid_ct_id")
@@ -114,6 +116,11 @@ func (s *Service) CreateJailSnapshot(
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_jail: %w", err)
 	}
+	unlockSwitchLifecycle, err := s.lockJailStandardSwitchLifecycle(jail.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_lock_jail_snapshot_network_lifecycle: %w", err)
+	}
+	defer unlockSwitchLifecycle()
 
 	rootDataset, mountPoint, rootFS, err := s.resolveJailSnapshotRoot(ctx, jail)
 	if err != nil {
@@ -275,6 +282,14 @@ func (s *Service) RollbackJailSnapshot(
 			return result, err
 		}
 	}
+
+	s.actionMutex.Lock()
+	defer s.actionMutex.Unlock()
+	unlockSwitchLifecycle, err := s.lockJailSnapshotNetworkLifecycle(current.ID, plan.Restored.Networks)
+	if err != nil {
+		return result, err
+	}
+	defer unlockSwitchLifecycle()
 
 	// A transition can begin while preflight or jail shutdown is in progress.
 	// Repeat both guards immediately before the first destructive ZFS call.
@@ -535,6 +550,9 @@ func (s *Service) writeJailJSONAtMountPoint(ctID uint, mountPoint string) error 
 	if err != nil {
 		return err
 	}
+	if err := s.prepareJailNetworkMetadata(jail); err != nil {
+		return err
+	}
 
 	data, err := json.MarshalIndent(jail, "", "  ")
 	if err != nil {
@@ -739,12 +757,9 @@ func (s *Service) preflightJailSnapshotRestore(
 		return plan, err
 	}
 
-	restored.Networks, plan.Warnings, err = s.normalizeRestoredJailSnapshotNetworks(restored.Networks)
+	restored.Networks, err = s.normalizeRestoredJailSnapshotNetworks(restored.Networks)
 	if err != nil {
 		return plan, err
-	}
-	for _, warning := range plan.Warnings {
-		logger.L.Warn().Uint("ctid", ctID).Str("warning", warning).Msg("jail_snapshot_restore_preflight_warning")
 	}
 
 	hostConfigRoot := filepath.Join(snapshotRoot, ".sylve", "host-config")
@@ -997,60 +1012,77 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 	return nil
 }
 
-func (s *Service) normalizeRestoredJailSnapshotNetworks(
+func (s *Service) lockJailSnapshotNetworkLifecycle(
+	jailID uint,
 	networks []jailModels.Network,
-) ([]jailModels.Network, []string, error) {
-	if len(networks) == 0 {
-		return []jailModels.Network{}, nil, nil
+) (func(), error) {
+	targetNames := make([]string, 0, len(networks))
+	for idx, network := range networks {
+		expected, err := NetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot_network_source_attachment_invalid: network=%d: %w", idx+1, err)
+		}
+		targetNames = append(targetNames, expected.SwitchName)
 	}
 
-	warnings := make([]string, 0)
+	unlock, err := s.lockJailStandardSwitchLifecycle(jailID, targetNames...)
+	if err != nil {
+		return nil, err
+	}
+	for idx, network := range networks {
+		expected, contractErr := NetworkAttachmentFromMetadata(network)
+		if contractErr != nil {
+			unlock()
+			return nil, fmt.Errorf(
+				"snapshot_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				contractErr,
+			)
+		}
+		target, err := ResolveDesiredTargetNetworkAttachment(s.DB, expected)
+		if err != nil {
+			unlock()
+			return nil, fmt.Errorf("snapshot_network_switch_incompatible: network=%d: %w", idx+1, err)
+		}
+		networks[idx].SwitchID = target.ID
+		networks[idx].SwitchType = target.Type
+	}
+	return unlock, nil
+}
+
+func (s *Service) normalizeRestoredJailSnapshotNetworks(
+	networks []jailModels.Network,
+) ([]jailModels.Network, error) {
+	if len(networks) == 0 {
+		return []jailModels.Network{}, nil
+	}
+
 	out := make([]jailModels.Network, 0, len(networks))
 
 	for _, network := range networks {
-		switchType := strings.ToLower(strings.TrimSpace(network.SwitchType))
-		if switchType == "" {
-			switchType = "standard"
+		expected, err := NetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot_network_source_attachment_invalid: %w", err)
 		}
-
-		switch switchType {
-		case "standard":
-			var sw networkModels.StandardSwitch
-			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					warnings = append(warnings, fmt.Sprintf(
-						"standard_switch_%d_not_found; skipped network restore",
-						network.SwitchID,
-					))
-					continue
-				}
-				return nil, nil, fmt.Errorf("failed_to_lookup_standard_switch_for_snapshot_restore: %w", err)
-			}
-			network.SwitchType = "standard"
-			out = append(out, network)
-		case "manual":
-			var sw networkModels.ManualSwitch
-			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					warnings = append(warnings, fmt.Sprintf(
-						"manual_switch_%d_not_found; skipped network restore",
-						network.SwitchID,
-					))
-					continue
-				}
-				return nil, nil, fmt.Errorf("failed_to_lookup_manual_switch_for_snapshot_restore: %w", err)
-			}
-			network.SwitchType = "manual"
-			out = append(out, network)
-		default:
-			warnings = append(warnings, fmt.Sprintf(
-				"switch_type_%q_invalid_for_network_restore; skipped",
-				network.SwitchType,
-			))
+		sw, err := ResolveDesiredTargetNetworkAttachment(s.DB, expected)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot_network_switch_incompatible: %w", err)
 		}
+		network.SwitchID = sw.ID
+		network.SwitchType = sw.Type
+		expectedCopy := expected
+		network.Attachment = &expectedCopy
+		network.StandardSwitch = nil
+		network.ManualSwitch = nil
+		if expected.VLANPolicy == nil {
+			network.VLANPolicy = bridgevlan.PortPolicy{}
+		} else {
+			network.VLANPolicy = *expected.VLANPolicy
+		}
+		out = append(out, network)
 	}
 
-	return out, warnings, nil
+	return out, nil
 }
 
 func sanitizeSnapshotToken(raw string) string {

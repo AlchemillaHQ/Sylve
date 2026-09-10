@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"regexp"
+	"sort"
 	"strings"
 
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
@@ -21,6 +22,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -47,6 +49,87 @@ type standardSwitchInput struct {
 	disableBridgeOffloads bool
 	manual                networkModels.StandardSwitchManualAddresses
 	macSource             networkModels.StandardSwitchMACSource
+	vlanConfig            networkModels.StandardSwitchVLANConfig
+}
+
+func standardSwitchVLANPolicyError(err error) error {
+	switch {
+	case errors.Is(err, bridgevlan.ErrInvalidVLAN):
+		return invalidStandardSwitch("standard_switch_invalid_vlan_id", err)
+	case errors.Is(err, bridgevlan.ErrMissingAccessVLAN):
+		return invalidStandardSwitch("standard_switch_access_vlan_required", err)
+	case errors.Is(err, bridgevlan.ErrAccessTaggedVLANs):
+		return invalidStandardSwitch("standard_switch_access_tagged_vlan_conflict", err)
+	case errors.Is(err, bridgevlan.ErrEmptyTrunk):
+		return invalidStandardSwitch("standard_switch_trunk_tagged_vlan_required", err)
+	case errors.Is(err, bridgevlan.ErrNativeTaggedOverlap):
+		return invalidStandardSwitch("standard_switch_native_tagged_vlan_overlap", err)
+	case errors.Is(err, bridgevlan.ErrTooManyTaggedVLANs):
+		return invalidStandardSwitch("standard_switch_too_many_tagged_vlans", err)
+	default:
+		return invalidStandardSwitch("standard_switch_invalid_vlan_policy", err)
+	}
+}
+
+func normalizeStandardSwitchVLANConfig(
+	config networkModels.StandardSwitchVLANConfig,
+	ports []string,
+) (networkModels.StandardSwitchVLANConfig, error) {
+	if !config.Filtering {
+		if config.DefaultAccessVLAN != nil {
+			return config, invalidStandardSwitch("standard_switch_default_vlan_requires_filtering", nil)
+		}
+		if config.HostVLAN != nil {
+			return config, invalidStandardSwitch("standard_switch_host_vlan_requires_filtering", nil)
+		}
+		if len(config.PortPolicies) != 0 {
+			return config, invalidStandardSwitch("standard_switch_policy_requires_filtering", nil)
+		}
+		config.PortPolicies = map[string]bridgevlan.PortPolicy{}
+		return config, nil
+	}
+
+	if config.DefaultAccessVLAN != nil && !bridgevlan.ValidVLAN(*config.DefaultAccessVLAN) {
+		return config, invalidStandardSwitch("standard_switch_invalid_default_access_vlan", nil)
+	}
+	if config.HostVLAN != nil && !bridgevlan.ValidVLAN(*config.HostVLAN) {
+		return config, invalidStandardSwitch("standard_switch_invalid_host_vlan", nil)
+	}
+
+	selected := make(map[string]struct{}, len(ports))
+	for _, port := range ports {
+		selected[port] = struct{}{}
+	}
+	for port := range config.PortPolicies {
+		if _, exists := selected[port]; !exists {
+			return config, invalidStandardSwitch("standard_switch_vlan_policy_port_not_selected", nil)
+		}
+	}
+
+	normalized := make(map[string]bridgevlan.PortPolicy, len(ports))
+	for _, port := range ports {
+		policy, exists := config.PortPolicies[port]
+		if !exists {
+			return config, invalidStandardSwitch("standard_switch_vlan_policy_required", nil)
+		}
+		policy, err := bridgevlan.Normalize(policy)
+		if err != nil {
+			return config, standardSwitchVLANPolicyError(err)
+		}
+		normalized[port] = policy
+	}
+	config.PortPolicies = normalized
+	return config, nil
+}
+
+func standardSwitchHasHostL3(input standardSwitchInput) bool {
+	return input.network4ID != 0 || input.network6ID != 0 ||
+		input.gateway4ID != 0 || input.gateway6ID != 0 ||
+		strings.TrimSpace(input.manual.Network4) != "" ||
+		strings.TrimSpace(input.manual.Network6) != "" ||
+		strings.TrimSpace(input.manual.Gateway4) != "" ||
+		strings.TrimSpace(input.manual.Gateway6) != "" ||
+		input.dhcp || input.slaac || input.defaultRoute || input.defaultRoute6
 }
 
 func normalizeStandardSwitchMAC(value string) (string, error) {
@@ -228,6 +311,15 @@ func (s *Service) validateStandardSwitchInput(
 		return input, invalidStandardSwitch("invalid_standard_switch_vlan", nil)
 	}
 
+	var err error
+	input.ports, err = normalizeStandardSwitchPorts(input.ports)
+	if err != nil {
+		return input, err
+	}
+	input.vlanConfig, err = normalizeStandardSwitchVLANConfig(input.vlanConfig, input.ports)
+	if err != nil {
+		return input, err
+	}
 	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
 		network4ID:  input.network4ID,
 		network6ID:  input.network6ID,
@@ -246,6 +338,17 @@ func (s *Service) validateStandardSwitchInput(
 	input.disableIPv6 = modes.disableIPv6
 	input.slaac = modes.slaac
 	input.manual = modes.manual
+	if input.vlanConfig.Filtering {
+		if input.vlan != 0 {
+			return input, invalidStandardSwitch("standard_switch_legacy_vlan_with_filtering", nil)
+		}
+		if standardSwitchHasHostL3(input) && input.vlanConfig.HostVLAN == nil {
+			return input, invalidStandardSwitch("standard_switch_host_vlan_required", nil)
+		}
+		if input.vlanConfig.HostVLAN == nil {
+			input.disableIPv6 = true
+		}
+	}
 	manual, err := validateStandardSwitchManual(
 		input.network4ID,
 		input.gateway4ID,
@@ -304,15 +407,15 @@ func (s *Service) validateStandardSwitchInput(
 		return input, invalidStandardSwitch("standard_switch_default_route6_requires_ipv6_gateway", nil)
 	}
 
-	input.ports, err = normalizeStandardSwitchPorts(input.ports)
-	if err != nil {
-		return input, err
-	}
 	var excludeIDPointer *uint
 	if excludeID != 0 {
 		excludeIDPointer = &excludeID
 	}
-	if conflicts, conflictErr := s.conflictingPortsForVLAN(input.ports, input.vlan, excludeIDPointer); conflictErr != nil {
+	conflictVLAN := input.vlan
+	if input.vlanConfig.Filtering {
+		conflictVLAN = 0
+	}
+	if conflicts, conflictErr := s.conflictingPortsForVLAN(input.ports, conflictVLAN, excludeIDPointer); conflictErr != nil {
 		return input, conflictErr
 	} else if len(conflicts) > 0 {
 		return input, standardSwitchConflict("standard_switch_port_conflict", nil)
@@ -336,6 +439,9 @@ func (s *Service) validateStandardSwitchInput(
 		}
 		if interfaceObj == nil {
 			return input, invalidStandardSwitch("standard_switch_port_not_found", nil)
+		}
+		if utils.Contains(interfaceObj.Groups, standardSwitchHostVLANGroup) {
+			return input, invalidStandardSwitch("standard_switch_host_vlan_cannot_be_port", nil)
 		}
 
 		if input.vlan > 0 {
@@ -450,6 +556,44 @@ func commaSeparatedInterfacesContain(value, interfaceName string) bool {
 	return interfaceListContains(strings.Split(value, ","), interfaceName)
 }
 
+var errFilteredStandardSwitchL2Only = errors.New("filtered_standard_switch_l2_only")
+
+func (s *Service) rejectFilteredStandardBridgeInterfaces(interfaces ...string) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("db_not_initialized")
+	}
+
+	names := make([]string, 0, len(interfaces))
+	seen := make(map[string]struct{}, len(interfaces))
+	for _, value := range interfaces {
+		name := strings.TrimSpace(value)
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+
+	var filtered []string
+	if err := s.DB.Model(&networkModels.StandardSwitch{}).
+		Where("vlan_filtering = ? AND bridge_name IN ?", true, names).
+		Pluck("bridge_name", &filtered).Error; err != nil {
+		return fmt.Errorf("check filtered Standard Switch interfaces: %w", err)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	sort.Strings(filtered)
+	return fmt.Errorf("%w: %s", errFilteredStandardSwitchL2Only, strings.Join(filtered, ", "))
+}
+
 func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 	if s.DB.Migrator().HasTable(&networkModels.StaticRoute{}) {
 		var routes []networkModels.StaticRoute
@@ -546,6 +690,89 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 		}
 	}
 
+	return nil
+}
+
+func (s *Service) checkStandardSwitchHostInterfaceUsage(id uint, interfaceName string) error {
+	if strings.TrimSpace(interfaceName) == "" {
+		return nil
+	}
+
+	if s.DB.Migrator().HasTable("dhcp_standard_switches") {
+		var count int64
+		if err := s.DB.Table("dhcp_standard_switches").
+			Where("standard_switch_id = ?", id).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("check standard switch DHCP config usage: %w", err)
+		}
+		if count > 0 {
+			return standardSwitchInUse("standard_switch_in_use_by_dhcp_config")
+		}
+	}
+
+	if s.DB.Migrator().HasTable(&networkModels.DHCPRange{}) {
+		var count int64
+		if err := s.DB.Model(&networkModels.DHCPRange{}).
+			Where("standard_switch_id = ?", id).
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("check standard switch DHCP range usage: %w", err)
+		}
+		if count > 0 {
+			return standardSwitchInUse("standard_switch_in_use_by_dhcp_range")
+		}
+	}
+
+	return s.checkStandardSwitchExternalUsage(interfaceName)
+}
+
+func (s *Service) requireStoppedVMsUsingStandardSwitch(switchID uint, code string) error {
+	var vmIDs []uint
+	if err := s.DB.Model(&vmModels.Network{}).
+		Where("switch_id = ? AND switch_type = ? AND enable = ?", switchID, "standard", true).
+		Distinct("vm_id").
+		Pluck("vm_id", &vmIDs).Error; err != nil {
+		return fmt.Errorf("list VMs using standard switch: %w", err)
+	}
+	if len(vmIDs) == 0 {
+		return nil
+	}
+	var vms []vmModels.VM
+	if err := s.DB.Select("id", "rid").Where("id IN ?", vmIDs).Order("id ASC").Find(&vms).Error; err != nil {
+		return fmt.Errorf("load VMs using standard switch: %w", err)
+	}
+	for _, vm := range vms {
+		shutoff, err := standardSwitchIsDomainShutOff(s, vm.RID)
+		if err != nil {
+			return fmt.Errorf("check VM %d state before switch change: %w", vm.RID, err)
+		}
+		if !shutoff {
+			return standardSwitchInUse(code)
+		}
+	}
+	return nil
+}
+
+func requireNoStandardSwitchWorkloadAttachments(db *gorm.DB, switchID uint) error {
+	checks := []struct {
+		model any
+		label string
+	}{
+		{model: &vmModels.Network{}, label: "VM"},
+		{model: &jailModels.Network{}, label: "jail"},
+	}
+	for _, check := range checks {
+		var count int64
+		if err := db.Model(check.model).
+			Where("switch_id = ? AND switch_type = ?", switchID, "standard").
+			Count(&count).Error; err != nil {
+			return fmt.Errorf("check standard switch %s attachments: %w", check.label, err)
+		}
+		if count != 0 {
+			return standardSwitchInUse(
+				"standard_switch_vlan_filtering_change_requires_no_attached_workloads",
+			)
+		}
+	}
 	return nil
 }
 

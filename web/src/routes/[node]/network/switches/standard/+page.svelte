@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -10,16 +20,15 @@
 	} from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import NetworkObjectCreator from '$lib/components/custom/Network/Objects/CreateOrEdit.svelte';
+	import StandardSwitchForm from '$lib/components/custom/Network/Switch/Standard/Form.svelte';
+	import type {
+		StandardSwitchFormState,
+		SwitchTab
+	} from '$lib/components/custom/Network/Switch/Standard/types';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
-	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
-	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import Label from '$lib/components/ui/label/label.svelte';
-	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { NetworkObject } from '$lib/types/network/object';
@@ -38,7 +47,11 @@
 		generateMACOptions,
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
-	import { generateTableData } from '$lib/utils/network/switch/standard';
+	import {
+		buildVLANConfig,
+		generateTableData,
+		type VLANPolicyDraft
+	} from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
 	import {
 		escapeHTML,
@@ -115,6 +128,7 @@
 
 		if (networkInterfaces.current) {
 			for (const iface of networkInterfaces.current) {
+				if (iface.groups?.includes('svm-host-vlan')) continue;
 				available.push(iface.name);
 			}
 		}
@@ -122,26 +136,30 @@
 		return available.filter((item, index) => available.indexOf(item) === index);
 	});
 
-	let confirmModals = $state({
-		active: '' as 'newSwitch' | 'editSwitch' | 'deleteSwitch',
+	let confirmModals = $state<{
+		active: '' | 'newSwitch' | 'editSwitch' | 'deleteSwitch';
+		newSwitch: StandardSwitchFormState;
+		editSwitch: StandardSwitchFormState;
+		deleteSwitch: { open: boolean; name: string; id: number };
+	}>({
+		active: '',
 		newSwitch: {
 			open: false,
 			name: '',
 			mtu: '',
 			vlan: '',
-			network4: '0',
-			gwAddress4: '0',
-			network6: '0',
-			gwAddress6: '0',
 			disableIPv6: false,
 			private: false,
-			ports: [] as string[],
 			bridgeMacMode: '' as '' | 'port' | 'object',
 			dhcp: false,
 			slaac: false,
 			defaultRoute: false,
 			defaultRoute6: false,
-			disableBridgeOffloads: true
+			disableBridgeOffloads: true,
+			vlanFiltering: false,
+			defaultAccessVlan: '',
+			hostVlan: '',
+			portPolicies: {} as Record<string, VLANPolicyDraft>
 		},
 		editSwitch: {
 			oldName: '',
@@ -149,21 +167,18 @@
 			name: '',
 			mtu: '',
 			vlan: '',
-			address: '0',
-			address6: '0',
-			network4: '0',
-			gwAddress4: '0',
-			network6: '0',
-			gwAddress6: '0',
 			disableIPv6: false,
 			private: false,
-			ports: [] as string[],
 			bridgeMacMode: '' as '' | 'port' | 'object',
 			dhcp: false,
 			slaac: false,
 			defaultRoute: false,
 			defaultRoute6: false,
-			disableBridgeOffloads: false
+			disableBridgeOffloads: false,
+			vlanFiltering: false,
+			defaultAccessVlan: '',
+			hostVlan: '',
+			portPolicies: {} as Record<string, VLANPolicyDraft>
 		},
 		deleteSwitch: {
 			open: false,
@@ -171,6 +186,8 @@
 			id: 0
 		}
 	});
+	let activeTab = $state<SwitchTab>('general');
+	let tabErrors = $state<Partial<Record<SwitchTab, string>>>({});
 
 	let comboBoxes = $state({
 		ipv4: {
@@ -202,7 +219,6 @@
 			value: ''
 		}
 	});
-
 	const singleEntryNetworkObjects = $derived(
 		networkObjects.current.filter((object) => object.entries?.length === 1)
 	);
@@ -275,6 +291,29 @@
 			return { id: Number(v), manual: '' };
 		}
 		return { id: 0, manual: v };
+	}
+
+	function showTabError(tab: SwitchTab, message: string) {
+		tabErrors = { ...tabErrors, [tab]: message };
+		activeTab = tab;
+		toast.error(message, { position: 'bottom-center' });
+	}
+
+	function clearTabError(tab: SwitchTab) {
+		if (!tabErrors[tab]) return;
+		const next = { ...tabErrors };
+		delete next[tab];
+		tabErrors = next;
+	}
+
+	function ensurePortPolicyDrafts(ports: string[]) {
+		if (confirmModals.active !== 'newSwitch' && confirmModals.active !== 'editSwitch') return;
+		const modal = confirmModals[confirmModals.active];
+		for (const port of ports) {
+			if (!modal.portPolicies[port]) {
+				modal.portPolicies[port] = { mode: '', untaggedVlan: '', taggedVlans: '' };
+			}
+		}
 	}
 
 	let reload = $state(false);
@@ -376,43 +415,54 @@
 		if (saving) return;
 
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
+			tabErrors = {};
 			const activeModal = confirmModals[confirmModals.active];
 			const normalizedName = activeModal.name.trim();
 			if (!isValidSwitchName(normalizedName)) {
-				toast.error('Invalid switch name', {
-					position: 'bottom-center'
-				});
-
+				showTabError('general', 'Invalid switch name');
 				return;
 			}
 
 			const mtuInput = String(activeModal.mtu ?? '').trim();
-			const mtu = mtuInput === '' ? 1500 : Number.parseInt(mtuInput, 10);
-			if (!Number.isFinite(mtu) || !isValidMTU(mtu)) {
-				toast.error('Invalid MTU', {
-					position: 'bottom-center'
-				});
-
+			const mtu = mtuInput === '' ? 1500 : Number(mtuInput);
+			if (!Number.isInteger(mtu) || !isValidMTU(mtu)) {
+				showTabError('general', 'Invalid MTU');
 				return;
 			}
 
 			const vlanInput = String(activeModal.vlan ?? '').trim();
-			const vlan = vlanInput === '' ? 0 : Number.parseInt(vlanInput, 10);
-			if (!Number.isFinite(vlan) || !isValidVLAN(vlan)) {
-				toast.error('Invalid VLAN', {
-					position: 'bottom-center'
-				});
-
+			const vlan = vlanInput === '' ? 0 : Number(vlanInput);
+			if (!Number.isInteger(vlan) || !isValidVLAN(vlan)) {
+				showTabError('ports', 'Invalid legacy VLAN');
 				return;
 			}
+			if (activeModal.vlanFiltering && vlan !== 0) {
+				showTabError('ports', 'Port VLAN child interfaces cannot be combined with VLAN filtering');
+				return;
+			}
+
+			ensurePortPolicyDrafts(comboBoxes.ports.value);
+			const vlanConfigResult = buildVLANConfig(
+				activeModal.vlanFiltering,
+				activeModal.defaultAccessVlan,
+				activeModal.hostVlan,
+				comboBoxes.ports.value,
+				activeModal.portPolicies
+			);
+			if (!vlanConfigResult.ok) {
+				showTabError('ports', vlanConfigResult.error);
+				return;
+			}
+			const vlanConfig = vlanConfigResult.value;
+			const hostLayer3Enabled = !activeModal.vlanFiltering || vlanConfig.hostVlan !== null;
+			const effectiveDefaultRoute = hostLayer3Enabled && activeModal.defaultRoute;
+			const effectiveDefaultRoute6 = hostLayer3Enabled && activeModal.defaultRoute6;
 
 			let bridgeMac: StandardSwitchMACSource;
 			if (activeModal.bridgeMacMode === 'port') {
 				const sourcePort = comboBoxes.bridgeMacPort.value;
 				if (!sourcePort || !comboBoxes.ports.value.includes(sourcePort)) {
-					toast.error('Select one of the switch ports as the MAC source', {
-						position: 'bottom-center'
-					});
+					showTabError('ports', 'Select one of the switch ports as the MAC source');
 					return;
 				}
 				const sourceInterface = networkInterfaces.current.find(
@@ -420,9 +470,10 @@
 				);
 				const sourceMAC = sourceInterface?.ether || sourceInterface?.hwaddr || '';
 				if (!isValidUnicastMACAddress(sourceMAC)) {
-					toast.error('The selected source port does not have a valid unicast MAC address', {
-						position: 'bottom-center'
-					});
+					showTabError(
+						'ports',
+						'The selected source port does not have a valid unicast MAC address'
+					);
 					return;
 				}
 				bridgeMac = { mode: 'port', port: sourcePort };
@@ -432,57 +483,51 @@
 					!Number.isInteger(objectID) ||
 					!bridgeMACObjects.some((object) => object.id === objectID)
 				) {
-					toast.error('Select a valid single-value MAC object', {
-						position: 'bottom-center'
-					});
+					showTabError('ports', 'Select a valid single-value MAC object');
 					return;
 				}
 				bridgeMac = { mode: 'object', macObjectId: objectID };
 			} else {
-				toast.error('Choose how the bridge MAC address is sourced', {
-					position: 'bottom-center'
-				});
+				showTabError('ports', 'Choose how the bridge MAC address is sourced');
 				return;
 			}
 
-			if (
-				(confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') &&
-				activeModal.defaultRoute
-			) {
+			if (effectiveDefaultRoute) {
 				const existingSwitch = switches.current?.standard?.find(
 					(sw) =>
 						sw.defaultRoute && !(confirmModals.active === 'editSwitch' && sw.id === activeRow?.id)
 				);
 
 				if (existingSwitch) {
-					toast.error('Another switch already owns the IPv4 default route', {
-						position: 'bottom-center'
-					});
+					showTabError('ipv4', 'Another switch already owns the IPv4 default route');
 					return;
 				}
 			}
 
-			if (
-				(confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') &&
-				activeModal.defaultRoute6
-			) {
+			if (effectiveDefaultRoute6) {
 				const existingSwitch = switches.current?.standard?.find(
 					(sw) =>
 						sw.defaultRoute6 && !(confirmModals.active === 'editSwitch' && sw.id === activeRow?.id)
 				);
 
 				if (existingSwitch) {
-					toast.error('Another switch already owns the IPv6 default route', {
-						position: 'bottom-center'
-					});
+					showTabError('ipv6', 'Another switch already owns the IPv6 default route');
 					return;
 				}
 			}
 
-			const net4 = splitObjectOrManual(comboBoxes.ipv4.value, ipv4NetworkOptions);
-			const gw4 = splitObjectOrManual(comboBoxes.ipv4Gw.value, ipv4GatewayOptions);
-			const net6 = splitObjectOrManual(comboBoxes.ipv6.value, ipv6NetworkOptions);
-			const gw6 = splitObjectOrManual(comboBoxes.ipv6Gw.value, ipv6GatewayOptions);
+			const net4 = !hostLayer3Enabled
+				? { id: 0, manual: '' }
+				: splitObjectOrManual(comboBoxes.ipv4.value, ipv4NetworkOptions);
+			const gw4 = !hostLayer3Enabled
+				? { id: 0, manual: '' }
+				: splitObjectOrManual(comboBoxes.ipv4Gw.value, ipv4GatewayOptions);
+			const net6 = !hostLayer3Enabled
+				? { id: 0, manual: '' }
+				: splitObjectOrManual(comboBoxes.ipv6.value, ipv6NetworkOptions);
+			const gw6 = !hostLayer3Enabled
+				? { id: 0, manual: '' }
+				: splitObjectOrManual(comboBoxes.ipv6Gw.value, ipv6GatewayOptions);
 
 			const manual = {
 				network4: net4.manual,
@@ -492,27 +537,19 @@
 			};
 
 			if (manual.network4 && !isValidIPv4(manual.network4, true)) {
-				toast.error('Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24', {
-					position: 'bottom-center'
-				});
+				showTabError('ipv4', 'Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24');
 				return;
 			}
 			if (manual.gateway4 && !isValidIPv4(manual.gateway4)) {
-				toast.error('Invalid IPv4 gateway address', {
-					position: 'bottom-center'
-				});
+				showTabError('ipv4', 'Invalid IPv4 gateway address');
 				return;
 			}
 			if (manual.network6 && !isValidIPv6(manual.network6, true)) {
-				toast.error('Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64', {
-					position: 'bottom-center'
-				});
+				showTabError('ipv6', 'Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64');
 				return;
 			}
 			if (manual.gateway6 && !isValidIPv6(manual.gateway6)) {
-				toast.error('Invalid IPv6 gateway address', {
-					position: 'bottom-center'
-				});
+				showTabError('ipv6', 'Invalid IPv6 gateway address');
 				return;
 			}
 
@@ -554,27 +591,28 @@
 
 			saving = true;
 			try {
+				const switchConfig = {
+					mtu,
+					vlan,
+					network4: net4.id,
+					gateway4: gw4.id,
+					network6: net6.id,
+					gateway6: gw6.id,
+					private: activeModal.private,
+					ports: comboBoxes.ports.value,
+					bridgeMac,
+					disableIPv6: hostLayer3Enabled ? activeModal.disableIPv6 : true,
+					slaac: hostLayer3Enabled ? activeModal.slaac : false,
+					dhcp: hostLayer3Enabled ? activeModal.dhcp : false,
+					defaultRoute: effectiveDefaultRoute,
+					defaultRoute6: effectiveDefaultRoute6,
+					disableBridgeOffloads: activeModal.disableBridgeOffloads,
+					vlanConfig,
+					manual,
+					confirmRCConflicts: rcConflictsConfirmed
+				};
 				if (confirmModals.active === 'newSwitch') {
-					const created = await createSwitch(
-						normalizedName,
-						mtu,
-						vlan,
-						net4.id,
-						gw4.id,
-						net6.id,
-						gw6.id,
-						activeModal.private,
-						comboBoxes.ports.value,
-						bridgeMac,
-						activeModal.disableIPv6,
-						activeModal.slaac,
-						activeModal.dhcp,
-						activeModal.defaultRoute,
-						activeModal.defaultRoute6,
-						activeModal.disableBridgeOffloads,
-						manual,
-						rcConflictsConfirmed
-					);
+					const created = await createSwitch({ name: normalizedName, ...switchConfig });
 
 					if (isAPIResponse(created)) {
 						if (showRCConflictWarning(created)) return;
@@ -587,29 +625,27 @@
 						position: 'bottom-center'
 					});
 				} else {
-					const edited = await updateSwitch(
-						activeRow?.id as number,
-						mtu,
-						vlan,
-						net4.id,
-						gw4.id,
-						net6.id,
-						gw6.id,
-						activeModal.private,
-						comboBoxes.ports.value,
-						bridgeMac,
-						activeModal.disableIPv6,
-						activeModal.slaac,
-						activeModal.dhcp,
-						activeModal.defaultRoute,
-						activeModal.defaultRoute6,
-						activeModal.disableBridgeOffloads,
-						manual,
-						rcConflictsConfirmed
-					);
+					const edited = await updateSwitch(activeRow?.id as number, switchConfig);
 
 					if (edited.status !== 'success') {
 						if (showRCConflictWarning(edited)) return;
+						if (
+							edited.error ===
+							'standard_switch_vlan_filtering_change_requires_no_attached_workloads'
+						) {
+							showTabError(
+								'ports',
+								'Detach every VM and jail network interface from this switch before changing VLAN filtering'
+							);
+							return;
+						}
+						if (edited.error === 'standard_switch_runtime_member_conflict') {
+							showTabError(
+								'ports',
+								"Detach any unmanaged live bridge members before changing the switch's VLAN configuration"
+							);
+							return;
+						}
 						handleAPIError(edited);
 						toast.error('Error updating switch', { position: 'bottom-center' });
 						return;
@@ -677,6 +713,8 @@
 
 	function handleEdit() {
 		if (activeRow && Object.keys(activeRow).length > 0) {
+			activeTab = 'general';
+			tabErrors = {};
 			confirmModals.active = 'editSwitch';
 			confirmModals.editSwitch.open = true;
 			confirmModals.editSwitch.oldName = activeRow.name;
@@ -721,6 +759,24 @@
 			confirmModals.editSwitch.defaultRoute6 = (activeRow.defaultRoute6 as boolean) || false;
 			confirmModals.editSwitch.disableBridgeOffloads =
 				(activeRow.disableBridgeOffloads as boolean) || false;
+			confirmModals.editSwitch.vlanFiltering = activeRow.vlanFiltering || false;
+			confirmModals.editSwitch.defaultAccessVlan =
+				activeRow.defaultAccessVlan === null ? '' : String(activeRow.defaultAccessVlan);
+			confirmModals.editSwitch.hostVlan =
+				activeRow.hostVlan === null ? '' : String(activeRow.hostVlan);
+			confirmModals.editSwitch.portPolicies = Object.fromEntries(
+				activeRow.ports.map((port) => [
+					port.name,
+					{
+						mode: port.vlanPolicy.mode,
+						untaggedVlan:
+							port.vlanPolicy.untaggedVlan === undefined
+								? ''
+								: String(port.vlanPolicy.untaggedVlan),
+						taggedVlans: port.vlanPolicy.taggedVlans.join(',')
+					}
+				])
+			);
 
 			comboBoxes.ports.value = activeRow.ports.map((port: { name: string }) => port.name);
 			confirmModals.editSwitch.bridgeMacMode = activeRow.bridgeMacMode;
@@ -752,12 +808,14 @@
 		confirmModals.newSwitch.defaultRoute6 = false;
 		confirmModals.newSwitch.disableBridgeOffloads = true;
 		confirmModals.newSwitch.bridgeMacMode = '';
+		confirmModals.newSwitch.vlanFiltering = false;
+		confirmModals.newSwitch.defaultAccessVlan = '';
+		confirmModals.newSwitch.hostVlan = '';
+		confirmModals.newSwitch.portPolicies = {};
 
 		confirmModals.editSwitch.name = '';
 		confirmModals.editSwitch.mtu = '';
 		confirmModals.editSwitch.vlan = '';
-		confirmModals.editSwitch.address = '0';
-		confirmModals.editSwitch.address6 = '0';
 		confirmModals.editSwitch.disableIPv6 = false;
 		confirmModals.editSwitch.private = false;
 		confirmModals.editSwitch.dhcp = false;
@@ -766,6 +824,12 @@
 		confirmModals.editSwitch.defaultRoute6 = false;
 		confirmModals.editSwitch.disableBridgeOffloads = false;
 		confirmModals.editSwitch.bridgeMacMode = '';
+		confirmModals.editSwitch.vlanFiltering = false;
+		confirmModals.editSwitch.defaultAccessVlan = '';
+		confirmModals.editSwitch.hostVlan = '';
+		confirmModals.editSwitch.portPolicies = {};
+		activeTab = 'general';
+		tabErrors = {};
 
 		comboBoxes.ipv4.value = '';
 		comboBoxes.ipv4Gw.value = '';
@@ -782,7 +846,7 @@
 
 	watch(
 		[() => confirmModals.newSwitch.slaac, () => confirmModals.editSwitch.slaac],
-		(nwSLAAC, editSLAAC) => {
+		([nwSLAAC, editSLAAC]) => {
 			if (nwSLAAC) {
 				confirmModals.newSwitch.disableIPv6 = false;
 			}
@@ -795,7 +859,7 @@
 
 	watch(
 		[() => confirmModals.newSwitch.disableIPv6, () => confirmModals.editSwitch.disableIPv6],
-		(nwDisableIPv6, editDisableIPv6) => {
+		([nwDisableIPv6, editDisableIPv6]) => {
 			if (nwDisableIPv6) {
 				confirmModals.newSwitch.slaac = false;
 				confirmModals.newSwitch.defaultRoute6 = false;
@@ -810,7 +874,7 @@
 
 	watch(
 		[() => confirmModals.newSwitch.dhcp, () => confirmModals.editSwitch.dhcp],
-		(nwDHCP, editDHCP) => {
+		([nwDHCP, editDHCP]) => {
 			if (nwDHCP || editDHCP) {
 				comboBoxes.ipv4.value = '';
 				comboBoxes.ipv4Gw.value = '';
@@ -820,7 +884,7 @@
 
 	watch(
 		[() => confirmModals.newSwitch.slaac, () => confirmModals.editSwitch.slaac],
-		(nwSLAAC, editSLAAC) => {
+		([nwSLAAC, editSLAAC]) => {
 			if (nwSLAAC || editSLAAC) {
 				comboBoxes.ipv6.value = '';
 				comboBoxes.ipv6Gw.value = '';
@@ -831,9 +895,24 @@
 	watch(
 		() => comboBoxes.ports.value,
 		(ports) => {
+			ensurePortPolicyDrafts(ports);
+			clearTabError('ports');
 			if (!ports.includes(comboBoxes.bridgeMacPort.value)) {
 				comboBoxes.bridgeMacPort.value = '';
 			}
+		}
+	);
+
+	watch(
+		[() => confirmModals.newSwitch.vlanFiltering, () => confirmModals.editSwitch.vlanFiltering],
+		([newFiltering, editFiltering]) => {
+			if (newFiltering) {
+				confirmModals.newSwitch.vlan = '';
+			}
+			if (editFiltering) {
+				confirmModals.editSwitch.vlan = '';
+			}
+			clearTabError('ports');
 		}
 	);
 </script>
@@ -878,307 +957,51 @@
 	/>
 </div>
 
-{#if confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch'}
-	<Dialog.Root bind:open={confirmModals[confirmModals.active].open}>
-		<Dialog.Content
-			class="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-4 sm:max-h-[90dvh] sm:w-[90%] sm:p-6 lg:max-w-2xl"
-			showCloseButton={true}
-			showResetButton={true}
-			onReset={() => resetModal(false)}
-			onClose={() => resetModal(false)}
-			onInteractOutside={(e) => e.preventDefault()}
-			onEscapeKeydown={(e) => e.preventDefault()}
-		>
-			<Dialog.Header>
-				<Dialog.Title>
-					<SpanWithIcon
-						icon="icon-[clarity--network-switch-line]"
-						size="h-6 w-6"
-						gap="gap-2"
-						title={confirmModals.active === 'editSwitch'
-							? `Edit Standard Switch - ${confirmModals.editSwitch.oldName}`
-							: 'Create Standard Switch'}
-					/>
-				</Dialog.Title>
-			</Dialog.Header>
-
-			<div class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-2">
-				{#if confirmModals.active === 'newSwitch'}
-					<CustomValueInput
-						label="Name"
-						placeholder="public"
-						bind:value={confirmModals[confirmModals.active].name}
-						classes="flex-1 space-y-1.5"
-					/>
-				{/if}
-
-				<div class="flex gap-4 min-w-0">
-					<CustomValueInput
-						label="MTU"
-						placeholder="1280"
-						bind:value={confirmModals[confirmModals.active].mtu}
-						classes="flex-1 space-y-1.5"
-						type="number"
-					/>
-
-					<CustomValueInput
-						label="VLAN"
-						placeholder="0"
-						bind:value={confirmModals[confirmModals.active].vlan}
-						classes="flex-1 space-y-1.5"
-						type="number"
-					/>
-				</div>
-
-				<div class="flex gap-4 min-w-0">
-					<CustomComboBox
-						bind:open={comboBoxes.ipv4.open}
-						label="IPv4 Network"
-						bind:value={comboBoxes.ipv4.value}
-						data={ipv4NetworkOptions}
-						classes="flex-1 space-y-1"
-						placeholder="Select object or type CIDR (192.168.1.1/24)"
-						width="w-full"
-						disabled={confirmModals[confirmModals.active].dhcp ? true : false}
-						multiple={false}
-						allowCustom={true}
-					></CustomComboBox>
-
-					<CustomComboBox
-						bind:open={comboBoxes.ipv4Gw.open}
-						label="IPv4 Gateway"
-						bind:value={comboBoxes.ipv4Gw.value}
-						data={ipv4GatewayOptions}
-						classes="flex-1 space-y-1"
-						placeholder="Select object or type IP (192.168.1.254)"
-						width="w-full"
-						disabled={confirmModals[confirmModals.active].dhcp ? true : false}
-						multiple={false}
-						allowCustom={true}
-					></CustomComboBox>
-				</div>
-
-				<div class="flex gap-4 min-w-0">
-					<CustomComboBox
-						bind:open={comboBoxes.ipv6.open}
-						label="IPv6 Network"
-						bind:value={comboBoxes.ipv6.value}
-						data={ipv6NetworkOptions}
-						classes="flex-1 space-y-1"
-						placeholder="Select object or type CIDR (2001:db8::1/64)"
-						width="w-full"
-						disabled={confirmModals[confirmModals.active].disableIPv6 ||
-						confirmModals[confirmModals.active].slaac
-							? true
-							: false}
-						multiple={false}
-						allowCustom={true}
-					></CustomComboBox>
-
-					<CustomComboBox
-						bind:open={comboBoxes.ipv6Gw.open}
-						label="IPv6 Gateway"
-						bind:value={comboBoxes.ipv6Gw.value}
-						data={ipv6GatewayOptions}
-						classes="flex-1 space-y-1"
-						placeholder="Select object or type IP (2001:db8::1)"
-						width="w-full"
-						disabled={confirmModals[confirmModals.active].disableIPv6 ||
-						confirmModals[confirmModals.active].slaac
-							? true
-							: false}
-						multiple={false}
-						allowCustom={true}
-					></CustomComboBox>
-				</div>
-
-				{#if confirmModals.active === 'newSwitch'}
-					<CustomComboBox
-						bind:open={comboBoxes.ports.open}
-						label="Ports"
-						bind:value={comboBoxes.ports.value}
-						data={generateComboboxOptions(useablePorts)}
-						classes="flex-1 space-y-1"
-						placeholder="Select ports"
-						multiple={true}
-						width="w-full"
-					></CustomComboBox>
-				{:else}
-					<CustomComboBox
-						bind:open={comboBoxes.ports.open}
-						label="Ports"
-						bind:value={comboBoxes.ports.value}
-						data={generateComboboxOptions(useablePorts, activeRow?.portsOnly)}
-						classes="flex-1 space-y-1"
-						placeholder="Select ports"
-						multiple={true}
-						width="w-full"
-					></CustomComboBox>
-				{/if}
-
-				<div class="space-y-2 rounded-md border p-3">
-					<Label>Bridge MAC source</Label>
-					<RadioGroup.Root
-						bind:value={confirmModals[confirmModals.active].bridgeMacMode}
-						class="grid gap-2 sm:grid-cols-2"
-					>
-						<label
-							for="bridge-mac-source-port"
-							class="flex cursor-pointer items-start gap-3 rounded-md border p-3"
-						>
-							<RadioGroup.Item id="bridge-mac-source-port" value="port" class="mt-1" />
-							<div>
-								<p class="text-sm font-medium">Use port MAC</p>
-								<p class="text-muted-foreground text-xs">
-									Keep the bridge identity tied to one selected port.
-								</p>
-							</div>
-						</label>
-						<label
-							for="bridge-mac-source-object"
-							class="flex cursor-pointer items-start gap-3 rounded-md border p-3"
-						>
-							<RadioGroup.Item id="bridge-mac-source-object" value="object" class="mt-1" />
-							<div>
-								<p class="text-sm font-medium">Use MAC object</p>
-								<p class="text-muted-foreground text-xs">
-									Use an explicit MAC, including on a portless switch.
-								</p>
-							</div>
-						</label>
-					</RadioGroup.Root>
-
-					{#if confirmModals[confirmModals.active].bridgeMacMode === 'port'}
-						<CustomComboBox
-							bind:open={comboBoxes.bridgeMacPort.open}
-							label="MAC source port"
-							bind:value={comboBoxes.bridgeMacPort.value}
-							data={bridgeMACPortOptions}
-							placeholder="Select one of the switch ports"
-							width="w-full"
-							disallowEmpty={true}
-						/>
-					{:else if confirmModals[confirmModals.active].bridgeMacMode === 'object'}
-						<div class="flex items-end gap-2">
-							<CustomComboBox
-								bind:open={comboBoxes.bridgeMacObject.open}
-								label="MAC address object"
-								bind:value={comboBoxes.bridgeMacObject.value}
-								data={bridgeMACObjectOptions}
-								placeholder="Select a single-value MAC object"
-								classes="min-w-0 flex-1 space-y-1"
-								width="w-full"
-								disallowEmpty={true}
-							/>
-							<Button variant="outline" size="sm" class="h-9" onclick={openBridgeMACObjectCreator}>
-								<SpanWithIcon
-									icon="icon-[gg--add]"
-									size="h-4 w-4"
-									gap="gap-2"
-									title="Create object"
-								/>
-							</Button>
-						</div>
-					{/if}
-
-					{#if effectiveBridgeMAC}
-						<p class="text-muted-foreground text-xs">
-							Effective MAC: <span class="font-mono">{effectiveBridgeMAC}</span>
-						</p>
-					{/if}
-				</div>
-
-				<div class="grid grid-cols-3 items-center gap-x-4 gap-y-2">
-					<CustomCheckbox
-						label="Private"
-						bind:checked={confirmModals[confirmModals.active].private}
-						classes="flex items-center gap-2 mt-1"
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label="DHCP"
-						bind:checked={confirmModals[confirmModals.active].dhcp}
-						classes="flex items-center gap-2 mt-1"
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label="SLAAC"
-						bind:checked={confirmModals[confirmModals.active].slaac}
-						classes="flex items-center gap-2 mt-1"
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label="Disable IPV6"
-						bind:checked={confirmModals[confirmModals.active].disableIPv6}
-						classes="flex items-center gap-2 mt-1"
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label="Disable Bridge Offloads"
-						bind:checked={confirmModals[confirmModals.active].disableBridgeOffloads}
-						classes="flex items-center gap-2 mt-1"
-						title="Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
-					></CustomCheckbox>
-
-					<CustomCheckbox
-						label={confirmModals[confirmModals.active].dhcp
-							? 'Use DHCP Default Route'
-							: 'IPv4 Default Route'}
-						bind:checked={confirmModals[confirmModals.active].defaultRoute}
-						classes="flex items-center gap-2 mt-1"
-					></CustomCheckbox>
-
-					{#if !confirmModals[confirmModals.active].disableIPv6}
-						<CustomCheckbox
-							label={confirmModals[confirmModals.active].slaac
-								? 'Use RA Default Route'
-								: 'IPv6 Default Route'}
-							bind:checked={confirmModals[confirmModals.active].defaultRoute6}
-							classes="flex items-center gap-2 mt-1"
-						></CustomCheckbox>
-					{/if}
-				</div>
-			</div>
-
-			<Dialog.Footer class="flex shrink-0 justify-between gap-2">
-				<div class="flex gap-2">
-					{#if confirmModals.active === 'editSwitch'}
-						<Button
-							onclick={() => confirmAction()}
-							type="submit"
-							size="sm"
-							class="w-full lg:w-28"
-							disabled={saving}
-						>
-							{#if saving}
-								<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
-								Saving…
-							{:else}
-								Save
-							{/if}
-						</Button>
-					{:else}
-						<Button
-							onclick={() => confirmAction()}
-							type="submit"
-							size="sm"
-							class="w-full lg:w-28"
-							disabled={saving}
-						>
-							{#if saving}
-								<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
-								Creating…
-							{:else}
-								Create
-							{/if}
-						</Button>
-					{/if}
-				</div>
-			</Dialog.Footer>
-		</Dialog.Content>
-	</Dialog.Root>
+{#if confirmModals.active === 'newSwitch'}
+	<StandardSwitchForm
+		mode="create"
+		bind:form={confirmModals.newSwitch}
+		bind:comboBoxes
+		bind:activeTab
+		{tabErrors}
+		portOptions={generateComboboxOptions(useablePorts)}
+		{ipv4NetworkOptions}
+		{ipv4GatewayOptions}
+		{ipv6NetworkOptions}
+		{ipv6GatewayOptions}
+		{bridgeMACPortOptions}
+		{bridgeMACObjectOptions}
+		{effectiveBridgeMAC}
+		{saving}
+		onReset={() => resetModal(false)}
+		onClose={() => resetModal(false)}
+		onSubmit={() => confirmAction()}
+		onClearTabError={clearTabError}
+		onCreateMACObject={openBridgeMACObjectCreator}
+	/>
+{:else if confirmModals.active === 'editSwitch'}
+	<StandardSwitchForm
+		mode="edit"
+		bind:form={confirmModals.editSwitch}
+		bind:comboBoxes
+		bind:activeTab
+		{tabErrors}
+		portOptions={generateComboboxOptions(useablePorts, activeRow?.portsOnly)}
+		{ipv4NetworkOptions}
+		{ipv4GatewayOptions}
+		{ipv6NetworkOptions}
+		{ipv6GatewayOptions}
+		{bridgeMACPortOptions}
+		{bridgeMACObjectOptions}
+		{effectiveBridgeMAC}
+		{saving}
+		onReset={() => resetModal(false)}
+		onClose={() => resetModal(false)}
+		onSubmit={() => confirmAction()}
+		onClearTabError={clearTabError}
+		onCreateMACObject={openBridgeMACObjectCreator}
+	/>
 {/if}
-
 {#if bridgeMACObjectModal.open}
 	<NetworkObjectCreator
 		bind:open={bridgeMACObjectModal.open}

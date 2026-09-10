@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package zelta
 
@@ -11,6 +17,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -22,6 +29,19 @@ type failingReplicationVMMetadataWriter struct {
 	calls int
 	rid   uint
 	err   error
+}
+
+type replicationJailMetadataWriter struct {
+	jailServiceInterfaces.JailServiceInterface
+	calls int
+	ctid  uint
+	err   error
+}
+
+func (s *replicationJailMetadataWriter) WriteJailJSON(ctid uint) error {
+	s.calls++
+	s.ctid = ctid
+	return s.err
 }
 
 func (s *failingReplicationVMMetadataWriter) WriteVMJson(rid uint) error {
@@ -151,6 +171,17 @@ func TestReplicationRunMetadataRefreshFailureInvalidatesReadinessBeforeDiscovery
 	}
 	if reloaded.Ready || !strings.Contains(reloaded.LastError, "replication_vm_metadata_refresh_failed") {
 		t.Fatalf("dirty vm.json left target ready: %+v", reloaded)
+	}
+}
+
+func TestRefreshGuestMetadataIncludesJails(t *testing.T) {
+	writer := &replicationJailMetadataWriter{}
+	service := &Service{Jail: writer}
+	if err := service.refreshGuestMetadata(clusterModels.ReplicationGuestTypeJail, 117); err != nil {
+		t.Fatalf("refresh jail metadata: %v", err)
+	}
+	if writer.calls != 1 || writer.ctid != 117 {
+		t.Fatalf("unexpected jail.json refresh calls=%d ctid=%d", writer.calls, writer.ctid)
 	}
 }
 

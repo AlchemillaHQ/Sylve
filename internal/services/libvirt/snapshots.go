@@ -27,6 +27,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/digitalocean/go-libvirt"
 	"github.com/klauspost/cpuid/v2"
@@ -107,6 +108,11 @@ func (s *Service) CreateVMSnapshot(
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_vm: %w", err)
 	}
+	unlockSwitchLifecycle, err := s.lockVMStandardSwitchLifecycle(vm.ID, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed_to_lock_vm_snapshot_network_lifecycle: %w", err)
+	}
+	defer unlockSwitchLifecycle()
 
 	rootDatasets, err := resolveVMRootDatasets(&vm)
 	if err != nil {
@@ -301,6 +307,16 @@ func (s *Service) rollbackVMSnapshot(
 		result.WasRunning = true
 	}
 
+	unlockSwitchLifecycle, err := s.lockVMSnapshotNetworkLifecycle(vm.ID, restored.Networks)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		if unlockSwitchLifecycle != nil {
+			unlockSwitchLifecycle()
+		}
+	}()
+
 	mutationCtx, cancelMutation := detachedVMSnapshotContext(ctx, vmSnapshotMutationTimeout)
 	defer cancelMutation()
 
@@ -345,6 +361,9 @@ func (s *Service) rollbackVMSnapshot(
 			err,
 		))
 	}
+
+	unlockSwitchLifecycle()
+	unlockSwitchLifecycle = nil
 
 	if result.WasRunning {
 		freshVM, err := s.GetVMByRID(rid)
@@ -1257,6 +1276,49 @@ func (s *Service) normalizeRestoredPCIDevices(rid uint, pciDevices []int) ([]int
 	return out, warnings, nil
 }
 
+func (s *Service) lockVMSnapshotNetworkLifecycle(
+	vmID uint,
+	networks []vmModels.Network,
+) (func(), error) {
+	targetNames := make([]string, 0, len(networks))
+	for idx, network := range networks {
+		expected, err := VMNetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf("snapshot_network_source_attachment_invalid: network=%d: %w", idx+1, err)
+		}
+		targetNames = append(targetNames, expected.SwitchName)
+	}
+
+	unlock, err := s.lockVMStandardSwitchLifecycle(vmID, false, targetNames...)
+	if err != nil {
+		return nil, err
+	}
+	for idx, network := range networks {
+		expected, contractErr := VMNetworkAttachmentFromMetadata(network)
+		if contractErr != nil {
+			unlock()
+			return nil, fmt.Errorf(
+				"snapshot_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				contractErr,
+			)
+		}
+		var target networkAttachment.ResolvedSwitch
+		if network.Enable {
+			target, err = ResolveDesiredTargetVMNetworkAttachment(s.DB, expected)
+		} else {
+			target, err = ResolveTargetVMNetworkIdentity(s.DB, expected)
+		}
+		if err != nil {
+			unlock()
+			return nil, fmt.Errorf("snapshot_network_switch_incompatible: network=%d: %w", idx+1, err)
+		}
+		networks[idx].SwitchID = target.ID
+		networks[idx].SwitchType = target.Type
+	}
+	return unlock, nil
+}
+
 func (s *Service) normalizeRestoredVMNetworks(
 	currentVMID uint,
 	networks []vmModels.Network,
@@ -1271,41 +1333,25 @@ func (s *Service) normalizeRestoredVMNetworks(
 	seenRawMACs := make(map[string]struct{}, len(networks))
 
 	for _, network := range networks {
-		switchType := strings.ToLower(strings.TrimSpace(network.SwitchType))
-		switch switchType {
-		case "standard":
-			var sw networkModels.StandardSwitch
-			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					warnings = append(warnings, fmt.Sprintf(
-						"standard_switch_%d_not_found; skipped network restore",
-						network.SwitchID,
-					))
-					continue
-				}
-				return nil, nil, fmt.Errorf("failed_to_lookup_standard_switch_for_snapshot_restore: %w", err)
-			}
-			network.SwitchType = "standard"
-		case "manual":
-			var sw networkModels.ManualSwitch
-			if err := s.DB.Select("id").Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					warnings = append(warnings, fmt.Sprintf(
-						"manual_switch_%d_not_found; skipped network restore",
-						network.SwitchID,
-					))
-					continue
-				}
-				return nil, nil, fmt.Errorf("failed_to_lookup_manual_switch_for_snapshot_restore: %w", err)
-			}
-			network.SwitchType = "manual"
-		default:
-			warnings = append(warnings, fmt.Sprintf(
-				"switch_type_%q_invalid_for_network_restore; skipped",
-				network.SwitchType,
-			))
-			continue
+		expected, err := VMNetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, nil, fmt.Errorf("snapshot_network_source_attachment_invalid: %w", err)
 		}
+		var sw networkAttachment.ResolvedSwitch
+		if network.Enable {
+			sw, err = ResolveDesiredTargetVMNetworkAttachment(s.DB, expected)
+		} else {
+			sw, err = ResolveTargetVMNetworkIdentity(s.DB, expected)
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("snapshot_network_switch_incompatible: %w", err)
+		}
+		network.SwitchID = sw.ID
+		network.SwitchType = sw.Type
+		expectedCopy := expected
+		network.Attachment = &expectedCopy
+		network.StandardSwitch = nil
+		network.ManualSwitch = nil
 
 		if network.MacID != nil && *network.MacID != 0 {
 			macID := *network.MacID

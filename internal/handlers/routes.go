@@ -838,6 +838,7 @@ func RegisterRoutes(r *gin.Engine,
 		intraCluster.POST("/migration/import-vm", migrationHandlers.IntraClusterImportVM(zeltaService, libvirtService))
 		intraCluster.POST("/migration/import-jail", migrationHandlers.IntraClusterImportJail(zeltaService, jailService))
 		intraCluster.POST("/migration/check-vm-target", migrationHandlers.IntraClusterCheckVMTarget(libvirtService))
+		intraCluster.POST("/migration/check-jail-target", migrationHandlers.IntraClusterCheckJailTarget(jailService))
 		intraCluster.POST("/sync-health", clusterHandlers.SyncHealth(clusterService))
 		intraCluster.POST("/events/left-panel-refresh", clusterHandlers.EmitLeftPanelRefreshLocal(clusterService))
 		intraCluster.POST("/ssh-identity", clusterHandlers.UpsertClusterSSHIdentityInternal(clusterService))

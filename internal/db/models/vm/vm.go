@@ -16,6 +16,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
 )
@@ -54,6 +55,26 @@ type VMTemplateNetwork struct {
 	SwitchName string `json:"switchName"`
 	SwitchType string `json:"switchType"`
 	Emulation  string `json:"emulation"`
+	Enable     bool   `json:"enable"`
+}
+
+func (n *VMTemplateNetwork) UnmarshalJSON(data []byte) error {
+	type Alias VMTemplateNetwork
+
+	var value Alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*n = VMTemplateNetwork(value)
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, ok := raw["enable"]; !ok {
+		n.Enable = true
+	}
+	return nil
 }
 
 type VMStorageEmulationType string
@@ -177,6 +198,7 @@ type Network struct {
 
 	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
 	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
+	Attachment     *networkAttachment.Contract   `gorm:"-" json:"attachment,omitempty"`
 
 	Emulation string `json:"emulation"`
 	Enable    bool   `json:"enable"`

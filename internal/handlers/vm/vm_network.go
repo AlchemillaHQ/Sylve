@@ -77,7 +77,8 @@ func vmNetworkErrorStatus(err error) int {
 	case vmNetworkErrorHasCode(codes,
 		"libvirt_not_initialized", "libvirt_connection_unavailable", "db_not_initialized",
 		"failed_to_check_vm_shutoff", "failed_to_lookup_domain_by_name",
-		"failed_to_lookup_domain", "failed_to_get_domain_state"):
+		"failed_to_lookup_domain", "failed_to_get_domain_state",
+		"failed_to_inspect_manual_switch_vlan_state", "unfiltered_switch_runtime_inspection_failed"):
 		return http.StatusServiceUnavailable
 	case vmNetworkErrorHasCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "invalid_network_id",
@@ -92,7 +93,10 @@ func vmNetworkErrorStatus(err error) int {
 		return http.StatusNotFound
 	case vmNetworkErrorHasCode(codes,
 		"domain_state_not_shutoff", "vm_is_active", "mac_object_already_in_use",
-		"mac_address_already_in_use", "filesystem_dataset_mountpoint_not_usable"):
+		"mac_address_already_in_use", "filesystem_dataset_mountpoint_not_usable",
+		"filtered_switch_vm_default_access_vlan_required", "filtered_switch_qinq_unsupported",
+		"invalid_manual_switch_default_pvid", "filtered_switch_runtime_mismatch",
+		"unfiltered_switch_runtime_vlan_mode_mismatch"):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
@@ -178,7 +182,7 @@ func NetworkDetach(libvirtService vmNetworkService) gin.HandlerFunc {
 }
 
 // @Summary Attach network to a virtual machine
-// @Description Attach a network interface to a shut-off virtual machine
+// @Description Attach a network interface to a shut-off virtual machine. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.
 // @Tags VM
 // @Accept json
 // @Produce json
@@ -233,7 +237,7 @@ func NetworkAttach(libvirtService vmNetworkService) gin.HandlerFunc {
 }
 
 // @Summary Update virtual machine network
-// @Description Partially update a network interface attached to a shut-off virtual machine
+// @Description Partially update a network interface attached to a shut-off virtual machine. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.
 // @Tags VM
 // @Accept json
 // @Produce json

@@ -21,6 +21,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	_ "github.com/mattn/go-sqlite3"
 	"maragu.dev/goqite"
@@ -39,6 +40,18 @@ func (s fullBackupJailStub) GetJailCTIDFromDataset(_ string) (uint, error) {
 
 func (s fullBackupJailStub) JailAction(_ int, action string) error {
 	return s.stopErr
+}
+
+func (s fullBackupJailStub) WriteJailJSON(uint) error {
+	return nil
+}
+
+type fullBackupVMStub struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+}
+
+func (fullBackupVMStub) WriteVMJson(uint) error {
+	return nil
 }
 
 type queueJobMessage struct {
@@ -287,6 +300,7 @@ func TestRunBackupJobStopBeforeBackupWithoutJailService(t *testing.T) {
 
 func TestRunBackupJobVMWithZeltaBinaryMissing(t *testing.T) {
 	svc := newBackupServiceForIntegration(t)
+	svc.VM = fullBackupVMStub{}
 	seedBackupTarget(t, svc.DB, 1, "t1")
 	vm := vmModels.VM{RID: 42, Name: "integration-vm"}
 	if err := svc.DB.Create(&vm).Error; err != nil {

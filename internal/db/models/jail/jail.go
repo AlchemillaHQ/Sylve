@@ -14,6 +14,8 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -33,6 +35,7 @@ type Network struct {
 
 	StandardSwitch *networkModels.StandardSwitch `gorm:"-" json:"standardSwitch,omitempty"`
 	ManualSwitch   *networkModels.ManualSwitch   `gorm:"-" json:"manualSwitch,omitempty"`
+	Attachment     *networkAttachment.Contract   `gorm:"-" json:"attachment,omitempty"`
 
 	MacID         *uint                 `json:"macId" gorm:"column:mac_id"`
 	MacAddressObj *networkModels.Object `json:"macObj" gorm:"foreignKey:MacID"`
@@ -52,7 +55,7 @@ type Network struct {
 	DHCP  bool `json:"dhcp" gorm:"default:false"`
 	SLAAC bool `json:"slaac" gorm:"default:false"`
 
-	VLAN *int `json:"vlan" gorm:"default:0"`
+	VLANPolicy bridgevlan.PortPolicy `json:"vlanPolicy" gorm:"embedded;embeddedPrefix:vlan_"`
 }
 
 func (n *Network) AfterFind(tx *gorm.DB) error {
@@ -157,12 +160,13 @@ type JailHooks struct {
 }
 
 type JailTemplateNetwork struct {
-	Name           string `json:"name"`
-	SwitchID       uint   `json:"switchId"`
-	SwitchType     string `json:"switchType"`
-	DHCP           bool   `json:"dhcp"`
-	SLAAC          bool   `json:"slaac"`
-	DefaultGateway bool   `json:"defaultGateway"`
+	Name           string                `json:"name"`
+	SwitchID       uint                  `json:"switchId"`
+	SwitchType     string                `json:"switchType"`
+	DHCP           bool                  `json:"dhcp"`
+	SLAAC          bool                  `json:"slaac"`
+	DefaultGateway bool                  `json:"defaultGateway"`
+	VLANPolicy     bridgevlan.PortPolicy `json:"vlanPolicy"`
 }
 
 type JailTemplateHook struct {

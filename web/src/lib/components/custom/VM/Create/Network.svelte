@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
@@ -45,19 +55,40 @@
 	});
 </script>
 
-{#snippet radioItem(id: number, name: string, type: 'standard' | 'manual' | 'none')}
+{#snippet radioItem(
+	id: number,
+	name: string,
+	type: 'standard' | 'manual' | 'none',
+	vlanFiltering = false,
+	defaultAccessVlan: number | null = null,
+	runtimeAvailable = true
+)}
 	{@const i = `radio-${type}-${id}`}
-	<div class="mb-2 flex items-center space-x-3 rounded-lg border p-4">
-		<RadioGroup.Item value={name} id={i} />
+	{@const unavailable = !runtimeAvailable || (vlanFiltering && defaultAccessVlan === null)}
+	<div
+		class:opacity-60={unavailable}
+		class="mb-2 flex items-center space-x-3 rounded-lg border p-4"
+	>
+		<RadioGroup.Item value={name} id={i} disabled={unavailable} />
 		<Label for={i} class="flex flex-col items-start gap-2">
 			<p class="">{name}</p>
 			<p class="text-muted-foreground text-sm">
-				{#if type === 'none'}
+				{#if !runtimeAvailable}
+					Runtime bridge state unavailable
+				{:else if type === 'none'}
 					No network switch will be allocated now, you can add it later
 				{:else if type === 'manual'}
-					Manual switch
+					Manual switch{vlanFiltering && defaultAccessVlan !== null
+						? ` · VLAN filtered · access VLAN ${defaultAccessVlan}`
+						: vlanFiltering
+							? ' · VLAN filtered · no default access VLAN (unavailable for VMs)'
+							: ''}
 				{:else}
-					Standard switch
+					Standard switch{vlanFiltering && defaultAccessVlan !== null
+						? ` · VLAN filtered · access VLAN ${defaultAccessVlan}`
+						: vlanFiltering
+							? ' · VLAN filtered · no default access VLAN (unavailable for VMs)'
+							: ''}
 				{/if}
 			</p>
 		</Label>
@@ -69,13 +100,20 @@
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
 			{#if switches && switches.standard}
 				{#each switches.standard ?? [] as sw (sw.id)}
-					{@render radioItem(sw.id, sw.name, 'standard')}
+					{@render radioItem(sw.id, sw.name, 'standard', sw.vlanFiltering, sw.defaultAccessVlan)}
 				{/each}
 			{/if}
 
 			{#if switches && switches.manual}
 				{#each switches.manual ?? [] as sw (sw.id)}
-					{@render radioItem(sw.id, sw.name, 'manual')}
+					{@render radioItem(
+						sw.id,
+						sw.name,
+						'manual',
+						sw.vlanFiltering,
+						sw.defaultAccessVlan,
+						sw.vlanStateAvailable
+					)}
 				{/each}
 			{/if}
 

@@ -28,6 +28,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/services/lifecycle"
@@ -834,9 +835,11 @@ func IntraClusterImportVM(
 }
 
 type CheckVMTargetSwitch struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Bridge string `json:"bridge"`
+	Name         string                      `json:"name,omitempty"`
+	Attachment   *networkAttachment.Contract `json:"attachment,omitempty"`
+	IdentityOnly bool                        `json:"identityOnly,omitempty"`
+	Type         string                      `json:"type,omitempty"`
+	Bridge       string                      `json:"bridge,omitempty"`
 }
 
 type CheckVMTargetRequest struct {
@@ -845,6 +848,130 @@ type CheckVMTargetRequest struct {
 	VNCPort    int                   `json:"vncPort"`
 	Switches   []CheckVMTargetSwitch `json:"switches"`
 	FsDatasets []string              `json:"fsDatasets"`
+}
+
+var validateTargetNetworkAttachments = func(
+	db *gorm.DB,
+	attachments []networkAttachment.NamedContract,
+	expectedKind networkAttachment.Kind,
+) networkAttachment.TargetResult {
+	return networkAttachment.NewResolver(db).ValidateEffectiveTargets(expectedKind, attachments)
+}
+
+func checkVMTargetSwitchLabel(entry CheckVMTargetSwitch) string {
+	if label := strings.TrimSpace(entry.Name); label != "" {
+		return label
+	}
+	if entry.Attachment != nil {
+		if label := strings.TrimSpace(entry.Attachment.SwitchName); label != "" {
+			return label
+		}
+	}
+	if label := strings.TrimSpace(entry.Bridge); label != "" {
+		return label
+	}
+	return "unknown"
+}
+
+func legacyVMTargetAttachment(
+	db *gorm.DB,
+	entry CheckVMTargetSwitch,
+) (networkAttachment.NamedContract, error) {
+	bridge := strings.TrimSpace(entry.Bridge)
+	if bridge == "" {
+		return networkAttachment.NamedContract{}, fmt.Errorf("legacy_vm_target_bridge_required")
+	}
+	switchType, err := networkAttachment.NormalizeSwitchType(entry.Type)
+	if err != nil {
+		return networkAttachment.NamedContract{}, err
+	}
+	name := strings.TrimSpace(entry.Name)
+
+	var targetName string
+	switch switchType {
+	case "standard":
+		var sw networkModels.StandardSwitch
+		queryErr := gorm.ErrRecordNotFound
+		if name != "" {
+			queryErr = db.Where("name = ?", name).First(&sw).Error
+		}
+		if errors.Is(queryErr, gorm.ErrRecordNotFound) && bridge != "" {
+			queryErr = db.Where("bridge_name = ?", bridge).First(&sw).Error
+		}
+		if queryErr != nil {
+			return networkAttachment.NamedContract{}, queryErr
+		}
+		targetName = sw.Name
+	case "manual":
+		var sw networkModels.ManualSwitch
+		queryErr := gorm.ErrRecordNotFound
+		if name != "" {
+			queryErr = db.Where("name = ?", name).First(&sw).Error
+		}
+		if errors.Is(queryErr, gorm.ErrRecordNotFound) && bridge != "" {
+			queryErr = db.Where("bridge = ?", bridge).First(&sw).Error
+		}
+		if queryErr != nil {
+			return networkAttachment.NamedContract{}, queryErr
+		}
+		targetName = sw.Name
+	}
+
+	contract, err := networkAttachment.LegacyUnfiltered(
+		networkAttachment.KindVM,
+		targetName,
+		switchType,
+	)
+	if err != nil {
+		return networkAttachment.NamedContract{}, err
+	}
+	return networkAttachment.NamedContract{
+		Name:       checkVMTargetSwitchLabel(entry),
+		Attachment: contract,
+	}, nil
+}
+
+func validateVMTargetSwitches(
+	db *gorm.DB,
+	entries []CheckVMTargetSwitch,
+) (networkAttachment.TargetResult, bool) {
+	modern := make([]networkAttachment.NamedContract, 0, len(entries))
+	legacy := make([]networkAttachment.NamedContract, 0, len(entries))
+	legacyFailures := make([]string, 0)
+
+	for _, entry := range entries {
+		if entry.Attachment != nil {
+			modern = append(modern, networkAttachment.NamedContract{
+				Name:         entry.Name,
+				Attachment:   *entry.Attachment,
+				IdentityOnly: entry.IdentityOnly,
+			})
+			continue
+		}
+
+		attachment, err := legacyVMTargetAttachment(db, entry)
+		if err != nil {
+			legacyFailures = append(legacyFailures, checkVMTargetSwitchLabel(entry))
+			continue
+		}
+		legacy = append(legacy, attachment)
+	}
+
+	result := validateTargetNetworkAttachments(db, modern, networkAttachment.KindVM)
+	if len(legacy) == 0 {
+		result.MissingSwitches = append(result.MissingSwitches, legacyFailures...)
+		return result, len(legacyFailures) != 0
+	}
+
+	legacyResult := validateTargetNetworkAttachments(db, legacy, networkAttachment.KindVM)
+	result.NetworkCompatibilityChecked = result.NetworkCompatibilityChecked &&
+		legacyResult.NetworkCompatibilityChecked
+	result.MissingSwitches = append(result.MissingSwitches, legacyFailures...)
+	result.MissingSwitches = append(result.MissingSwitches, legacyResult.MissingSwitches...)
+	result.MissingSwitches = append(result.MissingSwitches, legacyResult.IncompatibleSwitches...)
+	legacyUnsafe := len(legacyFailures) != 0 || len(legacyResult.MissingSwitches) != 0 ||
+		len(legacyResult.IncompatibleSwitches) != 0 || !legacyResult.NetworkCompatibilityChecked
+	return result, legacyUnsafe
 }
 
 func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc {
@@ -862,6 +989,10 @@ func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc 
 
 		ctx := c.Request.Context()
 		db := libvirtService.DB
+		if len(req.Switches) > 0 && db == nil {
+			c.JSON(500, internal.APIResponse[any]{Status: "error", Message: "libvirt_database_not_configured", Error: "libvirt_database_not_configured"})
+			return
+		}
 
 		missingMedia := make([]string, 0, len(req.MediaUUIDs))
 		seenMedia := make(map[string]struct{}, len(req.MediaUUIDs))
@@ -880,41 +1011,22 @@ func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc 
 			}
 		}
 
-		missingSwitches := make([]string, 0, len(req.Switches))
+		networkResult := networkAttachment.TargetResult{
+			MissingSwitches:             []string{},
+			IncompatibleSwitches:        []string{},
+			NetworkCompatibilityChecked: true,
+		}
 		if db != nil {
-			for _, sw := range req.Switches {
-				name := strings.TrimSpace(sw.Name)
-				bridge := strings.TrimSpace(sw.Bridge)
-				if name == "" && bridge == "" {
-					continue
-				}
-
-				found := false
-				if strings.EqualFold(strings.TrimSpace(sw.Type), "manual") {
-					var m networkModels.ManualSwitch
-					if name != "" && db.Where("name = ?", name).First(&m).Error == nil {
-						found = true
-					}
-					if !found && bridge != "" && db.Where("bridge = ?", bridge).First(&m).Error == nil {
-						found = true
-					}
-				} else {
-					var st networkModels.StandardSwitch
-					if name != "" && db.Where("name = ?", name).First(&st).Error == nil {
-						found = true
-					}
-					if !found && bridge != "" && db.Where("bridge_name = ?", bridge).First(&st).Error == nil {
-						found = true
-					}
-				}
-
-				if !found {
-					label := name
-					if label == "" {
-						label = bridge
-					}
-					missingSwitches = append(missingSwitches, label)
-				}
+			var legacyUnsafe bool
+			networkResult, legacyUnsafe = validateVMTargetSwitches(db, req.Switches)
+			if legacyUnsafe {
+				c.JSON(http.StatusConflict, internal.APIResponse[networkAttachment.TargetResult]{
+					Status:  "error",
+					Message: "legacy_vm_network_target_incompatible",
+					Error:   "legacy_vm_network_target_incompatible",
+					Data:    networkResult,
+				})
+				return
 			}
 		}
 
@@ -949,10 +1061,44 @@ func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc 
 			Status:  "success",
 			Message: "vm_target_check_complete",
 			Data: map[string]any{
-				"missingMedia":      missingMedia,
-				"vncPortInUse":      vncPortInUse,
-				"missingSwitches":   missingSwitches,
-				"missingFsDatasets": missingFsDatasets,
+				"missingMedia":                missingMedia,
+				"vncPortInUse":                vncPortInUse,
+				"missingSwitches":             networkResult.MissingSwitches,
+				"incompatibleSwitches":        networkResult.IncompatibleSwitches,
+				"missingFsDatasets":           missingFsDatasets,
+				"networkCompatibilityChecked": networkResult.NetworkCompatibilityChecked,
+			},
+		})
+	}
+}
+
+type CheckJailTargetRequest struct {
+	Networks []networkAttachment.NamedContract `json:"networks"`
+}
+
+func IntraClusterCheckJailTarget(jailService *jail.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req CheckJailTargetRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, internal.APIResponse[any]{Status: "error", Message: "invalid_request_body", Error: err.Error()})
+			return
+		}
+		if jailService == nil || jailService.DB == nil {
+			c.JSON(500, internal.APIResponse[any]{Status: "error", Message: "jail_not_configured", Error: "jail_not_configured"})
+			return
+		}
+
+		networkResult := validateTargetNetworkAttachments(
+			jailService.DB, req.Networks, networkAttachment.KindJail,
+		)
+
+		c.JSON(http.StatusOK, internal.APIResponse[map[string]any]{
+			Status:  "success",
+			Message: "jail_target_check_complete",
+			Data: map[string]any{
+				"missingSwitches":             networkResult.MissingSwitches,
+				"incompatibleSwitches":        networkResult.IncompatibleSwitches,
+				"networkCompatibilityChecked": networkResult.NetworkCompatibilityChecked,
 			},
 		})
 	}

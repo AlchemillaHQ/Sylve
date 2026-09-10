@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import {
 		attachNetwork,
@@ -12,7 +22,11 @@
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import {
+		isSwitchRuntimeAvailable,
+		isSwitchVMCompatible,
+		type SwitchList
+	} from '$lib/types/network/switch';
 	import type { VM } from '$lib/types/vm/vm';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { generateMACOptions } from '$lib/utils/network/object';
@@ -130,6 +144,22 @@
 		return Number.isSafeInteger(rid) && rid > 0 ? rid : null;
 	}
 
+	function switchSupportsVM(name: string): boolean {
+		const networkSwitch = usable.find((candidate) => candidate.name === name);
+		return Boolean(networkSwitch && isSwitchVMCompatible(networkSwitch));
+	}
+
+	function switchOptionLabel(networkSwitch: (typeof usable)[number]): string {
+		if (!isSwitchRuntimeAvailable(networkSwitch)) {
+			return `${networkSwitch.name} (runtime bridge state unavailable)`;
+		}
+		if (!networkSwitch.vlanFiltering) return networkSwitch.name;
+		if (networkSwitch.defaultAccessVlan === null) {
+			return `${networkSwitch.name} (VLAN filtered; no default access VLAN)`;
+		}
+		return `${networkSwitch.name} (VLAN filtered; access VLAN ${networkSwitch.defaultAccessVlan})`;
+	}
+
 	function resetForm() {
 		if (selectedNetwork) {
 			editProperties = createEditOptions();
@@ -147,6 +177,10 @@
 		}
 		if (!properties.switchId) {
 			toast.error('Switch is required', toastOptions);
+			return;
+		}
+		if (!switchSupportsVM(properties.switchId)) {
+			toast.error('The selected switch is unavailable for this VM', toastOptions);
 			return;
 		}
 		if (!isNetworkEmulation(properties.emulation)) {
@@ -192,6 +226,10 @@
 		}
 		if (!editProperties.switchId) {
 			toast.error('Switch is required', toastOptions);
+			return;
+		}
+		if (editProperties.enable && !switchSupportsVM(editProperties.switchId)) {
+			toast.error('The selected switch is unavailable for this VM', toastOptions);
 			return;
 		}
 		if (!isNetworkEmulation(editProperties.emulation)) {
@@ -261,7 +299,8 @@
 				placeholder="Select Switch"
 				options={usable.map((networkSwitch) => ({
 					value: networkSwitch.name,
-					label: networkSwitch.name
+					label: switchOptionLabel(networkSwitch),
+					disabled: !isSwitchVMCompatible(networkSwitch)
 				}))}
 				bind:value={properties.switchId}
 				onChange={(value) => (properties.switchId = value)}
@@ -311,7 +350,8 @@
 				placeholder="Select Switch"
 				options={usable.map((networkSwitch) => ({
 					value: networkSwitch.name,
-					label: networkSwitch.name
+					label: switchOptionLabel(networkSwitch),
+					disabled: editProperties.enable && !isSwitchVMCompatible(networkSwitch)
 				}))}
 				bind:value={editProperties.switchId}
 				onChange={(value) => (editProperties.switchId = value)}

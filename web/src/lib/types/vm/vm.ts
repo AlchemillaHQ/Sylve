@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
 import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
@@ -226,7 +236,8 @@ export const VMTemplateNetworkSchema = z.object({
 	name: z.string(),
 	switchName: z.string(),
 	switchType: z.string(),
-	emulation: z.string()
+	emulation: z.string(),
+	enable: z.boolean().optional().default(true)
 });
 
 export const VMTemplateSchema = z.object({

@@ -20,20 +20,12 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
 	"gorm.io/gorm"
 )
-
-type resolvedVMNetworkSwitch struct {
-	id       uint
-	typeName string
-	name     string
-	bridge   string
-	standard *networkModels.StandardSwitch
-	manual   *networkModels.ManualSwitch
-}
 
 type networkRuntimeHooks struct {
 	syncVMNetworks func(ctx context.Context, db *gorm.DB, rid uint) error
@@ -87,82 +79,6 @@ func findVMNetworkRecordWithDB(db *gorm.DB, vmID, networkID uint) (vmModels.Netw
 		return network, fmt.Errorf("failed_to_find_network_record: %w", err)
 	}
 	return network, nil
-}
-
-func resolveVMNetworkSwitchByName(db *gorm.DB, name string) (resolvedVMNetworkSwitch, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return resolvedVMNetworkSwitch{}, fmt.Errorf("invalid_switch_name")
-	}
-
-	var standard networkModels.StandardSwitch
-	err := db.First(&standard, "name = ?", name).Error
-	if err == nil {
-		return resolvedVMNetworkSwitch{
-			id:       standard.ID,
-			typeName: "standard",
-			name:     standard.Name,
-			bridge:   standard.BridgeName,
-			standard: &standard,
-		}, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_standard_switch: %w", err)
-	}
-
-	var manual networkModels.ManualSwitch
-	err = db.First(&manual, "name = ?", name).Error
-	if err == nil {
-		return resolvedVMNetworkSwitch{
-			id:       manual.ID,
-			typeName: "manual",
-			name:     manual.Name,
-			bridge:   manual.Bridge,
-			manual:   &manual,
-		}, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_manual_switch: %w", err)
-	}
-
-	return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: %s", name)
-}
-
-func resolveVMNetworkSwitchByID(db *gorm.DB, switchType string, switchID uint) (resolvedVMNetworkSwitch, error) {
-	switch strings.ToLower(strings.TrimSpace(switchType)) {
-	case "standard":
-		var standard networkModels.StandardSwitch
-		if err := db.First(&standard, switchID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: standard:%d", switchID)
-			}
-			return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_standard_switch: %w", err)
-		}
-		return resolvedVMNetworkSwitch{
-			id:       standard.ID,
-			typeName: "standard",
-			name:     standard.Name,
-			bridge:   standard.BridgeName,
-			standard: &standard,
-		}, nil
-	case "manual":
-		var manual networkModels.ManualSwitch
-		if err := db.First(&manual, switchID).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: manual:%d", switchID)
-			}
-			return resolvedVMNetworkSwitch{}, fmt.Errorf("failed_to_find_manual_switch: %w", err)
-		}
-		return resolvedVMNetworkSwitch{
-			id:       manual.ID,
-			typeName: "manual",
-			name:     manual.Name,
-			bridge:   manual.Bridge,
-			manual:   &manual,
-		}, nil
-	default:
-		return resolvedVMNetworkSwitch{}, fmt.Errorf("switch_not_found: %s:%d", switchType, switchID)
-	}
 }
 
 func resolveVMNetworkMACObject(db *gorm.DB, macID uint) (networkModels.Object, string, error) {
@@ -266,12 +182,17 @@ func loadVMNetworkResponseWithDB(db *gorm.DB, vmID, networkID uint) (vmModels.Ne
 	if err != nil {
 		return network, err
 	}
-	sw, err := resolveVMNetworkSwitchByID(db, network.SwitchType, network.SwitchID)
+	var sw networkAttachment.ResolvedSwitch
+	if network.Enable {
+		sw, err = vmNetworkAttachmentResolver(db).ResolveDesiredByID(network.SwitchType, network.SwitchID)
+	} else {
+		sw, err = vmNetworkAttachmentResolver(db).ResolveIdentityByID(network.SwitchType, network.SwitchID)
+	}
 	if err != nil {
 		return network, err
 	}
-	network.StandardSwitch = sw.standard
-	network.ManualSwitch = sw.manual
+	network.StandardSwitch = sw.Standard
+	network.ManualSwitch = sw.Manual
 	return network, nil
 }
 
@@ -366,9 +287,12 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 			return fmt.Errorf("failed_to_resolve_network_mac_%d: %w", network.ID, err)
 		}
 
-		sw, err := resolveVMNetworkSwitchByID(db, network.SwitchType, network.SwitchID)
+		sw, err := vmNetworkAttachmentResolver(db).ResolveDesiredByID(network.SwitchType, network.SwitchID)
 		if err != nil {
 			return fmt.Errorf("failed_to_resolve_network_switch_%d: %w", network.ID, err)
+		}
+		if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+			return fmt.Errorf("failed_to_validate_network_switch_%d: %w", network.ID, err)
 		}
 		emulation, err := normalizeVMNetworkEmulation(network.Emulation)
 		if err != nil {
@@ -380,9 +304,13 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 		macElement := iface.CreateElement("mac")
 		macElement.CreateAttr("address", mac)
 		sourceElement := iface.CreateElement("source")
-		sourceElement.CreateAttr("bridge", sw.bridge)
+		sourceElement.CreateAttr("bridge", sw.Bridge)
 		modelElement := iface.CreateElement("model")
 		modelElement.CreateAttr("type", emulation)
+		if sw.Private {
+			portElement := iface.CreateElement("port")
+			portElement.CreateAttr("isolated", "yes")
+		}
 	}
 
 	newXML, err := doc.WriteToString()
@@ -443,6 +371,12 @@ func (s *Service) NetworkAttach(
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return nil, err
 	}
+	unlockLifecycle, err := s.lockVMStandardSwitchLifecycle(vm.ID, false, req.SwitchName)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockLifecycle()
+
 	shutoff, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
@@ -474,15 +408,18 @@ func (s *Service) networkAttachApply(
 	hooks = s.normalizeNetworkRuntimeHooks(hooks)
 	var result vmModels.Network
 	err := s.DB.Transaction(func(tx *gorm.DB) error {
-		sw, err := resolveVMNetworkSwitchByName(tx, req.SwitchName)
+		sw, err := vmNetworkAttachmentResolver(tx).ResolveDesiredByNameAny(req.SwitchName)
 		if err != nil {
+			return err
+		}
+		if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
 			return err
 		}
 
 		var macObject networkModels.Object
 		var mac string
 		if req.MacID == nil || *req.MacID == 0 {
-			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.name)
+			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.Name)
 		} else {
 			macObject, mac, err = resolveVMNetworkMACObject(tx, *req.MacID)
 		}
@@ -496,8 +433,8 @@ func (s *Service) networkAttachApply(
 		macID := macObject.ID
 		network := vmModels.Network{
 			VMID:       vm.ID,
-			SwitchID:   sw.id,
-			SwitchType: sw.typeName,
+			SwitchID:   sw.ID,
+			SwitchType: sw.Type,
 			MacID:      &macID,
 			AddressObj: &macObject,
 			Emulation:  req.Emulation,
@@ -565,6 +502,16 @@ func (s *Service) NetworkUpdate(
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return nil, err
 	}
+	targetNames := make([]string, 0, 1)
+	if req.SwitchName != nil {
+		targetNames = append(targetNames, *req.SwitchName)
+	}
+	unlockLifecycle, err := s.lockVMStandardSwitchLifecycle(vm.ID, false, targetNames...)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockLifecycle()
+
 	shutoff, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_check_vm_shutoff: %w", err)
@@ -601,16 +548,6 @@ func (s *Service) networkUpdateApply(
 			return err
 		}
 
-		var sw resolvedVMNetworkSwitch
-		if req.SwitchName != nil {
-			sw, err = resolveVMNetworkSwitchByName(tx, *req.SwitchName)
-		} else {
-			sw, err = resolveVMNetworkSwitchByID(tx, network.SwitchType, network.SwitchID)
-		}
-		if err != nil {
-			return err
-		}
-
 		emulation := network.Emulation
 		if req.Emulation != nil {
 			emulation = *req.Emulation
@@ -625,12 +562,33 @@ func (s *Service) networkUpdateApply(
 			enabled = *req.Enable
 		}
 
+		var sw networkAttachment.ResolvedSwitch
+		if enabled {
+			if req.SwitchName != nil {
+				sw, err = vmNetworkAttachmentResolver(tx).ResolveDesiredByNameAny(*req.SwitchName)
+			} else {
+				sw, err = vmNetworkAttachmentResolver(tx).ResolveDesiredByID(network.SwitchType, network.SwitchID)
+			}
+		} else if req.SwitchName != nil {
+			sw, err = vmNetworkAttachmentResolver(tx).ResolveIdentityByNameAny(*req.SwitchName)
+		} else {
+			sw, err = vmNetworkAttachmentResolver(tx).ResolveIdentityByID(network.SwitchType, network.SwitchID)
+		}
+		if err != nil {
+			return err
+		}
+		if enabled {
+			if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+				return err
+			}
+		}
+
 		var macObject networkModels.Object
 		var macID *uint
 		var mac string
 		switch {
 		case req.MacID != nil && *req.MacID == 0:
-			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.name)
+			macObject, mac, err = createVMNetworkMACObject(tx, vm.Name, sw.Name)
 			if err == nil {
 				id := macObject.ID
 				macID = &id
@@ -666,8 +624,8 @@ func (s *Service) networkUpdateApply(
 		}
 
 		updates := map[string]any{
-			"switch_id":   sw.id,
-			"switch_type": sw.typeName,
+			"switch_id":   sw.ID,
+			"switch_type": sw.Type,
 			"emulation":   emulation,
 			"enable":      enabled,
 			"mac_id":      macID,
@@ -722,6 +680,12 @@ func (s *Service) NetworkDetach(
 	if err := s.requireVMMutationOwnership(req.RID); err != nil {
 		return err
 	}
+	unlockLifecycle, err := s.lockVMStandardSwitchLifecycle(vm.ID, false)
+	if err != nil {
+		return err
+	}
+	defer unlockLifecycle()
+
 	shutoff, err := s.IsDomainShutOff(req.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_check_vm_shutoff: %w", err)

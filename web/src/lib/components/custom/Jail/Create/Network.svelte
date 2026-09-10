@@ -1,9 +1,20 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import VLANPolicyEditor from '$lib/components/custom/Network/VLANPolicyEditor.svelte';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { isSwitchRuntimeAvailable, type SwitchList } from '$lib/types/network/switch';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 	import {
@@ -38,7 +49,10 @@
 		dhcp: boolean;
 		slaac: boolean;
 		resolvConf: string;
-		vlan: number;
+		vlanFiltering: boolean;
+		vlanPolicyMode: '' | 'access' | 'trunk';
+		vlanPolicyUntagged: string | number;
+		vlanPolicyTagged: string;
 		switches: SwitchList;
 		networkObjects: NetworkObject[];
 		jailType: 'freebsd' | 'linux';
@@ -64,7 +78,10 @@
 		dhcp = $bindable(),
 		slaac = $bindable(),
 		resolvConf = $bindable(),
-		vlan = $bindable(),
+		vlanFiltering = $bindable(),
+		vlanPolicyMode = $bindable(),
+		vlanPolicyUntagged = $bindable(),
+		vlanPolicyTagged = $bindable(),
 		switches,
 		networkObjects,
 		jailType,
@@ -147,6 +164,15 @@
 	watch(
 		() => nwSwitch,
 		(current) => {
+			const selectedSwitch = [...switches.standard, ...switches.manual].find(
+				(candidate) => candidate.name === current
+			);
+			const runtimeAvailable =
+				selectedSwitch === undefined || isSwitchRuntimeAvailable(selectedSwitch);
+			vlanFiltering = runtimeAvailable ? (selectedSwitch?.vlanFiltering ?? false) : false;
+			vlanPolicyMode = '';
+			vlanPolicyUntagged = '';
+			vlanPolicyTagged = '';
 			if (current === 'None') {
 				mac = 0;
 				macRaw = '';
@@ -296,18 +322,25 @@
 {#snippet radioItem(
 	id: number,
 	name: string,
-	type: 'standard' | 'manual' | 'inherit' | 'none' = 'standard'
+	type: 'standard' | 'manual' | 'inherit' | 'none' = 'standard',
+	filtered = false,
+	runtimeAvailable = true
 )}
 	{@const i = `radio-${type}-${id}`}
-	<div class="mb-2 flex items-center space-x-3 rounded-lg border p-4">
-		<RadioGroup.Item value={name} id={i} />
+	<div
+		class:opacity-60={!runtimeAvailable}
+		class="mb-2 flex items-center space-x-3 rounded-lg border p-4"
+	>
+		<RadioGroup.Item value={name} id={i} disabled={!runtimeAvailable} />
 		<Label for={i} class="flex flex-col items-start gap-2">
 			<p class="">{name}</p>
 			<p class="text-muted-foreground text-sm">
-				{#if type === 'standard'}
-					Standard switch
+				{#if !runtimeAvailable}
+					Runtime bridge state unavailable
+				{:else if type === 'standard'}
+					Standard switch{filtered ? ' · VLAN filtered' : ''}
 				{:else if type === 'manual'}
-					Manual switch
+					Manual switch{filtered ? ' · VLAN filtered' : ''}
 				{:else if type === 'inherit'}
 					Inherit network from the host
 				{:else if type === 'none'}
@@ -323,13 +356,13 @@
 		<ScrollArea orientation="vertical" class="h-64 w-full max-w-full">
 			{#if switches && switches.standard}
 				{#each switches.standard ?? [] as sw (sw.name)}
-					{@render radioItem(sw.id, sw.name, 'standard')}
+					{@render radioItem(sw.id, sw.name, 'standard', sw.vlanFiltering)}
 				{/each}
 			{/if}
 
 			{#if switches && switches.manual}
 				{#each switches.manual ?? [] as sw (sw.name)}
-					{@render radioItem(sw.id, sw.name, 'manual')}
+					{@render radioItem(sw.id, sw.name, 'manual', sw.vlanFiltering, sw.vlanStateAvailable)}
 				{/each}
 			{/if}
 
@@ -478,15 +511,17 @@
 					}
 				}}
 			></CustomComboBox>
-
-			<CustomValueInput
-				label="VLAN"
-				placeholder="0"
-				bind:value={vlan}
-				classes="flex-1 space-y-1"
-				type="number"
-			/>
 		</div>
+
+		{#if vlanFiltering}
+			<VLANPolicyEditor
+				title="Jail bridge-member policy"
+				bind:mode={vlanPolicyMode}
+				bind:untagged={vlanPolicyUntagged}
+				bind:tagged={vlanPolicyTagged}
+				idPrefix="create-jail"
+			/>
+		{/if}
 
 		{#if jailType === 'freebsd'}
 			<div class="mt-1 flex flex-row gap-4">

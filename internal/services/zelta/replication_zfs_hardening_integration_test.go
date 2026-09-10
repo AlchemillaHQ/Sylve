@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
 //
 // Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package zelta
 
@@ -19,6 +23,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -559,6 +564,18 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 	source := fmt.Sprintf("%s/sylve/jails/%d", pool, guestID)
 	zfstest.EnsureDataset(t, client, source+"/root")
 	zfstest.EnsureVolume(t, client, source+"/disk", 8)
+	sourceMountpoint := zfsGetProperty(t, source, "mountpoint")
+	metadataDir := filepath.Join(sourceMountpoint, ".sylve")
+	if err := os.MkdirAll(metadataDir, 0755); err != nil {
+		t.Fatalf("create jail metadata directory: %v", err)
+	}
+	metadata, err := json.Marshal(jailModels.Jail{CTID: guestID})
+	if err != nil {
+		t.Fatalf("marshal jail metadata: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(metadataDir, "jail.json"), metadata, 0644); err != nil {
+		t.Fatalf("write jail metadata: %v", err)
+	}
 
 	db := testutil.NewSQLiteTestDB(t,
 		&clusterModels.ReplicationPolicy{},
@@ -567,7 +584,12 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 		&clusterModels.ClusterSSHIdentity{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
+		&jailModels.Jail{},
+		&jailModels.Network{},
 	)
+	if err := db.Create(&jailModels.Jail{CTID: guestID, Name: "replication-cancellation"}).Error; err != nil {
+		t.Fatalf("seed replicated jail: %v", err)
+	}
 	clusterSvc := &clusterService.Service{DB: db}
 	localNodeID := strings.TrimSpace(clusterSvc.LocalNodeID())
 	if localNodeID == "" {
@@ -655,6 +677,7 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 		"",
 		generationID,
 		0,
+		replicationTargetNetworkCheck{},
 	)
 	if err == nil {
 		t.Fatal("expected cancellation during the first readiness probe to fail the generation")

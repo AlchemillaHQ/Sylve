@@ -17,6 +17,8 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"gorm.io/gorm"
 )
@@ -30,6 +32,9 @@ func (s *Service) GetManualSwitches() ([]networkModels.ManualSwitch, error) {
 	switches := make([]networkModels.ManualSwitch, 0)
 	if err := s.DB.Find(&switches).Error; err != nil {
 		return nil, err
+	}
+	for index := range switches {
+		observeManualSwitchVLANState(&switches[index])
 	}
 	return switches, nil
 }
@@ -53,6 +58,7 @@ func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.Manual
 		Name:   name,
 		Bridge: bridge,
 	}
+	observeManualSwitchVLANState(sw)
 
 	if err := s.DB.Create(sw).Error; err != nil {
 		if isManualSwitchDuplicateError(err) {
@@ -118,6 +124,7 @@ func (s *Service) UpdateManualSwitch(id uint, name, bridge string) (*networkMode
 
 	oldSw.Name = name
 	oldSw.Bridge = bridge
+	observeManualSwitchVLANState(&oldSw)
 
 	if err := s.DB.Save(&oldSw).Error; err != nil {
 		if isManualSwitchDuplicateError(err) {
@@ -130,6 +137,46 @@ func (s *Service) UpdateManualSwitch(id uint, name, bridge string) (*networkMode
 	}
 
 	return &oldSw, nil
+}
+
+func observeManualSwitchVLANState(sw *networkModels.ManualSwitch) {
+	if err := populateManualSwitchVLANState(sw); err != nil {
+		sw.VLANStateAvailable = false
+		sw.VLANStateError = ManualSwitchErrorCode(err)
+		if sw.VLANStateError == "manual_switch_operation_failed" {
+			sw.VLANStateError = "manual_switch_vlan_state_unavailable"
+		}
+		logger.L.Debug().Err(err).
+			Str("switch", sw.Name).
+			Str("bridge", sw.Bridge).
+			Str("code", sw.VLANStateError).
+			Msg("manual_switch_vlan_state_unavailable")
+	}
+}
+
+func populateManualSwitchVLANState(sw *networkModels.ManualSwitch) error {
+	sw.VLANFiltering = false
+	sw.DefaultAccessVLAN = nil
+	sw.VLANStateAvailable = false
+	sw.VLANStateError = ""
+	state, err := syncInspectBridgeVLAN(sw.Bridge)
+	if err != nil {
+		return fmt.Errorf("inspect manual switch bridge %q VLAN state: %w", sw.Bridge, err)
+	}
+	if state.VLANFiltering && state.DefaultQinQ {
+		return manualSwitchConflict("filtered_switch_qinq_unsupported", nil)
+	}
+	if state.VLANFiltering && state.DefaultPVID != 0 && !bridgevlan.ValidVLAN(state.DefaultPVID) {
+		return manualSwitchConflict("invalid_manual_switch_default_pvid", nil)
+	}
+
+	sw.VLANFiltering = state.VLANFiltering
+	if state.VLANFiltering && state.DefaultPVID != 0 {
+		defaultAccessVLAN := state.DefaultPVID
+		sw.DefaultAccessVLAN = &defaultAccessVLAN
+	}
+	sw.VLANStateAvailable = true
+	return nil
 }
 
 func normalizeManualSwitch(name, bridge string) (string, string, error) {

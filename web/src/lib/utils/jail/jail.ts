@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import type {
 	CreateData,
 	JailLifecycleAction,
@@ -8,6 +18,7 @@ import { kvStorage } from '$lib/types/db';
 import type { Dataset } from '$lib/types/zfs/dataset';
 import { toast } from 'svelte-sonner';
 import { removeCache } from '$lib/utils/http';
+import { parseVLANPolicyDraft } from '$lib/utils/network/vlan';
 import { isValidIPv4, isValidIPv6, isValidMACAddress, isValidVMName } from '../string';
 
 const DNS_PRESETS = {
@@ -86,6 +97,18 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 	}
 
 	if (modal.network.switch.toLowerCase() !== 'none') {
+		if (modal.network.vlanFiltering) {
+			const policy = parseVLANPolicyDraft(
+				modal.network.vlanPolicyMode,
+				modal.network.vlanPolicyUntagged,
+				modal.network.vlanPolicyTagged
+			);
+			if (!policy) {
+				toast.error('A valid access or trunk VLAN policy is required', toastConfig);
+				return false;
+			}
+		}
+
 		if (modal.advanced.jailType === 'linux') {
 			if (modal.network.dhcp === true || modal.network.slaac === true) {
 				toast.error('Linux jails cannot use DHCP or SLAAC', toastConfig);

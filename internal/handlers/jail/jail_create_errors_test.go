@@ -78,6 +78,30 @@ func TestClassifyCreateJailError(t *testing.T) {
 			wantCode:   "jail_create_dependency_not_ready",
 		},
 		{
+			name:       "manual switch inspection is unavailable",
+			err:        fmt.Errorf("failed_to_inspect_manual_switch_vlan_state: LAN: ioctl failed"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "failed_to_inspect_manual_switch_vlan_state",
+		},
+		{
+			name:       "filtered switch runtime drift is conflict",
+			err:        fmt.Errorf("failed_to_sync_network: filtered_switch_runtime_mismatch: LAN: bridge VLAN filtering is disabled"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "filtered_switch_runtime_mismatch",
+		},
+		{
+			name:       "unsupported manual switch qinq is conflict",
+			err:        fmt.Errorf("filtered_switch_qinq_unsupported: LAN"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "filtered_switch_qinq_unsupported",
+		},
+		{
+			name:       "invalid VLAN policy is bad request",
+			err:        fmt.Errorf("invalid_vlan_policy: invalid VLAN port mode"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_vlan_policy",
+		},
+		{
 			name:       "runtime wrapper returns runtime failure code",
 			err:        fmt.Errorf("failed_to_create_jail: duplicated key not allowed"),
 			wantStatus: http.StatusInternalServerError,

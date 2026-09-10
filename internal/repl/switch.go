@@ -16,6 +16,8 @@ import (
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
 type switchListResult struct {
@@ -253,7 +255,50 @@ func buildStandardSwitchCreateRequest(
 	request.Gateway4Manual = switchCreateStringOption(options, "--gateway4-manual")
 	request.Network6Manual = switchCreateStringOption(options, "--network6-manual")
 	request.Gateway6Manual = switchCreateStringOption(options, "--gateway6-manual")
+	if request.VLANFiltering, err = switchCreateBoolOption(options, "--vlan-filtering"); err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	if request.DefaultAccessVLAN, err = switchDefaultAccessVLANOption(options, true); err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	if request.HostVLAN, err = switchHostVLANOption(options, true); err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	}
+	request.PortPolicies, err = bridgevlan.ParsePortPolicyAssignments(options["--port-policies"])
+	if err != nil {
+		return consoleprotocol.StandardSwitchCreateRequest{}, fmt.Errorf("invalid --port-policies: %w", err)
+	}
 	return request, nil
+}
+
+func switchHostVLANOption(options map[string]string, zeroMeansAbsent bool) (*int, error) {
+	value, exists := options["--host-vlan"]
+	if !exists {
+		return nil, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 0 || parsed > bridgevlan.MaxVLAN {
+		return nil, fmt.Errorf("--host-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	if zeroMeansAbsent && parsed == 0 {
+		return nil, nil
+	}
+	return &parsed, nil
+}
+
+func switchDefaultAccessVLANOption(options map[string]string, zeroMeansAbsent bool) (*int, error) {
+	value, exists := options["--default-access-vlan"]
+	if !exists {
+		return nil, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed < 0 || parsed > bridgevlan.MaxVLAN {
+		return nil, fmt.Errorf("--default-access-vlan must be 0 or a VLAN from 1 through 4094")
+	}
+	if zeroMeansAbsent && parsed == 0 {
+		return nil, nil
+	}
+	return &parsed, nil
 }
 
 func switchCreateIntOption(options map[string]string, name string) (int, error) {
@@ -310,6 +355,10 @@ var standardSwitchEditOptionNames = map[string]bool{
 	"--default-route":           true,
 	"--default-route6":          true,
 	"--disable-bridge-offloads": true,
+	"--vlan-filtering":          true,
+	"--default-access-vlan":     true,
+	"--host-vlan":               true,
+	"--port-policies":           true,
 }
 
 var standardSwitchEditBooleanOptionNames = map[string]bool{
@@ -320,6 +369,7 @@ var standardSwitchEditBooleanOptionNames = map[string]bool{
 	"--default-route":           true,
 	"--default-route6":          true,
 	"--disable-bridge-offloads": true,
+	"--vlan-filtering":          true,
 }
 
 var manualSwitchEditOptionNames = map[string]bool{
@@ -412,6 +462,22 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 	}
 	if request.DisableBridgeOffloads, err = switchEditBoolOption(options, "--disable-bridge-offloads"); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if request.VLANFiltering, err = switchEditBoolOption(options, "--vlan-filtering"); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if request.DefaultAccessVLAN, err = switchDefaultAccessVLANOption(options, false); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if request.HostVLAN, err = switchHostVLANOption(options, false); err != nil {
+		return consoleprotocol.StandardSwitchEditRequest{}, err
+	}
+	if rawPolicies, exists := options["--port-policies"]; exists {
+		policies, parseErr := bridgevlan.ParsePortPolicyAssignments(rawPolicies)
+		if parseErr != nil {
+			return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("invalid --port-policies: %w", parseErr)
+		}
+		request.PortPolicies = &policies
 	}
 	if !standardSwitchEditChanged(request) {
 		return consoleprotocol.StandardSwitchEditRequest{}, fmt.Errorf("specify at least one standard switch edit option")
@@ -611,25 +677,33 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 			Port:        standard.BridgeMAC.Port,
 			MACObjectID: standard.BridgeMAC.MACObjectID,
 		}
-		id, err := ctx.Network.NewStandardSwitch(
-			standard.Name,
-			standard.MTU,
-			standard.VLAN,
-			standard.Network4,
-			standard.Network6,
-			standard.Gateway4,
-			standard.Gateway6,
-			standard.Ports,
-			macSource,
-			standard.Private,
-			standard.DHCP,
-			standard.DisableIPv6,
-			standard.SLAAC,
-			standard.DefaultRoute,
-			standard.DefaultRoute6,
-			standard.DisableBridgeOffloads,
-			manual,
-		)
+		id, err := ctx.Network.NewStandardSwitch(networkServiceInterfaces.CreateStandardSwitchRequest{
+			Name: standard.Name,
+			StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
+				MTU:                   standard.MTU,
+				VLAN:                  standard.VLAN,
+				Network4ID:            standard.Network4,
+				Network6ID:            standard.Network6,
+				Gateway4ID:            standard.Gateway4,
+				Gateway6ID:            standard.Gateway6,
+				Ports:                 standard.Ports,
+				MACSource:             macSource,
+				Private:               standard.Private,
+				DHCP:                  standard.DHCP,
+				DisableIPv6:           standard.DisableIPv6,
+				SLAAC:                 standard.SLAAC,
+				DefaultRoute:          standard.DefaultRoute,
+				DefaultRoute6:         standard.DefaultRoute6,
+				DisableBridgeOffloads: standard.DisableBridgeOffloads,
+				Manual:                manual,
+				VLANConfig: networkModels.StandardSwitchVLANConfig{
+					Filtering:         standard.VLANFiltering,
+					DefaultAccessVLAN: standard.DefaultAccessVLAN,
+					HostVLAN:          standard.HostVLAN,
+					PortPolicies:      standard.PortPolicies,
+				},
+			},
+		})
 		if err != nil {
 			return switchCreateResult{}, fmt.Errorf("failed_to_create_standard_switch: %w", err)
 		}
@@ -674,6 +748,7 @@ type standardSwitchEditConfig struct {
 	DHCP                  bool
 	Ports                 []string
 	MACSource             networkModels.StandardSwitchMACSource
+	VLANConfig            networkModels.StandardSwitchVLANConfig
 }
 
 func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switchEditResult, error) {
@@ -705,25 +780,28 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 			Network6: config.Network6Manual,
 			Gateway6: config.Gateway6Manual,
 		}
-		if err := ctx.Network.EditStandardSwitch(
-			request.Standard.ID,
-			config.MTU,
-			config.VLAN,
-			config.Network4,
-			config.Network6,
-			config.Gateway4,
-			config.Gateway6,
-			config.Ports,
-			config.MACSource,
-			config.Private,
-			config.DHCP,
-			config.DisableIPv6,
-			config.SLAAC,
-			config.DefaultRoute,
-			config.DefaultRoute6,
-			config.DisableBridgeOffloads,
-			manual,
-		); err != nil {
+		if err := ctx.Network.EditStandardSwitch(networkServiceInterfaces.UpdateStandardSwitchRequest{
+			ID: request.Standard.ID,
+			StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
+				MTU:                   config.MTU,
+				VLAN:                  config.VLAN,
+				Network4ID:            config.Network4,
+				Network6ID:            config.Network6,
+				Gateway4ID:            config.Gateway4,
+				Gateway6ID:            config.Gateway6,
+				Ports:                 config.Ports,
+				MACSource:             config.MACSource,
+				Private:               config.Private,
+				DHCP:                  config.DHCP,
+				DisableIPv6:           config.DisableIPv6,
+				SLAAC:                 config.SLAAC,
+				DefaultRoute:          config.DefaultRoute,
+				DefaultRoute6:         config.DefaultRoute6,
+				DisableBridgeOffloads: config.DisableBridgeOffloads,
+				Manual:                manual,
+				VLANConfig:            config.VLANConfig,
+			},
+		}); err != nil {
 			return switchEditResult{}, fmt.Errorf("failed_to_update_standard_switch: %w", err)
 		}
 		return switchEditResult{Updated: true, Type: switchType, ID: request.Standard.ID}, nil
@@ -805,6 +883,12 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 			Mode: switchModel.BridgeMACMode,
 			Port: switchModel.BridgeMACSourcePort,
 		},
+		VLANConfig: networkModels.StandardSwitchVLANConfig{
+			Filtering:         switchModel.VLANFiltering,
+			DefaultAccessVLAN: switchModel.DefaultAccessVLAN,
+			HostVLAN:          switchModel.HostVLAN,
+			PortPolicies:      make(map[string]bridgevlan.PortPolicy, len(switchModel.Ports)),
+		},
 	}
 	if switchModel.BridgeMACObjectID != nil {
 		config.MACSource.MACObjectID = *switchModel.BridgeMACObjectID
@@ -823,6 +907,9 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 	}
 	for _, port := range switchModel.Ports {
 		config.Ports = append(config.Ports, port.Name)
+		if switchModel.VLANFiltering {
+			config.VLANConfig.PortPolicies[port.Name] = port.VLANPolicy
+		}
 	}
 	return config
 }
@@ -843,6 +930,17 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	applySwitchObjectEdit(&config.Gateway6, &config.Gateway6Manual, request.Gateway6, request.Gateway6Manual)
 	if request.Ports != nil {
 		config.Ports = append([]string(nil), (*request.Ports)...)
+		if request.PortPolicies == nil {
+			selected := make(map[string]struct{}, len(config.Ports))
+			for _, port := range config.Ports {
+				selected[port] = struct{}{}
+			}
+			for port := range config.VLANConfig.PortPolicies {
+				if _, retained := selected[port]; !retained {
+					delete(config.VLANConfig.PortPolicies, port)
+				}
+			}
+		}
 	}
 	if request.BridgeMAC != nil {
 		config.MACSource = networkModels.StandardSwitchMACSource{
@@ -871,6 +969,31 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	}
 	if request.DisableBridgeOffloads != nil {
 		config.DisableBridgeOffloads = *request.DisableBridgeOffloads
+	}
+	if request.VLANFiltering != nil {
+		config.VLANConfig.Filtering = *request.VLANFiltering
+	}
+	if request.DefaultAccessVLAN != nil {
+		if *request.DefaultAccessVLAN == 0 {
+			config.VLANConfig.DefaultAccessVLAN = nil
+		} else {
+			value := *request.DefaultAccessVLAN
+			config.VLANConfig.DefaultAccessVLAN = &value
+		}
+	}
+	if request.HostVLAN != nil {
+		if *request.HostVLAN == 0 {
+			config.VLANConfig.HostVLAN = nil
+		} else {
+			value := *request.HostVLAN
+			config.VLANConfig.HostVLAN = &value
+		}
+	}
+	if request.PortPolicies != nil {
+		config.VLANConfig.PortPolicies = make(map[string]bridgevlan.PortPolicy, len(*request.PortPolicies))
+		for port, policy := range *request.PortPolicies {
+			config.VLANConfig.PortPolicies[port] = policy
+		}
 	}
 	if request.DHCP == nil && switchEditIPv4AddressProvided(request) {
 		config.DHCP = false
@@ -935,7 +1058,11 @@ func standardSwitchEditChanged(request consoleprotocol.StandardSwitchEditRequest
 		request.SLAAC != nil ||
 		request.DefaultRoute != nil ||
 		request.DefaultRoute6 != nil ||
-		request.DisableBridgeOffloads != nil
+		request.DisableBridgeOffloads != nil ||
+		request.VLANFiltering != nil ||
+		request.DefaultAccessVLAN != nil ||
+		request.HostVLAN != nil ||
+		request.PortPolicies != nil
 }
 
 func formatSwitches(result switchListResult) string {
@@ -943,21 +1070,33 @@ func formatSwitches(result switchListResult) string {
 		return "No switches found."
 	}
 
-	headers := []string{"ID", "Name", "Type", "Bridge", "VLAN", "Ports/Details"}
+	headers := []string{"ID", "Name", "Type", "Bridge", "VLAN mode", "Ports/Details"}
 	rows := make([][]string, 0, len(result.Standard)+len(result.Manual))
 	for _, standard := range result.Standard {
 		ports := make([]string, 0, len(standard.Ports))
 		for _, port := range standard.Ports {
-			ports = append(ports, port.Name)
+			portText := port.Name
+			if standard.VLANFiltering {
+				portText += "=" + formatSwitchPortPolicy(port.VLANPolicy)
+			}
+			ports = append(ports, portText)
 		}
 		portsText := strings.Join(ports, ",")
 		if portsText == "" {
 			portsText = "-"
 		}
 
-		vlan := "-"
-		if standard.VLAN > 0 {
-			vlan = strconv.Itoa(standard.VLAN)
+		vlan := "unfiltered"
+		switch {
+		case standard.VLANFiltering && standard.DefaultAccessVLAN != nil:
+			vlan = "filtered; default=" + strconv.Itoa(*standard.DefaultAccessVLAN)
+		case standard.VLANFiltering:
+			vlan = "filtered; no default"
+		case standard.VLAN > 0:
+			vlan = "VLAN child " + strconv.Itoa(standard.VLAN)
+		}
+		if standard.VLANFiltering && standard.HostVLAN != nil {
+			vlan += "; host=" + strconv.Itoa(*standard.HostVLAN)
 		}
 		rows = append(rows, []string{
 			strconv.FormatUint(uint64(standard.ID), 10),
@@ -969,16 +1108,50 @@ func formatSwitches(result switchListResult) string {
 		})
 	}
 	for _, manual := range result.Manual {
+		vlan := "external; unavailable"
+		if manual.VLANStateAvailable {
+			vlan = "external; unfiltered"
+			if manual.VLANFiltering && manual.DefaultAccessVLAN != nil {
+				vlan = "external; filtered; default=" + strconv.Itoa(*manual.DefaultAccessVLAN)
+			} else if manual.VLANFiltering {
+				vlan = "external; filtered; no default"
+			}
+		}
 		rows = append(rows, []string{
 			strconv.FormatUint(uint64(manual.ID), 10),
 			manual.Name,
 			"manual",
 			manual.Bridge,
-			"-",
+			vlan,
 			"external",
 		})
 	}
 	return styledTable(headers, rows)
+}
+
+func formatSwitchPortPolicy(policy bridgevlan.PortPolicy) string {
+	switch policy.Mode {
+	case bridgevlan.ModeAccess:
+		if policy.UntaggedVLAN == nil {
+			return "access"
+		}
+		return "access:" + strconv.Itoa(*policy.UntaggedVLAN)
+	case bridgevlan.ModeTrunk:
+		parts := []string{"trunk"}
+		if policy.UntaggedVLAN != nil {
+			parts = append(parts, "native="+strconv.Itoa(*policy.UntaggedVLAN))
+		}
+		if len(policy.TaggedVLANs) != 0 {
+			values := make([]string, 0, len(policy.TaggedVLANs))
+			for _, vlan := range policy.TaggedVLANs {
+				values = append(values, strconv.Itoa(vlan))
+			}
+			parts = append(parts, "tagged="+strings.Join(values, ","))
+		}
+		return strings.Join(parts, ":")
+	default:
+		return "unset"
+	}
 }
 
 func switchesList(ctx *Context, jsonMode bool) {

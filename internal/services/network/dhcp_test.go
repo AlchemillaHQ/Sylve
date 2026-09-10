@@ -200,6 +200,56 @@ func TestSaveConfigNoChangeSkipsRuntimeApply(t *testing.T) {
 	}
 }
 
+func TestSaveConfigRejectsFilteredStandardSwitch(t *testing.T) {
+	svc, db := newDHCPServiceForTest(t)
+	seedDHCPConfig(t, db, "example.local", []string{}, false)
+	filtered := networkModels.StandardSwitch{
+		Name: "filtered", BridgeName: "bridge-filtered", VLANFiltering: true,
+	}
+	if err := db.Create(&filtered).Error; err != nil {
+		t.Fatalf("seed filtered standard switch: %v", err)
+	}
+
+	err := svc.SaveConfig(&networkServiceInterfaces.ModifyDHCPConfigRequest{
+		StandardSwitches: []uint{filtered.ID},
+		ManualSwitches:   []uint{},
+		DNSServers:       []string{},
+		Domain:           "example.local",
+	})
+	if !errors.Is(err, ErrDHCPConfigConflict) || DHCPConfigErrorCode(err) != "dhcp_filtered_standard_switch_l2_only" {
+		t.Fatalf("filtered standard switch DHCP config error = %v (%q)", err, DHCPConfigErrorCode(err))
+	}
+}
+
+func TestSaveConfigBindsFilteredStandardSwitchToHostVLANInterface(t *testing.T) {
+	svc, db := newDHCPServiceForTest(t)
+	seedDHCPConfig(t, db, "example.local", []string{}, false)
+	hostVLAN := 42
+	filtered := networkModels.StandardSwitch{
+		Name: "filtered", BridgeName: "bridge-filtered", VLANFiltering: true, HostVLAN: &hostVLAN,
+	}
+	if err := db.Create(&filtered).Error; err != nil {
+		t.Fatalf("seed filtered standard switch: %v", err)
+	}
+	path := configureDHCPRuntimeForTest(t, svc, "old config\n", func() error { return nil })
+
+	if err := svc.SaveConfig(&networkServiceInterfaces.ModifyDHCPConfigRequest{
+		StandardSwitches: []uint{filtered.ID},
+		ManualSwitches:   []uint{},
+		DNSServers:       []string{},
+		Domain:           "example.local",
+	}); err != nil {
+		t.Fatalf("save filtered host VLAN DHCP config: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read rendered DHCP config: %v", err)
+	}
+	if !strings.Contains(string(contents), "interface=bridge-filtered.42\n") {
+		t.Fatalf("DHCP config did not bind the host VLAN interface:\n%s", contents)
+	}
+}
+
 func TestSaveConfigNormalizesAndDeduplicatesInput(t *testing.T) {
 	svc, db := newDHCPServiceForTest(t)
 	standard := networkModels.StandardSwitch{Name: "standard", BridgeName: "bridge0"}

@@ -26,9 +26,53 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gorm.io/gorm"
 )
+
+var (
+	resolveRestoredVMNetworkAttachment = libvirt.ResolveDesiredTargetVMNetworkAttachment
+	resolveRestoredVMNetworkIdentity   = libvirt.ResolveTargetVMNetworkIdentity
+)
+
+func lockRestoredVMNetworkLifecycle(
+	db *gorm.DB,
+	networks []vmModels.Network,
+) (func(), error) {
+	resolver := networkAttachment.NewResolver(db)
+	bridges := make([]string, 0, len(networks))
+	for idx, network := range networks {
+		expected, err := libvirt.VMNetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"restored_vm_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+		target, err := resolver.ResolveIdentityByName(expected.SwitchType, expected.SwitchName)
+		if err != nil {
+			if errors.Is(err, ErrSwitchNotFound) {
+				return nil, fmt.Errorf(
+					"restored_network_switch_not_found: network=%d: %w",
+					idx+1,
+					err,
+				)
+			}
+			return nil, fmt.Errorf(
+				"restored_vm_network_attachment_incompatible: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+		if target.Type == "standard" {
+			bridges = append(bridges, target.Bridge)
+		}
+	}
+	return bridgevlan.LockStandardSwitchLifecycle(bridges...), nil
+}
 
 func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 	switch strings.TrimSpace(strings.ToLower(string(value))) {
@@ -147,7 +191,19 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	restored.CPUPinning = []vmModels.VMCPUPinning{}
 	restored.PCIDevices = []int{}
 
-	requiresSwitchSync := false
+	var unlockNetworkLifecycle func()
+	if restoreNetwork {
+		unlockNetworkLifecycle, err = lockRestoredVMNetworkLifecycle(s.DB, restored.Networks)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if unlockNetworkLifecycle != nil {
+				unlockNetworkLifecycle()
+			}
+		}()
+	}
+
 	reconciledVMID := uint(0)
 
 	err = s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -168,12 +224,11 @@ func (s *Service) reconcileRestoredVMFromDataset(
 
 		normalizedNetworks := []vmModels.Network{}
 		if restoreNetwork {
-			networks, switchSync, err := s.normalizeRestoredVMNetworks(tx, rid, restored.Networks)
+			networks, err := s.normalizeRestoredVMNetworks(tx, rid, restored.Networks)
 			if err != nil {
 				return err
 			}
 			normalizedNetworks = networks
-			requiresSwitchSync = requiresSwitchSync || switchSync
 		}
 
 		baseVM := vmModels.VM{
@@ -331,13 +386,9 @@ func (s *Service) reconcileRestoredVMFromDataset(
 		return err
 	}
 
-	if requiresSwitchSync && s.Network != nil {
-		if err := s.Network.SyncStandardSwitches(nil, "sync"); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("rid", rid).
-				Msg("failed_to_sync_standard_switches_after_vm_restore_reconcile")
-		}
+	if unlockNetworkLifecycle != nil {
+		unlockNetworkLifecycle()
+		unlockNetworkLifecycle = nil
 	}
 
 	if s.VM != nil {
@@ -737,71 +788,68 @@ func (s *Service) normalizeRestoredVMNetworks(
 	tx *gorm.DB,
 	rid uint,
 	networks []vmModels.Network,
-) ([]vmModels.Network, bool, error) {
+) ([]vmModels.Network, error) {
 	if len(networks) == 0 {
-		return []vmModels.Network{}, false, nil
+		return []vmModels.Network{}, nil
 	}
 
-	type networkSettings struct {
-		emulation string
-		enabled   bool
-	}
-	jailLike := make([]jailModels.Network, 0, len(networks))
-	settingsByName := make(map[string]networkSettings)
-
+	out := make([]vmModels.Network, 0, len(networks))
 	for idx, network := range networks {
-		name := fmt.Sprintf("restored-vm-%d-network-%d", rid, idx+1)
+		expected, err := libvirt.VMNetworkAttachmentFromMetadata(network)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"restored_vm_network_source_attachment_invalid: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+
+		var target networkAttachment.ResolvedSwitch
+		if network.Enable {
+			target, err = resolveRestoredVMNetworkAttachment(tx, expected)
+		} else {
+			target, err = resolveRestoredVMNetworkIdentity(tx, expected)
+		}
+		if err != nil {
+			if errors.Is(err, ErrSwitchNotFound) {
+				return nil, fmt.Errorf(
+					"restored_network_switch_not_found: network=%d: %w",
+					idx+1,
+					err,
+				)
+			}
+			return nil, fmt.Errorf(
+				"restored_vm_network_attachment_incompatible: network=%d: %w",
+				idx+1,
+				err,
+			)
+		}
+
+		macObj, err := s.ensureRestoredNetworkObject(
+			tx,
+			network.MacID,
+			network.AddressObj,
+			"Mac",
+			fmt.Sprintf("restored-vm-%d-mac-%d", rid, idx+1),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed_to_ensure_restored_vm_mac_object: %w", err)
+		}
+
 		emulation := strings.TrimSpace(network.Emulation)
 		if emulation == "" {
 			emulation = "virtio"
 		}
-		settingsByName[name] = networkSettings{emulation: emulation, enabled: network.Enable}
-
-		jailLike = append(jailLike, jailModels.Network{
-			Name:           name,
-			SwitchID:       network.SwitchID,
-			SwitchType:     network.SwitchType,
-			StandardSwitch: network.StandardSwitch,
-			ManualSwitch:   network.ManualSwitch,
-			MacID:          network.MacID,
-			MacAddressObj:  network.AddressObj,
-		})
-	}
-
-	normalized, requiresSwitchSync, err := s.normalizeRestoredJailNetworks(tx, rid, 0, jailLike)
-	if err != nil {
-		return nil, false, err
-	}
-
-	out := make([]vmModels.Network, 0, len(normalized))
-	for _, net := range normalized {
-		settings := settingsByName[net.Name]
-		if settings.emulation == "" {
-			// The jail-network helper may suffix its transient name to avoid a
-			// collision. VM networks do not persist that name, so recover the
-			// original settings from the generated-name prefix.
-			for originalName, candidate := range settingsByName {
-				if strings.HasPrefix(net.Name, originalName+"-") {
-					settings = candidate
-					break
-				}
-			}
-		}
-		emulation := settings.emulation
-		if emulation == "" {
-			emulation = "virtio"
-		}
-
 		out = append(out, vmModels.Network{
-			SwitchID:   net.SwitchID,
-			SwitchType: net.SwitchType,
-			MacID:      net.MacID,
+			SwitchID:   target.ID,
+			SwitchType: target.Type,
+			MacID:      objectIDPtr(macObj),
 			Emulation:  emulation,
-			Enable:     settings.enabled,
+			Enable:     network.Enable,
 		})
 	}
 
-	return out, requiresSwitchSync, nil
+	return out, nil
 }
 
 type restoredVMMetadata struct {

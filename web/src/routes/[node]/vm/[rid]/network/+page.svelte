@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { getSwitches } from '$lib/api/network/switch';
@@ -13,6 +23,7 @@
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
 		emptySwitchList,
+		isSwitchVMCompatible,
 		isSwitchList,
 		type ManualSwitch,
 		type StandardSwitch,
@@ -184,6 +195,9 @@
 			uid: `manual-${networkSwitch.id}`
 		}))
 	]);
+	let hasUsableAttachSwitch = $derived(
+		usable.some((networkSwitch) => isSwitchVMCompatible(networkSwitch))
+	);
 
 	function createPageOptions() {
 		return {
@@ -250,7 +264,7 @@
 	<div class="flex h-10 w-full items-center gap-2 border p-2">
 		<Button
 			onclick={() => {
-				if (usable.length === 0) {
+				if (!hasUsableAttachSwitch) {
 					toast.error('No network switches are available to attach', {
 						position: 'bottom-center'
 					});

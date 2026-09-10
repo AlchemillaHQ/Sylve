@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package jailHandlers
 
@@ -60,6 +66,8 @@ func TestJailNetworkErrorStatus(t *testing.T) {
 		{err: errors.New("replication_lease_not_owned"), want: http.StatusForbidden},
 		{err: errors.New("network_not_found"), want: http.StatusNotFound},
 		{err: errors.New("jail_network_change_requires_inactive"), want: http.StatusConflict},
+		{err: errors.New("failed_to_sync_network: filtered_switch_runtime_mismatch: LAN"), want: http.StatusConflict},
+		{err: errors.New("failed_to_inspect_manual_switch_vlan_state: LAN: ioctl failed"), want: http.StatusServiceUnavailable},
 		{err: errors.New("network_service_unavailable"), want: http.StatusServiceUnavailable},
 		{err: errors.New("failed_to_write_rc_conf"), want: http.StatusInternalServerError},
 	}

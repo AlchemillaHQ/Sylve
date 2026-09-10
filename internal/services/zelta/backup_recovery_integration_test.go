@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"context"
+	"encoding/json"
 	"os/exec"
 	"sort"
 	"strings"
@@ -22,6 +23,19 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"gorm.io/gorm"
 )
+
+func staticSnapshotMetadataReader(t *testing.T, metadata any) func(
+	context.Context, string, string, string,
+) ([]byte, bool, error) {
+	t.Helper()
+	raw, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatalf("marshal snapshot metadata fixture: %v", err)
+	}
+	return func(context.Context, string, string, string) ([]byte, bool, error) {
+		return raw, true, nil
+	}
+}
 
 func dumpLatestBackupEvent(t *testing.T, db *gorm.DB) string {
 	t.Helper()
@@ -53,6 +67,49 @@ func listActiveGenerations(t *testing.T, activeDataset string) []string {
 	}
 	sort.Strings(gens)
 	return gens
+}
+
+func TestIntegrationCleanupRejectedBackupSnapshot(t *testing.T) {
+	zfstest.SkipIfUnavailable(t)
+	requireLocalhostBackupSSH(t)
+
+	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+
+	source := poolName + "/source"
+	targetRoot := poolName + "/target"
+	target := targetRoot + "/jobs/active"
+	for _, dataset := range []string{source, source + "/child", target, target + "/child"} {
+		zfstest.EnsureDataset(t, gzfsClient, dataset)
+	}
+
+	snapshotName := backupSnapshotNameForJob(91)
+	for _, dataset := range []string{source, target} {
+		if output, err := exec.Command("zfs", "snapshot", "-r", dataset+"@"+snapshotName).CombinedOutput(); err != nil {
+			t.Fatalf("create rejected backup snapshot: %v: %s", err, output)
+		}
+	}
+
+	service := &Service{GZFS: gzfsClient}
+	job := &clusterModels.BackupJob{
+		ID: 91,
+		Target: clusterModels.BackupTarget{
+			SSHHost: "root@localhost", BackupRoot: targetRoot,
+		},
+	}
+	if err := service.cleanupRejectedBackupSnapshot(
+		context.Background(),
+		job,
+		snapshotName,
+		[]backupScope{{sourceDataset: source, destSuffix: "jobs/active"}},
+	); err != nil {
+		t.Fatalf("cleanup rejected backup snapshot: %v", err)
+	}
+	for _, dataset := range []string{source, source + "/child", target, target + "/child"} {
+		if zfsDatasetExists(t, dataset+"@"+snapshotName) {
+			t.Fatalf("rejected snapshot remains: %s@%s", dataset, snapshotName)
+		}
+	}
 }
 
 func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotation(t *testing.T) {
@@ -294,6 +351,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 		GZFS:              gzfsClient,
+		VM:                &failingReplicationVMMetadataWriter{},
 	}
 
 	target := clusterModels.BackupTarget{
@@ -307,6 +365,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	if err := db.Create(&vm).Error; err != nil {
 		t.Fatalf("seed registered VM: %v", err)
 	}
+	svc.replicationSnapshotMetadataReader = staticSnapshotMetadataReader(t, vm)
 	vmDataset := vmModels.VMStorageDataset{Pool: poolName, Name: vmChild, GUID: "backup-integration-vm-disk"}
 	if err := db.Create(&vmDataset).Error; err != nil {
 		t.Fatalf("seed registered VM dataset: %v", err)
@@ -403,6 +462,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 		&clusterModels.BackupEvent{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
+		&jailModels.Network{},
 	)
 	svc := &Service{
 		DB:                db,
@@ -410,6 +470,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),
 		GZFS:              gzfsClient,
+		Jail:              &replicationJailMetadataWriter{},
 	}
 
 	target := clusterModels.BackupTarget{
@@ -423,6 +484,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	if err := db.Create(&jail).Error; err != nil {
 		t.Fatalf("seed registered jail: %v", err)
 	}
+	svc.replicationSnapshotMetadataReader = staticSnapshotMetadataReader(t, jail)
 	if err := db.Create(&jailModels.Storage{
 		JailID: jail.ID,
 		Pool:   poolName,

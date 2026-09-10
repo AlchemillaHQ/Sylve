@@ -10,6 +10,8 @@ package networkModels
 
 import (
 	"time"
+
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
 const (
@@ -26,10 +28,21 @@ type StandardSwitchMACSource struct {
 	MACObjectID uint   `json:"macObjectId,omitempty"`
 }
 
+type StandardSwitchVLANConfig struct {
+	Filtering         bool                             `json:"filtering"`
+	DefaultAccessVLAN *int                             `json:"defaultAccessVlan"`
+	HostVLAN          *int                             `json:"hostVlan"`
+	PortPolicies      map[string]bridgevlan.PortPolicy `json:"portPolicies"`
+}
+
 type ManualSwitch struct {
-	ID     uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name   string `json:"name" gorm:"unique;not null"`
-	Bridge string `json:"bridge" gorm:"unique;not null"`
+	ID                 uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name               string `json:"name" gorm:"unique;not null"`
+	Bridge             string `json:"bridge" gorm:"unique;not null"`
+	VLANFiltering      bool   `json:"vlanFiltering" gorm:"-"`
+	DefaultAccessVLAN  *int   `json:"defaultAccessVlan" gorm:"-"`
+	VLANStateAvailable bool   `json:"vlanStateAvailable" gorm:"-"`
+	VLANStateError     string `json:"vlanStateError,omitempty" gorm:"-"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`
@@ -82,6 +95,9 @@ type StandardSwitch struct {
 	// capabilities as transient tap and epair interfaces come and go.
 	// Sorts flapping issues (Please tell @hayzam if you faced flapping before/after enabling this option).
 	DisableBridgeOffloads bool `json:"disableBridgeOffloads" gorm:"default:false"`
+	VLANFiltering         bool `json:"vlanFiltering" gorm:"default:false"`
+	DefaultAccessVLAN     *int `json:"defaultAccessVlan"`
+	HostVLAN              *int `json:"hostVlan"`
 
 	Ports []NetworkPort `json:"ports" gorm:"foreignKey:SwitchID;constraint:OnDelete:CASCADE"`
 
@@ -93,10 +109,11 @@ type StandardSwitch struct {
 }
 
 type NetworkPort struct {
-	ID       int            `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name     string         `json:"name" gorm:"not null"`
-	SwitchID uint           `json:"switchId" gorm:"not null"`
-	Switch   StandardSwitch `gorm:"foreignKey:SwitchID"`
+	ID         int                   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name       string                `json:"name" gorm:"not null"`
+	SwitchID   uint                  `json:"switchId" gorm:"not null"`
+	Switch     StandardSwitch        `gorm:"foreignKey:SwitchID"`
+	VLANPolicy bridgevlan.PortPolicy `json:"vlanPolicy" gorm:"embedded;embeddedPrefix:vlan_"`
 }
 
 // StandardSwitchManualAddresses carries raw, manually-typed address values for a

@@ -21,7 +21,12 @@ import type { MdnsRecordWithManaged, MdnsSettings } from '$lib/types/network/mdn
 import type { NetworkObject } from '$lib/types/network/object';
 import type { StaticRoute } from '$lib/types/network/route';
 import type { DynamicDNSEntry, DynamicDNSEntryInput } from '$lib/types/services/dynamic-dns';
-import type { ManualSwitch, StandardSwitch, SwitchList } from '$lib/types/network/switch';
+import type {
+	ManualSwitch,
+	StandardSwitch,
+	SwitchList,
+	VLANPortPolicy
+} from '$lib/types/network/switch';
 import type {
 	WireGuardClient,
 	WireGuardServer,
@@ -157,6 +162,27 @@ function numberArray(body: Record<string, unknown>, key: string): number[] {
 	return (body[key] as unknown[])
 		.map(Number)
 		.filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function vlanPortPolicies(body: Record<string, unknown>): Record<string, VLANPortPolicy> {
+	const raw = body.portPolicies;
+	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+
+	const result: Record<string, VLANPortPolicy> = {};
+	for (const [port, value] of Object.entries(raw)) {
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+		const policy = value as Record<string, unknown>;
+		const mode = policy.mode === 'access' || policy.mode === 'trunk' ? policy.mode : '';
+		const untagged = Number(policy.untaggedVlan);
+		result[port] = {
+			mode,
+			...(Number.isSafeInteger(untagged) && untagged > 0 ? { untaggedVlan: untagged } : {}),
+			taggedVlans: Array.isArray(policy.taggedVlans)
+				? policy.taggedVlans.map(Number).filter((vlan) => Number.isSafeInteger(vlan) && vlan > 0)
+				: []
+		};
+	}
+	return result;
 }
 
 function strictPositiveIntegerArray(
@@ -519,7 +545,7 @@ function createState(hostname: string): DemoNetworkState {
 			network6Manual: 'fd42:30::/64',
 			gatewayManual: '',
 			gateway6Manual: 'fd42:30::1',
-			ports: [{ id: 1, name: 'igb0', switchId: 1 }],
+			ports: [{ id: 1, name: 'igb0', switchId: 1, vlanPolicy: { mode: '', taggedVlans: [] } }],
 			bridgeMacMode: 'port',
 			bridgeMacSourcePort: 'igb0',
 			bridgeMacObjectId: null,
@@ -529,7 +555,10 @@ function createState(hostname: string): DemoNetworkState {
 			disableIPv6: false,
 			defaultRoute: true,
 			defaultRoute6: true,
-			disableBridgeOffloads: true
+			disableBridgeOffloads: true,
+			vlanFiltering: false,
+			defaultAccessVlan: null,
+			hostVlan: null
 		},
 		{
 			id: 2,
@@ -550,7 +579,7 @@ function createState(hostname: string): DemoNetworkState {
 			network6Manual: '',
 			gatewayManual: '',
 			gateway6Manual: '',
-			ports: [{ id: 2, name: 'ix0', switchId: 2 }],
+			ports: [{ id: 2, name: 'ix0', switchId: 2, vlanPolicy: { mode: '', taggedVlans: [] } }],
 			bridgeMacMode: 'port',
 			bridgeMacSourcePort: 'ix0',
 			bridgeMacObjectId: null,
@@ -560,7 +589,10 @@ function createState(hostname: string): DemoNetworkState {
 			disableIPv6: true,
 			defaultRoute: false,
 			defaultRoute6: false,
-			disableBridgeOffloads: true
+			disableBridgeOffloads: true,
+			vlanFiltering: false,
+			defaultAccessVlan: null,
+			hostVlan: null
 		}
 	];
 	const manual: ManualSwitch[] = [
@@ -568,6 +600,10 @@ function createState(hostname: string): DemoNetworkState {
 			id: 10,
 			name: 'lab',
 			bridge: 'bridge-lab',
+			vlanFiltering: false,
+			defaultAccessVlan: null,
+			vlanStateAvailable: true,
+			vlanStateError: '',
 			createdAt,
 			updatedAt
 		}
@@ -1165,8 +1201,15 @@ function buildStandardSwitch(
 	const gateway6Manual = stringValue(body, 'gateway6Manual', existing?.gateway6Manual ?? '');
 	const name = stringValue(body, 'name', existing?.name ?? `switch-${id}`).trim();
 	const ports = stringArray(body, 'ports');
+	const policies = vlanPortPolicies(body);
 	const bridgeMacObjectId = macSource.mode === 'object' ? macSource.macObjectId : null;
 	const bridgeMacObject = objectByID(bridgeMacObjectId);
+	const defaultAccessVlan = Object.prototype.hasOwnProperty.call(body, 'defaultAccessVlan')
+		? nullableNumber(body, 'defaultAccessVlan')
+		: (existing?.defaultAccessVlan ?? null);
+	const hostVlan = Object.prototype.hasOwnProperty.call(body, 'hostVlan')
+		? nullableNumber(body, 'hostVlan')
+		: (existing?.hostVlan ?? null);
 
 	return {
 		id,
@@ -1187,7 +1230,16 @@ function buildStandardSwitch(
 		network6Manual,
 		gatewayManual,
 		gateway6Manual,
-		ports: ports.map((port, index) => ({ id: id * 100 + index + 1, name: port, switchId: id })),
+		ports: ports.map((port, index) => ({
+			id: id * 100 + index + 1,
+			name: port,
+			switchId: id,
+			vlanPolicy: policies[port] ??
+				existing?.ports.find((existingPort) => existingPort.name === port)?.vlanPolicy ?? {
+					mode: '',
+					taggedVlans: []
+				}
+		})),
 		bridgeMacMode: macSource.mode,
 		bridgeMacSourcePort: macSource.mode === 'port' ? macSource.port : '',
 		bridgeMacObjectId,
@@ -1201,7 +1253,10 @@ function buildStandardSwitch(
 			body,
 			'disableBridgeOffloads',
 			existing?.disableBridgeOffloads ?? true
-		)
+		),
+		vlanFiltering: booleanValue(body, 'vlanFiltering', existing?.vlanFiltering ?? false),
+		defaultAccessVlan,
+		hostVlan
 	};
 }
 
@@ -1584,6 +1639,10 @@ export function handleDemoNetworkRequest<T = unknown>(
 			id,
 			name: stringValue(body, 'name', `manual-${id}`),
 			bridge: stringValue(body, 'bridge', 'bridge-lab'),
+			vlanFiltering: false,
+			defaultAccessVlan: null,
+			vlanStateAvailable: true,
+			vlanStateError: '',
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString()
 		});

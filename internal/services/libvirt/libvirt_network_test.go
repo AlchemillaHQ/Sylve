@@ -18,7 +18,9 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 
 	"gorm.io/gorm"
 )
@@ -289,6 +291,47 @@ func TestNetworkUpdateSynchronizesRequestedEnableState(t *testing.T) {
 	}
 }
 
+func TestNetworkUpdateDisabledNICUsesPersistedManualSwitchIdentity(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, standard := seedVMNetworkMutationBase(t, db, 101, "disabled-manual-vm")
+	manual := networkModels.ManualSwitch{
+		Name: "unavailable-manual", Bridge: "bridge-unavailable",
+	}
+	if err := db.Create(&manual).Error; err != nil {
+		t.Fatalf("seed manual switch: %v", err)
+	}
+	mac := seedVMNetworkMACObject(t, db, "disabled-manual-mac", "02:00:00:00:00:22")
+	network := seedVMNetworkAttachment(t, db, vm.ID, standard, &mac, true)
+
+	originalInspect := inspectVMBridgeVLAN
+	inspectCalls := 0
+	inspectVMBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		inspectCalls++
+		return bridgevlan.BridgeState{}, errors.New("bridge is unavailable")
+	}
+	t.Cleanup(func() { inspectVMBridgeVLAN = originalInspect })
+
+	enabled := false
+	updated, err := (&Service{DB: db}).networkUpdateApply(
+		context.Background(),
+		libvirtServiceInterfaces.NetworkUpdateRequest{
+			RID: vm.RID, NetworkID: network.ID, SwitchName: &manual.Name, Enable: &enabled,
+		},
+		vm,
+		noOpVMNetworkHooks(),
+	)
+	if err != nil {
+		t.Fatalf("update disabled NIC to unavailable Manual Switch: %v", err)
+	}
+	if inspectCalls != 0 {
+		t.Fatalf("disabled NIC update inspected Manual Switch runtime %d times", inspectCalls)
+	}
+	if updated.Enable || updated.SwitchType != "manual" || updated.SwitchID != manual.ID ||
+		updated.ManualSwitch == nil || updated.ManualSwitch.ID != manual.ID {
+		t.Fatalf("unexpected disabled NIC response: %#v", updated)
+	}
+}
+
 func TestNetworkUpdateRejectsAttachmentFromAnotherVM(t *testing.T) {
 	db := newVMNetworkMutationTestDB(t)
 	vm, sw := seedVMNetworkMutationBase(t, db, 101, "owner-vm")
@@ -440,5 +483,251 @@ func TestNetworkDetachDeletesOnlyAttachment(t *testing.T) {
 	}
 	if got := networkRowCount[networkModels.ObjectEntry](t, db); got != 1 {
 		t.Fatalf("detach deleted MAC entry: %d rows", got)
+	}
+}
+func TestFilteredSwitchVMCompatibility(t *testing.T) {
+	defaultVLAN := 42
+	filtered := networkModels.StandardSwitch{
+		Name:              "filtered",
+		BridgeName:        "bridge-filtered",
+		VLANFiltering:     true,
+		DefaultAccessVLAN: &defaultVLAN,
+	}
+	sw := networkAttachment.ResolvedSwitch{
+		Name: filtered.Name, Type: "standard", Bridge: filtered.BridgeName,
+		VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN, Standard: &filtered,
+	}
+
+	originalValidate := validateVMFilteredBridge
+	t.Cleanup(func() { validateVMFilteredBridge = originalValidate })
+	called := false
+	validateVMFilteredBridge = func(bridge string, expected *int) (bridgevlan.BridgeState, error) {
+		called = true
+		if bridge != filtered.BridgeName || expected == nil || *expected != defaultVLAN {
+			t.Fatalf("unexpected live validation: bridge=%q default=%v", bridge, expected)
+		}
+		return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: defaultVLAN}, nil
+	}
+
+	if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+		t.Fatalf("stored filtered switch rejected: %v", err)
+	}
+	if called {
+		t.Fatal("database-only validation inspected live bridge state")
+	}
+	if err := validateEffectiveVMNetworkSwitchCompatibility(sw); err != nil {
+		t.Fatalf("live filtered switch rejected: %v", err)
+	}
+	if !called {
+		t.Fatal("live validation did not inspect bridge state")
+	}
+
+	filtered.DefaultAccessVLAN = nil
+	sw.DefaultAccessVLAN = nil
+	if err := validateDesiredVMNetworkSwitchCompatibility(sw); err == nil ||
+		!strings.Contains(err.Error(), "filtered_switch_vm_default_access_vlan_required") {
+		t.Fatalf("expected missing-default rejection, got %v", err)
+	}
+}
+
+func TestValidateVMNetworksForStartRejectsFilteredBridgeDrift(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, sw := seedVMNetworkMutationBase(t, db, 101, "start-vm")
+	defaultVLAN := 77
+	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", sw.ID).Updates(map[string]any{
+		"vlan_filtering":      true,
+		"default_access_vlan": defaultVLAN,
+	}).Error; err != nil {
+		t.Fatalf("failed to enable filtering: %v", err)
+	}
+	seedVMNetworkAttachment(t, db, vm.ID, sw, nil, true)
+
+	originalValidate := validateVMFilteredBridge
+	t.Cleanup(func() { validateVMFilteredBridge = originalValidate })
+	validateVMFilteredBridge = func(string, *int) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, errors.New("default PVID drift")
+	}
+
+	err := (&Service{DB: db}).validateVMNetworksForStart(vm.ID)
+	if err == nil || !strings.Contains(err.Error(), "filtered_switch_runtime_mismatch") {
+		t.Fatalf("expected runtime drift rejection, got %v", err)
+	}
+}
+
+func TestVMStandardSwitchLifecycleBridgesIncludesEnabledStandardSwitches(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, enabledSwitch := seedVMNetworkMutationBase(t, db, 101, "lifecycle-vm")
+	defaultVLAN := 10
+	if err := db.Model(&enabledSwitch).Updates(map[string]any{
+		"vlan_filtering":      true,
+		"default_access_vlan": defaultVLAN,
+	}).Error; err != nil {
+		t.Fatalf("enable filtering on lifecycle switch: %v", err)
+	}
+	enabledSwitch.VLANFiltering = true
+	enabledSwitch.DefaultAccessVLAN = &defaultVLAN
+	unfilteredSwitch := networkModels.StandardSwitch{
+		Name: "unfiltered-switch", BridgeName: "unfiltered-bridge", MTU: 1500,
+	}
+	if err := db.Create(&unfilteredSwitch).Error; err != nil {
+		t.Fatalf("seed unfiltered switch: %v", err)
+	}
+	disabledSwitch := networkModels.StandardSwitch{
+		Name: "disabled-switch", BridgeName: "disabled-bridge", MTU: 1500,
+		VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN,
+	}
+	if err := db.Create(&disabledSwitch).Error; err != nil {
+		t.Fatalf("seed disabled switch: %v", err)
+	}
+	manualSwitch := networkModels.ManualSwitch{Name: "manual", Bridge: "manual-bridge"}
+	if err := db.Create(&manualSwitch).Error; err != nil {
+		t.Fatalf("seed manual switch: %v", err)
+	}
+
+	seedVMNetworkAttachment(t, db, vm.ID, enabledSwitch, nil, true)
+	seedVMNetworkAttachment(t, db, vm.ID, enabledSwitch, nil, true)
+	seedVMNetworkAttachment(t, db, vm.ID, unfilteredSwitch, nil, true)
+	seedVMNetworkAttachment(t, db, vm.ID, disabledSwitch, nil, false)
+	if err := db.Create(&vmModels.Network{
+		VMID: vm.ID, SwitchID: manualSwitch.ID, SwitchType: "manual", Emulation: "virtio", Enable: true,
+	}).Error; err != nil {
+		t.Fatalf("seed manual network: %v", err)
+	}
+
+	bridges, err := (&Service{DB: db}).vmStandardSwitchLifecycleBridges(vm.ID, true)
+	if err != nil {
+		t.Fatalf("resolve lifecycle bridges: %v", err)
+	}
+	want := []string{enabledSwitch.BridgeName, unfilteredSwitch.BridgeName}
+	if len(bridges) != len(want) || bridges[0] != want[0] || bridges[1] != want[1] {
+		t.Fatalf("lifecycle bridges = %v, want %v", bridges, want)
+	}
+}
+
+func TestVMStartValidationRejectsUnfilteredSwitchRuntimeModeDrift(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, sw := seedVMNetworkMutationBase(t, db, 102, "unfiltered-drift-vm")
+	seedVMNetworkAttachment(t, db, vm.ID, sw, nil, true)
+
+	originalInspect := inspectVMBridgeVLAN
+	inspectVMBridgeVLAN = func(bridge string) (bridgevlan.BridgeState, error) {
+		if bridge != sw.BridgeName {
+			t.Fatalf("inspected bridge = %q, want %q", bridge, sw.BridgeName)
+		}
+		return bridgevlan.BridgeState{VLANFiltering: true}, nil
+	}
+	t.Cleanup(func() { inspectVMBridgeVLAN = originalInspect })
+
+	err := (&Service{DB: db}).validateVMNetworksForStart(vm.ID)
+	if err == nil || !strings.Contains(err.Error(), "unfiltered_switch_runtime_vlan_mode_mismatch") {
+		t.Fatalf("expected unfiltered runtime mode rejection, got %v", err)
+	}
+}
+
+func TestCreateVMXMLFilteredPrivateSwitchUsesPlainIsolatedBridgeInterface(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm, sw := seedVMNetworkMutationBase(t, db, 101, "xml-vm")
+	defaultVLAN := 88
+	sw.VLANFiltering = true
+	sw.DefaultAccessVLAN = &defaultVLAN
+	sw.Private = true
+	if err := db.Save(&sw).Error; err != nil {
+		t.Fatalf("failed to update filtered switch: %v", err)
+	}
+	vm.Networks = []vmModels.Network{{
+		VMID: vm.ID, SwitchID: sw.ID, SwitchType: "standard", Emulation: "virtio", Enable: true,
+	}}
+
+	xmlText, err := (&Service{DB: db}).CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create VM XML: %v", err)
+	}
+	if !strings.Contains(xmlText, `source bridge="`+sw.BridgeName+`"`) {
+		t.Fatalf("generated XML did not reference filtered bridge: %s", xmlText)
+	}
+	if strings.Contains(xmlText, "<vlan") {
+		t.Fatalf("generated unsupported Libvirt VLAN XML: %s", xmlText)
+	}
+	if !strings.Contains(xmlText, `isolated="yes"`) {
+		t.Fatalf("generated XML did not isolate a private switch interface: %s", xmlText)
+	}
+
+	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", sw.ID).
+		Update("private", false).Error; err != nil {
+		t.Fatalf("make filtered switch non-private: %v", err)
+	}
+	xmlText, err = (&Service{DB: db}).CreateVmXML(vm, t.TempDir())
+	if err != nil {
+		t.Fatalf("create non-private VM XML: %v", err)
+	}
+	if strings.Contains(xmlText, `isolated="yes"`) {
+		t.Fatalf("generated XML isolated a non-private switch interface: %s", xmlText)
+	}
+}
+
+func TestCreateVMXMLValidatesLiveManualSwitchVLANState(t *testing.T) {
+	db := newVMNetworkMutationTestDB(t)
+	vm := vmModels.VM{Name: "manual-xml-vm", RID: 102}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatalf("seed VM: %v", err)
+	}
+	manual := networkModels.ManualSwitch{Name: "manual-xml", Bridge: "bridge-manual-xml"}
+	if err := db.Create(&manual).Error; err != nil {
+		t.Fatalf("seed manual switch: %v", err)
+	}
+	vm.Networks = []vmModels.Network{{
+		VMID: vm.ID, SwitchID: manual.ID, SwitchType: "manual", Emulation: "virtio", Enable: true,
+	}}
+
+	originalInspect := inspectVMBridgeVLAN
+	inspectVMBridgeVLAN = func(bridge string) (bridgevlan.BridgeState, error) {
+		if bridge != manual.Bridge {
+			t.Fatalf("inspected bridge = %q, want %q", bridge, manual.Bridge)
+		}
+		return bridgevlan.BridgeState{VLANFiltering: true}, nil
+	}
+	t.Cleanup(func() { inspectVMBridgeVLAN = originalInspect })
+
+	_, err := (&Service{DB: db}).CreateVmXML(vm, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "filtered_switch_vm_default_access_vlan_required") {
+		t.Fatalf("manual filtered switch without a default PVID was accepted: %v", err)
+	}
+}
+
+func TestVMNetworkAttachmentFromMetadataHasNarrowLegacyFallback(t *testing.T) {
+	legacy := vmModels.Network{
+		SwitchType: "standard",
+		StandardSwitch: &networkModels.StandardSwitch{
+			Name: "legacy-lan", BridgeName: "vm-legacy-lan",
+		},
+	}
+	contract, err := VMNetworkAttachmentFromMetadata(legacy)
+	if err != nil {
+		t.Fatalf("read legacy unfiltered metadata: %v", err)
+	}
+	if contract.SwitchName != "legacy-lan" || contract.SwitchType != "standard" || contract.VLANFiltering {
+		t.Fatalf("unexpected legacy contract: %#v", contract)
+	}
+
+	defaultVLAN := 10
+	legacy.StandardSwitch.VLANFiltering = true
+	legacy.StandardSwitch.DefaultAccessVLAN = &defaultVLAN
+	if _, err := VMNetworkAttachmentFromMetadata(legacy); err == nil ||
+		!strings.Contains(err.Error(), "legacy_filtered_vm_network_attachment_unsupported") {
+		t.Fatalf("legacy metadata inferred filtered semantics: %v", err)
+	}
+
+	filtered := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion,
+		Kind:    networkAttachment.KindVM, SwitchName: "tenant", SwitchType: "standard",
+		VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN,
+	}
+	legacy.Attachment = &filtered
+	contract, err = VMNetworkAttachmentFromMetadata(legacy)
+	if err != nil {
+		t.Fatalf("read versioned filtered metadata: %v", err)
+	}
+	if contract.DefaultAccessVLAN == nil || *contract.DefaultAccessVLAN != defaultVLAN {
+		t.Fatalf("versioned contract was not authoritative: %#v", contract)
 	}
 }

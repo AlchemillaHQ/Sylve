@@ -29,6 +29,7 @@ package iface
 #include <sys/sockio.h>
 #include <errno.h>
 #include <net/if_bridgevar.h>
+#include <net/if_vlan_var.h>
 
 static int
 get_stp_op_params(int fd, const char *ifname, struct ifbropreq *opr)
@@ -159,6 +160,16 @@ static int get_media_info(int fd, const char *name, struct ifmediareq *ifmr) {
 	memset(ifmr, 0, sizeof(struct ifmediareq));
 	strncpy(ifmr->ifm_name, name, IFNAMSIZ - 1);
 	return ioctl(fd, SIOCGIFMEDIA, ifmr);
+}
+
+static int get_vlan_config(int fd, const char *name, struct vlanreq *vreq) {
+	struct ifreq req;
+
+	memset(&req, 0, sizeof(req));
+	memset(vreq, 0, sizeof(*vreq));
+	strlcpy(req.ifr_name, name, sizeof(req.ifr_name));
+	req.ifr_data = (caddr_t)vreq;
+	return ioctl(fd, SIOCGETVLAN, &req);
 }
 
 static void* get_broadaddr(struct ifaddrs* a) {
@@ -463,6 +474,7 @@ func parseBridgeFlags(f uint32) []string {
 		{Mask: C.IFBIF_STP, Name: "STP"},
 		{Mask: C.IFBIF_SPAN, Name: "SPAN"},
 		{Mask: C.IFBIF_STICKY, Name: "STICKY"},
+		{Mask: C.IFBIF_PRIVATE, Name: "PRIVATE"},
 		{Mask: C.IFBIF_BSTP_AUTOEDGE, Name: "AUTOEDGE"},
 		{Mask: C.IFBIF_BSTP_AUTOPTP, Name: "AUTOPTP"},
 	}
@@ -534,6 +546,11 @@ func getInterfaceInfo(name string) (*Interface, error) {
 		Capabilities: capabilities,
 		ND6:          nd6,
 		Description:  actDesc,
+	}
+	var vlanRequest C.struct_vlanreq
+	if C.get_vlan_config(fd4, cname, &vlanRequest) == 0 {
+		iface.VLANParent = C.GoString(&vlanRequest.vlr_parent[0])
+		iface.VLANTag = int(vlanRequest.vlr_tag)
 	}
 
 	iface.Media = getMediaInfo(fd4, name)

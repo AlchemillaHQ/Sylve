@@ -99,6 +99,8 @@ var jailCreateBadRequestCodes = map[string]struct{}{
 	"download_uuid_or_bootstrap_name_required":       {},
 	"download_uuid_required":                         {},
 	"failed_to_find_download":                        {},
+	"filtered_switch_vlan_policy_required":           {},
+	"invalid_cores":                                  {},
 	"invalid_ct_id":                                  {},
 	"invalid_description":                            {},
 	"invalid_hostname":                               {},
@@ -108,8 +110,8 @@ var jailCreateBadRequestCodes = map[string]struct{}{
 	"invalid_jail_metadata":                          {},
 	"invalid_jail_type":                              {},
 	"invalid_lifecycle_hooks":                        {},
-	"invalid_cores":                                  {},
 	"invalid_memory":                                 {},
+	"invalid_vlan_policy":                            {},
 	"invalid_vm_name":                                {},
 	"lifecycle_hook_script_required":                 {},
 	"linux_jails_cannot_use_dhcp_or_slaac":           {},
@@ -121,6 +123,8 @@ var jailCreateBadRequestCodes = map[string]struct{}{
 	"standard_switch_not_found":                      {},
 	"start_order_must_be_greater_than_or_equal_to_0": {},
 	"switch_name_required":                           {},
+	"vlan_policy_requires_filtered_switch":           {},
+	"vlan_policy_requires_switch":                    {},
 }
 
 var jailCreateAliasCodes = map[string]string{
@@ -196,6 +200,21 @@ func classifyCreateJailError(err error) (int, string) {
 		return http.StatusConflict, "bootstrap_record_mismatch"
 	case strings.Contains(errText, "jail_dataset_mountpoint_not_usable"):
 		return http.StatusConflict, "jail_dataset_mountpoint_not_usable"
+	case strings.Contains(errText, "failed_to_inspect_manual_switch_vlan_state"):
+		return http.StatusServiceUnavailable, "failed_to_inspect_manual_switch_vlan_state"
+	case strings.Contains(errText, "unfiltered_switch_runtime_inspection_failed"):
+		return http.StatusServiceUnavailable, "unfiltered_switch_runtime_inspection_failed"
+	case strings.Contains(errText, "jail_network_service_unavailable"),
+		strings.Contains(errText, "network_service_unavailable"):
+		return http.StatusServiceUnavailable, "jail_network_service_unavailable"
+	case strings.Contains(errText, "filtered_switch_qinq_unsupported"):
+		return http.StatusConflict, "filtered_switch_qinq_unsupported"
+	case strings.Contains(errText, "invalid_manual_switch_default_pvid"):
+		return http.StatusConflict, "invalid_manual_switch_default_pvid"
+	case strings.Contains(errText, "filtered_switch_runtime_mismatch"):
+		return http.StatusConflict, "filtered_switch_runtime_mismatch"
+	case strings.Contains(errText, "unfiltered_switch_runtime_vlan_mode_mismatch"):
+		return http.StatusConflict, "unfiltered_switch_runtime_vlan_mode_mismatch"
 	}
 	if strings.Contains(errText, "jail_with_ctid_") && strings.Contains(errText, "already_exists") {
 		return http.StatusConflict, "jail_with_ctid_already_exists"
@@ -586,7 +605,7 @@ func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 }
 
 // @Summary Create a new Jail
-// @Description Create a new jail with the provided configuration
+// @Description Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.
 // @Tags Jail
 // @Accept json
 // @Produce json

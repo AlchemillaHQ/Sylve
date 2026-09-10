@@ -768,3 +768,36 @@ func TestRouteCandidateDeduplicationAndHostPrefixProbe(t *testing.T) {
 		t.Fatalf("/32 probe escaped its prefix: %s", target)
 	}
 }
+
+func TestResolveStaticRouteRefsRejectsFilteredStandardSwitchInterfaces(t *testing.T) {
+	svc := seedFilteredStandardSwitchInterface(t)
+
+	for _, test := range []struct {
+		name string
+		req  networkServiceInterfaces.UpsertStaticRouteRequest
+	}{
+		{
+			name: "route interface",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				DestinationRaw: "192.0.2.0/24",
+				Interface:      "vm-filtered",
+			},
+		},
+		{
+			name: "link-local gateway zone",
+			req: networkServiceInterfaces.UpsertStaticRouteRequest{
+				DestinationRaw: "2001:db8::/64",
+				GatewayRaw:     "fe80::1",
+				GatewayZone:    "vm-filtered",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := svc.resolveStaticRouteRefs(&test.req)
+			if !errors.Is(err, ErrInvalidStaticRoute) ||
+				!strings.Contains(err.Error(), "filtered_standard_switch_l2_only: vm-filtered") {
+				t.Fatalf("expected filtered bridge rejection, got %v", err)
+			}
+		})
+	}
+}

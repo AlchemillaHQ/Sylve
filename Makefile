@@ -23,12 +23,13 @@ INTEGRATION_PACKAGES := \
 	./internal/services/zelta \
 	./internal/services/zfs \
 	./internal/zfsutil \
+	./pkg/network/bridgevlan \
 	./pkg/network/mdns
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
-.PHONY: test test-external-preflight test-integration test-acceptance test-acceptance-full test-acceptance-all
+.PHONY: test test-external-preflight test-integration test-vlan-integration test-acceptance test-acceptance-full test-acceptance-all
 .PHONY: test-smart-integration clean
 
 all: build
@@ -125,6 +126,18 @@ test-integration: test-external-preflight
 	leak_rc="$$?"; \
 	if [ "$$test_rc" -ne 0 ]; then exit "$$test_rc"; fi; \
 	exit "$$leak_rc"
+
+test-vlan-integration:
+	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "bridge VLAN integration tests must run on FreeBSD"; exit 1; }
+	@[ "$$(id -u)" = "0" ] || { echo "bridge VLAN integration tests must run as root"; exit 1; }
+	@command -v ifconfig >/dev/null || { echo "ifconfig is required for bridge VLAN integration tests"; exit 1; }
+	@command -v jail >/dev/null || { echo "jail is required for bridge VLAN integration tests"; exit 1; }
+	@command -v jexec >/dev/null || { echo "jexec is required for bridge VLAN integration tests"; exit 1; }
+	@command -v ping >/dev/null || { echo "ping is required for bridge VLAN integration tests"; exit 1; }
+	go test $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+		-run '^TestIntegrationVLANBridge' ./pkg/network/bridgevlan
+	go test $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+		-run '^TestIntegrationStandardSwitch(VLANFilteringModeTransitions|FilteredHostVLANLifecycle)$$' ./internal/services/network
 
 test-acceptance: test-external-preflight
 	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
