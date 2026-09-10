@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { addNetwork, updateNetwork } from '$lib/api/jail/jail';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -6,16 +16,17 @@
 	import CustomComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import VLANPolicyEditor from '$lib/components/custom/Network/VLANPolicyEditor.svelte';
 	import type { Jail } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import type { SwitchList } from '$lib/types/network/switch';
+	import { isSwitchRuntimeAvailable, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import {
 		generateIPOptions,
 		generateMACOptions,
 		generateNetworkOptions
 	} from '$lib/utils/network/object';
-	import { parseNumberOrZero } from '$lib/utils/string';
+	import { parseVLANPolicyDraft } from '$lib/utils/network/vlan';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -79,7 +90,12 @@
 			dhcp: selectedNetwork?.dhcp ?? false,
 			slaac: selectedNetwork?.slaac ?? false,
 			defaultGateway: selectedNetwork?.defaultGateway ?? false,
-			vlan: selectedNetwork?.vlan ?? 0
+			vlanPolicyMode: selectedNetwork?.vlanPolicy.mode ?? ('' as '' | 'access' | 'trunk'),
+			vlanPolicyUntagged:
+				selectedNetwork?.vlanPolicy.untaggedVlan === undefined
+					? ''
+					: String(selectedNetwork.vlanPolicy.untaggedVlan),
+			vlanPolicyTagged: selectedNetwork?.vlanPolicy.taggedVlans.join(',') ?? ''
 		};
 	}
 
@@ -100,6 +116,15 @@
 
 	let properties = $state(initialProperties());
 	let values = $state(initialValues());
+	let selectedConfiguredSwitch = $derived(
+		[...networkSwitches.standard, ...networkSwitches.manual].find(
+			(candidate) => candidate.name === values.switchName
+		) ?? null
+	);
+	let selectedSwitchIsFiltered = $derived(selectedConfiguredSwitch?.vlanFiltering ?? false);
+	let selectedSwitchIsAvailable = $derived(
+		selectedConfiguredSwitch !== null && isSwitchRuntimeAvailable(selectedConfiguredSwitch)
+	);
 	let comboOpen = $state({
 		switchName: false,
 		mac: false,
@@ -135,6 +160,16 @@
 			if (!slaac) return;
 			values.ipv6 = '';
 			values.ipv6Gateway = '';
+		}
+	);
+
+	watch(
+		() => values.switchName,
+		() => {
+			if (selectedSwitchIsFiltered) return;
+			properties.vlanPolicyMode = '';
+			properties.vlanPolicyUntagged = '';
+			properties.vlanPolicyTagged = '';
 		}
 	);
 
@@ -174,9 +209,31 @@
 			toast.error('Switch is required', { position: 'bottom-center' });
 			return;
 		}
+		if (!selectedSwitchIsAvailable) {
+			toast.error('The selected switch runtime state is unavailable', {
+				position: 'bottom-center'
+			});
+			return;
+		}
 		if (properties.defaultGateway && hasOtherDefaultGateway) {
 			toast.error('Default gateway already exists', { position: 'bottom-center' });
 			return;
+		}
+
+		let vlanPolicy;
+		if (selectedSwitchIsFiltered) {
+			const parsedPolicy = parseVLANPolicyDraft(
+				properties.vlanPolicyMode,
+				properties.vlanPolicyUntagged,
+				properties.vlanPolicyTagged
+			);
+			if (!parsedPolicy) {
+				toast.error('A valid access or trunk VLAN policy is required', {
+					position: 'bottom-center'
+				});
+				return;
+			}
+			vlanPolicy = parsedPolicy;
 		}
 
 		const mac = resolveField(values.mac, 'Mac');
@@ -200,7 +257,7 @@
 			dhcp: properties.dhcp,
 			slaac: properties.slaac,
 			defaultGateway: properties.defaultGateway,
-			vlan: parseNumberOrZero(String(properties.vlan))
+			vlanPolicy
 		};
 		const requestIdentity = `${hostname}:${jail.ctId}:${networkId ?? 'new'}`;
 
@@ -240,7 +297,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="min-w-150"
+		class="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-5 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:max-w-4xl! sm:p-6"
 		showResetButton={true}
 		onReset={resetForm}
 		onClose={() => {
@@ -261,121 +318,131 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
-		<div class="grid grid-cols-4 items-end gap-4">
-			<CustomValueInput
-				label="Name"
-				placeholder="Primary Network"
-				bind:value={properties.name}
-				classes="flex-1 space-y-1"
-			/>
-			<CustomComboBox
-				bind:open={comboOpen.switchName}
-				label="Switch"
-				placeholder="Select Switch"
-				bind:value={values.switchName}
-				data={[...networkSwitches.standard, ...networkSwitches.manual].map((item) => ({
-					label: item.name,
-					value: item.name
-				}))}
-				classes="flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-			/>
-			<CustomComboBox
-				bind:open={comboOpen.mac}
-				label="MAC Address"
-				placeholder="Select or type a MAC"
-				bind:value={values.mac}
-				data={macOptions}
-				classes="flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-				allowCustom={true}
-			/>
-			<CustomValueInput
-				label="VLAN"
-				placeholder="0"
-				bind:value={properties.vlan}
-				classes="flex-1 space-y-1"
-				type="number"
-			/>
-		</div>
-
-		<div class="grid grid-cols-2 gap-4">
-			<CustomComboBox
-				bind:open={comboOpen.ipv4}
-				label="IPv4 Address"
-				placeholder="Select or type an IPv4 CIDR"
-				bind:value={values.ipv4}
-				data={ipv4Options}
-				classes="w-full flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-				disabled={properties.dhcp}
-				allowCustom={true}
-			/>
-			<CustomComboBox
-				bind:open={comboOpen.ipv4Gateway}
-				label="IPv4 Gateway"
-				placeholder="Select or type an IPv4 gateway"
-				bind:value={values.ipv4Gateway}
-				data={ipv4GatewayOptions}
-				classes="flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-				disabled={properties.dhcp}
-				allowCustom={true}
-			/>
-			<CustomComboBox
-				bind:open={comboOpen.ipv6}
-				label="IPv6 Address"
-				placeholder="Select or type an IPv6 CIDR"
-				bind:value={values.ipv6}
-				data={ipv6Options}
-				classes="flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-				disabled={properties.slaac}
-				allowCustom={true}
-			/>
-			<CustomComboBox
-				bind:open={comboOpen.ipv6Gateway}
-				label="IPv6 Gateway"
-				placeholder="Select or type an IPv6 gateway"
-				bind:value={values.ipv6Gateway}
-				data={ipv6GatewayOptions}
-				classes="flex-1 space-y-1"
-				triggerWidth="w-full"
-				width="w-full"
-				disabled={properties.slaac}
-				allowCustom={true}
-			/>
-		</div>
-
-		<div class="mt-2 flex items-center space-x-4">
-			{#if jail.type === 'freebsd'}
-				<CustomCheckbox
-					bind:checked={properties.dhcp}
-					label="DHCP"
-					classes="flex items-center gap-2"
+		<div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+			<div class="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 xl:grid-cols-4">
+				<CustomValueInput
+					label="Name"
+					placeholder="Primary Network"
+					bind:value={properties.name}
+					classes="flex-1 space-y-1"
 				/>
-				<CustomCheckbox
-					bind:checked={properties.slaac}
-					label="SLAAC"
-					classes="flex items-center gap-2"
+				<CustomComboBox
+					bind:open={comboOpen.switchName}
+					label="Switch"
+					placeholder="Select Switch"
+					bind:value={values.switchName}
+					data={[...networkSwitches.standard, ...networkSwitches.manual].map((item) => ({
+						label: !isSwitchRuntimeAvailable(item)
+							? `${item.name} (runtime state unavailable)`
+							: item.vlanFiltering
+								? `${item.name} (VLAN filtered)`
+								: item.name,
+						value: item.name,
+						disabled: !isSwitchRuntimeAvailable(item)
+					}))}
+					classes="flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+				/>
+				<CustomComboBox
+					bind:open={comboOpen.mac}
+					label="MAC Address"
+					placeholder="Select or type a MAC"
+					bind:value={values.mac}
+					data={macOptions}
+					classes="flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+					allowCustom={true}
+				/>
+			</div>
+
+			{#if selectedSwitchIsFiltered}
+				<VLANPolicyEditor
+					title="Jail bridge-member policy"
+					bind:mode={properties.vlanPolicyMode}
+					bind:untagged={properties.vlanPolicyUntagged}
+					bind:tagged={properties.vlanPolicyTagged}
+					idPrefix="jail-network"
 				/>
 			{/if}
-			{#if jail.type !== 'freebsd' || !(properties.dhcp && properties.slaac)}
-				<CustomCheckbox
-					bind:checked={properties.defaultGateway}
-					label="Default Gateway"
-					classes="flex items-center gap-2"
-					disabled={hasOtherDefaultGateway}
+
+			<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+				<CustomComboBox
+					bind:open={comboOpen.ipv4}
+					label="IPv4 Address"
+					placeholder="Select or type an IPv4 CIDR"
+					bind:value={values.ipv4}
+					data={ipv4Options}
+					classes="w-full flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={properties.dhcp}
+					allowCustom={true}
 				/>
-			{/if}
+				<CustomComboBox
+					bind:open={comboOpen.ipv4Gateway}
+					label="IPv4 Gateway"
+					placeholder="Select or type an IPv4 gateway"
+					bind:value={values.ipv4Gateway}
+					data={ipv4GatewayOptions}
+					classes="flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={properties.dhcp}
+					allowCustom={true}
+				/>
+				<CustomComboBox
+					bind:open={comboOpen.ipv6}
+					label="IPv6 Address"
+					placeholder="Select or type an IPv6 CIDR"
+					bind:value={values.ipv6}
+					data={ipv6Options}
+					classes="flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={properties.slaac}
+					allowCustom={true}
+				/>
+				<CustomComboBox
+					bind:open={comboOpen.ipv6Gateway}
+					label="IPv6 Gateway"
+					placeholder="Select or type an IPv6 gateway"
+					bind:value={values.ipv6Gateway}
+					data={ipv6GatewayOptions}
+					classes="flex-1 space-y-1"
+					triggerWidth="w-full"
+					width="w-full"
+					disabled={properties.slaac}
+					allowCustom={true}
+				/>
+			</div>
+
+			<div class="mt-2 flex flex-wrap items-center gap-4">
+				{#if jail.type === 'freebsd'}
+					<CustomCheckbox
+						bind:checked={properties.dhcp}
+						label="DHCP"
+						classes="flex items-center gap-2"
+					/>
+					<CustomCheckbox
+						bind:checked={properties.slaac}
+						label="SLAAC"
+						classes="flex items-center gap-2"
+					/>
+				{/if}
+				{#if jail.type !== 'freebsd' || !(properties.dhcp && properties.slaac)}
+					<CustomCheckbox
+						bind:checked={properties.defaultGateway}
+						label="Default Gateway"
+						classes="flex items-center gap-2"
+						disabled={hasOtherDefaultGateway}
+					/>
+				{/if}
+			</div>
 		</div>
 
-		<Dialog.Footer class="flex justify-end">
+		<Dialog.Footer class="flex shrink-0 justify-end pt-4">
 			<Button onclick={save} type="submit" size="sm" disabled={saving}>
 				{#if saving}
 					<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>

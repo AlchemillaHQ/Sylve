@@ -23,11 +23,11 @@ import (
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -414,44 +414,38 @@ func (s *Service) vmConfigPreflightReasons(vm vmModels.VM, targetNode clusterMod
 	return reasons
 }
 
-func (s *Service) resolveNetworkSwitchInfo(switchType string, switchID any) (name string, bridge string, err error) {
-	switch strings.ToLower(strings.TrimSpace(switchType)) {
-	case "manual":
-		var sw networkModels.ManualSwitch
-		if err := s.DB.Where("id = ?", switchID).First(&sw).Error; err != nil {
-			return "", "", err
-		}
-		return strings.TrimSpace(sw.Name), strings.TrimSpace(sw.Bridge), nil
-	case "standard", "":
-		var sw networkModels.StandardSwitch
-		if err := s.DB.Where("id = ?", switchID).First(&sw).Error; err != nil {
-			return "", "", err
-		}
-		return strings.TrimSpace(sw.Name), strings.TrimSpace(sw.BridgeName), nil
-	default:
-		return "", "", nil
-	}
-}
-
-type vmTargetSwitch struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Bridge string `json:"bridge"`
-}
+var (
+	resolveMigrationVMNetworkAttachment = libvirt.ResolveEffectiveVMNetworkAttachment
+	resolveMigrationVMNetworkIdentity   = libvirt.ResolveVMNetworkIdentity
+)
 
 type vmTargetProbe struct {
-	RID        uint             `json:"rid"`
-	MediaUUIDs []string         `json:"mediaUuids"`
-	VNCPort    int              `json:"vncPort"`
-	Switches   []vmTargetSwitch `json:"switches"`
-	FsDatasets []string         `json:"fsDatasets"`
+	RID        uint                              `json:"rid"`
+	MediaUUIDs []string                          `json:"mediaUuids"`
+	VNCPort    int                               `json:"vncPort"`
+	Switches   []networkAttachment.NamedContract `json:"switches"`
+	FsDatasets []string                          `json:"fsDatasets"`
 }
 
 type vmTargetResult struct {
+	networkAttachment.TargetResult
 	MissingMedia      []string `json:"missingMedia"`
 	VNCPortInUse      bool     `json:"vncPortInUse"`
-	MissingSwitches   []string `json:"missingSwitches"`
 	MissingFsDatasets []string `json:"missingFsDatasets"`
+}
+
+type jailTargetProbe struct {
+	Networks []networkAttachment.NamedContract `json:"networks"`
+}
+
+type jailTargetResult = networkAttachment.TargetResult
+
+var resolveMigrationJailNetworkAttachment = func(
+	db *gorm.DB,
+	network *jailModels.Network,
+) (networkAttachment.Contract, error) {
+	contract, _, err := jail.ResolveEffectiveNetworkAttachment(db, network)
+	return contract, err
 }
 
 func (s *Service) requireTargetGuestRecordAbsent(
@@ -565,7 +559,7 @@ func (s *Service) remoteTargetGuestRecord(
 	return nil, nil
 }
 
-func (s *Service) buildVMTargetProbe(vm vmModels.VM) (vmTargetProbe, map[string]string) {
+func (s *Service) buildVMTargetProbe(vm vmModels.VM) (vmTargetProbe, map[string]string, error) {
 	uuids, nameByUUID := collectVMISOUUIDs(vm.Storages)
 
 	probe := vmTargetProbe{
@@ -576,29 +570,36 @@ func (s *Service) buildVMTargetProbe(vm vmModels.VM) (vmTargetProbe, map[string]
 		probe.VNCPort = vm.VNCPort
 	}
 
-	seenSwitch := make(map[string]struct{})
+	seenSwitch := make(map[string]int)
 	for _, net := range vm.Networks {
-		if !net.Enable {
-			continue
+		identityOnly := !net.Enable
+		var contract networkAttachment.Contract
+		var resErr error
+		if identityOnly {
+			contract, resErr = resolveMigrationVMNetworkIdentity(s.DB, net.SwitchType, net.SwitchID)
+		} else {
+			contract, resErr = resolveMigrationVMNetworkAttachment(s.DB, net.SwitchType, net.SwitchID)
 		}
-		name, bridge, resErr := s.resolveNetworkSwitchInfo(net.SwitchType, net.SwitchID)
 		if resErr != nil {
-			logger.L.Debug().Err(resErr).Uint("rid", vm.RID).Msg("failed_to_resolve_source_switch_for_preflight")
+			return probe, nameByUUID, fmt.Errorf(
+				"failed_to_resolve_source_switch_for_preflight: switch=%s:%d: %w",
+				net.SwitchType,
+				net.SwitchID,
+				resErr,
+			)
+		}
+		key := contract.SwitchType + "|" + contract.SwitchName
+		entry := networkAttachment.NamedContract{
+			Name: contract.SwitchName, Attachment: contract, IdentityOnly: identityOnly,
+		}
+		if index, ok := seenSwitch[key]; ok {
+			if !identityOnly && probe.Switches[index].IdentityOnly {
+				probe.Switches[index] = entry
+			}
 			continue
 		}
-		if name == "" && bridge == "" {
-			continue
-		}
-		key := strings.ToLower(strings.TrimSpace(net.SwitchType)) + "|" + name + "|" + bridge
-		if _, ok := seenSwitch[key]; ok {
-			continue
-		}
-		seenSwitch[key] = struct{}{}
-		probe.Switches = append(probe.Switches, vmTargetSwitch{
-			Name:   name,
-			Type:   strings.TrimSpace(net.SwitchType),
-			Bridge: bridge,
-		})
+		seenSwitch[key] = len(probe.Switches)
+		probe.Switches = append(probe.Switches, entry)
 	}
 
 	seenFs := make(map[string]struct{})
@@ -617,11 +618,14 @@ func (s *Service) buildVMTargetProbe(vm vmModels.VM) (vmTargetProbe, map[string]
 		probe.FsDatasets = append(probe.FsDatasets, ds)
 	}
 
-	return probe, nameByUUID
+	return probe, nameByUUID, nil
 }
 
 func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, targetNode clusterModels.ClusterNode) []string {
-	probe, nameByUUID := s.buildVMTargetProbe(vm)
+	probe, nameByUUID, probeErr := s.buildVMTargetProbe(vm)
+	if probeErr != nil {
+		return []string{probeErr.Error()}
+	}
 	if len(probe.MediaUUIDs) == 0 && len(probe.Switches) == 0 && len(probe.FsDatasets) == 0 && probe.VNCPort == 0 {
 		return nil
 	}
@@ -633,6 +637,9 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 	if unsupported {
 		return []string{"target_check_unsupported"}
 	}
+	if !result.NetworkCompatibilityChecked {
+		return []string{"target_network_compatibility_check_unsupported"}
+	}
 
 	var reasons []string
 	for _, uuid := range result.MissingMedia {
@@ -643,7 +650,10 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 		reasons = append(reasons, fmt.Sprintf("warning_target_missing_iso: %s", name))
 	}
 	for _, sw := range result.MissingSwitches {
-		reasons = append(reasons, fmt.Sprintf("warning_target_missing_switch: %s", sw))
+		reasons = append(reasons, fmt.Sprintf("target_missing_switch: %s", sw))
+	}
+	for _, sw := range result.IncompatibleSwitches {
+		reasons = append(reasons, fmt.Sprintf("target_incompatible_switch: %s", sw))
 	}
 	for _, ds := range result.MissingFsDatasets {
 		reasons = append(reasons, fmt.Sprintf("warning_9p_share_not_migrated: %s", ds))
@@ -714,6 +724,90 @@ func (s *Service) remoteCheckVMTarget(ctx context.Context, targetNode clusterMod
 	return vmTargetResult{}, false, fmt.Errorf("target_check_request_failed: %w", lastErr)
 }
 
+func (s *Service) buildJailTargetProbe(jailID uint) (jailTargetProbe, error) {
+	var probe jailTargetProbe
+	var networks []jailModels.Network
+	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
+		Where("jid = ?", jailID).
+		Order("id ASC").
+		Find(&networks).Error; err != nil {
+		return probe, fmt.Errorf("jail_network_lookup_failed: %w", err)
+	}
+
+	for index := range networks {
+		network := &networks[index]
+		contract, err := resolveMigrationJailNetworkAttachment(s.DB, network)
+		if err != nil {
+			return probe, fmt.Errorf("network_%d_source_switch_incompatible: %w", index+1, err)
+		}
+		probe.Networks = append(probe.Networks, networkAttachment.NamedContract{
+			Name:       strings.TrimSpace(network.Name),
+			Attachment: contract,
+		})
+	}
+
+	return probe, nil
+}
+
+func (s *Service) remoteCheckJailTarget(
+	ctx context.Context,
+	targetNode clusterModels.ClusterNode,
+	probe jailTargetProbe,
+) (jailTargetResult, bool, error) {
+	if s.Cluster == nil || s.Cluster.AuthService == nil {
+		return jailTargetResult{}, false, fmt.Errorf("cluster_auth_unavailable")
+	}
+
+	clusterToken, tokenErr := s.Cluster.AuthService.CreateInternalClusterJWT("migration")
+	if tokenErr != nil {
+		return jailTargetResult{}, false, fmt.Errorf("create_cluster_token_failed: %w", tokenErr)
+	}
+
+	body, marshalErr := json.Marshal(probe)
+	if marshalErr != nil {
+		return jailTargetResult{}, false, fmt.Errorf("marshal_target_check_payload_failed: %w", marshalErr)
+	}
+	url := fmt.Sprintf("https://%s/api/intra-cluster/migration/check-jail-target", targetNode.API)
+	headers := map[string]string{
+		"Accept":          "application/json",
+		"Content-Type":    "application/json",
+		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
+	}
+
+	const attempts = 3
+	var lastErr error
+	for attempt := 0; attempt < attempts; attempt++ {
+		respBody, respStatus, reqErr := utils.HTTPPostJSONWithTimeout(url, body, headers, 10*time.Second)
+		if respStatus == 404 {
+			return jailTargetResult{}, true, nil
+		}
+		if respStatus >= 300 {
+			return jailTargetResult{}, false, fmt.Errorf("target_check_returned_http_%d: %s", respStatus, string(respBody))
+		}
+		if reqErr != nil {
+			lastErr = reqErr
+			if attempt < attempts-1 {
+				select {
+				case <-ctx.Done():
+					return jailTargetResult{}, false, ctx.Err()
+				case <-time.After(time.Duration(attempt+1) * 500 * time.Millisecond):
+				}
+			}
+			continue
+		}
+
+		var parsed struct {
+			Data jailTargetResult `json:"data"`
+		}
+		if err := json.Unmarshal(respBody, &parsed); err != nil {
+			return jailTargetResult{}, false, fmt.Errorf("target_check_parse_failed: %w", err)
+		}
+		return parsed.Data, false, nil
+	}
+
+	return jailTargetResult{}, false, fmt.Errorf("target_check_request_failed: %w", lastErr)
+}
+
 func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNode clusterModels.ClusterNode) []string {
 	var reasons []string
 	var sourceJail jailModels.Jail
@@ -749,19 +843,6 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 		return []string{fmt.Sprintf("jail_storage_lookup_failed: %v", err)}
 	}
 
-	type jailNetworkRow struct {
-		SwitchID   uint
-		SwitchType string
-	}
-	var jailNetworks []jailNetworkRow
-	if err := s.DB.Raw(`
-		SELECT jn.switch_id, jn.switch_type
-		FROM jail_networks jn
-			WHERE jn.jid = ?
-		`, sourceJail.ID).Scan(&jailNetworks).Error; err != nil {
-		return []string{fmt.Sprintf("jail_network_lookup_failed: %v", err)}
-	}
-
 	for _, pool := range jailStorages {
 		pool = strings.TrimSpace(pool)
 		if pool == "" {
@@ -786,23 +867,25 @@ func (s *Service) validateJailPreflight(ctx context.Context, ctID uint, targetNo
 		}
 	}
 
-	for i, net := range jailNetworks {
-		bridge, err := s.resolveNetworkBridgeName(strings.TrimSpace(net.SwitchType), net.SwitchID)
-		if err != nil {
-			reasons = append(reasons, fmt.Sprintf("network_%d_switch_lookup_failed: %v", i+1, err))
-			continue
-		}
-		if bridge == "" {
-			continue
-		}
-
-		bridgeExists, bridgeErr := s.remoteBridgeExists(ctx, identity, privateKeyPath, bridge)
-		if bridgeErr != nil {
-			reasons = append(reasons, fmt.Sprintf("network_%d_bridge_check_failed_%s: %v", i+1, bridge, bridgeErr))
-			continue
-		}
-		if !bridgeExists {
-			reasons = append(reasons, fmt.Sprintf("target_missing_bridge: %s", bridge))
+	probe, probeErr := s.buildJailTargetProbe(sourceJail.ID)
+	if probeErr != nil {
+		return append(reasons, probeErr.Error())
+	}
+	if len(probe.Networks) > 0 {
+		result, unsupported, checkErr := s.remoteCheckJailTarget(ctx, targetNode, probe)
+		if checkErr != nil {
+			reasons = append(reasons, fmt.Sprintf("target_check_failed: %v", checkErr))
+		} else if unsupported {
+			reasons = append(reasons, "target_check_unsupported")
+		} else if !result.NetworkCompatibilityChecked {
+			reasons = append(reasons, "target_network_compatibility_check_unsupported")
+		} else {
+			for _, sw := range result.MissingSwitches {
+				reasons = append(reasons, fmt.Sprintf("target_missing_switch: %s", sw))
+			}
+			for _, sw := range result.IncompatibleSwitches {
+				reasons = append(reasons, fmt.Sprintf("target_incompatible_switch: %s", sw))
+			}
 		}
 	}
 
@@ -1811,25 +1894,6 @@ func (s *Service) resolveJailDatasets(ctx context.Context, ctID uint) ([]string,
 	return datasets, nil
 }
 
-func (s *Service) resolveNetworkBridgeName(switchType string, switchID any) (string, error) {
-	switch strings.ToLower(switchType) {
-	case "standard":
-		var sw networkModels.StandardSwitch
-		if err := s.DB.Where("id = ?", switchID).First(&sw).Error; err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(sw.BridgeName), nil
-	case "manual":
-		var sw networkModels.ManualSwitch
-		if err := s.DB.Where("id = ?", switchID).First(&sw).Error; err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(sw.Bridge), nil
-	default:
-		return "", nil
-	}
-}
-
 func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, dataset string) (bool, error) {
 	parsedDataset, err := remoteexec.ParseZFSDataset(dataset)
 	if err != nil {
@@ -1848,21 +1912,4 @@ func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterMode
 		return false, err
 	}
 	return strings.TrimSpace(output) != "", nil
-}
-
-func (s *Service) remoteBridgeExists(ctx context.Context, identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, bridge string) (bool, error) {
-	output, err := runClusterRemoteCommand(
-		ctx, identity, privateKeyPath, "ifconfig.get", "",
-		"/sbin/ifconfig", bridge,
-	)
-	if err != nil {
-		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
-		if strings.Contains(combined, "does not exist") ||
-			strings.Contains(combined, "not found") ||
-			strings.Contains(combined, "no such interface") {
-			return false, nil
-		}
-		return false, fmt.Errorf("%s: %s", strings.TrimSpace(output), err)
-	}
-	return true, nil
 }

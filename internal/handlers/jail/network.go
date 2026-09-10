@@ -44,6 +44,28 @@ func jailNetworkErrorCode(err error) string {
 	return strings.TrimSpace(code)
 }
 
+func jailNetworkErrorCodes(err error) map[string]struct{} {
+	codes := make(map[string]struct{})
+	if err == nil {
+		return codes
+	}
+	for _, part := range strings.Split(strings.ToLower(err.Error()), ":") {
+		if code := strings.TrimSpace(part); code != "" {
+			codes[code] = struct{}{}
+		}
+	}
+	return codes
+}
+
+func jailNetworkErrorHasCode(codes map[string]struct{}, candidates ...string) bool {
+	for _, candidate := range candidates {
+		if _, ok := codes[candidate]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 func jailNetworkErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusInternalServerError
@@ -52,26 +74,35 @@ func jailNetworkErrorStatus(err error) int {
 		return http.StatusNotFound
 	}
 
-	switch jailNetworkErrorCode(err) {
-	case "invalid_request", "invalid_request_data", "invalid_ct_id", "invalid_network_id",
-		"network_name_required", "invalid_network_name", "switch_name_required", "invalid_vlan", "invalid_mac",
+	codes := jailNetworkErrorCodes(err)
+	switch {
+	case jailNetworkErrorHasCode(codes,
+		"db_not_initialized", "network_service_unavailable", "jail_network_service_unavailable",
+		"failed_to_inspect_manual_switch_vlan_state", "unfiltered_switch_runtime_inspection_failed"):
+		return http.StatusServiceUnavailable
+	case jailNetworkErrorHasCode(codes,
+		"invalid_request", "invalid_request_data", "invalid_ct_id", "invalid_network_id",
+		"network_name_required", "invalid_network_name", "switch_name_required", "invalid_mac",
 		"invalid_ip4_cidr_not_assignable", "invalid_ip6_cidr_not_assignable",
 		"invalid_ipv4_gateway", "invalid_ipv6_gateway", "network_object_type_mismatch",
 		"network_object_requires_single_entry", "conflicting_network_value_sources", "network_mac_required",
 		"default_gateway_requires_gateway", "cannot_set_dhcp_slaac_and_default_gateway_together",
-		"cannot_set_dhcp_or_slaac_when_linux_jail":
+		"cannot_set_dhcp_or_slaac_when_linux_jail", "vlan_policy_requires_switch",
+		"vlan_policy_requires_filtered_switch", "filtered_switch_vlan_policy_required", "invalid_vlan_policy"):
 		return http.StatusBadRequest
-	case "replication_lease_not_owned":
+	case jailNetworkErrorHasCode(codes, "replication_lease_not_owned"):
 		return http.StatusForbidden
-	case "jail_not_found", "network_not_found", "switch_not_found", "network_object_not_found":
+	case jailNetworkErrorHasCode(codes,
+		"jail_not_found", "network_not_found", "switch_not_found", "network_object_not_found"):
 		return http.StatusNotFound
-	case "restore_in_progress", "jail_network_change_requires_inactive",
+	case jailNetworkErrorHasCode(codes,
+		"restore_in_progress", "jail_network_change_requires_inactive",
 		"cannot_add_network_when_inheriting_network", "cannot_edit_network_when_inheriting_network",
 		"jail_network_name_exists", "jail_default_gateway_exists", "network_object_already_used",
-		"jail_dataset_mountpoint_not_usable":
+		"jail_dataset_mountpoint_not_usable", "filtered_switch_qinq_unsupported",
+		"invalid_manual_switch_default_pvid", "filtered_switch_runtime_mismatch",
+		"unfiltered_switch_runtime_vlan_mode_mismatch"):
 		return http.StatusConflict
-	case "network_service_unavailable":
-		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
@@ -156,7 +187,7 @@ func SetNetworkInheritance(jailService jailNetworkService) gin.HandlerFunc {
 }
 
 // @Summary Attach a network to a jail
-// @Description Create a network attachment for an inactive jail. The jail must not inherit host networking.
+// @Description Create a network attachment for an inactive jail. The jail must not inherit host networking, and a filtered switch requires an explicit access or trunk VLAN policy.
 // @Tags Jail
 // @Accept json
 // @Produce json
@@ -205,7 +236,7 @@ func AddNetwork(jailService jailNetworkService) gin.HandlerFunc {
 }
 
 // @Summary Update a jail network
-// @Description Partially update a network attachment belonging to an inactive jail. Omitted fields are preserved.
+// @Description Partially update a network attachment belonging to an inactive jail. Omitted fields are preserved, and a filtered switch requires an explicit access or trunk VLAN policy.
 // @Tags Jail
 // @Accept json
 // @Produce json

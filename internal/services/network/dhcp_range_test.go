@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -139,6 +140,45 @@ func TestCreateDHCPRangeRequiresConfiguredSwitchAndRejectsFamilyConflict(t *test
 	}
 	if _, err := svc.CreateRange(&request); !errors.Is(err, ErrDHCPRangeConflict) || DHCPRangeErrorCode(err) != "dhcp_switch_family_range_exists" {
 		t.Fatalf("expected same-family conflict, got %v", err)
+	}
+}
+
+func TestCreateDHCPRangeRejectsFilteredStandardSwitch(t *testing.T) {
+	svc, db, standard, _ := setupDHCPRangeService(t, func() error { return nil })
+	if err := db.Model(&standard).Update("vlan_filtering", true).Error; err != nil {
+		t.Fatalf("mark standard switch filtered: %v", err)
+	}
+
+	request := validCreateDHCPRangeRequest(standard.ID)
+	_, err := svc.CreateRange(&request)
+	if !errors.Is(err, ErrDHCPRangeConflict) || DHCPRangeErrorCode(err) != "dhcp_filtered_standard_switch_l2_only" {
+		t.Fatalf("filtered standard switch DHCP range error = %v (%q)", err, DHCPRangeErrorCode(err))
+	}
+}
+
+func TestCreateDHCPRangeUsesFilteredStandardSwitchHostVLANInterface(t *testing.T) {
+	svc, db, standard, path := setupDHCPRangeService(t, func() error { return nil })
+	hostVLAN := 42
+	if err := db.Model(&standard).Updates(map[string]any{
+		"vlan_filtering": true,
+		"host_vlan":      hostVLAN,
+	}).Error; err != nil {
+		t.Fatalf("configure filtered standard switch host VLAN: %v", err)
+	}
+
+	request := validCreateDHCPRangeRequest(standard.ID)
+	if _, err := svc.CreateRange(&request); err != nil {
+		t.Fatalf("create filtered host VLAN DHCP range: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read rendered DHCP range config: %v", err)
+	}
+	if !strings.Contains(
+		string(contents),
+		"dhcp-range=bridge0.42,192.0.2.10,192.0.2.20,43200\n",
+	) {
+		t.Fatalf("DHCP range did not use the host VLAN interface:\n%s", contents)
 	}
 }
 

@@ -269,6 +269,9 @@ func validateDHCPRangeSwitch(tx *gorm.DB, req *normalizedDHCPRangeRequest) error
 			}
 			return fmt.Errorf("load_dhcp_standard_switch: %w", err)
 		}
+		if sw.VLANFiltering && sw.HostVLAN == nil {
+			return conflictingDHCPRange("dhcp_filtered_standard_switch_l2_only", nil)
+		}
 		if err := tx.Table("dhcp_standard_switches").
 			Where("dhcp_config_id = ? AND standard_switch_id = ?", config.ID, *req.standardSwitch).
 			Count(&count).Error; err != nil {

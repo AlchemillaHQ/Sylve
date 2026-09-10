@@ -1,8 +1,92 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { NetworkObject } from '$lib/types/network/object';
-import type { SwitchList } from '$lib/types/network/switch';
+import type { StandardSwitchVLANConfig } from '$lib/api/network/switch';
+import type { SwitchList, VLANPortPolicy } from '$lib/types/network/switch';
+import { parseOptionalVLAN, parseTaggedVLANs } from '$lib/utils/network/vlan';
 import type { CellComponent } from 'tabulator-tables';
 import { renderWithIcon } from '../../table';
+
+export interface VLANPolicyDraft {
+	mode: VLANPortPolicy['mode'];
+	untaggedVlan: string;
+	taggedVlans: string;
+}
+
+export type VLANConfigResult =
+	| { ok: true; value: StandardSwitchVLANConfig }
+	| { ok: false; error: string };
+
+export function buildVLANConfig(
+	filtering: boolean,
+	defaultAccessDraft: string,
+	hostDraft: string,
+	ports: string[],
+	drafts: Record<string, VLANPolicyDraft>
+): VLANConfigResult {
+	if (!filtering) {
+		return {
+			ok: true,
+			value: { vlanFiltering: false, defaultAccessVlan: null, hostVlan: null, portPolicies: {} }
+		};
+	}
+
+	const defaultAccessVlan = parseOptionalVLAN(defaultAccessDraft);
+	if (Number.isNaN(defaultAccessVlan)) {
+		return { ok: false, error: 'Default access VLAN must be between 1 and 4094' };
+	}
+	const hostVlan = parseOptionalVLAN(hostDraft);
+	if (Number.isNaN(hostVlan)) {
+		return { ok: false, error: 'Host VLAN must be between 1 and 4094' };
+	}
+
+	const portPolicies: Record<string, VLANPortPolicy> = {};
+	for (const port of [...ports].sort()) {
+		const draft = drafts[port];
+		if (!draft || (draft.mode !== 'access' && draft.mode !== 'trunk')) {
+			return { ok: false, error: `Choose an access or trunk policy for ${port}` };
+		}
+
+		const untaggedVlan = parseOptionalVLAN(draft.untaggedVlan);
+		if (Number.isNaN(untaggedVlan)) {
+			return { ok: false, error: `${port}: VLAN IDs must be between 1 and 4094` };
+		}
+		if (draft.mode === 'access') {
+			if (untaggedVlan === null) {
+				return { ok: false, error: `${port}: an access VLAN is required` };
+			}
+			portPolicies[port] = { mode: 'access', untaggedVlan, taggedVlans: [] };
+			continue;
+		}
+
+		const taggedVlans = parseTaggedVLANs(draft.taggedVlans);
+		if (!taggedVlans || taggedVlans.length === 0) {
+			return { ok: false, error: `${port}: enter at least one tagged VLAN or VLAN range` };
+		}
+		if (untaggedVlan !== null && taggedVlans.includes(untaggedVlan)) {
+			return { ok: false, error: `${port}: the native VLAN cannot also be tagged` };
+		}
+		portPolicies[port] = {
+			mode: 'trunk',
+			...(untaggedVlan === null ? {} : { untaggedVlan }),
+			taggedVlans
+		};
+	}
+
+	return {
+		ok: true,
+		value: { vlanFiltering: true, defaultAccessVlan, hostVlan, portPolicies }
+	};
+}
 
 export function generateTableData(switches: SwitchList | undefined): {
 	rows: Row[];
@@ -49,6 +133,11 @@ export function generateTableData(switches: SwitchList | undefined): {
 		{
 			field: 'vlan',
 			title: 'VLAN'
+		},
+		{
+			field: 'vlanFiltering',
+			title: 'Filtering',
+			formatter: (cell: CellComponent) => (cell.getValue() ? 'Filtered' : 'Unfiltered')
 		},
 		{
 			field: 'ipv4',
@@ -224,7 +313,10 @@ export function generateTableData(switches: SwitchList | undefined): {
 				slaac: sw.slaac || false,
 				defaultRoute: sw.defaultRoute || false,
 				defaultRoute6: sw.defaultRoute6 || false,
-				disableBridgeOffloads: sw.disableBridgeOffloads || false
+				disableBridgeOffloads: sw.disableBridgeOffloads || false,
+				vlanFiltering: sw.vlanFiltering || false,
+				defaultAccessVlan: sw.defaultAccessVlan,
+				hostVlan: sw.hostVlan
 			});
 		}
 	}

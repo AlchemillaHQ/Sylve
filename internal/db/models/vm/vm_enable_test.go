@@ -78,3 +78,25 @@ func TestVMTemplateStorageUnmarshalEnableRespectsExplicitValue(t *testing.T) {
 		t.Fatalf("expected enable=false when field is explicitly false")
 	}
 }
+
+func TestVMTemplateNetworkUnmarshalEnableDefaultsToTrue(t *testing.T) {
+	var network VMTemplateNetwork
+	if err := json.Unmarshal([]byte(`{"name":"net-1","switchName":"lan","switchType":"standard"}`), &network); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if !network.Enable {
+		t.Fatal("expected enable=true when field is missing")
+	}
+}
+
+func TestVMTemplateNetworkUnmarshalEnableRespectsExplicitValue(t *testing.T) {
+	var network VMTemplateNetwork
+	if err := json.Unmarshal([]byte(`{"name":"net-1","switchName":"lan","switchType":"standard","enable":false}`), &network); err != nil {
+		t.Fatalf("unexpected unmarshal error: %v", err)
+	}
+
+	if network.Enable {
+		t.Fatal("expected enable=false when field is explicitly false")
+	}
+}

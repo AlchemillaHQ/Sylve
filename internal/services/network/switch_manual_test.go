@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"gorm.io/gorm"
 )
@@ -27,8 +28,6 @@ func setupManualSwitchService(t *testing.T) (*Service, *gorm.DB) {
 	)
 
 	statements := []string{
-		`CREATE TABLE vm_networks (id integer primary key, switch_id integer, switch_type text)`,
-		`CREATE TABLE jail_networks (id integer primary key, switch_id integer, switch_type text)`,
 		`CREATE TABLE dhcp_manual_switches (dhcp_config_id integer, manual_switch_id integer)`,
 		`CREATE TABLE dhcp_ranges (id integer primary key, manual_switch_id integer)`,
 	}
@@ -41,6 +40,11 @@ func setupManualSwitchService(t *testing.T) (*Service, *gorm.DB) {
 	stubManualSwitchInterface(t, func(name string) (*iface.Interface, error) {
 		return &iface.Interface{Name: name, Groups: []string{"bridge"}}, nil
 	})
+	originalInspect := syncInspectBridgeVLAN
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
+	t.Cleanup(func() { syncInspectBridgeVLAN = originalInspect })
 	return svc, db
 }
 
@@ -170,7 +174,7 @@ func TestDeleteManualSwitchRejectsEveryKnownReference(t *testing.T) {
 		errorCode string
 	}{
 		{name: "VM", insert: `INSERT INTO vm_networks (switch_id, switch_type) VALUES (?, 'manual')`, errorCode: "manual_switch_in_use_by_vm"},
-		{name: "jail", insert: `INSERT INTO jail_networks (switch_id, switch_type) VALUES (?, 'manual')`, errorCode: "manual_switch_in_use_by_jail"},
+		{name: "jail", insert: `INSERT INTO jail_networks (name, switch_id, switch_type) VALUES ('vnet0', ?, 'manual')`, errorCode: "manual_switch_in_use_by_jail"},
 		{name: "DHCP config", insert: `INSERT INTO dhcp_manual_switches (dhcp_config_id, manual_switch_id) VALUES (1, ?)`, errorCode: "manual_switch_in_use_by_dhcp_config"},
 		{name: "DHCP range", insert: `INSERT INTO dhcp_ranges (manual_switch_id) VALUES (?)`, errorCode: "manual_switch_in_use_by_dhcp_range"},
 	}
@@ -206,5 +210,145 @@ func TestManualSwitchDeleteAndUpdateReturnStableErrors(t *testing.T) {
 	}
 	if _, err := svc.UpdateManualSwitch(switchModel.ID, "renamed", "bridge51"); !errors.Is(err, ErrManualSwitchInUse) || ManualSwitchErrorCode(err) != "manual_switch_in_use_by_dhcp_config" {
 		t.Fatalf("unexpected referenced-update error: %v", err)
+	}
+}
+
+func TestManualSwitchReportsLiveVLANStateWithoutPersistingIt(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	liveState := bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: 10}
+	syncInspectBridgeVLAN = func(bridge string) (bridgevlan.BridgeState, error) {
+		if bridge != "bridge60" {
+			t.Fatalf("inspected bridge = %q, want bridge60", bridge)
+		}
+		return liveState, nil
+	}
+
+	created, err := svc.CreateManualSwitch("filtered", "bridge60")
+	if err != nil {
+		t.Fatalf("create filtered manual switch: %v", err)
+	}
+	if !created.VLANStateAvailable || !created.VLANFiltering ||
+		created.DefaultAccessVLAN == nil || *created.DefaultAccessVLAN != 10 {
+		t.Fatalf("created live VLAN state = %#v", created)
+	}
+	if db.Migrator().HasColumn("manual_switches", "vlan_filtering") ||
+		db.Migrator().HasColumn("manual_switches", "default_access_vlan") {
+		t.Fatal("manual switch VLAN status was added to the database schema")
+	}
+
+	var persisted networkModels.ManualSwitch
+	if err := db.First(&persisted, created.ID).Error; err != nil {
+		t.Fatalf("load manual switch: %v", err)
+	}
+	if persisted.VLANFiltering || persisted.DefaultAccessVLAN != nil {
+		t.Fatalf("database load unexpectedly contained runtime VLAN state: %#v", persisted)
+	}
+
+	liveState = bridgevlan.BridgeState{}
+	switches, err := svc.GetManualSwitches()
+	if err != nil {
+		t.Fatalf("list manual switches: %v", err)
+	}
+	if len(switches) != 1 || !switches[0].VLANStateAvailable ||
+		switches[0].VLANFiltering || switches[0].DefaultAccessVLAN != nil {
+		t.Fatalf("manual switch did not reflect changed live state: %#v", switches)
+	}
+}
+
+func TestGetManualSwitchesIsolatesVLANInspectionFailures(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	seedManualSwitch(t, db, "healthy", "bridge-ok")
+	seedManualSwitch(t, db, "broken", "bridge-broken")
+	syncInspectBridgeVLAN = func(bridge string) (bridgevlan.BridgeState, error) {
+		if bridge == "bridge-broken" {
+			return bridgevlan.BridgeState{}, errors.New("ioctl failed")
+		}
+		return bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: 30}, nil
+	}
+
+	switches, err := svc.GetManualSwitches()
+	if err != nil {
+		t.Fatalf("one failed inspection broke the list: %v", err)
+	}
+	if len(switches) != 2 {
+		t.Fatalf("switch count = %d, want 2", len(switches))
+	}
+	byName := map[string]networkModels.ManualSwitch{}
+	for _, sw := range switches {
+		byName[sw.Name] = sw
+	}
+	healthy := byName["healthy"]
+	if !healthy.VLANStateAvailable || !healthy.VLANFiltering ||
+		healthy.DefaultAccessVLAN == nil || *healthy.DefaultAccessVLAN != 30 ||
+		healthy.VLANStateError != "" {
+		t.Fatalf("healthy state = %#v", healthy)
+	}
+	broken := byName["broken"]
+	if broken.VLANStateAvailable || broken.VLANFiltering || broken.DefaultAccessVLAN != nil ||
+		broken.VLANStateError != "manual_switch_vlan_state_unavailable" {
+		t.Fatalf("broken state = %#v", broken)
+	}
+}
+
+func TestManualSwitchVLANInspectionFailureStillCreatesObservationOnlyImport(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, errors.New("ioctl failed")
+	}
+
+	created, err := svc.CreateManualSwitch("broken", "bridge61")
+	if err != nil {
+		t.Fatalf("create observation-only import: %v", err)
+	}
+	if created.VLANStateAvailable || created.VLANStateError != "manual_switch_vlan_state_unavailable" {
+		t.Fatalf("unexpected unavailable state: %#v", created)
+	}
+	var count int64
+	if err := db.Model(&networkModels.ManualSwitch{}).Count(&count).Error; err != nil {
+		t.Fatalf("count manual switches: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("manual switch import count = %d, want 1", count)
+	}
+}
+
+func TestManualSwitchImportsUnsupportedLiveVLANStateAsUnavailable(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		state bridgevlan.BridgeState
+		code  string
+	}{
+		{
+			name:  "Q-in-Q",
+			state: bridgevlan.BridgeState{VLANFiltering: true, DefaultQinQ: true},
+			code:  "filtered_switch_qinq_unsupported",
+		},
+		{
+			name:  "reserved default PVID",
+			state: bridgevlan.BridgeState{VLANFiltering: true, DefaultPVID: 4095},
+			code:  "invalid_manual_switch_default_pvid",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := setupManualSwitchService(t)
+			syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+				return test.state, nil
+			}
+
+			created, err := svc.CreateManualSwitch("unsupported", "bridge62")
+			if err != nil {
+				t.Fatalf("create observation-only import: %v", err)
+			}
+			if created.VLANStateAvailable || created.VLANStateError != test.code {
+				t.Fatalf("unexpected unavailable state: %#v", created)
+			}
+			var count int64
+			if err := db.Model(&networkModels.ManualSwitch{}).Count(&count).Error; err != nil {
+				t.Fatalf("count manual switches: %v", err)
+			}
+			if count != 1 {
+				t.Fatalf("manual switch import count = %d, want 1", count)
+			}
+		})
 	}
 }

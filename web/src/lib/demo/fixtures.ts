@@ -1085,7 +1085,7 @@ function fullJail(jail: DemoJail) {
 			dhcp: true,
 			slaac: false,
 			defaultGateway: true,
-			vlan: 30
+			vlanPolicy: { mode: '', taggedVlans: [] }
 		}
 	];
 	jail.storages ??= [
@@ -1663,10 +1663,14 @@ function nextRecordId(items: Record<string, unknown>[]): number {
 	return Math.max(0, ...items.map((item) => Number(item.id) || 0)) + 1;
 }
 
-function demoSwitch(switchName: string): { id: number; type: 'standard' | 'manual' } {
-	if (switchName === 'storage') return { id: 2, type: 'standard' };
-	if (switchName === 'lab') return { id: 10, type: 'manual' };
-	return { id: 1, type: 'standard' };
+function demoSwitch(switchName: string): {
+	id: number;
+	type: 'standard' | 'manual';
+	vlanFiltering: boolean;
+} {
+	if (switchName === 'storage') return { id: 2, type: 'standard', vlanFiltering: false };
+	if (switchName === 'lab') return { id: 10, type: 'manual', vlanFiltering: false };
+	return { id: 1, type: 'standard', vlanFiltering: false };
 }
 
 function updateDemoVMDetails(vm: DemoVM, path: string, payload: Record<string, unknown>) {
@@ -1972,7 +1976,10 @@ function createDemoJail(config: DemoRequestConfig, hostname: string): DemoClient
 		primaryNetwork.dhcp = booleanField(payload, 'dhcp');
 		primaryNetwork.slaac = booleanField(payload, 'slaac');
 		primaryNetwork.defaultGateway = true;
-		primaryNetwork.vlan = Math.max(0, Math.min(4095, Math.trunc(numberField(payload, 'vlan'))));
+		primaryNetwork.vlanPolicy =
+			typeof payload.vlanPolicy === 'object' && payload.vlanPolicy !== null
+				? (payload.vlanPolicy as typeof primaryNetwork.vlanPolicy)
+				: { mode: '', taggedVlans: [] };
 	}
 
 	jails[hostname].push(jail);
@@ -2049,7 +2056,10 @@ function attachDemoJailNetwork(jail: DemoJail, payload: Record<string, unknown>)
 		dhcp: booleanField(payload, 'dhcp'),
 		slaac: booleanField(payload, 'slaac'),
 		defaultGateway: booleanField(payload, 'defaultGateway'),
-		vlan: Math.max(0, Math.min(4095, Math.trunc(numberField(payload, 'vlan'))))
+		vlanPolicy:
+			typeof payload.vlanPolicy === 'object' && payload.vlanPolicy !== null
+				? payload.vlanPolicy
+				: { mode: '', taggedVlans: [] }
 	};
 	networks.push(network);
 	return network;
@@ -3124,8 +3134,9 @@ export async function handleDemoRequest<T = unknown>(
 		}
 		const network = found.jail.networks![index];
 		const payload = requestPayload(config);
+		let selectedSwitch: ReturnType<typeof demoSwitch> | null = null;
 		if (payload.switchName !== undefined) {
-			const selectedSwitch = demoSwitch(stringField(payload, 'switchName'));
+			selectedSwitch = demoSwitch(stringField(payload, 'switchName'));
 			network.switchId = selectedSwitch.id;
 			network.switchType = selectedSwitch.type;
 		}
@@ -3138,10 +3149,14 @@ export async function handleDemoRequest<T = unknown>(
 			['ip6gw', 'ipv6GwId'],
 			['dhcp', 'dhcp'],
 			['slaac', 'slaac'],
-			['defaultGateway', 'defaultGateway'],
-			['vlan', 'vlan']
+			['defaultGateway', 'defaultGateway']
 		]) {
 			if (payload[payloadKey] !== undefined) network[recordKey] = payload[payloadKey];
+		}
+		if (typeof payload.vlanPolicy === 'object' && payload.vlanPolicy !== null) {
+			network.vlanPolicy = payload.vlanPolicy as typeof network.vlanPolicy;
+		} else if (selectedSwitch && !selectedSwitch.vlanFiltering) {
+			network.vlanPolicy = { mode: '', taggedVlans: [] };
 		}
 		return success(network) as DemoClientResponse<T>;
 	}

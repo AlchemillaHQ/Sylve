@@ -192,7 +192,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		s.Jail.StartStatsMonitoring(dCtx)
 	}
 
-	err := s.Network.SyncStandardSwitches(nil, "sync")
+	err := s.Network.SyncStandardSwitches()
 	if err != nil {
 		logger.L.Error().Msgf("error syncing standard switches: %v", err)
 	}

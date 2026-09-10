@@ -17,6 +17,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 
 	"github.com/gin-gonic/gin"
 )
@@ -43,6 +44,10 @@ type CreateStandardSwitchRequest struct {
 	ConfirmRCConflicts    *bool                                 `json:"confirmRCConflicts"`
 	Ports                 []string                              `json:"ports"`
 	BridgeMAC             networkModels.StandardSwitchMACSource `json:"bridgeMac"`
+	VLANFiltering         *bool                                 `json:"vlanFiltering"`
+	DefaultAccessVLAN     *int                                  `json:"defaultAccessVlan"`
+	HostVLAN              *int                                  `json:"hostVlan"`
+	PortPolicies          map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
 }
 
 type UpdateStandardSwitchRequest struct {
@@ -66,6 +71,10 @@ type UpdateStandardSwitchRequest struct {
 	DisableBridgeOffloads *bool                                 `json:"disableBridgeOffloads"`
 	ConfirmRCConflicts    *bool                                 `json:"confirmRCConflicts"`
 	BridgeMAC             networkModels.StandardSwitchMACSource `json:"bridgeMac"`
+	VLANFiltering         *bool                                 `json:"vlanFiltering"`
+	DefaultAccessVLAN     *int                                  `json:"defaultAccessVlan"`
+	HostVLAN              *int                                  `json:"hostVlan"`
+	PortPolicies          map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
 }
 
 func bindStandardSwitchJSON(c *gin.Context, destination any) bool {
@@ -179,8 +188,81 @@ func standardSwitchManualAddresses(
 	return manual
 }
 
+func createStandardSwitchServiceRequest(request CreateStandardSwitchRequest) network.CreateStandardSwitchRequest {
+	return network.CreateStandardSwitchRequest{
+		Name: request.Name,
+		StandardSwitchConfig: network.StandardSwitchConfig{
+			MTU:                   optionalInt(request.MTU),
+			VLAN:                  optionalInt(request.VLAN),
+			Network4ID:            optionalUint(request.Network4),
+			Network6ID:            optionalUint(request.Network6),
+			Gateway4ID:            optionalUint(request.Gateway4),
+			Gateway6ID:            optionalUint(request.Gateway6),
+			Ports:                 request.Ports,
+			MACSource:             request.BridgeMAC,
+			Private:               optionalBool(request.Private),
+			DHCP:                  optionalBool(request.DHCP),
+			DisableIPv6:           optionalBool(request.DisableIPv6),
+			SLAAC:                 optionalBool(request.SLAAC),
+			DefaultRoute:          optionalBool(request.DefaultRoute),
+			DefaultRoute6:         optionalBool(request.DefaultRoute6),
+			DisableBridgeOffloads: optionalBool(request.DisableBridgeOffloads),
+			Manual: standardSwitchManualAddresses(
+				request.Network4Manual,
+				request.Gateway4Manual,
+				request.Network6Manual,
+				request.Gateway6Manual,
+			),
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering:         optionalBool(request.VLANFiltering),
+				DefaultAccessVLAN: request.DefaultAccessVLAN,
+				HostVLAN:          request.HostVLAN,
+				PortPolicies:      request.PortPolicies,
+			},
+		},
+	}
+}
+
+func updateStandardSwitchServiceRequest(
+	id uint,
+	request UpdateStandardSwitchRequest,
+) network.UpdateStandardSwitchRequest {
+	return network.UpdateStandardSwitchRequest{
+		ID: id,
+		StandardSwitchConfig: network.StandardSwitchConfig{
+			MTU:                   optionalInt(request.MTU),
+			VLAN:                  optionalInt(request.VLAN),
+			Network4ID:            optionalUint(request.Network4),
+			Network6ID:            optionalUint(request.Network6),
+			Gateway4ID:            optionalUint(request.Gateway4),
+			Gateway6ID:            optionalUint(request.Gateway6),
+			Ports:                 request.Ports,
+			MACSource:             request.BridgeMAC,
+			Private:               optionalBool(request.Private),
+			DHCP:                  optionalBool(request.DHCP),
+			DisableIPv6:           optionalBool(request.DisableIPv6),
+			SLAAC:                 optionalBool(request.SLAAC),
+			DefaultRoute:          optionalBool(request.DefaultRoute),
+			DefaultRoute6:         optionalBool(request.DefaultRoute6),
+			DisableBridgeOffloads: optionalBool(request.DisableBridgeOffloads),
+			Manual: standardSwitchManualAddresses(
+				request.Network4Manual,
+				request.Gateway4Manual,
+				request.Network6Manual,
+				request.Gateway6Manual,
+			),
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering:         optionalBool(request.VLANFiltering),
+				DefaultAccessVLAN: request.DefaultAccessVLAN,
+				HostVLAN:          request.HostVLAN,
+				PortPolicies:      request.PortPolicies,
+			},
+		},
+	}
+}
+
 // @Summary Create a standard switch
-// @Description Create and apply a managed standard network switch
+// @Description Create and apply a managed standard network switch, optionally using FreeBSD 15 per-member VLAN filtering. A filtered base bridge remains layer 2; an optional managed Host VLAN interface provides host addressing.
 // @Tags Network
 // @Accept json
 // @Produce json
@@ -213,29 +295,7 @@ func CreateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		id, err := networkService.NewStandardSwitch(request.Name,
-			optionalInt(request.MTU),
-			optionalInt(request.VLAN),
-			optionalUint(request.Network4),
-			optionalUint(request.Network6),
-			optionalUint(request.Gateway4),
-			optionalUint(request.Gateway6),
-			request.Ports,
-			request.BridgeMAC,
-			optionalBool(request.Private),
-			optionalBool(request.DHCP),
-			optionalBool(request.DisableIPv6),
-			optionalBool(request.SLAAC),
-			optionalBool(request.DefaultRoute),
-			optionalBool(request.DefaultRoute6),
-			optionalBool(request.DisableBridgeOffloads),
-			standardSwitchManualAddresses(
-				request.Network4Manual,
-				request.Gateway4Manual,
-				request.Network6Manual,
-				request.Gateway6Manual,
-			),
-		)
+		id, err := networkService.NewStandardSwitch(createStandardSwitchServiceRequest(request))
 
 		if err != nil {
 			writeStandardSwitchError(c, "failed_to_create_switch", err)
@@ -287,7 +347,7 @@ func DeleteStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 }
 
 // @Summary Update a standard switch
-// @Description Replace and apply a managed standard network switch by ID
+// @Description Replace and apply a managed standard network switch by ID. Changing VLAN-filtering mode recreates the bridge and requires all VM and jail interfaces to be detached; changing the default access VLAN requires all attached VMs to be stopped.
 // @Tags Network
 // @Accept json
 // @Produce json
@@ -327,40 +387,10 @@ func UpdateStandardSwitch(networkService *network.Service) gin.HandlerFunc {
 			return
 		}
 
-		defaultRoute6 := optionalBool(request.DefaultRoute6)
-		if request.DefaultRoute6 == nil {
-			existing, err := networkService.GetStandardSwitch(id)
-			if err != nil {
-				writeStandardSwitchError(c, "failed_to_update_switch", err)
-				return
-			}
-			defaultRoute6 = existing.DefaultRoute6
-		}
-
-		err = networkService.EditStandardSwitch(
+		err = networkService.EditStandardSwitch(updateStandardSwitchServiceRequest(
 			id,
-			optionalInt(request.MTU),
-			optionalInt(request.VLAN),
-			optionalUint(request.Network4),
-			optionalUint(request.Network6),
-			optionalUint(request.Gateway4),
-			optionalUint(request.Gateway6),
-			request.Ports,
-			request.BridgeMAC,
-			optionalBool(request.Private),
-			optionalBool(request.DHCP),
-			optionalBool(request.DisableIPv6),
-			optionalBool(request.SLAAC),
-			optionalBool(request.DefaultRoute),
-			defaultRoute6,
-			optionalBool(request.DisableBridgeOffloads),
-			standardSwitchManualAddresses(
-				request.Network4Manual,
-				request.Gateway4Manual,
-				request.Network6Manual,
-				request.Gateway6Manual,
-			),
-		)
+			request,
+		))
 		if err != nil {
 			writeStandardSwitchError(c, "failed_to_update_switch", err)
 			return

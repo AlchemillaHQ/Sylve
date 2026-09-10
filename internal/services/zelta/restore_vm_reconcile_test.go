@@ -10,13 +10,113 @@ package zelta
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
+	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
+
+type restoreVMRuntimeLockProbe struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	check func()
+	err   error
+}
+
+func (p *restoreVMRuntimeLockProbe) RemoveLvVm(uint) error {
+	p.check()
+	return nil
+}
+
+func (p *restoreVMRuntimeLockProbe) CreateLvVm(int, context.Context) error {
+	p.check()
+	return p.err
+}
+
+func TestIntegrationRestoreVMReleasesSwitchLockBeforeRuntimeRebuild(t *testing.T) {
+	pool, client, cleanup := zfstest.SharedPool(t)
+	defer cleanup()
+	svc, db := newTestZeltaServiceWithDB(t,
+		&vmModels.VM{}, &vmModels.VMStorageDataset{}, &vmModels.VMSnapshot{},
+		&vmModels.Storage{}, &vmModels.Network{}, &vmModels.VMCPUPinning{},
+		&networkModels.StandardSwitch{}, &networkModels.ManualSwitch{},
+		&networkModels.Object{}, &networkModels.ObjectEntry{}, &networkModels.ObjectResolution{},
+	)
+	svc.GZFS = client
+	vid := 10
+	sw := networkModels.StandardSwitch{
+		Name: "restore-lock-test", BridgeName: "bridge-restore-lock-test",
+		VLANFiltering: true, DefaultAccessVLAN: &vid,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatal(err)
+	}
+	dataset := pool + "/sylve/virtual-machines/731"
+	zfstest.EnsureDataset(t, client, dataset)
+	mountpoint, err := svc.runLocalZFSGet(context.Background(), "mountpoint", dataset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(vmModels.VM{
+		RID: 731, Name: "restored-vm",
+		Networks: []vmModels.Network{{
+			Enable: true, Emulation: "virtio",
+			Attachment: &networkAttachment.Contract{
+				Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
+				SwitchType: "standard", SwitchName: sw.Name,
+				VLANFiltering: true, DefaultAccessVLAN: &vid,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(mountpoint, ".sylve"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(mountpoint, ".sylve/vm.json"), metadata, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stopAfterRebuild := errors.New("stop after runtime lock probe")
+	calls := 0
+	svc.VM = &restoreVMRuntimeLockProbe{err: stopAfterRebuild, check: func() {
+		calls++
+		var count int64
+		if err := db.Model(&vmModels.Network{}).Where("switch_id = ?", sw.ID).Count(&count).Error; err != nil || count != 1 {
+			t.Errorf("attachment must be committed before runtime rebuild: count=%d err=%v", count, err)
+		}
+		acquired := make(chan struct{})
+		go func() {
+			unlock := bridgevlan.LockStandardSwitchLifecycle(sw.BridgeName)
+			unlock()
+			close(acquired)
+		}()
+		select {
+		case <-acquired:
+		case <-time.After(time.Second):
+			t.Error("runtime rebuild still holds the switch lifecycle lock; VM CRUD lock ordering would deadlock")
+		}
+	}}
+	err = svc.reconcileRestoredVMFromDataset(context.Background(), dataset, "", true, false, false)
+	if !errors.Is(err, stopAfterRebuild) {
+		t.Fatalf("expected runtime lock probe error, got %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected RemoveLvVm and CreateLvVm probes, got %d", calls)
+	}
+}
 
 func TestNormalizeRestoredVMBootROMPreservesExplicitFirmware(t *testing.T) {
 	defaultBootROM := vmModels.VMBootROMUEFI
@@ -113,7 +213,7 @@ func TestInferRestoredVMRootDatasets(t *testing.T) {
 	}
 }
 
-func TestNormalizeRestoredVMNetworksSkipsUnresolved(t *testing.T) {
+func TestNormalizeRestoredVMNetworksRejectsUnresolved(t *testing.T) {
 	svc, db := newTestZeltaServiceWithDB(t,
 		&networkModels.StandardSwitch{},
 		&networkModels.ManualSwitch{},
@@ -161,24 +261,9 @@ func TestNormalizeRestoredVMNetworksSkipsUnresolved(t *testing.T) {
 	tx := db.Begin()
 	defer tx.Rollback()
 
-	resolved, requiresSync, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if requiresSync {
-		t.Fatal("expected requiresSync=false")
-	}
-	if len(resolved) != 1 {
-		t.Fatalf("expected 1 resolved network (lan), dmz should be skipped, got %d", len(resolved))
-	}
-	if resolved[0].SwitchID != lan.ID {
-		t.Fatalf("expected switch ID %d, got %d", lan.ID, resolved[0].SwitchID)
-	}
-	if resolved[0].Emulation != "e1000" {
-		t.Fatalf("expected emulation e1000, got %q", resolved[0].Emulation)
-	}
-	if !resolved[0].Enable {
-		t.Fatal("enabled network became disabled during restore normalization")
+	resolved, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
+	if !errors.Is(err, ErrSwitchNotFound) {
+		t.Fatalf("expected ErrSwitchNotFound, got resolved=%v err=%v", resolved, err)
 	}
 }
 
@@ -211,7 +296,7 @@ func TestNormalizeRestoredVMNetworksDefaultsEmulation(t *testing.T) {
 	tx := db.Begin()
 	defer tx.Rollback()
 
-	resolved, _, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
+	resolved, err := svc.normalizeRestoredVMNetworks(tx, 10, networks)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,5 +308,48 @@ func TestNormalizeRestoredVMNetworksDefaultsEmulation(t *testing.T) {
 	}
 	if resolved[0].Enable {
 		t.Fatal("explicitly disabled network became enabled during restore normalization")
+	}
+}
+
+func TestNormalizeRestoredVMNetworksPreservesEffectiveAccessVLAN(t *testing.T) {
+	svc, db := newTestZeltaServiceWithDB(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.ManualSwitch{},
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.ObjectResolution{},
+		&jailModels.Network{},
+	)
+	targetVLAN := 10
+	target := networkModels.StandardSwitch{
+		Name:              "vm-filtered",
+		BridgeName:        "bridge-vm-filtered",
+		VLANFiltering:     true,
+		DefaultAccessVLAN: &targetVLAN,
+	}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatalf("seed target switch: %v", err)
+	}
+
+	attachment := networkAttachment.Contract{
+		Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
+		SwitchName: target.Name, SwitchType: "standard", VLANFiltering: true,
+		DefaultAccessVLAN: &targetVLAN,
+	}
+	network := vmModels.Network{
+		Enable: true, SwitchType: "standard", Attachment: &attachment, Emulation: "virtio",
+	}
+	tx := db.Begin()
+	defer tx.Rollback()
+	resolved, err := svc.normalizeRestoredVMNetworks(tx, 10, []vmModels.Network{network})
+	if err != nil || len(resolved) != 1 {
+		t.Fatalf("matching target rejected: resolved=%v err=%v", resolved, err)
+	}
+
+	wrongVLAN := 20
+	network.Attachment.DefaultAccessVLAN = &wrongVLAN
+	_, err = svc.normalizeRestoredVMNetworks(tx, 10, []vmModels.Network{network})
+	if err == nil || !strings.Contains(err.Error(), "vm_network_default_access_vlan_mismatch") {
+		t.Fatalf("different effective VLAN accepted: %v", err)
 	}
 }

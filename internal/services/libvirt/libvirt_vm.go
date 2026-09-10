@@ -32,6 +32,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/beevik/etree"
 	"github.com/digitalocean/go-libvirt"
@@ -250,31 +251,25 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 					}
 				}
 
-				if network.SwitchType == "manual" {
-					var sw networkModels.ManualSwitch
-					if err := s.DB.Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-						return "", fmt.Errorf("failed_to_find_manual_switch: %w", err)
-					}
-
-					interfaces = append(interfaces, libvirtServiceInterfaces.Interface{
-						Type:   nType,
-						MAC:    mac,
-						Source: libvirtServiceInterfaces.BridgeSource{Bridge: sw.Bridge},
-						Model:  libvirtServiceInterfaces.Model{Type: emulation},
-					})
-				} else if network.SwitchType == "standard" {
-					var sw networkModels.StandardSwitch
-					if err := s.DB.Where("id = ?", network.SwitchID).First(&sw).Error; err != nil {
-						return "", fmt.Errorf("failed_to_find_standard_switch: %w", err)
-					}
-
-					interfaces = append(interfaces, libvirtServiceInterfaces.Interface{
-						Type:   nType,
-						MAC:    mac,
-						Source: libvirtServiceInterfaces.BridgeSource{Bridge: sw.BridgeName},
-						Model:  libvirtServiceInterfaces.Model{Type: emulation},
-					})
+				resolved, err := vmNetworkAttachmentResolver(s.DB).ResolveDesiredByID(network.SwitchType, network.SwitchID)
+				if err != nil {
+					return "", err
 				}
+				if err := validateDesiredVMNetworkSwitchCompatibility(resolved); err != nil {
+					return "", err
+				}
+				var port *libvirtServiceInterfaces.InterfacePort
+				if resolved.Private {
+					port = &libvirtServiceInterfaces.InterfacePort{Isolated: "yes"}
+				}
+
+				interfaces = append(interfaces, libvirtServiceInterfaces.Interface{
+					Type:   nType,
+					MAC:    mac,
+					Source: libvirtServiceInterfaces.BridgeSource{Bridge: resolved.Bridge},
+					Model:  libvirtServiceInterfaces.Model{Type: emulation},
+					Port:   port,
+				})
 			}
 		}
 	}
@@ -1214,6 +1209,21 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 		return fmt.Errorf("domain_not_shutoff_for_start_state_%d", state)
 	}
 
+	lifecycleBridges, err := s.vmStandardSwitchLifecycleBridges(vm.ID, true)
+	if err != nil {
+		return err
+	}
+	if err := s.StartTPM(); err != nil {
+		return fmt.Errorf("failed_to_start_tpm: %w", err)
+	}
+
+	unlockLifecycle := bridgevlan.LockStandardSwitchLifecycle(lifecycleBridges...)
+	defer unlockLifecycle()
+
+	if err := s.syncVMNetworksWithDB(context.Background(), s.DB, vm.RID); err != nil {
+		return fmt.Errorf("failed_to_refresh_vm_networks_before_start: %w", err)
+	}
+
 	if err := s.removeQGASocket(vm); err != nil {
 		logger.L.Warn().Err(err).Msg("Non-fatal error removing socket before start")
 	}
@@ -1222,8 +1232,8 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 		return fmt.Errorf("failed_to_ensure_native_qga_xml: %w", err)
 	}
 
-	if err := s.StartTPM(); err != nil {
-		return fmt.Errorf("failed_to_start_tpm: %w", err)
+	if err := s.validateVMNetworksForStart(vm.ID); err != nil {
+		return err
 	}
 
 	if err := s.conn().DomainCreate(*domain); err != nil {

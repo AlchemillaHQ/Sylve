@@ -75,6 +75,18 @@ func TestClassifyCreateVMError(t *testing.T) {
 			wantCode:   "vm_create_dependency_not_ready",
 		},
 		{
+			name:       "manual switch inspection unavailable",
+			err:        fmt.Errorf("failed_to_create_lv_vm: failed_to_inspect_manual_switch_vlan_state: LAN: ioctl failed"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "failed_to_inspect_manual_switch_vlan_state",
+		},
+		{
+			name:       "manual switch Q-in-Q is unsupported",
+			err:        fmt.Errorf("failed_to_create_lv_vm: filtered_switch_qinq_unsupported: LAN"),
+			wantStatus: http.StatusConflict,
+			wantCode:   "filtered_switch_qinq_unsupported",
+		},
+		{
 			name:       "UEFI is unavailable on arm64",
 			err:        fmt.Errorf("uefi_firmware_not_available_on_arm64"),
 			wantStatus: http.StatusBadRequest,

@@ -100,7 +100,7 @@ func writeManualSwitchError(c *gin.Context, message string, err error) {
 }
 
 // @Summary Create a manual switch
-// @Description Register an existing host bridge as a manual network switch
+// @Description Register an existing, externally managed host bridge as a manual network switch. Bridge VLAN state is detected at runtime and is not configured by Sylve.
 // @Tags Network
 // @Accept json
 // @Produce json

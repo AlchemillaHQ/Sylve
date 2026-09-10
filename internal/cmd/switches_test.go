@@ -50,6 +50,7 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 	err := command.Run(context.Background(), []string{
 		"switches", "create", "--type", "standard", "--name", "private-lan",
 		"--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--default-route", "--default-route6", "--disable-bridge-offloads",
+		"--vlan-filtering", "--default-access-vlan", "10", "--host-vlan", "20", "--port-policies", "igb0=access:10;igb1=trunk:native=10:tagged=20,30-32",
 	})
 	if err != nil {
 		t.Fatalf("run switch create command: %v", err)
@@ -71,6 +72,15 @@ func TestSwitchCreateCommandBuildsStandardPayload(t *testing.T) {
 	}
 	if got.Standard.BridgeMAC.Mode != "port" || got.Standard.BridgeMAC.Port != "igb0" {
 		t.Fatalf("unexpected bridge MAC source: %#v", got.Standard.BridgeMAC)
+	}
+	if !got.Standard.VLANFiltering || got.Standard.DefaultAccessVLAN == nil || *got.Standard.DefaultAccessVLAN != 10 {
+		t.Fatalf("unexpected standard VLAN declaration: %#v", got.Standard)
+	}
+	if got.Standard.HostVLAN == nil || *got.Standard.HostVLAN != 20 {
+		t.Fatalf("unexpected standard host VLAN: %#v", got.Standard)
+	}
+	if got.Standard.PortPolicies["igb0"].Mode != "access" || len(got.Standard.PortPolicies["igb1"].TaggedVLANs) != 4 {
+		t.Fatalf("unexpected standard port policies: %#v", got.Standard.PortPolicies)
 	}
 }
 
@@ -111,7 +121,7 @@ func TestSwitchCreateCommandRejectsStandardOptionsForManualSwitch(t *testing.T) 
 	}
 
 	err := command.Run(context.Background(), []string{
-		"switches", "create", "--type", "manual", "--name", "uplink", "--bridge", "bridge0", "--private",
+		"switches", "create", "--type", "manual", "--name", "uplink", "--bridge", "bridge0", "--vlan-filtering",
 	})
 	if err == nil || err.Error() != "standard switch options are not valid for manual switches" {
 		t.Fatalf("manual switch create error = %v", err)
@@ -134,7 +144,7 @@ func TestSwitchEditCommandBuildsPartialStandardPayload(t *testing.T) {
 
 	err := command.Run(context.Background(), []string{
 		"switches", "edit", "--type", "standard", "--id", "7",
-		"--mtu", "9000", "--dhcp=false", "--default-route=false", "--default-route6", "--ports", "igb0, igb1", "--disable-bridge-offloads",
+		"--mtu", "9000", "--dhcp=false", "--default-route=false", "--default-route6", "--ports", "igb0, igb1", "--disable-bridge-offloads", "--default-access-vlan", "0", "--host-vlan", "0",
 	})
 	if err != nil {
 		t.Fatalf("run switch edit command: %v", err)
@@ -159,6 +169,12 @@ func TestSwitchEditCommandBuildsPartialStandardPayload(t *testing.T) {
 	}
 	if got.Standard.Ports == nil || len(*got.Standard.Ports) != 2 || (*got.Standard.Ports)[1] != "igb1" {
 		t.Fatalf("unexpected ports patch: %#v", got.Standard.Ports)
+	}
+	if got.Standard.DefaultAccessVLAN == nil || *got.Standard.DefaultAccessVLAN != 0 {
+		t.Fatalf("expected an explicit default-access VLAN clear: %#v", got.Standard)
+	}
+	if got.Standard.HostVLAN == nil || *got.Standard.HostVLAN != 0 {
+		t.Fatalf("expected an explicit host VLAN clear: %#v", got.Standard)
 	}
 	if got.Standard.VLAN != nil || got.Standard.Private != nil {
 		t.Fatalf("expected unset fields to remain absent: %#v", got.Standard)

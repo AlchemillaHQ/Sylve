@@ -24,6 +24,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -34,6 +35,58 @@ const (
 	jailNetworkRCConfEnd   = "# <<< Sylve-Managed Network <<<"
 	jailNetworkLegacyMark  = "# Sylve Network Configuration"
 )
+
+var (
+	errJailNetworkSwitchNotFound = errors.New("switch_not_found")
+	jailValidateFilteredBridge   = bridgevlan.ValidateFilteredBridge
+	jailInspectBridgeVLAN        = bridgevlan.InspectBridge
+	jailSetFilteredMemberDown    = func(member string) error {
+		_, err := utils.RunCommand("/sbin/ifconfig", member, "down")
+		return err
+	}
+	jailConfigureFilteredMember = bridgevlan.ConfigureMember
+	jailSetMemberPrivate        = bridgevlan.SetMemberPrivate
+)
+
+func (s *Service) configureJailFilteredMembers(jail jailModels.Jail) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("jail_network_service_unavailable")
+	}
+
+	networks := append([]jailModels.Network(nil), jail.Networks...)
+	sort.Slice(networks, func(i, j int) bool { return networks[i].ID < networks[j].ID })
+	ctidHash := s.GetCTIDHash(jail.CTID)
+
+	for index := range networks {
+		network := &networks[index]
+		if network.SwitchID == 0 {
+			continue
+		}
+
+		_, resolvedSwitch, err := ResolveDesiredNetworkAttachment(s.DB, network)
+		if err != nil {
+			return fmt.Errorf("validate_filtered_jail_member_%d: %w", network.ID, err)
+		}
+		if !resolvedSwitch.VLANFiltering {
+			continue
+		}
+
+		member := fmt.Sprintf("%s_net%da", ctidHash, network.ID)
+		if err := jailSetFilteredMemberDown(member); err != nil {
+			return fmt.Errorf("lower_filtered_jail_member_%s: %w", member, err)
+		}
+		if err := jailConfigureFilteredMember(
+			resolvedSwitch.Bridge, member, resolvedSwitch.DefaultAccessVLAN, network.VLANPolicy,
+		); err != nil {
+			return fmt.Errorf("configure_filtered_jail_member_%s: %w", member, err)
+		}
+		if err := jailSetMemberPrivate(resolvedSwitch.Bridge, member, resolvedSwitch.Private); err != nil {
+			return fmt.Errorf("configure_private_jail_member_%s: %w", member, err)
+		}
+	}
+
+	return nil
+}
 
 type jailNetworkObjectRole string
 
@@ -517,13 +570,10 @@ func findJailNetworkSwitch(db *gorm.DB, name string) (uint, string, string, erro
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return 0, "", "", fmt.Errorf("failed_to_load_switch: %w", err)
 	}
-	return 0, "", "", fmt.Errorf("switch_not_found")
+	return 0, "", "", errJailNetworkSwitchNotFound
 }
 
 func validateJailNetworkShape(jail *jailModels.Jail, network *jailModels.Network) error {
-	if network.VLAN != nil && (*network.VLAN < 0 || *network.VLAN > 4095) {
-		return fmt.Errorf("invalid_vlan")
-	}
 	if jail.Type == jailModels.JailTypeLinux && (network.DHCP || network.SLAAC) {
 		return fmt.Errorf("cannot_set_dhcp_or_slaac_when_linux_jail")
 	}
@@ -591,15 +641,6 @@ func saveJailNetworkRow(db *gorm.DB, network *jailModels.Network) error {
 }
 
 func (s *Service) cleanupJailNetworkRuntime(ctID uint, network jailModels.Network) error {
-	if network.VLAN != nil && *network.VLAN > 0 {
-		vlanIface := fmt.Sprintf("%s_net%da.%d", s.GetCTIDHash(ctID), network.ID, *network.VLAN)
-		if _, err := utils.RunCommand("/sbin/ifconfig", vlanIface, "destroy"); err != nil {
-			message := strings.ToLower(err.Error())
-			if !strings.Contains(message, "does not exist") && !strings.Contains(message, "not found") {
-				return fmt.Errorf("failed_to_delete_vlan_interface: %w", err)
-			}
-		}
-	}
 	epair := fmt.Sprintf("%s_net%d", s.GetCTIDHash(ctID), network.ID)
 	if err := s.NetworkService.DeleteEpair(epair); err != nil {
 		message := strings.ToLower(err.Error())
@@ -627,6 +668,11 @@ func (s *Service) SetInheritance(ctID uint, ipv4 bool, ipv6 bool) (jailServiceIn
 	if jail.InheritIPv4 == ipv4 && jail.InheritIPv6 == ipv6 {
 		return result, nil
 	}
+	unlockLifecycle, err := s.lockJailStandardSwitchLifecycle(jail.ID)
+	if err != nil {
+		return result, err
+	}
+	defer unlockLifecycle()
 	snapshots, err := s.captureJailNetworkFiles(ctID, jail)
 	if err != nil {
 		return result, err
@@ -706,6 +752,11 @@ func (s *Service) AddNetwork(ctID uint, req jailServiceInterfaces.AddJailNetwork
 	if jail.InheritIPv4 || jail.InheritIPv6 {
 		return nil, fmt.Errorf("cannot_add_network_when_inheriting_network")
 	}
+	unlockLifecycle, err := s.lockJailStandardSwitchLifecycle(jail.ID, req.SwitchName)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockLifecycle()
 	tx := s.DB.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -718,10 +769,6 @@ func (s *Service) AddNetwork(ctID uint, req jailServiceInterfaces.AddJailNetwork
 	if err != nil {
 		return rollback(err)
 	}
-	vlan := 0
-	if req.VLAN != nil {
-		vlan = *req.VLAN
-	}
 	network := jailModels.Network{
 		JailID:         jail.ID,
 		Name:           strings.TrimSpace(req.Name),
@@ -730,7 +777,12 @@ func (s *Service) AddNetwork(ctID uint, req jailServiceInterfaces.AddJailNetwork
 		DHCP:           req.DHCP != nil && *req.DHCP,
 		SLAAC:          req.SLAAC != nil && *req.SLAAC,
 		DefaultGateway: req.DefaultGateway != nil && *req.DefaultGateway,
-		VLAN:           &vlan,
+	}
+	if req.VLANPolicy != nil {
+		network.VLANPolicy = *req.VLANPolicy
+	}
+	if _, _, err := ResolveDesiredNetworkAttachment(tx, &network); err != nil {
+		return rollback(err)
 	}
 	createdObjectIDs := make([]uint, 0, 5)
 	appendCreated := func(ids []uint) { createdObjectIDs = append(createdObjectIDs, ids...) }
@@ -829,6 +881,11 @@ func (s *Service) DeleteNetwork(ctID uint, networkID uint) error {
 	if err != nil {
 		return err
 	}
+	unlockLifecycle, err := s.lockJailStandardSwitchLifecycle(jail.ID)
+	if err != nil {
+		return err
+	}
+	defer unlockLifecycle()
 	network, err := loadJailNetwork(s.DB, jail.ID, networkID)
 	if err != nil {
 		return err
@@ -876,6 +933,15 @@ func (s *Service) EditNetwork(ctID uint, networkID uint, req jailServiceInterfac
 		return nil, err
 	}
 	previous := *existing
+	targetNames := make([]string, 0, 1)
+	if req.SwitchName != nil {
+		targetNames = append(targetNames, *req.SwitchName)
+	}
+	unlockLifecycle, err := s.lockJailStandardSwitchLifecycle(jail.ID, targetNames...)
+	if err != nil {
+		return nil, err
+	}
+	defer unlockLifecycle()
 	tx := s.DB.Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -896,9 +962,18 @@ func (s *Service) EditNetwork(ctID uint, networkID uint, req jailServiceInterfac
 		network.SwitchID = switchID
 		network.SwitchType = switchType
 	}
-	if req.VLAN != nil {
-		vlan := *req.VLAN
-		network.VLAN = &vlan
+	if req.VLANPolicy != nil {
+		network.VLANPolicy = *req.VLANPolicy
+	} else if req.SwitchName != nil {
+		config, err := jailNetworkAttachmentResolver(tx).ResolveDesiredByID(
+			network.SwitchType, network.SwitchID,
+		)
+		if err != nil {
+			return rollback(err)
+		}
+		if !config.VLANFiltering {
+			network.VLANPolicy = bridgevlan.PortPolicy{}
+		}
 	}
 	if req.DHCP != nil {
 		network.DHCP = *req.DHCP
@@ -908,6 +983,9 @@ func (s *Service) EditNetwork(ctID uint, networkID uint, req jailServiceInterfac
 	}
 	if req.DefaultGateway != nil {
 		network.DefaultGateway = *req.DefaultGateway
+	}
+	if _, _, err := ResolveDesiredNetworkAttachment(tx, &network); err != nil {
+		return rollback(err)
 	}
 	createdObjectIDs := make([]uint, 0, 5)
 	appendCreated := func(ids []uint) { createdObjectIDs = append(createdObjectIDs, ids...) }
@@ -1147,9 +1225,6 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 			if network.SwitchID == 0 {
 				continue
 			}
-			if network.VLAN != nil && (*network.VLAN < 0 || *network.VLAN > 4095) {
-				return fmt.Errorf("invalid_vlan")
-			}
 			mac, err := s.networkObjectValue(network.MacID, jailNetworkMAC)
 			if err != nil {
 				return err
@@ -1163,27 +1238,28 @@ func (s *Service) SyncNetwork(ctID uint, jail jailModels.Jail) error {
 			}
 			epairA := fmt.Sprintf("%s_net%da", ctidHash, network.ID)
 			epairB := fmt.Sprintf("%s_net%db", ctidHash, network.ID)
-			bridgeName, err := s.NetworkService.GetBridgeNameByIDType(network.SwitchID, network.SwitchType)
+			_, resolvedSwitch, err := ResolveEffectiveNetworkAttachment(s.DB, &network)
 			if err != nil {
-				return fmt.Errorf("failed_to_get_bridge_name: %w", err)
+				return err
 			}
+			bridgeName := resolvedSwitch.Bridge
 
 			preStartBuilder.WriteString(fmt.Sprintf("# Setup Network Interface %s\n", epairB))
-			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n", epairA, previousMAC))
+			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s down\n", epairA, previousMAC))
 			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s descr \"(%s) (%d)\"\n", epairA, jail.Name, jail.CTID))
 			preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s ether %s up\n\n", epairB, mac))
-			if network.VLAN != nil && *network.VLAN > 0 {
-				vlanIface := fmt.Sprintf("%s.%d", epairA, *network.VLAN)
-				preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s > /dev/null 2>&1; then\n", vlanIface))
-				preStartBuilder.WriteString(fmt.Sprintf("\tifconfig vlan create vlandev %s vlan %d name %s group svm-vlan up\n", epairA, *network.VLAN, vlanIface))
-				preStartBuilder.WriteString("fi\n")
-				preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, vlanIface))
-				preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, vlanIface))
-				preStartBuilder.WriteString("fi\n")
+			if resolvedSwitch.VLANFiltering {
+				preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s up\n", epairA))
 			} else {
 				preStartBuilder.WriteString(fmt.Sprintf("if ! ifconfig %s | grep -qw %s; then\n", bridgeName, epairA))
 				preStartBuilder.WriteString(fmt.Sprintf("\tifconfig %s addm %s 2>&1 || true\n", bridgeName, epairA))
 				preStartBuilder.WriteString("fi\n")
+				isolationFlag := "-private"
+				if resolvedSwitch.Private {
+					isolationFlag = "private"
+				}
+				preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s %s %s\n", bridgeName, isolationFlag, epairA))
+				preStartBuilder.WriteString(fmt.Sprintf("ifconfig %s up\n", epairA))
 			}
 			preStartBuilder.WriteString(fmt.Sprintf("# End Setup Network Interface %s\n\n", epairB))
 

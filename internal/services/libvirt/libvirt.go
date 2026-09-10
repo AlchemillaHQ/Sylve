@@ -27,6 +27,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 
 	"github.com/digitalocean/go-libvirt"
 	"gorm.io/gorm"
@@ -293,6 +294,27 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 		Where("rid = ?", rid).
 		First(&vm).Error; err != nil {
 		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
+	}
+
+	for i := range vm.Networks {
+		vm.Networks[i].Attachment = nil
+		var contract networkAttachment.Contract
+		var err error
+		if vm.Networks[i].Enable {
+			contract, err = ResolveDesiredVMNetworkAttachment(
+				db, vm.Networks[i].SwitchType, vm.Networks[i].SwitchID,
+			)
+		} else {
+			contract, err = ResolveVMNetworkIdentity(
+				db, vm.Networks[i].SwitchType, vm.Networks[i].SwitchID,
+			)
+		}
+		if err != nil {
+			return fmt.Errorf("failed_to_resolve_vm_network_switch_for_metadata: %w", err)
+		}
+		vm.Networks[i].Attachment = &contract
+		vm.Networks[i].StandardSwitch = nil
+		vm.Networks[i].ManualSwitch = nil
 	}
 
 	for i := range vm.Storages {

@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { page } from '$app/state';
 	import { storage } from '$lib';
@@ -82,7 +92,10 @@
 			dhcp: false,
 			slaac: false,
 			resolvConf: '',
-			vlan: 0
+			vlanFiltering: false,
+			vlanPolicyMode: '' as '' | 'access' | 'trunk',
+			vlanPolicyUntagged: '',
+			vlanPolicyTagged: ''
 		},
 		hardware: {
 			cpuCores: 1,
@@ -297,6 +310,10 @@
 			modal.storage.fstab = '';
 			modal.network.switch = 'None';
 			modal.network.mac = 0;
+			modal.network.vlanFiltering = false;
+			modal.network.vlanPolicyMode = '';
+			modal.network.vlanPolicyUntagged = '';
+			modal.network.vlanPolicyTagged = '';
 		}
 	);
 
@@ -478,7 +495,10 @@
 										bind:dhcp={modal.network.dhcp}
 										bind:slaac={modal.network.slaac}
 										bind:resolvConf={modal.network.resolvConf}
-										bind:vlan={modal.network.vlan}
+										bind:vlanFiltering={modal.network.vlanFiltering}
+										bind:vlanPolicyMode={modal.network.vlanPolicyMode}
+										bind:vlanPolicyUntagged={modal.network.vlanPolicyUntagged}
+										bind:vlanPolicyTagged={modal.network.vlanPolicyTagged}
 										bind:refetch={networkRefetch}
 										jailType={modal.advanced.jailType}
 										switches={networkSwitches.current}

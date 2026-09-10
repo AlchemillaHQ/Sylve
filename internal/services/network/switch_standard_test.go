@@ -15,11 +15,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
@@ -30,11 +33,20 @@ type syncStubSet struct {
 	setSysctlInt32          func(string, int32) error
 	createBridge            func(networkModels.StandardSwitch) error
 	editBridge              func(networkModels.StandardSwitch, networkModels.StandardSwitch) error
+	editFilteredBridge      func(networkModels.StandardSwitch, networkModels.StandardSwitch, map[string]struct{}) error
 	deleteBridge            func(networkModels.StandardSwitch) error
+	captureFilteredPorts    func([]string) ([]standardSwitchPortRuntimeSnapshot, error)
+	restoreFilteredPorts    func(string, []standardSwitchPortRuntimeSnapshot) error
 	runCommand              func(string, ...string) (string, error)
 	runCommandAllowExitCode func(string, []int, ...string) (string, error)
 	runCommandWithContext   func(context.Context, string, ...string) (string, error)
 	stopDhclient            func(string) error
+	inspectBridgeVLAN       func(string) (bridgevlan.BridgeState, error)
+	filteredPolicyMatches   func(string, string, bridgevlan.PortPolicy) (bool, error)
+	configureFilteredMember func(string, string, *int, bridgevlan.PortPolicy) error
+	removeFilteredMember    func(string, string) error
+	setDefaultAccessVLAN    func(string, *int) error
+	setMemberPrivate        func(string, string, bool) error
 }
 
 const testStandardSwitchMAC = "02:00:00:00:00:01"
@@ -93,11 +105,20 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origSetSysctlInt32 := syncSetSysctlInt32
 	origCreate := syncCreateBridge
 	origEdit := syncEditBridge
+	origEditFiltered := syncEditFilteredBridge
 	origDelete := syncDeleteBridge
+	origCaptureFilteredPorts := syncCaptureFilteredPortClaims
+	origRestoreFilteredPorts := syncRestoreFilteredPortClaims
 	origRun := syncRunCommand
 	origRunAllowExitCode := syncRunCommandAllowExitCode
 	origRunWithContext := syncRunCommandWithContext
 	origStopDhclient := syncStopDhclient
+	origInspectBridgeVLAN := syncInspectBridgeVLAN
+	origFilteredPolicyMatches := syncFilteredMemberPolicyMatches
+	origConfigureFilteredMember := syncConfigureFilteredMember
+	origRemoveFilteredMember := syncRemoveFilteredMember
+	origSetDefaultAccessVLAN := syncSetDefaultAccessVLAN
+	origSetMemberPrivate := syncSetBridgeMemberPrivate
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncInspectStandardSwitchRCModes = origInspectRCModes
@@ -105,12 +126,27 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 		syncSetSysctlInt32 = origSetSysctlInt32
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
+		syncEditFilteredBridge = origEditFiltered
 		syncDeleteBridge = origDelete
+		syncCaptureFilteredPortClaims = origCaptureFilteredPorts
+		syncRestoreFilteredPortClaims = origRestoreFilteredPorts
 		syncRunCommand = origRun
 		syncRunCommandAllowExitCode = origRunAllowExitCode
 		syncRunCommandWithContext = origRunWithContext
 		syncStopDhclient = origStopDhclient
+		syncInspectBridgeVLAN = origInspectBridgeVLAN
+		syncFilteredMemberPolicyMatches = origFilteredPolicyMatches
+		syncConfigureFilteredMember = origConfigureFilteredMember
+		syncRemoveFilteredMember = origRemoveFilteredMember
+		syncSetDefaultAccessVLAN = origSetDefaultAccessVLAN
+		syncSetBridgeMemberPrivate = origSetMemberPrivate
 	})
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
+	if stubs.inspectBridgeVLAN != nil {
+		syncInspectBridgeVLAN = stubs.inspectBridgeVLAN
+	}
 	syncInspectStandardSwitchRCModes = func(string) (standardSwitchMemberRCModes, error) {
 		return standardSwitchMemberRCModes{}, nil
 	}
@@ -155,9 +191,27 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 	if stubs.editBridge != nil {
 		syncEditBridge = stubs.editBridge
+		syncEditFilteredBridge = func(oldSw, newSw networkModels.StandardSwitch, _ map[string]struct{}) error {
+			return stubs.editBridge(oldSw, newSw)
+		}
+	}
+	if stubs.editFilteredBridge != nil {
+		syncEditFilteredBridge = stubs.editFilteredBridge
 	}
 	if stubs.deleteBridge != nil {
 		syncDeleteBridge = stubs.deleteBridge
+	}
+	syncCaptureFilteredPortClaims = func([]string) ([]standardSwitchPortRuntimeSnapshot, error) {
+		return nil, nil
+	}
+	if stubs.captureFilteredPorts != nil {
+		syncCaptureFilteredPortClaims = stubs.captureFilteredPorts
+	}
+	syncRestoreFilteredPortClaims = func(string, []standardSwitchPortRuntimeSnapshot) error {
+		return nil
+	}
+	if stubs.restoreFilteredPorts != nil {
+		syncRestoreFilteredPortClaims = stubs.restoreFilteredPorts
 	}
 	if stubs.runCommand != nil {
 		syncRunCommand = func(command string, args ...string) (string, error) {
@@ -195,6 +249,22 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 	if stubs.stopDhclient != nil {
 		syncStopDhclient = stubs.stopDhclient
+	}
+	if stubs.filteredPolicyMatches != nil {
+		syncFilteredMemberPolicyMatches = stubs.filteredPolicyMatches
+	}
+	if stubs.configureFilteredMember != nil {
+		syncConfigureFilteredMember = stubs.configureFilteredMember
+	}
+	if stubs.removeFilteredMember != nil {
+		syncRemoveFilteredMember = stubs.removeFilteredMember
+	}
+	if stubs.setDefaultAccessVLAN != nil {
+		syncSetDefaultAccessVLAN = stubs.setDefaultAccessVLAN
+	}
+	syncSetBridgeMemberPrivate = func(string, string, bool) error { return nil }
+	if stubs.setMemberPrivate != nil {
+		syncSetBridgeMemberPrivate = stubs.setMemberPrivate
 	}
 }
 
@@ -511,25 +581,14 @@ func TestNewStandardSwitchRejectsInvalidMTU(t *testing.T) {
 		&networkModels.NetworkPort{},
 	)
 
-	_, err := svc.NewStandardSwitch(
-		"switch-invalid-mtu",
-		90000,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{"em0"},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "switch-invalid-mtu",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:       90000,
+			Ports:     []string{"em0"},
+			MACSource: createTestStandardSwitchMACSource(t, svc),
+		},
+	})
 	if err == nil {
 		t.Fatal("expected invalid_mtu error, got nil")
 	}
@@ -545,25 +604,15 @@ func TestNewStandardSwitchRejectsInvalidVLAN(t *testing.T) {
 		&networkModels.NetworkPort{},
 	)
 
-	_, err := svc.NewStandardSwitch(
-		"switch-invalid-vlan",
-		1500,
-		5000,
-		0,
-		0,
-		0,
-		0,
-		[]string{"em0"},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "switch-invalid-vlan",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:       1500,
+			VLAN:      5000,
+			Ports:     []string{"em0"},
+			MACSource: createTestStandardSwitchMACSource(t, svc),
+		},
+	})
 	if err == nil {
 		t.Fatal("expected invalid_vlan error, got nil")
 	}
@@ -594,25 +643,15 @@ func TestNewStandardSwitchRejectsPortOverlapDeterministically(t *testing.T) {
 		t.Fatalf("failed to seed existing port: %v", err)
 	}
 
-	_, err := svc.NewStandardSwitch(
-		"candidate",
-		1500,
-		10,
-		0,
-		0,
-		0,
-		0,
-		[]string{"em0"},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "candidate",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:       1500,
+			VLAN:      10,
+			Ports:     []string{"em0"},
+			MACSource: createTestStandardSwitchMACSource(t, svc),
+		},
+	})
 	if err == nil {
 		t.Fatal("expected port_overlap error, got nil")
 	}
@@ -637,12 +676,17 @@ func TestSyncStandardSwitchesSyncCreatesWhenBridgeMissing(t *testing.T) {
 	origCreate := syncCreateBridge
 	origEdit := syncEditBridge
 	origRun := syncRunCommand
+	origInspectBridgeVLAN := syncInspectBridgeVLAN
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
 		syncRunCommand = origRun
+		syncInspectBridgeVLAN = origInspectBridgeVLAN
 	})
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
 
 	createCalls := 0
 	editCalls := 0
@@ -662,7 +706,7 @@ func TestSyncStandardSwitchesSyncCreatesWhenBridgeMissing(t *testing.T) {
 		return "", nil
 	}
 
-	if err := svc.SyncStandardSwitches(nil, "sync"); err != nil {
+	if err := svc.SyncStandardSwitches(); err != nil {
 		t.Fatalf("expected sync success, got %v", err)
 	}
 	if createCalls != 1 {
@@ -688,12 +732,17 @@ func TestSyncStandardSwitchesSyncReconcilesInPlaceWhenBridgeExists(t *testing.T)
 	origCreate := syncCreateBridge
 	origEdit := syncEditBridge
 	origRun := syncRunCommand
+	origInspectBridgeVLAN := syncInspectBridgeVLAN
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
 		syncRunCommand = origRun
+		syncInspectBridgeVLAN = origInspectBridgeVLAN
 	})
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
 
 	createCalls := 0
 	editCalls := 0
@@ -713,7 +762,7 @@ func TestSyncStandardSwitchesSyncReconcilesInPlaceWhenBridgeExists(t *testing.T)
 		return "", nil
 	}
 
-	if err := svc.SyncStandardSwitches(nil, "sync"); err != nil {
+	if err := svc.SyncStandardSwitches(); err != nil {
 		t.Fatalf("expected sync success, got %v", err)
 	}
 	if createCalls != 0 {
@@ -743,12 +792,20 @@ func TestSyncStandardSwitchesSyncPreservesNonDBMembers(t *testing.T) {
 	origCreate := syncCreateBridge
 	origEdit := syncEditBridge
 	origRun := syncRunCommand
+	origInspectBridgeVLAN := syncInspectBridgeVLAN
+	origSetMemberPrivate := syncSetBridgeMemberPrivate
 	t.Cleanup(func() {
 		syncIfaceGet = origIfaceGet
 		syncCreateBridge = origCreate
 		syncEditBridge = origEdit
 		syncRunCommand = origRun
+		syncInspectBridgeVLAN = origInspectBridgeVLAN
+		syncSetBridgeMemberPrivate = origSetMemberPrivate
 	})
+	syncSetBridgeMemberPrivate = func(string, string, bool) error { return nil }
+	syncInspectBridgeVLAN = func(string) (bridgevlan.BridgeState, error) {
+		return bridgevlan.BridgeState{}, nil
+	}
 
 	getCalls := 0
 	currentMAC := ""
@@ -798,7 +855,7 @@ func TestSyncStandardSwitchesSyncPreservesNonDBMembers(t *testing.T) {
 		return "", nil
 	}
 
-	if err := svc.SyncStandardSwitches(nil, "sync"); err != nil {
+	if err := svc.SyncStandardSwitches(); err != nil {
 		t.Fatalf("expected sync success, got %v", err)
 	}
 
@@ -859,7 +916,7 @@ func TestSyncStandardSwitchesSyncReturnsUnexpectedIfaceError(t *testing.T) {
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
@@ -900,7 +957,7 @@ func TestSyncStandardSwitchesSyncReturnsCreateError(t *testing.T) {
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
@@ -939,7 +996,7 @@ func TestSyncStandardSwitchesContinuesAfterOneSwitchFails(t *testing.T) {
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil || !strings.Contains(err.Error(), "failed_to_create vm-broken") {
 		t.Fatalf("expected vm-broken error, got %v", err)
 	}
@@ -978,7 +1035,7 @@ func TestSyncStandardSwitchesSyncReturnsEditError(t *testing.T) {
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
@@ -1038,7 +1095,7 @@ func TestSyncStandardSwitchesSyncSkipsReattachWhenAlreadyPresent(t *testing.T) {
 		},
 	})
 
-	if err := svc.SyncStandardSwitches(nil, "sync"); err != nil {
+	if err := svc.SyncStandardSwitches(); err != nil {
 		t.Fatalf("expected sync success, got %v", err)
 	}
 	if runCalls != 0 {
@@ -1094,7 +1151,7 @@ func TestSyncStandardSwitchesSyncTreatsVLANSubinterfaceAsDBMember(t *testing.T) 
 		},
 	})
 
-	if err := svc.SyncStandardSwitches(nil, "sync"); err != nil {
+	if err := svc.SyncStandardSwitches(); err != nil {
 		t.Fatalf("expected sync success, got %v", err)
 	}
 
@@ -1155,7 +1212,7 @@ func TestSyncStandardSwitchesSyncReturnsErrorWhenPostReconcileLookupFails(t *tes
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
@@ -1213,7 +1270,7 @@ func TestSyncStandardSwitchesSyncReturnsErrorOnMemberReattachFailure(t *testing.
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
@@ -1271,118 +1328,12 @@ func TestSyncStandardSwitchesSyncReturnsErrorOnMemberBringUpFailure(t *testing.T
 		},
 	})
 
-	err := svc.SyncStandardSwitches(nil, "sync")
+	err := svc.SyncStandardSwitches()
 	if err == nil {
 		t.Fatal("expected sync error, got nil")
 	}
 	if !strings.Contains(err.Error(), "sync_standard_switches: bring up member tap0: up failed") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSyncStandardSwitchesCreateActionCallsCreateBridge(t *testing.T) {
-	svc, _ := newNetworkServiceForTest(t)
-
-	var got networkModels.StandardSwitch
-	stubSyncFunctions(t, syncStubSet{
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			got = sw
-			return nil
-		},
-	})
-
-	input := &networkModels.StandardSwitch{Name: "create-test", BridgeName: "vm-create-test"}
-	if err := svc.SyncStandardSwitches(input, "create"); err != nil {
-		t.Fatalf("expected create sync success, got %v", err)
-	}
-	if got.BridgeName != "vm-create-test" {
-		t.Fatalf("expected create bridge to be called with vm-create-test, got %q", got.BridgeName)
-	}
-}
-
-func TestSyncStandardSwitchesDeleteActionCallsDeleteBridge(t *testing.T) {
-	svc, _ := newNetworkServiceForTest(t)
-
-	var got networkModels.StandardSwitch
-	stubSyncFunctions(t, syncStubSet{
-		deleteBridge: func(sw networkModels.StandardSwitch) error {
-			got = sw
-			return nil
-		},
-	})
-
-	input := &networkModels.StandardSwitch{Name: "delete-test", BridgeName: "vm-delete-test"}
-	if err := svc.SyncStandardSwitches(input, "delete"); err != nil {
-		t.Fatalf("expected delete sync success, got %v", err)
-	}
-	if got.BridgeName != "vm-delete-test" {
-		t.Fatalf("expected delete bridge to be called with vm-delete-test, got %q", got.BridgeName)
-	}
-}
-
-func TestSyncStandardSwitchesEditActionSwitchNotFound(t *testing.T) {
-	svc, _ := newNetworkServiceForTest(t, &networkModels.StandardSwitch{}, &networkModels.NetworkPort{})
-
-	stubSyncFunctions(t, syncStubSet{
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			t.Fatal("edit bridge should not be called when switch is missing")
-			return nil
-		},
-	})
-
-	input := &networkModels.StandardSwitch{ID: 42, Name: "missing", BridgeName: "vm-missing"}
-	err := svc.SyncStandardSwitches(input, "edit")
-	if err == nil {
-		t.Fatal("expected switch_not_found error, got nil")
-	}
-	if err.Error() != "switch_not_found" {
-		t.Fatalf("expected switch_not_found, got %q", err.Error())
-	}
-}
-
-func TestSyncStandardSwitchesEditActionLoadsCurrentSwitchAndPorts(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.StandardSwitch{}, &networkModels.NetworkPort{})
-
-	current := networkModels.StandardSwitch{
-		Name:       "current",
-		BridgeName: "vm-current",
-		MTU:        1500,
-	}
-	if err := db.Create(&current).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-	if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: current.ID}).Error; err != nil {
-		t.Fatalf("failed to seed switch port: %v", err)
-	}
-
-	previous := networkModels.StandardSwitch{
-		ID:         current.ID,
-		Name:       current.Name,
-		BridgeName: current.BridgeName,
-		MTU:        1400,
-	}
-
-	var gotOld networkModels.StandardSwitch
-	var gotNew networkModels.StandardSwitch
-	stubSyncFunctions(t, syncStubSet{
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			gotOld = oldSw
-			gotNew = newSw
-			return nil
-		},
-	})
-
-	if err := svc.SyncStandardSwitches(&previous, "edit"); err != nil {
-		t.Fatalf("expected edit sync success, got %v", err)
-	}
-	if gotOld.MTU != 1400 {
-		t.Fatalf("expected old switch MTU 1400, got %d", gotOld.MTU)
-	}
-	if gotNew.MTU != 1500 {
-		t.Fatalf("expected new switch MTU 1500 from DB, got %d", gotNew.MTU)
-	}
-	if len(gotNew.Ports) != 1 || gotNew.Ports[0].Name != "em0" {
-		t.Fatalf("expected DB preloaded ports, got %+v", gotNew.Ports)
 	}
 }
 
@@ -2322,30 +2273,21 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 
 	macSource := createTestStandardSwitchMACSource(t, svc)
 
-	_, err := svc.NewStandardSwitch(
-		"manual-store",
-		1500,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		macSource,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{
-			Network4: "10.81.0.254/24",
-			Gateway4: "10.81.0.1",
-			Network6: "2001:db8:81::1/64",
-			Gateway6: "fe80::1",
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "manual-store",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   1500,
+			Ports:                 []string{},
+			MACSource:             macSource,
+			DisableBridgeOffloads: true,
+			Manual: networkModels.StandardSwitchManualAddresses{
+				Network4: "10.81.0.254/24",
+				Gateway4: "10.81.0.1",
+				Network6: "2001:db8:81::1/64",
+				Gateway6: "fe80::1",
+			},
 		},
-	)
+	})
 	if err != nil {
 		t.Fatalf("expected create success, got %v", err)
 	}
@@ -2391,25 +2333,16 @@ func TestNewStandardSwitchRejectsObjectAndManualConflict(t *testing.T) {
 		t.Fatalf("failed to seed object: %v", err)
 	}
 
-	_, err := svc.NewStandardSwitch(
-		"conflict-sw",
-		1500,
-		0,
-		obj.ID,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
-	)
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "conflict-sw",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:        1500,
+			Network4ID: obj.ID,
+			Ports:      []string{},
+			MACSource:  createTestStandardSwitchMACSource(t, svc),
+			Manual:     networkModels.StandardSwitchManualAddresses{Network4: "10.0.0.1/24"},
+		},
+	})
 	if err == nil {
 		t.Fatal("expected mutual-exclusivity error, got nil")
 	}
@@ -2450,25 +2383,16 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error { return nil },
 	})
 
-	err := svc.EditStandardSwitch(
-		sw.ID,
-		1500,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{Network4: "10.9.0.1/24"},
-	)
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   1500,
+			Ports:                 []string{},
+			MACSource:             createTestStandardSwitchMACSource(t, svc),
+			DisableBridgeOffloads: true,
+			Manual:                networkModels.StandardSwitchManualAddresses{Network4: "10.9.0.1/24"},
+		},
+	})
 	if err != nil {
 		t.Fatalf("expected edit success, got %v", err)
 	}
@@ -2520,25 +2444,15 @@ func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
 		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error { return nil },
 	})
 
-	err := svc.EditStandardSwitch(
-		sw.ID,
-		1500,
-		0,
-		obj.ID,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:        1500,
+			Network4ID: obj.ID,
+			Ports:      []string{},
+			MACSource:  createTestStandardSwitchMACSource(t, svc),
+		},
+	})
 	if err != nil {
 		t.Fatalf("expected edit success, got %v", err)
 	}
@@ -2695,25 +2609,15 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 		},
 	})
 
-	_, err := svc.NewStandardSwitch(
-		"runtime-failure",
-		1500,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	_, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "runtime-failure",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   1500,
+			Ports:                 []string{},
+			MACSource:             createTestStandardSwitchMACSource(t, svc),
+			DisableBridgeOffloads: true,
+		},
+	})
 	if err == nil || !strings.Contains(err.Error(), "runtime create failed") {
 		t.Fatalf("expected runtime create failure, got %v", err)
 	}
@@ -2727,6 +2631,349 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 	}
 	if switchCount != 0 || portCount != 0 {
 		t.Fatalf("runtime failure left database rows: switches=%d ports=%d", switchCount, portCount)
+	}
+}
+
+func TestDeleteStandardSwitchJoinsRuntimeRestoreFailure(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+	sw := networkModels.StandardSwitch{Name: "delete-errors", BridgeName: "vm-delete-errors"}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE dhcp_standard_switches (standard_switch_id integer)`,
+		`CREATE TABLE dhcp_ranges (standard_switch_id integer)`,
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatalf("create switch usage table: %v", err)
+		}
+	}
+	operationErr := errors.New("runtime delete failed")
+	restoreErr := errors.New("runtime restore failed")
+	deleteCalls := 0
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error {
+			deleteCalls++
+			if deleteCalls == 1 {
+				return operationErr
+			}
+			return nil
+		},
+		createBridge: func(networkModels.StandardSwitch) error {
+			return restoreErr
+		},
+	})
+
+	err := svc.DeleteStandardSwitch(sw.ID)
+	if !errors.Is(err, operationErr) || !errors.Is(err, restoreErr) {
+		t.Fatalf("joined delete/restore error = %v", err)
+	}
+	var count int64
+	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", sw.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count retained switch: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("failed delete retained %d switch rows, want 1", count)
+	}
+}
+
+func TestEditStandardSwitchJoinsRuntimeRestoreFailure(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+	sw := networkModels.StandardSwitch{Name: "edit-errors", BridgeName: "vm-edit-errors", MTU: 1500}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	operationErr := errors.New("runtime edit failed")
+	restoreErr := errors.New("runtime restore failed")
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error {
+			return operationErr
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error { return nil },
+		createBridge: func(networkModels.StandardSwitch) error { return restoreErr },
+	})
+
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU: 9000, MACSource: createTestStandardSwitchMACSource(t, svc), DisableIPv6: true,
+		},
+	})
+	if !errors.Is(err, operationErr) || !errors.Is(err, restoreErr) {
+		t.Fatalf("joined edit/restore error = %v", err)
+	}
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload rolled-back switch: %v", err)
+	}
+	if persisted.MTU != 1500 {
+		t.Fatalf("failed edit persisted MTU %d, want 1500", persisted.MTU)
+	}
+}
+
+func TestEditStandardSwitchRecreatesRuntimeForVLANFilteringModeChange(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		previous bool
+		desired  bool
+	}{
+		{name: "enable filtering", previous: false, desired: true},
+		{name: "disable filtering", previous: true, desired: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := newNetworkServiceForTest(t,
+				&networkModels.ManualSwitch{},
+				&networkModels.StandardSwitch{},
+				&networkModels.NetworkPort{},
+			)
+			macSource := createTestStandardSwitchMACSource(t, svc)
+			sw := networkModels.StandardSwitch{
+				Name:          "mode-change",
+				BridgeName:    "vm-mode-change",
+				MTU:           1500,
+				DisableIPv6:   true,
+				VLANFiltering: test.previous,
+			}
+			setTestStandardSwitchMACSource(&sw, macSource)
+			if err := db.Create(&sw).Error; err != nil {
+				t.Fatalf("seed standard switch: %v", err)
+			}
+
+			var operations []string
+			stubSyncFunctions(t, syncStubSet{
+				ifaceGet: func(name string) (*iface.Interface, error) {
+					return &iface.Interface{Name: name}, nil
+				},
+				deleteBridge: func(candidate networkModels.StandardSwitch) error {
+					operations = append(operations, fmt.Sprintf("delete:%t", candidate.VLANFiltering))
+					return nil
+				},
+				createBridge: func(candidate networkModels.StandardSwitch) error {
+					operations = append(operations, fmt.Sprintf("create:%t", candidate.VLANFiltering))
+					return nil
+				},
+				editBridge: func(networkModels.StandardSwitch, networkModels.StandardSwitch) error {
+					t.Fatal("mode change must not use the unfiltered in-place editor")
+					return nil
+				},
+				editFilteredBridge: func(
+					networkModels.StandardSwitch,
+					networkModels.StandardSwitch,
+					map[string]struct{},
+				) error {
+					t.Fatal("mode change must not use the filtered in-place editor")
+					return nil
+				},
+			})
+
+			err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+				ID: sw.ID,
+				StandardSwitchConfig: StandardSwitchConfig{
+					MTU:         1500,
+					MACSource:   macSource,
+					DisableIPv6: true,
+					VLANConfig: networkModels.StandardSwitchVLANConfig{
+						Filtering: test.desired,
+					},
+				},
+			})
+			if err != nil {
+				t.Fatalf("change VLAN-filtering mode: %v", err)
+			}
+			want := []string{
+				fmt.Sprintf("delete:%t", test.previous),
+				fmt.Sprintf("create:%t", test.desired),
+			}
+			if !slices.Equal(operations, want) {
+				t.Fatalf("runtime operations = %v, want %v", operations, want)
+			}
+			var persisted networkModels.StandardSwitch
+			if err := db.First(&persisted, sw.ID).Error; err != nil {
+				t.Fatalf("reload standard switch: %v", err)
+			}
+			if persisted.VLANFiltering != test.desired {
+				t.Fatalf("persisted filtering = %t, want %t", persisted.VLANFiltering, test.desired)
+			}
+		})
+	}
+}
+
+func TestEditStandardSwitchRejectsModeChangeWithWorkloadAttachmentBeforeRuntimeMutation(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	sw := networkModels.StandardSwitch{
+		Name: "mode-in-use", BridgeName: "vm-mode-in-use", MTU: 1500, DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+	if err := db.Exec(
+		`INSERT INTO vm_networks (id, switch_id, switch_type) VALUES (1, ?, 'standard')`,
+		sw.ID,
+	).Error; err != nil {
+		t.Fatalf("seed VM network attachment: %v", err)
+	}
+
+	runtimeMutated := false
+	stubSyncFunctions(t, syncStubSet{
+		deleteBridge: func(networkModels.StandardSwitch) error {
+			runtimeMutated = true
+			return nil
+		},
+		createBridge: func(networkModels.StandardSwitch) error {
+			runtimeMutated = true
+			return nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig:  networkModels.StandardSwitchVLANConfig{Filtering: true},
+		},
+	})
+	if !errors.Is(err, ErrStandardSwitchInUse) ||
+		StandardSwitchErrorCode(err) != "standard_switch_vlan_filtering_change_requires_no_attached_workloads" {
+		t.Fatalf("workload attachment error = %v, code = %q", err, StandardSwitchErrorCode(err))
+	}
+	if runtimeMutated {
+		t.Fatal("rejected mode change mutated runtime")
+	}
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload standard switch: %v", err)
+	}
+	if persisted.VLANFiltering {
+		t.Fatal("rejected mode change was persisted")
+	}
+}
+
+func TestEditStandardSwitchRestoresRuntimeWhenModeChangeCreateFails(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	sw := networkModels.StandardSwitch{
+		Name: "mode-rollback", BridgeName: "vm-mode-rollback", MTU: 1500, DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+
+	createReplacementErr := errors.New("replacement create failed")
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		deleteBridge: func(candidate networkModels.StandardSwitch) error {
+			operations = append(operations, fmt.Sprintf("delete:%t", candidate.VLANFiltering))
+			return nil
+		},
+		createBridge: func(candidate networkModels.StandardSwitch) error {
+			operations = append(operations, fmt.Sprintf("create:%t", candidate.VLANFiltering))
+			if candidate.VLANFiltering {
+				return createReplacementErr
+			}
+			return nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig:  networkModels.StandardSwitchVLANConfig{Filtering: true},
+		},
+	})
+	if !errors.Is(err, createReplacementErr) {
+		t.Fatalf("mode-change failure = %v, want replacement create failure", err)
+	}
+	want := []string{"delete:false", "create:true", "delete:true", "create:false"}
+	if !slices.Equal(operations, want) {
+		t.Fatalf("runtime rollback operations = %v, want %v", operations, want)
+	}
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, sw.ID).Error; err != nil {
+		t.Fatalf("reload rolled-back standard switch: %v", err)
+	}
+	if persisted.VLANFiltering {
+		t.Fatal("failed mode change remained persisted")
+	}
+}
+
+func TestEditStandardSwitchRejectsModeChangeWithUnexpectedRuntimeMember(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	sw := networkModels.StandardSwitch{
+		Name: "mode-member", BridgeName: "vm-mode-member", MTU: 1500, DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+
+	runtimeMutated := false
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name: name, BridgeMembers: []iface.BridgeMember{{Name: "tap-unmanaged"}},
+			}, nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error {
+			runtimeMutated = true
+			return nil
+		},
+		createBridge: func(networkModels.StandardSwitch) error {
+			runtimeMutated = true
+			return nil
+		},
+	})
+
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig:  networkModels.StandardSwitchVLANConfig{Filtering: true},
+		},
+	})
+	if !errors.Is(err, ErrStandardSwitchConflict) ||
+		StandardSwitchErrorCode(err) != "standard_switch_runtime_member_conflict" {
+		t.Fatalf("runtime member error = %v, code = %q", err, StandardSwitchErrorCode(err))
+	}
+	if runtimeMutated {
+		t.Fatal("mode change mutated a bridge with an unexpected member")
 	}
 }
 
@@ -2784,25 +3031,15 @@ func TestEditStandardSwitchRollsBackDatabaseAndRestoresRuntime(t *testing.T) {
 		},
 	})
 
-	err := svc.EditStandardSwitch(
-		sw.ID,
-		9000,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   9000,
+			Ports:                 []string{},
+			MACSource:             createTestStandardSwitchMACSource(t, svc),
+			DisableBridgeOffloads: true,
+		},
+	})
 	if err == nil || !strings.Contains(err.Error(), "runtime edit failed") {
 		t.Fatalf("expected runtime edit failure, got %v", err)
 	}
@@ -2830,6 +3067,7 @@ func TestEditStandardSwitchCreatesUpdatedRuntimeWhenBridgeIsMissing(t *testing.T
 	svc, db := newNetworkServiceForTest(t,
 		&networkModels.StandardSwitch{},
 		&networkModels.NetworkPort{},
+		&vmModels.Network{},
 	)
 
 	sw := networkModels.StandardSwitch{
@@ -2857,25 +3095,17 @@ func TestEditStandardSwitchCreatesUpdatedRuntimeWhenBridgeIsMissing(t *testing.T
 		},
 	})
 
-	err := svc.EditStandardSwitch(
-		sw.ID,
-		9000,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		true,
-		false,
-		true,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   9000,
+			Ports:                 []string{},
+			MACSource:             createTestStandardSwitchMACSource(t, svc),
+			Private:               true,
+			DisableIPv6:           true,
+			DisableBridgeOffloads: true,
+		},
+	})
 	if err != nil {
 		t.Fatalf("edit missing runtime: %v", err)
 	}
@@ -2930,25 +3160,16 @@ func TestEditStandardSwitchMissingRuntimeFailureRestoresPreviousWithoutDelete(t 
 		},
 	})
 
-	err := svc.EditStandardSwitch(
-		sw.ID,
-		9000,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		false,
-		false,
-		true,
-		false,
-		false,
-		false,
-		true,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:                   9000,
+			Ports:                 []string{},
+			MACSource:             createTestStandardSwitchMACSource(t, svc),
+			DisableIPv6:           true,
+			DisableBridgeOffloads: true,
+		},
+	})
 	if err == nil || !strings.Contains(err.Error(), "runtime create failed") {
 		t.Fatalf("expected runtime create failure, got %v", err)
 	}
@@ -3491,25 +3712,16 @@ func TestNewStandardSwitchPersistsSelectedPortMACSource(t *testing.T) {
 		createBridge: func(networkModels.StandardSwitch) error { return nil },
 	})
 
-	id, err := svc.NewStandardSwitch(
-		"port-mac-source",
-		1500,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{"em0"},
-		networkModels.StandardSwitchMACSource{Mode: networkModels.StandardSwitchMACModePort, Port: "em0"},
-		true,
-		false,
-		true,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	)
+	id, err := svc.NewStandardSwitch(CreateStandardSwitchRequest{
+		Name: "port-mac-source",
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			Ports:       []string{"em0"},
+			MACSource:   networkModels.StandardSwitchMACSource{Mode: networkModels.StandardSwitchMACModePort, Port: "em0"},
+			Private:     true,
+			DisableIPv6: true,
+		},
+	})
 	if err != nil {
 		t.Fatalf("create switch with port MAC source: %v", err)
 	}

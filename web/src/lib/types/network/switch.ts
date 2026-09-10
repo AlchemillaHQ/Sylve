@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { z } from 'zod/v4';
 import { NetworkObjectSchema, type NetworkObject } from './object';
 import type { Row } from '../components/tree-table';
@@ -7,10 +17,17 @@ const nullableString = z
 	.nullish()
 	.transform((value) => value ?? '');
 
+export const VLANPortPolicySchema = z.object({
+	mode: z.enum(['', 'access', 'trunk']),
+	untaggedVlan: z.number().int().min(1).max(4094).optional(),
+	taggedVlans: z.array(z.number().int().min(1).max(4094)).default([])
+});
+
 export const NetworkPortSchema = z.object({
 	id: z.number().int().positive(),
 	name: z.string(),
-	switchId: z.number().int().positive()
+	switchId: z.number().int().positive(),
+	vlanPolicy: VLANPortPolicySchema
 });
 
 export const StandardSwitchRCConflictSchema = z.object({
@@ -64,13 +81,20 @@ export const StandardSwitchSchema = z.object({
 	disableIPv6: z.boolean(),
 	defaultRoute: z.boolean(),
 	defaultRoute6: z.boolean().default(false),
-	disableBridgeOffloads: z.boolean()
+	disableBridgeOffloads: z.boolean(),
+	vlanFiltering: z.boolean().default(false),
+	defaultAccessVlan: z.number().int().min(1).max(4094).nullable().default(null),
+	hostVlan: z.number().int().min(1).max(4094).nullable().default(null)
 });
 
 export const ManualSwitchSchema = z.object({
 	id: z.number().int().positive(),
 	name: z.string(),
 	bridge: z.string(),
+	vlanFiltering: z.boolean().default(false),
+	defaultAccessVlan: z.number().int().min(1).max(4094).nullable().default(null),
+	vlanStateAvailable: z.boolean(),
+	vlanStateError: z.string().default(''),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });
@@ -81,16 +105,29 @@ export const SwitchListSchema = z.object({
 });
 
 export type StandardSwitchRCConflict = z.infer<typeof StandardSwitchRCConflictSchema>;
+export type VLANPortPolicy = z.infer<typeof VLANPortPolicySchema>;
 export type StandardSwitch = z.infer<typeof StandardSwitchSchema>;
 export type ManualSwitch = z.infer<typeof ManualSwitchSchema>;
+export type NetworkSwitch = StandardSwitch | ManualSwitch;
 export type SwitchList = z.infer<typeof SwitchListSchema>;
+
+export function isSwitchRuntimeAvailable(networkSwitch: NetworkSwitch): boolean {
+	return !('vlanStateAvailable' in networkSwitch) || networkSwitch.vlanStateAvailable;
+}
+
+export function isSwitchVMCompatible(networkSwitch: NetworkSwitch): boolean {
+	return (
+		isSwitchRuntimeAvailable(networkSwitch) &&
+		(!networkSwitch.vlanFiltering || networkSwitch.defaultAccessVlan !== null)
+	);
+}
 
 export interface SwitchRow extends Row {
 	id: number;
 	name: string;
 	mtu: number;
 	vlan: number | '-';
-	ports: Array<{ name: string }>;
+	ports: Array<{ name: string; vlanPolicy: VLANPortPolicy }>;
 	portsOnly: string[];
 	bridgeMacMode: 'port' | 'object';
 	bridgeMacSourcePort: string;
@@ -111,6 +148,9 @@ export interface SwitchRow extends Row {
 	defaultRoute: boolean;
 	defaultRoute6: boolean;
 	disableBridgeOffloads: boolean;
+	vlanFiltering: boolean;
+	defaultAccessVlan: number | null;
+	hostVlan: number | null;
 	children?: SwitchRow[];
 }
 
@@ -118,6 +158,10 @@ export interface ManualSwitchRow extends Row {
 	id: number;
 	name: string;
 	bridge: string;
+	vlanFiltering: boolean;
+	defaultAccessVlan: number | null;
+	vlanStateAvailable: boolean;
+	vlanStateError: string;
 	children?: ManualSwitchRow[];
 }
 

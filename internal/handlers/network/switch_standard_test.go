@@ -385,20 +385,10 @@ func TestUpdateStandardSwitchSLAACKeepsIPv4Manual(t *testing.T) {
 	}
 }
 
-func TestUpdateStandardSwitchPreservesOmittedIPv6RouteOwnership(t *testing.T) {
-	r, db := setupStandardSwitchUpdateRouter(t)
-	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", 1).Update("default_route6", true).Error; err != nil {
-		t.Fatalf("seed IPv6 route ownership: %v", err)
-	}
-
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(`{
-		"private": false,
-		"confirmRCConflicts": true,
-		"disableIPv6": true,
-		"ports": []
-	}`))
-	if code := standardSwitchResponseError(t, rr); code != "standard_switch_ipv6_default_route_requires_ipv6" {
-		t.Fatalf("omitted defaultRoute6 was not preserved: status=%d code=%q body=%s", rr.Code, code, rr.Body.String())
+func TestUpdateStandardSwitchDoesNotPreserveOmittedIPv6RouteOwnership(t *testing.T) {
+	request := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{})
+	if request.ID != 7 || request.DefaultRoute6 {
+		t.Fatalf("omitted defaultRoute6 produced request %#v", request)
 	}
 }
 

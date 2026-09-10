@@ -21,6 +21,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
@@ -168,6 +169,93 @@ func newVMCreatePrecheckTestService(db *gorm.DB, pools []string, existingDataset
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner: &vmCreatePrecheckZFSRunner{existing: existing},
 		}),
+	}
+}
+
+func TestValidateCreateRejectsIncompatibleSwitch(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := testutil.NewSQLiteTestDB(t,
+		&vmModels.VM{}, &vmModels.VMStorageDataset{},
+		&networkModels.StandardSwitch{}, &networkModels.ManualSwitch{},
+	)
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	sw := networkModels.StandardSwitch{
+		Name: "filtered-without-default", BridgeName: "bridge-create-test", VLANFiltering: true,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatal(err)
+	}
+	request := testCreateRequest(731, 5900)
+	vncEnabled := false
+	request.VNCEnabled = &vncEnabled
+	request.SwitchName = sw.Name
+	request.SwitchEmulationType = "virtio"
+	if err := svc.validateCreate(request, context.Background()); err == nil || !strings.Contains(err.Error(), "default_access_vlan") {
+		t.Fatalf("preflight must reject filtered VM attachment without a default VLAN, got %v", err)
+	}
+	vid := 10
+	if err := db.Model(&sw).Update("default_access_vlan", vid).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.validateCreate(request, context.Background()); err != nil {
+		t.Fatalf("compatible switch rejected during preflight: %v", err)
+	}
+}
+
+type vmCreateSwitchDriftCoordinator struct {
+	clusterServiceInterfaces.GuestIdentityCoordinator
+	drift    func() error
+	released bool
+}
+
+func (c *vmCreateSwitchDriftCoordinator) ReserveGuestIdentities(
+	context.Context, string, []uint,
+) (clusterServiceInterfaces.GuestIdentityReservation, error) {
+	return clusterServiceInterfaces.GuestIdentityReservation{}, c.drift()
+}
+
+func (c *vmCreateSwitchDriftCoordinator) ReleaseGuestIdentities(
+	context.Context, clusterServiceInterfaces.GuestIdentityReservation,
+) error {
+	c.released = true
+	return nil
+}
+
+func TestCreateVMRevalidatesSwitchBeforePersistingAttachments(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := testutil.NewSQLiteTestDB(t,
+		&vmModels.VM{}, &vmModels.VMStorageDataset{}, &vmModels.Network{},
+		&networkModels.StandardSwitch{}, &networkModels.ManualSwitch{}, &networkModels.Object{},
+	)
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	vid := 10
+	sw := networkModels.StandardSwitch{
+		Name: "filtered-create-drift", BridgeName: "bridge-create-drift",
+		VLANFiltering: true, DefaultAccessVLAN: &vid,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatal(err)
+	}
+	coordinator := &vmCreateSwitchDriftCoordinator{drift: func() error {
+		return db.Model(&sw).Update("default_access_vlan", nil).Error
+	}}
+	svc.guestIdentityCoordinator = coordinator
+	request := testCreateRequest(732, 5900)
+	vncEnabled := false
+	request.VNCEnabled = &vncEnabled
+	request.SwitchName = sw.Name
+	request.SwitchEmulationType = "virtio"
+	if err := svc.CreateVM(request, context.Background()); err == nil || !strings.Contains(err.Error(), "default_access_vlan") {
+		t.Fatalf("create must reject incompatible switch drift after preflight, got %v", err)
+	}
+	if !coordinator.released {
+		t.Error("guest identity reservation was not released")
+	}
+	for _, model := range []any{&vmModels.VM{}, &vmModels.Network{}, &networkModels.Object{}} {
+		var count int64
+		if err := db.Model(model).Count(&count).Error; err != nil || count != 0 {
+			t.Errorf("failed preflight must not persist %T: count=%d err=%v", model, count, err)
+		}
 	}
 }
 

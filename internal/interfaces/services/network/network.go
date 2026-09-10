@@ -20,44 +20,41 @@ var (
 	ErrEpairStateConflict     = errors.New("epair state conflict")
 )
 
-type NetworkServiceInterface interface {
-	SyncStandardSwitches(previous *networkModels.StandardSwitch, action string) error
-	GetStandardSwitches() ([]networkModels.StandardSwitch, error)
-	NewStandardSwitch(name string,
-		mtu int,
-		vlan int,
-		network4Id uint,
-		network6Id uint,
-		gateway4Id uint,
-		gateway6Id uint,
-		ports []string,
-		macSource networkModels.StandardSwitchMACSource,
-		private bool,
-		dhcp bool,
-		disableIPv6 bool,
-		slaac bool,
-		defaultRoute bool,
-		defaultRoute6 bool,
-		disableBridgeOffloads bool,
-		manual networkModels.StandardSwitchManualAddresses) (uint, error)
+type StandardSwitchConfig struct {
+	MTU                   int
+	VLAN                  int
+	Network4ID            uint
+	Network6ID            uint
+	Gateway4ID            uint
+	Gateway6ID            uint
+	Ports                 []string
+	MACSource             networkModels.StandardSwitchMACSource
+	Private               bool
+	DHCP                  bool
+	DisableIPv6           bool
+	SLAAC                 bool
+	DefaultRoute          bool
+	DefaultRoute6         bool
+	DisableBridgeOffloads bool
+	Manual                networkModels.StandardSwitchManualAddresses
+	VLANConfig            networkModels.StandardSwitchVLANConfig
+}
 
-	EditStandardSwitch(id uint,
-		mtu int,
-		vlan int,
-		network4Id uint,
-		network6Id uint,
-		gateway4Id uint,
-		gateway6Id uint,
-		ports []string,
-		macSource networkModels.StandardSwitchMACSource,
-		private bool,
-		dhcp bool,
-		disableIPv6 bool,
-		slaac bool,
-		defaultRoute bool,
-		defaultRoute6 bool,
-		disableBridgeOffloads bool,
-		manual networkModels.StandardSwitchManualAddresses) error
+type CreateStandardSwitchRequest struct {
+	Name string
+	StandardSwitchConfig
+}
+
+type UpdateStandardSwitchRequest struct {
+	ID uint
+	StandardSwitchConfig
+}
+
+type NetworkServiceInterface interface {
+	SyncStandardSwitches() error
+	GetStandardSwitches() ([]networkModels.StandardSwitch, error)
+	NewStandardSwitch(request CreateStandardSwitchRequest) (uint, error)
+	EditStandardSwitch(request UpdateStandardSwitchRequest) error
 	DeleteStandardSwitch(id uint) error
 	IsObjectUsed(id uint) (bool, string, error)
 	GetObjectEntryByID(id uint) (string, error)

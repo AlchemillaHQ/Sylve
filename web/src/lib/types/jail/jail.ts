@@ -1,5 +1,16 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { z } from 'zod/v4';
 import { NetworkObjectSchema } from '../network/object';
+import { VLANPortPolicySchema } from '../network/switch';
 import { GFSStepSchema, StatsHistoryStateSchema } from '../common';
 
 export interface CreateData {
@@ -31,7 +42,10 @@ export interface CreateData {
 		dhcp: boolean;
 		slaac: boolean;
 		resolvConf: string;
-		vlan: number;
+		vlanFiltering: boolean;
+		vlanPolicyMode: '' | 'access' | 'trunk';
+		vlanPolicyUntagged: string | number;
+		vlanPolicyTagged: string;
 	};
 	hardware: {
 		cpuCores: number;
@@ -94,7 +108,7 @@ export const NetworkSchema = z.object({
 	dhcp: z.boolean().nullable().default(false),
 	slaac: z.boolean().nullable().default(false),
 	defaultGateway: z.boolean().default(false),
-	vlan: z.number().int().min(0).max(4095).optional().default(0)
+	vlanPolicy: VLANPortPolicySchema
 });
 
 export const JailNetworkInheritanceResultSchema = z.object({
@@ -125,7 +139,8 @@ export const JailTemplateNetworkSchema = z.object({
 	switchType: z.enum(['standard', 'manual']),
 	dhcp: z.boolean().default(false),
 	slaac: z.boolean().default(false),
-	defaultGateway: z.boolean().default(false)
+	defaultGateway: z.boolean().default(false),
+	vlanPolicy: VLANPortPolicySchema
 });
 
 export const JailTemplateHookSchema = z.object({

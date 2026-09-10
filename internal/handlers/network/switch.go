@@ -24,7 +24,7 @@ type ListSwitchResponse struct {
 }
 
 // @Summary List network switches
-// @Description List all configured standard and manual network switches
+// @Description List all configured standard and manual network switches. Manual switches include live VLAN-state availability and an observation error without failing the whole list.
 // @Tags Network
 // @Produce json
 // @Security BearerAuth

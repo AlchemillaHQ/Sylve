@@ -35,7 +35,10 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/mountutil"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	jailService "github.com/alchemillahq/sylve/internal/services/jail"
+	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/google/uuid"
@@ -2619,11 +2622,15 @@ func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterM
 		return runErr
 	}
 
-	// vm.json is part of every VM generation. Refresh it from the
-	// authoritative DB while holding the same guest-wide fence as snapshot
-	// discovery, so a stale metadata file can never be snapshotted and re-arm
-	// target readiness. Fail closed before source discovery or any snapshot.
 	if runErr := s.refreshReplicationSourceMetadataForRun(policy); runErr != nil {
+		return runErr
+	}
+	networkCheck, err := s.buildReplicationTargetNetworkCheck(policy)
+	if err != nil {
+		runErr := fmt.Errorf("replication_source_network_compatibility_failed: %w", err)
+		if invalidateErr := s.invalidateReplicationPolicyTargetReadiness(policy, runErr); invalidateErr != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("invalidate_replication_target_readiness_failed: %w", invalidateErr))
+		}
 		return runErr
 	}
 
@@ -2789,6 +2796,7 @@ func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterM
 					"",
 					generationID,
 					event.ID,
+					networkCheck,
 				)
 			},
 		)
@@ -2888,28 +2896,40 @@ func (s *Service) runReplicationPolicyCore(ctx context.Context, policy *clusterM
 	return runErr
 }
 
-func (s *Service) refreshReplicationVMMetadata(policy *clusterModels.ReplicationPolicy) error {
-	if policy == nil {
-		return fmt.Errorf("invalid_policy")
+func (s *Service) refreshGuestMetadata(guestType string, guestID uint) error {
+	guestType = strings.ToLower(strings.TrimSpace(guestType))
+	switch guestType {
+	case clusterModels.ReplicationGuestTypeVM:
+		if guestID == 0 {
+			return fmt.Errorf("invalid_vm_guest_id")
+		}
+		if s.VM == nil {
+			return fmt.Errorf("vm_service_unavailable")
+		}
+		return s.VM.WriteVMJson(guestID)
+	case clusterModels.ReplicationGuestTypeJail:
+		if guestID == 0 {
+			return fmt.Errorf("invalid_jail_guest_id")
+		}
+		if s.Jail == nil {
+			return fmt.Errorf("jail_service_unavailable")
+		}
+		return s.Jail.WriteJailJSON(guestID)
+	default:
+		return fmt.Errorf("invalid_guest_type")
 	}
-	if strings.TrimSpace(policy.GuestType) != clusterModels.ReplicationGuestTypeVM {
-		return nil
-	}
-	if policy.GuestID == 0 {
-		return fmt.Errorf("invalid_vm_rid")
-	}
-	if s.VM == nil {
-		return fmt.Errorf("vm_service_unavailable")
-	}
-	return s.VM.WriteVMJson(policy.GuestID)
 }
 
 func (s *Service) refreshReplicationSourceMetadataForRun(policy *clusterModels.ReplicationPolicy) error {
-	metadataErr := s.refreshReplicationVMMetadata(policy)
+	if policy == nil {
+		return fmt.Errorf("invalid_policy")
+	}
+	guestType := strings.ToLower(strings.TrimSpace(policy.GuestType))
+	metadataErr := s.refreshGuestMetadata(guestType, policy.GuestID)
 	if metadataErr == nil {
 		return nil
 	}
-	runErr := fmt.Errorf("replication_vm_metadata_refresh_failed: %w", metadataErr)
+	runErr := fmt.Errorf("replication_%s_metadata_refresh_failed: %w", guestType, metadataErr)
 	if invalidateErr := s.invalidateReplicationPolicyTargetReadiness(policy, runErr); invalidateErr != nil {
 		runErr = errors.Join(runErr, fmt.Errorf("invalidate_replication_target_readiness_failed: %w", invalidateErr))
 	}
@@ -3347,6 +3367,221 @@ func (s *Service) replicationTargetSpec(
 	}, destSuffix, nil
 }
 
+type replicationVMTargetProbe struct {
+	RID      uint                              `json:"rid"`
+	Switches []networkAttachment.NamedContract `json:"switches"`
+}
+
+type replicationJailTargetProbe struct {
+	Networks []networkAttachment.NamedContract `json:"networks"`
+}
+
+type replicationNetworkTargetResult = networkAttachment.TargetResult
+
+type replicationTargetNetworkCheck struct {
+	action  string
+	payload any
+}
+
+var (
+	resolveReplicationVMNetworkAttachment   = libvirt.ResolveDesiredVMNetworkAttachment
+	resolveReplicationVMNetworkIdentity     = libvirt.ResolveVMNetworkIdentity
+	resolveReplicationJailNetworkAttachment = func(
+		db *gorm.DB,
+		network *jailModels.Network,
+	) (networkAttachment.Contract, error) {
+		contract, _, err := jailService.ResolveDesiredNetworkAttachment(db, network)
+		return contract, err
+	}
+)
+
+func (s *Service) buildReplicationVMTargetProbe(guestID uint) (replicationVMTargetProbe, error) {
+	probe := replicationVMTargetProbe{RID: guestID}
+	var vm vmModels.VM
+	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
+		Select("id").
+		Where("rid = ?", guestID).
+		First(&vm).Error; err != nil {
+		return probe, fmt.Errorf("replication_vm_network_owner_lookup_failed: %w", err)
+	}
+
+	var networks []vmModels.Network
+	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
+		Where("vm_id = ?", vm.ID).
+		Order("id ASC").
+		Find(&networks).Error; err != nil {
+		return probe, fmt.Errorf("replication_vm_network_lookup_failed: %w", err)
+	}
+
+	seen := make(map[string]int, len(networks))
+	for index := range networks {
+		network := &networks[index]
+		switchType := strings.ToLower(strings.TrimSpace(network.SwitchType))
+		if switchType == "" {
+			switchType = "standard"
+		}
+		key := fmt.Sprintf("%s:%d", switchType, network.SwitchID)
+		identityOnly := !network.Enable
+		var contract networkAttachment.Contract
+		var err error
+		if identityOnly {
+			contract, err = resolveReplicationVMNetworkIdentity(s.DB, switchType, network.SwitchID)
+		} else {
+			contract, err = resolveReplicationVMNetworkAttachment(s.DB, switchType, network.SwitchID)
+		}
+		if err != nil {
+			return probe, fmt.Errorf("replication_vm_network_%d_source_switch_incompatible: %w", index+1, err)
+		}
+		entry := networkAttachment.NamedContract{
+			Name: contract.SwitchName, Attachment: contract, IdentityOnly: identityOnly,
+		}
+		if existing, exists := seen[key]; exists {
+			if !identityOnly && probe.Switches[existing].IdentityOnly {
+				probe.Switches[existing] = entry
+			}
+			continue
+		}
+		seen[key] = len(probe.Switches)
+		probe.Switches = append(probe.Switches, entry)
+	}
+	sortReplicationVMTargetProbe(&probe)
+	return probe, nil
+}
+
+func (s *Service) buildReplicationJailTargetProbe(guestID uint) (replicationJailTargetProbe, error) {
+	var probe replicationJailTargetProbe
+	var jail jailModels.Jail
+	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
+		Select("id").
+		Where("ct_id = ?", guestID).
+		First(&jail).Error; err != nil {
+		return probe, fmt.Errorf("replication_jail_network_owner_lookup_failed: %w", err)
+	}
+
+	var networks []jailModels.Network
+	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
+		Where("jid = ?", jail.ID).
+		Order("id ASC").
+		Find(&networks).Error; err != nil {
+		return probe, fmt.Errorf("replication_jail_network_lookup_failed: %w", err)
+	}
+
+	for index := range networks {
+		network := &networks[index]
+		contract, err := resolveReplicationJailNetworkAttachment(s.DB, network)
+		if err != nil {
+			return probe, fmt.Errorf("replication_jail_network_%d_source_switch_incompatible: %w", index+1, err)
+		}
+		probe.Networks = append(probe.Networks, networkAttachment.NamedContract{
+			Name:       strings.TrimSpace(network.Name),
+			Attachment: contract,
+		})
+	}
+	sortReplicationJailTargetProbe(&probe)
+	return probe, nil
+}
+
+func (s *Service) buildGuestTargetNetworkCheck(
+	guestType string,
+	guestID uint,
+) (replicationTargetNetworkCheck, error) {
+	if guestID == 0 {
+		return replicationTargetNetworkCheck{}, fmt.Errorf("invalid_guest_id")
+	}
+	switch strings.ToLower(strings.TrimSpace(guestType)) {
+	case clusterModels.ReplicationGuestTypeVM:
+		probe, err := s.buildReplicationVMTargetProbe(guestID)
+		if err != nil {
+			return replicationTargetNetworkCheck{}, err
+		}
+		if len(probe.Switches) == 0 {
+			return replicationTargetNetworkCheck{}, nil
+		}
+		return replicationTargetNetworkCheck{
+			action: "migration/check-vm-target", payload: probe,
+		}, nil
+	case clusterModels.ReplicationGuestTypeJail:
+		probe, err := s.buildReplicationJailTargetProbe(guestID)
+		if err != nil {
+			return replicationTargetNetworkCheck{}, err
+		}
+		if len(probe.Networks) == 0 {
+			return replicationTargetNetworkCheck{}, nil
+		}
+		return replicationTargetNetworkCheck{
+			action: "migration/check-jail-target", payload: probe,
+		}, nil
+	default:
+		return replicationTargetNetworkCheck{}, fmt.Errorf("invalid_replication_guest_type")
+	}
+}
+
+func (s *Service) buildReplicationTargetNetworkCheck(
+	policy *clusterModels.ReplicationPolicy,
+) (replicationTargetNetworkCheck, error) {
+	if policy == nil || policy.ID == 0 {
+		return replicationTargetNetworkCheck{}, fmt.Errorf("invalid_policy")
+	}
+	return s.buildGuestTargetNetworkCheck(policy.GuestType, policy.GuestID)
+}
+
+func (s *Service) validateReplicationTargetNetworkCheck(
+	ctx context.Context,
+	targetNodeID string,
+	check replicationTargetNetworkCheck,
+) error {
+	if strings.TrimSpace(check.action) == "" {
+		return nil
+	}
+
+	targetAPI, err := s.resolveReplicationNodeAPI(targetNodeID)
+	if err != nil {
+		return fmt.Errorf("replication_target_network_api_lookup_failed: %w", err)
+	}
+	body, err := s.forwardReplicationPolicyControlReadAtAPIContext(
+		ctx,
+		targetAPI,
+		check.action,
+		check.payload,
+		10*time.Second,
+	)
+	if err != nil {
+		return fmt.Errorf("replication_target_network_check_failed: %w", err)
+	}
+
+	var response struct {
+		Status  string                         `json:"status"`
+		Message string                         `json:"message"`
+		Error   string                         `json:"error"`
+		Data    replicationNetworkTargetResult `json:"data"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("replication_target_network_check_decode_failed: %w", err)
+	}
+	if !strings.EqualFold(strings.TrimSpace(response.Status), "success") {
+		return fmt.Errorf(
+			"replication_target_network_check_rejected: message=%s error=%s",
+			strings.TrimSpace(response.Message),
+			strings.TrimSpace(response.Error),
+		)
+	}
+	if !response.Data.NetworkCompatibilityChecked {
+		return fmt.Errorf("replication_target_network_check_unsupported")
+	}
+
+	problems := make([]string, 0, len(response.Data.MissingSwitches)+len(response.Data.IncompatibleSwitches))
+	for _, item := range response.Data.MissingSwitches {
+		problems = append(problems, "missing_switch="+strings.TrimSpace(item))
+	}
+	for _, item := range response.Data.IncompatibleSwitches {
+		problems = append(problems, "incompatible_switch="+strings.TrimSpace(item))
+	}
+	if len(problems) != 0 {
+		return fmt.Errorf("replication_target_network_incompatible: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
 func (s *Service) replicatePolicyGenerationToTarget(
 	ctx context.Context,
 	policy *clusterModels.ReplicationPolicy,
@@ -3355,12 +3590,16 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	transitionRunID string,
 	generationID string,
 	eventID uint,
+	networkCheck replicationTargetNetworkCheck,
 ) (result replicationGenerationTransferResult, retErr error) {
 	if policy == nil || policy.ID == 0 {
 		return result, fmt.Errorf("invalid_policy")
 	}
 	if _, err := s.validateReplicationTransferAuthority(policy.ID, expectedOwnerEpoch, transitionRunID); err != nil {
 		return result, err
+	}
+	if err := s.validateReplicationTargetNetworkCheck(ctx, targetNodeID, networkCheck); err != nil {
+		return result, fmt.Errorf("replication_target_network_compatibility_failed: %w", err)
 	}
 	generationID = strings.TrimSpace(generationID)
 	if generationID == "" {
@@ -3416,6 +3655,33 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	result.SnapshotName = snapshotName
 	result.ManifestHash = replicationSnapshotManifestHash(policy.ID, expectedOwnerEpoch, generationID, treeManifest)
 	result.RequiredDatasetCount = len(manifest)
+	snapshotNetworkCheck, err := s.buildReplicationTargetNetworkCheckFromSnapshot(
+		ctx,
+		policy,
+		sourceDatasets,
+		snapshotName,
+	)
+	if err != nil {
+		return result, fmt.Errorf("replication_snapshot_network_compatibility_failed: %w", err)
+	}
+	currentNetworkCheck, err := s.buildReplicationTargetNetworkCheck(policy)
+	if err != nil {
+		return result, fmt.Errorf("replication_source_network_compatibility_recheck_failed: %w", err)
+	}
+	networkMetadataCurrent, err := replicationTargetNetworkChecksEqual(
+		snapshotNetworkCheck,
+		currentNetworkCheck,
+	)
+	if err != nil {
+		return result, fmt.Errorf("replication_snapshot_network_compatibility_compare_failed: %w", err)
+	}
+	if !networkMetadataCurrent {
+		return result, fmt.Errorf("replication_snapshot_network_metadata_stale")
+	}
+	networkCheck = snapshotNetworkCheck
+	if err := s.validateReplicationTargetNetworkCheck(ctx, targetNodeID, networkCheck); err != nil {
+		return result, fmt.Errorf("replication_target_network_compatibility_failed: %w", err)
+	}
 
 	identities, err := s.Cluster.ListClusterSSHIdentities()
 	if err != nil {
@@ -3731,6 +3997,28 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	}
 	generationVerifiedOnTarget = true
 	result.CompletedDatasetCount = verifiedCount
+	if networkErr := s.validateReplicationTargetNetworkCheck(ctx, targetNodeID, networkCheck); networkErr != nil {
+		compatibilityErr := fmt.Errorf("replication_target_network_compatibility_failed: %w", networkErr)
+		if readinessErr := s.publishReplicationTargetReadiness(clusterModels.ReplicationTargetReadinessUpdate{
+			PolicyID:              policy.ID,
+			NodeID:                targetNodeID,
+			ExpectedOwnerEpoch:    expectedOwnerEpoch,
+			EvaluatedAt:           s.now().UTC(),
+			Ready:                 false,
+			GenerationID:          result.GenerationID,
+			ManifestHash:          result.ManifestHash,
+			RequiredDatasetCount:  result.RequiredDatasetCount,
+			CompletedDatasetCount: result.CompletedDatasetCount,
+			LastError:             compatibilityErr.Error(),
+			TransitionRunID:       strings.TrimSpace(transitionRunID),
+		}); readinessErr != nil {
+			compatibilityErr = errors.Join(
+				compatibilityErr,
+				fmt.Errorf("publish_replication_target_network_incompatibility_failed: %w", readinessErr),
+			)
+		}
+		return result, compatibilityErr
+	}
 	if strings.TrimSpace(transitionRunID) != "" {
 		verifiedAt := s.now().UTC()
 		readyUntil := replicationTargetReadyUntil(policy, verifiedAt)
@@ -8159,6 +8447,13 @@ func (s *Service) catchupReplicationPolicyToNode(
 			return err
 		}
 	}
+	if err := s.refreshReplicationSourceMetadataForRun(policy); err != nil {
+		return err
+	}
+	networkCheck, err := s.buildReplicationTargetNetworkCheck(policy)
+	if err != nil {
+		return fmt.Errorf("replication_source_network_compatibility_failed: %w", err)
+	}
 
 	nodes, err := s.Cluster.Nodes()
 	if err == nil {
@@ -8187,6 +8482,7 @@ func (s *Service) catchupReplicationPolicyToNode(
 		transitionRunID,
 		generationID,
 		0,
+		networkCheck,
 	)
 	if err != nil {
 		return err

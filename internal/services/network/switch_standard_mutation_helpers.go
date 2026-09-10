@@ -15,6 +15,8 @@ import (
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -49,6 +51,9 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 		DefaultRoute:          input.defaultRoute,
 		DefaultRoute6:         input.defaultRoute6,
 		DisableBridgeOffloads: input.disableBridgeOffloads,
+		VLANFiltering:         input.vlanConfig.Filtering,
+		DefaultAccessVLAN:     input.vlanConfig.DefaultAccessVLAN,
+		HostVLAN:              input.vlanConfig.HostVLAN,
 		NetworkManual:         input.manual.Network4,
 		GatewayManual:         input.manual.Gateway4,
 		Network6Manual:        input.manual.Network6,
@@ -78,21 +83,29 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 	return sw
 }
 
-func standardSwitchPorts(switchID uint, names []string) []networkModels.NetworkPort {
+func standardSwitchPorts(
+	switchID uint,
+	names []string,
+	policies map[string]bridgevlan.PortPolicy,
+) []networkModels.NetworkPort {
 	ports := make([]networkModels.NetworkPort, 0, len(names))
 	for _, name := range names {
-		ports = append(ports, networkModels.NetworkPort{Name: name, SwitchID: switchID})
+		ports = append(ports, networkModels.NetworkPort{
+			Name: name, SwitchID: switchID, VLANPolicy: policies[name],
+		})
 	}
 	return ports
 }
 
-func rollbackStandardSwitchTransaction(tx *gorm.DB, operation string) {
+func rollbackStandardSwitchTransaction(tx *gorm.DB, operation string) error {
 	if tx == nil {
-		return
+		return nil
 	}
 	if err := tx.Rollback().Error; err != nil {
 		logger.L.Error().Err(err).Str("operation", operation).Msg("standard_switch_transaction_rollback_failed")
+		return fmt.Errorf("rollback standard switch transaction during %s: %w", operation, err)
 	}
+	return nil
 }
 
 func restoreStandardSwitchRuntime(previous, current networkModels.StandardSwitch) error {
@@ -104,6 +117,64 @@ func restoreStandardSwitchRuntime(previous, current networkModels.StandardSwitch
 		return errors.Join(cleanupErr, fmt.Errorf("restore previous standard switch runtime: %w", err))
 	}
 	return cleanupErr
+}
+
+func replaceStandardSwitchRuntime(previous, current networkModels.StandardSwitch) error {
+	if previous.VLANFiltering == current.VLANFiltering {
+		return fmt.Errorf("standard switch VLAN-filtering mode did not change")
+	}
+	if err := syncDeleteBridge(previous); err != nil {
+		return fmt.Errorf("remove previous standard switch runtime: %w", err)
+	}
+	if err := syncCreateBridge(current); err != nil {
+		return fmt.Errorf("create replacement standard switch runtime: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) knownStandardSwitchJailMembers(switchID uint) (map[string]struct{}, error) {
+	members := make(map[string]struct{})
+	if s == nil || s.DB == nil || switchID == 0 {
+		return members, nil
+	}
+
+	var rows []struct {
+		NetworkID uint `gorm:"column:network_id"`
+		CTID      uint `gorm:"column:ct_id"`
+	}
+	if err := s.DB.Table("jail_networks AS network").
+		Select("network.id AS network_id, jail.ct_id AS ct_id").
+		Joins("JOIN jails AS jail ON jail.id = network.jid").
+		Where("network.switch_id = ? AND network.switch_type = ?", switchID, "standard").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("load filtered Standard Switch jail members: %w", err)
+	}
+	for _, row := range rows {
+		if row.NetworkID == 0 || row.CTID == 0 {
+			continue
+		}
+		name := fmt.Sprintf("%s_net%da", utils.HashIntToNLetters(int(row.CTID), 5), row.NetworkID)
+		members[name] = struct{}{}
+	}
+	return members, nil
+}
+
+func standardSwitchPortNames(ports []networkModels.NetworkPort) map[string]struct{} {
+	names := make(map[string]struct{}, len(ports))
+	for _, port := range ports {
+		names[port.Name] = struct{}{}
+	}
+	return names
+}
+
+func mergeStandardSwitchMemberSets(sets ...map[string]struct{}) map[string]struct{} {
+	merged := make(map[string]struct{})
+	for _, set := range sets {
+		for name := range set {
+			merged[name] = struct{}{}
+		}
+	}
+	return merged
 }
 
 func standardSwitchManagedMembers(sw networkModels.StandardSwitch) map[string]struct{} {
@@ -188,15 +259,85 @@ func reattachStandardSwitchMembers(bridgeName string, members []string) error {
 	return errors.Join(attachErrors...)
 }
 
+func restoreStandardSwitchExtraMembers(sw networkModels.StandardSwitch, members []string) error {
+	if !sw.VLANFiltering {
+		return reattachStandardSwitchMembers(sw.BridgeName, members)
+	}
+	if len(members) == 0 {
+		return nil
+	}
+
+	bridge, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return fmt.Errorf("inspect restored filtered standard switch bridge %q: %w", sw.BridgeName, err)
+	}
+	if bridge == nil {
+		return fmt.Errorf("restored filtered standard switch bridge %q not found", sw.BridgeName)
+	}
+
+	existing := make(map[string]struct{}, len(bridge.BridgeMembers))
+	for _, member := range bridge.BridgeMembers {
+		existing[member.Name] = struct{}{}
+	}
+
+	missing := make([]string, 0)
+	var inspectErrors []error
+	for _, member := range members {
+		if _, attached := existing[member]; attached {
+			continue
+		}
+		memberObj, inspectErr := syncIfaceGet(member)
+		if inspectErr != nil {
+			if isInterfaceMissingError(inspectErr) {
+				continue
+			}
+			inspectErrors = append(inspectErrors, fmt.Errorf("inspect filtered bridge member %s: %w", member, inspectErr))
+			continue
+		}
+		if memberObj != nil {
+			missing = append(missing, member)
+		}
+	}
+	if len(missing) > 0 {
+		inspectErrors = append(inspectErrors, fmt.Errorf(
+			"filtered_standard_switch_rollback_member_policy_required: detached members %s were not reattached because their VLAN policies are owned by their workloads; restart the affected workloads",
+			strings.Join(missing, ", "),
+		))
+	}
+	return errors.Join(inspectErrors...)
+}
+
 func restoreStandardSwitchEditRuntime(
 	previous, current networkModels.StandardSwitch,
 	extraMembers []string,
+	knownDynamic ...map[string]struct{},
 ) error {
-	if err := syncEditBridge(current, previous); err == nil {
-		return reattachStandardSwitchMembers(previous.BridgeName, extraMembers)
+	if previous.VLANFiltering != current.VLANFiltering {
+		return restoreStandardSwitchRuntime(previous, current)
+	}
+	var reconcileErr error
+	if previous.VLANFiltering || current.VLANFiltering {
+		known := make(map[string]struct{})
+		for _, group := range knownDynamic {
+			for member := range group {
+				known[member] = struct{}{}
+			}
+		}
+		reconcileErr = syncEditFilteredBridge(current, previous, known)
+	} else {
+		reconcileErr = syncEditBridge(current, previous)
+	}
+	if reconcileErr == nil {
+		return errors.Join(
+			restoreStandardSwitchExtraMembers(previous, extraMembers),
+			reconcileStandardSwitchPrivateMembers(previous, mergeStandardSwitchMemberSets(knownDynamic...)),
+		)
+	}
+	if previous.VLANFiltering || current.VLANFiltering {
+		return fmt.Errorf("restore filtered standard switch in place: %w", reconcileErr)
 	}
 	restoreErr := restoreStandardSwitchRuntime(previous, current)
-	reattachErr := reattachStandardSwitchMembers(previous.BridgeName, extraMembers)
+	reattachErr := restoreStandardSwitchExtraMembers(previous, extraMembers)
 	return errors.Join(restoreErr, reattachErr)
 }
 

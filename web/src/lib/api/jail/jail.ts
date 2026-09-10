@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import {
 	APIResponseSchema,
 	GuestDeletionResponseSchema,
@@ -37,9 +47,19 @@ import {
 	type SimpleJailTemplate
 } from '$lib/types/jail/jail';
 import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
+import { parseVLANPolicyDraft } from '$lib/utils/network/vlan';
+import type { VLANPortPolicy } from '$lib/types/network/switch';
 import { z } from 'zod/v4';
 
 export async function newJail(data: CreateData, hostname?: string): Promise<APIResponse> {
+	const hasAttachedSwitch = !['none', 'inherit'].includes(data.network.switch.toLowerCase());
+	const vlanPolicy = data.network.vlanFiltering
+		? (parseVLANPolicyDraft(
+				data.network.vlanPolicyMode,
+				data.network.vlanPolicyUntagged,
+				data.network.vlanPolicyTagged
+			) ?? undefined)
+		: undefined;
 	return await apiRequestResult(
 		'/jail',
 		APIResponseSchema,
@@ -69,7 +89,7 @@ export async function newJail(data: CreateData, hostname?: string): Promise<APIR
 			ipv6GwRaw: data.network.ipv6GatewayRaw,
 			mac: data.network.mac,
 			macRaw: data.network.macRaw,
-			vlan: Number(data.network.vlan),
+			vlanPolicy: hasAttachedSwitch ? vlanPolicy : undefined,
 			resourceLimits: data.hardware.resourceLimits,
 			cores: Number(data.hardware.cpuCores.toString()),
 			memory: Number(data.hardware.ram.toString()),
@@ -339,7 +359,7 @@ export interface JailNetworkWriteRequest {
 	dhcp: boolean;
 	slaac: boolean;
 	defaultGateway: boolean;
-	vlan: number;
+	vlanPolicy?: VLANPortPolicy;
 }
 
 export async function addNetwork(

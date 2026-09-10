@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
@@ -33,10 +34,48 @@ var (
 	syncSolicitRouterAdvertisement = solicitStandardSwitchRouterAdvertisement
 	syncCreateBridge               = createStandardBridge
 	syncEditBridge                 = editStandardBridge
-	syncDeleteBridge               = deleteStandardBridge
-	syncStopDhclient               = stopDhclient
-	syncSetSysctlInt32             = sysctl.SetInt32
+	syncEditFilteredBridge         = func(oldSw, newSw networkModels.StandardSwitch, known map[string]struct{}) error {
+		return reconcileFilteredStandardBridge(oldSw, newSw, known)
+	}
+	syncCaptureFilteredPortClaims   = captureFilteredStandardSwitchPortClaims
+	syncRestoreFilteredPortClaims   = restoreFilteredStandardSwitchPortClaims
+	syncDeleteBridge                = deleteStandardBridge
+	syncStopDhclient                = stopDhclient
+	syncSetSysctlInt32              = sysctl.SetInt32
+	syncInspectBridgeVLAN           = bridgevlan.InspectBridge
+	syncPrepareFilteredBridge       = bridgevlan.PrepareManagedFilteredBridge
+	syncSetDefaultAccessVLAN        = bridgevlan.SetDefaultAccessVLAN
+	syncRemoveFilteredMember        = bridgevlan.RemoveMember
+	syncConfigureFilteredMember     = bridgevlan.ConfigureMember
+	syncFilteredMemberPolicyMatches = bridgevlan.MemberPolicyMatches
+	syncSetBridgeMemberPrivate      = bridgevlan.SetMemberPrivate
+	standardSwitchIsDomainShutOff   = func(s *Service, rid uint) (bool, error) {
+		if s.LibVirt == nil {
+			return false, fmt.Errorf("libvirt_service_unavailable")
+		}
+		return s.LibVirt.IsDomainShutOff(rid)
+	}
 )
+
+func optionalVLANEqual(left, right *int) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}
+
+func (s *Service) requireStoppedVMsForDefaultAccessVLANChange(
+	switchID uint,
+	before, after *int,
+) error {
+	if optionalVLANEqual(before, after) {
+		return nil
+	}
+
+	return s.requireStoppedVMsUsingStandardSwitch(
+		switchID, "standard_switch_default_access_vlan_change_requires_stopped_vms",
+	)
+}
 
 func ensureStandardSwitchIPv6RADefaultRouteSupport() error {
 	if err := syncSetSysctlInt32(models.SystemTunableIPv6RFC6204W3OID, 1); err != nil {
@@ -90,25 +129,29 @@ func reconcileStandardSwitchAutomaticRouteOwners(db *gorm.DB, ipv4, ipv6 bool) e
 
 	var reconcileErrors []error
 	for _, sw := range switches {
+		hostInterface := standardSwitchHostInterfaceName(sw)
+		if hostInterface == "" {
+			continue
+		}
 		if ipv4 && sw.DHCP && sw.DefaultRoute {
-			if err := runDhclient(sw.BridgeName, 10, true); err != nil {
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv4 route owner %s: %w", sw.BridgeName, err))
+			if err := runDhclient(hostInterface, 10, true); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv4 route owner %s: %w", hostInterface, err))
 			}
 		}
 
 		if ipv6 && sw.SLAAC && sw.DefaultRoute6 && !sw.DisableIPv6 {
 			if err := ensureStandardSwitchIPv6RADefaultRouteSupport(); err != nil {
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s: %w", sw.BridgeName, err))
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s: %w", hostInterface, err))
 				continue
 			}
-			if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "auto_linklocal", "-ifdisabled", "-no_radr", "accept_rtadv"); err != nil {
-				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s flags: %w", sw.BridgeName, err))
+			if _, err := syncRunCommand("/sbin/ifconfig", hostInterface, "inet6", "auto_linklocal", "-ifdisabled", "-no_radr", "accept_rtadv"); err != nil {
+				reconcileErrors = append(reconcileErrors, fmt.Errorf("reconcile IPv6 route owner %s flags: %w", hostInterface, err))
 				continue
 			}
-			if err := syncSolicitRouterAdvertisement(sw.BridgeName); err != nil {
+			if err := syncSolicitRouterAdvertisement(hostInterface); err != nil {
 				logger.L.Warn().
 					Err(err).
-					Str("bridge", sw.BridgeName).
+					Str("interface", hostInterface).
 					Msg("standard_switch_slaac_router_solicitation_failed")
 			}
 		}
@@ -227,29 +270,33 @@ func normalizeStandardSwitchAddressModes(modes standardSwitchAddressModes) stand
 	return modes
 }
 
-func (s *Service) NewStandardSwitch(
-	name string,
-	mtu int,
-	vlan int,
-	network4ID uint,
-	network6ID uint,
-	gateway4ID uint,
-	gateway6ID uint,
-	ports []string,
-	macSource networkModels.StandardSwitchMACSource,
-	private bool,
-	dhcp bool,
-	disableIPv6 bool,
-	slaac bool,
-	defaultRoute bool,
-	defaultRoute6 bool,
-	disableBridgeOffloads bool,
-	manual networkModels.StandardSwitchManualAddresses,
-) (uint, error) {
+func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchInput {
+	return standardSwitchInput{
+		mtu:                   config.MTU,
+		vlan:                  config.VLAN,
+		network4ID:            config.Network4ID,
+		network6ID:            config.Network6ID,
+		gateway4ID:            config.Gateway4ID,
+		gateway6ID:            config.Gateway6ID,
+		ports:                 config.Ports,
+		macSource:             config.MACSource,
+		private:               config.Private,
+		dhcp:                  config.DHCP,
+		disableIPv6:           config.DisableIPv6,
+		slaac:                 config.SLAAC,
+		defaultRoute:          config.DefaultRoute,
+		defaultRoute6:         config.DefaultRoute6,
+		disableBridgeOffloads: config.DisableBridgeOffloads,
+		manual:                config.Manual,
+		vlanConfig:            config.VLANConfig,
+	}
+}
+
+func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switchID uint, retErr error) {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	normalizedName, err := normalizeStandardSwitchName(name)
+	normalizedName, err := normalizeStandardSwitchName(request.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -258,26 +305,16 @@ func (s *Service) NewStandardSwitch(
 		return 0, err
 	}
 
-	input, err := s.validateStandardSwitchInput(0, bridgeName, standardSwitchInput{
-		mtu:                   mtu,
-		vlan:                  vlan,
-		network4ID:            network4ID,
-		network6ID:            network6ID,
-		gateway4ID:            gateway4ID,
-		gateway6ID:            gateway6ID,
-		ports:                 ports,
-		macSource:             macSource,
-		private:               private,
-		dhcp:                  dhcp,
-		disableIPv6:           disableIPv6,
-		slaac:                 slaac,
-		defaultRoute:          defaultRoute,
-		defaultRoute6:         defaultRoute6,
-		disableBridgeOffloads: disableBridgeOffloads,
-		manual:                manual,
-	})
+	input, err := s.validateStandardSwitchInput(0, bridgeName, standardSwitchInputFromConfig(request.StandardSwitchConfig))
 	if err != nil {
 		return 0, err
+	}
+	var claimedPortState []standardSwitchPortRuntimeSnapshot
+	if input.vlanConfig.Filtering {
+		claimedPortState, err = syncCaptureFilteredPortClaims(input.ports)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	tx := s.DB.Begin()
@@ -287,7 +324,7 @@ func (s *Service) NewStandardSwitch(
 	transactionFinished := false
 	defer func() {
 		if !transactionFinished {
-			rollbackStandardSwitchTransaction(tx, "create")
+			retErr = errors.Join(retErr, rollbackStandardSwitchTransaction(tx, "create"))
 		}
 	}()
 
@@ -299,7 +336,7 @@ func (s *Service) NewStandardSwitch(
 		return 0, fmt.Errorf("create standard switch: %w", err)
 	}
 
-	portRows := standardSwitchPorts(sw.ID, input.ports)
+	portRows := standardSwitchPorts(sw.ID, input.ports, input.vlanConfig.PortPolicies)
 	if len(portRows) > 0 {
 		if err := tx.Create(&portRows).Error; err != nil {
 			return 0, fmt.Errorf("create standard switch ports: %w", err)
@@ -312,22 +349,29 @@ func (s *Service) NewStandardSwitch(
 	}
 	warnStandardSwitchMemberRCConflicts(fresh)
 	if err := syncCreateBridge(fresh); err != nil {
-		return 0, fmt.Errorf("apply created standard switch: %w", err)
+		restoreErr := syncRestoreFilteredPortClaims(fresh.BridgeName, claimedPortState)
+		return 0, errors.Join(fmt.Errorf("apply created standard switch: %w", err), restoreErr)
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		rollbackStandardSwitchTransaction(tx, "create_commit")
+		rollbackErr := rollbackStandardSwitchTransaction(tx, "create_commit")
 		transactionFinished = true
-		if cleanupErr := syncDeleteBridge(fresh); cleanupErr != nil && !isInterfaceMissingError(cleanupErr) {
+		cleanupErr := syncDeleteBridge(fresh)
+		if isInterfaceMissingError(cleanupErr) {
+			cleanupErr = nil
+		} else if cleanupErr != nil {
 			logger.L.Error().Err(cleanupErr).Uint("switchID", sw.ID).Msg("standard_switch_create_commit_cleanup_failed")
+			cleanupErr = fmt.Errorf("clean runtime after failed standard switch create commit: %w", cleanupErr)
 		}
-		return 0, fmt.Errorf("commit standard switch create: %w", err)
+		restoreErr := syncRestoreFilteredPortClaims(fresh.BridgeName, claimedPortState)
+		return 0, errors.Join(fmt.Errorf("commit standard switch create: %w", err), rollbackErr, cleanupErr, restoreErr)
 	}
 	transactionFinished = true
 
 	return sw.ID, nil
 }
-func (s *Service) DeleteStandardSwitch(id uint) error {
+
+func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -335,8 +379,16 @@ func (s *Service) DeleteStandardSwitch(id uint) error {
 	if err != nil {
 		return err
 	}
+	unlockLifecycle := bridgevlan.LockStandardSwitchLifecycle(sw.BridgeName)
+	defer unlockLifecycle()
+
 	if err := s.checkStandardSwitchUsage(id, sw.BridgeName); err != nil {
 		return err
+	}
+	if hostInterface := standardSwitchHostInterfaceName(sw); hostInterface != "" && hostInterface != sw.BridgeName {
+		if err := s.checkStandardSwitchExternalUsage(hostInterface); err != nil {
+			return err
+		}
 	}
 	if err := validateStandardSwitchDeleteMembers(sw); err != nil {
 		return err
@@ -349,21 +401,22 @@ func (s *Service) DeleteStandardSwitch(id uint) error {
 	transactionFinished := false
 	defer func() {
 		if !transactionFinished {
-			rollbackStandardSwitchTransaction(tx, "delete")
+			retErr = errors.Join(retErr, rollbackStandardSwitchTransaction(tx, "delete"))
 		}
 	}()
 
 	restoreAfterFailure := func(operation string, operationErr error) error {
-		rollbackStandardSwitchTransaction(tx, operation)
+		rollbackErr := rollbackStandardSwitchTransaction(tx, operation)
 		transactionFinished = true
-		if restoreErr := restoreStandardSwitchRuntime(sw, sw); restoreErr != nil {
+		restoreErr := restoreStandardSwitchRuntime(sw, sw)
+		if restoreErr != nil {
 			logger.L.Error().
 				Err(restoreErr).
 				Uint("switchID", sw.ID).
 				Str("operation", operation).
 				Msg("standard_switch_delete_runtime_restore_failed")
 		}
-		return operationErr
+		return errors.Join(operationErr, rollbackErr, restoreErr)
 	}
 
 	if err := syncDeleteBridge(sw); err != nil {
@@ -388,53 +441,102 @@ func (s *Service) DeleteStandardSwitch(id uint) error {
 
 	return nil
 }
-func (s *Service) EditStandardSwitch(
-	id uint,
-	mtu int,
-	vlan int,
-	network4ID uint,
-	network6ID uint,
-	gateway4ID uint,
-	gateway6ID uint,
-	ports []string,
-	macSource networkModels.StandardSwitchMACSource,
-	private bool,
-	dhcp bool,
-	disableIPv6 bool,
-	slaac bool,
-	defaultRoute bool,
-	defaultRoute6 bool,
-	disableBridgeOffloads bool,
-	manual networkModels.StandardSwitchManualAddresses,
-) error {
+
+func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retErr error) {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	before, err := loadStandardSwitch(s.DB, id)
+	before, err := loadStandardSwitch(s.DB, request.ID)
 	if err != nil {
 		return err
 	}
+	unlockLifecycle := bridgevlan.LockStandardSwitchLifecycle(before.BridgeName)
+	defer unlockLifecycle()
 
-	input, err := s.validateStandardSwitchInput(id, before.BridgeName, standardSwitchInput{
-		mtu:                   mtu,
-		vlan:                  vlan,
-		network4ID:            network4ID,
-		network6ID:            network6ID,
-		gateway4ID:            gateway4ID,
-		gateway6ID:            gateway6ID,
-		ports:                 ports,
-		macSource:             macSource,
-		private:               private,
-		dhcp:                  dhcp,
-		disableIPv6:           disableIPv6,
-		slaac:                 slaac,
-		defaultRoute:          defaultRoute,
-		defaultRoute6:         defaultRoute6,
-		disableBridgeOffloads: disableBridgeOffloads,
-		manual:                manual,
-	})
+	input, err := s.validateStandardSwitchInput(request.ID, before.BridgeName, standardSwitchInputFromConfig(request.StandardSwitchConfig))
 	if err != nil {
 		return err
+	}
+	modeChanged := before.VLANFiltering != input.vlanConfig.Filtering
+	if modeChanged {
+		if err := requireNoStandardSwitchWorkloadAttachments(s.DB, request.ID); err != nil {
+			return err
+		}
+	}
+	desiredHostIdentity := before
+	desiredHostIdentity.VLANFiltering = input.vlanConfig.Filtering
+	desiredHostIdentity.HostVLAN = input.vlanConfig.HostVLAN
+	oldHostInterface := standardSwitchHostInterfaceName(before)
+	if oldHostInterface != standardSwitchHostInterfaceName(desiredHostIdentity) {
+		if err := s.checkStandardSwitchHostInterfaceUsage(request.ID, oldHostInterface); err != nil {
+			return err
+		}
+	}
+	if err := s.requireStoppedVMsForDefaultAccessVLANChange(
+		request.ID,
+		before.DefaultAccessVLAN,
+		input.vlanConfig.DefaultAccessVLAN,
+	); err != nil {
+		return err
+	}
+	if before.Private != input.private {
+		if err := s.requireStoppedVMsUsingStandardSwitch(
+			request.ID,
+			"standard_switch_private_change_requires_stopped_vms",
+		); err != nil {
+			return err
+		}
+	}
+	extraMembers, runtimeExists, err := snapshotStandardSwitchExtraMembers(before)
+	if err != nil {
+		return err
+	}
+	if modeChanged && runtimeExists && len(extraMembers) != 0 {
+		return standardSwitchConflict(
+			"standard_switch_runtime_member_conflict",
+			fmt.Errorf(
+				"cannot change VLAN-filtering mode while unmanaged bridge members are attached: %s",
+				strings.Join(extraMembers, ", "),
+			),
+		)
+	}
+	knownJailMembers, err := s.knownStandardSwitchJailMembers(before.ID)
+	if err != nil {
+		return err
+	}
+	var claimedPortState []standardSwitchPortRuntimeSnapshot
+	if input.vlanConfig.Filtering || modeChanged {
+		previousPorts := standardSwitchPortNames(before.Ports)
+		claimNames := make([]string, 0)
+		for _, port := range input.ports {
+			_, alreadySelected := previousPorts[port]
+			previouslyManagedAsRawPort := before.VLANFiltering || before.VLAN == 0
+			if !alreadySelected || !previouslyManagedAsRawPort {
+				claimNames = append(claimNames, port)
+			}
+		}
+		claimedPortState, err = syncCaptureFilteredPortClaims(claimNames)
+		if err != nil {
+			return err
+		}
+	}
+	if before.VLANFiltering && runtimeExists &&
+		filteredDefaultAccessVLANChanged(before.DefaultAccessVLAN, input.vlanConfig.DefaultAccessVLAN) {
+		desiredPorts := make(map[string]struct{}, len(input.ports))
+		for _, port := range input.ports {
+			desiredPorts[port] = struct{}{}
+		}
+		unmanaged := make([]string, 0, len(extraMembers))
+		for _, member := range extraMembers {
+			if _, selected := desiredPorts[member]; !selected {
+				if _, knownJail := knownJailMembers[member]; !knownJail {
+					unmanaged = append(unmanaged, member)
+				}
+			}
+		}
+		if len(unmanaged) != 0 {
+			return filteredDefaultAccessVLANMemberConflict(unmanaged)
+		}
 	}
 
 	nullableID := func(value uint) any {
@@ -450,7 +552,7 @@ func (s *Service) EditStandardSwitch(
 	transactionFinished := false
 	defer func() {
 		if !transactionFinished {
-			rollbackStandardSwitchTransaction(tx, "update")
+			retErr = errors.Join(retErr, rollbackStandardSwitchTransaction(tx, "update"))
 		}
 	}()
 
@@ -464,6 +566,9 @@ func (s *Service) EditStandardSwitch(
 		"default_route":              input.defaultRoute,
 		"default_route6":             input.defaultRoute6,
 		"disable_bridge_offloads":    input.disableBridgeOffloads,
+		"vlan_filtering":             input.vlanConfig.Filtering,
+		"default_access_vlan":        input.vlanConfig.DefaultAccessVLAN,
+		"host_vlan":                  input.vlanConfig.HostVLAN,
 		"network_object_id":          nullableID(input.network4ID),
 		"gateway_address_object_id":  nullableID(input.gateway4ID),
 		"network6_object_id":         nullableID(input.network6ID),
@@ -476,38 +581,39 @@ func (s *Service) EditStandardSwitch(
 		"bridge_mac_source_port":     input.macSource.Port,
 		"bridge_mac_object_id":       nullableID(input.macSource.MACObjectID),
 	}
-	if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+	if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", request.ID).Updates(updates).Error; err != nil {
 		return fmt.Errorf("update standard switch: %w", err)
 	}
-	if err := tx.Where("switch_id = ?", id).Delete(&networkModels.NetworkPort{}).Error; err != nil {
+	if modeChanged {
+		if err := requireNoStandardSwitchWorkloadAttachments(tx, request.ID); err != nil {
+			return err
+		}
+	}
+	if err := tx.Where("switch_id = ?", request.ID).Delete(&networkModels.NetworkPort{}).Error; err != nil {
 		return fmt.Errorf("replace standard switch ports: %w", err)
 	}
-	portRows := standardSwitchPorts(id, input.ports)
+	portRows := standardSwitchPorts(request.ID, input.ports, input.vlanConfig.PortPolicies)
 	if len(portRows) > 0 {
 		if err := tx.Create(&portRows).Error; err != nil {
 			return fmt.Errorf("create updated standard switch ports: %w", err)
 		}
 	}
 
-	after, err := loadStandardSwitch(tx, id)
+	after, err := loadStandardSwitch(tx, request.ID)
 	if err != nil {
 		return fmt.Errorf("reload updated standard switch: %w", err)
 	}
 	warnStandardSwitchMemberRCConflicts(after)
-	extraMembers, runtimeExists, err := snapshotStandardSwitchExtraMembers(before)
-	if err != nil {
-		return err
-	}
 	runtimeApplied := false
 
 	restoreAfterFailure := func(operation string, operationErr error) error {
-		rollbackStandardSwitchTransaction(tx, operation)
+		rollbackErr := rollbackStandardSwitchTransaction(tx, operation)
 		transactionFinished = true
 
 		var restoreErr error
 		switch {
 		case runtimeExists:
-			restoreErr = restoreStandardSwitchEditRuntime(before, after, extraMembers)
+			restoreErr = restoreStandardSwitchEditRuntime(before, after, extraMembers, knownJailMembers)
 		case runtimeApplied:
 			restoreErr = restoreStandardSwitchRuntime(before, after)
 		default:
@@ -516,15 +622,26 @@ func (s *Service) EditStandardSwitch(
 		if restoreErr != nil {
 			logger.L.Error().
 				Err(restoreErr).
-				Uint("switchID", id).
+				Uint("switchID", request.ID).
 				Str("operation", operation).
 				Msg("standard_switch_update_runtime_restore_failed")
 		}
-		return operationErr
+		portRestoreErr := syncRestoreFilteredPortClaims(before.BridgeName, claimedPortState)
+		if portRestoreErr != nil {
+			logger.L.Error().Err(portRestoreErr).Uint("switchID", request.ID).
+				Str("operation", operation).Msg("standard_switch_update_port_restore_failed")
+		}
+		return errors.Join(operationErr, rollbackErr, restoreErr, portRestoreErr)
 	}
 
 	if runtimeExists {
-		err = syncEditBridge(before, after)
+		if modeChanged {
+			err = replaceStandardSwitchRuntime(before, after)
+		} else if before.VLANFiltering {
+			err = syncEditFilteredBridge(before, after, knownJailMembers)
+		} else {
+			err = syncEditBridge(before, after)
+		}
 	} else {
 		err = syncCreateBridge(after)
 	}
@@ -532,6 +649,9 @@ func (s *Service) EditStandardSwitch(
 		return restoreAfterFailure("update_runtime", fmt.Errorf("apply updated standard switch: %w", err))
 	}
 	runtimeApplied = true
+	if err := reconcileStandardSwitchPrivateMembers(after, knownJailMembers); err != nil {
+		return restoreAfterFailure("update_private_members", fmt.Errorf("apply updated switch isolation: %w", err))
+	}
 	reconcileIPv4Owner := before.DefaultRoute && !after.DefaultRoute
 	reconcileIPv6Owner := before.DefaultRoute6 && !after.DefaultRoute6
 	if reconcileIPv4Owner || reconcileIPv6Owner {
@@ -546,67 +666,44 @@ func (s *Service) EditStandardSwitch(
 
 	return nil
 }
-func (s *Service) SyncStandardSwitches(sw *networkModels.StandardSwitch, action string) error {
+
+func (s *Service) SyncStandardSwitches() error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	switch action {
-	case "sync":
-		var switches []networkModels.StandardSwitch
-		if err := s.DB.Preload("Ports").
-			Preload("NetworkObj.Entries").
-			Preload("Network6Obj.Entries").
-			Preload("GatewayAddressObj.Entries").
-			Preload("Gateway6AddressObj.Entries").
-			Preload("BridgeMACObject.Entries").
-			Find(&switches).Error; err != nil {
-			return fmt.Errorf("db_error_checking_switches: %v", err)
-		}
-
-		var syncErrors []error
-		for _, current := range switches {
-			warnStandardSwitchMemberRCConflicts(current)
-			if err := syncStandardSwitchRuntime(current); err != nil {
-				syncErrors = append(syncErrors, err)
-			}
-		}
-		if err := reconcileStandardSwitchAutomaticRouteOwners(s.DB, true, true); err != nil {
-			syncErrors = append(syncErrors, err)
-		}
-		return errors.Join(syncErrors...)
-
-	case "create":
-		warnStandardSwitchMemberRCConflicts(*sw)
-		if err := syncCreateBridge(*sw); err != nil {
-			return err
-		}
-
-	case "delete":
-		if err := syncDeleteBridge(*sw); err != nil {
-			return err
-		}
-
-	case "edit":
-		var newSw networkModels.StandardSwitch
-		if err := s.DB.Preload("Ports").
-			Preload("NetworkObj.Entries").
-			Preload("Network6Obj.Entries").
-			Preload("GatewayAddressObj.Entries").
-			Preload("Gateway6AddressObj.Entries").
-			Preload("BridgeMACObject.Entries").
-			First(&newSw, sw.ID).Error; err != nil {
-			return fmt.Errorf("switch_not_found")
-		}
-		warnStandardSwitchMemberRCConflicts(newSw)
-		if err := syncEditBridge(*sw, newSw); err != nil {
-			return err
-		}
+	var switches []networkModels.StandardSwitch
+	if err := s.DB.Preload("Ports").
+		Preload("NetworkObj.Entries").
+		Preload("Network6Obj.Entries").
+		Preload("GatewayAddressObj.Entries").
+		Preload("Gateway6AddressObj.Entries").
+		Preload("BridgeMACObject.Entries").
+		Find(&switches).Error; err != nil {
+		return fmt.Errorf("db_error_checking_switches: %v", err)
 	}
 
-	return nil
+	var syncErrors []error
+	for _, current := range switches {
+		warnStandardSwitchMemberRCConflicts(current)
+		knownJailMembers, err := s.knownStandardSwitchJailMembers(current.ID)
+		if err != nil {
+			syncErrors = append(syncErrors, err)
+			continue
+		}
+		if err := syncStandardSwitchRuntime(current, knownJailMembers); err != nil {
+			syncErrors = append(syncErrors, err)
+		}
+	}
+	if err := reconcileStandardSwitchAutomaticRouteOwners(s.DB, true, true); err != nil {
+		syncErrors = append(syncErrors, err)
+	}
+	return errors.Join(syncErrors...)
 }
 
-func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
+func syncStandardSwitchRuntime(sw networkModels.StandardSwitch, knownDynamic ...map[string]struct{}) error {
+	unlockLifecycle := bridgevlan.LockStandardSwitchLifecycle(sw.BridgeName)
+	defer unlockLifecycle()
+
 	dbPorts := make(map[string]bool, len(sw.Ports)*2)
 	for _, port := range sw.Ports {
 		dbPorts[port.Name] = true
@@ -625,6 +722,15 @@ func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
 		}
 	} else if interfaceObj != nil {
 		bridgeExists = true
+		if !sw.VLANFiltering {
+			state, inspectErr := syncInspectBridgeVLAN(sw.BridgeName)
+			if inspectErr != nil {
+				return fmt.Errorf("sync_standard_switches: inspect %s VLAN mode: %w", sw.BridgeName, inspectErr)
+			}
+			if state.VLANFiltering {
+				return fmt.Errorf("standard_switch_runtime_vlan_mode_mismatch: %s is filtered but its stored switch is unfiltered", sw.BridgeName)
+			}
+		}
 		for _, member := range interfaceObj.BridgeMembers {
 			if dbPorts[member.Name] {
 				continue
@@ -634,15 +740,25 @@ func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
 	}
 
 	if bridgeExists {
-		if err := syncEditBridge(sw, sw); err != nil {
-			return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %v", sw.BridgeName, err)
+		var reconcileErr error
+		if sw.VLANFiltering {
+			if err := repairFilteredStandardBridgeDefaults(sw, interfaceObj, knownDynamic...); err != nil {
+				reconcileErr = err
+			} else {
+				reconcileErr = reconcileFilteredStandardBridge(sw, sw, knownDynamic...)
+			}
+		} else {
+			reconcileErr = syncEditBridge(sw, sw)
+		}
+		if reconcileErr != nil {
+			return fmt.Errorf("sync_standard_switches: failed_to_reconcile %s: %w", sw.BridgeName, reconcileErr)
 		}
 	} else if err := syncCreateBridge(sw); err != nil {
 		return fmt.Errorf("sync_standard_switches: failed_to_create %s: %v", sw.BridgeName, err)
 	}
 
 	if len(preservedMembers) == 0 {
-		return nil
+		return reconcileStandardSwitchPrivateMembers(sw, mergeStandardSwitchMemberSets(knownDynamic...))
 	}
 
 	freshInterface, err := syncIfaceGet(sw.BridgeName)
@@ -661,6 +777,11 @@ func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
 		if _, exists := existingMembers[member]; exists {
 			continue
 		}
+		if sw.VLANFiltering {
+			logger.L.Warn().Str("bridge", sw.BridgeName).Str("member", member).
+				Msg("filtered_bridge_unknown_member_not_restored")
+			continue
+		}
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "addm", member, "up"); err != nil {
 			return fmt.Errorf("sync_standard_switches: add member %s to %s: %v", member, sw.BridgeName, err)
 		}
@@ -672,7 +793,7 @@ func syncStandardSwitchRuntime(sw networkModels.StandardSwitch) error {
 		return fmt.Errorf("sync_standard_switches: verify %s MAC after preserved members: %v", sw.BridgeName, err)
 	}
 
-	return nil
+	return reconcileStandardSwitchPrivateMembers(sw, mergeStandardSwitchMemberSets(knownDynamic...))
 }
 
 func isInterfaceMissingError(err error) bool {
@@ -745,6 +866,13 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			)
 		}
 
+		if sw.DHCP {
+			if hostInterface := standardSwitchHostInterfaceName(sw); hostInterface != "" {
+				if err := stopDhclient(hostInterface); err != nil {
+					logger.L.Error().Err(err).Str("interface", hostInterface).Msg("standard_switch_create_dhclient_cleanup_failed")
+				}
+			}
+		}
 		if renamed {
 			if err := destroyStandardSwitchRuntimeInterfaces(sw); err != nil {
 				logger.L.Error().Err(err).Str("bridge", sw.BridgeName).Msg("standard_switch_create_interface_cleanup_failed")
@@ -752,17 +880,17 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		} else if _, err := syncRunCommand("/sbin/ifconfig", raw, "destroy"); err != nil && !isInterfaceMissingError(err) {
 			logger.L.Error().Err(err).Str("interface", raw).Msg("standard_switch_create_raw_interface_cleanup_failed")
 		}
-		if sw.DHCP {
-			if err := stopDhclient(sw.BridgeName); err != nil {
-				logger.L.Error().Err(err).Str("bridge", sw.BridgeName).Msg("standard_switch_create_dhclient_cleanup_failed")
-			}
-		}
 	}()
 
 	if _, err := syncRunCommand("/sbin/ifconfig", raw, "name", sw.BridgeName); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_rename: %v", err)
 	}
 	renamed = true
+	if sw.VLANFiltering {
+		if err := syncPrepareFilteredBridge(sw.BridgeName); err != nil {
+			return fmt.Errorf("create_standard_bridge: prepare VLAN filtering: %w", err)
+		}
+	}
 
 	if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "descr", sw.Name); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_set_descr: %v", err)
@@ -780,13 +908,13 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 
 	network4, gateway4 := sw.Network(4), sw.Gateway(4)
 	assignableNetwork4 := utils.IsAssignableIPv4CIDR(network4)
-	if assignableNetwork4 {
+	if assignableNetwork4 && !sw.VLANFiltering {
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet", network4); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_network: %v", err)
 		}
 	}
 	network6, gateway6 := sw.Network(6), sw.Gateway(6)
-	if sw.DisableIPv6 {
+	if sw.VLANFiltering || sw.DisableIPv6 {
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", "no_radr", "-accept_rtadv", "ifdisabled"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_disable_ipv6_flags: %v", err)
 		}
@@ -810,7 +938,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		}
 	}
 	assignableNetwork6 := utils.IsAssignableIPv6CIDR(network6)
-	if assignableNetwork6 && !sw.DisableIPv6 {
+	if assignableNetwork6 && !sw.DisableIPv6 && !sw.VLANFiltering {
 		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6, "-no_dad"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
@@ -819,14 +947,33 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		return fmt.Errorf("create_standard_bridge: failed_to_bring_up_bridge: %v", err)
 	}
 	for _, port := range sw.Ports {
-		if err := addBridgeMember(sw.BridgeName, port.Name, mtu, sw.VLAN, sw.DisableBridgeOffloads); err != nil {
-			return fmt.Errorf("create_standard_bridge: %v", err)
+		var memberErr error
+		if sw.VLANFiltering {
+			memberErr = addFilteredBridgeMember(
+				sw.BridgeName, port.Name, mtu, sw.DisableBridgeOffloads, nil, port.VLANPolicy,
+			)
+		} else {
+			memberErr = addBridgeMember(sw.BridgeName, port.Name, mtu, sw.VLAN, sw.DisableBridgeOffloads)
+		}
+		if memberErr != nil {
+			return fmt.Errorf("create_standard_bridge: %w", memberErr)
+		}
+	}
+	if sw.VLANFiltering {
+		if err := syncSetDefaultAccessVLAN(sw.BridgeName, sw.DefaultAccessVLAN); err != nil {
+			return fmt.Errorf("create_standard_bridge: set default access VLAN: %w", err)
 		}
 	}
 	if _, err := applyStandardSwitchMAC(sw); err != nil {
 		return fmt.Errorf("create_standard_bridge: failed_to_verify_bridge_mac_after_members: %v", err)
 	}
-	if sw.SLAAC && !sw.DisableIPv6 {
+	if sw.VLANFiltering {
+		empty := networkModels.StandardSwitch{BridgeName: sw.BridgeName, VLANFiltering: true}
+		if err := reconcileFilteredStandardSwitchHost(empty, sw); err != nil {
+			return fmt.Errorf("create_standard_bridge: configure host VLAN: %w", err)
+		}
+	}
+	if sw.SLAAC && !sw.DisableIPv6 && !sw.VLANFiltering {
 		if err := syncSolicitRouterAdvertisement(sw.BridgeName); err != nil {
 			logger.L.Warn().
 				Err(err).
@@ -835,7 +982,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		}
 	}
 
-	if assignableNetwork4 && gateway4 != "" {
+	if assignableNetwork4 && gateway4 != "" && !sw.VLANFiltering {
 		addedNetwork4Route, err = addRouteIfMissing("add", "-net", network4, gateway4)
 		if err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_add_network_route: %v", err)
@@ -848,7 +995,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 			}
 		}
 	}
-	if assignableNetwork6 && gateway6 != "" && !sw.DisableIPv6 {
+	if assignableNetwork6 && gateway6 != "" && !sw.DisableIPv6 && !sw.VLANFiltering {
 		routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
 		addedNetwork6Route, err = addRouteIfMissing("-6", "add", "-net", network6, routeGateway6)
 		if err != nil {
@@ -862,7 +1009,7 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		}
 	}
 
-	if sw.DHCP {
+	if sw.DHCP && !sw.VLANFiltering {
 		if err := runDhclient(sw.BridgeName, 10, sw.DefaultRoute); err != nil {
 			return fmt.Errorf("create_standard_bridge: %v", err)
 		}
@@ -960,6 +1107,10 @@ func standardSwitchMemberMutations(
 }
 
 func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
+	if oldSw.VLANFiltering || newSw.VLANFiltering {
+		return reconcileFilteredStandardBridge(oldSw, newSw)
+	}
+
 	br := oldSw.BridgeName
 
 	// 1) snapshot existing members
@@ -1266,18 +1417,18 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 }
 
 func deleteStandardBridge(sw networkModels.StandardSwitch) error {
+	hostInterface := standardSwitchHostInterfaceName(sw)
 	if err := removeStandardSwitchRoutes(sw); err != nil {
 		return fmt.Errorf("delete_standard_bridge: remove routes: %v", err)
 	}
 	if err := destroyStandardSwitchRuntimeInterfaces(sw); err != nil {
 		return fmt.Errorf("delete_standard_bridge: %v", err)
 	}
-	if sw.DHCP {
-		if err := stopDhclient(sw.BridgeName); err != nil {
+	if sw.DHCP && hostInterface != "" {
+		if err := stopDhclient(hostInterface); err != nil {
 			return fmt.Errorf("delete_standard_bridge: %v", err)
 		}
 	}
-
 	return nil
 }
 
@@ -1449,11 +1600,123 @@ func addBridgeMember(br, portName string, mtu, vlan int, disableOffloads bool) e
 	if _, err := syncRunCommand("/sbin/ifconfig", br, "addm", targetPort, "up"); err != nil {
 		return fmt.Errorf("add %s to bridge %s: %v", targetPort, br, err)
 	}
+	if err := syncSetBridgeMemberPrivate(br, targetPort, false); err != nil {
+		return fmt.Errorf("clear private state on physical member %s: %v", targetPort, err)
+	}
 	if _, err := syncRunCommand("/sbin/ifconfig", targetPort, "up"); err != nil {
 		return fmt.Errorf("bring up %s: %v", targetPort, err)
 	}
 
 	return nil
+}
+
+func addFilteredBridgeMember(
+	bridge string,
+	portName string,
+	mtu int,
+	disableOffloads bool,
+	expectedDefaultAccessVLAN *int,
+	policy bridgevlan.PortPolicy,
+) (retErr error) {
+	bridgeState, err := syncIfaceGet(bridge)
+	if err != nil {
+		return fmt.Errorf("inspect filtered bridge %s members: %w", bridge, err)
+	}
+	if bridgeState == nil {
+		return fmt.Errorf("inspect filtered bridge %s members: interface not found", bridge)
+	}
+	wasAttached := false
+	for _, member := range bridgeState.BridgeMembers {
+		if member.Name == portName {
+			wasAttached = true
+			break
+		}
+	}
+
+	if _, err := syncRunCommand("/sbin/ifconfig", portName, "down"); err != nil {
+		return fmt.Errorf("hold filtered member %s down: %w", portName, err)
+	}
+	defer func() {
+		retErr = cleanupFailedFilteredBridgeMember(bridge, portName, wasAttached, retErr)
+	}()
+
+	if disableOffloads {
+		if err := disableBridgeMemberOffloads(portName); err != nil {
+			return err
+		}
+	}
+	if mtu > 0 {
+		if _, err := syncRunCommand("/sbin/ifconfig", portName, "mtu", strconv.Itoa(mtu)); err != nil {
+			return fmt.Errorf("set mtu for %s: %w", portName, err)
+		}
+	}
+
+	if err := clearBridgeMemberLayer3(portName); err != nil {
+		return fmt.Errorf("clear layer-3 configuration on %s: %w", portName, err)
+	}
+	if err := syncConfigureFilteredMember(bridge, portName, expectedDefaultAccessVLAN, policy); err != nil {
+		return fmt.Errorf("configure %s on filtered bridge %s: %w", portName, bridge, err)
+	}
+	if err := syncSetBridgeMemberPrivate(bridge, portName, false); err != nil {
+		return fmt.Errorf("clear private state on physical member %s: %w", portName, err)
+	}
+	if _, err := syncRunCommand("/sbin/ifconfig", portName, "up"); err != nil {
+		return fmt.Errorf("bring up filtered member %s: %w", portName, err)
+	}
+	return nil
+}
+
+func cleanupFailedFilteredBridgeMember(
+	bridge string,
+	member string,
+	wasAttached bool,
+	operationErr error,
+) error {
+	if operationErr == nil || wasAttached {
+		return operationErr
+	}
+
+	detached, inspectErr := filteredBridgeMemberDetached(bridge, member)
+	if inspectErr != nil {
+		logger.L.Error().Err(inspectErr).Str("bridge", bridge).Str("member", member).
+			Msg("filtered_bridge_member_cleanup_inspection_failed")
+		return errors.Join(
+			operationErr,
+			fmt.Errorf("verify failed new filtered member %s detachment: %w", member, inspectErr),
+		)
+	}
+
+	if !detached {
+		removeErr := syncRemoveFilteredMember(bridge, member)
+		if removeErr == nil || isInterfaceMissingError(removeErr) {
+			detached = true
+		} else {
+			logger.L.Error().Err(removeErr).Str("bridge", bridge).Str("member", member).
+				Msg("filtered_bridge_member_cleanup_failed")
+			operationErr = errors.Join(
+				operationErr,
+				fmt.Errorf("remove failed new filtered member %s: %w", member, removeErr),
+			)
+
+			detached, inspectErr = filteredBridgeMemberDetached(bridge, member)
+			if inspectErr != nil {
+				return errors.Join(
+					operationErr,
+					fmt.Errorf("verify failed new filtered member %s detachment: %w", member, inspectErr),
+				)
+			}
+		}
+	}
+	if !detached {
+		return operationErr
+	}
+
+	if _, err := syncRunCommand("/sbin/ifconfig", member, "up"); err != nil {
+		logger.L.Error().Err(err).Str("bridge", bridge).Str("member", member).
+			Msg("filtered_bridge_member_link_restore_failed")
+		return errors.Join(operationErr, fmt.Errorf("restore filtered member %s link state: %w", member, err))
+	}
+	return operationErr
 }
 
 func removeBridgeMember(br, portName string, vlan int) error {

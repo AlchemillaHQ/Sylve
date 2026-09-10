@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { createDHCPRange, updateDHCPRange } from '$lib/api/network/dhcp';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -144,7 +154,12 @@
 		return used;
 	});
 	let switchOptions = $derived.by(() => {
-		const options = generateSwitchOptions(networkSwitches);
+		const options = generateSwitchOptions({
+			...networkSwitches,
+			standard: networkSwitches.standard.filter(
+				(sw) => !sw.vlanFiltering || sw.hostVlan !== null
+			)
+		});
 		if (
 			currentSwitchOption &&
 			!options.some((option) => option.value === currentSwitchOption?.value)

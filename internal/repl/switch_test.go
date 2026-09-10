@@ -14,11 +14,14 @@ import (
 	"testing"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
 func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	request, err := buildConsoleSwitchCreateRequest([]string{
 		"standard", "private-lan", "--network4", "7", "--ports", "igb0, igb1", "--mac-source", "port", "--mac-source-port", "igb0", "--private", "--dhcp=false", "--default-route", "--default-route6", "--disable-bridge-offloads",
+		"--vlan-filtering", "--default-access-vlan", "10", "--host-vlan", "20", "--port-policies", "igb0=access:10;igb1=trunk:native=10:tagged=20,30-32",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -41,6 +44,44 @@ func TestBuildConsoleSwitchCreateRequestStandard(t *testing.T) {
 	if request.Standard.BridgeMAC.Mode != "port" || request.Standard.BridgeMAC.Port != "igb0" {
 		t.Fatalf("unexpected bridge MAC source: %#v", request.Standard.BridgeMAC)
 	}
+	if !request.Standard.VLANFiltering || request.Standard.DefaultAccessVLAN == nil || *request.Standard.DefaultAccessVLAN != 10 {
+		t.Fatalf("unexpected standard VLAN declaration: %#v", request.Standard)
+	}
+	if request.Standard.HostVLAN == nil || *request.Standard.HostVLAN != 20 {
+		t.Fatalf("unexpected standard host VLAN: %#v", request.Standard)
+	}
+	if request.Standard.PortPolicies["igb0"].Mode != "access" || len(request.Standard.PortPolicies["igb1"].TaggedVLANs) != 4 {
+		t.Fatalf("unexpected standard port policies: %#v", request.Standard.PortPolicies)
+	}
+}
+
+func TestFormatSwitchesShowsEffectiveVLANConfiguration(t *testing.T) {
+	defaultVLAN, hostVLAN, accessVLAN, nativeVLAN := 10, 15, 20, 30
+	output := formatSwitches(switchListResult{
+		Standard: []networkModels.StandardSwitch{{
+			ID: 1, Name: "tenant", BridgeName: "vm-tenant", VLANFiltering: true,
+			DefaultAccessVLAN: &defaultVLAN, HostVLAN: &hostVLAN,
+			Ports: []networkModels.NetworkPort{
+				{Name: "igb0", VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &accessVLAN}},
+				{Name: "igb1", VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeTrunk, UntaggedVLAN: &nativeVLAN, TaggedVLANs: []int{40, 50}}},
+			},
+		}},
+		Manual: []networkModels.ManualSwitch{{
+			ID: 2, Name: "external", Bridge: "bridge0", VLANStateAvailable: true,
+			VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN,
+		}},
+	})
+
+	for _, want := range []string{
+		"filtered; default=10; host=15",
+		"igb0=access:20",
+		"igb1=trunk:native=30:tagged=40,50",
+		"external; filtered; default=10",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("switch list output missing %q:\n%s", want, output)
+		}
+	}
 }
 
 func TestBuildConsoleSwitchCreateRequestManual(t *testing.T) {
@@ -50,6 +91,12 @@ func TestBuildConsoleSwitchCreateRequestManual(t *testing.T) {
 	}
 	if request.Type != "manual" || request.Manual == nil || request.Manual.Name != "uplink" || request.Manual.Bridge != "bridge0" {
 		t.Fatalf("unexpected manual request: %#v", request)
+	}
+}
+
+func TestBuildConsoleSwitchCreateRequestRejectsManualVLANOptions(t *testing.T) {
+	if _, err := buildConsoleSwitchCreateRequest([]string{"manual", "uplink", "bridge0", "--vlan-filtering"}); err == nil {
+		t.Fatal("manual switch accepted a VLAN option")
 	}
 }
 
@@ -78,7 +125,7 @@ func TestBuildConsoleSwitchEditRequestManual(t *testing.T) {
 
 func TestBuildConsoleSwitchEditRequestStandard(t *testing.T) {
 	request, err := buildConsoleSwitchEditRequest([]string{
-		"standard", "7", "--mtu", "9000", "--private", "false", "--ports", "igb0, igb1",
+		"standard", "7", "--mtu", "9000", "--private", "false", "--ports", "igb0, igb1", "--default-access-vlan", "0", "--host-vlan", "0",
 	})
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -91,6 +138,12 @@ func TestBuildConsoleSwitchEditRequestStandard(t *testing.T) {
 	}
 	if request.Standard.Private == nil || *request.Standard.Private || request.Standard.Ports == nil || len(*request.Standard.Ports) != 2 {
 		t.Fatalf("unexpected standard request: %#v", request.Standard)
+	}
+	if request.Standard.DefaultAccessVLAN == nil || *request.Standard.DefaultAccessVLAN != 0 {
+		t.Fatalf("expected an explicit default-access VLAN clear: %#v", request.Standard)
+	}
+	if request.Standard.HostVLAN == nil || *request.Standard.HostVLAN != 0 {
+		t.Fatalf("expected an explicit host VLAN clear: %#v", request.Standard)
 	}
 }
 
@@ -178,5 +231,34 @@ func TestApplyStandardSwitchEditRequestClearsInheritedIPv6ModeForAddressPatch(t 
 	}
 	if config.Network6 != 9 || config.DisableIPv6 || config.SLAAC {
 		t.Fatalf("unexpected normalized config: %#v", config)
+	}
+}
+
+func TestApplyStandardSwitchEditRequestPrunesPoliciesForRemovedPorts(t *testing.T) {
+	access10, access20 := 10, 20
+	config := standardSwitchEditConfig{
+		Ports: []string{"igb0", "igb1"},
+		VLANConfig: networkModels.StandardSwitchVLANConfig{
+			Filtering: true,
+			PortPolicies: map[string]bridgevlan.PortPolicy{
+				"igb0": {Mode: bridgevlan.ModeAccess, UntaggedVLAN: &access10},
+				"igb1": {Mode: bridgevlan.ModeAccess, UntaggedVLAN: &access20},
+			},
+		},
+	}
+	ports := []string{"igb0"}
+	request := consoleprotocol.StandardSwitchEditRequest{ID: 7, Ports: &ports}
+
+	if err := applyStandardSwitchEditRequest(&config, request); err != nil {
+		t.Fatalf("apply request: %v", err)
+	}
+	if len(config.VLANConfig.PortPolicies) != 1 {
+		t.Fatalf("port policies = %#v", config.VLANConfig.PortPolicies)
+	}
+	if _, exists := config.VLANConfig.PortPolicies["igb0"]; !exists {
+		t.Fatal("retained port policy was removed")
+	}
+	if _, exists := config.VLANConfig.PortPolicies["igb1"]; exists {
+		t.Fatal("removed port policy was retained")
 	}
 }

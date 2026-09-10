@@ -8,6 +8,8 @@
 
 package console
 
+import "github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+
 const (
 	OperationSwitchList   = "switches.list"
 	OperationSwitchCreate = "switches.create"
@@ -30,26 +32,30 @@ type StandardSwitchMACSourceRequest struct {
 }
 
 type StandardSwitchCreateRequest struct {
-	Name                  string                         `json:"name"`
-	MTU                   int                            `json:"mtu"`
-	VLAN                  int                            `json:"vlan"`
-	Network4              uint                           `json:"network4"`
-	Gateway4              uint                           `json:"gateway4"`
-	Network6              uint                           `json:"network6"`
-	Gateway6              uint                           `json:"gateway6"`
-	Network4Manual        string                         `json:"network4Manual"`
-	Gateway4Manual        string                         `json:"gateway4Manual"`
-	Network6Manual        string                         `json:"network6Manual"`
-	Gateway6Manual        string                         `json:"gateway6Manual"`
-	DisableIPv6           bool                           `json:"disableIPv6"`
-	SLAAC                 bool                           `json:"slaac"`
-	Private               bool                           `json:"private"`
-	DefaultRoute          bool                           `json:"defaultRoute"`
-	DefaultRoute6         bool                           `json:"defaultRoute6"`
-	DisableBridgeOffloads bool                           `json:"disableBridgeOffloads"`
-	DHCP                  bool                           `json:"dhcp"`
-	Ports                 []string                       `json:"ports"`
-	BridgeMAC             StandardSwitchMACSourceRequest `json:"bridgeMac"`
+	Name                  string                           `json:"name"`
+	MTU                   int                              `json:"mtu"`
+	VLAN                  int                              `json:"vlan"`
+	Network4              uint                             `json:"network4"`
+	Gateway4              uint                             `json:"gateway4"`
+	Network6              uint                             `json:"network6"`
+	Gateway6              uint                             `json:"gateway6"`
+	Network4Manual        string                           `json:"network4Manual"`
+	Gateway4Manual        string                           `json:"gateway4Manual"`
+	Network6Manual        string                           `json:"network6Manual"`
+	Gateway6Manual        string                           `json:"gateway6Manual"`
+	DisableIPv6           bool                             `json:"disableIPv6"`
+	SLAAC                 bool                             `json:"slaac"`
+	Private               bool                             `json:"private"`
+	DefaultRoute          bool                             `json:"defaultRoute"`
+	DefaultRoute6         bool                             `json:"defaultRoute6"`
+	DisableBridgeOffloads bool                             `json:"disableBridgeOffloads"`
+	DHCP                  bool                             `json:"dhcp"`
+	Ports                 []string                         `json:"ports"`
+	BridgeMAC             StandardSwitchMACSourceRequest   `json:"bridgeMac"`
+	VLANFiltering         bool                             `json:"vlanFiltering"`
+	DefaultAccessVLAN     *int                             `json:"defaultAccessVlan"`
+	HostVLAN              *int                             `json:"hostVlan"`
+	PortPolicies          map[string]bridgevlan.PortPolicy `json:"portPolicies"`
 }
 
 type ManualSwitchCreateRequest struct {
@@ -71,26 +77,30 @@ type SwitchDeletePayload struct {
 }
 
 type StandardSwitchEditRequest struct {
-	ID                    uint                            `json:"id"`
-	MTU                   *int                            `json:"mtu,omitempty"`
-	VLAN                  *int                            `json:"vlan,omitempty"`
-	Network4              *uint                           `json:"network4,omitempty"`
-	Gateway4              *uint                           `json:"gateway4,omitempty"`
-	Network6              *uint                           `json:"network6,omitempty"`
-	Gateway6              *uint                           `json:"gateway6,omitempty"`
-	Network4Manual        *string                         `json:"network4Manual,omitempty"`
-	Gateway4Manual        *string                         `json:"gateway4Manual,omitempty"`
-	Network6Manual        *string                         `json:"network6Manual,omitempty"`
-	Gateway6Manual        *string                         `json:"gateway6Manual,omitempty"`
-	DisableIPv6           *bool                           `json:"disableIPv6,omitempty"`
-	SLAAC                 *bool                           `json:"slaac,omitempty"`
-	Private               *bool                           `json:"private,omitempty"`
-	DefaultRoute          *bool                           `json:"defaultRoute,omitempty"`
-	DefaultRoute6         *bool                           `json:"defaultRoute6,omitempty"`
-	DisableBridgeOffloads *bool                           `json:"disableBridgeOffloads,omitempty"`
-	DHCP                  *bool                           `json:"dhcp,omitempty"`
-	Ports                 *[]string                       `json:"ports,omitempty"`
-	BridgeMAC             *StandardSwitchMACSourceRequest `json:"bridgeMac,omitempty"`
+	ID                    uint                              `json:"id"`
+	MTU                   *int                              `json:"mtu,omitempty"`
+	VLAN                  *int                              `json:"vlan,omitempty"`
+	Network4              *uint                             `json:"network4,omitempty"`
+	Gateway4              *uint                             `json:"gateway4,omitempty"`
+	Network6              *uint                             `json:"network6,omitempty"`
+	Gateway6              *uint                             `json:"gateway6,omitempty"`
+	Network4Manual        *string                           `json:"network4Manual,omitempty"`
+	Gateway4Manual        *string                           `json:"gateway4Manual,omitempty"`
+	Network6Manual        *string                           `json:"network6Manual,omitempty"`
+	Gateway6Manual        *string                           `json:"gateway6Manual,omitempty"`
+	DisableIPv6           *bool                             `json:"disableIPv6,omitempty"`
+	SLAAC                 *bool                             `json:"slaac,omitempty"`
+	Private               *bool                             `json:"private,omitempty"`
+	DefaultRoute          *bool                             `json:"defaultRoute,omitempty"`
+	DefaultRoute6         *bool                             `json:"defaultRoute6,omitempty"`
+	DisableBridgeOffloads *bool                             `json:"disableBridgeOffloads,omitempty"`
+	DHCP                  *bool                             `json:"dhcp,omitempty"`
+	Ports                 *[]string                         `json:"ports,omitempty"`
+	BridgeMAC             *StandardSwitchMACSourceRequest   `json:"bridgeMac,omitempty"`
+	VLANFiltering         *bool                             `json:"vlanFiltering,omitempty"`
+	DefaultAccessVLAN     *int                              `json:"defaultAccessVlan,omitempty"`
+	HostVLAN              *int                              `json:"hostVlan,omitempty"`
+	PortPolicies          *map[string]bridgevlan.PortPolicy `json:"portPolicies,omitempty"`
 }
 
 type ManualSwitchEditRequest struct {

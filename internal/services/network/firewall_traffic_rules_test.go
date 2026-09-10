@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -293,5 +294,23 @@ func TestRestoreFirewallTrafficRulesAfterApplyFailureRestoresExactSnapshot(t *te
 	}
 	if len(restored) != 2 || restored[0].Name != "managed" || restored[0].Visible || restored[1].Name != "visible" || restored[1].Enabled {
 		t.Fatalf("snapshot was not restored exactly: %+v", restored)
+	}
+}
+
+func TestFirewallTrafficRuleRejectsFilteredStandardSwitchInterfaces(t *testing.T) {
+	svc := seedFilteredStandardSwitchInterface(t)
+	req := networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
+		Name:              "filtered ingress",
+		Action:            "pass",
+		Direction:         "in",
+		Protocol:          "any",
+		Family:            "any",
+		IngressInterfaces: []string{"vm-filtered"},
+	}
+
+	err := svc.validateFirewallTrafficRuleRequest(&req)
+	if !errors.Is(err, ErrInvalidFirewallTrafficRule) ||
+		!strings.Contains(err.Error(), "filtered_standard_switch_l2_only: vm-filtered") {
+		t.Fatalf("expected filtered bridge rejection, got %v", err)
 	}
 }

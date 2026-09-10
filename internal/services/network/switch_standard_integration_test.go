@@ -22,6 +22,8 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
@@ -48,6 +50,7 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 	svc, db := newNetworkServiceForTest(t,
 		&networkModels.StandardSwitch{},
 		&networkModels.NetworkPort{},
+		&vmModels.Network{},
 	)
 	sw := networkModels.StandardSwitch{
 		Name:        "integration-missing-runtime",
@@ -59,25 +62,16 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 		t.Fatalf("seed standard switch: %v", err)
 	}
 
-	if err := svc.EditStandardSwitch(
-		sw.ID,
-		9000,
-		0,
-		0,
-		0,
-		0,
-		0,
-		[]string{},
-		createTestStandardSwitchMACSource(t, svc),
-		true,
-		false,
-		true,
-		false,
-		false,
-		false,
-		false,
-		networkModels.StandardSwitchManualAddresses{},
-	); err != nil {
+	if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         9000,
+			Ports:       []string{},
+			MACSource:   createTestStandardSwitchMACSource(t, svc),
+			Private:     true,
+			DisableIPv6: true,
+		},
+	}); err != nil {
 		t.Fatalf("edit standard switch with missing runtime: %v", err)
 	}
 
@@ -96,6 +90,133 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 	if persisted.MTU != 9000 || !persisted.Private {
 		t.Fatalf("persisted switch = %#v, want updated MTU/private state", persisted)
 	}
+}
+
+func TestIntegrationStandardSwitchVLANFilteringModeTransitions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping standard switch VLAN-filtering transition integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("standard switch VLAN-filtering transition integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	bridgeName := fmt.Sprintf("sft%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
+	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
+		t.Fatalf("integration bridge name %s is unavailable: %v", bridgeName, err)
+	}
+	portOutput, err := utils.RunCommand("/sbin/ifconfig", "epair", "create")
+	if err != nil {
+		t.Fatalf("create transition test epair: %v", err)
+	}
+	portName := strings.TrimSpace(portOutput)
+	if portName == "" {
+		t.Fatal("transition test epair creation returned an empty name")
+	}
+	t.Cleanup(func() {
+		_, _ = exec.Command("/sbin/ifconfig", bridgeName, "destroy").CombinedOutput()
+		_, _ = exec.Command("/sbin/ifconfig", portName, "destroy").CombinedOutput()
+	})
+
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.ManualSwitch{},
+		&networkModels.StandardSwitch{},
+		&networkModels.NetworkPort{},
+		&vmModels.Network{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	sw := networkModels.StandardSwitch{
+		Name:        "integration-filtering-transition",
+		BridgeName:  bridgeName,
+		MTU:         1500,
+		DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+	if err := db.Create(&networkModels.NetworkPort{Name: portName, SwitchID: sw.ID}).Error; err != nil {
+		t.Fatalf("seed standard switch port: %v", err)
+	}
+	runtimeSwitch, err := loadStandardSwitch(db, sw.ID)
+	if err != nil {
+		t.Fatalf("load standard switch runtime configuration: %v", err)
+	}
+	if err := createStandardBridge(runtimeSwitch); err != nil {
+		t.Fatalf("create initial unfiltered bridge: %v", err)
+	}
+
+	assertFiltering := func(want bool) {
+		t.Helper()
+		state, err := bridgevlan.InspectBridge(bridgeName)
+		if err != nil {
+			t.Fatalf("inspect bridge VLAN-filtering state: %v", err)
+		}
+		if state.VLANFiltering != want {
+			t.Fatalf("bridge VLAN filtering = %t, want %t", state.VLANFiltering, want)
+		}
+	}
+	assertMember := func() {
+		t.Helper()
+		bridge, err := iface.Get(bridgeName)
+		if err != nil {
+			t.Fatalf("inspect bridge members: %v", err)
+		}
+		for _, member := range bridge.BridgeMembers {
+			if member.Name == portName {
+				return
+			}
+		}
+		t.Fatalf("port %s is not attached to bridge %s", portName, bridgeName)
+	}
+	assertFiltering(false)
+	assertMember()
+
+	accessVLAN := 20
+	accessPolicy := bridgevlan.PortPolicy{
+		Mode: bridgevlan.ModeAccess, UntaggedVLAN: &accessVLAN,
+	}
+	if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			Ports:       []string{portName},
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering: true,
+				PortPolicies: map[string]bridgevlan.PortPolicy{
+					portName: accessPolicy,
+				},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("enable VLAN filtering: %v", err)
+	}
+	assertFiltering(true)
+	assertMember()
+	if matches, err := bridgevlan.MemberPolicyMatches(bridgeName, portName, accessPolicy); err != nil {
+		t.Fatalf("inspect filtered member policy: %v", err)
+	} else if !matches {
+		t.Fatalf("port %s did not retain its requested access policy", portName)
+	}
+
+	if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: sw.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			Ports:       []string{portName},
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig:  networkModels.StandardSwitchVLANConfig{},
+		},
+	}); err != nil {
+		t.Fatalf("disable VLAN filtering: %v", err)
+	}
+	assertFiltering(false)
+	assertMember()
 }
 
 func TestIntegrationStandardSwitchSLAACAcceptsDefaultRouter(t *testing.T) {
@@ -269,6 +390,97 @@ func TestIntegrationStandardSwitchPortMACIdentity(t *testing.T) {
 		t.Fatalf("change standard switch MAC source: %v", err)
 	}
 	assertBridgeMAC(macB)
+}
+
+func TestIntegrationStandardSwitchFilteredHostVLANLifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping filtered host VLAN integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("filtered host VLAN integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	bridgeName := fmt.Sprintf("svh%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
+	hostVLAN := 123
+	hostName := fmt.Sprintf("%s.%d", bridgeName, hostVLAN)
+	for _, name := range []string{bridgeName, hostName} {
+		if _, err := iface.Get(name); err == nil || !isInterfaceMissingError(err) {
+			t.Fatalf("integration interface name %s is unavailable: %v", name, err)
+		}
+	}
+	portOutput, err := utils.RunCommand("/sbin/ifconfig", "epair", "create")
+	if err != nil {
+		t.Fatalf("create filtered host VLAN epair: %v", err)
+	}
+	portName := strings.TrimSpace(portOutput)
+	if portName == "" {
+		t.Fatal("filtered host VLAN epair creation returned an empty name")
+	}
+	t.Cleanup(func() {
+		_, _ = utils.RunCommand("/sbin/ifconfig", hostName, "destroy")
+		_, _ = utils.RunCommand("/sbin/ifconfig", bridgeName, "destroy")
+		_, _ = utils.RunCommand("/sbin/ifconfig", portName, "destroy")
+	})
+
+	sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:          "integration-filtered-host-vlan",
+		BridgeName:    bridgeName,
+		MTU:           1500,
+		Private:       true,
+		DisableIPv6:   true,
+		VLANFiltering: true,
+		HostVLAN:      &hostVLAN,
+		Ports: []networkModels.NetworkPort{{
+			Name: portName,
+			VLANPolicy: bridgevlan.PortPolicy{
+				Mode: bridgevlan.ModeAccess, UntaggedVLAN: &hostVLAN, TaggedVLANs: []int{},
+			},
+		}},
+	})
+	if err := createStandardBridge(sw); err != nil {
+		t.Fatalf("create filtered standard switch with host VLAN: %v", err)
+	}
+
+	hostInterface, err := iface.Get(hostName)
+	if err != nil {
+		t.Fatalf("inspect host VLAN interface: %v", err)
+	}
+	if !managedStandardSwitchHostVLAN(hostInterface) ||
+		hostInterface.VLANParent != bridgeName || hostInterface.VLANTag != hostVLAN {
+		t.Fatalf("unexpected host VLAN interface: %#v", hostInterface)
+	}
+	bridgeInterface, err := iface.Get(bridgeName)
+	if err != nil {
+		t.Fatalf("inspect filtered base bridge: %v", err)
+	}
+	if len(bridgeInterface.IPv4) != 0 || len(bridgeInterface.IPv6) != 0 {
+		t.Fatalf("filtered base bridge retained layer-3 addresses: IPv4=%v IPv6=%v", bridgeInterface.IPv4, bridgeInterface.IPv6)
+	}
+	physicalFound := false
+	for _, member := range bridgeInterface.BridgeMembers {
+		if member.Name != portName {
+			continue
+		}
+		physicalFound = true
+		if utils.Contains(member.Flags.Desc, "PRIVATE") {
+			t.Fatalf("physical uplink %s was marked private", portName)
+		}
+	}
+	if !physicalFound {
+		t.Fatalf("physical uplink %s was not attached to %s", portName, bridgeName)
+	}
+
+	if err := deleteStandardBridge(sw); err != nil {
+		t.Fatalf("delete filtered standard switch with host VLAN: %v", err)
+	}
+	for _, name := range []string{hostName, bridgeName} {
+		if _, err := iface.Get(name); err == nil || !isInterfaceMissingError(err) {
+			t.Fatalf("interface %s survived deletion: %v", name, err)
+		}
+	}
 }
 
 func TestIntegrationStandardSwitchRebindsExistingDefaultRouteToBridge(t *testing.T) {

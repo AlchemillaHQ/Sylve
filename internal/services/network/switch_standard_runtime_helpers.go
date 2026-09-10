@@ -33,6 +33,46 @@ var (
 	dhclientNaturalExitGrace = 2 * time.Second
 )
 
+func reconcileStandardSwitchPrivateMembers(
+	sw networkModels.StandardSwitch,
+	knownJailMembers map[string]struct{},
+) error {
+	physicalMembers := standardSwitchManagedMembers(sw)
+	if len(physicalMembers) == 0 && len(knownJailMembers) == 0 {
+		return nil
+	}
+	bridge, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return fmt.Errorf("inspect %s members for isolation: %w", sw.BridgeName, err)
+	}
+	if bridge == nil {
+		return fmt.Errorf("inspect %s members for isolation: interface not found", sw.BridgeName)
+	}
+	attached := make(map[string]struct{}, len(bridge.BridgeMembers))
+	for _, member := range bridge.BridgeMembers {
+		attached[member.Name] = struct{}{}
+	}
+
+	var reconcileErrors []error
+	for member := range physicalMembers {
+		if _, ok := attached[member]; !ok {
+			continue
+		}
+		if err := syncSetBridgeMemberPrivate(sw.BridgeName, member, false); err != nil {
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("clear physical member %s isolation: %w", member, err))
+		}
+	}
+	for member := range knownJailMembers {
+		if _, ok := attached[member]; !ok {
+			continue
+		}
+		if err := syncSetBridgeMemberPrivate(sw.BridgeName, member, sw.Private); err != nil {
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("set jail member %s isolation: %w", member, err))
+		}
+	}
+	return errors.Join(reconcileErrors...)
+}
+
 func desiredStandardSwitchMAC(sw networkModels.StandardSwitch) (string, error) {
 	switch sw.BridgeMACMode {
 	case networkModels.StandardSwitchMACModePort:
@@ -446,9 +486,10 @@ func deleteRouteIfPresent(args ...string) error {
 
 func removeStandardSwitchRoutes(sw networkModels.StandardSwitch) error {
 	var routeErrors []error
+	hostInterface := standardSwitchHostInterfaceName(sw)
 	network4, gateway4 := sw.Network(4), sw.Gateway(4)
-	if sw.DefaultRoute {
-		if _, err := removeDefaultRouteForInterface("", sw.BridgeName); err != nil {
+	if sw.DefaultRoute && hostInterface != "" {
+		if _, err := removeDefaultRouteForInterface("", hostInterface); err != nil {
 			routeErrors = append(routeErrors, fmt.Errorf("delete IPv4 default route: %w", err))
 		}
 	}
@@ -459,9 +500,9 @@ func removeStandardSwitchRoutes(sw networkModels.StandardSwitch) error {
 	}
 
 	network6, gateway6 := sw.Network(6), sw.Gateway(6)
-	routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, sw.BridgeName)
-	if sw.DefaultRoute6 {
-		if _, err := removeDefaultRouteForInterface("-6", sw.BridgeName); err != nil {
+	routeGateway6 := normalizeIPv6GatewayForRoute(gateway6, hostInterface)
+	if sw.DefaultRoute6 && hostInterface != "" {
+		if _, err := removeDefaultRouteForInterface("-6", hostInterface); err != nil {
 			routeErrors = append(routeErrors, fmt.Errorf("delete IPv6 default route: %w", err))
 		}
 	}
@@ -490,6 +531,9 @@ func isManagedStandardSwitchVLAN(name string) (bool, error) {
 
 func destroyStandardSwitchRuntimeInterfaces(sw networkModels.StandardSwitch) error {
 	var destroyErrors []error
+	if err := destroyStandardSwitchHostVLAN(sw); err != nil {
+		destroyErrors = append(destroyErrors, err)
+	}
 	if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "destroy"); err != nil && !isInterfaceMissingError(err) {
 		destroyErrors = append(destroyErrors, fmt.Errorf("destroy bridge %s: %w", sw.BridgeName, err))
 	}

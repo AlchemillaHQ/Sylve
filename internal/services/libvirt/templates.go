@@ -26,6 +26,7 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gopkg.in/yaml.v3"
 	"gorm.io/gorm"
@@ -674,20 +675,45 @@ func (s *Service) preflightVMTemplateResources(
 		}
 	}
 
-	for _, network := range template.Networks {
+	if _, err := s.resolveVMTemplateNetworkSwitchIDs(template.Networks); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) resolveVMTemplateNetworkSwitchIDs(networks []vmModels.VMTemplateNetwork) ([]uint, error) {
+	switchIDs := make([]uint, len(networks))
+	for index, network := range networks {
 		switchName := strings.TrimSpace(network.SwitchName)
 		if switchName == "" {
 			continue
 		}
-		if _, err := s.resolveSwitchID(switchName, network.SwitchType); err != nil {
+		switchID, err := s.resolveSwitchID(switchName, network.SwitchType)
+		if err != nil {
 			if strings.Contains(err.Error(), "switch_not_found") {
-				return fmt.Errorf("template_network_switch_not_found")
+				return nil, fmt.Errorf("template_network_switch_not_found")
 			}
-			return err
+			return nil, err
 		}
+		var sw networkAttachment.ResolvedSwitch
+		if network.Enable {
+			sw, err = vmNetworkAttachmentResolver(s.DB).ResolveDesiredByID(network.SwitchType, switchID)
+		} else {
+			sw, err = vmNetworkAttachmentResolver(s.DB).ResolveIdentityByID(network.SwitchType, switchID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if network.Enable {
+			if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+				return nil, fmt.Errorf("template_network_switch_incompatible: %w", err)
+			}
+		}
+		switchIDs[index] = switchID
 	}
 
-	return nil
+	return switchIDs, nil
 }
 
 func (s *Service) preflightCreateVMsFromTemplate(
@@ -944,27 +970,29 @@ func (s *Service) createVMFromTemplateTarget(
 		cloudInitMetaData = rewrittenMeta
 	}
 
-	networkSwitchIDs := make([]uint, len(template.Networks))
-	for idx, network := range template.Networks {
-		switchName := strings.TrimSpace(network.SwitchName)
-		if switchName == "" {
-			continue
+	targetSwitchNames := make([]string, 0, len(template.Networks))
+	for _, network := range template.Networks {
+		targetSwitchNames = append(targetSwitchNames, network.SwitchName)
+	}
+	unlockSwitchLifecycle, err := s.lockVMStandardSwitchLifecycle(0, false, targetSwitchNames...)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if unlockSwitchLifecycle != nil {
+			unlockSwitchLifecycle()
 		}
+	}()
 
-		switchID, err := s.resolveSwitchID(switchName, network.SwitchType)
-		if err != nil {
-			if strings.Contains(err.Error(), "switch_not_found") {
-				return fmt.Errorf("template_network_switch_not_found")
-			}
-			return err
-		}
-		networkSwitchIDs[idx] = switchID
+	networkSwitchIDs, err := s.resolveVMTemplateNetworkSwitchIDs(template.Networks)
+	if err != nil {
+		return err
 	}
 
 	clonePlan := make([]vmTemplateStorageClone, 0, len(template.Storages))
 	var vm vmModels.VM
 
-	err := func() error {
+	err = func() error {
 		s.vmTemplateTargetCreateMu.Lock()
 		defer s.vmTemplateTargetCreateMu.Unlock()
 
@@ -1042,7 +1070,7 @@ func (s *Service) createVMFromTemplateTarget(
 					SwitchID:   switchID,
 					SwitchType: strings.ToLower(strings.TrimSpace(network.SwitchType)),
 					Emulation:  network.Emulation,
-					Enable:     true,
+					Enable:     network.Enable,
 				}
 				if err := tx.Create(&createdNetwork).Error; err != nil {
 					return fmt.Errorf("failed_to_create_vm_network_from_template: %w", err)
@@ -1056,6 +1084,8 @@ func (s *Service) createVMFromTemplateTarget(
 	if err != nil {
 		return err
 	}
+	unlockSwitchLifecycle()
+	unlockSwitchLifecycle = nil
 
 	for _, clone := range clonePlan {
 		if err := s.cloneStorageDatasetFromTemplate(ctx, target, clone); err != nil {
@@ -1199,6 +1229,31 @@ func (s *Service) PreflightConvertVMToTemplate(
 	return nil
 }
 
+func (s *Service) sourceVMNetworksForTemplate(vm vmModels.VM) ([]vmModels.VMTemplateNetwork, error) {
+	templateNetworks := make([]vmModels.VMTemplateNetwork, 0, len(vm.Networks))
+	for _, network := range vm.Networks {
+		if network.SwitchID == 0 {
+			continue
+		}
+		switchName, err := s.resolveSwitchName(network.SwitchID, network.SwitchType)
+		if err != nil {
+			if strings.Contains(err.Error(), "switch_not_found") {
+				return nil, fmt.Errorf("template_network_switch_not_found")
+			}
+			return nil, err
+		}
+
+		templateNetworks = append(templateNetworks, vmModels.VMTemplateNetwork{
+			Name:       fmt.Sprintf("net-%d", network.ID),
+			SwitchName: switchName,
+			SwitchType: strings.ToLower(strings.TrimSpace(network.SwitchType)),
+			Emulation:  network.Emulation,
+			Enable:     network.Enable,
+		})
+	}
+	return templateNetworks, nil
+}
+
 func (s *Service) ConvertVMToTemplate(
 	ctx context.Context,
 	rid uint,
@@ -1213,25 +1268,9 @@ func (s *Service) ConvertVMToTemplate(
 		return fmt.Errorf("failed_to_get_vm: %w", err)
 	}
 
-	templateNetworks := make([]vmModels.VMTemplateNetwork, 0, len(vm.Networks))
-	for _, network := range vm.Networks {
-		if network.SwitchID == 0 {
-			continue
-		}
-		switchName, err := s.resolveSwitchName(network.SwitchID, network.SwitchType)
-		if err != nil {
-			if strings.Contains(err.Error(), "switch_not_found") {
-				return fmt.Errorf("template_network_switch_not_found")
-			}
-			return err
-		}
-
-		templateNetworks = append(templateNetworks, vmModels.VMTemplateNetwork{
-			Name:       fmt.Sprintf("net-%d", network.ID),
-			SwitchName: switchName,
-			SwitchType: strings.ToLower(strings.TrimSpace(network.SwitchType)),
-			Emulation:  network.Emulation,
-		})
+	templateNetworks, err := s.sourceVMNetworksForTemplate(vm)
+	if err != nil {
+		return err
 	}
 
 	template := buildVMTemplateFromVM(vm, req.Name, templateNetworks)

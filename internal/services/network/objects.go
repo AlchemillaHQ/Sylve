@@ -1102,7 +1102,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.SyncStandardSwitches(nil, "sync")
+				err := s.SyncStandardSwitches()
 				if err != nil {
 					return fmt.Errorf("failed to sync standard switches after editing object %d: %w", id, err)
 				}
@@ -1214,7 +1214,7 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.SyncStandardSwitches(nil, "sync")
+				err := s.SyncStandardSwitches()
 				if err != nil {
 					return fmt.Errorf("failed to sync standard switches after editing object %d: %w", id, err)
 				}

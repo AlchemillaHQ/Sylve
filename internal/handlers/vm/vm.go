@@ -131,6 +131,7 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"duplicate_core_within_socket":                     {},
 	"duplicate_socket_in_request":                      {},
 	"empty_core_list_for_socket":                       {},
+	"filtered_switch_vm_default_access_vlan_required":  {},
 	"invalid_cloud_init_yaml":                          {},
 	"invalid_iso_or_image_format":                      {},
 	"invalid_boot_rom":                                 {},
@@ -250,6 +251,18 @@ func classifyCreateVMError(err error) (int, string) {
 		return http.StatusConflict, "guest_identity_claim_conflict"
 	case strings.Contains(errText, "guest_id_already_in_use"):
 		return http.StatusConflict, "guest_id_already_in_use"
+	case strings.Contains(errText, "failed_to_inspect_manual_switch_vlan_state"):
+		return http.StatusServiceUnavailable, "failed_to_inspect_manual_switch_vlan_state"
+	case strings.Contains(errText, "unfiltered_switch_runtime_inspection_failed"):
+		return http.StatusServiceUnavailable, "unfiltered_switch_runtime_inspection_failed"
+	case strings.Contains(errText, "filtered_switch_qinq_unsupported"):
+		return http.StatusConflict, "filtered_switch_qinq_unsupported"
+	case strings.Contains(errText, "invalid_manual_switch_default_pvid"):
+		return http.StatusConflict, "invalid_manual_switch_default_pvid"
+	case strings.Contains(errText, "filtered_switch_runtime_mismatch"):
+		return http.StatusConflict, "filtered_switch_runtime_mismatch"
+	case strings.Contains(errText, "unfiltered_switch_runtime_vlan_mode_mismatch"):
+		return http.StatusConflict, "unfiltered_switch_runtime_vlan_mode_mismatch"
 	}
 
 	if strings.Contains(errText, "exists=true, allowed=false") {
@@ -695,7 +708,7 @@ func writeVMDomainLifecycleError(c *gin.Context, err error) {
 }
 
 // @Summary Create a new Virtual Machine
-// @Description Create a new virtual machine with the specified parameters
+// @Description Create a new virtual machine with the specified parameters. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.
 // @Tags VM
 // @Accept json
 // @Produce json

@@ -70,9 +70,11 @@ type storageTestDataset struct {
 }
 
 type storageTestZFSRunner struct {
-	datasets   map[string]storageTestDataset
-	failRename bool
-	commands   [][]string
+	datasets        map[string]storageTestDataset
+	failRename      bool
+	commands        [][]string
+	snapshotStarted chan<- struct{}
+	releaseSnapshot <-chan struct{}
 }
 
 func (r *storageTestZFSRunner) Run(
@@ -89,6 +91,21 @@ func (r *storageTestZFSRunner) Run(
 	r.commands = append(r.commands, append([]string(nil), args...))
 
 	switch args[0] {
+	case "snapshot":
+		if r.snapshotStarted != nil {
+			close(r.snapshotStarted)
+			r.snapshotStarted = nil
+		}
+		if r.releaseSnapshot != nil {
+			<-r.releaseSnapshot
+		}
+		fullName := args[len(args)-1]
+		rootName := strings.SplitN(fullName, "@", 2)[0]
+		dataset := r.datasets[rootName]
+		dataset.name = fullName
+		dataset.kind = gzfs.DatasetTypeSnapshot
+		r.datasets[fullName] = dataset
+		return nil
 	case "rename":
 		if r.failRename {
 			return fmt.Errorf("boom_rename")

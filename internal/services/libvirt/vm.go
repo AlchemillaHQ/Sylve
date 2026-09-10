@@ -438,6 +438,14 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 	}
 
 	if data.SwitchName != "" && strings.ToLower(data.SwitchName) != "none" {
+		sw, err := vmNetworkAttachmentResolver(s.DB).ResolveDesiredByNameAny(data.SwitchName)
+		if err != nil {
+			return err
+		}
+		if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+			return err
+		}
+
 		var macId uint
 		if data.MacId != nil {
 			macId = *data.MacId
@@ -1002,47 +1010,31 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		qemuGuestAgent = *data.QemuGuestAgent
 	}
 
+	var unlockSwitchLifecycle func()
+	if data.SwitchName != "" && strings.ToLower(data.SwitchName) != "none" {
+		unlockSwitchLifecycle, err = s.lockVMStandardSwitchLifecycle(0, false, data.SwitchName)
+		if err != nil {
+			return err
+		}
+	}
+	defer func() {
+		if unlockSwitchLifecycle != nil {
+			unlockSwitchLifecycle()
+		}
+	}()
+
 	var networks []vmModels.Network
 	if data.SwitchName != "" && strings.ToLower(data.SwitchName) != "none" {
-		swType := ""
-
-		var stdSwitch networkModels.StandardSwitch
-		if err := s.DB.First(&stdSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			swType = "standard"
+		sw, err := vmNetworkAttachmentResolver(s.DB).ResolveDesiredByNameAny(data.SwitchName)
+		if err != nil {
+			return err
 		}
-
-		var manualSwitch networkModels.ManualSwitch
-		if err := s.DB.First(&manualSwitch, "name = ?", data.SwitchName).Error; err == nil {
-			swType = "manual"
-		}
-
-		if swType == "" {
-			return fmt.Errorf("switch_not_found: %s", data.SwitchName)
-		}
-
-		var sw any
-
-		switch swType {
-		case "standard":
-			sw = stdSwitch
-		case "manual":
-			sw = manualSwitch
-		default:
-			return fmt.Errorf("unknown_switch_type: %s", swType)
+		if err := validateDesiredVMNetworkSwitchCompatibility(sw); err != nil {
+			return err
 		}
 
 		if macId == 0 {
-			var base string
-
-			switch v := sw.(type) {
-			case networkModels.StandardSwitch:
-				base = fmt.Sprintf("%s-%s", data.Name, v.Name)
-			case networkModels.ManualSwitch:
-				base = fmt.Sprintf("%s-%s", data.Name, v.Name)
-			default:
-				return fmt.Errorf("invalid switch type %T", v)
-			}
-
+			base := fmt.Sprintf("%s-%s", data.Name, sw.Name)
 			name := base
 
 			for i := 0; ; i++ {
@@ -1085,21 +1077,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 			macId = macObj.ID
 		}
 
-		var switchId uint
-
-		switch v := sw.(type) {
-		case networkModels.StandardSwitch:
-			switchId = v.ID
-		case networkModels.ManualSwitch:
-			switchId = v.ID
-		default:
-			return fmt.Errorf("invalid switch type %T", v)
-		}
-
 		networks = append(networks, vmModels.Network{
 			MacID:      &macId,
-			SwitchID:   switchId,
-			SwitchType: swType,
+			SwitchID:   sw.ID,
+			SwitchType: sw.Type,
 			Emulation:  data.SwitchEmulationType,
 			Enable:     true,
 		})
@@ -1178,6 +1159,10 @@ func (s *Service) CreateVM(data libvirtServiceInterfaces.CreateVMRequest, ctx co
 		return fmt.Errorf("failed_to_create_vm_with_associations: %w", err)
 	}
 	cleanupRIDArtifacts = true
+	if unlockSwitchLifecycle != nil {
+		unlockSwitchLifecycle()
+		unlockSwitchLifecycle = nil
+	}
 
 	if err := s.CreateLvVm(int(vm.ID), ctx); err != nil {
 		logger.L.Debug().Err(err).Msg("create_vm: failed to create lv vm")

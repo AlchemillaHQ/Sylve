@@ -971,6 +971,14 @@ func (s *Service) validateFirewallTrafficRuleRequest(req *networkServiceInterfac
 	if err := validateFirewallTrafficInterfaceList(req.EgressInterfaces, "egress"); err != nil {
 		return err
 	}
+	if s != nil && s.DB != nil {
+		if err := s.rejectFilteredStandardBridgeInterfaces(append(ingress, egress...)...); err != nil {
+			if errors.Is(err, errFilteredStandardSwitchL2Only) {
+				return invalidFirewallTrafficRule(err)
+			}
+			return err
+		}
+	}
 
 	selectors := []struct {
 		raw      string
@@ -1118,6 +1126,14 @@ func (s *Service) validateFirewallNATRuleRequest(req *networkServiceInterfaces.U
 	}
 	ingress := normalizeInterfaceList(req.IngressInterfaces)
 	egress := normalizeInterfaceList(req.EgressInterfaces)
+	if s != nil && s.DB != nil {
+		if err := s.rejectFilteredStandardBridgeInterfaces(append(ingress, egress...)...); err != nil {
+			if errors.Is(err, errFilteredStandardSwitchL2Only) {
+				return invalidFirewallNATRule(err)
+			}
+			return err
+		}
+	}
 
 	selectors := []struct {
 		raw      string

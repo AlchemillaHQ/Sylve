@@ -15,6 +15,13 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
+	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"gorm.io/gorm"
 )
 
 func TestCanonicalMigrationGuestDatasetUsesExactGuestIDBoundary(t *testing.T) {
@@ -261,6 +268,125 @@ func TestReplicationEventConflictReason(t *testing.T) {
 	reason := "guest_has_running_replication_event"
 	if reason == "" {
 		t.Fatal("reason string must not be empty")
+	}
+}
+
+func TestBuildVMTargetProbeIncludesDisabledSwitchIdentity(t *testing.T) {
+	originalResolve := resolveMigrationVMNetworkAttachment
+	originalResolveIdentity := resolveMigrationVMNetworkIdentity
+	t.Cleanup(func() {
+		resolveMigrationVMNetworkAttachment = originalResolve
+		resolveMigrationVMNetworkIdentity = originalResolveIdentity
+	})
+
+	defaultVLAN := 20
+	resolveMigrationVMNetworkAttachment = func(
+		_ *gorm.DB, switchType string, switchID uint,
+	) (networkAttachment.Contract, error) {
+		if switchType != "standard" || switchID != 1 {
+			t.Fatalf("unexpected effective resolver input: %s:%d", switchType, switchID)
+		}
+		return networkAttachment.Normalize(networkAttachment.Contract{
+			Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindVM,
+			SwitchName: "tenant", SwitchType: "standard", VLANFiltering: true,
+			DefaultAccessVLAN: &defaultVLAN,
+		})
+	}
+	identityCalls := 0
+	resolveMigrationVMNetworkIdentity = func(
+		_ *gorm.DB, switchType string, switchID uint,
+	) (networkAttachment.Contract, error) {
+		identityCalls++
+		name := "tenant"
+		if switchID == 2 {
+			name = "dormant"
+		}
+		return networkAttachment.LegacyUnfiltered(
+			networkAttachment.KindVM, name, switchType,
+		)
+	}
+
+	probe, _, err := (&Service{}).buildVMTargetProbe(vmModels.VM{
+		RID: 91,
+		Networks: []vmModels.Network{
+			{SwitchID: 1, SwitchType: "standard", Enable: false},
+			{SwitchID: 1, SwitchType: "standard", Enable: true},
+			{SwitchID: 2, SwitchType: "manual", Enable: false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build probe: %v", err)
+	}
+	if identityCalls != 2 {
+		t.Fatalf("identity resolver calls = %d, want 2", identityCalls)
+	}
+	if len(probe.Switches) != 2 {
+		t.Fatalf("switches = %+v", probe.Switches)
+	}
+	if got := probe.Switches[0]; got.IdentityOnly || got.Attachment.SwitchName != "tenant" ||
+		!got.Attachment.VLANFiltering || got.Attachment.DefaultAccessVLAN == nil ||
+		*got.Attachment.DefaultAccessVLAN != defaultVLAN {
+		t.Fatalf("enabled switch did not replace identity-only entry: %+v", got)
+	}
+	if got := probe.Switches[1]; !got.IdentityOnly || got.Attachment.SwitchName != "dormant" ||
+		got.Attachment.SwitchType != "manual" {
+		t.Fatalf("disabled switch identity = %+v", got)
+	}
+}
+
+func TestBuildJailTargetProbePreservesVLANPolicy(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t,
+		&jailModels.Jail{},
+		&jailModels.Network{},
+		&networkModels.StandardSwitch{},
+	)
+	defaultVLAN := 10
+	switchModel := networkModels.StandardSwitch{
+		Name: "LAN", BridgeName: "bridge0", VLANFiltering: true, DefaultAccessVLAN: &defaultVLAN,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	jail := jailModels.Jail{CTID: 101, Name: "jail-101", Type: jailModels.JailTypeFreeBSD}
+	if err := db.Create(&jail).Error; err != nil {
+		t.Fatalf("seed jail: %v", err)
+	}
+	untagged := 10
+	if err := db.Create(&jailModels.Network{
+		JailID: jail.ID, Name: "vnet0", SwitchID: switchModel.ID, SwitchType: "standard",
+		VLANPolicy: bridgevlan.PortPolicy{Mode: bridgevlan.ModeAccess, UntaggedVLAN: &untagged},
+	}).Error; err != nil {
+		t.Fatalf("seed network: %v", err)
+	}
+
+	originalResolve := resolveMigrationJailNetworkAttachment
+	resolverCalled := false
+	resolveMigrationJailNetworkAttachment = func(
+		_ *gorm.DB, network *jailModels.Network,
+	) (networkAttachment.Contract, error) {
+		resolverCalled = true
+		policy := network.VLANPolicy
+		return networkAttachment.Normalize(networkAttachment.Contract{
+			Version: networkAttachment.CurrentVersion, Kind: networkAttachment.KindJail,
+			SwitchName: "LAN", SwitchType: "standard", VLANFiltering: true,
+			VLANPolicy: &policy,
+		})
+	}
+	t.Cleanup(func() { resolveMigrationJailNetworkAttachment = originalResolve })
+
+	probe, err := (&Service{DB: db}).buildJailTargetProbe(jail.ID)
+	if err != nil {
+		t.Fatalf("build probe: %v", err)
+	}
+	if !resolverCalled || len(probe.Networks) != 1 {
+		t.Fatalf("resolverCalled=%t probe=%+v", resolverCalled, probe)
+	}
+	got := probe.Networks[0]
+	if got.Name != "vnet0" || got.Attachment.SwitchName != "LAN" ||
+		got.Attachment.SwitchType != "standard" || got.Attachment.Version != networkAttachment.CurrentVersion ||
+		got.Attachment.VLANPolicy == nil || got.Attachment.VLANPolicy.Mode != bridgevlan.ModeAccess ||
+		got.Attachment.VLANPolicy.UntaggedVLAN == nil || *got.Attachment.VLANPolicy.UntaggedVLAN != 10 {
+		t.Fatalf("network probe = %+v", got)
 	}
 }
 

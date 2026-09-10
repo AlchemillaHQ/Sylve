@@ -341,7 +341,7 @@ func (s *Service) StandardSwitchRCConflicts(id uint, name string, vlan int, port
 		}
 	}
 	sw.VLAN = vlan
-	sw.Ports = standardSwitchPorts(sw.ID, normalizedPorts)
+	sw.Ports = standardSwitchPorts(sw.ID, normalizedPorts, nil)
 	return inspectStandardSwitchRCConflicts(sw), nil
 }
 

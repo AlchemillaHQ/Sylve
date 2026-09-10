@@ -344,3 +344,15 @@ func TestRestoreFirewallNATRulesAfterApplyFailureRestoresExactSnapshot(t *testin
 		t.Fatalf("snapshot was not restored exactly:\nbefore=%+v\nafter=%+v", snapshot, restored)
 	}
 }
+
+func TestFirewallNATRuleRejectsFilteredStandardSwitchInterfaces(t *testing.T) {
+	svc := seedFilteredStandardSwitchInterface(t)
+	req := validFirewallNATRuleRequest("filtered egress")
+	req.EgressInterfaces = []string{"vm-filtered"}
+
+	err := svc.validateFirewallNATRuleRequest(&req)
+	if !errors.Is(err, ErrInvalidFirewallNATRule) ||
+		!strings.Contains(err.Error(), "filtered_standard_switch_l2_only: vm-filtered") {
+		t.Fatalf("expected filtered bridge rejection, got %v", err)
+	}
+}

@@ -1,5 +1,15 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
-import { SwitchListSchema, type SwitchList } from '$lib/types/network/switch';
+import { SwitchListSchema, type SwitchList, type VLANPortPolicy } from '$lib/types/network/switch';
 import { apiRequest } from '$lib/utils/http';
 import z from 'zod/v4';
 
@@ -34,6 +44,36 @@ export type StandardSwitchMACSource =
 	| { mode: 'port'; port: string }
 	| { mode: 'object'; macObjectId: number };
 
+export type StandardSwitchVLANConfig = {
+	vlanFiltering: boolean;
+	defaultAccessVlan: number | null;
+	hostVlan: number | null;
+	portPolicies: Record<string, VLANPortPolicy>;
+};
+
+export type StandardSwitchConfig = {
+	mtu: number;
+	vlan: number;
+	network4: number;
+	gateway4: number;
+	network6: number;
+	gateway6: number;
+	private: boolean;
+	ports: string[];
+	bridgeMac: StandardSwitchMACSource;
+	disableIPv6: boolean;
+	slaac: boolean;
+	dhcp: boolean;
+	defaultRoute: boolean;
+	defaultRoute6: boolean;
+	disableBridgeOffloads: boolean;
+	vlanConfig: StandardSwitchVLANConfig;
+	manual?: SwitchManualAddresses;
+	confirmRCConflicts?: boolean;
+};
+
+export type CreateStandardSwitchRequest = StandardSwitchConfig & { name: string };
+
 const emptyManualAddresses: SwitchManualAddresses = {
 	network4: '',
 	gateway4: '',
@@ -41,51 +81,36 @@ const emptyManualAddresses: SwitchManualAddresses = {
 	gateway6: ''
 };
 
-export async function createSwitch(
-	name: string,
-	mtu: number,
-	vlan: number,
-	network4: number,
-	gateway4: number,
-	network6: number,
-	gateway6: number,
-	privateSw: boolean,
-	ports: string[],
-	bridgeMac: StandardSwitchMACSource,
-	disableIPv6: boolean,
-	slaac: boolean,
-	dhcp: boolean,
-	defaultRoute: boolean,
-	defaultRoute6: boolean,
-	disableBridgeOffloads: boolean,
-	manual: SwitchManualAddresses = emptyManualAddresses,
-	confirmRCConflicts = false
-): Promise<number | APIResponse> {
-	const body = {
-		name,
-		mtu,
-		vlan,
-		network4,
-		gateway4,
-		network6,
-		gateway6,
-		private: privateSw,
-		ports,
-		bridgeMac,
-		dhcp,
-		disableIPv6,
-		slaac,
-		defaultRoute,
-		defaultRoute6,
-		disableBridgeOffloads,
+function standardSwitchRequestBody<T extends StandardSwitchConfig>(request: T) {
+	const {
+		vlanConfig,
+		manual = emptyManualAddresses,
+		confirmRCConflicts = false,
+		...config
+	} = request;
+	return {
+		...config,
+		vlanFiltering: vlanConfig.vlanFiltering,
+		defaultAccessVlan: vlanConfig.defaultAccessVlan,
+		hostVlan: vlanConfig.hostVlan,
+		portPolicies: vlanConfig.portPolicies,
 		confirmRCConflicts,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,
 		gateway6Manual: manual.gateway6
 	};
+}
 
-	return await apiRequest('/network/switch/standard', z.number().int().positive(), 'POST', body);
+export async function createSwitch(
+	request: CreateStandardSwitchRequest
+): Promise<number | APIResponse> {
+	return await apiRequest(
+		'/network/switch/standard',
+		z.number().int().positive(),
+		'POST',
+		standardSwitchRequestBody(request)
+	);
 }
 
 export async function deleteSwitch(id: number): Promise<APIResponse> {
@@ -94,46 +119,12 @@ export async function deleteSwitch(id: number): Promise<APIResponse> {
 
 export async function updateSwitch(
 	id: number,
-	mtu: number,
-	vlan: number,
-	network4: number,
-	gateway4: number,
-	network6: number,
-	gateway6: number,
-	privateSw: boolean,
-	ports: string[],
-	bridgeMac: StandardSwitchMACSource,
-	disableIPv6: boolean,
-	slaac: boolean,
-	dhcp: boolean,
-	defaultRoute: boolean,
-	defaultRoute6: boolean,
-	disableBridgeOffloads: boolean,
-	manual: SwitchManualAddresses = emptyManualAddresses,
-	confirmRCConflicts = false
+	request: StandardSwitchConfig
 ): Promise<APIResponse> {
-	const body = {
-		mtu,
-		vlan,
-		network4,
-		gateway4,
-		network6,
-		gateway6,
-		private: privateSw,
-		ports,
-		bridgeMac,
-		disableIPv6,
-		slaac,
-		dhcp,
-		defaultRoute,
-		defaultRoute6,
-		disableBridgeOffloads,
-		confirmRCConflicts,
-		network4Manual: manual.network4,
-		gateway4Manual: manual.gateway4,
-		network6Manual: manual.network6,
-		gateway6Manual: manual.gateway6
-	};
-
-	return await apiRequest(`/network/switch/standard/${id}`, APIResponseSchema, 'PUT', body);
+	return await apiRequest(
+		`/network/switch/standard/${id}`,
+		APIResponseSchema,
+		'PUT',
+		standardSwitchRequestBody(request)
+	);
 }

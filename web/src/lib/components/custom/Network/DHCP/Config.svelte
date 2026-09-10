@@ -1,3 +1,13 @@
+<!--
+SPDX-License-Identifier: BSD-2-Clause
+
+Copyright (c) 2025 The FreeBSD Foundation.
+
+This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+under sponsorship from the FreeBSD Foundation.
+-->
+
 <script lang="ts">
 	import { updateDHCPConfig } from '$lib/api/network/dhcp';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -43,7 +53,12 @@
 						...dhcpConfig.manualSwitches.map((s) => `${s.id}-man-${s.name}`),
 						...dhcpConfig.standardSwitches.map((s) => `${s.id}-stan-${s.name}`)
 					],
-					options: generateSwitchOptions(networkSwitches)
+					options: generateSwitchOptions({
+						...networkSwitches,
+						standard: networkSwitches.standard.filter(
+							(sw) => !sw.vlanFiltering || sw.hostVlan !== null
+						)
+					})
 				}
 			}
 		};
