@@ -607,7 +607,7 @@ func (s *Service) runBootstrap(
 			"-o", "ABI=" + abi,
 			"-o", "ASSUME_ALWAYS_YES=yes",
 			"-o", "FINGERPRINTS=" + fingerprintsRelPath,
-			"-o", "PKG_DBDIR=" + filepath.Join(tempDir, "pkg-db"),
+			"-o", "PKG_DBDIR=" + filepath.Join(mountPoint, "var", "db", "pkg"),
 			"-o", "INSTALL_AS_USER=yes",
 		}
 		return append(base, subcmd...)

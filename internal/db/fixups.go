@@ -57,6 +57,9 @@ func Fixups(db *gorm.DB) error {
 	if err := migrateStandardSwitchAutomaticRouteOwners(db); err != nil {
 		return err
 	}
+	if err := cleanupLegacyJailBootstraps(db); err != nil {
+		return err
+	}
 
 	runNetworkDeltaMigration(db)
 	fixJailNetworkNameIndex(db)

@@ -34,14 +34,51 @@ The source selected on the **Storage** step during [jail creation](/guides/node/
 If the creation source is no longer known, open the jail [Console](/guides/node/jails/console/) and check for Sylve's pkgbase repository:
 
 ```sh
-test -f /usr/local/etc/pkg/repos/FreeBSD-base.conf && echo "pkgbase jail"
+test -f /usr/local/etc/pkg/repos/FreeBSD-base.conf && echo "pkgbase repository configured"
 ```
 
-The presence of that file identifies a jail created from a Sylve pkgbase bootstrap. Do not create or remove it merely to change update methods.
+That file indicates a configured pkgbase repository, but it does not prove that the base packages are registered. For jails created from older Sylve bootstraps, check the package records as described below. Do not create or remove the repository file merely to change update methods.
 
 ## Update a FreeBSD pkgbase jail
 
 This is the normal path for FreeBSD jails created from Sylve's built-in **Bootstrap** option. The bootstrap installs the FreeBSD base system as packages, installs `pkg`, and enables a release-specific `FreeBSD-base` repository inside every jail copied from it.
+
+:::caution[Repair missing package records in an existing bootstrap jail]
+A bug in older Sylve bootstraps caused the installed-package database to be discarded. Jails created from those bootstraps inherited the FreeBSD base files without their package records. In an affected jail, `pkg info` may show nothing or only application packages installed later.
+
+Open the jail's **Console** and check for registered base packages:
+
+```sh
+pkg info -g 'FreeBSD-*'
+```
+
+If this lists no FreeBSD packages in a jail created from **Bootstrap**, repair the missing records before following the normal update steps below. [`pkg upgrade`](https://github.com/freebsd/pkg/blob/main/docs/pkg-upgrade.8) works from registered packages; an empty upgrade does not mean that this jail's base system is up to date.
+
+You can repair the existing jail using its original cached package archives. First, take a [Sylve snapshot](/guides/node/jails/snapshots/). Then run these commands as root inside the jail:
+
+```sh
+pkg -o AUTOCLEAN=no install pkg
+pkg -v
+find /var/cache/pkg -maxdepth 1 -type f -name 'FreeBSD-*.pkg' | head
+```
+
+This installs or upgrades and registers `pkg` itself while preserving the package cache. The recovery procedure below was verified with **`pkg` 2.8.4**; use that version or newer. Although 2.6.2 accepts `--register-only`, it has a bug involving configuration-file contents in the recovered database. See the [upstream fixes](https://github.com/freebsd/pkg/blob/main/NEWS).
+
+**Stop before registration if `pkg` is still older than 2.8.4, the cache contains no FreeBSD archives, or the archives do not match the installed base.** For a FreeBSD 15.1 jail, use the original 15.1 archives from its bootstrap. Do not clear the cache, substitute newly downloaded packages, or copy another jail's database: those records may not match the files actually installed.
+
+With the required `pkg` version and original matching archives, restore the base-package registrations:
+
+```sh
+find /var/cache/pkg -maxdepth 1 -type f -name 'FreeBSD-*.pkg' \
+  -exec pkg install --register-only --local-only {} +
+
+pkg info -g 'FreeBSD-*'
+```
+
+The registration command records the packages **without extracting their files or running installation scripts**. The `find` command supplies the archive filenames required by [`pkg install --register-only --local-only`](https://github.com/freebsd/pkg/blob/main/docs/pkg-install.8); running those options without filenames only displays usage information.
+
+Confirm that registration finishes successfully and `pkg info` now lists the FreeBSD base packages, then continue with the normal update steps below. Updating Sylve or recreating a reusable bootstrap does not repair package records in jails that already exist.
+:::
 
 Open the running jail's **Console**, then inspect the current userland version:
 
