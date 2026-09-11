@@ -324,8 +324,8 @@ func (s *Service) DestroyTargetSnapshotsByName(ctx context.Context, target *clus
 				logger.L.Warn().
 					Str("ssh_host", target.SSHHost).
 					Str("dataset", remoteDatasetForLog(snapshot.Dataset().String())).
-					Msg("remote_zfs_destroy_not_permitted_skipped")
-				continue
+					Msg("remote_zfs_destroy_not_permitted")
+				return fmt.Errorf("remote_zfs_destroy_not_permitted: %w", err)
 			}
 			return err
 		}

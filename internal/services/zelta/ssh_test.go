@@ -721,3 +721,31 @@ func TestTargetSSHKeyPath(t *testing.T) {
 		}
 	})
 }
+
+func TestDestroyTargetSnapshotsReportsBlockedRemoteDelete(t *testing.T) {
+	harness := newFakeSSHHarness(t)
+	harness.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
+		"zfs destroy tank/backups/vm@bk_j1_c1_old": {{
+			Stderr:   "subcommand not allowed\n",
+			ExitCode: 1,
+		}},
+	}})
+
+	target := &clusterModels.BackupTarget{
+		SSHHost:    "root@backup.example",
+		BackupRoot: "tank/backups",
+	}
+	err := (&Service{}).DestroyTargetSnapshotsByName(
+		context.Background(),
+		target,
+		[]string{"tank/backups/vm@bk_j1_c1_old"},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), "remote_zfs_destroy_not_permitted") ||
+		!strings.Contains(err.Error(), "subcommand not allowed") {
+		t.Fatalf("blocked target deletion error = %v", err)
+	}
+	if calls := harness.Calls(); len(calls) != 1 || calls[0] != "zfs destroy tank/backups/vm@bk_j1_c1_old" {
+		t.Fatalf("remote delete calls = %#v", calls)
+	}
+}

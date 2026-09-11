@@ -1608,14 +1608,31 @@ func (s *Service) runBackupJobCore(
 		if runErr == nil {
 			retentionInventories, coordinatorErr = s.loadBackupRetentionScopeInventories(ctx, job, backupScopes)
 			if coordinatorErr != nil {
-				output = appendOutput(output, fmt.Sprintf(
-					"backup_prune_skipped_commit_inventory_failed: error=%v",
-					coordinatorErr,
-				))
+				runErr = fmt.Errorf("backup_prune_commit_inventory_failed: %w", coordinatorErr)
+				output = appendOutput(output, runErr.Error())
 				logger.L.Warn().
 					Err(coordinatorErr).
 					Uint("job_id", job.ID).
 					Msg("backup_prune_commit_inventory_failed")
+			}
+		}
+		if runErr == nil {
+			for _, inventory := range retentionInventories {
+				if inventory.localSnapshotErr == nil {
+					continue
+				}
+				runErr = fmt.Errorf(
+					"backup_prune_local_snapshot_list_failed: source=%s: %w",
+					inventory.sourceRoot,
+					inventory.localSnapshotErr,
+				)
+				output = appendOutput(output, runErr.Error())
+				logger.L.Warn().
+					Err(inventory.localSnapshotErr).
+					Uint("job_id", job.ID).
+					Str("source", inventory.sourceRoot).
+					Msg("backup_prune_local_snapshot_list_failed")
+				break
 			}
 		}
 
@@ -1640,10 +1657,8 @@ func (s *Service) runBackupJobCore(
 				)
 			}
 			if coordinatorErr != nil {
-				output = appendOutput(output, fmt.Sprintf(
-					"backup_prune_skipped_commit_validation_failed: error=%v",
-					coordinatorErr,
-				))
+				runErr = fmt.Errorf("backup_prune_commit_validation_failed: %w", coordinatorErr)
+				output = appendOutput(output, runErr.Error())
 				logger.L.Warn().
 					Err(coordinatorErr).
 					Uint("job_id", job.ID).
@@ -1679,37 +1694,37 @@ func (s *Service) runBackupJobCore(
 			for _, plan := range cleanupPlans {
 				inventory := plan.inventory
 				scopeSource := inventory.sourceRoot
-				if inventory.localSnapshotErr != nil {
-					logger.L.Warn().
-						Err(inventory.localSnapshotErr).
-						Uint("job_id", job.ID).
-						Str("source", scopeSource).
-						Msg("backup_prune_local_snapshot_list_failed")
-				}
-
 				if len(plan.localCandidates) > 0 {
 					if err := s.destroyLocalBackupSnapshotsWithProof(ctx, plan.localCandidates, retentionProofs.Source); err != nil {
+						pruneErr := fmt.Errorf("backup_prune_destroy_failed: source=%s: %w", scopeSource, err)
+						runErr = errors.Join(runErr, pruneErr)
+						output = appendOutput(output, pruneErr.Error())
 						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(plan.localCandidates)).Msg("backup_prune_destroy_failed")
-					} else {
-						prunedLocal += len(plan.localCandidates)
-						logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(plan.localCandidates)).Msg("backup_prune_completed")
+						continue
 					}
+					prunedLocal += len(plan.localCandidates)
+					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(plan.localCandidates)).Msg("backup_prune_completed")
 				} else {
 					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_no_candidates")
 				}
+			}
 
-				if !job.PruneTarget {
-					continue
-				}
-				if len(plan.targetCandidates) > 0 {
-					if err := s.destroyTargetBackupSnapshotsWithProof(ctx, &job.Target, plan.targetCandidates, retentionProofs.Target); err != nil {
-						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(plan.targetCandidates)).Msg("backup_prune_target_destroy_failed")
-					} else {
-						prunedTarget += len(plan.targetCandidates)
-						logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(plan.targetCandidates)).Msg("backup_prune_target_completed")
+			if runErr == nil && job.PruneTarget {
+				for _, plan := range cleanupPlans {
+					inventory := plan.inventory
+					scopeSource := inventory.sourceRoot
+					if len(plan.targetCandidates) == 0 {
+						logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
+						continue
 					}
-				} else {
-					logger.L.Debug().Uint("job_id", job.ID).Str("source", scopeSource).Int("keep_last", job.PruneKeepLast).Msg("backup_prune_target_no_candidates")
+					if err := s.destroyTargetBackupSnapshotsWithProof(ctx, &job.Target, plan.targetCandidates, retentionProofs.Target); err != nil {
+						runErr = fmt.Errorf("backup_prune_target_destroy_failed: source=%s: %w", scopeSource, err)
+						output = appendOutput(output, runErr.Error())
+						logger.L.Warn().Err(err).Uint("job_id", job.ID).Str("source", scopeSource).Int("candidate_count", len(plan.targetCandidates)).Msg("backup_prune_target_destroy_failed")
+						break
+					}
+					prunedTarget += len(plan.targetCandidates)
+					logger.L.Info().Uint("job_id", job.ID).Str("source", scopeSource).Int("pruned", len(plan.targetCandidates)).Msg("backup_prune_target_completed")
 				}
 			}
 
@@ -1722,6 +1737,7 @@ func (s *Service) runBackupJobCore(
 				Int("selected_snapshots", cleanupStats.SelectedSnapshots).
 				Int("pruned_local", prunedLocal).
 				Int("pruned_target", prunedTarget).
+				Err(runErr).
 				Int64("duration_ms", time.Since(cleanupStarted).Milliseconds()).
 				Msg("backup_prune_pass_completed")
 		}
