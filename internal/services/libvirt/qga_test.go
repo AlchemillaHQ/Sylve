@@ -10,6 +10,8 @@ package libvirt
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"testing"
@@ -220,5 +222,60 @@ func TestIsLibvirtErrorNumberRejectsOtherErrors(t *testing.T) {
 	}
 	if isLibvirtErrorNumber(err, libvirt.ErrAgentCommandFailed) {
 		t.Fatalf("did not expect different libvirt error number to match: %v", err)
+	}
+}
+
+func TestShouldFallbackToDirectQGA(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "unsupported procedure",
+			err:  fmt.Errorf("rpc failed: %w", libvirt.ErrUnsupported),
+			want: true,
+		},
+		{
+			name: "agent synchronization timeout",
+			err: libvirt.Error{
+				Code:    uint32(libvirt.ErrAgentUnresponsive),
+				Message: "guest agent didn't respond to synchronization",
+			},
+			want: true,
+		},
+		{
+			name: "wrapped unsynchronized agent",
+			err: fmt.Errorf("agent call: %w", libvirt.Error{
+				Code:    uint32(libvirt.ErrAgentUnsynced),
+				Message: "guest agent is not synchronized",
+			}),
+			want: true,
+		},
+		{
+			name: "command timeout is not retried",
+			err: libvirt.Error{
+				Code:    uint32(libvirt.ErrAgentCommandTimeout),
+				Message: "guest agent command timed out",
+			},
+			want: false,
+		},
+		{
+			name: "command failure is not retried",
+			err: libvirt.Error{
+				Code:    uint32(libvirt.ErrAgentCommandFailed),
+				Message: "guest agent command failed",
+			},
+			want: false,
+		},
+		{name: "unrelated error", err: errors.New("connection reset"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldFallbackToDirectQGA(tt.err); got != tt.want {
+				t.Fatalf("shouldFallbackToDirectQGA() = %t, want %t", got, tt.want)
+			}
+		})
 	}
 }

@@ -132,14 +132,23 @@ func (s *Service) RunQemuGuestAgentCommand(rid uint, cmd string) (json.RawMessag
 		}
 		return decodeQGAResponse([]byte(result[0]))
 	}
-	if !isLibvirtErrorNumber(err, libvirt.ErrArgumentUnsupported) {
+	if !shouldFallbackToDirectQGA(err) {
 		return nil, fmt.Errorf("failed_to_run_qga_command: %w", err)
 	}
 
-	return s.runLegacyQemuGuestAgentCommand(vm.RID, command)
+	directResult, directErr := s.runDirectQemuGuestAgentCommand(vm.RID, command)
+	if directErr != nil {
+		return nil, fmt.Errorf(
+			"failed_to_run_qga_command: %v; direct_qga_fallback_failed: %w",
+			err,
+			directErr,
+		)
+	}
+
+	return directResult, nil
 }
 
-func (s *Service) runLegacyQemuGuestAgentCommand(rid uint, command string) (json.RawMessage, error) {
+func (s *Service) runDirectQemuGuestAgentCommand(rid uint, command string) (json.RawMessage, error) {
 	dataPath, err := s.GetVMConfigDirectory(rid)
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_get_vm_data_path: %w", err)
@@ -311,4 +320,29 @@ func isLibvirtErrorNumber(err error, number libvirt.ErrorNumber) bool {
 
 	var pointer *libvirt.Error
 	return errors.As(err, &pointer) && pointer != nil && pointer.Code == uint32(number)
+}
+
+func shouldFallbackToDirectQGA(err error) bool {
+	if errors.Is(err, libvirt.ErrUnsupported) {
+		return true
+	}
+
+	// libvirt performs a guest-sync handshake before sending the requested
+	// command. Falling back for handshake/configuration failures is safe because
+	// the requested command has not run. In particular, some bhyve/QGA pairs can
+	// exchange commands over the socket while libvirt's synchronization still
+	// times out.
+	for _, number := range []libvirt.ErrorNumber{
+		libvirt.ErrNoSupport,
+		libvirt.ErrArgumentUnsupported,
+		libvirt.ErrOperationUnsupported,
+		libvirt.ErrAgentUnresponsive,
+		libvirt.ErrAgentUnsynced,
+	} {
+		if isLibvirtErrorNumber(err, number) {
+			return true
+		}
+	}
+
+	return false
 }
