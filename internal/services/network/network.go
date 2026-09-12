@@ -71,6 +71,7 @@ type wgClientMetricsCache struct {
 type Service struct {
 	DB                           *gorm.DB
 	TelemetryDB                  *gorm.DB
+	interfaceReferenceMutex      sync.RWMutex // Acquired before service-specific locks; guards interface identity and references.
 	syncMutex                    sync.Mutex
 	epairMutex                   sync.Mutex
 	firewallMutex                sync.Mutex

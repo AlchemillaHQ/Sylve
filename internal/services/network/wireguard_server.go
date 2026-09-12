@@ -134,6 +134,14 @@ func (s *Service) validateWireGuardServerConfig(server *networkModels.WireGuardS
 			return invalidWireGuardServer("wireguard_masquerade_interface_cannot_be_server", nil)
 		}
 	}
+	if s != nil && s.DB != nil {
+		if err := s.rejectFilteredStandardBridgeInterfaces(v4Iface, v6Iface); err != nil {
+			if errors.Is(err, errFilteredStandardSwitchL2Only) {
+				return invalidWireGuardServer("wireguard_filtered_standard_switch_l2_only", err)
+			}
+			return err
+		}
+	}
 	if v4Iface == "" && v6Iface == "" {
 		return nil
 	}
@@ -536,6 +544,8 @@ func (s *Service) GetWireGuardServer() (*networkModels.WireGuardServer, error) {
 }
 
 func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
 
@@ -623,6 +633,8 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 }
 
 func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
 

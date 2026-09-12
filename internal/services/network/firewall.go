@@ -1269,6 +1269,8 @@ func (s *Service) validateFirewallNATRuleRequest(req *networkServiceInterfaces.U
 }
 
 func (s *Service) CreateFirewallTrafficRule(req *networkServiceInterfaces.UpsertFirewallTrafficRuleRequest) (uint, error) {
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.firewallTrafficMutationMutex.Lock()
 	defer s.firewallTrafficMutationMutex.Unlock()
 
@@ -1359,6 +1361,8 @@ func (s *Service) EditFirewallTrafficRule(id uint, req *networkServiceInterfaces
 		return invalidFirewallTrafficRule(fmt.Errorf("invalid_firewall_traffic_rule_id"))
 	}
 
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.firewallTrafficMutationMutex.Lock()
 	defer s.firewallTrafficMutationMutex.Unlock()
 
@@ -1599,6 +1603,8 @@ func (s *Service) ReorderFirewallTrafficRules(req []networkServiceInterfaces.Fir
 }
 
 func (s *Service) CreateFirewallNATRule(req *networkServiceInterfaces.UpsertFirewallNATRuleRequest) (uint, error) {
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.firewallNATMutationMutex.Lock()
 	defer s.firewallNATMutationMutex.Unlock()
 
@@ -1693,6 +1699,8 @@ func (s *Service) EditFirewallNATRule(id uint, req *networkServiceInterfaces.Ups
 		return invalidFirewallNATRule(fmt.Errorf("invalid_firewall_nat_rule_id"))
 	}
 
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.firewallNATMutationMutex.Lock()
 	defer s.firewallNATMutationMutex.Unlock()
 

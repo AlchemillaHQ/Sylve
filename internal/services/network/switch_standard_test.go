@@ -24,6 +24,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
+	"gorm.io/gorm"
 )
 
 type syncStubSet struct {
@@ -2720,6 +2721,56 @@ func TestEditStandardSwitchJoinsRuntimeRestoreFailure(t *testing.T) {
 	}
 	if persisted.MTU != 1500 {
 		t.Fatalf("failed edit persisted MTU %d, want 1500", persisted.MTU)
+	}
+}
+
+func TestDeleteStandardSwitchHoldsInterfaceReferenceWriteLockDuringDependencyScan(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.DHCPConfig{},
+		&networkModels.DHCPRange{},
+		&networkModels.NetworkPort{},
+		&networkModels.StaticRoute{},
+	)
+	sw := networkModels.StandardSwitch{
+		Name:       "serialized-delete",
+		BridgeName: "vm-serialized-delete",
+		MTU:        1500,
+	}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed Standard Switch: %v", err)
+	}
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error { return nil },
+	})
+
+	lockObserved := false
+	lockMissing := false
+	callbackName := "test:standard_switch_interface_reference_lock"
+	if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Table != "static_routes" {
+			return
+		}
+		lockObserved = true
+		if svc.interfaceReferenceMutex.TryRLock() {
+			svc.interfaceReferenceMutex.RUnlock()
+			lockMissing = true
+		}
+	}); err != nil {
+		t.Fatalf("register topology lock assertion: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Query().Remove(callbackName) })
+
+	if err := svc.DeleteStandardSwitch(sw.ID); err != nil {
+		t.Fatalf("delete Standard Switch: %v", err)
+	}
+	if !lockObserved {
+		t.Fatal("dependency scan did not exercise the topology lock assertion")
+	}
+	if lockMissing {
+		t.Fatal("Standard Switch dependency scan ran without the interface-reference write lock")
 	}
 }
 

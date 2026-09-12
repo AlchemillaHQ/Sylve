@@ -293,6 +293,8 @@ func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchIn
 }
 
 func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switchID uint, retErr error) {
+	s.interfaceReferenceMutex.Lock()
+	defer s.interfaceReferenceMutex.Unlock()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -372,6 +374,8 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switch
 }
 
 func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
+	s.interfaceReferenceMutex.Lock()
+	defer s.interfaceReferenceMutex.Unlock()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -443,6 +447,8 @@ func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
 }
 
 func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retErr error) {
+	s.interfaceReferenceMutex.Lock()
+	defer s.interfaceReferenceMutex.Unlock()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
