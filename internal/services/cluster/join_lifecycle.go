@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -276,7 +277,11 @@ func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
 	return status, nil
 }
 
-func (s *Service) LocalJoinProgress(expectedNodeID string) (ClusterJoinProgress, error) {
+func (s *Service) LocalJoinProgress(
+	ctx context.Context,
+	expectedNodeID string,
+	minimumIndex uint64,
+) (ClusterJoinProgress, error) {
 	progress := ClusterJoinProgress{}
 	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
 		return progress, fmt.Errorf("join_progress_raft_unavailable")
@@ -289,6 +294,9 @@ func (s *Service) LocalJoinProgress(expectedNodeID string) (ClusterJoinProgress,
 			expectedNodeID,
 			progress.NodeID,
 		)
+	}
+	if _, err := s.WaitForReplicatedStateAppliedIndex(ctx, minimumIndex); err != nil {
+		return progress, err
 	}
 	progress.RaftState = s.Raft.State().String()
 	progress.AppliedIndex = s.Raft.AppliedIndex()
@@ -326,10 +334,13 @@ func (s *Service) fetchJoinProgress(
 	if err != nil {
 		return ClusterJoinProgress{}, err
 	}
+	query := url.Values{}
+	query.Set("expectedNodeId", nodeID)
+	query.Set("minimumRaftAppliedIndex", fmt.Sprint(minimumIndex))
 	requestURL := fmt.Sprintf(
-		"https://%s/api/intra-cluster/join-progress?expectedNodeId=%s",
+		"https://%s/api/intra-cluster/join-progress?%s",
 		endpoint,
-		nodeID,
+		query.Encode(),
 	)
 	body, statusCode, err := utils.HTTPGetJSONReadContext(ctx, requestURL, map[string]string{
 		"Accept":                "application/json",

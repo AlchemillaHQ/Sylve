@@ -683,7 +683,25 @@ func GetJoinStatus(cS *cluster.Service) gin.HandlerFunc {
 
 func JoinProgressInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		progress, err := cS.LocalJoinProgress(c.Query("expectedNodeId"))
+		minimumIndex, err := strconv.ParseUint(
+			strings.TrimSpace(c.Query("minimumRaftAppliedIndex")),
+			10,
+			64,
+		)
+		if err != nil && strings.TrimSpace(c.Query("minimumRaftAppliedIndex")) != "" {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_minimum_raft_applied_index",
+				Error:   err.Error(),
+				Data:    nil,
+			})
+			return
+		}
+		progress, err := cS.LocalJoinProgress(
+			c.Request.Context(),
+			c.Query("expectedNodeId"),
+			minimumIndex,
+		)
 		if err != nil {
 			c.JSON(http.StatusConflict, internal.APIResponse[any]{
 				Status: "error", Message: "cluster_join_progress_failed", Error: err.Error(), Data: nil,

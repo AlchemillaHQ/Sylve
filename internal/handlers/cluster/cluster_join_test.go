@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -253,6 +255,68 @@ func TestJoinProgressInternalReportsIdentityAndIndexes(t *testing.T) {
 	)
 	if mismatch.Code != http.StatusConflict {
 		t.Fatalf("mismatch status=%d body=%s", mismatch.Code, mismatch.Body.String())
+	}
+}
+
+func TestJoinProgressInternalWaitsForMinimumAppliedIndex(t *testing.T) {
+	raftNode := setupSingleRaftForTest(t, "node-progress-wait")
+	defer func() { _ = raftNode.Shutdown().Error() }()
+	service := &cluster.Service{Raft: raftNode, NodeID: "node-progress-wait"}
+
+	router := gin.New()
+	router.GET("/intra-cluster/join-progress", JoinProgressInternal(service))
+	minimumIndex := raftNode.AppliedIndex() + 1
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/intra-cluster/join-progress?expectedNodeId=node-progress-wait&minimumRaftAppliedIndex="+
+			strconv.FormatUint(minimumIndex, 10),
+		nil,
+	)
+	recorder := httptest.NewRecorder()
+	completed := make(chan struct{})
+	go func() {
+		router.ServeHTTP(recorder, request)
+		close(completed)
+	}()
+
+	select {
+	case <-completed:
+		t.Fatal("join progress returned before reaching the requested index")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := raftNode.Barrier(2 * time.Second).Error(); err != nil {
+		t.Fatalf("advance raft index: %v", err)
+	}
+	select {
+	case <-completed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("join progress did not return after reaching the requested index")
+	}
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body handlerAPIResponse[cluster.ClusterJoinProgress]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode progress response: %v", err)
+	}
+	if body.Data.AppliedIndex < minimumIndex {
+		t.Fatalf("applied index=%d, want at least %d", body.Data.AppliedIndex, minimumIndex)
+	}
+}
+
+func TestJoinProgressInternalRejectsInvalidAppliedIndex(t *testing.T) {
+	router := gin.New()
+	router.GET("/intra-cluster/join-progress", JoinProgressInternal(&cluster.Service{}))
+	response := performJSONRequest(
+		t,
+		router,
+		http.MethodGet,
+		"/intra-cluster/join-progress?minimumRaftAppliedIndex=invalid",
+		nil,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 
