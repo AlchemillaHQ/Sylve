@@ -308,6 +308,121 @@ func TestWireGuardServerEditRuntimeFailureRestoresPreviousState(t *testing.T) {
 	}
 }
 
+func TestWireGuardServerMasqueradeRejectsFilteredStandardSwitch(t *testing.T) {
+	setup := func(t *testing.T) (*Service, *gorm.DB, func()) {
+		t.Helper()
+
+		svc, db := newNetworkServiceForTest(t,
+			&models.BasicSettings{},
+			&networkModels.WireGuardServer{},
+			&networkModels.WireGuardServerPeer{},
+			&networkModels.FirewallTrafficRule{},
+			&networkModels.FirewallNATRule{},
+		)
+		seedWireGuardServiceEnabled(t, db)
+		stubWireGuardServerRuntime(t)
+		wireGuardListInterfaces = func() ([]net.Interface, error) {
+			return []net.Interface{{Name: "vm-filtered"}}, nil
+		}
+		svc.wireGuardUDPPortInUse = func(int) bool { return false }
+		if err := db.Create(&networkModels.StandardSwitch{
+			Name:          "filtered",
+			BridgeName:    "vm-filtered",
+			VLANFiltering: true,
+		}).Error; err != nil {
+			t.Fatalf("seed filtered Standard Switch: %v", err)
+		}
+
+		lockObserved := false
+		lockMissing := false
+		callbackName := "test:wireguard_filtered_interface_lock"
+		if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+			if tx.Statement == nil || tx.Statement.Table != "standard_switches" {
+				return
+			}
+			lockObserved = true
+			if svc.interfaceReferenceMutex.TryLock() {
+				svc.interfaceReferenceMutex.Unlock()
+				lockMissing = true
+			}
+		}); err != nil {
+			t.Fatalf("register topology lock assertion: %v", err)
+		}
+		t.Cleanup(func() { _ = db.Callback().Query().Remove(callbackName) })
+
+		return svc, db, func() {
+			t.Helper()
+			if !lockObserved {
+				t.Fatal("filtered-interface validation did not query Standard Switch state")
+			}
+			if lockMissing {
+				t.Fatal("WireGuard validation ran without the interface-reference read lock")
+			}
+		}
+	}
+
+	t.Run("initialize", func(t *testing.T) {
+		svc, db, assertLock := setup(t)
+		err := svc.InitWireGuardServer(&InitWireGuardServerRequest{
+			Port:                    61820,
+			Addresses:               []string{"172.29.100.1/24"},
+			MasqueradeIPv4Interface: "vm-filtered",
+		})
+		if !errors.Is(err, ErrInvalidWireGuardServer) ||
+			WireGuardErrorCode(err) != "wireguard_filtered_standard_switch_l2_only" {
+			t.Fatalf("expected filtered bridge rejection, got %v (%s)", err, WireGuardErrorCode(err))
+		}
+		assertLock()
+
+		var serverCount, natCount int64
+		if err := db.Model(&networkModels.WireGuardServer{}).Count(&serverCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Model(&networkModels.FirewallNATRule{}).Count(&natCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if serverCount != 0 || natCount != 0 {
+			t.Fatalf("rejected initialization persisted server=%d NAT=%d", serverCount, natCount)
+		}
+	})
+
+	t.Run("edit", func(t *testing.T) {
+		svc, db, assertLock := setup(t)
+		if err := svc.InitWireGuardServer(&InitWireGuardServerRequest{
+			Port:      61820,
+			Addresses: []string{"172.29.100.1/24", "fd00::1/64"},
+		}); err != nil {
+			t.Fatalf("initialize valid WireGuard server: %v", err)
+		}
+
+		err := svc.EditWireGuardServer(InitWireGuardServerRequest{
+			Port:                    61820,
+			Addresses:               []string{"172.29.100.1/24", "fd00::1/64"},
+			MasqueradeIPv6Interface: "vm-filtered",
+		})
+		if !errors.Is(err, ErrInvalidWireGuardServer) ||
+			WireGuardErrorCode(err) != "wireguard_filtered_standard_switch_l2_only" {
+			t.Fatalf("expected filtered bridge rejection, got %v (%s)", err, WireGuardErrorCode(err))
+		}
+		assertLock()
+
+		var stored networkModels.WireGuardServer
+		if err := db.First(&stored).Error; err != nil {
+			t.Fatal(err)
+		}
+		if stored.MasqueradeIPv4Interface != "" || stored.MasqueradeIPv6Interface != "" {
+			t.Fatalf("rejected edit changed masquerade interfaces: %+v", stored)
+		}
+		var natCount int64
+		if err := db.Model(&networkModels.FirewallNATRule{}).Count(&natCount).Error; err != nil {
+			t.Fatal(err)
+		}
+		if natCount != 0 {
+			t.Fatalf("rejected edit persisted %d NAT rules", natCount)
+		}
+	})
+}
+
 func TestValidateWireGuardServerConfig(t *testing.T) {
 	previousListInterfaces := wireGuardListInterfaces
 	t.Cleanup(func() { wireGuardListInterfaces = previousListInterfaces })

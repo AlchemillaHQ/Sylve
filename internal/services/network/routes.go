@@ -589,6 +589,8 @@ func restoreStaticRouteRuntime(applied, previous *networkModels.StaticRoute) err
 }
 
 func (s *Service) CreateStaticRoute(req *networkServiceInterfaces.UpsertStaticRouteRequest) (uint, error) {
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.staticRouteMutationMutex.Lock()
 	defer s.staticRouteMutationMutex.Unlock()
 
@@ -632,6 +634,8 @@ func (s *Service) EditStaticRoute(id uint, req *networkServiceInterfaces.UpsertS
 		return invalidStaticRoutef("invalid_static_route_id")
 	}
 
+	s.interfaceReferenceMutex.RLock()
+	defer s.interfaceReferenceMutex.RUnlock()
 	s.staticRouteMutationMutex.Lock()
 	defer s.staticRouteMutationMutex.Unlock()
 

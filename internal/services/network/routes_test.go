@@ -769,6 +769,51 @@ func TestRouteCandidateDeduplicationAndHostPrefixProbe(t *testing.T) {
 	}
 }
 
+func TestCreateStaticRouteHoldsInterfaceReferenceLockThroughPersistence(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t, &networkModels.StaticRoute{})
+	mockStaticRouteFIBCount(t, 1)
+
+	lockObserved := false
+	lockMissing := false
+	callbackName := "test:static_route_interface_reference_lock"
+	if err := db.Callback().Create().Before("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement == nil || tx.Statement.Table != "static_routes" {
+			return
+		}
+		lockObserved = true
+		if svc.interfaceReferenceMutex.TryLock() {
+			svc.interfaceReferenceMutex.Unlock()
+			lockMissing = true
+		}
+	}); err != nil {
+		t.Fatalf("register topology lock assertion: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Create().Remove(callbackName) })
+
+	enabled := false
+	id, err := svc.CreateStaticRoute(&networkServiceInterfaces.UpsertStaticRouteRequest{
+		Name:            "serialized",
+		Enabled:         &enabled,
+		DestinationType: "network",
+		DestinationRaw:  "192.0.2.0/24",
+		Family:          "inet",
+		NextHopMode:     "interface",
+		Interface:       "em0",
+	})
+	if err != nil {
+		t.Fatalf("create static route: %v", err)
+	}
+	if id == 0 {
+		t.Fatal("created static route has no ID")
+	}
+	if !lockObserved {
+		t.Fatal("static route persistence did not exercise the topology lock assertion")
+	}
+	if lockMissing {
+		t.Fatal("static route persisted without the interface-reference read lock")
+	}
+}
+
 func TestResolveStaticRouteRefsRejectsFilteredStandardSwitchInterfaces(t *testing.T) {
 	svc := seedFilteredStandardSwitchInterface(t)
 
