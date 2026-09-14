@@ -2595,6 +2595,38 @@ export function handleDemoStorageRequest<T = unknown>(
 		state.periodicSnapshots.push(periodic);
 		return mutationSuccess('periodic_snapshot_created', 201) as DemoStorageResponse<T>;
 	}
+	if (path === '/zfs/datasets/snapshot/periodic' && method === 'DELETE') {
+		const submitted = Array.isArray(body.ids) ? body.ids : [];
+		const ids = submitted.filter(
+			(value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0
+		);
+		if (
+			ids.length === 0 ||
+			ids.length > 1024 ||
+			ids.length !== submitted.length ||
+			new Set(ids).size !== ids.length
+		) {
+			return failure(
+				'invalid_request',
+				'invalid_periodic_snapshot_job_ids',
+				400
+			) as DemoStorageResponse<T>;
+		}
+		const missing = ids.find(
+			(id) => !state.periodicSnapshots.some((snapshot) => snapshot.id === id)
+		);
+		if (missing !== undefined) {
+			return failure(
+				'periodic_snapshots_delete_failed',
+				`periodic_snapshot_job_${missing}_not_found`
+			) as DemoStorageResponse<T>;
+		}
+		const selected = new Set(ids);
+		state.periodicSnapshots = state.periodicSnapshots.filter(
+			(snapshot) => !selected.has(snapshot.id)
+		);
+		return mutationSuccess('deleted_periodic_snapshots') as DemoStorageResponse<T>;
+	}
 	match = path.match(/^\/zfs\/datasets\/snapshot\/periodic\/(\d+)$/);
 	if (match && method === 'PATCH') {
 		const id = Number(match[1]);

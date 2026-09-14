@@ -428,6 +428,45 @@ func DeletePeriodicSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Bulk delete periodic ZFS snapshot jobs
+// @Description Atomically delete an exact, non-empty set of periodic ZFS snapshot jobs by ID
+// @Tags ZFS
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body zfsServiceInterfaces.BulkDeletePeriodicSnapshotsRequest true "Periodic snapshot job IDs"
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "One or more periodic snapshot jobs not found; nothing deleted"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /zfs/datasets/snapshot/periodic [delete]
+func BulkDeletePeriodicSnapshots(zfsService *zfs.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request zfsServiceInterfaces.BulkDeletePeriodicSnapshotsRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "invalid_request",
+				Error:   "invalid_periodic_snapshot_job_ids",
+				Data:    nil,
+			})
+			return
+		}
+
+		if err := zfsService.BulkDeletePeriodicSnapshots(c.Request.Context(), request.IDs); err != nil {
+			writeZFSServiceError(c, err, "periodic_snapshots_delete_failed")
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "deleted_periodic_snapshots",
+			Error:   "",
+			Data:    nil,
+		})
+	}
+}
+
 // @Summary Create a ZFS filesystem
 // @Description Create a ZFS filesystem
 // @Tags ZFS

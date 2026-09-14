@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { deletePeriodicSnapshot, getDatasets } from '$lib/api/zfs/datasets';
+	import { bulkDeletePeriodicSnapshots, getDatasets } from '$lib/api/zfs/datasets';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Table from '$lib/components/ui/table';
@@ -32,6 +32,7 @@
 	);
 
 	let shadowDeleted: number[] = $state([]);
+	let saving = $state(false);
 
 	function getDatasetName(guid: string) {
 		const dataset = getDatasetByGUID(datasets.current, guid);
@@ -92,24 +93,25 @@
 	}
 
 	async function saveJobs() {
+		if (saving || shadowDeleted.length === 0) return;
+
+		saving = true;
 		try {
-			for (const id of shadowDeleted) {
-				const snapshot = periodicSnapshots.find((s) => s.id === id);
-				if (snapshot) {
-					const response = await deletePeriodicSnapshot(snapshot.id);
-					reload = true;
-					if (response.status !== 'success') {
-						handleAPIError(response);
-						toast.error('Failed to delete periodic snapshot', {
-							position: 'bottom-center'
-						});
-					} else {
-						open = false;
-					}
-				}
+			const response = await bulkDeletePeriodicSnapshots([...shadowDeleted]);
+			if (response.status !== 'success') {
+				handleAPIError(response);
+				toast.error('Failed to delete periodic snapshots', {
+					position: 'bottom-center'
+				});
+				return;
 			}
+
+			reload = true;
+			open = false;
 		} catch (e) {
 			console.error('Error saving snapshot jobs:', e);
+		} finally {
+			saving = false;
 		}
 	}
 
@@ -219,7 +221,9 @@
 		<Dialog.Footer class="flex justify-between gap-2 border-t px-6 py-4">
 			<div class="flex gap-2">
 				{#if shadowDeleted.length > 0}
-					<Button size="sm" onclick={saveJobs}>Save Snapshot Jobs</Button>
+					<Button size="sm" onclick={saveJobs} disabled={saving}>
+						{saving ? 'Saving Snapshot Jobs...' : 'Save Snapshot Jobs'}
+					</Button>
 				{/if}
 			</div>
 		</Dialog.Footer>

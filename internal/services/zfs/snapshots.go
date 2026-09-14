@@ -30,6 +30,8 @@ import (
 
 type retentionType string
 
+const MaxPeriodicSnapshotJobDeleteItems = 1024
+
 const (
 	retentionNone   retentionType = "none"
 	retentionSimple retentionType = "simple"
@@ -653,21 +655,70 @@ func (s *Service) ModifyPeriodicSnapshotRetention(
 	return nil
 }
 
-func (s *Service) DeletePeriodicSnapshot(ctx context.Context, id uint) error {
-	var snapshot zfsModels.PeriodicSnapshot
+func normalizePeriodicSnapshotJobIDs(ids []uint) ([]uint, error) {
+	if len(ids) == 0 || len(ids) > MaxPeriodicSnapshotJobDeleteItems {
+		return nil, classifyError(
+			ErrInvalidRequest,
+			"periodic_snapshot_job_delete_size_must_be_between_1_and_%d",
+			MaxPeriodicSnapshotJobDeleteItems,
+		)
+	}
 
-	if err := s.DB.WithContext(ctx).Where("id = ?", id).First(&snapshot).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return classifyError(ErrSnapshotJobNotFound, "periodic_snapshot_job_%d_not_found", id)
+	normalized := append([]uint(nil), ids...)
+	seen := make(map[uint]struct{}, len(normalized))
+	for _, id := range normalized {
+		if id == 0 {
+			return nil, classifyError(ErrInvalidRequest, "periodic_snapshot_job_id_must_be_positive")
 		}
+		if _, exists := seen[id]; exists {
+			return nil, classifyError(ErrInvalidRequest, "duplicate_periodic_snapshot_job_id_%d", id)
+		}
+		seen[id] = struct{}{}
+	}
+
+	return normalized, nil
+}
+
+func (s *Service) DeletePeriodicSnapshot(ctx context.Context, id uint) error {
+	return s.BulkDeletePeriodicSnapshots(ctx, []uint{id})
+}
+
+func (s *Service) BulkDeletePeriodicSnapshots(ctx context.Context, ids []uint) error {
+	ids, err := normalizePeriodicSnapshotJobIDs(ids)
+	if err != nil {
 		return err
 	}
 
-	if err := s.DB.WithContext(ctx).Delete(&snapshot).Error; err != nil {
-		return err
-	}
+	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var snapshots []zfsModels.PeriodicSnapshot
+		if err := tx.Select("id").Where("id IN ?", ids).Find(&snapshots).Error; err != nil {
+			return err
+		}
 
-	return nil
+		found := make(map[uint]struct{}, len(snapshots))
+		for _, snapshot := range snapshots {
+			found[snapshot.ID] = struct{}{}
+		}
+		for _, id := range ids {
+			if _, exists := found[id]; !exists {
+				return classifyError(ErrSnapshotJobNotFound, "periodic_snapshot_job_%d_not_found", id)
+			}
+		}
+
+		result := tx.Where("id IN ?", ids).Delete(&zfsModels.PeriodicSnapshot{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != int64(len(ids)) {
+			return fmt.Errorf(
+				"periodic snapshot job delete count mismatch: got %d want %d",
+				result.RowsAffected,
+				len(ids),
+			)
+		}
+
+		return nil
+	})
 }
 
 func parseSnapshotTime(dsName, prefix, snapName string) (time.Time, bool) {

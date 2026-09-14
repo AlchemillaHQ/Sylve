@@ -6488,6 +6488,18 @@ definitions:
       uType:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType'
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest:
+    properties:
+      ids:
+        items:
+          type: integer
+        maxItems: 1024
+        minItems: 1
+        type: array
+        uniqueItems: true
+    required:
+    - ids
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_zfs.CreatePeriodicSnapshotJobRequest:
     properties:
       cronExpr:
@@ -27407,6 +27419,42 @@ paths:
       tags:
       - ZFS
   /zfs/datasets/snapshot/periodic:
+    delete:
+      consumes:
+      - application/json
+      description: Atomically delete an exact, non-empty set of periodic ZFS snapshot
+        jobs by ID
+      parameters:
+      - description: Periodic snapshot job IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: One or more periodic snapshot jobs not found; nothing deleted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Bulk delete periodic ZFS snapshot jobs
+      tags:
+      - ZFS
     get:
       description: Get all periodic ZFS snapshots jobs
       produces:

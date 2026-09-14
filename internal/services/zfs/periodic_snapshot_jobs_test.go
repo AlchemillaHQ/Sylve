@@ -45,6 +45,75 @@ func TestDeletePeriodicSnapshotTargetsJobID(t *testing.T) {
 	}
 }
 
+func TestBulkDeletePeriodicSnapshotsDeletesExactSet(t *testing.T) {
+	service, first, second := periodicSnapshotJobs(t)
+	third := zfsModels.PeriodicSnapshot{GUID: "other-dataset-guid", Interval: 86400, Prefix: "daily"}
+	if err := service.DB.Create(&third).Error; err != nil {
+		t.Fatalf("create third periodic snapshot job: %v", err)
+	}
+
+	if err := service.BulkDeletePeriodicSnapshots(context.Background(), []uint{first.ID, third.ID}); err != nil {
+		t.Fatalf("bulk delete periodic snapshot jobs: %v", err)
+	}
+
+	var remaining []zfsModels.PeriodicSnapshot
+	if err := service.DB.Order("id").Find(&remaining).Error; err != nil {
+		t.Fatalf("load remaining periodic snapshot jobs: %v", err)
+	}
+	if len(remaining) != 1 || remaining[0].ID != second.ID {
+		t.Fatalf("remaining jobs = %#v, want only job %d", remaining, second.ID)
+	}
+}
+
+func TestBulkDeletePeriodicSnapshotsPreflightsEntireBatch(t *testing.T) {
+	service, first, _ := periodicSnapshotJobs(t)
+
+	err := service.BulkDeletePeriodicSnapshots(context.Background(), []uint{first.ID, 999999})
+	if !errors.Is(err, ErrSnapshotJobNotFound) {
+		t.Fatalf("bulk delete error = %v, want ErrSnapshotJobNotFound", err)
+	}
+
+	var count int64
+	if err := service.DB.Model(&zfsModels.PeriodicSnapshot{}).Count(&count).Error; err != nil {
+		t.Fatalf("count periodic snapshot jobs: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("rejected bulk delete left %d jobs, want 2", count)
+	}
+}
+
+func TestBulkDeletePeriodicSnapshotsRejectsInvalidIDSets(t *testing.T) {
+	oversized := make([]uint, MaxPeriodicSnapshotJobDeleteItems+1)
+	for index := range oversized {
+		oversized[index] = uint(index + 1)
+	}
+
+	for _, test := range []struct {
+		name string
+		ids  []uint
+	}{
+		{name: "empty", ids: nil},
+		{name: "zero", ids: []uint{0}},
+		{name: "duplicate", ids: []uint{1, 1}},
+		{name: "oversized", ids: oversized},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, _, _ := periodicSnapshotJobs(t)
+			if err := service.BulkDeletePeriodicSnapshots(context.Background(), test.ids); !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("bulk delete error = %v, want ErrInvalidRequest", err)
+			}
+
+			var count int64
+			if err := service.DB.Model(&zfsModels.PeriodicSnapshot{}).Count(&count).Error; err != nil {
+				t.Fatalf("count periodic snapshot jobs: %v", err)
+			}
+			if count != 2 {
+				t.Fatalf("invalid bulk delete left %d jobs, want 2", count)
+			}
+		})
+	}
+}
+
 func TestModifyPeriodicSnapshotTargetsJobID(t *testing.T) {
 	service, first, second := periodicSnapshotJobs(t)
 	keepLast := 7

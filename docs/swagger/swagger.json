@@ -26560,6 +26560,61 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Atomically delete an exact, non-empty set of periodic ZFS snapshot jobs by ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Bulk delete periodic ZFS snapshot jobs",
+                "parameters": [
+                    {
+                        "description": "Periodic snapshot job IDs",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "One or more periodic snapshot jobs not found; nothing deleted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
             }
         },
         "/zfs/datasets/snapshot/periodic/{id}": {
@@ -37291,6 +37346,23 @@
                 },
                 "uType": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadUType"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_zfs.BulkDeletePeriodicSnapshotsRequest": {
+            "type": "object",
+            "required": [
+                "ids"
+            ],
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "maxItems": 1024,
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "integer"
+                    }
                 }
             }
         },

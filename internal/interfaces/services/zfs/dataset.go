@@ -63,6 +63,10 @@ type CreatePeriodicSnapshotJobRequest struct {
 	KeepYearly  *int `json:"keepYearly"`
 }
 
+type BulkDeletePeriodicSnapshotsRequest struct {
+	IDs []uint `json:"ids" binding:"required,min=1,max=1024,unique,dive,gt=0"`
+}
+
 type ModifyPeriodicSnapshotRetentionRequest struct {
 	Interval      *int    `json:"interval"`
 	CronExpr      *string `json:"cronExpr"`

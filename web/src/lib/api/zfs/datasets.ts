@@ -137,6 +137,12 @@ export async function deletePeriodicSnapshot(id: number): Promise<APIResponse> {
 	);
 }
 
+export async function bulkDeletePeriodicSnapshots(ids: number[]): Promise<APIResponse> {
+	return await apiRequestResult('/zfs/datasets/snapshot/periodic', APIResponseSchema, 'DELETE', {
+		ids
+	});
+}
+
 export async function createFileSystem(
 	name: string,
 	parent: string,

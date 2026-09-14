@@ -87,10 +87,8 @@
 
 	const MIN_PAGE_SIZE = 10;
 	const MAX_PAGE_SIZE = 100;
-	const DEFAULT_ROW_HEIGHT = 42;
-	const HEADER_FOOTER_OVERHEAD = 80;
+	const RESIZE_HEIGHT_THRESHOLD = 20;
 
-	let currentPageSize = 25;
 	let resizeObserver: ResizeObserver | null = null;
 	let resizeTimer: ReturnType<typeof setTimeout> | null = null;
 	let observerPrimed = false;
@@ -98,13 +96,6 @@
 
 	function clampPageSize(value: number): number {
 		return Math.max(MIN_PAGE_SIZE, Math.min(MAX_PAGE_SIZE, value));
-	}
-
-	function estimateInitialPageSize(): number {
-		const height = tableComponent?.clientHeight ?? 0;
-		const usable = height - HEADER_FOOTER_OVERHEAD;
-		if (usable <= 0) return 25;
-		return clampPageSize(Math.floor(usable / DEFAULT_ROW_HEIGHT));
 	}
 
 	function adaptPageSize() {
@@ -117,14 +108,21 @@
 		if (holderHeight <= 0) return;
 
 		const rowEl = tableComponent?.querySelector('.tabulator-row') as HTMLElement | null;
-		const rowHeight = rowEl?.offsetHeight || DEFAULT_ROW_HEIGHT;
-		if (rowHeight <= 0) return;
+		const rowHeight = rowEl?.offsetHeight;
+		if (!rowHeight) return;
 
 		const size = clampPageSize(Math.floor(holderHeight / rowHeight));
-		if (size !== currentPageSize) {
-			currentPageSize = size;
+		if (size !== table.getPageSize()) {
 			table.setPageSize(size);
 		}
+	}
+
+	function schedulePageSizeAdaptation(delay = 0) {
+		if (resizeTimer) clearTimeout(resizeTimer);
+		resizeTimer = setTimeout(() => {
+			resizeTimer = null;
+			adaptPageSize();
+		}, delay);
 	}
 
 	function updateParentActiveRows() {
@@ -212,8 +210,6 @@
 
 	onMount(() => {
 		if (tableComponent) {
-			const initialPageSize = estimateInitialPageSize();
-			currentPageSize = initialPageSize;
 			table = new Tabulator(tableComponent, {
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
 				ajaxRequestFunc:
@@ -249,12 +245,13 @@
 				paginationMode: 'remote',
 				persistence: {
 					sort: true,
-					page: true,
+					page: { page: true, size: false },
 					filter: true
 				},
 				placeholder: customPlaceholder || 'No data available',
 				pagination: true,
-				paginationSize: initialPageSize,
+				// Keep paginationSize unset so Tabulator measures the available rows
+				// before issuing the initial remote request.
 				paginationCounter: 'pages',
 				sortMode: 'remote',
 				filterMode: 'remote',
@@ -296,12 +293,15 @@
 					lastObservedHeight = newHeight;
 					return;
 				}
-				if (Math.abs(newHeight - lastObservedHeight) < DEFAULT_ROW_HEIGHT / 2) return;
-				lastObservedHeight = newHeight;
-				if (resizeTimer) {
-					clearTimeout(resizeTimer);
+				if (
+					newHeight <= 0 ||
+					(lastObservedHeight > 0 &&
+						Math.abs(newHeight - lastObservedHeight) < RESIZE_HEIGHT_THRESHOLD)
+				) {
+					return;
 				}
-				resizeTimer = setTimeout(adaptPageSize, 200);
+				lastObservedHeight = newHeight;
+				schedulePageSizeAdaptation(200);
 			});
 			if (tableComponent) {
 				resizeObserver.observe(tableComponent);

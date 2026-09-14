@@ -67,6 +67,7 @@ type ZfsServiceInterface interface {
 	AddPeriodicSnapshot(ctx context.Context, req CreatePeriodicSnapshotJobRequest) error
 	ModifyPeriodicSnapshotRetention(ctx context.Context, id uint, req ModifyPeriodicSnapshotRetentionRequest) error
 	DeletePeriodicSnapshot(ctx context.Context, id uint) error
+	BulkDeletePeriodicSnapshots(ctx context.Context, ids []uint) error
 	StartSnapshotScheduler(ctx context.Context)
 	RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error
 	RollbackSnapshotByName(ctx context.Context, snapshotName string, destroyMoreRecent bool) error
