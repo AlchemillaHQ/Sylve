@@ -1,4 +1,5 @@
 <!-- 
+<span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
 <span class="icon-[mdi--vote-outline]"></span>
 <span class="icon-[mdi--crown]"></span>
 <span class="icon-[mdi--account-remove-outline]"></span>

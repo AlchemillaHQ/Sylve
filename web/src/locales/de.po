@@ -18454,10 +18454,6 @@ msgstr ""
 msgid "Isolate VMs and jails from each other"
 msgstr ""
 
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "Avoid networking issues on bridged ports"
-msgstr ""
-
 #. 0: version
 #: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Host IPv{0} is disabled until a Host VLAN is selected."
@@ -18538,4 +18534,8 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Choose the untagged and tagged VLANs on each port"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "Prevents flapping on member interfaces"
 msgstr ""

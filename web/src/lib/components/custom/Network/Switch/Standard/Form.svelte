@@ -206,7 +206,7 @@ under sponsorship from the FreeBSD Foundation.
 								classes="flex items-center gap-2"
 							/>
 							<p class="text-muted-foreground mt-2 text-xs">
-								Avoid networking issues on bridged ports
+								Prevents flapping on member interfaces
 							</p>
 						</div>
 					</div>
