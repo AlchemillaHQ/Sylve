@@ -23,6 +23,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"gorm.io/gorm"
 )
 
@@ -872,6 +873,145 @@ func TestEditObjectIdenticalReplacementIsNoOp(t *testing.T) {
 	slices.Sort(gotEntryIDs)
 	if !slices.Equal(gotEntryIDs, originalEntryIDs) {
 		t.Fatalf("expected no-op edit to preserve entry rows, before=%v after=%v", originalEntryIDs, gotEntryIDs)
+	}
+}
+
+func TestEditObjectSwitchSyncFailureRestoresObjectAndRuntime(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+	object := networkModels.Object{
+		Name:    "switch-network",
+		Type:    "Network",
+		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.0/24"}},
+	}
+	if err := db.Create(&object).Error; err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+	switchModel := networkModels.StandardSwitch{
+		Name:        "object-sync",
+		BridgeName:  "vm-object-sync",
+		MTU:         1500,
+		NetworkID:   &object.ID,
+		DisableIPv6: true,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	runtimeTransitions := make([]string, 0, 2)
+	syncFailure := errors.New("forced switch sync failure")
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		editBridge: func(previous, desired networkModels.StandardSwitch) error {
+			if standardSwitchModelsMatch(previous, desired) {
+				t.Fatal("object value change was treated as a full drift reconciliation")
+			}
+			runtimeTransitions = append(
+				runtimeTransitions,
+				previous.Network(4)+" -> "+desired.Network(4),
+			)
+			if len(runtimeTransitions) == 1 {
+				return syncFailure
+			}
+			return nil
+		},
+	})
+
+	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.0/24"})
+	if !errors.Is(err, syncFailure) {
+		t.Fatalf("edit error=%v want sync failure", err)
+	}
+
+	var restored networkModels.Object
+	if err := db.Preload("Entries").First(&restored, object.ID).Error; err != nil {
+		t.Fatalf("reload object: %v", err)
+	}
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.0/24" {
+		t.Fatalf("object was not restored: %#v", restored.Entries)
+	}
+	wantTransitions := []string{
+		"192.0.2.0/24 -> 198.51.100.0/24",
+		"198.51.100.0/24 -> 192.0.2.0/24",
+	}
+	if !slices.Equal(runtimeTransitions, wantTransitions) {
+		t.Fatalf("runtime reconciliation sequence=%v", runtimeTransitions)
+	}
+}
+
+func TestEditObjectLaterFailureRestoresSwitchRuntime(t *testing.T) {
+	svc, db := newDHCPObjectEditServiceForTest(t)
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatalf("enable firewall: %v", err)
+	}
+	if err := db.Create(&networkModels.FirewallAdvancedSettings{}).Error; err != nil {
+		t.Fatalf("seed firewall settings: %v", err)
+	}
+	object := networkModels.Object{
+		Name:    "switch-network-late-failure",
+		Type:    "Network",
+		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.0/24"}},
+	}
+	if err := db.Create(&object).Error; err != nil {
+		t.Fatalf("seed object: %v", err)
+	}
+	switchModel := networkModels.StandardSwitch{
+		Name:        "object-late-failure",
+		BridgeName:  "vm-object-late-failure",
+		MTU:         1500,
+		NetworkID:   &object.ID,
+		DisableIPv6: true,
+	}
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	runtimeTransitions := make([]string, 0, 2)
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		editBridge: func(previous, desired networkModels.StandardSwitch) error {
+			runtimeTransitions = append(
+				runtimeTransitions,
+				previous.Network(4)+" -> "+desired.Network(4),
+			)
+			return nil
+		},
+	})
+	previousRCPath := firewallRCConfPath
+	firewallRCConfPath = filepath.Join(t.TempDir(), "rc.conf")
+	t.Cleanup(func() { firewallRCConfPath = previousRCPath })
+	previousRunCommand := firewallRunCommand
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-nf" {
+			return "", errors.New("forced PF validation failure")
+		}
+		if command == "/sbin/pfctl" && len(args) > 0 && args[0] == "-si" {
+			return "", errors.New("PF disabled")
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { firewallRunCommand = previousRunCommand })
+
+	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.0/24"})
+	if err == nil {
+		t.Fatal("expected firewall apply failure")
+	}
+	wantTransitions := []string{
+		"192.0.2.0/24 -> 198.51.100.0/24",
+		"198.51.100.0/24 -> 192.0.2.0/24",
+	}
+	if !slices.Equal(runtimeTransitions, wantTransitions) {
+		t.Fatalf("runtime reconciliation sequence=%v", runtimeTransitions)
+	}
+
+	var restored networkModels.Object
+	if err := db.Preload("Entries").First(&restored, object.ID).Error; err != nil {
+		t.Fatalf("reload object: %v", err)
+	}
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.0/24" {
+		t.Fatalf("object was not restored: %#v", restored.Entries)
 	}
 }
 

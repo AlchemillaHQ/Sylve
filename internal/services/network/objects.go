@@ -905,16 +905,53 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 
 	previousState := cloneObjectState(object)
 	dhcpApplied := false
+	var previousSwitchRuntime []networkModels.StandardSwitch
+	var currentSwitchRuntime []networkModels.StandardSwitch
 	rollbackObjectEdit := func() error {
 		if err := s.restoreObjectState(previousState); err != nil {
 			return err
 		}
+		var restoreErr error
 		if dhcpApplied {
 			if err := s.WriteDHCPConfig(); err != nil {
-				return fmt.Errorf("failed to restore DHCP configuration: %w", err)
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed to restore DHCP configuration: %w", err))
 			}
 		}
-		return nil
+		if len(currentSwitchRuntime) != 0 {
+			if err := s.syncStandardSwitchTransitions(previousSwitchRuntime, currentSwitchRuntime, true); err != nil {
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("failed to restore standard switch runtime: %w", err))
+			}
+		}
+		return restoreErr
+	}
+	syncSwitchesAfterObjectEdit := func(previous []networkModels.StandardSwitch) error {
+		current := make([]networkModels.StandardSwitch, 0, len(previous))
+		for _, before := range previous {
+			after, err := loadStandardSwitch(s.DB, before.ID)
+			if err != nil {
+				loadErr := fmt.Errorf("reload standard switch %d after editing object %d: %w", before.ID, id, err)
+				if rollbackErr := rollbackObjectEdit(); rollbackErr != nil {
+					return errors.Join(loadErr, fmt.Errorf("restore previous object: %w", rollbackErr))
+				}
+				return loadErr
+			}
+			current = append(current, after)
+		}
+		previousSwitchRuntime = previous
+		currentSwitchRuntime = current
+		syncErr := s.syncStandardSwitchTransitions(previous, current, false)
+		if syncErr == nil {
+			return nil
+		}
+		rollbackErr := rollbackObjectEdit()
+		if rollbackErr != nil {
+			return fmt.Errorf(
+				"failed to sync standard switches after editing object %d: %w",
+				id,
+				errors.Join(syncErr, fmt.Errorf("restore previous object: %w", rollbackErr)),
+			)
+		}
+		return fmt.Errorf("failed to sync standard switches after editing object %d: %w", id, syncErr)
 	}
 
 	autoUpdate, refreshInterval := objectRefreshSettings(oType)
@@ -1102,9 +1139,8 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.SyncStandardSwitches()
-				if err != nil {
-					return fmt.Errorf("failed to sync standard switches after editing object %d: %w", id, err)
+				if err := syncSwitchesAfterObjectEdit(switches); err != nil {
+					return err
 				}
 
 				updated = true
@@ -1214,9 +1250,8 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 					}
 				}
 
-				err := s.SyncStandardSwitches()
-				if err != nil {
-					return fmt.Errorf("failed to sync standard switches after editing object %d: %w", id, err)
+				if err := syncSwitchesAfterObjectEdit(switches); err != nil {
+					return err
 				}
 
 				updated = true
