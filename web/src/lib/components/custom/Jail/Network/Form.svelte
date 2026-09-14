@@ -319,7 +319,7 @@ under sponsorship from the FreeBSD Foundation.
 		</Dialog.Header>
 
 		<div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
-			<div class="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 xl:grid-cols-4">
+			<div class="grid grid-cols-1 items-end gap-4 sm:grid-cols-3">
 				<CustomValueInput
 					label="Name"
 					placeholder="Primary Network"
