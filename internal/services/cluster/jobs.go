@@ -148,14 +148,15 @@ func currentToClusterNodeUpdates(cur curInfo) map[string]any {
 		"updated_at": gorm.Expr("CURRENT_TIMESTAMP"),
 	}
 
-	safeGuestIDs := cur.guestIDs
-	if safeGuestIDs == nil {
-		safeGuestIDs = make([]uint, 0)
-	}
-	if b, err := json.Marshal(safeGuestIDs); err == nil {
-		updates["guest_ids"] = string(b)
-	} else {
-		updates["guest_ids"] = "[]"
+	// Keep the last known inventory when the node-info probe failed.
+	if cur.healthOK {
+		guestIDs := cur.guestIDs
+		if guestIDs == nil {
+			guestIDs = []uint{}
+		}
+		if b, err := json.Marshal(guestIDs); err == nil {
+			updates["guest_ids"] = string(b)
+		}
 	}
 
 	if cur.canonHost != "" {
@@ -215,11 +216,11 @@ func hasSignificantChange(cur curInfo, ex clusterModels.ClusterNode) bool {
 		return true
 	}
 
-	if len(cur.guestIDs) != len(ex.GuestIDs) {
+	if cur.healthOK && len(cur.guestIDs) != len(ex.GuestIDs) {
 		return true
 	}
 
-	if len(cur.guestIDs) > 0 {
+	if cur.healthOK && len(cur.guestIDs) > 0 {
 		currentMap := make(map[uint]struct{}, len(cur.guestIDs))
 		for _, id := range cur.guestIDs {
 			currentMap[id] = struct{}{}
@@ -417,6 +418,9 @@ func (s *Service) PopulateClusterNodes() error {
 	}
 
 	if s.Raft.State() != raft.Leader {
+		return nil
+	}
+	if err := s.Raft.VerifyLeader().Error(); err != nil {
 		return nil
 	}
 
@@ -626,113 +630,16 @@ func (s *Service) applyLeaderPeerStatuses(onlinePeerIDs, offlinePeerIDs []string
 	return changed, onlineRows, offlineRows, nil
 }
 
-func (s *Service) fastStatusCheckFollower(leaderID raft.ServerID, peerIDs []string, peerAddrs map[string]string, now time.Time) {
-	selfHostname, err := utils.GetSystemHostname()
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: non-leader failed to get system hostname")
-		return
-	}
-
-	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: non-leader failed to get cluster token")
-		return
-	}
-
-	headers := map[string]string{
-		"X-Cluster-Token": fmt.Sprintf("Bearer %s", clusterToken),
-	}
-
-	// In healthy follower mode, trust leader-originated sync updates and avoid local peer writes.
-	if leaderID != "" {
-		leaderAddr := peerAddrs[string(leaderID)]
-		if leaderAddr == "" {
-			leaderAddr = string(s.Raft.Leader())
-		}
-		leaderProbeKey := string(leaderID)
-		if leaderAddr != "" && s.probePeerStatusWithHysteresis(leaderProbeKey, leaderAddr, headers) == nodeStatusOnline {
-			rows, err := s.updateNodeStatus(string(leaderID), nodeStatusOnline, now)
-			if err != nil {
-				logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to refresh leader status on follower")
-			} else if rows > 0 {
-				publishLeftPanelRefresh()
-			}
-			return
-		}
-	}
-
-	// Degraded mode (no leader or leader unreachable): directly probe peers and reflect reality.
-	results := s.probePeerStatuses(peerIDs, peerAddrs, headers)
-	onlinePeerIDs, offlinePeerIDs := s.classifyPeerStatuses(results)
-
-	changed, onlineRows, offlineRows, err := s.applyLeaderPeerStatuses(onlinePeerIDs, offlinePeerIDs, now)
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply non-leader peer checks")
-		return
-	}
-
-	if !changed {
-		return
-	}
-
-	logger.L.Debug().
-		Int64("online_rows", onlineRows).
-		Int64("offline_rows", offlineRows).
-		Msg("FastStatusCheck: applied degraded non-leader peer status updates")
-	publishLeftPanelRefresh()
-}
-
-func (s *Service) setPeersOfflineWithHysteresis(peerIDs []string, now time.Time) {
-	onlinePeerIDs := make([]string, 0, len(peerIDs))
-	offlinePeerIDs := make([]string, 0, len(peerIDs))
-
-	for _, id := range peerIDs {
-		status := s.applyProbeHysteresis(id, nodeStatusOffline)
-		if status != nodeStatusOffline {
-			// Same-tick second strike so offline fallback doesn't require another 5s interval.
-			status = s.applyProbeHysteresis(id, nodeStatusOffline)
-		}
-
-		if status == nodeStatusOffline {
-			offlinePeerIDs = append(offlinePeerIDs, id)
-		} else {
-			onlinePeerIDs = append(onlinePeerIDs, id)
-		}
-	}
-
-	changed, onlineRows, offlineRows, err := s.applyLeaderPeerStatuses(onlinePeerIDs, offlinePeerIDs, now)
-	if err != nil {
-		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to apply fallback offline peer statuses")
-		return
-	}
-
-	if changed {
-		logger.L.Debug().
-			Int64("online_rows", onlineRows).
-			Int64("offline_rows", offlineRows).
-			Int("peer_count", len(peerIDs)).
-			Msg("FastStatusCheck: applied fallback offline peer statuses")
-		publishLeftPanelRefresh()
-	}
-}
-
 func (s *Service) fastStatusCheckLeader(peerIDs []string, peerAddrs map[string]string, now time.Time) {
-	if err := s.Raft.VerifyLeader().Error(); err != nil {
-		s.setPeersOfflineWithHysteresis(peerIDs, now)
-		return
-	}
-
 	selfHostname, err := utils.GetSystemHostname()
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get system hostname")
-		s.setPeersOfflineWithHysteresis(peerIDs, now)
 		return
 	}
 
 	clusterToken, err := s.AuthService.CreateUserProxyJWT(0, selfHostname, "")
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("FastStatusCheck: failed to get cluster token")
-		s.setPeersOfflineWithHysteresis(peerIDs, now)
 		return
 	}
 
@@ -764,9 +671,13 @@ func (s *Service) FastStatusCheck() {
 	if s.Raft == nil {
 		return
 	}
+	if s.Raft.State() != raft.Leader {
+		return
+	}
+	if err := s.Raft.VerifyLeader().Error(); err != nil {
+		return
+	}
 
-	state := s.Raft.State()
-	_, leaderID := s.Raft.LeaderWithID()
 	now := time.Now()
 
 	localRows, err := s.updateNodeStatus(s.NodeID, nodeStatusOnline, now)
@@ -796,11 +707,6 @@ func (s *Service) FastStatusCheck() {
 
 	if len(peerIDs) == 0 {
 		logger.LogWithDeduplication(zerolog.DebugLevel, "FastStatusCheck: no peers in raft configuration")
-		return
-	}
-
-	if state != raft.Leader {
-		s.fastStatusCheckFollower(leaderID, peerIDs, peerAddrs, now)
 		return
 	}
 

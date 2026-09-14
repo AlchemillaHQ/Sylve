@@ -46,6 +46,20 @@ type CommandMember struct {
 	GuestCount   int    `json:"guestCount"`
 }
 
+func (s *Service) currentLeaderView() (raft.ServerAddress, raft.ServerID, bool) {
+	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	if leaderAddress == "" || leaderID == "" {
+		return "", "", false
+	}
+	localLeader := strings.TrimSpace(string(leaderID)) == strings.TrimSpace(s.LocalNodeID())
+	if localLeader || s.Raft.State() == raft.Leader {
+		if err := s.Raft.VerifyLeader().Error(); err != nil {
+			return "", "", false
+		}
+	}
+	return leaderAddress, leaderID, true
+}
+
 func (s *Service) CommandStatus() (CommandStatus, error) {
 	if s == nil || s.DB == nil {
 		return CommandStatus{}, fmt.Errorf("cluster_service_unavailable")
@@ -77,10 +91,10 @@ func (s *Service) CommandStatus() (CommandStatus, error) {
 		return result, nil
 	}
 	result.RaftState = strings.ToLower(s.Raft.State().String())
-	leaderAddress, leaderID := s.Raft.LeaderWithID()
+	leaderAddress, leaderID, leaderKnown := s.currentLeaderView()
 	result.LeaderID = strings.TrimSpace(string(leaderID))
 	result.LeaderAddress = strings.TrimSpace(string(leaderAddress))
-	if result.LeaderID == "" || result.LeaderAddress == "" {
+	if !leaderKnown {
 		result.Partial = true
 	}
 	future := s.Raft.GetConfiguration()
@@ -124,7 +138,7 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 	for _, node := range cached {
 		byID[strings.TrimSpace(node.NodeUUID)] = node
 	}
-	_, leaderID := s.Raft.LeaderWithID()
+	_, leaderID, leaderKnown := s.currentLeaderView()
 	localNodeID := strings.TrimSpace(s.LocalNodeID())
 	members := make([]CommandMember, 0, len(future.Configuration().Servers))
 	for _, server := range future.Configuration().Servers {
@@ -138,16 +152,13 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 			Suffrage:     raftSuffrageName(server.Suffrage),
 			SylveVersion: strings.TrimSpace(node.SylveVersion),
 			SylveCommit:  strings.TrimSpace(node.SylveCommit),
-			IsLeader:     server.ID == leaderID,
+			IsLeader:     leaderKnown && server.ID == leaderID,
 			GuestCount:   len(node.GuestIDs),
 		}
 		if member.Status == "" {
 			member.Status = "unknown"
 		}
 		if nodeID == localNodeID {
-			if member.Status == "unknown" {
-				member.Status = nodeStatusOnline
-			}
 			if member.SylveVersion == "" {
 				member.SylveVersion = cmd.Version
 			}
@@ -159,6 +170,9 @@ func (s *Service) CommandMembers() ([]CommandMember, error) {
 					member.Hostname = detail.Hostname
 				}
 			}
+		}
+		if !leaderKnown {
+			member.Status = "unknown"
 		}
 		members = append(members, member)
 	}

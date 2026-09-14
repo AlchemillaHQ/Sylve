@@ -208,9 +208,12 @@ func (s *Service) GetClusterDetails() (*clusterServiceInterfaces.ClusterDetails,
 		return out, nil
 	}
 
-	leaderAddr, leaderID := s.Raft.LeaderWithID()
+	leaderAddr, leaderID, leaderKnown := s.currentLeaderView()
 	out.LeaderID = string(leaderID)
 	out.LeaderAddress = string(leaderAddr)
+	if !leaderKnown {
+		out.Partial = true
+	}
 
 	fut := s.Raft.GetConfiguration()
 	if err := fut.Error(); err != nil {

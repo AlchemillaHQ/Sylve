@@ -260,6 +260,7 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	offline.healthOK = false
 	offline.sylveVersion = ""
 	offline.sylveCommit = ""
+	offline.guestIDs = nil
 	current["node-1"] = offline
 	changed, err = s.persistCurrentClusterNodes(current)
 	if err != nil || !changed {
@@ -273,6 +274,21 @@ func TestPersistCurrentClusterNodes(t *testing.T) {
 	}
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("offline commit = %q, want retained def5678", node.SylveCommit)
+	}
+	if len(node.GuestIDs) != 2 || node.GuestIDs[0] != 1 || node.GuestIDs[1] != 2 {
+		t.Fatalf("offline guest IDs = %v, want retained [1 2]", node.GuestIDs)
+	}
+	empty := updated
+	empty.guestIDs = []uint{}
+	current["node-1"] = empty
+	if changed, err = s.persistCurrentClusterNodes(current); err != nil || !changed {
+		t.Fatalf("empty guest update: changed=%t error=%v", changed, err)
+	}
+	if err := db.Where("node_uuid = ?", "node-1").First(&node).Error; err != nil {
+		t.Fatalf("read empty guest update: %v", err)
+	}
+	if len(node.GuestIDs) != 0 {
+		t.Fatalf("online guest IDs = %v, want empty", node.GuestIDs)
 	}
 
 	var count int64
@@ -331,5 +347,38 @@ func TestSyncClusterHealthPersistsSylveBuild(t *testing.T) {
 	}
 	if node.SylveCommit != "def5678" {
 		t.Fatalf("updated commit = %q, want def5678", node.SylveCommit)
+	}
+}
+
+func TestFastStatusCheckFollowerKeepsLeaderSyncedSelfStatus(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 2, &clusterModels.ClusterNode{})
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	var follower *clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			follower = node
+			break
+		}
+	}
+	if follower == nil {
+		t.Fatal("follower not found")
+	}
+
+	if err := follower.service.SyncClusterHealth([]clusterServiceInterfaces.NodeHealthSync{
+		{NodeUUID: leader.id, Status: nodeStatusOnline},
+		{NodeUUID: follower.id, Status: nodeStatusOffline},
+	}); err != nil {
+		t.Fatalf("sync cluster health: %v", err)
+	}
+
+	follower.service.FastStatusCheck()
+
+	var self clusterModels.ClusterNode
+	if err := follower.service.DB.Where("node_uuid = ?", follower.id).First(&self).Error; err != nil {
+		t.Fatalf("read follower health: %v", err)
+	}
+	if self.Status != nodeStatusOffline {
+		t.Fatalf("follower status = %q, want leader-synced %q", self.Status, nodeStatusOffline)
 	}
 }
