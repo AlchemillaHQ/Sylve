@@ -747,6 +747,47 @@ func TestAddFilteredBridgeMemberStaysDownUntilPolicyIsVerified(t *testing.T) {
 	}
 }
 
+func TestAddFilteredBridgeMemberSkipsUnchangedMTU(t *testing.T) {
+	policy := bridgevlan.PortPolicy{
+		Mode: bridgevlan.ModeTrunk, UntaggedVLAN: testVLANPointer(199), TaggedVLANs: []int{110, 120, 130},
+	}
+	configured := false
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			if name == "testbridge0" {
+				return &iface.Interface{
+					Name: name, BridgeMembers: []iface.BridgeMember{{Name: "testport0"}},
+				}, nil
+			}
+			return &iface.Interface{
+				Name: name, MTU: 1500, Flags: iface.Flags{Desc: []string{"UP"}},
+			}, nil
+		},
+		stopDhclient: func(string) error { return nil },
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			if full == "/sbin/ifconfig testport0 mtu 1500" {
+				t.Fatal("unchanged member MTU was written")
+			}
+			return "", nil
+		},
+		configureFilteredMember: func(_ string, member string, _ *int, got bridgevlan.PortPolicy) error {
+			if member != "testport0" || !standardSwitchPortPolicyMatches(got, policy) {
+				t.Fatalf("configured member %q with policy %#v", member, got)
+			}
+			configured = true
+			return nil
+		},
+	})
+
+	if err := addFilteredBridgeMember("testbridge0", "testport0", 1500, false, nil, policy); err != nil {
+		t.Fatalf("reconfigure filtered member: %v", err)
+	}
+	if !configured {
+		t.Fatal("VLAN policy was not configured")
+	}
+}
+
 func TestAddFilteredBridgeMemberFailureLeavesSafeRuntimeState(t *testing.T) {
 	for _, test := range []struct {
 		name                string
@@ -772,6 +813,10 @@ func TestAddFilteredBridgeMemberFailureLeavesSafeRuntimeState(t *testing.T) {
 			wantUp: true, wantError: "mtu failed",
 		},
 		{
+			name: "failure before policy restores existing member", wasAttached: true, mtuFails: true,
+			wantAttached: true, wantUp: true, wantError: "mtu failed",
+		},
+		{
 			name:                "failed removal keeps new member isolated",
 			attachedAfterPolicy: true, removeFails: true,
 			wantAttached: true, wantRemoval: true, wantError: "member still attached",
@@ -789,6 +834,9 @@ func TestAddFilteredBridgeMemberFailureLeavesSafeRuntimeState(t *testing.T) {
 			stubSyncFunctions(t, syncStubSet{
 				ifaceGet: func(name string) (*iface.Interface, error) {
 					state := &iface.Interface{Name: name}
+					if up {
+						state.Flags = iface.Flags{Desc: []string{"UP"}}
+					}
 					if name == "bridge0" && attached {
 						state.BridgeMembers = []iface.BridgeMember{{Name: "igb0"}}
 					}

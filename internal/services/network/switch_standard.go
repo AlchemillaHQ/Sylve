@@ -1667,6 +1667,13 @@ func addFilteredBridgeMember(
 	if bridgeState == nil {
 		return fmt.Errorf("inspect filtered bridge %s members: interface not found", bridge)
 	}
+	portState, err := syncIfaceGet(portName)
+	if err != nil {
+		return fmt.Errorf("inspect filtered member %s: %w", portName, err)
+	}
+	if portState == nil {
+		return fmt.Errorf("inspect filtered member %s: interface not found", portName)
+	}
 	wasAttached := false
 	for _, member := range bridgeState.BridgeMembers {
 		if member.Name == portName {
@@ -1678,7 +1685,13 @@ func addFilteredBridgeMember(
 	if _, err := syncRunCommand("/sbin/ifconfig", portName, "down"); err != nil {
 		return fmt.Errorf("hold filtered member %s down: %w", portName, err)
 	}
+	restoreAttachedLink := wasAttached && interfaceIsUp(portState)
 	defer func() {
+		if retErr != nil && restoreAttachedLink {
+			if _, err := syncRunCommand("/sbin/ifconfig", portName, "up"); err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("restore filtered member %s link state: %w", portName, err))
+			}
+		}
 		retErr = cleanupFailedFilteredBridgeMember(bridge, portName, wasAttached, retErr)
 	}()
 
@@ -1687,7 +1700,7 @@ func addFilteredBridgeMember(
 			return err
 		}
 	}
-	if mtu > 0 {
+	if mtu > 0 && portState.MTU != mtu {
 		if _, err := syncRunCommand("/sbin/ifconfig", portName, "mtu", strconv.Itoa(mtu)); err != nil {
 			return fmt.Errorf("set mtu for %s: %w", portName, err)
 		}
@@ -1696,6 +1709,7 @@ func addFilteredBridgeMember(
 	if err := clearBridgeMemberLayer3(portName); err != nil {
 		return fmt.Errorf("clear layer-3 configuration on %s: %w", portName, err)
 	}
+	restoreAttachedLink = false
 	if err := syncConfigureFilteredMember(bridge, portName, expectedDefaultAccessVLAN, policy); err != nil {
 		return fmt.Errorf("configure %s on filtered bridge %s: %w", portName, bridge, err)
 	}
