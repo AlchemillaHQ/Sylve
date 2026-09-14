@@ -1535,6 +1535,100 @@ func TestEditStandardBridgeLeavesUnchangedDHCPMemberAttached(t *testing.T) {
 	}
 }
 
+func TestEditStandardBridgeUnrelatedChangeDoesNotTouchDHCP(t *testing.T) {
+	const bridgeName = "vm-dhcp-private"
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name:          name,
+				Ether:         testStandardSwitchMAC,
+				Description:   "dhcp-private",
+				MTU:           1500,
+				Flags:         iface.Flags{Desc: []string{"UP"}},
+				BridgeMembers: []iface.BridgeMember{{Name: "em0"}},
+				IPv4:          []iface.IPv4{{IP: net.ParseIP("192.0.2.10")}},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			t.Fatalf("unrelated edit ran command: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			t.Fatalf("unrelated edit inspected DHCP processes: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+		runCommandWithContext: func(_ context.Context, command string, args ...string) (string, error) {
+			t.Fatalf("unrelated edit launched DHCP: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			t.Fatalf("unrelated edit stopped DHCP on %s", name)
+			return nil
+		},
+	})
+
+	oldSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:         "dhcp-private",
+		BridgeName:   bridgeName,
+		MTU:          1500,
+		DHCP:         true,
+		DefaultRoute: true,
+		DisableIPv6:  true,
+		Ports:        []networkModels.NetworkPort{{Name: "em0"}},
+	})
+	newSw := oldSw
+	newSw.Private = true
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("edit unrelated DHCP setting: %v", err)
+	}
+}
+
+func TestEditStandardBridgeUnrelatedChangeDoesNotChurnStaticLayer3(t *testing.T) {
+	const bridgeName = "vm-static-private"
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{
+				Name:        name,
+				Ether:       testStandardSwitchMAC,
+				Description: "static-private",
+				MTU:         1500,
+				Flags:       iface.Flags{Desc: []string{"UP"}},
+				IPv4: []iface.IPv4{{
+					IP:      net.ParseIP("192.0.2.10"),
+					Netmask: "255.255.255.0",
+				}},
+				IPv6: []iface.IPv6{{
+					IP:           net.ParseIP("2001:db8::10"),
+					PrefixLength: 64,
+				}},
+			}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			t.Fatalf("unrelated edit ran command: %s %s", command, strings.Join(args, " "))
+			return "", nil
+		},
+	})
+
+	oldSw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+		Name:           "static-private",
+		BridgeName:     bridgeName,
+		MTU:            1500,
+		NetworkManual:  "192.0.2.10/24",
+		GatewayManual:  "192.0.2.1",
+		Network6Manual: "2001:db8::10/64",
+		Gateway6Manual: "2001:db8::1",
+		DefaultRoute:   true,
+		DefaultRoute6:  true,
+	})
+	newSw := oldSw
+	newSw.Private = true
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("edit unrelated static setting: %v", err)
+	}
+}
+
 func TestStandardSwitchMemberMutations(t *testing.T) {
 	base := networkModels.StandardSwitch{
 		MTU:   1500,
@@ -1995,7 +2089,13 @@ func TestEditStandardBridgeDisablesIPv6WhenFlagFlipsTrue(t *testing.T) {
 	var commands []string
 	stubSyncFunctions(t, syncStubSet{
 		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
+			return &iface.Interface{
+				Name: name,
+				IPv6: []iface.IPv6{{
+					IP:           net.ParseIP("2001:db8:2::1"),
+					PrefixLength: 64,
+				}},
+			}, nil
 		},
 		runCommand: func(command string, args ...string) (string, error) {
 			full := strings.Join(append([]string{command}, args...), " ")
@@ -2029,7 +2129,7 @@ func TestEditStandardBridgeDisablesIPv6WhenFlagFlipsTrue(t *testing.T) {
 
 	var sawDelAddr, sawDelRoute, sawIfDisabled bool
 	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 2001:db8:2::1/64 delete" {
+		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 2001:db8:2::1 delete" {
 			sawDelAddr = true
 		}
 		if cmd == "/sbin/route -6 delete -net 2001:db8:2::1/64 2001:db8:2::ff" {
@@ -2094,7 +2194,13 @@ func TestEditStandardBridgeReplacesIPv6WhenNetworkChanges(t *testing.T) {
 	var commands []string
 	stubSyncFunctions(t, syncStubSet{
 		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
+			return &iface.Interface{
+				Name: name,
+				IPv6: []iface.IPv6{{
+					IP:           net.ParseIP("2001:db8:4::1"),
+					PrefixLength: 64,
+				}},
+			}, nil
 		},
 		runCommand: func(command string, args ...string) (string, error) {
 			full := strings.Join(append([]string{command}, args...), " ")
@@ -2410,6 +2516,120 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 	}
 	if !got.DisableBridgeOffloads {
 		t.Fatal("expected bridge offload policy to be updated")
+	}
+}
+
+func TestEditStandardSwitchExactNoOpSkipsRuntimeAndPortReplacement(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.NetworkPort{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	sw := networkModels.StandardSwitch{
+		Name:         "no-op",
+		BridgeName:   "vm-no-op",
+		MTU:          1500,
+		DHCP:         true,
+		DefaultRoute: true,
+		DisableIPv6:  true,
+		Ports:        []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	portID := sw.Ports[0].ID
+
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(string) (*iface.Interface, error) {
+			t.Fatal("exact no-op inspected runtime state")
+			return nil, nil
+		},
+	})
+
+	if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID:                 sw.ID,
+		PreserveVLANConfig: true,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:          1500,
+			Ports:        []string{"em0"},
+			MACSource:    macSource,
+			DHCP:         true,
+			DefaultRoute: true,
+			DisableIPv6:  true,
+		},
+	}); err != nil {
+		t.Fatalf("exact no-op edit: %v", err)
+	}
+
+	var port networkModels.NetworkPort
+	if err := db.Where("switch_id = ?", sw.ID).First(&port).Error; err != nil {
+		t.Fatalf("reload port: %v", err)
+	}
+	if port.ID != portID {
+		t.Fatalf("no-op replaced port row: before=%d after=%d", portID, port.ID)
+	}
+}
+
+func TestEditStandardSwitchPreservesOmittedVLANConfig(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t,
+		&networkModels.Object{},
+		&networkModels.ObjectEntry{},
+		&networkModels.NetworkPort{},
+	)
+	macSource := createTestStandardSwitchMACSource(t, svc)
+	defaultVLAN := 20
+	sw := networkModels.StandardSwitch{
+		Name:              "filtered-update",
+		BridgeName:        "vm-filtered-update",
+		MTU:               1500,
+		DisableIPv6:       true,
+		VLANFiltering:     true,
+		DefaultAccessVLAN: &defaultVLAN,
+	}
+	setTestStandardSwitchMACSource(&sw, macSource)
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+
+	filteredEdits := 0
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, Ether: testStandardSwitchMAC}, nil
+		},
+		editFilteredBridge: func(_, updated networkModels.StandardSwitch, _ map[string]struct{}) error {
+			filteredEdits++
+			if !updated.VLANFiltering || updated.DefaultAccessVLAN == nil || *updated.DefaultAccessVLAN != defaultVLAN {
+				t.Fatalf("runtime edit lost stored VLAN configuration: %#v", updated)
+			}
+			return nil
+		},
+	})
+
+	if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID:                 sw.ID,
+		PreserveVLANConfig: true,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         9000,
+			Ports:       []string{},
+			MACSource:   macSource,
+			DisableIPv6: true,
+		},
+	}); err != nil {
+		t.Fatalf("edit with omitted VLAN configuration: %v", err)
+	}
+	if filteredEdits != 1 {
+		t.Fatalf("filtered runtime edits=%d want 1", filteredEdits)
+	}
+
+	var updated networkModels.StandardSwitch
+	if err := db.First(&updated, sw.ID).Error; err != nil {
+		t.Fatalf("reload switch: %v", err)
+	}
+	if updated.MTU != 9000 || !updated.VLANFiltering || updated.DefaultAccessVLAN == nil ||
+		*updated.DefaultAccessVLAN != defaultVLAN {
+		t.Fatalf("stored VLAN configuration changed: %#v", updated)
 	}
 }
 
@@ -3554,34 +3774,38 @@ func TestStandardSwitchDeletePreflightDetectsSambaInterfaceUsage(t *testing.T) {
 	}
 }
 
-func TestCreateStandardBridgeToleratesPortIPv6CleanupPermissionDenied(t *testing.T) {
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			if full == "/sbin/ifconfig bridge create" {
-				return "bridge200\n", nil
-			}
-			if full == "/sbin/ifconfig em0 inet6 -auto_linklocal -accept_rtadv" {
-				return "", fmt.Errorf("command execution failed: exit status 1, " +
-					"output: ifconfig: ioctl (SIOCDIFADDR): permission denied")
-			}
-			return "", nil
-		},
-		stopDhclient: func(string) error { return nil },
-	})
+func TestCreateStandardBridgeToleratesPortIPv6CleanupErrors(t *testing.T) {
+	for _, message := range []string{"permission denied", "Operation not permitted"} {
+		t.Run(message, func(t *testing.T) {
+			stubSyncFunctions(t, syncStubSet{
+				ifaceGet: func(name string) (*iface.Interface, error) {
+					return &iface.Interface{Name: name}, nil
+				},
+				runCommand: func(command string, args ...string) (string, error) {
+					full := strings.Join(append([]string{command}, args...), " ")
+					if full == "/sbin/ifconfig bridge create" {
+						return "bridge200\n", nil
+					}
+					if full == "/sbin/ifconfig em0 inet6 -auto_linklocal -accept_rtadv" {
+						return "", fmt.Errorf("command execution failed: exit status 1, "+
+							"output: ifconfig: ioctl (SIOCDIFADDR): %s", message)
+					}
+					return "", nil
+				},
+				stopDhclient: func(string) error { return nil },
+			})
 
-	sw := networkModels.StandardSwitch{
-		Name:        "jail-port",
-		BridgeName:  "vm-jail-port",
-		DisableIPv6: true,
-		Ports:       []networkModels.NetworkPort{{Name: "em0"}},
-	}
-	sw = withTestStandardSwitchMAC(sw)
-	if err := createStandardBridge(sw); err != nil {
-		t.Fatalf("expected create to tolerate IPv6 cleanup permission denied, got %v", err)
+			sw := networkModels.StandardSwitch{
+				Name:        "jail-port",
+				BridgeName:  "vm-jail-port",
+				DisableIPv6: true,
+				Ports:       []networkModels.NetworkPort{{Name: "em0"}},
+			}
+			sw = withTestStandardSwitchMAC(sw)
+			if err := createStandardBridge(sw); err != nil {
+				t.Fatalf("expected create to tolerate IPv6 cleanup %q, got %v", message, err)
+			}
+		})
 	}
 }
 
@@ -4313,7 +4537,7 @@ func TestRunDhclientRestartsBoundOwnerWhenDefaultRouteIsMissing(t *testing.T) {
 		},
 		runCommand: func(command string, args ...string) (string, error) {
 			if strings.Join(append([]string{command}, args...), " ") == "/sbin/route -n get default" {
-				return "route: route has not been found\n", errors.New("not in table")
+				return "route: route has not been found\n", errors.New("command execution failed: exit status 255")
 			}
 			return "", nil
 		},
@@ -4340,6 +4564,34 @@ func TestRunDhclientRestartsBoundOwnerWhenDefaultRouteIsMissing(t *testing.T) {
 	}
 	if stopSignals != 1 || len(launches) != 1 {
 		t.Fatalf("stop signals=%d launches=%v, want one restart", stopSignals, launches)
+	}
+}
+
+func TestRemoveIPv6DefaultRouteForInterfaceToleratesMissingRoute(t *testing.T) {
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/route -6 -n get default" {
+				return "route: route has not been found\n", errors.New(
+					"command execution failed: exit status 255, output: route: route has not been found",
+				)
+			}
+			t.Fatalf("unexpected command: %s", full)
+			return "", nil
+		},
+	})
+
+	removed, err := removeDefaultRouteForInterface("-6", "vm-no-ipv6-default")
+	if err != nil {
+		t.Fatalf("missing IPv6 default route must be idempotent: %v", err)
+	}
+	if removed {
+		t.Fatal("missing IPv6 default route was reported as removed")
+	}
+	if len(commands) != 1 || commands[0] != "/sbin/route -6 -n get default" {
+		t.Fatalf("commands=%v, want only the IPv6 default-route lookup", commands)
 	}
 }
 

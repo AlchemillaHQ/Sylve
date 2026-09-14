@@ -317,6 +317,7 @@ func routeIsMissing(output string, err error) bool {
 		message += " " + strings.ToLower(err.Error())
 	}
 	return strings.Contains(message, "not in table") ||
+		strings.Contains(message, "route has not been found") ||
 		strings.Contains(message, "not found") ||
 		strings.Contains(message, "no such process")
 }

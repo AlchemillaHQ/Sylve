@@ -392,6 +392,21 @@ func TestUpdateStandardSwitchDoesNotPreserveOmittedIPv6RouteOwnership(t *testing
 	}
 }
 
+func TestUpdateStandardSwitchTracksVLANConfigPresence(t *testing.T) {
+	omitted := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{})
+	if !omitted.PreserveVLANConfig {
+		t.Fatal("omitted VLAN configuration was not marked for preservation")
+	}
+
+	disabled := false
+	provided := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{
+		VLANFiltering: &disabled,
+	})
+	if provided.PreserveVLANConfig || provided.VLANConfig.Filtering {
+		t.Fatalf("explicit disabled VLAN configuration was not preserved: %#v", provided)
+	}
+}
+
 func TestUpdateStandardSwitchForwardsHostLayer3RemovalConfirmation(t *testing.T) {
 	confirmHostLayer3Removal := true
 	request := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{

@@ -48,6 +48,7 @@ type CreateStandardSwitchRequest struct {
 type UpdateStandardSwitchRequest struct {
 	ID                       uint
 	ConfirmHostLayer3Removal bool
+	PreserveVLANConfig       bool
 	StandardSwitchConfig
 }
 

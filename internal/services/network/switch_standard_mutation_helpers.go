@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -95,6 +96,121 @@ func standardSwitchPorts(
 		})
 	}
 	return ports
+}
+
+func standardSwitchVLANConfigFromModel(sw networkModels.StandardSwitch) networkModels.StandardSwitchVLANConfig {
+	policies := make(map[string]bridgevlan.PortPolicy, len(sw.Ports))
+	if sw.VLANFiltering {
+		for _, port := range sw.Ports {
+			policies[port.Name] = port.VLANPolicy
+		}
+	}
+	return networkModels.StandardSwitchVLANConfig{
+		Filtering:         sw.VLANFiltering,
+		DefaultAccessVLAN: sw.DefaultAccessVLAN,
+		HostVLAN:          sw.HostVLAN,
+		PortPolicies:      policies,
+	}
+}
+
+func standardSwitchOptionalIDMatches(stored *uint, desired uint) bool {
+	if desired == 0 {
+		return stored == nil
+	}
+	return stored != nil && *stored == desired
+}
+
+func standardSwitchOptionalIDValue(value *uint) uint {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func standardSwitchPortPolicyMatches(left, right bridgevlan.PortPolicy) bool {
+	return left.Mode == right.Mode &&
+		optionalVLANEqual(left.UntaggedVLAN, right.UntaggedVLAN) &&
+		slices.Equal(left.TaggedVLANs, right.TaggedVLANs)
+}
+
+func standardSwitchMatchesInput(sw networkModels.StandardSwitch, input standardSwitchInput) bool {
+	if sw.MTU != input.mtu || sw.VLAN != input.vlan ||
+		sw.Private != input.private || sw.DHCP != input.dhcp ||
+		sw.DisableIPv6 != input.disableIPv6 || sw.SLAAC != input.slaac ||
+		sw.DefaultRoute != input.defaultRoute || sw.DefaultRoute6 != input.defaultRoute6 ||
+		sw.DisableBridgeOffloads != input.disableBridgeOffloads ||
+		sw.NetworkManual != input.manual.Network4 || sw.GatewayManual != input.manual.Gateway4 ||
+		sw.Network6Manual != input.manual.Network6 || sw.Gateway6Manual != input.manual.Gateway6 ||
+		sw.BridgeMACMode != input.macSource.Mode || sw.BridgeMACSourcePort != input.macSource.Port ||
+		sw.VLANFiltering != input.vlanConfig.Filtering ||
+		!optionalVLANEqual(sw.DefaultAccessVLAN, input.vlanConfig.DefaultAccessVLAN) ||
+		!optionalVLANEqual(sw.HostVLAN, input.vlanConfig.HostVLAN) ||
+		!standardSwitchOptionalIDMatches(sw.NetworkID, input.network4ID) ||
+		!standardSwitchOptionalIDMatches(sw.Network6ID, input.network6ID) ||
+		!standardSwitchOptionalIDMatches(sw.GatewayAddressID, input.gateway4ID) ||
+		!standardSwitchOptionalIDMatches(sw.Gateway6AddressID, input.gateway6ID) ||
+		!standardSwitchOptionalIDMatches(sw.BridgeMACObjectID, input.macSource.MACObjectID) ||
+		len(sw.Ports) != len(input.ports) {
+		return false
+	}
+
+	storedPorts := make(map[string]bridgevlan.PortPolicy, len(sw.Ports))
+	for _, port := range sw.Ports {
+		storedPorts[port.Name] = port.VLANPolicy
+	}
+	for _, name := range input.ports {
+		stored, exists := storedPorts[name]
+		if !exists || !standardSwitchPortPolicyMatches(stored, input.vlanConfig.PortPolicies[name]) {
+			return false
+		}
+	}
+	return true
+}
+
+func standardSwitchModelsMatch(left, right networkModels.StandardSwitch) bool {
+	ports := make([]string, 0, len(right.Ports))
+	policies := make(map[string]bridgevlan.PortPolicy, len(right.Ports))
+	for _, port := range right.Ports {
+		ports = append(ports, port.Name)
+		policies[port.Name] = port.VLANPolicy
+	}
+
+	return left.Name == right.Name && left.BridgeName == right.BridgeName &&
+		left.Network(4) == right.Network(4) && left.Gateway(4) == right.Gateway(4) &&
+		left.Network(6) == right.Network(6) && left.Gateway(6) == right.Gateway(6) &&
+		standardSwitchMatchesInput(left, standardSwitchInput{
+			mtu:                   right.MTU,
+			vlan:                  right.VLAN,
+			network4ID:            standardSwitchOptionalIDValue(right.NetworkID),
+			network6ID:            standardSwitchOptionalIDValue(right.Network6ID),
+			gateway4ID:            standardSwitchOptionalIDValue(right.GatewayAddressID),
+			gateway6ID:            standardSwitchOptionalIDValue(right.Gateway6AddressID),
+			ports:                 ports,
+			private:               right.Private,
+			dhcp:                  right.DHCP,
+			disableIPv6:           right.DisableIPv6,
+			slaac:                 right.SLAAC,
+			defaultRoute:          right.DefaultRoute,
+			defaultRoute6:         right.DefaultRoute6,
+			disableBridgeOffloads: right.DisableBridgeOffloads,
+			manual: networkModels.StandardSwitchManualAddresses{
+				Network4: right.NetworkManual,
+				Gateway4: right.GatewayManual,
+				Network6: right.Network6Manual,
+				Gateway6: right.Gateway6Manual,
+			},
+			macSource: networkModels.StandardSwitchMACSource{
+				Mode:        right.BridgeMACMode,
+				Port:        right.BridgeMACSourcePort,
+				MACObjectID: standardSwitchOptionalIDValue(right.BridgeMACObjectID),
+			},
+			vlanConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering:         right.VLANFiltering,
+				DefaultAccessVLAN: right.DefaultAccessVLAN,
+				HostVLAN:          right.HostVLAN,
+				PortPolicies:      policies,
+			},
+		})
 }
 
 func rollbackStandardSwitchTransaction(tx *gorm.DB, operation string) error {

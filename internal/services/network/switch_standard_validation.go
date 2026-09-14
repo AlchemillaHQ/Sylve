@@ -306,11 +306,7 @@ func (s *Service) validateStandardSwitchObject(id uint, objectType string, famil
 	return value, nil
 }
 
-func (s *Service) validateStandardSwitchInput(
-	excludeID uint,
-	bridgeName string,
-	input standardSwitchInput,
-) (standardSwitchInput, error) {
+func normalizeStandardSwitchInput(input standardSwitchInput) (standardSwitchInput, error) {
 	if input.mtu == 0 {
 		input.mtu = 1500
 	}
@@ -370,6 +366,22 @@ func (s *Service) validateStandardSwitchInput(
 		return input, err
 	}
 	input.manual = manual
+	input.macSource.Mode = strings.ToLower(strings.TrimSpace(input.macSource.Mode))
+	input.macSource.Port = strings.TrimSpace(input.macSource.Port)
+
+	return input, nil
+}
+
+func (s *Service) validateStandardSwitchInput(
+	excludeID uint,
+	bridgeName string,
+	input standardSwitchInput,
+) (standardSwitchInput, error) {
+	var err error
+	input, err = normalizeStandardSwitchInput(input)
+	if err != nil {
+		return input, err
+	}
 
 	network4, err := s.validateStandardSwitchObject(input.network4ID, "Network", 4, "network4")
 	if err != nil {

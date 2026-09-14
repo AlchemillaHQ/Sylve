@@ -231,6 +231,7 @@ func updateStandardSwitchServiceRequest(
 	return network.UpdateStandardSwitchRequest{
 		ID:                       id,
 		ConfirmHostLayer3Removal: optionalBool(request.ConfirmHostLayer3Removal),
+		PreserveVLANConfig:       request.VLANFiltering == nil,
 		StandardSwitchConfig: network.StandardSwitchConfig{
 			MTU:                   optionalInt(request.MTU),
 			VLAN:                  optionalInt(request.VLAN),
