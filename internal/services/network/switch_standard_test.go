@@ -1514,6 +1514,317 @@ func TestEditStandardBridgeRecreatesWhenDisablingDHCPAndPreservesExtraMembers(t 
 	}
 }
 
+func TestEditStandardBridgeLeavesUnchangedDHCPMemberAttached(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+
+	const bridgeName = "vm-dhcp-unchanged"
+	var commands []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			switch name {
+			case bridgeName:
+				return &iface.Interface{
+					Name:          name,
+					Ether:         testStandardSwitchMAC,
+					MTU:           1500,
+					BridgeMembers: []iface.BridgeMember{{Name: "em0"}},
+					IPv4:          []iface.IPv4{{IP: net.ParseIP("192.0.2.10")}},
+				}, nil
+			case "em0":
+				return &iface.Interface{Name: name, MTU: 1500}, nil
+			default:
+				return nil, errors.New("interface not found")
+			}
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			commands = append(commands, full)
+			if full == "/sbin/route -n get default" {
+				return "gateway: 192.0.2.1\ninterface: " + bridgeName + "\n", nil
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			if command == "/bin/pgrep" && strings.Join(args, " ") == "-f -x dhclient: "+bridgeName {
+				return "123\n", nil
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("unchanged DHCP client must not be launched again")
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			if name == bridgeName {
+				t.Fatal("unchanged DHCP client must not be stopped")
+			}
+			return nil
+		},
+	})
+
+	sw := networkModels.StandardSwitch{
+		Name:         "dhcp-unchanged",
+		BridgeName:   bridgeName,
+		MTU:          1500,
+		DHCP:         true,
+		DefaultRoute: true,
+		DisableIPv6:  true,
+		Ports:        []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	sw = withTestStandardSwitchMAC(sw)
+
+	if err := editStandardBridge(sw, sw); err != nil {
+		t.Fatalf("edit unchanged DHCP bridge: %v", err)
+	}
+	for _, command := range commands {
+		if strings.Contains(command, " deletem em0") || strings.Contains(command, " addm em0") {
+			t.Fatalf("unchanged DHCP member was detached or reattached: %v", commands)
+		}
+	}
+}
+
+func TestStandardSwitchMemberMutations(t *testing.T) {
+	base := networkModels.StandardSwitch{
+		MTU:   1500,
+		Ports: []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	tests := []struct {
+		name        string
+		oldSw       networkModels.StandardSwitch
+		newSw       networkModels.StandardSwitch
+		liveMembers []iface.BridgeMember
+		wantRemove  string
+		wantAdd     string
+	}{
+		{
+			name:        "unchanged attached member",
+			oldSw:       base,
+			newSw:       base,
+			liveMembers: []iface.BridgeMember{{Name: "em0"}},
+		},
+		{
+			name:    "repair missing member",
+			oldSw:   base,
+			newSw:   base,
+			wantAdd: "em0",
+		},
+		{
+			name:  "replace selected member",
+			oldSw: base,
+			newSw: networkModels.StandardSwitch{
+				MTU:   1500,
+				Ports: []networkModels.NetworkPort{{Name: "em1"}},
+			},
+			liveMembers: []iface.BridgeMember{{Name: "em0"}},
+			wantRemove:  "em0",
+			wantAdd:     "em1",
+		},
+		{
+			name: "replace VLAN member",
+			oldSw: networkModels.StandardSwitch{
+				MTU:   1500,
+				VLAN:  10,
+				Ports: []networkModels.NetworkPort{{Name: "em0"}},
+			},
+			newSw: networkModels.StandardSwitch{
+				MTU:   1500,
+				VLAN:  20,
+				Ports: []networkModels.NetworkPort{{Name: "em0"}},
+			},
+			liveMembers: []iface.BridgeMember{{Name: "em0.10"}},
+			wantRemove:  "em0.10",
+			wantAdd:     "em0.20",
+		},
+		{
+			name:        "refresh member after MTU change",
+			oldSw:       base,
+			newSw:       networkModels.StandardSwitch{MTU: 9000, Ports: base.Ports},
+			liveMembers: []iface.BridgeMember{{Name: "em0"}},
+			wantRemove:  "em0",
+			wantAdd:     "em0",
+		},
+	}
+
+	mutationNames := func(mutations []standardSwitchMemberMutation) string {
+		names := make([]string, 0, len(mutations))
+		for _, mutation := range mutations {
+			names = append(names, standardSwitchMemberName(mutation.portName, mutation.vlan))
+		}
+		return strings.Join(names, ",")
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			removals, additions := standardSwitchMemberMutations(
+				test.oldSw,
+				test.newSw,
+				&iface.Interface{BridgeMembers: test.liveMembers},
+			)
+			if got := mutationNames(removals); got != test.wantRemove {
+				t.Fatalf("removals=%q want %q", got, test.wantRemove)
+			}
+			if got := mutationNames(additions); got != test.wantAdd {
+				t.Fatalf("additions=%q want %q", got, test.wantAdd)
+			}
+		})
+	}
+}
+
+func TestEditStandardBridgeStopsDHCPBeforeChangingMember(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+
+	const bridgeName = "vm-dhcp-member-change"
+	var operations []string
+	bridgeDHCPStopped := false
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			switch name {
+			case bridgeName:
+				return &iface.Interface{
+					Name:          name,
+					Ether:         testStandardSwitchMAC,
+					MTU:           1500,
+					BridgeMembers: []iface.BridgeMember{{Name: "em0"}},
+					IPv4:          []iface.IPv4{{IP: net.ParseIP("192.0.2.10")}},
+				}, nil
+			case "em1":
+				return &iface.Interface{Name: name, MTU: 1500}, nil
+			default:
+				return nil, errors.New("interface not found")
+			}
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/ifconfig "+bridgeName+" deletem em0" && !bridgeDHCPStopped {
+				t.Fatal("DHCP must be stopped before detaching a live bridge member")
+			}
+			if full == "/sbin/route -n get default" {
+				return "gateway: 192.0.2.1\ninterface: " + bridgeName + "\n", nil
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			if command == "/bin/pgrep" && strings.Join(args, " ") == "-f -x dhclient: "+bridgeName {
+				return "123\n", nil
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("test client remains represented as running after the controlled stop")
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			operations = append(operations, "stop-dhclient "+name)
+			if name == bridgeName {
+				bridgeDHCPStopped = true
+			}
+			return nil
+		},
+	})
+
+	oldSw := networkModels.StandardSwitch{
+		Name:         "dhcp-member-change",
+		BridgeName:   bridgeName,
+		MTU:          1500,
+		DHCP:         true,
+		DefaultRoute: true,
+		DisableIPv6:  true,
+		Ports:        []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	oldSw = withTestStandardSwitchMAC(oldSw)
+	newSw := oldSw
+	newSw.Ports = []networkModels.NetworkPort{{Name: "em1"}}
+
+	if err := editStandardBridge(oldSw, newSw); err != nil {
+		t.Fatalf("change DHCP bridge member: %v", err)
+	}
+	stopIndex := commandIndex(operations, "stop-dhclient "+bridgeName)
+	detachIndex := commandIndex(operations, "/sbin/ifconfig "+bridgeName+" deletem em0")
+	if stopIndex == -1 || detachIndex == -1 || stopIndex >= detachIndex {
+		t.Fatalf("DHCP stop must precede member detach: %v", operations)
+	}
+}
+
+func TestRestoreStandardSwitchEditRuntimeRepairsPartiallyRemovedDHCPMemberInPlace(t *testing.T) {
+	useTestDhclientRuntimeDir(t)
+
+	const bridgeName = "vm-dhcp-rollback"
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			switch name {
+			case bridgeName:
+				return &iface.Interface{
+					Name:  name,
+					Ether: testStandardSwitchMAC,
+					MTU:   1500,
+					IPv4:  []iface.IPv4{{IP: net.ParseIP("192.0.2.10")}},
+				}, nil
+			case "em0":
+				return &iface.Interface{Name: name, MTU: 1500}, nil
+			default:
+				return nil, errors.New("interface not found")
+			}
+		},
+		createBridge: func(networkModels.StandardSwitch) error {
+			t.Fatal("partial edit rollback must not recreate the bridge")
+			return nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error {
+			t.Fatal("partial edit rollback must not destroy the bridge")
+			return nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			full := strings.Join(append([]string{command}, args...), " ")
+			operations = append(operations, full)
+			if full == "/sbin/ifconfig "+bridgeName+" deletem em0" {
+				return "", errors.New("BRDGDEL em0: Invalid argument")
+			}
+			if full == "/sbin/route -n get default" {
+				return "gateway: 192.0.2.1\ninterface: " + bridgeName + "\n", nil
+			}
+			return "", nil
+		},
+		runCommandAllowExitCode: func(command string, _ []int, args ...string) (string, error) {
+			if command == "/bin/pgrep" && strings.Join(args, " ") == "-f -x dhclient: "+bridgeName {
+				return "123\n", nil
+			}
+			return "", nil
+		},
+		runCommandWithContext: func(context.Context, string, ...string) (string, error) {
+			t.Fatal("rollback should recognize the restored DHCP client")
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			operations = append(operations, "stop-dhclient "+name)
+			return nil
+		},
+	})
+
+	previous := networkModels.StandardSwitch{
+		Name:         "dhcp-before",
+		BridgeName:   bridgeName,
+		MTU:          1500,
+		DHCP:         true,
+		DefaultRoute: true,
+		DisableIPv6:  true,
+		Ports:        []networkModels.NetworkPort{{Name: "em0"}},
+	}
+	previous = withTestStandardSwitchMAC(previous)
+	current := previous
+	current.Name = "dhcp-after"
+
+	if err := restoreStandardSwitchEditRuntime(previous, current, nil); err != nil {
+		t.Fatalf("restore partially removed DHCP member: %v", err)
+	}
+	if commandIndex(operations, "/sbin/ifconfig "+bridgeName+" deletem em0") != -1 {
+		t.Fatalf("rollback tried to remove an already absent member: %v", operations)
+	}
+	if commandIndex(operations, "/sbin/ifconfig "+bridgeName+" addm em0 up") == -1 {
+		t.Fatalf("rollback did not restore the missing member: %v", operations)
+	}
+}
+
 func TestCreateStandardBridgeAssignsHostLikeIPv4WithoutGateway(t *testing.T) {
 	var commands []string
 	stubSyncFunctions(t, syncStubSet{

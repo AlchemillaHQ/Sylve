@@ -870,6 +870,95 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 
 	return nil
 }
+
+type standardSwitchMemberMutation struct {
+	portName string
+	vlan     int
+}
+
+func standardSwitchMemberName(portName string, vlan int) string {
+	if vlan > 0 {
+		return fmt.Sprintf("%s.%d", portName, vlan)
+	}
+	return portName
+}
+
+func standardSwitchEffectiveMTU(sw networkModels.StandardSwitch) int {
+	if sw.MTU == 0 {
+		return 1500
+	}
+	return sw.MTU
+}
+
+func standardSwitchPortSet(sw networkModels.StandardSwitch) map[string]struct{} {
+	ports := make(map[string]struct{}, len(sw.Ports))
+	for _, port := range sw.Ports {
+		ports[port.Name] = struct{}{}
+	}
+	return ports
+}
+
+// standardSwitchMemberMutations leaves present, unchanged members attached while
+// still repairing missing members. Besides avoiding an unnecessary link flap,
+// the live-state check makes a reverse edit safe after a partial forward edit.
+func standardSwitchMemberMutations(
+	oldSw, newSw networkModels.StandardSwitch,
+	interfaceObj *iface.Interface,
+) (removals, additions []standardSwitchMemberMutation) {
+	liveMembers := make(map[string]struct{}, len(interfaceObj.BridgeMembers))
+	for _, member := range interfaceObj.BridgeMembers {
+		liveMembers[member.Name] = struct{}{}
+	}
+
+	oldPorts := standardSwitchPortSet(oldSw)
+	newPorts := standardSwitchPortSet(newSw)
+	refreshRetained := oldSw.VLAN != newSw.VLAN ||
+		standardSwitchEffectiveMTU(oldSw) != standardSwitchEffectiveMTU(newSw) ||
+		oldSw.DisableBridgeOffloads != newSw.DisableBridgeOffloads
+	removedTargets := make(map[string]struct{})
+
+	appendRemoval := func(portName string, vlan int) {
+		target := standardSwitchMemberName(portName, vlan)
+		if _, live := liveMembers[target]; !live {
+			return
+		}
+		if _, alreadyRemoved := removedTargets[target]; alreadyRemoved {
+			return
+		}
+		removals = append(removals, standardSwitchMemberMutation{portName: portName, vlan: vlan})
+		removedTargets[target] = struct{}{}
+		delete(liveMembers, target)
+	}
+
+	for _, oldPort := range oldSw.Ports {
+		_, retained := newPorts[oldPort.Name]
+		oldTarget := standardSwitchMemberName(oldPort.Name, oldSw.VLAN)
+		newTarget := standardSwitchMemberName(oldPort.Name, newSw.VLAN)
+		if !retained || oldTarget != newTarget || refreshRetained {
+			appendRemoval(oldPort.Name, oldSw.VLAN)
+		}
+	}
+
+	for _, newPort := range newSw.Ports {
+		_, retained := oldPorts[newPort.Name]
+		oldTarget := standardSwitchMemberName(newPort.Name, oldSw.VLAN)
+		newTarget := standardSwitchMemberName(newPort.Name, newSw.VLAN)
+		needsConfiguration := !retained || oldTarget != newTarget || refreshRetained
+
+		if needsConfiguration {
+			// A newly managed port may already be attached as an unmanaged member.
+			// Detach it before clearing layer-3 state and applying member settings.
+			appendRemoval(newPort.Name, newSw.VLAN)
+		}
+		if _, live := liveMembers[newTarget]; needsConfiguration || !live {
+			additions = append(additions, standardSwitchMemberMutation{portName: newPort.Name, vlan: newSw.VLAN})
+			liveMembers[newTarget] = struct{}{}
+		}
+	}
+
+	return removals, additions
+}
+
 func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	br := oldSw.BridgeName
 
@@ -887,9 +976,11 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 	currentMAC, currentMACErr := currentInterfaceMAC(ifaceObj)
 	macWillChange := currentMACErr != nil || currentMAC != desiredMAC
-	if macWillChange && (oldSw.DHCP || newSw.DHCP) {
-		if err := stopDhclient(br); err != nil {
-			return fmt.Errorf("edit_standard_bridge: stop DHCP before MAC change: %v", err)
+	memberRemovals, memberAdditions := standardSwitchMemberMutations(oldSw, newSw, ifaceObj)
+	membersWillChange := len(memberRemovals) > 0 || len(memberAdditions) > 0
+	if (macWillChange && (oldSw.DHCP || newSw.DHCP)) || (oldSw.DHCP && newSw.DHCP && membersWillChange) {
+		if err := syncStopDhclient(br); err != nil {
+			return fmt.Errorf("edit_standard_bridge: stop DHCP before bridge reconfiguration: %v", err)
 		}
 	}
 	if _, err := applyStandardSwitchMAC(newSw); err != nil {
@@ -936,10 +1027,10 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		}
 	}
 
-	// 3) remove only the *old* DB ports (and their VLAN sub-ifs)
-	for _, p := range oldSw.Ports {
-		if err := removeBridgeMember(br, p.Name, oldSw.VLAN); err != nil {
-			return fmt.Errorf("edit_standard_bridge: remove old port %s: %v", p.Name, err)
+	// 3) remove only ports whose membership or member-level settings changed.
+	for _, member := range memberRemovals {
+		if err := removeBridgeMember(br, member.portName, member.vlan); err != nil {
+			return fmt.Errorf("edit_standard_bridge: remove old port %s: %v", member.portName, err)
 		}
 	}
 
@@ -1096,10 +1187,10 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 		}
 	}
 
-	// 5) add the *new* DB ports (and VLAN sub-ifs)
-	for _, p := range newSw.Ports {
-		if err := addBridgeMember(br, p.Name, newMTU, newSw.VLAN, newSw.DisableBridgeOffloads); err != nil {
-			return fmt.Errorf("edit_standard_bridge: add port %s: %v", p.Name, err)
+	// 5) add new, changed, or unexpectedly missing DB ports.
+	for _, member := range memberAdditions {
+		if err := addBridgeMember(br, member.portName, newMTU, member.vlan, newSw.DisableBridgeOffloads); err != nil {
+			return fmt.Errorf("edit_standard_bridge: add port %s: %v", member.portName, err)
 		}
 	}
 	if _, err := applyStandardSwitchMAC(newSw); err != nil {
