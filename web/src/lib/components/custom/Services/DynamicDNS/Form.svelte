@@ -12,6 +12,7 @@
 	import { emptySwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { DynamicDNSEntry, DynamicDNSEntryInput } from '$lib/types/services/dynamic-dns';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -103,23 +104,17 @@
 		);
 	}
 
-	function interfaceLabel(iface: Iface): string {
-		if (iface.name === 'wgs0') return `WireGuard Server (${iface.name})`;
-
-		const switchName =
-			switches.manual?.find((networkSwitch) => networkSwitch.bridge === iface.name)?.name ??
-			switches.standard?.find((networkSwitch) => networkSwitch.bridgeName === iface.name)?.name;
-		if (switchName) return `${switchName} (${iface.name})`;
-
-		const description = iface.description.trim();
-		return description ? `${description} (${iface.name})` : iface.name;
-	}
-
 	const interfaceOptions = $derived.by(() =>
-		[...interfaces]
-			.filter(isSelectableInterface)
-			.sort((first, second) => first.name.localeCompare(second.name))
-			.map((iface) => ({ value: iface.name, label: interfaceLabel(iface) }))
+		buildHostInterfaceOptions({
+			interfaces: [...interfaces].sort((first, second) => first.name.localeCompare(second.name)),
+			switches,
+			includeInterface: isSelectableInterface,
+			getInterfaceLabel: (iface) => {
+				if (iface.name === 'wgs0') return `WireGuard Server (${iface.name})`;
+				const description = iface.description.trim();
+				return description ? `${description} (${iface.name})` : iface.name;
+			}
+		})
 	);
 
 	function defaultForm(): Form {

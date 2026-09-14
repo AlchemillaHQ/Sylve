@@ -4445,3 +4445,91 @@ func TestCreateStandardBridgeManagesRFC6204W3OnlyForSLAACOwner(t *testing.T) {
 		})
 	}
 }
+
+func TestEditStandardSwitchRequiresConfirmationBeforeRemovingHostLayer3(t *testing.T) {
+	service, db := newNetworkServiceForTest(t, &networkModels.NetworkPort{})
+	macSource := createTestStandardSwitchMACSource(t, service)
+	switchModel := networkModels.StandardSwitch{
+		Name:        "management",
+		BridgeName:  "vm-management",
+		MTU:         1500,
+		DHCP:        true,
+		DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&switchModel, macSource)
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("create Standard Switch: %v", err)
+	}
+
+	err := service.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID: switchModel.ID,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering: true,
+			},
+		},
+	})
+	if !errors.Is(err, ErrStandardSwitchConflict) ||
+		StandardSwitchErrorCode(err) != "standard_switch_host_layer3_removal_requires_confirmation" {
+		t.Fatalf("host layer-3 removal error = %v, code = %q", err, StandardSwitchErrorCode(err))
+	}
+
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, switchModel.ID).Error; err != nil {
+		t.Fatalf("reload Standard Switch: %v", err)
+	}
+	if persisted.VLANFiltering || !persisted.DHCP {
+		t.Fatalf("rejected edit changed persisted host settings: %#v", persisted)
+	}
+}
+
+func TestEditStandardSwitchRemovesHostLayer3AfterConfirmation(t *testing.T) {
+	service, db := newNetworkServiceForTest(t, &networkModels.NetworkPort{})
+	macSource := createTestStandardSwitchMACSource(t, service)
+	switchModel := networkModels.StandardSwitch{
+		Name:        "management",
+		BridgeName:  "vm-management",
+		MTU:         1500,
+		DHCP:        true,
+		DisableIPv6: true,
+	}
+	setTestStandardSwitchMACSource(&switchModel, macSource)
+	if err := db.Create(&switchModel).Error; err != nil {
+		t.Fatalf("create Standard Switch: %v", err)
+	}
+
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name}, nil
+		},
+		deleteBridge: func(networkModels.StandardSwitch) error { return nil },
+		createBridge: func(networkModels.StandardSwitch) error { return nil },
+	})
+
+	err := service.EditStandardSwitch(UpdateStandardSwitchRequest{
+		ID:                       switchModel.ID,
+		ConfirmHostLayer3Removal: true,
+		StandardSwitchConfig: StandardSwitchConfig{
+			MTU:         1500,
+			MACSource:   macSource,
+			DisableIPv6: true,
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("confirm host layer-3 removal: %v", err)
+	}
+
+	var persisted networkModels.StandardSwitch
+	if err := db.First(&persisted, switchModel.ID).Error; err != nil {
+		t.Fatalf("reload Standard Switch: %v", err)
+	}
+	if !persisted.VLANFiltering || persisted.DHCP {
+		t.Fatalf("confirmed edit did not remove persisted host settings: %#v", persisted)
+	}
+}

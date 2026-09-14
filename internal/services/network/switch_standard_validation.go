@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"net"
 	"regexp"
-	"sort"
 	"strings"
 
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
@@ -22,6 +21,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -130,6 +130,16 @@ func standardSwitchHasHostL3(input standardSwitchInput) bool {
 		strings.TrimSpace(input.manual.Gateway4) != "" ||
 		strings.TrimSpace(input.manual.Gateway6) != "" ||
 		input.dhcp || input.slaac || input.defaultRoute || input.defaultRoute6
+}
+
+func standardSwitchHasPersistedHostL3(sw networkModels.StandardSwitch) bool {
+	return sw.NetworkID != nil || sw.Network6ID != nil ||
+		sw.GatewayAddressID != nil || sw.Gateway6AddressID != nil ||
+		strings.TrimSpace(sw.NetworkManual) != "" ||
+		strings.TrimSpace(sw.Network6Manual) != "" ||
+		strings.TrimSpace(sw.GatewayManual) != "" ||
+		strings.TrimSpace(sw.Gateway6Manual) != "" ||
+		sw.DHCP || sw.SLAAC || sw.DefaultRoute || sw.DefaultRoute6
 }
 
 func normalizeStandardSwitchMAC(value string) (string, error) {
@@ -556,42 +566,13 @@ func commaSeparatedInterfacesContain(value, interfaceName string) bool {
 	return interfaceListContains(strings.Split(value, ","), interfaceName)
 }
 
-var errFilteredStandardSwitchL2Only = errors.New("filtered_standard_switch_l2_only")
+var errFilteredStandardSwitchL2Only = interfaceref.ErrFilteredStandardSwitchL2Only
 
 func (s *Service) rejectFilteredStandardBridgeInterfaces(interfaces ...string) error {
-	if s == nil || s.DB == nil {
+	if s == nil {
 		return fmt.Errorf("db_not_initialized")
 	}
-
-	names := make([]string, 0, len(interfaces))
-	seen := make(map[string]struct{}, len(interfaces))
-	for _, value := range interfaces {
-		name := strings.TrimSpace(value)
-		if name == "" {
-			continue
-		}
-		if _, exists := seen[name]; exists {
-			continue
-		}
-		seen[name] = struct{}{}
-		names = append(names, name)
-	}
-	if len(names) == 0 {
-		return nil
-	}
-
-	var filtered []string
-	if err := s.DB.Model(&networkModels.StandardSwitch{}).
-		Where("vlan_filtering = ? AND bridge_name IN ?", true, names).
-		Pluck("bridge_name", &filtered).Error; err != nil {
-		return fmt.Errorf("check filtered Standard Switch interfaces: %w", err)
-	}
-	if len(filtered) == 0 {
-		return nil
-	}
-
-	sort.Strings(filtered)
-	return fmt.Errorf("%w: %s", errFilteredStandardSwitchL2Only, strings.Join(filtered, ", "))
+	return interfaceref.RejectFilteredStandardBridgeInterfaces(s.DB, interfaces...)
 }
 
 func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {

@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"github.com/alchemillahq/sylve/pkg/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -139,6 +140,9 @@ func (s *Service) SetGlobalConfig(
 	appleExtensions bool,
 	advertiseMdns bool,
 	extraGlobalConfig *string) error {
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+
 	if unixCharset == "" || workgroup == "" || serverString == "" {
 		return invalidGlobalConfig("unixCharset, workgroup, and serverString cannot be empty")
 	}
@@ -179,6 +183,21 @@ func (s *Service) SetGlobalConfig(
 		interfaces = strings.Join(interfacesList, ",")
 	} else {
 		interfaces = "lo0"
+	}
+
+	interfaceNames := make([]string, 0, len(interfacesList))
+	for _, name := range interfacesList {
+		if name = strings.TrimSpace(name); name != "" {
+			interfaceNames = append(interfaceNames, name)
+		}
+	}
+	if err := interfaceref.RejectFilteredStandardBridgeInterfaces(s.DB, interfaceNames...); err != nil {
+		if errors.Is(err, interfaceref.ErrFilteredStandardSwitchL2Only) {
+			return invalidGlobalConfig(
+				"a VLAN-filtered Standard Switch base is layer 2 only; select its Host VLAN interface",
+			)
+		}
+		return fmt.Errorf("failed to validate Samba interfaces: %w", err)
 	}
 
 	update := func() error {

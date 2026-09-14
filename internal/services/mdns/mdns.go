@@ -24,6 +24,7 @@ import (
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 
 	"github.com/alchemillahq/sylve/pkg/network/mdns"
 	"gorm.io/gorm"
@@ -49,6 +50,8 @@ type Service struct {
 	cancelFunc       context.CancelFunc
 	wg               sync.WaitGroup
 	activeState      *mdnsActivationState
+
+	interfaceReferenceCoordinator *interfaceref.Coordinator
 }
 
 type mdnsActivationState struct {
@@ -65,6 +68,14 @@ func cloneActivationState(state mdnsActivationState) mdnsActivationState {
 
 func NewService(db *gorm.DB) mdnsInterfaces.MdnsServiceInterface {
 	return &Service{DB: db}
+}
+
+func (s *Service) SetInterfaceReferenceCoordinator(coordinator *interfaceref.Coordinator) {
+	s.interfaceReferenceCoordinator = coordinator
+}
+
+func (s *Service) lockInterfaceReferencesRead() func() {
+	return s.interfaceReferenceCoordinator.ReadLock()
 }
 
 func mdnsEnabled(db *gorm.DB) (bool, error) {
@@ -463,9 +474,16 @@ func (s *Service) applyMutationLocked(
 }
 
 func (s *Service) SetSettings(interfaces, hostname string) error {
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+
 	if err := validateSettingsInput(interfaces, hostname); err != nil {
 		return err
 	}
+	if err := s.rejectFilteredStandardBridgeInterfaces(interfaces, ErrInvalidSettings); err != nil {
+		return err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -564,7 +582,13 @@ func (s *Service) ensureRecordIdentityAvailable(db *gorm.DB, excludeID uint, nam
 }
 
 func (s *Service) CreateRecord(name, recordType string, port int, txt map[string]string, interfaces string) (mdnsModels.MdnsRecord, error) {
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+
 	if err := validateRecordInput(name, recordType, port, txt, interfaces); err != nil {
+		return mdnsModels.MdnsRecord{}, err
+	}
+	if err := s.rejectFilteredStandardBridgeInterfaces(interfaces, ErrInvalidRecord); err != nil {
 		return mdnsModels.MdnsRecord{}, err
 	}
 
@@ -612,7 +636,13 @@ func (s *Service) CreateRecord(name, recordType string, port int, txt map[string
 }
 
 func (s *Service) UpdateRecord(id uint, name, recordType string, port int, txt map[string]string, interfaces string) error {
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+
 	if err := validateRecordInput(name, recordType, port, txt, interfaces); err != nil {
+		return err
+	}
+	if err := s.rejectFilteredStandardBridgeInterfaces(interfaces, ErrInvalidRecord); err != nil {
 		return err
 	}
 
@@ -783,6 +813,27 @@ func validateInterfaces(interfaces string) error {
 		if _, err := mdnsInterfaceByName(name); err != nil {
 			return fmt.Errorf("network interface %q does not exist", name)
 		}
+	}
+	return nil
+}
+
+func (s *Service) rejectFilteredStandardBridgeInterfaces(interfaces string, invalidKind error) error {
+	names := make([]string, 0)
+	for _, name := range strings.Split(interfaces, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+
+	err := interfaceref.RejectFilteredStandardBridgeInterfaces(s.DB, names...)
+	if errors.Is(err, interfaceref.ErrFilteredStandardSwitchL2Only) {
+		return fmt.Errorf(
+			"%w: a VLAN-filtered Standard Switch base is layer 2 only; select its Host VLAN interface",
+			invalidKind,
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to validate mDNS network interfaces: %w", err)
 	}
 	return nil
 }

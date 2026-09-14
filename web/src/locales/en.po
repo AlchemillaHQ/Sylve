@@ -789,6 +789,7 @@ msgstr "Failed to create note"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -818,7 +819,6 @@ msgstr "Failed to create note"
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
@@ -1085,6 +1085,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
@@ -1105,7 +1106,6 @@ msgstr "This is a note"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
@@ -1456,6 +1456,7 @@ msgstr "Admin"
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
@@ -1477,7 +1478,6 @@ msgstr "Admin"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/settings/authentication/groups/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -4065,16 +4065,6 @@ msgid "Host"
 msgstr "Host"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Network.svelte
-msgid "Standard switch"
-msgstr "Standard switch"
-
-#: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/VM/Create/Network.svelte
-msgid "Manual switch"
-msgstr "Manual switch"
-
-#: src/lib/components/custom/Jail/Create/Network.svelte
 msgid "Inherit network from the host"
 msgstr "Inherit network from the host"
 
@@ -4092,7 +4082,7 @@ msgid "Inherit"
 msgstr "Inherit"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv4 Network"
 msgstr "IPv4 Network"
 
@@ -4119,12 +4109,12 @@ msgstr "IPv4"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv4 Gateway"
 msgstr "IPv4 Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Network"
 msgstr "IPv6 Network"
 
@@ -4151,7 +4141,7 @@ msgstr "IPv6"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Gateway"
 msgstr "IPv6 Gateway"
 
@@ -5969,10 +5959,6 @@ msgstr "Invalid switch name"
 msgid "Invalid MTU"
 msgstr "Invalid MTU"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Invalid VLAN"
-msgstr "Invalid VLAN"
-
 #. 0: normalizedName
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch {0} created"
@@ -5991,34 +5977,29 @@ msgstr "Switch {0} updated"
 msgid "Error updating switch"
 msgstr "Error updating switch"
 
-#. 0: confirmModals.editSwitch.oldName
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#. 0: form.oldName ?? form.name
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Edit Standard Switch - {0}"
 msgstr "Edit Standard Switch - {0}"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Create Standard Switch"
 msgstr "Create Standard Switch"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Ports"
 msgstr "Ports"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Select ports"
 msgstr "Select ports"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Private"
 msgstr "Private"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Disable IPV6"
-msgstr "Disable IPV6"
 
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "Create Directory"
@@ -8111,6 +8092,9 @@ msgstr "<0/> Loading template details..."
 msgid "Template data unavailable"
 msgstr "Template data unavailable"
 
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
@@ -8996,8 +8980,6 @@ msgstr "dir:"
 msgid "search:"
 msgstr "search:"
 
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -10837,6 +10819,7 @@ msgstr "Cannot delete this user"
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Saving…"
 msgstr "Saving…"
@@ -10844,6 +10827,7 @@ msgstr "Saving…"
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 msgid "Creating…"
 msgstr "Creating…"
@@ -11696,19 +11680,19 @@ msgstr "Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64"
 msgid "Invalid IPv6 gateway address"
 msgstr "Invalid IPv6 gateway address"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Select object or type CIDR (192.168.1.1/24)"
 msgstr "Select object or type CIDR (192.168.1.1/24)"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Select object or type IP (192.168.1.254)"
 msgstr "Select object or type IP (192.168.1.254)"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Select object or type CIDR (2001:db8::1/64)"
 msgstr "Select object or type CIDR (2001:db8::1/64)"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Select object or type IP (2001:db8::1)"
 msgstr "Select object or type IP (2001:db8::1)"
 
@@ -13676,6 +13660,10 @@ msgstr "Edit Samba Share - {0}"
 msgid "Choose the share location, define access, then enable optional Samba features."
 msgstr "Choose the share location, define access, then enable optional Samba features."
 
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -15159,17 +15147,13 @@ msgstr "Hide password"
 msgid "Show password"
 msgstr "Show password"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Disable Bridge Offloads"
 msgstr "Disable Bridge Offloads"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "ZFS Dataset - Delete"
 msgstr "ZFS Dataset - Delete"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
-msgstr "Disables bridge-sensitive TOE, TX checksum, TSO, LRO, and MEXTPG capabilities on selected ports before bridge attachment. Recommended to prevent link flaps when taps or epairs are added and removed. Enabling it can briefly interrupt port traffic once; disabling the option only stops enforcement but does not re-enable capabilities."
 
 #: src/lib/components/custom/ZFS/Dashboard/WorkloadDonut.svelte
 msgid "Avg latency"
@@ -15608,14 +15592,6 @@ msgstr "Switch still contains an unmanaged interface"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Switch no longer exists"
 msgstr "Switch no longer exists"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "<0/> Saving…"
-msgstr "<0/> Saving…"
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "<0/> Creating…"
-msgstr "<0/> Creating…"
 
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
 msgid "Select a bridge"
@@ -17350,6 +17326,7 @@ msgstr "The selected {0} {1} currently {2} IP addresses assigned. Continuing wil
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Applying…"
 msgstr "Applying…"
 
@@ -17726,47 +17703,47 @@ msgstr "Select a valid single-value MAC object"
 msgid "Choose how the bridge MAC address is sourced"
 msgstr "Choose how the bridge MAC address is sourced"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Bridge MAC source"
 msgstr "Bridge MAC source"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Use port MAC"
 msgstr "Use port MAC"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Keep the bridge identity tied to one selected port."
 msgstr "Keep the bridge identity tied to one selected port."
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Use MAC object"
 msgstr "Use MAC object"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Use an explicit MAC, including on a portless switch."
 msgstr "Use an explicit MAC, including on a portless switch."
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "MAC source port"
 msgstr "MAC source port"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Select one of the switch ports"
 msgstr "Select one of the switch ports"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "MAC address object"
 msgstr "MAC address object"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Select a single-value MAC object"
 msgstr "Select a single-value MAC object"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Create object"
 msgstr "Create object"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 msgid "Effective MAC: <0/>"
 msgstr "Effective MAC: <0/>"
 
@@ -17787,19 +17764,19 @@ msgstr "Another switch already owns the IPv4 default route"
 msgid "Another switch already owns the IPv6 default route"
 msgstr "Another switch already owns the IPv6 default route"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Use DHCP Default Route"
 msgstr "Use DHCP Default Route"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv4 Default Route"
 msgstr "IPv4 Default Route"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "Use RA Default Route"
 msgstr "Use RA Default Route"
 
-#: src/routes/[node]/network/switches/standard/+page.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Default Route"
 msgstr "IPv6 Default Route"
 
@@ -18274,3 +18251,291 @@ msgstr "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, u
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors & Technologies"
 msgstr "Sponsors & Technologies"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "VLAN port mode"
+msgstr "VLAN port mode"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "<0/> Access"
+msgstr "<0/> Access"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "<0/> Trunk"
+msgstr "<0/> Trunk"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Access VLAN"
+msgstr "Access VLAN"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Native VLAN"
+msgstr "Native VLAN"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Untagged traffic is assigned to this VLAN. Leave empty for a tagged-only trunk."
+msgstr "Untagged traffic is assigned to this VLAN. Leave empty for a tagged-only trunk."
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Tagged VLANs"
+msgstr "Tagged VLANs"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Comma-separated IDs and inclusive ranges."
+msgstr "Comma-separated IDs and inclusive ranges."
+
+#. 0: taggedPreview.join(', ')
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Allowed tagged VLANs: {0}"
+msgstr "Allowed tagged VLANs: {0}"
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Enter VLAN IDs or inclusive ranges from 1 to 4094."
+msgstr "Enter VLAN IDs or inclusive ranges from 1 to 4094."
+
+#: src/lib/components/custom/Network/VLANPolicyEditor.svelte
+msgid "Choose how this port carries VLAN traffic."
+msgstr "Choose how this port carries VLAN traffic."
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Runtime bridge state unavailable"
+msgstr "Runtime bridge state unavailable"
+
+#. 0: filtered ? ' · VLAN filtered' \\: ''
+#. 0: vlanFiltering && defaultAccessVlan !== null ? ` · VLAN filtered · access VLAN ${defaultAccessVlan}` \\: vlanFiltering ? ' · VLAN filtered · no default access VLAN (unavailable for VMs)' \\: ''
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Standard switch{0}"
+msgstr "Standard switch{0}"
+
+#. 0: filtered ? ' · VLAN filtered' \\: ''
+#. 0: vlanFiltering && defaultAccessVlan !== null ? ` · VLAN filtered · access VLAN ${defaultAccessVlan}` \\: vlanFiltering ? ' · VLAN filtered · no default access VLAN (unavailable for VMs)' \\: ''
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/VM/Create/Network.svelte
+msgid "Manual switch{0}"
+msgstr "Manual switch{0}"
+
+#: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "Jail bridge-member policy"
+msgstr "Jail bridge-member policy"
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "The selected switch runtime state is unavailable"
+msgstr "The selected switch runtime state is unavailable"
+
+#: src/lib/components/custom/Jail/Network/Form.svelte
+msgid "A valid access or trunk VLAN policy is required"
+msgstr "A valid access or trunk VLAN policy is required"
+
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+#: src/lib/components/custom/VM/Hardware/Network.svelte
+msgid "The selected switch is unavailable for this VM"
+msgstr "The selected switch is unavailable for this VM"
+
+#. 0: settings
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "This switch currently has host networking configured ({0}). Continuing without a Host VLAN will permanently remove those saved IPv4 and IPv6 settings because a VLAN-filtered bridge base is layer 2 only. If this browser session uses that host connection, connectivity may be lost. Select a Host VLAN to keep host networking, or ensure console access is available before continuing."
+msgstr "This switch currently has host networking configured ({0}). Continuing without a Host VLAN will permanently remove those saved IPv4 and IPv6 settings because a VLAN-filtered bridge base is layer 2 only. If this browser session uses that host connection, connectivity may be lost. Select a Host VLAN to keep host networking, or ensure console access is available before continuing."
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 DHCP"
+msgstr "IPv4 DHCP"
+
+#. 0: row.networkObj.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 network object “{0}”"
+msgstr "IPv4 network object “{0}”"
+
+#. 0: row.networkManual
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 network {0}"
+msgstr "IPv4 network {0}"
+
+#. 0: row.gatewayAddressObj.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 gateway object “{0}”"
+msgstr "IPv4 gateway object “{0}”"
+
+#. 0: row.gatewayManual
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 gateway {0}"
+msgstr "IPv4 gateway {0}"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 default route"
+msgstr "IPv4 default route"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 SLAAC"
+msgstr "IPv6 SLAAC"
+
+#. 0: row.network6Obj.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 network object “{0}”"
+msgstr "IPv6 network object “{0}”"
+
+#. 0: row.network6Manual
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 network {0}"
+msgstr "IPv6 network {0}"
+
+#. 0: row.gateway6AddressObj.name
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 gateway object “{0}”"
+msgstr "IPv6 gateway object “{0}”"
+
+#. 0: row.gateway6Manual
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 gateway {0}"
+msgstr "IPv6 gateway {0}"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 default route"
+msgstr "IPv6 default route"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid legacy VLAN"
+msgstr "Invalid legacy VLAN"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Port VLAN child interfaces cannot be combined with VLAN filtering"
+msgstr "Port VLAN child interfaces cannot be combined with VLAN filtering"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Detach every VM and jail network interface from this switch before changing VLAN filtering"
+msgstr "Detach every VM and jail network interface from this switch before changing VLAN filtering"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Detach any unmanaged live bridge members before changing the switch's VLAN configuration"
+msgstr "Detach any unmanaged live bridge members before changing the switch's VLAN configuration"
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Remove host settings"
+msgstr "Remove host settings"
+
+#. 0: policy.untaggedVlan
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+msgid "Access {0}"
+msgstr "Access {0}"
+
+#. 0: native; 1: policy.taggedVlans.join(',')
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+msgid "Trunk {0}tagged {1}"
+msgstr "Trunk {0}tagged {1}"
+
+#: src/routes/[node]/jail/[ctid]/network/+page.svelte
+msgid "VLAN policy"
+msgstr "VLAN policy"
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "WireGuard Server (wgs0)"
+msgstr "WireGuard Server (wgs0)"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> General <1/>"
+msgstr "<0/> General <1/>"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "Ports & VLANs"
+msgstr "Ports & VLANs"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv4 <1/>"
+msgstr "<0/> IPv4 <1/>"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv6 <1/>"
+msgstr "<0/> IPv6 <1/>"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "Isolate VMs and jails from each other"
+msgstr "Isolate VMs and jails from each other"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "Avoid networking issues on bridged ports"
+msgstr "Avoid networking issues on bridged ports"
+
+#. 0: version
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Host IPv{0} is disabled until a Host VLAN is selected."
+msgstr "Host IPv{0} is disabled until a Host VLAN is selected."
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Set the Host VLAN under Ports & VLANs and Sylve will create the required VLAN interface on top of the filtered bridge."
+msgstr "Set the Host VLAN under Ports & VLANs and Sylve will create the required VLAN interface on top of the filtered bridge."
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Get an IPv4 address automatically"
+msgstr "Get an IPv4 address automatically"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Use the gateway provided by DHCP"
+msgstr "Use the gateway provided by DHCP"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Use the configured gateway"
+msgstr "Use the configured gateway"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Disable IPv6"
+msgstr "Disable IPv6"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "No SLAAC or static addresses"
+msgstr "No SLAAC or static addresses"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Get IPv6 addresses from RAs"
+msgstr "Get IPv6 addresses from RAs"
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Use the advertised router"
+msgstr "Use the advertised router"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Default access VLAN"
+msgstr "Default access VLAN"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "New unconfigured members, including VM TAPs, inherit this untagged VLAN. Leave empty to reject VM attachments."
+msgstr "New unconfigured members, including VM TAPs, inherit this untagged VLAN. Leave empty to reject VM attachments."
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Host VLAN"
+msgstr "Host VLAN"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Required for host IPv4/IPv6 on a filtered switch. Sylve creates a VLAN interface on the bridge; its VLAN must be admitted by the uplink."
+msgstr "Required for host IPv4/IPv6 on a filtered switch. Sylve creates a VLAN interface on the bridge; its VLAN must be admitted by the uplink."
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "VLAN child"
+msgstr "VLAN child"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Create VLAN child interfaces before adding the selected ports. Use 0 for none."
+msgstr "Create VLAN child interfaces before adding the selected ports. Use 0 for none."
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Physical port policies"
+msgstr "Physical port policies"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Port selection order has no effect. Every selected port needs an explicit policy."
+msgstr "Port selection order has no effect. Every selected port needs an explicit policy."
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Ingress and egress VLAN handling"
+msgstr "Ingress and egress VLAN handling"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "VLAN filtering"
+msgstr "VLAN filtering"
+
+#: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
+msgid "Choose the untagged and tagged VLANs on each port"
+msgstr "Choose the untagged and tagged VLANs on each port"

@@ -392,6 +392,16 @@ func TestUpdateStandardSwitchDoesNotPreserveOmittedIPv6RouteOwnership(t *testing
 	}
 }
 
+func TestUpdateStandardSwitchForwardsHostLayer3RemovalConfirmation(t *testing.T) {
+	confirmHostLayer3Removal := true
+	request := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{
+		ConfirmHostLayer3Removal: &confirmHostLayer3Removal,
+	})
+	if request.ID != 7 || !request.ConfirmHostLayer3Removal {
+		t.Fatalf("host layer-3 removal confirmation was not forwarded: %#v", request)
+	}
+}
+
 func TestStandardSwitchHandlersRejectInvalidPathIDs(t *testing.T) {
 	for _, id := range []string{"0", "-1", "not-a-number"} {
 		t.Run(id, func(t *testing.T) {

@@ -51,30 +51,31 @@ type CreateStandardSwitchRequest struct {
 }
 
 type UpdateStandardSwitchRequest struct {
-	MTU                   *int                                  `json:"mtu"`
-	VLAN                  *int                                  `json:"vlan"`
-	Network4              *uint                                 `json:"network4"`
-	Gateway4              *uint                                 `json:"gateway4"`
-	Network6              *uint                                 `json:"network6"`
-	Gateway6              *uint                                 `json:"gateway6"`
-	Network4Manual        *string                               `json:"network4Manual"`
-	Gateway4Manual        *string                               `json:"gateway4Manual"`
-	Network6Manual        *string                               `json:"network6Manual"`
-	Gateway6Manual        *string                               `json:"gateway6Manual"`
-	DisableIPv6           *bool                                 `json:"disableIPv6"`
-	SLAAC                 *bool                                 `json:"slaac"`
-	Private               *bool                                 `json:"private" binding:"required"`
-	Ports                 []string                              `json:"ports"`
-	DHCP                  *bool                                 `json:"dhcp"`
-	DefaultRoute          *bool                                 `json:"defaultRoute"`
-	DefaultRoute6         *bool                                 `json:"defaultRoute6"`
-	DisableBridgeOffloads *bool                                 `json:"disableBridgeOffloads"`
-	ConfirmRCConflicts    *bool                                 `json:"confirmRCConflicts"`
-	BridgeMAC             networkModels.StandardSwitchMACSource `json:"bridgeMac"`
-	VLANFiltering         *bool                                 `json:"vlanFiltering"`
-	DefaultAccessVLAN     *int                                  `json:"defaultAccessVlan"`
-	HostVLAN              *int                                  `json:"hostVlan"`
-	PortPolicies          map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
+	MTU                      *int                                  `json:"mtu"`
+	VLAN                     *int                                  `json:"vlan"`
+	Network4                 *uint                                 `json:"network4"`
+	Gateway4                 *uint                                 `json:"gateway4"`
+	Network6                 *uint                                 `json:"network6"`
+	Gateway6                 *uint                                 `json:"gateway6"`
+	Network4Manual           *string                               `json:"network4Manual"`
+	Gateway4Manual           *string                               `json:"gateway4Manual"`
+	Network6Manual           *string                               `json:"network6Manual"`
+	Gateway6Manual           *string                               `json:"gateway6Manual"`
+	DisableIPv6              *bool                                 `json:"disableIPv6"`
+	SLAAC                    *bool                                 `json:"slaac"`
+	Private                  *bool                                 `json:"private" binding:"required"`
+	Ports                    []string                              `json:"ports"`
+	DHCP                     *bool                                 `json:"dhcp"`
+	DefaultRoute             *bool                                 `json:"defaultRoute"`
+	DefaultRoute6            *bool                                 `json:"defaultRoute6"`
+	DisableBridgeOffloads    *bool                                 `json:"disableBridgeOffloads"`
+	ConfirmRCConflicts       *bool                                 `json:"confirmRCConflicts"`
+	ConfirmHostLayer3Removal *bool                                 `json:"confirmHostLayer3Removal"`
+	BridgeMAC                networkModels.StandardSwitchMACSource `json:"bridgeMac"`
+	VLANFiltering            *bool                                 `json:"vlanFiltering"`
+	DefaultAccessVLAN        *int                                  `json:"defaultAccessVlan"`
+	HostVLAN                 *int                                  `json:"hostVlan"`
+	PortPolicies             map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
 }
 
 func bindStandardSwitchJSON(c *gin.Context, destination any) bool {
@@ -228,7 +229,8 @@ func updateStandardSwitchServiceRequest(
 	request UpdateStandardSwitchRequest,
 ) network.UpdateStandardSwitchRequest {
 	return network.UpdateStandardSwitchRequest{
-		ID: id,
+		ID:                       id,
+		ConfirmHostLayer3Removal: optionalBool(request.ConfirmHostLayer3Removal),
 		StandardSwitchConfig: network.StandardSwitchConfig{
 			MTU:                   optionalInt(request.MTU),
 			VLAN:                  optionalInt(request.VLAN),

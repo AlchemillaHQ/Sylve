@@ -7,25 +7,20 @@
 	import ComboBox from '$lib/components/ui/custom-input/combobox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import type { Iface } from '$lib/types/network/iface';
 	import type { SambaConfig } from '$lib/types/samba/config';
 	import { loadEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { handleAPIError } from '$lib/utils/http';
+	import type { HostInterfaceOption } from '$lib/utils/network/helpers';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
 		open: boolean;
 		reload: boolean;
 		sambaConfig: SambaConfig;
-		networkInterfaces: Iface[];
+		interfaceOptions: HostInterfaceOption[];
 	}
 
-	let {
-		open = $bindable(),
-		reload = $bindable(),
-		sambaConfig,
-		networkInterfaces
-	}: Props = $props();
+	let { open = $bindable(), reload = $bindable(), sambaConfig, interfaceOptions }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let options = {
@@ -146,10 +141,7 @@
 				bind:open={properties.interfaces.combobox.open}
 				label="Interfaces"
 				bind:value={properties.interfaces.combobox.values}
-				data={networkInterfaces.map((iface) => ({
-					label: iface.description !== '' ? iface.description : iface.name,
-					value: iface.name
-				}))}
+				data={interfaceOptions}
 				classes="space-y-1.5"
 				placeholder="Select interfaces"
 				width="w-full"

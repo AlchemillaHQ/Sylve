@@ -102,8 +102,12 @@
 		);
 	});
 
+	function isSelected(val: string): boolean {
+		return multiple ? Array.isArray(value) && value.includes(val) : value === val;
+	}
+
 	function selectItem(val: string) {
-		if (effectiveData.find((item) => item.value === val)?.disabled) return;
+		if (effectiveData.find((item) => item.value === val)?.disabled && !isSelected(val)) return;
 		if (multiple) {
 			const arr = Array.isArray(value) ? [...value] : [];
 			const idx = arr.indexOf(val);
@@ -238,7 +242,7 @@
 						{#each filteredData as element (element.value)}
 							<Command.Item
 								class={commandClasses}
-								disabled={element.disabled}
+								disabled={element.disabled && !isSelected(element.value)}
 								value={element.value}
 								onSelect={() => selectItem(element.value)}
 								onkeydown={(e) => {

@@ -13,9 +13,9 @@
 	import type { NetworkObject } from '$lib/types/network/object';
 	import type { SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError } from '$lib/utils/http';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { validateStaticRoutePayload } from '$lib/utils/network/route';
 	import { toast } from 'svelte-sonner';
-	import { SvelteSet } from 'svelte/reactivity';
 	import { watch } from 'runed';
 
 	interface Props {
@@ -216,22 +216,7 @@
 	});
 
 	const ifaceOptions = $derived.by(() => {
-		const opts: { label: string; value: string }[] = [];
-		const covered = new SvelteSet<string>();
-
-		for (const sw of switches.standard ?? []) {
-			opts.push({ label: sw.name, value: sw.bridgeName });
-			covered.add(sw.bridgeName);
-		}
-		for (const sw of switches.manual ?? []) {
-			opts.push({ label: sw.name, value: sw.bridge });
-			covered.add(sw.bridge);
-		}
-		for (const iface of interfaces) {
-			if (covered.has(iface.name)) continue;
-			opts.push({ label: iface.description || iface.name, value: iface.name });
-		}
-		return opts;
+		return buildHostInterfaceOptions({ interfaces, switches });
 	});
 
 	const destObjectOptions = $derived(

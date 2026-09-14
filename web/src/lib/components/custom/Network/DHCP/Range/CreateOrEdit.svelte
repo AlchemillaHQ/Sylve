@@ -156,9 +156,7 @@ under sponsorship from the FreeBSD Foundation.
 	let switchOptions = $derived.by(() => {
 		const options = generateSwitchOptions({
 			...networkSwitches,
-			standard: networkSwitches.standard.filter(
-				(sw) => !sw.vlanFiltering || sw.hostVlan !== null
-			)
+			standard: networkSwitches.standard.filter((sw) => !sw.vlanFiltering || sw.hostVlan !== null)
 		});
 		if (
 			currentSwitchOption &&

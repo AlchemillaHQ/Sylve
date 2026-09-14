@@ -6,6 +6,7 @@
 		deleteMdnsRecord
 	} from '$lib/api/network/mdns';
 	import { getInterfaces } from '$lib/api/network/iface';
+	import { getSwitches } from '$lib/api/network/switch';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -17,7 +18,9 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { MdnsRecordWithManaged } from '$lib/types/network/mdns';
 	import type { Iface } from '$lib/types/network/iface';
+	import { emptySwitchList, isSwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { generateNanoId } from '$lib/utils/string';
 	import { toast } from 'svelte-sonner';
 	import { resource } from 'runed';
@@ -32,6 +35,22 @@
 			const result = await getInterfaces();
 			return Array.isArray(result) ? result : ([] as Iface[]);
 		}
+	);
+
+	const switches = resource(
+		() => 'network-switches',
+		async () => {
+			const result = await getSwitches();
+			return isSwitchList(result) ? result : emptySwitchList();
+		}
+	);
+
+	const interfaceOptions = $derived(
+		buildHostInterfaceOptions({
+			interfaces: networkInterfaces.current ?? [],
+			switches: switches.current ?? emptySwitchList(),
+			includeInterface: (iface) => !iface.groups?.includes('tap')
+		})
 	);
 
 	let modalState = $state({
@@ -287,10 +306,7 @@
 				bind:open={modalState.interfacesOpen}
 				label="Interfaces"
 				bind:value={modalState.interfaces}
-				data={(networkInterfaces.current ?? []).map((iface) => ({
-					label: iface.description || iface.name,
-					value: iface.name
-				}))}
+				data={interfaceOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Use global setting"
 				width="w-full"

@@ -293,8 +293,8 @@ func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchIn
 }
 
 func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switchID uint, retErr error) {
-	s.interfaceReferenceMutex.Lock()
-	defer s.interfaceReferenceMutex.Unlock()
+	unlockInterfaceReferences := s.lockInterfaceReferencesWrite()
+	defer unlockInterfaceReferences()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -374,8 +374,8 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switch
 }
 
 func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
-	s.interfaceReferenceMutex.Lock()
-	defer s.interfaceReferenceMutex.Unlock()
+	unlockInterfaceReferences := s.lockInterfaceReferencesWrite()
+	defer unlockInterfaceReferences()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -447,8 +447,8 @@ func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
 }
 
 func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retErr error) {
-	s.interfaceReferenceMutex.Lock()
-	defer s.interfaceReferenceMutex.Unlock()
+	unlockInterfaceReferences := s.lockInterfaceReferencesWrite()
+	defer unlockInterfaceReferences()
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -462,6 +462,15 @@ func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retEr
 	input, err := s.validateStandardSwitchInput(request.ID, before.BridgeName, standardSwitchInputFromConfig(request.StandardSwitchConfig))
 	if err != nil {
 		return err
+	}
+	if input.vlanConfig.Filtering &&
+		input.vlanConfig.HostVLAN == nil &&
+		standardSwitchHasPersistedHostL3(before) &&
+		!request.ConfirmHostLayer3Removal {
+		return standardSwitchConflict(
+			"standard_switch_host_layer3_removal_requires_confirmation",
+			nil,
+		)
 	}
 	modeChanged := before.VLANFiltering != input.vlanConfig.Filtering
 	if modeChanged {

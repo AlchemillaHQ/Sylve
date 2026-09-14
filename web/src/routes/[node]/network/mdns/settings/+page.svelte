@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getMdnsSettings } from '$lib/api/network/mdns';
 	import { getInterfaces } from '$lib/api/network/iface';
+	import { getSwitches } from '$lib/api/network/switch';
 	import Config from '$lib/components/custom/Network/MDNS/Config.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
@@ -9,19 +10,25 @@
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
 	import type { MdnsSettings } from '$lib/types/network/mdns';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { generateNanoId } from '$lib/utils/string';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
+	import { escapeHTML, generateNanoId } from '$lib/utils/string';
 	import { resource, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 
 	interface Data {
 		settings: MdnsSettings;
 		interfaces: Iface[] | APIResponse;
+		switches: SwitchList | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
 	// svelte-ignore state_referenced_locally
-	let lastGoodInterfaces = Array.isArray(data.interfaces) ? data.interfaces : ([] as Iface[]);
+	let [lastGoodInterfaces, lastGoodSwitches]: [Iface[], SwitchList] = [
+		Array.isArray(data.interfaces) ? data.interfaces : [],
+		isSwitchList(data.switches) ? data.switches : emptySwitchList()
+	];
 
 	// svelte-ignore state_referenced_locally
 	let settings = resource(
@@ -50,6 +57,22 @@
 		{ initialValue: lastGoodInterfaces }
 	);
 
+	let switches = resource(
+		() => 'network-switches',
+		async (key) => {
+			const result = await getSwitches();
+			if (!isSwitchList(result)) {
+				handleAPIError(result);
+				return lastGoodSwitches;
+			}
+
+			lastGoodSwitches = result;
+			updateCache(key, result);
+			return result;
+		},
+		{ initialValue: lastGoodSwitches }
+	);
+
 	let reload = $state(false);
 
 	watch(
@@ -58,6 +81,7 @@
 			if (current) {
 				settings.refetch();
 				networkInterfaces.refetch();
+				switches.refetch();
 				reload = false;
 			}
 		}
@@ -79,6 +103,10 @@
 
 		return filtered;
 	});
+
+	let interfaceOptions = $derived(
+		buildHostInterfaceOptions({ interfaces: usableIfaces, switches: switches.current })
+	);
 
 	let query = $state('');
 	let modalOpen = $state(false);
@@ -104,13 +132,9 @@
 							.filter(Boolean);
 						let html = '';
 						for (let i = 0; i < arr.length; i++) {
-							const iface = usableIfaces.find((ifc) => ifc.name === arr[i]);
-							const label = iface
-								? iface.description !== ''
-									? iface.description
-									: iface.name
-								: arr[i];
-							html += `<span class="focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium transition-[color,box-shadow] focus-visible:ring-[3px] [&>svg]:pointer-events-none [&>svg]:size-3 bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 dark:border-transparent${i > 0 ? ' ml-1.5' : ''}">${label}</span>`;
+							const option = interfaceOptions.find((candidate) => candidate.value === arr[i]);
+							const label = option?.label ?? arr[i];
+							html += `<span class="focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium transition-[color,box-shadow] focus-visible:ring-[3px] [&>svg]:pointer-events-none [&>svg]:size-3 bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 dark:border-transparent${i > 0 ? ' ml-1.5' : ''}">${escapeHTML(label)}</span>`;
 						}
 						return html;
 					}
@@ -155,9 +179,4 @@
 	</div>
 </div>
 
-<Config
-	bind:open={modalOpen}
-	bind:reload
-	mdnsSettings={settings.current}
-	networkInterfaces={usableIfaces}
-/>
+<Config bind:open={modalOpen} bind:reload mdnsSettings={settings.current} {interfaceOptions} />

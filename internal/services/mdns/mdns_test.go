@@ -22,6 +22,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	mdnsInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/mdns"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -123,6 +124,7 @@ func newMDNSMutationFixture(t *testing.T, responders ...*fakeResponder) *mdnsMut
 		&models.BasicSettings{},
 		&mdnsModels.MdnsSettings{},
 		&mdnsModels.MdnsRecord{},
+		&networkModels.StandardSwitch{},
 	)
 	if err := db.Create(&models.BasicSettings{
 		Services: []models.AvailableService{models.Mdns},
@@ -959,5 +961,53 @@ func TestPublishValidatesAllServicesBeforeStoppingResponder(t *testing.T) {
 	case <-initial.closed:
 		t.Fatal("invalid service closed the running responder")
 	default:
+	}
+}
+
+func TestMDNSMutationsRejectFilteredStandardSwitchBaseInterface(t *testing.T) {
+	previousInterfaceByName := mdnsInterfaceByName
+	mdnsInterfaceByName = func(name string) (*net.Interface, error) {
+		return &net.Interface{Name: name, Index: 1}, nil
+	}
+	t.Cleanup(func() { mdnsInterfaceByName = previousInterfaceByName })
+
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
+	if err := db.Create(&networkModels.StandardSwitch{
+		Name:          "tenant",
+		BridgeName:    "vm-tenant",
+		VLANFiltering: true,
+	}).Error; err != nil {
+		t.Fatalf("create filtered Standard Switch: %v", err)
+	}
+	service := &Service{DB: db}
+
+	if err := service.SetSettings("vm-tenant", ""); !errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("expected invalid settings error, got %v", err)
+	}
+	if _, err := service.CreateRecord(
+		"printer",
+		"_ipp._tcp",
+		631,
+		nil,
+		"vm-tenant",
+	); !errors.Is(err, ErrInvalidRecord) {
+		t.Fatalf("expected invalid record error, got %v", err)
+	}
+}
+
+func TestMDNSInterfaceReferenceDatabaseFailureIsNotInvalidInput(t *testing.T) {
+	previousInterfaceByName := mdnsInterfaceByName
+	mdnsInterfaceByName = func(name string) (*net.Interface, error) {
+		return &net.Interface{Name: name, Index: 1}, nil
+	}
+	t.Cleanup(func() { mdnsInterfaceByName = previousInterfaceByName })
+
+	service := &Service{DB: testutil.NewSQLiteTestDB(t)}
+	err := service.SetSettings("em0", "")
+	if err == nil {
+		t.Fatal("expected missing Standard Switch schema to fail closed")
+	}
+	if errors.Is(err, ErrInvalidSettings) {
+		t.Fatalf("database validation failure was misclassified as invalid settings: %v", err)
 	}
 }

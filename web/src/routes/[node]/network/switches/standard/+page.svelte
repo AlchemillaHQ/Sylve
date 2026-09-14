@@ -318,10 +318,22 @@ under sponsorship from the FreeBSD Foundation.
 
 	let reload = $state(false);
 	let saving = $state(false);
+	type SwitchConfirmations = {
+		addressRemoval: boolean;
+		hostLayer3Removal: boolean;
+		rcConflicts: boolean;
+	};
+	const emptyConfirmations = (): SwitchConfirmations => ({
+		addressRemoval: false,
+		hostLayer3Removal: false,
+		rcConflicts: false
+	});
+
 	let addressRemovalWarning = $state({
 		open: false,
 		ports: [] as string[],
-		inspectionUnavailable: false
+		inspectionUnavailable: false,
+		confirmations: emptyConfirmations()
 	});
 
 	let addressRemovalWarningMessage = $derived.by(() => {
@@ -338,7 +350,21 @@ under sponsorship from the FreeBSD Foundation.
 
 	let rcConflictWarning = $state({
 		open: false,
-		conflicts: [] as StandardSwitchRCConflict[]
+		conflicts: [] as StandardSwitchRCConflict[],
+		confirmations: emptyConfirmations()
+	});
+
+	let hostLayer3RemovalWarning = $state({
+		open: false,
+		settings: [] as string[],
+		confirmations: emptyConfirmations()
+	});
+
+	let hostLayer3RemovalWarningMessage = $derived.by(() => {
+		const settings = hostLayer3RemovalWarning.settings
+			.map((setting) => `<b>${escapeHTML(setting)}</b>`)
+			.join(', ');
+		return `This switch currently has host networking configured (${settings}). Continuing without a Host VLAN will permanently remove those saved IPv4 and IPv6 settings because a VLAN-filtered bridge base is layer 2 only. If this browser session uses that host connection, connectivity may be lost. Select a Host VLAN to keep host networking, or ensure console access is available before continuing.`;
 	});
 
 	function rcConflictDetail(conflict: StandardSwitchRCConflict): string {
@@ -369,13 +395,37 @@ under sponsorship from the FreeBSD Foundation.
 		return `The selected ports have configuration outside Sylve's managed Standard Switches.<br>${details}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime.`;
 	});
 
-	function showRCConflictWarning(response: APIResponse): boolean {
+	function showRCConflictWarning(
+		response: APIResponse,
+		confirmations: SwitchConfirmations
+	): boolean {
 		if (response.error !== 'standard_switch_rc_conflicts_require_confirmation') return false;
 		const parsed = StandardSwitchRCConflictsSchema.safeParse(response.data);
 		if (!parsed.success || parsed.data.length === 0) return false;
 		rcConflictWarning.conflicts = parsed.data;
+		rcConflictWarning.confirmations = { ...confirmations };
 		rcConflictWarning.open = true;
 		return true;
+	}
+
+	function configuredHostLayer3Settings(row: SwitchRow | null): string[] {
+		if (!row) return [];
+		const settings: string[] = [];
+		if (row.dhcp) settings.push('IPv4 DHCP');
+		if (row.networkObj?.id) settings.push(`IPv4 network object “${row.networkObj.name}”`);
+		else if (row.networkManual) settings.push(`IPv4 network ${row.networkManual}`);
+		if (row.gatewayAddressObj?.id)
+			settings.push(`IPv4 gateway object “${row.gatewayAddressObj.name}”`);
+		else if (row.gatewayManual) settings.push(`IPv4 gateway ${row.gatewayManual}`);
+		if (row.defaultRoute) settings.push('IPv4 default route');
+		if (row.slaac) settings.push('IPv6 SLAAC');
+		if (row.network6Obj?.id) settings.push(`IPv6 network object “${row.network6Obj.name}”`);
+		else if (row.network6Manual) settings.push(`IPv6 network ${row.network6Manual}`);
+		if (row.gateway6AddressObj?.id)
+			settings.push(`IPv6 gateway object “${row.gateway6AddressObj.name}”`);
+		else if (row.gateway6Manual) settings.push(`IPv6 gateway ${row.gateway6Manual}`);
+		if (row.defaultRoute6) settings.push('IPv6 default route');
+		return settings;
 	}
 
 	function selectedBridgeMembers(ports: string[], vlan: number): string[] {
@@ -411,7 +461,7 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	);
 
-	async function confirmAction(addressRemovalConfirmed = false, rcConflictsConfirmed = false) {
+	async function confirmAction(confirmations: SwitchConfirmations = emptyConfirmations()) {
 		if (saving) return;
 
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
@@ -516,6 +566,20 @@ under sponsorship from the FreeBSD Foundation.
 				}
 			}
 
+			if (
+				confirmModals.active === 'editSwitch' &&
+				!hostLayer3Enabled &&
+				!confirmations.hostLayer3Removal
+			) {
+				const settings = configuredHostLayer3Settings(activeRow);
+				if (settings.length > 0) {
+					hostLayer3RemovalWarning.settings = settings;
+					hostLayer3RemovalWarning.confirmations = { ...confirmations };
+					hostLayer3RemovalWarning.open = true;
+					return;
+				}
+			}
+
 			const net4 = !hostLayer3Enabled
 				? { id: 0, manual: '' }
 				: splitObjectOrManual(comboBoxes.ipv4.value, ipv4NetworkOptions);
@@ -565,11 +629,12 @@ under sponsorship from the FreeBSD Foundation.
 				}
 
 				if (!currentInterfaces || isAPIResponse(currentInterfaces)) {
-					if (!addressRemovalConfirmed) {
+					if (!confirmations.addressRemoval) {
 						addressRemovalWarning.ports = selectedBridgeMembers(
 							comboBoxes.ports.value,
 							vlan
 						).sort();
+						addressRemovalWarning.confirmations = { ...confirmations };
 						addressRemovalWarning.inspectionUnavailable = true;
 						addressRemovalWarning.open = true;
 						return;
@@ -580,7 +645,8 @@ under sponsorship from the FreeBSD Foundation.
 						comboBoxes.ports.value,
 						vlan
 					);
-					if (addressedPorts.length > 0 && !addressRemovalConfirmed) {
+					if (addressedPorts.length > 0 && !confirmations.addressRemoval) {
+						addressRemovalWarning.confirmations = { ...confirmations };
 						addressRemovalWarning.ports = addressedPorts;
 						addressRemovalWarning.inspectionUnavailable = false;
 						addressRemovalWarning.open = true;
@@ -609,13 +675,14 @@ under sponsorship from the FreeBSD Foundation.
 					disableBridgeOffloads: activeModal.disableBridgeOffloads,
 					vlanConfig,
 					manual,
-					confirmRCConflicts: rcConflictsConfirmed
+					confirmHostLayer3Removal: confirmations.hostLayer3Removal,
+					confirmRCConflicts: confirmations.rcConflicts
 				};
 				if (confirmModals.active === 'newSwitch') {
 					const created = await createSwitch({ name: normalizedName, ...switchConfig });
 
 					if (isAPIResponse(created)) {
-						if (showRCConflictWarning(created)) return;
+						if (showRCConflictWarning(created, confirmations)) return;
 						handleAPIError(created);
 						toast.error('Error creating switch', { position: 'bottom-center' });
 						return;
@@ -628,7 +695,15 @@ under sponsorship from the FreeBSD Foundation.
 					const edited = await updateSwitch(activeRow?.id as number, switchConfig);
 
 					if (edited.status !== 'success') {
-						if (showRCConflictWarning(edited)) return;
+						if (showRCConflictWarning(edited, confirmations)) return;
+						if (edited.error === 'standard_switch_host_layer3_removal_requires_confirmation') {
+							const settings = configuredHostLayer3Settings(activeRow);
+							hostLayer3RemovalWarning.settings =
+								settings.length > 0 ? settings : ['saved host IPv4/IPv6 configuration'];
+							hostLayer3RemovalWarning.confirmations = { ...confirmations };
+							hostLayer3RemovalWarning.open = true;
+							return;
+						}
 						if (
 							edited.error ===
 							'standard_switch_vlan_filtering_change_requires_no_attached_workloads'
@@ -792,9 +867,14 @@ under sponsorship from the FreeBSD Foundation.
 			confirmModals.editSwitch.open = false;
 			addressRemovalWarning.open = false;
 			rcConflictWarning.open = false;
+			hostLayer3RemovalWarning.open = false;
 		}
 		addressRemovalWarning.ports = [];
 		addressRemovalWarning.inspectionUnavailable = false;
+		addressRemovalWarning.confirmations = emptyConfirmations();
+		hostLayer3RemovalWarning.settings = [];
+		hostLayer3RemovalWarning.confirmations = emptyConfirmations();
+		rcConflictWarning.confirmations = emptyConfirmations();
 		rcConflictWarning.conflicts = [];
 
 		confirmModals.newSwitch.name = '';
@@ -1026,13 +1106,39 @@ under sponsorship from the FreeBSD Foundation.
 	keepOpenOnConfirm={true}
 	actions={{
 		onConfirm: async () => {
-			await confirmAction(true);
+			await confirmAction({
+				...addressRemovalWarning.confirmations,
+				addressRemoval: true
+			});
 			addressRemovalWarning.open = false;
 		},
 		onCancel: () => {
 			addressRemovalWarning.open = false;
 			addressRemovalWarning.ports = [];
 			addressRemovalWarning.inspectionUnavailable = false;
+			addressRemovalWarning.confirmations = emptyConfirmations();
+		}
+	}}
+></AlertDialog>
+
+<AlertDialog
+	bind:open={hostLayer3RemovalWarning.open}
+	customTitle={hostLayer3RemovalWarningMessage}
+	confirmLabel="Remove host settings"
+	loadingLabel="Applying…"
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: async () => {
+			await confirmAction({
+				...hostLayer3RemovalWarning.confirmations,
+				hostLayer3Removal: true
+			});
+			hostLayer3RemovalWarning.open = false;
+		},
+		onCancel: () => {
+			hostLayer3RemovalWarning.open = false;
+			hostLayer3RemovalWarning.settings = [];
+			hostLayer3RemovalWarning.confirmations = emptyConfirmations();
 		}
 	}}
 ></AlertDialog>
@@ -1045,12 +1151,16 @@ under sponsorship from the FreeBSD Foundation.
 	keepOpenOnConfirm={true}
 	actions={{
 		onConfirm: async () => {
-			await confirmAction(true, true);
+			await confirmAction({
+				...rcConflictWarning.confirmations,
+				rcConflicts: true
+			});
 			rcConflictWarning.open = false;
 		},
 		onCancel: () => {
 			rcConflictWarning.open = false;
 			rcConflictWarning.conflicts = [];
+			rcConflictWarning.confirmations = emptyConfirmations();
 		}
 	}}
 ></AlertDialog>
