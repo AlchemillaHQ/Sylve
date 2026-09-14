@@ -19,8 +19,8 @@
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
 	import { validateFirewallNATRulePayload } from '$lib/utils/network/firewall';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { toast } from 'svelte-sonner';
-	import { SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
 		open: boolean;
@@ -199,32 +199,19 @@
 	];
 
 	const ifaceOptions = $derived.by(() => {
-		const opts: { label: string; value: string }[] = [];
-		const covered = new SvelteSet<string>();
-		for (const sw of switches.standard ?? []) {
-			opts.push({ label: sw.name, value: sw.bridgeName });
-			covered.add(sw.bridgeName);
-		}
-		for (const sw of switches.manual ?? []) {
-			opts.push({ label: sw.name, value: sw.bridge });
-			covered.add(sw.bridge);
-		}
-		for (const iface of interfaces) {
-			if (covered.has(iface.name)) continue;
-			let label = iface.description || iface.name;
-			if (iface.name === 'wgs0') {
-				label = 'WireGuard Server';
-			} else {
+		return buildHostInterfaceOptions({
+			interfaces,
+			switches,
+			getInterfaceLabel: (iface) => {
+				if (iface.name === 'wgs0') return 'WireGuard Server (wgs0)';
 				const wgcMatch = iface.name.match(/^wgc(\d+)$/);
 				if (wgcMatch) {
-					const clientId = Number(wgcMatch[1]);
-					const client = wgClients.find((c) => c.id === clientId);
-					if (client) label = `${client.name} (WG Client)`;
+					const client = wgClients.find((candidate) => candidate.id === Number(wgcMatch[1]));
+					if (client) return `${client.name} (WG Client · ${iface.name})`;
 				}
+				return iface.description ? `${iface.description} (${iface.name})` : iface.name;
 			}
-			opts.push({ label, value: iface.name });
-		}
-		return opts;
+		});
 	});
 
 	const addrObjectOptions = $derived(

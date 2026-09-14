@@ -18,6 +18,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 
 	"gorm.io/gorm"
 )
@@ -71,7 +72,7 @@ type wgClientMetricsCache struct {
 type Service struct {
 	DB                           *gorm.DB
 	TelemetryDB                  *gorm.DB
-	interfaceReferenceMutex      sync.RWMutex // Acquired before service-specific locks; guards interface identity and references.
+	interfaceReferenceMutex      sync.RWMutex
 	syncMutex                    sync.Mutex
 	epairMutex                   sync.Mutex
 	firewallMutex                sync.Mutex
@@ -95,8 +96,10 @@ type Service struct {
 	wgServerCache                *wgServerMetricsCache
 	wgClientMetricsCache         map[uint]*wgClientMetricsCache
 	listSnapshotMigrationOnce    sync.Once
-	wireGuardUDPPortInUse        func(port int) bool
-	dhcpRuntime                  dhcpRuntimeOperations
+
+	interfaceReferenceCoordinator *interfaceref.Coordinator
+	wireGuardUDPPortInUse         func(port int) bool
+	dhcpRuntime                   dhcpRuntimeOperations
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)
@@ -105,6 +108,26 @@ type Service struct {
 
 func (s *Service) RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint)) {
 	s.OnJailObjectUpdate = cb
+}
+
+func (s *Service) SetInterfaceReferenceCoordinator(coordinator *interfaceref.Coordinator) {
+	s.interfaceReferenceCoordinator = coordinator
+}
+
+func (s *Service) lockInterfaceReferencesRead() func() {
+	if s.interfaceReferenceCoordinator != nil {
+		return s.interfaceReferenceCoordinator.ReadLock()
+	}
+	s.interfaceReferenceMutex.RLock()
+	return s.interfaceReferenceMutex.RUnlock
+}
+
+func (s *Service) lockInterfaceReferencesWrite() func() {
+	if s.interfaceReferenceCoordinator != nil {
+		return s.interfaceReferenceCoordinator.WriteLock()
+	}
+	s.interfaceReferenceMutex.Lock()
+	return s.interfaceReferenceMutex.Unlock
 }
 
 func NewNetworkService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.NetworkServiceInterface {

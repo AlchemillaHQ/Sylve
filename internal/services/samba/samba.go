@@ -16,6 +16,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 
 	"gorm.io/gorm"
 )
@@ -30,6 +31,8 @@ type Service struct {
 	OnConfigChange          func() error
 	EnsureMdnsEnabled       func(*gorm.DB) error
 	WithServiceSettingsLock func(func() error) error
+
+	interfaceReferenceCoordinator *interfaceref.Coordinator
 
 	auditFileOffset int64
 	auditFileMu     sync.Mutex
@@ -51,6 +54,14 @@ func NewSambaService(
 		GZFS:         gzfs,
 		recentMkdirs: make(map[string]time.Time),
 	}
+}
+
+func (s *Service) SetInterfaceReferenceCoordinator(coordinator *interfaceref.Coordinator) {
+	s.interfaceReferenceCoordinator = coordinator
+}
+
+func (s *Service) lockInterfaceReferencesRead() func() {
+	return s.interfaceReferenceCoordinator.ReadLock()
 }
 
 func (s *Service) auditDB() *gorm.DB {

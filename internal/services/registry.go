@@ -22,6 +22,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -197,6 +198,12 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	zfsSvc := zfsService.(*zfs.Service)
 	mdnsSvc := mdnsService.(*mdns.Service)
 	sysSvc := systemService.(*system.Service)
+
+	interfaceReferenceCoordinator := interfaceref.NewCoordinator()
+	networkService.(*network.Service).SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
+	dynamicDNSService.SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
+	mdnsSvc.SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
+	sambaSvc.SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
 
 	zfsSvc.OnDatasetsDeleted = sambaSvc.DisableSharesForDatasets
 	sysSvc.OnUsablePoolsChanged = zfsSvc.ReconcileManagedPoolTelemetry

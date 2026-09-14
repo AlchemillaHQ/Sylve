@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	systemService "github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -53,6 +54,7 @@ func newAppleMdnsTestService(
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&models.BasicSettings{},
+		&networkModels.StandardSwitch{},
 		&sambaModels.SambaSettings{},
 	)
 	if err := db.Create(&models.BasicSettings{Services: services}).Error; err != nil {
@@ -390,5 +392,50 @@ func TestSetGlobalConfigReportsMdnsRebuildFailure(t *testing.T) {
 	}
 	if *writeCalls != 1 {
 		t.Fatalf("expected one successful Samba config write, got %d", *writeCalls)
+	}
+}
+
+func TestSetGlobalConfigRejectsFilteredStandardSwitchBaseInterface(t *testing.T) {
+	stubGlobalConfigDependencies(t)
+	db := testutil.NewSQLiteTestDB(t, &sambaModels.SambaSettings{}, &networkModels.StandardSwitch{})
+	settings := sambaModels.SambaSettings{
+		UnixCharset:  "UTF-8",
+		Workgroup:    "WORKGROUP",
+		ServerString: "Sylve SMB Server",
+		Interfaces:   "lo0",
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("create Samba settings: %v", err)
+	}
+	if err := db.Create(&networkModels.StandardSwitch{
+		Name:          "tenant",
+		BridgeName:    "vm-tenant",
+		VLANFiltering: true,
+	}).Error; err != nil {
+		t.Fatalf("create filtered Standard Switch: %v", err)
+	}
+
+	service := &Service{DB: db}
+	err := service.SetGlobalConfig(
+		context.Background(),
+		"UTF-8",
+		"WORKGROUP",
+		"Sylve SMB Server",
+		"vm-tenant",
+		true,
+		false,
+		false,
+		nil,
+	)
+	if !errors.Is(err, ErrInvalidGlobalConfig) {
+		t.Fatalf("expected invalid global config error, got %v", err)
+	}
+
+	var persisted sambaModels.SambaSettings
+	if err := db.First(&persisted, settings.ID).Error; err != nil {
+		t.Fatalf("reload Samba settings: %v", err)
+	}
+	if persisted.Interfaces != "lo0" {
+		t.Fatalf("filtered switch base was persisted as Samba interface %q", persisted.Interfaces)
 	}
 }

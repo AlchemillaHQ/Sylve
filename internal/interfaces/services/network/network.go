@@ -46,7 +46,8 @@ type CreateStandardSwitchRequest struct {
 }
 
 type UpdateStandardSwitchRequest struct {
-	ID uint
+	ID                       uint
+	ConfirmHostLayer3Removal bool
 	StandardSwitchConfig
 }
 

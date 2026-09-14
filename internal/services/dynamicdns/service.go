@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"gorm.io/gorm"
 )
 
@@ -68,6 +69,8 @@ type Service struct {
 	targetMu     sync.Mutex
 	entryLocksMu sync.Mutex
 	entryLocks   map[uint]*entryOperationLock
+
+	interfaceReferenceCoordinator *interfaceref.Coordinator
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -94,6 +97,14 @@ func NewService(db *gorm.DB) *Service {
 		syncTimeout: 20 * time.Second,
 		entryLocks:  make(map[uint]*entryOperationLock),
 	}
+}
+
+func (s *Service) SetInterfaceReferenceCoordinator(coordinator *interfaceref.Coordinator) {
+	s.interfaceReferenceCoordinator = coordinator
+}
+
+func (s *Service) lockInterfaceReferencesRead() func() {
+	return s.interfaceReferenceCoordinator.ReadLock()
 }
 
 func (s *Service) lockEntryOperation(id uint) func() {
@@ -147,6 +158,12 @@ func (s *Service) CreateEntry(ctx context.Context, input EntryInput) (*EntryView
 		return nil, err
 	}
 
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+	if err := s.validateInterfaceReference(entry); err != nil {
+		return nil, err
+	}
+
 	err = s.withTargetMutation(func() error {
 		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := ensureTargetAvailable(tx, 0, entry); err != nil {
@@ -192,6 +209,12 @@ func (s *Service) UpdateEntry(ctx context.Context, id uint, input EntryInput) (*
 	}
 	entry.ID = existing.ID
 	entry.CreatedAt = existing.CreatedAt
+
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
+	if err := s.validateInterfaceReference(entry); err != nil {
+		return nil, err
+	}
 
 	err = s.withTargetMutation(func() error {
 		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -502,6 +525,25 @@ func (s *Service) normalizeSource(rawType string, rawSettings map[string]string,
 	default:
 		return "", nil, invalidEntry("unsupported IP source %q", rawType)
 	}
+}
+
+func (s *Service) validateInterfaceReference(entry dynamicDNSModels.Entry) error {
+	if entry.SourceType != dynamicDNSModels.SourceTypeInterface {
+		return nil
+	}
+
+	name := strings.TrimSpace(entry.SourceSettings[SourceSettingInterface])
+	err := interfaceref.RejectFilteredStandardBridgeInterfaces(s.DB, name)
+	if errors.Is(err, interfaceref.ErrFilteredStandardSwitchL2Only) {
+		return invalidEntry(
+			"network interface %q is the layer-2 base of a VLAN-filtered Standard Switch; select its Host VLAN interface",
+			name,
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to validate dynamic DNS interface: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) syncEntry(ctx context.Context, entry *dynamicDNSModels.Entry) error {

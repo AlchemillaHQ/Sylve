@@ -21,6 +21,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -1450,5 +1451,42 @@ func TestTransientRetryDelayCapsAtOneHour(t *testing.T) {
 		if got := transientRetryDelay(uint(index + 1)); got != want {
 			t.Fatalf("retry %d delay = %s, want %s", index+1, got, want)
 		}
+	}
+}
+
+func TestCreateEntryRejectsFilteredStandardSwitchBaseInterface(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &dynamicDNSModels.Entry{}, &networkModels.StandardSwitch{})
+	if err := db.Create(&networkModels.StandardSwitch{
+		Name:          "tenant",
+		BridgeName:    "vm-tenant",
+		VLANFiltering: true,
+	}).Error; err != nil {
+		t.Fatalf("create filtered Standard Switch: %v", err)
+	}
+
+	provider := &testProvider{id: dynamicDNSModels.ProviderSylve}
+	service := NewService(db)
+	service.providers = map[string]DNSProvider{dynamicDNSModels.ProviderSylve: provider}
+
+	_, err := service.CreateEntry(context.Background(), EntryInput{
+		Enabled:         true,
+		Provider:        dynamicDNSModels.ProviderSylve,
+		Token:           "secret",
+		Hostname:        "node.example.com",
+		RecordType:      dynamicDNSModels.RecordTypeA,
+		IntervalMinutes: DefaultIntervalMinutes,
+		SourceType:      dynamicDNSModels.SourceTypeInterface,
+		SourceSettings:  map[string]string{SourceSettingInterface: "vm-tenant"},
+	})
+	if !errors.Is(err, ErrInvalidEntry) {
+		t.Fatalf("expected invalid entry error, got %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&dynamicDNSModels.Entry{}).Count(&count).Error; err != nil {
+		t.Fatalf("count Dynamic DNS entries: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("filtered switch base was persisted in %d Dynamic DNS entries", count)
 	}
 }

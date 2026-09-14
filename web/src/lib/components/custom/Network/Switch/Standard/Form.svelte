@@ -195,7 +195,7 @@ under sponsorship from the FreeBSD Foundation.
 								bind:checked={form.private}
 								classes="flex items-center gap-2"
 							/>
-							<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
+							<p class="text-muted-foreground mt-2 text-xs">
 								Isolate VMs and jails from each other
 							</p>
 						</div>
@@ -205,7 +205,7 @@ under sponsorship from the FreeBSD Foundation.
 								bind:checked={form.disableBridgeOffloads}
 								classes="flex items-center gap-2"
 							/>
-							<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
+							<p class="text-muted-foreground mt-2 text-xs">
 								Avoid networking issues on bridged ports
 							</p>
 						</div>

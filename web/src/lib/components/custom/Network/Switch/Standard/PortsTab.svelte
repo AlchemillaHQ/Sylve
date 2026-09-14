@@ -130,7 +130,7 @@ under sponsorship from the FreeBSD Foundation.
 			bind:checked={form.vlanFiltering}
 			classes="flex items-center gap-2"
 		/>
-		<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
+		<p class="text-muted-foreground mt-2 text-xs">
 			Choose the untagged and tagged VLANs on each port
 		</p>
 	</div>

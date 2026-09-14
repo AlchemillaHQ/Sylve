@@ -70,6 +70,7 @@ export type StandardSwitchConfig = {
 	vlanConfig: StandardSwitchVLANConfig;
 	manual?: SwitchManualAddresses;
 	confirmRCConflicts?: boolean;
+	confirmHostLayer3Removal?: boolean;
 };
 
 export type CreateStandardSwitchRequest = StandardSwitchConfig & { name: string };
@@ -86,6 +87,7 @@ function standardSwitchRequestBody<T extends StandardSwitchConfig>(request: T) {
 		vlanConfig,
 		manual = emptyManualAddresses,
 		confirmRCConflicts = false,
+		confirmHostLayer3Removal = false,
 		...config
 	} = request;
 	return {
@@ -95,6 +97,7 @@ function standardSwitchRequestBody<T extends StandardSwitchConfig>(request: T) {
 		hostVlan: vlanConfig.hostVlan,
 		portPolicies: vlanConfig.portPolicies,
 		confirmRCConflicts,
+		confirmHostLayer3Removal,
 		network4Manual: manual.network4,
 		gateway4Manual: manual.gateway4,
 		network6Manual: manual.network6,

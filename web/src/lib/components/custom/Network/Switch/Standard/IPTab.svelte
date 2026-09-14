@@ -89,9 +89,7 @@ under sponsorship from the FreeBSD Foundation.
 		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div class="rounded-md border p-4">
 				<CustomCheckbox label="DHCP" bind:checked={form.dhcp} classes="flex items-center gap-2" />
-				<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
-					Get an IPv4 address automatically
-				</p>
+				<p class="text-muted-foreground mt-2 text-xs">Get an IPv4 address automatically</p>
 			</div>
 			<div class="rounded-md border p-4">
 				<CustomCheckbox
@@ -99,7 +97,7 @@ under sponsorship from the FreeBSD Foundation.
 					bind:checked={form.defaultRoute}
 					classes="flex items-center gap-2"
 				/>
-				<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
+				<p class="text-muted-foreground mt-2 text-xs">
 					{form.dhcp ? 'Use the gateway provided by DHCP' : 'Use the configured gateway'}
 				</p>
 			</div>
@@ -140,15 +138,11 @@ under sponsorship from the FreeBSD Foundation.
 					bind:checked={form.disableIPv6}
 					classes="flex items-center gap-2"
 				/>
-				<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
-					No SLAAC or static addresses
-				</p>
+				<p class="text-muted-foreground mt-2 text-xs">No SLAAC or static addresses</p>
 			</div>
 			<div class="rounded-md border p-4">
 				<CustomCheckbox label="SLAAC" bind:checked={form.slaac} classes="flex items-center gap-2" />
-				<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
-					Get IPv6 addresses from RAs
-				</p>
+				<p class="text-muted-foreground mt-2 text-xs">Get IPv6 addresses from RAs</p>
 			</div>
 			<div class="rounded-md border p-4">
 				<CustomCheckbox
@@ -157,7 +151,7 @@ under sponsorship from the FreeBSD Foundation.
 					classes="flex items-center gap-2"
 					disabled={form.disableIPv6}
 				/>
-				<p class="text-muted-foreground mt-2 whitespace-nowrap text-xs">
+				<p class="text-muted-foreground mt-2 text-xs">
 					{form.slaac ? 'Use the advertised router' : 'Use the configured gateway'}
 				</p>
 			</div>

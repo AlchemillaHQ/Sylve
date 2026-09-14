@@ -781,7 +781,8 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 			Gateway6: config.Gateway6Manual,
 		}
 		if err := ctx.Network.EditStandardSwitch(networkServiceInterfaces.UpdateStandardSwitchRequest{
-			ID: request.Standard.ID,
+			ID:                       request.Standard.ID,
+			ConfirmHostLayer3Removal: true,
 			StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
 				MTU:                   config.MTU,
 				VLAN:                  config.VLAN,

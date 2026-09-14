@@ -19,11 +19,13 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardServer, WireGuardServerPeer } from '$lib/types/network/wireguard';
 	import type { DynamicDNSEntry } from '$lib/types/services/dynamic-dns';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { randomPrivateIPv4Range, randomPrivateIPv6Range } from '$lib/utils/inet';
+	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { generateKeypair, isValidWireGuardKey } from '$lib/utils/network/wireguard';
 	import { sleep } from '$lib/utils';
 	import { convertDbTime, formatUptime } from '$lib/utils/time';
@@ -51,6 +53,7 @@
 	interface Data {
 		server: WireGuardServer | APIResponse;
 		interfaces: Iface[] | APIResponse;
+		switches: SwitchList | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -138,14 +141,14 @@
 	});
 
 	const interfaces = $derived(Array.isArray(data.interfaces) ? (data.interfaces as Iface[]) : []);
+	const switches = $derived(isSwitchList(data.switches) ? data.switches : emptySwitchList());
 	const interfaceOptions = $derived([
 		{ value: '', label: 'Disabled' },
-		...interfaces
-			.filter((iface) => iface.name && iface.name !== 'wgs0')
-			.map((iface) => ({
-				value: iface.name,
-				label: iface.description?.trim() ? `${iface.description} (${iface.name})` : iface.name
-			}))
+		...buildHostInterfaceOptions({
+			interfaces,
+			switches,
+			includeInterface: (iface) => iface.name !== 'wgs0'
+		})
 	]);
 
 	watch(

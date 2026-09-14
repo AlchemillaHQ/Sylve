@@ -544,8 +544,8 @@ func (s *Service) GetWireGuardServer() (*networkModels.WireGuardServer, error) {
 }
 
 func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
-	s.interfaceReferenceMutex.RLock()
-	defer s.interfaceReferenceMutex.RUnlock()
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
 
@@ -633,8 +633,8 @@ func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {
 }
 
 func (s *Service) EditWireGuardServer(req InitWireGuardServerRequest) error {
-	s.interfaceReferenceMutex.RLock()
-	defer s.interfaceReferenceMutex.RUnlock()
+	unlockInterfaceReferences := s.lockInterfaceReferencesRead()
+	defer unlockInterfaceReferences()
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
 

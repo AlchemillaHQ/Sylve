@@ -203,6 +203,13 @@ func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
 	root := "tank/sylve/jails/451"
 	snapshotStarted := make(chan struct{})
 	releaseSnapshot := make(chan struct{})
+	releaseSnapshotSafely := func() {
+		select {
+		case <-releaseSnapshot:
+		default:
+			close(releaseSnapshot)
+		}
+	}
 	runner := &jailSnapshotRunner{
 		datasets: map[string]jailSnapshotRunnerDataset{
 			root: {datasetType: gzfs.DatasetTypeFilesystem, mountPoint: t.TempDir(), pool: "tank"},
@@ -213,14 +220,23 @@ func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
 	service := newJailSnapshotTestService(runner)
 	service.DB = db
 	snapshotDone := make(chan error, 1)
+	snapshotFinished := make(chan struct{})
+	t.Cleanup(func() {
+		releaseSnapshotSafely()
+		select {
+		case <-snapshotFinished:
+		case <-time.After(10 * time.Second):
+		}
+	})
 	go func() {
+		defer close(snapshotFinished)
 		_, err := service.CreateJailSnapshot(context.Background(), jail.CTID, "locked", "")
 		snapshotDone <- err
 	}()
 
 	select {
 	case <-snapshotStarted:
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("jail snapshot did not reach the ZFS boundary")
 	}
 
@@ -254,7 +270,7 @@ func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	close(releaseSnapshot)
+	releaseSnapshotSafely()
 	if err := <-snapshotDone; err != nil {
 		t.Fatalf("create jail snapshot: %v", err)
 	}
@@ -264,7 +280,7 @@ func TestCreateJailSnapshotHoldsNetworkGuardsThroughZFSSnapshot(t *testing.T) {
 	} {
 		select {
 		case <-acquired:
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Fatalf("%s lock was not released after the jail snapshot", name)
 		}
 	}
