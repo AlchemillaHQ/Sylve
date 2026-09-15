@@ -394,6 +394,13 @@ func (s *Service) IsDomainShutOff(rid uint) (bool, error) {
 	return false, nil
 }
 
+func (s *Service) isDomainShutOff(rid uint) (bool, error) {
+	if s.isDomainShutOffFn != nil {
+		return s.isDomainShutOffFn(rid)
+	}
+	return s.IsDomainShutOff(rid)
+}
+
 func (s *Service) IsDomainShutOffByID(id uint) (bool, error) {
 	var rid uint
 	if err := s.DB.Model(&vmModels.VM{}).

@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -50,6 +51,12 @@ type Service struct {
 	actionMutex              sync.Mutex
 	crudMutex                sync.Mutex
 	vmTemplateTargetCreateMu sync.Mutex
+
+	vmUsageSource        vmUsageDomainSource
+	vmUsageRetentionMu   sync.Mutex
+	lastVMUsageRetention time.Time
+
+	isDomainShutOffFn func(rid uint) (bool, error)
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)

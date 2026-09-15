@@ -9,18 +9,18 @@
 package libvirt
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/digitalocean/go-libvirt"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 )
 
 func (s *Service) PruneOrphanedVMStats() error {
@@ -62,7 +62,19 @@ func (s *Service) ApplyVMStatsRetention() error {
 			continue
 		}
 
-		isOff, err := s.IsDomainShutOffByID(vmID)
+		var vm vmModels.VM
+		if err := s.DB.Model(&vmModels.VM{}).
+			Select("rid").
+			Where("id = ?", vmID).
+			First(&vm).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			logger.L.Error().Err(err).Uint("vm_id", vmID).Msg("failed_to_resolve_vm_for_retention")
+			continue
+		}
+
+		isOff, err := s.isDomainShutOff(vm.RID)
 		if err != nil {
 			logger.L.Error().Err(err).Uint("vm_id", vmID).Msg("failed_to_check_if_domain_is_shutoff_for_retention")
 			continue
@@ -89,131 +101,206 @@ func (s *Service) ApplyVMStatsRetention() error {
 	return nil
 }
 
+const (
+	vmUsageSampleInterval   = time.Second
+	vmUsageRetentionCadence = time.Hour
+)
+
+type vmUsageDomainInfo struct {
+	vcpus    uint16
+	cpuTime  uint64
+	maxMemKB uint64
+}
+
+type vmUsageDomainSource interface {
+	EnsureConnection() error
+	LookupDomain(rid uint) (libvirt.Domain, error)
+	DomainInfo(domain libvirt.Domain) (vmUsageDomainInfo, error)
+	MemoryStats(domain libvirt.Domain) (rssKB uint64, availableKB uint64, err error)
+}
+
+type libvirtVMUsageSource struct {
+	service *Service
+}
+
+func (src libvirtVMUsageSource) EnsureConnection() error {
+	return src.service.requireConnection()
+}
+
+func (src libvirtVMUsageSource) LookupDomain(rid uint) (libvirt.Domain, error) {
+	return src.service.conn().DomainLookupByName(strconv.Itoa(int(rid)))
+}
+
+func (src libvirtVMUsageSource) DomainInfo(domain libvirt.Domain) (vmUsageDomainInfo, error) {
+	_, maxMemKB, _, vcpus, cpuTime, err := src.service.conn().DomainGetInfo(domain)
+	if err != nil {
+		return vmUsageDomainInfo{}, err
+	}
+	return vmUsageDomainInfo{vcpus: vcpus, cpuTime: cpuTime, maxMemKB: maxMemKB}, nil
+}
+
+func (src libvirtVMUsageSource) MemoryStats(domain libvirt.Domain) (uint64, uint64, error) {
+	stats, err := src.service.conn().DomainMemoryStats(domain, 8, 0)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	var rssKB, availableKB uint64
+	for _, stat := range stats {
+		switch libvirt.DomainMemoryStatTags(stat.Tag) {
+		case libvirt.DomainMemoryStatRss:
+			rssKB = stat.Val
+		case libvirt.DomainMemoryStatAvailable:
+			availableKB = stat.Val
+		}
+	}
+	return rssKB, availableKB, nil
+}
+
+var vmUsageSleep = time.Sleep
+
+type vmUsageSample struct {
+	vmID     uint
+	rid      uint
+	domain   libvirt.Domain
+	vcpus    uint16
+	cpuTime1 uint64
+}
+
+func (s *Service) vmUsageDomains() vmUsageDomainSource {
+	if s.vmUsageSource != nil {
+		return s.vmUsageSource
+	}
+	return libvirtVMUsageSource{service: s}
+}
+
+// StoreVMUsage samples CPU and memory usage without taking crudMutex.
 func (s *Service) StoreVMUsage() error {
-	if err := s.requireConnection(); err != nil {
+	source := s.vmUsageDomains()
+	if err := source.EnsureConnection(); err != nil {
 		return err
 	}
 
-	if s.crudMutex.TryLock() == false {
+	var vms []vmModels.VM
+	if err := s.DB.Model(&vmModels.VM{}).Select("id", "rid").Find(&vms).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_usage_targets: %w", err)
+	}
+
+	samples := make([]vmUsageSample, 0, len(vms))
+	for _, vm := range vms {
+		if vm.RID == 0 {
+			continue
+		}
+
+		domain, err := source.LookupDomain(vm.RID)
+		if err != nil {
+			continue
+		}
+
+		info, err := source.DomainInfo(domain)
+		if err != nil || info.vcpus == 0 {
+			continue
+		}
+
+		samples = append(samples, vmUsageSample{
+			vmID:     vm.ID,
+			rid:      vm.RID,
+			domain:   domain,
+			vcpus:    info.vcpus,
+			cpuTime1: info.cpuTime,
+		})
+	}
+
+	if len(samples) > 0 {
+		vmUsageSleep(vmUsageSampleInterval)
+
+		for i := range samples {
+			s.storeVMUsageSample(source, samples[i])
+		}
+	}
+
+	return s.applyVMStatsRetentionIfDue()
+}
+
+func (s *Service) storeVMUsageSample(source vmUsageDomainSource, sample vmUsageSample) {
+	info, err := source.DomainInfo(sample.domain)
+	if err != nil || sample.vcpus == 0 || info.cpuTime <= sample.cpuTime1 {
+		return
+	}
+
+	cpuUsage := (float64(info.cpuTime-sample.cpuTime1) / 1e9) / float64(sample.vcpus) * 100
+	maxMemMB := float64(info.maxMemKB) / 1024
+
+	rssKB, availableKB, err := source.MemoryStats(sample.domain)
+	if err != nil || rssKB == 0 {
+		reason := "rss_not_reported"
+		if err != nil {
+			reason = err.Error()
+		}
+		logger.LogWithDeduplication(zerolog.WarnLevel, fmt.Sprintf(
+			"vm_usage_memory_stats_unavailable: rid=%d reason=%s", sample.rid, reason,
+		))
+		return
+	}
+	if availableKB > 0 {
+		maxMemMB = float64(availableKB) / 1024
+	}
+
+	usedMemMB := float64(rssKB) / 1024
+	memUsagePercent := 0.0
+	if maxMemMB > 0 {
+		memUsagePercent = usedMemMB / maxMemMB * 100
+	}
+
+	// The guest may have been deleted, and its RID reused, while sampling.
+	var currentID uint
+	err = s.DB.Model(&vmModels.VM{}).
+		Where("id = ? AND rid = ?", sample.vmID, sample.rid).
+		Select("id").
+		Scan(&currentID).Error
+	if err != nil {
+		logger.LogWithDeduplication(zerolog.WarnLevel, fmt.Sprintf(
+			"vm_usage_identity_check_failed: rid=%d err=%v", sample.rid, err,
+		))
+		return
+	}
+	if currentID == 0 {
+		return
+	}
+
+	stats := &vmModels.VMStats{
+		VMID:        sample.vmID,
+		CPUUsage:    math.Max(0, math.Min(100, cpuUsage)),
+		MemoryUsage: math.Max(0, math.Min(100, memUsagePercent)),
+		MemoryUsed:  usedMemMB,
+	}
+	if err := s.DB.Create(stats).Error; err != nil {
+		logger.LogWithDeduplication(zerolog.WarnLevel, fmt.Sprintf(
+			"failed_to_store_vm_usage: rid=%d err=%v", sample.rid, err,
+		))
+	}
+}
+
+func (s *Service) applyVMStatsRetentionIfDue() error {
+	now := time.Now()
+
+	s.vmUsageRetentionMu.Lock()
+	due := s.lastVMUsageRetention.IsZero() ||
+		now.Sub(s.lastVMUsageRetention) >= vmUsageRetentionCadence
+	s.vmUsageRetentionMu.Unlock()
+
+	if !due {
 		return nil
 	}
-	defer s.crudMutex.Unlock()
 
-	var rids []int
-	if err := s.DB.Model(&vmModels.VM{}).Pluck("rid", &rids).Error; err != nil {
-		return fmt.Errorf("failed_to_get_rids: %w", err)
+	if err := s.ApplyVMStatsRetention(); err != nil {
+		return err
 	}
 
-	if len(rids) == 0 {
-		return nil
-	}
-
-	for _, rid := range rids {
-		domain, err := s.conn().DomainLookupByName(strconv.Itoa(rid))
-		if err != nil {
-			continue
-		}
-
-		_, _, _, vcpus, cpuTime1, err := s.conn().DomainGetInfo(domain)
-		if err != nil {
-			continue
-		}
-
-		time.Sleep(1 * time.Second)
-
-		_, rMaxMem, _, _, cpuTime2, err := s.conn().DomainGetInfo(domain)
-		if err != nil {
-			return fmt.Errorf("failed_to_get_cpu_info_2: %w", err)
-		}
-		if vcpus == 0 || cpuTime2 <= cpuTime1 {
-			continue
-		}
-
-		deltaCPU := cpuTime2 - cpuTime1
-		cpuUsage := (float64(deltaCPU) / 1e9) / float64(vcpus) * 100
-		maxMemMB := float64(rMaxMem) / 1024
-
-		// Prefer dommemstat
-		var (
-			rssKB   uint64
-			availKB uint64
-		)
-
-		if stats, err := s.conn().DomainMemoryStats(domain, 8, 0); err == nil {
-			// fmt.Printf("dommemstat output: %+v\n", stats)
-			for _, st := range stats {
-				switch st.Tag {
-				case 7: // VIR_DOMAIN_MEMORY_STAT_RSS
-					rssKB = st.Val
-				case 5: // VIR_DOMAIN_MEMORY_STAT_AVAILABLE
-					availKB = st.Val
-				}
-			}
-		}
-
-		if availKB > 0 {
-			maxMemMB = float64(availKB) / 1024
-		}
-
-		var usedMemMB float64
-		var memUsagePercent float64
-
-		if rssKB > 0 {
-			usedMemMB = float64(rssKB) / 1024
-			if maxMemMB > 0 {
-				memUsagePercent = (usedMemMB / maxMemMB) * 100
-			}
-		} else {
-			psOut, err := utils.RunCommand("/bin/ps", "--libxo", "json", "-aux")
-			if err != nil {
-				continue
-			}
-
-			var top struct {
-				ProcessInformation systemServiceInterfaces.ProcessInformation `json:"process-information"`
-			}
-			if err := json.Unmarshal([]byte(psOut), &top); err != nil {
-				continue
-			}
-
-			var rssFromPsKB uint64
-			for _, proc := range top.ProcessInformation.Process {
-				if strings.Contains(proc.Command, fmt.Sprintf("bhyve: %d", rid)) {
-					rssFromPsKB, _ = strconv.ParseUint(proc.RSS, 10, 64)
-					break
-				}
-			}
-
-			usedMemMB = float64(rssFromPsKB) / 1024
-			if maxMemMB > 0 {
-				memUsagePercent = (usedMemMB / maxMemMB) * 100
-			}
-		}
-
-		var vmDbId uint
-		if err := s.DB.Model(&vmModels.VM{}).
-			Where("rid = ?", rid).
-			Select("id").
-			First(&vmDbId).Error; err != nil {
-			return fmt.Errorf("failed_to_get_actual_vm_id: %w", err)
-		}
-
-		memUsagePercent = math.Max(0, math.Min(100, memUsagePercent))
-		cpuUsage = math.Max(0, math.Min(100, cpuUsage))
-
-		vmStats := &vmModels.VMStats{
-			VMID:        vmDbId,
-			CPUUsage:    cpuUsage,
-			MemoryUsage: memUsagePercent,
-			MemoryUsed:  usedMemMB,
-		}
-
-		if err := s.DB.Save(vmStats).Error; err != nil {
-			continue
-		}
-	}
-
-	return s.ApplyVMStatsRetention()
+	s.vmUsageRetentionMu.Lock()
+	s.lastVMUsageRetention = now
+	s.vmUsageRetentionMu.Unlock()
+	return nil
 }
 
 func (s *Service) GetVMUsage(rid int, step db.GFSStep) ([]vmModels.VMStats, error) {

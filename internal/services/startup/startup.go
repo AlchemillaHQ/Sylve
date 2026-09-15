@@ -38,6 +38,8 @@ import (
 
 var _ serviceInterfaces.StartupServiceInterface = (*Service)(nil)
 
+const vmUsageSampleDelay = 15 * time.Second
+
 type Service struct {
 	DB        *gorm.DB
 	Info      infoServiceInterfaces.InfoServiceInterface
@@ -270,7 +272,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 					if err := s.Libvirt.StoreVMUsage(); err != nil {
 						logger.L.Error().Msgf("Failed to sync VM states: %v", err)
 					}
-					timer.Reset(5 * time.Second)
+					timer.Reset(vmUsageSampleDelay)
 				}
 			}
 		}()
