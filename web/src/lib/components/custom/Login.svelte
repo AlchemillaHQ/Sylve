@@ -196,6 +196,8 @@
 						<Select.Item value="zh-CN">Simplified Chinese (简体中文)</Select.Item>
 						<Select.Item value="cs">Czech (Čeština)</Select.Item>
 						<Select.Item value="en">English</Select.Item>
+						<Select.Item value="es">Spanish (Español)</Select.Item>
+						<Select.Item value="gl">Galician (Galego)</Select.Item>
 						<Select.Item value="de">German (Deutsch)</Select.Item>
 						<Select.Item value="hi">Hindi (हिन्दी)</Select.Item>
 						<Select.Item value="mal">Malayalam (മലയാളം)</Select.Item>
@@ -272,7 +274,7 @@
 					onclick={submitPasswordLogin}
 					disabled={loading || loadingPasskey}
 					size="sm"
-					class="w-20 rounded-md bg-blue-700 text-white hover:bg-blue-600"
+					class="rounded-md bg-blue-700 text-white hover:bg-blue-600"
 				>
 					{#if loading}
 						<span class="icon-[line-md--loading-loop] h-4 w-4"></span>
