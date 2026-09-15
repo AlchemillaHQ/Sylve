@@ -20,7 +20,6 @@ under sponsorship from the FreeBSD Foundation.
 		mode: VLANPolicyMode;
 		untagged: string | number;
 		tagged: string;
-		onChange?: () => void;
 	}
 
 	let {
@@ -29,8 +28,7 @@ under sponsorship from the FreeBSD Foundation.
 		idPrefix,
 		mode = $bindable(),
 		untagged = $bindable(),
-		tagged = $bindable(),
-		onChange
+		tagged = $bindable()
 	}: Props = $props();
 	let taggedPreview = $derived(mode === 'trunk' ? parseTaggedVLANs(tagged) : null);
 </script>
@@ -43,12 +41,7 @@ under sponsorship from the FreeBSD Foundation.
 				<p class="text-muted-foreground text-xs">{description}</p>
 			{/if}
 		</div>
-		<RadioGroup.Root
-			bind:value={mode}
-			class="flex gap-4"
-			aria-label="VLAN port mode"
-			onchange={onChange}
-		>
+		<RadioGroup.Root bind:value={mode} class="flex gap-4" aria-label="VLAN port mode">
 			<label class="flex cursor-pointer items-center gap-2 text-sm" for={`${idPrefix}-vlan-access`}>
 				<RadioGroup.Item id={`${idPrefix}-vlan-access`} value="access" />
 				Access
@@ -66,7 +59,7 @@ under sponsorship from the FreeBSD Foundation.
 			placeholder="10"
 			bind:value={untagged}
 			type="number"
-			{onChange}
+			preserveEmpty={true}
 		/>
 	{:else if mode === 'trunk'}
 		<div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
@@ -76,14 +69,13 @@ under sponsorship from the FreeBSD Foundation.
 				bind:value={untagged}
 				type="number"
 				hint="Untagged traffic is assigned to this VLAN. Leave empty for a tagged-only trunk."
-				{onChange}
+				preserveEmpty={true}
 			/>
 			<CustomValueInput
 				label="Tagged VLANs"
 				placeholder="20,30-32"
 				bind:value={tagged}
 				hint="Comma-separated IDs and inclusive ranges."
-				{onChange}
 			/>
 		</div>
 		{#if taggedPreview && taggedPreview.length > 0}

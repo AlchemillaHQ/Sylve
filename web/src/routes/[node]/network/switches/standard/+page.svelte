@@ -187,7 +187,6 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	});
 	let activeTab = $state<SwitchTab>('general');
-	let tabErrors = $state<Partial<Record<SwitchTab, string>>>({});
 
 	let comboBoxes = $state({
 		ipv4: {
@@ -293,17 +292,14 @@ under sponsorship from the FreeBSD Foundation.
 		return { id: 0, manual: v };
 	}
 
-	function showTabError(tab: SwitchTab, message: string) {
-		tabErrors = { ...tabErrors, [tab]: message };
-		activeTab = tab;
-		toast.error(message, { position: 'bottom-center' });
-	}
+	let announcedError = $state('');
+	let announcedErrorKey = $state(0);
 
-	function clearTabError(tab: SwitchTab) {
-		if (!tabErrors[tab]) return;
-		const next = { ...tabErrors };
-		delete next[tab];
-		tabErrors = next;
+	function showError(tab: SwitchTab, message: string) {
+		activeTab = tab;
+		announcedError = message;
+		announcedErrorKey += 1;
+		toast.error(message, { position: 'bottom-center' });
 	}
 
 	function ensurePortPolicyDrafts(ports: string[]) {
@@ -465,29 +461,28 @@ under sponsorship from the FreeBSD Foundation.
 		if (saving) return;
 
 		if (confirmModals.active === 'newSwitch' || confirmModals.active === 'editSwitch') {
-			tabErrors = {};
 			const activeModal = confirmModals[confirmModals.active];
 			const normalizedName = activeModal.name.trim();
 			if (!isValidSwitchName(normalizedName)) {
-				showTabError('general', 'Invalid switch name');
+				showError('general', 'Invalid switch name');
 				return;
 			}
 
 			const mtuInput = String(activeModal.mtu ?? '').trim();
 			const mtu = mtuInput === '' ? 1500 : Number(mtuInput);
 			if (!Number.isInteger(mtu) || !isValidMTU(mtu)) {
-				showTabError('general', 'Invalid MTU');
+				showError('general', 'Invalid MTU');
 				return;
 			}
 
 			const vlanInput = String(activeModal.vlan ?? '').trim();
 			const vlan = vlanInput === '' ? 0 : Number(vlanInput);
 			if (!Number.isInteger(vlan) || !isValidVLAN(vlan)) {
-				showTabError('ports', 'Invalid legacy VLAN');
+				showError('ports', 'Invalid legacy VLAN');
 				return;
 			}
 			if (activeModal.vlanFiltering && vlan !== 0) {
-				showTabError('ports', 'Port VLAN child interfaces cannot be combined with VLAN filtering');
+				showError('ports', 'Port VLAN child interfaces cannot be combined with VLAN filtering');
 				return;
 			}
 
@@ -500,7 +495,7 @@ under sponsorship from the FreeBSD Foundation.
 				activeModal.portPolicies
 			);
 			if (!vlanConfigResult.ok) {
-				showTabError('ports', vlanConfigResult.error);
+				showError('ports', vlanConfigResult.error);
 				return;
 			}
 			const vlanConfig = vlanConfigResult.value;
@@ -512,7 +507,7 @@ under sponsorship from the FreeBSD Foundation.
 			if (activeModal.bridgeMacMode === 'port') {
 				const sourcePort = comboBoxes.bridgeMacPort.value;
 				if (!sourcePort || !comboBoxes.ports.value.includes(sourcePort)) {
-					showTabError('ports', 'Select one of the switch ports as the MAC source');
+					showError('ports', 'Select one of the switch ports as the MAC source');
 					return;
 				}
 				const sourceInterface = networkInterfaces.current.find(
@@ -520,10 +515,7 @@ under sponsorship from the FreeBSD Foundation.
 				);
 				const sourceMAC = sourceInterface?.ether || sourceInterface?.hwaddr || '';
 				if (!isValidUnicastMACAddress(sourceMAC)) {
-					showTabError(
-						'ports',
-						'The selected source port does not have a valid unicast MAC address'
-					);
+					showError('ports', 'The selected source port does not have a valid unicast MAC address');
 					return;
 				}
 				bridgeMac = { mode: 'port', port: sourcePort };
@@ -533,12 +525,12 @@ under sponsorship from the FreeBSD Foundation.
 					!Number.isInteger(objectID) ||
 					!bridgeMACObjects.some((object) => object.id === objectID)
 				) {
-					showTabError('ports', 'Select a valid single-value MAC object');
+					showError('ports', 'Select a valid single-value MAC object');
 					return;
 				}
 				bridgeMac = { mode: 'object', macObjectId: objectID };
 			} else {
-				showTabError('ports', 'Choose how the bridge MAC address is sourced');
+				showError('ports', 'Choose how the bridge MAC address is sourced');
 				return;
 			}
 
@@ -549,7 +541,7 @@ under sponsorship from the FreeBSD Foundation.
 				);
 
 				if (existingSwitch) {
-					showTabError('ipv4', 'Another switch already owns the IPv4 default route');
+					showError('ipv4', 'Another switch already owns the IPv4 default route');
 					return;
 				}
 			}
@@ -561,7 +553,7 @@ under sponsorship from the FreeBSD Foundation.
 				);
 
 				if (existingSwitch) {
-					showTabError('ipv6', 'Another switch already owns the IPv6 default route');
+					showError('ipv6', 'Another switch already owns the IPv6 default route');
 					return;
 				}
 			}
@@ -601,19 +593,19 @@ under sponsorship from the FreeBSD Foundation.
 			};
 
 			if (manual.network4 && !isValidIPv4(manual.network4, true)) {
-				showTabError('ipv4', 'Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24');
+				showError('ipv4', 'Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24');
 				return;
 			}
 			if (manual.gateway4 && !isValidIPv4(manual.gateway4)) {
-				showTabError('ipv4', 'Invalid IPv4 gateway address');
+				showError('ipv4', 'Invalid IPv4 gateway address');
 				return;
 			}
 			if (manual.network6 && !isValidIPv6(manual.network6, true)) {
-				showTabError('ipv6', 'Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64');
+				showError('ipv6', 'Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64');
 				return;
 			}
 			if (manual.gateway6 && !isValidIPv6(manual.gateway6)) {
-				showTabError('ipv6', 'Invalid IPv6 gateway address');
+				showError('ipv6', 'Invalid IPv6 gateway address');
 				return;
 			}
 
@@ -708,14 +700,14 @@ under sponsorship from the FreeBSD Foundation.
 							edited.error ===
 							'standard_switch_vlan_filtering_change_requires_no_attached_workloads'
 						) {
-							showTabError(
+							showError(
 								'ports',
 								'Detach every VM and jail network interface from this switch before changing VLAN filtering'
 							);
 							return;
 						}
 						if (edited.error === 'standard_switch_runtime_member_conflict') {
-							showTabError(
+							showError(
 								'ports',
 								"Detach any unmanaged live bridge members before changing the switch's VLAN configuration"
 							);
@@ -789,7 +781,6 @@ under sponsorship from the FreeBSD Foundation.
 	function handleEdit() {
 		if (activeRow && Object.keys(activeRow).length > 0) {
 			activeTab = 'general';
-			tabErrors = {};
 			confirmModals.active = 'editSwitch';
 			confirmModals.editSwitch.open = true;
 			confirmModals.editSwitch.oldName = activeRow.name;
@@ -909,7 +900,6 @@ under sponsorship from the FreeBSD Foundation.
 		confirmModals.editSwitch.hostVlan = '';
 		confirmModals.editSwitch.portPolicies = {};
 		activeTab = 'general';
-		tabErrors = {};
 
 		comboBoxes.ipv4.value = '';
 		comboBoxes.ipv4Gw.value = '';
@@ -976,7 +966,6 @@ under sponsorship from the FreeBSD Foundation.
 		() => comboBoxes.ports.value,
 		(ports) => {
 			ensurePortPolicyDrafts(ports);
-			clearTabError('ports');
 			if (!ports.includes(comboBoxes.bridgeMacPort.value)) {
 				comboBoxes.bridgeMacPort.value = '';
 			}
@@ -992,7 +981,13 @@ under sponsorship from the FreeBSD Foundation.
 			if (editFiltering) {
 				confirmModals.editSwitch.vlan = '';
 			}
-			clearTabError('ports');
+		}
+	);
+
+	watch(
+		() => query,
+		() => {
+			activeRows = null;
 		}
 	);
 </script>
@@ -1010,6 +1005,10 @@ under sponsorship from the FreeBSD Foundation.
 		{/if}
 	{/if}
 {/snippet}
+
+{#key announcedErrorKey}
+	<p class="sr-only" role="alert">{announcedError}</p>
+{/key}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
@@ -1033,6 +1032,7 @@ under sponsorship from the FreeBSD Foundation.
 		name="tt-switches"
 		data={tableData}
 		bind:parentActiveRow={activeRows}
+		bind:query
 		multipleSelect={false}
 	/>
 </div>
@@ -1043,7 +1043,6 @@ under sponsorship from the FreeBSD Foundation.
 		bind:form={confirmModals.newSwitch}
 		bind:comboBoxes
 		bind:activeTab
-		{tabErrors}
 		portOptions={generateComboboxOptions(useablePorts)}
 		{ipv4NetworkOptions}
 		{ipv4GatewayOptions}
@@ -1056,7 +1055,6 @@ under sponsorship from the FreeBSD Foundation.
 		onReset={() => resetModal(false)}
 		onClose={() => resetModal(false)}
 		onSubmit={() => confirmAction()}
-		onClearTabError={clearTabError}
 		onCreateMACObject={openBridgeMACObjectCreator}
 	/>
 {:else if confirmModals.active === 'editSwitch'}
@@ -1065,7 +1063,6 @@ under sponsorship from the FreeBSD Foundation.
 		bind:form={confirmModals.editSwitch}
 		bind:comboBoxes
 		bind:activeTab
-		{tabErrors}
 		portOptions={generateComboboxOptions(useablePorts, activeRow?.portsOnly)}
 		{ipv4NetworkOptions}
 		{ipv4GatewayOptions}
@@ -1078,7 +1075,6 @@ under sponsorship from the FreeBSD Foundation.
 		onReset={() => resetModal(false)}
 		onClose={() => resetModal(false)}
 		onSubmit={() => confirmAction()}
-		onClearTabError={clearTabError}
 		onCreateMACObject={openBridgeMACObjectCreator}
 	/>
 {/if}

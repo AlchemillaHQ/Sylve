@@ -13663,10 +13663,6 @@ msgstr ""
 msgid "Choose the share location, define access, then enable optional Samba features."
 msgstr ""
 
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -18438,19 +18434,7 @@ msgid "WireGuard Server (wgs0)"
 msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> General <1/>"
-msgstr ""
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Ports & VLANs"
-msgstr ""
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> IPv4 <1/>"
-msgstr ""
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> IPv6 <1/>"
 msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
@@ -18541,4 +18525,16 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Prevents flapping on member interfaces"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> General"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv4"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv6"
 msgstr ""

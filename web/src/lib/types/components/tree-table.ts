@@ -18,6 +18,7 @@ export interface Column {
 		| ((cell: CellComponent, formatterParams: FormatterParams, onRendered: EmptyCallback) => void)
 		| string;
 	minWidth?: number | string;
+	sorter?: string;
 	headerFilter?: boolean | string;
 	headerFilterPlaceholder?: string;
 }

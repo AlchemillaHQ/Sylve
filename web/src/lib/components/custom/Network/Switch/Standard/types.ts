@@ -16,8 +16,8 @@ export interface StandardSwitchFormState {
 	open: boolean;
 	oldName?: string;
 	name: string;
-	mtu: string;
-	vlan: string;
+	mtu: string | number;
+	vlan: string | number;
 	disableIPv6: boolean;
 	private: boolean;
 	bridgeMacMode: '' | 'port' | 'object';
@@ -27,8 +27,8 @@ export interface StandardSwitchFormState {
 	defaultRoute6: boolean;
 	disableBridgeOffloads: boolean;
 	vlanFiltering: boolean;
-	defaultAccessVlan: string;
-	hostVlan: string;
+	defaultAccessVlan: string | number;
+	hostVlan: string | number;
 	portPolicies: Record<string, VLANPolicyDraft>;
 }
 

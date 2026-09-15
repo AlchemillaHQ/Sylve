@@ -13,12 +13,13 @@ import type { NetworkObject } from '$lib/types/network/object';
 import type { StandardSwitchVLANConfig } from '$lib/api/network/switch';
 import type { SwitchList, VLANPortPolicy } from '$lib/types/network/switch';
 import { parseOptionalVLAN, parseTaggedVLANs } from '$lib/utils/network/vlan';
+import { escapeHTML } from '$lib/utils/string';
 import type { CellComponent } from 'tabulator-tables';
 import { renderWithIcon } from '../../table';
 
 export interface VLANPolicyDraft {
 	mode: VLANPortPolicy['mode'];
-	untaggedVlan: string;
+	untaggedVlan: string | number;
 	taggedVlans: string;
 }
 
@@ -28,8 +29,8 @@ export type VLANConfigResult =
 
 export function buildVLANConfig(
 	filtering: boolean,
-	defaultAccessDraft: string,
-	hostDraft: string,
+	defaultAccessDraft: string | number,
+	hostDraft: string | number,
 	ports: string[],
 	drafts: Record<string, VLANPolicyDraft>
 ): VLANConfigResult {
@@ -88,6 +89,77 @@ export function buildVLANConfig(
 	};
 }
 
+export interface SwitchPortPolicySource {
+	name: string;
+	vlanPolicy?: VLANPortPolicy;
+}
+
+const ACCESS_BADGE_COLORS = 'text-cyan-400 border-cyan-400/50';
+const TRUNK_BADGE_COLORS = 'text-amber-400 border-amber-400/50';
+const DEFAULT_ACCESS_BADGE_COLORS = 'text-violet-400 border-violet-400/50';
+const MAX_VISIBLE_PORT_LINES = 4;
+const MAX_VISIBLE_TAGGED_VLANS = 8;
+
+function vlanBadge(label: string, colors: string, title?: string): string {
+	const titleAttribute = title ? ` title="${title}"` : '';
+	return `<span${titleAttribute} class="inline-flex items-center font-mono text-xs px-1 rounded border ${colors} leading-tight">${label}</span>`;
+}
+
+function portPolicyText(port: SwitchPortPolicySource): string {
+	const policy = port.vlanPolicy;
+	if (policy?.mode === 'access') {
+		return `${port.name} access ${policy.untaggedVlan ?? '-'}`;
+	}
+	if (policy?.mode === 'trunk') {
+		const native = policy.untaggedVlan === undefined ? '' : ` native ${policy.untaggedVlan}`;
+		const tagged = (policy.taggedVlans ?? []).join(' ');
+		return `${port.name} trunk${native}${tagged ? ` tagged ${tagged}` : ''}`;
+	}
+	return port.name;
+}
+
+function formatPortPolicy(port: SwitchPortPolicySource): string {
+	const parts = [`<span>${escapeHTML(port.name)}</span>`];
+	const policy = port.vlanPolicy;
+	const taggedVlans = policy?.taggedVlans ?? [];
+
+	if (policy?.mode === 'access') {
+		parts.push(
+			vlanBadge(`ACCESS ${policy.untaggedVlan ?? '-'}`, ACCESS_BADGE_COLORS, 'Untagged access VLAN')
+		);
+	} else if (policy?.mode === 'trunk') {
+		parts.push(vlanBadge('TRUNK', TRUNK_BADGE_COLORS, 'Tagged trunk with an optional native VLAN'));
+		if (policy.untaggedVlan !== undefined) {
+			parts.push(
+				`<span class="font-mono text-xs" title="Native (untagged) VLAN">native ${policy.untaggedVlan}</span>`
+			);
+		}
+		if (taggedVlans.length > 0) {
+			const visible = taggedVlans.slice(0, MAX_VISIBLE_TAGGED_VLANS);
+			const hiddenCount = taggedVlans.length - visible.length;
+			const hiddenSuffix = hiddenCount > 0 ? ` +${hiddenCount}` : '';
+			const taggedTitle =
+				hiddenCount > 0 ? `Allowed tagged VLANs: ${taggedVlans.join(',')}` : 'Allowed tagged VLANs';
+			parts.push(
+				`<span class="font-mono text-xs" title="${escapeHTML(taggedTitle)}">${escapeHTML(visible.join(','))}${hiddenSuffix}</span>`
+			);
+		}
+	}
+
+	const separator = '<span class="text-muted-foreground/50">·</span>';
+	return `<span class="inline-flex items-center gap-1.5">${parts.join(separator)}</span>`;
+}
+
+function formatPortsCell(ports: SwitchPortPolicySource[]): string {
+	const visible = ports.slice(0, MAX_VISIBLE_PORT_LINES);
+	const hidden = ports.slice(MAX_VISIBLE_PORT_LINES);
+	const lines = visible.map((port) => formatPortPolicy(port)).join('<br/>');
+	if (hidden.length === 0) return lines;
+
+	const hiddenDetail = escapeHTML(hidden.map((port) => portPolicyText(port)).join(', '));
+	return `${lines}<br/><span class="text-muted-foreground text-xs" title="${hiddenDetail}">+${hidden.length} more</span>`;
+}
+
 export function generateTableData(switches: SwitchList | undefined): {
 	rows: Row[];
 	columns: Column[];
@@ -119,25 +191,76 @@ export function generateTableData(switches: SwitchList | undefined): {
 			title: 'Ports',
 			formatter: (cell: CellComponent) => {
 				const value = cell.getValue();
-				if (value && Array.isArray(value) && value.length > 0) {
-					return value.map((port) => `<span>${port.name}</span>`).join(', ');
+				if (!value || !Array.isArray(value) || value.length === 0) return '-';
+
+				const ports = value as SwitchPortPolicySource[];
+				if (!cell.getRow().getData().vlanFiltering) {
+					return ports.map((port) => `<span>${escapeHTML(port.name)}</span>`).join(', ');
 				}
 
-				return '-';
+				return formatPortsCell(ports);
 			}
 		},
 		{
 			field: 'mtu',
-			title: 'MTU'
-		},
-		{
-			field: 'vlan',
-			title: 'VLAN'
+			title: 'MTU',
+			sorter: 'number'
 		},
 		{
 			field: 'vlanFiltering',
 			title: 'Filtering',
-			formatter: (cell: CellComponent) => (cell.getValue() ? 'Filtered' : 'Unfiltered')
+			formatter: (cell: CellComponent) =>
+				cell.getValue()
+					? renderWithIcon('mdi:filter-variant', 'Filtered', 'text-emerald-400')
+					: renderWithIcon('mdi:filter-off-outline', 'Unfiltered', 'text-muted-foreground')
+		},
+		{
+			field: 'hostVlan',
+			title: 'Host VLAN',
+			sorter: 'number',
+			formatter: (cell: CellComponent) => {
+				const data = cell.getRow().getData();
+				const value = cell.getValue() as number | null;
+				if (!data.vlanFiltering || value === null || value === undefined) return '-';
+
+				const hostInterface = data.bridgeName ? `${data.bridgeName}.${value}` : '';
+				return renderWithIcon(
+					'mdi:bridge',
+					String(value),
+					'text-emerald-400',
+					escapeHTML(hostInterface) || 'Host VLAN interface'
+				);
+			}
+		},
+		{
+			field: 'defaultAccessVlan',
+			title: 'Default access VLAN',
+			sorter: 'number',
+			formatter: (cell: CellComponent) => {
+				const data = cell.getRow().getData();
+				const value = cell.getValue() as number | null;
+				if (!data.vlanFiltering) return '-';
+				if (value === null || value === undefined) {
+					return renderWithIcon(
+						'mdi:lan-disconnect',
+						'Rejected',
+						'text-muted-foreground',
+						'New members, including VM TAPs, are rejected'
+					);
+				}
+
+				return vlanBadge(
+					String(value),
+					DEFAULT_ACCESS_BADGE_COLORS,
+					'New members, including VM TAPs, inherit this VLAN'
+				);
+			}
+		},
+		{
+			field: 'vlan',
+			title: 'VLAN child',
+			formatter: (cell: CellComponent) =>
+				cell.getRow().getData().vlanFiltering ? '-' : cell.getValue()
 		},
 		{
 			field: 'ipv4',
@@ -289,6 +412,7 @@ export function generateTableData(switches: SwitchList | undefined): {
 			rows.push({
 				id: sw.id,
 				name: sw.name,
+				bridgeName: sw.bridgeName,
 				mtu: sw.mtu,
 				vlan: sw.vlan || '-',
 				ipv4: sw.address || '-',
@@ -304,6 +428,7 @@ export function generateTableData(switches: SwitchList | undefined): {
 				network6Manual: sw.network6Manual || '',
 				gateway6Manual: sw.gateway6Manual || '',
 				ports: sw.ports,
+				portPoliciesText: (sw.ports ?? []).map((port) => portPolicyText(port)).join(', '),
 				bridgeMacMode: sw.bridgeMacMode,
 				bridgeMacSourcePort: sw.bridgeMacSourcePort,
 				bridgeMacObjectId: sw.bridgeMacObjectId,

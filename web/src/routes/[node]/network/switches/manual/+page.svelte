@@ -101,6 +101,13 @@
 		}
 	);
 
+	watch(
+		() => query,
+		() => {
+			activeRows = null;
+		}
+	);
+
 	let modals = $state({
 		newSwitch: {
 			open: false
@@ -169,6 +176,7 @@
 		name="tt-switches"
 		data={tableData}
 		bind:parentActiveRow={activeRows}
+		bind:query
 		multipleSelect={false}
 	/>
 </div>

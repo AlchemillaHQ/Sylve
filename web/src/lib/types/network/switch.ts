@@ -125,6 +125,7 @@ export function isSwitchVMCompatible(networkSwitch: NetworkSwitch): boolean {
 export interface SwitchRow extends Row {
 	id: number;
 	name: string;
+	bridgeName: string;
 	mtu: number;
 	vlan: number | '-';
 	ports: Array<{ name: string; vlanPolicy: VLANPortPolicy }>;
