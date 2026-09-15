@@ -171,11 +171,12 @@ export function generateTableData(switches: SwitchList | undefined): {
 					gw4 = '-';
 				}
 
-				if (v4 !== '-' && gw4 !== '-') {
-					return `<span>${v4}</span><br/><span>${gw4}</span>`;
-				} else {
-					return '-';
-				}
+				return (
+					[v4, gw4]
+						.filter((address) => address !== '-')
+						.map((address) => `<span>${address}</span>`)
+						.join('<br/>') || '-'
+				);
 			}
 		},
 		{
@@ -211,11 +212,12 @@ export function generateTableData(switches: SwitchList | undefined): {
 					gw6 = '-';
 				}
 
-				if (v6 !== '-' && gw6 !== '-') {
-					return `<span>${v6}</span><br/><span>${gw6}</span>`;
-				} else {
-					return '-';
-				}
+				return (
+					[v6, gw6]
+						.filter((address) => address !== '-')
+						.map((address) => `<span>${address}</span>`)
+						.join('<br/>') || '-'
+				);
 			}
 		},
 		{
