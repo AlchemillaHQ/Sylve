@@ -13660,10 +13660,6 @@ msgstr "Edit Samba Share - {0}"
 msgid "Choose the share location, define access, then enable optional Samba features."
 msgstr "Choose the share location, define access, then enable optional Samba features."
 
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -18435,20 +18431,8 @@ msgid "WireGuard Server (wgs0)"
 msgstr "WireGuard Server (wgs0)"
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> General <1/>"
-msgstr "<0/> General <1/>"
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Ports & VLANs"
 msgstr "Ports & VLANs"
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> IPv4 <1/>"
-msgstr "<0/> IPv4 <1/>"
-
-#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
-msgid "<0/> IPv6 <1/>"
-msgstr "<0/> IPv6 <1/>"
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Isolate VMs and jails from each other"
@@ -18539,3 +18523,15 @@ msgstr "Choose the untagged and tagged VLANs on each port"
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "Prevents flapping on member interfaces"
 msgstr "Prevents flapping on member interfaces"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> General"
+msgstr "<0/> General"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv4"
+msgstr "<0/> IPv4"
+
+#: src/lib/components/custom/Network/Switch/Standard/Form.svelte
+msgid "<0/> IPv6"
+msgstr "<0/> IPv6"

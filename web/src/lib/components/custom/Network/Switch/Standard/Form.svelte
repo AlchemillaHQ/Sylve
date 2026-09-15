@@ -29,7 +29,6 @@ under sponsorship from the FreeBSD Foundation.
 		form: StandardSwitchFormState;
 		comboBoxes: StandardSwitchFormComboBoxes;
 		activeTab: SwitchTab;
-		tabErrors: Partial<Record<SwitchTab, string>>;
 		portOptions: SelectOption[];
 		ipv4NetworkOptions: SelectOption[];
 		ipv4GatewayOptions: SelectOption[];
@@ -42,7 +41,6 @@ under sponsorship from the FreeBSD Foundation.
 		onReset: () => void;
 		onClose: () => void;
 		onSubmit: () => void;
-		onClearTabError: (tab: SwitchTab) => void;
 		onCreateMACObject: () => void;
 	}
 
@@ -51,7 +49,6 @@ under sponsorship from the FreeBSD Foundation.
 		form = $bindable(),
 		comboBoxes = $bindable(),
 		activeTab = $bindable(),
-		tabErrors,
 		portOptions,
 		ipv4NetworkOptions,
 		ipv4GatewayOptions,
@@ -64,7 +61,6 @@ under sponsorship from the FreeBSD Foundation.
 		onReset,
 		onClose,
 		onSubmit,
-		onClearTabError,
 		onCreateMACObject
 	}: Props = $props();
 
@@ -103,54 +99,22 @@ under sponsorship from the FreeBSD Foundation.
 
 		<Tabs.Root bind:value={activeTab} class="mt-4 flex min-h-0 flex-1 flex-col gap-0">
 			<Tabs.List class="grid w-full shrink-0 grid-cols-4 p-0">
-				<Tabs.Trigger
-					value="general"
-					class="border-b px-1 text-xs sm:text-sm"
-					title={tabErrors.general || undefined}
-				>
+				<Tabs.Trigger value="general" class="border-b px-1 text-xs sm:text-sm">
 					<span class="icon-[mdi--tune-variant] h-4 w-4"></span>
 					General
-					{#if tabErrors.general}
-						<span class="icon-[mdi--alert-circle-outline] text-destructive h-3.5 w-3.5"></span>
-						<span class="sr-only">Needs attention</span>
-					{/if}
 				</Tabs.Trigger>
-				<Tabs.Trigger
-					value="ports"
-					class="border-b px-1 text-xs sm:text-sm"
-					title={tabErrors.ports || undefined}
-				>
+				<Tabs.Trigger value="ports" class="border-b px-1 text-xs sm:text-sm">
 					<span class="icon-[mdi--ethernet] h-4 w-4"></span>
 					<span class="hidden sm:inline">Ports & VLANs</span>
 					<span class="sm:hidden">Ports</span>
-					{#if tabErrors.ports}
-						<span class="icon-[mdi--alert-circle-outline] text-destructive h-3.5 w-3.5"></span>
-						<span class="sr-only">Needs attention</span>
-					{/if}
 				</Tabs.Trigger>
-				<Tabs.Trigger
-					value="ipv4"
-					class="border-b px-1 text-xs sm:text-sm"
-					title={tabErrors.ipv4 || undefined}
-				>
+				<Tabs.Trigger value="ipv4" class="border-b px-1 text-xs sm:text-sm">
 					<span class="icon-[mdi--numeric-4-box-outline] h-4 w-4"></span>
 					IPv4
-					{#if tabErrors.ipv4}
-						<span class="icon-[mdi--alert-circle-outline] text-destructive h-3.5 w-3.5"></span>
-						<span class="sr-only">Needs attention</span>
-					{/if}
 				</Tabs.Trigger>
-				<Tabs.Trigger
-					value="ipv6"
-					class="border-b px-1 text-xs sm:text-sm"
-					title={tabErrors.ipv6 || undefined}
-				>
+				<Tabs.Trigger value="ipv6" class="border-b px-1 text-xs sm:text-sm">
 					<span class="icon-[mdi--numeric-6-box-outline] h-4 w-4"></span>
 					IPv6
-					{#if tabErrors.ipv6}
-						<span class="icon-[mdi--alert-circle-outline] text-destructive h-3.5 w-3.5"></span>
-						<span class="sr-only">Needs attention</span>
-					{/if}
 				</Tabs.Trigger>
 			</Tabs.List>
 
@@ -159,15 +123,6 @@ under sponsorship from the FreeBSD Foundation.
 				class="m-0 min-h-0 flex-1 overflow-y-auto overscroll-contain py-2 pr-3"
 			>
 				<div class="space-y-5 pb-1">
-					{#if tabErrors.general}
-						<div
-							class="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
-							role="alert"
-						>
-							{tabErrors.general}
-						</div>
-					{/if}
-
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<CustomValueInput
 							label="Name"
@@ -175,7 +130,6 @@ under sponsorship from the FreeBSD Foundation.
 							bind:value={form.name}
 							classes="space-y-1.5"
 							disabled={mode === 'edit'}
-							onChange={() => onClearTabError('general')}
 						/>
 
 						<CustomValueInput
@@ -184,7 +138,7 @@ under sponsorship from the FreeBSD Foundation.
 							bind:value={form.mtu}
 							classes="space-y-1.5"
 							type="number"
-							onChange={() => onClearTabError('general')}
+							preserveEmpty={true}
 						/>
 					</div>
 
@@ -224,8 +178,6 @@ under sponsorship from the FreeBSD Foundation.
 					{bridgeMACPortOptions}
 					{bridgeMACObjectOptions}
 					{effectiveBridgeMAC}
-					error={tabErrors.ports}
-					onClearError={() => onClearTabError('ports')}
 					{onCreateMACObject}
 				/>
 			</Tabs.Content>
@@ -240,7 +192,6 @@ under sponsorship from the FreeBSD Foundation.
 					bind:comboBoxes
 					networkOptions={ipv4NetworkOptions}
 					gatewayOptions={ipv4GatewayOptions}
-					error={tabErrors.ipv4}
 				/>
 			</Tabs.Content>
 
@@ -254,7 +205,6 @@ under sponsorship from the FreeBSD Foundation.
 					bind:comboBoxes
 					networkOptions={ipv6NetworkOptions}
 					gatewayOptions={ipv6GatewayOptions}
-					error={tabErrors.ipv6}
 				/>
 			</Tabs.Content>
 		</Tabs.Root>

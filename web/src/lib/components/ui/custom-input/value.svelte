@@ -20,6 +20,7 @@
 		textAreaClasses?: string;
 		disabled?: boolean;
 		revealOnFocus?: boolean;
+		preserveEmpty?: boolean;
 		onChange?: (value: string | number) => void;
 		onBlur?: () => void;
 		topRightButton?: {
@@ -44,6 +45,7 @@
 		topRightButton,
 		disabled = false,
 		revealOnFocus = false,
+		preserveEmpty = false,
 		onChange,
 		onBlur
 	}: Props = $props();
@@ -131,7 +133,7 @@
 			{disabled}
 			oninput={(e) => {
 				const raw = (e.currentTarget as HTMLInputElement).value;
-				value = type === 'number' ? Number(raw) : raw;
+				value = type === 'number' && !(preserveEmpty && raw === '') ? Number(raw) : raw;
 				if (onChange) onChange(value);
 			}}
 			onblur={() => {

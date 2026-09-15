@@ -359,6 +359,66 @@ function createInterfaces(hostname: string): Iface[] {
 				status: 'active'
 			}
 		}),
+		makeInterface('em0', {
+			ether: `00:1b:21:30:00:${hostOctet}`,
+			hwaddr: `00:1b:21:30:00:${hostOctet}`,
+			driver: 'em',
+			model: 'Intel 82574L',
+			description: 'VLAN lab uplink'
+		}),
+		makeInterface('em1', {
+			ether: `00:1b:21:30:01:${hostOctet}`,
+			hwaddr: `00:1b:21:30:01:${hostOctet}`,
+			driver: 'em',
+			model: 'Intel 82574L',
+			description: 'VLAN lab access port'
+		}),
+		makeInterface('vm-vlan-lab', {
+			model: 'Bridge',
+			description: 'VLAN filtered lab',
+			bridgeId: '00:00:5e:00:53:05',
+			groups: ['bridge'],
+			media: null,
+			bridgeMembers: [
+				{
+					name: 'em0',
+					flags: { raw: 3, desc: ['LEARNING', 'DISCOVER'] },
+					ifmaxaddr: 2000,
+					state: 3,
+					priority: 128,
+					port: 1,
+					pathCost: 20000
+				},
+				{
+					name: 'em1',
+					flags: { raw: 3, desc: ['LEARNING', 'DISCOVER'] },
+					ifmaxaddr: 2000,
+					state: 3,
+					priority: 128,
+					port: 2,
+					pathCost: 20000
+				}
+			]
+		}),
+		makeInterface('vm-vlan-lab.130', {
+			model: 'VLAN',
+			description: 'Host VLAN for the VLAN filtered lab',
+			groups: ['svm-host-vlan'],
+			ipv4: [{ ip: '192.168.130.2', netmask: '255.255.255.0', broadcast: '192.168.130.255' }],
+			ipv6: [
+				{
+					ip: '2001:db8:130::2',
+					prefixLength: 64,
+					scopeId: 0,
+					autoConf: false,
+					detached: false,
+					deprecated: false,
+					lifeTimes: { preferred: 0, valid: 0 }
+				}
+			],
+			media: null,
+			bridgeMembers: []
+		}),
 		makeInterface('vm-production', {
 			model: 'Bridge',
 			description: 'Production guests',
@@ -593,6 +653,53 @@ function createState(hostname: string): DemoNetworkState {
 			vlanFiltering: false,
 			defaultAccessVlan: null,
 			hostVlan: null
+		},
+		{
+			id: 3,
+			name: 'vlan-lab',
+			bridgeName: 'vm-vlan-lab',
+			mtu: 1500,
+			vlan: 0,
+			private: false,
+			address: '192.168.130.2/24',
+			address6: '2001:db8:130::2/64',
+			addressObj: null,
+			address6Obj: null,
+			networkObj: null,
+			network6Obj: null,
+			gatewayAddressObj: null,
+			gateway6AddressObj: null,
+			networkManual: '192.168.130.2/24',
+			network6Manual: '2001:db8:130::2/64',
+			gatewayManual: '',
+			gateway6Manual: '',
+			ports: [
+				{
+					id: 3,
+					name: 'em0',
+					switchId: 3,
+					vlanPolicy: { mode: 'trunk', untaggedVlan: 199, taggedVlans: [110, 120, 130] }
+				},
+				{
+					id: 4,
+					name: 'em1',
+					switchId: 3,
+					vlanPolicy: { mode: 'access', untaggedVlan: 120, taggedVlans: [] }
+				}
+			],
+			bridgeMacMode: 'port',
+			bridgeMacSourcePort: 'em0',
+			bridgeMacObjectId: null,
+			bridgeMacObject: null,
+			dhcp: false,
+			slaac: false,
+			disableIPv6: false,
+			defaultRoute: false,
+			defaultRoute6: false,
+			disableBridgeOffloads: true,
+			vlanFiltering: true,
+			defaultAccessVlan: 199,
+			hostVlan: 130
 		}
 	];
 	const manual: ManualSwitch[] = [

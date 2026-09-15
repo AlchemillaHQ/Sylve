@@ -30,8 +30,6 @@ under sponsorship from the FreeBSD Foundation.
 		bridgeMACPortOptions: SelectOption[];
 		bridgeMACObjectOptions: SelectOption[];
 		effectiveBridgeMAC: string;
-		error?: string;
-		onClearError: () => void;
 		onCreateMACObject: () => void;
 	}
 
@@ -42,23 +40,12 @@ under sponsorship from the FreeBSD Foundation.
 		bridgeMACPortOptions,
 		bridgeMACObjectOptions,
 		effectiveBridgeMAC,
-		error = '',
-		onClearError,
 		onCreateMACObject
 	}: Props = $props();
 	let selectedPorts = $derived([...comboBoxes.ports.value].sort());
 </script>
 
 <div class="space-y-5 pb-1">
-	{#if error}
-		<div
-			class="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
-			role="alert"
-		>
-			{error}
-		</div>
-	{/if}
-
 	<div class="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-3">
 		{#if form.vlanFiltering}
 			<CustomValueInput
@@ -67,7 +54,7 @@ under sponsorship from the FreeBSD Foundation.
 				bind:value={form.defaultAccessVlan}
 				type="number"
 				hint="New unconfigured members, including VM TAPs, inherit this untagged VLAN. Leave empty to reject VM attachments."
-				onChange={onClearError}
+				preserveEmpty={true}
 			/>
 			<CustomValueInput
 				label="Host VLAN"
@@ -75,7 +62,7 @@ under sponsorship from the FreeBSD Foundation.
 				bind:value={form.hostVlan}
 				type="number"
 				hint="Required for host IPv4/IPv6 on a filtered switch. Sylve creates a VLAN interface on the bridge; its VLAN must be admitted by the uplink."
-				onChange={onClearError}
+				preserveEmpty={true}
 			/>
 		{:else}
 			<CustomValueInput
@@ -84,7 +71,6 @@ under sponsorship from the FreeBSD Foundation.
 				bind:value={form.vlan}
 				type="number"
 				hint="Create VLAN child interfaces before adding the selected ports. Use 0 for none."
-				onChange={onClearError}
 			/>
 		{/if}
 
@@ -117,7 +103,6 @@ under sponsorship from the FreeBSD Foundation.
 						bind:mode={form.portPolicies[port].mode}
 						bind:untagged={form.portPolicies[port].untaggedVlan}
 						bind:tagged={form.portPolicies[port].taggedVlans}
-						onChange={onClearError}
 					/>
 				{/if}
 			{/each}

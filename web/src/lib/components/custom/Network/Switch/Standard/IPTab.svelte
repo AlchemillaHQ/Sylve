@@ -23,7 +23,6 @@ under sponsorship from the FreeBSD Foundation.
 		comboBoxes: StandardSwitchFormComboBoxes;
 		networkOptions: SelectOption[];
 		gatewayOptions: SelectOption[];
-		error?: string;
 	}
 
 	let {
@@ -31,8 +30,7 @@ under sponsorship from the FreeBSD Foundation.
 		form = $bindable(),
 		comboBoxes = $bindable(),
 		networkOptions,
-		gatewayOptions,
-		error = ''
+		gatewayOptions
 	}: Props = $props();
 	let filteredWithoutHostVLAN = $derived(
 		form.vlanFiltering && String(form.hostVlan ?? '').trim() === ''
@@ -40,15 +38,6 @@ under sponsorship from the FreeBSD Foundation.
 </script>
 
 <div class="space-y-5 pb-1">
-	{#if error}
-		<div
-			class="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
-			role="alert"
-		>
-			{error}
-		</div>
-	{/if}
-
 	{#if filteredWithoutHostVLAN}
 		<div class="bg-muted/40 rounded-md border p-4 text-sm">
 			<p class="font-medium">Host IPv{version} is disabled until a Host VLAN is selected.</p>
