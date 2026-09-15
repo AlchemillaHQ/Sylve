@@ -9150,7 +9150,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new jail with the provided configuration",
+                "description": "Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10891,7 +10891,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a network attachment for an inactive jail. The jail must not inherit host networking.",
+                "description": "Create a network attachment for an inactive jail. The jail must not inherit host networking, and a filtered switch requires an explicit access or trunk VLAN policy.",
                 "consumes": [
                     "application/json"
                 ],
@@ -11072,7 +11072,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Partially update a network attachment belonging to an inactive jail. Omitted fields are preserved.",
+                "description": "Partially update a network attachment belonging to an inactive jail. Omitted fields are preserved, and a filtered switch requires an explicit access or trunk VLAN policy.",
                 "consumes": [
                     "application/json"
                 ],
@@ -15778,7 +15778,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "List all configured standard and manual network switches",
+                "description": "List all configured standard and manual network switches. Manual switches include live VLAN-state availability and an observation error without failing the whole list.",
                 "produces": [
                     "application/json"
                 ],
@@ -15815,7 +15815,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Register an existing host bridge as a manual network switch",
+                "description": "Register an existing, externally managed host bridge as a manual network switch. Bridge VLAN state is detected at runtime and is not configured by Sylve.",
                 "consumes": [
                     "application/json"
                 ],
@@ -15961,7 +15961,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create and apply a managed standard network switch",
+                "description": "Create and apply a managed standard network switch, optionally using FreeBSD 15 per-member VLAN filtering. A filtered base bridge remains layer 2; an optional managed Host VLAN interface provides host addressing.",
                 "consumes": [
                     "application/json"
                 ],
@@ -16036,7 +16036,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace and apply a managed standard network switch by ID",
+                "description": "Replace and apply a managed standard network switch by ID. Changing VLAN-filtering mode recreates the bridge and requires all VM and jail interfaces to be detached; changing the default access VLAN requires all attached VMs to be stopped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -22040,7 +22040,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new virtual machine with the specified parameters",
+                "description": "Create a new virtual machine with the specified parameters. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.",
                 "consumes": [
                     "application/json"
                 ],
@@ -23635,7 +23635,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Attach a network interface to a shut-off virtual machine",
+                "description": "Attach a network interface to a shut-off virtual machine. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.",
                 "consumes": [
                     "application/json"
                 ],
@@ -23810,7 +23810,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Partially update a network interface attached to a shut-off virtual machine",
+                "description": "Partially update a network interface attached to a shut-off virtual machine. A VLAN-filtered switch is usable only when it has a default access VLAN; per-VM VLAN policies are not supported.",
                 "consumes": [
                     "application/json"
                 ],
@@ -32335,6 +32335,9 @@ const docTemplate = `{
                 },
                 "switchType": {
                     "type": "string"
+                },
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -32352,6 +32355,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_jail.Network": {
             "type": "object",
             "properties": {
+                "attachment": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Contract"
+                },
                 "defaultGateway": {
                     "type": "boolean"
                 },
@@ -32412,8 +32418,8 @@ const docTemplate = `{
                 "switchType": {
                     "type": "string"
                 },
-                "vlan": {
-                    "type": "integer"
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -32877,6 +32883,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "defaultAccessVlan": {
+                    "type": "integer"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -32884,6 +32893,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                },
+                "vlanFiltering": {
+                    "type": "boolean"
+                },
+                "vlanStateAvailable": {
+                    "type": "boolean"
+                },
+                "vlanStateError": {
                     "type": "string"
                 }
             }
@@ -32902,6 +32920,9 @@ const docTemplate = `{
                 },
                 "switchId": {
                     "type": "integer"
+                },
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -33050,6 +33071,9 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "defaultAccessVlan": {
+                    "type": "integer"
+                },
                 "defaultRoute": {
                     "description": "DefaultRoute owns the IPv4 default route for static or DHCP addressing.",
                     "type": "boolean"
@@ -33085,6 +33109,9 @@ const docTemplate = `{
                 },
                 "gatewayManual": {
                     "type": "string"
+                },
+                "hostVlan": {
+                    "type": "integer"
                 },
                 "id": {
                     "type": "integer"
@@ -33130,6 +33157,9 @@ const docTemplate = `{
                 },
                 "vlan": {
                     "type": "integer"
+                },
+                "vlanFiltering": {
+                    "type": "boolean"
                 }
             }
         },
@@ -33733,6 +33763,9 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_db_models_vm.Network": {
             "type": "object",
             "properties": {
+                "attachment": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Contract"
+                },
                 "emulation": {
                     "type": "string"
                 },
@@ -34239,6 +34272,9 @@ const docTemplate = `{
             "properties": {
                 "emulation": {
                     "type": "string"
+                },
+                "enable": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -35291,8 +35327,8 @@ const docTemplate = `{
                 "switchName": {
                     "type": "string"
                 },
-                "vlan": {
-                    "type": "integer"
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -35519,8 +35555,8 @@ const docTemplate = `{
                 "type": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType"
                 },
-                "vlan": {
-                    "type": "integer"
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -35589,8 +35625,8 @@ const docTemplate = `{
                 "switchName": {
                     "type": "string"
                 },
-                "vlan": {
-                    "type": "integer"
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
                 }
             }
         },
@@ -38190,6 +38226,43 @@ const docTemplate = `{
                 "VdevTypeDedup"
             ]
         },
+        "github_com_alchemillahq_sylve_internal_network_attachment.Contract": {
+            "type": "object",
+            "properties": {
+                "defaultAccessVlan": {
+                    "type": "integer"
+                },
+                "kind": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Kind"
+                },
+                "switchName": {
+                    "type": "string"
+                },
+                "switchType": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "vlanFiltering": {
+                    "type": "boolean"
+                },
+                "vlanPolicy": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_network_attachment.Kind": {
+            "type": "string",
+            "enum": [
+                "vm",
+                "jail"
+            ],
+            "x-enum-varnames": [
+                "KindVM",
+                "KindJail"
+            ]
+        },
         "github_com_alchemillahq_sylve_internal_services_auth.ImportableUnixUser": {
             "type": "object",
             "properties": {
@@ -39654,6 +39727,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string"
+                },
+                "taggedVlans": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "untaggedVlan": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_pkg_network_iface.BridgeMember": {
             "type": "object",
             "properties": {
@@ -39835,6 +39925,12 @@ const docTemplate = `{
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_iface.STP"
                 },
                 "timeout": {
+                    "type": "integer"
+                },
+                "vlanParent": {
+                    "type": "string"
+                },
+                "vlanTag": {
                     "type": "integer"
                 }
             }
@@ -41702,6 +41798,9 @@ const docTemplate = `{
                 "confirmRCConflicts": {
                     "type": "boolean"
                 },
+                "defaultAccessVlan": {
+                    "type": "integer"
+                },
                 "defaultRoute": {
                     "type": "boolean"
                 },
@@ -41729,6 +41828,9 @@ const docTemplate = `{
                 "gateway6Manual": {
                     "type": "string"
                 },
+                "hostVlan": {
+                    "type": "integer"
+                },
                 "mtu": {
                     "type": "integer"
                 },
@@ -41747,6 +41849,12 @@ const docTemplate = `{
                 "network6Manual": {
                     "type": "string"
                 },
+                "portPolicies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
+                    }
+                },
                 "ports": {
                     "type": "array",
                     "items": {
@@ -41761,6 +41869,9 @@ const docTemplate = `{
                 },
                 "vlan": {
                     "type": "integer"
+                },
+                "vlanFiltering": {
+                    "type": "boolean"
                 }
             }
         },
@@ -41790,8 +41901,14 @@ const docTemplate = `{
                 "bridgeMac": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
                 },
+                "confirmHostLayer3Removal": {
+                    "type": "boolean"
+                },
                 "confirmRCConflicts": {
                     "type": "boolean"
+                },
+                "defaultAccessVlan": {
+                    "type": "integer"
                 },
                 "defaultRoute": {
                     "type": "boolean"
@@ -41820,6 +41937,9 @@ const docTemplate = `{
                 "gateway6Manual": {
                     "type": "string"
                 },
+                "hostVlan": {
+                    "type": "integer"
+                },
                 "mtu": {
                     "type": "integer"
                 },
@@ -41835,6 +41955,12 @@ const docTemplate = `{
                 "network6Manual": {
                     "type": "string"
                 },
+                "portPolicies": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
+                    }
+                },
                 "ports": {
                     "type": "array",
                     "items": {
@@ -41849,6 +41975,9 @@ const docTemplate = `{
                 },
                 "vlan": {
                     "type": "integer"
+                },
+                "vlanFiltering": {
+                    "type": "boolean"
                 }
             }
         },

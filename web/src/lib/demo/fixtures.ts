@@ -985,6 +985,17 @@ function fullVM(vm: DemoVM) {
 			emulation: 'virtio',
 			enable: true,
 			vmId: vm.id
+		},
+		{
+			id: vm.id * 10 + 1,
+			mac: `02:53:59:4c:${vm.rid.toString(16).padStart(2, '0')}:02`,
+			macId: null,
+			macObj: null,
+			switchId: 3,
+			switchType: 'standard',
+			emulation: 'e1000',
+			enable: true,
+			vmId: vm.id
 		}
 	];
 	vm.snapshots ??= [

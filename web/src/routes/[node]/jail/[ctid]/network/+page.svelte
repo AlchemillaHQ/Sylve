@@ -22,14 +22,10 @@ under sponsorship from the FreeBSD Foundation.
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Jail, JailState } from '$lib/types/jail/jail';
 	import type { NetworkObject } from '$lib/types/network/object';
-	import {
-		emptySwitchList,
-		isSwitchList,
-		type SwitchList,
-		type VLANPortPolicy
-	} from '$lib/types/network/switch';
+	import { emptySwitchList, isSwitchList, type SwitchList } from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { ipGatewayFormatter, macFormatter } from '$lib/utils/jail/network';
+	import { formatVlanPolicy, vlanPolicyText } from '$lib/utils/network/vlan-format';
 	import { escapeHTML } from '$lib/utils/string';
 	import { resource } from 'runed';
 	import { getContext, onMount } from 'svelte';
@@ -171,20 +167,16 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	});
 
-	function formatVLANPolicy(policy: VLANPortPolicy): string {
-		if (policy.mode === 'access') return `Access ${policy.untaggedVlan}`;
-		if (policy.mode !== 'trunk') return '-';
-
-		const native = policy.untaggedVlan === undefined ? '' : `native ${policy.untaggedVlan}; `;
-		return `Trunk ${native}tagged ${policy.taggedVlans.join(',')}`;
-	}
-
 	let table = $derived.by(() => {
 		const columns: Column[] = [
 			{ title: 'Name', field: 'name' },
 			{ title: 'Switch', field: 'switch' },
 			{ title: 'MAC', field: 'mac' },
-			{ title: 'VLAN policy', field: 'vlanPolicy' },
+			{
+				title: 'VLAN policy',
+				field: 'vlanPolicy',
+				formatter: (cell) => formatVlanPolicy(cell.getRow().getData().vlanPolicyRaw)
+			},
 			{ title: 'IPv4', field: 'ipv4', formatter: 'html' },
 			{ title: 'IPv6', field: 'ipv6', formatter: 'html' }
 		];
@@ -200,7 +192,8 @@ under sponsorship from the FreeBSD Foundation.
 				name: network.name,
 				switch: switchName,
 				mac: macFormatter(currentObjects, network.macId || 0),
-				vlanPolicy: formatVLANPolicy(network.vlanPolicy),
+				vlanPolicy: vlanPolicyText(network.vlanPolicy) || '-',
+				vlanPolicyRaw: network.vlanPolicy,
 				ipv4: network.dhcp
 					? 'DHCP'
 					: network.ipv4Id

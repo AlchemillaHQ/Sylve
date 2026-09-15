@@ -832,7 +832,6 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
-#: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -4370,6 +4369,7 @@ msgstr "Hlavní síť"
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
 msgid "Switch"
 msgstr "Přepínač"
 
@@ -6992,10 +6992,6 @@ msgstr "Zachycené stavy se nepodařilo smazat"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Delete.svelte
 msgid "Snapshot GUID not found"
 msgstr "GUID zachyceného stavu nenalezeno"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Failed to delete periodic snapshot"
-msgstr "Nepodařilo se smazat pravidelně pořizovaný zachycený stav"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "View Snapshot Jobs"
@@ -17808,11 +17804,6 @@ msgstr ""
 msgid "Sylve could not inspect current runtime bridge ownership."
 msgstr ""
 
-#. 0: details
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "The selected ports have configuration outside Sylve's managed Standard Switches.<br>{0}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime."
-msgstr ""
-
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Transfer ownership"
 msgstr ""
@@ -18414,16 +18405,6 @@ msgstr ""
 msgid "Remove host settings"
 msgstr ""
 
-#. 0: policy.untaggedVlan
-#: src/routes/[node]/jail/[ctid]/network/+page.svelte
-msgid "Access {0}"
-msgstr ""
-
-#. 0: native; 1: policy.taggedVlans.join(',')
-#: src/routes/[node]/jail/[ctid]/network/+page.svelte
-msgid "Trunk {0}tagged {1}"
-msgstr ""
-
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 msgid "VLAN policy"
 msgstr ""
@@ -18537,4 +18518,37 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/Form.svelte
 msgid "<0/> IPv6"
+msgstr ""
+
+#. 0: row.switchName
+#: src/routes/[node]/vm/[rid]/network/+page.svelte
+msgid "Access VLAN inherited from {0}"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Clear the file name to detect one from the server"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename, try Ignore TLS Errors"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to detect a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Detect filename from server"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshots"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Saving Snapshot Jobs..."
 msgstr ""

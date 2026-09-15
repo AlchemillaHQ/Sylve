@@ -1,6 +1,5 @@
 <!-- 
 <span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
-<span class="icon-[mdi--bridge]"></span>
 <span class="icon-[mdi--filter-variant]"></span>
 <span class="icon-[mdi--filter-off-outline]"></span>
 <span class="icon-[mdi--vote-outline]"></span>

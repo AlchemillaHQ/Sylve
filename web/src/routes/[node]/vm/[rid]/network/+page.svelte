@@ -31,6 +31,7 @@ under sponsorship from the FreeBSD Foundation.
 	} from '$lib/types/network/switch';
 	import type { VM, VMDomain } from '$lib/types/vm/vm';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { defaultAccessVlanBadge, vlanNoneCell } from '$lib/utils/network/vlan-format';
 	import { escapeHTML } from '$lib/utils/string';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { toast } from 'svelte-sonner';
@@ -141,7 +142,7 @@ under sponsorship from the FreeBSD Foundation.
 						: renderWithIcon('mdi:close-circle', 'Disabled', 'text-red-500');
 				}
 			},
-			{ field: 'name', title: 'Name' },
+			{ field: 'switchName', title: 'Switch' },
 			{ field: 'mac', title: 'MAC Address' },
 			{
 				field: 'emulation',
@@ -151,6 +152,24 @@ under sponsorship from the FreeBSD Foundation.
 					if (value === 'virtio') return 'VirtIO';
 					if (value === 'e1000') return 'E1000';
 					return value;
+				}
+			},
+			{
+				field: 'accessVlan',
+				title: 'VLAN',
+				sorter: 'number',
+				formatter: (cell: CellComponent) => {
+					const row = cell.getRow().getData();
+					if (!row.vlanFiltering) return '-';
+
+					const value = cell.getValue() as number | null;
+					if (value === null || value === undefined) {
+						return vlanNoneCell(
+							`${row.switchName} has no default access VLAN; re-attach this NIC after setting one`
+						);
+					}
+
+					return defaultAccessVlanBadge(value, `Access VLAN inherited from ${row.switchName}`);
 				}
 			}
 		];
@@ -169,7 +188,9 @@ under sponsorship from the FreeBSD Foundation.
 			const macAddress = macObject?.entries?.[0]?.value || network.mac || '';
 			rows.push({
 				id: network.id,
-				name: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
+				switchName: sw?.name || `Unknown ${network.switchType} switch (${network.switchId})`,
+				vlanFiltering: sw?.vlanFiltering ?? false,
+				accessVlan: sw?.vlanFiltering ? (sw.defaultAccessVlan ?? null) : null,
 				mac: macObject
 					? `${macObject.name} (${macAddress || 'No address'})`
 					: macAddress || 'Unknown MAC',
@@ -234,7 +255,7 @@ under sponsorship from the FreeBSD Foundation.
 				onclick={() => {
 					properties.detach.open = true;
 					properties.detach.id = activeRows[0].id as number;
-					properties.detach.name = activeRows[0].name as string;
+					properties.detach.name = activeRows[0].switchName as string;
 				}}
 				size="sm"
 				variant="outline"

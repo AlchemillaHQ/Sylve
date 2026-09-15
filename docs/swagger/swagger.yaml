@@ -2990,6 +2990,8 @@ definitions:
         type: integer
       switchType:
         type: string
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     type: object
   github_com_alchemillahq_sylve_internal_db_models_jail.JailType:
     enum:
@@ -3001,6 +3003,8 @@ definitions:
     - JailTypeLinux
   github_com_alchemillahq_sylve_internal_db_models_jail.Network:
     properties:
+      attachment:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Contract'
       defaultGateway:
         type: boolean
       dhcp:
@@ -3041,8 +3045,8 @@ definitions:
         type: integer
       switchType:
         type: string
-      vlan:
-        type: integer
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     type: object
   github_com_alchemillahq_sylve_internal_db_models_jail.Storage:
     properties:
@@ -3352,11 +3356,19 @@ definitions:
         type: string
       createdAt:
         type: string
+      defaultAccessVlan:
+        type: integer
       id:
         type: integer
       name:
         type: string
       updatedAt:
+        type: string
+      vlanFiltering:
+        type: boolean
+      vlanStateAvailable:
+        type: boolean
+      vlanStateError:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.NetworkPort:
@@ -3369,6 +3381,8 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch'
       switchId:
         type: integer
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.Object:
     properties:
@@ -3468,6 +3482,8 @@ definitions:
         type: string
       createdAt:
         type: string
+      defaultAccessVlan:
+        type: integer
       defaultRoute:
         description: DefaultRoute owns the IPv4 default route for static or DHCP addressing.
         type: boolean
@@ -3497,6 +3513,8 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
       gatewayManual:
         type: string
+      hostVlan:
+        type: integer
       id:
         type: integer
       mtu:
@@ -3527,6 +3545,8 @@ definitions:
         type: string
       vlan:
         type: integer
+      vlanFiltering:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource:
     properties:
@@ -3933,6 +3953,8 @@ definitions:
     - UploadStatusCompleted
   github_com_alchemillahq_sylve_internal_db_models_vm.Network:
     properties:
+      attachment:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Contract'
       emulation:
         type: string
       enable:
@@ -4275,6 +4297,8 @@ definitions:
     properties:
       emulation:
         type: string
+      enable:
+        type: boolean
       name:
         type: string
       switchName:
@@ -4976,8 +5000,8 @@ definitions:
         type: boolean
       switchName:
         type: string
-      vlan:
-        type: integer
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     required:
     - name
     - switchName
@@ -5126,8 +5150,8 @@ definitions:
         type: string
       type:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType'
-      vlan:
-        type: integer
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     required:
     - ctId
     - name
@@ -5177,8 +5201,8 @@ definitions:
         type: boolean
       switchName:
         type: string
-      vlan:
-        type: integer
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase:
     properties:
@@ -6930,6 +6954,31 @@ definitions:
     - VdevTypeCache
     - VdevTypeSpecial
     - VdevTypeDedup
+  github_com_alchemillahq_sylve_internal_network_attachment.Contract:
+    properties:
+      defaultAccessVlan:
+        type: integer
+      kind:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_attachment.Kind'
+      switchName:
+        type: string
+      switchType:
+        type: string
+      version:
+        type: integer
+      vlanFiltering:
+        type: boolean
+      vlanPolicy:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
+    type: object
+  github_com_alchemillahq_sylve_internal_network_attachment.Kind:
+    enum:
+    - vm
+    - jail
+    type: string
+    x-enum-varnames:
+    - KindVM
+    - KindJail
   github_com_alchemillahq_sylve_internal_services_auth.ImportableUnixUser:
     properties:
       fullName:
@@ -7900,6 +7949,17 @@ definitions:
       nextCursor:
         type: string
     type: object
+  github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy:
+    properties:
+      mode:
+        type: string
+      taggedVlans:
+        items:
+          type: integer
+        type: array
+      untaggedVlan:
+        type: integer
+    type: object
   github_com_alchemillahq_sylve_pkg_network_iface.BridgeMember:
     properties:
       flags:
@@ -8019,6 +8079,10 @@ definitions:
       stp:
         $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_iface.STP'
       timeout:
+        type: integer
+      vlanParent:
+        type: string
+      vlanTag:
         type: integer
     type: object
   github_com_alchemillahq_sylve_pkg_network_iface.Media:
@@ -9261,6 +9325,8 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
       confirmRCConflicts:
         type: boolean
+      defaultAccessVlan:
+        type: integer
       defaultRoute:
         type: boolean
       defaultRoute6:
@@ -9279,6 +9345,8 @@ definitions:
         type: integer
       gateway6Manual:
         type: string
+      hostVlan:
+        type: integer
       mtu:
         type: integer
       name:
@@ -9291,6 +9359,10 @@ definitions:
         type: integer
       network6Manual:
         type: string
+      portPolicies:
+        additionalProperties:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
+        type: object
       ports:
         items:
           type: string
@@ -9301,6 +9373,8 @@ definitions:
         type: boolean
       vlan:
         type: integer
+      vlanFiltering:
+        type: boolean
     required:
     - name
     - private
@@ -9320,8 +9394,12 @@ definitions:
     properties:
       bridgeMac:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
+      confirmHostLayer3Removal:
+        type: boolean
       confirmRCConflicts:
         type: boolean
+      defaultAccessVlan:
+        type: integer
       defaultRoute:
         type: boolean
       defaultRoute6:
@@ -9340,6 +9418,8 @@ definitions:
         type: integer
       gateway6Manual:
         type: string
+      hostVlan:
+        type: integer
       mtu:
         type: integer
       network4:
@@ -9350,6 +9430,10 @@ definitions:
         type: integer
       network6Manual:
         type: string
+      portPolicies:
+        additionalProperties:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
+        type: object
       ports:
         items:
           type: string
@@ -9360,6 +9444,8 @@ definitions:
         type: boolean
       vlan:
         type: integer
+      vlanFiltering:
+        type: boolean
     required:
     - private
     type: object
@@ -15960,7 +16046,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new jail with the provided configuration
+      description: Create a new jail with the provided configuration. A network attached
+        to a filtered switch requires an explicit access or trunk VLAN policy.
       parameters:
       - description: Create Jail Request
         in: body
@@ -16696,7 +16783,8 @@ paths:
       consumes:
       - application/json
       description: Create a network attachment for an inactive jail. The jail must
-        not inherit host networking.
+        not inherit host networking, and a filtered switch requires an explicit access
+        or trunk VLAN policy.
       parameters:
       - description: Jail CTID
         in: path
@@ -16816,7 +16904,8 @@ paths:
       consumes:
       - application/json
       description: Partially update a network attachment belonging to an inactive
-        jail. Omitted fields are preserved.
+        jail. Omitted fields are preserved, and a filtered switch requires an explicit
+        access or trunk VLAN policy.
       parameters:
       - description: Jail CTID
         in: path
@@ -20303,7 +20392,9 @@ paths:
       - Network
   /network/switch:
     get:
-      description: List all configured standard and manual network switches
+      description: List all configured standard and manual network switches. Manual
+        switches include live VLAN-state availability and an observation error without
+        failing the whole list.
       produces:
       - application/json
       responses:
@@ -20328,7 +20419,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Register an existing host bridge as a manual network switch
+      description: Register an existing, externally managed host bridge as a manual
+        network switch. Bridge VLAN state is detected at runtime and is not configured
+        by Sylve.
       parameters:
       - description: Create Manual Switch Request
         in: body
@@ -20422,7 +20515,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create and apply a managed standard network switch
+      description: Create and apply a managed standard network switch, optionally
+        using FreeBSD 15 per-member VLAN filtering. A filtered base bridge remains
+        layer 2; an optional managed Host VLAN interface provides host addressing.
       parameters:
       - description: Create Standard Switch Request
         in: body
@@ -20515,7 +20610,10 @@ paths:
     put:
       consumes:
       - application/json
-      description: Replace and apply a managed standard network switch by ID
+      description: Replace and apply a managed standard network switch by ID. Changing
+        VLAN-filtering mode recreates the bridge and requires all VM and jail interfaces
+        to be detached; changing the default access VLAN requires all attached VMs
+        to be stopped.
       parameters:
       - description: Standard Switch ID
         in: path
@@ -24419,7 +24517,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new virtual machine with the specified parameters
+      description: Create a new virtual machine with the specified parameters. A VLAN-filtered
+        switch is usable only when it has a default access VLAN; per-VM VLAN policies
+        are not supported.
       parameters:
       - description: Create Virtual Machine Request
         in: body
@@ -25229,7 +25329,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Attach a network interface to a shut-off virtual machine
+      description: Attach a network interface to a shut-off virtual machine. A VLAN-filtered
+        switch is usable only when it has a default access VLAN; per-VM VLAN policies
+        are not supported.
       parameters:
       - description: Virtual Machine RID
         in: path
@@ -25346,7 +25448,8 @@ paths:
       consumes:
       - application/json
       description: Partially update a network interface attached to a shut-off virtual
-        machine
+        machine. A VLAN-filtered switch is usable only when it has a default access
+        VLAN; per-VM VLAN policies are not supported.
       parameters:
       - description: Virtual Machine RID
         in: path

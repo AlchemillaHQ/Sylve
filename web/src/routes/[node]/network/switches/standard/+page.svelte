@@ -292,13 +292,8 @@ under sponsorship from the FreeBSD Foundation.
 		return { id: 0, manual: v };
 	}
 
-	let announcedError = $state('');
-	let announcedErrorKey = $state(0);
-
 	function showError(tab: SwitchTab, message: string) {
 		activeTab = tab;
-		announcedError = message;
-		announcedErrorKey += 1;
 		toast.error(message, { position: 'bottom-center' });
 	}
 
@@ -386,9 +381,15 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	}
 
+	const MAX_VISIBLE_CONFLICTS = 6;
+
 	let rcConflictWarningMessage = $derived.by(() => {
-		const details = rcConflictWarning.conflicts.map(rcConflictDetail).join('<br>');
-		return `The selected ports have configuration outside Sylve's managed Standard Switches.<br>${details}<br>Continuing will not modify those external settings, which may reapply after boot or conflict at runtime.`;
+		const visible = rcConflictWarning.conflicts.slice(0, MAX_VISIBLE_CONFLICTS);
+		const hiddenCount = rcConflictWarning.conflicts.length - visible.length;
+		const details = visible.map((conflict) => `<li>${rcConflictDetail(conflict)}</li>`).join('');
+		const hidden =
+			hiddenCount > 0 ? `<li>${hiddenCount} more ${hiddenCount === 1 ? 'port' : 'ports'}</li>` : '';
+		return `<p>The selected ports have configuration outside Sylve's managed Standard Switches.</p><ul class="mt-2 list-disc space-y-1 pl-5">${details}${hidden}</ul><p class="mt-2">Sylve will not modify those external settings. They may reapply after boot and conflict with the switch at runtime.</p>`;
 	});
 
 	function showRCConflictWarning(
@@ -1005,10 +1006,6 @@ under sponsorship from the FreeBSD Foundation.
 		{/if}
 	{/if}
 {/snippet}
-
-{#key announcedErrorKey}
-	<p class="sr-only" role="alert">{announcedError}</p>
-{/key}
 
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
