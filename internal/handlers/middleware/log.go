@@ -484,7 +484,7 @@ func sanitizeAuditPayloadForPath(path string, value interface{}) interface{} {
 		}
 		return safePayload
 	}
-	if strings.TrimSpace(path) == "/api/utilities/downloads" {
+	if auditPathMatches(path, "/api/utilities/downloads") {
 		payload, ok := sanitized.(map[string]interface{})
 		if !ok {
 			return "[REDACTED]"

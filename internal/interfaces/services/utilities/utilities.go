@@ -106,6 +106,7 @@ type DownloaderUploadCompletion struct {
 
 type UtilitiesServiceInterface interface {
 	DownloadFile(req DownloadFileRequest) (uint, error)
+	DetectHTTPFilename(ctx context.Context, source string, ignoreTLS bool) (string, error)
 	ListDownloads() ([]utilitiesModels.Downloads, error)
 	SyncDownloadProgress() error
 	DeleteDownload(id int) error

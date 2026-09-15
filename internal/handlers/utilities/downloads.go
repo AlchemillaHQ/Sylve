@@ -58,6 +58,15 @@ type SignedURLRequest struct {
 	ParentUUID string `json:"parentUUID" binding:"required"`
 }
 
+type DetectFilenameRequest struct {
+	URL       string `json:"url" binding:"required"`
+	IgnoreTLS bool   `json:"ignoreTLS"`
+}
+
+type DetectFilenameResponse struct {
+	Filename string `json:"filename"`
+}
+
 type DownloadPathsResponse struct {
 	HTTP string `json:"http"`
 	Path string `json:"path"`
@@ -391,6 +400,49 @@ func GetSignedDownloadURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 	}
 }
 
+// @Summary Detect Remote Filename
+// @Description Best-effort HEAD probe that reports the filename an HTTP(S) source advertises through Content-Disposition; an empty filename means the source named nothing
+// @Tags Utilities
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body DetectFilenameRequest true "Filename detection request"
+// @Success 200 {object} internal.APIResponse[DetectFilenameResponse] "Probe completed; filename may be empty"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Administrator access required"
+// @Failure 413 {object} internal.APIResponse[any] "Request body too large"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /utilities/downloads/detect-filename [post]
+func DetectDownloadFilename(utilitiesService *utilities.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var request DetectFilenameRequest
+		if err := c.ShouldBindJSON(&request); err != nil {
+			writeUtilitiesJSONBindError(c, err)
+			return
+		}
+
+		filename, err := utilitiesService.DetectHTTPFilename(c.Request.Context(), request.URL, request.IgnoreTLS)
+		if err != nil {
+			status, message := downloadMutationError(err, "failed_to_detect_filename")
+			c.JSON(status, internal.APIResponse[any]{
+				Status:  "error",
+				Message: message,
+				Error:   message,
+				Data:    nil,
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, internal.APIResponse[DetectFilenameResponse]{
+			Status:  "success",
+			Message: "download_filename_detected",
+			Error:   "",
+			Data:    DetectFilenameResponse{Filename: filename},
+		})
+	}
+}
+
 // @Summary Update Download
 // @Description Partially update completed or failed download display metadata and processing options; active downloads cannot be changed
 // @Tags Utilities
@@ -469,6 +521,7 @@ func UpdateDownload(utilitiesService *utilities.Service) gin.HandlerFunc {
 // @Failure 502 {object} internal.APIResponse[any] "Selected node forwarding failed"
 // @Failure 503 {object} internal.APIResponse[any] "Selected node is offline or unavailable"
 // @Router /utilities/downloads/{uuid} [get]
+// @Router /utilities/downloads/{uuid}/{filename} [get]
 func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")

@@ -7011,10 +7011,6 @@ msgid "Snapshot GUID not found"
 msgstr "स्नैपशॉट GUID नहीं मिला"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Failed to delete periodic snapshot"
-msgstr "आवधिक स्नैपशॉट हटाने में विफल"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "View Snapshot Jobs"
 msgstr "स्नैपशॉट कार्य देखें"
 
@@ -18273,4 +18269,32 @@ msgstr ""
 
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors & Technologies"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Clear the file name to detect one from the server"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename, try Ignore TLS Errors"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to detect a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Detect filename from server"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshots"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Saving Snapshot Jobs..."
 msgstr ""

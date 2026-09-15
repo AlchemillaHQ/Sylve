@@ -26,6 +26,7 @@
 			icon: string;
 			tooltip: string;
 			function: () => Promise<string>;
+			disabled?: boolean;
 		};
 	}
 
@@ -88,6 +89,7 @@
 					size="icon"
 					class="h-7 w-7 shrink-0"
 					title={topRightButton.tooltip}
+					disabled={topRightButton.disabled}
 					onclick={async () => {
 						const result = await topRightButton.function();
 						if (result) value = result;

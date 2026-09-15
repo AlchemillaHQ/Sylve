@@ -449,7 +449,7 @@ func (s *Service) CreateSignedDownloadURL(
 	query.Set("sig", signature)
 
 	return utilitiesServiceInterfaces.SignedDownloadURLResult{
-		URL:       "/api/utilities/downloads/" + url.PathEscape(target.UUID) + "?" + query.Encode(),
+		URL:       "/api/utilities/downloads/" + url.PathEscape(target.UUID) + "/" + url.PathEscape(target.Name) + "?" + query.Encode(),
 		ExpiresAt: expiresAt,
 	}, nil
 }

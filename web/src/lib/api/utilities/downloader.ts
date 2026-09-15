@@ -1,5 +1,6 @@
 import type { APIResponse } from '$lib/types/common';
 import {
+	DetectFilenameResultSchema,
 	DownloadSchema,
 	DownloadDeleteResultSchema,
 	DownloadStartResultSchema,
@@ -13,6 +14,7 @@ import {
 	type DownloadType,
 	type DownloaderUploadAbort,
 	type DownloaderUploadCompletion,
+	type DetectFilenameResult,
 	type SignedDownloadURLResult,
 	type UTypeGroupedDownload
 } from '$lib/types/utilities/downloader';
@@ -154,5 +156,19 @@ export async function getSignedURL(
 			parentUUID
 		},
 		{ preserveErrors: true, hostname }
+	);
+}
+
+export async function detectDownloadFilename(
+	url: string,
+	ignoreTLS: boolean,
+	hostname?: string
+): Promise<DetectFilenameResult | APIResponse> {
+	return await apiRequest(
+		'/utilities/downloads/detect-filename',
+		DetectFilenameResultSchema,
+		'POST',
+		{ url, ignoreTLS },
+		{ preserveErrors: true, skipAuditLog: true, hostname }
 	);
 }

@@ -21389,6 +21389,75 @@
                 }
             }
         },
+        "/utilities/downloads/detect-filename": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Best-effort HEAD probe that reports the filename an HTTP(S) source advertises through Content-Disposition; an empty filename means the source named nothing",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Detect Remote Filename",
+                "parameters": [
+                    {
+                        "description": "Filename detection request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_utilities.DetectFilenameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Probe completed; filename may be empty",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DetectFilenameResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Administrator access required",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request body too large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/utilities/downloads/paths": {
             "get": {
                 "security": [
@@ -21709,6 +21778,112 @@
             }
         },
         "/utilities/downloads/{uuid}": {
+            "get": {
+                "description": "Download exactly one file using an unexpired node-bound capability URL; no Bearer token is required",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "Download File",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Download UUID",
+                        "name": "uuid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Expiration time in Unix timestamp",
+                        "name": "expires",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Signature",
+                        "name": "sig",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Download or torrent member ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Serving cluster node hostname",
+                        "name": "node",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "206": {
+                        "description": "Partial file content",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed capability",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Invalid, expired, or tampered capability",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Capability target or selected node not found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "416": {
+                        "description": "Range Not Satisfiable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Unexpected signing, database, or filesystem failure",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "502": {
+                        "description": "Selected node forwarding failed",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Selected node is offline or unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/utilities/downloads/{uuid}/{filename}": {
             "get": {
                 "description": "Download exactly one file using an unexpired node-bound capability URL; no Bearer token is required",
                 "produces": [
@@ -30538,6 +30713,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/internal_handlers_system.UploadFileResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DetectFilenameResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_utilities.DetectFilenameResponse"
                 },
                 "error": {
                     "type": "string"
@@ -42131,6 +42323,28 @@
                     "items": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "internal_handlers_utilities.DetectFilenameRequest": {
+            "type": "object",
+            "required": [
+                "url"
+            ],
+            "properties": {
+                "ignoreTLS": {
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_utilities.DetectFilenameResponse": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string"
                 }
             }
         },

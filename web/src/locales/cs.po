@@ -7013,10 +7013,6 @@ msgid "Snapshot GUID not found"
 msgstr "GUID zachyceného stavu nenalezeno"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Failed to delete periodic snapshot"
-msgstr "Nepodařilo se smazat pravidelně pořizovaný zachycený stav"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "View Snapshot Jobs"
 msgstr "Zobrazit úlohy pořizování zachycených stavů"
 
@@ -18276,4 +18272,32 @@ msgstr ""
 
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors & Technologies"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Clear the file name to detect one from the server"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename, try Ignore TLS Errors"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to detect a filename"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Detect filename from server"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshots"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Saving Snapshot Jobs..."
 msgstr ""

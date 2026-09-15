@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -45,6 +47,8 @@ var (
 	ErrDownloadQueueUnavailable = errors.New("download_queue_unavailable")
 	ErrUtilitiesNotReady        = errors.New("utilities_not_ready")
 )
+
+const filenameProbeTimeout = 4 * time.Second
 
 func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 	downloads := make([]utilitiesModels.Downloads, 0)
@@ -203,9 +207,13 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, fmt.Errorf("%w: invalid HTTP URL", ErrDownloadUnprocessable)
 		}
 		if download.Name == "" {
-			download.Name, err = filenameFromDownloadURL(parsed)
-			if err != nil {
-				return 0, err
+			if probed, ok := s.probeHTTPFilename(context.Background(), source, ignoreTLS); ok {
+				download.Name = probed
+			} else {
+				download.Name, err = filenameFromDownloadURL(parsed)
+				if err != nil {
+					return 0, err
+				}
 			}
 		}
 		download.Type = utilitiesModels.DownloadTypeHTTP
@@ -306,6 +314,80 @@ func filenameFromDownloadURL(parsed *url.URL) (string, error) {
 		return "", fmt.Errorf("%w: URL requires an explicit filename", ErrDownloadUnprocessable)
 	}
 	return name, nil
+}
+
+func (s *Service) DetectHTTPFilename(ctx context.Context, source string, ignoreTLS bool) (string, error) {
+	source = strings.TrimSpace(source)
+	if !isHTTPDownloadSource(source) {
+		return "", fmt.Errorf("%w: use an HTTP(S) source", ErrDownloadInvalid)
+	}
+
+	name, _ := s.probeHTTPFilename(ctx, source, ignoreTLS)
+	return name, nil
+}
+
+func (s *Service) probeHTTPFilename(ctx context.Context, source string, ignoreTLS bool) (string, bool) {
+	client := s.grabHTTPClient(ignoreTLS)
+	if client == nil {
+		return "", false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, filenameProbeTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, source, nil)
+	if err != nil {
+		return "", false
+	}
+	req.Header.Set("User-Agent", downloaderUserAgent)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", false
+	}
+
+	return filenameFromContentDisposition(resp.Header.Get("Content-Disposition"))
+}
+
+func (s *Service) grabHTTPClient(ignoreTLS bool) grab.HTTPClient {
+	if ignoreTLS {
+		if s.GrabInsecure != nil {
+			return s.GrabInsecure.HTTPClient
+		}
+		return nil
+	}
+	if s.GrabClient != nil {
+		return s.GrabClient.HTTPClient
+	}
+	return nil
+}
+
+func filenameFromContentDisposition(header string) (string, bool) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return "", false
+	}
+
+	_, params, err := mime.ParseMediaType(header)
+	if err != nil {
+		return "", false
+	}
+
+	name := strings.TrimSpace(params["filename"])
+	if name == "" {
+		return "", false
+	}
+	name = filepath.Base(name)
+	if err := utils.IsValidFilename(name); err != nil {
+		return "", false
+	}
+
+	return name, true
 }
 
 func ensureDownloadDestinationAvailable(destination string) error {

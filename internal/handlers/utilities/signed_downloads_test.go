@@ -136,3 +136,30 @@ func TestSignedDownloadHandlerRejectsTamperedSignatureWithoutInternalDetails(t *
 		t.Fatalf("unexpected public error: %s", response.Body.String())
 	}
 }
+
+func TestSignedDownloadURLIncludesFilename(t *testing.T) {
+	service, download := newSignedDownloadHandlerService(t)
+
+	result, err := service.CreateSignedDownloadURL(download.UUID, download.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.URL, "/"+download.UUID+"/"+url.PathEscape(download.Name)+"?") {
+		t.Fatalf("url=%q", result.URL)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/utilities/downloads/:uuid", DownloadFileFromSignedURL(service))
+	router.GET("/api/utilities/downloads/:uuid/:filename", DownloadFileFromSignedURL(service))
+
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, result.URL, nil))
+
+	if response.Code != http.StatusOK || response.Body.String() != "download-payload" {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Content-Disposition"); !strings.Contains(got, download.Name) {
+		t.Fatalf("Content-Disposition=%q", got)
+	}
+}

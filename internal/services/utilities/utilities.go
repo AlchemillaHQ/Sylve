@@ -39,6 +39,8 @@ var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 // multipart downloader uploads retain their dedicated streaming limits.
 const MaxRequestBodyBytes int64 = 1 * 1024 * 1024
 
+const downloaderUserAgent = "grab"
+
 type torrentRuntime interface {
 	AddURI(uri string, options *torrent.AddTorrentOptions) (*torrent.Torrent, error)
 	GetTorrent(id string) *torrent.Torrent
@@ -118,11 +120,11 @@ func NewUtilitiesService(
 	jailService jailServiceInterfaces.JailServiceInterface,
 ) utilitiesServiceInterfaces.UtilitiesServiceInterface {
 	secureClient := &grab.Client{
-		UserAgent:  "grab",
+		UserAgent:  downloaderUserAgent,
 		HTTPClient: &http.Client{Transport: newDownloadTransport(false)},
 	}
 	insecureClient := &grab.Client{
-		UserAgent:  "grab",
+		UserAgent:  downloaderUserAgent,
 		HTTPClient: &http.Client{Transport: newDownloadTransport(true)},
 	}
 

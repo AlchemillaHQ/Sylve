@@ -7011,10 +7011,6 @@ msgid "Snapshot GUID not found"
 msgstr "Snapshot GUID not found"
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
-msgid "Failed to delete periodic snapshot"
-msgstr "Failed to delete periodic snapshot"
-
-#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "View Snapshot Jobs"
 msgstr "View Snapshot Jobs"
 
@@ -18274,3 +18270,31 @@ msgstr "Sylve is a lightweight control plane for the <0>FreeBSD ecosystem</0>, u
 #: src/lib/components/custom/About.svelte
 msgid "Sponsors & Technologies"
 msgstr "Sponsors & Technologies"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Clear the file name to detect one from the server"
+msgstr "Clear the file name to detect one from the server"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename"
+msgstr "Server did not report a filename"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Server did not report a filename, try Ignore TLS Errors"
+msgstr "Server did not report a filename, try Ignore TLS Errors"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Failed to detect a filename"
+msgstr "Failed to detect a filename"
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Detect filename from server"
+msgstr "Detect filename from server"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Failed to delete periodic snapshots"
+msgstr "Failed to delete periodic snapshots"
+
+#: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+msgid "Saving Snapshot Jobs..."
+msgstr "Saving Snapshot Jobs..."

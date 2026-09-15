@@ -1912,6 +1912,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DetectFilenameResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_utilities.DetectFilenameResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DownloadPathsResponse:
     properties:
       data:
@@ -9664,6 +9675,20 @@ definitions:
         type: array
     required:
     - ids
+    type: object
+  internal_handlers_utilities.DetectFilenameRequest:
+    properties:
+      ignoreTLS:
+        type: boolean
+      url:
+        type: string
+    required:
+    - url
+    type: object
+  internal_handlers_utilities.DetectFilenameResponse:
+    properties:
+      filename:
+        type: string
     type: object
   internal_handlers_utilities.DownloadPathsResponse:
     properties:
@@ -24095,6 +24120,79 @@ paths:
       summary: Download File
       tags:
       - Utilities
+  /utilities/downloads/{uuid}/{filename}:
+    get:
+      description: Download exactly one file using an unexpired node-bound capability
+        URL; no Bearer token is required
+      parameters:
+      - description: Download UUID
+        in: path
+        name: uuid
+        required: true
+        type: string
+      - description: Expiration time in Unix timestamp
+        in: query
+        name: expires
+        required: true
+        type: integer
+      - description: Signature
+        in: query
+        name: sig
+        required: true
+        type: string
+      - description: Download or torrent member ID
+        in: query
+        minimum: 1
+        name: id
+        required: true
+        type: integer
+      - description: Serving cluster node hostname
+        in: query
+        name: node
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: File content
+          schema:
+            type: file
+        "206":
+          description: Partial file content
+          schema:
+            type: file
+        "400":
+          description: Malformed capability
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Invalid, expired, or tampered capability
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Capability target or selected node not found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "416":
+          description: Range Not Satisfiable
+          schema:
+            type: string
+        "500":
+          description: Unexpected signing, database, or filesystem failure
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "502":
+          description: Selected node forwarding failed
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Selected node is offline or unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      summary: Download File
+      tags:
+      - Utilities
   /utilities/downloads/bulk-delete:
     post:
       consumes:
@@ -24148,6 +24246,52 @@ paths:
       security:
       - BearerAuth: []
       summary: Bulk Delete Downloads
+      tags:
+      - Utilities
+  /utilities/downloads/detect-filename:
+    post:
+      consumes:
+      - application/json
+      description: Best-effort HEAD probe that reports the filename an HTTP(S) source
+        advertises through Content-Disposition; an empty filename means the source
+        named nothing
+      parameters:
+      - description: Filename detection request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_utilities.DetectFilenameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Probe completed; filename may be empty
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_utilities_DetectFilenameResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Administrator access required
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request body too large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Detect Remote Filename
       tags:
       - Utilities
   /utilities/downloads/paths:

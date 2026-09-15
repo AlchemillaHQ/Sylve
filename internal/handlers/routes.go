@@ -95,6 +95,12 @@ import (
 
 // @host      sylve.lan:8181
 // @BasePath  /api
+func registerSignedDownloadRoutes(api *gin.RouterGroup, db *gorm.DB, utilitiesService *utilitiesServicePkg.Service) {
+	methods := []string{http.MethodGet, http.MethodHead}
+	api.Match(methods, "/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	api.Match(methods, "/utilities/downloads/:uuid/:filename", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+}
+
 func RegisterRoutes(r *gin.Engine,
 	environment internal.Environment,
 	proxyToVite bool,
@@ -737,6 +743,7 @@ func RegisterRoutes(r *gin.Engine,
 		utilitiesJSON.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))
 		utilitiesJSON.POST("/downloads/bulk-delete", utilitiesHandlers.BulkDeleteDownload(utilitiesService))
 		utilitiesJSON.POST("/downloads/signed-url", utilitiesHandlers.GetSignedDownloadURL(utilitiesService))
+		utilitiesJSON.POST("/downloads/detect-filename", utilitiesHandlers.DetectDownloadFilename(utilitiesService))
 
 		utilitiesJSON.GET("/cloud-init/templates", utilitiesHandlers.ListCloudInitTemplates(utilitiesService))
 		utilitiesJSON.POST("/cloud-init/templates", utilitiesHandlers.AddCloudInitTemplate(utilitiesService))
@@ -744,7 +751,7 @@ func RegisterRoutes(r *gin.Engine,
 		utilitiesJSON.DELETE("/cloud-init/templates/:templateId", utilitiesHandlers.DeleteCloudInitTemplate(utilitiesService))
 	}
 
-	api.GET("/utilities/downloads/:uuid", EnsurePublicDownloadHost(db), utilitiesHandlers.DownloadFileFromSignedURL(utilitiesService))
+	registerSignedDownloadRoutes(api, db, utilitiesService)
 
 	authSession := api.Group("/auth")
 	authSession.Use(middleware.EnsureAuthenticated(authService))

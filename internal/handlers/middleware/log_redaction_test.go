@@ -203,6 +203,25 @@ func TestSignedDownloadAuditKeepsIdentityAndRedactsCapability(t *testing.T) {
 	}
 }
 
+func TestDetectFilenameAuditRedactsSourceURL(t *testing.T) {
+	body, ok := sanitizeAuditPayloadForPath(
+		"/api/utilities/downloads/detect-filename",
+		map[string]interface{}{
+			"url":       "https://node/api/utilities/downloads/id/name?sig=must-not-be-stored",
+			"ignoreTLS": true,
+		},
+	).(map[string]interface{})
+	if !ok {
+		t.Fatalf("unexpected body type: %T", body)
+	}
+	if body["url"] != "[REDACTED]" {
+		t.Fatalf("capability URL retained: %+v", body)
+	}
+	if body["ignoreTLS"] != true {
+		t.Fatalf("safe field omitted: %+v", body)
+	}
+}
+
 func TestCloudInitTemplateAuditKeepsIdentityAndRedactsDocuments(t *testing.T) {
 	path := "/api/utilities/cloud-init/templates/7"
 	body, ok := sanitizeAuditPayloadForPath(path, map[string]interface{}{

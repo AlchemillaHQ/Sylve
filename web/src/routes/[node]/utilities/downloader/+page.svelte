@@ -2,6 +2,7 @@
 	import {
 		bulkDeleteDownloads,
 		deleteDownload,
+		detectDownloadFilename,
 		getDownloadsResult,
 		getSignedURL,
 		startDownload,
@@ -184,6 +185,8 @@
 	let query: string = $state('');
 	let activeRows: Row[] | null = $state(null);
 	let signedURLLoading = $state(false);
+	let detectingName = $state(false);
+	let detectedName = $state('');
 	let onlyParentsSelected: boolean = $derived.by(() => {
 		if (activeRows) {
 			for (const row of activeRows) {
@@ -245,6 +248,45 @@
 		return false;
 	});
 
+	async function detectFilename() {
+		if (detectingName || !isDownloadURL(modalState.url)) return '';
+		if (modalState.name.trim()) {
+			toast.error('Clear the file name to detect one from the server', {
+				position: 'bottom-center'
+			});
+			return '';
+		}
+
+		const source = modalState.url;
+		detectingName = true;
+		try {
+			const result = await detectDownloadFilename(source, modalState.ignoreTLS, data.node);
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return '';
+			}
+			if (source !== modalState.url) return '';
+
+			if (!result.filename) {
+				toast.error(
+					modalState.ignoreTLS
+						? 'Server did not report a filename'
+						: 'Server did not report a filename, try Ignore TLS Errors',
+					{ position: 'bottom-center' }
+				);
+				return '';
+			}
+
+			detectedName = result.filename;
+			return result.filename;
+		} catch {
+			toast.error('Failed to detect a filename', { position: 'bottom-center' });
+			return '';
+		} finally {
+			detectingName = false;
+		}
+	}
+
 	async function newDownload() {
 		if (modalState.loading) return;
 		if (!modalState.url) {
@@ -296,6 +338,7 @@
 			}
 
 			modalState = options;
+			detectedName = '';
 			await refreshDownloads();
 			toast.success(`Download ${result.id} accepted`, { position: 'bottom-center' });
 		} finally {
@@ -610,15 +653,17 @@
 
 	<Dialog.Root bind:open={modalState.isOpen}>
 		<Dialog.Content
-			class="gap-0 pt-6 px-6 pb-3 max-w-xl"
+			class="gap-0 pt-6 px-6 pb-3 sm:max-w-2xl"
 			showCloseButton={true}
 			showResetButton={true}
 			onClose={() => {
 				modalState.isOpen = false;
 				modalState.url = '';
+				detectedName = '';
 			}}
 			onReset={() => {
 				modalState.url = '';
+				detectedName = '';
 			}}
 		>
 			<Dialog.Header class="pr-14">
@@ -636,6 +681,10 @@
 				label="Magnet / HTTP URL / Path"
 				placeholder="magnet:?xt=urn:btih:7d5210a711291d7181d6e074ce5ebd56f3fedd60"
 				bind:value={modalState.url}
+				onChange={() => {
+					if (modalState.name && modalState.name === detectedName) modalState.name = '';
+					detectedName = '';
+				}}
 				classes="flex-1 space-y-1 mt-4"
 				type="textarea"
 				textAreaClasses="h-24 w-full break-all"
@@ -648,6 +697,14 @@
 							label="Optional File Name"
 							placeholder="freebsd-14.3-base-amd64.txz"
 							bind:value={modalState.name}
+							topRightButton={isDownloadURL(modalState.url)
+								? {
+										icon: 'icon-[mdi--magnify]',
+										tooltip: 'Detect filename from server',
+										function: detectFilename,
+										disabled: detectingName
+									}
+								: undefined}
 							classes="flex-1 space-y-1 mt-2"
 						/>
 

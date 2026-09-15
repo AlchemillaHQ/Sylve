@@ -76,6 +76,10 @@ export const SignedDownloadURLResultSchema = z.object({
 	expiresAt: z.string().min(1)
 });
 
+export const DetectFilenameResultSchema = z.object({
+	filename: z.string()
+});
+
 export const DownloaderUploadCompletionSchema = z.object({
 	uploadId: z.string(),
 	downloadId: z.number(),
@@ -92,6 +96,7 @@ export type DownloadType = z.infer<typeof DownloadUTypeSchema>;
 export type DownloadStartResult = z.infer<typeof DownloadStartResultSchema>;
 export type DownloadDeleteResult = z.infer<typeof DownloadDeleteResultSchema>;
 export type SignedDownloadURLResult = z.infer<typeof SignedDownloadURLResultSchema>;
+export type DetectFilenameResult = z.infer<typeof DetectFilenameResultSchema>;
 export type DownloadedFile = z.infer<typeof DownloadedFileSchema>;
 export type UTypeGroupedDownload = z.infer<typeof UTypeGroupedDownloadSchema>;
 export type DownloaderUploadCompletion = z.infer<typeof DownloaderUploadCompletionSchema>;
