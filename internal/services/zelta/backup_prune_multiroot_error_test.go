@@ -70,6 +70,7 @@ func TestIntegrationRunBackupJobMultiPoolPruneFailureIsReportedAndRetryable(t *t
 
 	extractZeltaToTemp(t)
 	svc := newRunBackupJobTestDB(t)
+	svc.VM = fullBackupVMStub{}
 	svc.GZFS = client
 	target := clusterModels.BackupTarget{
 		ID: 93, Name: "multi-pool-prune-error", SSHHost: "root@localhost",
@@ -82,6 +83,7 @@ func TestIntegrationRunBackupJobMultiPoolPruneFailureIsReportedAndRetryable(t *t
 	if err := svc.DB.Create(&vm).Error; err != nil {
 		t.Fatalf("seed VM: %v", err)
 	}
+	svc.replicationSnapshotMetadataReader = staticSnapshotMetadataReader(t, vm)
 	for index, fixture := range []struct {
 		pool string
 		name string
