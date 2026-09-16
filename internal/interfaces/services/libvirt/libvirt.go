@@ -265,16 +265,11 @@ type Model struct {
 	Type string `xml:"type,attr"`
 }
 
-type InterfacePort struct {
-	Isolated string `xml:"isolated,attr"`
-}
-
 type Interface struct {
-	Type   string         `xml:"type,attr"`
-	MAC    *MACAddress    `xml:"mac,omitempty"`
-	Source BridgeSource   `xml:"source"`
-	Model  Model          `xml:"model"`
-	Port   *InterfacePort `xml:"port,omitempty"`
+	Type   string       `xml:"type,attr"`
+	MAC    *MACAddress  `xml:"mac,omitempty"`
+	Source BridgeSource `xml:"source"`
+	Model  Model        `xml:"model"`
 }
 
 type Input struct {

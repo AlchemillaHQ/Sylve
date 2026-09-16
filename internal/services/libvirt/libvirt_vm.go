@@ -258,17 +258,11 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				if err := validateDesiredVMNetworkSwitchCompatibility(resolved); err != nil {
 					return "", err
 				}
-				var port *libvirtServiceInterfaces.InterfacePort
-				if resolved.Private {
-					port = &libvirtServiceInterfaces.InterfacePort{Isolated: "yes"}
-				}
-
 				interfaces = append(interfaces, libvirtServiceInterfaces.Interface{
 					Type:   nType,
 					MAC:    mac,
 					Source: libvirtServiceInterfaces.BridgeSource{Bridge: resolved.Bridge},
 					Model:  libvirtServiceInterfaces.Model{Type: emulation},
-					Port:   port,
 				})
 			}
 		}

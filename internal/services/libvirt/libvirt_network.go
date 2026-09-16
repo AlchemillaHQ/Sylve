@@ -307,10 +307,6 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 		sourceElement.CreateAttr("bridge", sw.Bridge)
 		modelElement := iface.CreateElement("model")
 		modelElement.CreateAttr("type", emulation)
-		if sw.Private {
-			portElement := iface.CreateElement("port")
-			portElement.CreateAttr("isolated", "yes")
-		}
 	}
 
 	newXML, err := doc.WriteToString()

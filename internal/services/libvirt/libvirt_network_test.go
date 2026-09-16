@@ -624,7 +624,7 @@ func TestVMStartValidationRejectsUnfilteredSwitchRuntimeModeDrift(t *testing.T) 
 	}
 }
 
-func TestCreateVMXMLFilteredPrivateSwitchUsesPlainIsolatedBridgeInterface(t *testing.T) {
+func TestCreateVMXMLFilteredPrivateSwitchKeepsPlainBridgeInterface(t *testing.T) {
 	db := newVMNetworkMutationTestDB(t)
 	vm, sw := seedVMNetworkMutationBase(t, db, 101, "xml-vm")
 	defaultVLAN := 88
@@ -648,20 +648,8 @@ func TestCreateVMXMLFilteredPrivateSwitchUsesPlainIsolatedBridgeInterface(t *tes
 	if strings.Contains(xmlText, "<vlan") {
 		t.Fatalf("generated unsupported Libvirt VLAN XML: %s", xmlText)
 	}
-	if !strings.Contains(xmlText, `isolated="yes"`) {
-		t.Fatalf("generated XML did not isolate a private switch interface: %s", xmlText)
-	}
-
-	if err := db.Model(&networkModels.StandardSwitch{}).Where("id = ?", sw.ID).
-		Update("private", false).Error; err != nil {
-		t.Fatalf("make filtered switch non-private: %v", err)
-	}
-	xmlText, err = (&Service{DB: db}).CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("create non-private VM XML: %v", err)
-	}
-	if strings.Contains(xmlText, `isolated="yes"`) {
-		t.Fatalf("generated XML isolated a non-private switch interface: %s", xmlText)
+	if strings.Contains(xmlText, "isolated") || strings.Contains(xmlText, "<port") {
+		t.Fatalf("generated unsupported bridge port isolation XML: %s", xmlText)
 	}
 }
 
