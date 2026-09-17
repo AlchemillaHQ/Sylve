@@ -380,7 +380,7 @@ func setupConfiguredAdminWithHasher(
 	}
 
 	passwordOutcome := "matches_stored"
-	passwordLogLevel := "debug"
+	passwordLog := logger.L.Debug()
 	if adminCfg.ForcePasswordReset {
 		if adminCfg.Password == "" {
 			logger.L.Error().
@@ -390,7 +390,7 @@ func setupConfiguredAdminWithHasher(
 			return fmt.Errorf("admin force password reset requires a non-empty configured password")
 		}
 
-		passwordLogLevel = "info"
+		passwordLog = logger.L.Info()
 		if hasher.Verify(adminCfg.Password, user.Password) {
 			passwordOutcome = "force_reset_already_matched"
 		} else {
@@ -406,7 +406,7 @@ func setupConfiguredAdminWithHasher(
 		passwordOutcome = "configured_password_empty"
 	} else if !hasher.Verify(adminCfg.Password, user.Password) {
 		passwordOutcome = "ignored_force_reset_disabled"
-		passwordLogLevel = "warn"
+		passwordLog = logger.L.Error()
 	}
 
 	if len(updates) > 0 {
@@ -428,17 +428,16 @@ func setupConfiguredAdminWithHasher(
 		}
 	}
 
-	passwordLog := logger.L.Debug()
-	switch passwordLogLevel {
-	case "info":
-		passwordLog = logger.L.Info()
-	case "warn":
-		passwordLog = logger.L.Warn()
-	}
-	passwordLog.
+	event := passwordLog.
 		Str("username", username).
-		Str("outcome", passwordOutcome).
-		Msg("admin_password_configuration")
+		Str("outcome", passwordOutcome)
+	if passwordOutcome == "ignored_force_reset_disabled" {
+		event = event.Str(
+			"hint",
+			"set admin.forcePasswordReset to apply the configured password, or clear admin.password",
+		)
+	}
+	event.Msg("admin_password_configuration")
 
 	if len(updates) > 0 {
 		logger.L.Info().Str("username", username).Msg("admin_user_updated")

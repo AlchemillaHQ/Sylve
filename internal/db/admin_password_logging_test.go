@@ -146,8 +146,15 @@ func TestSetupConfiguredAdminLogsIgnoredPasswordWithoutForceReset(t *testing.T) 
 	if !hasher.Verify("stored-admin-secret", persisted.Password) {
 		t.Fatal("admin password changed without force reset")
 	}
-	if !strings.Contains(logs.String(), `"outcome":"ignored_force_reset_disabled"`) {
-		t.Fatalf("expected ignored-password log, got: %s", logs.String())
+	output := logs.String()
+	if !strings.Contains(output, `"level":"error"`) {
+		t.Fatalf("expected ignored-password log at error level, got: %s", output)
+	}
+	if !strings.Contains(output, `"outcome":"ignored_force_reset_disabled"`) {
+		t.Fatalf("expected ignored-password log, got: %s", output)
+	}
+	if !strings.Contains(output, `"hint":"set admin.forcePasswordReset`) {
+		t.Fatalf("expected ignored-password hint, got: %s", output)
 	}
 }
 
