@@ -639,7 +639,9 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 	var tokenRecord models.Token
 
 	if err := s.DB.Where("token = ?", token).First(&tokenRecord).Error; err != nil {
-		logger.L.Error().Msgf("Token not found: %v", err)
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.L.Error().Err(err).Msg("token_lookup_failed")
+		}
 		return false
 	}
 
@@ -651,7 +653,9 @@ func (s *Service) VerifyTokenInDb(token string) bool {
 
 	var user models.User
 	if err := s.DB.Where("id = ?", tokenRecord.UserID).First(&user).Error; err != nil {
-		logger.L.Error().Msgf("User not found: %v", err)
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			logger.L.Error().Err(err).Msg("token_user_lookup_failed")
+		}
 		return false
 	}
 

@@ -19,6 +19,7 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import type { Group, SambaAction, User } from '$lib/types/auth';
 	import type { FileNode } from '$lib/types/system/file-explorer';
+	import { getEnabledServicesForHostname } from '$lib/utils/enabled-services';
 	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
 	import { watch } from 'runed';
@@ -112,6 +113,7 @@
 
 	let properties = $state(makeDefaults());
 	let activeTab = $state('identity');
+	let sambaEnabled = $derived(getEnabledServicesForHostname(hostname).includes('samba-server'));
 	let doasAvailable = $state(false);
 	let loading = $state(false);
 	let capabilitiesLoading = $state(false);
@@ -706,7 +708,11 @@
 								placeholder="john@example.com"
 								bind:value={properties.email}
 							/>
-							<div class="grid grid-cols-1 gap-3 md:grid-cols-2 {edit ? 'lg:grid-cols-3' : ''}">
+							<div
+								class="grid grid-cols-1 gap-3 md:grid-cols-2 {edit && sambaEnabled
+									? 'lg:grid-cols-3'
+									: ''}"
+							>
 								<CustomValueInput
 									label="Unix/PAM + Sylve Password"
 									placeholder={edit ? 'Leave blank to keep current' : '••••••••'}
@@ -721,7 +727,7 @@
 									revealOnFocus={true}
 									bind:value={properties.confirmPassword}
 								/>
-								{#if edit}
+								{#if edit && sambaEnabled}
 									<CustomComboBox
 										label="Samba action"
 										placeholder="Keep current Samba state"
@@ -737,7 +743,7 @@
 									<Checkbox id="pam-admin" bind:checked={properties.admin} />
 									<Label for="pam-admin" class="cursor-pointer text-sm">Admin</Label>
 								</div>
-								{#if !edit}
+								{#if !edit && sambaEnabled}
 									<div class="flex items-center gap-2">
 										<Checkbox id="create-samba" bind:checked={properties.createSamba} />
 										<Label for="create-samba" class="cursor-pointer text-sm">Samba User</Label>

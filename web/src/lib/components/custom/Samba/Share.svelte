@@ -102,13 +102,6 @@
 		audit: 'options'
 	};
 
-	let userOptions = $derived.by(() => {
-		return users.map((user) => ({
-			label: user.username,
-			value: String(user.id)
-		}));
-	});
-
 	let groupOptions = $derived.by(() => {
 		return groups.map((group) => ({
 			label: group.name,
@@ -182,6 +175,28 @@
 	let advancedPermissions = $state<string | undefined>(
 		hasCustomMasks() ? 'permissions' : undefined
 	);
+
+	let userOptions = $derived.by(() => {
+		// Local users can never authenticate over SMB, but selections that already
+		// exist on a share must stay visible so they can be removed.
+		const selectedUserIDs = new Set([...form.readUsers.value, ...form.writeUsers.value]);
+		return users
+			.filter((user) => user.source === 'pam' || selectedUserIDs.has(String(user.id)))
+			.map((user) => {
+				if (user.source !== 'pam') {
+					return {
+						label: user.username,
+						value: String(user.id),
+						disabled: true,
+						description: 'Local Sylve user — cannot sign in over SMB'
+					};
+				}
+				return {
+					label: user.username,
+					value: String(user.id)
+				};
+			});
+	});
 
 	let datasetOptions = $derived.by(() => {
 		const datasetsInUse = new Set(
@@ -303,6 +318,18 @@
 				'access',
 				'Select at least one user or group for authenticated access'
 			);
+		}
+		if (form.accessMode === 'authenticated') {
+			const nonPAMUserIDs = new Set(
+				users.filter((user) => user.source !== 'pam').map((user) => String(user.id))
+			);
+			const selectedUserIDs = [...form.readUsers.value, ...form.writeUsers.value];
+			if (selectedUserIDs.some((id) => nonPAMUserIDs.has(id))) {
+				return showValidationError(
+					'access',
+					'Local Sylve users cannot access Samba shares. Remove them or use a PAM user with a Samba credential.'
+				);
+			}
 		}
 
 		if (!/^[0-7]{4}$/.test(form.createMask.trim())) {

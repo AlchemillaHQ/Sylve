@@ -227,10 +227,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		if err := s.InitSamba(ctx); err != nil {
 			logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
 		} else {
-			if err := s.InitSambaAdmins(); err != nil {
-				logger.L.Error().Err(err).Msg("failed to initialize Samba admins; continuing startup")
-			}
-
 			if err := ensureServiceStarted("samba_server"); err != nil {
 				logger.L.Error().Err(err).Msg("unable to start samba server")
 			} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {

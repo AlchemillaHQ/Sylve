@@ -42,10 +42,14 @@ Choose one access mode. Authenticated access requires at least one selected user
 | Authenticated | Restricts access to the users and groups selected below. This is the appropriate choice for most private shares. |
 | Guest read-only | Allows anyone to browse and read files without credentials. |
 | Guest read/write | Allows anyone to read and modify files without credentials. Use only on a trusted network and a disposable or deliberately public dataset. |
-| Read Users | Local Sylve users granted read access. |
-| Write Users | Local Sylve users granted write access. Write access takes precedence, so a user in both lists is kept only as a writer. |
+| Read Users | [PAM users](/guides/node/settings/authentication/users/pam/) with a Samba credential, granted read access. |
+| Write Users | PAM users with a Samba credential, granted write access. Write access takes precedence, so a user in both lists is kept only as a writer. |
 | Read Groups | Local Sylve groups granted read access. |
 | Write Groups | Local Sylve groups granted write access. Write access takes precedence, so a group in both lists is kept only as a writer. |
+
+:::note
+Local Sylve users cannot be share principals: Sylve-only accounts have no host account, so Samba cannot authenticate them. Create or import a PAM user and enable their Samba credential (**Samba User** when creating, or **Create or update Samba user** when editing) before adding them to a share.
+:::
 
 :::caution
 Guest write access allows unauthenticated modification of the dataset. Treat it as public write access, not as a convenience setting for ordinary household or office shares.

@@ -18549,3 +18549,11 @@ msgstr "Failed to delete periodic snapshots"
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Saving Snapshot Jobs..."
 msgstr "Saving Snapshot Jobs..."
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Local Sylve user — cannot sign in over SMB"
+msgstr "Local Sylve user — cannot sign in over SMB"
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Local Sylve users cannot access Samba shares. Remove them or use a PAM user with a Samba credential."
+msgstr "Local Sylve users cannot access Samba shares. Remove them or use a PAM user with a Samba credential."

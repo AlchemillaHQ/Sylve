@@ -14,12 +14,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
-	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
-
-	sambaUtils "github.com/alchemillahq/sylve/pkg/system/samba"
 )
 
 func (s *Service) InitSamba(ctx context.Context) error {
@@ -67,35 +63,6 @@ func (s *Service) InitSamba(ctx context.Context) error {
 
 	if err := s.Samba.WriteConfig(ctx, false); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (s *Service) InitSambaAdmins() error {
-	cfg := config.ParsedConfig
-	if cfg == nil {
-		return nil
-	}
-
-	smbExists, err := sambaUtils.SambaUserExists("admin")
-	if err != nil {
-		logger.L.Error().Msgf("Error checking if Samba user 'admin' exists: %v", err)
-		return err
-	}
-
-	if !smbExists {
-		err = sambaUtils.CreateSambaUser("admin", cfg.Admin.Password)
-		if err != nil {
-			logger.L.Error().Msgf("Failed to create Samba user 'admin': %v", err)
-			return err
-		}
-	} else {
-		err = sambaUtils.EditSambaUser("admin", cfg.Admin.Password)
-		if err != nil {
-			logger.L.Error().Msgf("Failed to update Samba user 'admin': %v", err)
-			return err
-		}
 	}
 
 	return nil

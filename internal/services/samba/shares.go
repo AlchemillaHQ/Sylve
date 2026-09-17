@@ -193,6 +193,14 @@ func (s *Service) loadUsersAndGroupsByIDs(
 		return nil, nil, nil, nil, fmt.Errorf("user_not_found: %d", missing[0])
 	}
 
+	// Samba authenticates against host accounts, so Sylve-only local users can
+	// never be valid share principals.
+	for _, user := range users {
+		if user.Source != "pam" {
+			return nil, nil, nil, nil, fmt.Errorf("user_not_pam:%s", user.Username)
+		}
+	}
+
 	var groups []models.Group
 	if len(allGroupIDs) > 0 {
 		if err := s.DB.Where("id IN ?", allGroupIDs).Find(&groups).Error; err != nil {
@@ -443,6 +451,16 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
+	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
+		normalized.ReadUserIDs,
+		normalized.WriteUserIDs,
+		normalized.ReadGroupIDs,
+		normalized.WriteGroupIDs,
+	)
+	if err != nil {
+		return err
+	}
+
 	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
 	if err != nil {
 		return fmt.Errorf("failed_to_fetch_dataset: %v", err)
@@ -458,16 +476,6 @@ func (s *Service) CreateShare(
 
 	if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
 		return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
-	}
-
-	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
-		normalized.ReadUserIDs,
-		normalized.WriteUserIDs,
-		normalized.ReadGroupIDs,
-		normalized.WriteGroupIDs,
-	)
-	if err != nil {
-		return err
 	}
 
 	desiredPrincipals := namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
@@ -627,6 +635,16 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
+	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
+		normalized.ReadUserIDs,
+		normalized.WriteUserIDs,
+		normalized.ReadGroupIDs,
+		normalized.WriteGroupIDs,
+	)
+	if err != nil {
+		return err
+	}
+
 	allowUnavailableDataset := !desiredEnabled && dataset == share.Dataset
 	fDataset, err := s.GZFS.ZFS.GetByGUID(ctx, dataset, false)
 	if err != nil && !allowUnavailableDataset {
@@ -644,16 +662,6 @@ func (s *Service) UpdateShare(
 			return fmt.Errorf("dataset_not_mounted")
 		}
 		fDataset = nil
-	}
-
-	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
-		normalized.ReadUserIDs,
-		normalized.WriteUserIDs,
-		normalized.ReadGroupIDs,
-		normalized.WriteGroupIDs,
-	)
-	if err != nil {
-		return err
 	}
 
 	if fDataset != nil {

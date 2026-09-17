@@ -13,9 +13,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestSharePrincipalsRequirePAMUsers(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Group{}, &models.User{})
+	svc := &Service{DB: dbConn}
+
+	localUser := models.User{Username: "local-admin", Source: "local"}
+	pamUser := models.User{Username: "alice", Source: "pam"}
+	for _, user := range []*models.User{&localUser, &pamUser} {
+		if err := dbConn.Create(user).Error; err != nil {
+			t.Fatalf("failed creating user %s: %v", user.Username, err)
+		}
+	}
+
+	if _, _, _, _, err := svc.loadUsersAndGroupsByIDs([]uint{localUser.ID}, nil, nil, nil); err == nil {
+		t.Fatal("expected local user principal to be rejected")
+	} else if err.Error() != "user_not_pam:local-admin" {
+		t.Fatalf("expected user_not_pam:local-admin, got %q", err.Error())
+	}
+
+	if _, _, _, _, err := svc.loadUsersAndGroupsByIDs([]uint{pamUser.ID}, nil, nil, nil); err != nil {
+		t.Fatalf("expected PAM user principal to be accepted, got %v", err)
+	}
+}
 
 func TestDisableMissingSharesDisablesOnlyMissingDatasets(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)

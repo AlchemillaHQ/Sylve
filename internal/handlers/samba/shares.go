@@ -212,6 +212,7 @@ func sambaShareServiceErrorStatus(err error) int {
 		msg == "dataset_not_mounted",
 		strings.HasPrefix(msg, "invalid_audit_operation:"),
 		strings.HasPrefix(msg, "user_not_found:"),
+		strings.HasPrefix(msg, "user_not_pam:"),
 		strings.HasPrefix(msg, "group_not_found:"),
 		strings.Contains(msg, "dataset_not_filesystem:"):
 		return http.StatusBadRequest

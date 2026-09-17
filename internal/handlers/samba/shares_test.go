@@ -10,6 +10,7 @@ package sambaHandlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,6 +20,12 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/gin-gonic/gin"
 )
+
+func TestSambaShareServiceErrorStatusMapsNonPAMPrincipalToBadRequest(t *testing.T) {
+	if status := sambaShareServiceErrorStatus(fmt.Errorf("user_not_pam:admin")); status != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for non-PAM principal, got %d", status)
+	}
+}
 
 func newSambaSharesRouter(smbService *samba.Service) *gin.Engine {
 	gin.SetMode(gin.TestMode)
