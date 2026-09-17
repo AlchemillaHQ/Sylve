@@ -1,13 +1,14 @@
 import { getJails } from '$lib/api/jail/jail';
 import { getVMs } from '$lib/api/vm/vm';
 import { getInterfaces } from '$lib/api/network/iface';
+import { getHostInterfaceL3, getHostInterfaceL3Pending } from '$lib/api/network/ifaceL3';
 import { getSwitches } from '$lib/api/network/switch';
 import { getWireGuardClients } from '$lib/api/network/wireguard';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
 export async function load() {
-	const [interfaces, jails, vms, switches, wgClients] = await Promise.all([
+	const [interfaces, jails, vms, switches, wgClients, l3, pending] = await Promise.all([
 		cachedFetch('network-interfaces', async () => await getInterfaces(), SEVEN_DAYS),
 		cachedFetch('jail-list', async () => await getJails(), SEVEN_DAYS),
 		cachedFetch('vm-list', async () => await getVMs(), SEVEN_DAYS),
@@ -16,7 +17,9 @@ export async function load() {
 			'network-vpn-wireguard-clients',
 			async () => await getWireGuardClients(),
 			SEVEN_DAYS
-		)
+		),
+		cachedFetch('network-interface-l3', async () => await getHostInterfaceL3(), SEVEN_DAYS),
+		getHostInterfaceL3Pending()
 	]);
 
 	return {
@@ -24,6 +27,8 @@ export async function load() {
 		jails,
 		vms,
 		switches,
-		wgClients
+		wgClients,
+		l3,
+		pending
 	};
 }

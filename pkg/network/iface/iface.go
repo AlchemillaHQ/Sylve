@@ -405,6 +405,14 @@ func (iface *Interface) String() string {
 			sb.WriteString(" autoconf")
 		}
 
+		if a.Tentative {
+			sb.WriteString(" tentative")
+		}
+
+		if a.Duplicated {
+			sb.WriteString(" duplicated")
+		}
+
 		if a.Detached {
 			sb.WriteString(" detached")
 		}
@@ -801,6 +809,8 @@ func Get(name string) (*Interface, error) {
 			if raw >= 0 {
 				flags := uint32(raw)
 				ipv6.AutoConf = flags&C.IN6_IFF_AUTOCONF != 0
+				ipv6.Tentative = flags&C.IN6_IFF_TENTATIVE != 0
+				ipv6.Duplicated = flags&C.IN6_IFF_DUPLICATED != 0
 				ipv6.Detached = flags&C.IN6_IFF_DETACHED != 0
 				ipv6.Deprecated = flags&C.IN6_IFF_DEPRECATED != 0
 			}
