@@ -131,6 +131,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return err
 	}
 
+	if err := loadKernelModule("if_bridge"); err != nil {
+		logger.L.Warn().Err(err).Msg("failed to load if_bridge before sysctl sync")
+	}
+
 	s.SysctlSync()
 
 	var basicSettings models.BasicSettings
