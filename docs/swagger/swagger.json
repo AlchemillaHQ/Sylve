@@ -15109,6 +15109,90 @@
                 }
             }
         },
+        "/network/host-ip/pending/{id}/confirm": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Confirm A Pending Host Interface L3 Operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pending operation id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Confirmed",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown pending operation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Expired or conflicting operation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/host-ip/pending/{id}/revert": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Revert A Pending Host Interface L3 Operation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pending operation id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reverted",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown pending operation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/network/interface": {
             "get": {
                 "security": [
@@ -15139,6 +15223,222 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/interface/l3": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "List host layer-3 configuration rows for interfaces, including rows whose interface is missing, with live state and conflict markers",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "List Host Interface L3 Configuration",
+                "responses": {
+                    "200": {
+                        "description": "Rows with live state and per-interface eligibility",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/interface/l3/pending": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "List Pending Host Interface L3 Operations",
+                "responses": {
+                    "200": {
+                        "description": "Pending operations awaiting confirmation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/interface/{name}/l3": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stage a Host IP change; the response carries the pending id and the 60-second confirmation deadline",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Save Host Interface L3 Configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interface name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Desired Host IP state",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_network.HostInterfaceL3SaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Applied, awaiting confirmation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Revision, pending or interface conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Stage removal of the Host IP row; confirmation promotes the delete, timeout restores it",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Delete Host Interface L3 Configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interface name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Revision returned by the list endpoint",
+                        "name": "expectedRevision",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Removed, awaiting confirmation",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry"
+                        }
+                    },
+                    "404": {
+                        "description": "No configuration for this interface",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Revision, pending or identity conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/network/interface/{name}/l3/reapply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Re-run the reconciler for one interface; foreign state is never removed",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Reapply Host Interface L3 Configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Interface name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reapplied",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict or pending operation",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -28651,6 +28951,26 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_StaticRouteSuggestion": {
             "type": "object",
             "properties": {
@@ -29744,6 +30064,40 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.FirewallLiveHitsResponse"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3List"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry"
                 },
                 "error": {
                     "type": "string"
@@ -32865,6 +33219,29 @@
                 },
                 "visible": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "interfaceL3Id": {
+                    "type": "integer"
+                },
+                "ordering": {
+                    "type": "integer"
+                },
+                "prefixLength": {
+                    "type": "integer"
                 }
             }
         },
@@ -36803,6 +37180,119 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry": {
+            "type": "object",
+            "properties": {
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address"
+                    }
+                },
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "identityMac": {
+                    "type": "string"
+                },
+                "interface": {
+                    "type": "string"
+                },
+                "ipv6Mode": {
+                    "type": "string"
+                },
+                "lifecycle": {
+                    "type": "string"
+                },
+                "liveMac": {
+                    "type": "string"
+                },
+                "metric": {
+                    "type": "integer"
+                },
+                "mtu": {
+                    "type": "integer"
+                },
+                "mtuBaseline": {
+                    "type": "integer"
+                },
+                "present": {
+                    "type": "boolean"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "vlanParent": {
+                    "type": "string"
+                },
+                "vlanTag": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3List": {
+            "type": "object",
+            "properties": {
+                "rows": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry"
+                    }
+                },
+                "targets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3TargetEntry"
+                    }
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry": {
+            "type": "object",
+            "properties": {
+                "deadline": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "interface": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3TargetEntry": {
+            "type": "object",
+            "properties": {
+                "eligible": {
+                    "type": "boolean"
+                },
+                "hasConfig": {
+                    "type": "boolean"
+                },
+                "interface": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.Leases": {
             "type": "object",
             "properties": {
@@ -39821,6 +40311,9 @@
                 "detached": {
                     "type": "boolean"
                 },
+                "duplicated": {
+                    "type": "boolean"
+                },
                 "ip": {
                     "type": "array",
                     "items": {
@@ -39843,6 +40336,9 @@
                 },
                 "scopeId": {
                     "type": "integer"
+                },
+                "tentative": {
+                    "type": "boolean"
                 }
             }
         },
@@ -41866,6 +42362,45 @@
                 },
                 "vlanFiltering": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_network.HostInterfaceL3AddressPayload": {
+            "type": "object",
+            "required": [
+                "address"
+            ],
+            "properties": {
+                "address": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_network.HostInterfaceL3SaveRequest": {
+            "type": "object",
+            "properties": {
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handlers_network.HostInterfaceL3AddressPayload"
+                    }
+                },
+                "expectedRevision": {
+                    "type": "integer"
+                },
+                "ipv6Mode": {
+                    "type": "string",
+                    "enum": [
+                        "inherit",
+                        "enabled",
+                        "disabled"
+                    ]
+                },
+                "metric": {
+                    "type": "integer"
+                },
+                "mtu": {
+                    "type": "integer"
                 }
             }
         },

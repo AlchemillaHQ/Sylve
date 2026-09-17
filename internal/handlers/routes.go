@@ -390,6 +390,29 @@ func RegisterRoutes(r *gin.Engine,
 		disk.POST("/:device/partitions", diskHandlers.CreatePartitions(diskService))
 	}
 
+	hostInterfaceL3Writes := api.Group("/network/interface")
+	hostInterfaceL3Writes.Use(middleware.EnsureAuthenticated(authService))
+	hostInterfaceL3Writes.Use(middleware.RequireLocalAdminForWrites(authService))
+	hostInterfaceL3Writes.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
+	hostInterfaceL3Writes.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	hostInterfaceL3Writes.Use(networkHandlers.RequireLocalHostOnly())
+	{
+		hostInterfaceL3Writes.PUT("/:name/l3", networkHandlers.SaveHostInterfaceL3(networkService))
+		hostInterfaceL3Writes.DELETE("/:name/l3", networkHandlers.DeleteHostInterfaceL3(networkService))
+		hostInterfaceL3Writes.POST("/:name/l3/reapply", networkHandlers.ReapplyHostInterfaceL3(networkService))
+	}
+
+	hostInterfaceL3Pending := api.Group("/network/host-ip")
+	hostInterfaceL3Pending.Use(middleware.EnsureAuthenticated(authService))
+	hostInterfaceL3Pending.Use(middleware.RequireLocalAdminForWrites(authService))
+	hostInterfaceL3Pending.Use(middleware.LimitRequestBody(networkServicePkg.MaxRequestBodyBytes))
+	hostInterfaceL3Pending.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	hostInterfaceL3Pending.Use(networkHandlers.RequireLocalHostOnly())
+	{
+		hostInterfaceL3Pending.POST("/pending/:id/confirm", networkHandlers.ConfirmHostInterfaceL3(networkService))
+		hostInterfaceL3Pending.POST("/pending/:id/revert", networkHandlers.RevertHostInterfaceL3(networkService))
+	}
+
 	network := api.Group("/network")
 	network.Use(middleware.EnsureAuthenticated(authService))
 	network.Use(EnsureCorrectHost(db, authService))
@@ -476,6 +499,8 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		network.GET("/interface", networkHandlers.ListInterfaces())
+		network.GET("/interface/l3", networkHandlers.ListHostInterfaceL3(networkService))
+		network.GET("/interface/l3/pending", networkHandlers.GetHostInterfaceL3Pending(networkService))
 
 		manualSwitches := network.Group("/switch/manual")
 		manualSwitches.Use(middleware.RequireLocalAdmin(authService))

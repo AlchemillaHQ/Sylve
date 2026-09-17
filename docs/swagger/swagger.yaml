@@ -569,6 +569,19 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_StaticRouteSuggestion
   : properties:
       data:
@@ -1278,6 +1291,28 @@ definitions:
   : properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.FirewallLiveHitsResponse'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3List'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry'
       error:
         type: string
       message:
@@ -3349,6 +3384,21 @@ definitions:
         type: string
       visible:
         type: boolean
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address:
+    properties:
+      address:
+        type: string
+      family:
+        type: string
+      id:
+        type: integer
+      interfaceL3Id:
+        type: integer
+      ordering:
+        type: integer
+      prefixLength:
+        type: integer
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch:
     properties:
@@ -5991,6 +6041,80 @@ definitions:
       updatedAt:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry:
+    properties:
+      addresses:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address'
+        type: array
+      conflicts:
+        items:
+          type: string
+        type: array
+      id:
+        type: integer
+      identityMac:
+        type: string
+      interface:
+        type: string
+      ipv6Mode:
+        type: string
+      lifecycle:
+        type: string
+      liveMac:
+        type: string
+      metric:
+        type: integer
+      mtu:
+        type: integer
+      mtuBaseline:
+        type: integer
+      present:
+        type: boolean
+      revision:
+        type: integer
+      vlanParent:
+        type: string
+      vlanTag:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3List:
+    properties:
+      rows:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry'
+        type: array
+      targets:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3TargetEntry'
+        type: array
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3PendingEntry:
+    properties:
+      deadline:
+        type: string
+      id:
+        type: string
+      interface:
+        type: string
+      kind:
+        type: string
+      origin:
+        type: string
+      phase:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3TargetEntry:
+    properties:
+      eligible:
+        type: boolean
+      hasConfig:
+        type: boolean
+      interface:
+        type: string
+      reason:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.Leases:
     properties:
       db:
@@ -8014,6 +8138,8 @@ definitions:
         type: boolean
       detached:
         type: boolean
+      duplicated:
+        type: boolean
       ip:
         items:
           type: integer
@@ -8029,6 +8155,8 @@ definitions:
         type: integer
       scopeId:
         type: integer
+      tentative:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_pkg_network_iface.Interface:
     properties:
@@ -9378,6 +9506,32 @@ definitions:
     required:
     - name
     - private
+    type: object
+  internal_handlers_network.HostInterfaceL3AddressPayload:
+    properties:
+      address:
+        type: string
+    required:
+    - address
+    type: object
+  internal_handlers_network.HostInterfaceL3SaveRequest:
+    properties:
+      addresses:
+        items:
+          $ref: '#/definitions/internal_handlers_network.HostInterfaceL3AddressPayload'
+        type: array
+      expectedRevision:
+        type: integer
+      ipv6Mode:
+        enum:
+        - inherit
+        - enabled
+        - disabled
+        type: string
+      metric:
+        type: integer
+      mtu:
+        type: integer
     type: object
   internal_handlers_network.ListSwitchResponse:
     properties:
@@ -19965,6 +20119,58 @@ paths:
       summary: Reorder Firewall Traffic Rules
       tags:
       - Network
+  /network/host-ip/pending/{id}/confirm:
+    post:
+      parameters:
+      - description: Pending operation id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Confirmed
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Unknown pending operation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Expired or conflicting operation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Confirm A Pending Host Interface L3 Operation
+      tags:
+      - Network
+  /network/host-ip/pending/{id}/revert:
+    post:
+      parameters:
+      - description: Pending operation id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reverted
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Unknown pending operation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Revert A Pending Host Interface L3 Operation
+      tags:
+      - Network
   /network/interface:
     get:
       description: List all network interfaces on the system
@@ -19986,6 +20192,146 @@ paths:
       security:
       - BearerAuth: []
       summary: List Network Interfaces
+      tags:
+      - Network
+  /network/interface/{name}/l3:
+    delete:
+      description: Stage removal of the Host IP row; confirmation promotes the delete,
+        timeout restores it
+      parameters:
+      - description: Interface name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Revision returned by the list endpoint
+        in: query
+        name: expectedRevision
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Removed, awaiting confirmation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry'
+        "404":
+          description: No configuration for this interface
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Revision, pending or identity conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete Host Interface L3 Configuration
+      tags:
+      - Network
+    put:
+      consumes:
+      - application/json
+      description: Stage a Host IP change; the response carries the pending id and
+        the 60-second confirmation deadline
+      parameters:
+      - description: Interface name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Desired Host IP state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_network.HostInterfaceL3SaveRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Applied, awaiting confirmation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry'
+        "400":
+          description: Invalid request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Revision, pending or interface conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Save Host Interface L3 Configuration
+      tags:
+      - Network
+  /network/interface/{name}/l3/reapply:
+    post:
+      description: Re-run the reconciler for one interface; foreign state is never
+        removed
+      parameters:
+      - description: Interface name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reapplied
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict or pending operation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Reapply Host Interface L3 Configuration
+      tags:
+      - Network
+  /network/interface/l3:
+    get:
+      description: List host layer-3 configuration rows for interfaces, including
+        rows whose interface is missing, with live state and conflict markers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Rows with live state and per-interface eligibility
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List Host Interface L3 Configuration
+      tags:
+      - Network
+  /network/interface/l3/pending:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Pending operations awaiting confirmation
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3PendingEntry'
+      security:
+      - BearerAuth: []
+      summary: List Pending Host Interface L3 Operations
       tags:
       - Network
   /network/object:

@@ -189,14 +189,23 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	go s.Info.Cron(dCtx)
 	go s.ZFS.Cron(dCtx)
 	go s.ZFS.StartSnapshotScheduler(dCtx)
+	go s.Network.StartHostInterfaceL3Sweeper(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
 		s.Jail.StartStatsMonitoring(dCtx)
 	}
 
+	if err := s.Network.RecoverHostInterfaceL3(); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_recover_host_interface_l3_on_startup")
+	}
+
 	err := s.Network.SyncStandardSwitches()
 	if err != nil {
 		logger.L.Error().Msgf("error syncing standard switches: %v", err)
+	}
+
+	if err := s.Network.ReconcileHostInterfaceL3(); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_reconcile_host_interface_l3_on_startup")
 	}
 
 	s.Network.StartFirewallMonitor(dCtx)

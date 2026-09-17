@@ -1,5 +1,6 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Iface } from '$lib/types/network/iface';
+import type { HostInterfaceL3Entry } from '$lib/types/network/ifaceL3';
 import { generateNumberFromString } from '../numbers';
 
 function ipv4NetmaskToPrefix(netmask?: string | null): number | null {
@@ -91,13 +92,20 @@ function getIPv6Details(iface: Iface): Record<string, string> | null {
 
 export function generateTableData(
 	columns: Column[],
-	interfaces: Iface[]
+	interfaces: Iface[],
+	l3Entries?: HostInterfaceL3Entry[]
 ): {
 	rows: Row[];
 	columns: Column[];
 } {
+	const l3ByInterface = new Map<string, HostInterfaceL3Entry>();
+	for (const entry of l3Entries ?? []) {
+		l3ByInterface.set(entry.interface, entry);
+	}
+
 	const rows: Row[] = [];
 	for (const iface of interfaces) {
+		const l3Entry = l3ByInterface.get(iface.name);
 		let isBridge = false;
 		let isEpair = false;
 		let isTap = false;
@@ -146,10 +154,49 @@ export function generateTableData(
 			media: iface.media,
 			isBridge: isBridge,
 			isEpair: isEpair,
-			isTap: isTap
+			isTap: isTap,
+			l3Managed: l3Entry !== undefined,
+			l3Conflicts: l3Entry?.conflicts ?? []
 		};
 
 		rows.push(row);
+	}
+
+	// Host IP rows whose interface disappeared are still listed so the
+	// configuration can be inspected or removed.
+	const liveNames = new Set(rows.map((row) => String(row.name)));
+	for (const entry of l3Entries ?? []) {
+		if (liveNames.has(entry.interface)) {
+			continue;
+		}
+		const ipv4 = entry.addresses
+			.filter((address) => address.family === 'inet')
+			.map((address) => `${address.address}/${address.prefixLength}`)
+			.join('\n');
+		const ipv6 = entry.addresses
+			.filter((address) => address.family === 'inet6')
+			.map((address) => `${address.address}/${address.prefixLength}`)
+			.join('\n');
+
+		rows.push({
+			id: generateNumberFromString(`orphan-${entry.interface}`),
+			ether: '-',
+			hwaddr: '-',
+			name: entry.interface,
+			model: 'Missing',
+			description: '',
+			ipv4: ipv4 || '-',
+			ipv6: ipv6 || '-',
+			metric: entry.metric ?? '-',
+			mtu: entry.mtu ?? '-',
+			media: null,
+			isBridge: false,
+			isEpair: false,
+			isTap: false,
+			l3Managed: true,
+			l3Conflicts: entry.conflicts,
+			l3Orphan: true
+		});
 	}
 
 	return {
