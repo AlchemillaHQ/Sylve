@@ -129,6 +129,16 @@ export function isValidIPv6(ip: string, cidr = false): boolean {
 	}
 }
 
+export function isValidUnmappedIPv6(ip: string): boolean {
+	if (ip.includes('%')) return false;
+	try {
+		const parsed = new Address6(ip);
+		return parsed.parsedSubnet === '' && !parsed.isMapped4();
+	} catch {
+		return false;
+	}
+}
+
 export function isLinkLocalIPv6(ip: string): boolean {
 	try {
 		const parsed = new Address6(ip);

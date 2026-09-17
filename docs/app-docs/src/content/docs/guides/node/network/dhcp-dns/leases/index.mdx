@@ -20,16 +20,16 @@ The table identifies each client, its hostname and address, the pool and switch 
 
 ## Create a static lease
 
-Create the client identifier and reserved address as [Network Objects](/guides/node/network/objects/) first. A static lease deliberately references those objects instead of duplicating the values in the form, so the reservation is clear and reusable elsewhere.
+Create the client identifier as a [Network Object](/guides/node/network/objects/) first. The reserved address can either reference a **single-value Host(s)** object or be typed directly in the form; typed addresses are stored on the reservation itself.
 
 For an IPv4 DHCP range, provide:
 
 - A **single-value MAC(s)** object for the client identifier.
-- A **single-value Host(s)** object containing an IPv4 address.
+- A **single-value Host(s)** object containing an IPv4 address, or type the address directly.
 
-For an IPv6 DHCP range, replace the MAC object with a **single-value DUID(s)** object, and select a Host(s) object containing an IPv6 address. A DUID is the DHCPv6 client identifier; it is not a MAC address.
+For an IPv6 DHCP range, replace the MAC object with a **single-value DUID(s)** object, and select a Host(s) object containing an IPv6 address or type the address directly. A DUID is the DHCPv6 client identifier; it is not a MAC address.
 
-Choose the **Range** first. Sylve then limits the Identifier and IP Address pickers to the object kinds and address family that the range accepts. The hostname must be a valid DHCP hostname: it starts and ends with a letter or digit, may contain single `-` or `_` characters, and cannot contain doubled separators. **Comments** are optional and are kept with the reservation.
+Choose the **Range** first. Sylve then limits the Identifier picker to the object kind and address family that the range accepts, and limits the IP Address picker to Host(s) objects of the matching family. Type an address and press Enter to use it instead of an object. The hostname must be a valid DHCP hostname: it starts and ends with a letter or digit, may contain single `-` or `_` characters, and cannot contain doubled separators. **Comments** are optional and are kept with the reservation.
 
 In this IPv4 example, `LAN Caddy MAC` identifies the client and `LAN Caddy Address` reserves `192.168.12.60` for `caddy` from the LAN pool (`192.168.12.50` to `192.168.12.200`).
 
@@ -40,6 +40,6 @@ In this IPv4 example, `LAN Caddy MAC` identifies the client and `LAN Caddy Addre
 
 ### Reservation rules
 
-Each reservation belongs to one DHCP range. Within that range, Sylve prevents duplicate hostnames, reserved IP objects, MAC objects, and DUID objects. Keep the chosen Host(s) object in the same address family as the range; IPv4 ranges accept MAC identifiers only, while IPv6 ranges accept DUID identifiers only.
+Each reservation belongs to one DHCP range. Within that range, Sylve prevents duplicate hostnames, duplicate reserved addresses (whether typed or selected as an object), MAC objects, and DUID objects. Keep the chosen Host(s) object in the same address family as the range; IPv4 ranges accept MAC identifiers only, while IPv6 ranges accept DUID identifiers only.
 
 Static reservations are useful for services that need a stable address, such as Caddy, a printer, or a monitoring target. They do not turn DHCP into a server for addresses outside the selected range: configure the relevant DHCP range and attach its switch in [DHCP configuration](/guides/node/network/dhcp-dns/config/) first.

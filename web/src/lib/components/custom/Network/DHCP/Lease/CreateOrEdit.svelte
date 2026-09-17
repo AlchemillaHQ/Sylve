@@ -12,7 +12,7 @@
 		generateMACOptions
 	} from '$lib/utils/network/object';
 	import { toast } from 'svelte-sonner';
-	import { isValidIPv4, isValidIPv6, validateDnsmasqHostname } from '$lib/utils/string';
+	import { isValidIPv4, isValidUnmappedIPv6, validateDnsmasqHostname } from '$lib/utils/string';
 	import { createDHCPLease, modifyDHCPLease } from '$lib/api/network/dhcp';
 	import { handleAPIError } from '$lib/utils/http';
 
@@ -75,7 +75,7 @@
 			},
 			ip: {
 				combobox: {
-					value: lease?.ipObjectId ? `ip-${lease.ipObjectId}` : '',
+					value: lease?.ipObjectId ? `ip-${lease.ipObjectId}` : (lease?.ipRaw ?? ''),
 					open: false
 				}
 			}
@@ -97,6 +97,16 @@
 	let selectedRange = $derived(
 		dhcpRanges.find((range) => range.id.toString() === properties.dhcpRange.combobox.value)
 	);
+
+	function resolveIPSelection(value: string): { objectId: number | null; raw: string } {
+		const trimmed = value.trim();
+		if (!trimmed) return { objectId: null, raw: '' };
+		if (ipOptions.some((option) => option.value === trimmed)) {
+			return { objectId: Number(trimmed.split('-')[1]), raw: '' };
+		}
+		return { objectId: null, raw: trimmed };
+	}
+
 	let identifierOptions = $derived.by(() => {
 		if (selectedRange?.type === 'ipv4') {
 			return generateMACOptions(singleValueObjects, true);
@@ -106,11 +116,21 @@
 		}
 		return [];
 	});
+
+	function ipObjectsForType(type: 'ipv4' | 'ipv6'): NetworkObject[] {
+		if (type === 'ipv6') {
+			return singleValueObjects.filter((object) =>
+				object.entries?.[0] ? isValidUnmappedIPv6(object.entries[0].value) : false
+			);
+		}
+		return singleValueObjects;
+	}
+
 	let ipOptions = $derived.by(() => {
 		if (!selectedRange) return [];
 		const requiredPrefix = selectedRange.type === 'ipv4' ? 'mac-' : 'duid-';
 		if (!properties.identifier.combobox.value.startsWith(requiredPrefix)) return [];
-		return generateIPOptions(singleValueObjects, selectedRange.type, true);
+		return generateIPOptions(ipObjectsForType(selectedRange.type), selectedRange.type, true);
 	});
 
 	function handleRangeChange(value: string | string[]) {
@@ -129,8 +149,17 @@
 			return;
 		}
 
-		const validIPOptions = generateIPOptions(singleValueObjects, nextRange.type, true);
-		if (!validIPOptions.some((option) => option.value === properties.ip.combobox.value)) {
+		const validIPOptions = generateIPOptions(
+			ipObjectsForType(nextRange.type),
+			nextRange.type,
+			true
+		);
+		const currentIP = properties.ip.combobox.value.trim();
+		const isValidCurrentOption = validIPOptions.some((option) => option.value === currentIP);
+		const isValidCurrentLiteral =
+			currentIP !== '' &&
+			(nextRange.type === 'ipv4' ? isValidIPv4(currentIP) : isValidUnmappedIPv6(currentIP));
+		if (currentIP !== '' && !isValidCurrentOption && !isValidCurrentLiteral) {
 			properties.ip.combobox.value = '';
 		}
 	}
@@ -168,21 +197,59 @@
 			return false;
 		}
 
-		if (!properties.ip.combobox.value) {
+		if (!properties.ip.combobox.value.trim()) {
 			toast.error('IP Address is required', { position: 'bottom-center' });
 			return false;
 		}
 
 		const identifier = selectedObject(properties.identifier.combobox.value);
-		const ip = selectedObject(properties.ip.combobox.value);
-		if (!identifier || identifier.entries?.length !== 1 || !ip || ip.entries?.length !== 1) {
-			toast.error('Selected objects must contain exactly one value', {
+		if (!identifier || identifier.entries?.length !== 1) {
+			toast.error('Selected identifier object must contain exactly one value', {
 				position: 'bottom-center'
 			});
 			return false;
 		}
 
-		const ipValue = ip.entries[0].value;
+		const ipSelection = resolveIPSelection(properties.ip.combobox.value);
+		if (ipSelection.objectId === null) {
+			if (selectedRange.type === 'ipv4' && !isValidIPv4(ipSelection.raw)) {
+				toast.error('IP Address must be an IPv4 address for IPv4 ranges', {
+					position: 'bottom-center'
+				});
+				return false;
+			}
+			if (selectedRange.type === 'ipv6' && !isValidUnmappedIPv6(ipSelection.raw)) {
+				toast.error('IP Address must be an IPv6 address for IPv6 ranges', {
+					position: 'bottom-center'
+				});
+				return false;
+			}
+		} else {
+			const ip = selectedObject(properties.ip.combobox.value);
+			if (!ip || ip.entries?.length !== 1) {
+				toast.error('Selected IP object must contain exactly one value', {
+					position: 'bottom-center'
+				});
+				return false;
+			}
+			const ipValue = ip.entries[0].value;
+			if (
+				ip.type !== 'Host' ||
+				(selectedRange.type === 'ipv4' && !isValidIPv4(ipValue)) ||
+				(selectedRange.type === 'ipv6' && !isValidUnmappedIPv6(ipValue))
+			) {
+				toast.error(
+					selectedRange.type === 'ipv4'
+						? 'IP Address must be an IPv4 address for IPv4 ranges'
+						: 'IP Address must be an IPv6 address for IPv6 ranges',
+					{
+						position: 'bottom-center'
+					}
+				);
+				return false;
+			}
+		}
+
 		if (selectedRange.type === 'ipv4') {
 			if (identifier.type !== 'Mac' || !properties.identifier.combobox.value.startsWith('mac-')) {
 				toast.error('Identifier must be a MAC for IPv4 ranges', {
@@ -190,23 +257,9 @@
 				});
 				return false;
 			}
-			if (ip.type !== 'Host' || !isValidIPv4(ipValue)) {
-				toast.error('IP Address must be an IPv4 address for IPv4 ranges', {
-					position: 'bottom-center'
-				});
-				return false;
-			}
-		}
-
-		if (selectedRange.type === 'ipv6') {
+		} else if (selectedRange.type === 'ipv6') {
 			if (identifier.type !== 'DUID' || !properties.identifier.combobox.value.startsWith('duid-')) {
 				toast.error('Identifier must be a DUID for IPv6 ranges', {
-					position: 'bottom-center'
-				});
-				return false;
-			}
-			if (ip.type !== 'Host' || !isValidIPv6(ipValue)) {
-				toast.error('IP Address must be an IPv6 address for IPv6 ranges', {
 					position: 'bottom-center'
 				});
 				return false;
@@ -221,14 +274,15 @@
 
 		saving = true;
 		try {
-			const ipObjectId = Number(properties.ip.combobox.value.split('-')[1]);
+			const ipSelection = resolveIPSelection(properties.ip.combobox.value);
 			const identifierObjectId = Number(properties.identifier.combobox.value.split('-')[1]);
 			const response = selectedLease
 				? await modifyDHCPLease(
 						Number(selectedLease),
 						properties.hostname,
 						properties.comments,
-						ipObjectId,
+						ipSelection.objectId,
+						ipSelection.raw,
 						selectedRange.type === 'ipv4' ? identifierObjectId : null,
 						selectedRange.type === 'ipv6' ? identifierObjectId : null,
 						selectedRange.id
@@ -236,7 +290,8 @@
 				: await createDHCPLease(
 						properties.hostname,
 						properties.comments,
-						ipObjectId,
+						ipSelection.objectId,
+						ipSelection.raw,
 						selectedRange.type === 'ipv4' ? identifierObjectId : null,
 						selectedRange.type === 'ipv6' ? identifierObjectId : null,
 						selectedRange.id
@@ -321,9 +376,10 @@
 				data={ipOptions}
 				disabled={!properties.identifier.combobox.value}
 				classes="basis-0 flex-1 min-w-0 space-y-1"
-				placeholder="Select IP Address"
+				placeholder="Select object or type IP"
 				triggerWidth="w-full"
 				width="w-full"
+				allowCustom={true}
 			/>
 		</div>
 

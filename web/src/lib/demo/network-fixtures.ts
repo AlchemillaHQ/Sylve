@@ -834,6 +834,7 @@ function createState(hostname: string): DemoNetworkState {
 				comments: 'Reserved for the CI runner VM',
 				expiry: 0,
 				ipObjectId: 9,
+				ipRaw: '',
 				macObjectId: 6,
 				duidObjectId: null,
 				ipObject: objects[8],
@@ -1399,6 +1400,7 @@ function buildLease(
 	existing?: DHCPStaticLease
 ): DHCPStaticLease {
 	const ipObjectId = nullableNumber(body, 'ipId');
+	const ipRaw = stringValue(body, 'ipRaw', existing?.ipRaw ?? '');
 	const macObjectId = nullableNumber(body, 'macId');
 	const duidObjectId = nullableNumber(body, 'duidId');
 	const dhcpRangeId = Math.trunc(numberValue(body, 'dhcpRangeId', existing?.dhcpRangeId ?? 0));
@@ -1408,6 +1410,7 @@ function buildLease(
 		comments: stringValue(body, 'comments', existing?.comments ?? ''),
 		expiry: existing?.expiry ?? 0,
 		ipObjectId,
+		ipRaw,
 		macObjectId,
 		duidObjectId,
 		ipObject: state.objects.find((item) => item.id === ipObjectId) ?? null,

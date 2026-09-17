@@ -147,6 +147,8 @@ type normalizedStaticMapRequest struct {
 	comments     string
 	rangeID      uint
 	ipObjectID   uint
+	ipRaw        string
+	ipValue      string
 	macObjectID  uint
 	duidObjectID uint
 }
@@ -156,6 +158,7 @@ func normalizeStaticMapRequest(
 	hostname string,
 	comments string,
 	ipObjectID *uint,
+	ipRaw string,
 	macObjectID *uint,
 	duidObjectID *uint,
 	dhcpRangeID uint,
@@ -183,21 +186,40 @@ func normalizeStaticMapRequest(
 	}
 
 	ipID := optionalRequestID(ipObjectID)
+	rawIP := strings.TrimSpace(ipRaw)
 	macID := optionalRequestID(macObjectID)
 	duidID := optionalRequestID(duidObjectID)
-	if ipID == 0 {
-		return nil, invalidDHCPLease("dhcp_ip_object_required", nil)
+	if ipID == 0 && rawIP == "" {
+		return nil, invalidDHCPLease("dhcp_ip_required", nil)
+	}
+	if ipID != 0 && rawIP != "" {
+		return nil, invalidDHCPLease("dhcp_ip_source_conflict", nil)
 	}
 
-	ipObject, err := loadDHCPLeaseObject(tx, ipID, "Host", "ip")
-	if err != nil {
-		return nil, err
-	}
-	ipAddress, err := netip.ParseAddr(strings.TrimSpace(ipObject.Entries[0].Value))
-	if err != nil || ipAddress.Zone() != "" || ipAddress.Is4In6() ||
-		(dhcpRange.Type == "ipv4" && !ipAddress.Is4()) ||
-		(dhcpRange.Type == "ipv6" && !ipAddress.Is6()) {
-		return nil, invalidDHCPLease("dhcp_ip_object_family_mismatch", err)
+	var ipValue string
+	if ipID != 0 {
+		ipObject, err := loadDHCPLeaseObject(tx, ipID, "Host", "ip")
+		if err != nil {
+			return nil, err
+		}
+		ipAddress, err := netip.ParseAddr(strings.TrimSpace(ipObject.Entries[0].Value))
+		if err != nil || ipAddress.Zone() != "" || ipAddress.Is4In6() ||
+			(dhcpRange.Type == "ipv4" && !ipAddress.Is4()) ||
+			(dhcpRange.Type == "ipv6" && !ipAddress.Is6()) {
+			return nil, invalidDHCPLease("dhcp_ip_object_family_mismatch", err)
+		}
+		ipValue = ipAddress.String()
+	} else {
+		ipAddress, err := netip.ParseAddr(rawIP)
+		if err != nil || ipAddress.Zone() != "" || ipAddress.Is4In6() {
+			return nil, invalidDHCPLease("invalid_dhcp_lease_ip", err)
+		}
+		if (dhcpRange.Type == "ipv4" && !ipAddress.Is4()) ||
+			(dhcpRange.Type == "ipv6" && !ipAddress.Is6()) {
+			return nil, invalidDHCPLease("dhcp_ip_family_mismatch", nil)
+		}
+		ipValue = ipAddress.String()
+		rawIP = ipValue
 	}
 
 	switch dhcpRange.Type {
@@ -236,6 +258,8 @@ func normalizeStaticMapRequest(
 		comments:     comments,
 		rangeID:      dhcpRangeID,
 		ipObjectID:   ipID,
+		ipRaw:        rawIP,
+		ipValue:      ipValue,
 		macObjectID:  macID,
 		duidObjectID: duidID,
 	}, nil
@@ -284,7 +308,12 @@ func loadDHCPLeaseObject(tx *gorm.DB, id uint, expectedType string, role string)
 	return &object, nil
 }
 
-func checkStaticMapConflicts(tx *gorm.DB, candidate *normalizedStaticMapRequest, excludeID uint) error {
+func checkStaticMapConflicts(
+	tx *gorm.DB,
+	candidate *normalizedStaticMapRequest,
+	excludeID uint,
+	allowUnchangedIP bool,
+) error {
 	query := tx.Model(&networkModels.DHCPStaticLease{}).
 		Where("dhcp_range_id = ? AND lower(hostname) = lower(?)", candidate.rangeID, candidate.hostname)
 	if excludeID != 0 {
@@ -324,7 +353,78 @@ func checkStaticMapConflicts(tx *gorm.DB, candidate *normalizedStaticMapRequest,
 			return conflictingDHCPLease(check.code, nil)
 		}
 	}
+	if allowUnchangedIP {
+		return nil
+	}
+	return checkStaticMapIPValueConflict(tx, candidate, excludeID)
+}
+
+// checkStaticMapIPValueConflict compares the effective address of every lease
+// in the range. Object references are unique by column, but distinct objects
+// (or a literal and an object) can still carry the same address.
+func checkStaticMapIPValueConflict(tx *gorm.DB, candidate *normalizedStaticMapRequest, excludeID uint) error {
+	if candidate.ipValue == "" {
+		return nil
+	}
+
+	query := tx.Model(&networkModels.DHCPStaticLease{}).Where("dhcp_range_id = ?", candidate.rangeID)
+	if excludeID != 0 {
+		query = query.Where("id <> ?", excludeID)
+	}
+
+	var leases []networkModels.DHCPStaticLease
+	if err := query.Preload("IPObject.Entries").Find(&leases).Error; err != nil {
+		return fmt.Errorf("check_dhcp_lease_ip_value_conflict: %w", err)
+	}
+	for i := range leases {
+		if staticLeaseIPValue(&leases[i]) == candidate.ipValue {
+			return conflictingDHCPLease("duplicate_ip_in_range", nil)
+		}
+	}
 	return nil
+}
+
+func staticLeaseIPValue(lease *networkModels.DHCPStaticLease) string {
+	if lease == nil {
+		return ""
+	}
+	if raw := strings.TrimSpace(lease.IPRaw); raw != "" {
+		return canonicalIPValue(raw)
+	}
+	if lease.IPObject != nil && len(lease.IPObject.Entries) > 0 {
+		return canonicalIPValue(lease.IPObject.Entries[0].Value)
+	}
+	return ""
+}
+
+// currentStaticLeaseIPValue resolves a stored lease's address without
+// preloading associations onto the model used for the update.
+func currentStaticLeaseIPValue(tx *gorm.DB, lease *networkModels.DHCPStaticLease) string {
+	if lease == nil {
+		return ""
+	}
+	if raw := strings.TrimSpace(lease.IPRaw); raw != "" {
+		return canonicalIPValue(raw)
+	}
+	if lease.IPObjectID == nil {
+		return ""
+	}
+	var object networkModels.Object
+	if err := tx.Preload("Entries").First(&object, "id = ?", *lease.IPObjectID).Error; err != nil {
+		return ""
+	}
+	if len(object.Entries) == 0 {
+		return ""
+	}
+	return canonicalIPValue(object.Entries[0].Value)
+}
+
+func canonicalIPValue(value string) string {
+	address, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil || address.Zone() != "" || address.Is4In6() {
+		return ""
+	}
+	return address.String()
 }
 
 func mapDBErr(err error) error {
@@ -363,6 +463,7 @@ func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapR
 			req.Hostname,
 			req.Comments,
 			req.IPObjectID,
+			req.IPRaw,
 			req.MACObjectID,
 			req.DUIDObjectID,
 			req.DHCPRangeID,
@@ -370,7 +471,7 @@ func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapR
 		if err != nil {
 			return false, err
 		}
-		if err := checkStaticMapConflicts(tx, candidate, 0); err != nil {
+		if err := checkStaticMapConflicts(tx, candidate, 0, false); err != nil {
 			return false, err
 		}
 
@@ -378,6 +479,7 @@ func (s *Service) CreateStaticMap(req *networkServiceInterfaces.CreateStaticMapR
 			Hostname:     candidate.hostname,
 			Comments:     candidate.comments,
 			IPObjectID:   utils.PtrIfNonZero(candidate.ipObjectID),
+			IPRaw:        candidate.ipRaw,
 			MACObjectID:  utils.PtrIfNonZero(candidate.macObjectID),
 			DUIDObjectID: utils.PtrIfNonZero(candidate.duidObjectID),
 			DHCPRangeID:  candidate.rangeID,
@@ -416,6 +518,7 @@ func (s *Service) ModifyStaticMap(id uint, req *networkServiceInterfaces.ModifyS
 			req.Hostname,
 			req.Comments,
 			req.IPObjectID,
+			req.IPRaw,
 			req.MACObjectID,
 			req.DUIDObjectID,
 			req.DHCPRangeID,
@@ -423,7 +526,11 @@ func (s *Service) ModifyStaticMap(id uint, req *networkServiceInterfaces.ModifyS
 		if err != nil {
 			return false, err
 		}
-		if err := checkStaticMapConflicts(tx, candidate, id); err != nil {
+		// Pre-existing duplicate addresses must not block unrelated edits to a
+		// lease that keeps the same address in the same range.
+		allowUnchangedIP := candidate.rangeID == current.DHCPRangeID &&
+			candidate.ipValue == currentStaticLeaseIPValue(tx, &current)
+		if err := checkStaticMapConflicts(tx, candidate, id, allowUnchangedIP); err != nil {
 			return false, err
 		}
 		if staticMapMatches(&current, candidate) {
@@ -434,6 +541,7 @@ func (s *Service) ModifyStaticMap(id uint, req *networkServiceInterfaces.ModifyS
 			"hostname":        candidate.hostname,
 			"comments":        candidate.comments,
 			"ip_object_id":    nullableStaticMapID(candidate.ipObjectID),
+			"ip_raw":          candidate.ipRaw,
 			"mac_object_id":   nullableStaticMapID(candidate.macObjectID),
 			"d_uid_object_id": nullableStaticMapID(candidate.duidObjectID),
 			"dhcp_range_id":   candidate.rangeID,
@@ -450,6 +558,7 @@ func staticMapMatches(current *networkModels.DHCPStaticLease, candidate *normali
 		current.Comments == candidate.comments &&
 		current.DHCPRangeID == candidate.rangeID &&
 		staticMapIDEquals(current.IPObjectID, candidate.ipObjectID) &&
+		current.IPRaw == candidate.ipRaw &&
 		staticMapIDEquals(current.MACObjectID, candidate.macObjectID) &&
 		staticMapIDEquals(current.DUIDObjectID, candidate.duidObjectID)
 }

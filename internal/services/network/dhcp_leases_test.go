@@ -207,6 +207,321 @@ func TestStaticMapCreateUpdateAndDeleteApplyRenderedConfig(t *testing.T) {
 	}
 }
 
+func TestStaticMapAcceptsRawIPLiteral(t *testing.T) {
+	fixture := setupDHCPLeaseService(t, func() error { return nil })
+
+	request := validIPv4StaticMapRequest(fixture)
+	request.IPObjectID = nil
+	request.IPRaw = "192.0.2.55"
+	id, err := fixture.svc.CreateStaticMap(&request)
+	if err != nil || id == 0 {
+		t.Fatalf("create literal lease: id=%d error=%v", id, err)
+	}
+
+	var persisted networkModels.DHCPStaticLease
+	if err := fixture.db.First(&persisted, id).Error; err != nil {
+		t.Fatalf("load literal lease: %v", err)
+	}
+	if persisted.IPObjectID != nil || persisted.IPRaw != "192.0.2.55" {
+		t.Fatalf("literal lease stored unexpected address fields: %#v", persisted)
+	}
+	assertFileContains(t, fixture.configPath, "dhcp-host="+testDHCPMAC+",192.0.2.55,client-a,infinite")
+
+	ipv6Request := networkServiceInterfaces.CreateStaticMapRequest{
+		Hostname:     "client-v6",
+		IPRaw:        "2001:0DB8::55",
+		DUIDObjectID: &fixture.duidObject.ID,
+		DHCPRangeID:  fixture.ipv6Range.ID,
+	}
+	ipv6ID, err := fixture.svc.CreateStaticMap(&ipv6Request)
+	if err != nil || ipv6ID == 0 {
+		t.Fatalf("create literal ipv6 lease: id=%d error=%v", ipv6ID, err)
+	}
+	var ipv6Persisted networkModels.DHCPStaticLease
+	if err := fixture.db.First(&ipv6Persisted, ipv6ID).Error; err != nil {
+		t.Fatalf("load literal ipv6 lease: %v", err)
+	}
+	if ipv6Persisted.IPRaw != "2001:db8::55" {
+		t.Fatalf("expected canonical ipv6 literal, got %q", ipv6Persisted.IPRaw)
+	}
+	assertFileContains(t, fixture.configPath, "dhcp-host=id:"+testDHCPDUID+",[2001:db8::55],client-v6,infinite")
+}
+
+func TestStaticMapRawIPValidationAndConflicts(t *testing.T) {
+	fixture := setupDHCPLeaseService(t, func() error { return nil })
+
+	base := validIPv4StaticMapRequest(fixture)
+	base.IPObjectID = nil
+	base.IPRaw = "192.0.2.55"
+
+	missing := base
+	missing.IPRaw = ""
+	if _, err := fixture.svc.CreateStaticMap(&missing); !errors.Is(err, ErrInvalidDHCPLease) || DHCPLeaseErrorCode(err) != "dhcp_ip_required" {
+		t.Fatalf("expected missing IP error, got %v", err)
+	}
+
+	both := base
+	both.IPObjectID = &fixture.ipv4Object.ID
+	if _, err := fixture.svc.CreateStaticMap(&both); !errors.Is(err, ErrInvalidDHCPLease) || DHCPLeaseErrorCode(err) != "dhcp_ip_source_conflict" {
+		t.Fatalf("expected IP source conflict, got %v", err)
+	}
+
+	invalid := base
+	invalid.IPRaw = "not-an-ip"
+	if _, err := fixture.svc.CreateStaticMap(&invalid); !errors.Is(err, ErrInvalidDHCPLease) || DHCPLeaseErrorCode(err) != "invalid_dhcp_lease_ip" {
+		t.Fatalf("expected invalid literal error, got %v", err)
+	}
+
+	wrongFamily := base
+	wrongFamily.IPRaw = fixture.ipv6Range.StartIP
+	if _, err := fixture.svc.CreateStaticMap(&wrongFamily); !errors.Is(err, ErrInvalidDHCPLease) || DHCPLeaseErrorCode(err) != "dhcp_ip_family_mismatch" {
+		t.Fatalf("expected family mismatch, got %v", err)
+	}
+
+	if _, err := fixture.svc.CreateStaticMap(&base); err != nil {
+		t.Fatalf("create first literal lease: %v", err)
+	}
+
+	secondMAC := createDHCPLeaseObject(t, fixture.db, "mac-2", "Mac", "aa:bb:cc:dd:ee:01")
+	thirdMAC := createDHCPLeaseObject(t, fixture.db, "mac-3", "Mac", "aa:bb:cc:dd:ee:02")
+	secondDUID := createDHCPLeaseObject(t, fixture.db, "duid-2", "DUID", "00:01:00:01:2a:bc:de:f1")
+
+	duplicate := base
+	duplicate.Hostname = "client-b"
+	duplicate.MACObjectID = &secondMAC.ID
+	if _, err := fixture.svc.CreateStaticMap(&duplicate); !errors.Is(err, ErrDHCPLeaseConflict) || DHCPLeaseErrorCode(err) != "duplicate_ip_in_range" {
+		t.Fatalf("expected duplicate literal conflict, got %v", err)
+	}
+
+	objectBacked := validIPv4StaticMapRequest(fixture)
+	objectBacked.Hostname = "client-object"
+	objectBacked.MACObjectID = &secondMAC.ID
+	if _, err := fixture.svc.CreateStaticMap(&objectBacked); err != nil {
+		t.Fatalf("create object-backed lease: %v", err)
+	}
+	objectCollision := base
+	objectCollision.Hostname = "client-object-collision"
+	objectCollision.IPRaw = "192.0.2.20"
+	objectCollision.MACObjectID = &thirdMAC.ID
+	if _, err := fixture.svc.CreateStaticMap(&objectCollision); !errors.Is(err, ErrDHCPLeaseConflict) || DHCPLeaseErrorCode(err) != "duplicate_ip_in_range" {
+		t.Fatalf("expected literal/object IP conflict, got %v", err)
+	}
+
+	ipv6ObjectBacked := networkServiceInterfaces.CreateStaticMapRequest{
+		Hostname:     "client-v6-object",
+		IPObjectID:   &fixture.ipv6Object.ID,
+		DUIDObjectID: &fixture.duidObject.ID,
+		DHCPRangeID:  fixture.ipv6Range.ID,
+	}
+	if _, err := fixture.svc.CreateStaticMap(&ipv6ObjectBacked); err != nil {
+		t.Fatalf("create object-backed ipv6 lease: %v", err)
+	}
+	ipv6Collision := networkServiceInterfaces.CreateStaticMapRequest{
+		Hostname:     "client-v6-collision",
+		IPRaw:        "2001:0DB8::20",
+		DUIDObjectID: &secondDUID.ID,
+		DHCPRangeID:  fixture.ipv6Range.ID,
+	}
+	if _, err := fixture.svc.CreateStaticMap(&ipv6Collision); !errors.Is(err, ErrDHCPLeaseConflict) || DHCPLeaseErrorCode(err) != "duplicate_ip_in_range" {
+		t.Fatalf("expected canonical ipv6 conflict, got %v", err)
+	}
+}
+
+func TestStaticMapModifySwitchesIPStorage(t *testing.T) {
+	restarts := 0
+	fixture := setupDHCPLeaseService(t, func() error {
+		restarts++
+		return nil
+	})
+
+	request := validIPv4StaticMapRequest(fixture)
+	id, err := fixture.svc.CreateStaticMap(&request)
+	if err != nil {
+		t.Fatalf("create object-backed lease: %v", err)
+	}
+
+	literal := networkServiceInterfaces.ModifyStaticMapRequest{
+		Hostname:    "client-a",
+		Comments:    "test lease",
+		IPRaw:       "192.0.2.60",
+		MACObjectID: &fixture.macObject.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	if err := fixture.svc.ModifyStaticMap(id, &literal); err != nil {
+		t.Fatalf("modify to literal: %v", err)
+	}
+
+	var persisted networkModels.DHCPStaticLease
+	if err := fixture.db.First(&persisted, id).Error; err != nil {
+		t.Fatalf("load literal lease: %v", err)
+	}
+	if persisted.IPObjectID != nil || persisted.IPRaw != "192.0.2.60" {
+		t.Fatalf("literal update did not replace address fields: %#v", persisted)
+	}
+	assertFileContains(t, fixture.configPath, "dhcp-host="+testDHCPMAC+",192.0.2.60,client-a,infinite")
+
+	if err := fixture.svc.ModifyStaticMap(id, &literal); err != nil {
+		t.Fatalf("no-op literal update: %v", err)
+	}
+	if restarts != 2 {
+		t.Fatalf("expected no-op literal update to skip runtime apply, got %d restarts", restarts)
+	}
+
+	changedLiteral := literal
+	changedLiteral.IPRaw = "192.0.2.70"
+	if err := fixture.svc.ModifyStaticMap(id, &changedLiteral); err != nil {
+		t.Fatalf("modify literal to a different address: %v", err)
+	}
+	if err := fixture.db.First(&persisted, id).Error; err != nil {
+		t.Fatalf("reload changed literal lease: %v", err)
+	}
+	if persisted.IPObjectID != nil || persisted.IPRaw != "192.0.2.70" {
+		t.Fatalf("literal address change was not applied: %#v", persisted)
+	}
+	assertFileContains(t, fixture.configPath, "dhcp-host="+testDHCPMAC+",192.0.2.70,client-a,infinite")
+	if restarts != 3 {
+		t.Fatalf("expected literal address change to apply, got %d restarts", restarts)
+	}
+
+	objectBacked := networkServiceInterfaces.ModifyStaticMapRequest{
+		Hostname:    "client-a",
+		Comments:    "test lease",
+		IPObjectID:  &fixture.ipv4Object.ID,
+		MACObjectID: &fixture.macObject.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	if err := fixture.svc.ModifyStaticMap(id, &objectBacked); err != nil {
+		t.Fatalf("modify back to object: %v", err)
+	}
+	if err := fixture.db.First(&persisted, id).Error; err != nil {
+		t.Fatalf("reload object-backed lease: %v", err)
+	}
+	if persisted.IPObjectID == nil || *persisted.IPObjectID != fixture.ipv4Object.ID || persisted.IPRaw != "" {
+		t.Fatalf("object update did not clear literal address: %#v", persisted)
+	}
+}
+
+func TestStaticMapModifyAllowsUnchangedLegacyDuplicateIP(t *testing.T) {
+	fixture := setupDHCPLeaseService(t, func() error { return nil })
+
+	dupA := createDHCPLeaseObject(t, fixture.db, "host-dup-a", "Host", "192.0.2.40")
+	dupB := createDHCPLeaseObject(t, fixture.db, "host-dup-b", "Host", "192.0.2.40")
+	dupC := createDHCPLeaseObject(t, fixture.db, "host-dup-c", "Host", "192.0.2.40")
+	dupD := createDHCPLeaseObject(t, fixture.db, "host-dup-d", "Host", "192.0.2.40")
+	dupE := createDHCPLeaseObject(t, fixture.db, "host-dup-e", "Host", "192.0.2.41")
+	dupF := createDHCPLeaseObject(t, fixture.db, "host-dup-f", "Host", "192.0.2.41")
+	macB := createDHCPLeaseObject(t, fixture.db, "mac-dup-b", "Mac", "aa:bb:cc:dd:ee:11")
+	macC := createDHCPLeaseObject(t, fixture.db, "mac-dup-c", "Mac", "aa:bb:cc:dd:ee:13")
+
+	leaseA := networkModels.DHCPStaticLease{
+		Hostname:    "legacy-a",
+		IPObjectID:  &dupA.ID,
+		MACObjectID: &fixture.macObject.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	leaseB := networkModels.DHCPStaticLease{
+		Hostname:    "legacy-b",
+		IPObjectID:  &dupB.ID,
+		MACObjectID: &macB.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	leaseC := networkModels.DHCPStaticLease{
+		Hostname:    "legacy-c",
+		IPObjectID:  &dupE.ID,
+		MACObjectID: &macC.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	for _, lease := range []*networkModels.DHCPStaticLease{&leaseA, &leaseB, &leaseC} {
+		if err := fixture.db.Create(lease).Error; err != nil {
+			t.Fatalf("seed legacy duplicate lease: %v", err)
+		}
+	}
+
+	commentsOnly := networkServiceInterfaces.ModifyStaticMapRequest{
+		Hostname:    "legacy-a",
+		Comments:    "typo fix",
+		IPObjectID:  &dupA.ID,
+		MACObjectID: &fixture.macObject.ID,
+		DHCPRangeID: fixture.ipv4Range.ID,
+	}
+	if err := fixture.svc.ModifyStaticMap(leaseA.ID, &commentsOnly); err != nil {
+		t.Fatalf("comments-only edit should not be blocked by a pre-existing duplicate: %v", err)
+	}
+
+	sameAddress := commentsOnly
+	sameAddress.IPObjectID = &dupC.ID
+	if err := fixture.svc.ModifyStaticMap(leaseA.ID, &sameAddress); err != nil {
+		t.Fatalf("repointing to another object with the unchanged address should be allowed: %v", err)
+	}
+
+	changedAddress := commentsOnly
+	changedAddress.IPObjectID = &dupF.ID
+	if err := fixture.svc.ModifyStaticMap(leaseA.ID, &changedAddress); !errors.Is(err, ErrDHCPLeaseConflict) || DHCPLeaseErrorCode(err) != "duplicate_ip_in_range" {
+		t.Fatalf("expected conflict when changing to an address already reserved in the range, got %v", err)
+	}
+
+	otherRange := networkModels.DHCPRange{
+		Type:             "ipv4",
+		StartIP:          "192.0.2.200",
+		EndIP:            "192.0.2.250",
+		StandardSwitchID: fixture.ipv4Range.StandardSwitchID,
+	}
+	if err := fixture.db.Create(&otherRange).Error; err != nil {
+		t.Fatalf("seed secondary range: %v", err)
+	}
+	otherMAC := createDHCPLeaseObject(t, fixture.db, "mac-other-range", "Mac", "aa:bb:cc:dd:ee:12")
+	otherLease := networkModels.DHCPStaticLease{
+		Hostname:    "legacy-other",
+		IPObjectID:  &dupD.ID,
+		MACObjectID: &otherMAC.ID,
+		DHCPRangeID: otherRange.ID,
+	}
+	if err := fixture.db.Create(&otherLease).Error; err != nil {
+		t.Fatalf("seed secondary range lease: %v", err)
+	}
+
+	moving := commentsOnly
+	moving.DHCPRangeID = otherRange.ID
+	if err := fixture.svc.ModifyStaticMap(leaseA.ID, &moving); !errors.Is(err, ErrDHCPLeaseConflict) || DHCPLeaseErrorCode(err) != "duplicate_ip_in_range" {
+		t.Fatalf("expected conflict when moving an unchanged address into an occupied range, got %v", err)
+	}
+}
+
+func TestRenderDHCPConfigSkipsInvalidRawIP(t *testing.T) {
+	fixture := setupDHCPLeaseService(t, func() error { return nil })
+
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{name: "garbage", raw: "not-an-ip"},
+		{name: "config injection", raw: "192.0.2.50\nserver=evil.example"},
+		{name: "zoned", raw: "fe80::1%bridge0"},
+		{name: "mapped", raw: "::ffff:192.0.2.50"},
+	}
+	for i, test := range cases {
+		lease := networkModels.DHCPStaticLease{
+			Hostname:    fmt.Sprintf("invalid-raw-%d", i),
+			IPRaw:       test.raw,
+			DHCPRangeID: fixture.ipv4Range.ID,
+		}
+		if err := fixture.db.Create(&lease).Error; err != nil {
+			t.Fatalf("seed %s lease: %v", test.name, err)
+		}
+	}
+
+	config, err := renderDHCPConfig(fixture.db)
+	if err != nil {
+		t.Fatalf("render config: %v", err)
+	}
+	if strings.Contains(string(config), "dhcp-host=") {
+		t.Fatalf("invalid raw addresses leaked into rendered config:\n%s", config)
+	}
+	if strings.Contains(string(config), "evil.example") {
+		t.Fatalf("raw value injection reached rendered config:\n%s", config)
+	}
+}
+
 func TestStaticMapCreateRollsBackDatabaseAndConfigOnRestartFailure(t *testing.T) {
 	restartCalls := 0
 	fixture := setupDHCPLeaseService(t, func() error {

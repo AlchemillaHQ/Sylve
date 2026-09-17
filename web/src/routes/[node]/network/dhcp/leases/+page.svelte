@@ -142,8 +142,11 @@
 	function staticLeaseMatchesFile(staticLease: DHCPStaticLease, fileLease: FileLease): boolean {
 		const fileIP = normalizeLeaseValue(fileLease.ip);
 		const hasMatchingIP =
-			staticLease.ipObject?.entries?.some((entry) => normalizeLeaseValue(entry.value) === fileIP) ??
-			false;
+			normalizeLeaseValue(staticLease.ipRaw) === fileIP ||
+			(staticLease.ipObject?.entries?.some(
+				(entry) => normalizeLeaseValue(entry.value) === fileIP
+			) ??
+				false);
 		if (!hasMatchingIP) return false;
 
 		if (fileLease.mac) {
@@ -249,7 +252,11 @@
 				? entry.dhcpRange?.standardSwitch?.name
 				: entry.dhcpRange?.manualSwitch?.name;
 
-			const ip = entry.ipObject?.entries ? entry.ipObject?.entries[0]?.value : '-';
+			const ip = entry.ipRaw?.trim()
+				? entry.ipRaw
+				: entry.ipObject?.entries
+					? entry.ipObject?.entries[0]?.value
+					: '-';
 			const macRaw = entry.macObject?.entries ? entry.macObject?.entries[0]?.value : '-';
 			const mac = macRaw !== '-' ? macRaw.toLowerCase() : '-';
 			const duid = entry.duidObject?.entries ? entry.duidObject?.entries[0]?.value : '-';

@@ -103,6 +103,7 @@ export async function createDHCPLease(
 	hostname: string,
 	comments: string,
 	ipObjectId: number | null,
+	ipRaw: string,
 	macObjectId: number | null,
 	duidObjectId: number | null,
 	dhcpRangeId: number
@@ -111,6 +112,7 @@ export async function createDHCPLease(
 		hostname,
 		comments,
 		ipId: ipObjectId,
+		ipRaw,
 		macId: macObjectId,
 		duidId: duidObjectId,
 		dhcpRangeId
@@ -122,6 +124,7 @@ export async function modifyDHCPLease(
 	hostname: string,
 	comments: string,
 	ipObjectId: number | null,
+	ipRaw: string,
 	macObjectId: number | null,
 	duidObjectId: number | null,
 	dhcpRangeId: number
@@ -130,6 +133,7 @@ export async function modifyDHCPLease(
 		hostname,
 		comments,
 		ipId: ipObjectId,
+		ipRaw,
 		macId: macObjectId,
 		duidId: duidObjectId,
 		dhcpRangeId

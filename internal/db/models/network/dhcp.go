@@ -50,9 +50,10 @@ type DHCPStaticLease struct {
 	Expiry   uint   `json:"expiry" gorm:"default:0"`
 
 	// Per-range uniqueness on each object reference (Postgres & MySQL allow multiple NULLs)
-	IPObjectID   *uint `json:"ipObjectId"   gorm:"index:uniq_l_ip_per_range,unique"`
-	MACObjectID  *uint `json:"macObjectId"  gorm:"index:uniq_l_mac_per_range,unique"`
-	DUIDObjectID *uint `json:"duidObjectId" gorm:"index:uniq_l_duid_per_range,unique"`
+	IPObjectID   *uint  `json:"ipObjectId"   gorm:"index:uniq_l_ip_per_range,unique"`
+	IPRaw        string `json:"ipRaw"`
+	MACObjectID  *uint  `json:"macObjectId"  gorm:"index:uniq_l_mac_per_range,unique"`
+	DUIDObjectID *uint  `json:"duidObjectId" gorm:"index:uniq_l_duid_per_range,unique"`
 
 	IPObject   *Object `json:"ipObject"   gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 	MACObject  *Object `json:"macObject"  gorm:"constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`

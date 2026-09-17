@@ -4048,7 +4048,6 @@ msgstr "Mac"
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -6695,6 +6694,7 @@ msgid "Identifier must be a MAC for IPv4 ranges"
 msgstr "Identifier must be a MAC for IPv4 ranges"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "IP Address must be an IPv4 address for IPv4 ranges"
 msgstr "IP Address must be an IPv4 address for IPv4 ranges"
 
@@ -6702,6 +6702,7 @@ msgstr "IP Address must be an IPv4 address for IPv4 ranges"
 msgid "Identifier must be a DUID for IPv6 ranges"
 msgstr "Identifier must be a DUID for IPv6 ranges"
 
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "IP Address must be an IPv6 address for IPv6 ranges"
 msgstr "IP Address must be an IPv6 address for IPv6 ranges"
@@ -6721,10 +6722,6 @@ msgstr "Select Range"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Select Identifier"
 msgstr "Select Identifier"
-
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Select IP Address"
-msgstr "Select IP Address"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -15496,10 +15493,6 @@ msgid "Comments must be 4096 characters or fewer"
 msgstr "Comments must be 4096 characters or fewer"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
-msgid "Selected objects must contain exactly one value"
-msgstr "Selected objects must contain exactly one value"
-
-#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Failed to save lease"
 msgstr "Failed to save lease"
 
@@ -18557,3 +18550,15 @@ msgstr "Local Sylve user — cannot sign in over SMB"
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Local Sylve users cannot access Samba shares. Remove them or use a PAM user with a Samba credential."
 msgstr "Local Sylve users cannot access Samba shares. Remove them or use a PAM user with a Samba credential."
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Selected identifier object must contain exactly one value"
+msgstr "Selected identifier object must contain exactly one value"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Selected IP object must contain exactly one value"
+msgstr "Selected IP object must contain exactly one value"
+
+#: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+msgid "Select object or type IP"
+msgstr "Select object or type IP"

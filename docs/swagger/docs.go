@@ -32611,6 +32611,9 @@ const docTemplate = `{
                     "description": "Per-range uniqueness on each object reference (Postgres \u0026 MySQL allow multiple NULLs)",
                     "type": "integer"
                 },
+                "ipRaw": {
+                    "type": "string"
+                },
                 "macObject": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
@@ -36624,6 +36627,9 @@ const docTemplate = `{
                 "ipId": {
                     "type": "integer"
                 },
+                "ipRaw": {
+                    "type": "string"
+                },
                 "macId": {
                     "type": "integer"
                 }
@@ -36912,6 +36918,9 @@ const docTemplate = `{
                 },
                 "ipId": {
                     "type": "integer"
+                },
+                "ipRaw": {
+                    "type": "string"
                 },
                 "macId": {
                     "type": "integer"

@@ -59,6 +59,7 @@ type CreateStaticMapRequest struct {
 	Hostname     string `json:"hostname"`
 	Comments     string `json:"comments"`
 	IPObjectID   *uint  `json:"ipId"`
+	IPRaw        string `json:"ipRaw"`
 	MACObjectID  *uint  `json:"macId"`
 	DUIDObjectID *uint  `json:"duidId"`
 	DHCPRangeID  uint   `json:"dhcpRangeId" binding:"required"`
@@ -67,6 +68,7 @@ type CreateStaticMapRequest struct {
 type ModifyStaticMapRequest struct {
 	Hostname     string `json:"hostname"`
 	IPObjectID   *uint  `json:"ipId"`
+	IPRaw        string `json:"ipRaw"`
 	MACObjectID  *uint  `json:"macId"`
 	DUIDObjectID *uint  `json:"duidId"`
 	DHCPRangeID  uint   `json:"dhcpRangeId" binding:"required"`

@@ -481,11 +481,15 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 	for _, lease := range leases {
 		ipType := "ipv4"
 		var ip, mac, duid string
-		if lease.IPObject != nil && len(lease.IPObject.Entries) > 0 {
-			ip = lease.IPObject.Entries[0].Value
-			if utils.IsValidIPv6(ip) {
-				ipType = "ipv6"
+		if raw := strings.TrimSpace(lease.IPRaw); raw != "" {
+			if address, err := netip.ParseAddr(raw); err == nil && address.Zone() == "" && !address.Is4In6() {
+				ip = raw
 			}
+		} else if lease.IPObject != nil && len(lease.IPObject.Entries) > 0 {
+			ip = lease.IPObject.Entries[0].Value
+		}
+		if utils.IsValidIPv6(ip) {
+			ipType = "ipv6"
 		}
 		if lease.MACObject != nil && len(lease.MACObject.Entries) > 0 {
 			mac = lease.MACObject.Entries[0].Value

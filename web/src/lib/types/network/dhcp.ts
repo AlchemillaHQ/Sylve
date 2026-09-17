@@ -40,6 +40,7 @@ export const DHCPStaticLeaseSchema = z.object({
 	macObjectId: z.number().optional().nullable(),
 	duidObjectId: z.number().optional().nullable(),
 
+	ipRaw: z.string().default(''),
 	ipObject: NetworkObjectSchema.nullable(),
 	macObject: NetworkObjectSchema.nullable(),
 	duidObject: NetworkObjectSchema.nullable(),
