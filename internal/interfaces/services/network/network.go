@@ -29,33 +29,41 @@ const (
 	HostInterfaceL3ConflictVLANParentMissing  = "host_interface_l3_vlan_parent_missing"
 	HostInterfaceL3ConflictParentHasHostIP    = "host_interface_l3_parent_has_host_ip"
 	HostInterfaceL3ConflictParentHasChildren  = "host_interface_l3_parent_has_vlan_children"
+	HostInterfaceL3ConflictPrefixOwnerChanged = "host_interface_l3_prefix_owner_changed"
+	HostInterfaceL3ConflictVLANIdentity       = "host_interface_l3_vlan_identity_mismatch"
+	HostInterfaceL3ConflictPending            = "host_interface_l3_pending_conflict"
 )
 
 type HostInterfaceL3Entry struct {
-	ID          uint   `json:"id"`
-	Interface   string `json:"interface"`
-	VLANParent  string `json:"vlanParent"`
-	VLANTag     uint16 `json:"vlanTag"`
-	Lifecycle   string `json:"lifecycle"`
-	IPv6Mode    string `json:"ipv6Mode"`
-	MTU         *uint  `json:"mtu"`
-	MTUBaseline *uint  `json:"mtuBaseline"`
-	Metric      *uint  `json:"metric"`
-	IdentityMAC string `json:"identityMac"`
-	Revision    uint64 `json:"revision"`
+	Interface      string `json:"interface"`
+	VLANParent     string `json:"vlanParent"`
+	VLANTag        uint16 `json:"vlanTag"`
+	IPv6Mode       string `json:"ipv6Mode"`
+	MTU            *uint  `json:"mtu"`
+	MTUBaseline    *uint  `json:"mtuBaseline"`
+	Metric         *uint  `json:"metric"`
+	MetricBaseline *uint  `json:"metricBaseline"`
+	IdentityMAC    string `json:"identityMac"`
+	Revision       uint64 `json:"revision"`
 
-	Addresses []networkModels.HostInterfaceL3Address `json:"addresses"`
+	Addresses        []HostInterfaceL3AddressEntry                 `json:"addresses"`
+	ManagedAddresses []networkModels.HostInterfaceL3AppliedAddress `json:"managedAddresses"`
 
 	Present   bool     `json:"present"`
 	LiveMAC   string   `json:"liveMac"`
 	Conflicts []string `json:"conflicts"`
 }
 
+type HostInterfaceL3AddressEntry struct {
+	Family       string `json:"family"`
+	Address      string `json:"address"`
+	PrefixLength uint8  `json:"prefixLength"`
+}
+
 type HostInterfaceL3TargetEntry struct {
 	Interface string `json:"interface"`
 	Eligible  bool   `json:"eligible"`
 	Reason    string `json:"reason"`
-	HasConfig bool   `json:"hasConfig"`
 }
 
 type HostInterfaceL3List struct {
@@ -81,7 +89,6 @@ type HostInterfaceL3PendingEntry struct {
 	Kind      string    `json:"kind"`
 	Phase     string    `json:"phase"`
 	Deadline  time.Time `json:"deadline"`
-	Origin    string    `json:"origin"`
 }
 
 type StandardSwitchConfig struct {
@@ -118,17 +125,6 @@ type UpdateStandardSwitchRequest struct {
 
 type NetworkServiceInterface interface {
 	SyncStandardSwitches() error
-	GetHostInterfaceL3() (HostInterfaceL3List, error)
-	SaveHostInterfaceL3(name string, request HostInterfaceL3UpdateRequest) (HostInterfaceL3PendingEntry, error)
-	DeleteHostInterfaceL3(name string, expectedRevision uint64) (HostInterfaceL3PendingEntry, error)
-	ConfirmHostInterfaceL3(id string) error
-	RevertHostInterfaceL3(id string) error
-	GetHostInterfaceL3Pending() ([]HostInterfaceL3PendingEntry, error)
-	ReapplyHostInterfaceL3(name string) error
-	RecoverHostInterfaceL3() error
-	ReconcileHostInterfaceL3() error
-	ExpireHostInterfaceL3Pending(now time.Time) error
-	StartHostInterfaceL3Sweeper(ctx context.Context)
 	GetStandardSwitches() ([]networkModels.StandardSwitch, error)
 	NewStandardSwitch(request CreateStandardSwitchRequest) (uint, error)
 	EditStandardSwitch(request UpdateStandardSwitchRequest) error
@@ -144,4 +140,11 @@ type NetworkServiceInterface interface {
 	DisableWireGuardService(ctx context.Context) error
 	ReconcileManagedRoutes() error
 	RegisterOnJailObjectUpdateCallback(cb func(jailIDs []uint))
+}
+
+type StartupNetworkServiceInterface interface {
+	NetworkServiceInterface
+	RecoverHostInterfaceL3() error
+	ReconcileHostInterfaceL3() error
+	StartHostInterfaceL3Sweeper(ctx context.Context)
 }

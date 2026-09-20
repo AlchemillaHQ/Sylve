@@ -87,7 +87,7 @@ func TestPlanHostInterfaceL3FirstAddressUsesConfiguredPrefix(t *testing.T) {
 	if len(change.Plan.Addresses) != 1 {
 		t.Fatalf("expected one planned address, got %+v", change.Plan.Addresses)
 	}
-	if change.Plan.Addresses[0].PrefixLength != 24 || change.Plan.Addresses[0].Alias {
+	if change.Plan.Addresses[0].Address != "10.0.0.5/24" || change.Plan.Addresses[0].Alias {
 		t.Fatalf("expected a plain /24 first address, got %+v", change.Plan.Addresses[0])
 	}
 	if len(change.Intended.Addresses) != 1 || change.Intended.Addresses[0].Address != "10.0.0.5/24" {
@@ -109,10 +109,10 @@ func TestPlanHostInterfaceL3SecondAddressInPrefixBecomesAlias(t *testing.T) {
 	if len(change.Plan.Addresses) != 2 {
 		t.Fatalf("expected two planned addresses, got %+v", change.Plan.Addresses)
 	}
-	if change.Plan.Addresses[0].PrefixLength != 24 || change.Plan.Addresses[0].Alias {
+	if change.Plan.Addresses[0].Address != "10.0.0.5/24" || change.Plan.Addresses[0].Alias {
 		t.Fatalf("expected the first address to own the prefix, got %+v", change.Plan.Addresses[0])
 	}
-	if change.Plan.Addresses[1].PrefixLength != 32 || !change.Plan.Addresses[1].Alias {
+	if change.Plan.Addresses[1].Address != "10.0.0.6/32" || !change.Plan.Addresses[1].Alias {
 		t.Fatalf("expected the second address to be a /32 alias, got %+v", change.Plan.Addresses[1])
 	}
 }
@@ -139,8 +139,89 @@ func TestPlanHostInterfaceL3ForeignPrefixOwnerForcesAlias(t *testing.T) {
 	if len(change.Plan.Addresses) != 1 {
 		t.Fatalf("expected one planned address, got %+v", change.Plan.Addresses)
 	}
-	if change.Plan.Addresses[0].PrefixLength != 32 || !change.Plan.Addresses[0].Alias {
+	if change.Plan.Addresses[0].Address != "10.0.0.5/32" || !change.Plan.Addresses[0].Alias {
 		t.Fatalf("expected a /32 alias beside a foreign owner, got %+v", change.Plan.Addresses[0])
+	}
+}
+
+func TestPlanHostInterfaceL3DesiredForeignPrefixOwnerStillForcesAlias(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {
+			Name:  "em0",
+			Ether: "aa:bb:cc:dd:ee:ff",
+			MTU:   1500,
+			IPv4: []iface.IPv4{{
+				IP:      mustParseIP(t, "10.0.0.2"),
+				Netmask: "255.255.255.0",
+			}},
+		},
+	})
+
+	change, err := svc.planHostInterfaceL3Change(
+		"em0",
+		nil,
+		requestWithAddresses("10.0.0.3/24", "10.0.0.2/24"),
+	)
+	if err != nil {
+		t.Fatalf("planHostInterfaceL3Change: %v", err)
+	}
+	if len(change.Plan.Addresses) != 1 {
+		t.Fatalf("expected only the missing address to be added, got %+v", change.Plan.Addresses)
+	}
+	if change.Plan.Addresses[0].Address != "10.0.0.3/32" || !change.Plan.Addresses[0].Alias {
+		t.Fatalf("expected a /32 alias beside the desired foreign owner, got %+v", change.Plan.Addresses[0])
+	}
+}
+
+func TestPlanHostInterfaceL3ValidatesRestoredMTU(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+	})
+	managedMTU := uint(1500)
+	baselineMTU := uint(900)
+	current := &networkModels.HostInterfaceL3{
+		Interface:        "em0",
+		IdentityMAC:      "aa:bb:cc:dd:ee:ff",
+		AdoptionBaseline: networkModels.HostInterfaceL3Baseline{MTU: &baselineMTU},
+		AppliedState:     networkModels.HostInterfaceL3AppliedState{MTU: &managedMTU},
+	}
+
+	_, err := svc.planHostInterfaceL3Change(
+		"em0",
+		current,
+		requestWithAddresses("2001:db8::10/64"),
+	)
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_mtu_below_ipv6_floor" {
+		t.Fatalf("expected the restored MTU to be checked against the IPv6 floor, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RefusesVLANIdentityDrift(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0.100": {
+			Name:       "em0.100",
+			Ether:      "aa:bb:cc:dd:ee:ff",
+			VLANParent: "em0",
+			VLANTag:    200,
+			MTU:        1500,
+		},
+	})
+	current := &networkModels.HostInterfaceL3{
+		Interface:   "em0.100",
+		IdentityMAC: "aa:bb:cc:dd:ee:ff",
+		VLANParent:  "em0",
+		VLANTag:     100,
+	}
+
+	_, err := svc.planHostInterfaceL3Change("em0.100", current, requestWithAddresses("10.0.0.5/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != networkServiceInterfaces.HostInterfaceL3ConflictVLANIdentity {
+		t.Fatalf("expected VLAN identity drift to be refused, got %v", err)
 	}
 }
 
@@ -163,7 +244,7 @@ func TestPlanHostInterfaceL3RemovesStaleManagedAddress(t *testing.T) {
 		Interface: "em0",
 		AppliedState: networkModels.HostInterfaceL3AppliedState{
 			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
-				Family: "inet", Address: "10.0.0.5/24", PrefixLength: 24,
+				Family: "inet", Address: "10.0.0.5/24",
 			}},
 		},
 	}
@@ -199,7 +280,7 @@ func TestPlanHostInterfaceL3PrefixChangeRemovesThenAdds(t *testing.T) {
 		Interface: "em0",
 		AppliedState: networkModels.HostInterfaceL3AppliedState{
 			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
-				Family: "inet", Address: "10.0.0.5/32", PrefixLength: 32,
+				Family: "inet", Address: "10.0.0.5/32",
 			}},
 		},
 	}
@@ -211,8 +292,44 @@ func TestPlanHostInterfaceL3PrefixChangeRemovesThenAdds(t *testing.T) {
 	if len(change.Plan.Remove) != 1 {
 		t.Fatalf("expected the /32 to be removed, got %+v", change.Plan.Remove)
 	}
-	if len(change.Plan.Addresses) != 1 || change.Plan.Addresses[0].PrefixLength != 24 {
+	if len(change.Plan.Addresses) != 1 || change.Plan.Addresses[0].Address != "10.0.0.5/24" {
 		t.Fatalf("expected a /24 re-add, got %+v", change.Plan.Addresses)
+	}
+}
+
+func TestPlanHostInterfaceL3RepairsOwnedLivePrefixDrift(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {
+			Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500,
+			IPv4: []iface.IPv4{{
+				IP: mustParseIP(t, "10.0.0.5"), Netmask: "255.255.255.255",
+			}},
+		},
+	})
+
+	current := &networkModels.HostInterfaceL3{
+		Interface: "em0",
+		AppliedState: networkModels.HostInterfaceL3AppliedState{
+			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
+				Family: "inet", Address: "10.0.0.5/24",
+			}},
+		},
+	}
+
+	change, err := svc.planHostInterfaceL3Change("em0", current, requestWithAddresses("10.0.0.5/24"))
+	if err != nil {
+		t.Fatalf("planHostInterfaceL3Change: %v", err)
+	}
+	if len(change.Plan.Remove) != 1 || change.Plan.Remove[0].Address != "10.0.0.5/32" {
+		t.Fatalf("expected the drifted /32 to be removed, got %+v", change.Plan.Remove)
+	}
+	if len(change.Plan.Addresses) != 1 || change.Plan.Addresses[0].Address != "10.0.0.5/24" {
+		t.Fatalf("expected the owned /24 to be restored, got %+v", change.Plan.Addresses)
+	}
+	if len(change.Intended.Addresses) != 1 || change.Intended.Addresses[0].Address != "10.0.0.5/24" {
+		t.Fatalf("unexpected intended state %+v", change.Intended.Addresses)
 	}
 }
 
@@ -227,7 +344,7 @@ func TestPlanHostInterfaceL3ReAddsMissingManagedAddressWithoutDuplicating(t *tes
 		Interface: "em0",
 		AppliedState: networkModels.HostInterfaceL3AppliedState{
 			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
-				Family: "inet", Address: "10.0.0.5/24", PrefixLength: 24,
+				Family: "inet", Address: "10.0.0.5/24",
 			}},
 		},
 	}
@@ -263,8 +380,8 @@ func TestPlanHostInterfaceL3KeepsPolicyAppliedAliasesOnReapply(t *testing.T) {
 		Interface: "em0",
 		AppliedState: networkModels.HostInterfaceL3AppliedState{
 			Addresses: []networkModels.HostInterfaceL3AppliedAddress{
-				{Family: "inet", Address: "10.0.0.5/24", PrefixLength: 24},
-				{Family: "inet", Address: "10.0.0.6/32", PrefixLength: 32, Alias: true},
+				{Family: "inet", Address: "10.0.0.5/24"},
+				{Family: "inet", Address: "10.0.0.6/32"},
 			},
 		},
 	}
@@ -407,6 +524,20 @@ func TestPlanHostInterfaceL3RejectsChildAboveParentMTU(t *testing.T) {
 	}
 }
 
+func TestPlanHostInterfaceL3RejectsLiveChildMTUAboveParent(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0":   {Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+		"em0.5": {Name: "em0.5", Ether: "aa:bb:cc:dd:ee:ff", MTU: 9000, VLANParent: "em0", VLANTag: 5},
+	})
+
+	_, err := svc.planHostInterfaceL3Change("em0.5", nil, requestWithAddresses("10.0.0.5/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_child_mtu_above_parent" {
+		t.Fatalf("expected live child MTU refusal, got %v", err)
+	}
+}
+
 func TestPlanHostInterfaceL3RejectsDuplicateAcrossRows(t *testing.T) {
 	svc, db := hostInterfaceL3TestDB(t)
 	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
@@ -428,5 +559,142 @@ func TestPlanHostInterfaceL3RejectsDuplicateAcrossRows(t *testing.T) {
 	_, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses("10.0.0.5/24"))
 	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_duplicate_address" {
 		t.Fatalf("expected duplicate address refusal, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RejectsAddressInDHCPRange(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+	})
+	if err := db.Create(&networkModels.DHCPRange{
+		StartIP: "10.0.0.100",
+		EndIP:   "10.0.0.200",
+	}).Error; err != nil {
+		t.Fatalf("seed DHCP range: %v", err)
+	}
+
+	_, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses("10.0.0.150/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_address_in_dhcp_pool" {
+		t.Fatalf("expected DHCP range refusal, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RejectsDuplicateLiveAddress(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	interfaces := []*iface.Interface{
+		{Name: "em0", Ether: "aa:bb:cc:dd:ee:00", Driver: "em", MTU: 1500},
+		{
+			Name: "em1", Ether: "aa:bb:cc:dd:ee:01", Driver: "em", MTU: 1500,
+			IPv4: []iface.IPv4{{IP: mustParseIP(t, "10.0.0.5"), Netmask: "255.255.255.0"}},
+		},
+	}
+	stubHostInterfaceL3Interfaces(t, interfaces)
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{"em0": interfaces[0], "em1": interfaces[1]})
+
+	_, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses("10.0.0.5/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_duplicate_address" {
+		t.Fatalf("expected live duplicate refusal, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RejectsDuplicatePendingAddress(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {Name: "em0", Ether: "aa:bb:cc:dd:ee:00", MTU: 1500},
+	})
+
+	pending := networkModels.PendingApply{
+		ID: "pending-other", Interface: "em1", Kind: networkModels.PendingApplyKindInterface,
+		Phase: networkModels.PendingApplyPhaseApplied,
+		CandidatePayload: networkModels.HostInterfaceL3Spec{
+			Addresses: []networkModels.HostInterfaceL3AddressSpec{{Family: "inet", Address: "10.0.0.5", PrefixLength: 24}},
+		},
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatalf("seed pending: %v", err)
+	}
+
+	_, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses("10.0.0.5/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_duplicate_address" {
+		t.Fatalf("expected pending duplicate refusal, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RejectsUnassignableAddressesAndMetric(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+	})
+
+	for _, address := range []string{"10.0.0.0/24", "10.0.0.255/24", "2001:db8::/64", "::ffff:192.0.2.5/120"} {
+		if _, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses(address)); err == nil ||
+			HostInterfaceL3ErrorCode(err) != "host_interface_l3_invalid_address" {
+			t.Fatalf("expected %s to be refused, got %v", address, err)
+		}
+	}
+
+	metric := uint(256)
+	request := requestWithAddresses("10.0.0.5/24")
+	request.Metric = &metric
+	if _, err := svc.planHostInterfaceL3Change("em0", nil, request); err == nil ||
+		HostInterfaceL3ErrorCode(err) != "host_interface_l3_invalid_metric" {
+		t.Fatalf("expected invalid metric refusal, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3StaticIPv6EnablesTrackedState(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": {Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500},
+	})
+
+	change, err := svc.planHostInterfaceL3Change("em0", nil, requestWithAddresses("2001:db8::5/64"))
+	if err != nil {
+		t.Fatalf("planHostInterfaceL3Change: %v", err)
+	}
+	if change.Spec.IPv6Mode == nil || *change.Spec.IPv6Mode != networkModels.HostInterfaceL3IPv6ModeEnabled {
+		t.Fatalf("expected static IPv6 to select enabled mode, got %+v", change.Spec.IPv6Mode)
+	}
+	if change.Plan.DisableIPv6 == nil || *change.Plan.DisableIPv6 ||
+		change.Intended.IPv6Disabled == nil || *change.Intended.IPv6Disabled {
+		t.Fatalf("expected enabled IPv6 state to be tracked, got plan=%+v intended=%+v", change.Plan, change.Intended)
+	}
+}
+
+func TestPlanHostInterfaceL3AllowsPhysicalMediaWithoutDriverMetadata(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"storage0": {
+			Name: "storage0", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500,
+			Media: &iface.Media{Type: "Ethernet"},
+		},
+	})
+
+	if _, err := svc.planHostInterfaceL3Change("storage0", nil, requestWithAddresses("10.0.0.5/24")); err != nil {
+		t.Fatalf("expected media-backed interface to be eligible, got %v", err)
+	}
+}
+
+func TestPlanHostInterfaceL3RejectsVLANWhoseParentIsBridgeMember(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	interfaces := []*iface.Interface{
+		{Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", Driver: "em", MTU: 1500},
+		{Name: "em0.100", Ether: "aa:bb:cc:dd:ee:ff", MTU: 1500, VLANParent: "em0", VLANTag: 100},
+		{Name: "bridge0", Groups: []string{"bridge"}, BridgeMembers: []iface.BridgeMember{{Name: "em0"}}},
+	}
+	stubHostInterfaceL3Interfaces(t, interfaces)
+	stubHostInterfaceL3Get(t, map[string]*iface.Interface{
+		"em0": interfaces[0], "em0.100": interfaces[1], "bridge0": interfaces[2],
+	})
+
+	_, err := svc.planHostInterfaceL3Change("em0.100", nil, requestWithAddresses("10.0.0.5/24"))
+	if err == nil || HostInterfaceL3ErrorCode(err) != "host_interface_l3_vlan_parent_ineligible" {
+		t.Fatalf("expected VLAN parent membership refusal, got %v", err)
 	}
 }

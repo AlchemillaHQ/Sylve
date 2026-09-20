@@ -15,15 +15,18 @@
 		open: boolean;
 		entry: HostInterfaceL3PendingEntry | null;
 		remaining?: number;
+		readOnlyReason?: string;
 		onDone: () => void | Promise<void>;
 	}
 
-	let { open = $bindable(), entry, remaining = 1, onDone }: Props = $props();
+	let { open = $bindable(), entry, remaining = 1, readOnlyReason = '', onDone }: Props = $props();
 
 	let busy = $state(false);
 	let now = $state(Date.now());
 	let expired = $state(false);
 	let lastExpiryCheck = $state(0);
+	let actionFailed = $state(false);
+	let activeEntryID = $state('');
 
 	const expiryPollInterval = 1000;
 
@@ -33,19 +36,24 @@
 		}
 		const timer = setInterval(() => {
 			now = Date.now();
-		}, 250);
+			const deadline = entry ? Date.parse(entry.deadline) : Number.NaN;
+			if (entry?.phase === 'applied' && !Number.isNaN(deadline) && now >= deadline) {
+				void checkExpired();
+			}
+		}, 1000);
 		return () => clearInterval(timer);
 	});
 
 	$effect(() => {
-		// Reset the countdown state whenever a new operation is shown.
 		const currentID = entry?.id ?? '';
-		if (currentID === '') {
+		if (currentID === '' || currentID === activeEntryID) {
 			return;
 		}
+		activeEntryID = currentID;
 		now = Date.now();
 		expired = false;
 		lastExpiryCheck = 0;
+		actionFailed = false;
 	});
 
 	let remainingSeconds = $derived.by(() => {
@@ -69,7 +77,9 @@
 		try {
 			const response = await confirmHostInterfaceL3(entry.id);
 			if (isAPIResponse(response) && response.status !== 'success') {
+				actionFailed = true;
 				handleAPIError(response);
+				await onDone();
 				return;
 			}
 			open = false;
@@ -88,7 +98,9 @@
 		try {
 			const response = await revertHostInterfaceL3(entry.id);
 			if (isAPIResponse(response) && response.status !== 'success') {
+				actionFailed = true;
 				handleAPIError(response);
+				await onDone();
 				return;
 			}
 			open = false;
@@ -111,29 +123,34 @@
 
 		const pending = await getHostInterfaceL3Pending();
 		if (isAPIResponse(pending)) {
+			actionFailed = true;
 			return;
 		}
 		if (!pending.some((operation) => operation.id === entry.id)) {
 			expired = true;
 			open = false;
-			toast.info(`${entry.interface}: the Host IP change was rolled back`, {
+			toast.info(`${entry.interface}: the pending Host IP operation is no longer active`, {
 				position: 'bottom-center'
 			});
 			await onDone();
+		} else if (timestamp - Date.parse(entry.deadline) >= 2000) {
+			actionFailed = true;
 		}
 	}
 
-	$effect(() => {
-		if (open && entry && remainingSeconds === 0) {
-			void checkExpired();
-		}
-	});
+	let dismissible = $derived(readOnlyReason !== '' || actionFailed);
 </script>
 
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="w-[96%] overflow-hidden p-5 lg:max-w-md"
-		showCloseButton={false}
+		showCloseButton={dismissible}
+		onInteractOutside={(event) => {
+			if (!dismissible) event.preventDefault();
+		}}
+		onEscapeKeydown={(event) => {
+			if (!dismissible) event.preventDefault();
+		}}
 		aria-busy={busy}
 	>
 		<Dialog.Header>
@@ -156,6 +173,15 @@
 				Confirm within {remainingSeconds}s or it is rolled back automatically. If the interface
 				stops responding, the timeout restores the previous state.
 			</p>
+			{#if readOnlyReason}
+				<p class="text-amber-600 dark:text-amber-400">{readOnlyReason}</p>
+			{/if}
+			{#if actionFailed}
+				<p class="text-destructive">
+					The pending operation could not be completed automatically. You can retry, or close this
+					dialog and return from the pending Host IP button.
+				</p>
+			{/if}
 			{#if remaining > 1}
 				<p class="text-xs text-muted-foreground">
 					{remaining - 1} more Host IP change{remaining - 1 === 1 ? '' : 's'} waiting for confirmation
@@ -166,8 +192,10 @@
 
 		<Dialog.Footer>
 			<div class="flex w-full items-center justify-between gap-2">
-				<Button size="sm" variant="outline" onclick={revert} disabled={busy}>Revert now</Button>
-				<Button size="sm" onclick={confirm} disabled={busy}>
+				<Button size="sm" variant="outline" onclick={revert} disabled={busy || !!readOnlyReason}
+					>Revert now</Button
+				>
+				<Button size="sm" onclick={confirm} disabled={busy || !!readOnlyReason}>
 					{#if busy}
 						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
 					{/if}

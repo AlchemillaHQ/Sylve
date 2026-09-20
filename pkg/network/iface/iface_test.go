@@ -116,6 +116,13 @@ func TestInterfaceStringIncludesCoreFields(t *testing.T) {
 	}
 }
 
+func TestDeviceUnitPatternAcceptsDriversContainingDigits(t *testing.T) {
+	matches := deviceUnitPattern.FindStringSubmatch("mlx5en0")
+	if len(matches) != 3 || matches[1] != "mlx5en" || matches[2] != "0" {
+		t.Fatalf("unexpected device/unit split: %v", matches)
+	}
+}
+
 func TestInterfaceStringOmitsInfiniteIPv6Lifetimes(t *testing.T) {
 	i := &Interface{
 		Name:  "em1",

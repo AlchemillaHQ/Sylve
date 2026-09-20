@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -102,58 +101,6 @@ func (f *jailNetworkValidationFakeNetworkService) ReconcileManagedRoutes() error
 }
 
 func (f *jailNetworkValidationFakeNetworkService) RegisterOnJailObjectUpdateCallback(_ func(jailIDs []uint)) {
-}
-
-func (f *jailNetworkValidationFakeNetworkService) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3List, error) {
-	return networkServiceInterfaces.HostInterfaceL3List{}, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) SaveHostInterfaceL3(
-	_ string,
-	_ networkServiceInterfaces.HostInterfaceL3UpdateRequest,
-) (networkServiceInterfaces.HostInterfaceL3PendingEntry, error) {
-	return networkServiceInterfaces.HostInterfaceL3PendingEntry{}, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) DeleteHostInterfaceL3(
-	_ string,
-	_ uint64,
-) (networkServiceInterfaces.HostInterfaceL3PendingEntry, error) {
-	return networkServiceInterfaces.HostInterfaceL3PendingEntry{}, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) ConfirmHostInterfaceL3(_ string) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) RevertHostInterfaceL3(_ string) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) GetHostInterfaceL3Pending() (
-	[]networkServiceInterfaces.HostInterfaceL3PendingEntry,
-	error,
-) {
-	return nil, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) ReapplyHostInterfaceL3(_ string) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) RecoverHostInterfaceL3() error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) ReconcileHostInterfaceL3() error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) ExpireHostInterfaceL3Pending(_ time.Time) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) StartHostInterfaceL3Sweeper(_ context.Context) {
 }
 
 func newJailNetworkValidationService(

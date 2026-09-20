@@ -44,7 +44,7 @@ type Service struct {
 	DB        *gorm.DB
 	Info      infoServiceInterfaces.InfoServiceInterface
 	ZFS       zfsServiceInterfaces.ZfsServiceInterface
-	Network   networkServiceInterfaces.NetworkServiceInterface
+	Network   networkServiceInterfaces.StartupNetworkServiceInterface
 	Libvirt   libvirtServiceInterfaces.LibvirtServiceInterface
 	Utilities utilitiesServiceInterfaces.UtilitiesServiceInterface
 	System    systemServiceInterfaces.SystemServiceInterface
@@ -58,7 +58,7 @@ type Service struct {
 func NewStartupService(db *gorm.DB,
 	info infoServiceInterfaces.InfoServiceInterface,
 	zfs zfsServiceInterfaces.ZfsServiceInterface,
-	network networkServiceInterfaces.NetworkServiceInterface,
+	network networkServiceInterfaces.StartupNetworkServiceInterface,
 	libvirt libvirtServiceInterfaces.LibvirtServiceInterface,
 	utiliies utilitiesServiceInterfaces.UtilitiesServiceInterface,
 	system systemServiceInterfaces.SystemServiceInterface,
@@ -189,7 +189,6 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	go s.Info.Cron(dCtx)
 	go s.ZFS.Cron(dCtx)
 	go s.ZFS.StartSnapshotScheduler(dCtx)
-	go s.Network.StartHostInterfaceL3Sweeper(dCtx)
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
 		s.Jail.StartStatsMonitoring(dCtx)
@@ -207,6 +206,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	if err := s.Network.ReconcileHostInterfaceL3(); err != nil {
 		logger.L.Error().Err(err).Msg("failed_to_reconcile_host_interface_l3_on_startup")
 	}
+	go s.Network.StartHostInterfaceL3Sweeper(dCtx)
 
 	s.Network.StartFirewallMonitor(dCtx)
 

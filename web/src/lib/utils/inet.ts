@@ -23,6 +23,48 @@ export function maskToCIDR(mask: string) {
 	return cidr;
 }
 
+export type IPv4Prefix = {
+	key: string;
+	start: number;
+	end: number;
+};
+
+export function ipv4NetmaskToPrefix(netmask?: string | null): number | null {
+	if (!netmask) return null;
+	const octets = netmask.split('.').map(Number);
+	if (
+		octets.length !== 4 ||
+		octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+	) {
+		return null;
+	}
+	const bits = octets.map((octet) => octet.toString(2).padStart(8, '0')).join('');
+	if (!/^1*0*$/.test(bits)) return null;
+	return bits.indexOf('0') === -1 ? 32 : bits.indexOf('0');
+}
+
+export function parseIPv4Prefix(value: string): IPv4Prefix | null {
+	const parts = value.trim().split('/');
+	if (parts.length !== 2 || parts[0].includes(':')) return null;
+	const octets = parts[0].split('.').map(Number);
+	const prefix = Number(parts[1]);
+	if (
+		octets.length !== 4 ||
+		octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255) ||
+		!Number.isInteger(prefix) ||
+		prefix < 0 ||
+		prefix > 32
+	) {
+		return null;
+	}
+	let address = 0;
+	for (const octet of octets) address = ((address << 8) | octet) >>> 0;
+	const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+	const start = (address & mask) >>> 0;
+	const end = (start | (~mask >>> 0)) >>> 0;
+	return { key: `${start}/${prefix}`, start, end };
+}
+
 export function isValidIPv4Range(start: string, end: string, network: string, mask: string) {
 	const startAddr = new Address4(start);
 	const endAddr = new Address4(end);

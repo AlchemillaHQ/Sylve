@@ -1081,6 +1081,7 @@ msgstr "Dies ist eine Notiz"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -1655,6 +1656,7 @@ msgstr "Sind Sie sicher?"
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -2159,6 +2161,7 @@ msgstr "Beschreibung"
 msgid "MAC Address"
 msgstr "MAC-Adresse"
 
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Metric"
 msgstr "Metrik"
@@ -2180,6 +2183,8 @@ msgid "Attribute"
 msgstr "Attribut"
 
 #. 0: ifaceData.name
+#. 0: entry.interface
+#: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Details - {0}"
 msgstr "Details - {0}"
@@ -2346,6 +2351,7 @@ msgstr "ZFS-Pools"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
@@ -2393,6 +2399,7 @@ msgstr "Aktiviert"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2998,6 +3005,7 @@ msgid "OOB Restore"
 msgstr "OOB-Wiederherstellung"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
@@ -4124,6 +4132,7 @@ msgstr "IPv6-Netzwerk"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
@@ -9141,6 +9150,7 @@ msgstr "<0/> Neuer Client"
 msgid "Peer Public Key"
 msgstr "Öffentlicher Peer-Schlüssel"
 
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 msgid "Addresses"
 msgstr "Adressen"
@@ -10432,6 +10442,7 @@ msgstr ""
 msgid "Transport Name"
 msgstr ""
 
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -11882,6 +11893,7 @@ msgstr ""
 msgid "Remove the stale inventory entry for <span class=\"font-semibold\">{0}</span>? Only the local VM record and any local libvirt domain are removed &mdash; ZFS datasets are preserved and nothing is deleted on other nodes."
 msgstr ""
 
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 msgid "Removing..."
 msgstr ""
@@ -15196,6 +15208,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
@@ -18548,4 +18561,187 @@ msgstr ""
 
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 msgid "Saving Snapshot Jobs..."
+msgstr ""
+
+#. 0: localNode
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Host IP changes must be made on {0}."
+msgstr ""
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Host IP"
+msgstr ""
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Interface missing"
+msgstr ""
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Managed"
+msgstr ""
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "IPv6 mode"
+msgstr ""
+
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Host IP is not available for this interface"
+msgstr ""
+
+#. 0: hostInterfaceL3Pending.entries.length
+#: src/routes/[node]/network/interfaces/+page.svelte
+msgid "Pending Host IP ({0})"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Leave as found"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "MTU and Metric must be whole numbers, or empty to restore the baseline."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "MTU must be between 68 and 65535."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Metric must be between 0 and 255."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "MTU must be at least 1280 when IPv6 is enabled or configured."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Remove the static IPv6 addresses before disabling IPv6."
+msgstr ""
+
+#. 0: interfaceName
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Host IP — {0}"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "This interface is missing from the system. Sylve keeps the configuration so it can be removed; saving is disabled until the interface returns."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Foreign prefix"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Prefix owner"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Make owner"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "<0/> Add address"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "One IPv4 address in each subnet owns its connected prefix; additional addresses use /32 aliases. Changing the owner changes connected-route masks and is protected by the confirmation window."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "These IPv4 CIDRs create overlapping connected prefixes. Verify the intended routing before confirming the change."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "A live foreign address owns at least one connected prefix. Sylve addresses in that prefix will use /32 aliases."
+msgstr ""
+
+#. 0: currentMTU; 1: entry.mtuBaseline ?? currentMTU
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Current: {0}; empty restores {1}"
+msgstr ""
+
+#. 0: currentMTU
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Current: {0}"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Not managed"
+msgstr ""
+
+#. 0: entry.metricBaseline ?? 'the adoption baseline'
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Empty restores {0}"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Static IPv6 requires IPv6 to be enabled. Saving will track it as Enabled and restore the current ND6 settings when Host IP is removed."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "No default route is managed here; off-subnet traffic keeps using the existing default."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Sylve changes runtime state only and does not edit rc.conf. Boot configuration applies first and may provide additional effective addresses or settings shown in the table."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Reapply"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Remove Host IP"
+msgstr ""
+
+#. 0: interfaceName
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Remove Host IP configuration from <span class=\"font-semibold\">{0}</span>? The interface is missing or its MAC or VLAN identity changed, so only Sylve's configuration will be removed; runtime state will not be touched."
+msgstr ""
+
+#. 0: interfaceName
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Remove Host IP configuration from <span class=\"font-semibold\">{0}</span>? The confirmation window still applies, so you can undo within 60 seconds."
+msgstr ""
+
+#. 0: actionLabel
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "Confirm Host IP {0}"
+msgstr ""
+
+#. 0: actionLabel
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "The {0} on <0/> is applied but not confirmed yet."
+msgstr ""
+
+#. 0: remainingSeconds
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "Confirm within {0}s or it is rolled back automatically. If the interface stops responding, the timeout restores the previous state."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "The pending operation could not be completed automatically. You can retry, or close this dialog and return from the pending Host IP button."
+msgstr ""
+
+#. 0: remaining - 1; 1: remaining - 1 === 1 ? '' \\: 's'
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "{0} more Host IP change{1} waiting for confirmation after this one."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "Revert now"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Pending.svelte
+msgid "<0/> Confirm"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Confirm or revert the pending Host IP change on the Interfaces page"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Remove the Host IP configuration on the Interfaces page first"
 msgstr ""

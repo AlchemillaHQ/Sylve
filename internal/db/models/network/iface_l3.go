@@ -11,9 +11,6 @@ package networkModels
 import "time"
 
 const (
-	HostInterfaceL3LifecycleExternal = "external"
-	HostInterfaceL3LifecycleSylve    = "sylve"
-
 	HostInterfaceL3IPv6ModeInherit  = "inherit"
 	HostInterfaceL3IPv6ModeEnabled  = "enabled"
 	HostInterfaceL3IPv6ModeDisabled = "disabled"
@@ -25,12 +22,10 @@ type HostInterfaceL3 struct {
 
 	VLANParent string `json:"vlanParent"`
 	VLANTag    uint16 `json:"vlanTag"`
-	Lifecycle  string `json:"lifecycle" gorm:"default:external"`
 
-	IPv6Mode    string `json:"ipv6Mode" gorm:"default:inherit"`
-	MTU         *uint  `json:"mtu"`
-	MTUBaseline *uint  `json:"mtuBaseline"`
-	Metric      *uint  `json:"metric"`
+	IPv6Mode string `json:"ipv6Mode" gorm:"default:inherit"`
+	MTU      *uint  `json:"mtu"`
+	Metric   *uint  `json:"metric"`
 
 	IdentityMAC string `json:"identityMac"`
 
@@ -48,13 +43,13 @@ type HostInterfaceL3 struct {
 func (HostInterfaceL3) TableName() string { return "host_interface_l3" }
 
 type HostInterfaceL3Baseline struct {
-	MTU          *uint `json:"mtu,omitempty"`
-	Metric       *uint `json:"metric,omitempty"`
-	IPv6Disabled *bool `json:"ipv6Disabled,omitempty"`
-	// ND6Flags is the raw ND6 option set (IFDISABLED, NO_RADR, ACCEPT_RTADV,
-	// AUTO_LINKLOCAL, ...) captured before Sylve changed IPv6 state.
-	ND6Flags *uint32 `json:"nd6Flags,omitempty"`
-	Up       *bool   `json:"up,omitempty"`
+	Addresses  []HostInterfaceL3AppliedAddress `json:"addresses,omitempty"`
+	MTU        *uint                           `json:"mtu,omitempty"`
+	Metric     *uint                           `json:"metric,omitempty"`
+	ND6Flags   *uint32                         `json:"nd6Flags,omitempty"`
+	Up         *bool                           `json:"up,omitempty"`
+	VLANParent string                          `json:"vlanParent,omitempty"`
+	VLANTag    uint16                          `json:"vlanTag,omitempty"`
 }
 
 type HostInterfaceL3AppliedState struct {
@@ -66,10 +61,8 @@ type HostInterfaceL3AppliedState struct {
 }
 
 type HostInterfaceL3AppliedAddress struct {
-	Family       string `json:"family"`
-	Address      string `json:"address"`
-	PrefixLength uint8  `json:"prefixLength"`
-	Alias        bool   `json:"alias"`
+	Family  string `json:"family"`
+	Address string `json:"address"`
 }
 
 type HostInterfaceL3Address struct {
@@ -100,38 +93,25 @@ const (
 	PendingApplyKindInterface = "interface"
 	PendingApplyKindDelete    = "delete"
 
-	PendingApplyPhasePrepared  = "prepared"
-	PendingApplyPhaseApplied   = "applied"
-	PendingApplyPhaseConfirmed = "confirmed"
-	PendingApplyPhaseReverted  = "reverted"
+	PendingApplyPhasePrepared = "prepared"
+	PendingApplyPhaseApplied  = "applied"
 )
 
 type PendingApply struct {
-	ID    string `json:"id" gorm:"primaryKey"`
-	Kind  string `json:"kind" gorm:"not null;index"`
-	Phase string `json:"phase" gorm:"not null;index"`
+	ID        string `json:"id" gorm:"primaryKey"`
+	Interface string `json:"interface" gorm:"not null;index"`
+	Kind      string `json:"kind" gorm:"not null;index"`
+	Phase     string `json:"phase" gorm:"not null;index"`
 
-	ActivePayload         HostInterfaceL3Spec         `json:"activePayload" gorm:"serializer:json;type:json"`
-	CandidatePayload      HostInterfaceL3Spec         `json:"candidatePayload" gorm:"serializer:json;type:json"`
-	CandidateAppliedState HostInterfaceL3AppliedState `json:"candidateAppliedState" gorm:"serializer:json;type:json"`
-	RuntimeSnapshot       HostInterfaceL3Baseline     `json:"runtimeSnapshot" gorm:"serializer:json;type:json"`
-	Reservations          []string                    `json:"reservations" gorm:"serializer:json;type:json"`
-	IdentityMAC           string                      `json:"identityMac"`
+	CandidatePayload       HostInterfaceL3Spec         `json:"candidatePayload" gorm:"serializer:json;type:json"`
+	CandidateAppliedState  HostInterfaceL3AppliedState `json:"candidateAppliedState" gorm:"serializer:json;type:json"`
+	RuntimeSnapshot        HostInterfaceL3Baseline     `json:"runtimeSnapshot" gorm:"serializer:json;type:json"`
+	IdentityMAC            string                      `json:"identityMac"`
+	CandidateRevision      uint64                      `json:"candidateRevision"`
+	RuntimeRestoreRequired bool                        `json:"runtimeRestoreRequired"`
 
 	Deadline  time.Time `json:"deadline"`
-	Origin    string    `json:"origin"`
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 }
 
 func (PendingApply) TableName() string { return "pending_apply" }
-
-type PendingApplyTarget struct {
-	ID                uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	PendingID         string `json:"pendingId" gorm:"not null;index"`
-	TargetKind        string `json:"targetKind" gorm:"not null"`
-	TargetID          string `json:"targetId" gorm:"not null"`
-	PreviousRevision  uint64 `json:"previousRevision"`
-	CandidateRevision uint64 `json:"candidateRevision"`
-}
-
-func (PendingApplyTarget) TableName() string { return "pending_apply_target" }

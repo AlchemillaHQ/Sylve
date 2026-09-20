@@ -17,6 +17,7 @@ import (
 	"time"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 )
 
@@ -30,7 +31,6 @@ var (
 	hostInterfaceL3DADWait        = time.Sleep
 )
 
-// Raw ND6 option bits from pkg/network/iface's parser.
 const (
 	hostInterfaceL3ND6AcceptRTAdv   = 0x02
 	hostInterfaceL3ND6IfDisabled    = 0x08
@@ -39,22 +39,60 @@ const (
 )
 
 type hostInterfaceL3ApplyAddress struct {
-	Family       string
-	Address      string
-	PrefixLength uint8
-	Alias        bool
+	Family  string
+	Address string
+	Alias   bool
 }
 
 type hostInterfaceL3ApplyPlan struct {
-	Interface   string
-	Remove      []networkModels.HostInterfaceL3AppliedAddress
-	Addresses   []hostInterfaceL3ApplyAddress
-	MTU         *uint
-	Metric      *uint
-	DisableIPv6 *bool
-	// RestoreIPv6Flags is set when management of IPv6 stops and the exact ND6
-	// option set found before Sylve's first apply must return.
-	RestoreIPv6Flags *uint32
+	Interface          string
+	ExpectedMAC        string
+	ExpectedVLANParent string
+	ExpectedVLANTag    uint16
+	Remove             []networkModels.HostInterfaceL3AppliedAddress
+	Addresses          []hostInterfaceL3ApplyAddress
+	MTU                *uint
+	Metric             *uint
+	DisableIPv6        *bool
+	RestoreIPv6Flags   *uint32
+}
+
+func ensureHostInterfaceL3Identity(interfaceObj *iface.Interface, expectedMAC string) error {
+	if interfaceObj == nil {
+		return hostInterfaceL3Conflict("host_interface_l3_missing_interface", nil)
+	}
+	expectedMAC = strings.TrimSpace(expectedMAC)
+	if expectedMAC == "" {
+		return nil
+	}
+	liveMAC := strings.TrimSpace(interfaceObj.Ether)
+	if liveMAC == "" || !strings.EqualFold(liveMAC, expectedMAC) {
+		return hostInterfaceL3Conflict(
+			"host_interface_l3_identity_mismatch",
+			fmt.Errorf("interface %s has MAC %s, expected %s", interfaceObj.Name, liveMAC, expectedMAC),
+		)
+	}
+	return nil
+}
+
+func ensureHostInterfaceL3VLANIdentity(interfaceObj *iface.Interface, expectedParent string, expectedTag uint16) error {
+	if interfaceObj == nil {
+		return hostInterfaceL3Conflict("host_interface_l3_missing_interface", nil)
+	}
+	if interfaceObj.VLANParent != expectedParent || interfaceObj.VLANTag != int(expectedTag) {
+		return hostInterfaceL3Conflict(
+			networkServiceInterfaces.HostInterfaceL3ConflictVLANIdentity,
+			fmt.Errorf(
+				"interface %s has VLAN parent/tag %s/%d, expected %s/%d",
+				interfaceObj.Name,
+				interfaceObj.VLANParent,
+				interfaceObj.VLANTag,
+				expectedParent,
+				expectedTag,
+			),
+		)
+	}
+	return nil
 }
 
 func hostInterfaceL3IPv6Disabled(interfaceObj *iface.Interface) bool {
@@ -75,16 +113,17 @@ func captureHostInterfaceL3Baseline(interfaceObj *iface.Interface) networkModels
 		return baseline
 	}
 
+	baseline.Addresses = hostInterfaceL3LiveAddresses(interfaceObj)
 	mtu := uint(interfaceObj.MTU)
 	metric := uint(interfaceObj.Metric)
-	ipv6Disabled := hostInterfaceL3IPv6Disabled(interfaceObj)
 	nd6Flags := interfaceObj.ND6.Raw
 	up := interfaceIsUp(interfaceObj)
 	baseline.MTU = &mtu
 	baseline.Metric = &metric
-	baseline.IPv6Disabled = &ipv6Disabled
 	baseline.ND6Flags = &nd6Flags
 	baseline.Up = &up
+	baseline.VLANParent = interfaceObj.VLANParent
+	baseline.VLANTag = uint16(interfaceObj.VLANTag)
 	return baseline
 }
 
@@ -95,8 +134,11 @@ func applyHostInterfaceL3Plan(plan hostInterfaceL3ApplyPlan) (networkModels.Host
 	if err != nil {
 		return applied, fmt.Errorf("inspect interface %s: %w", plan.Interface, err)
 	}
-	if interfaceObj == nil {
-		return applied, fmt.Errorf("inspect interface %s: interface missing", plan.Interface)
+	if err := ensureHostInterfaceL3Identity(interfaceObj, plan.ExpectedMAC); err != nil {
+		return applied, err
+	}
+	if err := ensureHostInterfaceL3VLANIdentity(interfaceObj, plan.ExpectedVLANParent, plan.ExpectedVLANTag); err != nil {
+		return applied, err
 	}
 
 	for _, address := range plan.Remove {
@@ -110,6 +152,20 @@ func applyHostInterfaceL3Plan(plan hostInterfaceL3ApplyPlan) (networkModels.Host
 		if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, address.Family, ip, "delete"); err != nil {
 			return applied, fmt.Errorf("remove %s on %s: %w", address.Address, plan.Interface, err)
 		}
+	}
+	if plan.MTU != nil && uint(interfaceObj.MTU) < *plan.MTU {
+		if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, "mtu", strconv.FormatUint(uint64(*plan.MTU), 10)); err != nil {
+			return applied, fmt.Errorf("set MTU %d on %s: %w", *plan.MTU, plan.Interface, err)
+		}
+		interfaceObj.MTU = int(*plan.MTU)
+		applied.MTU = plan.MTU
+	}
+
+	if plan.DisableIPv6 != nil && !*plan.DisableIPv6 {
+		if err := applyHostInterfaceL3IPv6Mode(plan.Interface, false); err != nil {
+			return applied, err
+		}
+		applied.IPv6Disabled = plan.DisableIPv6
 	}
 
 	for _, address := range plan.Addresses {
@@ -129,28 +185,32 @@ func applyHostInterfaceL3Plan(plan hostInterfaceL3ApplyPlan) (networkModels.Host
 			return applied, fmt.Errorf("add %s on %s: %w", observed, plan.Interface, err)
 		}
 		applied.Addresses = append(applied.Addresses, networkModels.HostInterfaceL3AppliedAddress{
-			Family:       address.Family,
-			Address:      address.Address,
-			PrefixLength: address.PrefixLength,
-			Alias:        address.Alias,
+			Family:  address.Family,
+			Address: address.Address,
 		})
 	}
 
 	if plan.MTU != nil {
-		if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, "mtu", strconv.FormatUint(uint64(*plan.MTU), 10)); err != nil {
-			return applied, fmt.Errorf("set MTU %d on %s: %w", *plan.MTU, plan.Interface, err)
+		if uint(interfaceObj.MTU) != *plan.MTU {
+			if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, "mtu", strconv.FormatUint(uint64(*plan.MTU), 10)); err != nil {
+				return applied, fmt.Errorf("set MTU %d on %s: %w", *plan.MTU, plan.Interface, err)
+			}
+			interfaceObj.MTU = int(*plan.MTU)
 		}
 		applied.MTU = plan.MTU
 	}
 
 	if plan.Metric != nil {
-		if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, "metric", strconv.FormatUint(uint64(*plan.Metric), 10)); err != nil {
-			return applied, fmt.Errorf("set metric %d on %s: %w", *plan.Metric, plan.Interface, err)
+		if uint(interfaceObj.Metric) != *plan.Metric {
+			if _, err := syncRunCommand("/sbin/ifconfig", plan.Interface, "metric", strconv.FormatUint(uint64(*plan.Metric), 10)); err != nil {
+				return applied, fmt.Errorf("set metric %d on %s: %w", *plan.Metric, plan.Interface, err)
+			}
+			interfaceObj.Metric = int(*plan.Metric)
 		}
 		applied.Metric = plan.Metric
 	}
 
-	if plan.DisableIPv6 != nil {
+	if plan.DisableIPv6 != nil && *plan.DisableIPv6 {
 		if err := applyHostInterfaceL3IPv6Mode(plan.Interface, *plan.DisableIPv6); err != nil {
 			return applied, err
 		}
@@ -191,9 +251,6 @@ func applyHostInterfaceL3IPv6Mode(name string, disabled bool) error {
 	return nil
 }
 
-// restoreHostInterfaceL3IPv6Flags reinstates the exact ND6 options Sylve found
-// (IFDISABLED, NO_RADR, ACCEPT_RTADV and AUTO_LINKLOCAL), so rollback does not
-// leave router advertisements suppressed.
 func restoreHostInterfaceL3IPv6Flags(name string, flags uint32) error {
 	args := []string{name, "inet6"}
 	if flags&hostInterfaceL3ND6NoRADR != 0 {
@@ -228,8 +285,11 @@ func verifyHostInterfaceL3Plan(plan hostInterfaceL3ApplyPlan, applied networkMod
 	if err != nil {
 		return fmt.Errorf("verify interface %s: %w", plan.Interface, err)
 	}
-	if interfaceObj == nil {
-		return fmt.Errorf("verify interface %s: interface missing", plan.Interface)
+	if err := ensureHostInterfaceL3Identity(interfaceObj, plan.ExpectedMAC); err != nil {
+		return err
+	}
+	if err := ensureHostInterfaceL3VLANIdentity(interfaceObj, plan.ExpectedVLANParent, plan.ExpectedVLANTag); err != nil {
+		return err
 	}
 
 	for _, address := range applied.Addresses {
@@ -341,8 +401,11 @@ func waitForHostInterfaceL3DAD(
 		if err != nil {
 			return fmt.Errorf("verify interface %s: %w", plan.Interface, err)
 		}
-		if interfaceObj == nil {
-			return fmt.Errorf("verify interface %s: interface missing", plan.Interface)
+		if err := ensureHostInterfaceL3Identity(interfaceObj, plan.ExpectedMAC); err != nil {
+			return err
+		}
+		if err := ensureHostInterfaceL3VLANIdentity(interfaceObj, plan.ExpectedVLANParent, plan.ExpectedVLANTag); err != nil {
+			return err
 		}
 
 		lastErr = nil
@@ -371,6 +434,7 @@ func waitForHostInterfaceL3DAD(
 
 func revertHostInterfaceL3Runtime(
 	name string,
+	expectedMAC string,
 	snapshot networkModels.HostInterfaceL3Baseline,
 	target networkModels.HostInterfaceL3AppliedState,
 	candidate networkModels.HostInterfaceL3AppliedState,
@@ -379,103 +443,209 @@ func revertHostInterfaceL3Runtime(
 
 	interfaceObj, err := syncIfaceGet(name)
 	if err != nil {
-		if !isInterfaceMissingError(err) {
-			revertErrors = append(revertErrors, fmt.Errorf("inspect interface %s: %w", name, err))
+		if isInterfaceMissingError(err) {
+			return hostInterfaceL3Conflict("host_interface_l3_missing_interface", err)
 		}
-		interfaceObj = nil
+		return fmt.Errorf("inspect interface %s for restore: %w", name, err)
+	}
+	if err := ensureHostInterfaceL3Identity(interfaceObj, expectedMAC); err != nil {
+		return err
+	}
+	if err := ensureHostInterfaceL3VLANIdentity(interfaceObj, snapshot.VLANParent, snapshot.VLANTag); err != nil {
+		return err
+	}
+	restoreMTU := (target.MTU != nil || candidate.MTU != nil) && snapshot.MTU != nil
+	if restoreMTU && uint(interfaceObj.MTU) < *snapshot.MTU {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "mtu", strconv.FormatUint(uint64(*snapshot.MTU), 10)); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore MTU on %s: %w", name, err))
+		} else {
+			interfaceObj.MTU = int(*snapshot.MTU)
+		}
+	}
+	restoreIPv6 := target.IPv6Disabled != nil || candidate.IPv6Disabled != nil
+	if restoreIPv6 && snapshot.ND6Flags == nil {
+		return fmt.Errorf("restore IPv6 on %s: baseline ND6 flags are missing", name)
+	}
+	restoreIPv6BeforeAddresses := false
+	if restoreIPv6 {
+		restoreIPv6BeforeAddresses = *snapshot.ND6Flags&hostInterfaceL3ND6IfDisabled == 0
+	}
+	if restoreIPv6BeforeAddresses {
+		if interfaceObj.ND6.Raw != *snapshot.ND6Flags {
+			if err := restoreHostInterfaceL3IPv6Flags(name, *snapshot.ND6Flags); err != nil {
+				revertErrors = append(revertErrors, err)
+			} else {
+				interfaceObj.ND6.Raw = *snapshot.ND6Flags
+			}
+		}
+	}
+	restoreUp := target.Up != nil || candidate.Up != nil
+	expectedUp := snapshot.Up
+	if restoreUp && expectedUp != nil && *expectedUp && !interfaceIsUp(interfaceObj) {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "up"); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore link state on %s: %w", name, err))
+		} else {
+			interfaceObj.Flags.Desc = append(interfaceObj.Flags.Desc, "UP")
+		}
 	}
 
-	if interfaceObj != nil {
-		targetKeys := make(map[string]struct{}, len(target.Addresses))
-		for _, address := range target.Addresses {
-			targetKeys[address.Family+"|"+address.Address] = struct{}{}
-		}
+	expectedAddresses, managedHosts := hostInterfaceL3RestoreAddressState(snapshot, target, candidate)
+	expectedAddressKeys := make(map[string]struct{}, len(expectedAddresses))
+	for _, address := range expectedAddresses {
+		expectedAddressKeys[address.Family+"|"+address.Address] = struct{}{}
+	}
 
-		for _, address := range candidate.Addresses {
-			if _, keep := targetKeys[address.Family+"|"+address.Address]; keep {
-				continue
-			}
-			ip := hostInterfaceL3AddressIP(address.Address)
-			if ip == "" || !hostInterfaceL3HasAddress(interfaceObj, address.Family, address.Address) {
-				continue
-			}
-			if _, err := syncRunCommand("/sbin/ifconfig", name, address.Family, ip, "delete"); err != nil &&
-				!isInterfaceMissingError(err) {
-				revertErrors = append(revertErrors, fmt.Errorf("delete %s on %s: %w", address.Address, name, err))
-			}
+	liveAddresses := hostInterfaceL3LiveAddresses(interfaceObj)
+	remainingByFamily := make(map[string]int)
+	for _, address := range liveAddresses {
+		hostKey := address.Family + "|" + hostInterfaceL3AddressIP(address.Address)
+		_, managed := managedHosts[hostKey]
+		_, expected := expectedAddressKeys[address.Family+"|"+address.Address]
+		if !managed || expected {
+			remainingByFamily[address.Family]++
+			continue
 		}
+		ip := hostInterfaceL3AddressIP(address.Address)
+		if ip == "" {
+			continue
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", name, address.Family, ip, "delete"); err != nil &&
+			!isInterfaceMissingError(err) {
+			revertErrors = append(revertErrors, fmt.Errorf("delete %s on %s: %w", address.Address, name, err))
+		}
+	}
 
-		candidateKeys := make(map[string]struct{}, len(candidate.Addresses))
-		for _, address := range candidate.Addresses {
-			candidateKeys[address.Family+"|"+address.Address] = struct{}{}
+	for _, address := range expectedAddresses {
+		if hostInterfaceL3HasAddress(interfaceObj, address.Family, address.Address) {
+			continue
 		}
-		for _, address := range target.Addresses {
-			if _, present := candidateKeys[address.Family+"|"+address.Address]; present {
-				continue
-			}
-			if hostInterfaceL3HasAddress(interfaceObj, address.Family, address.Address) {
-				continue
-			}
-			args := []string{name, address.Family, address.Address}
-			if address.Alias {
-				args = append(args, "alias")
-			}
-			if _, err := syncRunCommand("/sbin/ifconfig", args...); err != nil {
-				revertErrors = append(revertErrors, fmt.Errorf("restore %s on %s: %w", address.Address, name, err))
-			}
+		args := []string{name, address.Family, address.Address}
+		if remainingByFamily[address.Family] > 0 {
+			args = append(args, "alias")
 		}
+		if _, err := syncRunCommand("/sbin/ifconfig", args...); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore %s on %s: %w", address.Address, name, err))
+			continue
+		}
+		remainingByFamily[address.Family]++
+	}
 
-		restoreMTU := target.MTU
-		if restoreMTU == nil && candidate.MTU != nil {
-			restoreMTU = snapshot.MTU
+	if restoreMTU && uint(interfaceObj.MTU) > *snapshot.MTU {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "mtu", strconv.FormatUint(uint64(*snapshot.MTU), 10)); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore MTU on %s: %w", name, err))
 		}
-		if restoreMTU != nil {
-			if _, err := syncRunCommand("/sbin/ifconfig", name, "mtu", strconv.FormatUint(uint64(*restoreMTU), 10)); err != nil {
-				revertErrors = append(revertErrors, fmt.Errorf("restore MTU on %s: %w", name, err))
-			}
-		}
+	}
 
-		restoreMetric := target.Metric
-		if restoreMetric == nil && candidate.Metric != nil {
-			restoreMetric = snapshot.Metric
+	if (target.Metric != nil || candidate.Metric != nil) && snapshot.Metric != nil && uint(interfaceObj.Metric) != *snapshot.Metric {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "metric", strconv.FormatUint(uint64(*snapshot.Metric), 10)); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore metric on %s: %w", name, err))
 		}
-		if restoreMetric != nil {
-			if _, err := syncRunCommand("/sbin/ifconfig", name, "metric", strconv.FormatUint(uint64(*restoreMetric), 10)); err != nil {
-				revertErrors = append(revertErrors, fmt.Errorf("restore metric on %s: %w", name, err))
-			}
-		}
+	}
 
-		switch {
-		case target.IPv6Disabled != nil:
-			if err := applyHostInterfaceL3IPv6Mode(name, *target.IPv6Disabled); err != nil {
+	if restoreIPv6 && !restoreIPv6BeforeAddresses {
+		if interfaceObj.ND6.Raw != *snapshot.ND6Flags {
+			if err := restoreHostInterfaceL3IPv6Flags(name, *snapshot.ND6Flags); err != nil {
 				revertErrors = append(revertErrors, err)
 			}
-		case candidate.IPv6Disabled != nil:
-			// Sylve changed the flags; reinstate exactly what it found.
-			if snapshot.ND6Flags != nil {
-				if err := restoreHostInterfaceL3IPv6Flags(name, *snapshot.ND6Flags); err != nil {
-					revertErrors = append(revertErrors, err)
-				}
-			} else if snapshot.IPv6Disabled != nil {
-				if err := applyHostInterfaceL3IPv6Mode(name, *snapshot.IPv6Disabled); err != nil {
-					revertErrors = append(revertErrors, err)
-				}
-			}
-		}
-
-		if target.Up != nil && *target.Up && !interfaceIsUp(interfaceObj) {
-			if _, err := syncRunCommand("/sbin/ifconfig", name, "up"); err != nil {
-				revertErrors = append(revertErrors, fmt.Errorf("restore link state on %s: %w", name, err))
-			}
-		} else if candidate.Up != nil && *candidate.Up && (target.Up == nil) &&
-			snapshot.Up != nil && !*snapshot.Up {
-			if _, err := syncRunCommand("/sbin/ifconfig", name, "down"); err != nil {
-				revertErrors = append(revertErrors, fmt.Errorf("restore link state on %s: %w", name, err))
-			}
 		}
 	}
 
-	return errors.Join(revertErrors...)
+	if restoreUp && expectedUp != nil && !*expectedUp && interfaceIsUp(interfaceObj) {
+		if _, err := syncRunCommand("/sbin/ifconfig", name, "down"); err != nil {
+			revertErrors = append(revertErrors, fmt.Errorf("restore link state on %s: %w", name, err))
+		}
+	}
+
+	if err := errors.Join(revertErrors...); err != nil {
+		return err
+	}
+	return verifyHostInterfaceL3Restore(name, expectedMAC, snapshot, target, candidate)
+}
+
+func hostInterfaceL3RestoreAddressState(
+	snapshot networkModels.HostInterfaceL3Baseline,
+	target networkModels.HostInterfaceL3AppliedState,
+	candidate networkModels.HostInterfaceL3AppliedState,
+) ([]networkModels.HostInterfaceL3AppliedAddress, map[string]struct{}) {
+	managedHosts := make(map[string]struct{}, len(target.Addresses)+len(candidate.Addresses))
+	for _, state := range []networkModels.HostInterfaceL3AppliedState{target, candidate} {
+		for _, address := range state.Addresses {
+			managedHosts[address.Family+"|"+hostInterfaceL3AddressIP(address.Address)] = struct{}{}
+		}
+	}
+
+	expected := make([]networkModels.HostInterfaceL3AppliedAddress, 0, len(snapshot.Addresses))
+	for _, address := range snapshot.Addresses {
+		if _, managed := managedHosts[address.Family+"|"+hostInterfaceL3AddressIP(address.Address)]; managed {
+			expected = append(expected, address)
+		}
+	}
+	return expected, managedHosts
+}
+
+func verifyHostInterfaceL3Restore(
+	name string,
+	expectedMAC string,
+	snapshot networkModels.HostInterfaceL3Baseline,
+	target networkModels.HostInterfaceL3AppliedState,
+	candidate networkModels.HostInterfaceL3AppliedState,
+) error {
+	interfaceObj, err := syncIfaceGet(name)
+	if err != nil {
+		if isInterfaceMissingError(err) {
+			return hostInterfaceL3Conflict("host_interface_l3_missing_interface", err)
+		}
+		return fmt.Errorf("verify restore on %s: %w", name, err)
+	}
+	if err := ensureHostInterfaceL3Identity(interfaceObj, expectedMAC); err != nil {
+		return err
+	}
+	if err := ensureHostInterfaceL3VLANIdentity(interfaceObj, snapshot.VLANParent, snapshot.VLANTag); err != nil {
+		return err
+	}
+
+	expectedAddresses, managedHosts := hostInterfaceL3RestoreAddressState(snapshot, target, candidate)
+	expectedAddressKeys := make(map[string]struct{}, len(expectedAddresses))
+	for _, address := range expectedAddresses {
+		expectedAddressKeys[address.Family+"|"+address.Address] = struct{}{}
+		if !hostInterfaceL3HasAddress(interfaceObj, address.Family, address.Address) {
+			return fmt.Errorf("verify restore on %s: address %s is missing", name, address.Address)
+		}
+	}
+	for _, address := range hostInterfaceL3LiveAddresses(interfaceObj) {
+		if _, managed := managedHosts[address.Family+"|"+hostInterfaceL3AddressIP(address.Address)]; !managed {
+			continue
+		}
+		if _, expected := expectedAddressKeys[address.Family+"|"+address.Address]; !expected {
+			return fmt.Errorf("verify restore on %s: address %s is still present", name, address.Address)
+		}
+	}
+
+	if (target.MTU != nil || candidate.MTU != nil) && snapshot.MTU != nil && uint(interfaceObj.MTU) != *snapshot.MTU {
+		return fmt.Errorf("verify restore on %s: MTU is %d, expected %d", name, interfaceObj.MTU, *snapshot.MTU)
+	}
+
+	if (target.Metric != nil || candidate.Metric != nil) && snapshot.Metric != nil && uint(interfaceObj.Metric) != *snapshot.Metric {
+		return fmt.Errorf("verify restore on %s: metric is %d, expected %d", name, interfaceObj.Metric, *snapshot.Metric)
+	}
+
+	if target.IPv6Disabled != nil || candidate.IPv6Disabled != nil {
+		if snapshot.ND6Flags == nil {
+			return fmt.Errorf("verify restore on %s: baseline ND6 flags are missing", name)
+		}
+		if interfaceObj.ND6.Raw != *snapshot.ND6Flags {
+			return fmt.Errorf("verify restore on %s: ND6 options are %#x, expected %#x", name, interfaceObj.ND6.Raw, *snapshot.ND6Flags)
+		}
+	}
+
+	if target.Up != nil || candidate.Up != nil {
+		expectedUp := snapshot.Up
+		if expectedUp != nil && interfaceIsUp(interfaceObj) != *expectedUp {
+			return fmt.Errorf("verify restore on %s: link state is incorrect", name)
+		}
+	}
+
+	return nil
 }
 
 func hostInterfaceL3AddressIP(cidr string) string {
@@ -484,6 +654,61 @@ func hostInterfaceL3AddressIP(cidr string) string {
 		return ""
 	}
 	return prefix.Addr().Unmap().String()
+}
+
+func hostInterfaceL3AddressPrefixLength(cidr string) uint8 {
+	prefix, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+	if err != nil {
+		return 0
+	}
+	return uint8(prefix.Bits())
+}
+
+func hostInterfaceL3LiveAddresses(interfaceObj *iface.Interface) []networkModels.HostInterfaceL3AppliedAddress {
+	if interfaceObj == nil {
+		return nil
+	}
+
+	addresses := make([]networkModels.HostInterfaceL3AppliedAddress, 0, len(interfaceObj.IPv4)+len(interfaceObj.IPv6))
+	for _, address := range interfaceObj.IPv4 {
+		prefix, ok := interfaceIPv4Prefix(address)
+		if !ok {
+			continue
+		}
+		addresses = append(addresses, networkModels.HostInterfaceL3AppliedAddress{
+			Family:  "inet",
+			Address: prefix.String(),
+		})
+	}
+	for _, address := range interfaceObj.IPv6 {
+		ip, ok := netip.AddrFromSlice(address.IP)
+		if !ok {
+			continue
+		}
+		ip = ip.Unmap()
+		if ip.IsLinkLocalUnicast() {
+			continue
+		}
+		prefix := netip.PrefixFrom(ip, address.PrefixLength)
+		addresses = append(addresses, networkModels.HostInterfaceL3AppliedAddress{
+			Family:  "inet6",
+			Address: prefix.String(),
+		})
+	}
+	return addresses
+}
+
+func hostInterfaceL3LiveAddressByHost(
+	interfaceObj *iface.Interface,
+	family string,
+	address string,
+) (networkModels.HostInterfaceL3AppliedAddress, bool) {
+	for _, candidate := range hostInterfaceL3LiveAddresses(interfaceObj) {
+		if candidate.Family == family && hostInterfaceL3AddressIP(candidate.Address) == address {
+			return candidate, true
+		}
+	}
+	return networkModels.HostInterfaceL3AppliedAddress{}, false
 }
 
 func hostInterfaceL3HasAddress(interfaceObj *iface.Interface, family string, cidr string) bool {
@@ -500,9 +725,6 @@ func hostInterfaceL3HasAddress(interfaceObj *iface.Interface, family string, cid
 	}
 }
 
-// hostInterfaceL3HasHostAddress reports whether any live address in the family
-// carries the given host IP, regardless of prefix. Removal verification uses
-// it so a stale alias with an unexpected mask still counts as not removed.
 func hostInterfaceL3HasHostAddress(interfaceObj *iface.Interface, family string, address string) bool {
 	if interfaceObj == nil {
 		return false
@@ -524,8 +746,6 @@ func hostInterfaceL3HasHostAddress(interfaceObj *iface.Interface, family string,
 	return false
 }
 
-// verifyHostInterfaceL3Removals checks that every address Sylve owned is gone
-// and that managed baseline values were restored.
 func verifyHostInterfaceL3Removals(
 	name string,
 	applied networkModels.HostInterfaceL3AppliedState,
@@ -546,8 +766,6 @@ func verifyHostInterfaceL3Removals(
 	for _, address := range applied.Addresses {
 		ip := hostInterfaceL3AddressIP(address.Address)
 		if _, reAdded := readded[address.Family+"|"+ip]; reAdded {
-			// The same host IP is installed again with a new mask
-			// (prefix-owner change); only the old mask had to disappear.
 			continue
 		}
 		if hostInterfaceL3HasHostAddress(interfaceObj, address.Family, ip) {
@@ -580,8 +798,6 @@ func verifyHostInterfaceL3Removals(
 	return nil
 }
 
-// hostInterfaceL3ReAddedHostKeys lists the host IPs a plan installs again, so
-// removal verification does not flag a prefix-owner change as a failed delete.
 func hostInterfaceL3ReAddedHostKeys(addresses []hostInterfaceL3ApplyAddress) map[string]struct{} {
 	if len(addresses) == 0 {
 		return nil
@@ -595,23 +811,4 @@ func hostInterfaceL3ReAddedHostKeys(addresses []hostInterfaceL3ApplyAddress) map
 		keys[address.Family+"|"+ip] = struct{}{}
 	}
 	return keys
-}
-
-func hostInterfaceL3FamilyHasAddress(interfaceObj *iface.Interface, family string) bool {
-	if interfaceObj == nil {
-		return false
-	}
-	switch family {
-	case "inet":
-		return len(interfaceObj.IPv4) > 0
-	case "inet6":
-		for _, address := range interfaceObj.IPv6 {
-			if !address.IP.IsLinkLocalUnicast() {
-				return true
-			}
-		}
-		return false
-	default:
-		return false
-	}
 }

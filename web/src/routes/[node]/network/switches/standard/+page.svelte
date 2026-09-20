@@ -10,6 +10,7 @@ under sponsorship from the FreeBSD Foundation.
 
 <script lang="ts">
 	import { getInterfaces } from '$lib/api/network/iface';
+	import { getHostInterfaceL3 } from '$lib/api/network/ifaceL3';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import {
 		createSwitch,
@@ -132,6 +133,21 @@ under sponsorship from the FreeBSD Foundation.
 		{ initialValue: lastGoodNetworkObjects }
 	);
 
+	const hostInterfaceL3 = resource(
+		() => 'network-interface-l3',
+		async (key) => {
+			const res = await getHostInterfaceL3();
+			if (!isHostInterfaceL3List(res)) {
+				handleAPIError(res);
+				return lastGoodHostInterfaceL3;
+			}
+			lastGoodHostInterfaceL3 = res;
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: lastGoodHostInterfaceL3 }
+	);
+
 	let query: string = $state('');
 	let useablePorts = $derived.by(() => {
 		let available: string[] = [];
@@ -146,21 +162,41 @@ under sponsorship from the FreeBSD Foundation.
 		return available.filter((item, index) => available.indexOf(item) === index);
 	});
 
-	let hostInterfacePortNames = $derived(
-		new Set(lastGoodHostInterfaceL3.rows.map((row) => row.interface))
+	let configuredHostInterfacePortNames = $derived(
+		new Set(
+			hostInterfaceL3.current.rows.flatMap((row) =>
+				row.vlanParent ? [row.interface, row.vlanParent] : [row.interface]
+			)
+		)
+	);
+	let pendingHostInterfacePortNames = $derived(
+		new Set(
+			hostInterfaceL3.current.targets
+				.filter((target) => target.reason === 'host_interface_l3_pending_conflict')
+				.map((target) => target.interface)
+		)
 	);
 
 	function hostInterfacePortOptions(ports: string[], additional?: string[]) {
-		return generateComboboxOptions(ports, additional).map((option) =>
-			hostInterfacePortNames.has(option.value)
-				? {
-						...option,
-						label: `${option.label} — Host IP`,
-						description: 'Remove the Host IP configuration on the Interfaces page first',
-						disabled: true
-					}
-				: option
-		);
+		return generateComboboxOptions(ports, additional).map((option) => {
+			if (pendingHostInterfacePortNames.has(option.value)) {
+				return {
+					...option,
+					label: `${option.label} — Host IP pending`,
+					description: 'Confirm or revert the pending Host IP change on the Interfaces page',
+					disabled: true
+				};
+			}
+			if (configuredHostInterfacePortNames.has(option.value)) {
+				return {
+					...option,
+					label: `${option.label} — Host IP`,
+					description: 'Remove the Host IP configuration on the Interfaces page first',
+					disabled: true
+				};
+			}
+			return option;
+		});
 	}
 
 	let confirmModals = $state<{

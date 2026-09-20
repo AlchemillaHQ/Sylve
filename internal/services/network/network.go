@@ -19,11 +19,13 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
+	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 
 	"gorm.io/gorm"
 )
 
 var _ networkServiceInterfaces.NetworkServiceInterface = (*Service)(nil)
+var _ networkServiceInterfaces.StartupNetworkServiceInterface = (*Service)(nil)
 
 type StandardSwitchConfig = networkServiceInterfaces.StandardSwitchConfig
 type CreateStandardSwitchRequest = networkServiceInterfaces.CreateStandardSwitchRequest
@@ -100,6 +102,7 @@ type Service struct {
 	interfaceReferenceCoordinator *interfaceref.Coordinator
 	wireGuardUDPPortInUse         func(port int) bool
 	dhcpRuntime                   dhcpRuntimeOperations
+	hostInterfaceL3Eligibility    func(*iface.Interface) string
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface
 	OnJailObjectUpdate func(jailIDs []uint)
@@ -130,7 +133,7 @@ func (s *Service) lockInterfaceReferencesWrite() func() {
 	return s.interfaceReferenceMutex.Unlock
 }
 
-func NewNetworkService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.NetworkServiceInterface {
+func NewNetworkService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface) networkServiceInterfaces.StartupNetworkServiceInterface {
 	svc := &Service{
 		DB:                   db,
 		TelemetryDB:          telemetryDB,

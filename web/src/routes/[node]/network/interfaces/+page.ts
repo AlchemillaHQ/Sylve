@@ -18,7 +18,7 @@ export async function load() {
 			async () => await getWireGuardClients(),
 			SEVEN_DAYS
 		),
-		cachedFetch('network-interface-l3', async () => await getHostInterfaceL3(), SEVEN_DAYS),
+		getHostInterfaceL3(),
 		getHostInterfaceL3Pending()
 	]);
 

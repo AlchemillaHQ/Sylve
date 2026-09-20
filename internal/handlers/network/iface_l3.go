@@ -27,8 +27,6 @@ type HostInterfaceL3AddressPayload struct {
 	Address string `json:"address" binding:"required"`
 }
 
-// HostInterfaceL3SaveRequest is the staged Host IP payload. An empty MTU or
-// Metric restores the adoption baseline for that field.
 type HostInterfaceL3SaveRequest struct {
 	IPv6Mode         *string                         `json:"ipv6Mode" enums:"inherit,enabled,disabled"`
 	MTU              *uint                           `json:"mtu"`
@@ -39,6 +37,11 @@ type HostInterfaceL3SaveRequest struct {
 
 func RequireLocalHostOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if strings.TrimSpace(c.GetHeader("X-Current-Hostname")) == "" &&
+			strings.TrimSpace(c.Query("auth")) == "" {
+			c.Next()
+			return
+		}
 		requested, err := utils.GetCurrentHostnameFromHeader(c.Request.Header, c.Request)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusBadRequest, internal.APIResponse[any]{
@@ -322,6 +325,7 @@ func ConfirmHostInterfaceL3(networkService *network.Service) gin.HandlerFunc {
 }
 
 // @Summary Revert A Pending Host Interface L3 Operation
+// @Description Restore an applied operation; discard a prepared operation without changing ambiguous runtime state
 // @Tags Network
 // @Produce json
 // @Security BearerAuth

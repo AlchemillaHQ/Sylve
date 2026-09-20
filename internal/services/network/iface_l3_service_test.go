@@ -156,7 +156,7 @@ func (s *fakeHostInterfaceState) handleIPv6(args []string) error {
 
 func (s *fakeHostInterfaceState) applyND6Flag(args []string) bool {
 	handled := false
-	update := func(present bool, set string, clear string, mask uint32) {
+	update := func(set string, clear string, mask uint32) {
 		if containsString(args, set) {
 			s.object.ND6.Raw |= mask
 			handled = true
@@ -166,10 +166,10 @@ func (s *fakeHostInterfaceState) applyND6Flag(args []string) bool {
 		}
 	}
 
-	update(true, "no_radr", "-no_radr", hostInterfaceL3ND6NoRADR)
-	update(true, "accept_rtadv", "-accept_rtadv", hostInterfaceL3ND6AcceptRTAdv)
-	update(true, "ifdisabled", "-ifdisabled", hostInterfaceL3ND6IfDisabled)
-	update(true, "auto_linklocal", "-auto_linklocal", hostInterfaceL3ND6AutoLinkLocal)
+	update("no_radr", "-no_radr", hostInterfaceL3ND6NoRADR)
+	update("accept_rtadv", "-accept_rtadv", hostInterfaceL3ND6AcceptRTAdv)
+	update("ifdisabled", "-ifdisabled", hostInterfaceL3ND6IfDisabled)
+	update("auto_linklocal", "-auto_linklocal", hostInterfaceL3ND6AutoLinkLocal)
 
 	return handled
 }
@@ -300,7 +300,7 @@ func TestExpireHostInterfaceL3RevertsPendingOperation(t *testing.T) {
 	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
 	now := stubHostInterfaceL3Clock(t, time.Now())
 
-	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
+	_, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
 	if err != nil {
 		t.Fatalf("SaveHostInterfaceL3: %v", err)
 	}
@@ -330,23 +330,94 @@ func TestExpireHostInterfaceL3RevertsPendingOperation(t *testing.T) {
 	if rowCount != 0 {
 		t.Fatalf("expected no promoted row, got %d", rowCount)
 	}
-	_ = entry
 }
 
-func TestRecoverHostInterfaceL3RevertsPreparedOperation(t *testing.T) {
-	svc, db := hostInterfaceL3TestDB(t)
+func TestExpireHostInterfaceL3RestoresPreSaveRuntimeDrift(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
 	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
 	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
-	_ = state
+	now := stubHostInterfaceL3Clock(t, time.Now())
+
+	managedMTU := uint(9000)
+	request := standardHostInterfaceRequest("10.0.0.5/24")
+	request.MTU = &managedMTU
+	entry, err := svc.SaveHostInterfaceL3("em0", request)
+	if err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("initial confirm: %v", err)
+	}
+
+	state.object.MTU = 1500
+	state.object.IPv4 = nil
+	request.ExpectedRevision = 1
+	entry, err = svc.SaveHostInterfaceL3("em0", request)
+	if err != nil {
+		t.Fatalf("repairing save: %v", err)
+	}
+	if state.object.MTU != 9000 || len(state.object.IPv4) != 1 {
+		t.Fatalf("expected drift to be repaired before confirmation, got MTU %d and %+v", state.object.MTU, state.object.IPv4)
+	}
+
+	if err := svc.ExpireHostInterfaceL3Pending(now.Add(HostInterfaceL3ConfirmationWindow + time.Second)); err != nil {
+		t.Fatalf("expire repaired save: %v", err)
+	}
+	if state.object.MTU != 1500 || len(state.object.IPv4) != 0 {
+		t.Fatalf("expected exact pre-save runtime state, got MTU %d and %+v", state.object.MTU, state.object.IPv4)
+	}
+}
+
+func TestExpireHostInterfaceL3DeleteRestoresPreDeletePrefix(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	now := stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	state.object.IPv4 = []iface.IPv4{{
+		IP: mustParseIP(t, "10.0.0.5"), Netmask: "255.255.255.255",
+	}}
+
+	if _, err := svc.DeleteHostInterfaceL3("em0", 1); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(state.object.IPv4) != 0 {
+		t.Fatalf("expected delete to remove the drifted address, got %+v", state.object.IPv4)
+	}
+	if err := svc.ExpireHostInterfaceL3Pending(now.Add(HostInterfaceL3ConfirmationWindow + time.Second)); err != nil {
+		t.Fatalf("expire delete: %v", err)
+	}
+	if len(state.object.IPv4) != 1 {
+		t.Fatalf("expected the pre-delete address to be restored, got %+v", state.object.IPv4)
+	}
+	prefix, ok := interfaceIPv4Prefix(state.object.IPv4[0])
+	if !ok || prefix.String() != "10.0.0.5/32" {
+		t.Fatalf("expected exact pre-delete /32, got %+v", state.object.IPv4[0])
+	}
+}
+
+func TestRecoverHostInterfaceL3RollsBackPreparedOperation(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
 
 	initialIPv4 := iface.IPv4{IP: mustParseIP(t, "10.0.0.5"), Netmask: "255.255.255.0"}
 	live, _ := syncIfaceGet("em0")
 	live.IPv4 = []iface.IPv4{initialIPv4}
 
 	pending := networkModels.PendingApply{
-		ID:    "prepared-op",
-		Kind:  networkModels.PendingApplyKindInterface,
-		Phase: networkModels.PendingApplyPhasePrepared,
+		ID:                     "prepared-op",
+		Interface:              "em0",
+		Kind:                   networkModels.PendingApplyKindInterface,
+		Phase:                  networkModels.PendingApplyPhasePrepared,
+		RuntimeRestoreRequired: true,
 		CandidatePayload: networkModels.HostInterfaceL3Spec{
 			Addresses: []networkModels.HostInterfaceL3AddressSpec{
 				{Family: "inet", Address: "10.0.0.6", PrefixLength: 24},
@@ -354,21 +425,16 @@ func TestRecoverHostInterfaceL3RevertsPreparedOperation(t *testing.T) {
 		},
 		CandidateAppliedState: networkModels.HostInterfaceL3AppliedState{
 			Addresses: []networkModels.HostInterfaceL3AppliedAddress{
-				{Family: "inet", Address: "10.0.0.5/24", PrefixLength: 24},
-				{Family: "inet", Address: "10.0.0.6/24", PrefixLength: 24, Alias: true},
+				{Family: "inet", Address: "10.0.0.6/24"},
 			},
 		},
-		RuntimeSnapshot: networkModels.HostInterfaceL3Baseline{},
-		CreatedAt:       time.Now(),
-	}
-	target := networkModels.PendingApplyTarget{
-		PendingID: "prepared-op", TargetKind: "interface", TargetID: "em0",
+		RuntimeSnapshot: networkModels.HostInterfaceL3Baseline{
+			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{Family: "inet", Address: "10.0.0.5/24"}},
+		},
+		CreatedAt: time.Now(),
 	}
 	if err := db.Create(&pending).Error; err != nil {
 		t.Fatalf("seed pending: %v", err)
-	}
-	if err := db.Create(&target).Error; err != nil {
-		t.Fatalf("seed target: %v", err)
 	}
 
 	live.IPv4 = append(live.IPv4, iface.IPv4{IP: mustParseIP(t, "10.0.0.6"), Netmask: "255.255.255.0"})
@@ -377,17 +443,24 @@ func TestRecoverHostInterfaceL3RevertsPreparedOperation(t *testing.T) {
 		t.Fatalf("RecoverHostInterfaceL3: %v", err)
 	}
 
+	foundBaseline := false
 	for _, address := range live.IPv4 {
 		if address.IP.String() == "10.0.0.6" {
-			t.Fatalf("expected the prepared address to be reverted, got %+v", live.IPv4)
+			t.Fatalf("expected the unconfirmed address to be removed, got %+v", live.IPv4)
 		}
+		if address.IP.String() == "10.0.0.5" {
+			foundBaseline = true
+		}
+	}
+	if !foundBaseline {
+		t.Fatalf("expected the baseline address to remain, got %+v", live.IPv4)
 	}
 	var pendingCount int64
 	if err := db.Model(&networkModels.PendingApply{}).Count(&pendingCount).Error; err != nil {
 		t.Fatalf("count pending rows: %v", err)
 	}
 	if pendingCount != 0 {
-		t.Fatalf("expected the prepared operation to be discarded, got %d", pendingCount)
+		t.Fatalf("expected the recovered operation to be discarded, got %d", pendingCount)
 	}
 }
 
@@ -458,24 +531,180 @@ func TestReapplyHostInterfaceL3RestoresMissingAddress(t *testing.T) {
 	}
 }
 
+func TestReapplyHostInterfaceL3RejectsTentativeKeptIPv6(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("2001:db8::5/64"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	state.object.IPv6[0].Tentative = true
+	originalWait := hostInterfaceL3DADWait
+	hostInterfaceL3DADWait = func(time.Duration) {}
+	t.Cleanup(func() { hostInterfaceL3DADWait = originalWait })
+
+	err = svc.ReapplyHostInterfaceL3("em0")
+	if err == nil || !strings.Contains(err.Error(), "tentative") {
+		t.Fatalf("expected kept IPv6 DAD failure, got %v", err)
+	}
+}
+
 func TestCheckStandardSwitchPortsForHostInterfaceL3(t *testing.T) {
 	svc, db := hostInterfaceL3TestDB(t)
 	if err := db.Create(&networkModels.HostInterfaceL3{Interface: "em0"}).Error; err != nil {
 		t.Fatalf("seed host row: %v", err)
 	}
+	if err := db.Create(&networkModels.HostInterfaceL3{Interface: "em1.100", VLANParent: "em1", VLANTag: 100}).Error; err != nil {
+		t.Fatalf("seed VLAN host row: %v", err)
+	}
 
-	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em0"}, nil); err == nil {
+	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em0"}); err == nil {
 		t.Fatal("expected the port with Host IP configuration to be refused")
 	}
-	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em0"}, []string{"em0"}); err != nil {
-		t.Fatalf("unchanged ports must not be refused: %v", err)
+	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em1"}); err == nil {
+		t.Fatal("expected a port with a Host IP VLAN child to be refused")
 	}
-	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em1"}, nil); err != nil {
+	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em2"}); err != nil {
 		t.Fatalf("unrelated ports must pass: %v", err)
+	}
+	pending := networkModels.PendingApply{
+		ID:        "pending-host-ip",
+		Interface: "em2.100",
+		Kind:      networkModels.PendingApplyKindInterface,
+		Phase:     networkModels.PendingApplyPhaseApplied,
+		RuntimeSnapshot: networkModels.HostInterfaceL3Baseline{
+			VLANParent: "em2",
+			VLANTag:    100,
+		},
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatalf("seed pending Host IP operation: %v", err)
+	}
+	if err := svc.checkStandardSwitchPortsForHostInterfaceL3([]string{"em2"}); err == nil {
+		t.Fatal("expected a port reserved as a pending VLAN parent to be refused")
 	}
 }
 
-func TestHostInterfaceL3IdentityCapturedBeforeApplyAndEnforcedOnDelete(t *testing.T) {
+func TestConfirmHostInterfaceL3RevalidatesMembership(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: 1}).Error; err != nil {
+		t.Fatalf("seed concurrent switch membership: %v", err)
+	}
+
+	err = svc.ConfirmHostInterfaceL3(entry.ID)
+	if err == nil || HostInterfaceL3ErrorCode(err) != networkServiceInterfaces.HostInterfaceL3ConflictStandardSwitchPort {
+		t.Fatalf("expected confirmation to refuse the new membership, got %v", err)
+	}
+}
+
+func TestConfirmHostInterfaceL3RefusesVLANRetag(t *testing.T) {
+	svc, _ := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state := newFakeHostInterface(t, "em0.100", "aa:bb:cc:dd:ee:ff", 1500)
+	state.object.VLANParent = "em0"
+	state.object.VLANTag = 100
+	childGet := syncIfaceGet
+	syncIfaceGet = func(name string) (*iface.Interface, error) {
+		if name == "em0" {
+			return &iface.Interface{Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", Driver: "em", MTU: 1500}, nil
+		}
+		return childGet(name)
+	}
+	stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0.100", standardHostInterfaceRequest("10.0.0.5/24"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	state.object.VLANTag = 200
+
+	err = svc.ConfirmHostInterfaceL3(entry.ID)
+	if err == nil || HostInterfaceL3ErrorCode(err) != networkServiceInterfaces.HostInterfaceL3ConflictVLANIdentity {
+		t.Fatalf("expected confirmation to refuse a retagged VLAN, got %v", err)
+	}
+}
+
+func TestDeleteHostInterfaceL3KeepsPendingWhenCompensationFails(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24", "10.0.0.6/24"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	state.fail = func(args []string) error {
+		if len(args) >= 4 && args[2] == "10.0.0.6" && args[3] == "delete" {
+			return errors.New("second delete failed")
+		}
+		if len(args) >= 3 && args[2] == "10.0.0.5/24" {
+			return errors.New("restore failed")
+		}
+		return nil
+	}
+
+	if _, err := svc.DeleteHostInterfaceL3("em0", 1); err == nil {
+		t.Fatal("expected delete and compensation to fail")
+	}
+	var count int64
+	if err := db.Model(&networkModels.PendingApply{}).Count(&count).Error; err != nil {
+		t.Fatalf("count pending rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected the pending record to remain, got %d", count)
+	}
+}
+
+func TestReapplyHostInterfaceL3RejectsPrefixOwnerDrift(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state.object.IPv4 = []iface.IPv4{
+		{IP: mustParseIP(t, "10.0.0.5"), Netmask: "255.255.255.0"},
+		{IP: mustParseIP(t, "10.0.0.1"), Netmask: "255.255.255.0"},
+	}
+	row := networkModels.HostInterfaceL3{
+		Interface: "em0", IdentityMAC: state.object.Ether, Revision: 1,
+		AppliedState: networkModels.HostInterfaceL3AppliedState{
+			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
+				Family: "inet", Address: "10.0.0.5/24",
+			}},
+		},
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+	if err := db.Create(&networkModels.HostInterfaceL3Address{
+		InterfaceL3ID: row.ID, Family: "inet", Address: "10.0.0.5", PrefixLength: 24,
+	}).Error; err != nil {
+		t.Fatalf("seed address: %v", err)
+	}
+
+	err := svc.ReapplyHostInterfaceL3("em0")
+	if err == nil || HostInterfaceL3ErrorCode(err) != networkServiceInterfaces.HostInterfaceL3ConflictPrefixOwnerChanged {
+		t.Fatalf("expected prefix-owner conflict, got %v", err)
+	}
+}
+
+func TestHostInterfaceL3IdentityCapturedAndMismatchDeleteSkipsRuntime(t *testing.T) {
 	svc, db := hostInterfaceL3TestDB(t)
 	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
 	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
@@ -486,8 +715,19 @@ func TestHostInterfaceL3IdentityCapturedBeforeApplyAndEnforcedOnDelete(t *testin
 		t.Fatalf("SaveHostInterfaceL3: %v", err)
 	}
 
-	// Hardware swapped before confirmation: the captured identity must win.
 	state.object.Ether = "bb:bb:bb:bb:bb:bb"
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err == nil ||
+		HostInterfaceL3ErrorCode(err) != "host_interface_l3_identity_mismatch" {
+		t.Fatalf("expected confirmation to refuse replacement hardware, got %v", err)
+	}
+	var pending networkModels.PendingApply
+	if err := db.Where("id = ?", entry.ID).First(&pending).Error; err != nil {
+		t.Fatalf("load refused pending operation: %v", err)
+	}
+	if pending.Phase != networkModels.PendingApplyPhaseApplied {
+		t.Fatalf("expected refused confirmation to remain revertible, got %q", pending.Phase)
+	}
+	state.object.Ether = "aa:bb:cc:dd:ee:ff"
 	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
 		t.Fatalf("ConfirmHostInterfaceL3: %v", err)
 	}
@@ -500,73 +740,32 @@ func TestHostInterfaceL3IdentityCapturedBeforeApplyAndEnforcedOnDelete(t *testin
 		t.Fatalf("expected the pre-apply MAC to be stored, got %q", row.IdentityMAC)
 	}
 
-	if _, err := svc.DeleteHostInterfaceL3("em0", 1); err == nil ||
-		HostInterfaceL3ErrorCode(err) != "host_interface_l3_identity_mismatch" {
-		t.Fatalf("expected delete to refuse replacement hardware, got %v", err)
-	}
-}
-
-func TestHostInterfaceL3AliasPromotionThroughSaveFlow(t *testing.T) {
-	svc, _ := hostInterfaceL3TestDB(t)
-	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
-	newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
-	stubHostInterfaceL3Clock(t, time.Now())
-
-	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24", "10.0.0.6/24"))
+	state.object.Ether = "bb:bb:bb:bb:bb:bb"
+	addressesBeforeDelete := len(state.object.IPv4)
+	deleteEntry, err := svc.DeleteHostInterfaceL3("em0", 1)
 	if err != nil {
-		t.Fatalf("save1: %v", err)
+		t.Fatalf("DeleteHostInterfaceL3: %v", err)
 	}
-	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
-		t.Fatalf("confirm1: %v", err)
+	if len(state.object.IPv4) != addressesBeforeDelete {
+		t.Fatalf("replacement hardware was mutated during delete: %+v", state.object.IPv4)
 	}
-
-	// Drop the /24 owner so the former /32 alias is promoted to owner.
-	req := standardHostInterfaceRequest("10.0.0.6/24")
-	req.ExpectedRevision = 1
-	entry2, err := svc.SaveHostInterfaceL3("em0", req)
-	if err != nil {
-		t.Fatalf("save2 (alias promotion): %v", err)
+	if err := svc.ConfirmHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3(delete): %v", err)
 	}
-	if err := svc.ConfirmHostInterfaceL3(entry2.ID); err != nil {
-		t.Fatalf("confirm2: %v", err)
+	var count int64
+	if err := db.Model(&networkModels.HostInterfaceL3{}).Where("interface = ?", "em0").Count(&count).Error; err != nil {
+		t.Fatalf("count rows: %v", err)
 	}
-}
-
-func TestHostInterfaceL3RevertKeepsPendingRecordOnFailure(t *testing.T) {
-	svc, db := hostInterfaceL3TestDB(t)
-	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
-	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
-	stubHostInterfaceL3Clock(t, time.Now())
-
-	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
-	if err != nil {
-		t.Fatalf("save: %v", err)
-	}
-
-	state.fail = func(args []string) error {
-		if len(args) >= 4 && args[3] == "delete" {
-			return errors.New("ifconfig delete failed")
-		}
-		return nil
-	}
-
-	if err := svc.RevertHostInterfaceL3(entry.ID); err == nil {
-		t.Fatal("expected the revert to fail")
-	}
-
-	var pendingCount int64
-	if err := db.Model(&networkModels.PendingApply{}).Where("id = ?", entry.ID).Count(&pendingCount).Error; err != nil {
-		t.Fatalf("count pending rows: %v", err)
-	}
-	if pendingCount != 1 {
-		t.Fatalf("expected the pending record to be retained for retry, got %d", pendingCount)
+	if count != 0 {
+		t.Fatalf("expected the Host IP row to be removed, got %d", count)
 	}
 }
 
 func TestHostInterfaceL3BaselineSurvivesSecondEdit(t *testing.T) {
 	svc, db := hostInterfaceL3TestDB(t)
 	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
-	_ = newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	state.object.Flags.Desc = nil
 	stubHostInterfaceL3Clock(t, time.Now())
 
 	mtu := uint(9000)
@@ -594,10 +793,55 @@ func TestHostInterfaceL3BaselineSurvivesSecondEdit(t *testing.T) {
 	if err := db.Where("interface = ?", "em0").First(&row).Error; err != nil {
 		t.Fatalf("load row: %v", err)
 	}
-	if row.MTUBaseline == nil || *row.MTUBaseline != 1500 {
-		t.Fatalf("expected the adoption baseline (1500) to be preserved, got %+v", row.MTUBaseline)
-	}
 	if row.AdoptionBaseline.MTU == nil || *row.AdoptionBaseline.MTU != 1500 {
 		t.Fatalf("expected the adoption baseline JSON to stay 1500, got %+v", row.AdoptionBaseline.MTU)
+	}
+	if row.AppliedState.Up == nil || !*row.AppliedState.Up {
+		t.Fatalf("expected link-state ownership to survive the second edit, got %+v", row.AppliedState.Up)
+	}
+	deleteEntry, err := svc.DeleteHostInterfaceL3("em0", row.Revision)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if interfaceIsUp(state.object) {
+		t.Fatal("expected delete to restore the original down state")
+	}
+	if err := svc.ConfirmHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("confirm delete: %v", err)
+	}
+}
+
+func TestRevertConfigOnlyHostInterfaceL3DeleteDoesNotTouchReplacement(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{})
+	state := newFakeHostInterface(t, "em0", "aa:bb:cc:dd:ee:ff", 1500)
+	stubHostInterfaceL3Clock(t, time.Now())
+
+	entry, err := svc.SaveHostInterfaceL3("em0", standardHostInterfaceRequest("10.0.0.5/24"))
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+
+	state.object.Ether = "bb:bb:bb:bb:bb:bb"
+	addressesBeforeDelete := len(state.object.IPv4)
+	deleteEntry, err := svc.DeleteHostInterfaceL3("em0", 1)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if err := svc.RevertHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("revert config-only delete: %v", err)
+	}
+	if len(state.object.IPv4) != addressesBeforeDelete {
+		t.Fatalf("replacement hardware was mutated: %+v", state.object.IPv4)
+	}
+	var rowCount int64
+	if err := db.Model(&networkModels.HostInterfaceL3{}).Where("interface = ?", "em0").Count(&rowCount).Error; err != nil {
+		t.Fatalf("count Host IP rows: %v", err)
+	}
+	if rowCount != 1 {
+		t.Fatalf("expected reverted delete to keep the Host IP row, got %d", rowCount)
 	}
 }

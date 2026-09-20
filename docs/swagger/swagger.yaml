@@ -3385,20 +3385,12 @@ definitions:
       visible:
         type: boolean
     type: object
-  github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address:
+  github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3AppliedAddress:
     properties:
       address:
         type: string
       family:
         type: string
-      id:
-        type: integer
-      interfaceL3Id:
-        type: integer
-      ordering:
-        type: integer
-      prefixLength:
-        type: integer
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.ManualSwitch:
     properties:
@@ -6041,29 +6033,40 @@ definitions:
       updatedAt:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry:
+    properties:
+      address:
+        type: string
+      family:
+        type: string
+      prefixLength:
+        type: integer
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry:
     properties:
       addresses:
         items:
-          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address'
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry'
         type: array
       conflicts:
         items:
           type: string
         type: array
-      id:
-        type: integer
       identityMac:
         type: string
       interface:
         type: string
       ipv6Mode:
         type: string
-      lifecycle:
-        type: string
       liveMac:
         type: string
+      managedAddresses:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3AppliedAddress'
+        type: array
       metric:
+        type: integer
+      metricBaseline:
         type: integer
       mtu:
         type: integer
@@ -6099,16 +6102,12 @@ definitions:
         type: string
       kind:
         type: string
-      origin:
-        type: string
       phase:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3TargetEntry:
     properties:
       eligible:
-        type: boolean
-      hasConfig:
         type: boolean
       interface:
         type: string
@@ -20149,6 +20148,8 @@ paths:
       - Network
   /network/host-ip/pending/{id}/revert:
     post:
+      description: Restore an applied operation; discard a prepared operation without
+        changing ambiguous runtime state
       parameters:
       - description: Pending operation id
         in: path
