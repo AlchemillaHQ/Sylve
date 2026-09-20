@@ -10,7 +10,7 @@ export async function load() {
 		cachedFetch('network-interfaces', async () => await getInterfaces(), cacheDuration),
 		cachedFetch('network-switches', async () => await getSwitches(), cacheDuration),
 		cachedFetch('network-objects', async () => await getNetworkObjects(), cacheDuration),
-		cachedFetch('network-interface-l3', async () => await getHostInterfaceL3(), cacheDuration)
+		getHostInterfaceL3()
 	]);
 
 	return {

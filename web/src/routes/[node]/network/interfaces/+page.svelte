@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { storage } from '$lib';
 	import { getInterfaces } from '$lib/api/network/iface';
 	import { getHostInterfaceL3, getHostInterfaceL3Pending } from '$lib/api/network/ifaceL3';
 	import KvTableModal from '$lib/components/custom/KVTableModal.svelte';
@@ -53,9 +55,9 @@
 		Array.isArray(data.wgClients) ? data.wgClients : ([] as WireGuardClient[])
 	);
 	// svelte-ignore state_referenced_locally
-	let hostInterfaceL3 = $state<HostInterfaceL3List>(
-		isHostInterfaceL3List(data.l3) ? data.l3 : emptyHostInterfaceL3List()
-	);
+	let lastGoodHostInterfaceL3 = isHostInterfaceL3List(data.l3)
+		? data.l3
+		: emptyHostInterfaceL3List();
 	// svelte-ignore state_referenced_locally
 	const initialHostInterfaceL3Pending = Array.isArray(data.pending) ? data.pending : [];
 
@@ -102,6 +104,35 @@
 		},
 		{ initialValue: lastGoodInterfaces }
 	);
+
+	let hostInterfaceL3Resource = resource(
+		() => 'network-interface-l3',
+		async (key) => {
+			const res = await getHostInterfaceL3();
+			if (!isHostInterfaceL3List(res)) {
+				handleAPIError(res);
+				return lastGoodHostInterfaceL3;
+			}
+			lastGoodHostInterfaceL3 = res;
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: lastGoodHostInterfaceL3 }
+	);
+
+	let hostInterfaceL3 = $derived(hostInterfaceL3Resource.current);
+	let hostInterfaceL3ReadOnlyReason = $derived.by(() => {
+		const selectedNode = String(page.params.node ?? '')
+			.trim()
+			.toLowerCase();
+		const localNode = String(storage.localHostname ?? '')
+			.trim()
+			.toLowerCase();
+		if (selectedNode !== '' && localNode !== '' && selectedNode !== localNode) {
+			return `Host IP changes must be made on ${localNode}.`;
+		}
+		return '';
+	});
 
 	// svelte-ignore state_referenced_locally
 	let jails = resource(
@@ -304,6 +335,7 @@
 	);
 	let activeRow: IfaceRow[] | null = $state(null);
 	let query: string = $state('');
+	let refreshing = $state(false);
 	let l3Targets = $derived(
 		new Map(hostInterfaceL3.targets.map((target) => [target.interface, target]))
 	);
@@ -320,28 +352,17 @@
 		entries: HostInterfaceL3PendingEntry[];
 	}>({ open: initialHostInterfaceL3Pending.length > 0, entries: initialHostInterfaceL3Pending });
 
-	async function refreshHostInterfaceL3() {
-		const response = await getHostInterfaceL3();
-		if (isAPIResponse(response)) {
-			handleAPIError(response);
-			return;
-		}
-		hostInterfaceL3 = response;
-		updateCache('network-interface-l3', response);
-	}
-
-	async function refreshInterfaces() {
-		const response = await getInterfaces();
-		if (isAPIResponse(response)) {
-			return;
-		}
-		lastGoodInterfaces = response;
-		networkInterfaces.current = response;
-		updateCache('network-interfaces', response);
-	}
-
 	async function refreshAfterHostInterfaceL3Change() {
-		await Promise.all([refreshHostInterfaceL3(), refreshInterfaces()]);
+		await Promise.all([hostInterfaceL3Resource.refetch(), networkInterfaces.refetch()]);
+	}
+
+	async function refreshHostInterfacePage() {
+		refreshing = true;
+		try {
+			await Promise.all([refreshAfterHostInterfaceL3Change(), refreshPendingQueue()]);
+		} finally {
+			refreshing = false;
+		}
 	}
 
 	function openHostInterfaceL3Modal() {
@@ -362,9 +383,12 @@
 	async function refreshPendingQueue(fallback?: HostInterfaceL3PendingEntry) {
 		const response = await getHostInterfaceL3Pending();
 		if (isAPIResponse(response)) {
+			const entries = fallback
+				? [fallback, ...hostInterfaceL3Pending.entries.filter((entry) => entry.id !== fallback.id)]
+				: hostInterfaceL3Pending.entries;
 			hostInterfaceL3Pending = {
-				open: fallback !== undefined,
-				entries: fallback ? [fallback] : []
+				open: fallback !== undefined || hostInterfaceL3Pending.open,
+				entries
 			};
 			return;
 		}
@@ -372,13 +396,24 @@
 	}
 
 	async function handleHostInterfaceL3Pending(entry: HostInterfaceL3PendingEntry) {
-		await refreshHostInterfaceL3();
+		await hostInterfaceL3Resource.refetch();
 		await refreshPendingQueue(entry);
 	}
 
-	async function handleHostInterfaceL3Done() {
+	async function handleHostInterfaceL3Done(reloadForm = false) {
 		await refreshAfterHostInterfaceL3Change();
 		await refreshPendingQueue();
+		if (reloadForm && hostInterfaceL3Modal.open) {
+			const name = hostInterfaceL3Modal.name;
+			const live = networkInterfaces.current.find((iface: Iface) => iface.name === name);
+			const entry = hostInterfaceL3.rows.find((row) => row.interface === name) ?? null;
+			hostInterfaceL3Modal = {
+				open: true,
+				name,
+				mtu: live?.mtu ?? entry?.mtu ?? hostInterfaceL3Modal.mtu,
+				entry
+			};
+		}
 	}
 
 	let viewModal = $state({
@@ -431,8 +466,7 @@
 	{:else if type === 'hostIp' && activeRow !== null && activeRow.length > 0}
 		{@const target = l3Targets.get(activeRow[0]?.name)}
 		{@const entry = hostInterfaceL3.rows.find((row) => row.interface === activeRow?.[0]?.name)}
-		{@const available =
-			entry !== undefined || (target !== undefined && (target.eligible || target.hasConfig))}
+		{@const available = entry !== undefined || target?.eligible === true}
 		<Button
 			onclick={openHostInterfaceL3Modal}
 			size="sm"
@@ -440,7 +474,7 @@
 			class="h-6.5"
 			disabled={!available}
 			title={available
-				? 'Host IP'
+				? hostInterfaceL3ReadOnlyReason || 'Host IP'
 				: hostInterfaceL3Label(target?.reason ?? '') ||
 					'Host IP is not available for this interface'}
 		>
@@ -452,8 +486,37 @@
 <div class="flex h-full w-full flex-col">
 	<div class="flex h-10 w-full items-center gap-2 border-b p-2">
 		<Search bind:query />
+		<Button
+			size="sm"
+			variant="outline"
+			class="h-6.5"
+			onclick={refreshHostInterfacePage}
+			disabled={refreshing}
+		>
+			<SpanWithIcon
+				icon={refreshing ? 'icon-[mdi--loading]' : 'icon-[mdi--refresh]'}
+				size={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`}
+				gap="gap-2"
+				title="Refresh"
+			/>
+		</Button>
 		{@render button('view')}
 		{@render button('hostIp')}
+		{#if hostInterfaceL3Pending.entries.length > 0}
+			<Button
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				onclick={() => (hostInterfaceL3Pending.open = true)}
+			>
+				<SpanWithIcon
+					icon="icon-[mdi--timer-alert-outline]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title={`Pending Host IP (${hostInterfaceL3Pending.entries.length})`}
+				/>
+			</Button>
+		{/if}
 	</div>
 
 	<KvTableModal
@@ -480,10 +543,14 @@
 		interfaceName={hostInterfaceL3Modal.name}
 		currentMTU={hostInterfaceL3Modal.mtu}
 		entry={hostInterfaceL3Modal.entry}
+		liveIPv4={networkInterfaces.current.find(
+			(iface: Iface) => iface.name === hostInterfaceL3Modal.name
+		)?.ipv4 ?? []}
 		interfaceMissing={!networkInterfaces.current.some(
 			(iface: Iface) => iface.name === hostInterfaceL3Modal.name
 		)}
-		onDone={refreshAfterHostInterfaceL3Change}
+		readOnlyReason={hostInterfaceL3ReadOnlyReason}
+		onDone={handleHostInterfaceL3Done}
 		onPending={handleHostInterfaceL3Pending}
 	/>
 
@@ -491,6 +558,7 @@
 		bind:open={hostInterfaceL3Pending.open}
 		entry={hostInterfaceL3Pending.entries[0] ?? null}
 		remaining={hostInterfaceL3Pending.entries.length}
+		readOnlyReason={hostInterfaceL3ReadOnlyReason}
 		onDone={handleHostInterfaceL3Done}
 	/>
 </div>

@@ -9,6 +9,7 @@
 package network
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -25,8 +26,6 @@ var hostInterfaceL3ForbiddenKinds = map[string]struct{}{
 	"ipsec": {}, "vxlan": {}, "lagg": {},
 }
 
-var hostInterfaceL3EligibilitySeam func(*iface.Interface) (string, bool)
-
 type hostInterfaceL3DesiredAddress struct {
 	Family       string
 	Address      netip.Addr
@@ -34,12 +33,10 @@ type hostInterfaceL3DesiredAddress struct {
 }
 
 type hostInterfaceL3PlannedChange struct {
-	Plan     hostInterfaceL3ApplyPlan
-	Spec     networkModels.HostInterfaceL3Spec
-	Baseline networkModels.HostInterfaceL3Baseline
-	Intended networkModels.HostInterfaceL3AppliedState
-	// IdentityMAC is captured before the first apply so confirmation cannot
-	// silently adopt replacement hardware.
+	Plan        hostInterfaceL3ApplyPlan
+	Spec        networkModels.HostInterfaceL3Spec
+	Baseline    networkModels.HostInterfaceL3Baseline
+	Intended    networkModels.HostInterfaceL3AppliedState
 	IdentityMAC string
 }
 
@@ -47,18 +44,6 @@ func hostInterfaceL3EligibilityCode(interfaceObj *iface.Interface) string {
 	if interfaceObj == nil {
 		return "host_interface_l3_missing_interface"
 	}
-	if hostInterfaceL3EligibilitySeam != nil {
-		if code, handled := hostInterfaceL3EligibilitySeam(interfaceObj); handled {
-			return code
-		}
-	}
-
-	// VLAN children are eligible when their parent is; the parent's own
-	// eligibility is checked by the caller.
-	if strings.TrimSpace(interfaceObj.VLANParent) != "" {
-		return ""
-	}
-
 	if strings.TrimSpace(interfaceObj.Ether) == "" {
 		return "host_interface_l3_ineligible_no_mac"
 	}
@@ -69,11 +54,14 @@ func hostInterfaceL3EligibilityCode(interfaceObj *iface.Interface) string {
 			return "host_interface_l3_ineligible_" + normalized
 		}
 	}
+	if strings.TrimSpace(interfaceObj.VLANParent) != "" {
+		return ""
+	}
 
-	// Hardware allowlist: a physical NIC reports a driver, and every known
-	// virtual/service interface is refused either by group or driver.
 	driver := strings.ToLower(strings.TrimSpace(interfaceObj.Driver))
-	if driver == "" {
+	model := strings.TrimSpace(interfaceObj.Model)
+	hasMedia := interfaceObj.Media != nil && strings.TrimSpace(interfaceObj.Media.Type) != ""
+	if driver == "" && model == "" && !hasMedia {
 		return "host_interface_l3_ineligible_no_driver"
 	}
 	if _, forbidden := hostInterfaceL3ForbiddenKinds[driver]; forbidden {
@@ -83,7 +71,17 @@ func hostInterfaceL3EligibilityCode(interfaceObj *iface.Interface) string {
 	return ""
 }
 
-func (s *Service) hostInterfaceL3BridgeMembers(name string) ([]string, error) {
+func (s *Service) hostInterfaceL3EligibilityCode(interfaceObj *iface.Interface) string {
+	if s.hostInterfaceL3Eligibility != nil {
+		return s.hostInterfaceL3Eligibility(interfaceObj)
+	}
+	return hostInterfaceL3EligibilityCode(interfaceObj)
+}
+
+func (s *Service) hostInterfaceL3BridgeMembers(
+	name string,
+	liveInterfaces []*iface.Interface,
+) ([]string, error) {
 	var standardSwitches []networkModels.StandardSwitch
 	if err := s.DB.Model(&networkModels.StandardSwitch{}).Find(&standardSwitches).Error; err != nil {
 		return nil, fmt.Errorf("load standard switches: %w", err)
@@ -101,15 +99,7 @@ func (s *Service) hostInterfaceL3BridgeMembers(name string) ([]string, error) {
 		bridgeSet[sw.Bridge] = struct{}{}
 	}
 
-	// Bridges Sylve does not know about still claim their members.
-	liveInterfaces, err := hostInterfaceL3ListInterfaces()
-	if err != nil {
-		return nil, fmt.Errorf("inspect live bridges: %w", err)
-	}
 	for _, candidate := range liveInterfaces {
-		if candidate == nil {
-			continue
-		}
 		if utils.Contains(candidate.Groups, "bridge") {
 			bridgeSet[candidate.Name] = struct{}{}
 		}
@@ -127,9 +117,6 @@ func (s *Service) hostInterfaceL3BridgeMembers(name string) ([]string, error) {
 			}
 			return nil, fmt.Errorf("inspect bridge %s: %w", bridge, err)
 		}
-		if bridgeObj == nil {
-			continue
-		}
 		for _, member := range bridgeObj.BridgeMembers {
 			if member.Name == name {
 				members = append(members, bridge)
@@ -140,6 +127,17 @@ func (s *Service) hostInterfaceL3BridgeMembers(name string) ([]string, error) {
 }
 
 func (s *Service) hostInterfaceL3MembershipGuard(name string) error {
+	liveInterfaces, err := hostInterfaceL3ListInterfaces()
+	if err != nil {
+		return fmt.Errorf("inspect live bridges: %w", err)
+	}
+	return s.hostInterfaceL3MembershipGuardWithInterfaces(name, liveInterfaces)
+}
+
+func (s *Service) hostInterfaceL3MembershipGuardWithInterfaces(
+	name string,
+	liveInterfaces []*iface.Interface,
+) error {
 	var portCount int64
 	if err := s.DB.Model(&networkModels.NetworkPort{}).Where("name = ?", name).Count(&portCount).Error; err != nil {
 		return fmt.Errorf("check standard switch ports for %s: %w", name, err)
@@ -148,7 +146,7 @@ func (s *Service) hostInterfaceL3MembershipGuard(name string) error {
 		return hostInterfaceL3Conflict("host_interface_l3_standard_switch_port", nil)
 	}
 
-	members, err := s.hostInterfaceL3BridgeMembers(name)
+	members, err := s.hostInterfaceL3BridgeMembers(name, liveInterfaces)
 	if err != nil {
 		return err
 	}
@@ -170,6 +168,12 @@ func normalizeHostInterfaceL3Addresses(
 
 	for _, input := range inputs {
 		raw := strings.TrimSpace(input.Address)
+		if !utils.IsAssignableCIDR(raw) {
+			return nil, invalidHostInterfaceL3(
+				"host_interface_l3_invalid_address",
+				fmt.Errorf("address %s is not assignable", raw),
+			)
+		}
 		prefix, err := netip.ParsePrefix(raw)
 		if err != nil {
 			return nil, invalidHostInterfaceL3("host_interface_l3_invalid_address", fmt.Errorf("parse %q: %w", raw, err))
@@ -252,9 +256,18 @@ func hostInterfaceL3HasLiveIPv6(interfaceObj *iface.Interface) bool {
 }
 
 func (s *Service) checkHostInterfaceL3AddressAvailability(
+	name string,
 	desired []hostInterfaceL3DesiredAddress,
 	excludeID uint,
+	liveInterfaces []*iface.Interface,
 ) error {
+	var ranges []networkModels.DHCPRange
+	if len(desired) > 0 {
+		if err := s.DB.Model(&networkModels.DHCPRange{}).Find(&ranges).Error; err != nil {
+			return fmt.Errorf("load DHCP ranges: %w", err)
+		}
+	}
+
 	for _, address := range desired {
 		query := s.DB.Model(&networkModels.HostInterfaceL3Address{}).
 			Where("family = ? AND address = ?", address.Family, address.Address.String())
@@ -272,26 +285,53 @@ func (s *Service) checkHostInterfaceL3AddressAvailability(
 			)
 		}
 
-		inRange, err := s.hostInterfaceL3AddressInDHCPServerRange(address.Address)
-		if err != nil {
-			return err
-		}
-		if inRange {
+		if hostInterfaceL3AddressInDHCPServerRange(address.Address, ranges) {
 			return hostInterfaceL3Conflict(
 				"host_interface_l3_address_in_dhcp_pool",
 				fmt.Errorf("%s falls inside a configured DHCP range", address.Address),
 			)
 		}
 	}
+
+	for _, candidate := range liveInterfaces {
+		if candidate.Name == name {
+			continue
+		}
+		for _, desiredAddress := range desired {
+			if hostInterfaceL3HasHostAddress(candidate, desiredAddress.Family, desiredAddress.Address.String()) {
+				return hostInterfaceL3Conflict(
+					"host_interface_l3_duplicate_address",
+					fmt.Errorf("%s is already present on %s", desiredAddress.Address, candidate.Name),
+				)
+			}
+		}
+	}
+
+	var pending []networkModels.PendingApply
+	if err := s.DB.
+		Where("kind = ? AND phase IN ?", networkModels.PendingApplyKindInterface, hostInterfaceL3PendingPhases()).
+		Find(&pending).Error; err != nil {
+		return fmt.Errorf("load pending Host IP addresses: %w", err)
+	}
+	for _, operation := range pending {
+		if operation.Interface == name {
+			continue
+		}
+		for _, reserved := range operation.CandidatePayload.Addresses {
+			for _, desiredAddress := range desired {
+				if reserved.Family == desiredAddress.Family && reserved.Address == desiredAddress.Address.String() {
+					return hostInterfaceL3Conflict(
+						"host_interface_l3_duplicate_address",
+						fmt.Errorf("%s is pending on %s", desiredAddress.Address, operation.Interface),
+					)
+				}
+			}
+		}
+	}
 	return nil
 }
 
-func (s *Service) hostInterfaceL3AddressInDHCPServerRange(address netip.Addr) (bool, error) {
-	var ranges []networkModels.DHCPRange
-	if err := s.DB.Model(&networkModels.DHCPRange{}).Find(&ranges).Error; err != nil {
-		return false, fmt.Errorf("load DHCP ranges: %w", err)
-	}
-
+func hostInterfaceL3AddressInDHCPServerRange(address netip.Addr, ranges []networkModels.DHCPRange) bool {
 	for _, dhcpRange := range ranges {
 		start, err := netip.ParseAddr(strings.TrimSpace(dhcpRange.StartIP))
 		if err != nil {
@@ -307,17 +347,18 @@ func (s *Service) hostInterfaceL3AddressInDHCPServerRange(address netip.Addr) (b
 			continue
 		}
 		if address.Compare(start) >= 0 && address.Compare(end) <= 0 {
-			return true, nil
+			return true
 		}
 	}
 
-	return false, nil
+	return false
 }
 
 func (s *Service) validateHostInterfaceL3VLANBoundaries(
 	name string,
 	live *iface.Interface,
 	mtu *uint,
+	liveInterfaces []*iface.Interface,
 ) error {
 	if live.VLANParent == "" {
 		var childCount int64
@@ -327,12 +368,8 @@ func (s *Service) validateHostInterfaceL3VLANBoundaries(
 			return fmt.Errorf("check VLAN children of %s: %w", name, err)
 		}
 		if childCount == 0 {
-			liveInterfaces, err := hostInterfaceL3ListInterfaces()
-			if err != nil {
-				return fmt.Errorf("inspect VLAN children of %s: %w", name, err)
-			}
 			for _, candidate := range liveInterfaces {
-				if candidate != nil && candidate.VLANParent == name {
+				if candidate.VLANParent == name {
 					childCount++
 					break
 				}
@@ -351,11 +388,15 @@ func (s *Service) validateHostInterfaceL3VLANBoundaries(
 		}
 		return fmt.Errorf("inspect VLAN parent %s: %w", live.VLANParent, err)
 	}
-	if parent == nil {
-		return hostInterfaceL3Conflict("host_interface_l3_vlan_parent_missing", nil)
-	}
-	if code := hostInterfaceL3EligibilityCode(parent); code != "" {
+	if code := s.hostInterfaceL3EligibilityCode(parent); code != "" {
 		return hostInterfaceL3Conflict("host_interface_l3_vlan_parent_ineligible", nil)
+	}
+	if err := s.hostInterfaceL3MembershipGuard(live.VLANParent); err != nil {
+		var hostErr *hostInterfaceL3Error
+		if errors.As(err, &hostErr) {
+			return hostInterfaceL3Conflict("host_interface_l3_vlan_parent_ineligible", err)
+		}
+		return err
 	}
 
 	var parentRows int64
@@ -392,10 +433,7 @@ func (s *Service) planHostInterfaceL3Change(
 		}
 		return change, fmt.Errorf("inspect interface %s: %w", name, err)
 	}
-	if live == nil {
-		return change, hostInterfaceL3Conflict("host_interface_l3_missing_interface", nil)
-	}
-	if code := hostInterfaceL3EligibilityCode(live); code != "" {
+	if code := s.hostInterfaceL3EligibilityCode(live); code != "" {
 		return change, hostInterfaceL3Conflict(code, nil)
 	}
 	if current != nil && strings.TrimSpace(current.IdentityMAC) != "" &&
@@ -406,7 +444,16 @@ func (s *Service) planHostInterfaceL3Change(
 			fmt.Errorf("interface %s has MAC %s, expected %s", name, live.Ether, current.IdentityMAC),
 		)
 	}
-	if err := s.hostInterfaceL3MembershipGuard(name); err != nil {
+	if current != nil {
+		if err := ensureHostInterfaceL3VLANIdentity(live, current.VLANParent, current.VLANTag); err != nil {
+			return change, err
+		}
+	}
+	liveInterfaces, err := hostInterfaceL3ListInterfaces()
+	if err != nil {
+		return change, fmt.Errorf("inspect interfaces for %s: %w", name, err)
+	}
+	if err := s.hostInterfaceL3MembershipGuardWithInterfaces(name, liveInterfaces); err != nil {
 		return change, err
 	}
 
@@ -431,22 +478,41 @@ func (s *Service) planHostInterfaceL3Change(
 	if current != nil {
 		excludeID = current.ID
 	}
-	if err := s.checkHostInterfaceL3AddressAvailability(desired, excludeID); err != nil {
+	if err := s.checkHostInterfaceL3AddressAvailability(name, desired, excludeID, liveInterfaces); err != nil {
 		return change, err
 	}
 
-	if req.MTU != nil {
+	if req.Metric != nil && (*req.Metric > 255 || !utils.IsValidMetric(int(*req.Metric))) {
+		return change, invalidHostInterfaceL3("host_interface_l3_invalid_metric", nil)
+	}
+
+	for _, address := range desired {
+		if address.Family == "inet6" && ipv6Mode == networkModels.HostInterfaceL3IPv6ModeInherit {
+			ipv6Mode = networkModels.HostInterfaceL3IPv6ModeEnabled
+			break
+		}
+	}
+
+	effectiveMTU := req.MTU
+	if effectiveMTU == nil && current != nil && current.AppliedState.MTU != nil {
+		effectiveMTU = currentBaselineMTU(current)
+	}
+	operationalMTU := effectiveMTU
+	if operationalMTU == nil && live.MTU > 0 {
+		observedMTU := uint(live.MTU)
+		operationalMTU = &observedMTU
+	}
+	if effectiveMTU != nil {
 		if err := hostInterfaceL3ValidateMTUWithLiveIPv6(
-			req.MTU,
+			effectiveMTU,
 			desired,
 			ipv6Mode,
 			hostInterfaceL3HasLiveIPv6(live),
 		); err != nil {
 			return change, err
 		}
-	} else if live.MTU > 0 {
-		observedMTU := uint(live.MTU)
-		if err := hostInterfaceL3ValidateMTU(&observedMTU, desired, ipv6Mode); err != nil {
+	} else if operationalMTU != nil {
+		if err := hostInterfaceL3ValidateMTU(operationalMTU, desired, ipv6Mode); err != nil {
 			return change, err
 		}
 	}
@@ -459,7 +525,7 @@ func (s *Service) planHostInterfaceL3Change(
 		}
 	}
 
-	if err := s.validateHostInterfaceL3VLANBoundaries(name, live, req.MTU); err != nil {
+	if err := s.validateHostInterfaceL3VLANBoundaries(name, live, operationalMTU, liveInterfaces); err != nil {
 		return change, err
 	}
 
@@ -483,12 +549,8 @@ func buildHostInterfaceL3PlannedChange(
 	live *iface.Interface,
 	ipv6Mode string,
 ) hostInterfaceL3PlannedChange {
-	change := hostInterfaceL3PlannedChange{
-		Baseline: captureHostInterfaceL3Baseline(live),
-	}
-	if live != nil {
-		change.IdentityMAC = live.Ether
-	}
+	change := hostInterfaceL3PlannedChange{Baseline: captureHostInterfaceL3Baseline(live)}
+	change.IdentityMAC = live.Ether
 
 	applied := networkModels.HostInterfaceL3AppliedState{}
 	if current != nil {
@@ -504,31 +566,28 @@ func buildHostInterfaceL3PlannedChange(
 		appliedHostKeys[existing.Family+"|"+hostInterfaceL3AddressIP(existing.Address)] = struct{}{}
 	}
 
-	// Prefix ownership is decided from live state, ignoring addresses Sylve
-	// already owns: an owned address being replaced never counts as a foreign
-	// primary, and a policy-driven /32 alias is compared against the planned
-	// prefix rather than the desired spec prefix.
 	finalPrefixes := hostInterfaceL3FinalIPv4Prefixes(live, desired, appliedHostKeys)
 
 	keptByKey := make(map[string]networkModels.HostInterfaceL3AppliedAddress, len(applied.Addresses))
 	removalKeys := make(map[string]struct{})
 	removals := make([]networkModels.HostInterfaceL3AppliedAddress, 0)
 	for _, existing := range applied.Addresses {
-		key := existing.Family + "|" + hostInterfaceL3AddressIP(existing.Address)
+		host := hostInterfaceL3AddressIP(existing.Address)
+		key := existing.Family + "|" + host
 		index, desiredAddress := desiredIndexByKey[key]
-		plannedPrefix := existing.PrefixLength
+		plannedPrefix := hostInterfaceL3AddressPrefixLength(existing.Address)
 		if desiredAddress {
 			plannedPrefix = finalPrefixes[index]
 		}
 
-		if desiredAddress && plannedPrefix == existing.PrefixLength {
-			if hostInterfaceL3HasAddress(live, existing.Family, existing.Address) {
-				keptByKey[key] = existing
-			}
+		liveAddress, liveAddressPresent := hostInterfaceL3LiveAddressByHost(live, existing.Family, host)
+		if desiredAddress && plannedPrefix == hostInterfaceL3AddressPrefixLength(existing.Address) &&
+			liveAddressPresent && liveAddress.Address == existing.Address {
+			keptByKey[key] = existing
 			continue
 		}
-		if hostInterfaceL3HasAddress(live, existing.Family, existing.Address) {
-			removals = append(removals, existing)
+		if liveAddressPresent {
+			removals = append(removals, liveAddress)
 			removalKeys[key] = struct{}{}
 		}
 	}
@@ -538,8 +597,11 @@ func buildHostInterfaceL3PlannedChange(
 	}
 
 	plan := hostInterfaceL3ApplyPlan{
-		Interface: live.Name,
-		Remove:    removals,
+		Interface:          live.Name,
+		ExpectedMAC:        change.IdentityMAC,
+		ExpectedVLANParent: live.VLANParent,
+		ExpectedVLANTag:    uint16(live.VLANTag),
+		Remove:             removals,
 	}
 
 	occupied := hostInterfaceL3OccupiedFamilies(live, removalKeys)
@@ -553,23 +615,23 @@ func buildHostInterfaceL3PlannedChange(
 			intended.Addresses = append(intended.Addresses, kept)
 			continue
 		}
+		if _, owned := appliedHostKeys[key]; !owned &&
+			hostInterfaceL3HasHostAddress(live, address.Family, address.Address.String()) {
+			continue
+		}
 		if hostInterfaceL3HasAddress(live, address.Family, cidr) {
-			// Present with the planned mask but not owned by Sylve: leave it.
 			continue
 		}
 
 		alias := occupied[address.Family] || addedInFamily[address.Family] > 0
 		plan.Addresses = append(plan.Addresses, hostInterfaceL3ApplyAddress{
-			Family:       address.Family,
-			Address:      cidr,
-			PrefixLength: prefixLength,
-			Alias:        alias,
+			Family:  address.Family,
+			Address: cidr,
+			Alias:   alias,
 		})
 		intended.Addresses = append(intended.Addresses, networkModels.HostInterfaceL3AppliedAddress{
-			Family:       address.Family,
-			Address:      cidr,
-			PrefixLength: prefixLength,
-			Alias:        alias,
+			Family:  address.Family,
+			Address: cidr,
 		})
 		addedInFamily[address.Family]++
 	}
@@ -603,18 +665,15 @@ func buildHostInterfaceL3PlannedChange(
 		intended.IPv6Disabled = &disabled
 	default:
 		if applied.IPv6Disabled != nil {
-			restore := false
-			if current != nil && current.AdoptionBaseline.IPv6Disabled != nil {
-				restore = *current.AdoptionBaseline.IPv6Disabled
-			}
-			plan.DisableIPv6 = &restore
 			if current != nil && current.AdoptionBaseline.ND6Flags != nil {
 				plan.RestoreIPv6Flags = current.AdoptionBaseline.ND6Flags
 			}
 		}
 	}
 
-	if !interfaceIsUp(live) {
+	if applied.Up != nil {
+		intended.Up = applied.Up
+	} else if !interfaceIsUp(live) {
 		up := true
 		intended.Up = &up
 	}
@@ -656,11 +715,6 @@ func hostInterfaceL3FinalIPv4Prefixes(
 	}
 
 	for key, indexes := range groups {
-		hosts := make(map[string]struct{}, len(indexes))
-		for _, index := range indexes {
-			hosts[desired[index].Address.String()] = struct{}{}
-		}
-
 		foreign := false
 		for _, address := range live.IPv4 {
 			prefix, ok := interfaceIPv4Prefix(address)
@@ -668,11 +722,7 @@ func hostInterfaceL3FinalIPv4Prefixes(
 				continue
 			}
 			host := prefix.Addr().Unmap().String()
-			if _, isDesired := hosts[host]; isDesired {
-				continue
-			}
 			if _, isOwned := ownedHostKeys["inet|"+host]; isOwned {
-				// A Sylve-owned address being replaced is not a foreign primary.
 				continue
 			}
 			foreign = true
@@ -696,6 +746,50 @@ func hostInterfaceL3FinalIPv4Prefixes(
 	}
 
 	return final
+}
+
+func hostInterfaceL3PrefixOwnershipChanged(
+	current *networkModels.HostInterfaceL3,
+	live *iface.Interface,
+) bool {
+	if current == nil || live == nil {
+		return false
+	}
+
+	desired := make([]hostInterfaceL3DesiredAddress, 0, len(current.Addresses))
+	for _, address := range current.Addresses {
+		parsed, err := netip.ParseAddr(address.Address)
+		if err != nil {
+			continue
+		}
+		desired = append(desired, hostInterfaceL3DesiredAddress{
+			Family:       address.Family,
+			Address:      parsed.Unmap(),
+			PrefixLength: address.PrefixLength,
+		})
+	}
+
+	ownedHostKeys := make(map[string]struct{}, len(current.AppliedState.Addresses))
+	appliedPrefixes := make(map[string]uint8, len(current.AppliedState.Addresses))
+	for _, address := range current.AppliedState.Addresses {
+		host := hostInterfaceL3AddressIP(address.Address)
+		key := address.Family + "|" + host
+		ownedHostKeys[key] = struct{}{}
+		appliedPrefixes[key] = hostInterfaceL3AddressPrefixLength(address.Address)
+	}
+
+	finalPrefixes := hostInterfaceL3FinalIPv4Prefixes(live, desired, ownedHostKeys)
+	for index, address := range desired {
+		if address.Family != "inet" {
+			continue
+		}
+		if appliedPrefix, ok := appliedPrefixes["inet|"+address.Address.String()]; ok &&
+			appliedPrefix != finalPrefixes[index] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func hostInterfaceL3OccupiedFamilies(

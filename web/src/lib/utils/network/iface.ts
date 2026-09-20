@@ -1,55 +1,44 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Iface } from '$lib/types/network/iface';
 import type { HostInterfaceL3Entry } from '$lib/types/network/ifaceL3';
+import { ipv4NetmaskToPrefix } from '$lib/utils/inet';
 import { generateNumberFromString } from '../numbers';
 
-function ipv4NetmaskToPrefix(netmask?: string | null): number | null {
-	if (!netmask) {
-		return null;
-	}
-
-	const parts = netmask.split('.').map((p) => Number.parseInt(p, 10));
-	if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) {
-		return null;
-	}
-
-	let prefix = 0;
-	for (const part of parts) {
-		let n = part;
-		for (let i = 0; i < 8; i++) {
-			if ((n & 0x80) === 0x80) {
-				prefix++;
-			}
-			n <<= 1;
-		}
-	}
-
-	return prefix;
+function managedHostSet(entry: HostInterfaceL3Entry | undefined, family: string): Set<string> {
+	return new Set(
+		(entry?.managedAddresses ?? [])
+			.filter((address) => address.family === family)
+			.map((address) => address.address.split('/')[0])
+	);
 }
 
-function formatIPv4(iface: Iface): string {
+function formatIPv4(iface: Iface, entry?: HostInterfaceL3Entry): string {
 	if (!iface.ipv4 || iface.ipv4.length === 0) {
 		return '-';
 	}
+	const managed = managedHostSet(entry, 'inet');
 
 	return iface.ipv4
 		.map((addr) => {
 			const prefix = ipv4NetmaskToPrefix(addr.netmask);
 			const suffix = prefix !== null ? `/${prefix}` : '';
-			return `${addr.ip}${suffix}`;
+			const ownership = entry ? ` · ${managed.has(addr.ip) ? 'Managed' : 'Foreign'}` : '';
+			return `${addr.ip}${suffix}${ownership}`;
 		})
 		.join('\n');
 }
 
-function formatIPv6(iface: Iface): string {
+function formatIPv6(iface: Iface, entry?: HostInterfaceL3Entry): string {
 	if (!iface.ipv6 || iface.ipv6.length === 0) {
 		return '-';
 	}
+	const managed = managedHostSet(entry, 'inet6');
 
 	return iface.ipv6
 		.map((addr) => {
 			const suffix = addr.prefixLength !== undefined ? `/${addr.prefixLength}` : '';
-			return `${addr.ip}${suffix}`;
+			const ownership = entry ? ` · ${managed.has(addr.ip) ? 'Managed' : 'Foreign'}` : '';
+			return `${addr.ip}${suffix}${ownership}`;
 		})
 		.join('\n');
 }
@@ -147,8 +136,8 @@ export function generateTableData(
 			name: iface.name,
 			model: model,
 			description: iface.description,
-			ipv4: formatIPv4(iface),
-			ipv6: formatIPv6(iface),
+			ipv4: formatIPv4(iface, l3Entry),
+			ipv6: formatIPv6(iface, l3Entry),
 			metric: iface.metric,
 			mtu: iface.mtu,
 			media: iface.media,
@@ -162,8 +151,6 @@ export function generateTableData(
 		rows.push(row);
 	}
 
-	// Host IP rows whose interface disappeared are still listed so the
-	// configuration can be inspected or removed.
 	const liveNames = new Set(rows.map((row) => String(row.name)));
 	for (const entry of l3Entries ?? []) {
 		if (liveNames.has(entry.interface)) {

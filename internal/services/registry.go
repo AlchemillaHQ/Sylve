@@ -91,7 +91,7 @@ func NewService[T any](db *gorm.DB, dependencies ...interface{}) interface{} {
 	case *startup.Service:
 		infoService := dependencies[0].(infoServiceInterfaces.InfoServiceInterface)
 		zfsService := dependencies[1].(zfsServiceInterfaces.ZfsServiceInterface)
-		networkService := dependencies[2].(networkServiceInterfaces.NetworkServiceInterface)
+		networkService := dependencies[2].(networkServiceInterfaces.StartupNetworkServiceInterface)
 		libvirtService := dependencies[3].(libvirtServiceInterfaces.LibvirtServiceInterface)
 		utilitiesService := dependencies[4].(utilitiesServiceInterfaces.UtilitiesServiceInterface)
 		systemService := dependencies[5].(systemServiceInterfaces.SystemServiceInterface)

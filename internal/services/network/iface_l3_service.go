@@ -45,7 +45,6 @@ func hostInterfaceL3PendingPhases() []string {
 	return []string{
 		networkModels.PendingApplyPhasePrepared,
 		networkModels.PendingApplyPhaseApplied,
-		networkModels.PendingApplyPhaseConfirmed,
 	}
 }
 
@@ -66,26 +65,29 @@ func (s *Service) loadHostInterfaceL3ByName(name string) (*networkModels.HostInt
 	return &row, nil
 }
 
-func (s *Service) checkStandardSwitchPortsForHostInterfaceL3(ports []string, previous []string) error {
-	previousSet := make(map[string]struct{}, len(previous))
-	for _, port := range previous {
-		previousSet[port] = struct{}{}
+func (s *Service) checkStandardSwitchPortsForHostInterfaceL3(ports []string) error {
+	reservations, err := s.activeHostInterfaceL3Reservations()
+	if err != nil {
+		return err
 	}
 
 	for _, port := range ports {
-		if _, existed := previousSet[port]; existed {
-			continue
-		}
 		var count int64
 		if err := s.DB.Model(&networkModels.HostInterfaceL3{}).
-			Where("interface = ?", port).
+			Where("interface = ? OR vlan_parent = ?", port, port).
 			Count(&count).Error; err != nil {
 			return fmt.Errorf("check Host IP configuration for port %s: %w", port, err)
 		}
 		if count > 0 {
 			return standardSwitchConflict(
 				"standard_switch_port_has_host_ip",
-				fmt.Errorf("port %s has Host IP configuration; remove it on the Interfaces page first", port),
+				fmt.Errorf("port %s is used by Host IP configuration directly or through a VLAN child; remove it on the Interfaces page first", port),
+			)
+		}
+		if _, reserved := reservations[port]; reserved {
+			return standardSwitchConflict(
+				"standard_switch_port_has_host_ip",
+				fmt.Errorf("port %s is reserved by a pending Host IP operation; confirm or revert it on the Interfaces page first", port),
 			)
 		}
 	}
@@ -93,57 +95,66 @@ func (s *Service) checkStandardSwitchPortsForHostInterfaceL3(ports []string, pre
 	return nil
 }
 
-func (s *Service) activeHostInterfaceL3Pending(name string) (*networkModels.PendingApply, error) {
-	var target networkModels.PendingApplyTarget
-	err := s.DB.
-		Where("target_kind = ? AND target_id = ?", "interface", name).
-		Order("id desc").
-		First(&target).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("load host interface l3 pending target %s: %w", name, err)
+func (s *Service) activeHostInterfaceL3Reservations() (map[string]struct{}, error) {
+	var pending []networkModels.PendingApply
+	if err := s.DB.Where(
+		"kind IN ? AND phase = ?",
+		[]string{networkModels.PendingApplyKindInterface, networkModels.PendingApplyKindDelete},
+		networkModels.PendingApplyPhaseApplied,
+	).Find(&pending).Error; err != nil {
+		return nil, fmt.Errorf("load pending Host IP reservations: %w", err)
 	}
 
+	reserved := make(map[string]struct{}, len(pending)*2)
+	for _, operation := range pending {
+		if operation.Interface != "" {
+			reserved[operation.Interface] = struct{}{}
+		}
+		if parent := operation.RuntimeSnapshot.VLANParent; parent != "" && parent != operation.Interface {
+			reserved[parent] = struct{}{}
+		}
+	}
+	return reserved, nil
+}
+
+func (s *Service) activeHostInterfaceL3Pending(name string) (*networkModels.PendingApply, error) {
 	var pending networkModels.PendingApply
-	err = s.DB.
-		Where("id = ? AND phase IN ?", target.PendingID, hostInterfaceL3PendingPhases()).
+	err := s.DB.
+		Where(
+			"interface = ? AND kind IN ? AND phase IN ?",
+			name,
+			[]string{networkModels.PendingApplyKindInterface, networkModels.PendingApplyKindDelete},
+			hostInterfaceL3PendingPhases(),
+		).
+		Order("created_at desc").
 		First(&pending).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("load host interface l3 pending operation %s: %w", target.PendingID, err)
+		return nil, fmt.Errorf("load host interface l3 pending operation for %s: %w", name, err)
 	}
 	return &pending, nil
 }
 
-func (s *Service) loadHostInterfaceL3Pending(
-	id string,
-) (*networkModels.PendingApply, *networkModels.PendingApplyTarget, error) {
+func (s *Service) loadHostInterfaceL3Pending(id string) (*networkModels.PendingApply, error) {
 	var pending networkModels.PendingApply
 	err := s.DB.Where("id = ?", id).First(&pending).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil, hostInterfaceL3NotFound(fmt.Errorf("pending operation %s", id))
+		return nil, hostInterfaceL3NotFound(fmt.Errorf("pending operation %s", id))
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("load pending operation %s: %w", id, err)
+		return nil, fmt.Errorf("load pending operation %s: %w", id, err)
 	}
-
-	var target networkModels.PendingApplyTarget
-	err = s.DB.Where("pending_id = ?", id).First(&target).Error
-	if err != nil {
-		return nil, nil, fmt.Errorf("load pending target for %s: %w", id, err)
+	if pending.Kind != networkModels.PendingApplyKindInterface && pending.Kind != networkModels.PendingApplyKindDelete {
+		return nil, hostInterfaceL3NotFound(fmt.Errorf("pending operation %s", id))
 	}
-	return &pending, &target, nil
+	return &pending, nil
 }
 
 func (s *Service) deleteHostInterfaceL3Pending(id string) {
-	if err := s.DB.Where("pending_id = ?", id).Delete(&networkModels.PendingApplyTarget{}).Error; err != nil {
-		logger.L.Warn().Err(err).Str("pendingId", id).Msg("host_interface_l3_pending_target_delete_failed")
-	}
-	if err := s.DB.Where("id = ?", id).Delete(&networkModels.PendingApply{}).Error; err != nil {
+	err := s.DB.Where("id = ?", id).Delete(&networkModels.PendingApply{}).Error
+	if err != nil {
 		logger.L.Warn().Err(err).Str("pendingId", id).Msg("host_interface_l3_pending_delete_failed")
 	}
 }
@@ -166,6 +177,24 @@ func hostInterfaceL3SpecFromRow(row *networkModels.HostInterfaceL3) networkModel
 		})
 	}
 	return spec
+}
+
+func hostInterfaceL3VerificationState(
+	change hostInterfaceL3PlannedChange,
+	applied networkModels.HostInterfaceL3AppliedState,
+) networkModels.HostInterfaceL3AppliedState {
+	expected := change.Intended
+	expected.MTU = change.Plan.MTU
+	expected.Metric = change.Plan.Metric
+	if change.Plan.RestoreIPv6Flags != nil {
+		expected.IPv6Disabled = nil
+	} else {
+		expected.IPv6Disabled = change.Plan.DisableIPv6
+	}
+	if expected.Up == nil {
+		expected.Up = applied.Up
+	}
+	return expected
 }
 
 func (s *Service) SaveHostInterfaceL3(
@@ -215,33 +244,20 @@ func (s *Service) SaveHostInterfaceL3(
 	}
 
 	pending := networkModels.PendingApply{
-		ID:                    id,
-		Kind:                  networkModels.PendingApplyKindInterface,
-		Phase:                 networkModels.PendingApplyPhasePrepared,
-		ActivePayload:         hostInterfaceL3SpecFromRow(current),
-		CandidatePayload:      change.Spec,
-		CandidateAppliedState: change.Intended,
-		RuntimeSnapshot:       change.Baseline,
-		Reservations:          []string{"interface:" + name},
-		IdentityMAC:           change.IdentityMAC,
-		Origin:                "api",
-		CreatedAt:             hostInterfaceL3Now(),
-	}
-	target := networkModels.PendingApplyTarget{
-		PendingID:         id,
-		TargetKind:        "interface",
-		TargetID:          name,
-		PreviousRevision:  previousRevision,
-		CandidateRevision: previousRevision + 1,
+		ID:                     id,
+		Interface:              name,
+		Kind:                   networkModels.PendingApplyKindInterface,
+		Phase:                  networkModels.PendingApplyPhasePrepared,
+		CandidatePayload:       change.Spec,
+		CandidateAppliedState:  change.Intended,
+		RuntimeSnapshot:        change.Baseline,
+		IdentityMAC:            change.IdentityMAC,
+		CandidateRevision:      previousRevision + 1,
+		RuntimeRestoreRequired: true,
+		CreatedAt:              hostInterfaceL3Now(),
 	}
 
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&pending).Error; err != nil {
-			return err
-		}
-		return tx.Create(&target).Error
-	})
-	if err != nil {
+	if err := s.DB.Create(&pending).Error; err != nil {
 		return entry, fmt.Errorf("persist pending host interface l3 operation: %w", err)
 	}
 
@@ -251,21 +267,21 @@ func (s *Service) SaveHostInterfaceL3(
 	}
 
 	applied, applyErr := applyHostInterfaceL3Plan(change.Plan)
+	verificationState := hostInterfaceL3VerificationState(change, applied)
 	if applyErr == nil {
-		applyErr = verifyHostInterfaceL3Plan(change.Plan, applied)
+		applyErr = waitForHostInterfaceL3DAD(change.Plan, verificationState)
+	}
+	if applyErr == nil {
+		applyErr = verifyHostInterfaceL3Plan(change.Plan, verificationState)
 	}
 	if applyErr == nil {
 		applyErr = verifyHostInterfaceL3Removals(name, networkModels.HostInterfaceL3AppliedState{
 			Addresses: change.Plan.Remove,
 		}, networkModels.HostInterfaceL3Baseline{}, hostInterfaceL3ReAddedHostKeys(change.Plan.Addresses))
 	}
-	if applyErr == nil {
-		applyErr = waitForHostInterfaceL3DAD(change.Plan, applied)
-	}
 	if applyErr != nil {
-		revertErr := revertHostInterfaceL3Runtime(name, change.Baseline, targetState, applied)
+		revertErr := revertHostInterfaceL3Runtime(name, change.IdentityMAC, change.Baseline, targetState, applied)
 		if revertErr != nil {
-			// Keep the prepared record: startup recovery performs the rollback.
 			return entry, errors.Join(fmt.Errorf("apply host interface l3: %w", applyErr), revertErr)
 		}
 		s.deleteHostInterfaceL3Pending(id)
@@ -279,9 +295,8 @@ func (s *Service) SaveHostInterfaceL3(
 			"phase":    networkModels.PendingApplyPhaseApplied,
 			"deadline": deadline,
 		}).Error; err != nil {
-		revertErr := revertHostInterfaceL3Runtime(name, change.Baseline, targetState, applied)
+		revertErr := revertHostInterfaceL3Runtime(name, change.IdentityMAC, change.Baseline, targetState, applied)
 		if revertErr != nil {
-			// Keep the prepared record: startup recovery performs the rollback.
 			return entry, errors.Join(fmt.Errorf("persist applied host interface l3 operation: %w", err), revertErr)
 		}
 		s.deleteHostInterfaceL3Pending(id)
@@ -294,7 +309,6 @@ func (s *Service) SaveHostInterfaceL3(
 		Kind:      networkModels.PendingApplyKindInterface,
 		Phase:     networkModels.PendingApplyPhaseApplied,
 		Deadline:  deadline,
-		Origin:    "api",
 	}, nil
 }
 
@@ -332,17 +346,24 @@ func (s *Service) DeleteHostInterfaceL3(
 		return entry, hostInterfaceL3PendingConflict(fmt.Errorf("operation %s is awaiting confirmation", pending.ID))
 	}
 
+	expectedMAC := strings.TrimSpace(current.IdentityMAC)
+	runtimeMutation := false
+	runtimeSnapshot := current.AdoptionBaseline
 	if live, err := syncIfaceGet(name); err != nil {
 		if !isInterfaceMissingError(err) {
 			return entry, fmt.Errorf("inspect interface %s: %w", name, err)
 		}
-	} else if live != nil && strings.TrimSpace(current.IdentityMAC) != "" &&
-		strings.TrimSpace(live.Ether) != "" &&
-		!strings.EqualFold(current.IdentityMAC, live.Ether) {
-		return entry, hostInterfaceL3Conflict(
-			"host_interface_l3_identity_mismatch",
-			fmt.Errorf("interface %s has MAC %s, expected %s", name, live.Ether, current.IdentityMAC),
-		)
+	} else {
+		if expectedMAC == "" {
+			expectedMAC = strings.TrimSpace(live.Ether)
+		}
+		if expectedMAC != "" &&
+			strings.EqualFold(expectedMAC, strings.TrimSpace(live.Ether)) &&
+			live.VLANParent == current.VLANParent &&
+			live.VLANTag == int(current.VLANTag) {
+			runtimeMutation = true
+			runtimeSnapshot = captureHostInterfaceL3Baseline(live)
+		}
 	}
 
 	id, err := hostInterfaceL3NewID()
@@ -351,56 +372,58 @@ func (s *Service) DeleteHostInterfaceL3(
 	}
 
 	pending := networkModels.PendingApply{
-		ID:              id,
-		Kind:            networkModels.PendingApplyKindDelete,
-		Phase:           networkModels.PendingApplyPhasePrepared,
-		ActivePayload:   hostInterfaceL3SpecFromRow(current),
-		RuntimeSnapshot: current.AdoptionBaseline,
-		Reservations:    []string{"interface:" + name},
-		Origin:          "api",
-		CreatedAt:       hostInterfaceL3Now(),
-	}
-	target := networkModels.PendingApplyTarget{
-		PendingID:         id,
-		TargetKind:        "interface",
-		TargetID:          name,
-		PreviousRevision:  current.Revision,
-		CandidateRevision: current.Revision + 1,
+		ID:                     id,
+		Interface:              name,
+		Kind:                   networkModels.PendingApplyKindDelete,
+		Phase:                  networkModels.PendingApplyPhasePrepared,
+		CandidateAppliedState:  networkModels.HostInterfaceL3AppliedState{},
+		RuntimeSnapshot:        runtimeSnapshot,
+		IdentityMAC:            expectedMAC,
+		CandidateRevision:      current.Revision + 1,
+		RuntimeRestoreRequired: runtimeMutation,
+		CreatedAt:              hostInterfaceL3Now(),
 	}
 
-	err = s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&pending).Error; err != nil {
-			return err
-		}
-		return tx.Create(&target).Error
-	})
-	if err != nil {
+	if err := s.DB.Create(&pending).Error; err != nil {
 		return entry, fmt.Errorf("persist pending host interface l3 delete: %w", err)
 	}
 
-	revertErr := revertHostInterfaceL3Runtime(
-		name,
-		current.AdoptionBaseline,
-		networkModels.HostInterfaceL3AppliedState{},
-		current.AppliedState,
-	)
-	if revertErr != nil {
-		_ = revertHostInterfaceL3Runtime(name, current.AdoptionBaseline, current.AppliedState, networkModels.HostInterfaceL3AppliedState{})
-		s.deleteHostInterfaceL3Pending(id)
-		return entry, fmt.Errorf("remove host interface l3: %w", revertErr)
-	}
-	if verifyErr := verifyHostInterfaceL3Removals(name, current.AppliedState, current.AdoptionBaseline, nil); verifyErr != nil {
-		restoreErr := revertHostInterfaceL3Runtime(
+	if runtimeMutation {
+		revertErr := revertHostInterfaceL3Runtime(
 			name,
+			expectedMAC,
 			current.AdoptionBaseline,
-			current.AppliedState,
 			networkModels.HostInterfaceL3AppliedState{},
+			current.AppliedState,
 		)
-		if restoreErr != nil {
-			return entry, errors.Join(fmt.Errorf("remove host interface l3: %w", verifyErr), restoreErr)
+		if revertErr != nil {
+			restoreErr := revertHostInterfaceL3Runtime(
+				name,
+				expectedMAC,
+				runtimeSnapshot,
+				current.AppliedState,
+				networkModels.HostInterfaceL3AppliedState{},
+			)
+			if restoreErr != nil {
+				return entry, errors.Join(fmt.Errorf("remove host interface l3: %w", revertErr), restoreErr)
+			}
+			s.deleteHostInterfaceL3Pending(id)
+			return entry, fmt.Errorf("remove host interface l3: %w", revertErr)
 		}
-		s.deleteHostInterfaceL3Pending(id)
-		return entry, fmt.Errorf("remove host interface l3: %w", verifyErr)
+		if verifyErr := verifyHostInterfaceL3Removals(name, current.AppliedState, current.AdoptionBaseline, nil); verifyErr != nil {
+			restoreErr := revertHostInterfaceL3Runtime(
+				name,
+				expectedMAC,
+				runtimeSnapshot,
+				current.AppliedState,
+				networkModels.HostInterfaceL3AppliedState{},
+			)
+			if restoreErr != nil {
+				return entry, errors.Join(fmt.Errorf("remove host interface l3: %w", verifyErr), restoreErr)
+			}
+			s.deleteHostInterfaceL3Pending(id)
+			return entry, fmt.Errorf("remove host interface l3: %w", verifyErr)
+		}
 	}
 
 	deadline := hostInterfaceL3Now().Add(HostInterfaceL3ConfirmationWindow)
@@ -410,14 +433,17 @@ func (s *Service) DeleteHostInterfaceL3(
 			"phase":    networkModels.PendingApplyPhaseApplied,
 			"deadline": deadline,
 		}).Error; err != nil {
-		revertErr := revertHostInterfaceL3Runtime(
-			name,
-			current.AdoptionBaseline,
-			current.AppliedState,
-			networkModels.HostInterfaceL3AppliedState{},
-		)
+		var revertErr error
+		if runtimeMutation {
+			revertErr = revertHostInterfaceL3Runtime(
+				name,
+				expectedMAC,
+				runtimeSnapshot,
+				current.AppliedState,
+				networkModels.HostInterfaceL3AppliedState{},
+			)
+		}
 		if revertErr != nil {
-			// Keep the prepared record: startup recovery restores the runtime.
 			return entry, errors.Join(fmt.Errorf("persist applied host interface l3 delete: %w", err), revertErr)
 		}
 		s.deleteHostInterfaceL3Pending(id)
@@ -430,7 +456,6 @@ func (s *Service) DeleteHostInterfaceL3(
 		Kind:      networkModels.PendingApplyKindDelete,
 		Phase:     networkModels.PendingApplyPhaseApplied,
 		Deadline:  deadline,
-		Origin:    "api",
 	}, nil
 }
 
@@ -438,58 +463,47 @@ func (s *Service) ConfirmHostInterfaceL3(id string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	pending, target, err := s.loadHostInterfaceL3Pending(id)
+	pending, err := s.loadHostInterfaceL3Pending(id)
 	if err != nil {
 		return err
 	}
 
-	switch pending.Phase {
-	case networkModels.PendingApplyPhaseConfirmed:
-	case networkModels.PendingApplyPhaseApplied:
-		if hostInterfaceL3Now().After(pending.Deadline) {
-			revertErr := s.revertHostInterfaceL3PendingLocked(pending, target)
-			s.deleteHostInterfaceL3Pending(id)
-			return errors.Join(
-				hostInterfaceL3Conflict("host_interface_l3_confirmation_expired", nil),
-				revertErr,
-			)
-		}
-	case networkModels.PendingApplyPhasePrepared:
+	if pending.Phase == networkModels.PendingApplyPhasePrepared {
 		return hostInterfaceL3PendingConflict(fmt.Errorf("operation %s has not finished applying", id))
-	default:
+	}
+	if pending.Phase != networkModels.PendingApplyPhaseApplied {
 		return hostInterfaceL3NotFound(fmt.Errorf("pending operation %s", id))
 	}
-
-	if err := s.DB.Model(&networkModels.PendingApply{}).
-		Where("id = ?", id).
-		Update("phase", networkModels.PendingApplyPhaseConfirmed).Error; err != nil {
-		return fmt.Errorf("mark pending operation %s confirmed: %w", id, err)
+	if hostInterfaceL3Now().After(pending.Deadline) {
+		revertErr := s.revertHostInterfaceL3PendingLocked(pending)
+		if revertErr == nil {
+			s.deleteHostInterfaceL3Pending(id)
+		}
+		return errors.Join(
+			hostInterfaceL3Conflict("host_interface_l3_confirmation_expired", nil),
+			revertErr,
+		)
 	}
-
-	if err := s.promoteHostInterfaceL3Pending(pending, target); err != nil {
+	if err := s.verifyHostInterfaceL3PendingRuntime(pending); err != nil {
 		return err
 	}
-
-	s.deleteHostInterfaceL3Pending(id)
-	return nil
+	return s.promoteHostInterfaceL3Pending(pending)
 }
 
 func (s *Service) RevertHostInterfaceL3(id string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	pending, target, err := s.loadHostInterfaceL3Pending(id)
+	pending, err := s.loadHostInterfaceL3Pending(id)
 	if err != nil {
 		return err
 	}
-	if pending.Phase == networkModels.PendingApplyPhaseConfirmed {
-		return hostInterfaceL3PendingConflict(fmt.Errorf("operation %s is already confirmed", id))
+	if pending.Phase != networkModels.PendingApplyPhasePrepared && pending.Phase != networkModels.PendingApplyPhaseApplied {
+		return hostInterfaceL3NotFound(fmt.Errorf("pending operation %s", id))
 	}
 
-	revertErr := s.revertHostInterfaceL3PendingLocked(pending, target)
+	revertErr := s.revertHostInterfaceL3PendingLocked(pending)
 	if revertErr != nil {
-		// Keep the pending record; the sweeper and startup recovery retry the
-		// rollback instead of leaving the runtime changed with no journal.
 		return revertErr
 	}
 	s.deleteHostInterfaceL3Pending(id)
@@ -498,9 +512,11 @@ func (s *Service) RevertHostInterfaceL3(id string) error {
 
 func (s *Service) revertHostInterfaceL3PendingLocked(
 	pending *networkModels.PendingApply,
-	target *networkModels.PendingApplyTarget,
 ) error {
-	name := target.TargetID
+	if !pending.RuntimeRestoreRequired {
+		return nil
+	}
+	name := pending.Interface
 
 	row, err := s.loadHostInterfaceL3ByName(name)
 	if err != nil {
@@ -511,30 +527,143 @@ func (s *Service) revertHostInterfaceL3PendingLocked(
 	if row != nil {
 		targetState = row.AppliedState
 	}
-	candidateState := pending.CandidateAppliedState
-	if pending.Kind == networkModels.PendingApplyKindDelete {
-		candidateState = networkModels.HostInterfaceL3AppliedState{}
+	return revertHostInterfaceL3Runtime(
+		name,
+		pending.IdentityMAC,
+		pending.RuntimeSnapshot,
+		targetState,
+		pending.CandidateAppliedState,
+	)
+}
+
+func (s *Service) verifyHostInterfaceL3PendingRuntime(
+	pending *networkModels.PendingApply,
+) error {
+	name := pending.Interface
+	row, err := s.loadHostInterfaceL3ByName(name)
+	if err != nil {
+		return err
 	}
 
-	return revertHostInterfaceL3Runtime(name, pending.RuntimeSnapshot, targetState, candidateState)
+	if pending.Kind == networkModels.PendingApplyKindDelete {
+		if !pending.RuntimeRestoreRequired || row == nil {
+			return nil
+		}
+		return verifyHostInterfaceL3Restore(
+			name,
+			pending.IdentityMAC,
+			row.AdoptionBaseline,
+			networkModels.HostInterfaceL3AppliedState{},
+			row.AppliedState,
+		)
+	}
+	if err := s.validateHostInterfaceL3PendingTarget(name, pending); err != nil {
+		return err
+	}
+
+	active := networkModels.HostInterfaceL3AppliedState{}
+	baseline := pending.RuntimeSnapshot
+	if row != nil {
+		active = row.AppliedState
+		baseline = row.AdoptionBaseline
+	}
+	candidate := pending.CandidateAppliedState
+	plan := hostInterfaceL3ApplyPlan{
+		Interface:          name,
+		ExpectedMAC:        pending.IdentityMAC,
+		ExpectedVLANParent: pending.RuntimeSnapshot.VLANParent,
+		ExpectedVLANTag:    pending.RuntimeSnapshot.VLANTag,
+	}
+	if err := verifyHostInterfaceL3Plan(plan, candidate); err != nil {
+		return err
+	}
+
+	readded := make(map[string]struct{}, len(candidate.Addresses))
+	for _, address := range candidate.Addresses {
+		readded[address.Family+"|"+hostInterfaceL3AddressIP(address.Address)] = struct{}{}
+	}
+	if err := verifyHostInterfaceL3Removals(
+		name,
+		networkModels.HostInterfaceL3AppliedState{Addresses: active.Addresses},
+		networkModels.HostInterfaceL3Baseline{},
+		readded,
+	); err != nil {
+		return err
+	}
+
+	live, err := syncIfaceGet(name)
+	if err != nil {
+		if isInterfaceMissingError(err) {
+			return hostInterfaceL3Conflict("host_interface_l3_missing_interface", err)
+		}
+		return fmt.Errorf("verify pending operation on %s: %w", name, err)
+	}
+	if err := ensureHostInterfaceL3Identity(live, pending.IdentityMAC); err != nil {
+		return err
+	}
+	if candidate.MTU == nil && active.MTU != nil && baseline.MTU != nil && uint(live.MTU) != *baseline.MTU {
+		return fmt.Errorf("verify pending operation on %s: MTU is %d, expected %d", name, live.MTU, *baseline.MTU)
+	}
+	if candidate.Metric == nil && active.Metric != nil && baseline.Metric != nil && uint(live.Metric) != *baseline.Metric {
+		return fmt.Errorf("verify pending operation on %s: metric is %d, expected %d", name, live.Metric, *baseline.Metric)
+	}
+	if candidate.IPv6Disabled == nil && active.IPv6Disabled != nil {
+		if baseline.ND6Flags != nil && live.ND6.Raw != *baseline.ND6Flags {
+			return fmt.Errorf("verify pending operation on %s: ND6 options are %#x, expected %#x", name, live.ND6.Raw, *baseline.ND6Flags)
+		}
+	}
+	if candidate.Up == nil && active.Up != nil && baseline.Up != nil && interfaceIsUp(live) != *baseline.Up {
+		return fmt.Errorf("verify pending operation on %s: link state is incorrect", name)
+	}
+
+	return nil
+}
+
+func (s *Service) validateHostInterfaceL3PendingTarget(
+	name string,
+	pending *networkModels.PendingApply,
+) error {
+	live, err := syncIfaceGet(name)
+	if err != nil {
+		if isInterfaceMissingError(err) {
+			return hostInterfaceL3Conflict("host_interface_l3_missing_interface", err)
+		}
+		return fmt.Errorf("inspect pending Host IP target %s: %w", name, err)
+	}
+	if err := ensureHostInterfaceL3Identity(live, pending.IdentityMAC); err != nil {
+		return err
+	}
+	if err := ensureHostInterfaceL3VLANIdentity(
+		live,
+		pending.RuntimeSnapshot.VLANParent,
+		pending.RuntimeSnapshot.VLANTag,
+	); err != nil {
+		return err
+	}
+	if code := s.hostInterfaceL3EligibilityCode(live); code != "" {
+		return hostInterfaceL3Conflict(code, nil)
+	}
+	liveInterfaces, err := hostInterfaceL3ListInterfaces()
+	if err != nil {
+		return fmt.Errorf("inspect interfaces for %s: %w", name, err)
+	}
+	if err := s.hostInterfaceL3MembershipGuardWithInterfaces(name, liveInterfaces); err != nil {
+		return err
+	}
+	mtu := uint(live.MTU)
+	if err := s.validateHostInterfaceL3VLANBoundaries(name, live, &mtu, liveInterfaces); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) promoteHostInterfaceL3Pending(
 	pending *networkModels.PendingApply,
-	target *networkModels.PendingApplyTarget,
 ) error {
-	name := target.TargetID
-
-	var vlanParent string
-	var vlanTag uint16
+	name := pending.Interface
+	vlanParent := pending.RuntimeSnapshot.VLANParent
+	vlanTag := pending.RuntimeSnapshot.VLANTag
 	identityMAC := strings.TrimSpace(pending.IdentityMAC)
-	if live, err := syncIfaceGet(name); err == nil && live != nil {
-		vlanParent = live.VLANParent
-		vlanTag = uint16(live.VLANTag)
-		if identityMAC == "" {
-			identityMAC = live.Ether
-		}
-	}
 
 	return s.DB.Transaction(func(tx *gorm.DB) error {
 		var row networkModels.HostInterfaceL3
@@ -557,21 +686,16 @@ func (s *Service) promoteHostInterfaceL3Pending(
 					return err
 				}
 			}
-			return nil
+			return tx.Where("id = ?", pending.ID).Delete(&networkModels.PendingApply{}).Error
 		}
 
-		if !found || row.AdoptionBaseline == (networkModels.HostInterfaceL3Baseline{}) {
+		if !found {
 			row.AdoptionBaseline = pending.RuntimeSnapshot
 		}
-		row.Lifecycle = networkModels.HostInterfaceL3LifecycleExternal
 		row.VLANParent = vlanParent
 		row.VLANTag = vlanTag
 		if row.IdentityMAC == "" {
 			row.IdentityMAC = identityMAC
-		}
-		if row.MTUBaseline == nil {
-			// Keep the adoption-time baseline; later edits must not overwrite it.
-			row.MTUBaseline = pending.RuntimeSnapshot.MTU
 		}
 		row.MTU = pending.CandidatePayload.MTU
 		row.Metric = pending.CandidatePayload.Metric
@@ -580,7 +704,7 @@ func (s *Service) promoteHostInterfaceL3Pending(
 			row.IPv6Mode = *pending.CandidatePayload.IPv6Mode
 		}
 		row.AppliedState = pending.CandidateAppliedState
-		row.Revision = target.CandidateRevision
+		row.Revision = pending.CandidateRevision
 
 		if err := tx.Save(&row).Error; err != nil {
 			return err
@@ -602,7 +726,7 @@ func (s *Service) promoteHostInterfaceL3Pending(
 			}
 		}
 
-		return nil
+		return tx.Where("id = ?", pending.ID).Delete(&networkModels.PendingApply{}).Error
 	})
 }
 
@@ -610,7 +734,11 @@ func (s *Service) GetHostInterfaceL3Pending() ([]networkServiceInterfaces.HostIn
 	entries := make([]networkServiceInterfaces.HostInterfaceL3PendingEntry, 0)
 
 	var pending []networkModels.PendingApply
-	if err := s.DB.Where("phase IN ?", hostInterfaceL3PendingPhases()).
+	if err := s.DB.Where(
+		"kind IN ? AND phase IN ?",
+		[]string{networkModels.PendingApplyKindInterface, networkModels.PendingApplyKindDelete},
+		hostInterfaceL3PendingPhases(),
+	).
 		Order("created_at asc").
 		Find(&pending).Error; err != nil {
 		return nil, fmt.Errorf("list pending host interface l3 operations: %w", err)
@@ -620,17 +748,12 @@ func (s *Service) GetHostInterfaceL3Pending() ([]networkServiceInterfaces.HostIn
 	}
 
 	for _, operation := range pending {
-		var target networkModels.PendingApplyTarget
-		if err := s.DB.Where("pending_id = ?", operation.ID).First(&target).Error; err != nil {
-			continue
-		}
 		entries = append(entries, networkServiceInterfaces.HostInterfaceL3PendingEntry{
 			ID:        operation.ID,
-			Interface: target.TargetID,
+			Interface: operation.Interface,
 			Kind:      operation.Kind,
 			Phase:     operation.Phase,
 			Deadline:  operation.Deadline,
-			Origin:    operation.Origin,
 		})
 	}
 
@@ -670,6 +793,9 @@ func (s *Service) reapplyHostInterfaceL3Locked(name string) error {
 			Address: fmt.Sprintf("%s/%d", address.Address, address.PrefixLength),
 		})
 	}
+	if live, err := syncIfaceGet(name); err == nil && hostInterfaceL3PrefixOwnershipChanged(row, live) {
+		return hostInterfaceL3Conflict(networkServiceInterfaces.HostInterfaceL3ConflictPrefixOwnerChanged, nil)
+	}
 
 	change, err := s.planHostInterfaceL3Change(name, row, request)
 	if err != nil {
@@ -677,28 +803,32 @@ func (s *Service) reapplyHostInterfaceL3Locked(name string) error {
 	}
 
 	applied, applyErr := applyHostInterfaceL3Plan(change.Plan)
+	verificationState := hostInterfaceL3VerificationState(change, applied)
 	if applyErr == nil {
-		applyErr = verifyHostInterfaceL3Plan(change.Plan, applied)
+		applyErr = waitForHostInterfaceL3DAD(change.Plan, verificationState)
 	}
 	if applyErr == nil {
-		applyErr = waitForHostInterfaceL3DAD(change.Plan, applied)
+		applyErr = verifyHostInterfaceL3Plan(change.Plan, verificationState)
+	}
+	if applyErr == nil {
+		applyErr = verifyHostInterfaceL3Removals(name, networkModels.HostInterfaceL3AppliedState{
+			Addresses: change.Plan.Remove,
+		}, networkModels.HostInterfaceL3Baseline{}, hostInterfaceL3ReAddedHostKeys(change.Plan.Addresses))
 	}
 	if applyErr != nil {
 		return errors.Join(
 			fmt.Errorf("reapply host interface l3: %w", applyErr),
-			revertHostInterfaceL3Runtime(name, change.Baseline, row.AppliedState, applied),
+			revertHostInterfaceL3Runtime(name, change.IdentityMAC, change.Baseline, row.AppliedState, applied),
 		)
 	}
 
-	row.AppliedState = networkModels.HostInterfaceL3AppliedState{
-		Addresses:    change.Intended.Addresses,
-		MTU:          row.AppliedState.MTU,
-		Metric:       row.AppliedState.Metric,
-		IPv6Disabled: row.AppliedState.IPv6Disabled,
-		Up:           row.AppliedState.Up,
-	}
+	previousState := row.AppliedState
+	row.AppliedState = change.Intended
 	if err := s.DB.Save(row).Error; err != nil {
-		return fmt.Errorf("persist reapplied host interface l3 state: %w", err)
+		return errors.Join(
+			fmt.Errorf("persist reapplied host interface l3 state: %w", err),
+			revertHostInterfaceL3Runtime(name, change.IdentityMAC, change.Baseline, previousState, applied),
+		)
 	}
 
 	return nil
@@ -709,61 +839,29 @@ func (s *Service) RecoverHostInterfaceL3() error {
 	defer s.syncMutex.Unlock()
 
 	var pending []networkModels.PendingApply
-	if err := s.DB.Order("created_at asc").Find(&pending).Error; err != nil {
+	if err := s.DB.
+		Where("kind IN ?", []string{networkModels.PendingApplyKindInterface, networkModels.PendingApplyKindDelete}).
+		Order("created_at asc").
+		Find(&pending).Error; err != nil {
 		return fmt.Errorf("load pending host interface l3 operations: %w", err)
 	}
 
 	var recoverErrors []error
 	for _, operation := range pending {
-		var target networkModels.PendingApplyTarget
-		if err := s.DB.Where("pending_id = ?", operation.ID).First(&target).Error; err != nil {
-			recoverErrors = append(recoverErrors, fmt.Errorf("load target for %s: %w", operation.ID, err))
+		if operation.Phase != networkModels.PendingApplyPhasePrepared &&
+			operation.Phase != networkModels.PendingApplyPhaseApplied {
+			recoverErrors = append(recoverErrors, fmt.Errorf(
+				"pending Host IP operation %s has unknown phase %q",
+				operation.ID,
+				operation.Phase,
+			))
 			continue
 		}
-
-		row, err := s.loadHostInterfaceL3ByName(target.TargetID)
-		if err != nil {
+		if err := s.revertHostInterfaceL3PendingLocked(&operation); err != nil {
 			recoverErrors = append(recoverErrors, err)
 			continue
 		}
-
-		switch operation.Phase {
-		case networkModels.PendingApplyPhaseConfirmed:
-			if row != nil && row.Revision == target.CandidateRevision {
-				s.deleteHostInterfaceL3Pending(operation.ID)
-				continue
-			}
-			if err := s.promoteHostInterfaceL3Pending(&operation, &target); err != nil {
-				recoverErrors = append(recoverErrors, err)
-				continue
-			}
-			s.deleteHostInterfaceL3Pending(operation.ID)
-		case networkModels.PendingApplyPhasePrepared:
-			targetState := networkModels.HostInterfaceL3AppliedState{}
-			if row != nil {
-				targetState = row.AppliedState
-			}
-			if err := revertHostInterfaceL3Runtime(
-				target.TargetID,
-				operation.RuntimeSnapshot,
-				targetState,
-				operation.CandidateAppliedState,
-			); err != nil {
-				recoverErrors = append(recoverErrors, err)
-				continue
-			}
-			s.deleteHostInterfaceL3Pending(operation.ID)
-		case networkModels.PendingApplyPhaseApplied:
-			if hostInterfaceL3Now().After(operation.Deadline) {
-				if err := s.revertHostInterfaceL3PendingLocked(&operation, &target); err != nil {
-					recoverErrors = append(recoverErrors, err)
-					continue
-				}
-				s.deleteHostInterfaceL3Pending(operation.ID)
-			}
-		default:
-			s.deleteHostInterfaceL3Pending(operation.ID)
-		}
+		s.deleteHostInterfaceL3Pending(operation.ID)
 	}
 
 	return errors.Join(recoverErrors...)
@@ -789,8 +887,6 @@ func (s *Service) ReconcileHostInterfaceL3() error {
 		if err := s.reapplyHostInterfaceL3Locked(row.Interface); err != nil {
 			var hostErr *hostInterfaceL3Error
 			if errors.As(err, &hostErr) {
-				// Expected conflicts (missing interface, eligibility, identity)
-				// are surfaced by the list endpoint, not as startup errors.
 				logger.L.Debug().Err(err).Str("interface", row.Interface).Msg("host_interface_l3_reconcile_conflict")
 				continue
 			}
@@ -807,19 +903,19 @@ func (s *Service) ExpireHostInterfaceL3Pending(now time.Time) error {
 
 	var pending []networkModels.PendingApply
 	if err := s.DB.
-		Where("phase = ? AND deadline <= ?", networkModels.PendingApplyPhaseApplied, now).
+		Where(
+			"kind IN ? AND phase = ? AND deadline <= ?",
+			[]string{networkModels.PendingApplyKindInterface, networkModels.PendingApplyKindDelete},
+			networkModels.PendingApplyPhaseApplied,
+			now,
+		).
 		Find(&pending).Error; err != nil {
 		return fmt.Errorf("load expiring host interface l3 operations: %w", err)
 	}
 
 	var expireErrors []error
 	for _, operation := range pending {
-		var target networkModels.PendingApplyTarget
-		if err := s.DB.Where("pending_id = ?", operation.ID).First(&target).Error; err != nil {
-			expireErrors = append(expireErrors, err)
-			continue
-		}
-		if err := s.revertHostInterfaceL3PendingLocked(&operation, &target); err != nil {
+		if err := s.revertHostInterfaceL3PendingLocked(&operation); err != nil {
 			expireErrors = append(expireErrors, err)
 			continue
 		}

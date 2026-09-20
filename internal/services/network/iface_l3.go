@@ -43,9 +43,7 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 
 	liveByName := make(map[string]*iface.Interface, len(liveInterfaces))
 	for _, obj := range liveInterfaces {
-		if obj != nil {
-			liveByName[obj.Name] = obj
-		}
+		liveByName[obj.Name] = obj
 	}
 
 	var ports []networkModels.NetworkPort
@@ -84,7 +82,6 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 	for _, sw := range manualSwitches {
 		knownBridges[sw.Bridge] = struct{}{}
 	}
-	// Bridges Sylve does not know about still claim their members.
 	for name, obj := range liveByName {
 		if utils.Contains(obj.Groups, "bridge") {
 			knownBridges[name] = struct{}{}
@@ -104,22 +101,38 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 	for _, row := range rows {
 		rowsByInterface[row.Interface] = row
 	}
+	reservations, err := s.activeHostInterfaceL3Reservations()
+	if err != nil {
+		return list, err
+	}
 
 	for _, row := range rows {
+		addresses := make([]networkServiceInterfaces.HostInterfaceL3AddressEntry, 0, len(row.Addresses))
+		for _, address := range row.Addresses {
+			addresses = append(addresses, networkServiceInterfaces.HostInterfaceL3AddressEntry{
+				Family:       address.Family,
+				Address:      address.Address,
+				PrefixLength: address.PrefixLength,
+			})
+		}
+		managedAddresses := append(
+			make([]networkModels.HostInterfaceL3AppliedAddress, 0, len(row.AppliedState.Addresses)),
+			row.AppliedState.Addresses...,
+		)
 		entry := networkServiceInterfaces.HostInterfaceL3Entry{
-			ID:          row.ID,
-			Interface:   row.Interface,
-			VLANParent:  row.VLANParent,
-			VLANTag:     row.VLANTag,
-			Lifecycle:   row.Lifecycle,
-			IPv6Mode:    row.IPv6Mode,
-			MTU:         row.MTU,
-			MTUBaseline: row.MTUBaseline,
-			Metric:      row.Metric,
-			IdentityMAC: row.IdentityMAC,
-			Revision:    row.Revision,
-			Addresses:   row.Addresses,
-			Conflicts:   make([]string, 0, 2),
+			Interface:        row.Interface,
+			VLANParent:       row.VLANParent,
+			VLANTag:          row.VLANTag,
+			IPv6Mode:         row.IPv6Mode,
+			MTU:              row.MTU,
+			MTUBaseline:      row.AdoptionBaseline.MTU,
+			Metric:           row.Metric,
+			MetricBaseline:   row.AdoptionBaseline.Metric,
+			IdentityMAC:      row.IdentityMAC,
+			Revision:         row.Revision,
+			Addresses:        addresses,
+			ManagedAddresses: managedAddresses,
+			Conflicts:        make([]string, 0, 3),
 		}
 
 		live, present := liveByName[row.Interface]
@@ -131,8 +144,12 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 		switch {
 		case !present:
 			entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictMissingInterface)
-		case row.IdentityMAC != "" && live.Ether != "" && !strings.EqualFold(row.IdentityMAC, live.Ether):
+		case strings.TrimSpace(row.IdentityMAC) != "" &&
+			!strings.EqualFold(strings.TrimSpace(row.IdentityMAC), strings.TrimSpace(live.Ether)):
 			entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictIdentityMismatch)
+		}
+		if present && (row.VLANParent != live.VLANParent || int(row.VLANTag) != live.VLANTag) {
+			entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictVLANIdentity)
 		}
 
 		if _, isPort := standardPorts[row.Interface]; isPort {
@@ -142,8 +159,13 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 		}
 
 		if row.VLANParent != "" {
-			if _, ok := liveByName[row.VLANParent]; !ok {
+			parent, parentPresent := liveByName[row.VLANParent]
+			if !parentPresent {
 				entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictVLANParentMissing)
+			} else if s.hostInterfaceL3EligibilityCode(parent) != "" ||
+				standardPortContains(standardPorts, row.VLANParent) ||
+				bridgeMembershipContains(bridgeMembership, row.VLANParent) {
+				entry.Conflicts = append(entry.Conflicts, "host_interface_l3_vlan_parent_ineligible")
 			}
 			if _, ok := rowsByInterface[row.VLANParent]; ok {
 				entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictParentHasHostIP)
@@ -151,12 +173,23 @@ func (s *Service) GetHostInterfaceL3() (networkServiceInterfaces.HostInterfaceL3
 		} else if hostInterfaceL3HasVLANChildren(row.Interface, rowsByInterface, liveByName) {
 			entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictParentHasChildren)
 		}
+		if present && hostInterfaceL3PrefixOwnershipChanged(&row, live) {
+			entry.Conflicts = append(entry.Conflicts, networkServiceInterfaces.HostInterfaceL3ConflictPrefixOwnerChanged)
+		}
 
 		entries = append(entries, entry)
 	}
 
 	list.Rows = entries
-	list.Targets = hostInterfaceL3Targets(rows, liveInterfaces, liveByName, standardPorts, bridgeMembership)
+	list.Targets = hostInterfaceL3Targets(
+		rows,
+		liveInterfaces,
+		liveByName,
+		standardPorts,
+		bridgeMembership,
+		reservations,
+		s.hostInterfaceL3EligibilityCode,
+	)
 	return list, nil
 }
 
@@ -166,21 +199,23 @@ func hostInterfaceL3Targets(
 	liveByName map[string]*iface.Interface,
 	standardPorts map[string]struct{},
 	bridgeMembership map[string]map[string]struct{},
+	reservations map[string]struct{},
+	eligibility func(*iface.Interface) string,
 ) []networkServiceInterfaces.HostInterfaceL3TargetEntry {
 	rowsByInterface := make(map[string]networkModels.HostInterfaceL3, len(rows))
 	for _, row := range rows {
 		rowsByInterface[row.Interface] = row
 	}
 
-	hasRows := make(map[string]bool, len(rows))
+	hasConfiguredChildren := make(map[string]bool, len(rows))
 	for _, row := range rows {
 		if row.VLANParent != "" {
-			hasRows[row.VLANParent] = true
+			hasConfiguredChildren[row.VLANParent] = true
 		}
 	}
 	hasLiveChildren := make(map[string]bool)
 	for _, obj := range liveInterfaces {
-		if obj != nil && obj.VLANParent != "" {
+		if obj.VLANParent != "" {
 			hasLiveChildren[obj.VLANParent] = true
 		}
 	}
@@ -188,18 +223,16 @@ func hostInterfaceL3Targets(
 	targets := make([]networkServiceInterfaces.HostInterfaceL3TargetEntry, 0, len(liveInterfaces))
 	seen := make(map[string]struct{}, len(liveInterfaces))
 	for _, obj := range liveInterfaces {
-		if obj == nil {
-			continue
-		}
 		if _, duplicate := seen[obj.Name]; duplicate {
 			continue
 		}
 		seen[obj.Name] = struct{}{}
 
-		_, hasConfig := rowsByInterface[obj.Name]
 		reason := ""
 
-		switch code := hostInterfaceL3EligibilityCode(obj); {
+		switch code := eligibility(obj); {
+		case hostInterfaceL3Reserved(reservations, obj.Name):
+			reason = networkServiceInterfaces.HostInterfaceL3ConflictPending
 		case code != "":
 			reason = code
 		case standardPortContains(standardPorts, obj.Name):
@@ -211,12 +244,16 @@ func hostInterfaceL3Targets(
 			switch {
 			case !parentLive:
 				reason = networkServiceInterfaces.HostInterfaceL3ConflictVLANParentMissing
-			case hostInterfaceL3EligibilityCode(parent) != "":
+			case eligibility(parent) != "":
 				reason = "host_interface_l3_vlan_parent_ineligible"
-			case hasRows[obj.VLANParent]:
+			case standardPortContains(standardPorts, obj.VLANParent):
+				reason = "host_interface_l3_vlan_parent_ineligible"
+			case bridgeMembershipContains(bridgeMembership, obj.VLANParent):
+				reason = "host_interface_l3_vlan_parent_ineligible"
+			case rowsByInterface[obj.VLANParent].Interface != "":
 				reason = networkServiceInterfaces.HostInterfaceL3ConflictParentHasHostIP
 			}
-		case hasRows[obj.Name] || hasLiveChildren[obj.Name]:
+		case hasConfiguredChildren[obj.Name] || hasLiveChildren[obj.Name]:
 			reason = networkServiceInterfaces.HostInterfaceL3ConflictParentHasChildren
 		}
 
@@ -224,11 +261,15 @@ func hostInterfaceL3Targets(
 			Interface: obj.Name,
 			Eligible:  reason == "",
 			Reason:    reason,
-			HasConfig: hasConfig,
 		})
 	}
 
 	return targets
+}
+
+func hostInterfaceL3Reserved(reservations map[string]struct{}, name string) bool {
+	_, reserved := reservations[name]
+	return reserved
 }
 
 func standardPortContains(ports map[string]struct{}, name string) bool {
@@ -252,7 +293,7 @@ func hostInterfaceL3HasVLANChildren(
 		}
 	}
 	for _, obj := range live {
-		if obj != nil && obj.VLANParent == name {
+		if obj.VLANParent == name {
 			return true
 		}
 	}

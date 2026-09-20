@@ -15,8 +15,12 @@ const CONFLICT_LABELS: Record<string, string> = {
 	host_interface_l3_vlan_parent_ineligible: 'VLAN parent is not eligible for Host IP',
 	host_interface_l3_parent_has_host_ip: 'Parent interface already has Host IP configuration',
 	host_interface_l3_parent_has_vlan_children: 'Interface already has VLAN children',
+	host_interface_l3_prefix_owner_changed:
+		'IPv4 prefix ownership changed; review and save the configuration before reapplying',
+	host_interface_l3_vlan_identity_mismatch: 'VLAN parent or tag differs from the adopted interface',
+	host_interface_l3_pending_conflict: 'A Host IP change is awaiting confirmation',
 	host_interface_l3_ineligible_no_mac: 'Interface has no MAC address',
-	host_interface_l3_ineligible_no_driver: 'Interface has no hardware driver'
+	host_interface_l3_ineligible_no_driver: 'Interface has no physical hardware metadata'
 };
 
 export function hostInterfaceL3Label(code: string): string {

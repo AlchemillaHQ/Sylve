@@ -44,7 +44,6 @@ func newNetworkServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&networkModels.HostInterfaceL3{},
 		&networkModels.HostInterfaceL3Address{},
 		&networkModels.PendingApply{},
-		&networkModels.PendingApplyTarget{},
 		&networkModels.ObjectListSnapshot{},
 		&infoModels.FirewallRuleDelta{},
 		&infoModels.FirewallRuleCounterTotal{},

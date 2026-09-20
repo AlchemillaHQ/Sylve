@@ -15214,6 +15214,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
+                "description": "Restore an applied operation; discard a prepared operation without changing ambiguous runtime state",
                 "produces": [
                     "application/json"
                 ],
@@ -33278,7 +33279,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address": {
+        "github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3AppliedAddress": {
             "type": "object",
             "properties": {
                 "address": {
@@ -33286,18 +33287,6 @@ const docTemplate = `{
                 },
                 "family": {
                     "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "interfaceL3Id": {
-                    "type": "integer"
-                },
-                "ordering": {
-                    "type": "integer"
-                },
-                "prefixLength": {
-                    "type": "integer"
                 }
             }
         },
@@ -37239,13 +37228,27 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "prefixLength": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3Entry": {
             "type": "object",
             "properties": {
                 "addresses": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3Address"
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry"
                     }
                 },
                 "conflicts": {
@@ -37253,9 +37256,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "id": {
-                    "type": "integer"
                 },
                 "identityMac": {
                     "type": "string"
@@ -37266,13 +37266,19 @@ const docTemplate = `{
                 "ipv6Mode": {
                     "type": "string"
                 },
-                "lifecycle": {
-                    "type": "string"
-                },
                 "liveMac": {
                     "type": "string"
                 },
+                "managedAddresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3AppliedAddress"
+                    }
+                },
                 "metric": {
+                    "type": "integer"
+                },
+                "metricBaseline": {
                     "type": "integer"
                 },
                 "mtu": {
@@ -37327,9 +37333,6 @@ const docTemplate = `{
                 "kind": {
                     "type": "string"
                 },
-                "origin": {
-                    "type": "string"
-                },
                 "phase": {
                     "type": "string"
                 }
@@ -37339,9 +37342,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "eligible": {
-                    "type": "boolean"
-                },
-                "hasConfig": {
                     "type": "boolean"
                 },
                 "interface": {

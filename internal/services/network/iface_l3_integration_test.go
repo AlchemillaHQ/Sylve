@@ -55,28 +55,26 @@ func requireHostInterfaceL3NativeFixture(t *testing.T) string {
 	return name
 }
 
-func useHostInterfaceL3NativeSeams(t *testing.T) {
+func useHostInterfaceL3NativeSeams(t *testing.T) func(*iface.Interface) string {
 	t.Helper()
 
 	originalGet := syncIfaceGet
 	originalRun := syncRunCommand
 	originalList := hostInterfaceL3ListInterfaces
-	originalSeam := hostInterfaceL3EligibilitySeam
 	t.Cleanup(func() {
 		syncIfaceGet = originalGet
 		syncRunCommand = originalRun
 		hostInterfaceL3ListInterfaces = originalList
-		hostInterfaceL3EligibilitySeam = originalSeam
 	})
 
 	syncIfaceGet = iface.Get
 	syncRunCommand = utils.RunCommand
 	hostInterfaceL3ListInterfaces = iface.List
-	hostInterfaceL3EligibilitySeam = func(interfaceObj *iface.Interface) (string, bool) {
+	return func(interfaceObj *iface.Interface) string {
 		if interfaceObj != nil && strings.HasPrefix(interfaceObj.Name, "epair") {
-			return "", true
+			return ""
 		}
-		return "", false
+		return hostInterfaceL3EligibilityCode(interfaceObj)
 	}
 }
 
@@ -105,11 +103,25 @@ func hostInterfaceL3HasIPv4(t *testing.T, name string, address string) bool {
 	return false
 }
 
+func hostInterfaceL3HasIPv4Prefix(t *testing.T, name string, address string, prefixLength int) bool {
+	t.Helper()
+
+	interfaceObj := hostInterfaceL3LiveInterface(t, name)
+	for _, candidate := range interfaceObj.IPv4 {
+		prefix, ok := interfaceIPv4Prefix(candidate)
+		if ok && prefix.Addr().String() == address && prefix.Bits() == prefixLength {
+			return true
+		}
+	}
+	return false
+}
+
 func TestIntegrationHostInterfaceL3StaticLifecycle(t *testing.T) {
 	name := requireHostInterfaceL3NativeFixture(t)
-	useHostInterfaceL3NativeSeams(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
 
 	svc, db := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
 
 	mtu := uint(1400)
 	metric := uint(100)
@@ -160,6 +172,19 @@ func TestIntegrationHostInterfaceL3StaticLifecycle(t *testing.T) {
 	if !hostInterfaceL3HasIPv4(t, name, "198.18.0.10") {
 		t.Fatal("expected reapply to restore the missing address")
 	}
+	if _, err := utils.RunCommand("/sbin/ifconfig", name, "inet", "198.18.0.10", "delete"); err != nil {
+		t.Fatalf("remove address for prefix drift test: %v", err)
+	}
+	if _, err := utils.RunCommand("/sbin/ifconfig", name, "inet", "198.18.0.10/32"); err != nil {
+		t.Fatalf("add drifted prefix: %v", err)
+	}
+	if err := svc.ReapplyHostInterfaceL3(name); err != nil {
+		t.Fatalf("ReapplyHostInterfaceL3 after prefix drift: %v", err)
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.18.0.10", 24) ||
+		hostInterfaceL3HasIPv4Prefix(t, name, "198.18.0.10", 32) {
+		t.Fatalf("expected reapply to replace the drifted /32 with /24")
+	}
 
 	deleteEntry, err := svc.DeleteHostInterfaceL3(name, 1)
 	if err != nil {
@@ -187,9 +212,10 @@ func TestIntegrationHostInterfaceL3StaticLifecycle(t *testing.T) {
 
 func TestIntegrationHostInterfaceL3TimeoutRevert(t *testing.T) {
 	name := requireHostInterfaceL3NativeFixture(t)
-	useHostInterfaceL3NativeSeams(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
 
 	svc, db := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
 
 	request := networkServiceInterfaces.HostInterfaceL3UpdateRequest{
 		Addresses: []networkServiceInterfaces.HostInterfaceL3AddressInput{
@@ -219,11 +245,118 @@ func TestIntegrationHostInterfaceL3TimeoutRevert(t *testing.T) {
 	}
 }
 
-func TestIntegrationHostInterfaceL3IPv6SettlesDAD(t *testing.T) {
+func TestIntegrationHostInterfaceL3PreservesForeignPrefixOwner(t *testing.T) {
 	name := requireHostInterfaceL3NativeFixture(t)
-	useHostInterfaceL3NativeSeams(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
+
+	if _, err := utils.RunCommand("/sbin/ifconfig", name, "inet", "198.20.0.1/24"); err != nil {
+		t.Fatalf("seed foreign prefix owner: %v", err)
+	}
+
+	svc, db := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
+	request := networkServiceInterfaces.HostInterfaceL3UpdateRequest{
+		Addresses: []networkServiceInterfaces.HostInterfaceL3AddressInput{
+			{Address: "198.20.0.2/24"},
+		},
+	}
+	entry, err := svc.SaveHostInterfaceL3(name, request)
+	if err != nil {
+		t.Fatalf("SaveHostInterfaceL3: %v", err)
+	}
+	var pending networkModels.PendingApply
+	if err := db.First(&pending, "id = ?", entry.ID).Error; err != nil {
+		t.Fatalf("load pending operation: %v", err)
+	}
+	if len(pending.CandidateAppliedState.Addresses) != 1 ||
+		pending.CandidateAppliedState.Addresses[0].Address != "198.20.0.2/32" {
+		t.Fatalf("expected a managed /32 alias, got %+v", pending.CandidateAppliedState.Addresses)
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.20.0.1", 24) {
+		t.Fatal("expected the foreign /24 prefix owner to remain unchanged")
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.20.0.2", 32) {
+		t.Fatal("expected the managed address to use a /32 mask")
+	}
+
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3: %v", err)
+	}
+	if _, err := utils.RunCommand("/sbin/ifconfig", name, "inet", "198.20.0.2", "delete"); err != nil {
+		t.Fatalf("remove managed alias before restart reconcile: %v", err)
+	}
+	restarted := &Service{DB: db, hostInterfaceL3Eligibility: eligibility}
+	if err := restarted.ReconcileHostInterfaceL3(); err != nil {
+		t.Fatalf("ReconcileHostInterfaceL3 after restart: %v", err)
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.20.0.1", 24) {
+		t.Fatal("expected restart reconcile to preserve the foreign /24 prefix owner")
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.20.0.2", 32) {
+		t.Fatal("expected restart reconcile to restore the managed /32 alias")
+	}
+
+	deleteEntry, err := restarted.DeleteHostInterfaceL3(name, 1)
+	if err != nil {
+		t.Fatalf("DeleteHostInterfaceL3: %v", err)
+	}
+	if !hostInterfaceL3HasIPv4Prefix(t, name, "198.20.0.1", 24) {
+		t.Fatal("expected delete to preserve the foreign /24 prefix owner")
+	}
+	if hostInterfaceL3HasIPv4(t, name, "198.20.0.2") {
+		t.Fatal("expected delete to remove only the managed alias")
+	}
+	if err := restarted.ConfirmHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3(delete): %v", err)
+	}
+}
+
+func TestIntegrationHostInterfaceL3RestoresIPv6Flags(t *testing.T) {
+	name := requireHostInterfaceL3NativeFixture(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
+
+	if _, err := utils.RunCommand(
+		"/sbin/ifconfig", name, "inet6",
+		"-no_radr", "accept_rtadv", "-ifdisabled", "auto_linklocal",
+	); err != nil {
+		t.Fatalf("establish IPv6 baseline: %v", err)
+	}
+	baseline := hostInterfaceL3LiveInterface(t, name).ND6.Raw
 
 	svc, _ := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
+	mode := networkModels.HostInterfaceL3IPv6ModeDisabled
+	entry, err := svc.SaveHostInterfaceL3(name, networkServiceInterfaces.HostInterfaceL3UpdateRequest{
+		IPv6Mode: &mode,
+	})
+	if err != nil {
+		t.Fatalf("SaveHostInterfaceL3: %v", err)
+	}
+	if !hostInterfaceL3IPv6Disabled(hostInterfaceL3LiveInterface(t, name)) {
+		t.Fatal("expected IPv6 to be disabled while the change is pending")
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3: %v", err)
+	}
+
+	deleteEntry, err := svc.DeleteHostInterfaceL3(name, 1)
+	if err != nil {
+		t.Fatalf("DeleteHostInterfaceL3: %v", err)
+	}
+	if current := hostInterfaceL3LiveInterface(t, name).ND6.Raw; current != baseline {
+		t.Fatalf("expected ND6 flags %#x after removal, got %#x", baseline, current)
+	}
+	if err := svc.ConfirmHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3(delete): %v", err)
+	}
+}
+
+func TestIntegrationHostInterfaceL3IPv6SettlesDAD(t *testing.T) {
+	name := requireHostInterfaceL3NativeFixture(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
+
+	svc, _ := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
 
 	request := networkServiceInterfaces.HostInterfaceL3UpdateRequest{
 		Addresses: []networkServiceInterfaces.HostInterfaceL3AddressInput{

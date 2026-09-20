@@ -37,7 +37,6 @@ func hostInterfaceL3TestDB(t *testing.T) (*Service, *gorm.DB) {
 		&networkModels.HostInterfaceL3{},
 		&networkModels.HostInterfaceL3Address{},
 		&networkModels.PendingApply{},
-		&networkModels.PendingApplyTarget{},
 		&networkModels.NetworkPort{},
 		&networkModels.ManualSwitch{},
 		&networkModels.StandardSwitch{},
@@ -83,6 +82,67 @@ func TestGetHostInterfaceL3ReturnsEmptyList(t *testing.T) {
 	}
 }
 
+func TestGetHostInterfaceL3ReportsVLANDriftManagedAddressesAndPendingReservations(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	row := networkModels.HostInterfaceL3{
+		Interface:  "em0.100",
+		VLANParent: "em0",
+		VLANTag:    100,
+		AppliedState: networkModels.HostInterfaceL3AppliedState{
+			Addresses: []networkModels.HostInterfaceL3AppliedAddress{{
+				Family: "inet", Address: "10.0.0.5/24",
+			}},
+		},
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("seed Host IP row: %v", err)
+	}
+	pending := networkModels.PendingApply{
+		ID:        "pending-parent",
+		Interface: "em1.200",
+		Kind:      networkModels.PendingApplyKindInterface,
+		Phase:     networkModels.PendingApplyPhaseApplied,
+		RuntimeSnapshot: networkModels.HostInterfaceL3Baseline{
+			VLANParent: "em1",
+		},
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatalf("seed pending operation: %v", err)
+	}
+	stubHostInterfaceL3Interfaces(t, []*iface.Interface{
+		{Name: "em0", Ether: "aa:aa:aa:aa:aa:aa", Driver: "em"},
+		{Name: "em0.100", Ether: "aa:aa:aa:aa:aa:aa", VLANParent: "em0", VLANTag: 200},
+		{Name: "em1", Ether: "bb:bb:bb:bb:bb:bb", Driver: "em"},
+		{Name: "em1.200", Ether: "bb:bb:bb:bb:bb:bb", VLANParent: "em1", VLANTag: 200},
+	})
+
+	list, err := svc.GetHostInterfaceL3()
+	if err != nil {
+		t.Fatalf("GetHostInterfaceL3: %v", err)
+	}
+	entry := entryByInterface(t, list.Rows, "em0.100")
+	if !containsConflict(entry, networkServiceInterfaces.HostInterfaceL3ConflictVLANIdentity) {
+		t.Fatalf("expected VLAN identity conflict, got %v", entry.Conflicts)
+	}
+	if len(entry.ManagedAddresses) != 1 || entry.ManagedAddresses[0].Address != "10.0.0.5/24" {
+		t.Fatalf("expected managed address state, got %+v", entry.ManagedAddresses)
+	}
+	for _, name := range []string{"em1", "em1.200"} {
+		found := false
+		for _, target := range list.Targets {
+			if target.Interface == name {
+				found = true
+				if target.Reason != networkServiceInterfaces.HostInterfaceL3ConflictPending {
+					t.Fatalf("expected %s to be pending-reserved, got %+v", name, target)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("expected target %s", name)
+		}
+	}
+}
+
 func TestGetHostInterfaceL3AnnotatesLiveStateAndConflicts(t *testing.T) {
 	svc, db := hostInterfaceL3TestDB(t)
 
@@ -95,6 +155,7 @@ func TestGetHostInterfaceL3AnnotatesLiveStateAndConflicts(t *testing.T) {
 		{Interface: "em5", VLANParent: "em0", VLANTag: 100},
 		{Interface: "em6", VLANParent: "em7", VLANTag: 200},
 		{Interface: "em9"},
+		{Interface: "em8", IdentityMAC: "ab:ab:ab:ab:ab:ab"},
 	}
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatalf("seed Host Interface L3 rows: %v", err)
@@ -123,6 +184,7 @@ func TestGetHostInterfaceL3AnnotatesLiveStateAndConflicts(t *testing.T) {
 		{Name: "em4", Ether: "dd:dd:dd:dd:dd:dd"},
 		{Name: "em5", Ether: "ee:ee:ee:ee:ee:ee", VLANParent: "em0", VLANTag: 100},
 		{Name: "em9", Ether: "ff:ff:ff:ff:ff:ff"},
+		{Name: "em8"},
 		{Name: "vm-sw1", Groups: []string{"bridge"}, BridgeMembers: []iface.BridgeMember{{Name: "em4"}}},
 	})
 
@@ -152,6 +214,12 @@ func TestGetHostInterfaceL3AnnotatesLiveStateAndConflicts(t *testing.T) {
 	if !mismatch.Present || mismatch.LiveMAC != "bb:bb:bb:bb:bb:bb" ||
 		!containsConflict(mismatch, networkServiceInterfaces.HostInterfaceL3ConflictIdentityMismatch) {
 		t.Fatalf("expected em2 identity mismatch, got %+v", mismatch)
+	}
+
+	missingMAC := entryByInterface(t, entries, "em8")
+	if !missingMAC.Present ||
+		!containsConflict(missingMAC, networkServiceInterfaces.HostInterfaceL3ConflictIdentityMismatch) {
+		t.Fatalf("expected em8 identity mismatch without a live MAC, got %+v", missingMAC)
 	}
 
 	port := entryByInterface(t, entries, "em3")
@@ -197,4 +265,33 @@ func TestGetHostInterfaceL3PropagatesInventoryFailure(t *testing.T) {
 	if _, err := svc.GetHostInterfaceL3(); err == nil {
 		t.Fatal("expected inventory failure to propagate")
 	}
+}
+
+func TestGetHostInterfaceL3AllowsSiblingVLANTargets(t *testing.T) {
+	svc, db := hostInterfaceL3TestDB(t)
+	if err := db.Create(&networkModels.HostInterfaceL3{
+		Interface: "em0.100", VLANParent: "em0", VLANTag: 100,
+	}).Error; err != nil {
+		t.Fatalf("seed Host Interface L3 row: %v", err)
+	}
+	interfaces := []*iface.Interface{
+		{Name: "em0", Ether: "aa:bb:cc:dd:ee:ff", Driver: "em"},
+		{Name: "em0.100", Ether: "aa:bb:cc:dd:ee:ff", VLANParent: "em0", VLANTag: 100},
+		{Name: "em0.200", Ether: "aa:bb:cc:dd:ee:ff", VLANParent: "em0", VLANTag: 200},
+	}
+	stubHostInterfaceL3Interfaces(t, interfaces)
+
+	list, err := svc.GetHostInterfaceL3()
+	if err != nil {
+		t.Fatalf("GetHostInterfaceL3: %v", err)
+	}
+	for _, target := range list.Targets {
+		if target.Interface == "em0.200" {
+			if !target.Eligible || target.Reason != "" {
+				t.Fatalf("expected sibling VLAN target to remain eligible, got %+v", target)
+			}
+			return
+		}
+	}
+	t.Fatal("expected a target for em0.200")
 }
