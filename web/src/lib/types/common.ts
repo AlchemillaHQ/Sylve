@@ -73,6 +73,6 @@ export interface SeriesDataWithBaseline {
 export type APIResponse = z.infer<typeof APIResponseSchema>;
 export type GuestDeletionData = z.infer<typeof GuestDeletionDataSchema>;
 export type GuestDeletionResponse = z.infer<typeof GuestDeletionResponseSchema>;
-export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN' | 'de' | 'cs';
+export type Locales = 'en' | 'mal' | 'hi' | 'zh-CN' | 'de' | 'cs' | 'es' | 'gl';
 export type GFSStep = z.infer<typeof GFSStepSchema>;
 export type StatsHistoryState = z.infer<typeof StatsHistoryStateSchema>;
