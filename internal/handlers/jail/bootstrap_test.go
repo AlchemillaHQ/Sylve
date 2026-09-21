@@ -137,6 +137,7 @@ func TestBootstrapErrorsUseStableCodesAndStatuses(t *testing.T) {
 		{err: "pool_not_found", wantStatus: http.StatusNotFound, wantCode: "pool_not_found"},
 		{err: "bootstrap_already_in_progress", wantStatus: http.StatusConflict, wantCode: "bootstrap_already_in_progress"},
 		{err: "pkg_not_found", wantStatus: http.StatusServiceUnavailable, wantCode: "pkg_not_found"},
+		{err: "pkg_version_unsupported: resolved=/usr/sbin/pkg output=\"2.3.0\"", wantStatus: http.StatusServiceUnavailable, wantCode: "pkg_version_unsupported"},
 		{err: "failed_to_get_bootstrap_record: sqlite busy", wantStatus: http.StatusInternalServerError, wantCode: "failed_to_get_bootstrap_record"},
 	} {
 		t.Run(test.wantCode, func(t *testing.T) {

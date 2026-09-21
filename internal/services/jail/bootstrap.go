@@ -12,7 +12,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,6 +35,15 @@ type bootstrapIdentity struct {
 	Minor   int
 	Type    string
 }
+
+type bootstrapRunner func(
+	recordID uint,
+	lockKey string,
+	req jailServiceInterfaces.BootstrapRequest,
+	typeSpec jailServiceInterfaces.BootstrapTypeSpec,
+	identity bootstrapIdentity,
+	pkgPath string,
+)
 
 func bootstrapName(spec jailServiceInterfaces.BootstrapTypeSpec, major, minor int) string {
 	return fmt.Sprintf(spec.Name, major, minor)
@@ -411,8 +419,9 @@ func (s *Service) CreateBootstrap(
 		}
 		return result, fmt.Errorf("failed_to_check_pkgbase_signing_keys: %w", err)
 	}
-	if _, err := exec.LookPath("pkg"); err != nil {
-		return result, fmt.Errorf("pkg_not_found")
+	pkgPath, err := s.preflightBootstrapPkg(ctx)
+	if err != nil {
+		return result, err
 	}
 
 	if _, loaded := s.bootstrapActiveMu.LoadOrStore(lockKey, true); loaded {
@@ -452,12 +461,17 @@ func (s *Service) CreateBootstrap(
 		}
 	}
 
-	go s.runBootstrap(
+	runBootstrap := s.bootstrapRunFn
+	if runBootstrap == nil {
+		runBootstrap = s.runBootstrap
+	}
+	go runBootstrap(
 		record.ID,
 		lockKey,
 		req,
 		*typeSpec,
 		identity,
+		pkgPath,
 	)
 	result.Status = "pending"
 	result.Outcome = "queued"
@@ -465,6 +479,9 @@ func (s *Service) CreateBootstrap(
 }
 
 func (s *Service) updateBootstrapRecord(id uint, status, phase, errMsg string) {
+	if errMsg != "" {
+		errMsg = capBootstrapError(errMsg)
+	}
 	if err := s.DB.Model(&jailModels.JailBootstrap{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"status": status,
 		"phase":  phase,
@@ -480,12 +497,14 @@ func (s *Service) runBootstrap(
 	req jailServiceInterfaces.BootstrapRequest,
 	typeSpec jailServiceInterfaces.BootstrapTypeSpec,
 	identity bootstrapIdentity,
+	pkgPath string,
 ) {
 	defer s.bootstrapActiveMu.Delete(lockKey)
 	dataset, name := identity.Dataset, identity.Name
 
 	bCtx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+	pkgEnv := utils.FilterEnv(os.Environ(), "INSTALL_AS_USER")
 
 	tempDir, err := os.MkdirTemp("", "sylve-bootstrap-*")
 	if err != nil {
@@ -498,21 +517,27 @@ func (s *Service) runBootstrap(
 	failStep := func(phase string, err error) {
 		logger.L.Error().Err(err).Msgf("bootstrap %s: failed at phase %s", name, phase)
 		errMessage := err.Error()
+		cleanupSuffix := ""
 		if datasetCreated {
 			cleanupCtx, cleanupCancel := bootstrapCleanupContext()
 			defer cleanupCancel()
 			if ds, dErr := s.getBootstrapDataset(cleanupCtx, identity); dErr != nil {
 				logger.L.Warn().Err(dErr).Msgf("bootstrap %s: failed to inspect partial dataset %s", name, dataset)
-				errMessage += ": cleanup_failed: " + dErr.Error()
+				cleanupSuffix += ": cleanup_failed: " + dErr.Error()
 			} else if ds != nil {
 				if dErr := ds.Destroy(cleanupCtx, true, false); dErr != nil &&
 					!isMissingBootstrapDatasetError(dErr) {
 					logger.L.Warn().Err(dErr).Msgf("bootstrap %s: failed to destroy partial dataset %s", name, dataset)
-					errMessage += ": cleanup_failed: " + dErr.Error()
+					cleanupSuffix += ": cleanup_failed: " + dErr.Error()
 				}
 			}
 		}
-		s.updateBootstrapRecord(recordID, "failed", phase, errMessage)
+		s.updateBootstrapRecord(
+			recordID,
+			"failed",
+			phase,
+			capBootstrapErrorWithSuffix(errMessage, cleanupSuffix),
+		)
 	}
 
 	arch, err := sysctl.GetString("hw.machine_arch")
@@ -596,37 +621,66 @@ func (s *Service) runBootstrap(
 		return
 	}
 
-	pkgArgs := func(subcmd ...string) []string {
-		base := []string{
-			"--rootdir", mountPoint,
-			"--repo-conf-dir", repoConfDir,
-			"-o", "IGNORE_OSVERSION=yes",
-			"-o", "OSVERSION=" + osVersion,
-			"-o", fmt.Sprintf("VERSION_MAJOR=%d", req.Major),
-			"-o", fmt.Sprintf("VERSION_MINOR=%d", req.Minor),
-			"-o", "ABI=" + abi,
-			"-o", "ASSUME_ALWAYS_YES=yes",
-			"-o", "FINGERPRINTS=" + fingerprintsRelPath,
-			"-o", "PKG_DBDIR=" + filepath.Join(mountPoint, "var", "db", "pkg"),
-			"-o", "INSTALL_AS_USER=yes",
+	pkgConfig := bootstrapPkgArgsConfig{
+		MountPoint:          mountPoint,
+		RepoConfDir:         repoConfDir,
+		OSVersion:           osVersion,
+		ABI:                 abi,
+		Major:               req.Major,
+		Minor:               req.Minor,
+		FingerprintsRelPath: fingerprintsRelPath,
+		PkgDBDir:            filepath.Join(mountPoint, "var", "db", "pkg"),
+	}
+
+	runPkg := func(phase, code string, subcmd ...string) bool {
+		result, runErr := s.runBootstrapPkg(
+			bCtx,
+			pkgEnv,
+			pkgPath,
+			buildBootstrapPkgArgs(pkgConfig, subcmd...)...,
+		)
+		if runErr == nil && result.ExitCode == 0 {
+			return true
 		}
-		return append(base, subcmd...)
+		logger.L.Error().
+			Err(runErr).
+			Str("bootstrap", name).
+			Str("phase", phase).
+			Str("pkgOutput", result.Output).
+			Msg("bootstrap pkg command failed")
+		failStep(phase, newBootstrapCommandError(code, result, runErr))
+		return false
 	}
 
 	s.updateBootstrapRecord(recordID, "running", "updating_repo", "")
-	if _, err = utils.RunCommandWithContext(bCtx, "pkg", pkgArgs("update", "-r", repoName)...); err != nil {
-		failStep("updating_repo", fmt.Errorf("failed_to_update_repo: %w", err))
+	if !runPkg("updating_repo", "failed_to_update_repo", "update", "-r", repoName) {
 		return
 	}
 
 	s.updateBootstrapRecord(recordID, "running", "installing", "")
-	if _, err = utils.RunCommandWithContext(bCtx, "pkg", pkgArgs("install", "-r", repoName, typeSpec.PkgSet)...); err != nil {
-		failStep("installing", fmt.Errorf("failed_to_install_packages: %w", err))
+	if !runPkg("installing", "failed_to_install_packages", "install", "-r", repoName, typeSpec.PkgSet) {
 		return
 	}
 
-	if _, err = utils.RunCommandWithContext(bCtx, "pkg", pkgArgs("install", "pkg")...); err != nil {
-		failStep("installing", fmt.Errorf("failed_to_install_pkg: %w", err))
+	if !runPkg("installing", "failed_to_install_pkg", "install", "pkg") {
+		return
+	}
+
+	s.updateBootstrapRecord(recordID, "running", "auditing_metadata", "")
+	auditResult, auditErr := s.runBootstrapPkg(
+		bCtx,
+		pkgEnv,
+		pkgPath,
+		buildBootstrapAuditArgs(mountPoint, pkgConfig.PkgDBDir, abi)...,
+	)
+	if auditErr != nil || auditResult.ExitCode != 0 {
+		logger.L.Error().
+			Err(auditErr).
+			Str("bootstrap", name).
+			Str("phase", "auditing_metadata").
+			Str("pkgOutput", auditResult.Output).
+			Msg("bootstrap metadata audit failed")
+		failStep("auditing_metadata", newBootstrapAuditError(auditResult, auditErr))
 		return
 	}
 
@@ -802,7 +856,7 @@ func (s *Service) RecoverInterruptedBootstraps(ctx context.Context) {
 		if err := s.DB.Model(&b).Updates(map[string]interface{}{
 			"status": "failed",
 			"phase":  "",
-			"error":  recoveryError,
+			"error":  capBootstrapError(recoveryError),
 		}).Error; err != nil {
 			logger.L.Error().Err(err).Msgf("bootstrap recovery: failed to update record %d", b.ID)
 		}

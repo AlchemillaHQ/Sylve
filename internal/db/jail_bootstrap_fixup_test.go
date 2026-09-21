@@ -26,10 +26,11 @@ import (
 )
 
 type bootstrapCleanupZFSRunner struct {
-	datasets   map[string]*gzfs.Dataset
-	failList   map[string]bool
-	failDelete map[string]bool
-	calls      [][]string
+	datasets        map[string]*gzfs.Dataset
+	failList        map[string]bool
+	failDelete      map[string]bool
+	deleteErrorText map[string]string
+	calls           [][]string
 }
 
 func (r *bootstrapCleanupZFSRunner) add(name string) {
@@ -70,6 +71,10 @@ func (r *bootstrapCleanupZFSRunner) Run(ctx context.Context, _ io.Reader, stdout
 		if !reflect.DeepEqual(args, []string{"destroy", "-r", target}) {
 			return fmt.Errorf("unsafe destroy arguments: %v", args)
 		}
+		if detail := r.deleteErrorText[target]; detail != "" {
+			fmt.Fprint(stderr, detail)
+			return errors.New("exit status 1")
+		}
 		if r.failDelete[target] {
 			fmt.Fprint(stderr, "dataset is busy")
 			return errors.New("exit status 1")
@@ -89,7 +94,8 @@ func newBootstrapCleanupTest(t *testing.T) (*gorm.DB, *gzfs.Client, *bootstrapCl
 	t.Helper()
 	database := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &jailModels.JailBootstrap{})
 	runner := &bootstrapCleanupZFSRunner{
-		datasets: map[string]*gzfs.Dataset{}, failList: map[string]bool{}, failDelete: map[string]bool{},
+		datasets: map[string]*gzfs.Dataset{}, failList: map[string]bool{},
+		failDelete: map[string]bool{}, deleteErrorText: map[string]string{},
 	}
 	client := gzfs.NewClient(gzfs.Options{Runner: runner, ZFSBin: "zfs"})
 	return database, client, runner
@@ -171,6 +177,7 @@ func TestCleanupLegacyJailBootstrapsRemovesOnlyRecordedBasesOnce(t *testing.T) {
 	if err := database.Table("jails").Where("ct_id = 113").Pluck("name", &jailName).Error; err != nil || jailName != "existing-jail" {
 		t.Fatalf("existing jail changed: name=%q error=%v", jailName, err)
 	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
 
 	replacement := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
@@ -194,6 +201,7 @@ func TestCleanupLegacyJailBootstrapsFreshInstall(t *testing.T) {
 	if len(runner.calls) != 0 {
 		t.Fatal("fresh installation queried ZFS")
 	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
 	record := seedCleanupBootstrap(t, database, runner, "tank", 1, "base", "completed")
 	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
@@ -230,11 +238,12 @@ func TestCleanupLegacyJailBootstrapsRetriesOnlyOriginalTargets(t *testing.T) {
 			if err := database.First(&stored, deferred.ID).Error; err != nil {
 				t.Fatal(err)
 			}
-			if stored.Status != "failed" || stored.Phase != legacyJailBootstrapCleanupPhase {
+			if stored.Status != "failed" || stored.Phase != legacyJailBootstrapPkgbaseResetPhase {
 				t.Fatalf("deferred bootstrap remains usable or lost its cleanup marker: %#v", stored)
 			}
-			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupStarted, 1)
-			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 0)
+			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetStarted, 1)
+			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 0)
+			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
 
 			replacement := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
 			newBase := seedCleanupBootstrap(t, database, runner, "tank", 1, "base", "completed")
@@ -255,7 +264,7 @@ func TestCleanupLegacyJailBootstrapsRetriesOnlyOriginalTargets(t *testing.T) {
 					t.Errorf("retry deleted new record %d: %v", record.ID, err)
 				}
 			}
-			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
+			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 		})
 	}
 }
@@ -321,7 +330,7 @@ func TestCleanupLegacyJailBootstrapsValidatesResolvedDataset(t *testing.T) {
 					t.Fatalf("mismatched dataset was destroyed: %v", args)
 				}
 			}
-			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 0)
+			assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 0)
 		})
 	}
 }
@@ -330,7 +339,7 @@ func TestCleanupLegacyJailBootstrapsPreparationIsAtomic(t *testing.T) {
 	database, client, runner := newBootstrapCleanupTest(t)
 	record := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
 	if err := database.Exec(`CREATE TRIGGER fail_bootstrap_cleanup_start BEFORE INSERT ON migrations
-		WHEN NEW.name = '` + legacyJailBootstrapCleanupStarted + `'
+		WHEN NEW.name = '` + legacyJailBootstrapPkgbaseResetStarted + `'
 		BEGIN SELECT RAISE(ABORT, 'forced marker failure'); END`).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +356,8 @@ func TestCleanupLegacyJailBootstrapsPreparationIsAtomic(t *testing.T) {
 	if stored.Status != "completed" || stored.Phase != "" {
 		t.Fatalf("target changes were not rolled back: %#v", stored)
 	}
-	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupStarted, 0)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetStarted, 0)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 0)
 }
 
 func TestCleanupLegacyJailBootstrapsRecoversAfterRecordDeletionFailure(t *testing.T) {
@@ -372,22 +382,23 @@ func TestCleanupLegacyJailBootstrapsRecoversAfterRecordDeletionFailure(t *testin
 	if err := database.First(&jailModels.JailBootstrap{}, record.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("old record survived: %v", err)
 	}
-	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 }
 
 func TestCleanupLegacyJailBootstrapsCompletionFailurePreservesReplacements(t *testing.T) {
 	database, client, runner := newBootstrapCleanupTest(t)
 	seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
 	if err := database.Exec(`CREATE TRIGGER fail_bootstrap_cleanup_completion BEFORE INSERT ON migrations
-		WHEN NEW.name = '` + legacyJailBootstrapCleanupMigration + `'
+		WHEN NEW.name = '` + legacyJailBootstrapPkgbaseResetMigration + `'
 		BEGIN SELECT RAISE(ABORT, 'forced completion failure'); END`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err == nil {
 		t.Fatal("expected completion marker failure")
 	}
-	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupStarted, 1)
-	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 0)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetStarted, 1)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 0)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
 	replacement := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
 	if err := database.Exec("DROP TRIGGER fail_bootstrap_cleanup_completion").Error; err != nil {
 		t.Fatal(err)
@@ -399,7 +410,7 @@ func TestCleanupLegacyJailBootstrapsCompletionFailurePreservesReplacements(t *te
 	if len(runner.calls) != calls || runner.datasets[replacement.Dataset] == nil {
 		t.Fatal("retry after completion failure touched replacement")
 	}
-	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 }
 
 func TestCleanupLegacyJailBootstrapsPreservesRestartedBuild(t *testing.T) {
@@ -428,5 +439,103 @@ func TestCleanupLegacyJailBootstrapsPreservesRestartedBuild(t *testing.T) {
 	if err := database.First(&stored, record.ID).Error; err != nil || stored.Status != "running" {
 		t.Fatalf("replacement build was changed: %#v, error=%v", stored, err)
 	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
+}
+
+func TestCleanupLegacyJailBootstrapsDependentCloneBlocksCompletion(t *testing.T) {
+	database, client, runner := newBootstrapCleanupTest(t)
+	record := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
+	runner.deleteErrorText[record.Dataset] = "cannot destroy dataset: filesystem has dependent clones"
+
+	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
+		t.Fatalf("dependent clone blocked startup: %v", err)
+	}
+	if runner.datasets[record.Dataset] == nil {
+		t.Fatal("dependent clone source was removed")
+	}
+	var stored jailModels.JailBootstrap
+	if err := database.First(&stored, record.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "failed" || stored.Phase != legacyJailBootstrapPkgbaseResetPhase {
+		t.Fatalf("blocked bootstrap lost its cleanup marker: %#v", stored)
+	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetStarted, 1)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 0)
+
+	delete(runner.deleteErrorText, record.Dataset)
+	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
+		t.Fatalf("retry after clone resolution: %v", err)
+	}
+	if runner.datasets[record.Dataset] != nil {
+		t.Fatal("resolved bootstrap survived retry")
+	}
+	if err := database.First(&jailModels.JailBootstrap{}, record.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("blocked record survived retry: %v", err)
+	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
+}
+
+func TestCleanupLegacyJailBootstrapsLeavesRecordlessOrphans(t *testing.T) {
+	database, client, runner := newBootstrapCleanupTest(t)
+	record := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
+	orphan := "tank/sylve/bootstraps/15-1-Base"
+	runner.add(orphan)
+
+	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if runner.datasets[orphan] == nil {
+		t.Fatal("recordless canonical orphan was removed")
+	}
+	for _, args := range runner.calls {
+		if args[0] == "destroy" && args[len(args)-1] == orphan {
+			t.Fatalf("recordless canonical orphan was destroyed: %v", args)
+		}
+	}
+	if runner.datasets[record.Dataset] != nil {
+		t.Fatal("managed bootstrap survived cleanup")
+	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
+}
+
+func TestCleanupLegacyJailBootstrapsRunsAfterV1Completion(t *testing.T) {
+	database, client, runner := newBootstrapCleanupTest(t)
+	if err := database.Create(&models.Migrations{Name: legacyJailBootstrapCleanupMigration}).Error; err != nil {
+		t.Fatal(err)
+	}
+	record := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
+
+	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if runner.datasets[record.Dataset] != nil {
+		t.Fatal("bootstrap survived despite the v1 completion marker")
+	}
 	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapCleanupMigration, 1)
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
+}
+
+func TestCleanupLegacyJailBootstrapsAdoptsV1PhaseRecords(t *testing.T) {
+	database, client, runner := newBootstrapCleanupTest(t)
+	record := seedCleanupBootstrap(t, database, runner, "tank", 0, "base", "completed")
+	if err := database.Model(&record).Updates(map[string]any{
+		"status": "failed", "phase": "legacy_pkgdb_cleanup",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&models.Migrations{Name: legacyJailBootstrapCleanupMigration + "_started"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cleanupLegacyJailBootstrapsWithZFS(database, client); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if runner.datasets[record.Dataset] != nil {
+		t.Fatal("v1 phase bootstrap survived")
+	}
+	if err := database.First(&jailModels.JailBootstrap{}, record.ID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("v1 phase record survived: %v", err)
+	}
+	assertBootstrapCleanupMarker(t, database, legacyJailBootstrapPkgbaseResetMigration, 1)
 }

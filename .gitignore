@@ -42,6 +42,7 @@ Temporary Items
 /libbsmart/
 /dataset.json
 /.idea/
+/*.core
 /SignalInspector.core
 /sylve-ddns/
 /test-results/

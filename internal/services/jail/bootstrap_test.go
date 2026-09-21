@@ -53,6 +53,9 @@ func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...s
 		bootstrapHostReleaseFn: func() (string, error) {
 			return "15.1-RELEASE", nil
 		},
+		bootstrapPkgPreflightFn: func(context.Context) (string, error) {
+			return "/usr/local/sbin/pkg", nil
+		},
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner:   runner,
 			ZFSBin:   "zfs",
@@ -60,6 +63,16 @@ func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...s
 			ZDBBin:   "zdb",
 		}),
 		ctidHashByCTID: make(map[uint]string),
+	}
+	svc.bootstrapRunFn = func(
+		_ uint,
+		lockKey string,
+		_ jailServiceInterfaces.BootstrapRequest,
+		_ jailServiceInterfaces.BootstrapTypeSpec,
+		_ bootstrapIdentity,
+		_ string,
+	) {
+		svc.bootstrapActiveMu.Delete(lockKey)
 	}
 
 	return svc, runner
@@ -545,6 +558,45 @@ func TestRecoverInterruptedBootstraps_MarksRunningRecordsAsFailed(t *testing.T) 
 	}
 	if updated.Phase != "" {
 		t.Errorf("expected phase cleared after recovery, got %q", updated.Phase)
+	}
+}
+
+func TestRecoverInterruptedBootstraps_SkipsPhaseMarkedResetRecords(t *testing.T) {
+	svc, runner := newBootstrapTestService(t, nil, "tank")
+
+	dataset := "tank/sylve/bootstraps/15-0-Base"
+	runner.datasets[dataset] = jailCreateTestZFSDataset{
+		guid:       "1001",
+		mountpoint: "/" + dataset,
+	}
+
+	record := jailModels.JailBootstrap{
+		Pool:          "tank",
+		Dataset:       dataset,
+		MountPoint:    "/tank/sylve/bootstraps/15-0-Base",
+		Name:          "15-0-Base",
+		Major:         15,
+		Minor:         0,
+		BootstrapType: "base",
+		Status:        "failed",
+		Phase:         "legacy_pkgbase_reset_v2",
+		Error:         "bootstrap_removed_due_to_pkgbase_metadata_bugs",
+	}
+	if err := svc.DB.Create(&record).Error; err != nil {
+		t.Fatalf("failed to seed phase-marked record: %v", err)
+	}
+
+	svc.RecoverInterruptedBootstraps(context.Background())
+
+	var stored jailModels.JailBootstrap
+	if err := svc.DB.First(&stored, record.ID).Error; err != nil {
+		t.Fatalf("failed to fetch record: %v", err)
+	}
+	if stored.Status != "failed" || stored.Phase != "legacy_pkgbase_reset_v2" {
+		t.Fatalf("phase-marked record was changed: %#v", stored)
+	}
+	if runner.datasets[dataset].guid != "1001" {
+		t.Fatal("phase-marked bootstrap dataset was removed")
 	}
 }
 

@@ -64,6 +64,10 @@ The **Base** selector presents two supported sources:
 
 Select the download-box action beside **Base** to open **Bootstrap Jail Bases**. Choose a supported release and start the bootstrap. Sylve creates a managed dataset, configures the FreeBSD package repositories, and installs the required pkgbase content. Wait until its status is **Installed**, then select it as the jail base.
 
+:::note[Bootstraps from Sylve versions before v0.3.2]
+Sylve clears these during the upgrade so they can be rebuilt with corrected metadata. Removed entries show as **Not created** and can be started again here; building one needs **pkg 2.4.0 or newer** on the node. Existing jails are not changed, but a jail copied from an older bootstrap keeps its metadata — see [Checking a jail from an older bootstrap](/guides/node/jails/updates/#checking-a-jail-from-an-older-bootstrap).
+:::
+
 #### Select a pool and base
 
 <img

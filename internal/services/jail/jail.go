@@ -70,11 +70,14 @@ type Service struct {
 	usageRetentionQueue chan struct{}
 	monitorOnce         sync.Once
 
-	bootstrapUseMu         sync.RWMutex
-	bootstrapActiveMu      sync.Map
-	bootstrapHostReleaseFn func() (string, error)
-	hardwareOps            jailHardwareOps
-	optionOps              jailOptionHostOps
+	bootstrapUseMu          sync.RWMutex
+	bootstrapActiveMu       sync.Map
+	bootstrapHostReleaseFn  func() (string, error)
+	bootstrapPkgPreflightFn func(context.Context) (string, error)
+	bootstrapPkgRunFn       bootstrapPkgRunFunc
+	bootstrapRunFn          bootstrapRunner
+	hardwareOps             jailHardwareOps
+	optionOps               jailOptionHostOps
 }
 
 func (s *Service) SetMutationAdmission(gate interface {
@@ -558,18 +561,8 @@ func isZFSDatasetBusyError(err error) bool {
 		strings.Contains(msg, "resource busy")
 }
 
-func isZFSDatasetDependentCloneError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "dependent clones") ||
-		strings.Contains(msg, "filesystem has dependent clones")
-}
-
 func isRetriableZFSDestroyError(err error) bool {
-	return isZFSDatasetBusyError(err) || isZFSDatasetDependentCloneError(err)
+	return isZFSDatasetBusyError(err) || utils.IsZFSDatasetDependentCloneError(err)
 }
 
 const jailDeleteStopTimeout = 10 * time.Second

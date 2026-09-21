@@ -61,7 +61,7 @@ func bootstrapErrorStatus(err error) int {
 		"bootstrap_record_mismatch",
 		"bootstrap_mountpoint_not_usable":
 		return http.StatusConflict
-	case "pkgbase_signing_keys_not_found", "pkg_not_found":
+	case "pkgbase_signing_keys_not_found", "pkg_not_found", "pkg_version_unsupported":
 		return http.StatusServiceUnavailable
 	case "bootstrap_system_service_unavailable", "bootstrap_zfs_service_unavailable":
 		return http.StatusServiceUnavailable

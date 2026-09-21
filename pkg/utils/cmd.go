@@ -11,6 +11,7 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -70,6 +71,37 @@ func RunCommandWithContext(ctx context.Context, command string, args ...string) 
 	}
 
 	return output, nil
+}
+
+type CommandResult struct {
+	Output   string
+	ExitCode int
+}
+
+func RunCommandWithEnvContext(ctx context.Context, env []string, command string, args ...string) (CommandResult, error) {
+	cmd := execCommandContext(ctx, command, args...)
+	if env != nil {
+		cmd.Env = env
+	}
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	result := CommandResult{Output: out.String()}
+	if err == nil {
+		return result, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		result.ExitCode = exitErr.ExitCode()
+	} else {
+		result.ExitCode = -1
+	}
+
+	return result, err
 }
 
 func RunCommandAllowExitCode(command string, allowed []int, args ...string) (string, error) {

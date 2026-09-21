@@ -11,6 +11,12 @@ Sylve creates an independent ZFS-backed copy of the selected root filesystem. Ex
 A jail created from a Sylve FreeBSD bootstrap uses pkgbase and must be updated with `pkg`. A traditional jail created from `base.txz` must be updated with `freebsd-update` from the host. Do not run both methods against the same jail.
 :::
 
+:::note[Bootstraps from Sylve versions before v0.3.2]
+Those bootstraps have some incorrect ownership and file-flag metadata, fixed in v0.3.2. During the upgrade Sylve clears them so they can be rebuilt cleanly: start each one again from **Bootstrap Jail Bases** when you need it.
+
+Existing jails are not modified by that cleanup, but a jail copied from an older bootstrap keeps that metadata. Checking one is quick — see [Checking a jail from an older bootstrap](#checking-a-jail-from-an-older-bootstrap). If a bootstrap dataset cannot be removed safely, Sylve leaves it marked and tries again on a later startup; see [If a bootstrap cleanup needs attention](#if-a-bootstrap-cleanup-needs-attention).
+:::
+
 ## Before every update
 
 1. Read the release notes for the packages or FreeBSD release you plan to install.
@@ -128,6 +134,100 @@ Restart the jail and review `.pkgnew` and `.pkgsave` files again. For a large ve
 :::note[Updating the bootstrap]
 Updating packages inside a jail does not update the reusable bootstrap stored under `<pool>/sylve/bootstraps`. Likewise, creating or replacing a bootstrap does not modify existing jails. Create future jails from a bootstrap for the desired release, then update each created jail independently.
 :::
+
+## Checking a jail from an older bootstrap
+
+Sylve versions before **v0.3.2** created pkgbase bootstraps without applying all ownership and file-flag metadata. A jail copied from one of those bootstraps may have files owned by `root:wheel` where an account such as `mail` was intended, which can change who can read or write files like the mail spool.
+
+The upgrade clears the affected reusable bootstraps; it does not modify existing jails. Checking a jail takes a minute, and replacing it is usually the easiest fix.
+
+### Check the jail
+
+The jail is a pkgbase candidate when it contains Sylve's pkgbase repository configuration:
+
+```sh
+test -f /usr/local/etc/pkg/repos/FreeBSD-base.conf && echo "pkgbase repository configured"
+```
+
+Open the jail's **Console** and check representative metadata:
+
+```sh
+stat -f '%Sp %u:%g %Su:%Sg flags=%Sf %N' \
+  /var/mail \
+  /var/spool/dma \
+  /usr/libexec/dma \
+  /usr/libexec/dma-mbox-create \
+  /var/empty
+```
+
+With base packages registered and `pkg` 2.4.0 or newer, this audit gives a fuller picture:
+
+```sh
+pkg info -g 'FreeBSD-*'
+pkg check -m -a
+```
+
+A clean audit is a useful signal, but not a complete one: a package database written before `pkg` 2.4 does not contain the per-path metadata, and a newer `pkg` skips what is missing. Use the `stat` checks alongside it — the paths above are examples, not the full set.
+
+Opening an old package database with a newer `pkg` can upgrade it in place. Take a [snapshot](/guides/node/jails/snapshots/) first if you want to keep the original.
+
+:::note[Version requirements]
+`pkg check -m` needs **pkg 2.4.0 or newer**. The register-only recovery in the pkgbase update section needs **pkg 2.8.4 or newer**.
+:::
+
+### Option A: replace the jail
+
+This is the simplest and most predictable fix:
+
+1. Take a snapshot and a separate [backup](/guides/node/jails/backups/) of important application data.
+2. Rebuild the bootstrap with the current Sylve version.
+3. Create a replacement jail from it.
+4. Reinstall the application and restore its configuration and data.
+5. Check the replacement before deleting the old jail.
+
+This is quick for disposable or lightly configured jails. For a stateful service, plan where the data lives and schedule a short cutover.
+
+### Option B: in-place reinstall (expert-only)
+
+Sylve does not automate or support this; it is described only to explain why replacing the jail is recommended.
+
+- It must run from the node against the stopped jail root, because `pkg` uses the host's repository configuration when it targets a root directory, not the jail's own config files.
+- It restores ownership, but `pkg` skips attribute updates when ownership and mode already match, so declared flags can stay missing. In testing, `/var/empty` kept its mode and ownership but stayed without `schg` after a forced reinstall.
+- It can replace base files, run package scripts, and leave `.pkgnew` or `.pkgsave` files, and it needs the exact registered versions to be available.
+
+If you want to try it, stop the jail, take a snapshot, and force-reinstall the exact registered versions with `INSTALL_AS_USER` absent — always targeting the jail root and its package database instead of the host. Verify with both audits pointed at the same target, because running them plainly on the node audits the host:
+
+```sh
+pkg --rootdir <jail-root> -o PKG_DBDIR=<jail-root>/var/db/pkg check -m -a
+pkg --rootdir <jail-root> -o PKG_DBDIR=<jail-root>/var/db/pkg check -s -a
+```
+
+If anything still reports `[fflags]`, treat it as unresolved and use [Option A](#option-a-replace-the-jail) instead.
+
+### Templates, snapshots, backups, and replicas
+
+Copies made before the fix keep the same metadata. A template captured from an affected jail can pass it on to new jails, and restoring a snapshot, backup, or replica brings it back. If you use one of those later, run the checks above on the resulting jail. Rebuilding a template from a checked jail is the cleanest option.
+
+### If a bootstrap cleanup needs attention
+
+If a bootstrap dataset cannot be removed safely, Sylve leaves it marked, starts normally, and tries again on the next startup. Two situations need a manual look. In both, check the dataset before deleting anything: a missing record or a clone means Sylve cannot be sure the data is disposable.
+
+- **A clone depends on it:** Sylve leaves the bootstrap in place because removing it could affect data it does not own, and the UI/API will not resolve the clone for you. Inspect it with:
+
+  ```sh
+  zfs get -H -r -t snapshot -o name,value clones <bootstrap-dataset>
+  ```
+
+  The clone may contain data, and it has the same metadata as the bootstrap it came from. Decide whether to keep, copy or promote, or remove it, then restart Sylve to retry. Avoid `zfs destroy -R`.
+- **A dataset has no record:** a dataset under `<pool>/sylve/bootstraps` with no Sylve record may be something you created or still need. It does not affect the upgrade, but Sylve will not create that bootstrap again until the dataset is resolved. Look at its contents, children, snapshots, and clones first:
+
+  ```sh
+  zfs list -r <bootstrap-dataset>
+  zfs list -t snapshot -r <bootstrap-dataset>
+  zfs get -H -r -t snapshot -o name,value clones <bootstrap-dataset>
+  ```
+
+  If nothing there is needed, use Sylve's **Delete** action for that exact bootstrap — it removes the dataset, its children, and its snapshots — then create the bootstrap again. Use that action rather than a raw `zfs destroy`, and handle any clone first, since a clone blocks deletion.
 
 ## Update a traditional FreeBSD `base.txz` jail
 

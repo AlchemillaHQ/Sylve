@@ -646,6 +646,41 @@ func TestValidateCreate_RequiresCoresAndMemoryWhenResourceLimitsEnabled(t *testi
 	}
 }
 
+func TestValidateCreate_RejectsPhaseMarkedBootstrap(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(
+		t,
+		&jailModels.Jail{},
+		&utilitiesModels.Downloads{},
+		&jailModels.JailBootstrap{},
+	)
+
+	runner := newJailCreateTestZFSRunner(t, nil)
+	svc := newJailCreateTestService(db, runner, "tank")
+
+	record := jailModels.JailBootstrap{
+		Pool:          "tank",
+		Dataset:       "tank/sylve/bootstraps/15-0-Base",
+		MountPoint:    "/tank/sylve/bootstraps/15-0-Base",
+		Name:          "15-0-Base",
+		Major:         15,
+		Minor:         0,
+		BootstrapType: "base",
+		Status:        "failed",
+		Phase:         "legacy_pkgbase_reset_v2",
+	}
+	if err := db.Create(&record).Error; err != nil {
+		t.Fatalf("failed to seed phase-marked bootstrap: %v", err)
+	}
+
+	req := jailCreateRequest(704, "tank", "")
+	req.Base = ""
+	req.BootstrapName = record.Name
+	err := svc.ValidateCreate(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "bootstrap_not_completed") {
+		t.Fatalf("expected bootstrap_not_completed, got %v", err)
+	}
+}
+
 func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(
 		t,

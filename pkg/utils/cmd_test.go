@@ -65,6 +65,10 @@ func TestHelperProcess(t *testing.T) {
 				fmt.Fprint(os.Stderr, "exit status 2\n")
 				os.Exit(2)
 
+			case "env-echo":
+				fmt.Fprint(os.Stdout, os.Getenv("SYLVE_TEST_ENV"))
+				os.Exit(0)
+
 			case "sleep":
 				time.Sleep(5 * time.Second)
 				fmt.Fprint(os.Stdout, "finished sleeping\n")
@@ -214,5 +218,66 @@ func TestRunCommandAllowExitCode_DisallowedFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exit status 2") {
 		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestRunCommandWithEnvContext_Success(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	result, err := RunCommandWithEnvContext(context.Background(), nil, "success")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "Hello, world!\n" || result.ExitCode != 0 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestRunCommandWithEnvContext_FailureKeepsOutputOutOfError(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	result, err := RunCommandWithEnvContext(context.Background(), nil, "failure")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if result.Output != "something went wrong\n" || result.ExitCode != 1 {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if strings.Contains(err.Error(), "something went wrong") {
+		t.Fatalf("error embedded command output: %v", err)
+	}
+}
+
+func TestRunCommandWithEnvContext_ExitCode(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	result, err := RunCommandWithEnvContext(context.Background(), nil, "exit2")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if result.ExitCode != 2 || result.Output != "exit status 2\n" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestRunCommandWithEnvContext_UsesExplicitEnvironment(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	env := append(FilterEnv(os.Environ(), "SYLVE_TEST_ENV"),
+		"SYLVE_TEST_ENV=filtered", "GO_WANT_HELPER_PROCESS=1")
+	result, err := RunCommandWithEnvContext(context.Background(), env, "env-echo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "filtered" {
+		t.Fatalf("unexpected output: %q", result.Output)
 	}
 }
