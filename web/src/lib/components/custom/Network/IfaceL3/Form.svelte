@@ -458,7 +458,7 @@
 
 <Dialog.Root bind:open>
 	<Dialog.Content
-		class="w-[96%] overflow-hidden p-5 lg:max-w-2xl md:max-w-xl"
+		class="w-[96%] overflow-hidden p-6 lg:max-w-2xl md:max-w-xl"
 		showCloseButton={!saving}
 		showResetButton={!saving && editable}
 		onReset={resetForm}
@@ -479,14 +479,10 @@
 					title={`Host IP - ${interfaceName}`}
 				/>
 			</Dialog.Title>
-			<Dialog.Description class="text-xs">
-				Manage static addresses, MTU and metric at runtime; rc.conf and the default route are left
-				untouched.
-			</Dialog.Description>
 		</Dialog.Header>
 
 		<fieldset disabled={saving || removing || !editable} class="contents">
-			<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
+			<ScrollArea orientation="vertical" class="max-h-[70vh] -mr-3 pr-3">
 				<div class="space-y-4">
 					{#if readOnlyReason}
 						<p class="text-xs text-muted-foreground">View only. {readOnlyReason}</p>
