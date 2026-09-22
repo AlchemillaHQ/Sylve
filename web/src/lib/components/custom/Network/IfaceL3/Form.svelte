@@ -160,6 +160,9 @@
 	let hasSharedIPv4Prefix = $derived(
 		addresses.some((_address, index) => ipv4PrefixGroup(index).length > 1)
 	);
+	let hasForeignIPv4Prefix = $derived(
+		addresses.some((_address, index) => hasForeignIPv4PrefixOwner(index))
+	);
 
 	function resetForm() {
 		const restored = entry
@@ -506,29 +509,45 @@
 								{#if hasForeignIPv4PrefixOwner(index)}
 									{#if isIPv4PrefixOwner(index)}
 										<Button
-											size="sm"
-											class="h-9"
+											size="icon"
 											variant="outline"
+											class="text-muted-foreground disabled:opacity-100"
 											disabled
-											title="A live address outside Sylve owns this prefix, so Sylve addresses here use /32 aliases."
+											aria-label="A live address outside Sylve owns this subnet, so this address uses a /32 alias"
+											title="A live address outside Sylve owns this subnet, so this address uses a /32 alias."
 										>
-											Foreign prefix
+											<span class="icon-[mdi--crown-outline] h-4 w-4"></span>
 										</Button>
 									{/if}
 								{:else if ipv4PrefixGroup(index).length > 1}
-									<Button
-										size="sm"
-										class="h-9"
-										variant="outline"
-										onclick={() => makeIPv4PrefixOwner(index)}
-										disabled={isIPv4PrefixOwner(index)}
-									>
-										{isIPv4PrefixOwner(index) ? 'Prefix owner' : 'Make owner'}
-									</Button>
+									{#if isIPv4PrefixOwner(index)}
+										<Button
+											size="icon"
+											variant="outline"
+											class="disabled:opacity-100"
+											disabled
+											aria-label="Owns the connected route for this subnet"
+											title="Owns the connected route for this subnet."
+										>
+											<span class="icon-[mdi--crown] text-primary h-4 w-4"></span>
+										</Button>
+									{:else}
+										<Button
+											size="icon"
+											variant="outline"
+											aria-label="Make this address own the subnet route"
+											title="Make this address own the subnet route. It moves to the front of this subnet group."
+											onclick={() => makeIPv4PrefixOwner(index)}
+										>
+											<span class="icon-[mdi--crown-outline] h-4 w-4"></span>
+										</Button>
+									{/if}
 								{/if}
 								<Button
 									size="icon"
 									variant="outline"
+									class="hover:text-destructive"
+									aria-label="Remove address"
 									title="Remove address"
 									onclick={() => removeAddress(index)}
 								>
@@ -548,6 +567,12 @@
 						{#if hasOverlappingIPv4Prefixes}
 							<p class="text-xs text-amber-600 dark:text-amber-400">
 								Overlapping IPv4 subnets; verify the intended routing before saving.
+							</p>
+						{/if}
+						{#if hasForeignIPv4Prefix}
+							<p class="text-xs text-muted-foreground">
+								A live address outside Sylve owns at least one of these subnets; Sylve addresses
+								there use /32 aliases.
 							</p>
 						{/if}
 					</div>
