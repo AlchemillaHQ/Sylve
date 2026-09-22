@@ -18621,18 +18621,6 @@ msgid "Remove the static IPv6 addresses before disabling IPv6."
 msgstr ""
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
-msgid "Foreign prefix"
-msgstr ""
-
-#: src/lib/components/custom/Network/IfaceL3/Form.svelte
-msgid "Prefix owner"
-msgstr ""
-
-#: src/lib/components/custom/Network/IfaceL3/Form.svelte
-msgid "Make owner"
-msgstr ""
-
-#: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "<0/> Add address"
 msgstr ""
 
@@ -18726,10 +18714,6 @@ msgstr ""
 msgid "Host IP - {0}"
 msgstr ""
 
-#: src/lib/components/custom/Network/IfaceL3/Form.svelte
-msgid "Manage static addresses, MTU and metric at runtime; rc.conf and the default route are left untouched."
-msgstr ""
-
 #. 0: readOnlyReason
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "View only. {0}"
@@ -18740,9 +18724,6 @@ msgid "Interface missing. The configuration is kept so it can still be removed."
 msgstr ""
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
-msgid "A live address outside Sylve owns this prefix, so Sylve addresses here use /32 aliases."
-msgstr ""
-
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "Remove address"
 msgstr ""
@@ -18757,4 +18738,32 @@ msgstr ""
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "Saving enables IPv6 and restores the previous settings if Host IP is removed."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "A live address outside Sylve owns this subnet, so this address uses a /32 alias"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "A live address outside Sylve owns this subnet, so this address uses a /32 alias."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Owns the connected route for this subnet"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Owns the connected route for this subnet."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Make this address own the subnet route"
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "Make this address own the subnet route. It moves to the front of this subnet group."
+msgstr ""
+
+#: src/lib/components/custom/Network/IfaceL3/Form.svelte
+msgid "A live address outside Sylve owns at least one of these subnets; Sylve addresses there use /32 aliases."
 msgstr ""
