@@ -1,10 +1,13 @@
 <script lang="ts">
 	import {
 		deleteHostInterfaceL3,
+		getHostInterfaceL3,
+		getHostInterfaceL3Pending,
 		reapplyHostInterfaceL3,
 		saveHostInterfaceL3,
 		type HostInterfaceL3SavePayload
 	} from '$lib/api/network/ifaceL3';
+	import { getInterfaces } from '$lib/api/network/iface';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -12,13 +15,23 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import ScrollArea from '$lib/components/ui/scroll-area/scroll-area.svelte';
+	import { showErrorToast } from '$lib/stores/error-details.svelte';
+	import type { APIResponse } from '$lib/types/common';
+	import type { Iface } from '$lib/types/network/iface';
 	import type {
 		HostInterfaceL3Entry,
-		HostInterfaceL3PendingEntry
+		HostInterfaceL3PendingEntry,
+		HostInterfaceL3Target
 	} from '$lib/types/network/ifaceL3';
+	import { isHostInterfaceL3List } from '$lib/types/network/ifaceL3';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { ipv4NetmaskToPrefix, parseIPv4Prefix, type IPv4Prefix } from '$lib/utils/inet';
-	import { hostInterfaceL3Labels } from '$lib/utils/network/ifaceL3';
+	import {
+		hostInterfaceL3Message,
+		hostInterfaceL3Preflight,
+		normalizeHostAddress,
+		type HostInterfaceL3PreflightMode
+	} from '$lib/utils/network/ifaceL3';
 	import { watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 
@@ -32,6 +45,7 @@
 		readOnlyReason?: string;
 		onDone: (reloadForm?: boolean) => void | Promise<void>;
 		onPending: (entry: HostInterfaceL3PendingEntry) => void;
+		onReviewPending?: () => void;
 	}
 
 	let {
@@ -43,34 +57,29 @@
 		interfaceMissing = false,
 		readOnlyReason = '',
 		onDone,
-		onPending
+		onPending,
+		onReviewPending
 	}: Props = $props();
+
+	const preflightToastID = 'host-interface-l3-preflight';
+	const requestToastID = 'host-interface-l3-request';
 
 	let saving = $state(false);
 	let removing = $state(false);
 	let removeDialogOpen = $state(false);
-	let validationError = $state('');
 	let addresses = $state<string[]>([]);
 	let mtu = $state('');
 	let metric = $state('');
 	let ipv6Mode = $state('inherit');
 	let hasStaticIPv6 = $derived(addresses.some((address) => address.trim().includes(':')));
-	let ipv4AddressCount = $derived(
-		addresses.filter((address) => address.trim() !== '' && !address.includes(':')).length
-	);
 	let identityMismatch = $derived(
 		entry?.conflicts.includes('host_interface_l3_identity_mismatch') ?? false
 	);
 	let vlanIdentityMismatch = $derived(
 		entry?.conflicts.includes('host_interface_l3_vlan_identity_mismatch') ?? false
 	);
-	let saveBlockedByConflict = $derived(
-		entry?.conflicts.some((conflict) => conflict !== 'host_interface_l3_prefix_owner_changed') ??
-			false
-	);
-	let saveBlocked = $derived(interfaceMissing || saveBlockedByConflict);
-	let reapplyBlocked = $derived(interfaceMissing || (entry?.conflicts.length ?? 0) > 0);
 	let removalLeavesRuntime = $derived(interfaceMissing || identityMismatch || vlanIdentityMismatch);
+	let editable = $derived(!readOnlyReason && !interfaceMissing);
 
 	function ipv4PrefixGroup(index: number): number[] {
 		const selected = parseIPv4Prefix(addresses[index] ?? '');
@@ -148,18 +157,26 @@
 		}
 		return false;
 	});
-	let hasForeignIPv4Prefix = $derived(
-		addresses.some((_address, index) => hasForeignIPv4PrefixOwner(index))
+	let hasSharedIPv4Prefix = $derived(
+		addresses.some((_address, index) => ipv4PrefixGroup(index).length > 1)
 	);
 
 	function resetForm() {
-		addresses = entry
+		const restored = entry
 			? entry.addresses.map((address) => `${address.address}/${address.prefixLength}`)
 			: [];
+		addresses = restored.length > 0 ? restored : [''];
 		mtu = entry?.mtu !== null && entry?.mtu !== undefined ? String(entry.mtu) : '';
 		metric = entry?.metric !== null && entry?.metric !== undefined ? String(entry.metric) : '';
 		ipv6Mode = entry?.ipv6Mode ?? 'inherit';
-		validationError = '';
+	}
+
+	function removeAddress(index: number) {
+		if (addresses.length === 1) {
+			addresses = [''];
+			return;
+		}
+		addresses = addresses.filter((_, candidateIndex) => candidateIndex !== index);
 	}
 
 	watch(
@@ -195,28 +212,23 @@
 		return parsed;
 	}
 
-	function buildPayload(): HostInterfaceL3SavePayload | null {
+	function buildPayload(): { payload: HostInterfaceL3SavePayload } | { error: string } {
 		const parsedMTU = parseOptionalNumber(mtu);
 		const parsedMetric = parseOptionalNumber(metric);
 		if (parsedMTU === 'invalid' || parsedMetric === 'invalid') {
-			validationError = 'MTU and Metric must be whole numbers, or empty to restore the baseline.';
-			return null;
+			return { error: 'MTU and Metric must be whole numbers, or empty to restore the baseline.' };
 		}
 		if (parsedMTU !== null && (parsedMTU < 68 || parsedMTU > 65535)) {
-			validationError = 'MTU must be between 68 and 65535.';
-			return null;
+			return { error: 'MTU must be between 68 and 65535.' };
 		}
 		if (parsedMetric !== null && parsedMetric > 255) {
-			validationError = 'Metric must be between 0 and 255.';
-			return null;
+			return { error: 'Metric must be between 0 and 255.' };
 		}
 		if ((hasStaticIPv6 || ipv6Mode === 'enabled') && parsedMTU !== null && parsedMTU < 1280) {
-			validationError = 'MTU must be at least 1280 when IPv6 is enabled or configured.';
-			return null;
+			return { error: 'MTU must be at least 1280 when IPv6 is enabled or configured.' };
 		}
 		if (hasStaticIPv6 && ipv6Mode === 'disabled') {
-			validationError = 'Remove the static IPv6 addresses before disabling IPv6.';
-			return null;
+			return { error: 'Remove the static IPv6 addresses before disabling IPv6.' };
 		}
 
 		const normalizedAddresses = addresses
@@ -224,14 +236,138 @@
 			.filter((address) => address.length > 0)
 			.map((address) => ({ address }));
 
-		const payload: HostInterfaceL3SavePayload = {
-			ipv6Mode: hasStaticIPv6 && ipv6Mode === 'inherit' ? 'enabled' : ipv6Mode,
-			mtu: parsedMTU,
-			metric: parsedMetric,
-			addresses: normalizedAddresses,
-			expectedRevision: entry?.revision ?? 0
+		return {
+			payload: {
+				ipv6Mode: hasStaticIPv6 && ipv6Mode === 'inherit' ? 'enabled' : ipv6Mode,
+				mtu: parsedMTU,
+				metric: parsedMetric,
+				addresses: normalizedAddresses,
+				expectedRevision: entry?.revision ?? 0
+			}
 		};
-		return payload;
+	}
+
+	type PreflightSnapshot = {
+		row: HostInterfaceL3Entry | null;
+		target: HostInterfaceL3Target | null;
+		pendingCount: number;
+		addressOwners: Record<string, string>;
+	};
+
+	function buildAddressOwners(
+		rows: HostInterfaceL3Entry[],
+		interfaces: Iface[]
+	): Record<string, string> {
+		const owners: Record<string, string> = {};
+		const record = (value: string, owner: string) => {
+			const normalized = normalizeHostAddress(value);
+			if (normalized) {
+				owners[`${normalized.family}|${normalized.host}`] = owner;
+			}
+		};
+
+		for (const row of rows) {
+			if (row.interface === interfaceName) {
+				continue;
+			}
+			for (const address of row.addresses) {
+				record(address.address, row.interface);
+			}
+		}
+		for (const live of interfaces) {
+			if (live.name === interfaceName) {
+				continue;
+			}
+			for (const address of live.ipv4 ?? []) {
+				record(address.ip, live.name);
+			}
+			for (const address of live.ipv6 ?? []) {
+				record(address.ip, live.name);
+			}
+		}
+
+		return owners;
+	}
+
+	async function fetchPreflightSnapshot(): Promise<PreflightSnapshot | null> {
+		const [listResponse, pendingResponse, interfacesResponse] = await Promise.all([
+			getHostInterfaceL3(),
+			getHostInterfaceL3Pending(),
+			getInterfaces()
+		]);
+		if (
+			isAPIResponse(listResponse) ||
+			isAPIResponse(pendingResponse) ||
+			isAPIResponse(interfacesResponse) ||
+			!isHostInterfaceL3List(listResponse)
+		) {
+			return null;
+		}
+
+		return {
+			row: listResponse.rows.find((row) => row.interface === interfaceName) ?? null,
+			target: listResponse.targets.find((target) => target.interface === interfaceName) ?? null,
+			pendingCount: pendingResponse.filter((pending) => pending.interface === interfaceName).length,
+			addressOwners: buildAddressOwners(listResponse.rows, interfacesResponse)
+		};
+	}
+
+	function notifyBlocked(title: string, description?: string) {
+		toast.error(title, {
+			id: preflightToastID,
+			description,
+			duration: 3000,
+			position: 'bottom-center'
+		});
+	}
+
+	function notifyPending(count: number) {
+		toast.info(
+			count === 1
+				? 'A change is awaiting confirmation'
+				: `${count} changes are awaiting confirmation`,
+			{
+				id: preflightToastID,
+				duration: 8000,
+				position: 'bottom-center',
+				action: onReviewPending
+					? { label: 'Review', onClick: () => onReviewPending?.() }
+					: undefined
+			}
+		);
+	}
+
+	function notifyRequestError(response: APIResponse) {
+		const code = Array.isArray(response.error) ? response.error[0] : response.error;
+		const message = hostInterfaceL3Message(String(code ?? '').trim());
+		if (message) {
+			showErrorToast(message, response, { id: requestToastID, position: 'bottom-center' });
+			return;
+		}
+		handleAPIError(response);
+	}
+
+	async function preflightAllows(
+		mode: HostInterfaceL3PreflightMode,
+		requestedAddresses: string[]
+	): Promise<boolean> {
+		const snapshot = await fetchPreflightSnapshot();
+		if (!snapshot) {
+			return true;
+		}
+
+		const result = hostInterfaceL3Preflight({ mode, ...snapshot, requestedAddresses });
+		if (result.status === 'pending') {
+			notifyPending(result.count);
+			await onDone(false);
+			return false;
+		}
+		if (result.status === 'blocked') {
+			notifyBlocked(result.title, result.description);
+			await onDone(false);
+			return false;
+		}
+		return true;
 	}
 
 	function isRevisionMismatch(response: { message?: string; error?: string | string[] }): boolean {
@@ -244,17 +380,22 @@
 	}
 
 	async function save() {
-		validationError = '';
-		const payload = buildPayload();
-		if (!payload) {
+		const built = buildPayload();
+		if ('error' in built) {
+			notifyBlocked('Cannot save', built.error);
 			return;
 		}
 
 		saving = true;
 		try {
-			const response = await saveHostInterfaceL3(interfaceName, payload);
+			const requestedAddresses = built.payload.addresses.map((address) => address.address);
+			if (!(await preflightAllows('save', requestedAddresses))) {
+				return;
+			}
+
+			const response = await saveHostInterfaceL3(interfaceName, built.payload);
 			if (isAPIResponse(response)) {
-				handleAPIError(response);
+				notifyRequestError(response);
 				await onDone(isRevisionMismatch(response));
 				return;
 			}
@@ -269,11 +410,20 @@
 		if (!entry) {
 			return;
 		}
+
 		removing = true;
 		try {
+			const snapshot = await fetchPreflightSnapshot();
+			if (snapshot && snapshot.pendingCount > 0) {
+				removeDialogOpen = false;
+				notifyPending(snapshot.pendingCount);
+				await onDone(false);
+				return;
+			}
+
 			const response = await deleteHostInterfaceL3(interfaceName, entry.revision);
 			if (isAPIResponse(response)) {
-				handleAPIError(response);
+				notifyRequestError(response);
 				await onDone(isRevisionMismatch(response));
 				return;
 			}
@@ -288,9 +438,13 @@
 	async function reapply() {
 		saving = true;
 		try {
+			if (!(await preflightAllows('reapply', []))) {
+				return;
+			}
+
 			const response = await reapplyHostInterfaceL3(interfaceName);
 			if (isAPIResponse(response) && response.status !== 'success') {
-				handleAPIError(response);
+				notifyRequestError(response);
 				return;
 			}
 			toast.success(`${interfaceName} reapplied`, { position: 'bottom-center' });
@@ -306,7 +460,7 @@
 	<Dialog.Content
 		class="w-[96%] overflow-hidden p-5 lg:max-w-2xl md:max-w-xl"
 		showCloseButton={!saving}
-		showResetButton={!saving}
+		showResetButton={!saving && editable}
 		onReset={resetForm}
 		onClose={() => {
 			if (!saving) open = false;
@@ -322,40 +476,24 @@
 					icon="icon-[mdi--ip]"
 					size="h-5 w-5"
 					gap="gap-2"
-					title={`Host IP — ${interfaceName}`}
+					title={`Host IP - ${interfaceName}`}
 				/>
 			</Dialog.Title>
+			<Dialog.Description class="text-xs">
+				Manage static addresses, MTU and metric at runtime; rc.conf and the default route are left
+				untouched.
+			</Dialog.Description>
 		</Dialog.Header>
 
-		<fieldset disabled={saving || removing || saveBlocked || !!readOnlyReason} class="contents">
+		<fieldset disabled={saving || removing || !editable} class="contents">
 			<ScrollArea orientation="vertical" class="max-h-[70vh] pr-2">
 				<div class="space-y-4">
 					{#if readOnlyReason}
-						<p
-							class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400"
-						>
-							{readOnlyReason}
+						<p class="text-xs text-muted-foreground">View only. {readOnlyReason}</p>
+					{:else if interfaceMissing}
+						<p class="text-xs text-muted-foreground">
+							Interface missing. The configuration is kept so it can still be removed.
 						</p>
-					{/if}
-					{#if interfaceMissing}
-						<p
-							class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400"
-						>
-							This interface is missing from the system. Sylve keeps the configuration so it can be
-							removed; saving is disabled until the interface returns.
-						</p>
-					{/if}
-					{#if entry && entry.conflicts.length > 0}
-						<ul
-							class="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400"
-						>
-							{#each hostInterfaceL3Labels(entry.conflicts) as conflict (conflict)}
-								<li>{conflict}</li>
-							{/each}
-						</ul>
-					{/if}
-					{#if validationError}
-						<p class="text-xs text-destructive">{validationError}</p>
 					{/if}
 					<div class="space-y-2">
 						<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -371,11 +509,20 @@
 								/>
 								{#if hasForeignIPv4PrefixOwner(index)}
 									{#if isIPv4PrefixOwner(index)}
-										<Button size="sm" variant="outline" disabled>Foreign prefix</Button>
+										<Button
+											size="sm"
+											class="h-9"
+											variant="outline"
+											disabled
+											title="A live address outside Sylve owns this prefix, so Sylve addresses here use /32 aliases."
+										>
+											Foreign prefix
+										</Button>
 									{/if}
 								{:else if ipv4PrefixGroup(index).length > 1}
 									<Button
 										size="sm"
+										class="h-9"
 										variant="outline"
 										onclick={() => makeIPv4PrefixOwner(index)}
 										disabled={isIPv4PrefixOwner(index)}
@@ -384,9 +531,10 @@
 									</Button>
 								{/if}
 								<Button
-									size="sm"
+									size="icon"
 									variant="outline"
-									onclick={() => (addresses = addresses.filter((_, i) => i !== index))}
+									title="Remove address"
+									onclick={() => removeAddress(index)}
 								>
 									<span class="icon-[mdi--close] h-4 w-4"></span>
 								</Button>
@@ -396,23 +544,14 @@
 							<span class="icon-[mdi--plus] mr-2 h-4 w-4"></span>
 							Add address
 						</Button>
-						{#if ipv4AddressCount > 1}
-							<p class="text-xs text-amber-600 dark:text-amber-400">
-								One IPv4 address in each subnet owns its connected prefix; additional addresses use
-								/32 aliases. Changing the owner changes connected-route masks and is protected by
-								the confirmation window.
+						{#if hasSharedIPv4Prefix}
+							<p class="text-xs text-muted-foreground">
+								One address per subnet owns the connected route; the rest become /32 aliases.
 							</p>
 						{/if}
 						{#if hasOverlappingIPv4Prefixes}
 							<p class="text-xs text-amber-600 dark:text-amber-400">
-								These IPv4 CIDRs create overlapping connected prefixes. Verify the intended routing
-								before confirming the change.
-							</p>
-						{/if}
-						{#if hasForeignIPv4Prefix}
-							<p class="text-xs text-muted-foreground">
-								A live foreign address owns at least one connected prefix. Sylve addresses in that
-								prefix will use /32 aliases.
+								Overlapping IPv4 subnets; verify the intended routing before saving.
 							</p>
 						{/if}
 					</div>
@@ -449,18 +588,9 @@
 					</div>
 					{#if hasStaticIPv6 && ipv6Mode === 'inherit'}
 						<p class="text-xs text-muted-foreground">
-							Static IPv6 requires IPv6 to be enabled. Saving will track it as Enabled and restore
-							the current ND6 settings when Host IP is removed.
+							Saving enables IPv6 and restores the previous settings if Host IP is removed.
 						</p>
 					{/if}
-
-					<p class="text-xs text-muted-foreground">
-						No default route is managed here; off-subnet traffic keeps using the existing default.
-					</p>
-					<p class="text-xs text-muted-foreground">
-						Sylve changes runtime state only and does not edit rc.conf. Boot configuration applies
-						first and may provide additional effective addresses or settings shown in the table.
-					</p>
 				</div>
 			</ScrollArea>
 		</fieldset>
@@ -468,32 +598,26 @@
 		<Dialog.Footer>
 			<div class="flex w-full items-center justify-between gap-2">
 				<div>
-					{#if entry}
+					{#if entry && !readOnlyReason}
 						<div class="flex items-center gap-2">
-							<Button
-								size="sm"
-								variant="outline"
-								onclick={reapply}
-								disabled={saving || reapplyBlocked || !!readOnlyReason}
-							>
-								Reapply
-							</Button>
+							{#if !interfaceMissing}
+								<Button size="sm" variant="outline" onclick={reapply} disabled={saving || removing}>
+									Reapply
+								</Button>
+							{/if}
 							<Button
 								size="sm"
 								variant="destructive"
 								onclick={() => (removeDialogOpen = true)}
-								disabled={saving || removing || !!readOnlyReason}
+								disabled={saving || removing}
 							>
 								Remove Host IP
 							</Button>
 						</div>
 					{/if}
 				</div>
-				<div class="flex items-center gap-2">
-					<Button size="sm" variant="outline" onclick={() => (open = false)} disabled={saving}>
-						Cancel
-					</Button>
-					<Button size="sm" onclick={save} disabled={saving || saveBlocked || !!readOnlyReason}>
+				{#if editable}
+					<Button size="sm" onclick={save} disabled={saving || removing}>
 						{#if saving}
 							<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
 							Saving...
@@ -501,7 +625,7 @@
 							Save
 						{/if}
 					</Button>
-				</div>
+				{/if}
 			</div>
 		</Dialog.Footer>
 	</Dialog.Content>

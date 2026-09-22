@@ -552,6 +552,7 @@
 		readOnlyReason={hostInterfaceL3ReadOnlyReason}
 		onDone={handleHostInterfaceL3Done}
 		onPending={handleHostInterfaceL3Pending}
+		onReviewPending={() => (hostInterfaceL3Pending.open = true)}
 	/>
 
 	<HostInterfaceL3PendingDialog
