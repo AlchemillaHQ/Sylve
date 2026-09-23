@@ -1549,6 +1549,15 @@ body.tabulator-print-fullscreen-hide > *:not(.tabulator-print-fullscreen) {
 	overflow: hidden;
 }
 
+.tabulator .tabulator-row .tabulator-cell > .inline-flex {
+	display: inline;
+}
+
+.tabulator .tabulator-row .tabulator-cell > .inline-flex > span:not(:last-child) {
+	vertical-align: middle;
+	margin-right: 0.25rem;
+}
+
 .tabulator .tabulator-row .tabulator-cell:last-of-type {
 	border-right: none;
 }
