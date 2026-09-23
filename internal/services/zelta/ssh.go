@@ -575,7 +575,7 @@ func (s *Service) inspectTarget(
 	}
 	poolExists, poolOutput, poolErr := s.remoteZFSPoolExists(ctx, target, pool)
 	if poolErr != nil {
-		return result, fmt.Errorf("backup_pool_check_failed: %s", poolOutput)
+		return result, backupPoolCheckError(poolOutput, poolErr)
 	}
 	if !poolExists {
 		return result, fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)
@@ -622,7 +622,7 @@ func (s *Service) ProvisionBackupTargetRoot(ctx context.Context, target *cluster
 	}
 	poolExists, poolOutput, poolErr := s.remoteZFSPoolExists(ctx, target, pool)
 	if poolErr != nil {
-		return &BackupTargetProvisionError{Err: fmt.Errorf("backup_pool_check_failed: %s", poolOutput)}
+		return &BackupTargetProvisionError{Err: backupPoolCheckError(poolOutput, poolErr)}
 	}
 	if !poolExists {
 		return &BackupTargetProvisionError{Err: fmt.Errorf("backup_pool_not_found: pool '%s' does not exist on target", pool)}
@@ -775,11 +775,43 @@ func (s *Service) runTargetRemoteCommand(
 	if err != nil {
 		return "", err
 	}
-	output, err := utils.RunCommandWithContext(ctx, "ssh", sshArgs...)
+	stdout, stderr, err := utils.RunCommandWithContextStreams(ctx, "ssh", sshArgs...)
 	if err != nil {
-		return output, fmt.Errorf("%s: %w", strings.TrimSpace(output), err)
+		// Failures keep the historical stdout+stderr payload: callers match stderr-only diagnostics in output.
+		combined := combinedRemoteCommandOutput(stdout, stderr)
+		return combined, fmt.Errorf("%s: %w", strings.TrimSpace(combined), err)
 	}
-	return output, nil
+	if warning := strings.TrimSpace(stderr); warning != "" {
+		event := logger.L.Debug().
+			Str("command_kind", kind).
+			Uint("target_id", target.ID).
+			Str("stderr", warning)
+		if dataset != "" {
+			event.Str("dataset", remoteDatasetForLog(dataset))
+		}
+		event.Msg("remote_command_stderr")
+	}
+	return stdout, nil
+}
+
+func combinedRemoteCommandOutput(stdout, stderr string) string {
+	stdout = strings.TrimSpace(stdout)
+	stderr = strings.TrimSpace(stderr)
+	switch {
+	case stdout == "":
+		return stderr
+	case stderr == "":
+		return stdout
+	default:
+		return stdout + "\n" + stderr
+	}
+}
+
+func backupPoolCheckError(output string, err error) error {
+	if output = strings.TrimSpace(output); output == "" {
+		return fmt.Errorf("backup_pool_check_failed: %w", err)
+	}
+	return fmt.Errorf("backup_pool_check_failed: %s: %w", output, err)
 }
 
 func (s *Service) targetRemoteCommandArgs(

@@ -48,6 +48,11 @@ func TestHelperProcess(t *testing.T) {
 				fmt.Fprint(os.Stdout, "Hello, world!\n")
 				os.Exit(0)
 
+			case "mixed":
+				fmt.Fprint(os.Stdout, "stdout payload\n")
+				fmt.Fprint(os.Stderr, "stderr diagnostic\n")
+				os.Exit(0)
+
 			case "failure":
 				fmt.Fprint(os.Stderr, "something went wrong\n")
 				os.Exit(1)
@@ -170,6 +175,43 @@ func TestRunCommandWithContext_Cancelled(t *testing.T) {
 	}
 	if output != "" {
 		t.Fatalf("expected empty output, got %q", output)
+	}
+	if !strings.Contains(err.Error(), "command execution failed") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestRunCommandWithContextStreams_Success(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	stdout, stderr, err := RunCommandWithContextStreams(context.Background(), "mixed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout != "stdout payload\n" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+	if stderr != "stderr diagnostic\n" {
+		t.Fatalf("unexpected stderr: %q", stderr)
+	}
+}
+
+func TestRunCommandWithContextStreams_Failure(t *testing.T) {
+	original := execCommandContext
+	execCommandContext = fakeExecCommandContext
+	defer func() { execCommandContext = original }()
+
+	stdout, stderr, err := RunCommandWithContextStreams(context.Background(), "failure")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if stdout != "" {
+		t.Fatalf("unexpected stdout: %q", stdout)
+	}
+	if stderr != "something went wrong\n" {
+		t.Fatalf("unexpected stderr: %q", stderr)
 	}
 	if !strings.Contains(err.Error(), "command execution failed") {
 		t.Fatalf("unexpected error message: %v", err)

@@ -73,6 +73,26 @@ func RunCommandWithContext(ctx context.Context, command string, args ...string) 
 	return output, nil
 }
 
+func RunCommandWithContextStreams(
+	ctx context.Context,
+	command string,
+	args ...string,
+) (string, string, error) {
+	cmd := execCommandContext(ctx, command, args...)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+
+	err := cmd.Run()
+	if err != nil {
+		return out.String(), errOut.String(), fmt.Errorf("command execution failed: %v", err)
+	}
+
+	return out.String(), errOut.String(), nil
+}
+
 type CommandResult struct {
 	Output   string
 	ExitCode int
