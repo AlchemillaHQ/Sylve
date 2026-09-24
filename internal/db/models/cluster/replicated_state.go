@@ -250,7 +250,9 @@ func ClusterSnapshotDigest(snapshot *ClusterSnapshot) (string, error) {
 	if snapshot == nil {
 		return "", fmt.Errorf("cluster_snapshot_required")
 	}
-	payload, err := json.Marshal(snapshot)
+	digestInput := *snapshot
+	digestInput.AppliedIndex = 0
+	payload, err := json.Marshal(&digestInput)
 	if err != nil {
 		return "", fmt.Errorf("marshal_cluster_snapshot_digest: %w", err)
 	}

@@ -11,12 +11,14 @@ package clusterModels
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"testing"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
+	"gorm.io/gorm"
 )
 
 func allSnapshotModels() []any {
@@ -551,3 +553,181 @@ func (w *writerSnapSink) Close() error                { return nil }
 func (w *writerSnapSink) Cancel() error               { return nil }
 func (w *writerSnapSink) ID() string                  { return "test" }
 func (w *writerSnapSink) Write(p []byte) (int, error) { return w.buf.Write(p) }
+
+func TestFSMDispatcherAppliedIndexTracksConsumedCommands(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsm := NewFSMDispatcher(database)
+	RegisterDefaultHandlers(fsm)
+
+	checkpoint := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"cluster_state","action":"checkpoint","data":{}}`)
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 7, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+	if got := fsm.AppliedIndex(); got != 7 {
+		t.Fatalf("applied index = %d, want 7", got)
+	}
+
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogBarrier, Index: 8}); resp != nil {
+		t.Fatalf("barrier apply response = %v", resp)
+	}
+	if got := fsm.AppliedIndex(); got != 7 {
+		t.Fatalf("barrier moved applied index to %d, want 7", got)
+	}
+
+	missingNote := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"note","action":"update","data":{"id":999}}`)
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 9, Data: missingNote}); resp == nil {
+		t.Fatal("missing note update reported success")
+	}
+	if got := fsm.AppliedIndex(); got != 9 {
+		t.Fatalf("applied index after failed handler = %d, want 9", got)
+	}
+}
+
+func TestClusterSnapshotCarriesAndRestoresAppliedIndex(t *testing.T) {
+	sourceDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsmSrc := NewFSMDispatcher(sourceDB)
+	RegisterDefaultHandlers(fsmSrc)
+	if err := sourceDB.Create(&ClusterNote{ID: 1, Title: "note", Content: "content"}).Error; err != nil {
+		t.Fatalf("seed note: %v", err)
+	}
+	checkpoint := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"cluster_state","action":"checkpoint","data":{}}`)
+	if resp := fsmSrc.Apply(&raft.Log{Type: raft.LogCommand, Index: 11, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+
+	snapshot, err := fsmSrc.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot() failed: %v", err)
+	}
+	captured, ok := snapshot.(*ClusterSnapshot)
+	if !ok {
+		t.Fatalf("snapshot type = %T, want *ClusterSnapshot", snapshot)
+	}
+	if captured.AppliedIndex != 11 {
+		t.Fatalf("snapshot applied index = %d, want 11", captured.AppliedIndex)
+	}
+
+	var buf bytes.Buffer
+	if err := captured.Persist(&writerSnapSink{buf: &buf}); err != nil {
+		t.Fatalf("Persist failed: %v", err)
+	}
+	destDB := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsmDest := NewFSMDispatcher(destDB)
+	RegisterDefaultHandlers(fsmDest)
+	if err := fsmDest.Restore(io.NopCloser(bytes.NewReader(buf.Bytes()))); err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if got := fsmDest.AppliedIndex(); got != 11 {
+		t.Fatalf("restored applied index = %d, want 11", got)
+	}
+}
+
+func TestFSMDispatcherMarkerLifecycle(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsm := NewFSMDispatcher(database)
+	RegisterDefaultHandlers(fsm)
+	checkpoint := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"cluster_state","action":"checkpoint","data":{}}`)
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 5, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 5 {
+		t.Fatalf("marker = %d known=%t, want 5 known", fsm.AppliedIndex(), fsm.AppliedIndexKnown())
+	}
+
+	legacySnapshot, _, err := CaptureReplicatedStateDigest(database)
+	if err != nil {
+		t.Fatalf("capture legacy snapshot: %v", err)
+	}
+	legacySnapshot.AppliedIndex = 0
+	payload, err := json.Marshal(legacySnapshot)
+	if err != nil {
+		t.Fatalf("marshal legacy snapshot: %v", err)
+	}
+	if err := fsm.Restore(io.NopCloser(bytes.NewReader(payload))); err != nil {
+		t.Fatalf("restore legacy snapshot: %v", err)
+	}
+	if fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
+		t.Fatalf(
+			"marker after legacy restore = %d known=%t, want unknown zero",
+			fsm.AppliedIndex(),
+			fsm.AppliedIndexKnown(),
+		)
+	}
+	if _, index, err := fsm.StateDigest(); err != nil || index != 0 {
+		t.Fatalf("zero-marker digest index = %d err=%v, want 0", index, err)
+	}
+
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 9, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 9 {
+		t.Fatalf("marker = %d known=%t, want 9 known", fsm.AppliedIndex(), fsm.AppliedIndexKnown())
+	}
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 12, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+	if err := fsm.ClearReplicatedState(); err != nil {
+		t.Fatalf("clear replicated state: %v", err)
+	}
+	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
+		t.Fatalf(
+			"marker after clear = %d known=%t, want known zero",
+			fsm.AppliedIndex(),
+			fsm.AppliedIndexKnown(),
+		)
+	}
+}
+
+func TestFSMDispatcherClearReplicatedStateTxnRollsBack(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsm := NewFSMDispatcher(database)
+	RegisterDefaultHandlers(fsm)
+	checkpoint := []byte(`{"version":1,"decidedAt":"2026-09-24T00:00:00Z","type":"cluster_state","action":"checkpoint","data":{}}`)
+	if resp := fsm.Apply(&raft.Log{Type: raft.LogCommand, Index: 9, Data: checkpoint}); resp != nil {
+		t.Fatalf("checkpoint apply response = %v", resp)
+	}
+	if err := database.Create(&GuestIdentityClaim{
+		GuestID: 913, GuestKind: ReplicationGuestTypeVM,
+		OwnerNodeID: "node-a", Token: "rollback-test",
+	}).Error; err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+
+	sentinel := errors.New("prepare failed")
+	if err := fsm.ClearReplicatedStateTxn(func(tx *gorm.DB) error {
+		return sentinel
+	}); !errors.Is(err, sentinel) {
+		t.Fatalf("paired clear error = %v, want the prepare failure", err)
+	}
+	var claims int64
+	if err := database.Model(&GuestIdentityClaim{}).Count(&claims).Error; err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if claims != 1 {
+		t.Fatalf("claims after failed clear = %d, want the rolled-back row", claims)
+	}
+	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 9 {
+		t.Fatalf(
+			"marker after failed clear = %d known=%t, want 9 known",
+			fsm.AppliedIndex(),
+			fsm.AppliedIndexKnown(),
+		)
+	}
+
+	if err := fsm.ClearReplicatedStateTxn(nil); err != nil {
+		t.Fatalf("clear replicated state: %v", err)
+	}
+	if err := database.Model(&GuestIdentityClaim{}).Count(&claims).Error; err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if claims != 0 {
+		t.Fatalf("claims after clear = %d, want none", claims)
+	}
+	if !fsm.AppliedIndexKnown() || fsm.AppliedIndex() != 0 {
+		t.Fatalf(
+			"marker after clear = %d known=%t, want known zero",
+			fsm.AppliedIndex(),
+			fsm.AppliedIndexKnown(),
+		)
+	}
+}

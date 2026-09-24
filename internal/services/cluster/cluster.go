@@ -50,6 +50,15 @@ type Service struct {
 	guestIdentityLocalReservations map[uint]string
 	guestIdentityClusterFormation  bool
 
+	joinPromotionMu       sync.Mutex
+	joinPromotionFailures map[string]string
+	joinLeaderTargetMu    sync.Mutex
+	joinLeaderTargetIndex uint64
+	joinVersionWarnMu     sync.Mutex
+	joinVersionWarnings   map[string]string
+	joinNudgeMu           sync.Mutex
+	joinProgressNudges    map[string]struct{}
+
 	raftFSM            raft.FSM
 	stateFSM           *clusterModels.FSMDispatcher
 	stateRepair        atomic.Bool
@@ -65,6 +74,12 @@ type Service struct {
 		raft.ServerAddress,
 		ReplicatedStateRepairRequest,
 	) error
+	joinIntentRequest func(
+		context.Context,
+		string,
+		[]byte,
+		map[string]string,
+	) (int, []byte, error)
 
 	peerProbeMu            sync.Mutex
 	peerProbeFailureStreak map[string]int
@@ -516,11 +531,8 @@ func (s *Service) StartAsJoiner(fsm raft.FSM, ip, clusterKey string) error {
 	c.RaftPort = port
 	c.Enabled = true
 	c.Key = clusterKey
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(&c).Error; err != nil {
-			return err
-		}
-		return clearClusteredDataTx(tx)
+	if err := s.clearClusteredData(func(tx *gorm.DB) error {
+		return tx.Save(&c).Error
 	}); err != nil {
 		if rollbackErr := s.rollbackJoinPreparation(originalCluster, originalNodeID); rollbackErr != nil {
 			return errors.Join(err, fmt.Errorf("join_preparation_rollback_failed: %w", rollbackErr))
@@ -544,7 +556,21 @@ func clearClusteredDataTx(tx *gorm.DB) error {
 }
 
 func (s *Service) ClearClusteredData() error {
-	return s.DB.Transaction(clearClusteredDataTx)
+	return s.clearClusteredData(nil)
+}
+
+func (s *Service) clearClusteredData(prepare func(tx *gorm.DB) error) error {
+	if s.stateFSM != nil {
+		return s.stateFSM.ClearReplicatedStateTxn(prepare)
+	}
+	return s.DB.Transaction(func(tx *gorm.DB) error {
+		if prepare != nil {
+			if err := prepare(tx); err != nil {
+				return err
+			}
+		}
+		return clearClusteredDataTx(tx)
+	})
 }
 
 func (s *Service) MarkClustered() error {

@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorm.io/gorm"
@@ -86,10 +87,12 @@ func replicatedCommandTime(db *gorm.DB) time.Time {
 type HandlerFn func(db *gorm.DB, action string, raw json.RawMessage) error
 
 type FSMDispatcher struct {
-	DB       *gorm.DB
-	mu       sync.RWMutex
-	sm       sync.Mutex
-	handlers map[string]HandlerFn
+	DB            *gorm.DB
+	mu            sync.RWMutex
+	sm            sync.Mutex
+	handlers      map[string]HandlerFn
+	appliedIndex  atomic.Uint64
+	markerUnknown atomic.Bool
 }
 
 func NewFSMDispatcher(db *gorm.DB) *FSMDispatcher {
@@ -123,6 +126,7 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 
 	f.sm.Lock()
 	defer f.sm.Unlock()
+	defer f.recordAppliedIndex(l.Index)
 
 	decidedAt, err := commandApplyTime(cmd, l)
 	if err != nil {
@@ -137,8 +141,60 @@ func (f *FSMDispatcher) Apply(l *raft.Log) any {
 	return nil
 }
 
+func (f *FSMDispatcher) recordAppliedIndex(index uint64) {
+	if f == nil || index == 0 {
+		return
+	}
+	f.appliedIndex.Store(index)
+	f.markerUnknown.Store(false)
+}
+
+func (f *FSMDispatcher) AppliedIndex() uint64 {
+	if f == nil {
+		return 0
+	}
+	return f.appliedIndex.Load()
+}
+
+func (f *FSMDispatcher) AppliedIndexKnown() bool {
+	if f == nil {
+		return false
+	}
+	return !f.markerUnknown.Load()
+}
+
+func (f *FSMDispatcher) resetAppliedIndexLocked() {
+	f.appliedIndex.Store(0)
+	f.markerUnknown.Store(false)
+}
+
+func (f *FSMDispatcher) ClearReplicatedState() error {
+	return f.ClearReplicatedStateTxn(nil)
+}
+
+func (f *FSMDispatcher) ClearReplicatedStateTxn(prepare func(tx *gorm.DB) error) error {
+	if f == nil || f.DB == nil {
+		return fmt.Errorf("raft_fsm_unavailable")
+	}
+	f.sm.Lock()
+	defer f.sm.Unlock()
+	if err := f.DB.Transaction(func(tx *gorm.DB) error {
+		if prepare != nil {
+			if err := prepare(tx); err != nil {
+				return err
+			}
+		}
+		return ClearReplicatedStateTx(tx)
+	}); err != nil {
+		return err
+	}
+	f.resetAppliedIndexLocked()
+	return nil
+}
+
 // ClusterSnapshot represents the state that will be snapshotted/restored.
 type ClusterSnapshot struct {
+	AppliedIndex                  uint64                             `json:"appliedIndex,omitempty"`
 	GuestIdentityRegistries       []GuestIdentityRegistry            `json:"guestIdentityRegistries"`
 	GuestIdentityEnrollments      []GuestIdentityEnrollment          `json:"guestIdentityEnrollments"`
 	GuestIdentityClaims           []GuestIdentityClaim               `json:"guestIdentityClaims"`
@@ -170,13 +226,16 @@ type ClusterSnapshot struct {
 func (f *FSMDispatcher) Snapshot() (raft.FSMSnapshot, error) {
 	f.sm.Lock()
 	defer f.sm.Unlock()
-	return captureClusterSnapshot(f.DB)
+	snapshot, err := captureClusterSnapshot(f.DB)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.AppliedIndex = f.AppliedIndex()
+	return snapshot, nil
 }
 
 // StateDigest serializes a canonical state capture with FSM command
-// application. The applied-index callback is evaluated while the FSM is
-// locked, making the returned index a conservative fence for the image.
-func (f *FSMDispatcher) StateDigest(appliedIndex func() uint64) (string, uint64, error) {
+func (f *FSMDispatcher) StateDigest() (string, uint64, error) {
 	if f == nil {
 		return "", 0, fmt.Errorf("raft_fsm_unavailable")
 	}
@@ -191,11 +250,7 @@ func (f *FSMDispatcher) StateDigest(appliedIndex func() uint64) (string, uint64,
 	if err != nil {
 		return "", 0, err
 	}
-	var index uint64
-	if appliedIndex != nil {
-		index = appliedIndex()
-	}
-	return digest, index, nil
+	return digest, f.AppliedIndex(), nil
 }
 
 func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]ReplicationPolicy, []ReplicationPolicyTarget) {
@@ -231,6 +286,9 @@ func dedupReplicationTargets(payloads []ReplicationPolicyPayload) ([]Replication
 
 func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
+	f.sm.Lock()
+	defer f.sm.Unlock()
+
 	var snap ClusterSnapshot
 	if err := json.NewDecoder(rc).Decode(&snap); err != nil {
 		return err
@@ -241,7 +299,7 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 	restoreDB := f.DB.Session(&gorm.Session{
 		NowFunc: func() time.Time { return legacyCommandTime },
 	})
-	return restoreDB.Transaction(func(tx *gorm.DB) error {
+	if err := restoreDB.Transaction(func(tx *gorm.DB) error {
 		type restoreSet struct {
 			table string
 			data  any
@@ -361,7 +419,12 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	f.appliedIndex.Store(snap.AppliedIndex)
+	f.markerUnknown.Store(snap.AppliedIndex == 0)
+	return nil
 }
 
 func (s *ClusterSnapshot) Persist(sink raft.SnapshotSink) error {

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 )
@@ -115,50 +116,74 @@ func (s *Service) checkJoinInventory(
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) (GuestIdentityInventoryReport, bool, error) {
-	if s == nil || s.DB == nil {
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf("cluster_service_not_initialized")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := ctx.Err(); err != nil {
-		return GuestIdentityInventoryReport{}, false, err
-	}
-	nodeIP, err := normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
-	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
-	}
+	combined, _, alreadyVoter, err := s.checkJoinInventoryWithClaims(
+		ctx,
+		nodeID,
+		nodeIP,
+		providedKey,
+		submitted,
+	)
+	return combined, alreadyVoter, err
+}
 
+func (s *Service) validateJoinAdmission(providedKey string) error {
+	if s == nil || s.DB == nil {
+		return fmt.Errorf("cluster_service_not_initialized")
+	}
 	details, err := s.GetClusterDetails()
 	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
+		return err
 	}
 	if details.Cluster == nil {
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf("cluster_not_found")
+		return fmt.Errorf("cluster_not_found")
 	}
 	if !details.Cluster.Enabled || strings.TrimSpace(details.Cluster.Key) == "" ||
 		providedKey == "" || details.Cluster.Key != providedKey {
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf("invalid_cluster_key")
+		return fmt.Errorf("invalid_cluster_key")
 	}
 	if s.Raft == nil {
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf("raft_not_initialized")
+		return fmt.Errorf("raft_not_initialized")
 	}
 	if s.Raft.State() != raft.Leader {
 		address, id := s.Raft.LeaderWithID()
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf(
+		return fmt.Errorf(
 			"not_leader; leader_addr=%s; leader_id=%s",
 			string(address),
 			string(id),
 		)
 	}
+	return nil
+}
+
+func (s *Service) checkJoinInventoryWithClaims(
+	ctx context.Context,
+	nodeID, nodeIP, providedKey string,
+	submitted GuestIdentityInventoryReport,
+) (GuestIdentityInventoryReport, []clusterModels.GuestIdentityClaim, bool, error) {
+	if s == nil || s.DB == nil {
+		return GuestIdentityInventoryReport{}, nil, false, fmt.Errorf("cluster_service_not_initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return GuestIdentityInventoryReport{}, nil, false, err
+	}
+	nodeIP, err := normalizeClusterIPv4(nodeIP, "invalid_joining_node_ip")
+	if err != nil {
+		return GuestIdentityInventoryReport{}, nil, false, err
+	}
+	if err := s.validateJoinAdmission(providedKey); err != nil {
+		return GuestIdentityInventoryReport{}, nil, false, err
+	}
 
 	canonicalJoiner, err := canonicalSubmittedGuestIdentityInventory(nodeID, submitted)
 	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
+		return GuestIdentityInventoryReport{}, nil, false, err
 	}
 	configurationFuture := s.Raft.GetConfiguration()
 	if err := configurationFuture.Error(); err != nil {
-		return GuestIdentityInventoryReport{}, false, fmt.Errorf("get_config_failed: %w", err)
+		return GuestIdentityInventoryReport{}, nil, false, fmt.Errorf("get_config_failed: %w", err)
 	}
 	localNodeID := strings.TrimSpace(s.NodeID)
 	if localNodeID == "" {
@@ -171,18 +196,18 @@ func (s *Service) checkJoinInventory(
 		raft.ServerAddress(RaftServerAddress(nodeIP)),
 	)
 	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
+		return GuestIdentityInventoryReport{}, nil, false, err
 	}
 
 	claims, err := s.authoritativeGuestIdentityClaims()
 	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
+		return GuestIdentityInventoryReport{}, nil, false, err
 	}
 	combined, err := validateJoinInventoryAgainstClaims(strings.TrimSpace(nodeID), canonicalJoiner, claims, existingServer)
 	if err != nil {
-		return GuestIdentityInventoryReport{}, false, err
+		return GuestIdentityInventoryReport{}, nil, false, err
 	}
-	return combined, existingServer != nil && existingServer.Suffrage == raft.Voter, nil
+	return combined, claims, existingServer != nil && existingServer.Suffrage == raft.Voter, nil
 }
 
 func (s *Service) PreflightJoinInventory(
@@ -264,12 +289,20 @@ func (s *Service) StageJoinInventory(
 				return fmt.Errorf("joining_node_membership_not_promotable")
 			}
 			status.Suffrage = raftSuffrageName(existingServer.Suffrage)
+			status.TargetIndex = s.replicatedStateFSMIndex()
 			return nil
 		}
 		candidate := raft.Server{ID: serverID, Address: serverAddress, Suffrage: raft.Nonvoter}
-		if err := s.checkUniformVersionsLocked(ctx, &candidate, ""); err != nil {
+		warnings, err := s.checkJoinVersionCompatibility(
+			ctx,
+			&candidate,
+			strings.TrimSpace(string(candidate.ID)),
+			nil,
+		)
+		if err != nil {
 			return err
 		}
+		s.recordJoinVersionWarnings(warnings)
 
 		s.replicatedStateMu.Lock()
 		defer s.replicatedStateMu.Unlock()
@@ -280,7 +313,7 @@ func (s *Service) StageJoinInventory(
 			return fmt.Errorf("add_nonvoter_failed: %w", err)
 		}
 		status.Suffrage = raftSuffrageName(raft.Nonvoter)
-		status.TargetIndex = s.Raft.AppliedIndex()
+		status.TargetIndex = s.replicatedStateFSMIndex()
 		return nil
 	}()
 	if err != nil {
@@ -306,6 +339,17 @@ func (s *Service) finalizeStagedJoin(
 	nodeID, nodeIP, providedKey string,
 	submitted GuestIdentityInventoryReport,
 ) error {
+	return s.finalizeStagedJoinWithVersionCheck(
+		ctx, nodeID, nodeIP, providedKey, submitted, nil,
+	)
+}
+
+func (s *Service) finalizeStagedJoinWithVersionCheck(
+	ctx context.Context,
+	nodeID, nodeIP, providedKey string,
+	submitted GuestIdentityInventoryReport,
+	observedVersion *joinVersionObservation,
+) error {
 	ctx, cancel := withReplicatedStateTimeout(ctx)
 	defer cancel()
 	admittedCtx, release, err := s.EnterMutation(ctx)
@@ -318,7 +362,27 @@ func (s *Service) finalizeStagedJoin(
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
 
-	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
+	if err := s.validateJoinAdmission(providedKey); err != nil {
+		return err
+	}
+	warnings, err := s.checkJoinVersionCompatibility(ctx, nil, nodeID, observedVersion)
+	if err != nil {
+		return err
+	}
+	s.recordJoinVersionWarnings(warnings)
+	if s.stateFSM != nil && !s.stateFSM.AppliedIndexKnown() {
+		if err := s.appendJoinProgressCheckpoint(); err != nil {
+			return err
+		}
+	}
+
+	_, claims, alreadyVoter, err := s.checkJoinInventoryWithClaims(
+		ctx,
+		nodeID,
+		nodeIP,
+		providedKey,
+		submitted,
+	)
 	if err != nil {
 		return err
 	}
@@ -350,19 +414,32 @@ func (s *Service) finalizeStagedJoin(
 	if err != nil {
 		return err
 	}
-	if err := s.admitStagedJoinGuestIdentities(ctx, nodeID, canonicalJoiner); err != nil {
+	if err := s.admitStagedJoinGuestIdentities(ctx, nodeID, canonicalJoiner, claims); err != nil {
 		return err
 	}
-	targetIndex := s.Raft.AppliedIndex()
+	targetIndex := s.replicatedStateFSMIndex()
 	progress, err := s.fetchJoinProgress(ctx, strings.TrimSpace(nodeID), server.Address, targetIndex)
 	if err != nil {
 		return fmt.Errorf("replicated_state_catchup_failed: %w", err)
 	}
-	if progress.AppliedIndex < targetIndex {
+	observedIndex := progress.FSMIndex
+	if !progress.FSMIndexKnown {
+		observedIndex = progress.AppliedIndex
+	}
+	if observedIndex > 0 {
+		s.clearJoinProgressNudge(nodeID)
+	}
+	if observedIndex < targetIndex {
+		if observedIndex == 0 && s.beginJoinProgressNudge(nodeID) {
+			if err := s.appendJoinProgressCheckpoint(); err != nil {
+				s.clearJoinProgressNudge(nodeID)
+				return err
+			}
+		}
 		return fmt.Errorf(
 			"replicated_state_catchup_pending: target=%d applied=%d",
 			targetIndex,
-			progress.AppliedIndex,
+			observedIndex,
 		)
 	}
 
@@ -395,16 +472,10 @@ func (s *Service) finalizeStagedJoin(
 			verifiedIndex = s.Raft.AppliedIndex()
 			return nil
 		}
-		if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
-			return err
-		}
-		if err := s.checkpointReplicatedStateLocked(); err != nil {
-			return err
-		}
 		reference, err := s.LocalReplicatedStateDigest(
 			ctx,
 			s.guestIdentityInventoryLocalNodeID(),
-			s.Raft.AppliedIndex(),
+			s.replicatedStateFSMIndex(),
 		)
 		if err != nil {
 			return err
@@ -436,16 +507,4 @@ func (s *Service) finalizeStagedJoin(
 		logger.L.Warn().Err(err).Msg("cluster_node_population_deferred_after_join")
 	}
 	return nil
-}
-
-func (s *Service) AcceptJoinInventory(
-	ctx context.Context,
-	nodeID, nodeIP, providedKey string,
-	submitted GuestIdentityInventoryReport,
-) error {
-	status, err := s.StageJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
-	if err != nil || status.Phase == JoinPhaseComplete {
-		return err
-	}
-	return s.finalizeStagedJoin(ctx, nodeID, nodeIP, providedKey, submitted)
 }

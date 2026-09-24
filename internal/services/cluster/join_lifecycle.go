@@ -56,24 +56,27 @@ type ClusterJoinProgress struct {
 	LeaderID      string `json:"leaderId,omitempty"`
 	LeaderAddress string `json:"leaderAddress,omitempty"`
 	AppliedIndex  uint64 `json:"appliedIndex"`
+	FSMIndex      uint64 `json:"fsmIndex,omitempty"`
+	FSMIndexKnown bool   `json:"fsmIndexKnown,omitempty"`
 	LastIndex     uint64 `json:"lastIndex"`
 	RepairFenced  bool   `json:"repairFenced"`
 }
 
 type ClusterJoinStatus struct {
-	NodeID        string `json:"nodeId"`
-	NodeIP        string `json:"nodeIp,omitempty"`
-	LeaderIP      string `json:"leaderIp,omitempty"`
-	LeaderID      string `json:"leaderId,omitempty"`
-	LeaderAddress string `json:"leaderAddress,omitempty"`
-	Phase         string `json:"phase"`
-	Suffrage      string `json:"suffrage,omitempty"`
-	RaftState     string `json:"raftState,omitempty"`
-	AppliedIndex  uint64 `json:"appliedIndex"`
-	TargetIndex   uint64 `json:"targetIndex,omitempty"`
-	Attempts      uint   `json:"attempts"`
-	Retrying      bool   `json:"retrying"`
-	LastError     string `json:"lastError,omitempty"`
+	NodeID            string `json:"nodeId"`
+	NodeIP            string `json:"nodeIp,omitempty"`
+	LeaderIP          string `json:"leaderIp,omitempty"`
+	LeaderID          string `json:"leaderId,omitempty"`
+	LeaderAddress     string `json:"leaderAddress,omitempty"`
+	Phase             string `json:"phase"`
+	Suffrage          string `json:"suffrage,omitempty"`
+	RaftState         string `json:"raftState,omitempty"`
+	AppliedIndex      uint64 `json:"appliedIndex"`
+	TargetIndex       uint64 `json:"targetIndex,omitempty"`
+	Attempts          uint   `json:"attempts"`
+	Retrying          bool   `json:"retrying"`
+	AwaitingPromotion bool   `json:"awaitingPromotion,omitempty"`
+	LastError         string `json:"lastError,omitempty"`
 }
 
 type JoinIntentSubmissionResult struct {
@@ -151,6 +154,7 @@ func (s *Service) SaveJoinIntent(
 	}).Error; err != nil {
 		return err
 	}
+	s.resetJoinLeaderTarget()
 	s.joinComplete.Store(false)
 	return nil
 }
@@ -247,8 +251,8 @@ func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
 
 	if s.Raft != nil && s.Raft.State() != raft.Shutdown {
 		status.RaftState = s.Raft.State().String()
-		status.AppliedIndex = s.Raft.AppliedIndex()
-		status.TargetIndex = s.Raft.LastIndex()
+		status.AppliedIndex = s.replicatedStateFSMIndex()
+		status.TargetIndex = s.joinLeaderTarget()
 		leaderAddress, leaderID := s.Raft.LeaderWithID()
 		status.LeaderID = strings.TrimSpace(string(leaderID))
 		status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
@@ -265,16 +269,96 @@ func (s *Service) JoinStatus() (ClusterJoinStatus, error) {
 				}
 			case raft.Nonvoter, raft.Staging:
 				status.Phase = JoinPhaseCatchingUp
-				status.LastError = ""
+				if status.TargetIndex > 0 && status.AppliedIndex >= status.TargetIndex &&
+					strings.TrimSpace(status.LastError) == "" {
+					status.AwaitingPromotion = true
+				}
 				if nodeID == localNodeID && strings.TrimSpace(record.JoinNodeID) == localNodeID &&
 					record.JoinPhase != JoinPhaseCatchingUp {
-					_ = s.updateJoinIntent(JoinPhaseCatchingUp, "", false, "")
+					_ = s.updateJoinIntent(
+						JoinPhaseCatchingUp,
+						strings.TrimSpace(record.JoinLastError),
+						false,
+						"",
+					)
 				}
 			}
 		}
 	}
 	status.Retrying = joinPhaseIsRetrying(status.Phase)
 	return status, nil
+}
+
+func (s *Service) setJoinLeaderTarget(index uint64) {
+	if s == nil || index == 0 {
+		return
+	}
+	s.joinLeaderTargetMu.Lock()
+	if index > s.joinLeaderTargetIndex {
+		s.joinLeaderTargetIndex = index
+	}
+	s.joinLeaderTargetMu.Unlock()
+}
+
+func (s *Service) resetJoinLeaderTarget() {
+	s.joinLeaderTargetMu.Lock()
+	s.joinLeaderTargetIndex = 0
+	s.joinLeaderTargetMu.Unlock()
+}
+
+func (s *Service) joinLeaderTarget() uint64 {
+	if s == nil {
+		return 0
+	}
+	s.joinLeaderTargetMu.Lock()
+	defer s.joinLeaderTargetMu.Unlock()
+	return s.joinLeaderTargetIndex
+}
+
+func (s *Service) beginJoinProgressNudge(nodeID string) bool {
+	if s == nil {
+		return false
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return false
+	}
+	s.joinNudgeMu.Lock()
+	defer s.joinNudgeMu.Unlock()
+	if s.joinProgressNudges == nil {
+		s.joinProgressNudges = make(map[string]struct{})
+	}
+	if _, outstanding := s.joinProgressNudges[nodeID]; outstanding {
+		return false
+	}
+	s.joinProgressNudges[nodeID] = struct{}{}
+	return true
+}
+
+func (s *Service) clearJoinProgressNudge(nodeID string) {
+	if s == nil {
+		return
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return
+	}
+	s.joinNudgeMu.Lock()
+	delete(s.joinProgressNudges, nodeID)
+	s.joinNudgeMu.Unlock()
+}
+
+func (s *Service) pruneJoinProgressNudges(activeNodeIDs map[string]struct{}) {
+	if s == nil {
+		return
+	}
+	s.joinNudgeMu.Lock()
+	defer s.joinNudgeMu.Unlock()
+	for nodeID := range s.joinProgressNudges {
+		if _, active := activeNodeIDs[nodeID]; !active {
+			delete(s.joinProgressNudges, nodeID)
+		}
+	}
 }
 
 func (s *Service) LocalJoinProgress(
@@ -300,6 +384,8 @@ func (s *Service) LocalJoinProgress(
 	}
 	progress.RaftState = s.Raft.State().String()
 	progress.AppliedIndex = s.Raft.AppliedIndex()
+	progress.FSMIndex = s.replicatedStateFSMIndex()
+	progress.FSMIndexKnown = s.stateFSM != nil
 	progress.LastIndex = s.Raft.LastIndex()
 	progress.RepairFenced = s.stateRepair.Load()
 	leaderAddress, leaderID := s.Raft.LeaderWithID()
@@ -320,10 +406,12 @@ func (s *Service) fetchJoinProgress(
 	if s.stateDigestForNode != nil {
 		digest, err := s.fetchReplicatedStateDigest(ctx, nodeID, address, minimumIndex)
 		return ClusterJoinProgress{
-			NodeID:       digest.NodeID,
-			AppliedIndex: digest.AppliedIndex,
-			LastIndex:    digest.AppliedIndex,
-			RepairFenced: digest.RepairFenced,
+			NodeID:        digest.NodeID,
+			AppliedIndex:  digest.AppliedIndex,
+			FSMIndex:      digest.FSMIndex,
+			FSMIndexKnown: digest.FSMIndexKnown,
+			LastIndex:     digest.AppliedIndex,
+			RepairFenced:  digest.RepairFenced,
 		}, err
 	}
 	endpoint, err := s.replicatedStateRemoteAPI(nodeID, address)
@@ -342,10 +430,14 @@ func (s *Service) fetchJoinProgress(
 		endpoint,
 		query.Encode(),
 	)
-	body, statusCode, err := utils.HTTPGetJSONReadContext(ctx, requestURL, map[string]string{
-		"Accept":                "application/json",
-		auth.ClusterTokenHeader: fmt.Sprintf("Bearer %s", token),
-	})
+	body, statusCode, err := utils.HTTPGetJSONReadContextBudget(
+		ctx,
+		requestURL,
+		map[string]string{
+			"Accept":                "application/json",
+			auth.ClusterTokenHeader: fmt.Sprintf("Bearer %s", token),
+		},
+	)
 	if err != nil {
 		return ClusterJoinProgress{}, fmt.Errorf(
 			"join_progress_remote_request_failed: node_id=%s status=%d: %w",
@@ -397,7 +489,8 @@ func retryableJoinAdmissionStatus(statusCode int, response internal.APIResponse[
 		return true
 	}
 	switch strings.TrimSpace(response.Message) {
-	case "not_leader", "cluster_version_mismatch", "cluster_join_failed":
+	case "not_leader", "cluster_version_mismatch", "cluster_join_failed",
+		"cluster_join_promotion_deferred":
 		return true
 	default:
 		return false
@@ -405,6 +498,17 @@ func retryableJoinAdmissionStatus(statusCode int, response internal.APIResponse[
 }
 
 func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResult {
+	return s.submitJoinIntent(ctx, false)
+}
+
+func (s *Service) pollJoinIntent(ctx context.Context) JoinIntentSubmissionResult {
+	return s.submitJoinIntent(ctx, true)
+}
+
+func (s *Service) submitJoinIntent(
+	ctx context.Context,
+	poll bool,
+) JoinIntentSubmissionResult {
 	result := JoinIntentSubmissionResult{}
 	if s == nil || s.DB == nil {
 		result.Err = fmt.Errorf("cluster_service_not_initialized")
@@ -453,18 +557,19 @@ func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResu
 		result.Err = fmt.Errorf("marshal_join_admission: %w", err)
 		return result
 	}
-	if err := s.updateJoinIntent(JoinPhaseSubmitting, "", true, ""); err != nil {
-		result.Err = err
-		return result
+	if !poll {
+		if err := s.updateJoinIntent(JoinPhaseSubmitting, "", true, ""); err != nil {
+			result.Err = err
+			return result
+		}
 	}
 
 	requestContext := ctx
 	if requestContext == nil {
 		requestContext = context.Background()
 	}
-	response, requestErr := utils.HTTPRequestReadContext(
+	response, requestErr := s.requestJoinAdmission(
 		requestContext,
-		http.MethodPost,
 		fmt.Sprintf(
 			"https://%s/api/cluster/accept-join",
 			ClusterAPIHost(strings.TrimSpace(record.JoinLeaderIP)),
@@ -475,13 +580,11 @@ func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResu
 			"Content-Type":        "application/json",
 			auth.ClusterKeyHeader: strings.TrimSpace(record.Key),
 		},
-		joinAdmissionRequestTimeout,
-		joinAdmissionResponseLimit,
 	)
 	if requestErr != nil {
 		result.Err = requestErr
 		result.Retryable = true
-		_ = s.updateJoinIntent(JoinPhaseStalled, requestErr.Error(), false, "")
+		_ = s.storeJoinIntentFailure(poll, record, requestErr.Error(), true, "")
 		result.Status, _ = s.JoinStatus()
 		return result
 	}
@@ -490,14 +593,18 @@ func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResu
 		if err := json.Unmarshal(response.Body, &result.Response); err != nil {
 			result.Err = fmt.Errorf("decode_join_admission_response_failed: %w", err)
 			result.Retryable = true
-			_ = s.updateJoinIntent(JoinPhaseStalled, result.Err.Error(), false, "")
+			_ = s.storeJoinIntentFailure(poll, record, result.Err.Error(), true, "")
 			result.Status, _ = s.JoinStatus()
 			return result
 		}
 	}
 	if response.StatusCode >= 200 && response.StatusCode < 300 &&
 		strings.ToLower(strings.TrimSpace(result.Response.Status)) == "success" {
-		_ = s.updateJoinIntent(JoinPhaseStaged, "", false, "")
+		var statusEnvelope internal.APIResponse[ClusterJoinStatus]
+		if err := json.Unmarshal(response.Body, &statusEnvelope); err == nil {
+			s.setJoinLeaderTarget(statusEnvelope.Data.TargetIndex)
+		}
+		_ = s.storeJoinIntentSuccess(poll, record)
 		result.Status, _ = s.JoinStatus()
 		return result
 	}
@@ -506,14 +613,77 @@ func (s *Service) SubmitJoinIntent(ctx context.Context) JoinIntentSubmissionResu
 	if errorText == "" {
 		errorText = fmt.Sprintf("join_admission_http_status_%d", response.StatusCode)
 	}
+	if message := strings.TrimSpace(result.Response.Message); message != "" &&
+		!strings.Contains(errorText, message) {
+		errorText = message + ": " + errorText
+	}
 	result.Err = errors.New(errorText)
 	result.Retryable = retryableJoinAdmissionStatus(response.StatusCode, result.Response)
+	newLeaderIP := ""
 	if result.Retryable {
-		newLeaderIP := leaderIPFromNotLeaderError(errorText)
-		_ = s.updateJoinIntent(JoinPhaseStalled, errorText, false, newLeaderIP)
-	} else {
-		_ = s.updateJoinIntent(JoinPhaseFailed, errorText, false, "")
+		newLeaderIP = leaderIPFromNotLeaderError(errorText)
 	}
+	_ = s.storeJoinIntentFailure(poll, record, errorText, result.Retryable, newLeaderIP)
 	result.Status, _ = s.JoinStatus()
 	return result
+}
+
+func (s *Service) storeJoinIntentFailure(
+	poll bool,
+	record clusterModels.Cluster,
+	message string,
+	retryable bool,
+	leaderIP string,
+) error {
+	message = strings.TrimSpace(message)
+	if poll {
+		leaderIP = strings.TrimSpace(leaderIP)
+		if message == strings.TrimSpace(record.JoinLastError) && leaderIP == "" {
+			return nil
+		}
+		phase := strings.TrimSpace(record.JoinPhase)
+		if phase == "" {
+			phase = JoinPhaseCatchingUp
+		}
+		return s.updateJoinIntent(phase, message, false, leaderIP)
+	}
+	if retryable {
+		return s.updateJoinIntent(JoinPhaseStalled, message, false, leaderIP)
+	}
+	return s.updateJoinIntent(JoinPhaseFailed, message, false, "")
+}
+
+func (s *Service) storeJoinIntentSuccess(poll bool, record clusterModels.Cluster) error {
+	if !poll {
+		return s.updateJoinIntent(JoinPhaseStaged, "", false, "")
+	}
+	if strings.TrimSpace(record.JoinLastError) == "" {
+		return nil
+	}
+	phase := strings.TrimSpace(record.JoinPhase)
+	if phase == "" {
+		phase = JoinPhaseCatchingUp
+	}
+	return s.updateJoinIntent(phase, "", false, "")
+}
+
+func (s *Service) requestJoinAdmission(
+	ctx context.Context,
+	url string,
+	payload []byte,
+	headers map[string]string,
+) (utils.HTTPReadResponse, error) {
+	if s != nil && s.joinIntentRequest != nil {
+		statusCode, body, err := s.joinIntentRequest(ctx, url, payload, headers)
+		return utils.HTTPReadResponse{StatusCode: statusCode, Body: body}, err
+	}
+	return utils.HTTPRequestReadContext(
+		ctx,
+		http.MethodPost,
+		url,
+		payload,
+		headers,
+		joinAdmissionRequestTimeout,
+		joinAdmissionResponseLimit,
+	)
 }

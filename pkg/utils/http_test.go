@@ -388,3 +388,37 @@ func TestGetIdFromParam(t *testing.T) {
 		}
 	})
 }
+
+func TestHTTPGetJSONReadContextBudgetOutlivesSharedClientTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("slow: proves the request is not cut by the shared client timeout")
+	}
+	const slowDelay = 8*time.Second + 500*time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		delay := 400 * time.Millisecond
+		if r.URL.Query().Get("slow") == "1" {
+			delay = slowDelay
+		}
+		time.Sleep(delay)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), slowDelay+5*time.Second)
+	defer cancel()
+	if _, status, err := HTTPGetJSONReadContextBudget(ctx, server.URL+"?slow=1", nil); err != nil ||
+		status != http.StatusOK {
+		t.Fatalf("budget GET status=%d error=%v, want a completed request", status, err)
+	}
+
+	shortCtx, shortCancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	defer shortCancel()
+	if _, _, err := HTTPGetJSONReadContextBudget(
+		shortCtx,
+		server.URL,
+		nil,
+	); err == nil {
+		t.Fatal("context deadline did not bound the request")
+	}
+}

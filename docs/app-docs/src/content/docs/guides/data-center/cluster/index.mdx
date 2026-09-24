@@ -80,7 +80,7 @@ The **Cluster Join** progress control shows the current phase, synchronized Raft
 | **Address** | The Raft address used for cluster consensus. |
 | **Status** | Whether Sylve can currently see the member as online or offline. |
 | **Suffrage** | The member's Raft role. A **Voter** participates in quorum; a **Non Voter** does not; **Staging** is a temporary joining state. |
-| **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. Membership changes require every participating node to report the same version. |
+| **Sylve Version** | Version and build commit reported by the member. The commit is shown when available. A join requires the joining node to report exactly the leader's version; a third-party member that reports a different version or cannot be reached is reported as a warning rather than failing the version check, although the membership change itself still requires Raft quorum. Removals require every participating member to report the same version. |
 | **Guests** | Number of guests currently associated with that member. |
 | **CPU**, **RAM**, **Disk** | The member's current reported resource usage. Use these indicators when deciding where work can move before planned maintenance. |
 
@@ -136,7 +136,7 @@ Use this only on a stopped node that the leader has already removed, and only wh
 
 ## Upgrade clustered nodes safely
 
-For releases whose upgrade notes permit mixed-version operation, upgrade a cluster as a rolling maintenance operation, one node at a time. Keep the mixed-version period as short and quiet as possible. Sylve requires exact version equality when a node joins a cluster, but it does not continuously reject an existing member after that member is upgraded. This temporary tolerance is useful for compatible rolling maintenance, but it is not a promise that different releases can safely handle every new Raft command or cluster workflow together.
+For releases whose upgrade notes permit mixed-version operation, upgrade a cluster as a rolling maintenance operation, one node at a time. Keep the mixed-version period as short and quiet as possible. Sylve requires a joining node to report exactly the leader's version, but it does not continuously reject an existing member after that member is upgraded, and a member that is unreachable or on a different version no longer blocks the version check. The membership change itself still requires Raft quorum, so a cluster that cannot reach a majority still cannot complete the join. This temporary tolerance is useful for compatible rolling maintenance, but it is not a promise that different releases can safely handle every new Raft command or cluster workflow together.
 
 Release-specific upgrade notes take precedence over this general playbook. If a release requires all nodes to stop together, a particular intermediate version, or another special step, follow that instruction instead.
 

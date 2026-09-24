@@ -53,7 +53,8 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 	snapshotType := reflect.TypeOf(ClusterSnapshot{})
 	for index := 0; index < snapshotType.NumField(); index++ {
 		field := snapshotType.Field(index)
-		if field.Name == "ReplicationEvents" {
+		switch field.Name {
+		case "ReplicationEvents", "AppliedIndex":
 			continue
 		}
 		if !coveredFields[field.Name] {
@@ -250,5 +251,45 @@ func TestClearReplicatedStatePreservesNodeLocalRows(t *testing.T) {
 		if err := database.Model(model).Count(&count).Error; err != nil || count != 1 {
 			t.Fatalf("local %T count=%d err=%v, want one", model, count, err)
 		}
+	}
+}
+
+func TestClusterSnapshotDigestIgnoresAppliedIndex(t *testing.T) {
+	left := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	right := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	now := time.Date(2026, time.September, 24, 5, 6, 7, 0, time.UTC)
+	for _, database := range []*gorm.DB{left, right} {
+		if err := database.Create(&ClusterNote{
+			ID: 1, Title: "note", Content: "content", CreatedAt: now, UpdatedAt: now,
+		}).Error; err != nil {
+			t.Fatalf("seed note: %v", err)
+		}
+	}
+
+	leftSnapshot, _, err := CaptureReplicatedStateDigest(left)
+	if err != nil {
+		t.Fatalf("capture left snapshot: %v", err)
+	}
+	rightSnapshot, _, err := CaptureReplicatedStateDigest(right)
+	if err != nil {
+		t.Fatalf("capture right snapshot: %v", err)
+	}
+	leftSnapshot.AppliedIndex = 12
+	rightSnapshot.AppliedIndex = 340
+
+	leftDigest, err := ClusterSnapshotDigest(leftSnapshot)
+	if err != nil {
+		t.Fatalf("digest left snapshot: %v", err)
+	}
+	rightDigest, err := ClusterSnapshotDigest(rightSnapshot)
+	if err != nil {
+		t.Fatalf("digest right snapshot: %v", err)
+	}
+	if leftDigest != rightDigest {
+		t.Fatalf(
+			"applied index changed the digest: left=%s right=%s",
+			leftDigest,
+			rightDigest,
+		)
 	}
 }

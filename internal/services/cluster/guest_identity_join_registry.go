@@ -134,6 +134,7 @@ func (s *Service) admitStagedJoinGuestIdentities(
 	ctx context.Context,
 	nodeID string,
 	report GuestIdentityInventoryReport,
+	claims []clusterModels.GuestIdentityClaim,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -145,9 +146,53 @@ func (s *Service) admitStagedJoinGuestIdentities(
 	if err != nil {
 		return err
 	}
+	if guestIdentityReservationAdmitted(claims, reservation) {
+		return nil
+	}
 	claimSet := guestIdentityClaimSet(reservation)
 	if err := s.applyGuestIdentityRaftAction("reserve_ids", claimSet); err != nil {
 		return fmt.Errorf("joining_guest_identity_reservation_failed: %w", err)
 	}
 	return nil
+}
+
+func guestIdentityReservationAdmitted(
+	claims []clusterModels.GuestIdentityClaim,
+	reservation clusterServiceInterfaces.GuestIdentityReservation,
+) bool {
+	if len(reservation.Entries) == 0 {
+		return true
+	}
+	owner := strings.TrimSpace(reservation.OwnerNodeID)
+	token := strings.TrimSpace(reservation.Token)
+	if owner == "" || token == "" {
+		return false
+	}
+	byID := make(map[uint]clusterModels.GuestIdentityClaim, len(claims))
+	owned := 0
+	for _, claim := range claims {
+		byID[claim.GuestID] = claim
+		if strings.TrimSpace(claim.OwnerNodeID) == owner {
+			owned++
+		}
+	}
+	if owned != len(reservation.Entries) {
+		return false
+	}
+	for _, entry := range reservation.Entries {
+		claim, exists := byID[entry.GuestID]
+		if !exists {
+			return false
+		}
+		if strings.TrimSpace(claim.OwnerNodeID) != owner {
+			return false
+		}
+		if strings.TrimSpace(claim.GuestKind) != strings.TrimSpace(entry.GuestKind) {
+			return false
+		}
+		if strings.TrimSpace(claim.Token) != token {
+			return false
+		}
+	}
+	return true
 }

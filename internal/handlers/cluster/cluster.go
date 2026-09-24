@@ -127,7 +127,6 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 		})
 		return
 	}
-
 	message := "cluster_join_failed"
 	status := http.StatusBadRequest
 	errText := err.Error()
@@ -593,6 +592,24 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 		}
 
 		if !req.Preflight {
+			leaderState := cS.JoinAdmissionLeaderState(req.NodeID)
+			if leaderState.Redirect {
+				writeJoinAdmissionError(c, fmt.Errorf(
+					"not_leader; leader_addr=%s; leader_id=%s",
+					string(leaderState.LeaderAddress),
+					string(leaderState.LeaderID),
+				))
+				return
+			}
+			if leaderState.Deferral != "" {
+				c.JSON(http.StatusConflict, internal.APIResponse[any]{
+					Status:  "error",
+					Message: "cluster_join_promotion_deferred",
+					Error:   leaderState.Deferral,
+					Data:    nil,
+				})
+				return
+			}
 			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
 			joinerVersion, err := fetchNodeVersionFromHealth(
 				joinerHealthURL,

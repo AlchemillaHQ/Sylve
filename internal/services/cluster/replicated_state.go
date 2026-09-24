@@ -34,10 +34,12 @@ const (
 )
 
 type ReplicatedStateDigest struct {
-	NodeID       string `json:"nodeId"`
-	AppliedIndex uint64 `json:"appliedIndex"`
-	Digest       string `json:"digest"`
-	RepairFenced bool   `json:"repairFenced"`
+	NodeID        string `json:"nodeId"`
+	AppliedIndex  uint64 `json:"appliedIndex"`
+	FSMIndex      uint64 `json:"fsmIndex,omitempty"`
+	FSMIndexKnown bool   `json:"fsmIndexKnown,omitempty"`
+	Digest        string `json:"digest"`
+	RepairFenced  bool   `json:"repairFenced"`
 }
 
 type ReplicatedStateRepairRequest struct {
@@ -124,6 +126,22 @@ func (s *Service) waitForReplicatedStateAppliedIndex(ctx context.Context, minimu
 	}
 }
 
+func (s *Service) replicatedStateFSMIndex() uint64 {
+	if s == nil {
+		return 0
+	}
+	if s.stateFSM != nil {
+		if !s.stateFSM.AppliedIndexKnown() {
+			return 0
+		}
+		return s.stateFSM.AppliedIndex()
+	}
+	if s.Raft == nil {
+		return 0
+	}
+	return s.Raft.AppliedIndex()
+}
+
 func (s *Service) WaitForReplicatedStateAppliedIndex(ctx context.Context, minimum uint64) (uint64, error) {
 	if minimum == 0 {
 		if s != nil && s.Raft != nil && s.Raft.State() != raft.Shutdown {
@@ -156,29 +174,33 @@ func (s *Service) LocalReplicatedStateDigest(
 		)
 	}
 	if _, err := s.waitForReplicatedStateAppliedIndex(ctx, minimumIndex); err != nil {
-		return result, err
+		return result, fmt.Errorf(
+			"%w: node_id=%s minimum=%d consumed=%d",
+			err,
+			result.NodeID,
+			minimumIndex,
+			s.replicatedStateFSMIndex(),
+		)
 	}
 	if s.stateFSM == nil {
 		return result, fmt.Errorf("replicated_state_fsm_unavailable")
 	}
 
-	digest, appliedIndex, err := s.stateFSM.StateDigest(func() uint64 {
-		if s.Raft == nil {
-			return 0
-		}
-		return s.Raft.AppliedIndex()
-	})
+	digest, appliedIndex, err := s.stateFSM.StateDigest()
 	if err != nil {
 		return result, fmt.Errorf("capture_replicated_state_digest: %w", err)
 	}
-	if appliedIndex < minimumIndex {
+	dispatched := s.Raft.AppliedIndex()
+	if dispatched < minimumIndex {
 		return result, fmt.Errorf(
 			"replicated_state_applied_index_too_old: minimum=%d actual=%d",
 			minimumIndex,
-			appliedIndex,
+			dispatched,
 		)
 	}
-	result.AppliedIndex = appliedIndex
+	result.AppliedIndex = dispatched
+	result.FSMIndex = appliedIndex
+	result.FSMIndexKnown = s.stateFSM != nil
 	result.Digest = digest
 	result.RepairFenced = s.stateRepair.Load()
 	return result, nil
@@ -399,7 +421,11 @@ func (s *Service) ResetReplicatedStateForRepair(expectedNodeID string) error {
 	if err := s.stopRaftRuntime(); err != nil {
 		return fmt.Errorf("replicated_state_repair_stop_failed: %w", err)
 	}
-	if err := s.DB.Transaction(clusterModels.ClearReplicatedStateTx); err != nil {
+	if s.stateFSM != nil {
+		if err := s.stateFSM.ClearReplicatedState(); err != nil {
+			return fmt.Errorf("replicated_state_repair_clear_failed: %w", err)
+		}
+	} else if err := s.DB.Transaction(clusterModels.ClearReplicatedStateTx); err != nil {
 		return fmt.Errorf("replicated_state_repair_clear_failed: %w", err)
 	}
 	if err := s.CleanRaftDir(); err != nil {
@@ -455,6 +481,15 @@ func (s *Service) checkpointAndSnapshotLocked() error {
 	return nil
 }
 
+func (s *Service) appendJoinProgressCheckpoint() error {
+	if s == nil || s.Raft == nil {
+		return fmt.Errorf("raft_not_initialized")
+	}
+	s.replicatedStateMu.Lock()
+	defer s.replicatedStateMu.Unlock()
+	return s.checkpointReplicatedStateLocked()
+}
+
 func (s *Service) checkpointReplicatedStateLocked() error {
 	if s == nil || s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
@@ -465,9 +500,6 @@ func (s *Service) checkpointReplicatedStateLocked() error {
 		Data:   []byte("{}"),
 	}); err != nil {
 		return fmt.Errorf("replicated_state_checkpoint_failed: %w", err)
-	}
-	if err := s.Raft.Barrier(raftApplyTimeout).Error(); err != nil {
-		return fmt.Errorf("replicated_state_barrier_failed: %w", err)
 	}
 	return nil
 }
@@ -614,29 +646,66 @@ func (s *Service) promoteCaughtUpNonvoterLocked(
 	return verified, nil
 }
 
+func (s *Service) waitForPromotionDigest(
+	ctx context.Context,
+	server raft.Server,
+	reference ReplicatedStateDigest,
+) (ReplicatedStateDigest, error) {
+	nodeID := strings.TrimSpace(string(server.ID))
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+
+	var verified ReplicatedStateDigest
+	var lastErr error
+	for {
+		observed, err := s.fetchReplicatedStateDigest(
+			ctx,
+			nodeID,
+			server.Address,
+			reference.AppliedIndex,
+		)
+		if err == nil {
+			verified = observed
+			lastErr = nil
+			if observed.Digest == reference.Digest {
+				return observed, nil
+			}
+			if observed.FSMIndexKnown && reference.FSMIndexKnown &&
+				observed.FSMIndex == reference.FSMIndex {
+				return observed, fmt.Errorf(
+					"replicated_state_digest_mismatch: expected=%s actual=%s",
+					reference.Digest,
+					observed.Digest,
+				)
+			}
+		} else {
+			lastErr = err
+		}
+
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return verified, fmt.Errorf("replicated_state_verification_failed: %w", lastErr)
+			}
+			return verified, fmt.Errorf(
+				"replicated_state_digest_mismatch: expected=%s actual=%s: %w",
+				reference.Digest,
+				verified.Digest,
+				ctx.Err(),
+			)
+		case <-ticker.C:
+		}
+	}
+}
+
 func (s *Service) promoteVerifiedNonvoterLocked(
 	ctx context.Context,
 	server raft.Server,
 	reference ReplicatedStateDigest,
 	repairFenced bool,
 ) (ReplicatedStateDigest, error) {
-	verified, err := s.fetchReplicatedStateDigest(
-		ctx,
-		strings.TrimSpace(string(server.ID)),
-		server.Address,
-		reference.AppliedIndex,
-	)
+	verified, err := s.waitForPromotionDigest(ctx, server, reference)
 	if err != nil {
-		return verified, fmt.Errorf("replicated_state_verification_failed: %w", err)
-	}
-	if verified.Digest != reference.Digest {
-		return verified, fmt.Errorf(
-			"replicated_state_digest_mismatch: expected=%s actual=%s",
-			reference.Digest,
-			verified.Digest,
-		)
-	}
-	if err := s.checkUniformVersionsLocked(ctx, nil, ""); err != nil {
 		return verified, err
 	}
 	if err := s.Raft.AddVoter(server.ID, server.Address, 0, raftApplyTimeout).Error(); err != nil {
@@ -679,7 +748,7 @@ func (s *Service) resyncClusterStateLocked(ctx context.Context) (ClusterStateRes
 	if err := s.checkpointAndSnapshotLocked(); err != nil {
 		return result, err
 	}
-	reference, err := s.LocalReplicatedStateDigest(ctx, result.LeaderNodeID, s.Raft.AppliedIndex())
+	reference, err := s.LocalReplicatedStateDigest(ctx, result.LeaderNodeID, s.replicatedStateFSMIndex())
 	if err != nil {
 		return result, err
 	}

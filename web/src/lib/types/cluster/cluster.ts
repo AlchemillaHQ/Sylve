@@ -40,6 +40,7 @@ export const ClusterJoinStatusSchema = z.object({
 	targetIndex: z.number().nonnegative().optional(),
 	attempts: z.number().int().nonnegative(),
 	retrying: z.boolean(),
+	awaitingPromotion: z.boolean().optional(),
 	lastError: z.string().optional()
 });
 

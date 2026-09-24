@@ -4,7 +4,9 @@ package clusterHandlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
@@ -22,6 +25,8 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/gin-gonic/gin"
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/raft"
 )
 
 func TestAcceptJoinPreflightRejectsMalformedInventoryPayload(t *testing.T) {
@@ -477,5 +482,224 @@ func TestJoinClusterInventoryChangeAfterPreflightLeavesStandaloneStateUntouched(
 	}
 	if clusterService.Raft != nil {
 		t.Fatalf("inventory-change rejection initialized Raft: %v", clusterService.Raft)
+	}
+}
+
+func TestAcceptJoinReportsRecordedPromotionDeferral(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := newClusterHandlerTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{
+		Enabled: true, Key: "cluster-key", RaftPort: cluster.ClusterRaftPort,
+	}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+
+	raftNode := setupSingleRaftForTest(t, "leader-node")
+	defer func() { _ = raftNode.Shutdown().Error() }()
+
+	joiningNodeID := "joining-node"
+	if err := raftNode.AddNonvoter(
+		raft.ServerID(joiningNodeID), raft.ServerAddress("127.0.0.2:8180"), 0, 5*time.Second,
+	).Error(); err != nil {
+		t.Fatalf("stage nonvoter: %v", err)
+	}
+
+	service, ok := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+	if !ok {
+		t.Fatal("unexpected cluster service implementation")
+	}
+	service.Raft = raftNode
+	service.NodeID = "leader-node"
+	if err := service.ReopenMutations(); err != nil {
+		t.Fatalf("open mutation gate: %v", err)
+	}
+	reconcileCtx, cancelReconcile := context.WithCancel(context.Background())
+	defer cancelReconcile()
+	service.StartMembershipReconcilers(reconcileCtx)
+
+	deadline := time.Now().Add(8 * time.Second)
+	reason := ""
+	for time.Now().Before(deadline) {
+		if state := service.JoinAdmissionLeaderState(joiningNodeID); state.Deferral != "" {
+			reason = state.Deferral
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !strings.Contains(reason, "joining_node_health_failed") {
+		t.Fatalf("recorded deferral = %q, want a health probe failure", reason)
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("ClusterKey", "cluster-key")
+		c.Next()
+	})
+	router.POST("/cluster/accept-join", AcceptJoin(service))
+
+	body := []byte(fmt.Sprintf(
+		`{"nodeId":%q,"nodeIp":"127.0.0.2","nodeVersion":%q,"preflight":false,"inventory":{"entries":[],"conflicts":[],"digest":""}}`,
+		joiningNodeID,
+		cmd.Version,
+	))
+	response := performJSONRequest(t, router, http.MethodPost, "/cluster/accept-join", body)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", response.Code, response.Body.String())
+	}
+	var decoded handlerAPIResponse[any]
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if decoded.Message != "cluster_join_promotion_deferred" {
+		t.Fatalf("message = %q, want cluster_join_promotion_deferred", decoded.Message)
+	}
+	if !strings.Contains(decoded.Error, "joining_node_health_failed") {
+		t.Fatalf("error = %q, want the leader's recorded reason", decoded.Error)
+	}
+}
+
+func newHandlerTestRaftNode(t *testing.T, id string) (*raft.Raft, *raft.InmemTransport) {
+	t.Helper()
+	cfg := raft.DefaultConfig()
+	cfg.LocalID = raft.ServerID(id)
+	cfg.Logger = hclog.NewNullLogger()
+	cfg.HeartbeatTimeout = 200 * time.Millisecond
+	cfg.ElectionTimeout = 200 * time.Millisecond
+	cfg.LeaderLeaseTimeout = 100 * time.Millisecond
+	cfg.CommitTimeout = 25 * time.Millisecond
+
+	store := raft.NewInmemStore()
+	_, transport := raft.NewInmemTransport(raft.ServerAddress(id))
+	node, err := raft.NewRaft(cfg, nil, store, store, raft.NewInmemSnapshotStore(), transport)
+	if err != nil {
+		t.Fatalf("raft.NewRaft(%s): %v", id, err)
+	}
+	return node, transport
+}
+
+func TestAcceptJoinStepdownDoesNotServeCachedDeferral(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := newClusterHandlerTestDB(t, &clusterModels.Cluster{})
+	if err := db.Create(&clusterModels.Cluster{
+		Enabled: true, Key: "cluster-key", RaftPort: cluster.ClusterRaftPort,
+	}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+
+	first, firstTransport := newHandlerTestRaftNode(t, "leader-one")
+	defer func() {
+		_ = first.Shutdown().Error()
+		_ = firstTransport.Close()
+	}()
+	second, secondTransport := newHandlerTestRaftNode(t, "leader-two")
+	defer func() {
+		_ = second.Shutdown().Error()
+		_ = secondTransport.Close()
+	}()
+	firstTransport.Connect(raft.ServerAddress("leader-two"), secondTransport)
+	secondTransport.Connect(raft.ServerAddress("leader-one"), firstTransport)
+
+	bootstrap := raft.Configuration{Servers: []raft.Server{{
+		ID: raft.ServerID("leader-one"), Address: raft.ServerAddress("leader-one"),
+	}}}
+	if err := first.BootstrapCluster(bootstrap).Error(); err != nil && !errors.Is(err, raft.ErrCantBootstrap) {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	waitDeadline := time.Now().Add(15 * time.Second)
+	for first.State() != raft.Leader {
+		if time.Now().After(waitDeadline) {
+			t.Fatal("timed out waiting for the first node to lead")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := first.AddVoter(
+		raft.ServerID("leader-two"), raft.ServerAddress("leader-two"), 0, 5*time.Second,
+	).Error(); err != nil {
+		t.Fatalf("add second voter: %v", err)
+	}
+	if err := first.AddNonvoter(
+		raft.ServerID("joining-node"), raft.ServerAddress("127.0.0.2:8180"), 0, 5*time.Second,
+	).Error(); err != nil {
+		t.Fatalf("stage nonvoter: %v", err)
+	}
+
+	service, ok := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+	if !ok {
+		t.Fatal("unexpected cluster service implementation")
+	}
+	service.Raft = first
+	service.NodeID = "leader-one"
+	if err := service.ReopenMutations(); err != nil {
+		t.Fatalf("open mutation gate: %v", err)
+	}
+	reconcileCtx, cancelReconcile := context.WithCancel(context.Background())
+	defer cancelReconcile()
+	service.StartMembershipReconcilers(reconcileCtx)
+
+	deadline := time.Now().Add(15 * time.Second)
+	reason := ""
+	for time.Now().Before(deadline) {
+		if state := service.JoinAdmissionLeaderState("joining-node"); state.Deferral != "" {
+			reason = state.Deferral
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if reason == "" {
+		t.Fatal("leader never recorded a promotion deferral")
+	}
+
+	transferDeadline := time.Now().Add(15 * time.Second)
+	for {
+		err := first.LeadershipTransferToServer(
+			raft.ServerID("leader-two"), raft.ServerAddress("leader-two"),
+		).Error()
+		if err == nil {
+			break
+		}
+		if time.Now().After(transferDeadline) {
+			t.Fatalf("transfer leadership: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	deadline = time.Now().Add(15 * time.Second)
+	for {
+		_, leaderID := first.LeaderWithID()
+		if first.State() != raft.Leader && strings.TrimSpace(string(leaderID)) == "leader-two" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the first node to step down")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("ClusterKey", "cluster-key")
+		c.Next()
+	})
+	router.POST("/cluster/accept-join", AcceptJoin(service))
+
+	body := []byte(fmt.Sprintf(
+		`{"nodeId":"joining-node","nodeIp":"127.0.0.2","nodeVersion":%q,"preflight":false,"inventory":{"entries":[],"conflicts":[],"digest":""}}`,
+		cmd.Version,
+	))
+	response := performJSONRequest(t, router, http.MethodPost, "/cluster/accept-join", body)
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", response.Code, response.Body.String())
+	}
+	var decoded handlerAPIResponse[any]
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if decoded.Message != "not_leader" {
+		t.Fatalf("message = %q, want not_leader after stepdown", decoded.Message)
+	}
+	if !strings.Contains(decoded.Error, "leader_id=leader-two") {
+		t.Fatalf("error = %q, want the new leader in the redirect", decoded.Error)
+	}
+	if strings.Contains(decoded.Error, "joining_node_health_failed") {
+		t.Fatalf("error = %q, must not serve the cached deferral after stepdown", decoded.Error)
 	}
 }

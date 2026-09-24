@@ -462,3 +462,45 @@ func TestIntegrationRaftStateRepairFenceRejectsRuntimeAdmission(t *testing.T) {
 		t.Fatalf("runtime admission remained fenced: %v", err)
 	}
 }
+
+func TestIntegrationReplicatedStateIndexSemantics(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 1, replicatedStateTestModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+
+	digest, err := leader.service.LocalReplicatedStateDigest(
+		context.Background(),
+		leader.id,
+		0,
+	)
+	if err != nil {
+		t.Fatalf("local digest: %v", err)
+	}
+	if !digest.FSMIndexKnown {
+		t.Fatal("digest did not report marker support")
+	}
+	if digest.AppliedIndex == 0 {
+		t.Fatal("digest did not report the Raft dispatch index")
+	}
+	if digest.FSMIndex != 0 {
+		t.Fatalf("fsm index = %d, want a known-empty marker before any command", digest.FSMIndex)
+	}
+
+	last := leader.raft.LastIndex()
+	progress, err := leader.service.LocalJoinProgress(
+		context.Background(),
+		leader.id,
+		last,
+	)
+	if err != nil {
+		t.Fatalf("join progress with a legacy dispatch minimum: %v", err)
+	}
+	if !progress.FSMIndexKnown {
+		t.Fatal("join progress did not report marker support")
+	}
+	if progress.AppliedIndex < last {
+		t.Fatalf("join progress applied = %d, want at least %d", progress.AppliedIndex, last)
+	}
+	if progress.FSMIndex != 0 {
+		t.Fatalf("join progress fsm index = %d, want a known-empty marker", progress.FSMIndex)
+	}
+}

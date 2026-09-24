@@ -136,7 +136,7 @@ func TestIntegrationRaftGuestIdentitySnapshotAndJoinConverge(t *testing.T) {
 		GuestID: 541, RecordID: 1, Name: "joining-jail",
 	}})
 	if err := leader.service.admitStagedJoinGuestIdentities(
-		context.Background(), joiner.id, joiningReport,
+		context.Background(), joiner.id, joiningReport, nil,
 	); err != nil {
 		t.Fatalf("admit staged joiner claims: %v", err)
 	}

@@ -12,15 +12,21 @@
 
 	let { status }: Props = $props();
 	let phase = $derived(getClusterJoinPhaseMeta(status.phase));
-	let hasProgress = $derived((status.targetIndex ?? 0) > 0);
-	let progress = $derived(
-		hasProgress
-			? Math.min(
-					100,
-					Math.max(0, Math.round((status.appliedIndex / (status.targetIndex ?? 1)) * 100))
-				)
-			: 0
+	let awaitingPromotion = $derived(status.awaitingPromotion === true);
+	let label = $derived(awaitingPromotion ? 'Awaiting Promotion' : phase.label);
+	let description = $derived(
+		awaitingPromotion
+			? 'This node has synchronized with the cluster. The leader will promote it to a voting member.'
+			: phase.description
 	);
+	let hasProgress = $derived((status.targetIndex ?? 0) > 0);
+	let progress = $derived.by(() => {
+		if (!hasProgress) return 0;
+		const target = Math.max(1, status.targetIndex ?? 1);
+		const percent = Math.floor((status.appliedIndex / target) * 100);
+		const ceiling = status.appliedIndex >= target ? 100 : 99;
+		return Math.max(0, Math.min(ceiling, percent));
+	});
 	let friendlyError = $derived(
 		status.lastError ? getClusterJoinErrorMessage(status.lastError, status.retrying) : ''
 	);
@@ -42,7 +48,7 @@
 		{:else}
 			<span class="icon-[mdi--alert-circle-outline] h-3.5 w-3.5 shrink-0"></span>
 		{/if}
-		<span class="truncate" aria-live="polite">Cluster Join: {phase.label}</span>
+		<span class="truncate" aria-live="polite">Cluster Join: {label}</span>
 		{#if hasProgress}
 			<span class="text-muted-foreground tabular-nums">{progress}%</span>
 		{/if}
@@ -57,8 +63,8 @@
 				<span class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0"></span>
 			{/if}
 			<div>
-				<p class="text-sm font-medium">{phase.label}</p>
-				<p class="text-muted-foreground mt-0.5 text-xs">{phase.description}</p>
+				<p class="text-sm font-medium">{label}</p>
+				<p class="text-muted-foreground mt-0.5 text-xs">{description}</p>
 			</div>
 		</div>
 

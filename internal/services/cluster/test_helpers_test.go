@@ -38,6 +38,28 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
+func acceptJoinInventoryForTest(
+	t *testing.T,
+	service *Service,
+	ctx context.Context,
+	nodeID, nodeIP, providedKey string,
+	report GuestIdentityInventoryReport,
+) error {
+	t.Helper()
+	if _, err := service.StageJoinInventory(ctx, nodeID, nodeIP, providedKey, report); err != nil {
+		return err
+	}
+	return service.finalizeStagedJoin(ctx, nodeID, nodeIP, providedKey, report)
+}
+
+func waitForStagedJoinerConsumption(t *testing.T, leader, joiner *clusterRaftTestNode) {
+	t.Helper()
+	waitForClusterCondition(t, 8*time.Second, "staged joiner to consume replicated state", func() bool {
+		leaderMarker := leader.service.replicatedStateFSMIndex()
+		return leaderMarker > 0 && joiner.service.replicatedStateFSMIndex() >= leaderMarker
+	})
+}
+
 type clusterRaftTestNode struct {
 	id        string
 	addr      raft.ServerAddress

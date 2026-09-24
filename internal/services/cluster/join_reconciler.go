@@ -35,6 +35,101 @@ type joinHealthData struct {
 	SylveVersion string `json:"sylveVersion"`
 }
 
+func (s *Service) recordJoinPromotionFailure(nodeID string, err error) {
+	if s == nil {
+		return
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return
+	}
+	if err == nil {
+		s.clearJoinPromotionFailure(nodeID)
+		return
+	}
+	reason := strings.TrimSpace(err.Error())
+	if reason == "" {
+		s.clearJoinPromotionFailure(nodeID)
+		return
+	}
+
+	s.joinPromotionMu.Lock()
+	if s.joinPromotionFailures == nil {
+		s.joinPromotionFailures = make(map[string]string)
+	}
+	previous, repeated := s.joinPromotionFailures[nodeID]
+	s.joinPromotionFailures[nodeID] = reason
+	s.joinPromotionMu.Unlock()
+
+	if repeated && previous == reason {
+		return
+	}
+	logger.L.Warn().
+		Err(err).
+		Str("node_id", nodeID).
+		Msg("cluster_join_promotion_deferred")
+}
+
+func (s *Service) clearJoinPromotionFailure(nodeID string) {
+	if s == nil {
+		return
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return
+	}
+	s.joinPromotionMu.Lock()
+	delete(s.joinPromotionFailures, nodeID)
+	s.joinPromotionMu.Unlock()
+}
+
+func (s *Service) verifiedLocalLeader() bool {
+	if s == nil || s.Raft == nil || s.Raft.State() != raft.Leader {
+		return false
+	}
+	return s.Raft.VerifyLeader().Error() == nil
+}
+
+type JoinAdmissionLeaderState struct {
+	Deferral      string
+	LeaderAddress raft.ServerAddress
+	LeaderID      raft.ServerID
+	Redirect      bool
+}
+
+func (s *Service) JoinAdmissionLeaderState(nodeID string) JoinAdmissionLeaderState {
+	state := JoinAdmissionLeaderState{}
+	if s == nil || s.Raft == nil || s.Raft.State() == raft.Shutdown {
+		return state
+	}
+	if !s.verifiedLocalLeader() {
+		state.Redirect = true
+		state.LeaderAddress, state.LeaderID, _ = s.currentLeaderView()
+		return state
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return state
+	}
+	s.joinPromotionMu.Lock()
+	state.Deferral = strings.TrimSpace(s.joinPromotionFailures[nodeID])
+	s.joinPromotionMu.Unlock()
+	return state
+}
+
+func (s *Service) pruneJoinPromotionFailures(activeNodeIDs map[string]struct{}) {
+	if s == nil {
+		return
+	}
+	s.joinPromotionMu.Lock()
+	defer s.joinPromotionMu.Unlock()
+	for nodeID := range s.joinPromotionFailures {
+		if _, active := activeNodeIDs[nodeID]; !active {
+			delete(s.joinPromotionFailures, nodeID)
+		}
+	}
+}
+
 func (s *Service) fetchJoinerVersion(
 	ctx context.Context,
 	server raft.Server,
@@ -125,10 +220,13 @@ func (s *Service) reconcileLeaderPendingJoins(ctx context.Context) {
 		return string(servers[i].ID) < string(servers[j].ID)
 	})
 
+	stagedNodeIDs := make(map[string]struct{}, len(servers))
 	for _, server := range servers {
 		if server.Suffrage != raft.Nonvoter && server.Suffrage != raft.Staging {
 			continue
 		}
+		nodeID := strings.TrimSpace(string(server.ID))
+		stagedNodeIDs[nodeID] = struct{}{}
 		if err := ctx.Err(); err != nil {
 			return
 		}
@@ -147,23 +245,20 @@ func (s *Service) reconcileLeaderPendingJoins(ctx context.Context) {
 		}
 		if err == nil {
 			nodeIP := strings.TrimSpace(raftAddressHost(string(server.Address)))
-			err = s.finalizeStagedJoin(
+			err = s.finalizeStagedJoinWithVersionCheck(
 				attemptCtx,
-				strings.TrimSpace(string(server.ID)),
+				nodeID,
 				nodeIP,
 				clusterRecord.Key,
 				inventory,
+				&joinVersionObservation{server: server, version: version},
 			)
 		}
 		cancel()
-		if err != nil {
-			logger.L.Debug().
-				Err(err).
-				Str("node_id", strings.TrimSpace(string(server.ID))).
-				Str("address", string(server.Address)).
-				Msg("cluster_join_reconcile_retry_deferred")
-		}
+		s.recordJoinPromotionFailure(nodeID, err)
 	}
+	s.pruneJoinPromotionFailures(stagedNodeIDs)
+	s.pruneJoinProgressNudges(stagedNodeIDs)
 }
 
 func (s *Service) reconcileLocalJoinIntent(ctx context.Context) {
@@ -210,6 +305,14 @@ func (s *Service) reconcileLocalJoinIntent(ctx context.Context) {
 		}
 		if status.Suffrage == raftSuffrageName(raft.Nonvoter) ||
 			status.Suffrage == raftSuffrageName(raft.Staging) {
+			previous := strings.TrimSpace(record.JoinLastError)
+			result := s.pollJoinIntent(ctx)
+			if result.Err != nil && strings.TrimSpace(result.Err.Error()) != previous {
+				logger.L.Warn().
+					Err(result.Err).
+					Str("node_id", strings.TrimSpace(record.JoinNodeID)).
+					Msg("cluster_join_promotion_deferred")
+			}
 			return
 		}
 	}

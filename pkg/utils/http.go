@@ -240,6 +240,25 @@ func HTTPGetJSONRead(url string, headers map[string]string) ([]byte, int, error)
 }
 
 func HTTPGetJSONReadContext(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
+	return httpGetJSONReadContext(ctx, url, headers, intraClusterClient())
+}
+
+func HTTPGetJSONReadContextBudget(
+	ctx context.Context,
+	url string,
+	headers map[string]string,
+) ([]byte, int, error) {
+	client := *intraClusterClient()
+	client.Timeout = 0
+	return httpGetJSONReadContext(ctx, url, headers, &client)
+}
+
+func httpGetJSONReadContext(
+	ctx context.Context,
+	url string,
+	headers map[string]string,
+	client *http.Client,
+) ([]byte, int, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -257,7 +276,7 @@ func HTTPGetJSONReadContext(ctx context.Context, url string, headers map[string]
 		req.Header.Set("Accept", "application/json")
 	}
 
-	resp, err := intraClusterClient().Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}

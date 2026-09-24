@@ -12,13 +12,126 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
+
+func TestPollJoinIntentSurfacesLeaderDeferralWithoutBumpingAttempts(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
+	if err := db.Create(&clusterModels.Cluster{
+		Enabled: false, Key: "cluster-key", RaftPort: ClusterRaftPort,
+	}).Error; err != nil {
+		t.Fatalf("seed cluster: %v", err)
+	}
+	if err := db.Create(&vmModels.VM{RID: 42, Name: "vm-42"}).Error; err != nil {
+		t.Fatalf("seed joining VM: %v", err)
+	}
+	service := &Service{DB: db, NodeID: "joining-node", mutationGate: newOpenTestMutationGate(t)}
+	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{
+		NodeID: "joining-node", GuestType: clusterModels.ReplicationGuestTypeVM,
+		GuestID: 42, RecordID: 7, Name: "vm-42",
+	}})
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", JoinAdmissionRequest{
+		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3", Inventory: report,
+	}); err != nil {
+		t.Fatalf("save join intent: %v", err)
+	}
+	if err := service.MarkJoinIntentPhase(JoinPhaseStaged, nil); err != nil {
+		t.Fatalf("mark staged intent: %v", err)
+	}
+
+	leaderReason := "replicated_state_digest_mismatch: expected=deadbeef actual=feedface"
+	failureBody, err := json.Marshal(internal.APIResponse[GuestIdentityInventoryReport]{
+		Status: "error", Message: "cluster_join_promotion_deferred", Error: leaderReason,
+	})
+	if err != nil {
+		t.Fatalf("marshal failure response: %v", err)
+	}
+	service.joinIntentRequest = func(
+		context.Context,
+		string,
+		[]byte,
+		map[string]string,
+	) (int, []byte, error) {
+		return http.StatusBadRequest, failureBody, nil
+	}
+
+	result := service.pollJoinIntent(t.Context())
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "replicated_state_digest_mismatch") {
+		t.Fatalf("poll error = %v, want the leader's deferral reason", result.Err)
+	}
+	if !result.Retryable {
+		t.Fatal("deferred promotion must be retryable for the joining node")
+	}
+
+	var persisted clusterModels.Cluster
+	if err := db.First(&persisted).Error; err != nil {
+		t.Fatalf("load join intent: %v", err)
+	}
+	if !strings.HasPrefix(persisted.JoinLastError, "cluster_join_promotion_deferred: ") ||
+		!strings.Contains(persisted.JoinLastError, leaderReason) {
+		t.Fatalf(
+			"stored join error = %q, want the response message and %q",
+			persisted.JoinLastError,
+			leaderReason,
+		)
+	}
+	if persisted.JoinAttempts != 0 {
+		t.Fatalf("poll bumped join attempts to %d, want 0", persisted.JoinAttempts)
+	}
+	if persisted.JoinPhase != JoinPhaseStaged {
+		t.Fatalf("poll moved durable phase to %q, want %q", persisted.JoinPhase, JoinPhaseStaged)
+	}
+	status, err := service.JoinStatus()
+	if err != nil {
+		t.Fatalf("join status: %v", err)
+	}
+	if !strings.Contains(status.LastError, leaderReason) || !status.Retrying {
+		t.Fatalf("join status = %+v, want the leader's reason and retrying", status)
+	}
+
+	successBody, err := json.Marshal(internal.APIResponse[ClusterJoinStatus]{
+		Status: "success", Message: "cluster_join_started",
+		Data: ClusterJoinStatus{TargetIndex: 42},
+	})
+	if err != nil {
+		t.Fatalf("marshal success response: %v", err)
+	}
+	service.joinIntentRequest = func(
+		context.Context,
+		string,
+		[]byte,
+		map[string]string,
+	) (int, []byte, error) {
+		return http.StatusAccepted, successBody, nil
+	}
+	if result := service.pollJoinIntent(t.Context()); result.Err != nil {
+		t.Fatalf("successful poll error = %v", result.Err)
+	}
+	if err := db.First(&persisted).Error; err != nil {
+		t.Fatalf("reload join intent: %v", err)
+	}
+	if persisted.JoinLastError != "" || persisted.JoinPhase != JoinPhaseStaged || persisted.JoinAttempts != 0 {
+		t.Fatalf("successful poll state = %+v", persisted)
+	}
+	if got := service.joinLeaderTarget(); got != 42 {
+		t.Fatalf("leader target after successful poll = %d, want 42", got)
+	}
+	if err := service.SaveJoinIntent("192.0.2.10", "cluster-key", JoinAdmissionRequest{
+		NodeID: "joining-node", NodeIP: "192.0.2.20", NodeVersion: "1.2.3", Inventory: report,
+	}); err != nil {
+		t.Fatalf("save a new join intent: %v", err)
+	}
+	if got := service.joinLeaderTarget(); got != 0 {
+		t.Fatalf("leader target after a new join intent = %d, want 0", got)
+	}
+}
 
 func TestJoinIntentPersistsRecoveryInputsAndResetClearsThem(t *testing.T) {
 	db := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})

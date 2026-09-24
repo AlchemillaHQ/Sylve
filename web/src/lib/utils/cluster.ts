@@ -87,10 +87,10 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	const contains = (...markers: string[]) => markers.some((marker) => value.includes(marker));
 
 	if (contains('cluster_version_mismatch', 'version mismatch')) {
-		return 'This node and every cluster member must run the same Sylve version.';
+		return 'This node and the cluster leader must run the same Sylve version.';
 	}
 	if (contains('cluster_version_check_unavailable')) {
-		return 'Sylve could not verify cluster versions. Make sure every current member is online.';
+		return 'Sylve could not verify this node or the leader. Make sure the two can reach each other on the cluster ports.';
 	}
 	if (contains('invalid_cluster_key', 'unauthorized', 'authentication failed')) {
 		return 'The cluster key was rejected. Reset this join and use the current key from the leader.';
