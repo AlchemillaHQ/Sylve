@@ -8,6 +8,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 #: src/routes/+error.svelte
+#: src/routes/+error.svelte
 msgid "Not Found"
 msgstr "Not Found"
 
@@ -8918,6 +8919,7 @@ msgstr "Rule"
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/stores/error-details.svelte.ts
+#: src/routes/+error.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Details"
@@ -13234,11 +13236,13 @@ msgid "View response details for {0}"
 msgstr "View response details for {0}"
 
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+#: src/routes/+error.svelte
 msgid "Error Details"
 msgstr "Error Details"
 
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/stores/error-details.svelte.ts
+#: src/routes/+error.svelte
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "The request could not be completed."
 msgstr "The request could not be completed."
@@ -14603,6 +14607,7 @@ msgstr "The delete request could not be completed. Check your connection and clu
 msgid "Could not delete the policy. Check the reported error and cluster status, then retry."
 msgstr "Could not delete the policy. Check the reported error and cluster status, then retry."
 
+#: src/routes/+error.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Request failed"
 msgstr "Request failed"
@@ -15767,6 +15772,7 @@ msgid "<0/> Retrying..."
 msgstr "<0/> Retrying..."
 
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
+#: src/routes/+error.svelte
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
 msgid "<0/> Retry"
 msgstr "<0/> Retry"
@@ -17528,7 +17534,7 @@ msgstr "Resetting…"
 msgid "View Cluster Join Progress"
 msgstr "View Cluster Join Progress"
 
-#. 0: phase.label
+#. 0: label
 #: src/lib/components/custom/Cluster/JoinProgress.svelte
 msgid "Cluster Join: {0}"
 msgstr "Cluster Join: {0}"
@@ -18562,3 +18568,55 @@ msgstr "Selected IP object must contain exactly one value"
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 msgid "Select object or type IP"
 msgstr "Select object or type IP"
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "Awaiting Promotion"
+msgstr "Awaiting Promotion"
+
+#: src/lib/components/custom/Cluster/JoinProgress.svelte
+msgid "This node has synchronized with the cluster. The leader will promote it to a voting member."
+msgstr "This node has synchronized with the cluster. The leader will promote it to a voting member."
+
+#: src/routes/+error.svelte
+msgid "Internal Error"
+msgstr "Internal Error"
+
+#: src/routes/+error.svelte
+msgid "Internal Server Error"
+msgstr "Internal Server Error"
+
+#: src/routes/+error.svelte
+msgid "Invalid response data"
+msgstr "Invalid response data"
+
+#: src/routes/+error.svelte
+msgid "Invalid response format"
+msgstr "Invalid response format"
+
+#: src/routes/+error.svelte
+msgid "The server response data did not match the expected format."
+msgstr "The server response data did not match the expected format."
+
+#: src/routes/+error.svelte
+msgid "The server response did not match the expected API format."
+msgstr "The server response did not match the expected API format."
+
+#: src/routes/+error.svelte
+msgid "This page does not exist."
+msgstr "This page does not exist."
+
+#: src/routes/+error.svelte
+msgid "Something went wrong while loading this page."
+msgstr "Something went wrong while loading this page."
+
+#: src/routes/+error.svelte
+msgid "Use the sidebar to get back to a node."
+msgstr "Use the sidebar to get back to a node."
+
+#: src/routes/+error.svelte
+msgid "Try again in a moment."
+msgstr "Try again in a moment."
+
+#: src/routes/+error.svelte
+msgid "Hide details"
+msgstr "Hide details"
