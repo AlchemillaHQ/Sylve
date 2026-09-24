@@ -166,3 +166,22 @@ func TestGetUsablePoolsHonorsCanceledContextDuringSettingsLookup(t *testing.T) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
+
+func TestGetUsablePoolsReturnsEmptySliceWhenUnconfigured(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := database.Create(&models.BasicSettings{Pools: []string{}}).Error; err != nil {
+		t.Fatalf("failed to seed basic settings: %v", err)
+	}
+	service := &Service{DB: database}
+
+	pools, err := service.GetUsablePools(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pools == nil {
+		t.Fatalf("expected a non-nil empty pool list")
+	}
+	if len(pools) != 0 {
+		t.Fatalf("expected no usable pools, got %d", len(pools))
+	}
+}

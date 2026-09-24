@@ -25,6 +25,10 @@ const PoolsResponseSchema = APIResponseSchema.extend({
 	data: ZpoolSchema.array().nullable().optional()
 });
 
+const ZpoolListSchema = ZpoolSchema.array()
+	.nullable()
+	.transform((pools) => pools ?? []);
+
 export type PoolsResponse = z.infer<typeof PoolsResponseSchema>;
 
 export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
@@ -33,7 +37,7 @@ export async function getPoolStatus(guid: string): Promise<ZpoolStatusPool> {
 
 export async function getPools(all?: boolean, hostname?: string): Promise<Zpool[]> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
-	return await apiRequestData(url, ZpoolSchema.array(), 'GET', undefined, { hostname });
+	return await apiRequestData(url, ZpoolListSchema, 'GET', undefined, { hostname });
 }
 
 export async function getPoolsResult(
@@ -41,7 +45,7 @@ export async function getPoolsResult(
 	options?: NodeAPIDataRequestOptions
 ): Promise<Zpool[] | APIResponse> {
 	const url = all ? '/zfs/pools?all=true' : '/zfs/pools';
-	return await apiRequestResult(url, ZpoolSchema.array(), 'GET', undefined, options);
+	return await apiRequestResult(url, ZpoolListSchema, 'GET', undefined, options);
 }
 
 export async function getPoolsResponse(all?: boolean, hostname?: string): Promise<PoolsResponse> {

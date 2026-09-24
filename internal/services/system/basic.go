@@ -113,11 +113,12 @@ func normalizeInitializeRequest(req systemServiceInterfaces.InitializeRequest) (
 
 func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	var basicSettings models.BasicSettings
-	var pools []*gzfs.ZPool
 
 	if err := s.DB.WithContext(ctx).First(&basicSettings).Error; err != nil {
-		return pools, err
+		return nil, err
 	}
+
+	pools := make([]*gzfs.ZPool, 0, len(basicSettings.Pools))
 
 	for _, name := range basicSettings.Pools {
 		pool, err := s.GZFS.Zpool.Get(ctx, name)
