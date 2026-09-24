@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getRAMInfoResult } from '$lib/api/info/ram';
 	import { modifyRAM } from '$lib/api/jail/hardware';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
@@ -11,8 +12,10 @@
 		normalizeSizeInputExact,
 		parseSizeInputToBytes
 	} from '$lib/utils/bytes';
-	import { handleAPIError } from '$lib/utils/http';
+	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
+	import { untrack } from 'svelte';
 
 	interface Props {
 		open: boolean;
@@ -25,6 +28,24 @@
 	let { open = $bindable(), ram, jail, node, onSaved }: Props = $props();
 	let ramValue = $derived(formatBytesBinary(jail.memory || 1));
 	let saving = $state(false);
+
+	const hostRam = resource(
+		() => node,
+		async (hostname) => {
+			const result = await getRAMInfoResult({ hostname });
+
+			if (isAPIResponse(result)) {
+				handleAPIError(result);
+				return ram;
+			}
+
+			await updateCache('ram-info', result, hostname);
+			return result;
+		},
+		{
+			initialValue: untrack(() => ram)
+		}
+	);
 
 	async function modify() {
 		if (saving) return;
@@ -42,10 +63,12 @@
 			error = 'RAM value must be at least 1 MiB';
 		}
 
-		if (bytes > ram.total - 1024 * 1024 * 1024 || bytes > ram.total) {
-			if (bytes > ram.total) {
+		const total = hostRam.current.total;
+
+		if (bytes > total - 1024 * 1024 * 1024 || bytes > total) {
+			if (bytes > total) {
 				error = 'RAM value exceeds available memory';
-			} else if (bytes > ram.total - 1024 * 1024 * 1024) {
+			} else if (bytes > total - 1024 * 1024 * 1024) {
 				error = 'RAM value is too high, at least 1 GiB must be reserved for the host';
 			}
 		}
@@ -112,7 +135,13 @@
 
 		<Dialog.Footer class="flex justify-end">
 			<div class="flex w-full items-center justify-end gap-2">
-				<Button onclick={modify} type="submit" size="sm" disabled={saving} aria-busy={saving}>
+				<Button
+					onclick={modify}
+					type="submit"
+					size="sm"
+					disabled={saving || hostRam.loading}
+					aria-busy={saving}
+				>
 					{#if saving}
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 						Saving...

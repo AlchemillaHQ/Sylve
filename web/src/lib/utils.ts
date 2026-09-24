@@ -16,6 +16,7 @@ import z from 'zod/v4';
 
 export const ONLY_CACHE = true;
 export const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+export const ALWAYS_REFRESH = 0;
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));

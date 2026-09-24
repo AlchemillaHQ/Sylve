@@ -2,7 +2,7 @@ import { getRAMInfoResult } from '$lib/api/info/ram.js';
 import { getPCIDevices, getPPTDevices } from '$lib/api/system/pci';
 import { getVmByIdResult, getVMsResult } from '$lib/api/vm/vm';
 import type { APIResponse } from '$lib/types/common';
-import { SEVEN_DAYS } from '$lib/utils';
+import { ALWAYS_REFRESH, SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 import { error } from '@sveltejs/kit';
 
@@ -25,7 +25,7 @@ export async function load({ params }) {
 		cachedFetch(
 			'system-ram-info',
 			async () => getRAMInfoResult({ hostname: node }),
-			SEVEN_DAYS,
+			ALWAYS_REFRESH,
 			false,
 			node
 		),

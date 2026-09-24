@@ -3,7 +3,7 @@ import { getRAMInfoResult } from '$lib/api/info/ram';
 import { getJailByCTID } from '$lib/api/jail/jail';
 import type { APIResponse } from '$lib/types/common';
 import type { Jail } from '$lib/types/jail/jail';
-import { SEVEN_DAYS } from '$lib/utils.js';
+import { ALWAYS_REFRESH, SEVEN_DAYS } from '$lib/utils.js';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
 import { error } from '@sveltejs/kit';
 
@@ -26,7 +26,7 @@ export async function load({ params }) {
 		cachedFetch(
 			'ram-info',
 			async () => await getRAMInfoResult({ hostname: node }),
-			cacheDuration,
+			ALWAYS_REFRESH,
 			false,
 			node
 		),
