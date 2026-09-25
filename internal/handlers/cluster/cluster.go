@@ -67,20 +67,30 @@ func joinLeaderAPIHost(leaderIP string) string {
 
 type basicHealthData struct {
 	SylveVersion string `json:"sylveVersion"`
+	ServerTime   string `json:"serverTime"`
 }
 
-func fetchNodeVersionFromHealth(healthURL string, headers map[string]string) (string, error) {
+type nodeHealthResult struct {
+	health       basicHealthData
+	requestStart time.Time
+	responseAt   time.Time
+}
+
+func fetchNodeHealth(healthURL string, headers map[string]string) (nodeHealthResult, error) {
+	result := nodeHealthResult{requestStart: time.Now()}
 	body, _, err := utils.HTTPGetJSONRead(healthURL, headers)
+	result.responseAt = time.Now()
 	if err != nil {
-		return "", err
+		return result, err
 	}
 
 	var healthResp internal.APIResponse[basicHealthData]
 	if err := json.Unmarshal(body, &healthResp); err != nil {
-		return "", fmt.Errorf("decode_health_response_failed: %w", err)
+		return result, fmt.Errorf("decode_health_response_failed: %w", err)
 	}
 
-	return strings.TrimSpace(healthResp.Data.SylveVersion), nil
+	result.health = healthResp.Data
+	return result, nil
 }
 
 func postJoinAdmission(
@@ -372,7 +382,7 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			leaderAPIHost,
 		)
 
-		leaderVersion, err := fetchNodeVersionFromHealth(healthURL, healthHeaders)
+		healthResult, err := fetchNodeHealth(healthURL, healthHeaders)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",
@@ -383,6 +393,7 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 			return
 		}
 
+		leaderVersion := strings.TrimSpace(healthResult.health.SylveVersion)
 		localVersion := strings.TrimSpace(cmd.Version)
 		if leaderVersion == "" {
 			c.JSON(http.StatusConflict, internal.APIResponse[any]{
@@ -399,6 +410,20 @@ func JoinCluster(cS *cluster.Service, zS *zelta.Service, fsm raft.FSM) gin.Handl
 				Status:  "error",
 				Message: "cluster_version_mismatch",
 				Error:   fmt.Sprintf("leader=%s,node=%s", leaderVersion, localVersion),
+				Data:    nil,
+			})
+			return
+		}
+
+		if offset, known := measureClockOffset(
+			healthResult.health.ServerTime,
+			healthResult.requestStart,
+			healthResult.responseAt,
+		); known && joinClockDriftBlocked(offset) {
+			c.JSON(http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "cluster_join_clock_drift",
+				Error:   "leader_offset=" + formatClockOffset(offset),
 				Data:    nil,
 			})
 			return
@@ -620,10 +645,14 @@ func AcceptJoin(cS *cluster.Service) gin.HandlerFunc {
 				return
 			}
 			joinerHealthURL := fmt.Sprintf("https://%s/api/health/basic", cluster.ClusterAPIHost(req.NodeIP))
-			joinerVersion, err := fetchNodeVersionFromHealth(
+			joinerHealthResult, err := fetchNodeHealth(
 				joinerHealthURL,
 				map[string]string{auth.ClusterKeyHeader: clusterKey},
 			)
+			joinerVersion := ""
+			if err == nil {
+				joinerVersion = strings.TrimSpace(joinerHealthResult.health.SylveVersion)
+			}
 			if err != nil || joinerVersion == "" {
 				reason := "joiner_version_unavailable"
 				if err != nil {

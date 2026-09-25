@@ -92,6 +92,11 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	if (contains('cluster_version_check_unavailable')) {
 		return 'Sylve could not verify this node or the leader. Make sure the two can reach each other on the cluster ports.';
 	}
+	if (
+		contains('cluster_join_clock_drift', 'cluster_token_expired', 'cluster_token_future_issued')
+	) {
+		return 'The clocks on these nodes differ too much for a secure join. Synchronize time on both systems, then retry';
+	}
 	if (contains('invalid_cluster_key', 'unauthorized', 'authentication failed')) {
 		return 'The cluster key was rejected. Reset this join and use the current key from the leader.';
 	}

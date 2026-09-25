@@ -17,7 +17,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/auth"
 )
 
-func TestFetchNodeVersionFromHealthUsesGETAndHeaders(t *testing.T) {
+func TestFetchNodeHealthUsesGETAndHeaders(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
@@ -33,14 +33,14 @@ func TestFetchNodeVersionFromHealthUsesGETAndHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	version, err := fetchNodeVersionFromHealth(
+	result, err := fetchNodeHealth(
 		server.URL,
 		map[string]string{auth.ClusterKeyHeader: "cluster-secret"},
 	)
 	if err != nil {
-		t.Fatalf("fetch health version: %v", err)
+		t.Fatalf("fetch node health: %v", err)
 	}
-	if version != "1.2.3" {
-		t.Fatalf("version = %q, want 1.2.3", version)
+	if result.health.SylveVersion != "1.2.3" {
+		t.Fatalf("version = %q, want 1.2.3", result.health.SylveVersion)
 	}
 }

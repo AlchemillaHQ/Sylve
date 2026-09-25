@@ -703,3 +703,168 @@ func TestAcceptJoinStepdownDoesNotServeCachedDeferral(t *testing.T) {
 		t.Fatalf("error = %q, must not serve the cached deferral after stepdown", decoded.Error)
 	}
 }
+
+func TestJoinClusterClockDriftPreflightStopsBeforeAdmission(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.Cluster{},
+		&clusterModels.ClusterNote{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+	)
+	clusterRow := clusterModels.Cluster{
+		Enabled:  false,
+		Key:      "standalone-sentinel-key",
+		RaftIP:   "standalone-sentinel-ip",
+		RaftPort: 19180,
+	}
+	if err := db.Create(&clusterRow).Error; err != nil {
+		t.Fatalf("create cluster sentinel: %v", err)
+	}
+
+	clusterService := &cluster.Service{DB: db}
+	localNodeID := strings.TrimSpace(clusterService.LocalNodeID())
+	if localNodeID == "" {
+		t.Skip("system UUID is unavailable; cannot satisfy JoinCluster node identity check")
+	}
+
+	leaderTime := time.Now().Add(-time.Hour).Format(time.RFC3339Nano)
+	stubState := &joinLeaderStubState{}
+	stub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stubState.recordPath(r.URL.Path)
+		stubState.checkTransport(r)
+		switch r.URL.Path {
+		case "/api/health/basic":
+			writeJoinLeaderStubJSON(w, http.StatusOK, internal.APIResponse[map[string]string]{
+				Status: "success",
+				Data: map[string]string{
+					"sylveVersion": cmd.Version,
+					"serverTime":   leaderTime,
+				},
+			})
+		default:
+			stubState.recordError("unexpected path %q", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	})
+	leaderIP := startJoinLeaderTLSStub(t, stub)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/cluster/join", JoinCluster(clusterService, nil, nil))
+	requestBody, err := json.Marshal(JoinClusterRequest{
+		NodeID:     localNodeID,
+		NodeIP:     "203.0.113.251",
+		LeaderIP:   leaderIP,
+		ClusterKey: "cluster-secret",
+	})
+	if err != nil {
+		t.Fatalf("marshal join request: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/cluster/join", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	var decoded handlerAPIResponse[any]
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if decoded.Message != "cluster_join_clock_drift" || !strings.HasPrefix(decoded.Error, "leader_offset=-") {
+		t.Fatalf("unexpected clock drift response: %+v", decoded)
+	}
+
+	paths, admissions, stubErrors := stubState.snapshot()
+	if len(stubErrors) != 0 {
+		t.Fatalf("leader stub errors: %v", stubErrors)
+	}
+	if got, want := strings.Join(paths, ","), "/api/health/basic"; got != want {
+		t.Fatalf("leader request sequence = %q, want %q", got, want)
+	}
+	if len(admissions) != 0 {
+		t.Fatalf("leader admissions = %+v, want none", admissions)
+	}
+
+	var persisted clusterModels.Cluster
+	if err := db.First(&persisted, clusterRow.ID).Error; err != nil {
+		t.Fatalf("reload cluster sentinel: %v", err)
+	}
+	if persisted.Enabled || persisted.Key != clusterRow.Key || persisted.RaftIP != clusterRow.RaftIP ||
+		persisted.RaftPort != clusterRow.RaftPort {
+		t.Fatalf("rejected join mutated cluster state: got=%+v want=%+v", persisted, clusterRow)
+	}
+}
+
+func TestJoinClusterInWindowClockProceedsToAdmission(t *testing.T) {
+	db := newClusterHandlerTestDB(t,
+		&clusterModels.Cluster{},
+		&vmModels.VM{},
+		&jailModels.Jail{},
+	)
+	if err := db.Create(&clusterModels.Cluster{
+		Enabled:  false,
+		Key:      "standalone-sentinel-key",
+		RaftIP:   "standalone-sentinel-ip",
+		RaftPort: 19180,
+	}).Error; err != nil {
+		t.Fatalf("create cluster sentinel: %v", err)
+	}
+
+	clusterService := &cluster.Service{DB: db}
+	localNodeID := strings.TrimSpace(clusterService.LocalNodeID())
+	if localNodeID == "" {
+		t.Skip("system UUID is unavailable; cannot satisfy JoinCluster node identity check")
+	}
+
+	stub := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/health/basic":
+			writeJoinLeaderStubJSON(w, http.StatusOK, internal.APIResponse[map[string]string]{
+				Status: "success",
+				Data: map[string]string{
+					"sylveVersion": cmd.Version,
+					"serverTime":   time.Now().Format(time.RFC3339Nano),
+				},
+			})
+		case "/api/cluster/accept-join":
+			writeJoinLeaderStubJSON(w, http.StatusConflict, internal.APIResponse[any]{
+				Status:  "error",
+				Message: "in_window_clock_reached_admission",
+				Error:   "in_window_clock_reached_admission",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	leaderIP := startJoinLeaderTLSStub(t, stub)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.POST("/cluster/join", JoinCluster(clusterService, nil, nil))
+	requestBody, err := json.Marshal(JoinClusterRequest{
+		NodeID:     localNodeID,
+		NodeIP:     "203.0.113.252",
+		LeaderIP:   leaderIP,
+		ClusterKey: "cluster-secret",
+	})
+	if err != nil {
+		t.Fatalf("marshal join request: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/cluster/join", bytes.NewReader(requestBody))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusConflict, response.Body.String())
+	}
+	var decoded handlerAPIResponse[any]
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if decoded.Message != "in_window_clock_reached_admission" {
+		t.Fatalf("message = %q, want the leader admission response", decoded.Message)
+	}
+}

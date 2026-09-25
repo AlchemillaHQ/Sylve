@@ -11,6 +11,7 @@ package middleware
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -65,6 +66,17 @@ func abortAuthentication(c *gin.Context, status int, code string) {
 		Error:   code,
 		Data:    nil,
 	})
+}
+
+func clusterTokenErrorCode(err error) string {
+	switch {
+	case errors.Is(err, authSvc.ErrClusterTokenExpired):
+		return "cluster_token_expired"
+	case errors.Is(err, authSvc.ErrClusterTokenFutureIssued):
+		return "cluster_token_future_issued"
+	default:
+		return "invalid_cluster_token"
+	}
 }
 
 func singleHeaderValue(header http.Header, name string) (string, bool, bool) {
@@ -134,7 +146,7 @@ func authenticateClusterHeader(c *gin.Context, authService *authSvc.Service) (bo
 
 	claims, err := authService.VerifyClusterJWT(clusterJWT)
 	if err != nil {
-		abortAuthentication(c, http.StatusUnauthorized, "invalid_cluster_token")
+		abortAuthentication(c, http.StatusUnauthorized, clusterTokenErrorCode(err))
 		return true, false
 	}
 	if !clusterRequestAllowed(claims, c.Request.Method, c.Request.URL.Path) {
@@ -319,7 +331,7 @@ func AuthenticateClusterKey(authService *authSvc.Service) gin.HandlerFunc {
 				return
 			}
 			if _, err := authService.VerifyClusterJWT(token); err != nil {
-				abortAuthentication(c, http.StatusUnauthorized, "invalid_cluster_token")
+				abortAuthentication(c, http.StatusUnauthorized, clusterTokenErrorCode(err))
 				return
 			}
 			abortAuthentication(c, http.StatusForbidden, "cluster_token_forbidden")

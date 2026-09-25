@@ -11,6 +11,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
@@ -63,6 +64,7 @@ func BasicHealthCheckHandler(systemService *system.Service) gin.HandlerFunc {
 				"restarted":    b.Restarted,
 				"jailed":       systemService.IsJailed(),
 				"sylveVersion": cmd.Version,
+				"serverTime":   time.Now().Format(time.RFC3339Nano),
 			},
 		})
 	}

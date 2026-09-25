@@ -91,8 +91,13 @@ const (
 	AuthTypeSylvePasskey           = "sylve-passkey"
 	ClusterKeyHeader               = "X-Cluster-Key"
 	ClusterTokenHeader             = "X-Cluster-Token"
-	clusterTokenTTL                = 5 * time.Minute
-	clusterTokenFutureSkew         = 30 * time.Second
+	ClusterTokenTTL                = 5 * time.Minute
+	ClusterTokenFutureSkew         = 30 * time.Second
+)
+
+var (
+	ErrClusterTokenExpired      = errors.New("jwt_expired")
+	ErrClusterTokenFutureIssued = errors.New("jwt_future_issued")
 )
 
 func NewAuthService(db *gorm.DB) serviceInterfaces.AuthServiceInterface {
@@ -464,7 +469,7 @@ func (s *Service) createClusterJWTWithUse(
 	data := JWT{
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(clusterTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ClusterTokenTTL)),
 			ID:        uuid.NewString(),
 		},
 		CustomClaims: serviceInterfaces.CustomClaims{
@@ -601,16 +606,16 @@ func (s *Service) VerifyClusterJWT(tokenString string) (serviceInterfaces.Custom
 
 	now := time.Now()
 	if !now.Before(claims.ExpiresAt.Time) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_expired")
+		return serviceInterfaces.CustomClaims{}, ErrClusterTokenExpired
 	}
-	if claims.IssuedAt.Time.After(now.Add(clusterTokenFutureSkew)) {
-		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
+	if claims.IssuedAt.Time.After(now.Add(ClusterTokenFutureSkew)) {
+		return serviceInterfaces.CustomClaims{}, ErrClusterTokenFutureIssued
 	}
 	if claims.NotBefore != nil && now.Before(claims.NotBefore.Time) {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 	if !claims.ExpiresAt.Time.After(claims.IssuedAt.Time) ||
-		claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time) > clusterTokenTTL {
+		claims.ExpiresAt.Time.Sub(claims.IssuedAt.Time) > ClusterTokenTTL {
 		return serviceInterfaces.CustomClaims{}, fmt.Errorf("jwt_invalid")
 	}
 

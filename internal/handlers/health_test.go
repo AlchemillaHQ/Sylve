@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	"github.com/alchemillahq/sylve/internal/services/system"
@@ -70,5 +71,33 @@ func TestBasicHealthIncludesJailStatus(t *testing.T) {
 	}
 	if string(jailed) != "false" {
 		t.Fatalf("jailed = %s, want false", jailed)
+	}
+}
+
+func TestBasicHealthIncludesParseableServerTime(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+
+	response := performBasicHealthRequest(t, &system.Service{DB: database})
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+
+	var body struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode health response: %v", err)
+	}
+	raw, ok := body.Data["serverTime"]
+	if !ok {
+		t.Fatal("health response is missing serverTime")
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatalf("decode serverTime: %v", err)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+		t.Fatalf("serverTime = %q, want RFC3339Nano: %v", value, err)
 	}
 }

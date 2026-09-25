@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -97,7 +98,7 @@ func TestJWTParserHardening(t *testing.T) {
 			claims: func(expiresAt *jwt.NumericDate) jwt.Claims {
 				var issuedAt *jwt.NumericDate
 				if expiresAt != nil {
-					issuedAt = jwt.NewNumericDate(expiresAt.Time.Add(-clusterTokenTTL))
+					issuedAt = jwt.NewNumericDate(expiresAt.Time.Add(-ClusterTokenTTL))
 				}
 				return JWT{
 					RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: expiresAt, IssuedAt: issuedAt},
@@ -123,8 +124,8 @@ func TestJWTParserHardening(t *testing.T) {
 		wantError     bool
 		localOnly     bool
 	}{
-		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(clusterTokenTTL)), false, false},
-		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(clusterTokenTTL)), true, false},
+		{"valid HS256", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(ClusterTokenTTL)), false, false},
+		{"reject HS384", jwt.SigningMethodHS384, signingSecret, jwt.NewNumericDate(now.Add(ClusterTokenTTL)), true, false},
 		{"reject missing expiry", jwt.SigningMethodHS256, signingSecret, nil, true, false},
 		// Expiry and signature validation are shared library behavior, so one wrapper is sufficient.
 		{"reject expired token", jwt.SigningMethodHS256, signingSecret, jwt.NewNumericDate(now.Add(-time.Hour)), true, true},
@@ -191,11 +192,17 @@ func TestClusterJWTClaimBounds(t *testing.T) {
 		expires   *jwt.NumericDate
 		tokenUse  string
 		wantErr   bool
+		wantErrID error
 	}{
 		{
 			name: "valid five minute token", issuedAt: jwt.NewNumericDate(now),
-			expires:  jwt.NewNumericDate(now.Add(clusterTokenTTL)),
+			expires:  jwt.NewNumericDate(now.Add(ClusterTokenTTL)),
 			tokenUse: ClusterTokenUseUserProxy,
+		},
+		{
+			name: "expired", issuedAt: jwt.NewNumericDate(now.Add(-2 * time.Minute)),
+			expires:  jwt.NewNumericDate(now.Add(-time.Minute)),
+			tokenUse: ClusterTokenUseUserProxy, wantErr: true, wantErrID: ErrClusterTokenExpired,
 		},
 		{
 			name: "missing issued at", expires: jwt.NewNumericDate(now.Add(time.Minute)),
@@ -203,18 +210,18 @@ func TestClusterJWTClaimBounds(t *testing.T) {
 		},
 		{
 			name: "lifetime over five minutes", issuedAt: jwt.NewNumericDate(now),
-			expires:  jwt.NewNumericDate(now.Add(clusterTokenTTL + time.Second)),
+			expires:  jwt.NewNumericDate(now.Add(ClusterTokenTTL + time.Second)),
 			tokenUse: ClusterTokenUseUserProxy, wantErr: true,
 		},
 		{
-			name: "issued within clock skew", issuedAt: jwt.NewNumericDate(now.Add(clusterTokenFutureSkew - time.Second)),
-			expires:  jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Minute)),
+			name: "issued within clock skew", issuedAt: jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew - time.Second)),
+			expires:  jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Minute)),
 			tokenUse: ClusterTokenUseInternalControl,
 		},
 		{
-			name: "issued too far in future", issuedAt: jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Second)),
-			expires:  jwt.NewNumericDate(now.Add(clusterTokenFutureSkew + time.Minute)),
-			tokenUse: ClusterTokenUseInternalControl, wantErr: true,
+			name: "issued too far in future", issuedAt: jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Second)),
+			expires:  jwt.NewNumericDate(now.Add(ClusterTokenFutureSkew + time.Minute)),
+			tokenUse: ClusterTokenUseInternalControl, wantErr: true, wantErrID: ErrClusterTokenFutureIssued,
 		},
 		{
 			name: "not valid yet", issuedAt: jwt.NewNumericDate(now),
@@ -239,6 +246,9 @@ func TestClusterJWTClaimBounds(t *testing.T) {
 			_, err := service.VerifyClusterJWT(token)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("error=%v, wantErr=%v", err, test.wantErr)
+			}
+			if test.wantErrID != nil && !errors.Is(err, test.wantErrID) {
+				t.Fatalf("error=%v, want identity %v", err, test.wantErrID)
 			}
 		})
 	}
