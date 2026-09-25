@@ -17,9 +17,9 @@ concurrency:
 
 jobs:
   deploy:
-    name: Deploy Documentation
+    name: Deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: docs/app-docs
@@ -31,9 +31,19 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: docs/app-docs/package-lock.json
+          cache-dependency-path: |
+            docs/app-docs/package-lock.json
+            web/package-lock.json
 
-      - name: Install dependencies
+      - name: Install web dependencies
+        working-directory: .
+        run: npm ci --prefix web
+
+      - name: Generate web project files
+        working-directory: .
+        run: npm run prepare --prefix web
+
+      - name: Install docs dependencies
         run: npm ci
 
       - name: Build
