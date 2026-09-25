@@ -1,3 +1,13 @@
+/**
+ * SPDX-License-Identifier: BSD-2-Clause
+ *
+ * Copyright (c) 2025 The FreeBSD Foundation.
+ *
+ * This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+ * of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+ * under sponsorship from the FreeBSD Foundation.
+ */
+
 import {
 	ClusterDetailsSchema,
 	ClusterJoinStatusSchema,
@@ -88,10 +98,16 @@ export async function joinCluster(
 	});
 }
 
-export async function resetCluster(): Promise<APIResponse> {
-	return await apiRequest('/cluster/reset-node', APIResponseSchema, 'DELETE', undefined, {
-		raw: true
-	});
+export async function resetCluster(retainGuests?: boolean): Promise<APIResponse> {
+	return await apiRequest(
+		'/cluster/reset-node',
+		APIResponseSchema,
+		'DELETE',
+		retainGuests === undefined ? undefined : { retainGuests },
+		{
+			raw: true
+		}
+	);
 }
 
 export async function forceResetCluster(
@@ -108,12 +124,12 @@ export async function forceResetCluster(
 	);
 }
 
-export async function removePeer(nodeId: string): Promise<APIResponse> {
+export async function removePeer(nodeId: string, retainGuests: boolean): Promise<APIResponse> {
 	return await apiRequest(
 		'/cluster/remove-node',
 		APIResponseSchema,
 		'POST',
-		{ nodeId },
+		{ nodeId, retainGuests },
 		{ raw: true }
 	);
 }

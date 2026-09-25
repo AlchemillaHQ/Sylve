@@ -27,6 +27,7 @@ func guestIdentityRaftIntegrationModels() []any {
 		&clusterModels.GuestIdentityRegistry{},
 		&clusterModels.GuestIdentityEnrollment{},
 		&clusterModels.GuestIdentityClaim{},
+		&clusterModels.GuestIdentityDeparture{},
 		&clusterModels.ReplicationGuestOperation{},
 		&vmModels.VM{},
 		&jailModels.Jail{},
@@ -859,5 +860,132 @@ func TestIntegrationRaftGuestIdentityForceRemovalRetainsClaims(t *testing.T) {
 		Operation: guestIdentityControlReserve, Reservation: conflicting,
 	}); err == nil || !strings.Contains(err.Error(), clusterModels.ErrGuestIdentityAlreadyInUse.Error()) {
 		t.Fatalf("force-removed ID became reusable: %v", err)
+	}
+}
+
+func TestIntegrationRaftCooperativeLeaveReleasesGuestIDsAndRejectsRejoinCollision(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 3, guestIdentityRaftIntegrationModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	initializeActiveGuestIdentityRegistryForTest(t, leader, nodes)
+	enableClusteredGuestIdentityServicesForTest(t, nodes)
+	var target, survivor *clusterRaftTestNode
+	for _, node := range nodes {
+		if node == leader {
+			continue
+		}
+		if target == nil {
+			target = node
+		} else {
+			survivor = node
+		}
+	}
+	claim := guestIdentityControlReservation(target.id, "leaving-vm", clusterModels.ReplicationGuestTypeVM, 630)
+	if _, err := leader.service.HandleGuestIdentityControl(context.Background(), target.id, GuestIdentityControlRequest{
+		Operation: guestIdentityControlReserve, Reservation: claim,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{{NodeID: target.id, GuestType: "vm", GuestID: 630}})
+	if err := leader.service.RemoveMembership(context.Background(), RemoveMembershipRequest{
+		LeaveID: uuid.NewString(), NodeID: target.id, Inventory: report, RetainGuests: true,
+	}, target.id); err != nil {
+		t.Fatalf("cooperative removal: %v", err)
+	}
+	waitForClusterRaftVoterCount(t, nodes, 2, 8*time.Second)
+	var claims, pending int64
+	if err := leader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("guest_id = ?", 630).Count(&claims).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.DB.Model(&clusterModels.GuestIdentityDeparture{}).Count(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if claims != 0 || pending != 0 {
+		t.Fatalf("claims=%d pending=%d after completed leave", claims, pending)
+	}
+	reuse := guestIdentityControlReservation(survivor.id, "reuse-as-jail", clusterModels.ReplicationGuestTypeJail, 630)
+	if _, err := leader.service.HandleGuestIdentityControl(context.Background(), survivor.id, GuestIdentityControlRequest{
+		Operation: guestIdentityControlReserve, Reservation: reuse,
+	}); err != nil {
+		t.Fatalf("survivor could not reuse ID: %v", err)
+	}
+	_, err := leader.service.PreflightJoinInventory(context.Background(), target.id, "127.0.0.20", "guest-identity-integration", report)
+	var conflict *GuestIdentityInventoryConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("rejoin collision = %v, want inventory conflict", err)
+	}
+}
+
+func TestIntegrationRaftDepartureReleaseResumesAfterRemoval(t *testing.T) {
+	nodes := setupClusterRaftTestNodes(t, 4, guestIdentityRaftIntegrationModels()...)
+	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	initializeActiveGuestIdentityRegistryForTest(t, leader, nodes)
+	var target *clusterRaftTestNode
+	for _, node := range nodes {
+		if node != leader {
+			target = node
+			break
+		}
+	}
+	claim := clusterModels.GuestIdentityClaimSet{OwnerNodeID: target.id, Token: "pending-leave", Entries: []clusterModels.GuestIdentityEntry{{GuestKind: "vm", GuestID: 631}}}
+	if err := leader.service.applyGuestIdentityRaftAction("reserve_ids", claim); err != nil {
+		t.Fatal(err)
+	}
+	departure := clusterModels.GuestIdentityDepartureCommand{NodeID: target.id, LeaveID: "pending-leave", InventoryDigest: clusterModels.GuestIdentityInventoryDigest(target.id, claim.Entries)}
+	if err := leader.service.applyGuestIdentityRaftAction("record_departure", departure); err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.raft.RemoveServer(raft.ServerID(target.id), 0, raftApplyTimeout).Error(); err != nil {
+		t.Fatal(err)
+	}
+	status, err := leader.service.AuthoritativeMembershipStatus(target.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Present || status.GuestClaimsReleased {
+		t.Fatalf("status before release = %+v", status)
+	}
+	survivors := make([]*clusterRaftTestNode, 0, 2)
+	for _, node := range nodes {
+		if node != leader && node != target {
+			survivors = append(survivors, node)
+		}
+	}
+	waitForClusterCondition(t, 8*time.Second, "pending departure replicated before leader loss", func() bool {
+		for _, node := range survivors {
+			future := node.raft.GetConfiguration()
+			if future.Error() != nil {
+				return false
+			}
+			if _, present, err := resolveRaftMember(future.Configuration(), target.id); err != nil || present {
+				return false
+			}
+			var count int64
+			if err := node.service.DB.Model(&clusterModels.GuestIdentityDeparture{}).Where("node_id = ?", target.id).Count(&count).Error; err != nil || count != 1 {
+				return false
+			}
+		}
+		return true
+	})
+	disconnectGuestIdentityRaftNode(nodes, leader)
+	if err := leader.raft.Shutdown().Error(); err != nil {
+		t.Fatal(err)
+	}
+	newLeader := waitForClusterRaftLeader(t, survivors, 8*time.Second)
+	if err := newLeader.service.ReconcileGuestIdentityDepartures(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	status, err = newLeader.service.AuthoritativeMembershipStatus(target.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Present || !status.GuestClaimsReleased {
+		t.Fatalf("status after release = %+v", status)
+	}
+	var count int64
+	if err := newLeader.service.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("guest_id = ?", 631).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("claim remains after reconciliation")
 	}
 }

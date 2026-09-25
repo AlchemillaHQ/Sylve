@@ -27,6 +27,7 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 		"cluster_ssh_identities",
 		"encryption_keys",
 		"guest_identity_claims",
+		"guest_identity_departures",
 		"guest_identity_enrollments",
 		"guest_identity_registries",
 		"replication_guest_operation_receipts",

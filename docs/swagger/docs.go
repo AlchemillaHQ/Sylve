@@ -4574,7 +4574,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Join an existing cluster",
+                "description": "Join an existing cluster. A returning node uses the same endpoint, and all of its current VM and jail IDs must be free in the cluster.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5129,7 +5129,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ask an online peer to fence local work, leave Raft, and clear its cluster state",
+                "description": "Ask an online peer to fence local work, leave Raft, and clear its cluster state.\nRegistered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5154,6 +5154,12 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Removal pending",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
                         }
@@ -6102,7 +6108,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Safely remove this node from Raft and clear its local cluster state",
+                "description": "Safely remove this node from Raft and clear its local cluster state.\nRegistered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6113,9 +6119,31 @@ const docTemplate = `{
                     "Cluster"
                 ],
                 "summary": "Leave Cluster",
+                "parameters": [
+                    {
+                        "description": "Optional leave options",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_cluster.ResetNodeRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "202": {
+                        "description": "Leave pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -6132,8 +6160,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
+                    "409": {
+                        "description": "Leave conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -38441,6 +38481,12 @@ const docTemplate = `{
                 "membershipRemoved": {
                     "type": "boolean"
                 },
+                "retainedGuests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry"
+                    }
+                },
                 "status": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus"
                 }
@@ -38469,6 +38515,9 @@ const docTemplate = `{
                 },
                 "phase": {
                     "type": "string"
+                },
+                "retainGuests": {
+                    "type": "boolean"
                 }
             }
         },
@@ -41152,6 +41201,9 @@ const docTemplate = `{
             "properties": {
                 "nodeId": {
                     "type": "string"
+                },
+                "retainGuests": {
+                    "type": "boolean"
                 }
             }
         },
@@ -41169,6 +41221,14 @@ const docTemplate = `{
                 },
                 "targetNodeId": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_cluster.ResetNodeRequest": {
+            "type": "object",
+            "properties": {
+                "retainGuests": {
+                    "type": "boolean"
                 }
             }
         },

@@ -264,6 +264,9 @@ func (s *Service) startGuestIdentityReconciler(ctx context.Context) {
 		ctx = context.Background()
 	}
 	run := func() {
+		if err := s.ReconcileGuestIdentityDepartures(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.L.Debug().Err(err).Msg("guest_identity_departure_release_deferred")
+		}
 		if err := s.ReconcileGuestIdentityRegistry(ctx); err != nil &&
 			!errors.Is(err, context.Canceled) &&
 			!errors.Is(err, clusterModels.ErrGuestIdentityRegistryInitializing) {

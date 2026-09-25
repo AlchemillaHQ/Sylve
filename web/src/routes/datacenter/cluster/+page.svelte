@@ -24,6 +24,7 @@
 		ClusterLeaveStatus,
 		ClusterNode
 	} from '$lib/types/cluster/cluster';
+	import { PeerRemovalConflictSchema } from '$lib/types/cluster/cluster';
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { connection, planClusterLeaveRestart, reload } from '$lib/stores/api.svelte';
 	import { getClusterLeaveErrorMessage } from '$lib/utils/cluster';
@@ -61,6 +62,8 @@
 	let joinStatus = $state<ClusterJoinStatus | null>(null);
 	let leaveStatus = $state<ClusterLeaveStatus | null>(null);
 	let leaveRestarting = $state(false);
+	let leaveRequestPending = $state(false);
+	let guestOnlyLeaveConflict = $state(false);
 	let activeJoinStatus = $derived(
 		joinStatus && joinStatus.phase !== 'voter' && joinStatus.phase !== 'not_started'
 			? joinStatus
@@ -459,6 +462,50 @@
 			columns
 		};
 	});
+
+	async function runLeave(retainGuests?: boolean) {
+		if (leaveRequestPending) return;
+		leaveRequestPending = true;
+		const ownsRestartPlan = planClusterLeaveRestart();
+		stopLeaveStatusPolling();
+		try {
+			const response = await resetCluster(retainGuests);
+			if (response.error) {
+				if (ownsRestartPlan) connection.plannedRestart = null;
+				reloadFlag = true;
+				startLeaveStatusPolling();
+				if (response.message === 'peer_removal_blocked') {
+					const parsed = PeerRemovalConflictSchema.safeParse(response.data);
+					guestOnlyLeaveConflict =
+						parsed.success &&
+						parsed.data.dependencies.length > 0 &&
+						parsed.data.dependencies.every((dep) => dep.kind === 'guest');
+				} else {
+					guestOnlyLeaveConflict = false;
+				}
+				if (!guestOnlyLeaveConflict) {
+					handleAPIError(response);
+					const detail = Array.isArray(response.error)
+						? response.error.join(', ')
+						: String(response.error || response.message);
+					toast.error(getClusterLeaveErrorMessage(`${response.message}: ${detail}`), {
+						position: 'bottom-center'
+					});
+				}
+				modals.reset.open = false;
+				return;
+			}
+			guestOnlyLeaveConflict = false;
+			showClusterLeaveRestart();
+			await refreshClusterAfterLifecycleChange();
+			modals.reset.open = false;
+			toast.success('Cluster leave completed. Sylve is restarting…', {
+				position: 'bottom-center'
+			});
+		} finally {
+			leaveRequestPending = false;
+		}
+	}
 </script>
 
 {#snippet button(type: string, icon: string, title: string, disabled: boolean)}
@@ -536,6 +583,13 @@
 			{/if}
 		{/if}
 	</div>
+	{#if guestOnlyLeaveConflict && !leaveRestarting}
+		<div class="m-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+			<Button size="sm" disabled={leaveRequestPending} onclick={() => runLeave(true)}>
+				{leaveRequestPending ? 'Leaving…' : 'Leave and keep guests'}
+			</Button>
+		</div>
+	{/if}
 
 	{#if leaveRestarting}
 		<div class="flex flex-1 flex-col items-center justify-center gap-2 text-center">
@@ -569,30 +623,7 @@
 	customTitle="This will reset all clustered data and configuration on THIS node, including all notes, backup targets, jobs and events. This action cannot be undone."
 	actions={{
 		onConfirm: async () => {
-			const ownsRestartPlan = planClusterLeaveRestart();
-			stopLeaveStatusPolling();
-			const response = await resetCluster();
-			if (response.error) {
-				if (ownsRestartPlan) connection.plannedRestart = null;
-				reloadFlag = true;
-				startLeaveStatusPolling();
-				handleAPIError(response);
-				const detail = Array.isArray(response.error)
-					? response.error.join(', ')
-					: String(response.error || response.message);
-				toast.error(getClusterLeaveErrorMessage(`${response.message}: ${detail}`), {
-					position: 'bottom-center'
-				});
-				modals.reset.open = false;
-				return;
-			}
-
-			showClusterLeaveRestart();
-			await refreshClusterAfterLifecycleChange();
-			modals.reset.open = false;
-			toast.success('Cluster leave completed. Sylve is restarting…', {
-				position: 'bottom-center'
-			});
+			await runLeave();
 		},
 		onCancel: () => {
 			modals.reset.open = false;

@@ -95,17 +95,21 @@ export function getClusterJoinErrorMessage(error: string, retrying: boolean): st
 	if (contains('invalid_cluster_key', 'unauthorized', 'authentication failed')) {
 		return 'The cluster key was rejected. Reset this join and use the current key from the leader.';
 	}
-	if (
-		contains(
-			'guest_identity_inventory_conflict',
-			'guest_identity_conflict',
-			'joining_node_id_already_in_use',
-			'joining_node_address_already_in_use'
-		)
-	) {
-		return 'A node, VM, or jail identity conflicts with an existing cluster resource.';
+	if (contains('joining_node_id_already_in_use', 'joining_node_id_conflicts_with_leader')) {
+		return 'This node ID is already in use in the cluster. Check the existing member before retrying.';
 	}
-	if (contains('joining_inventory_changed_before_start')) {
+	if (contains('joining_node_address_already_in_use')) {
+		return 'This node address is already in use in the cluster. Choose a different Node IP before retrying.';
+	}
+	if (contains('guest_identity_inventory_conflict', 'guest_identity_conflict')) {
+		return 'A VM or jail ID conflicts with the cluster. Change the conflicting local guest ID before joining.';
+	}
+	if (contains('cluster_leave_guest_id_release_pending')) {
+		return 'The previous leave is still releasing guest IDs. Sylve will retry after the surviving cluster completes it.';
+	}
+	if (
+		contains('joining_inventory_changed_before_start', 'joining_inventory_changed_before_promotion')
+	) {
 		return 'The local VM or jail inventory changed during validation. Try again after those changes finish.';
 	}
 	if (contains('inventory_unavailable', 'inventory_remote_', 'inventory_collection_canceled')) {
@@ -205,6 +209,9 @@ export function getClusterLeaveErrorMessage(error: string): string {
 	if (contains('cluster_leave_membership_unconfirmed', 'cluster_removal_start_uncertain')) {
 		return 'Cluster membership could not be confirmed. Keep the node isolated while Sylve retries.';
 	}
+	if (contains('cluster_leave_guest_id_release_pending')) {
+		return 'Membership is removed, but guest ID release is still pending. Sylve will retry automatically.';
+	}
 	if (contains('cluster_removal_cleanup_unconfirmed')) {
 		return 'Membership was removed, but the target has not confirmed local cleanup.';
 	}
@@ -217,8 +224,17 @@ export function getClusterLeaveErrorMessage(error: string): string {
 	if (contains('cluster_version_check_unavailable')) {
 		return 'Sylve could not verify member versions. Make sure the remaining members are online.';
 	}
+	if (contains('cluster_leave_inventory_changed')) {
+		return 'The local guest ID set changed after leave was fenced. Review the guests and leave status before retrying.';
+	}
+	if (contains('cluster_leave_inventory_claim_mismatch')) {
+		return 'This node’s guest IDs do not match the cluster’s claims. Review both lists before retrying.';
+	}
+	if (contains('cluster_leave_intent_mismatch')) {
+		return 'The leave already in progress has a different guest-retention choice. Resume it with the original choice.';
+	}
 	if (contains('peer_removal_blocked')) {
-		return 'This node still owns cluster resources that must be moved or removed first.';
+		return 'This node still owns cluster resources. If they are only guests, use Leave and keep guests.';
 	}
 	if (contains('not_leader', 'leadership_changed')) {
 		return 'The cluster leader changed. Sylve will use the current leader on the next attempt.';

@@ -46,6 +46,19 @@ type PeerRemovalBlockedError struct {
 	Conflict PeerRemovalConflict
 }
 
+func blockingPeerRemovalDependencies(dependencies []PeerRemovalDependency, retainGuests bool) []PeerRemovalDependency {
+	if !retainGuests {
+		return dependencies
+	}
+	blocking := make([]PeerRemovalDependency, 0, len(dependencies))
+	for _, dependency := range dependencies {
+		if dependency.Kind != PeerRemovalDependencyGuest {
+			blocking = append(blocking, dependency)
+		}
+	}
+	return blocking
+}
+
 func (e *PeerRemovalBlockedError) Error() string {
 	if e == nil {
 		return "peer_removal_blocked"

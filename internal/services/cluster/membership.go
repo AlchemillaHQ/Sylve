@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/hashicorp/raft"
 )
 
@@ -23,12 +24,13 @@ type RaftMembership struct {
 }
 
 type MembershipStatus struct {
-	NodeID        string `json:"nodeId"`
-	Present       bool   `json:"present"`
-	Address       string `json:"address,omitempty"`
-	Suffrage      string `json:"suffrage,omitempty"`
-	LeaderID      string `json:"leaderId"`
-	LeaderAddress string `json:"leaderAddress"`
+	NodeID              string `json:"nodeId"`
+	Present             bool   `json:"present"`
+	GuestClaimsReleased bool   `json:"guestClaimsReleased"`
+	Address             string `json:"address,omitempty"`
+	Suffrage            string `json:"suffrage,omitempty"`
+	LeaderID            string `json:"leaderId"`
+	LeaderAddress       string `json:"leaderAddress"`
 }
 
 func resolveRaftMember(configuration raft.Configuration, nodeID string) (raft.Server, bool, error) {
@@ -116,6 +118,20 @@ func (s *Service) authoritativeMembershipStatusLocked(nodeID string) (Membership
 		return status, err
 	}
 	status.Present = present
+	if !present {
+		var claims, pending int64
+		if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityClaim{}) {
+			if err := s.DB.Model(&clusterModels.GuestIdentityClaim{}).Where("owner_node_id = ?", status.NodeID).Count(&claims).Error; err != nil {
+				return status, err
+			}
+		}
+		if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityDeparture{}) {
+			if err := s.DB.Model(&clusterModels.GuestIdentityDeparture{}).Where("node_id = ?", status.NodeID).Count(&pending).Error; err != nil {
+				return status, err
+			}
+		}
+		status.GuestClaimsReleased = claims == 0 && pending == 0
+	}
 	status.LeaderID = strings.TrimSpace(string(leaderID))
 	status.LeaderAddress = strings.TrimSpace(string(leaderAddress))
 	if present {

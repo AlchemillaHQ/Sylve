@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: BSD-2-Clause
+//
+// Copyright (c) 2025 The FreeBSD Foundation.
+//
+// This software was developed by Hayzam Sherif <hayzam@alchemilla.io>
+// of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
+// under sponsorship from the FreeBSD Foundation.
 
 package cluster
 
@@ -166,6 +172,40 @@ func TestRemoveMembershipReportsAllSubmittedGuests(t *testing.T) {
 	var blocked *PeerRemovalBlockedError
 	if !errors.As(err, &blocked) || len(blocked.Conflict.Dependencies) != 2 {
 		t.Fatalf("error=%v conflict=%+v", err, blocked)
+	}
+}
+
+func TestRetainedLeaveRequiresExactClaimedIdentitySet(t *testing.T) {
+	db := newClusterServiceTestDB(t, &clusterModels.GuestIdentityClaim{})
+	for _, claim := range []clusterModels.GuestIdentityClaim{
+		{OwnerNodeID: "leaving", GuestKind: "vm", GuestID: 100, Token: "vm-token"},
+		{OwnerNodeID: "leaving", GuestKind: "jail", GuestID: 120, Token: "jail-token"},
+		{OwnerNodeID: "other", GuestKind: "vm", GuestID: 130, Token: "other-token"},
+	} {
+		if err := db.Create(&claim).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := &Service{DB: db}
+	makeReport := func(entries ...GuestIdentityInventoryEntry) GuestIdentityInventoryReport {
+		return BuildGuestIdentityInventoryReport(entries)
+	}
+	matching := makeReport(
+		GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 100},
+		GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "jail", GuestID: 120},
+	)
+	if err := service.compareLeaveInventoryWithClaims("leaving", matching); err != nil {
+		t.Fatalf("matching inventory: %v", err)
+	}
+	for _, altered := range []GuestIdentityInventoryReport{
+		makeReport(GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 100}),
+		makeReport(matching.Entries[0], matching.Entries[1], GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "vm", GuestID: 140}),
+		makeReport(GuestIdentityInventoryEntry{NodeID: "leaving", GuestType: "jail", GuestID: 100}, matching.Entries[1]),
+	} {
+		var mismatch *LeaveInventoryMismatchError
+		if err := service.compareLeaveInventoryWithClaims("leaving", altered); !errors.As(err, &mismatch) {
+			t.Fatalf("altered inventory %+v: error=%v", altered.Entries, err)
+		}
 	}
 }
 

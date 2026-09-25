@@ -111,21 +111,6 @@ func resolveJoinMembership(
 	return nil, nil
 }
 
-func (s *Service) checkJoinInventory(
-	ctx context.Context,
-	nodeID, nodeIP, providedKey string,
-	submitted GuestIdentityInventoryReport,
-) (GuestIdentityInventoryReport, bool, error) {
-	combined, _, alreadyVoter, err := s.checkJoinInventoryWithClaims(
-		ctx,
-		nodeID,
-		nodeIP,
-		providedKey,
-		submitted,
-	)
-	return combined, alreadyVoter, err
-}
-
 func (s *Service) validateJoinAdmission(providedKey string) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("cluster_service_not_initialized")
@@ -198,6 +183,16 @@ func (s *Service) checkJoinInventoryWithClaims(
 	if err != nil {
 		return GuestIdentityInventoryReport{}, nil, false, err
 	}
+	if s.DB.Migrator().HasTable(&clusterModels.GuestIdentityDeparture{}) {
+		var pending int64
+		if err := s.DB.Model(&clusterModels.GuestIdentityDeparture{}).
+			Where("node_id = ?", strings.TrimSpace(nodeID)).Count(&pending).Error; err != nil {
+			return GuestIdentityInventoryReport{}, nil, false, err
+		}
+		if pending != 0 {
+			return GuestIdentityInventoryReport{}, nil, false, fmt.Errorf("cluster_leave_guest_id_release_pending")
+		}
+	}
 
 	claims, err := s.authoritativeGuestIdentityClaims()
 	if err != nil {
@@ -224,7 +219,7 @@ func (s *Service) PreflightJoinInventory(
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
 
-	combined, _, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
+	combined, _, _, err := s.checkJoinInventoryWithClaims(ctx, nodeID, nodeIP, providedKey, submitted)
 	return combined, err
 }
 
@@ -247,7 +242,7 @@ func (s *Service) StageJoinInventory(
 	s.membershipLifecycleMu.Lock()
 	defer s.membershipLifecycleMu.Unlock()
 
-	_, alreadyVoter, err := s.checkJoinInventory(ctx, nodeID, nodeIP, providedKey, submitted)
+	_, _, alreadyVoter, err := s.checkJoinInventoryWithClaims(ctx, nodeID, nodeIP, providedKey, submitted)
 	if err != nil {
 		return status, err
 	}
@@ -303,6 +298,9 @@ func (s *Service) StageJoinInventory(
 			return err
 		}
 		s.recordJoinVersionWarnings(warnings)
+		if _, _, _, err := s.checkJoinInventoryWithClaims(ctx, nodeID, nodeIP, providedKey, submitted); err != nil {
+			return err
+		}
 
 		s.replicatedStateMu.Lock()
 		defer s.replicatedStateMu.Unlock()

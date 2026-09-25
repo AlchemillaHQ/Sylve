@@ -23,6 +23,16 @@
 	let outcome = $state('');
 	let outcomeDetail = $state('');
 	let forceOpen = $state(false);
+	let retryRetainGuests = $state(false);
+	let guestOnlyConflict = $derived(isGuestOnlyConflict(conflict));
+
+	function isGuestOnlyConflict(value: PeerRemovalConflict | null): boolean {
+		return (
+			value !== null &&
+			value.dependencies.length > 0 &&
+			value.dependencies.every((dep) => dep.kind === 'guest')
+		);
+	}
 
 	const dependencyLabels: Record<string, string> = {
 		guest: 'Guest',
@@ -45,6 +55,7 @@
 				conflict = null;
 				outcome = '';
 				outcomeDetail = '';
+				retryRetainGuests = false;
 				busy = false;
 			}
 		}
@@ -58,9 +69,10 @@
 		return parts.join(' · ');
 	}
 
-	async function confirm() {
+	async function confirm(retainGuests: boolean) {
 		if (!node || busy) return;
 		busy = true;
+		retryRetainGuests = retainGuests;
 		conflict = null;
 		outcome = '';
 		outcomeDetail = '';
@@ -68,7 +80,7 @@
 		const removedVoter = String(node.suffrage ?? '').toLowerCase() === 'voter';
 
 		try {
-			const response = await removePeer(String(node.id));
+			const response = await removePeer(String(node.id), retainGuests);
 
 			if (response.error) {
 				if (response.message === 'peer_removal_blocked') {
@@ -193,33 +205,34 @@
 				{/if}
 			</div>
 		{:else if conflict}
-			<div class="grid gap-3">
-				<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm">
-					<p class="font-medium text-red-600 dark:text-red-400">
-						Node still owns cluster resources
-					</p>
-					<p class="mt-1 text-muted-foreground">
-						Move or delete these resources before removing the peer:
-					</p>
-				</div>
-
-				<div class="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
-					{#if conflict.dependencies.length === 0}
-						<p class="px-2 py-1.5 text-sm text-muted-foreground">
-							No blocked resources were reported. Retry removal.
+			{#if !guestOnlyConflict}
+				<div class="grid gap-3">
+					<div class="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm">
+						<p class="font-medium text-red-600 dark:text-red-400">
+							Node still owns cluster resources
 						</p>
-					{:else}
-						{#each conflict.dependencies as dep (dep.kind + dep.id)}
-							<div
-								class="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/30"
-							>
-								<span class="font-medium">{dependencyLabels[dep.kind] ?? dep.kind}</span>
-								<span class="text-muted-foreground">{dependencyLine(dep)}</span>
-							</div>
-						{/each}
-					{/if}
+						<p class="mt-1 text-muted-foreground">
+							Resolve these resources before removing the peer:
+						</p>
+					</div>
+					<div class="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
+						{#if conflict.dependencies.length === 0}
+							<p class="px-2 py-1.5 text-sm text-muted-foreground">
+								No blocked resources were reported. Retry removal.
+							</p>
+						{:else}
+							{#each conflict.dependencies as dep (dep.kind + dep.id)}
+								<div
+									class="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/30"
+								>
+									<span class="font-medium">{dependencyLabels[dep.kind] ?? dep.kind}</span>
+									<span class="text-muted-foreground">{dependencyLine(dep)}</span>
+								</div>
+							{/each}
+						{/if}
+					</div>
 				</div>
-			</div>
+			{/if}
 		{:else}
 			<div class="grid gap-3">
 				<div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
@@ -249,7 +262,7 @@
 				{#if outcome}
 					<Button onclick={() => (open = false)} size="sm" variant="outline">Close</Button>
 					{#if outcome === 'cluster_leave_active_mutations' || outcome === 'cluster_version_check_unavailable'}
-						<Button onclick={confirm} size="sm">Retry</Button>
+						<Button onclick={() => confirm(retryRetainGuests)} size="sm">Retry</Button>
 					{/if}
 					{#if outcome === 'cluster_target_unreachable'}
 						<Button
@@ -272,13 +285,23 @@
 						size="sm"
 						variant="outline"
 					>
-						Close
+						{guestOnlyConflict ? 'Cancel' : 'Close'}
 					</Button>
+					{#if guestOnlyConflict}
+						<Button onclick={() => confirm(true)} size="sm" disabled={busy}>
+							Leave and keep guests
+						</Button>
+					{/if}
 				{:else}
 					<Button onclick={() => (open = false)} size="sm" variant="outline" disabled={busy}>
 						Cancel
 					</Button>
-					<Button onclick={confirm} size="sm" variant="destructive" disabled={busy || !node}>
+					<Button
+						onclick={() => confirm(false)}
+						size="sm"
+						variant="destructive"
+						disabled={busy || !node}
+					>
 						{#if busy}
 							<span class="icon-[mdi-light--loading] h-4 w-4 animate-spin"></span>
 						{:else}

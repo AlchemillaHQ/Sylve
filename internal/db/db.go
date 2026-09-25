@@ -212,6 +212,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&clusterModels.GuestIdentityRegistry{},
 		&clusterModels.GuestIdentityEnrollment{},
 		&clusterModels.GuestIdentityClaim{},
+		&clusterModels.GuestIdentityDeparture{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupTargetProvisionOperation{},
 		&clusterModels.BackupTargetNodeReadiness{},

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -48,7 +49,12 @@ type JoinKeyResponse struct {
 }
 
 type RemovePeerRequest struct {
-	NodeID string `json:"nodeId" binding:"required"`
+	NodeID       string `json:"nodeId" binding:"required"`
+	RetainGuests bool   `json:"retainGuests"`
+}
+
+type ResetNodeRequest struct {
+	RetainGuests *bool `json:"retainGuests"`
 }
 
 type MembershipStatusRequest struct {
@@ -133,6 +139,9 @@ func writeJoinAdmissionError(c *gin.Context, err error) {
 	switch {
 	case strings.HasPrefix(errText, "not_leader;"):
 		message = "not_leader"
+		status = http.StatusConflict
+	case strings.Contains(errText, "cluster_leave_guest_id_release_pending"):
+		message = "cluster_leave_guest_id_release_pending"
 		status = http.StatusConflict
 	case isUncertainJoinOutcome(errText):
 		message = "cluster_join_outcome_uncertain"
@@ -298,7 +307,7 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 }
 
 // @Summary Join Cluster
-// @Description Join an existing cluster
+// @Description Join an existing cluster. A returning node uses the same endpoint, and all of its current VM and jail IDs must be free in the cluster.
 // @Tags Cluster
 // @Accept json
 // @Produce json
@@ -732,19 +741,30 @@ func JoinProgressInternal(cS *cluster.Service) gin.HandlerFunc {
 }
 
 // @Summary Leave Cluster
-// @Description Safely remove this node from Raft and clear its local cluster state
+// @Description Safely remove this node from Raft and clear its local cluster state.
+// @Description Registered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Param request body ResetNodeRequest false "Optional leave options"
+// @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
+// @Failure 202 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Leave pending"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Leave conflict"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /cluster/reset-node [delete]
 func ResetRaftNode(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		result, err := cS.LeaveCluster(c.Request.Context())
+		var request ResetNodeRequest
+		if err := c.ShouldBindJSON(&request); err != nil && !errors.Is(err, io.EOF) {
+			writeClusterJSONBindError(c, err, "invalid_request_payload")
+			return
+		}
+		result, err := cS.LeaveClusterWithGuests(c.Request.Context(), request.RetainGuests)
 		if err != nil {
 			writeClusterLeaveError(c, result, err)
 			return
@@ -952,13 +972,15 @@ func ResyncClusterState(cS *cluster.Service, zS *zelta.Service) gin.HandlerFunc 
 }
 
 // @Summary Remove Peer
-// @Description Ask an online peer to fence local work, leave Raft, and clear its cluster state
+// @Description Ask an online peer to fence local work, leave Raft, and clear its cluster state.
+// @Description Registered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
 // @Tags Cluster
 // @Accept json
 // @Produce json
 // @Security BearerAuth
 // @Param request body RemovePeerRequest true "Remove Peer Request"
 // @Success 200 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Success"
+// @Failure 202 {object} internal.APIResponse[cluster.ClusterLeaveResult] "Removal pending"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
@@ -989,7 +1011,7 @@ func RemoveNode(cS *cluster.Service) gin.HandlerFunc {
 			})
 			return
 		}
-		result, err := cS.OrchestratePeerRemoval(c.Request.Context(), nodeID)
+		result, err := cS.OrchestratePeerRemoval(c.Request.Context(), nodeID, req.RetainGuests)
 		if err != nil {
 			writeClusterLeaveError(c, result, err)
 			return
@@ -1166,6 +1188,13 @@ func writeClusterLeaveError(c *gin.Context, result cluster.ClusterLeaveResult, e
 		})
 		return
 	}
+	var mismatch *cluster.LeaveInventoryMismatchError
+	if errors.As(err, &mismatch) {
+		c.JSON(http.StatusConflict, internal.APIResponse[cluster.LeaveInventoryMismatch]{
+			Status: "error", Message: "cluster_leave_inventory_claim_mismatch", Error: err.Error(), Data: mismatch.Mismatch,
+		})
+		return
+	}
 	var versionErr *cluster.ClusterVersionError
 	if errors.As(err, &versionErr) {
 		status := http.StatusConflict
@@ -1182,7 +1211,7 @@ func writeClusterLeaveError(c *gin.Context, result cluster.ClusterLeaveResult, e
 		status := http.StatusAccepted
 		if leaveErr.Code == "cluster_target_unreachable" {
 			status = http.StatusServiceUnavailable
-		} else if leaveErr.Code == "cluster_leave_active_mutations" {
+		} else if leaveErr.Code == "cluster_leave_active_mutations" || leaveErr.Code == "cluster_leave_inventory_changed" || leaveErr.Code == "cluster_leave_intent_mismatch" {
 			status = http.StatusConflict
 		}
 		c.JSON(status, internal.APIResponse[cluster.ClusterLeaveResult]{

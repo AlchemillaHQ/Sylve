@@ -38,12 +38,14 @@ type StartLeaveRequest struct {
 	LeaveID        string `json:"leaveId"`
 	ExpectedNodeID string `json:"expectedNodeId"`
 	LeaderIP       string `json:"leaderIp"`
+	RetainGuests   bool   `json:"retainGuests,omitempty"`
 }
 
 type ClusterLeaveResult struct {
-	Status              ClusterLeaveStatus `json:"status"`
-	MembershipRemoved   bool               `json:"membershipRemoved"`
-	CleanupAcknowledged bool               `json:"cleanupAcknowledged"`
+	Status              ClusterLeaveStatus            `json:"status"`
+	MembershipRemoved   bool                          `json:"membershipRemoved"`
+	CleanupAcknowledged bool                          `json:"cleanupAcknowledged"`
+	RetainedGuests      []GuestIdentityInventoryEntry `json:"retainedGuests,omitempty"`
 }
 
 type ClusterLeaveError struct {
@@ -76,6 +78,17 @@ func (s *Service) prepareLocalLeave(
 	allowGuests bool,
 	requireEnabled bool,
 ) (GuestIdentityInventoryReport, error) {
+	return s.prepareLocalLeaveWithGuests(ctx, leaveID, leaderIP, allowGuests, false, requireEnabled)
+}
+
+func (s *Service) prepareLocalLeaveWithGuests(
+	ctx context.Context,
+	leaveID string,
+	leaderIP string,
+	allowGuests bool,
+	retainGuests bool,
+	requireEnabled bool,
+) (GuestIdentityInventoryReport, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -99,6 +112,9 @@ func (s *Service) prepareLocalLeave(
 		s.mutationGate.Close()
 		if status.LeaveID != strings.TrimSpace(leaveID) {
 			return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_leave_already_in_progress")
+		}
+		if status.RetainGuests != retainGuests {
+			return GuestIdentityInventoryReport{}, &ClusterLeaveError{Code: "cluster_leave_intent_mismatch"}
 		}
 		return s.LocalLeavePreflight(ctx, allowGuests)
 	}
@@ -150,8 +166,18 @@ func (s *Service) prepareLocalLeave(
 			s.mutationGate.Close()
 			return GuestIdentityInventoryReport{}, fmt.Errorf("cluster_leave_already_in_progress")
 		}
+		if status.RetainGuests != retainGuests {
+			reopen = false
+			return GuestIdentityInventoryReport{}, &ClusterLeaveError{Code: "cluster_leave_intent_mismatch"}
+		}
 		reopen = false
 		return s.LocalLeavePreflight(ctx, allowGuests)
+	}
+	s.guestIdentityRuntimeMu.Lock()
+	inFlightGuestIdentities := len(s.guestIdentityLocalReservations) != 0 || s.guestIdentityClusterFormation
+	s.guestIdentityRuntimeMu.Unlock()
+	if inFlightGuestIdentities {
+		return GuestIdentityInventoryReport{}, &ClusterLeaveError{Code: "cluster_leave_active_mutations", Cause: fmt.Errorf("guest_identity_operation_in_progress")}
 	}
 	report, err := s.LocalLeavePreflight(ctx, allowGuests)
 	if err != nil {
@@ -161,7 +187,11 @@ func (s *Service) prepareLocalLeave(
 	if err != nil {
 		return report, err
 	}
-	if err := s.persistLeaveIntent(leaveID, leaderIP, LeavePhaseFenced, peerAddresses); err != nil {
+	digest := ""
+	if retainGuests {
+		digest = report.Digest
+	}
+	if err := s.persistLeaveIntentWithGuests(leaveID, leaderIP, LeavePhaseFenced, peerAddresses, retainGuests, digest); err != nil {
 		return report, err
 	}
 	s.leaveComplete.Store(false)
@@ -207,24 +237,32 @@ func (s *Service) StartCooperativeLeave(
 		if err := s.CheckUniformVersions(ctx, nil, ""); err != nil {
 			return ClusterLeaveResult{}, err
 		}
-		if _, err := s.LocalLeavePreflight(ctx, false); err != nil {
+		if _, err := s.LocalLeavePreflight(ctx, request.RetainGuests); err != nil {
 			return ClusterLeaveResult{}, err
 		}
 	}
-	if _, err := s.prepareLocalLeave(ctx, request.LeaveID, leaderIP, false, true); err != nil {
+	if _, err := s.prepareLocalLeaveWithGuests(ctx, request.LeaveID, leaderIP, request.RetainGuests, request.RetainGuests, true); err != nil {
 		return ClusterLeaveResult{}, err
 	}
 	return s.advanceLocalLeave(ctx, true)
 }
 
 func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) {
+	return s.LeaveClusterWithGuests(ctx, nil)
+}
+
+func (s *Service) LeaveClusterWithGuests(ctx context.Context, requested *bool) (ClusterLeaveResult, error) {
 	status, err := s.LeaveStatus()
 	if err != nil {
 		return ClusterLeaveResult{}, err
 	}
 	if status.Phase != "" {
+		if requested != nil && *requested != status.RetainGuests {
+			return ClusterLeaveResult{Status: status}, &ClusterLeaveError{Code: "cluster_leave_intent_mismatch"}
+		}
 		return s.advanceLocalLeave(ctx, true)
 	}
+	retainGuests := requested != nil && *requested
 	record, err := s.loadClusterRecord()
 	if err != nil {
 		return ClusterLeaveResult{}, err
@@ -237,11 +275,12 @@ func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) 
 	leaveID := uuid.NewString()
 
 	if s.Raft == nil || s.Raft.State() == raft.Shutdown || s.Raft.Leader() == "" {
-		if _, err := s.LocalLeavePreflight(ctx, false); err != nil {
+		allowGuests := retainGuests && status.Enabled
+		if _, err := s.LocalLeavePreflight(ctx, allowGuests); err != nil {
 			return ClusterLeaveResult{}, err
 		}
 		leaderIP := strings.TrimSpace(record.JoinLeaderIP)
-		if _, err := s.prepareLocalLeave(ctx, leaveID, leaderIP, false, false); err != nil {
+		if _, err := s.prepareLocalLeaveWithGuests(ctx, leaveID, leaderIP, allowGuests, allowGuests, false); err != nil {
 			return ClusterLeaveResult{}, err
 		}
 		return s.advanceLocalLeave(ctx, true)
@@ -265,17 +304,17 @@ func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) 
 			}
 			return s.advanceLocalLeave(ctx, true)
 		}
-		if _, err := s.LocalLeavePreflight(ctx, false); err != nil {
+		if _, err := s.LocalLeavePreflight(ctx, retainGuests); err != nil {
 			return ClusterLeaveResult{}, err
 		}
-		leaderIP, err := s.transferLeadershipForLeave(ctx, configuration, localNodeID)
+		leaderIP, err := s.transferLeadershipForLeaveWithGuests(ctx, configuration, localNodeID, retainGuests)
 		if err != nil {
 			return ClusterLeaveResult{}, err
 		}
-		if _, err := s.LocalLeavePreflight(ctx, false); err != nil {
+		if _, err := s.LocalLeavePreflight(ctx, retainGuests); err != nil {
 			return ClusterLeaveResult{}, err
 		}
-		if _, err := s.prepareLocalLeave(ctx, leaveID, leaderIP, false, false); err != nil {
+		if _, err := s.prepareLocalLeaveWithGuests(ctx, leaveID, leaderIP, retainGuests, retainGuests, false); err != nil {
 			return ClusterLeaveResult{}, err
 		}
 		return s.advanceLocalLeave(ctx, true)
@@ -284,11 +323,11 @@ func (s *Service) LeaveCluster(ctx context.Context) (ClusterLeaveResult, error) 
 	if err := s.CheckUniformVersions(ctx, nil, ""); err != nil {
 		return ClusterLeaveResult{}, err
 	}
-	if _, err := s.LocalLeavePreflight(ctx, false); err != nil {
+	if _, err := s.LocalLeavePreflight(ctx, retainGuests); err != nil {
 		return ClusterLeaveResult{}, err
 	}
 	leaderIP := strings.TrimSpace(raftAddressHost(string(s.Raft.Leader())))
-	if _, err := s.prepareLocalLeave(ctx, leaveID, leaderIP, false, false); err != nil {
+	if _, err := s.prepareLocalLeaveWithGuests(ctx, leaveID, leaderIP, retainGuests, retainGuests, false); err != nil {
 		return ClusterLeaveResult{}, err
 	}
 	return s.advanceLocalLeave(ctx, true)
@@ -298,6 +337,15 @@ func (s *Service) transferLeadershipForLeave(
 	ctx context.Context,
 	configuration raft.Configuration,
 	localNodeID string,
+) (string, error) {
+	return s.transferLeadershipForLeaveWithGuests(ctx, configuration, localNodeID, false)
+}
+
+func (s *Service) transferLeadershipForLeaveWithGuests(
+	ctx context.Context,
+	configuration raft.Configuration,
+	localNodeID string,
+	retainGuests bool,
 ) (string, error) {
 	candidates := make([]raft.Server, 0)
 	for _, server := range configuration.Servers {
@@ -331,11 +379,11 @@ func (s *Service) transferLeadershipForLeave(
 		s.clusterJoinMu.Unlock()
 		return "", err
 	}
-	if len(dependencies) != 0 {
+	if blocked := blockingPeerRemovalDependencies(dependencies, retainGuests); len(blocked) != 0 {
 		s.clusterJoinMu.Unlock()
 		return "", &PeerRemovalBlockedError{Conflict: PeerRemovalConflict{
 			NodeID:       localNodeID,
-			Dependencies: dependencies,
+			Dependencies: blocked,
 		}}
 	}
 	transferred := false
@@ -407,13 +455,25 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 	if err != nil {
 		return ClusterLeaveResult{Status: status}, err
 	}
+	if record.LeaveRetainGuests {
+		report, preflightErr := s.LocalLeavePreflight(ctx, true)
+		if preflightErr != nil {
+			_ = s.updateLeavePhase(LeavePhaseRemoving, preflightErr)
+			return ClusterLeaveResult{Status: status}, preflightErr
+		}
+		if report.Digest != record.LeaveInventoryDigest {
+			err := &ClusterLeaveError{Code: "cluster_leave_inventory_changed"}
+			_ = s.updateLeavePhase(LeavePhaseRemoving, err)
+			return ClusterLeaveResult{Status: status}, err
+		}
+	}
 	if s.Raft != nil && s.Raft.State() == raft.Leader {
 		future := s.Raft.GetConfiguration()
 		if err := future.Error(); err != nil {
 			_ = s.updateLeavePhase(LeavePhaseRemoving, err)
 			return ClusterLeaveResult{Status: status}, err
 		}
-		leaderIP, err := s.transferLeadershipForLeave(ctx, future.Configuration(), status.LocalNodeID)
+		leaderIP, err := s.transferLeadershipForLeaveWithGuests(ctx, future.Configuration(), status.LocalNodeID, record.LeaveRetainGuests)
 		if err != nil {
 			_ = s.updateLeavePhase(LeavePhaseRemoving, err)
 			return ClusterLeaveResult{Status: status}, err
@@ -427,20 +487,30 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 		}
 	}
 	membership, authorityErr := s.leaveMembership(ctx, record, status.LocalNodeID)
-	if authorityErr == nil && !membership.Present {
+	if authorityErr == nil && !membership.Present && (!record.LeaveRetainGuests || membership.GuestClaimsReleased) {
 		if err := s.updateLeavePhase(LeavePhaseCleaning, nil); err != nil {
 			return ClusterLeaveResult{Status: status, MembershipRemoved: true}, err
 		}
 		return s.finishLocalLeave(notify)
 	}
+	if authorityErr == nil && !membership.Present {
+		err := &ClusterLeaveError{Code: "cluster_leave_guest_id_release_pending"}
+		_ = s.updateLeavePhase(LeavePhaseRemoving, err)
+		return ClusterLeaveResult{Status: status, MembershipRemoved: true}, err
+	}
 	if authorityErr == nil {
 		record.LeaveLeaderIP = strings.TrimSpace(raftAddressHost(membership.LeaderAddress))
 	}
 
-	report, preflightErr := s.LocalLeavePreflight(ctx, false)
+	report, preflightErr := s.LocalLeavePreflight(ctx, record.LeaveRetainGuests)
 	if preflightErr != nil {
 		_ = s.updateLeavePhase(LeavePhaseRemoving, preflightErr)
 		return ClusterLeaveResult{Status: status}, preflightErr
+	}
+	if record.LeaveRetainGuests && report.Digest != record.LeaveInventoryDigest {
+		err := &ClusterLeaveError{Code: "cluster_leave_inventory_changed"}
+		_ = s.updateLeavePhase(LeavePhaseRemoving, err)
+		return ClusterLeaveResult{Status: status}, err
 	}
 	leaderIP := strings.TrimSpace(record.LeaveLeaderIP)
 	if leaderIP == "" && authorityErr == nil {
@@ -453,9 +523,10 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 	}
 
 	removeErr := s.removeLeaveMembership(ctx, leaderIP, RemoveMembershipRequest{
-		LeaveID:   status.LeaveID,
-		NodeID:    status.LocalNodeID,
-		Inventory: report,
+		LeaveID:      status.LeaveID,
+		NodeID:       status.LocalNodeID,
+		Inventory:    report,
+		RetainGuests: record.LeaveRetainGuests,
 	})
 	if removeErr == nil {
 		if err := s.updateLeavePhase(LeavePhaseCleaning, nil); err != nil {
@@ -465,16 +536,22 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 	}
 
 	membership, confirmationErr := s.leaveMembership(ctx, record, status.LocalNodeID)
-	if confirmationErr == nil && !membership.Present {
+	if confirmationErr == nil && !membership.Present && (!record.LeaveRetainGuests || membership.GuestClaimsReleased) {
 		if err := s.updateLeavePhase(LeavePhaseCleaning, nil); err != nil {
 			return ClusterLeaveResult{Status: status, MembershipRemoved: true}, err
 		}
 		return s.finishLocalLeave(notify)
 	}
+	if confirmationErr == nil && !membership.Present {
+		err := &ClusterLeaveError{Code: "cluster_leave_guest_id_release_pending", Cause: removeErr}
+		_ = s.updateLeavePhase(LeavePhaseRemoving, err)
+		return ClusterLeaveResult{Status: status, MembershipRemoved: true}, err
+	}
 	var blocked *PeerRemovalBlockedError
 	var versionErr *ClusterVersionError
+	var mismatch *LeaveInventoryMismatchError
 	if confirmationErr == nil && membership.Present &&
-		(errors.As(removeErr, &blocked) || errors.As(removeErr, &versionErr)) {
+		(errors.As(removeErr, &blocked) || errors.As(removeErr, &versionErr) || errors.As(removeErr, &mismatch)) {
 		if err := s.clearLeaveIntentAndReopen(); err != nil {
 			return ClusterLeaveResult{Status: status}, err
 		}
@@ -490,6 +567,15 @@ func (s *Service) advanceLocalLeave(ctx context.Context, notify bool) (ClusterLe
 }
 
 func (s *Service) finishLocalLeave(notify bool) (ClusterLeaveResult, error) {
+	before, _ := s.LeaveStatus()
+	var retained []GuestIdentityInventoryEntry
+	if before.RetainGuests {
+		report, err := ScanLocalGuestIdentityInventory(s.DB, before.LocalNodeID)
+		if err != nil {
+			return ClusterLeaveResult{Status: before, MembershipRemoved: true}, err
+		}
+		retained = report.Entries
+	}
 	if err := s.FinalizeLocalDecluster(); err != nil {
 		_ = s.updateLeavePhase(LeavePhaseCleaning, err)
 		status, _ := s.LeaveStatus()
@@ -506,6 +592,7 @@ func (s *Service) finishLocalLeave(notify bool) (ClusterLeaveResult, error) {
 		Status:              status,
 		MembershipRemoved:   true,
 		CleanupAcknowledged: true,
+		RetainedGuests:      retained,
 	}, nil
 }
 
@@ -558,6 +645,12 @@ func (s *Service) submitSelfRemoval(
 	switch apiResponse.Message {
 	case "peer_removal_blocked":
 		return &PeerRemovalBlockedError{Conflict: apiResponse.Data}
+	case "cluster_leave_inventory_claim_mismatch":
+		var mismatchResponse internal.APIResponse[LeaveInventoryMismatch]
+		if err := json.Unmarshal(response.Body, &mismatchResponse); err != nil {
+			return fmt.Errorf("cluster_leave_remove_response_invalid: %w", err)
+		}
+		return &LeaveInventoryMismatchError{Mismatch: mismatchResponse.Data}
 	case "cluster_version_mismatch", "cluster_version_check_unavailable":
 		return &ClusterVersionError{Code: apiResponse.Message, Cause: errors.New(apiResponse.Error)}
 	default:
@@ -720,7 +813,7 @@ func (s *Service) queryMembershipStatus(
 	return result, nil
 }
 
-func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string) (ClusterLeaveResult, error) {
+func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string, retainGuests bool) (ClusterLeaveResult, error) {
 	ctx, release, err := s.EnterMutation(ctx)
 	if err != nil {
 		return ClusterLeaveResult{}, err
@@ -772,11 +865,11 @@ func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string) (Cl
 		s.clusterJoinMu.Unlock()
 		return ClusterLeaveResult{}, err
 	}
-	if len(dependencies) != 0 {
+	if blocked := blockingPeerRemovalDependencies(dependencies, retainGuests); len(blocked) != 0 {
 		s.clusterJoinMu.Unlock()
 		return ClusterLeaveResult{}, &PeerRemovalBlockedError{Conflict: PeerRemovalConflict{
 			NodeID:       nodeID,
-			Dependencies: dependencies,
+			Dependencies: blocked,
 		}}
 	}
 	targetIP := strings.TrimSpace(raftAddressHost(string(server.Address)))
@@ -787,6 +880,7 @@ func (s *Service) OrchestratePeerRemoval(ctx context.Context, nodeID string) (Cl
 		LeaveID:        uuid.NewString(),
 		ExpectedNodeID: nodeID,
 		LeaderIP:       leaderIP,
+		RetainGuests:   retainGuests,
 	}
 	token, err := s.AuthService.CreateInternalClusterJWT(localNodeID)
 	if err != nil {

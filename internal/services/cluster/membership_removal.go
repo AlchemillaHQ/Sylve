@@ -13,14 +13,45 @@ import (
 	"fmt"
 	"strings"
 
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/hashicorp/raft"
 )
 
 type RemoveMembershipRequest struct {
-	LeaveID   string                       `json:"leaveId"`
+	LeaveID      string                       `json:"leaveId"`
+	NodeID       string                       `json:"nodeId"`
+	Inventory    GuestIdentityInventoryReport `json:"inventory"`
+	RetainGuests bool                         `json:"retainGuests,omitempty"`
+}
+
+type LeaveInventoryMismatch struct {
 	NodeID    string                       `json:"nodeId"`
-	Inventory GuestIdentityInventoryReport `json:"inventory"`
+	Submitted GuestIdentityInventoryReport `json:"submitted"`
+	Claimed   GuestIdentityInventoryReport `json:"claimed"`
+}
+
+type LeaveInventoryMismatchError struct{ Mismatch LeaveInventoryMismatch }
+
+func (e *LeaveInventoryMismatchError) Error() string { return "cluster_leave_inventory_claim_mismatch" }
+
+func (s *Service) compareLeaveInventoryWithClaims(nodeID string, submitted GuestIdentityInventoryReport) error {
+	s.replicatedStateMu.RLock()
+	var claims []clusterModels.GuestIdentityClaim
+	err := s.DB.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error
+	s.replicatedStateMu.RUnlock()
+	if err != nil {
+		return fmt.Errorf("cluster_leave_claim_list_failed: %w", err)
+	}
+	entries := make([]GuestIdentityInventoryEntry, len(claims))
+	for i, claim := range claims {
+		entries[i] = guestIdentityClaimInventoryEntry(claim)
+	}
+	claimed := BuildGuestIdentityInventoryReport(entries)
+	if claimed.Digest != submitted.Digest {
+		return &LeaveInventoryMismatchError{Mismatch: LeaveInventoryMismatch{NodeID: nodeID, Submitted: submitted, Claimed: claimed}}
+	}
+	return nil
 }
 
 func (s *Service) RemoveMembership(
@@ -48,7 +79,7 @@ func (s *Service) RemoveMembership(
 	if err != nil {
 		return err
 	}
-	if len(canonical.Entries) != 0 {
+	if !request.RetainGuests && len(canonical.Entries) != 0 {
 		dependencies := make([]PeerRemovalDependency, 0, len(canonical.Entries))
 		for _, entry := range canonical.Entries {
 			appendPeerRemovalDependency(
@@ -80,6 +111,9 @@ func (s *Service) RemoveMembership(
 		return err
 	}
 	if !present {
+		if request.RetainGuests {
+			return s.releaseDepartedGuestIdentityClaimsLocked(nodeID)
+		}
 		return nil
 	}
 	if server.ID == raft.ServerID(strings.TrimSpace(s.LocalNodeID())) {
@@ -94,15 +128,27 @@ func (s *Service) RemoveMembership(
 	if s.Raft.State() != raft.Leader {
 		return fmt.Errorf("leadership_changed")
 	}
+	if request.RetainGuests {
+		if err := s.compareLeaveInventoryWithClaims(nodeID, canonical); err != nil {
+			return err
+		}
+	}
 	dependencies, err := s.replicatedPeerRemovalDependencies(nodeID)
 	if err != nil {
 		return err
 	}
-	if len(dependencies) != 0 {
+	if blocked := blockingPeerRemovalDependencies(dependencies, request.RetainGuests); len(blocked) != 0 {
 		return &PeerRemovalBlockedError{Conflict: PeerRemovalConflict{
 			NodeID:       nodeID,
-			Dependencies: dependencies,
+			Dependencies: blocked,
 		}}
+	}
+	if request.RetainGuests && len(canonical.Entries) != 0 {
+		if err := s.applyGuestIdentityRaftAction("record_departure", clusterModels.GuestIdentityDepartureCommand{
+			NodeID: nodeID, LeaveID: strings.TrimSpace(request.LeaveID), InventoryDigest: canonical.Digest,
+		}); err != nil {
+			return fmt.Errorf("cluster_leave_departure_record_failed: %w", err)
+		}
 	}
 	if err := s.Raft.RemoveServer(server.ID, 0, raftApplyTimeout).Error(); err != nil {
 		return fmt.Errorf("failed_to_remove_peer: %w", err)
@@ -114,5 +160,10 @@ func (s *Service) RemoveMembership(
 		logger.L.Warn().Err(err).Str("node_id", nodeID).Msg("cluster_node_health_cleanup_deferred")
 	}
 	s.EmitLeftPanelRefreshClusterWide("cluster_membership_changed")
+	if request.RetainGuests && len(canonical.Entries) != 0 {
+		if err := s.releaseDepartedGuestIdentityClaimsLocked(nodeID); err != nil {
+			return fmt.Errorf("cluster_leave_guest_id_release_pending: %w", err)
+		}
+	}
 	return nil
 }

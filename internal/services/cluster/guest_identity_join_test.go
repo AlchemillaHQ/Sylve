@@ -52,6 +52,7 @@ func guestIdentityJoinTestModels() []any {
 		&clusterModels.GuestIdentityRegistry{},
 		&clusterModels.GuestIdentityEnrollment{},
 		&clusterModels.GuestIdentityClaim{},
+		&clusterModels.GuestIdentityDeparture{},
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	}

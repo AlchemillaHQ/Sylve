@@ -619,6 +619,8 @@ func markDeclusteredTx(tx *gorm.DB) error {
 	c.LeavePhase = ""
 	c.LeaveLeaderIP = ""
 	c.LeavePeerAddrs = nil
+	c.LeaveRetainGuests = false
+	c.LeaveInventoryDigest = ""
 	c.LeaveLastError = ""
 	c.LeaveAttempts = 0
 	c.ReaddressOldIP = ""

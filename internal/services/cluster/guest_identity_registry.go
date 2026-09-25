@@ -257,6 +257,11 @@ func (s *Service) HandleGuestIdentityControl(
 	operation := strings.ToLower(strings.TrimSpace(request.Operation))
 	switch operation {
 	case guestIdentityControlReserve, guestIdentityControlRelease:
+		s.clusterJoinMu.Lock()
+		defer s.clusterJoinMu.Unlock()
+		if err := s.RequireCurrentRaftVoter(issuerNodeID); err != nil {
+			return response, fmt.Errorf("guest_identity_issuer_not_voter: %w", err)
+		}
 		reservation, err := normalizeGuestIdentityReservation(request.Reservation)
 		if err != nil {
 			return response, err
@@ -576,6 +581,9 @@ func (s *Service) beginGuestIdentityOperation(
 	}
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
+	if s.mutationGate != nil && s.mutationGate.IsFenced() {
+		return ErrNodeLeaveFenced
+	}
 	if s.guestIdentityLocalReservations == nil {
 		s.guestIdentityLocalReservations = make(map[uint]string)
 	}

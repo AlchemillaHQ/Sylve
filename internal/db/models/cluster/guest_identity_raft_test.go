@@ -26,10 +26,74 @@ func newGuestIdentityFSM(t *testing.T) *FSMDispatcher {
 		&GuestIdentityRegistry{},
 		&GuestIdentityEnrollment{},
 		&GuestIdentityClaim{},
+		&GuestIdentityDeparture{},
 	)
 	fsm := NewFSMDispatcher(db)
 	RegisterDefaultHandlers(fsm)
 	return fsm
+}
+
+func TestGuestIdentityDepartureReleasesOwnerClaimsAtomically(t *testing.T) {
+	fsm := newGuestIdentityFSM(t)
+	activateGuestIdentityTestRegistry(t, fsm, "node-a", "node-b")
+	claim := GuestIdentityClaimSet{OwnerNodeID: "node-a", Token: "claim-a", Entries: []GuestIdentityEntry{
+		{GuestKind: ReplicationGuestTypeVM, GuestID: 100},
+		{GuestKind: ReplicationGuestTypeJail, GuestID: 101},
+	}}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "reserve_ids", claim); err != nil {
+		t.Fatal(err)
+	}
+	departure := GuestIdentityDepartureCommand{
+		NodeID: "node-a", LeaveID: "leave-a",
+		InventoryDigest: GuestIdentityInventoryDigest("node-a", claim.Entries),
+	}
+	wrong := departure
+	wrong.InventoryDigest = GuestIdentityInventoryDigest("node-a", claim.Entries[:1])
+	if err := applyGuestIdentityFSMCommand(t, fsm, "record_departure", wrong); err == nil {
+		t.Fatal("recorded departure with incomplete inventory")
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "record_departure", departure); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "record_departure", departure); err != nil {
+		t.Fatalf("idempotent record: %v", err)
+	}
+	wrong = departure
+	wrong.LeaveID = "another-leave"
+	if err := applyGuestIdentityFSMCommand(t, fsm, "release_departure", wrong); err == nil {
+		t.Fatal("released claims with a different leave ID")
+	}
+	var before int64
+	if err := fsm.DB.Model(&GuestIdentityClaim{}).Where("owner_node_id = ?", "node-a").Count(&before).Error; err != nil || before != 2 {
+		t.Fatalf("claims after rejected release = %d, %v", before, err)
+	}
+	extra := GuestIdentityClaimSet{OwnerNodeID: "node-a", Token: "extra-claim", Entries: []GuestIdentityEntry{{GuestKind: ReplicationGuestTypeVM, GuestID: 102}}}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "reserve_ids", extra); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "release_departure", departure); err == nil {
+		t.Fatal("released claims after the owner's claim set changed")
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "release_ids", extra); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "release_departure", departure); err != nil {
+		t.Fatal(err)
+	}
+	var claims, pending int64
+	if err := fsm.DB.Model(&GuestIdentityClaim{}).Where("owner_node_id = ?", "node-a").Count(&claims).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := fsm.DB.Model(&GuestIdentityDeparture{}).Count(&pending).Error; err != nil {
+		t.Fatal(err)
+	}
+	if claims != 0 || pending != 0 {
+		t.Fatalf("claims=%d pending=%d after release", claims, pending)
+	}
+	claim.OwnerNodeID, claim.Token = "node-b", "reuse-b"
+	if err := applyGuestIdentityFSMCommand(t, fsm, "reserve_ids", claim); err != nil {
+		t.Fatalf("reuse departed IDs: %v", err)
+	}
 }
 
 func applyGuestIdentityFSMCommand(t *testing.T, fsm *FSMDispatcher, action string, payload any) error {
@@ -235,6 +299,20 @@ func TestGuestIdentityRegistryReclaimUsesGenerationCASAndGuestOperationGuard(t *
 
 	if err := db.Delete(&ReplicationGuestOperation{}, "guest_type = ? AND guest_id = ?", ReplicationGuestTypeVM, 150).Error; err != nil {
 		t.Fatalf("clear guest operation: %v", err)
+	}
+	if err := db.Create(&ReplicationGuestOperation{
+		GuestType: ReplicationGuestTypeJail, GuestID: 150,
+		Operation: ReplicationGuestOperationRestore, State: ReplicationGuestOperationPreCutover,
+		Token: "restore:node-a:jail:150", OwnerNodeID: "node-a", TaskID: 2, AcquiredAt: now,
+	}).Error; err != nil {
+		t.Fatalf("seed opposite-kind guest operation: %v", err)
+	}
+	if err := applyGuestIdentityFSMCommand(t, fsm, "reclaim_id", claim); err == nil ||
+		!strings.Contains(err.Error(), "guest_operation_in_progress") {
+		t.Fatalf("reclaim during opposite-kind operation error=%v", err)
+	}
+	if err := db.Delete(&ReplicationGuestOperation{}, "guest_type = ? AND guest_id = ?", ReplicationGuestTypeJail, 150).Error; err != nil {
+		t.Fatalf("clear opposite-kind guest operation: %v", err)
 	}
 	if err := applyGuestIdentityFSMCommand(t, fsm, "reclaim_id", claim); err != nil {
 		t.Fatalf("reclaim exact generation: %v", err)

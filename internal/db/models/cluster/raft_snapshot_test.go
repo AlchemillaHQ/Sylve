@@ -26,6 +26,7 @@ func allSnapshotModels() []any {
 		&GuestIdentityRegistry{},
 		&GuestIdentityEnrollment{},
 		&GuestIdentityClaim{},
+		&GuestIdentityDeparture{},
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},
@@ -48,6 +49,44 @@ func allSnapshotModels() []any {
 		&ReplicationTransitionEvent{},
 		&ClusterSSHIdentity{},
 		&EncryptionKey{},
+	}
+}
+
+func TestClusterSnapshotPreservesPendingGuestIdentityDeparture(t *testing.T) {
+	source := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	if err := source.Create(&GuestIdentityRegistry{ID: GuestIdentityRegistryID, Version: GuestIdentityRegistryVersion, Phase: GuestIdentityRegistryPhaseActive}).Error; err != nil {
+		t.Fatal(err)
+	}
+	claim := GuestIdentityClaim{GuestID: 100, GuestKind: ReplicationGuestTypeVM, OwnerNodeID: "node-a", Token: "claim-a"}
+	if err := source.Create(&claim).Error; err != nil {
+		t.Fatal(err)
+	}
+	departure := GuestIdentityDeparture{NodeID: "node-a", LeaveID: "leave-a", InventoryDigest: GuestIdentityInventoryDigest("node-a", []GuestIdentityEntry{{GuestKind: ReplicationGuestTypeVM, GuestID: 100}})}
+	if err := source.Create(&departure).Error; err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := captureClusterSnapshot(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.GuestIdentityDepartures) != 1 || snapshot.GuestIdentityDepartures[0] != departure {
+		t.Fatalf("snapshot departures = %+v", snapshot.GuestIdentityDepartures)
+	}
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := testutil.NewSQLiteTestDB(t, allSnapshotModels()...)
+	fsm := NewFSMDispatcher(destination)
+	if err := fsm.Restore(io.NopCloser(bytes.NewReader(raw))); err != nil {
+		t.Fatal(err)
+	}
+	var restored GuestIdentityDeparture
+	if err := destination.First(&restored, "node_id = ?", departure.NodeID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if restored != departure {
+		t.Fatalf("restored departure = %+v, want %+v", restored, departure)
 	}
 }
 

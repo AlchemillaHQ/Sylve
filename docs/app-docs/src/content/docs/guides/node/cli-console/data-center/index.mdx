@@ -79,13 +79,15 @@ Add `--json` for structured output. The interactive console form is:
 datacenter cluster guest-ids list
 ```
 
+After a cooperative leave that keeps guests on the departing node, the surviving cluster releases that node's claims once membership removal completes. Those numbers become available to other members. The departed node still has its local guests; if it later rejoins, every current guest ID must be free in the cluster. A reused number blocks the join, including when one side is a VM RID and the other is a jail CTID.
+
 Use `reclaim` only when a claim is orphaned and the VM or jail no longer exists anywhere in the cluster:
 
 ```bash
 doas sylve datacenter cluster guest-ids reclaim --id 505
 ```
 
-The normal reclaim requires a clean inventory from the cluster and is rejected if the ID is registered on any reporting node or involved in an active operation. It also requires working cluster consensus.
+The normal reclaim requires a clean inventory from the cluster and is rejected if the ID is registered on any reporting node or involved in an active operation. It also requires working cluster consensus. A cooperative leave already releases its guest IDs; manual reclaim remains relevant for claims left by other removal paths, such as force removal. Current-voter inventory cannot inspect a departed machine, so verify its runtime and storage separately before manually reclaiming one of its IDs.
 
 If a voter is permanently unavailable, externally fence that node first. Then acknowledge the risk by repeating the exact guest ID:
 

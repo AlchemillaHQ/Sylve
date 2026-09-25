@@ -34,13 +34,14 @@ const (
 )
 
 type ClusterLeaveStatus struct {
-	Enabled     bool   `json:"enabled"`
-	LeaveID     string `json:"leaveId"`
-	Phase       string `json:"phase"`
-	LeaderIP    string `json:"leaderIp"`
-	LastError   string `json:"lastError"`
-	Attempts    uint   `json:"attempts"`
-	LocalNodeID string `json:"localNodeId"`
+	Enabled      bool   `json:"enabled"`
+	LeaveID      string `json:"leaveId"`
+	Phase        string `json:"phase"`
+	LeaderIP     string `json:"leaderIp"`
+	LastError    string `json:"lastError"`
+	Attempts     uint   `json:"attempts"`
+	LocalNodeID  string `json:"localNodeId"`
+	RetainGuests bool   `json:"retainGuests"`
 }
 
 func validLeavePhase(phase string) bool {
@@ -86,13 +87,14 @@ func (s *Service) LeaveStatus() (ClusterLeaveStatus, error) {
 		return ClusterLeaveStatus{}, err
 	}
 	return ClusterLeaveStatus{
-		Enabled:     record.Enabled,
-		LeaveID:     strings.TrimSpace(record.LeaveID),
-		Phase:       strings.TrimSpace(record.LeavePhase),
-		LeaderIP:    strings.TrimSpace(record.LeaveLeaderIP),
-		LastError:   strings.TrimSpace(record.LeaveLastError),
-		Attempts:    record.LeaveAttempts,
-		LocalNodeID: strings.TrimSpace(s.LocalNodeID()),
+		Enabled:      record.Enabled,
+		LeaveID:      strings.TrimSpace(record.LeaveID),
+		Phase:        strings.TrimSpace(record.LeavePhase),
+		LeaderIP:     strings.TrimSpace(record.LeaveLeaderIP),
+		LastError:    strings.TrimSpace(record.LeaveLastError),
+		Attempts:     record.LeaveAttempts,
+		LocalNodeID:  strings.TrimSpace(s.LocalNodeID()),
+		RetainGuests: record.LeaveRetainGuests,
 	}, nil
 }
 
@@ -204,6 +206,10 @@ func (s *Service) LocalLeavePreflight(ctx context.Context, allowGuests bool) (Gu
 }
 
 func (s *Service) persistLeaveIntent(leaveID, leaderIP, phase string, peerAddresses []byte) error {
+	return s.persistLeaveIntentWithGuests(leaveID, leaderIP, phase, peerAddresses, false, "")
+}
+
+func (s *Service) persistLeaveIntentWithGuests(leaveID, leaderIP, phase string, peerAddresses []byte, retainGuests bool, inventoryDigest string) error {
 	if !validLeavePhase(phase) || strings.TrimSpace(phase) == "" {
 		return fmt.Errorf("cluster_leave_phase_invalid")
 	}
@@ -220,6 +226,8 @@ func (s *Service) persistLeaveIntent(leaveID, leaderIP, phase string, peerAddres
 		record.LeaveLeaderIP = strings.TrimSpace(leaderIP)
 		record.LeavePhase = strings.TrimSpace(phase)
 		record.LeavePeerAddrs = append([]byte(nil), peerAddresses...)
+		record.LeaveRetainGuests = retainGuests
+		record.LeaveInventoryDigest = strings.TrimSpace(inventoryDigest)
 		record.LeaveLastError = ""
 		return tx.Save(&record).Error
 	})
@@ -251,12 +259,14 @@ func (s *Service) clearLeaveIntentAndReopen() error {
 		return err
 	}
 	err := s.DB.Model(&clusterModels.Cluster{}).Where("id = ?", record.ID).Updates(map[string]any{
-		"leave_id":         "",
-		"leave_phase":      "",
-		"leave_leader_ip":  "",
-		"leave_peer_addrs": nil,
-		"leave_last_error": "",
-		"leave_attempts":   0,
+		"leave_id":               "",
+		"leave_phase":            "",
+		"leave_leader_ip":        "",
+		"leave_peer_addrs":       nil,
+		"leave_retain_guests":    false,
+		"leave_inventory_digest": "",
+		"leave_last_error":       "",
+		"leave_attempts":         0,
 	}).Error
 	if err != nil {
 		return err

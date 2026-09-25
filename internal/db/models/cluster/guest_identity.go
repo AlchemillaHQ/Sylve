@@ -65,6 +65,16 @@ type GuestIdentityClaim struct {
 
 func (GuestIdentityClaim) TableName() string { return "guest_identity_claims" }
 
+// GuestIdentityDeparture records an authorized cooperative leave until the
+// removed node's claims have been released by the surviving cluster.
+type GuestIdentityDeparture struct {
+	NodeID          string `gorm:"primaryKey;size:128" json:"nodeId"`
+	LeaveID         string `gorm:"not null;size:128" json:"leaveId"`
+	InventoryDigest string `gorm:"not null;size:64" json:"inventoryDigest"`
+}
+
+func (GuestIdentityDeparture) TableName() string { return "guest_identity_departures" }
+
 type GuestIdentityEntry struct {
 	GuestKind string `json:"guestKind"`
 	GuestID   uint   `json:"guestId"`
@@ -84,6 +94,12 @@ type GuestIdentityClaimSet struct {
 	OwnerNodeID string               `json:"ownerNodeId"`
 	Token       string               `json:"token"`
 	Entries     []GuestIdentityEntry `json:"entries"`
+}
+
+type GuestIdentityDepartureCommand struct {
+	NodeID          string `json:"nodeId"`
+	LeaveID         string `json:"leaveId"`
+	InventoryDigest string `json:"inventoryDigest"`
 }
 
 type GuestIdentityMoveOwner struct {
@@ -549,8 +565,15 @@ func ReclaimGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityClaimSet) e
 	if len(entries) != 1 {
 		return fmt.Errorf("guest_identity_reclaim_requires_single_id")
 	}
-	if err := requireNoReplicationGuestOperation(tx, entries[0].GuestKind, entries[0].GuestID); err != nil {
-		return err
+	if tx.Migrator().HasTable(&ReplicationGuestOperation{}) {
+		var operation ReplicationGuestOperation
+		err := tx.Where("guest_id = ?", entries[0].GuestID).First(&operation).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil {
+			return fmt.Errorf("guest_operation_in_progress: %s", strings.TrimSpace(operation.Operation))
+		}
 	}
 	return ReleaseGuestIdentityClaimsTxn(tx, payload)
 }
@@ -628,12 +651,98 @@ func MoveGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityMoveOwner) err
 	return nil
 }
 
+func normalizeGuestIdentityDeparture(payload *GuestIdentityDepartureCommand) (GuestIdentityDeparture, error) {
+	if payload == nil {
+		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_required")
+	}
+	nodeID, err := normalizeGuestIdentityNodeID(payload.NodeID)
+	if err != nil {
+		return GuestIdentityDeparture{}, err
+	}
+	leaveID := strings.TrimSpace(payload.LeaveID)
+	if leaveID == "" || len([]byte(leaveID)) > guestIdentityMaxTokenBytes {
+		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_leave_id_invalid")
+	}
+	digest := strings.TrimSpace(payload.InventoryDigest)
+	decoded, err := hex.DecodeString(digest)
+	if err != nil || len(decoded) != sha256.Size || hex.EncodeToString(decoded) != digest {
+		return GuestIdentityDeparture{}, fmt.Errorf("guest_identity_departure_digest_invalid")
+	}
+	return GuestIdentityDeparture{NodeID: nodeID, LeaveID: leaveID, InventoryDigest: digest}, nil
+}
+
+func guestIdentityOwnerClaimDigestTxn(tx *gorm.DB, nodeID string) (string, error) {
+	var claims []GuestIdentityClaim
+	if err := tx.Where("owner_node_id = ?", nodeID).Order("guest_id ASC").Find(&claims).Error; err != nil {
+		return "", err
+	}
+	entries := make([]GuestIdentityEntry, len(claims))
+	for i, claim := range claims {
+		entries[i] = GuestIdentityEntry{GuestKind: claim.GuestKind, GuestID: claim.GuestID}
+	}
+	return GuestIdentityInventoryDigest(nodeID, entries), nil
+}
+
+func RecordGuestIdentityDepartureTxn(tx *gorm.DB, payload *GuestIdentityDepartureCommand) error {
+	departure, err := normalizeGuestIdentityDeparture(payload)
+	if err != nil {
+		return err
+	}
+	if err := requireGuestIdentityRegistryActiveTxn(tx); err != nil {
+		return err
+	}
+	claimDigest, err := guestIdentityOwnerClaimDigestTxn(tx, departure.NodeID)
+	if err != nil {
+		return err
+	}
+	if claimDigest != departure.InventoryDigest {
+		return fmt.Errorf("%w: departure_inventory_changed", ErrGuestIdentityInventoryConflict)
+	}
+	var existing GuestIdentityDeparture
+	err = tx.Where("node_id = ?", departure.NodeID).First(&existing).Error
+	if err == nil {
+		if existing != departure {
+			return fmt.Errorf("%w: departure_already_pending", ErrGuestIdentityInventoryConflict)
+		}
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return tx.Create(&departure).Error
+}
+
+func ReleaseGuestIdentityDepartureTxn(tx *gorm.DB, payload *GuestIdentityDepartureCommand) error {
+	departure, err := normalizeGuestIdentityDeparture(payload)
+	if err != nil {
+		return err
+	}
+	var existing GuestIdentityDeparture
+	if err := tx.Where("node_id = ?", departure.NodeID).First(&existing).Error; err != nil {
+		return err
+	}
+	if existing != departure {
+		return fmt.Errorf("%w: departure_changed", ErrGuestIdentityInventoryConflict)
+	}
+	claimDigest, err := guestIdentityOwnerClaimDigestTxn(tx, departure.NodeID)
+	if err != nil {
+		return err
+	}
+	if claimDigest != departure.InventoryDigest {
+		return fmt.Errorf("%w: departure_inventory_changed", ErrGuestIdentityInventoryConflict)
+	}
+	if err := tx.Where("owner_node_id = ?", departure.NodeID).Delete(&GuestIdentityClaim{}).Error; err != nil {
+		return err
+	}
+	return tx.Where("node_id = ? AND leave_id = ?", departure.NodeID, departure.LeaveID).Delete(&GuestIdentityDeparture{}).Error
+}
+
 func ValidateGuestIdentitySnapshot(snapshot *ClusterSnapshot) error {
 	if snapshot == nil {
 		return fmt.Errorf("cluster_snapshot_required")
 	}
 	if len(snapshot.GuestIdentityRegistries) == 0 {
-		if len(snapshot.GuestIdentityEnrollments) != 0 || len(snapshot.GuestIdentityClaims) != 0 {
+		if len(snapshot.GuestIdentityEnrollments) != 0 || len(snapshot.GuestIdentityClaims) != 0 || len(snapshot.GuestIdentityDepartures) != 0 {
 			return fmt.Errorf("guest_identity_snapshot_missing_registry")
 		}
 		return nil
@@ -665,6 +774,17 @@ func ValidateGuestIdentitySnapshot(snapshot *ClusterSnapshot) error {
 	}
 
 	seenIDs := make(map[uint]struct{}, len(snapshot.GuestIdentityClaims))
+	seenDepartures := make(map[string]struct{}, len(snapshot.GuestIdentityDepartures))
+	for _, departure := range snapshot.GuestIdentityDepartures {
+		validated, err := normalizeGuestIdentityDeparture(&GuestIdentityDepartureCommand{NodeID: departure.NodeID, LeaveID: departure.LeaveID, InventoryDigest: departure.InventoryDigest})
+		if err != nil || validated != departure {
+			return fmt.Errorf("guest_identity_snapshot_invalid_departure")
+		}
+		if _, exists := seenDepartures[departure.NodeID]; exists {
+			return fmt.Errorf("guest_identity_snapshot_duplicate_departure")
+		}
+		seenDepartures[departure.NodeID] = struct{}{}
+	}
 	for _, claim := range snapshot.GuestIdentityClaims {
 		if claim.GuestID == 0 || claim.GuestID > GuestIdentityMaxID || !ValidGuestIdentityKind(claim.GuestKind) {
 			return fmt.Errorf("guest_identity_snapshot_invalid_claim")
@@ -698,6 +818,18 @@ func RegisterGuestIdentityRegistryHandler(fsm *FSMDispatcher) {
 	fsm.Register("guest_identity_registry", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		return db.Transaction(func(tx *gorm.DB) error {
 			switch action {
+			case "record_departure":
+				var payload GuestIdentityDepartureCommand
+				if err := json.Unmarshal(raw, &payload); err != nil {
+					return err
+				}
+				return RecordGuestIdentityDepartureTxn(tx, &payload)
+			case "release_departure":
+				var payload GuestIdentityDepartureCommand
+				if err := json.Unmarshal(raw, &payload); err != nil {
+					return err
+				}
+				return ReleaseGuestIdentityDepartureTxn(tx, &payload)
 			case "register_node_inventory":
 				var payload GuestIdentityRegisterNodeInventory
 				if err := json.Unmarshal(raw, &payload); err != nil {

@@ -27,6 +27,7 @@ type ReplicatedStateTable struct {
 }
 
 var replicatedStateManifest = []ReplicatedStateTable{
+	{Table: "guest_identity_departures", Model: &GuestIdentityDeparture{}, SnapshotField: "GuestIdentityDepartures"},
 	{Table: "guest_identity_claims", Model: &GuestIdentityClaim{}, SnapshotField: "GuestIdentityClaims"},
 	{Table: "guest_identity_enrollments", Model: &GuestIdentityEnrollment{}, SnapshotField: "GuestIdentityEnrollments"},
 	{Table: "guest_identity_registries", Model: &GuestIdentityRegistry{}, SnapshotField: "GuestIdentityRegistries"},
@@ -95,6 +96,7 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 	}
 
 	snap := &ClusterSnapshot{
+		GuestIdentityDepartures:       []GuestIdentityDeparture{},
 		GuestIdentityRegistries:       []GuestIdentityRegistry{},
 		GuestIdentityEnrollments:      []GuestIdentityEnrollment{},
 		GuestIdentityClaims:           []GuestIdentityClaim{},
@@ -132,6 +134,11 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 	}
 	if db.Migrator().HasTable(&GuestIdentityClaim{}) {
 		if err := db.Order("guest_id ASC").Find(&snap.GuestIdentityClaims).Error; err != nil {
+			return nil, err
+		}
+	}
+	if db.Migrator().HasTable(&GuestIdentityDeparture{}) {
+		if err := db.Order("node_id ASC").Find(&snap.GuestIdentityDepartures).Error; err != nil {
 			return nil, err
 		}
 	}

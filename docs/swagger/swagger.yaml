@@ -7096,6 +7096,10 @@ definitions:
         type: boolean
       membershipRemoved:
         type: boolean
+      retainedGuests:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.GuestIdentityInventoryEntry'
+        type: array
       status:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_cluster.ClusterLeaveStatus'
     type: object
@@ -7115,6 +7119,8 @@ definitions:
         type: string
       phase:
         type: string
+      retainGuests:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_services_cluster.ClusterStateMemberResult:
     properties:
@@ -8902,6 +8908,8 @@ definitions:
     properties:
       nodeId:
         type: string
+      retainGuests:
+        type: boolean
     required:
     - nodeId
     type: object
@@ -8915,6 +8923,11 @@ definitions:
         type: boolean
       targetNodeId:
         type: string
+    type: object
+  internal_handlers_cluster.ResetNodeRequest:
+    properties:
+      retainGuests:
+        type: boolean
     type: object
   internal_handlers_cluster.RestoreBackupJobRequest:
     properties:
@@ -13094,7 +13107,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Join an existing cluster
+      description: Join an existing cluster. A returning node uses the same endpoint,
+        and all of its current VM and jail IDs must be free in the cluster.
       parameters:
       - description: Join Cluster Request
         in: body
@@ -13454,8 +13468,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Ask an online peer to fence local work, leave Raft, and clear its
-        cluster state
+      description: |-
+        Ask an online peer to fence local work, leave Raft, and clear its cluster state.
+        Registered guests block removal by default. Set retainGuests=true to keep the target's VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
       parameters:
       - description: Remove Peer Request
         in: body
@@ -13468,6 +13483,10 @@ paths:
       responses:
         "200":
           description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "202":
+          description: Removal pending
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
         "400":
@@ -14090,12 +14109,28 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Safely remove this node from Raft and clear its local cluster state
+      description: |-
+        Safely remove this node from Raft and clear its local cluster state.
+        Registered guests block a multi-node leave by default. Set retainGuests=true to keep local VM and jail registrations and release their cluster ID claims after membership removal. Other dependencies still block.
+      parameters:
+      - description: Optional leave options
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/internal_handlers_cluster.ResetNodeRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "202":
+          description: Leave pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_cluster_ClusterLeaveResult'
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "401":
@@ -14106,8 +14141,16 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Leave conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
       security:

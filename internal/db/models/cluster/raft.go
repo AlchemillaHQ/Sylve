@@ -198,6 +198,7 @@ type ClusterSnapshot struct {
 	GuestIdentityRegistries       []GuestIdentityRegistry            `json:"guestIdentityRegistries"`
 	GuestIdentityEnrollments      []GuestIdentityEnrollment          `json:"guestIdentityEnrollments"`
 	GuestIdentityClaims           []GuestIdentityClaim               `json:"guestIdentityClaims"`
+	GuestIdentityDepartures       []GuestIdentityDeparture           `json:"guestIdentityDepartures,omitempty"`
 	Notes                         []ClusterNote                      `json:"notes"`
 	Options                       []ClusterOption                    `json:"options"`
 	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
@@ -343,6 +344,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 			{"guest_identity_claims", snap.GuestIdentityClaims, 500},
 			{"cluster_ssh_identities", snap.SSHIdentities, 200},
 			{"encryption_keys", snap.EncryptionKeys, 200},
+		}
+		if tx.Migrator().HasTable(&GuestIdentityDeparture{}) {
+			createSets = append(createSets, restoreSet{"guest_identity_departures", snap.GuestIdentityDepartures, 200})
 		}
 		createSets = append(createSets,
 			restoreSet{"replication_policies", replicationPolicies, 500},
