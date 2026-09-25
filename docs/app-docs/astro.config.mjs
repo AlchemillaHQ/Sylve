@@ -10,6 +10,10 @@ import starlightPageActions from 'starlight-page-actions';
 
 const site = 'https://sylve.io';
 
+// Site search uses Starlight's default Pagefind setup. `pagefind` is pinned to
+// 1.5.0 in package.json because the 1.5.1+ indexer binary aborts on hosts with
+// memory pages larger than 4 KiB. See the Search section in README.md.
+
 // https://astro.build/config
 export default defineConfig({
     output: 'static',
