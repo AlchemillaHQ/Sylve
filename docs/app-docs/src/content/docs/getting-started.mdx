@@ -28,6 +28,20 @@ hostname sylve-node.lan
 ```
 :::
 
+:::caution[Keep the system clock accurate]
+Sylve issues time-bound session and cluster tokens, and cluster join compares the joining node's time against the leader. If the clock is off by more than about 30 seconds, sign-in can fail and cluster join is rejected with `cluster_join_clock_drift`.
+
+Make sure NTP is running so the clock stays synchronized:
+
+```bash
+sysrc ntpd_enable=YES
+sysrc ntpd_sync_on_start=YES
+service ntpd start
+```
+
+Check the current time with `date`. Run `tzsetup` if you also need to set the local time zone; keeping the clock accurate matters more than the displayed zone.
+:::
+
 ## TL;DR
 
 If you want to get going right away, run `pkg install sylve` on a FreeBSD >= 15 machine and open `https://<host>:8181` in your browser. For more details, continue reading.

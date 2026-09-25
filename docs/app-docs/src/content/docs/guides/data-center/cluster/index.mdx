@@ -31,6 +31,7 @@ Cluster communication is foundational infrastructure. Do not expose its internal
 
 - Decide the stable IP address each node will use for cluster communication.
 - Confirm all nodes are running the same Sylve version.
+- Keep the system clock synchronized on every node; a node whose clock differs from the leader by more than about 30 seconds is rejected with `cluster_join_clock_drift`. See [Keep the system clock accurate](/getting-started/) for NTP setup.
 - Plan the voter count before adding production workloads. Three voters allow one voter failure without losing quorum.
 - Ensure the nodes can communicate over the cluster network on `8180/TCP` for Raft, `8183/TCP` for Sylve's embedded SSH service, and `8184/TCP` for the internal cluster API.
 
@@ -65,7 +66,7 @@ If this is the same node returning after a leave with guests, select **Join**. S
 
 ![Join Cluster dialog with the joining node address, leader address, and cluster key fields](./clustering-join-cluster.png)
 
-The join process verifies the cluster key, exact Sylve version, member identity, and VM and Jail identities across the cluster. The node is first added as a staged non-voter. It synchronizes and verifies replicated state before promotion to voter, so it does not affect quorum while it is catching up.
+The join process verifies the cluster key, exact Sylve version, member identity, clock offset, and VM and Jail identities across the cluster. The node is first added as a staged non-voter. It synchronizes and verifies replicated state before promotion to voter, so it does not affect quorum while it is catching up.
 
 The **Cluster Join** progress control shows the current phase, synchronized Raft entries, automatic retry attempts, and technical details when an error occurs. Temporary leader changes and connection failures can resume automatically. Do not reset the joining node merely because a retry is in progress. Resolve the reported version, identity, connectivity, storage, or quorum problem and allow the workflow to continue.
 
