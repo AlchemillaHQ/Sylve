@@ -18,11 +18,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 const (
 	bootstrapPkgMinimumVersion    = "2.4.0"
+	bootstrapPkgMtimeFixedVersion = "2.8.0"
 	maxBootstrapErrorBytes        = 8 * 1024
 	bootstrapErrorTruncationToken = "\n[bootstrap error truncated]"
 	bootstrapAuditSampleLines     = 50
@@ -218,13 +220,70 @@ func buildBootstrapPkgArgs(cfg bootstrapPkgArgsConfig, subcmd ...string) []strin
 }
 
 func buildBootstrapAuditArgs(mountPoint, pkgDBDir, abi string) []string {
+	return buildBootstrapCheckArgs(mountPoint, pkgDBDir, abi, "-m")
+}
+
+func buildBootstrapCheckArgs(mountPoint, pkgDBDir, abi, check string) []string {
 	return []string{
 		"--rootdir", mountPoint,
 		"-o", "PKG_DBDIR=" + pkgDBDir,
 		"-o", "ABI=" + abi,
 		"-o", "IGNORE_OSVERSION=yes",
-		"check", "-q", "-m", "-a",
+		"check", "-q", check, "-a",
 	}
+}
+
+func (s *Service) auditBootstrapMetadata(
+	ctx context.Context,
+	env []string,
+	pkgPath string,
+	cfg bootstrapPkgArgsConfig,
+) (utils.CommandResult, error) {
+	result, err := s.runBootstrapPkg(ctx, env, pkgPath,
+		buildBootstrapAuditArgs(cfg.MountPoint, cfg.PkgDBDir, cfg.ABI)...)
+	if result.ExitCode != 1 || ctx.Err() != nil {
+		return result, err
+	}
+	count := bootstrapMtimeMismatchCount(result.Output)
+	if count == 0 {
+		return result, err
+	}
+
+	versionResult, versionErr := s.runBootstrapPkg(ctx, env, pkgPath, "-v")
+	version, valid := parsePkgVersion(versionResult.Output)
+	fixed, _ := parsePkgVersion(bootstrapPkgMtimeFixedVersion)
+	if versionErr != nil || versionResult.ExitCode != 0 || !valid || version.atLeast(fixed) {
+		return result, err
+	}
+
+	result, err = s.runBootstrapPkg(ctx, env, pkgPath,
+		buildBootstrapCheckArgs(cfg.MountPoint, cfg.PkgDBDir, cfg.ABI, "-s")...)
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+	if err == nil && result.ExitCode == 0 {
+		if strings.TrimSpace(result.Output) != "" {
+			return result, fmt.Errorf("unexpected_bootstrap_checksum_output")
+		}
+		logger.L.Warn().Str("mountPoint", cfg.MountPoint).
+			Msgf("bootstrap metadata audit: tolerated %d timestamp mismatches from an older pkg version", count)
+	}
+	return result, err
+}
+
+func bootstrapMtimeMismatchCount(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "[mtime]") || !strings.Contains(line, "->") {
+			return 0
+		}
+		count++
+	}
+	return count
 }
 
 func newBootstrapAuditError(result utils.CommandResult, cause error) error {

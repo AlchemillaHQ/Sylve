@@ -228,6 +228,66 @@ func TestRunBootstrapAuditFailureCleansUpBeforeWritingConfig(t *testing.T) {
 	}
 }
 
+func TestRunBootstrapMtimeFallback(t *testing.T) {
+	if _, err := os.Stat("/usr/share/keys/pkgbase-15"); err != nil {
+		t.Skipf("pkgbase keys unavailable: %v", err)
+	}
+	_, exitErr := utils.RunCommandWithEnvContext(context.Background(), nil, "sh", "-c", "exit 1")
+	if exitErr == nil {
+		t.Fatal("expected command exit error")
+	}
+	mtime := "FreeBSD-bzip2-15.0: /usr/bin/bzip2recover [mtime] old -> new\n"
+	for _, test := range []struct {
+		name, version, output    string
+		checksumFails, completes bool
+		calls                    int
+	}{
+		{"old pkg", "2.7.5", mtime, false, true, 6},
+		{"mixed metadata", "2.7.5", strings.Repeat(mtime, 100) + "FreeBSD-runtime-15.0: /var/mail [gname] mail -> wheel\n", false, false, 4},
+		{"checksum failure", "2.7.5", mtime, true, false, 6},
+		{"new pkg", "2.8.0", mtime, false, false, 5},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, runner := newBootstrapTestService(t, nil, "tank")
+			record := orchestrationSeedRecord(t, svc)
+			var calls []orchestrationPkgCall
+			run := orchestrationRunner(t, &calls,
+				utils.CommandResult{Output: test.output, ExitCode: 1}, exitErr)
+			svc.bootstrapPkgRunFn = func(ctx context.Context, env []string, path string, args ...string) (utils.CommandResult, error) {
+				result, err := run(ctx, env, path, args...)
+				joined := strings.Join(args, " ")
+				if joined == "-v" {
+					return utils.CommandResult{Output: test.version}, nil
+				}
+				if test.checksumFails && strings.HasSuffix(joined, "check -q -s -a") {
+					return utils.CommandResult{Output: "checksum mismatch", ExitCode: 1}, exitErr
+				}
+				return result, err
+			}
+
+			svc.runBootstrap(record.ID, "tank:15-0-Base",
+				jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 15, Minor: 0, Type: "base"},
+				orchestrationTypeSpec(), orchestrationIdentity(), "/resolved/pkg")
+
+			var stored jailModels.JailBootstrap
+			if err := svc.DB.First(&stored, record.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			_, configErr := os.Stat(filepath.Join(stored.MountPoint, "etc", "rc.conf"))
+			if !test.completes {
+				if stored.Status != "failed" || !strings.Contains(stored.Error, "bootstrap_metadata_audit_failed") || !os.IsNotExist(configErr) {
+					t.Fatalf("audit failure: record=%#v config=%v", stored, configErr)
+				}
+			} else if stored.Status != "completed" || stored.Error != "" || configErr != nil {
+				t.Fatalf("timestamp fallback: record=%#v config=%v", stored, configErr)
+			}
+			if runner.hasDataset(orchestrationIdentity().Dataset) != test.completes || len(calls) != test.calls {
+				t.Fatalf("dataset exists=%v calls=%d", runner.hasDataset(orchestrationIdentity().Dataset), len(calls))
+			}
+		})
+	}
+}
+
 func storedMountpoint(t *testing.T, svc *Service, recordID uint) string {
 	t.Helper()
 

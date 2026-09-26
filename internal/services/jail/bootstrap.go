@@ -667,11 +667,11 @@ func (s *Service) runBootstrap(
 	}
 
 	s.updateBootstrapRecord(recordID, "running", "auditing_metadata", "")
-	auditResult, auditErr := s.runBootstrapPkg(
+	auditResult, auditErr := s.auditBootstrapMetadata(
 		bCtx,
 		pkgEnv,
 		pkgPath,
-		buildBootstrapAuditArgs(mountPoint, pkgConfig.PkgDBDir, abi)...,
+		pkgConfig,
 	)
 	if auditErr != nil || auditResult.ExitCode != 0 {
 		logger.L.Error().
