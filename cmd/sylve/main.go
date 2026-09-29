@@ -311,7 +311,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 			}
 		}()
 
-		if err := lifecycleSvc.PrepareStartup(initContext); err != nil {
+		if err := lifecycleSvc.PrepareStartup(qCtx); err != nil {
 			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
 		}
 

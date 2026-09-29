@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -49,6 +50,11 @@ var (
 )
 
 var errGuestAlreadyRunning = errors.New("guest_already_running")
+
+type taskNotStartedError struct{ cause error }
+
+func (e *taskNotStartedError) Error() string { return e.cause.Error() }
+func (e *taskNotStartedError) Unwrap() error { return e.cause }
 
 type lifecycleRetryPending interface {
 	LifecycleRetryPending() bool
@@ -292,25 +298,7 @@ func (s *Service) finalizeTerminalLifecycleTaskAudit(task taskModels.GuestLifecy
 
 func (s *Service) RegisterJobs() {
 	db.QueueRegisterJSON[guestLifecycleExecPayload](guestLifecycleExecQueueName, func(ctx context.Context, payload guestLifecycleExecPayload) error {
-		if payload.TaskID == 0 {
-			logger.L.Warn().Msg("guest_lifecycle_exec_invalid_task_id")
-			return nil
-		}
-		if s.mutationGate != nil {
-			admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
-			if err != nil {
-				return err
-			}
-			defer release()
-			ctx = admittedCtx
-		}
-
-		if err := s.ExecuteTask(ctx, payload.TaskID); err != nil {
-			logger.L.Warn().Err(err).Uint("task_id", payload.TaskID).Msg("guest_lifecycle_exec_failed")
-		}
-
-		// We intentionally do not return execution errors to avoid unsafe lifecycle retries.
-		return nil
+		return s.executeQueuedTask(ctx, payload.TaskID)
 	})
 
 	db.QueueRegisterNoPayload(guestAutostartQueueName, func(ctx context.Context) error {
@@ -319,6 +307,31 @@ func (s *Service) RegisterJobs() {
 		}
 		return nil
 	})
+}
+
+func (s *Service) executeQueuedTask(ctx context.Context, taskID uint) error {
+	if taskID == 0 {
+		logger.L.Warn().Msg("guest_lifecycle_exec_invalid_task_id")
+		return nil
+	}
+	if s.mutationGate != nil {
+		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer release()
+		ctx = admittedCtx
+	}
+
+	if err := s.ExecuteTask(ctx, taskID); err != nil {
+		logger.L.Warn().Err(err).Uint("task_id", taskID).Msg("guest_lifecycle_exec_failed")
+		var notStarted *taskNotStartedError
+		if errors.As(err, &notStarted) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
@@ -333,36 +346,56 @@ func (s *Service) PrepareStartup(ctx context.Context) error {
 	return errors.Join(jailErr, s.RecoverInterruptedTasks(ctx))
 }
 
-// RecoverInterruptedTasks closes normal tasks claimed by a previous process.
-// Migration tasks have durable recovery and must remain running for it.
 func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
 	var interruptedTasks []taskModels.GuestLifecycleTask
 	if err := s.DB.WithContext(ctx).
-		Where("status = ? AND action <> ?", taskModels.LifecycleTaskStatusRunning, "migrate").
+		Where("status IN ?", []string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning}).
 		Find(&interruptedTasks).Error; err != nil {
 		return err
 	}
 
-	result := s.DB.WithContext(ctx).
-		Model(&taskModels.GuestLifecycleTask{}).
-		Where("status = ? AND action <> ?", taskModels.LifecycleTaskStatusRunning, "migrate").
-		Updates(map[string]any{
-			"status":      taskModels.LifecycleTaskStatusFailed,
-			"message":     lifecycleTaskInterruptedByRestartMessage,
-			"error":       lifecycleTaskInterruptedByRestartError,
-			"finished_at": time.Now().UTC(),
-		})
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected > 0 {
-		logger.L.Warn().Int64("count", result.RowsAffected).Msg("recovered_interrupted_lifecycle_tasks")
-	}
+	finishedAt := time.Now().UTC()
+	var recoveredCount int64
 	for i := range interruptedTasks {
-		var recovered taskModels.GuestLifecycleTask
-		if err := s.DB.First(&recovered, interruptedTasks[i].ID).Error; err == nil {
-			s.finalizeTerminalLifecycleTaskAudit(recovered)
+		task := interruptedTasks[i]
+		if task.Action == "migrate" {
+			if task.Status == taskModels.LifecycleTaskStatusRunning {
+				continue
+			}
+			var operationCount int64
+			if err := s.DB.WithContext(ctx).Model(&clusterModels.ReplicationGuestOperation{}).
+				Where("task_id = ? AND guest_type = ? AND guest_id = ? AND operation = ?",
+					task.ID, task.GuestType, task.GuestID, clusterModels.ReplicationGuestOperationMigration).
+				Count(&operationCount).Error; err != nil {
+				return fmt.Errorf("check queued migration operation for task %d: %w", task.ID, err)
+			}
+			if operationCount > 0 {
+				continue
+			}
 		}
+
+		result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
+			Where("id = ? AND status = ?", task.ID, task.Status).
+			Updates(map[string]any{
+				"status":      taskModels.LifecycleTaskStatusFailed,
+				"message":     lifecycleTaskInterruptedByRestartMessage,
+				"error":       lifecycleTaskInterruptedByRestartError,
+				"finished_at": finishedAt,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 1 {
+			recoveredCount++
+			task.Status = taskModels.LifecycleTaskStatusFailed
+			task.Message = lifecycleTaskInterruptedByRestartMessage
+			task.Error = lifecycleTaskInterruptedByRestartError
+			task.FinishedAt = &finishedAt
+			s.finalizeTerminalLifecycleTaskAudit(task)
+		}
+	}
+	if recoveredCount > 0 {
+		logger.L.Warn().Int64("count", recoveredCount).Msg("recovered_interrupted_lifecycle_tasks")
 	}
 	return nil
 }
@@ -400,6 +433,9 @@ func (s *Service) createTask(
 	payload string,
 	enqueue bool,
 ) (*taskModels.GuestLifecycleTask, string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
 	if s.mutationGate != nil {
 		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
 		if err != nil {
@@ -407,6 +443,9 @@ func (s *Service) createTask(
 		}
 		defer release()
 		ctx = admittedCtx
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
 	}
 	guestType = normalizeGuestType(guestType)
 	action = normalizeAction(action)
@@ -424,7 +463,7 @@ func (s *Service) createTask(
 	s.createMu.Lock()
 	defer s.createMu.Unlock()
 
-	active, err := s.getConflictingActiveTask(guestType, guestID, action)
+	active, err := s.getConflictingActiveTask(ctx, guestType, guestID, action)
 	if err != nil {
 		return nil, "", err
 	}
@@ -445,7 +484,7 @@ func (s *Service) createTask(
 			}
 
 			now := time.Now().UTC()
-			result := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+			result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
 				Where(
 					"id = ? AND action = ? AND status IN ? AND override_requested = ?",
 					active.ID,
@@ -469,7 +508,7 @@ func (s *Service) createTask(
 			}
 
 			refetched := taskModels.GuestLifecycleTask{}
-			if err := s.DB.First(&refetched, active.ID).Error; err != nil {
+			if err := s.DB.WithContext(ctx).First(&refetched, active.ID).Error; err != nil {
 				s.finalizePreparedLifecycleAudit(auditRef, err)
 				return nil, "", err
 			}
@@ -491,7 +530,7 @@ func (s *Service) createTask(
 		Payload:     strings.TrimSpace(payload),
 	}
 
-	if err := s.DB.Create(task).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Create(task).Error; err != nil {
 		return nil, "", err
 	}
 
@@ -512,11 +551,11 @@ func (s *Service) createTask(
 	return task, RequestOutcomeQueued, nil
 }
 
-func (s *Service) getConflictingActiveTask(guestType string, guestID uint, action string) (*taskModels.GuestLifecycleTask, error) {
+func (s *Service) getConflictingActiveTask(ctx context.Context, guestType string, guestID uint, action string) (*taskModels.GuestLifecycleTask, error) {
 	guestType = normalizeGuestType(guestType)
 	action = normalizeAction(action)
 
-	query := s.DB.Where("guest_type = ? AND guest_id = ? AND status IN ?", guestType, guestID, []string{
+	query := s.DB.WithContext(ctx).Where("guest_type = ? AND guest_id = ? AND status IN ?", guestType, guestID, []string{
 		taskModels.LifecycleTaskStatusQueued,
 		taskModels.LifecycleTaskStatusRunning,
 	})
@@ -544,17 +583,17 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	if s.mutationGate != nil {
 		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
 		if err != nil {
-			return err
+			return &taskNotStartedError{cause: err}
 		}
 		defer release()
 		ctx = admittedCtx
 	}
 	task := taskModels.GuestLifecycleTask{}
-	if err := s.DB.First(&task, taskID).Error; err != nil {
+	if err := s.DB.WithContext(ctx).First(&task, taskID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
-		return err
+		return &taskNotStartedError{cause: err}
 	}
 
 	if task.Status == taskModels.LifecycleTaskStatusSuccess || task.Status == taskModels.LifecycleTaskStatusFailed {
@@ -563,17 +602,22 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	}
 
 	now := time.Now().UTC()
-	claimed, err := s.claimTaskForExecution(ctx, task.ID, now)
+	claimed, err := s.claimTaskForExecution(ctx, task.ID, task.Action, now)
 	if err != nil {
-		return err
+		return &taskNotStartedError{cause: err}
 	}
 	if !claimed {
-		// The row became terminal after our initial read. A stale queue delivery
-		// must not resurrect it by writing running over the committed result.
-		if err := s.DB.First(&task, taskID).Error; err == nil {
-			s.finalizeTerminalLifecycleTaskAudit(task)
+		if err := s.DB.WithContext(ctx).First(&task, taskID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return &taskNotStartedError{cause: err}
 		}
-		return nil
+		if task.Status == taskModels.LifecycleTaskStatusSuccess || task.Status == taskModels.LifecycleTaskStatusFailed {
+			s.finalizeTerminalLifecycleTaskAudit(task)
+			return nil
+		}
+		return &taskNotStartedError{cause: fmt.Errorf("lifecycle_task_claim_not_confirmed")}
 	}
 
 	runErr := s.executeGuestAction(ctx, task)
@@ -638,12 +682,13 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 	return runErr
 }
 
-func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, startedAt time.Time) (bool, error) {
+func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action string, startedAt time.Time) (bool, error) {
+	claimableStatuses := []string{taskModels.LifecycleTaskStatusQueued}
+	if action == "migrate" {
+		claimableStatuses = append(claimableStatuses, taskModels.LifecycleTaskStatusRunning)
+	}
 	result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
-		Where("id = ? AND status IN ?", taskID, []string{
-			taskModels.LifecycleTaskStatusQueued,
-			taskModels.LifecycleTaskStatusRunning,
-		}).Updates(map[string]any{
+		Where("id = ? AND status IN ?", taskID, claimableStatuses).Updates(map[string]any{
 		"status":     taskModels.LifecycleTaskStatusRunning,
 		"started_at": startedAt,
 		"message":    "running",
@@ -873,8 +918,11 @@ func (s *Service) GetTask(taskID uint) (*taskModels.GuestLifecycleTask, error) {
 }
 
 func (s *Service) runStartupAutostart(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	jails := []jailModels.Jail{}
-	if err := s.DB.
+	if err := s.DB.WithContext(ctx).
 		Model(&jailModels.Jail{}).
 		Where("start_at_boot = ?", true).
 		Order("start_order ASC").
@@ -884,11 +932,17 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, jl := range jails {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !s.startupGuestReady(taskModels.GuestTypeJail, jl.CTID) {
 			continue
 		}
 		task, _, err := s.createTask(ctx, taskModels.GuestTypeJail, jl.CTID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if errors.Is(err, ErrTaskInProgress) {
 				continue
 			}
@@ -899,13 +953,22 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 			continue
 		}
 
-		if err := s.ExecuteTask(ctx, task.ID); err != nil && !errors.Is(err, errGuestAlreadyRunning) {
-			logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("startup_jail_task_failed")
+		if err := s.ExecuteTask(ctx, task.ID); err != nil {
+			if !errors.Is(err, errGuestAlreadyRunning) {
+				s.failUnstartedStartupTask(task.ID, err)
+				logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("startup_jail_task_failed")
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	vms := []vmModels.VM{}
-	if err := s.DB.
+	if err := s.DB.WithContext(ctx).
 		Model(&vmModels.VM{}).
 		Where("start_at_boot = ?", true).
 		Order("start_order ASC").
@@ -915,11 +978,17 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	}
 
 	for _, vm := range vms {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if !s.startupGuestReady(taskModels.GuestTypeVM, vm.RID) {
 			continue
 		}
 		task, _, err := s.createTask(ctx, taskModels.GuestTypeVM, vm.RID, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if errors.Is(err, ErrTaskInProgress) {
 				continue
 			}
@@ -930,12 +999,34 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 			continue
 		}
 
-		if err := s.ExecuteTask(ctx, task.ID); err != nil && !errors.Is(err, errGuestAlreadyRunning) {
-			logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("startup_vm_task_failed")
+		if err := s.ExecuteTask(ctx, task.ID); err != nil {
+			if !errors.Is(err, errGuestAlreadyRunning) {
+				s.failUnstartedStartupTask(task.ID, err)
+				logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("startup_vm_task_failed")
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 		}
 	}
 
 	return nil
+}
+
+func (s *Service) failUnstartedStartupTask(taskID uint, executionErr error) {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result := s.DB.WithContext(cleanupCtx).Model(&taskModels.GuestLifecycleTask{}).
+		Where("id = ? AND source = ? AND status = ?", taskID, taskModels.LifecycleTaskSourceStartup, taskModels.LifecycleTaskStatusQueued).
+		Updates(map[string]any{
+			"status":      taskModels.LifecycleTaskStatusFailed,
+			"message":     "startup_task_not_started",
+			"error":       executionErr.Error(),
+			"finished_at": time.Now().UTC(),
+		})
+	if result.Error != nil {
+		logger.L.Warn().Err(result.Error).Uint("task_id", taskID).Msg("startup_task_cleanup_failed")
+	}
 }
 
 func (s *Service) startupGuestReady(guestType string, guestID uint) bool {

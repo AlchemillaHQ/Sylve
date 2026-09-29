@@ -21,6 +21,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db"
+	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -224,6 +225,52 @@ func TestRecoverInterruptedTasksFinalizesBoundAudit(t *testing.T) {
 	}
 }
 
+func TestRecoverQueuedTaskFinalizesBoundAudit(t *testing.T) {
+	service, primaryDB, telemetryDB := setupLifecycleAuditTest(t)
+	starts := 0
+	service.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		return nil
+	}
+	task, _, err := service.createTask(
+		t.Context(), taskModels.GuestTypeVM, 102, "start",
+		taskModels.LifecycleTaskSourceUser, "tester", "", false,
+	)
+	if err != nil {
+		t.Fatalf("seed queued task: %v", err)
+	}
+	audit := createStartedLifecycleAudit(t, telemetryDB)
+	if _, err := db.PrepareAsyncAuditRecord(
+		telemetryDB, db.ContextWithAuditRecordID(t.Context(), audit.ID),
+		"vm_start", task.ID, fmt.Sprintf("guest-lifecycle:vm_start:%d", task.ID),
+	); err != nil {
+		t.Fatalf("bind queued task audit: %v", err)
+	}
+
+	if err := service.RecoverInterruptedTasks(t.Context()); err != nil {
+		t.Fatalf("recover queued task: %v", err)
+	}
+	var recovered taskModels.GuestLifecycleTask
+	if err := primaryDB.First(&recovered, task.ID).Error; err != nil {
+		t.Fatalf("reload recovered task: %v", err)
+	}
+	if recovered.Status != taskModels.LifecycleTaskStatusFailed || recovered.FinishedAt == nil {
+		t.Fatalf("queued task was not failed: %+v", recovered)
+	}
+	if err := service.executeQueuedTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("late delivery for recovered task: %v", err)
+	}
+	if starts != 0 {
+		t.Fatalf("late delivery invoked guest action %d times", starts)
+	}
+	if err := telemetryDB.First(&audit, audit.ID).Error; err != nil {
+		t.Fatalf("reload recovered audit: %v", err)
+	}
+	if audit.Status != "failed" || audit.Error != lifecycleTaskInterruptedByRestartError {
+		t.Fatalf("recovered audit = status %q error %q", audit.Status, audit.Error)
+	}
+}
+
 type retryPendingTestError struct{}
 
 func (retryPendingTestError) Error() string               { return "retry pending" }
@@ -240,6 +287,7 @@ func newLifecycleTestService(t *testing.T) (*Service, *gorm.DB) {
 	dbConn := testutil.NewSQLiteTestDB(
 		t,
 		&taskModels.GuestLifecycleTask{},
+		&clusterModels.ReplicationGuestOperation{},
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	)
@@ -386,7 +434,121 @@ func TestExecuteTaskUpdatesStatus(t *testing.T) {
 	}
 }
 
-func TestRecoverInterruptedTasksFailsNormalTasksOnly(t *testing.T) {
+func TestQueuedTaskRetriesClaimFailureBeforeGuestAction(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(t.Context(), taskModels.GuestTypeVM, 221, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	s.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		return nil
+	}
+	claimErr := errors.New("temporary claim failure")
+	const callbackName = "test:fail_lifecycle_claim"
+	if err := dbConn.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		tx.AddError(claimErr)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.executeQueuedTask(t.Context(), task.ID); !errors.Is(err, claimErr) {
+		t.Fatalf("queued handler error = %v, want retryable claim error", err)
+	}
+	if starts != 0 {
+		t.Fatalf("guest action ran after failed claim: %d", starts)
+	}
+	var unclaimed taskModels.GuestLifecycleTask
+	if err := dbConn.First(&unclaimed, task.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if unclaimed.Status != taskModels.LifecycleTaskStatusQueued {
+		t.Fatalf("failed claim changed task status to %q", unclaimed.Status)
+	}
+	if err := dbConn.Callback().Update().Remove(callbackName); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.executeQueuedTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("retry queued task: %v", err)
+	}
+	if starts != 1 {
+		t.Fatalf("guest action invocations = %d, want 1", starts)
+	}
+}
+
+func TestQueuedTaskConsumesGuestActionFailure(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(t.Context(), taskModels.GuestTypeVM, 222, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.vmActionFn = func(_ uint, _ string) error { return errors.New("guest action failed") }
+	if err := s.executeQueuedTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("guest action failure must not retry: %v", err)
+	}
+	var failed taskModels.GuestLifecycleTask
+	if err := dbConn.First(&failed, task.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if failed.Status != taskModels.LifecycleTaskStatusFailed || failed.Error != "guest action failed" {
+		t.Fatalf("guest action result was not saved: %+v", failed)
+	}
+}
+
+func TestQueuedTaskDoesNotRepeatRunningGuestAction(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(t.Context(), taskModels.GuestTypeVM, 223, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).
+		Update("status", taskModels.LifecycleTaskStatusRunning).Error; err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	s.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		return nil
+	}
+	if err := s.executeQueuedTask(t.Context(), task.ID); err == nil {
+		t.Fatal("duplicate delivery should wait for the running task")
+	}
+	if starts != 0 {
+		t.Fatalf("duplicate delivery invoked guest action %d times", starts)
+	}
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).
+		Update("status", taskModels.LifecycleTaskStatusSuccess).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.executeQueuedTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("late delivery of completed task: %v", err)
+	}
+}
+
+func TestRunningMigrationCanBeReclaimed(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	task, _, err := s.createTask(t.Context(), taskModels.GuestTypeVM, 224, "migrate", taskModels.LifecycleTaskSourceUser, "tester", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", task.ID).
+		Update("status", taskModels.LifecycleTaskStatusRunning).Error; err != nil {
+		t.Fatal(err)
+	}
+	executions := 0
+	s.SetMigrationExecutor(func(context.Context, uint) error {
+		executions++
+		return nil
+	})
+	if err := s.ExecuteTask(t.Context(), task.ID); err != nil {
+		t.Fatalf("reclaim running migration: %v", err)
+	}
+	if executions != 1 {
+		t.Fatalf("migration executions = %d, want 1", executions)
+	}
+}
+
+func TestRecoverInterruptedTasksFailsUnclaimedAndNonMigrationTasks(t *testing.T) {
 	s, dbConn := newLifecycleTestService(t)
 	startedAt := time.Now().Add(-time.Minute).UTC()
 	tasks := []taskModels.GuestLifecycleTask{
@@ -410,36 +572,152 @@ func TestRecoverInterruptedTasksFailsNormalTasksOnly(t *testing.T) {
 			Action:    "start",
 			Status:    taskModels.LifecycleTaskStatusQueued,
 		},
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   104,
+			Action:    "migrate",
+			Status:    taskModels.LifecycleTaskStatusQueued,
+		},
+		{
+			GuestType: taskModels.GuestTypeVM,
+			GuestID:   105,
+			Action:    "migrate",
+			Status:    taskModels.LifecycleTaskStatusQueued,
+		},
+		{
+			GuestType: taskModels.GuestTypeVMTemplate,
+			GuestID:   106,
+			Action:    "create",
+			Status:    taskModels.LifecycleTaskStatusQueued,
+		},
 	}
 	for i := range tasks {
 		if err := dbConn.Create(&tasks[i]).Error; err != nil {
 			t.Fatalf("seed task %d: %v", i, err)
 		}
 	}
+	if err := dbConn.Create(&clusterModels.ReplicationGuestOperation{
+		GuestType:    taskModels.GuestTypeVM,
+		GuestID:      tasks[4].GuestID,
+		Operation:    clusterModels.ReplicationGuestOperationMigration,
+		State:        clusterModels.ReplicationGuestOperationPreCutover,
+		Token:        fmt.Sprintf("migration:node-a:%d", tasks[4].ID),
+		OwnerNodeID:  "node-a",
+		TargetNodeID: "node-b",
+		TaskID:       tasks[4].ID,
+		AcquiredAt:   startedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed migration operation: %v", err)
+	}
 
 	if err := s.RecoverInterruptedTasks(t.Context()); err != nil {
 		t.Fatalf("RecoverInterruptedTasks: %v", err)
 	}
 
-	var recovered taskModels.GuestLifecycleTask
-	if err := dbConn.First(&recovered, tasks[0].ID).Error; err != nil {
-		t.Fatalf("reload recovered task: %v", err)
-	}
-	if recovered.Status != taskModels.LifecycleTaskStatusFailed || recovered.FinishedAt == nil {
-		t.Fatalf("normal task was not finalized: status=%q finishedAt=%v", recovered.Status, recovered.FinishedAt)
-	}
-	if recovered.Message != lifecycleTaskInterruptedByRestartMessage || recovered.Error != lifecycleTaskInterruptedByRestartError {
-		t.Fatalf("unexpected recovery result: message=%q error=%q", recovered.Message, recovered.Error)
-	}
-
-	for _, task := range tasks[1:] {
+	for i, task := range tasks {
 		var got taskModels.GuestLifecycleTask
 		if err := dbConn.First(&got, task.ID).Error; err != nil {
 			t.Fatalf("reload task %d: %v", task.ID, err)
 		}
-		if got.Status != task.Status || got.FinishedAt != nil {
-			t.Fatalf("task %d changed unexpectedly: status=%q finishedAt=%v", task.ID, got.Status, got.FinishedAt)
+		if i == 1 || i == 4 {
+			if got.Status != task.Status || got.FinishedAt != nil {
+				t.Fatalf("migration task %d changed unexpectedly: status=%q finishedAt=%v", task.ID, got.Status, got.FinishedAt)
+			}
+			continue
 		}
+		if got.Status != taskModels.LifecycleTaskStatusFailed || got.FinishedAt == nil ||
+			got.Message != lifecycleTaskInterruptedByRestartMessage || got.Error != lifecycleTaskInterruptedByRestartError {
+			t.Fatalf("task %d was not recovered: status=%q message=%q error=%q finishedAt=%v",
+				task.ID, got.Status, got.Message, got.Error, got.FinishedAt)
+		}
+	}
+}
+
+func TestRecoverQueuedStartupTaskAllowsAutostart(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	if err := dbConn.Create(&vmModels.VM{RID: 105, Name: "vm105", StartAtBoot: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Create(&vmModels.VM{RID: 106, Name: "vm106", StartAtBoot: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	orphan := taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeVM,
+		GuestID:   105,
+		Action:    "start",
+		Source:    taskModels.LifecycleTaskSourceStartup,
+		Status:    taskModels.LifecycleTaskStatusQueued,
+	}
+	if err := dbConn.Create(&orphan).Error; err != nil {
+		t.Fatal(err)
+	}
+	manuallyStartedOrphan := taskModels.GuestLifecycleTask{
+		GuestType: taskModels.GuestTypeVM,
+		GuestID:   106,
+		Action:    "start",
+		Source:    taskModels.LifecycleTaskSourceStartup,
+		Status:    taskModels.LifecycleTaskStatusQueued,
+	}
+	if err := dbConn.Create(&manuallyStartedOrphan).Error; err != nil {
+		t.Fatal(err)
+	}
+	starts := 0
+	s.vmStateFn = func(rid uint) (int, error) {
+		if rid == 106 {
+			return 1, nil
+		}
+		return 5, nil
+	}
+	s.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		return nil
+	}
+
+	if err := s.RecoverInterruptedTasks(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.executeQueuedTask(t.Context(), orphan.ID); err != nil {
+		t.Fatalf("late delivery for recovered task: %v", err)
+	}
+	if err := s.runStartupAutostart(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if starts != 1 {
+		t.Fatalf("VM starts = %d, want 1", starts)
+	}
+	var oldTask taskModels.GuestLifecycleTask
+	if err := dbConn.First(&oldTask, orphan.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if oldTask.Status != taskModels.LifecycleTaskStatusFailed || oldTask.FinishedAt == nil {
+		t.Fatalf("orphan task was not closed: %+v", oldTask)
+	}
+	var activeCount, successfulCount int64
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).
+		Where("guest_type = ? AND guest_id = ? AND status IN ?", taskModels.GuestTypeVM, 105,
+			[]string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning}).
+		Count(&activeCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).
+		Where("guest_type = ? AND guest_id = ? AND status = ?", taskModels.GuestTypeVM, 105, taskModels.LifecycleTaskStatusSuccess).
+		Count(&successfulCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if activeCount != 0 || successfulCount != 1 {
+		t.Fatalf("recovered VM tasks: active=%d success=%d, want 0 and 1", activeCount, successfulCount)
+	}
+	var alreadyRunning taskModels.GuestLifecycleTask
+	if err := dbConn.Where("guest_type = ? AND guest_id = ? AND status = ?", taskModels.GuestTypeVM, 106, taskModels.LifecycleTaskStatusSuccess).
+		First(&alreadyRunning).Error; err != nil {
+		t.Fatal(err)
+	}
+	if alreadyRunning.Message != "already_running" {
+		t.Fatalf("manually started VM result = %q, want already_running", alreadyRunning.Message)
+	}
+	active, err := s.GetActiveTaskForGuest(taskModels.GuestTypeVM, 106)
+	if err != nil || active != nil {
+		t.Fatalf("manually started VM still has an active task: task=%+v err=%v", active, err)
 	}
 }
 
@@ -518,7 +796,7 @@ func TestExecutionClaimCannotResurrectTerminalTask(t *testing.T) {
 		t.Fatalf("commit concurrent terminal result: %v", err)
 	}
 
-	claimed, err := s.claimTaskForExecution(t.Context(), task.ID, time.Now().UTC())
+	claimed, err := s.claimTaskForExecution(t.Context(), task.ID, task.Action, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("claim stale delivery: %v", err)
 	}
@@ -630,6 +908,94 @@ func TestStartupAutostartOrder(t *testing.T) {
 	}
 	if startupTaskCount != int64(len(expected)) {
 		t.Fatalf("unexpected startup task count: got %d want %d", startupTaskCount, len(expected))
+	}
+}
+
+func TestStartupAutostartStopsAfterCancellation(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	for _, rid := range []uint{102, 104, 105} {
+		if err := dbConn.Create(&vmModels.VM{RID: rid, Name: fmt.Sprintf("vm%d", rid), StartAtBoot: true}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	starts := 0
+	s.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		cancel()
+		return nil
+	}
+	if err := s.runStartupAutostart(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("autostart error = %v, want context cancellation", err)
+	}
+	if starts != 1 {
+		t.Fatalf("guest action invocations = %d, want 1", starts)
+	}
+	var startupTasks []taskModels.GuestLifecycleTask
+	if err := dbConn.Where("source = ?", taskModels.LifecycleTaskSourceStartup).Find(&startupTasks).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(startupTasks) != 1 || startupTasks[0].Status != taskModels.LifecycleTaskStatusSuccess {
+		t.Fatalf("canceled startup left unexpected tasks: %+v", startupTasks)
+	}
+}
+
+type cancelOnSecondMutationGate struct {
+	calls  int
+	cancel context.CancelFunc
+}
+
+func (g *cancelOnSecondMutationGate) EnterMutation(ctx context.Context) (context.Context, func(), error) {
+	g.calls++
+	if g.calls == 2 {
+		g.cancel()
+	}
+	return ctx, func() {}, nil
+}
+
+func TestStartupClaimCancellationClosesQueuedTask(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	if err := dbConn.Create(&vmModels.VM{RID: 226, Name: "vm226", StartAtBoot: true}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	s.SetMutationAdmission(&cancelOnSecondMutationGate{cancel: cancel})
+	starts := 0
+	s.vmActionFn = func(_ uint, _ string) error {
+		starts++
+		return nil
+	}
+	if err := s.runStartupAutostart(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("autostart error = %v, want context cancellation", err)
+	}
+	if starts != 0 {
+		t.Fatalf("guest action invoked %d times after canceled claim", starts)
+	}
+	var tasks []taskModels.GuestLifecycleTask
+	if err := dbConn.Where("source = ?", taskModels.LifecycleTaskSourceStartup).Find(&tasks).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Status != taskModels.LifecycleTaskStatusFailed ||
+		tasks[0].Message != "startup_task_not_started" || tasks[0].FinishedAt == nil {
+		t.Fatalf("canceled claim left unexpected tasks: %+v", tasks)
+	}
+}
+
+func TestCanceledTaskCreationLeavesNoQueuedRow(t *testing.T) {
+	s, dbConn := newLifecycleTestService(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err := s.createTask(ctx, taskModels.GuestTypeVM, 225, "start", taskModels.LifecycleTaskSourceUser, "tester", "", false); !errors.Is(err, context.Canceled) {
+		t.Fatalf("create task error = %v, want context cancellation", err)
+	}
+	var count int64
+	if err := dbConn.Model(&taskModels.GuestLifecycleTask{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("canceled request created %d task rows", count)
 	}
 }
 
