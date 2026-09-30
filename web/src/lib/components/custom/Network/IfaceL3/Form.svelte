@@ -68,8 +68,8 @@
 	let removing = $state(false);
 	let removeDialogOpen = $state(false);
 	let addresses = $state<string[]>([]);
-	let mtu = $state('');
-	let metric = $state('');
+	let mtu = $state<string | number>('');
+	let metric = $state<string | number>('');
 	let ipv6Mode = $state('inherit');
 	let hasStaticIPv6 = $derived(addresses.some((address) => address.trim().includes(':')));
 	let identityMismatch = $derived(
@@ -203,8 +203,8 @@
 		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
 	};
 
-	function parseOptionalNumber(value: string): number | null | 'invalid' {
-		const trimmed = value.trim();
+	function parseOptionalNumber(value: string | number): number | null | 'invalid' {
+		const trimmed = String(value).trim();
 		if (trimmed === '') {
 			return null;
 		}
@@ -581,6 +581,7 @@
 						<CustomValueInput
 							label="MTU"
 							type="number"
+							preserveEmpty
 							placeholder={String(currentMTU)}
 							hint={entry
 								? `Current: ${currentMTU}; empty restores ${entry.mtuBaseline ?? currentMTU}`
@@ -590,6 +591,7 @@
 						<CustomValueInput
 							label="Metric"
 							type="number"
+							preserveEmpty
 							placeholder="Not managed"
 							hint={entry
 								? `Empty restores ${entry.metricBaseline ?? 'the adoption baseline'}`
