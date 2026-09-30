@@ -17,13 +17,24 @@ Select **New**, choose the provider and source, then save the entry. Sylve valid
 
 | Field | Description |
 | --- | --- |
-| **Provider** | The DNS service that owns the record: **Cloudflare**, **Namecheap**, or **Sylve.app**. |
+| **Provider** | The DNS service that owns the record: **Cloudflare**, **ClouDNS**, **Namecheap**, or **Sylve.app**. |
 | **Hostname** | The full record name to update, such as `home.example.com`. A Sylve.app entry must match the hostname assigned to that update token. |
 | **Record Type** | **A** for IPv4, **AAAA** for IPv6, or **IPv4 + IPv6** for both. Namecheap supports A records only in this interface. |
 | **Interval** | How often enabled entries are considered for synchronization. Enter whole minutes from 1 to 1440. The default is 10 minutes. |
-| **Credential** | A Cloudflare API token, Namecheap Dynamic DNS password, or per-hostname Sylve.app update token. When editing without changing provider, leave it blank to keep the stored credential. |
+| **Credential** | A Cloudflare API token, ClouDNS API password, Namecheap Dynamic DNS password, or per-hostname Sylve.app update token. When editing without changing provider, leave it blank to keep the stored credential. |
+| **ClouDNS API User ID** | Required for ClouDNS. Use the numeric API user ID created under **API & Resellers**, not your account login. |
 | **Namecheap Domain** | Required for Namecheap. Use the exact domain shown by Namecheap, such as `example.com`. |
 | **Enabled** | Includes the entry in scheduled synchronization. A disabled entry keeps its saved settings but is skipped by the worker. |
+
+### ClouDNS credentials and behavior
+
+ClouDNS authenticates API requests with an API user ID and a separate API password. In the ClouDNS control panel, open **API & Resellers**, create an API user, and use the generated numeric ID together with the password you set. The API password is not your ClouDNS account password.
+
+If you restrict the API user to specific IP addresses, include the public address the node uses for outbound API requests. Only primary API users are supported in this version; sub-users cannot be selected.
+
+Sylve creates the record when the exact hostname and record type do not exist in the zone, then manages all active plain records for that name and type. A hostname whose records exist but are all inactive is rejected with an error instead of being replaced, so activate the intended record in ClouDNS or delete it first.
+
+A successful ClouDNS sync confirms that the ClouDNS API accepted the change. Authoritative name servers and resolver caches can lag behind the API response, so treat the **Up to date** state as a report of the configured provider state rather than proof of global propagation.
 
 ### Free Sylve.app hostname and managed TLS
 

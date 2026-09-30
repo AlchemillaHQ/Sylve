@@ -12,6 +12,7 @@ import "time"
 
 const (
 	ProviderCloudflare = "cloudflare"
+	ProviderCloudns    = "cloudns"
 	ProviderNamecheap  = "namecheap"
 	ProviderSylve      = "sylve"
 

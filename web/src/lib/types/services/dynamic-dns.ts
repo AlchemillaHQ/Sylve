@@ -37,7 +37,7 @@ export type DynamicDNSEntry = z.infer<typeof DynamicDNSEntrySchema>;
 
 export interface DynamicDNSEntryInput {
 	enabled: boolean;
-	provider: 'cloudflare' | 'namecheap' | 'sylve';
+	provider: 'cloudflare' | 'cloudns' | 'namecheap' | 'sylve';
 	providerSettings?: Record<string, string>;
 	token?: string;
 	hostname: string;

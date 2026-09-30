@@ -170,6 +170,8 @@
 		switch (cell.getValue()) {
 			case 'cloudflare':
 				return renderWithIcon('simple-icons:cloudflare', 'Cloudflare', 'text-orange-400');
+			case 'cloudns':
+				return renderWithIcon('mdi:dns', 'ClouDNS', 'text-sky-400');
 			case 'namecheap':
 				return renderWithIcon('simple-icons:namecheap', 'Namecheap', 'text-orange-500');
 			case 'sylve':

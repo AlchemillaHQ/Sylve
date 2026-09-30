@@ -32,6 +32,10 @@ const (
 
 	NamecheapSettingDomain = "domain"
 	NamecheapSettingHost   = "host"
+
+	CloudnsSettingAuthID = "authId"
+	CloudnsSettingZone   = "zone"
+	CloudnsSettingHost   = "host"
 )
 
 type AddressSet struct {

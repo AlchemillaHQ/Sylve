@@ -13567,6 +13567,7 @@ msgid "Paste Dynamic DNS password"
 msgstr "Paste Dynamic DNS password"
 
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "Leave blank to keep the configured password"
 msgstr "Leave blank to keep the configured password"
 
@@ -18630,3 +18631,28 @@ msgstr "Leave and keep guests"
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 msgid "Resolve these resources before removing the peer:"
 msgstr "Resolve these resources before removing the peer:"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/routes/[node]/services/dynamic-dns/+page.svelte
+msgid "ClouDNS"
+msgstr "ClouDNS"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "ClouDNS API Password"
+msgstr "ClouDNS API Password"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Paste API password"
+msgstr "Paste API password"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Enter a valid ClouDNS API user ID (digits only)"
+msgstr "Enter a valid ClouDNS API user ID (digits only)"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "ClouDNS API User ID"
+msgstr "ClouDNS API User ID"
+
+#: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+msgid "Create an API user under API & Resellers in ClouDNS."
+msgstr "Create an API user under API & Resellers in ClouDNS."

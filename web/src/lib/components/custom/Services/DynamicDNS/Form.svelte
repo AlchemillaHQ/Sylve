@@ -48,6 +48,7 @@
 		intervalMinutes: number;
 		token: string;
 		namecheapDomain: string;
+		cloudnsAuthId: string;
 		sourceType: string;
 		interfaceName: string;
 		manualIPv4: string;
@@ -62,21 +63,25 @@
 	];
 	const providerOptions = [
 		{ value: 'cloudflare', label: 'Cloudflare' },
+		{ value: 'cloudns', label: 'ClouDNS' },
 		{ value: 'namecheap', label: 'Namecheap' },
 		{ value: 'sylve', label: 'Sylve.app' }
 	];
 	const credentialLabels: Record<Form['provider'], string> = {
 		cloudflare: 'Cloudflare API Token',
+		cloudns: 'ClouDNS API Password',
 		namecheap: 'Namecheap Dynamic DNS Password',
 		sylve: 'Sylve.app Update Token'
 	};
 	const credentialPastePlaceholders: Record<Form['provider'], string> = {
 		cloudflare: 'Paste API token',
+		cloudns: 'Paste API password',
 		namecheap: 'Paste Dynamic DNS password',
 		sylve: 'Paste update token'
 	};
 	const credentialKeepPlaceholders: Record<Form['provider'], string> = {
 		cloudflare: 'Leave blank to keep the configured token',
+		cloudns: 'Leave blank to keep the configured password',
 		namecheap: 'Leave blank to keep the configured password',
 		sylve: 'Leave blank to keep the configured token'
 	};
@@ -126,6 +131,7 @@
 			intervalMinutes: 10,
 			token: '',
 			namecheapDomain: '',
+			cloudnsAuthId: '',
 			sourceType: 'stun',
 			interfaceName: '',
 			manualIPv4: '',
@@ -143,6 +149,7 @@
 			intervalMinutes: entry.intervalMinutes,
 			token: '',
 			namecheapDomain: entry.providerSettings.domain ?? '',
+			cloudnsAuthId: entry.providerSettings.authId ?? '',
 			sourceType: entry.sourceType,
 			interfaceName: entry.sourceSettings.interface ?? '',
 			manualIPv4: entry.sourceSettings.ipv4 ?? '',
@@ -182,6 +189,11 @@
 		if (form.provider === 'namecheap') {
 			return { domain: form.namecheapDomain.trim() };
 		}
+		if (form.provider === 'cloudns') {
+			const stored =
+				editingEntry?.provider === 'cloudns' ? { ...editingEntry.providerSettings } : {};
+			return { ...stored, authId: form.cloudnsAuthId.trim() };
+		}
 		return editingEntry?.provider === 'cloudflare' ? { ...editingEntry.providerSettings } : {};
 	}
 
@@ -215,6 +227,15 @@
 		if (form.provider === 'namecheap' && !form.namecheapDomain.trim()) {
 			toast.error('Namecheap domain is required', { position: 'bottom-center' });
 			return;
+		}
+		if (form.provider === 'cloudns') {
+			const authId = form.cloudnsAuthId.trim();
+			if (!/^[0-9]+$/.test(authId) || /^0+$/.test(authId)) {
+				toast.error('Enter a valid ClouDNS API user ID (digits only)', {
+					position: 'bottom-center'
+				});
+				return;
+			}
 		}
 		if (form.sourceType === 'interface' && !form.interfaceName) {
 			toast.error('Select a network interface', { position: 'bottom-center' });
@@ -324,6 +345,14 @@
 							bind:value={form.namecheapDomain}
 							classes="space-y-1.5"
 						/>
+					{:else if form.provider === 'cloudns'}
+						<CustomValueInput
+							label="ClouDNS API User ID"
+							placeholder="12345"
+							hint="Create an API user under API & Resellers in ClouDNS."
+							bind:value={form.cloudnsAuthId}
+							classes="space-y-1.5"
+						/>
 					{/if}
 					<CustomValueInput
 						label={credentialLabel}
@@ -334,7 +363,9 @@
 						type="password"
 						revealOnFocus={true}
 						bind:value={form.token}
-						classes={form.provider === 'namecheap' ? 'space-y-1.5' : 'space-y-1.5 sm:col-span-2'}
+						classes={form.provider === 'namecheap' || form.provider === 'cloudns'
+							? 'space-y-1.5'
+							: 'space-y-1.5 sm:col-span-2'}
 					/>
 				</section>
 

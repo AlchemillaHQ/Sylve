@@ -75,6 +75,7 @@ type Service struct {
 
 func NewService(db *gorm.DB) *Service {
 	cloudflare := NewCloudflareProvider()
+	cloudns := NewCloudnsProvider()
 	namecheap := NewNamecheapProvider()
 	sylve := NewSylveProvider()
 	interfaceResolver := NewInterfaceResolver()
@@ -85,6 +86,7 @@ func NewService(db *gorm.DB) *Service {
 		DB: db,
 		providers: map[string]DNSProvider{
 			cloudflare.ID(): cloudflare,
+			cloudns.ID():    cloudns,
 			namecheap.ID():  namecheap,
 			sylve.ID():      sylve,
 		},
