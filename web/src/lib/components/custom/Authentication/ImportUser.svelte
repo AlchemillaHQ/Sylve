@@ -98,6 +98,7 @@
 	function validate(): string {
 		if (!selectedUsername.value) return 'Please select a user';
 		if (password && password.length < 8) return 'Password must be at least 8 characters';
+		if (new TextEncoder().encode(password).length > 72) return 'Password must be 72 bytes or fewer';
 		return '';
 	}
 

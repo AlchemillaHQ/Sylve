@@ -94,7 +94,7 @@ func TestCreatePamUserSynchronizesUnixSylveAndSambaPasswords(t *testing.T) {
 		return nil
 	}
 
-	const password = "correct-horse-battery"
+	password := strings.Repeat("a", 64) + "!@#$%^&*"
 	user := &models.User{
 		Username:      "alice",
 		Password:      password,
@@ -102,6 +102,16 @@ func TestCreatePamUserSynchronizesUnixSylveAndSambaPasswords(t *testing.T) {
 		Shell:         "/bin/sh",
 		HomeDirectory: "/nonexistent",
 		HomeDirPerms:  0o755,
+	}
+	for _, password := range []string{strings.Repeat("a", 73), strings.Repeat("é", 37)} {
+		invalid := *user
+		invalid.Password = password
+		if err := service.CreatePamUser(&invalid, CreateUserOpts{CreateSamba: true}); err == nil || !strings.Contains(err.Error(), "invalid_password_length") {
+			t.Fatalf("expected password validation error, got: %v", err)
+		}
+	}
+	if unixUserCreated || unixPassword != "" || sambaPassword != "" {
+		t.Fatal("invalid password caused credential side effects")
 	}
 	if err := service.CreatePamUser(user, CreateUserOpts{CreateSamba: true}); err != nil {
 		t.Fatalf("create PAM user: %v", err)
@@ -163,7 +173,7 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 		return nil
 	}
 
-	const password = "new-secure-password"
+	password := strings.Repeat("é", 36)
 	fullOptions := EditUserOpts{
 		Username:      "alice",
 		FullName:      "Updated name",
@@ -173,6 +183,16 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 		HomeDirectory: user.HomeDirectory,
 		HomeDirPerms:  0o755,
 		SambaAction:   SambaActionUpsert,
+	}
+	for _, password := range []string{strings.Repeat("a", 73), strings.Repeat("é", 37)} {
+		invalid := fullOptions
+		invalid.Password = password
+		if err := service.EditUser(user.ID, invalid); err == nil || !strings.Contains(err.Error(), "invalid_password_length") {
+			t.Fatalf("expected password validation error, got: %v", err)
+		}
+	}
+	if unixPasswordUpdates != 0 || sambaPassword != "" || userTokenCount(t, service, user.ID) != 1 {
+		t.Fatal("invalid password changed credentials or sessions")
 	}
 	if err := service.EditUser(user.ID, fullOptions); err != nil {
 		t.Fatalf("edit PAM user: %v", err)
@@ -502,7 +522,12 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 				return "", nil
 			}))
 
-			const sylvePassword = "sylve-only-password"
+			for _, password := range []string{strings.Repeat("a", 73), strings.Repeat("é", 37)} {
+				if _, err := service.ImportUser(username, password, true); err == nil || !strings.Contains(err.Error(), "invalid_password_length") {
+					t.Fatalf("expected password validation error, got: %v", err)
+				}
+			}
+			sylvePassword := strings.Repeat("é", 36)
 			user, err := service.ImportUser(username, sylvePassword, true)
 			if err != nil {
 				t.Fatalf("import PAM user: %v", err)

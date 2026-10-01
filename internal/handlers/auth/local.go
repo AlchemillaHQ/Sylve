@@ -28,7 +28,7 @@ import (
 type CreateUserRequest struct {
 	Username        string `json:"username" binding:"required,min=1,max=128"`
 	FullName        string `json:"fullName"`
-	Password        string `json:"password"`
+	Password        string `json:"password" maxLength:"72"`
 	Email           string `json:"email"`
 	Admin           *bool  `json:"admin" binding:"required"`
 	UID             int    `json:"uid"`
@@ -47,7 +47,7 @@ type CreateUserRequest struct {
 type EditUserRequest struct {
 	FullName        string `json:"fullName"`
 	Username        string `json:"username"`
-	Password        string `json:"password"`
+	Password        string `json:"password" maxLength:"72"`
 	Email           string `json:"email"`
 	Admin           *bool  `json:"admin" binding:"required"`
 	UID             int    `json:"uid"`
@@ -212,7 +212,7 @@ func ListUsersHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Create local user
-// @Description Create a new local Sylve user
+// @Description Create a new local Sylve user; passwords are limited to 72 UTF-8 bytes
 // @Tags Users
 // @Accept json
 // @Produce json
@@ -279,7 +279,7 @@ func CreateUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Create PAM User
-// @Description Create one managed Unix/PAM account and its corresponding Sylve user record, synchronizing the required password and optional Samba credential
+// @Description Create one managed Unix/PAM account and its corresponding Sylve user record, synchronizing the required password and optional Samba credential; passwords are limited to 72 UTF-8 bytes
 // @Tags Users
 // @Accept json
 // @Produce json
@@ -407,7 +407,7 @@ func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Update user
-// @Description Replace the editable representation of a user identified by its positive database ID; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit
+// @Description Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit
 // @Tags Users
 // @Accept json
 // @Produce json
@@ -546,14 +546,14 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 
 type ImportUserRequest struct {
 	Username string `json:"username" binding:"required,min=1,max=128"`
-	Password string `json:"password" binding:"omitempty,min=8,max=128"`
+	Password string `json:"password" binding:"omitempty,min=8,max=72"`
 	Admin    *bool  `json:"admin" binding:"required"`
 }
 
 type CreatePamUserRequest struct {
 	Username        string `json:"username" binding:"required,min=1,max=128"`
 	FullName        string `json:"fullName"`
-	Password        string `json:"password" binding:"required,min=8,max=128"`
+	Password        string `json:"password" binding:"required,min=8,max=72"`
 	Email           string `json:"email"`
 	Admin           *bool  `json:"admin" binding:"required"`
 	UID             int    `json:"uid" binding:"required,gte=1000,lte=65533"`
@@ -571,7 +571,7 @@ type CreatePamUserRequest struct {
 }
 
 // @Summary Import Unix user
-// @Description Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership
+// @Description Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership; the optional Sylve password is limited to 72 UTF-8 bytes
 // @Tags Users
 // @Accept json
 // @Produce json

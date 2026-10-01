@@ -471,7 +471,7 @@ func TestEditUserPasswordTooLong(t *testing.T) {
 	svc := newLocalTestService(t)
 	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
 
-	longPw := strings.Repeat("a", 129)
+	longPw := strings.Repeat("a", 73)
 	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Password: longPw})
 	if err == nil {
 		t.Fatalf("expected error for too-long password")

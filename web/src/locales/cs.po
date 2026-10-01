@@ -16708,7 +16708,9 @@ msgid "Failed to load directories"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-msgid "Password must be 128 characters or fewer"
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Password must be 72 bytes or fewer"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte

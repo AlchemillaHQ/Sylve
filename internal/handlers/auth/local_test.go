@@ -209,7 +209,7 @@ func TestCreateUserHandlerShortUsername(t *testing.T) {
 
 			w := performJSON(t, router, http.MethodPost, "/auth/users", map[string]any{
 				"username": username,
-				"password": "password123",
+				"password": strings.Repeat("a", 64) + "!@#$%^&*",
 				"admin":    false,
 			})
 			if w.Code != http.StatusCreated {
@@ -220,20 +220,20 @@ func TestCreateUserHandlerShortUsername(t *testing.T) {
 }
 
 func TestCreateUserHandlerDoesNotReturnSubmittedPassword(t *testing.T) {
-	svc := newTestAuthService(t)
-	router := setupRouter(svc)
-
-	const submittedPassword = "leaky"
-	w := performJSON(t, router, "POST", "/auth/users", map[string]any{
-		"username": "testuser",
-		"password": submittedPassword,
-		"admin":    false,
-	})
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
-	}
-	if strings.Contains(w.Body.String(), submittedPassword) {
-		t.Fatalf("response exposed submitted password: %s", w.Body.String())
+	for _, submittedPassword := range []string{"leaky", strings.Repeat("a", 73), strings.Repeat("é", 37)} {
+		svc := newTestAuthService(t)
+		router := setupRouter(svc)
+		w := performJSON(t, router, http.MethodPost, "/auth/users", map[string]any{
+			"username": "testuser",
+			"password": submittedPassword,
+			"admin":    false,
+		})
+		if w.Code != http.StatusBadRequest || decodeResponse(t, w).Error != "invalid_password_length" {
+			t.Fatalf("expected password validation error, got %d: %s", w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), submittedPassword) {
+			t.Fatalf("response exposed submitted password: %s", w.Body.String())
+		}
 	}
 }
 
@@ -278,8 +278,21 @@ func TestEditUserHandlerChangesAdminPassword(t *testing.T) {
 	}
 	router := setupRouter(svc)
 
-	const newPassword = "new-admin-password"
 	w := performJSON(t, router, http.MethodPut, "/auth/users/1", map[string]any{
+		"username": "admin",
+		"password": strings.Repeat("é", 37),
+		"admin":    true,
+	})
+	if w.Code != http.StatusBadRequest || decodeResponse(t, w).Error != "invalid_password_length" {
+		t.Fatalf("expected password validation error, got %d: %s", w.Code, w.Body.String())
+	}
+	unchanged, err := svc.GetUserByID(admin.ID)
+	if err != nil || unchanged.Password != "old-hash" {
+		t.Fatalf("invalid password changed persisted credentials: %v", err)
+	}
+
+	newPassword := strings.Repeat("é", 36)
+	w = performJSON(t, router, http.MethodPut, "/auth/users/1", map[string]any{
 		"username": "admin",
 		"email":    "admin@sylve.local",
 		"password": newPassword,

@@ -352,7 +352,8 @@
 		}
 		if (edit && properties.password && properties.password.length < 8)
 			return 'Password must be at least 8 characters';
-		if (properties.password.length > 128) return 'Password must be 128 characters or fewer';
+		if (new TextEncoder().encode(properties.password).length > 72)
+			return 'Password must be 72 bytes or fewer';
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
 		if (user?.username !== 'root') {

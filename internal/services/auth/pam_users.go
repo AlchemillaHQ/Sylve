@@ -274,7 +274,7 @@ func (s *Service) validateNewPAMIdentity(user *models.User) error {
 	if err := validateHomePermissions(user.HomeDirPerms); err != nil {
 		return err
 	}
-	if len(user.Password) < 8 || len(user.Password) > 128 {
+	if len(user.Password) < 8 || len(user.Password) > 72 {
 		return userValidationError("invalid_password_length")
 	}
 
@@ -598,7 +598,7 @@ func (s *Service) importPamUser(username, sylvePassword string, admin bool) (*mo
 
 	hashedPassword := ""
 	if sylvePassword != "" {
-		if len(sylvePassword) < 8 || len(sylvePassword) > 128 {
+		if len(sylvePassword) < 8 || len(sylvePassword) > 72 {
 			return nil, userValidationError("invalid_password_length")
 		}
 		hashedPassword, err = s.passwordHasher.Hash(sylvePassword)
@@ -742,7 +742,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	if opts.Email != "" && !utils.IsValidEmail(opts.Email) {
 		return userValidationError("invalid_email_format")
 	}
-	if opts.Password != "" && (len(opts.Password) < 8 || len(opts.Password) > 128) {
+	if opts.Password != "" && (len(opts.Password) < 8 || len(opts.Password) > 72) {
 		return userValidationError("invalid_password_length")
 	}
 	if user.DisablePassword && !opts.DisablePassword && opts.Password == "" {

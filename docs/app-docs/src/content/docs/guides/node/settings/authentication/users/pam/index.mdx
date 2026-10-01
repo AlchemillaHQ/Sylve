@@ -26,7 +26,7 @@ Select **New User**. The form is organized into Identity, Groups, Environment, a
 | Full Name | A descriptive name for the account. |
 | Username | The Unix and Sylve account name. It must be unique and cannot be renamed after creation. |
 | E-Mail | An optional contact address stored with the Sylve record. |
-| Unix/PAM + Sylve Password | The password used for the Unix account and Sylve password authentication. It must be 8 to 128 characters and match the confirmation. When Samba User is selected during creation, the same submitted password is also used to create its Samba credential. |
+| Unix/PAM + Sylve Password | The password used for the Unix account and Sylve password authentication. It must be at least 8 characters, no more than 72 UTF-8 bytes, and match the confirmation. When Samba User is selected during creation, the same submitted password is also used to create its Samba credential. |
 | Admin | Permits the account to sign in to and administer Sylve. |
 | Samba User | When creating an account, creates the related Samba user. This requires Samba support and a password. |
 | Samba action | When editing an account, keeps the current Samba state, creates or updates the Samba user, or removes the Samba user. |
