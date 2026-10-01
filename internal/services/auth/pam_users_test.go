@@ -384,52 +384,73 @@ func TestEditPamUserHomeMoveReappliesRequestedPermissions(t *testing.T) {
 	}
 }
 
+func TestValidatePAMUsernameEmpty(t *testing.T) {
+	if err := validatePAMUsername(""); err == nil || !strings.Contains(err.Error(), "invalid_username_length") {
+		t.Fatalf("expected invalid_username_length, got: %v", err)
+	}
+}
+
 func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
-	service := newLocalTestService(t)
-	stubPAMIntegrations(t)
+	for _, username := range []string{"alice", "m", "mk"} {
+		t.Run(username, func(t *testing.T) {
+			service := newLocalTestService(t)
+			stubPAMIntegrations(t)
 
-	mutatingCommand := false
-	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
-		switch command {
-		case "/usr/bin/id":
-			if len(args) == 2 && args[0] == "-Gn" {
-				return args[1] + " staff", nil
-			}
-			return "uid=1001(" + args[0] + ") gid=1001(" + args[0] + ")", nil
-		case "/usr/bin/getent":
-			return "alice:*:1001:", nil
-		case "/usr/sbin/pw":
-			if len(args) >= 3 && args[0] == "usershow" && args[1] == "-n" {
-				username := args[2]
-				return fmt.Sprintf("%s:*:1001:1001::0:0:Alice Example:/home/%s:/bin/sh", username, username), nil
-			}
-			mutatingCommand = true
-		}
-		return "", nil
-	}))
-	passwordInputUsed := false
-	t.Cleanup(system.SetRunCommandWithInput(func(command, input string, args ...string) (string, error) {
-		passwordInputUsed = true
-		return "", nil
-	}))
+			mutatingCommand := false
+			t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+				switch command {
+				case "/usr/bin/id":
+					if len(args) == 2 && args[0] == "-Gn" {
+						return args[1] + " staff", nil
+					}
+					return "uid=1001(" + args[0] + ") gid=1001(" + args[0] + ")", nil
+				case "/usr/bin/getent":
+					return fmt.Sprintf("%s:*:1001:", username), nil
+				case "/usr/sbin/pw":
+					if len(args) >= 3 && args[0] == "usershow" && args[1] == "-n" {
+						return fmt.Sprintf("%s:*:1001:1001::0:0:Example User:/home/%s:/bin/sh", args[2], args[2]), nil
+					}
+					mutatingCommand = true
+				}
+				return "", nil
+			}))
+			passwordInputUsed := false
+			t.Cleanup(system.SetRunCommandWithInput(func(command, input string, args ...string) (string, error) {
+				passwordInputUsed = true
+				return "", nil
+			}))
 
-	const sylvePassword = "sylve-only-password"
-	user, err := service.ImportUser("alice", sylvePassword, true)
-	if err != nil {
-		t.Fatalf("import PAM user: %v", err)
-	}
-	if mutatingCommand || passwordInputUsed {
-		t.Fatal("import mutated the existing Unix identity or password")
-	}
-	if user.Source != "pam" || !user.Admin || !service.passwordHasher.Verify(sylvePassword, user.Password) {
-		t.Fatalf("unexpected imported identity: %+v", user)
-	}
-	groupNames := make(map[string]bool, len(user.Groups))
-	for _, group := range user.Groups {
-		groupNames[group.Name] = true
-	}
-	if !groupNames["alice"] || !groupNames["staff"] || groupNames["sylve_g"] {
-		t.Fatalf("import did not mirror Unix groups exactly: %+v", user.Groups)
+			const sylvePassword = "sylve-only-password"
+			user, err := service.ImportUser(username, sylvePassword, true)
+			if err != nil {
+				t.Fatalf("import PAM user: %v", err)
+			}
+			if mutatingCommand || passwordInputUsed {
+				t.Fatal("import mutated the existing Unix identity or password")
+			}
+			if user.Username != username || user.UID != 1001 || user.Source != "pam" || !user.Admin ||
+				!service.passwordHasher.Verify(sylvePassword, user.Password) {
+				t.Fatalf("unexpected imported identity: %+v", user)
+			}
+			groupNames := make(map[string]bool, len(user.Groups))
+			for _, group := range user.Groups {
+				groupNames[group.Name] = true
+			}
+			if !groupNames[username] || !groupNames["staff"] || groupNames["sylve_g"] {
+				t.Fatalf("import did not mirror Unix groups exactly: %+v", user.Groups)
+			}
+
+			if err := service.DB.Create(&models.SystemSecrets{Name: "JWTSecret", Data: "test-jwt-secret"}).Error; err != nil {
+				t.Fatalf("seed JWT secret: %v", err)
+			}
+			userID, token, err := service.CreateJWT(username, sylvePassword, "sylve", false)
+			if err != nil {
+				t.Fatalf("login with imported username: %v", err)
+			}
+			if userID != user.ID || token == "" {
+				t.Fatalf("unexpected login result: user=%d token_empty=%t", userID, token == "")
+			}
+		})
 	}
 }
 
@@ -451,6 +472,36 @@ func TestImportPamUserRejectsUIDAlreadyManagedBySylve(t *testing.T) {
 	_, err := service.ImportUser("alias", "", false)
 	if err == nil || !strings.Contains(err.Error(), "uid_already_in_use") {
 		t.Fatalf("expected managed UID conflict, got: %v", err)
+	}
+}
+
+func TestListImportablePamUsersIncludesShortUsernames(t *testing.T) {
+	service := newLocalTestService(t)
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		if command == "/usr/sbin/pw" {
+			return strings.Join([]string{
+				"m:*:1000:1000::0:0:Single:/nonexistent:/usr/sbin/nologin",
+				"mk:*:1001:1001::0:0:Manuel Kuklinski:/home/mk:/bin/sh",
+				"resticbackup:*:1002:1002::0:0:Restic backup user:/var/restic:/bin/sh",
+				"backup:*:1003:1003::0:0:restic backup user:/backup/restic:/usr/sbin/nologin",
+			}, "\n"), nil
+		}
+		t.Fatalf("unexpected Unix command: %s %v", command, args)
+		return "", nil
+	}))
+
+	users, err := service.ListImportableUnixUsers()
+	if err != nil {
+		t.Fatalf("list importable users: %v", err)
+	}
+	wantUsernames := []string{"m", "mk", "backup"}
+	if len(users) != len(wantUsernames) {
+		t.Fatalf("expected short usernames and backup, got: %+v", users)
+	}
+	for i, username := range wantUsernames {
+		if users[i].Username != username {
+			t.Fatalf("username[%d]=%q want=%q", i, users[i].Username, username)
+		}
 	}
 }
 

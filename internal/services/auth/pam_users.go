@@ -62,7 +62,7 @@ func normalizeSambaAction(action string) (string, error) {
 }
 
 func validatePAMUsername(username string) error {
-	if len(username) < 3 || len(username) > 128 {
+	if username == "" || len(username) > 128 {
 		return userValidationError("invalid_username_length")
 	}
 	if !utils.IsValidUsername(username) {

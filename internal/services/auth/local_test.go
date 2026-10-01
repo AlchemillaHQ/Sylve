@@ -210,16 +210,23 @@ func TestCreateUserInvalidEmail(t *testing.T) {
 	}
 }
 
-func TestCreateUserUsernameTooShort(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	user := &models.User{Username: "ab", Password: "password123"}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for short username")
-	}
-	if !strings.Contains(err.Error(), "invalid_username_length") {
-		t.Fatalf("expected invalid_username_length, got: %v", err)
+func TestCreateUserShortUsernames(t *testing.T) {
+	for _, username := range []string{"m", "mk"} {
+		t.Run(username, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			seedBasicSettings(t, svc)
+			user := &models.User{Username: username, Password: "password123"}
+			if err := svc.CreateUser(user, CreateUserOpts{}); err != nil {
+				t.Fatalf("create user with short username: %v", err)
+			}
+			found, err := svc.GetUserByID(user.ID)
+			if err != nil {
+				t.Fatalf("reload user: %v", err)
+			}
+			if found.Username != username || found.Source != "local" {
+				t.Fatalf("unexpected created user: %+v", found)
+			}
+		})
 	}
 }
 
@@ -405,6 +412,32 @@ func TestEditUserCanChangeAdminPassword(t *testing.T) {
 	}
 	if !svc.passwordHasher.Verify(newPassword, updated.Password) {
 		t.Fatal("updated admin password does not verify")
+	}
+}
+
+func TestEditUserUsernameMinimum(t *testing.T) {
+	for _, username := range []string{"", "m", "mk"} {
+		t.Run(username, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			user := seedUser(t, svc, models.User{Username: "original", Password: "hashed", Source: "local"})
+			err := svc.EditUser(user.ID, EditUserOpts{Username: username})
+			wantUsername := username
+			if username == "" {
+				if err == nil || !strings.Contains(err.Error(), "invalid_username_length") {
+					t.Fatalf("expected invalid_username_length, got: %v", err)
+				}
+				wantUsername = user.Username
+			} else if err != nil {
+				t.Fatalf("edit short username: %v", err)
+			}
+			found, err := svc.GetUserByID(user.ID)
+			if err != nil {
+				t.Fatalf("reload user: %v", err)
+			}
+			if found.Username != wantUsername {
+				t.Fatalf("username=%q want=%q", found.Username, wantUsername)
+			}
+		})
 	}
 }
 

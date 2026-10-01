@@ -87,7 +87,7 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 		return fmt.Errorf("invalid_email_format: %s", user.Email)
 	}
 
-	if user.Username == "" || len(user.Username) < 3 || len(user.Username) > 128 {
+	if user.Username == "" || len(user.Username) > 128 {
 		return fmt.Errorf("invalid_username_length: %s", user.Username)
 	}
 
@@ -224,7 +224,7 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 	}
 
 	if opts.Username != user.Username {
-		if len(opts.Username) < 3 || len(opts.Username) > 128 {
+		if opts.Username == "" || len(opts.Username) > 128 {
 			return userValidationError("invalid_username_length")
 		}
 		if !utils.IsValidUsername(opts.Username) {

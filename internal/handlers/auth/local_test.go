@@ -202,17 +202,20 @@ func TestCreateUserHandlerMissingAdmin(t *testing.T) {
 }
 
 func TestCreateUserHandlerShortUsername(t *testing.T) {
-	svc := newTestAuthService(t)
-	router := setupRouter(svc)
+	for _, username := range []string{"m", "mk"} {
+		t.Run(username, func(t *testing.T) {
+			svc := newTestAuthService(t)
+			router := setupRouter(svc)
 
-	body := map[string]any{
-		"username": "ab",
-		"password": "password123",
-		"admin":    false,
-	}
-	w := performJSON(t, router, "POST", "/auth/users", body)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for short username, got %d: %s", w.Code, w.Body.String())
+			w := performJSON(t, router, http.MethodPost, "/auth/users", map[string]any{
+				"username": username,
+				"password": "password123",
+				"admin":    false,
+			})
+			if w.Code != http.StatusCreated {
+				t.Fatalf("expected 201 for short username, got %d: %s", w.Code, w.Body.String())
+			}
+		})
 	}
 }
 

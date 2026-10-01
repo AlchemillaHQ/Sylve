@@ -40696,7 +40696,7 @@
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40758,7 +40758,7 @@
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40900,7 +40900,7 @@
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40938,7 +40938,7 @@
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },

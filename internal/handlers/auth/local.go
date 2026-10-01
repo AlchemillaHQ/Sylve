@@ -26,7 +26,7 @@ import (
 )
 
 type CreateUserRequest struct {
-	Username        string `json:"username" binding:"required,min=3,max=128"`
+	Username        string `json:"username" binding:"required,min=1,max=128"`
 	FullName        string `json:"fullName"`
 	Password        string `json:"password"`
 	Email           string `json:"email"`
@@ -533,13 +533,13 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 }
 
 type ImportUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=128"`
+	Username string `json:"username" binding:"required,min=1,max=128"`
 	Password string `json:"password" binding:"omitempty,min=8,max=128"`
 	Admin    *bool  `json:"admin" binding:"required"`
 }
 
 type CreatePamUserRequest struct {
-	Username        string `json:"username" binding:"required,min=3,max=128"`
+	Username        string `json:"username" binding:"required,min=1,max=128"`
 	FullName        string `json:"fullName"`
 	Password        string `json:"password" binding:"required,min=8,max=128"`
 	Email           string `json:"email"`

@@ -40702,7 +40702,7 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40764,7 +40764,7 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40906,7 +40906,7 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },
@@ -40944,7 +40944,7 @@ const docTemplate = `{
                 "username": {
                     "type": "string",
                     "maxLength": 128,
-                    "minLength": 3
+                    "minLength": 1
                 }
             }
         },

@@ -25,7 +25,39 @@ import (
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
+
+func TestAuthRequestsUsernameMinimum(t *testing.T) {
+	admin := false
+	for _, username := range []string{"", "m", "mk"} {
+		t.Run(username, func(t *testing.T) {
+			for _, request := range []struct {
+				name string
+				body any
+			}{
+				{name: "create local", body: CreateUserRequest{Username: username, Password: "password123", Admin: &admin}},
+				{name: "create PAM", body: CreatePamUserRequest{
+					Username:     username,
+					Password:     "password123",
+					Admin:        &admin,
+					UID:          1001,
+					HomeDirPerms: 0o755,
+				}},
+				{name: "import", body: ImportUserRequest{Username: username, Admin: &admin}},
+				{name: "login Sylve", body: LoginRequest{Username: username, Password: "password123", AuthType: "sylve"}},
+				{name: "login PAM", body: LoginRequest{Username: username, Password: "password123", AuthType: "pam"}},
+			} {
+				t.Run(request.name, func(t *testing.T) {
+					err := binding.Validator.ValidateStruct(request.body)
+					if (err == nil) != (username != "") {
+						t.Fatalf("username=%q: unexpected validation result: %v", username, err)
+					}
+				})
+			}
+		})
+	}
+}
 
 func runLoginConfigHandler(t *testing.T) map[string]any {
 	t.Helper()

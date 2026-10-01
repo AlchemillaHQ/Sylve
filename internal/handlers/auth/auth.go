@@ -26,7 +26,7 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=128"`
+	Username string `json:"username" binding:"required,min=1,max=128"`
 	Password string `json:"password" binding:"required,min=3,max=128"`
 	AuthType string `json:"authType" binding:"required,oneof=sylve pam"`
 	Remember bool   `json:"remember"`
