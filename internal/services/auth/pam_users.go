@@ -89,12 +89,20 @@ func validatePAMShell(shell string) error {
 	return nil
 }
 
+func validatePAMHomeFormat(home string) error {
+	if home == "" || !filepath.IsAbs(home) || filepath.Clean(home) != home || home == "/" ||
+		strings.ContainsAny(home, "\x00\r\n\t") {
+		return userValidationError("invalid_home_directory")
+	}
+	return nil
+}
+
 func validatePAMHomePath(home string) error {
+	if err := validatePAMHomeFormat(home); err != nil {
+		return err
+	}
 	if home == "/nonexistent" {
 		return nil
-	}
-	if home == "" || !filepath.IsAbs(home) || filepath.Clean(home) != home || home == "/" {
-		return userValidationError("invalid_home_directory")
 	}
 
 	parts := strings.Split(strings.TrimPrefix(home, "/"), "/")
@@ -102,13 +110,13 @@ func validatePAMHomePath(home string) error {
 		return userValidationError("unsafe_home_directory")
 	}
 
-	if strings.HasPrefix(home, "/usr/home/") {
-		return nil
-	}
 	for _, protected := range []string{
 		"/bin", "/boot", "/compat", "/dev", "/entropy", "/etc", "/lib", "/libexec",
 		"/net", "/proc", "/rescue", "/root", "/sbin", "/sys", "/usr", "/var",
 	} {
+		if protected == "/usr" && strings.HasPrefix(home, "/usr/home/") {
+			continue
+		}
 		if home == protected || strings.HasPrefix(home, protected+"/") {
 			return userValidationError("unsafe_home_directory")
 		}
@@ -577,7 +585,7 @@ func (s *Service) importPamUser(username, sylvePassword string, admin bool) (*mo
 	if err := validatePAMShell(info.Shell); err != nil {
 		return nil, err
 	}
-	if err := validatePAMHomePath(info.HomeDir); err != nil {
+	if err := validatePAMHomeFormat(info.HomeDir); err != nil {
 		return nil, err
 	}
 	var uidCount int64
@@ -706,7 +714,7 @@ func (s *Service) listImportablePamUsers() ([]ImportableUnixUser, error) {
 		if validatePAMUsername(user.Username) != nil ||
 			validatePAMUID(user.UID) != nil ||
 			validatePAMShell(user.Shell) != nil ||
-			validatePAMHomePath(user.HomeDir) != nil {
+			validatePAMHomeFormat(user.HomeDir) != nil {
 			continue
 		}
 		if _, exists := dbUsernameSet[user.Username]; exists {
@@ -747,7 +755,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		if err := validatePAMShell(opts.Shell); err != nil {
 			return err
 		}
-		if err := validatePAMHomePath(opts.HomeDirectory); err != nil {
+		if err := validatePAMHomeFormat(opts.HomeDirectory); err != nil {
 			return err
 		}
 		if err := validateHomePermissions(opts.HomeDirPerms); err != nil {
@@ -804,14 +812,6 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		}
 	}
 	homeChanged := opts.HomeDirectory != user.HomeDirectory
-	if homeChanged {
-		if err := validatePAMHomePath(opts.HomeDirectory); err != nil {
-			return err
-		}
-		if err := ensureHomeAvailable(s.DB, opts.HomeDirectory, user.ID); err != nil {
-			return err
-		}
-	}
 	permsChanged := opts.HomeDirPerms != user.HomeDirPerms
 	if permsChanged {
 		if err := validateHomePermissions(opts.HomeDirPerms); err != nil {
@@ -834,11 +834,9 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		primaryGroup     models.Group
 		primaryGroupID   *uint
 		primaryGroupName string
-		newPrimaryGroup  bool
 	)
 	if opts.NewPrimaryGroup {
 		primaryGroupName = user.Username
-		newPrimaryGroup = true
 	} else if opts.PrimaryGroupID != nil {
 		primaryGroup, err = s.loadManagedGroupByID(*opts.PrimaryGroupID)
 		if err != nil {
@@ -852,6 +850,21 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 			return err
 		}
 		primaryGroupName = primaryGroup.Name
+	}
+	primaryChanged := (user.PrimaryGroupID == nil) != (primaryGroupID == nil)
+	if user.PrimaryGroupID != nil && primaryGroupID != nil && *user.PrimaryGroupID != *primaryGroupID {
+		primaryChanged = true
+	}
+	homeOwnershipChanged := uidChanged || homeChanged || permsChanged || opts.SSHPublicKey != user.SSHPublicKey
+	if homeOwnershipChanged || primaryChanged || opts.NewPrimaryGroup {
+		if err := validatePAMHomePath(opts.HomeDirectory); err != nil {
+			return err
+		}
+	}
+	if homeChanged {
+		if err := ensureHomeAvailable(s.DB, opts.HomeDirectory, user.ID); err != nil {
+			return err
+		}
 	}
 	auxGroups, err := s.loadAuxiliaryGroups(opts.AuxGroupIDs, primaryGroupID)
 	if err != nil {
@@ -911,7 +924,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		}
 	}
 
-	if newPrimaryGroup {
+	if opts.NewPrimaryGroup {
 		exists, err := system.UnixGroupExistsWithError(primaryGroupName)
 		if err != nil {
 			return failIntegration("unix_group_lookup_failed", err)
@@ -933,11 +946,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 			applied = true
 		}
 		primaryGroupID = &primaryGroup.ID
-	}
-
-	primaryChanged := (user.PrimaryGroupID == nil) != (primaryGroupID == nil)
-	if user.PrimaryGroupID != nil && primaryGroupID != nil && *user.PrimaryGroupID != *primaryGroupID {
-		primaryChanged = true
+		primaryChanged = user.PrimaryGroupID == nil || *user.PrimaryGroupID != *primaryGroupID
 	}
 
 	if uidChanged {
@@ -1017,8 +1026,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		applied = true
 	}
 
-	if (uidChanged || homeChanged || permsChanged || primaryChanged || opts.SSHPublicKey != user.SSHPublicKey) &&
-		opts.HomeDirectory != "/nonexistent" {
+	if (homeOwnershipChanged || primaryChanged) && opts.HomeDirectory != "/nonexistent" {
 		if err := system.ChownHome(opts.HomeDirectory, opts.UID, primaryGroupName); err != nil {
 			return failIntegration("home_ownership_update_failed", err)
 		}
@@ -1113,7 +1121,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	return nil
 }
 
-func (s *Service) deletePamUser(user *models.User) error {
+func (s *Service) deletePamUser(user *models.User, removeHome bool) error {
 	if user.Username == "root" {
 		return userConflictError("cannot_delete_root_user")
 	}
@@ -1135,8 +1143,10 @@ func (s *Service) deletePamUser(user *models.User) error {
 		if info.Username != user.Username || info.UID < 1000 || info.UID > 65533 {
 			return userConflictError("protected_system_user")
 		}
-		if err := validatePAMHomePath(info.HomeDir); err != nil {
-			return userConflictError("unsafe_home_directory")
+		if removeHome {
+			if err := validatePAMHomePath(info.HomeDir); err != nil {
+				return userConflictError("unsafe_home_directory")
+			}
 		}
 	}
 
@@ -1164,7 +1174,7 @@ func (s *Service) deletePamUser(user *models.User) error {
 	applied = true
 
 	if unixUserExists {
-		if err := system.DeleteUnixUser(user.Username, true); err != nil {
+		if err := system.DeleteUnixUser(user.Username, removeHome); err != nil {
 			return failIntegration("unix_user_delete_failed", err)
 		}
 		applied = true

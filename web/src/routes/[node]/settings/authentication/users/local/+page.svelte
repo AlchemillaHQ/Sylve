@@ -291,7 +291,7 @@
 			const userID = Number(activeRow.id);
 			deleting = true;
 			try {
-				const response = await deleteUser(userID, { hostname });
+				const response = await deleteUser(userID, false, { hostname });
 				if (!pageActive || data.node !== hostname || Number(activeRow?.id) !== userID) return;
 				if (isAPIResponse(response)) {
 					handleAPIError(response);

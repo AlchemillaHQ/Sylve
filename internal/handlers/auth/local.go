@@ -350,11 +350,12 @@ func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete user
-// @Description Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account, home directory, and associated integrations
+// @Description Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account and associated integrations, but retain their home unless removal is explicitly requested
 // @Tags Users
 // @Produce json
 // @Security BearerAuth
 // @Param userId path uint true "User ID"
+// @Param removehome query bool false "Remove the PAM user's home directory after safety checks" default(false)
 // @Success 200 {object} internal.APIResponse[UserMutationResult] "User Deleted"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
@@ -370,6 +371,17 @@ func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		removeHome := false
+		if values, supplied := c.Request.URL.Query()["removehome"]; supplied {
+			var err error
+			if len(values) == 1 {
+				removeHome, err = strconv.ParseBool(values[0])
+			}
+			if len(values) != 1 || err != nil {
+				writeAuthCodeError(c, http.StatusBadRequest, "invalid_removehome_param")
+				return
+			}
+		}
 
 		user, err := authService.GetUserByID(userID)
 		if err != nil {
@@ -377,7 +389,7 @@ func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 			return
 		}
 
-		if err := authService.DeleteUser(userID); err != nil {
+		if err := authService.DeleteUser(userID, removeHome); err != nil {
 			writeUserServiceError(c, "failed_to_delete_user", err)
 			return
 		}

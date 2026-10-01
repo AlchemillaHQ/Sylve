@@ -1,6 +1,6 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
 
 	interface Props {
@@ -18,6 +18,7 @@
 		loadingLabel?: string;
 		loading?: boolean;
 		keepOpenOnConfirm?: boolean;
+		children?: Snippet;
 	}
 
 	let {
@@ -28,7 +29,8 @@
 		confirmLabel = 'Continue',
 		loadingLabel = 'Processing...',
 		loading = false,
-		keepOpenOnConfirm = false
+		keepOpenOnConfirm = false,
+		children
 	}: Props = $props();
 
 	let confirming = $state(false);
@@ -93,6 +95,7 @@
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>
+		{@render children?.()}
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel onclick={handleCancel} disabled={busy}>Cancel</AlertDialog.Cancel>
 			<AlertDialog.Action onclick={handleConfirm} disabled={busy}>

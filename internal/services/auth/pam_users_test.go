@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -127,7 +129,7 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 		Password:      "old-hash",
 		UID:           1001,
 		Shell:         "/bin/sh",
-		HomeDirectory: "/nonexistent",
+		HomeDirectory: "/var/restic",
 		HomeDirPerms:  0o755,
 		Source:        "pam",
 	})
@@ -164,10 +166,11 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	const password = "new-secure-password"
 	fullOptions := EditUserOpts{
 		Username:      "alice",
+		FullName:      "Updated name",
 		Password:      password,
 		UID:           1001,
 		Shell:         "/bin/sh",
-		HomeDirectory: "/nonexistent",
+		HomeDirectory: user.HomeDirectory,
 		HomeDirPerms:  0o755,
 		SambaAction:   SambaActionUpsert,
 	}
@@ -184,6 +187,9 @@ func TestEditPamUserPasswordAndExplicitSambaIntent(t *testing.T) {
 	}
 	if !service.passwordHasher.Verify(password, reloaded.Password) {
 		t.Fatalf("updated Sylve credential does not match submitted password")
+	}
+	if reloaded.FullName != fullOptions.FullName || reloaded.HomeDirectory != user.HomeDirectory {
+		t.Fatalf("metadata edit did not preserve the existing home: %+v", reloaded)
 	}
 	if got := userTokenCount(t, service, user.ID); got != 0 {
 		t.Fatalf("password edit left %d sessions", got)
@@ -384,6 +390,78 @@ func TestEditPamUserHomeMoveReappliesRequestedPermissions(t *testing.T) {
 	}
 }
 
+func TestEditPamUserRejectsUnsafeHomeMutationsBeforeSideEffects(t *testing.T) {
+	service := newLocalTestService(t)
+	stubPAMIntegrations(t)
+	seedSylveGroup(t, service)
+	newPrimary := seedGroup(t, service, "new-primary")
+	home := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(t.TempDir(), home); err != nil {
+		t.Fatalf("create home symlink: %v", err)
+	}
+	user := seedUser(t, service, models.User{
+		Username:      "alice",
+		UID:           1001,
+		Shell:         "/bin/sh",
+		HomeDirectory: home,
+		HomeDirPerms:  0o755,
+		SSHPublicKey:  "ssh-ed25519 old-key",
+		Source:        "pam",
+	})
+	seedUserToken(t, service, user.ID, "preflight-session")
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/bin/id":
+			return "uid=1001(alice) gid=1001(sylve_g)", nil
+		case "/usr/bin/getent":
+			return fmt.Sprintf("%s:*:1001:", args[len(args)-1]), nil
+		case "/usr/sbin/pw":
+			if len(args) >= 2 && args[0] == "usershow" && args[1] == "-u" {
+				return "no such user", errors.New("exit status 67")
+			}
+		}
+		return "", fmt.Errorf("unexpected mutating command: %s %v", command, args)
+	}))
+	t.Cleanup(system.SetRunCommandWithInput(func(command, input string, args ...string) (string, error) {
+		return "", errors.New("unexpected Unix password update")
+	}))
+
+	for _, test := range []struct {
+		name   string
+		change func(*EditUserOpts)
+	}{
+		{"permissions", func(opts *EditUserOpts) { opts.HomeDirPerms = 0o700 }},
+		{"SSH key removal", func(opts *EditUserOpts) { opts.SSHPublicKey = "" }},
+		{"UID", func(opts *EditUserOpts) { opts.UID = 2000 }},
+		{"primary group", func(opts *EditUserOpts) { opts.PrimaryGroupID = &newPrimary.ID }},
+		{"new primary group", func(opts *EditUserOpts) { opts.NewPrimaryGroup = true }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			opts := EditUserOpts{
+				Username:      user.Username,
+				Password:      "new-secure-password",
+				UID:           user.UID,
+				Shell:         user.Shell,
+				HomeDirectory: user.HomeDirectory,
+				HomeDirPerms:  user.HomeDirPerms,
+				SSHPublicKey:  user.SSHPublicKey,
+			}
+			test.change(&opts)
+			if err := service.EditUser(user.ID, opts); err == nil || !strings.Contains(err.Error(), "unsafe_home_directory") {
+				t.Fatalf("expected unsafe home rejection, got: %v", err)
+			}
+			if got := userTokenCount(t, service, user.ID); got != 1 {
+				t.Fatalf("failed preflight changed session count: %d", got)
+			}
+		})
+	}
+	var count int64
+	service.DB.Model(&models.Group{}).Where("name = ?", user.Username).Count(&count)
+	if count != 0 {
+		t.Fatal("failed preflight created a primary group record")
+	}
+}
+
 func TestValidatePAMUsernameEmpty(t *testing.T) {
 	if err := validatePAMUsername(""); err == nil || !strings.Contains(err.Error(), "invalid_username_length") {
 		t.Fatalf("expected invalid_username_length, got: %v", err)
@@ -391,10 +469,14 @@ func TestValidatePAMUsernameEmpty(t *testing.T) {
 }
 
 func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
-	for _, username := range []string{"alice", "m", "mk"} {
+	for _, username := range []string{"alice", "m", "mk", "resticbackup"} {
 		t.Run(username, func(t *testing.T) {
 			service := newLocalTestService(t)
 			stubPAMIntegrations(t)
+			home, shell := "/home/"+username, "/bin/sh"
+			if username == "resticbackup" {
+				home, shell = "/var/restic", "/usr/sbin/nologin"
+			}
 
 			mutatingCommand := false
 			t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
@@ -408,7 +490,7 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 					return fmt.Sprintf("%s:*:1001:", username), nil
 				case "/usr/sbin/pw":
 					if len(args) >= 3 && args[0] == "usershow" && args[1] == "-n" {
-						return fmt.Sprintf("%s:*:1001:1001::0:0:Example User:/home/%s:/bin/sh", args[2], args[2]), nil
+						return fmt.Sprintf("%s:*:1001:1001::0:0:Example User:%s:%s", args[2], home, shell), nil
 					}
 					mutatingCommand = true
 				}
@@ -429,6 +511,7 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 				t.Fatal("import mutated the existing Unix identity or password")
 			}
 			if user.Username != username || user.UID != 1001 || user.Source != "pam" || !user.Admin ||
+				user.HomeDirectory != home || user.Shell != shell ||
 				!service.passwordHasher.Verify(sylvePassword, user.Password) {
 				t.Fatalf("unexpected imported identity: %+v", user)
 			}
@@ -475,7 +558,7 @@ func TestImportPamUserRejectsUIDAlreadyManagedBySylve(t *testing.T) {
 	}
 }
 
-func TestListImportablePamUsersIncludesShortUsernames(t *testing.T) {
+func TestListImportablePamUsersIncludesExistingHomesAndShortUsernames(t *testing.T) {
 	service := newLocalTestService(t)
 	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
 		if command == "/usr/sbin/pw" {
@@ -484,6 +567,8 @@ func TestListImportablePamUsersIncludesShortUsernames(t *testing.T) {
 				"mk:*:1001:1001::0:0:Manuel Kuklinski:/home/mk:/bin/sh",
 				"resticbackup:*:1002:1002::0:0:Restic backup user:/var/restic:/bin/sh",
 				"backup:*:1003:1003::0:0:restic backup user:/backup/restic:/usr/sbin/nologin",
+				"invalidhome:*:1004:1004::0:0:Invalid home:/var/../etc:/bin/sh",
+				"root:*:0:0::0:0:Root:/root:/bin/sh",
 			}, "\n"), nil
 		}
 		t.Fatalf("unexpected Unix command: %s %v", command, args)
@@ -494,9 +579,9 @@ func TestListImportablePamUsersIncludesShortUsernames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list importable users: %v", err)
 	}
-	wantUsernames := []string{"m", "mk", "backup"}
+	wantUsernames := []string{"m", "mk", "resticbackup", "backup"}
 	if len(users) != len(wantUsernames) {
-		t.Fatalf("expected short usernames and backup, got: %+v", users)
+		t.Fatalf("expected short usernames and existing backup homes, got: %+v", users)
 	}
 	for i, username := range wantUsernames {
 		if users[i].Username != username {
@@ -556,7 +641,7 @@ func TestDeletePamUserCleansDatabaseWhenUnixUserIsAlreadyMissing(t *testing.T) {
 		return "id: alice: no such user", errors.New("exit status 1")
 	}))
 
-	if err := service.DeleteUser(user.ID); err != nil {
+	if err := service.DeleteUser(user.ID, false); err != nil {
 		t.Fatalf("delete managed PAM user: %v", err)
 	}
 	if !doasCleaned {
@@ -571,40 +656,54 @@ func TestDeletePamUserCleansDatabaseWhenUnixUserIsAlreadyMissing(t *testing.T) {
 	}
 }
 
-func TestDeletePamUserRejectsUnsafeCurrentUnixHome(t *testing.T) {
-	service := newLocalTestService(t)
-	stubPAMIntegrations(t)
-	user := seedUser(t, service, models.User{
-		Username:      "alice",
-		Password:      "hashed",
-		UID:           1001,
-		HomeDirectory: "/home/alice",
-		Source:        "pam",
-	})
-	seedUserToken(t, service, user.ID, "unsafe-preflight-session")
-	deletedUnixUser := false
-	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
-		if command == "/usr/bin/id" {
-			return "uid=1001(alice) gid=1001(alice)", nil
-		}
-		if command == "/usr/sbin/pw" && len(args) >= 3 && args[0] == "usershow" {
-			return "alice:*:1001:1001::0:0:Alice:/etc:/bin/sh", nil
-		}
-		if command == "/usr/sbin/pw" && len(args) > 0 && args[0] == "userdel" {
-			deletedUnixUser = true
-		}
-		return "", nil
-	}))
-
-	err := service.DeleteUser(user.ID)
-	if err == nil || !strings.Contains(err.Error(), "unsafe_home_directory") {
-		t.Fatalf("expected unsafe home rejection, got: %v", err)
+func TestDeletePamUserHomeRemoval(t *testing.T) {
+	safeHome := t.TempDir()
+	link := filepath.Join(t.TempDir(), "home")
+	if err := os.Symlink(safeHome, link); err != nil {
+		t.Fatalf("create home symlink: %v", err)
 	}
-	if deletedUnixUser {
-		t.Fatal("unsafe Unix account was deleted")
-	}
-	if got := userTokenCount(t, service, user.ID); got != 1 {
-		t.Fatalf("failed preflight changed session count: %d", got)
+	for _, home := range []string{safeHome, "/var/restic", "/etc", link} {
+		for _, removeHome := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/removeHome=%t", home, removeHome), func(t *testing.T) {
+				service := newLocalTestService(t)
+				stubPAMIntegrations(t)
+				user := seedUser(t, service, models.User{
+					Username:      "alice",
+					UID:           1001,
+					HomeDirectory: "/home/alice",
+					Source:        "pam",
+				})
+				seedUserToken(t, service, user.ID, "preflight-session")
+				var deleteArgs []string
+				t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+					if command == "/usr/bin/id" {
+						return "uid=1001(alice) gid=1001(alice)", nil
+					}
+					if command == "/usr/sbin/pw" && len(args) > 0 && args[0] == "usershow" {
+						return fmt.Sprintf("alice:*:1001:1001::0:0:Alice:%s:/bin/sh", home), nil
+					}
+					deleteArgs = args
+					return "", nil
+				}))
+				err := service.DeleteUser(user.ID, removeHome)
+				if removeHome && home != safeHome {
+					if err == nil || !strings.Contains(err.Error(), "unsafe_home_directory") {
+						t.Fatalf("expected unsafe home rejection, got: %v", err)
+					}
+					if len(deleteArgs) != 0 || userTokenCount(t, service, user.ID) != 1 {
+						t.Fatal("failed preflight deleted the account or revoked its sessions")
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("delete PAM user: %v", err)
+				}
+				if len(deleteArgs) == 0 || deleteArgs[0] != "userdel" || slices.Contains(deleteArgs, "-r") != removeHome ||
+					userTokenCount(t, service, user.ID) != 0 {
+					t.Fatalf("unexpected Unix deletion arguments or retained sessions: %v", deleteArgs)
+				}
+			})
+		}
 	}
 }
 
@@ -633,7 +732,7 @@ func TestDeletePamUserKeepsRevocationAfterLaterFailure(t *testing.T) {
 	}))
 	removeDoasPermFn = func(string) error { return errors.New("doas cleanup failed") }
 
-	err := service.DeleteUser(user.ID)
+	err := service.DeleteUser(user.ID, false)
 	if err == nil || !strings.Contains(err.Error(), "doas_cleanup_failed") {
 		t.Fatalf("expected later cleanup failure, got: %v", err)
 	}

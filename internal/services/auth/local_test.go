@@ -897,7 +897,7 @@ func TestEditLocalUserRevokesOnlySecurityChanges(t *testing.T) {
 
 func TestDeleteUserNotFound(t *testing.T) {
 	svc := newLocalTestService(t)
-	err := svc.DeleteUser(999)
+	err := svc.DeleteUser(999, false)
 	if err == nil {
 		t.Fatalf("expected error for non-existent user")
 	}
@@ -911,7 +911,7 @@ func TestDeleteUserCannotDeleteAdmin(t *testing.T) {
 	u := models.User{Username: "admin", Password: "hashed"}
 	svc.DB.Create(&u)
 
-	err := svc.DeleteUser(u.ID)
+	err := svc.DeleteUser(u.ID, false)
 	if err == nil {
 		t.Fatalf("expected error when deleting admin")
 	}
@@ -925,7 +925,7 @@ func TestDeleteUserCannotDeleteRoot(t *testing.T) {
 	u := models.User{Username: "root", Password: "hashed", Admin: true}
 	svc.DB.Create(&u)
 
-	err := svc.DeleteUser(u.ID)
+	err := svc.DeleteUser(u.ID, false)
 	if err == nil {
 		t.Fatalf("expected error when deleting root")
 	}

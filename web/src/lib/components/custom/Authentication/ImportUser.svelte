@@ -8,6 +8,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { ImportableUnixUser } from '$lib/types/auth';
+	import { sleep } from '$lib/utils';
 	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
 	import { watch } from 'runed';
@@ -42,6 +43,7 @@
 		const controller = new AbortController();
 		listController = controller;
 		loadingUsers = true;
+		const minimumLoadingDelay = sleep(1000);
 		try {
 			const response = await listImportableUsers({ hostname, signal: controller.signal });
 			if (controller.signal.aborted) return;
@@ -57,7 +59,8 @@
 			toast.error('Failed to load importable users', { position: 'bottom-center' });
 			importableUsers = [];
 		} finally {
-			if (listController === controller) {
+			await minimumLoadingDelay;
+			if (componentActive && listController === controller) {
 				listController = null;
 				loadingUsers = false;
 			}
@@ -139,7 +142,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		onInteractOutside={closeDialog}
-		class="lg:max-w-lg w-[92%] gap-4 p-5"
+		class="lg:max-w-lg w-[92%]"
 		showCloseButton={true}
 		onClose={closeDialog}
 	>
@@ -225,8 +228,7 @@
 			</div>
 		{/if}
 
-		<div class="flex justify-end gap-2 pt-1">
-			<Button variant="outline" onclick={closeDialog}>Cancel</Button>
+		<div class="flex justify-end pt-1">
 			<Button
 				disabled={!selectedUsername.value ||
 					submitting ||

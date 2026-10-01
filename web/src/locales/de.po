@@ -529,7 +529,6 @@ msgstr "Knoten"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "User"
 msgstr "Benutzer"
@@ -1645,7 +1644,6 @@ msgstr "Wird verarbeitet..."
 msgid "Are you sure?"
 msgstr "Sind Sie sicher?"
 
-#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Cluster/ForceRemovePeer.svelte
 #: src/lib/components/custom/Cluster/ForceReset.svelte
@@ -5091,7 +5089,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
+msgid "Update "
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -16780,10 +16778,6 @@ msgstr ""
 msgid "View existing passkeys; registration is unavailable for this user"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-msgid "This action cannot be undone. It permanently removes the managed Unix account and its home directory, along with the Sylve user record."
-msgstr ""
-
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
 msgid "Unable to load cluster key"
 msgstr ""
@@ -18655,4 +18649,26 @@ msgstr ""
 
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 msgid "Create an API user under API & Resellers in ClouDNS."
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "Delete Home Directory"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "Home directory retained"
+msgstr ""
+
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "The home directory and its contents will remain on disk."
+msgstr ""
+
+#. 0: escapeHTML(activeUser.homeDirectory)
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid " Home directory: <b class=\"break-all\">{0}</b>"
+msgstr ""
+
+#. 0: activeUser && activeUser.homeDirectory !== '/nonexistent' ? ` Home directory\\: <b class="break-all">${escapeHTML(activeUser.homeDirectory)}</b>` \\: ''
+#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+msgid "This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.{0}"
 msgstr ""

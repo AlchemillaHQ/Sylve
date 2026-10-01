@@ -63,10 +63,11 @@ export async function createUser(
 
 export async function deleteUser(
 	id: number,
+	removeHome: boolean,
 	options: NodeAPIRequestOptions = {}
 ): Promise<UserMutationResult | APIResponse> {
 	return await authMutation(
-		`/auth/users/${encodeURIComponent(String(id))}`,
+		`/auth/users/${encodeURIComponent(String(id))}?removehome=${removeHome}`,
 		UserMutationResultSchema,
 		'DELETE',
 		undefined,

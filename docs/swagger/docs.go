@@ -1316,7 +1316,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account, home directory, and associated integrations",
+                "description": "Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account and associated integrations, but retain their home unless removal is explicitly requested",
                 "produces": [
                     "application/json"
                 ],
@@ -1331,6 +1331,13 @@ const docTemplate = `{
                         "name": "userId",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Remove the PAM user's home directory after safety checks",
+                        "name": "removehome",
+                        "in": "query"
                     }
                 ],
                 "responses": {

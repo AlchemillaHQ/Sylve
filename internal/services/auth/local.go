@@ -167,7 +167,7 @@ func (s *Service) revokeUserTokens(db *gorm.DB, userID uint) error {
 	return db.Where("user_id = ?", userID).Delete(&models.Token{}).Error
 }
 
-func (s *Service) DeleteUser(userID uint) error {
+func (s *Service) DeleteUser(userID uint, removeHome bool) error {
 	user, err := s.GetUserByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -184,7 +184,7 @@ func (s *Service) DeleteUser(userID uint) error {
 	}
 
 	if user.Source == "pam" {
-		if err := s.deletePamUser(user); err != nil {
+		if err := s.deletePamUser(user, removeHome); err != nil {
 			return err
 		}
 	} else {

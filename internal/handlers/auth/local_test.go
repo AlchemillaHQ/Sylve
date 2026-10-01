@@ -595,6 +595,40 @@ func TestDeleteUserHandlerSuccess(t *testing.T) {
 	}
 }
 
+func TestDeleteUserHandlerHomeRemovalFlag(t *testing.T) {
+	svc := newTestAuthService(t)
+	if err := svc.DB.Create(&models.User{Username: "alice", UID: 1001, Source: "pam"}).Error; err != nil {
+		t.Fatalf("seed PAM user: %v", err)
+	}
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		if command == "/usr/bin/id" {
+			return "uid=1001(alice) gid=1001(alice)", nil
+		}
+		if command == "/usr/sbin/pw" && len(args) > 0 && args[0] == "usershow" {
+			return "alice:*:1001:1001::0:0:Alice:/var/restic:/bin/sh", nil
+		}
+		return "", errors.New("unexpected Unix command")
+	}))
+	router := setupRouter(svc)
+	for _, test := range []struct {
+		query  string
+		status int
+		code   string
+	}{
+		{"true", http.StatusConflict, "unsafe_home_directory"},
+		{"invalid", http.StatusBadRequest, "invalid_removehome_param"},
+		{"", http.StatusBadRequest, "invalid_removehome_param"},
+		{"false&removehome=true", http.StatusBadRequest, "invalid_removehome_param"},
+	} {
+		t.Run(test.query, func(t *testing.T) {
+			w := performJSON(t, router, http.MethodDelete, "/auth/users/1?removehome="+test.query, nil)
+			if w.Code != test.status || decodeResponse(t, w).Error != test.code {
+				t.Fatalf("status=%d want=%d: %s", w.Code, test.status, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreatePamUserHandlerRequiresPassword(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)

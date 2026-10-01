@@ -9,6 +9,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Group, User } from '$lib/types/auth';
 	import type { Column, Row } from '$lib/types/components/tree-table';
@@ -18,6 +19,7 @@
 		isRequestCancellation,
 		updateCache
 	} from '$lib/utils/http';
+	import { escapeHTML } from '$lib/utils/string';
 	import { convertDbTime, getLastUsage } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -164,7 +166,7 @@
 
 	let modals = $state({
 		create: { open: false },
-		delete: { open: false },
+		delete: { open: false, removeHome: false },
 		edit: { open: false },
 		passkeys: { open: false },
 		import: { open: false }
@@ -188,7 +190,8 @@
 		{#if type === 'delete'}
 			<Button
 				onclick={() => {
-					modals.delete.open = !modals.delete.open;
+					modals.delete.removeHome = false;
+					modals.delete.open = true;
 				}}
 				size="sm"
 				variant="outline"
@@ -303,11 +306,11 @@
 	loading={deleting}
 	loadingLabel="Deleting..."
 	keepOpenOnConfirm={true}
-	customTitle="This action cannot be undone. It permanently removes the managed Unix account and its home directory, along with the Sylve user record."
-	names={{
-		parent: 'User',
-		element: activeRow ? (activeRow.name as string) : ''
-	}}
+	customTitle={`This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.${
+		activeUser && activeUser.homeDirectory !== '/nonexistent'
+			? ` Home directory: <b class="break-all">${escapeHTML(activeUser.homeDirectory)}</b>`
+			: ''
+	}`}
 	actions={{
 		onConfirm: async () => {
 			if (deleting || !activeRow) return;
@@ -315,7 +318,7 @@
 			const userID = Number(activeRow.id);
 			deleting = true;
 			try {
-				const response = await deleteUser(userID, { hostname });
+				const response = await deleteUser(userID, modals.delete.removeHome, { hostname });
 				if (!pageActive || data.node !== hostname || Number(activeRow?.id) !== userID) return;
 				if (isAPIResponse(response)) {
 					handleAPIError(response);
@@ -335,4 +338,30 @@
 			modals.delete.open = false;
 		}
 	}}
-/>
+>
+	{#if activeUser && activeUser.homeDirectory !== '/nonexistent'}
+		<div class="text-sm">
+			<CustomCheckbox
+				label="Delete Home Directory"
+				bind:checked={modals.delete.removeHome}
+				disabled={deleting}
+			/>
+			{#if !modals.delete.removeHome}
+				<div
+					class="mt-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+				>
+					<span
+						class="icon-[mdi--alert-circle-outline] mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400"
+						aria-hidden="true"
+					></span>
+					<div>
+						<p class="font-medium text-amber-600 dark:text-amber-400">Home directory retained</p>
+						<p class="mt-0.5 text-muted-foreground">
+							The home directory and its contents will remain on disk.
+						</p>
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+</AlertDialog>

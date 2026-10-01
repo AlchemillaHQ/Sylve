@@ -367,6 +367,7 @@
 			properties.homeDirectory !== '/nonexistent' &&
 			edit &&
 			user &&
+			properties.homeDirectory !== user.homeDirectory &&
 			users.some((u) => u.id !== user.id && u.homeDirectory === properties.homeDirectory)
 		)
 			return 'Home directory is already in use by another user';

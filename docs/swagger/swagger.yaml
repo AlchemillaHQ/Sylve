@@ -10727,13 +10727,19 @@ paths:
   /auth/users/{userId}:
     delete:
       description: Delete a user by its positive database ID; PAM-backed users also
-        lose their managed Unix account, home directory, and associated integrations
+        lose their managed Unix account and associated integrations, but retain their
+        home unless removal is explicitly requested
       parameters:
       - description: User ID
         in: path
         name: userId
         required: true
         type: integer
+      - default: false
+        description: Remove the PAM user's home directory after safety checks
+        in: query
+        name: removehome
+        type: boolean
       produces:
       - application/json
       responses:
