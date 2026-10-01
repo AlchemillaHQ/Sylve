@@ -43,13 +43,14 @@ type HostInterfaceL3 struct {
 func (HostInterfaceL3) TableName() string { return "host_interface_l3" }
 
 type HostInterfaceL3Baseline struct {
-	Addresses  []HostInterfaceL3AppliedAddress `json:"addresses,omitempty"`
-	MTU        *uint                           `json:"mtu,omitempty"`
-	Metric     *uint                           `json:"metric,omitempty"`
-	ND6Flags   *uint32                         `json:"nd6Flags,omitempty"`
-	Up         *bool                           `json:"up,omitempty"`
-	VLANParent string                          `json:"vlanParent,omitempty"`
-	VLANTag    uint16                          `json:"vlanTag,omitempty"`
+	Addresses          []HostInterfaceL3AppliedAddress `json:"addresses,omitempty"`
+	LinkLocalAddresses []string                        `json:"linkLocalAddresses"`
+	MTU                *uint                           `json:"mtu,omitempty"`
+	Metric             *uint                           `json:"metric,omitempty"`
+	ND6Flags           *uint32                         `json:"nd6Flags,omitempty"`
+	Up                 *bool                           `json:"up,omitempty"`
+	VLANParent         string                          `json:"vlanParent,omitempty"`
+	VLANTag            uint16                          `json:"vlanTag,omitempty"`
 }
 
 type HostInterfaceL3AppliedState struct {

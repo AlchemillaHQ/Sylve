@@ -245,6 +245,69 @@ func TestIntegrationHostInterfaceL3TimeoutRevert(t *testing.T) {
 	}
 }
 
+func TestIntegrationHostInterfaceL3RestoresGeneratedLinkLocal(t *testing.T) {
+	name := requireHostInterfaceL3NativeFixture(t)
+	eligibility := useHostInterfaceL3NativeSeams(t)
+	baseline := hostInterfaceL3LiveInterface(t, name)
+	auto := hostInterfaceL3AutoLinkLocal(baseline.Ether)
+	if auto == "" || containsString(hostInterfaceL3LinkLocalAddresses(baseline), auto) {
+		t.Fatalf("expected an addressless IPv6 baseline, got %+v", baseline.IPv6)
+	}
+
+	svc, _ := hostInterfaceL3TestDB(t)
+	svc.hostInterfaceL3Eligibility = eligibility
+	request := networkServiceInterfaces.HostInterfaceL3UpdateRequest{
+		Addresses: []networkServiceInterfaces.HostInterfaceL3AddressInput{{Address: "2001:db8:7::17/64"}},
+	}
+	checkRestored := func() {
+		t.Helper()
+		live := hostInterfaceL3LiveInterface(t, name)
+		if containsString(hostInterfaceL3LinkLocalAddresses(live), auto) ||
+			interfaceHasIPv6Prefix(live, "2001:db8:7::17/64") ||
+			live.ND6.Raw != baseline.ND6.Raw || interfaceIsUp(live) != interfaceIsUp(baseline) {
+			t.Fatalf("expected IPv6 baseline after rollback, got %+v", live)
+		}
+	}
+
+	entry, err := svc.SaveHostInterfaceL3(name, request)
+	if err != nil {
+		t.Fatalf("SaveHostInterfaceL3: %v", err)
+	}
+	if !containsString(hostInterfaceL3LinkLocalAddresses(hostInterfaceL3LiveInterface(t, name)), auto) {
+		t.Fatal("expected auto link-local to appear while the change is pending")
+	}
+	if err := svc.ExpireHostInterfaceL3Pending(hostInterfaceL3Now().Add(HostInterfaceL3ConfirmationWindow + 1)); err != nil {
+		t.Fatalf("ExpireHostInterfaceL3Pending: %v", err)
+	}
+	checkRestored()
+
+	entry, err = svc.SaveHostInterfaceL3(name, request)
+	if err != nil {
+		t.Fatalf("SaveHostInterfaceL3 before recovery: %v", err)
+	}
+	restarted := &Service{DB: svc.DB, hostInterfaceL3Eligibility: eligibility}
+	if err := restarted.RecoverHostInterfaceL3(); err != nil {
+		t.Fatalf("RecoverHostInterfaceL3: %v", err)
+	}
+	checkRestored()
+
+	entry, err = svc.SaveHostInterfaceL3(name, request)
+	if err != nil {
+		t.Fatalf("SaveHostInterfaceL3 after timeout: %v", err)
+	}
+	if err := svc.ConfirmHostInterfaceL3(entry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3: %v", err)
+	}
+	deleteEntry, err := svc.DeleteHostInterfaceL3(name, 1)
+	if err != nil {
+		t.Fatalf("DeleteHostInterfaceL3: %v", err)
+	}
+	checkRestored()
+	if err := svc.ConfirmHostInterfaceL3(deleteEntry.ID); err != nil {
+		t.Fatalf("ConfirmHostInterfaceL3(delete): %v", err)
+	}
+}
+
 func TestIntegrationHostInterfaceL3PreservesForeignPrefixOwner(t *testing.T) {
 	name := requireHostInterfaceL3NativeFixture(t)
 	eligibility := useHostInterfaceL3NativeSeams(t)

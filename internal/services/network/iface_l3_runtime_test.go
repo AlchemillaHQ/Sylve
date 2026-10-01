@@ -9,6 +9,7 @@
 package network
 
 import (
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -418,6 +419,51 @@ func TestRevertHostInterfaceL3PlanRestoresPrerequisitesBeforeIPv6Address(t *test
 		if got := commandLine((*recorded)[index]); got != want {
 			t.Fatalf("command %d: expected %q, got %q", index, want, got)
 		}
+	}
+}
+
+func TestRevertHostInterfaceL3RemovesOnlyGeneratedLinkLocal(t *testing.T) {
+	for _, preexisting := range []bool{false, true} {
+		name := "new link-local"
+		if preexisting {
+			name = "preexisting link-local"
+		}
+		t.Run(name, func(t *testing.T) {
+			state := newFakeHostInterface(t, "em0", "8c:84:74:0d:e9:07", 1500)
+			state.object.Flags.Desc = nil
+			state.object.ND6.Raw = hostInterfaceL3ND6IfDisabled | hostInterfaceL3ND6AutoLinkLocal | 0x01
+			auto := hostInterfaceL3AutoLinkLocal(state.object.Ether)
+			if auto != "fe80::8e84:74ff:fe0d:e907" {
+				t.Fatalf("unexpected generated link-local %q", auto)
+			}
+			if preexisting {
+				state.object.IPv6 = append(state.object.IPv6, iface.IPv6{IP: net.ParseIP(auto), PrefixLength: 64})
+			}
+			snapshot := captureHostInterfaceL3Baseline(state.object)
+			if snapshot.LinkLocalAddresses == nil {
+				t.Fatal("expected a known link-local baseline")
+			}
+			if !preexisting {
+				state.object.IPv6 = append(state.object.IPv6, iface.IPv6{IP: net.ParseIP(auto), PrefixLength: 64})
+			}
+			state.object.IPv6 = append(state.object.IPv6, iface.IPv6{IP: net.ParseIP("fe80::123"), PrefixLength: 64})
+			state.object.Flags.Desc = []string{"UP"}
+			state.object.ND6.Raw = hostInterfaceL3ND6AutoLinkLocal | 0x01
+
+			disabled := false
+			up := true
+			candidate := networkModels.HostInterfaceL3AppliedState{IPv6Disabled: &disabled, Up: &up}
+			if err := revertHostInterfaceL3Runtime("em0", state.object.Ether, snapshot, networkModels.HostInterfaceL3AppliedState{}, candidate); err != nil {
+				t.Fatalf("revertHostInterfaceL3Runtime: %v", err)
+			}
+			if got := hostInterfaceL3LinkLocalAddresses(state.object); !containsString(got, "fe80::123") ||
+				containsString(got, auto) != preexisting {
+				t.Fatalf("unexpected link-local addresses after rollback: %+v", got)
+			}
+			if state.object.ND6.Raw != *snapshot.ND6Flags || interfaceIsUp(state.object) {
+				t.Fatalf("expected ND6 and link state restored, got %+v", state.object)
+			}
+		})
 	}
 }
 

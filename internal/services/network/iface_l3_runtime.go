@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"strconv"
 	"strings"
@@ -114,6 +115,7 @@ func captureHostInterfaceL3Baseline(interfaceObj *iface.Interface) networkModels
 	}
 
 	baseline.Addresses = hostInterfaceL3LiveAddresses(interfaceObj)
+	baseline.LinkLocalAddresses = hostInterfaceL3LinkLocalAddresses(interfaceObj)
 	mtu := uint(interfaceObj.MTU)
 	metric := uint(interfaceObj.Metric)
 	nd6Flags := interfaceObj.ND6.Raw
@@ -555,6 +557,11 @@ func revertHostInterfaceL3Runtime(
 			revertErrors = append(revertErrors, fmt.Errorf("restore link state on %s: %w", name, err))
 		}
 	}
+	if (restoreIPv6 || restoreUp) && snapshot.LinkLocalAddresses != nil {
+		if err := removeHostInterfaceL3AutoLinkLocal(name, interfaceObj.Ether, snapshot.LinkLocalAddresses); err != nil {
+			revertErrors = append(revertErrors, err)
+		}
+	}
 
 	if err := errors.Join(revertErrors...); err != nil {
 		return err
@@ -644,7 +651,83 @@ func verifyHostInterfaceL3Restore(
 			return fmt.Errorf("verify restore on %s: link state is incorrect", name)
 		}
 	}
+	if (target.IPv6Disabled != nil || candidate.IPv6Disabled != nil || target.Up != nil || candidate.Up != nil) &&
+		snapshot.LinkLocalAddresses != nil {
+		if err := verifyHostInterfaceL3AutoLinkLocal(name, interfaceObj, snapshot.LinkLocalAddresses); err != nil {
+			return err
+		}
+	}
 
+	return nil
+}
+
+func hostInterfaceL3LinkLocalAddresses(interfaceObj *iface.Interface) []string {
+	addresses := make([]string, 0)
+	if interfaceObj == nil {
+		return addresses
+	}
+	for _, address := range interfaceObj.IPv6 {
+		ip, ok := netip.AddrFromSlice(address.IP)
+		if ok && ip.IsLinkLocalUnicast() {
+			addresses = append(addresses, ip.String())
+		}
+	}
+	return addresses
+}
+
+func hostInterfaceL3AutoLinkLocal(ether string) string {
+	mac, err := net.ParseMAC(ether)
+	if err != nil || len(mac) != 6 {
+		return ""
+	}
+	bytes := [16]byte{0xfe, 0x80}
+	copy(bytes[8:11], mac[:3])
+	bytes[8] ^= 0x02
+	bytes[11], bytes[12] = 0xff, 0xfe
+	copy(bytes[13:16], mac[3:])
+	return netip.AddrFrom16(bytes).String()
+}
+
+func hostInterfaceL3NewAutoLinkLocal(interfaceObj *iface.Interface, baseline []string) string {
+	auto := hostInterfaceL3AutoLinkLocal(interfaceObj.Ether)
+	if auto == "" {
+		return ""
+	}
+	for _, address := range baseline {
+		if address == auto {
+			return ""
+		}
+	}
+	for _, address := range hostInterfaceL3LinkLocalAddresses(interfaceObj) {
+		if address == auto {
+			return auto
+		}
+	}
+	return ""
+}
+
+func removeHostInterfaceL3AutoLinkLocal(name string, ether string, baseline []string) error {
+	interfaceObj, err := syncIfaceGet(name)
+	if err != nil {
+		return fmt.Errorf("inspect link-local on %s for restore: %w", name, err)
+	}
+	if err := ensureHostInterfaceL3Identity(interfaceObj, ether); err != nil {
+		return err
+	}
+	address := hostInterfaceL3NewAutoLinkLocal(interfaceObj, baseline)
+	if address == "" {
+		return nil
+	}
+	if _, err := syncRunCommand("/sbin/ifconfig", name, "inet6", address+"%"+name, "delete"); err != nil {
+		return fmt.Errorf("remove generated link-local %s on %s: %w", address, name, err)
+	}
+	return nil
+}
+
+func verifyHostInterfaceL3AutoLinkLocal(name string, interfaceObj *iface.Interface, baseline []string) error {
+	if address := hostInterfaceL3NewAutoLinkLocal(interfaceObj, baseline); address != "" {
+		return fmt.Errorf("verify restore on %s: generated link-local %s is still present", name, address)
+	}
 	return nil
 }
 
