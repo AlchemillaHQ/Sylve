@@ -18688,7 +18688,7 @@ msgstr ""
 msgid "This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.{0}"
 msgstr ""
 
-#. 0: localNode
+#. 0: selectedNode
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Host IP changes must be made on {0}."
 msgstr ""

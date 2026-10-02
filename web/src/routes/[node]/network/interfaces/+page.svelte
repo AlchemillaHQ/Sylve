@@ -129,7 +129,7 @@
 			.trim()
 			.toLowerCase();
 		if (selectedNode !== '' && localNode !== '' && selectedNode !== localNode) {
-			return `Host IP changes must be made on ${localNode}.`;
+			return `Host IP changes must be made on ${selectedNode}.`;
 		}
 		return '';
 	});
