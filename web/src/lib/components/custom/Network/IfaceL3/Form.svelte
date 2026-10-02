@@ -423,6 +423,7 @@
 
 			const response = await deleteHostInterfaceL3(interfaceName, entry.revision);
 			if (isAPIResponse(response)) {
+				removeDialogOpen = false;
 				notifyRequestError(response);
 				await onDone(isRevisionMismatch(response));
 				return;

@@ -12,6 +12,8 @@ package iface
 
 import (
 	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -160,5 +162,60 @@ func TestGetReturnsErrorForMissingInterfaceOnFreeBSD(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), name) {
 		t.Fatalf("expected error to include interface name %q, got %q", name, err.Error())
+	}
+}
+
+func TestIntegrationGetVLANPreservesEther(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping native VLAN test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("native VLAN test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+
+	parentOutput, err := exec.Command("/sbin/ifconfig", "epair", "create").Output()
+	if err != nil {
+		t.Skipf("epair fixtures are unavailable: %v", err)
+	}
+	parent := strings.TrimSpace(string(parentOutput))
+	t.Cleanup(func() {
+		if output, err := exec.Command("/sbin/ifconfig", parent, "destroy").CombinedOutput(); err != nil {
+			t.Errorf("destroy parent fixture %s: %v: %s", parent, err, output)
+		}
+	})
+
+	output, err := exec.Command("/sbin/ifconfig", "vlan", "create").Output()
+	if err != nil {
+		t.Skipf("VLAN fixtures are unavailable: %v", err)
+	}
+	name := strings.TrimSpace(string(output))
+	t.Cleanup(func() {
+		if output, err := exec.Command("/sbin/ifconfig", name, "destroy").CombinedOutput(); err != nil {
+			t.Errorf("destroy VLAN fixture %s: %v: %s", name, err, output)
+		}
+	})
+	if output, err := exec.Command("/sbin/ifconfig", name, "vlan", "4088", "vlandev", parent).CombinedOutput(); err != nil {
+		t.Fatalf("configure VLAN fixture %s: %v: %s", name, err, output)
+	}
+
+	parentInterface, err := Get(parent)
+	if err != nil {
+		t.Fatalf("inspect parent fixture %s: %v", parent, err)
+	}
+	if parentInterface.Ether == "" {
+		t.Fatal("parent fixture has no Ethernet address")
+	}
+	child, err := Get(name)
+	if err != nil {
+		t.Fatalf("inspect VLAN fixture %s: %v", name, err)
+	}
+	if child.Ether != parentInterface.Ether {
+		t.Fatalf("VLAN Ether = %q, want parent Ether %q", child.Ether, parentInterface.Ether)
+	}
+	if child.VLANParent != parent || child.VLANTag != 4088 {
+		t.Fatalf("VLAN identity = %s/%d, want %s/4088", child.VLANParent, child.VLANTag, parent)
 	}
 }

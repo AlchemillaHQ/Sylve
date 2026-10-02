@@ -822,7 +822,7 @@ func Get(name string) (*Interface, error) {
 
 		case C.AF_LINK:
 			sdl := (*C.struct_sockaddr_dl)(unsafe.Pointer(a.ifa_addr))
-			if sdl.sdl_type == C.IFT_ETHER && sdl.sdl_alen == 6 {
+			if (sdl.sdl_type == C.IFT_ETHER || sdl.sdl_type == C.IFT_L2VLAN) && sdl.sdl_alen == 6 {
 				mac := C.GoBytes(unsafe.Pointer(&sdl.sdl_data[sdl.sdl_nlen]), 6)
 				iface.Ether = net.HardwareAddr(mac).String()
 			}
