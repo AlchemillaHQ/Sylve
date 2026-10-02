@@ -187,6 +187,8 @@
 		'/api/network/dhcp/config': 'DHCP Config',
 		'/api/network/dhcp/range': 'DHCP Range',
 		'/api/network/dhcp/lease': 'DHCP Lease',
+		'/api/network/interface/l3': 'Host IP',
+		'/api/network/interface/l3/pending': 'Host IP - Pending',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',
 		'/api/system/file-explorer/copy-or-move-batch': 'File Explorer - Batch Copy/Move',
 		'/api/system/file-explorer/rename': 'File Explorer - Rename',
@@ -327,6 +329,7 @@
 			'/api/network/route/:id': 'Static Route - Delete',
 			'/api/network/switch/manual/:id': 'Manual Switch - Delete',
 			'/api/network/switch/standard/:id': 'Standard Switch - Delete',
+			'/api/network/interface/:interface/l3': 'Host IP - Remove',
 			'/api/network/dhcp/range/:id': 'DHCP Range - Delete',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Delete',
 			'/api/certificates/:id': 'TLS Certificate - Delete',
@@ -377,6 +380,9 @@
 			'/api/network/route': 'Static Route - Create',
 			'/api/network/switch/manual': 'Manual Switch - Create',
 			'/api/network/switch/standard': 'Standard Switch - Create',
+			'/api/network/interface/:interface/l3/reapply': 'Host IP - Reapply',
+			'/api/network/host-ip/pending/:id/confirm': 'Host IP - Confirm',
+			'/api/network/host-ip/pending/:id/revert': 'Host IP - Revert',
 			'/api/network/dhcp/range': 'DHCP Range - Create',
 			'/api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
 			'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
@@ -414,6 +420,7 @@
 			'/api/network/object/:id': 'Network Object - Update',
 			'/api/network/route/:id': 'Static Route - Update',
 			'/api/network/switch/standard/:id': 'Standard Switch - Update',
+			'/api/network/interface/:interface/l3': 'Host IP - Save',
 			'/api/network/dhcp/config': 'DHCP Config - Update',
 			'/api/network/dhcp/range/:id': 'DHCP Range - Update',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
@@ -1317,6 +1324,28 @@
 		return label;
 	}
 
+	function hostInterfaceL3AuditTarget(
+		path: string
+	): { normalizedPath: string; identity: string } | null {
+		const iface = path.match(/^\/api\/network\/interface\/([^/]+)\/l3(\/reapply)?$/);
+		const pending = path.match(/^\/api\/network\/host-ip\/pending\/([^/]+)\/(confirm|revert)$/);
+		const match = iface ?? pending;
+		if (!match) return null;
+
+		let identity = match[1];
+		try {
+			identity = decodeURIComponent(identity);
+		} catch {
+			// Keep malformed historical paths readable instead of breaking the audit panel.
+		}
+		return {
+			normalizedPath: iface
+				? `/api/network/interface/:interface/l3${match[2] ?? ''}`
+				: `/api/network/host-ip/pending/:id/${match[2]}`,
+			identity: iface ? identity : `Operation ID ${identity}`
+		};
+	}
+
 	function backupActionIdentity(path: string): string | null {
 		const match = path.match(
 			/^\/api\/cluster\/backups\/(targets|jobs)\/(\d+)(?:\/(?:validate|run|restore))?$/
@@ -1363,7 +1392,8 @@
 
 			let resolvedAction = method;
 
-			const normalizedPath = normalizeActionPath(path);
+			const hostInterfaceL3Target = hostInterfaceL3AuditTarget(path);
+			const normalizedPath = hostInterfaceL3Target?.normalizedPath ?? normalizeActionPath(path);
 
 			const methodPathAction = methodPathToActionMap[method.toUpperCase()]?.[normalizedPath];
 			const matchedEntry = methodPathAction
@@ -1402,6 +1432,10 @@
 				} else {
 					resolvedAction = label;
 				}
+			}
+
+			if (hostInterfaceL3Target && methodPathAction) {
+				resolvedAction += ` - ${hostInterfaceL3Target.identity}`;
 			}
 
 			const backupIdentity = backupActionIdentity(path);

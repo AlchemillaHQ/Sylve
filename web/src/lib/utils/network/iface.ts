@@ -1,54 +1,44 @@
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { Iface } from '$lib/types/network/iface';
+import type { HostInterfaceL3Entry } from '$lib/types/network/ifaceL3';
+import { ipv4NetmaskToPrefix } from '$lib/utils/inet';
 import { generateNumberFromString } from '../numbers';
 
-function ipv4NetmaskToPrefix(netmask?: string | null): number | null {
-	if (!netmask) {
-		return null;
-	}
-
-	const parts = netmask.split('.').map((p) => Number.parseInt(p, 10));
-	if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) {
-		return null;
-	}
-
-	let prefix = 0;
-	for (const part of parts) {
-		let n = part;
-		for (let i = 0; i < 8; i++) {
-			if ((n & 0x80) === 0x80) {
-				prefix++;
-			}
-			n <<= 1;
-		}
-	}
-
-	return prefix;
+function managedHostSet(entry: HostInterfaceL3Entry | undefined, family: string): Set<string> {
+	return new Set(
+		(entry?.managedAddresses ?? [])
+			.filter((address) => address.family === family)
+			.map((address) => address.address.split('/')[0])
+	);
 }
 
-function formatIPv4(iface: Iface): string {
+function formatIPv4(iface: Iface, entry?: HostInterfaceL3Entry): string {
 	if (!iface.ipv4 || iface.ipv4.length === 0) {
 		return '-';
 	}
+	const managed = managedHostSet(entry, 'inet');
 
 	return iface.ipv4
 		.map((addr) => {
 			const prefix = ipv4NetmaskToPrefix(addr.netmask);
 			const suffix = prefix !== null ? `/${prefix}` : '';
-			return `${addr.ip}${suffix}`;
+			const ownership = entry ? ` · ${managed.has(addr.ip) ? 'Managed' : 'Foreign'}` : '';
+			return `${addr.ip}${suffix}${ownership}`;
 		})
 		.join('\n');
 }
 
-function formatIPv6(iface: Iface): string {
+function formatIPv6(iface: Iface, entry?: HostInterfaceL3Entry): string {
 	if (!iface.ipv6 || iface.ipv6.length === 0) {
 		return '-';
 	}
+	const managed = managedHostSet(entry, 'inet6');
 
 	return iface.ipv6
 		.map((addr) => {
 			const suffix = addr.prefixLength !== undefined ? `/${addr.prefixLength}` : '';
-			return `${addr.ip}${suffix}`;
+			const ownership = entry ? ` · ${managed.has(addr.ip) ? 'Managed' : 'Foreign'}` : '';
+			return `${addr.ip}${suffix}${ownership}`;
 		})
 		.join('\n');
 }
@@ -91,13 +81,20 @@ function getIPv6Details(iface: Iface): Record<string, string> | null {
 
 export function generateTableData(
 	columns: Column[],
-	interfaces: Iface[]
+	interfaces: Iface[],
+	l3Entries?: HostInterfaceL3Entry[]
 ): {
 	rows: Row[];
 	columns: Column[];
 } {
+	const l3ByInterface = new Map<string, HostInterfaceL3Entry>();
+	for (const entry of l3Entries ?? []) {
+		l3ByInterface.set(entry.interface, entry);
+	}
+
 	const rows: Row[] = [];
 	for (const iface of interfaces) {
+		const l3Entry = l3ByInterface.get(iface.name);
 		let isBridge = false;
 		let isEpair = false;
 		let isTap = false;
@@ -139,17 +136,54 @@ export function generateTableData(
 			name: iface.name,
 			model: model,
 			description: iface.description,
-			ipv4: formatIPv4(iface),
-			ipv6: formatIPv6(iface),
+			ipv4: formatIPv4(iface, l3Entry),
+			ipv6: formatIPv6(iface, l3Entry),
 			metric: iface.metric,
 			mtu: iface.mtu,
 			media: iface.media,
 			isBridge: isBridge,
 			isEpair: isEpair,
-			isTap: isTap
+			isTap: isTap,
+			l3Managed: l3Entry !== undefined,
+			l3Conflicts: l3Entry?.conflicts ?? []
 		};
 
 		rows.push(row);
+	}
+
+	const liveNames = new Set(rows.map((row) => String(row.name)));
+	for (const entry of l3Entries ?? []) {
+		if (liveNames.has(entry.interface)) {
+			continue;
+		}
+		const ipv4 = entry.addresses
+			.filter((address) => address.family === 'inet')
+			.map((address) => `${address.address}/${address.prefixLength}`)
+			.join('\n');
+		const ipv6 = entry.addresses
+			.filter((address) => address.family === 'inet6')
+			.map((address) => `${address.address}/${address.prefixLength}`)
+			.join('\n');
+
+		rows.push({
+			id: generateNumberFromString(`orphan-${entry.interface}`),
+			ether: '-',
+			hwaddr: '-',
+			name: entry.interface,
+			model: 'Missing',
+			description: '',
+			ipv4: ipv4 || '-',
+			ipv6: ipv6 || '-',
+			metric: entry.metric ?? '-',
+			mtu: entry.mtu ?? '-',
+			media: null,
+			isBridge: false,
+			isEpair: false,
+			isTap: false,
+			l3Managed: true,
+			l3Conflicts: entry.conflicts,
+			l3Orphan: true
+		});
 	}
 
 	return {

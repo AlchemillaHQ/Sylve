@@ -17,6 +17,7 @@ import type {
 	RenderedConfig
 } from '$lib/types/network/firewall';
 import type { Iface } from '$lib/types/network/iface';
+import type { HostInterfaceL3Entry, HostInterfaceL3PendingEntry } from '$lib/types/network/ifaceL3';
 import type { MdnsRecordWithManaged, MdnsSettings } from '$lib/types/network/mdns';
 import type { NetworkObject } from '$lib/types/network/object';
 import type { StaticRoute } from '$lib/types/network/route';
@@ -65,6 +66,12 @@ type DemoNetworkState = {
 	mdnsSettings: MdnsSettings;
 	mdnsRecords: MdnsRecordWithManaged[];
 	dynamicDNSEntries: DynamicDNSEntry[];
+	hostInterfaceL3: HostInterfaceL3Entry[];
+	hostInterfaceL3Pending: HostInterfaceL3PendingEntry[];
+	hostInterfaceL3PendingChanges: Record<
+		string,
+		{ before: HostInterfaceL3Entry | null; after: HostInterfaceL3Entry | null }
+	>;
 };
 
 type DemoStandardSwitchMACSource =
@@ -1216,7 +1223,10 @@ function createState(hostname: string): DemoNetworkState {
 				createdAt,
 				updatedAt
 			}
-		]
+		],
+		hostInterfaceL3: [],
+		hostInterfaceL3Pending: [],
+		hostInterfaceL3PendingChanges: {}
 	};
 }
 
@@ -1676,6 +1686,31 @@ function deleteByID<T extends { id: number }>(items: T[], id: number): boolean {
 	return true;
 }
 
+function cloneHostInterfaceL3Entry(
+	entry: HostInterfaceL3Entry | null
+): HostInterfaceL3Entry | null {
+	if (!entry) return null;
+	return {
+		...entry,
+		addresses: entry.addresses.map((address) => ({ ...address })),
+		managedAddresses: entry.managedAddresses.map((address) => ({ ...address }))
+	};
+}
+
+function expireDemoHostInterfaceL3Pending(state: DemoNetworkState): void {
+	const now = Date.now();
+	const active: HostInterfaceL3PendingEntry[] = [];
+	for (const pending of state.hostInterfaceL3Pending) {
+		const deadline = Date.parse(pending.deadline);
+		if (!Number.isNaN(deadline) && deadline <= now) {
+			delete state.hostInterfaceL3PendingChanges[pending.id];
+			continue;
+		}
+		active.push(pending);
+	}
+	state.hostInterfaceL3Pending = active;
+}
+
 export function handleDemoNetworkRequest<T = unknown>(
 	config: DemoNetworkRequestConfig,
 	parsed: URL,
@@ -1688,6 +1723,114 @@ export function handleDemoNetworkRequest<T = unknown>(
 
 	if (path === '/network/interface' && method === 'GET') {
 		return success(state.interfaces) as DemoNetworkResponse<T>;
+	}
+
+	if (path === '/network/interface/l3' && method === 'GET') {
+		const ineligibleGroups = ['bridge', 'epair', 'tap', 'wg', 'lo', 'lagg', 'tun'];
+		const pending = new Set(state.hostInterfaceL3Pending.map((row) => row.interface));
+		const targets = state.interfaces.map((iface) => {
+			const groups = Array.isArray(iface.groups) ? iface.groups : [];
+			const blocked = groups.some((group) => ineligibleGroups.includes(String(group)));
+			const pendingChange = pending.has(iface.name);
+			return {
+				interface: iface.name,
+				eligible: !blocked && !pendingChange,
+				reason: pendingChange
+					? 'host_interface_l3_pending_conflict'
+					: blocked
+						? `host_interface_l3_ineligible_${groups[0]}`
+						: ''
+			};
+		});
+		return success({ rows: state.hostInterfaceL3, targets }) as DemoNetworkResponse<T>;
+	}
+
+	if (path === '/network/interface/l3/pending' && method === 'GET') {
+		expireDemoHostInterfaceL3Pending(state);
+		return success(state.hostInterfaceL3Pending) as DemoNetworkResponse<T>;
+	}
+
+	let l3Match = path.match(/^\/network\/interface\/([^/]+)\/l3$/);
+	if (l3Match && (method === 'PUT' || method === 'DELETE')) {
+		const interfaceName = decodeURIComponent(l3Match[1]);
+		const pending: HostInterfaceL3PendingEntry = {
+			id: `demo-pending-${l3Match[1]}-${Date.now()}`,
+			interface: interfaceName,
+			kind: method === 'DELETE' ? 'delete' : 'interface',
+			phase: 'applied',
+			deadline: new Date(Date.now() + 60_000).toISOString()
+		};
+		state.hostInterfaceL3Pending = [...state.hostInterfaceL3Pending, pending];
+		const existing = state.hostInterfaceL3.find((row) => row.interface === interfaceName) ?? null;
+		let candidate: HostInterfaceL3Entry | null = null;
+
+		if (method === 'PUT') {
+			const addresses = Array.isArray(body.addresses) ? (body.addresses as unknown[]) : [];
+			const parsedAddresses = addresses
+				.map((entry) => {
+					const raw = String((entry as { address?: unknown })?.address ?? '').trim();
+					const [address, prefix] = raw.split('/');
+					if (!address) return null;
+					return {
+						family: address.includes(':') ? 'inet6' : 'inet',
+						address,
+						prefixLength: Number.parseInt(prefix ?? (address.includes(':') ? '64' : '32'), 10)
+					};
+				})
+				.filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+			candidate = {
+				interface: interfaceName,
+				vlanParent: existing?.vlanParent ?? '',
+				vlanTag: existing?.vlanTag ?? 0,
+				ipv6Mode: typeof body.ipv6Mode === 'string' ? body.ipv6Mode : 'inherit',
+				mtu: typeof body.mtu === 'number' ? body.mtu : null,
+				mtuBaseline: existing?.mtuBaseline ?? 1500,
+				metric: typeof body.metric === 'number' ? body.metric : null,
+				metricBaseline: existing?.metricBaseline ?? 0,
+				identityMac: existing?.identityMac ?? '',
+				revision: (existing?.revision ?? 0) + 1,
+				addresses: parsedAddresses,
+				managedAddresses: parsedAddresses.map((address) => ({
+					family: address.family,
+					address: `${address.address}/${address.prefixLength}`
+				})),
+				present: true,
+				liveMac: existing?.liveMac ?? '',
+				conflicts: []
+			};
+		}
+		state.hostInterfaceL3PendingChanges[pending.id] = {
+			before: cloneHostInterfaceL3Entry(existing),
+			after: cloneHostInterfaceL3Entry(candidate)
+		};
+
+		return success(pending) as DemoNetworkResponse<T>;
+	}
+
+	l3Match = path.match(/^\/network\/interface\/([^/]+)\/l3\/reapply$/);
+	if (l3Match && method === 'POST') {
+		return success({}) as DemoNetworkResponse<T>;
+	}
+
+	l3Match = path.match(/^\/network\/host-ip\/pending\/([^/]+)\/(confirm|revert)$/);
+	if (l3Match && method === 'POST') {
+		const pendingID = decodeURIComponent(l3Match[1]);
+		const pending = state.hostInterfaceL3Pending.find((item) => item.id === pendingID);
+		const change = state.hostInterfaceL3PendingChanges[pendingID];
+		if (pending && change && l3Match[2] === 'confirm') {
+			state.hostInterfaceL3 = state.hostInterfaceL3.filter(
+				(row) => row.interface !== pending.interface
+			);
+			if (change.after) {
+				state.hostInterfaceL3.push(cloneHostInterfaceL3Entry(change.after)!);
+			}
+		}
+		delete state.hostInterfaceL3PendingChanges[pendingID];
+		state.hostInterfaceL3Pending = state.hostInterfaceL3Pending.filter(
+			(item) => item.id !== pendingID
+		);
+		return success({}) as DemoNetworkResponse<T>;
 	}
 
 	if (path === '/network/object' && method === 'GET') {

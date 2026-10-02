@@ -10,6 +10,7 @@ under sponsorship from the FreeBSD Foundation.
 
 <script lang="ts">
 	import { getInterfaces } from '$lib/api/network/iface';
+	import { getHostInterfaceL3 } from '$lib/api/network/ifaceL3';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import {
 		createSwitch,
@@ -31,6 +32,11 @@ under sponsorship from the FreeBSD Foundation.
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { APIResponse } from '$lib/types/common';
 	import type { Iface } from '$lib/types/network/iface';
+	import {
+		emptyHostInterfaceL3List,
+		isHostInterfaceL3List,
+		type HostInterfaceL3List
+	} from '$lib/types/network/ifaceL3';
 	import type { NetworkObject } from '$lib/types/network/object';
 	import {
 		emptySwitchList,
@@ -67,6 +73,7 @@ under sponsorship from the FreeBSD Foundation.
 		interfaces: Iface[] | APIResponse;
 		switches: SwitchList | APIResponse;
 		objects: NetworkObject[] | APIResponse;
+		hostInterfaceL3: HostInterfaceL3List | APIResponse;
 	}
 
 	let { data }: { data: Data } = $props();
@@ -76,6 +83,10 @@ under sponsorship from the FreeBSD Foundation.
 	let lastGoodNetworkObjects = Array.isArray(data.objects) ? data.objects : ([] as NetworkObject[]);
 	// svelte-ignore state_referenced_locally
 	let lastGoodSwitches = isSwitchList(data.switches) ? data.switches : emptySwitchList();
+	// svelte-ignore state_referenced_locally
+	let lastGoodHostInterfaceL3 = isHostInterfaceL3List(data.hostInterfaceL3)
+		? data.hostInterfaceL3
+		: emptyHostInterfaceL3List();
 
 	const networkInterfaces = resource(
 		() => 'network-interfaces',
@@ -122,6 +133,21 @@ under sponsorship from the FreeBSD Foundation.
 		{ initialValue: lastGoodNetworkObjects }
 	);
 
+	const hostInterfaceL3 = resource(
+		() => 'network-interface-l3',
+		async (key) => {
+			const res = await getHostInterfaceL3();
+			if (!isHostInterfaceL3List(res)) {
+				handleAPIError(res);
+				return lastGoodHostInterfaceL3;
+			}
+			lastGoodHostInterfaceL3 = res;
+			updateCache(key, res);
+			return res;
+		},
+		{ initialValue: lastGoodHostInterfaceL3 }
+	);
+
 	let query: string = $state('');
 	let useablePorts = $derived.by(() => {
 		let available: string[] = [];
@@ -135,6 +161,43 @@ under sponsorship from the FreeBSD Foundation.
 
 		return available.filter((item, index) => available.indexOf(item) === index);
 	});
+
+	let configuredHostInterfacePortNames = $derived(
+		new Set(
+			hostInterfaceL3.current.rows.flatMap((row) =>
+				row.vlanParent ? [row.interface, row.vlanParent] : [row.interface]
+			)
+		)
+	);
+	let pendingHostInterfacePortNames = $derived(
+		new Set(
+			hostInterfaceL3.current.targets
+				.filter((target) => target.reason === 'host_interface_l3_pending_conflict')
+				.map((target) => target.interface)
+		)
+	);
+
+	function hostInterfacePortOptions(ports: string[], additional?: string[]) {
+		return generateComboboxOptions(ports, additional).map((option) => {
+			if (pendingHostInterfacePortNames.has(option.value)) {
+				return {
+					...option,
+					label: `${option.label} — Host IP pending`,
+					description: 'Confirm or revert the pending Host IP change on the Interfaces page',
+					disabled: true
+				};
+			}
+			if (configuredHostInterfacePortNames.has(option.value)) {
+				return {
+					...option,
+					label: `${option.label} — Host IP`,
+					description: 'Remove the Host IP configuration on the Interfaces page first',
+					disabled: true
+				};
+			}
+			return option;
+		});
+	}
 
 	let confirmModals = $state<{
 		active: '' | 'newSwitch' | 'editSwitch' | 'deleteSwitch';
@@ -1040,7 +1103,7 @@ under sponsorship from the FreeBSD Foundation.
 		bind:form={confirmModals.newSwitch}
 		bind:comboBoxes
 		bind:activeTab
-		portOptions={generateComboboxOptions(useablePorts)}
+		portOptions={hostInterfacePortOptions(useablePorts)}
 		{ipv4NetworkOptions}
 		{ipv4GatewayOptions}
 		{ipv6NetworkOptions}
@@ -1060,7 +1123,7 @@ under sponsorship from the FreeBSD Foundation.
 		bind:form={confirmModals.editSwitch}
 		bind:comboBoxes
 		bind:activeTab
-		portOptions={generateComboboxOptions(useablePorts, activeRow?.portsOnly)}
+		portOptions={hostInterfacePortOptions(useablePorts, activeRow?.portsOnly)}
 		{ipv4NetworkOptions}
 		{ipv4GatewayOptions}
 		{ipv6NetworkOptions}

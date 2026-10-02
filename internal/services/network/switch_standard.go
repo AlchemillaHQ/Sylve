@@ -311,6 +311,9 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switch
 	if err != nil {
 		return 0, err
 	}
+	if err := s.checkStandardSwitchPortsForHostInterfaceL3(input.ports); err != nil {
+		return 0, err
+	}
 	var claimedPortState []standardSwitchPortRuntimeSnapshot
 	if input.vlanConfig.Filtering {
 		claimedPortState, err = syncCaptureFilteredPortClaims(input.ports)
@@ -472,6 +475,9 @@ func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retEr
 
 	input, err := s.validateStandardSwitchInput(request.ID, before.BridgeName, normalizedInput)
 	if err != nil {
+		return err
+	}
+	if err := s.checkStandardSwitchPortsForHostInterfaceL3(input.ports); err != nil {
 		return err
 	}
 	if input.vlanConfig.Filtering &&

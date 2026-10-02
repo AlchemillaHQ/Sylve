@@ -21,6 +21,8 @@ type IPv6 struct {
 	PrefixLength int    `json:"prefixLength"`
 	ScopeID      uint32 `json:"scopeId"`
 	AutoConf     bool   `json:"autoConf"`
+	Tentative    bool   `json:"tentative"`
+	Duplicated   bool   `json:"duplicated"`
 	Detached     bool   `json:"detached"`
 	Deprecated   bool   `json:"deprecated"`
 	LifeTimes    struct {

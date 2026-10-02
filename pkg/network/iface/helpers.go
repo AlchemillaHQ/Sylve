@@ -20,6 +20,8 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
+var deviceUnitPattern = regexp.MustCompile(`^(.+?)(\d+)$`)
+
 func parseFlags(flags uint32, descriptors []FlagDescriptor) ([]string, uint32) {
 	var descriptions []string
 	remaining := flags
@@ -46,8 +48,7 @@ func getSysctlProperty(iface, prop string) string {
 		return "Loopback"
 	}
 
-	re := regexp.MustCompile(`^([a-zA-Z]+)(\d+)$`)
-	matches := re.FindStringSubmatch(iface)
+	matches := deviceUnitPattern.FindStringSubmatch(iface)
 	if len(matches) != 3 {
 		return ""
 	}
