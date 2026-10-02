@@ -24,10 +24,10 @@
 		HostInterfaceL3Target
 	} from '$lib/types/network/ifaceL3';
 	import { isHostInterfaceL3List } from '$lib/types/network/ifaceL3';
-	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { isAPIResponse } from '$lib/utils/http';
 	import { ipv4NetmaskToPrefix, parseIPv4Prefix, type IPv4Prefix } from '$lib/utils/inet';
 	import {
-		hostInterfaceL3Message,
+		hostInterfaceL3RequestMessage,
 		hostInterfaceL3Preflight,
 		normalizeHostAddress,
 		type HostInterfaceL3PreflightMode
@@ -341,13 +341,10 @@
 	}
 
 	function notifyRequestError(response: APIResponse) {
-		const code = Array.isArray(response.error) ? response.error[0] : response.error;
-		const message = hostInterfaceL3Message(String(code ?? '').trim());
-		if (message) {
-			showErrorToast(message, response, { id: requestToastID, position: 'bottom-center' });
-			return;
-		}
-		handleAPIError(response);
+		showErrorToast(hostInterfaceL3RequestMessage(response), response, {
+			id: requestToastID,
+			position: 'bottom-center'
+		});
 	}
 
 	async function preflightAllows(

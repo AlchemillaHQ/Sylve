@@ -7,8 +7,10 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { showErrorToast } from '$lib/stores/error-details.svelte';
 	import type { HostInterfaceL3PendingEntry } from '$lib/types/network/ifaceL3';
-	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
+	import { isAPIResponse } from '$lib/utils/http';
+	import { hostInterfaceL3RequestMessage } from '$lib/utils/network/ifaceL3';
 	import { toast } from 'svelte-sonner';
 
 	interface Props {
@@ -78,7 +80,10 @@
 			const response = await confirmHostInterfaceL3(entry.id);
 			if (isAPIResponse(response) && response.status !== 'success') {
 				actionFailed = true;
-				handleAPIError(response);
+				showErrorToast(hostInterfaceL3RequestMessage(response), response, {
+					id: 'host-interface-l3-request',
+					position: 'bottom-center'
+				});
 				await onDone();
 				return;
 			}
@@ -99,7 +104,10 @@
 			const response = await revertHostInterfaceL3(entry.id);
 			if (isAPIResponse(response) && response.status !== 'success') {
 				actionFailed = true;
-				handleAPIError(response);
+				showErrorToast(hostInterfaceL3RequestMessage(response), response, {
+					id: 'host-interface-l3-request',
+					position: 'bottom-center'
+				});
 				await onDone();
 				return;
 			}

@@ -18696,6 +18696,7 @@ msgstr "Host IP changes must be made on {0}."
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host IP"
 msgstr "Host IP"
 
@@ -18892,3 +18893,32 @@ msgstr "Make this address own the subnet route. It moves to the front of this su
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "A live address outside Sylve owns at least one of these subnets; Sylve addresses there use /32 aliases."
 msgstr "A live address outside Sylve owns at least one of these subnets; Sylve addresses there use /32 aliases."
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Pending"
+msgstr "Host IP - Pending"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Remove"
+msgstr "Host IP - Remove"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Reapply"
+msgstr "Host IP - Reapply"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Confirm"
+msgstr "Host IP - Confirm"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Revert"
+msgstr "Host IP - Revert"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Save"
+msgstr "Host IP - Save"
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Operation ID {0}"
+msgstr "Operation ID {0}"

@@ -426,14 +426,17 @@
 
 	function viewInterface(iface: string) {
 		const ifaceData = networkInterfaces.current.find((i: Iface) => i.name === iface);
+		const entry = hostInterfaceL3.rows.find((row) => row.interface === iface);
 		if (ifaceData) {
-			viewModal.KV = getCleanIfaceData(ifaceData);
+			viewModal.KV = {
+				...getCleanIfaceData(ifaceData),
+				...(entry ? { Conflicts: hostInterfaceL3Labels(entry.conflicts).join(', ') || '-' } : {})
+			};
 			viewModal.title = `Details - ${ifaceData.name}`;
 			viewModal.open = true;
 			return;
 		}
 
-		const entry = hostInterfaceL3.rows.find((row) => row.interface === iface);
 		if (entry) {
 			viewModal.KV = {
 				Name: entry.interface,

@@ -18693,6 +18693,7 @@ msgstr ""
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host IP"
 msgstr ""
 
@@ -18888,4 +18889,33 @@ msgstr ""
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 msgid "A live address outside Sylve owns at least one of these subnets; Sylve addresses there use /32 aliases."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Pending"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Remove"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Reapply"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Confirm"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Revert"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host IP - Save"
+msgstr ""
+
+#. 0: identity
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Operation ID {0}"
 msgstr ""

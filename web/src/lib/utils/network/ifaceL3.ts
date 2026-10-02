@@ -7,6 +7,7 @@
 // under sponsorship from the FreeBSD Foundation.
 
 import { Address6 } from 'ip-address';
+import type { APIResponse } from '$lib/types/common';
 import type { HostInterfaceL3Entry, HostInterfaceL3Target } from '$lib/types/network/ifaceL3';
 
 const CONFLICT_LABELS: Record<string, string> = {
@@ -74,6 +75,23 @@ export function hostInterfaceL3Message(code: string): string {
 	return ERROR_MESSAGES[code] ?? hostInterfaceL3Label(code);
 }
 
+export function hostInterfaceL3RequestMessage(
+	response: Pick<APIResponse, 'error' | 'message'>
+): string {
+	const errors = Array.isArray(response.error) ? response.error : [response.error];
+	const codes = [...errors, response.message].map((code) => code?.trim() ?? '').filter(Boolean);
+	for (const code of codes) {
+		const message = hostInterfaceL3Message(code);
+		if (message !== code) {
+			return message;
+		}
+	}
+	const fallback = codes[0];
+	return fallback && !fallback.startsWith('host_interface_l3_')
+		? fallback
+		: ERROR_MESSAGES.host_interface_l3_operation_failed;
+}
+
 export type NormalizedHostAddress = {
 	family: 'inet' | 'inet6';
 	host: string;
@@ -135,11 +153,11 @@ export function hostInterfaceL3Preflight(
 ): HostInterfaceL3PreflightResult {
 	const title = input.mode === 'reapply' ? 'Cannot reapply' : 'Cannot save';
 
-	if (input.row && !input.row.present) {
+	if (!input.target || (input.row && !input.row.present)) {
 		return {
 			status: 'blocked',
 			title: 'Interface is missing',
-			description: 'The configuration is kept so it can still be removed.'
+			...(input.row ? { description: 'The configuration is kept so it can still be removed.' } : {})
 		};
 	}
 
