@@ -5098,7 +5098,7 @@ msgstr "सहेजें और सॉकेट पर वापस जाए�
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "अपडेट "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
