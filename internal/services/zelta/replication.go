@@ -4771,6 +4771,7 @@ func badgerCounterDelete(key string) {
 
 func (s *Service) crashMissesReset(policyID uint) {
 	badgerCounterSet(badgerCrashKey(policyID), 0)
+	s.clearCrashRecoveryWarnings(policyID)
 }
 
 func (s *Service) crashMissesIncr(policyID uint, max uint64) uint64 {
@@ -4802,7 +4803,29 @@ func (s *Service) replicationCountersDelete(policyID uint) {
 	badgerCounterDelete(badgerDownKey(policyID))
 	badgerCounterDelete(fmt.Sprintf("%s%d", badgerKeyFailbackHits, policyID))
 	s.clearFailoverWarnings(policyID)
+	s.clearCrashRecoveryWarnings(policyID)
 	s.resetForcedPromotionObservation(policyID)
+}
+
+func (s *Service) clearCrashRecoveryWarnings(policyID uint) {
+	s.failoverWarningMu.Lock()
+	delete(s.crashRecoveryWarnings, policyID)
+	s.failoverWarningMu.Unlock()
+}
+
+func (s *Service) logCrashRecoveryWarning(policy *clusterModels.ReplicationPolicy, err error, message string) {
+	reason := fmt.Sprintf("%s\x00%v", message, err)
+	s.failoverWarningMu.Lock()
+	if s.crashRecoveryWarnings == nil {
+		s.crashRecoveryWarnings = make(map[uint]string)
+	}
+	if s.crashRecoveryWarnings[policy.ID] == reason {
+		s.failoverWarningMu.Unlock()
+		return
+	}
+	s.crashRecoveryWarnings[policy.ID] = reason
+	s.failoverWarningMu.Unlock()
+	logger.L.Warn().Err(err).Uint("policy_id", policy.ID).Uint("guest_id", policy.GuestID).Msg(message)
 }
 
 func replicationFailoverWarningKey(ownerNodeID, message string) string {
@@ -10834,7 +10857,7 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 	}
 
 	var policies []clusterModels.ReplicationPolicy
-	if err := s.DB.Where("enabled = ?", true).Find(&policies).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Preload("Targets").Where("enabled = ?", true).Find(&policies).Error; err != nil {
 		return err
 	}
 
@@ -10952,35 +10975,27 @@ func (s *Service) recoverCrashedReplicationGuests(ctx context.Context) error {
 			requestMode = replicationFailoverRequestForce
 			confirmDataLoss = true
 		case clusterModels.ReplicationFailoverManual:
-			logger.L.Warn().
-				Uint("policy_id", policy.ID).
-				Msg("replication_guest_crashed_manual_failover_mode_no_auto_action")
+			s.logCrashRecoveryWarning(&policy, nil, "replication_guest_crashed_manual_failover_mode_no_auto_action")
+			continue
+		}
+
+		targetNodeID, err := s.selectCrashRecoveryFailoverTarget(&policy, localNodeID)
+		if err != nil || targetNodeID == "" {
+			s.logCrashRecoveryWarning(&policy, err, "replication_crash_recovery_no_failover_target")
+			continue
+		}
+
+		if err := s.enqueueFailoverToLeader(policy.ID, targetNodeID,
+			requestMode, confirmDataLoss, false); err != nil {
+			s.logCrashRecoveryWarning(&policy, err, "replication_crash_recovery_failover_enqueue_failed")
 			continue
 		}
 
 		logger.L.Warn().
 			Uint("policy_id", policy.ID).
 			Uint("guest_id", policy.GuestID).
+			Str("target_node_id", targetNodeID).
 			Msg("replication_guest_crash_restart_exhausted_initiating_failover")
-
-		targetNodeID, err := s.selectCrashRecoveryFailoverTarget(&policy, localNodeID)
-		if err != nil || targetNodeID == "" {
-			logger.L.Warn().
-				Err(err).
-				Uint("policy_id", policy.ID).
-				Msg("replication_crash_recovery_no_failover_target")
-			continue
-		}
-
-		if err := s.enqueueFailoverToLeader(policy.ID, targetNodeID,
-			requestMode, confirmDataLoss, false); err != nil {
-			logger.L.Warn().
-				Err(err).
-				Uint("policy_id", policy.ID).
-				Msg("replication_crash_recovery_failover_enqueue_failed")
-			continue
-		}
-
 		s.crashMissesReset(policy.ID)
 	}
 

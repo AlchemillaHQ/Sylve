@@ -156,6 +156,8 @@ type Service struct {
 	forcedPromotionMu  sync.Mutex
 	forcedPromotions   map[uint]replicationForcedPromotionObservation
 
+	crashRecoveryWarnings map[uint]string
+
 	replicationFenceMu           sync.Mutex
 	replicationFenceObservations map[uint]replicationFenceObservation
 	replicationLeaseAuthorities  map[uint]replicationLeaseAuthority

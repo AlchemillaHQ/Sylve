@@ -9,12 +9,18 @@
 package zelta
 
 import (
+	"bytes"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/logger"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/rs/zerolog"
 )
 
 func TestFailoverWarningsAreDeduplicatedUntilOwnerRecovers(t *testing.T) {
@@ -49,6 +55,71 @@ func TestCrashRecoveryAttemptsConfiguredRestartCountBeforeFailover(t *testing.T)
 		if shouldAttemptLocalCrashRestart(observation, limit) {
 			t.Fatalf("observation %d should retry failover instead of restarting locally", observation)
 		}
+	}
+}
+
+func TestCrashRecoveryLoadsTargetsAndRetriesWithoutRepeatedWarnings(t *testing.T) {
+	installZeltaCounterCache(t)
+	database := newZeltaServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationPolicyTarget{},
+		&clusterModels.ReplicationLease{}, &clusterModels.ClusterNode{}, &jailModels.Jail{})
+	policy := clusterModels.ReplicationPolicy{ID: 71, Name: "crash-recovery", GuestType: clusterModels.ReplicationGuestTypeJail,
+		GuestID: 101, SourceNodeID: "owner", ActiveNodeID: "owner", OwnerEpoch: 1, Enabled: true,
+		CrashRecovery: true, CrashRestartMax: 1, FailoverMode: clusterModels.ReplicationFailoverAutoSafe, CronExpr: "* * * * *"}
+	if err := clusterModels.UpsertReplicationPolicyTxn(database, &policy, []clusterModels.ReplicationPolicyTarget{{NodeID: "target", Weight: 100}}); err != nil {
+		t.Fatal(err)
+	}
+	lease := clusterModels.ReplicationLease{PolicyID: policy.ID, OwnerNodeID: "owner", OwnerEpoch: 1, Version: 2, ExpiresAt: time.Now().Add(time.Hour)}
+	for _, row := range []any{&lease, &clusterModels.ClusterNode{NodeUUID: "target", Status: "offline"}, &jailModels.Jail{CTID: policy.GuestID, Name: "crashed"}} {
+		if err := database.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := newTestZeltaService(database)
+	service.Cluster = &clusterService.Service{DB: database, NodeID: "owner"}
+	jail := &stubJailService{}
+	service.Jail = jail
+	lease.Version = 1
+	service.observeReplicationLeaseAuthority(policy.ID, "owner", 1, &lease)
+	badgerCounterSet(badgerCrashKey(policy.ID), 1)
+	var output bytes.Buffer
+	previous := logger.L
+	logger.L = zerolog.New(&output)
+	t.Cleanup(func() { logger.L = previous })
+
+	for _, status := range []string{"offline", "offline", "online", "online"} {
+		if err := database.Model(&clusterModels.ClusterNode{}).Where("node_uuid = ?", "target").Update("status", status).Error; err != nil {
+			t.Fatal(err)
+		}
+		service.clearFailoverWarnings(policy.ID)
+		if err := service.recoverCrashedReplicationGuests(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, message := range []string{"replication_crash_recovery_no_failover_target", "replication_crash_recovery_failover_enqueue_failed"} {
+		if count := strings.Count(output.String(), message); count != 1 {
+			t.Fatalf("%s logged %d times, want 1: %s", message, count, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "initiating_failover") || badgerCounterGet(badgerCrashKey(policy.ID)) != 2 {
+		t.Fatalf("failed enqueue claimed success or reset the restart budget: %s", output.String())
+	}
+	jail.running = true
+	if err := service.recoverCrashedReplicationGuests(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if count := badgerCounterGet(badgerCrashKey(policy.ID)); count != 0 {
+		t.Fatalf("recovered guest retained crash count %d", count)
+	}
+	jail.running = false
+	badgerCounterSet(badgerCrashKey(policy.ID), 1)
+	if err := database.Model(&clusterModels.ClusterNode{}).Where("node_uuid = ?", "target").Update("status", "offline").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.recoverCrashedReplicationGuests(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(output.String(), "replication_crash_recovery_no_failover_target"); count != 2 {
+		t.Fatalf("new crash did not emit a new warning: %s", output.String())
 	}
 }
 

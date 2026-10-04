@@ -512,25 +512,6 @@
 			</div>
 		</Button>
 	</div>
-	{#if selectedTarget}
-		<div class="border-b px-3 py-2 text-sm text-muted-foreground">
-			<p>
-				The first successful connection stores the target's SSH host key. Sylve checks this key on
-				later connections.
-			</p>
-			{#if selectedTarget.hostKey?.state === 'trusted'}
-				<p>
-					SSH host key: <span class="break-all font-mono">{selectedTarget.hostKey.fingerprint}</span
-					>
-				</p>
-			{:else}
-				<p>
-					The SSH host key is not stored. Select Validate before you restore or read backup data.
-				</p>
-			{/if}
-		</div>
-	{/if}
-
 	<div class="flex h-full flex-col overflow-hidden">
 		<TreeTable
 			data={tableData}

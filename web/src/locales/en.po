@@ -19033,18 +19033,6 @@ msgstr "Sylve cannot confirm the host-key reset. Refresh the page before you try
 msgid "Reset host key"
 msgstr "Reset host key"
 
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "The first successful connection stores the target's SSH host key. Sylve checks this key on later connections."
-msgstr "The first successful connection stores the target's SSH host key. Sylve checks this key on later connections."
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "SSH host key: <0/>"
-msgstr "SSH host key: <0/>"
-
-#: src/routes/datacenter/backups/targets/+page.svelte
-msgid "The SSH host key is not stored. Select Validate before you restore or read backup data."
-msgstr "The SSH host key is not stored. Select Validate before you restore or read backup data."
-
 #. 0: hostKeyResetTarget?.name || ''
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Reset the SSH host key for {0}?"
