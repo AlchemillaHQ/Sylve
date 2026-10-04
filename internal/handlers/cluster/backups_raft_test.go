@@ -41,6 +41,8 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTarget{},
 		&clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupTargetSSHHostTrust{},
+		&clusterModels.ClusterOption{},
 		&clusterModels.BackupEvent{},
 		&clusterModels.ClusterNode{},
 		&clusterModels.Cluster{},
@@ -89,7 +91,11 @@ func setupHandlerRaftCluster(t *testing.T) (*cluster.Service, func()) {
 		Status: "online",
 	})
 
-	cS := &cluster.Service{DB: db, Raft: r}
+	cS := cluster.NewClusterService(db, nil, nil).(*cluster.Service)
+	cS.Raft = r
+	if err := cS.ReopenMutations(); err != nil {
+		t.Fatal(err)
+	}
 	cS.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 	return cS, func() {
 		r.Shutdown()
@@ -116,6 +122,7 @@ func TestCreateBackupJobHandlerHappyPath(t *testing.T) {
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, cS.DB, &target)
 
 	r := newBackupJobCrudRouter(cS)
 	body := `{"name":"raft-created-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *"}`
@@ -150,6 +157,7 @@ func TestDeleteBackupJobHandlerHappyPath(t *testing.T) {
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, cS.DB, &target)
 
 	r := newBackupJobCrudRouter(cS)
 	createBody := `{"name":"deletable-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *"}`
@@ -187,6 +195,7 @@ func TestUpdateBackupJobHandlerHappyPath(t *testing.T) {
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, cS.DB, &target)
 
 	r := newBackupJobCrudRouter(cS)
 	createBody := `{"name":"updatable-job","targetId":1,"mode":"dataset","sourceDataset":"tank/data","cronExpr":"0 0 * * *"}`
@@ -274,6 +283,7 @@ func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T
 			database := testutil.NewSQLiteTestDB(
 				t,
 				&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
+				&clusterModels.BackupTargetSSHHostTrust{},
 				&clusterModels.BackupJob{}, &clusterModels.BackupJobRunnerRebind{},
 				&clusterModels.BackupJobRunnerRebindItem{}, &clusterModels.Cluster{},
 				&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{},
@@ -289,6 +299,7 @@ func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T
 			if err := database.Create(&target).Error; err != nil {
 				t.Fatalf("seed target: %v", err)
 			}
+			seedBackupTargetHostTrust(t, database, &target)
 			job := clusterModels.BackupJob{
 				ID: 82, Name: "stale-runner", TargetID: target.ID, RunnerNodeID: "node-old",
 				Mode: clusterModels.BackupJobModeVM, SourceDataset: "fast/sylve/virtual-machines/812",
@@ -363,6 +374,7 @@ func TestValidateBackupTargetRequiresExplicitVoterInCluster(t *testing.T) {
 	if err := cS.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, cS.DB, &target)
 	zStub := &backupTargetZeltaStub{}
 	router := newBackupTargetRouter(cS, zStub)
 	path := "/cluster/backups/targets/91/validate"

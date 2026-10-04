@@ -482,6 +482,7 @@ func TestBackupClaimSurvivesPublishFailureAndRestartRepublishesSameToken(t *test
 	if err := service.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, service.DB, &target)
 	due := time.Now().UTC().Add(-time.Minute)
 	job := clusterModels.BackupJob{
 		ID: 51, Name: "durable-publish", TargetID: target.ID,

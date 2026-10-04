@@ -101,8 +101,8 @@ func (s *Service) ApplyBackupJobScheduleDecision(
 		}
 	}
 	return s.applyRuntimeScheduleCommand(
-		"backup_job_schedule", "decide", decision, bypassRaft,
-		func() error { return clusterModels.ApplyBackupJobScheduleDecisionTxn(s.DB, &decision) },
+		"backup_job_schedule", "decide_v2", decision, bypassRaft,
+		func() error { return clusterModels.ApplyBackupJobScheduleDecisionV2Txn(s.DB, &decision) },
 	)
 }
 

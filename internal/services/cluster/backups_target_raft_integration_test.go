@@ -19,6 +19,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
 
@@ -51,7 +52,7 @@ func TestIntegrationRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 		SSHHost:    "user@host-before",
 		SSHKey:     "key-before",
 		BackupRoot: "tank/before",
-	}, false); err != nil {
+	}, false, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("initial leader failed to create backup target: %v", err)
 	}
 
@@ -89,7 +90,7 @@ func TestIntegrationRaftBackupTargetsThreeNodeFailover(t *testing.T) {
 		SSHHost:    "user@host-after",
 		SSHKey:     "key-after",
 		BackupRoot: "tank/after",
-	}, false); err != nil {
+	}, false, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("new leader failed to create backup target after failover: %v", err)
 	}
 

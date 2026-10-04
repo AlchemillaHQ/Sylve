@@ -109,6 +109,18 @@ export async function validateBackupTarget(id: number, nodeId: string): Promise<
 	);
 }
 
+export async function resetBackupTargetHostKey(
+	id: number,
+	expectedRevision: number
+): Promise<APIResponse> {
+	return await apiRequestResult(
+		`/cluster/backups/targets/${id}/host-key/reset`,
+		APIResponseSchema,
+		'POST',
+		{ expectedRevision, confirmed: true }
+	);
+}
+
 export async function listBackupJobs(
 	targetId?: number,
 	guest?: BackupGuestFilter

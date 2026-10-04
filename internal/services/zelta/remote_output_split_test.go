@@ -45,7 +45,7 @@ func TestRunTargetSSHSuccessDropsStderrChatter(t *testing.T) {
 	}})
 
 	service := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"}
+	target := &clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"}
 
 	output, err := service.runTargetSSH(
 		context.Background(),
@@ -72,7 +72,7 @@ func TestRunTargetSSHFailureKeepsStderrDiagnostics(t *testing.T) {
 	}})
 
 	service := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"}
+	target := &clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"}
 
 	output, err := service.runTargetSSH(
 		context.Background(),
@@ -103,7 +103,7 @@ func TestValidateBackupScopesDoNotOverlapTargetIgnoresStderrChatter(t *testing.T
 
 	service := &Service{}
 	job := &clusterModels.BackupJob{
-		Target: clusterModels.BackupTarget{SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"},
+		Target: clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", SSHPort: 22, BackupRoot: "tank/backups"},
 	}
 
 	err := service.validateBackupScopesDoNotOverlapTarget(context.Background(), job, []backupScope{
@@ -158,6 +158,7 @@ func TestValidateBackupScopesDoNotOverlapTargetStillRejectsOverlap(t *testing.T)
 			service := &Service{}
 			job := &clusterModels.BackupJob{
 				Target: clusterModels.BackupTarget{
+					SSHHostKey: fakeSSHHostKey(),
 					SSHHost:    "user@target",
 					SSHPort:    22,
 					BackupRoot: test.backupRoot,

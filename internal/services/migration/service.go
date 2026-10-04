@@ -1595,9 +1595,14 @@ func (s *Service) updateTaskDB(taskID uint, updates map[string]any) {
 }
 
 func (s *Service) getNodeSSHIdentity(nodeUUID string) (*clusterModels.ClusterSSHIdentity, error) {
+	if s.Cluster != nil && s.Cluster.Raft != nil {
+		if _, err := s.Cluster.ResolveCurrentRaftMember(nodeUUID); err != nil {
+			return nil, err
+		}
+	}
 	var identity clusterModels.ClusterSSHIdentity
 	if err := s.DB.Where("node_uuid = ?", nodeUUID).First(&identity).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cluster_ssh_identity_invalid: node=%s: %w", nodeUUID, err)
 	}
 	return &identity, nil
 }

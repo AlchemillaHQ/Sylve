@@ -11,6 +11,7 @@ package clusterHandlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,6 +51,9 @@ type RestoreBackupTargetRequest struct {
 }
 
 func writeBackupTargetMutationError(c *gin.Context, operation string, err error) {
+	if writeBackupTargetHostKeyError(c, err) {
+		return
+	}
 	status := http.StatusInternalServerError
 	message := operation
 	detail := operation
@@ -88,8 +92,11 @@ func writeBackupTargetMutationError(c *gin.Context, operation string, err error)
 			detail = err.Error()
 		}
 	case errors.Is(err, context.DeadlineExceeded),
+		errors.Is(err, cluster.ErrNodeLeaveFenced),
 		errors.Is(err, raft.ErrRaftShutdown),
 		errors.Is(err, raft.ErrEnqueueTimeout),
+		strings.Contains(errorText, "cluster_enabled_raft_unavailable"),
+		strings.Contains(errorText, "local_runtime_write_forbidden"),
 		strings.Contains(errorText, "raft_not_initialized"),
 		strings.Contains(errorText, "raft_apply_failed"),
 		strings.Contains(errorText, "leader_not_available"),
@@ -107,6 +114,9 @@ func writeBackupTargetMutationError(c *gin.Context, operation string, err error)
 }
 
 func writeBackupTargetRemoteReadError(c *gin.Context, operation string, err error) {
+	if writeBackupTargetHostKeyError(c, err) {
+		return
+	}
 	status := http.StatusBadGateway
 	message := operation
 	detail := operation
@@ -155,6 +165,37 @@ func writeBackupTargetRemoteReadError(c *gin.Context, operation string, err erro
 	})
 }
 
+func writeBackupTargetHostKeyError(c *gin.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	status := http.StatusConflict
+	code, action := "", ""
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "backup_target_host_key_changed"):
+		code, action = "backup_target_host_key_changed", "If the target's key change is expected, select Reset host key, then retry."
+	case strings.Contains(text, "backup_target_host_key_unlearned"):
+		code, action = "backup_target_host_key_unlearned", "The SSH host key is not stored. Select Validate before this operation."
+	case strings.Contains(text, "host_key_state_unavailable"), strings.Contains(text, "host_key_leader_unavailable"):
+		status = http.StatusServiceUnavailable
+		code, action = "backup_target_host_key_state_unavailable", "Sylve cannot read the approved host-key record. Restore cluster state, then retry."
+	case strings.Contains(text, "host_key_reset_busy"):
+		code, action = "backup_target_host_key_reset_busy", "A backup or restore is active. Wait until the operation stops, then retry."
+	case strings.Contains(text, "host_key_reset_stale"), strings.Contains(text, "host_key_revision_conflict"):
+		code, action = "backup_target_host_key_reset_stale", "The host-key state changed. Refresh the page, then review the target again."
+	case strings.Contains(text, "host_key_already_trusted"), strings.Contains(text, "host_key_install_conflict"):
+		code, action = "backup_target_host_key_install_conflict", "An approved host key is already stored. Select Validate to check it."
+	case strings.Contains(text, "ssh_host_key_file_unavailable"):
+		status = http.StatusServiceUnavailable
+		code, action = "ssh_host_key_file_unavailable", "Sylve cannot create its host-key file. Check the Sylve data directory and permissions."
+	default:
+		return false
+	}
+	c.JSON(status, internal.APIResponse[any]{Status: "error", Message: code, Error: code + ": " + action})
+	return true
+}
+
 // @Summary List Backup Targets
 // @Description List backup targets managed by the cluster
 // @Tags Cluster Backups
@@ -187,7 +228,48 @@ func BackupTargets(cS *cluster.Service) gin.HandlerFunc {
 	}
 }
 
+func ResetBackupTargetHostKey(cS *cluster.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if cS == nil || cS.DB == nil {
+			writeBackupTargetMutationError(c, "backup_target_host_key_reset_failed", fmt.Errorf("backup_target_host_key_state_unavailable"))
+			return
+		}
+		if cS.Raft != nil && cS.Raft.State() != raft.Leader {
+			forwardToLeader(c, cS)
+			return
+		}
+		id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+		if err != nil || id == 0 {
+			writeBackupTargetMutationError(c, "invalid_target_id", fmt.Errorf("invalid_target_id"))
+			return
+		}
+		var request struct {
+			ExpectedRevision uint64 `json:"expectedRevision"`
+			Confirmed        bool   `json:"confirmed"`
+		}
+		if err := c.ShouldBindJSON(&request); err != nil {
+			writeClusterJSONBindError(c, err, "invalid_request")
+			return
+		}
+		if !request.Confirmed || request.ExpectedRevision == 0 {
+			writeBackupTargetMutationError(c, "backup_target_host_key_confirmation_required", fmt.Errorf("backup_target_host_key_confirmation_required"))
+			return
+		}
+		status, err := cS.ResetBackupTargetHostKey(c.Request.Context(), uint(id), request.ExpectedRevision)
+		if err != nil {
+			writeBackupTargetMutationError(c, "backup_target_host_key_reset_failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[*cluster.BackupTargetHostKeyResetResult]{
+			Status: "success", Message: "backup_target_host_key_reset", Data: status,
+		})
+	}
+}
+
 func writeBackupTargetCandidateValidationError(c *gin.Context, err error) {
+	if writeBackupTargetHostKeyError(c, err) {
+		return
+	}
 	statusCode := http.StatusBadRequest
 	message := "target_validation_failed"
 	errorText := "target_validation_failed"
@@ -257,6 +339,7 @@ func CreateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.HandlerFu
 			writeBackupTargetCandidateValidationError(c, err)
 			return
 		}
+		candidate.SSHHostKey = inspection.HostKey
 
 		var committed *clusterModels.BackupTarget
 		if inspection.RootProvisioningRequired {
@@ -491,6 +574,9 @@ func ValidateBackupTarget(cS *cluster.Service, zS backupTargetZelta) gin.Handler
 			ctx, uint(id64), nodeID, zS.ValidateTargetReadiness,
 		)
 		if validationErr != nil {
+			if writeBackupTargetHostKeyError(c, validationErr) {
+				return
+			}
 			statusCode := http.StatusInternalServerError
 			message := "target_validation_unavailable"
 			detail := message
@@ -1000,6 +1086,9 @@ func RestoreBackupTargetDataset(cS *cluster.Service, zS *zelta.Service) gin.Hand
 			restoreNetwork,
 			operationID,
 		); err != nil {
+			if writeBackupTargetHostKeyError(c, err) {
+				return
+			}
 			status, msg := restoreFromTargetEnqueueError(err)
 			detail := err.Error()
 			if status == http.StatusInternalServerError {

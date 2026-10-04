@@ -41,6 +41,7 @@ type BackupTargetRestoreOperation struct {
 }
 
 type BackupTargetRestoreOperationAcquire struct {
+	HostKeyRevision      uint64    `json:"hostKeyRevision,omitempty"`
 	Token                string    `json:"token"`
 	TargetID             uint      `json:"targetId"`
 	HolderNodeID         string    `json:"holderNodeId"`
@@ -51,6 +52,7 @@ type BackupTargetRestoreOperationAcquire struct {
 }
 
 type BackupTargetRestoreOperationTransition struct {
+	HostKeyRevision      uint64    `json:"hostKeyRevision,omitempty"`
 	Token                string    `json:"token"`
 	TargetID             uint      `json:"targetId"`
 	HolderNodeID         string    `json:"holderNodeId"`
@@ -235,6 +237,11 @@ func AcquireBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 		if payload.RequireEnabledTarget && !target.Enabled {
 			return fmt.Errorf("backup_target_disabled")
 		}
+		if payload.HostKeyRevision != 0 {
+			if err := RequireBackupTargetHostKeyRevision(tx, payload.TargetID, payload.HostKeyRevision, true); err != nil {
+				return err
+			}
+		}
 
 		var holderOperations []BackupTargetRestoreOperation
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -266,6 +273,13 @@ func AcquireBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRe
 			UpdatedAt:          payload.AcquiredAt,
 		}).Error
 	})
+}
+
+func AcquireBackupTargetRestoreOperationV2Txn(db *gorm.DB, payload *BackupTargetRestoreOperationAcquire) error {
+	if payload == nil || payload.HostKeyRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return AcquireBackupTargetRestoreOperationTxn(db, payload)
 }
 
 func transitionBackupTargetRestoreOperation(
@@ -326,6 +340,11 @@ func transitionBackupTargetRestoreOperation(
 		case "start":
 			switch existing.State {
 			case BackupTargetRestoreOperationQueued:
+				if payload.HostKeyRevision != 0 {
+					if err := RequireBackupTargetHostKeyRevision(tx, existing.TargetID, payload.HostKeyRevision, true); err != nil {
+						return err
+					}
+				}
 				if payload.RequireEnabledTarget {
 					var target BackupTarget
 					targetResult := tx.Select("id", "enabled").Where("id = ?", existing.TargetID).Limit(1).Find(&target)
@@ -419,6 +438,13 @@ func transitionBackupTargetRestoreOperation(
 
 func StartBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRestoreOperationTransition) error {
 	return transitionBackupTargetRestoreOperation(db, payload, "start")
+}
+
+func StartBackupTargetRestoreOperationV2Txn(db *gorm.DB, payload *BackupTargetRestoreOperationTransition) error {
+	if payload == nil || payload.HostKeyRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return StartBackupTargetRestoreOperationTxn(db, payload)
 }
 
 func FinishBackupTargetRestoreOperationTxn(db *gorm.DB, payload *BackupTargetRestoreOperationTransition) error {
@@ -525,6 +551,11 @@ func deleteBackupTargetTxn(db *gorm.DB, targetID uint, requireDisabled bool) err
 			}
 		}
 
+		if tx.Migrator().HasTable(&BackupTargetSSHHostTrust{}) {
+			if err := tx.Where("target_id = ?", targetID).Delete(&BackupTargetSSHHostTrust{}).Error; err != nil {
+				return err
+			}
+		}
 		return tx.Delete(&BackupTarget{}, targetID).Error
 	})
 }

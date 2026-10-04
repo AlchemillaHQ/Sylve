@@ -10,7 +10,10 @@ package migration
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,50 +114,22 @@ func TestMigrationSnapshotMissingResultIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestBuildClusterSSHArgs(t *testing.T) {
-	identity := &clusterModels.ClusterSSHIdentity{
-		SSHUser:  "root",
-		SSHHost:  "10.0.0.2",
-		SSHPort:  8183,
-		NodeUUID: "test-node-uuid",
-	}
-
-	args := buildClusterSSHArgs(identity, "/tmp/test-key")
-	if len(args) == 0 {
-		t.Fatal("expected non-empty args")
-	}
-
-	hasBatchMode := false
-	hasControlMaster := false
-	for _, a := range args {
-		if a == "-o" {
-			continue
-		}
-		if strings.Contains(a, "BatchMode=yes") {
-			hasBatchMode = true
-		}
-		if strings.Contains(a, "ControlMaster=auto") {
-			hasControlMaster = true
-		}
-	}
-	if !hasBatchMode {
-		t.Fatal("expected BatchMode in SSH args")
-	}
-	if !hasControlMaster {
-		t.Fatal("expected ControlMaster in SSH args")
-	}
-}
-
 func TestClusterRemoteCommandArgsEncodeArgumentsAndPreserveStreaming(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	loginKey := filepath.Join(t.TempDir(), "login-key")
+	if err := os.WriteFile(loginKey, []byte("login key"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	identity := &clusterModels.ClusterSSHIdentity{
-		NodeUUID: "node-42",
-		SSHUser:  "root",
-		SSHHost:  "Backup.Example",
-		SSHPort:  8183,
+		PublicKey: testutil.SSHHostKey(t),
+		NodeUUID:  "node-42",
+		SSHUser:   "root",
+		SSHHost:   "Backup.Example",
+		SSHPort:   8183,
 	}
 	args, err := clusterRemoteCommandArgs(
 		identity,
-		"/tmp/test-key",
+		loginKey,
 		true,
 		"zfs.recv",
 		"tank/sylve/virtual-machines/42",
@@ -173,6 +148,13 @@ func TestClusterRemoteCommandArgsEncodeArgumentsAndPreserveStreaming(t *testing.
 	}
 	if len(args) < 2 || args[len(args)-2] != "root@backup.example" || !strings.HasPrefix(args[len(args)-1], "/bin/sh -c ") {
 		t.Fatalf("unexpected ssh invocation: %v", args)
+	}
+	if !slices.Contains(args, "StrictHostKeyChecking=yes") || !slices.Contains(args, "ControlMaster=auto") {
+		t.Fatalf("transfer omitted strict host trust or connection reuse: %v", args)
+	}
+	preflight, err := clusterRemoteCommandArgs(identity, loginKey, false, "zfs.version", "", "zfs", "version")
+	if err != nil || !slices.Contains(preflight, "ControlPath=none") {
+		t.Fatalf("preflight reused a connection: %v %v", preflight, err)
 	}
 }
 

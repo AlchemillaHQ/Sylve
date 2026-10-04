@@ -11,6 +11,7 @@ package clusterHandlers
 import (
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -31,6 +32,8 @@ func newClusterHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&clusterModels.BackupJobOperation{},
 		&clusterModels.BackupTargetRestoreOperation{},
 		&clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupTargetSSHHostTrust{},
+		&clusterModels.ClusterOption{},
 		&clusterModels.ReplicationTransitionEvent{},
 	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
@@ -38,4 +41,17 @@ func newClusterHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 
 func performJSONRequest(t *testing.T, r *gin.Engine, method, path string, body []byte) *httptest.ResponseRecorder {
 	return testutil.PerformJSONRequest(t, r, method, path, body)
+}
+
+func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget) {
+	t.Helper()
+	endpoint, err := clusterModels.BackupTargetSSHEndpointFingerprint(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: endpoint,
+		PublicKey: testutil.SSHHostKey(t), OccurredAt: time.Now().UTC()}
+	if err := clusterModels.ApplyBackupTargetSSHHostTrustTxn(database, "initialize_v1", &change); err != nil {
+		t.Fatal(err)
+	}
 }

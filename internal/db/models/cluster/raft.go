@@ -204,6 +204,7 @@ type ClusterSnapshot struct {
 	BackupTargets                 []BackupTargetReplicationPayload   `json:"backupTargets"`
 	BackupTargetProvisions        []BackupTargetProvisionOperation   `json:"backupTargetProvisions,omitempty"`
 	BackupTargetReadiness         []BackupTargetNodeReadiness        `json:"backupTargetReadiness,omitempty"`
+	BackupTargetHostTrust         []BackupTargetSSHHostTrust         `json:"backupTargetHostTrust,omitempty"`
 	BackupJobs                    []BackupJob                        `json:"backupJobs"`
 	BackupJobOperations           []BackupJobOperation               `json:"backupJobOperations"`
 	ReplicationRunOperations      []ReplicationRunOperation          `json:"replicationRunOperations,omitempty"`
@@ -367,6 +368,9 @@ func (f *FSMDispatcher) Restore(rc io.ReadCloser) error {
 		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 			createSets = append(createSets, restoreSet{"backup_target_node_readinesses", snap.BackupTargetReadiness, 500})
 		}
+		if tx.Migrator().HasTable(&BackupTargetSSHHostTrust{}) {
+			createSets = append(createSets, restoreSet{"backup_target_ssh_host_trusts", snap.BackupTargetHostTrust, 500})
+		}
 		createSets = append(createSets,
 			restoreSet{"backup_jobs", snap.BackupJobs, 500},
 			restoreSet{"backup_job_operations", snap.BackupJobOperations, 500},
@@ -518,6 +522,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_target", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "create_v3":
+			var command BackupTargetCreateV3
+			if err := json.Unmarshal(raw, &command); err != nil {
+				return err
+			}
+			return ApplyBackupTargetCreateV3Txn(db, &command)
 		case "create_v2":
 			var command BackupTargetCreateV2
 			if err := json.Unmarshal(raw, &command); err != nil {
@@ -564,6 +574,17 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 		}
 	})
 
+	fsm.Register("backup_target_ssh_host_trust", func(db *gorm.DB, action string, raw json.RawMessage) error {
+		var change BackupTargetSSHHostTrustChange
+		if err := json.Unmarshal(raw, &change); err != nil {
+			return err
+		}
+		if action == "initialize_all_v1" {
+			return InitializeBackupTargetSSHHostTrustTxn(db, change.OccurredAt)
+		}
+		return ApplyBackupTargetSSHHostTrustTxn(db, action, &change)
+	})
+
 	fsm.Register("backup_target_provision", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
 		case "prepare":
@@ -572,6 +593,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 				return err
 			}
 			return PrepareBackupTargetProvisionOperationTxn(db, &prepare)
+		case "prepare_v2":
+			var prepare BackupTargetProvisionPrepare
+			if err := json.Unmarshal(raw, &prepare); err != nil {
+				return err
+			}
+			return PrepareBackupTargetProvisionOperationV2Txn(db, &prepare)
 		case "complete":
 			var transition BackupTargetProvisionTransition
 			if err := json.Unmarshal(raw, &transition); err != nil {
@@ -591,6 +618,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_target_readiness", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "update_v2":
+			var update BackupTargetNodeReadinessUpdate
+			if err := json.Unmarshal(raw, &update); err != nil {
+				return err
+			}
+			return ApplyBackupTargetNodeReadinessUpdateV2Txn(db, &update)
 		case "update":
 			var update BackupTargetNodeReadinessUpdate
 			if err := json.Unmarshal(raw, &update); err != nil {
@@ -749,6 +782,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_job_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "acquire_v2":
+			var payload BackupJobOperationAcquire
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return AcquireBackupJobOperationV2Txn(db, &payload)
+		case "start_v2":
+			var payload BackupJobOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return StartBackupJobOperationV2Txn(db, &payload)
 		case "acquire":
 			var payload BackupJobOperationAcquire
 			if err := json.Unmarshal(raw, &payload); err != nil {
@@ -777,6 +822,18 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_target_restore_operation", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "acquire_v2":
+			var payload BackupTargetRestoreOperationAcquire
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return AcquireBackupTargetRestoreOperationV2Txn(db, &payload)
+		case "start_v2":
+			var payload BackupTargetRestoreOperationTransition
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return err
+			}
+			return StartBackupTargetRestoreOperationV2Txn(db, &payload)
 		case "backfill":
 			var operation BackupTargetRestoreOperation
 			if err := json.Unmarshal(raw, &operation); err != nil {
@@ -813,6 +870,12 @@ func RegisterDefaultHandlers(fsm *FSMDispatcher) {
 
 	fsm.Register("backup_job_schedule", func(db *gorm.DB, action string, raw json.RawMessage) error {
 		switch action {
+		case "decide_v2":
+			var decision BackupJobScheduleDecision
+			if err := json.Unmarshal(raw, &decision); err != nil {
+				return err
+			}
+			return ApplyBackupJobScheduleDecisionV2Txn(db, &decision)
 		case "decide":
 			var decision BackupJobScheduleDecision
 			if err := json.Unmarshal(raw, &decision); err != nil {

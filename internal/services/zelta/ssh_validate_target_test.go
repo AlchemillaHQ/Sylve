@@ -13,10 +13,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestValidateTargetCandidateCleansStagedKeyOnFailure(t *testing.T) {
@@ -90,6 +94,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			SSHPort:    22,
 			BackupRoot: "tank/backups",
@@ -120,6 +125,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			SSHPort:          22,
 			BackupRoot:       "tank/backups",
@@ -146,6 +152,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		}})
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			BackupRoot:       "tank/backups",
 			CreateBackupRoot: false,
@@ -173,7 +180,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			t.Fatalf("create key dir: %v", err)
 		}
 		target := &clusterModels.BackupTarget{
-			ID: 44, SSHHost: "user@target", SSHKey: "candidate-key",
+			SSHHostKey: fakeSSHHostKey(),
+			ID:         44, SSHHost: "user@target", SSHKey: "candidate-key",
 			BackupRoot: "tank/backups", CreateBackupRoot: false,
 		}
 		err := (&Service{}).ValidateTargetCandidate(context.Background(), target)
@@ -205,7 +213,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 			t.Fatalf("create key dir: %v", err)
 		}
 		target := &clusterModels.BackupTarget{
-			ID: 45, SSHHost: "user@target", SSHKey: "candidate-key",
+			SSHHostKey: fakeSSHHostKey(),
+			ID:         45, SSHHost: "user@target", SSHKey: "candidate-key",
 			BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
 		inspection, err := (&Service{}).InspectTargetCandidate(context.Background(), target)
@@ -238,7 +247,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		}})
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
-			SSHHost: "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
+			SSHHostKey: fakeSSHHostKey(),
+			SSHHost:    "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
 		if err := s.ProvisionBackupTargetRoot(context.Background(), target); err != nil {
 			t.Fatalf("concurrent creation provisioning failed: %v", err)
@@ -266,7 +276,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		}})
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
-			SSHHost: "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
+			SSHHostKey: fakeSSHHostKey(),
+			SSHHost:    "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
 		if err := s.ProvisionBackupTargetRoot(context.Background(), target); err != nil {
 			t.Fatalf("initial provisioning failed: %v", err)
@@ -295,7 +306,8 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 		}})
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
-			SSHHost: "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
+			SSHHostKey: fakeSSHHostKey(),
+			SSHHost:    "user@target", BackupRoot: "tank/backups", CreateBackupRoot: true,
 		}
 		err := s.ValidateTargetReadiness(context.Background(), target)
 		if err == nil || !strings.Contains(err.Error(), "backup_root_not_found") {
@@ -322,6 +334,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "tank/backups",
 		}
@@ -355,6 +368,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			BackupRoot:       "tank/backups",
 			CreateBackupRoot: true,
@@ -390,6 +404,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			BackupRoot:       "tank/backups",
 			CreateBackupRoot: true,
@@ -429,6 +444,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			BackupRoot:       "tank/backups",
 			CreateBackupRoot: true,
@@ -471,6 +487,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey:       fakeSSHHostKey(),
 			SSHHost:          "user@target",
 			BackupRoot:       "tank/backups",
 			CreateBackupRoot: true,
@@ -503,6 +520,7 @@ func TestValidateTargetWithFakeSSH(t *testing.T) {
 
 		s := &Service{}
 		target := &clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "tank/backups",
 		}
@@ -522,5 +540,124 @@ func assertFakeSSHCallSequence(t *testing.T, got, want []string) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected fake ssh call sequence\nwant: %#v\ngot:  %#v", want, got)
+	}
+}
+
+func TestBackupTargetHostKeyEnrollmentCommitsOnlyAfterSuccessfulCheck(t *testing.T) {
+	for _, failure := range []string{"", "Permission denied (publickey).", "Connection refused", "zfs: command not found", "malformed key"} {
+		t.Run(failure, func(t *testing.T) {
+			harness := newFakeSSHHarness(t)
+			response := fakeSSHResponse{}
+			if failure != "" && failure != "malformed key" {
+				response.Stderr, response.ExitCode = failure, 255
+			}
+			if failure == "malformed key" {
+				t.Setenv("ZELTA_TEST_SSH_HOST_KEY", "invalid key")
+			}
+			harness.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{"zfs version": {response}}})
+			database := newZeltaServiceTestDB(t)
+			service := newTestZeltaService(database)
+			service.TelemetryDB = testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+			target := clusterModels.BackupTarget{ID: 42, Name: "backup", SSHHost: "root@backup", SSHKey: "login key", BackupRoot: "tank/backups", Enabled: true}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatal(err)
+			}
+			seedBackupTargetHostTrust(t, database, &target, "")
+			err := service.EnsureBackupTargetHostKey(t.Context(), &target)
+			trust, loadErr := clusterModels.GetBackupTargetSSHHostTrust(database, &target)
+			if loadErr != nil {
+				t.Fatal(loadErr)
+			}
+			if failure == "" {
+				if err != nil || trust.Revision != 2 || trust.PublicKey != fakeSSHHostKey() || target.SSHHostKey != trust.PublicKey {
+					t.Fatalf("enrollment=%+v err=%v", trust, err)
+				}
+				args, err := service.buildSSHArgs(&target)
+				if err != nil || !slices.Contains(args, "StrictHostKeyChecking=yes") {
+					t.Fatalf("normal policy=%v err=%v", args, err)
+				}
+				var audit infoModels.AuditRecord
+				if err := service.TelemetryDB.First(&audit).Error; err != nil {
+					t.Fatal(err)
+				}
+				fingerprint, _ := remoteexec.SSHHostKeyFingerprint(trust.PublicKey)
+				if audit.Status != "success" || !strings.Contains(audit.Action, fingerprint) || !strings.Contains(audit.Action, `"revision":2`) || strings.Contains(audit.Action, target.SSHKey) {
+					t.Fatalf("install audit=%+v", audit)
+				}
+			} else {
+				if err == nil || trust.Revision != 1 || trust.PublicKey != "" || target.SSHHostKey != "" {
+					t.Fatalf("failed enrollment stored trust=%+v err=%v", trust, err)
+				}
+				var count int64
+				if err := service.TelemetryDB.Model(&infoModels.AuditRecord{}).Count(&count).Error; err != nil || count != 0 {
+					t.Fatalf("failure audit count=%d err=%v", count, err)
+				}
+			}
+			assertFakeSSHCallSequence(t, harness.Calls(), []string{"zfs version"})
+			args := harness.Arguments()[0]
+			if !slices.Contains(args, "StrictHostKeyChecking=accept-new") || !slices.Contains(args, "ControlPath=none") {
+				t.Fatalf("enrollment did not use fresh first-use trust: %v", args)
+			}
+			for _, pattern := range []string{".host-key-enrollment-*", ".target-validation-*"} {
+				files, err := filepath.Glob(filepath.Join(SSHKeyDirectory, pattern))
+				if err != nil || len(files) != 0 {
+					t.Fatalf("temporary files=%v err=%v", files, err)
+				}
+			}
+		})
+	}
+}
+
+func TestBackupTargetMissingTrustAndObservationalValidationCannotEnroll(t *testing.T) {
+	for _, state := range []string{"missing", "empty"} {
+		t.Run(state, func(t *testing.T) {
+			harness := newFakeSSHHarness(t)
+			database := newZeltaServiceTestDB(t)
+			service := newTestZeltaService(database)
+			target := clusterModels.BackupTarget{ID: 42, Name: "backup", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatal(err)
+			}
+			if state == "empty" {
+				seedBackupTargetHostTrust(t, database, &target, "")
+			} else {
+				if err := service.EnsureBackupTargetHostKey(t.Context(), &target); err == nil || !strings.Contains(err.Error(), "state_unavailable") {
+					t.Fatalf("missing enrollment=%v", err)
+				}
+			}
+			err := service.ValidateTargetReadiness(t.Context(), &target)
+			if err == nil || (state == "empty" && !strings.Contains(err.Error(), "unlearned")) {
+				t.Fatalf("observational check=%v", err)
+			}
+			if calls := harness.Calls(); len(calls) != 0 {
+				t.Fatalf("unapproved state contacted SSH: %v", calls)
+			}
+		})
+	}
+}
+
+func TestCandidateEnrollmentCarriesExactKeyIntoStrictInspection(t *testing.T) {
+	harness := newFakeSSHHarness(t)
+	harness.SetScenario(fakeSSHScenario{Responses: map[string][]fakeSSHResponse{
+		"zfs version": {{}, {}}, "zfs list -H -o name -t filesystem -d 0 tank/backups": {{Stdout: "tank/backups\n"}},
+	}})
+	service := newTestZeltaService(newZeltaServiceTestDB(t))
+	target := clusterModels.BackupTarget{SSHHost: "root@backup", SSHKey: "login key", BackupRoot: "tank/backups"}
+	result, err := service.InspectTargetCandidate(t.Context(), &target)
+	if err != nil || result.HostKey != fakeSSHHostKey() || !result.RootExists {
+		t.Fatalf("candidate result=%+v err=%v", result, err)
+	}
+	calls := harness.Arguments()
+	if len(calls) != 3 || !slices.Contains(calls[0], "StrictHostKeyChecking=accept-new") {
+		t.Fatalf("enrollment calls=%v", calls)
+	}
+	for _, args := range calls[1:] {
+		if !slices.Contains(args, "StrictHostKeyChecking=yes") || !slices.Contains(args, "ControlPath=none") {
+			t.Fatalf("inspection uses learning or old socket: %v", args)
+		}
+	}
+	var count int64
+	if err := service.DB.Model(&clusterModels.BackupTargetSSHHostTrust{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("candidate left committed trust=%d err=%v", count, err)
 	}
 }

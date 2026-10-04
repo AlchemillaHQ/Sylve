@@ -116,6 +116,9 @@ func backupJobTargetIDQuery(c *gin.Context) (uint, error) {
 }
 
 func writeBackupJobError(c *gin.Context, operation string, err error) {
+	if writeBackupTargetHostKeyError(c, err) {
+		return
+	}
 	status := http.StatusInternalServerError
 	message := operation
 	detail := operation

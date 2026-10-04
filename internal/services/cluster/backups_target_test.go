@@ -16,6 +16,7 @@ import (
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func boolPtr(v bool) *bool {
@@ -61,7 +62,7 @@ func TestProposeBackupTargetCRUDBypassRaft(t *testing.T) {
 		Description: "  first target  ",
 	}
 
-	if err := s.ProposeBackupTargetCreate(createInput, true); err != nil {
+	if err := s.ProposeBackupTargetCreate(createInput, true, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("ProposeBackupTargetCreate bypass failed: %v", err)
 	}
 
@@ -162,7 +163,7 @@ func TestProposeBackupTargetCreateResolvesSSHKeyFromPath(t *testing.T) {
 		SSHKeyPath: keyPath,
 	}
 
-	if err := s.ProposeBackupTargetCreate(input, true); err != nil {
+	if err := s.ProposeBackupTargetCreate(input, true, testutil.SSHHostKey(t)); err != nil {
 		t.Fatalf("ProposeBackupTargetCreate bypass failed: %v", err)
 	}
 
@@ -230,7 +231,7 @@ func TestProposeBackupTargetRequiresRaftWhenBypassDisabled(t *testing.T) {
 		BackupRoot: "tank/backups",
 	}
 
-	err := s.ProposeBackupTargetCreate(createInput, false)
+	err := s.ProposeBackupTargetCreate(createInput, false, testutil.SSHHostKey(t))
 	if err == nil {
 		t.Fatal("expected raft_not_initialized error for create, got nil")
 	}

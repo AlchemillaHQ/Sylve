@@ -65,7 +65,7 @@ func TestFilterRestorableTargetSnapshotsHidesUncommittedAndLegacyVM(t *testing.T
 			}
 			filtered, err := (&Service{}).filterRestorableTargetSnapshots(
 				context.Background(),
-				&clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"},
+				&clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"},
 				tt.datasetKind,
 				snapshots,
 			)

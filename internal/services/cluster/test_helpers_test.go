@@ -34,8 +34,23 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.BackupTargetRestoreOperation{},
 		&clusterModels.BackupTargetNodeReadiness{},
+		&clusterModels.BackupTargetSSHHostTrust{},
+		&clusterModels.ClusterOption{},
 	)
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
+}
+
+func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget) {
+	t.Helper()
+	endpoint, err := clusterModels.BackupTargetSSHEndpointFingerprint(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: endpoint,
+		PublicKey: testutil.SSHHostKey(t), OccurredAt: time.Now().UTC()}
+	if err := clusterModels.ApplyBackupTargetSSHHostTrustTxn(database, "initialize_v1", &change); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func acceptJoinInventoryForTest(

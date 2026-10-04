@@ -107,9 +107,9 @@ func (s *Service) applyBackupTargetRestoreOperation(
 	applyLocal := func() error {
 		switch action {
 		case "acquire":
-			return clusterModels.AcquireBackupTargetRestoreOperationTxn(s.DB, &acquire)
+			return clusterModels.AcquireBackupTargetRestoreOperationV2Txn(s.DB, &acquire)
 		case "start":
-			return clusterModels.StartBackupTargetRestoreOperationTxn(s.DB, &transition)
+			return clusterModels.StartBackupTargetRestoreOperationV2Txn(s.DB, &transition)
 		case "finish":
 			return clusterModels.FinishBackupTargetRestoreOperationTxn(s.DB, &transition)
 		case "requeue":
@@ -134,6 +134,7 @@ func (s *Service) applyBackupTargetRestoreOperation(
 	}
 
 	payload := map[string]any{
+		"hostKeyRevision":    transition.HostKeyRevision,
 		"action":             action,
 		"token":              transition.Token,
 		"targetId":           transition.TargetID,
@@ -144,6 +145,7 @@ func (s *Service) applyBackupTargetRestoreOperation(
 	}
 	if action == "acquire" {
 		payload = map[string]any{
+			"hostKeyRevision":    acquire.HostKeyRevision,
 			"action":             action,
 			"token":              acquire.Token,
 			"targetId":           acquire.TargetID,
@@ -206,6 +208,7 @@ func backupTargetRestoreOperationApplicationError(err error) bool {
 	}
 	text := strings.ToLower(err.Error())
 	for _, marker := range []string{
+		"backup_target_host_key_",
 		"restore_destination_reserved",
 		"backup_target_not_found",
 		"backup_target_disabled",
@@ -300,8 +303,17 @@ func (s *Service) acquireDurableBackupTargetRestoreOperation(
 		DestinationDataset: normalizedPayload.DestinationDataset,
 		RequestPayload:     requestPayload,
 	}
+	var target clusterModels.BackupTarget
+	if err := s.DB.WithContext(ctx).First(&target, handle.TargetID).Error; err != nil {
+		return backupTargetRestoreOperationHandle{}, payload, err
+	}
+	trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB.WithContext(ctx), &target)
+	if err != nil {
+		return backupTargetRestoreOperationHandle{}, payload, err
+	}
 	acquire := clusterModels.BackupTargetRestoreOperationAcquire{
-		Token: handle.Token, TargetID: handle.TargetID, HolderNodeID: handle.HolderNodeID,
+		HostKeyRevision: trust.Revision,
+		Token:           handle.Token, TargetID: handle.TargetID, HolderNodeID: handle.HolderNodeID,
 		DestinationDataset: handle.DestinationDataset, RequestPayload: handle.RequestPayload,
 		AcquiredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	}
@@ -321,11 +333,23 @@ func (s *Service) transitionDurableBackupTargetRestoreOperation(
 	action string,
 	handle backupTargetRestoreOperationHandle,
 ) error {
+	transition := backupTargetRestoreOperationTransition(handle)
+	if action == "start" {
+		var target clusterModels.BackupTarget
+		if err := s.DB.WithContext(ctx).First(&target, handle.TargetID).Error; err != nil {
+			return fmt.Errorf("backup_target_not_found: %w", err)
+		}
+		trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB.WithContext(ctx), &target)
+		if err != nil {
+			return err
+		}
+		transition.HostKeyRevision = trust.Revision
+	}
 	return s.applyBackupTargetRestoreOperation(
 		ctx,
 		action,
 		clusterModels.BackupTargetRestoreOperationAcquire{},
-		backupTargetRestoreOperationTransition(handle),
+		transition,
 	)
 }
 

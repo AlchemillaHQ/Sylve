@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 )
@@ -44,12 +45,16 @@ func (s *Service) ProposeBackupTargetCreateCandidate(
 		return nil, fmt.Errorf("new_backup_target_id_failed: %w", err)
 	}
 	target.ID = id
-	command := clusterModels.BackupTargetCreateV2{
-		Target:              clusterModels.BackupTargetToReplicationPayload(target),
-		ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(&target),
+	command := clusterModels.BackupTargetCreateV3{
+		BackupTargetCreateV2: clusterModels.BackupTargetCreateV2{
+			Target:              clusterModels.BackupTargetToReplicationPayload(target),
+			ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(&target),
+		},
+		HostKey:    target.SSHHostKey,
+		OccurredAt: time.Now().UTC(),
 	}
 	if bypassRaft {
-		if err := clusterModels.ApplyBackupTargetCreateV2Txn(s.DB, &command); err != nil {
+		if err := clusterModels.ApplyBackupTargetCreateV3Txn(s.DB, &command); err != nil {
 			return nil, err
 		}
 		return &target, nil
@@ -61,7 +66,7 @@ func (s *Service) ProposeBackupTargetCreateCandidate(
 	if err != nil {
 		return nil, fmt.Errorf("failed_to_marshal_backup_target_payload: %w", err)
 	}
-	if err := s.applyRaftCommand(clusterModels.Command{Type: "backup_target", Action: "create_v2", Data: data}); err != nil {
+	if err := s.applyRaftCommand(clusterModels.Command{Type: "backup_target", Action: "create_v3", Data: data}); err != nil {
 		return nil, err
 	}
 	return &target, nil
@@ -119,12 +124,14 @@ func (s *Service) PrepareBackupTargetProvisionCreate(
 	}
 	target.ID = id
 	prepare := clusterModels.BackupTargetProvisionPrepare{
+		HostKey:             target.SSHHostKey,
+		OccurredAt:          time.Now().UTC(),
 		Token:               strings.TrimSpace(token),
 		Target:              clusterModels.BackupTargetToReplicationPayload(target),
 		ProposedFingerprint: clusterModels.BackupTargetConfigurationFingerprint(&target),
 	}
 	if bypassRaft {
-		if err := clusterModels.PrepareBackupTargetProvisionOperationTxn(s.DB, &prepare); err != nil {
+		if err := clusterModels.PrepareBackupTargetProvisionOperationV2Txn(s.DB, &prepare); err != nil {
 			return nil, err
 		}
 	} else {
@@ -136,7 +143,7 @@ func (s *Service) PrepareBackupTargetProvisionCreate(
 			return nil, fmt.Errorf("marshal_backup_target_provision_prepare: %w", err)
 		}
 		if err := s.applyRaftCommand(clusterModels.Command{
-			Type: "backup_target_provision", Action: "prepare", Data: data,
+			Type: "backup_target_provision", Action: "prepare_v2", Data: data,
 		}); err != nil {
 			return nil, err
 		}

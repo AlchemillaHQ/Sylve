@@ -48,6 +48,7 @@ func TestListRemoteSnapshotsPageValidatesOnlyRequestedWindow(t *testing.T) {
 		Mode:       clusterModels.BackupJobModeDataset,
 		DestSuffix: "root",
 		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "backup",
 		},

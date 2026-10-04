@@ -21,6 +21,7 @@ func TestReplicatedStateManifestCoversSnapshotAndExcludesLocalState(t *testing.T
 		"backup_target_node_readinesses",
 		"backup_target_provision_operations",
 		"backup_target_restore_operations",
+		"backup_target_ssh_host_trusts",
 		"backup_targets",
 		"cluster_notes",
 		"cluster_options",

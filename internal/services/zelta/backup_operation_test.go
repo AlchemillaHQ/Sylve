@@ -23,8 +23,14 @@ func TestDurableBackupJobOperationClosesPreEventDeleteWindow(t *testing.T) {
 		&clusterModels.BackupJobOperation{},
 	)
 	service := newTestZeltaService(database)
+	target := clusterModels.BackupTarget{ID: 1, Name: "target", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedBackupTargetHostTrust(t, database, &target)
 	if err := database.Create(&clusterModels.BackupJob{
 		ID: 51, Name: "reserved-job", Mode: clusterModels.BackupJobModeDataset,
+		TargetID:      target.ID,
 		SourceDataset: "tank/data", CronExpr: "0 0 * * *",
 	}).Error; err != nil {
 		t.Fatalf("seed job: %v", err)
@@ -158,6 +164,7 @@ func TestQueuedBackupJobOperationIsAbortedAfterTargetDisable(t *testing.T) {
 	if err := database.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, database, &target)
 	if err := database.Create(&clusterModels.BackupJob{
 		ID: 62, Name: "job", TargetID: target.ID, Mode: clusterModels.BackupJobModeDataset,
 		SourceDataset: "tank/data", CronExpr: "0 0 * * *",
@@ -191,8 +198,14 @@ func TestQueuedRestoreTokenIsBoundToReplicatedRequest(t *testing.T) {
 		&clusterModels.BackupJobOperation{},
 	)
 	service := newTestZeltaService(database)
+	target := clusterModels.BackupTarget{ID: 1, Name: "target", SSHHost: "root@backup", BackupRoot: "tank/backups", Enabled: true}
+	if err := database.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	seedBackupTargetHostTrust(t, database, &target)
 	if err := database.Create(&clusterModels.BackupJob{
 		ID: 52, Name: "restore-job", Mode: clusterModels.BackupJobModeDataset,
+		TargetID:      target.ID,
 		SourceDataset: "tank/data", CronExpr: "0 0 * * *",
 	}).Error; err != nil {
 		t.Fatalf("seed job: %v", err)

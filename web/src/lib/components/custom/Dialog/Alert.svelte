@@ -14,6 +14,7 @@
 			onCancel: () => void;
 		};
 		customTitle?: string;
+		title?: string;
 		confirmLabel?: string;
 		loadingLabel?: string;
 		loading?: boolean;
@@ -26,6 +27,7 @@
 		names,
 		actions,
 		customTitle,
+		title = 'Are you sure?',
 		confirmLabel = 'Continue',
 		loadingLabel = 'Processing...',
 		loading = false,
@@ -75,12 +77,7 @@
 	>
 		<AlertDialog.Header>
 			<AlertDialog.Title>
-				<SpanWithIcon
-					icon="icon-[lucide--alert-triangle]"
-					size="h-5 w-5"
-					gap="gap-2"
-					title="Are you sure?"
-				/>
+				<SpanWithIcon icon="icon-[lucide--alert-triangle]" size="h-5 w-5" gap="gap-2" {title} />
 			</AlertDialog.Title>
 			<AlertDialog.Description>
 				{#if customTitle}

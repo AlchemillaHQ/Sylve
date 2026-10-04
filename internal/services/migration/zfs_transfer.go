@@ -15,9 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -27,6 +25,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -40,22 +39,39 @@ import (
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
 
-func buildClusterSSHArgs(identity *clusterModels.ClusterSSHIdentity, privateKeyPath string) []string {
-	h := fnv.New32a()
-	fmt.Fprintf(h, "%s:%d:%s", identity.SSHHost, identity.SSHPort, strings.TrimSpace(identity.NodeUUID))
-	sockPath := filepath.Join(os.TempDir(), fmt.Sprintf("sylve-migrate-ssh-%x.sock", h.Sum32()))
-
-	args := []string{
-		"-n",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
+func buildClusterSSHArgs(identity *clusterModels.ClusterSSHIdentity, privateKeyPath string, fresh bool) ([]string, error) {
+	if identity == nil || strings.TrimSpace(identity.NodeUUID) == "" {
+		return nil, fmt.Errorf("cluster_ssh_identity_invalid")
+	}
+	canonicalKey, err := remoteexec.CanonicalSSHHostKey(identity.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("cluster_ssh_identity_invalid: node=%s: Check that node's published SSH identity: %w", identity.NodeUUID, err)
+	}
+	destination, err := clusterSSHDestination(identity)
+	if err != nil {
+		return nil, err
+	}
+	port := identity.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	trust := remoteexec.SSHHostTrust{Scope: "cluster", Target: identity.NodeUUID, Endpoint: destination.String(), Port: port, PublicKey: canonicalKey}
+	dataDir, err := config.GetDataPath()
+	if err != nil {
+		return nil, fmt.Errorf("ssh_host_key_file_unavailable: Check the Sylve data directory and permissions: %w", err)
+	}
+	path, err := remoteexec.PrepareSSHHostKey(filepath.Join(dataDir, "ssh", "host-keys"), trust)
+	if err != nil {
+		return nil, err
+	}
+	args, err := remoteexec.SSHHostKeyOptions(trust, path, privateKeyPath, fresh, false)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "-n",
 		"-o", "ConnectTimeout=10",
 		"-o", "ConnectionAttempts=1",
-		"-o", "UpdateHostKeys=no",
-		"-o", "ControlMaster=auto",
-		"-o", fmt.Sprintf("ControlPath=%s", sockPath),
-		"-o", "ControlPersist=120",
-	}
+	)
 
 	if identity.SSHPort != 0 && identity.SSHPort != 22 {
 		args = append(args, "-p", fmt.Sprintf("%d", identity.SSHPort))
@@ -65,7 +81,7 @@ func buildClusterSSHArgs(identity *clusterModels.ClusterSSHIdentity, privateKeyP
 		args = append(args, "-i", privateKeyPath)
 	}
 
-	return args
+	return args, nil
 }
 
 func clusterSSHDestination(identity *clusterModels.ClusterSSHIdentity) (remoteexec.SSHDestination, error) {
@@ -109,7 +125,11 @@ func clusterRemoteCommandArgs(
 	if err != nil {
 		return nil, err
 	}
-	args, err := command.SSHArgs(buildClusterSSHArgs(identity, privateKeyPath), destination, readsStdin)
+	base, err := buildClusterSSHArgs(identity, privateKeyPath, commandKind == "zfs.version")
+	if err != nil {
+		return nil, err
+	}
+	args, err := command.SSHArgs(base, destination, readsStdin)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +161,11 @@ func runClusterRemoteCommand(
 	if err != nil {
 		return "", err
 	}
-	return utils.RunCommandWithContext(ctx, "ssh", args...)
+	stdout, stderr, err := utils.RunCommandWithContextStreams(ctx, "ssh", args...)
+	if err != nil {
+		return stdout, fmt.Errorf("%s: %w", remoteexec.SSHDiagnostic(stderr), remoteexec.SSHHostKeyError("cluster", identity.NodeUUID, stderr, err))
+	}
+	return stdout, nil
 }
 
 // countingWriter wraps an io.Writer and atomically tracks bytes written.
@@ -573,8 +597,9 @@ func (s *Service) sendDatasetToNode(
 	}
 
 	if recvErr != nil {
+		recvErr = remoteexec.SSHHostKeyError("cluster", identity.NodeUUID, recvStderr.String(), recvErr)
 		return fmt.Errorf("recv_failed_on_%s: %s: %w",
-			identity.SSHHost, recvStderr.String(), recvErr)
+			identity.SSHHost, remoteexec.SSHDiagnostic(recvStderr.String()), recvErr)
 	}
 	if sendErr != nil {
 		errStr := strings.Join(sendStderrLines, "\n")

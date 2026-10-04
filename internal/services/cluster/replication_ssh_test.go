@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestClusterSSHDir(t *testing.T) {
@@ -83,8 +84,16 @@ func TestEnsureLocalClusterSSHKeyPair(t *testing.T) {
 		t.Fatalf("expected ssh-ed25519 key, got %q", pubKey)
 	}
 
-	if !strings.Contains(pubKey, "sylve-cluster") {
-		t.Fatalf("expected key comment sylve-cluster, got %q", pubKey)
+	privateRaw, err := os.ReadFile(privatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := ssh.ParsePrivateKey(privateRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pubKey != strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))) {
+		t.Fatal("published key does not match the signer")
 	}
 
 	if info, err := os.Stat(privatePath); err != nil || info.IsDir() {
@@ -104,7 +113,7 @@ func TestEnsureLocalClusterSSHKeyPair(t *testing.T) {
 	}
 }
 
-func TestEnsureLocalClusterSSHKeyPairRegeneratesCorruptPrivateKey(t *testing.T) {
+func TestEnsureLocalClusterSSHKeyPairRejectsCorruptPrivateKey(t *testing.T) {
 	dir := t.TempDir()
 	oldVal := os.Getenv("SYLVE_DATA_PATH")
 	os.Setenv("SYLVE_DATA_PATH", dir)
@@ -123,20 +132,9 @@ func TestEnsureLocalClusterSSHKeyPairRegeneratesCorruptPrivateKey(t *testing.T) 
 		t.Fatalf("write corrupt: %v", err)
 	}
 
-	// generate should regenerate because private file content is not valid
-	privatePath2, _, pubKey2, err := s.ensureLocalClusterSSHKeyPair()
-	if err != nil {
-		t.Fatalf("regeneration after corrupt: %v", err)
-	}
-
-	// the function only checks file existence, not content validity.
-	// Since the file exists, it skips regeneration.
-	// So pubKey should still be the same (read from old public key).
-	if privatePath2 != privatePath {
-		t.Fatal("expected same path for existing keypair")
-	}
-	if pubKey2 != pubKey1 {
-		t.Fatalf("expected same pubkey, got %q vs %q", pubKey1, pubKey2)
+	_, _, _, err = s.ensureLocalClusterSSHKeyPair()
+	if err == nil || !strings.Contains(err.Error(), "cluster_ssh_private_parse_failed") {
+		t.Fatalf("corrupt key accepted: %v", err)
 	}
 
 	// now delete both and verify regeneration

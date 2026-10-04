@@ -30,6 +30,7 @@ func newBackupTargetRestoreOperationService(t *testing.T) (*Service, clusterMode
 	if err := database.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, database, &target)
 	return newTestZeltaService(database), target
 }
 

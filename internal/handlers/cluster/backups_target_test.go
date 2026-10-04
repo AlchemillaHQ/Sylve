@@ -10,6 +10,8 @@ package clusterHandlers
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -19,12 +21,18 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
+	authService "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/ssh"
 )
 
 type backupTargetZeltaStub struct {
@@ -56,6 +64,17 @@ func (s *backupTargetZeltaStub) InspectTargetCandidate(
 	ctx context.Context,
 	target *clusterModels.BackupTarget,
 ) (zelta.BackupTargetValidationResult, error) {
+	if s.inspection.HostKey == "" {
+		public, _, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return s.inspection, err
+		}
+		key, err := ssh.NewPublicKey(public)
+		if err != nil {
+			return s.inspection, err
+		}
+		s.inspection.HostKey = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
+	}
 	return s.inspection, s.ValidateTarget(ctx, target)
 }
 
@@ -535,6 +554,7 @@ func TestBackupTargetsHandlerUpdate(t *testing.T) {
 		}
 		target.Enabled = false
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validate_failed")}
+		seedBackupTargetHostTrust(t, db, &target)
 		r := newBackupTargetRouter(cS, zStub)
 
 		rr := performJSONRequest(t, r, http.MethodPut, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10), []byte(`{
@@ -900,6 +920,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{validateErr: errors.New("validate_failed")}
 		r := newBackupTargetRouter(cS, zStub)
 
+		seedBackupTargetHostTrust(t, db, &target)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10)+"/validate", nil)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
@@ -923,6 +944,7 @@ func TestBackupTargetsHandlerValidateEndpoint(t *testing.T) {
 		zStub := &backupTargetZeltaStub{}
 		r := newBackupTargetRouter(cS, zStub)
 
+		seedBackupTargetHostTrust(t, db, &target)
 		rr := performJSONRequest(t, r, http.MethodPost, "/cluster/backups/targets/"+strconv.FormatUint(uint64(target.ID), 10)+"/validate", nil)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
@@ -1091,6 +1113,10 @@ func TestWriteBackupTargetRemoteReadError(t *testing.T) {
 		{name: "key unavailable", err: errors.New("backup_target_ssh_key_materialize_failed"), wantStatus: http.StatusServiceUnavailable, wantMessage: "backup_target_key_unavailable"},
 		{name: "deadline", err: context.DeadlineExceeded, wantStatus: http.StatusGatewayTimeout, wantMessage: "backup_target_request_timed_out"},
 		{name: "remote failure", err: errors.New("ssh connection refused"), wantStatus: http.StatusBadGateway, wantMessage: "read_failed"},
+		{name: "changed host key", err: errors.New("backup_target_host_key_changed"), wantStatus: http.StatusConflict, wantMessage: "backup_target_host_key_changed"},
+		{name: "unlearned host key", err: errors.New("backup_target_host_key_unlearned"), wantStatus: http.StatusConflict, wantMessage: "backup_target_host_key_unlearned"},
+		{name: "missing host trust", err: errors.New("backup_target_host_key_state_unavailable"), wantStatus: http.StatusServiceUnavailable, wantMessage: "backup_target_host_key_state_unavailable"},
+		{name: "host-key file unavailable", err: errors.New("ssh_host_key_file_unavailable"), wantStatus: http.StatusServiceUnavailable, wantMessage: "ssh_host_key_file_unavailable"},
 	}
 
 	for _, tt := range tests {
@@ -1110,6 +1136,121 @@ func TestWriteBackupTargetRemoteReadError(t *testing.T) {
 			}
 			if tt.wantStatus == http.StatusInternalServerError && strings.Contains(response.Body.String(), "database offline") {
 				t.Fatalf("internal lookup detail leaked: %s", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestBackupTargetHostKeyResetPermissionStateAndAudit(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		want int
+	}{
+		{"success", 200}, {"not confirmed", 400}, {"invalid id", 400}, {"invalid json", 400},
+		{"not found", 404}, {"non-admin", 403}, {"stale", 409}, {"active backup", 409},
+		{"active restore", 409}, {"missing trust", 503}, {"consensus unavailable", 503}, {"oversized", 413},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			database := newClusterHandlerTestDB(t, &clusterModels.BackupTarget{}, &clusterModels.BackupJob{}, &clusterModels.Cluster{}, &models.User{}, &models.Group{})
+			target := clusterModels.BackupTarget{ID: 42, Name: "target", SSHHost: "root@backup", SSHKey: "private-login-secret", BackupRoot: "tank/backups", Enabled: true}
+			if err := database.Create(&target).Error; err != nil {
+				t.Fatal(err)
+			}
+			seedBackupTargetHostTrust(t, database, &target)
+			trust, err := clusterModels.GetBackupTargetSSHHostTrust(database, &target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			job := clusterModels.BackupJob{ID: 71, Name: "job", TargetID: target.ID, CronExpr: "0 0 * * *", Mode: "dataset", Enabled: true, ScheduleRevision: 7}
+			if err := database.Create(&job).Error; err != nil {
+				t.Fatal(err)
+			}
+			service := cluster.NewClusterService(database, nil, nil).(*cluster.Service)
+			if err := service.ReopenMutations(); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.Create(&models.User{ID: 1, Username: "reset-admin", Admin: scenario.name != "non-admin"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			telemetry := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+			path, body := "/api/cluster/backups/targets/42/host-key/reset", `{"expectedRevision":1,"confirmed":true}`
+			switch scenario.name {
+			case "not confirmed":
+				body = `{"expectedRevision":1,"confirmed":false}`
+			case "invalid id":
+				path = "/api/cluster/backups/targets/invalid/host-key/reset"
+			case "invalid json":
+				body = "{"
+			case "not found":
+				path = "/api/cluster/backups/targets/999/host-key/reset"
+			case "stale":
+				body = `{"expectedRevision":2,"confirmed":true}`
+			case "missing trust":
+				if err := database.Delete(&clusterModels.BackupTargetSSHHostTrust{}, "target_id = ?", target.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+			case "consensus unavailable":
+				if err := database.Create(&clusterModels.Cluster{ID: 1, Enabled: true}).Error; err != nil {
+					t.Fatal(err)
+				}
+			case "oversized":
+				body = `{"expectedRevision":1,"confirmed":true,"extra":"` + strings.Repeat("x", 1024) + `"}`
+			case "active backup":
+				if err := database.Create(&clusterModels.BackupJobOperation{JobID: job.ID, Token: "backup-token", Operation: "backup", State: "running", HolderNodeID: "local", AcquiredAt: time.Now()}).Error; err != nil {
+					t.Fatal(err)
+				}
+			case "active restore":
+				if err := database.Create(&clusterModels.BackupTargetRestoreOperation{TargetID: target.ID, Token: "restore-token", State: "queued", HolderNodeID: "local", DestinationDataset: "tank/restored"}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			auth := &authService.Service{DB: database}
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				c.Set("UserID", uint(1))
+				c.Set("Username", "reset-admin")
+				c.Set("AuthType", "sylve")
+				c.Set("AuthScope", "local")
+			})
+			router.Use(middleware.LimitRequestBody(256), middleware.RequestLoggerMiddleware(telemetry, auth), middleware.RequireLocalAdmin(auth))
+			router.POST("/api/cluster/backups/targets/:id/host-key/reset", ResetBackupTargetHostKey(service))
+			response := performJSONRequest(t, router, http.MethodPost, path, []byte(body))
+			if response.Code != scenario.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, scenario.want, response.Body.String())
+			}
+			var stored clusterModels.BackupTarget
+			if err := database.First(&stored, target.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if clusterModels.BackupTargetConfigurationFingerprint(&stored) != clusterModels.BackupTargetConfigurationFingerprint(&target) {
+				t.Fatal("reset changed target configuration")
+			}
+			var storedJob clusterModels.BackupJob
+			if err := database.First(&storedJob, job.ID).Error; err != nil || storedJob.ScheduleRevision != job.ScheduleRevision || !storedJob.Enabled || storedJob.CronExpr != job.CronExpr {
+				t.Fatalf("reset changed job: %+v err=%v", storedJob, err)
+			}
+			if scenario.name == "missing trust" {
+				return
+			}
+			current, err := clusterModels.GetBackupTargetSSHHostTrust(database, &target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario.want != 200 {
+				if current.Revision != 1 || current.PublicKey != trust.PublicKey {
+					t.Fatal("rejected request changed host trust")
+				}
+				return
+			}
+			if current.PublicKey != "" || current.Revision != 2 {
+				t.Fatalf("reset trust=%+v", current)
+			}
+			var audit infoModels.AuditRecord
+			if err := telemetry.First(&audit).Error; err != nil {
+				t.Fatal(err)
+			}
+			if audit.Status != "success" || audit.User != "reset-admin" || !strings.Contains(audit.Action, trust.Status().Fingerprint) || !strings.Contains(audit.Action, `"revision":2`) || strings.Contains(audit.Action, target.SSHKey) {
+				t.Fatalf("reset audit=%+v", audit)
 			}
 		})
 	}

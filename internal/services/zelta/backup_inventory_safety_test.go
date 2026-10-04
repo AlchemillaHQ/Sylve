@@ -46,6 +46,7 @@ func TestBatchedRestoreDiscoveryPreservesCommitFiltering(t *testing.T) {
 		job := &clusterModels.BackupJob{
 			ID: 1,
 			Target: clusterModels.BackupTarget{
+				SSHHostKey: fakeSSHHostKey(),
 				SSHHost:    "user@target",
 				BackupRoot: "backup",
 			},
@@ -68,7 +69,7 @@ func TestBatchedRestoreDiscoveryPreservesCommitFiltering(t *testing.T) {
 		harness.SetScenario(backupCommitBatchScenario(t, remoteNames, metadataBySnapshot))
 		filtered, err := (&Service{}).filterRestorableTargetSnapshots(
 			context.Background(),
-			&clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"},
+			&clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"},
 			clusterModels.BackupJobModeVM,
 			snapshots,
 		)
@@ -90,6 +91,7 @@ func TestBackupRetentionInventoryRejectsManifestMismatch(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		ID: 1,
 		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "backup",
 		},

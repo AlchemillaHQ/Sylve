@@ -142,6 +142,95 @@ func TestEmbeddedZeltaParsesBracketedIPv6Endpoints(t *testing.T) {
 	}
 }
 
+func TestEmbeddedZeltaSSHSerializationPreservesPolicyAndStreamInput(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	awk, err := exec.LookPath("awk")
+	if err != nil {
+		t.Skip("awk is not installed")
+	}
+	dir := t.TempDir()
+	SSHKeyDirectory = filepath.Join(dir, "host keys with spaces and 'quotes'")
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte("#!/bin/sh\nfor arg do printf '<%s>\\n' \"$arg\"; done\nfor arg do if [ \"$arg\" = '-n' ]; then exit 0; fi; done\ncat\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	service := &Service{}
+	target := &clusterModels.BackupTarget{SSHHost: "root@backup", SSHHostKey: testutil.SSHHostKey(t), SSHPort: 2222,
+		SSHKeyPath: filepath.Join(dir, "login key with spaces and 'quotes'"), BackupRoot: "tank/backups"}
+	if err := os.WriteFile(target.SSHKeyPath, []byte("login key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	direct, err := service.buildSSHArgs(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := service.buildZeltaEnv(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	common, err := zeltaFS.ReadFile("zelta/share/zelta/zelta-common.awk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(common)
+	start := strings.Index(source, "function remote_str")
+	end := strings.Index(source, "## Command builder")
+	if start < 0 || end <= start {
+		t.Fatal("bundled SSH command builder not found")
+	}
+	program := source[start:end] + `
+BEGIN {
+ Opt["DST_REMOTE"] = "root@backup"
+ ep["REMOTE"] = "root@backup"
+ Opt["REMOTE_DEFAULT"] = ENVIRON["ZELTA_REMOTE_DEFAULT"]
+ Opt["REMOTE_SEND"] = ENVIRON["ZELTA_REMOTE_SEND"]
+ Opt["REMOTE_RECV"] = ENVIRON["ZELTA_REMOTE_RECV"]
+ print remote_str("DST", "DEFAULT") " 'zfs' 'version'"
+ print remote_str("DST", "SEND") " 'zfs' 'version'"
+ print remote_str("DST", "RECV") " 'zfs' 'version'"
+ print get_remote_cmd(ep, "RECV") " 'zfs' 'version'"
+}
+`
+	cmd := exec.Command(awk, "-f", "-")
+	cmd.Env, cmd.Stdin = append(os.Environ(), environment...), strings.NewReader(program)
+	serialized, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("bundled builder: %v %s", err, serialized)
+	}
+	commands := strings.Split(strings.TrimSpace(string(serialized)), "\n")
+	if len(commands) != 4 {
+		t.Fatalf("commands=%q", serialized)
+	}
+	base := make([]string, 0, len(direct))
+	for _, arg := range direct {
+		if arg != "-n" {
+			base = append(base, arg)
+		}
+	}
+	for i, command := range commands {
+		args := append([]string(nil), base...)
+		if i < 2 {
+			args = append(args, "-n")
+		}
+		args = append(args, "root@backup", "zfs", "version")
+		var expected strings.Builder
+		for _, arg := range args {
+			expected.WriteString("<" + arg + ">\n")
+		}
+		if i >= 2 {
+			expected.WriteString("stream input\n")
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
+		cmd.Stdin = strings.NewReader("stream input\n")
+		output, err := cmd.CombinedOutput()
+		cancel()
+		if err != nil || string(output) != expected.String() {
+			t.Fatalf("command %d changed policy, paths, or input: %v\nwant=%q\ngot=%q", i, err, expected.String(), output)
+		}
+	}
+}
+
 func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
 

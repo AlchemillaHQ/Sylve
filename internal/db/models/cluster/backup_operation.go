@@ -47,6 +47,7 @@ type BackupJobOperation struct {
 }
 
 type BackupJobOperationAcquire struct {
+	HostKeyRevision      uint64    `json:"hostKeyRevision,omitempty"`
 	JobID                uint      `json:"jobId"`
 	Token                string    `json:"token"`
 	Operation            string    `json:"operation"`
@@ -57,6 +58,7 @@ type BackupJobOperationAcquire struct {
 }
 
 type BackupJobOperationTransition struct {
+	HostKeyRevision      uint64    `json:"hostKeyRevision,omitempty"`
 	JobID                uint      `json:"jobId"`
 	Token                string    `json:"token"`
 	Operation            string    `json:"operation"`
@@ -122,6 +124,11 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 		}
 		if runner := strings.TrimSpace(job.RunnerNodeID); runner != "" && runner != holderNodeID {
 			return fmt.Errorf("backup_job_operation_runner_mismatch")
+		}
+		if payload.HostKeyRevision != 0 {
+			if err := RequireBackupTargetHostKeyRevision(tx, job.TargetID, payload.HostKeyRevision, operation == BackupJobOperationRestore); err != nil {
+				return err
+			}
 		}
 		var existing BackupJobOperation
 		result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -199,6 +206,13 @@ func AcquireBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationAcquir
 	})
 }
 
+func AcquireBackupJobOperationV2Txn(db *gorm.DB, payload *BackupJobOperationAcquire) error {
+	if payload == nil || payload.HostKeyRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return AcquireBackupJobOperationTxn(db, payload)
+}
+
 func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransition, targetState string) error {
 	if db == nil || payload == nil {
 		return fmt.Errorf("backup_job_operation_input_invalid")
@@ -248,6 +262,11 @@ func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransi
 				}
 				if jobResult.RowsAffected == 0 {
 					return fmt.Errorf("backup_job_not_found")
+				}
+				if payload.HostKeyRevision != 0 {
+					if err := RequireBackupTargetHostKeyRevision(tx, job.TargetID, payload.HostKeyRevision, existing.Operation == BackupJobOperationRestore); err != nil {
+						return err
+					}
 				}
 				if existing.Operation == BackupJobOperationBackup {
 					if existing.ScheduleRevision != 0 && job.ScheduleRevision != existing.ScheduleRevision {
@@ -308,6 +327,13 @@ func transitionBackupJobOperation(db *gorm.DB, payload *BackupJobOperationTransi
 
 func StartBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationTransition) error {
 	return transitionBackupJobOperation(db, payload, BackupJobOperationRunning)
+}
+
+func StartBackupJobOperationV2Txn(db *gorm.DB, payload *BackupJobOperationTransition) error {
+	if payload == nil || payload.HostKeyRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return StartBackupJobOperationTxn(db, payload)
 }
 
 func FinishBackupJobOperationTxn(db *gorm.DB, payload *BackupJobOperationTransition) error {

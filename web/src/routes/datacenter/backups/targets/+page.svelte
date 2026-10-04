@@ -2,6 +2,7 @@
 	import {
 		deleteBackupTarget,
 		listBackupTargetsResult,
+		resetBackupTargetHostKey,
 		validateBackupTarget
 	} from '$lib/api/cluster/backups';
 	import { getDetails, getNodesResult } from '$lib/api/cluster/cluster';
@@ -192,6 +193,15 @@
 
 	let deleteModalOpen = $state(false);
 	let validating = $state(false);
+	let resettingHostKey = $state(false);
+	let hostKeyResetOpen = $state(false);
+	let hostKeyResetTarget = $state<{
+		id: number;
+		name: string;
+		revision: number;
+		fingerprint: string;
+		nodeId: string;
+	} | null>(null);
 
 	function selectedReadiness(target: BackupTarget): BackupTargetNodeReadiness | undefined {
 		if (!selectedValidationNodeId) {
@@ -306,21 +316,77 @@
 	}
 
 	async function validateTarget() {
-		if (!mutationsAvailable || !selectedTargetId) return;
+		if (!mutationsAvailable || !selectedTargetId || validating || resettingHostKey) return;
+		const targetId = selectedTargetId;
+		const nodeId = selectedValidationNodeId;
 		validating = true;
 		try {
-			const response = await validateBackupTarget(selectedTargetId, selectedValidationNodeId);
+			const response = await validateBackupTarget(targetId, nodeId);
+			reload = true;
+			if (selectedTargetId !== targetId) return;
 			if (response.status === 'success') {
 				toast.success('Target connectivity validated', { position: 'bottom-center' });
-				reload = true;
 			} else {
 				handleAPIError(response);
 				toast.error('Validation failed', { position: 'bottom-center' });
 			}
 		} catch {
+			if (selectedTargetId !== targetId) return;
 			toast.error('Validation failed', { position: 'bottom-center' });
 		} finally {
 			validating = false;
+		}
+	}
+
+	function openHostKeyReset() {
+		if (!mutationsAvailable || !selectedTarget?.hostKey || validating || resettingHostKey) return;
+		hostKeyResetTarget = {
+			id: selectedTarget.id,
+			name: selectedTarget.name,
+			revision: selectedTarget.hostKey.revision,
+			fingerprint: selectedTarget.hostKey.fingerprint,
+			nodeId: selectedValidationNodeId
+		};
+		hostKeyResetOpen = true;
+	}
+
+	async function resetHostKey() {
+		if (!mutationsAvailable || !hostKeyResetTarget || resettingHostKey || validating) return;
+		const target = hostKeyResetTarget;
+		resettingHostKey = true;
+		let resetCommitted = false;
+		try {
+			const response = await resetBackupTargetHostKey(target.id, target.revision);
+			if (response.status !== 'success') {
+				if (selectedTargetId === target.id) handleAPIError(response);
+				return;
+			}
+			resetCommitted = true;
+			hostKeyResetOpen = false;
+			await targets.refetch();
+			const validation = await validateBackupTarget(target.id, target.nodeId);
+			if (selectedTargetId !== target.id) return;
+			if (validation.status !== 'success') {
+				toast.error(
+					'Host key reset. The connection test failed. Check the target and try Validate again.',
+					{
+						position: 'bottom-center'
+					}
+				);
+				return;
+			}
+			toast.success('Host key reset. The connection test passed.', { position: 'bottom-center' });
+		} catch {
+			if (selectedTargetId !== target.id) return;
+			toast.error(
+				resetCommitted
+					? 'Host key reset. The connection test failed. Check the target and try Validate again.'
+					: 'Sylve cannot confirm the host-key reset. Refresh the page before you try again.',
+				{ position: 'bottom-center' }
+			);
+		} finally {
+			resettingHostKey = false;
+			reload = true;
 		}
 	}
 </script>
@@ -333,13 +399,30 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={!mutationsAvailable || validating}
+				disabled={!mutationsAvailable || validating || resettingHostKey}
 			>
 				<SpanWithIcon
 					icon={validating ? 'icon-[mdi--loading]' : 'icon-[mdi--connection]'}
 					size="h-4 w-4 {validating ? 'animate-spin' : ''}"
 					gap="gap-2"
 					title={validating ? 'Validating' : 'Validate'}
+				/>
+			</Button>
+		{/if}
+
+		{#if type === 'reset-host-key'}
+			<Button
+				onclick={openHostKeyReset}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+				disabled={!mutationsAvailable || !selectedTarget?.hostKey || validating || resettingHostKey}
+			>
+				<SpanWithIcon
+					icon="icon-[mdi--key-change]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title="Reset host key"
 				/>
 			</Button>
 		{/if}
@@ -420,6 +503,7 @@
 			/>
 		{/if}
 		{@render button('validate')}
+		{@render button('reset-host-key')}
 
 		<Button onclick={() => (reload = true)} size="sm" variant="outline" class="ml-auto h-6 hidden">
 			<div class="flex items-center">
@@ -428,6 +512,24 @@
 			</div>
 		</Button>
 	</div>
+	{#if selectedTarget}
+		<div class="border-b px-3 py-2 text-sm text-muted-foreground">
+			<p>
+				The first successful connection stores the target's SSH host key. Sylve checks this key on
+				later connections.
+			</p>
+			{#if selectedTarget.hostKey?.state === 'trusted'}
+				<p>
+					SSH host key: <span class="break-all font-mono">{selectedTarget.hostKey.fingerprint}</span
+					>
+				</p>
+			{:else}
+				<p>
+					The SSH host key is not stored. Select Validate before you restore or read backup data.
+				</p>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="flex h-full flex-col overflow-hidden">
 		<TreeTable
@@ -467,3 +569,23 @@
 		}
 	}}
 />
+
+<AlertDialog
+	bind:open={hostKeyResetOpen}
+	title={`Reset the SSH host key for ${hostKeyResetTarget?.name || ''}?`}
+	customTitle="Sylve will trust the host key from the next successful connection. Continue only if you expect the target's host key to have changed."
+	confirmLabel="Reset host key"
+	loadingLabel="Resetting host key"
+	loading={resettingHostKey}
+	keepOpenOnConfirm={true}
+	actions={{
+		onConfirm: resetHostKey,
+		onCancel: () => (hostKeyResetOpen = false)
+	}}
+>
+	{#if hostKeyResetTarget?.fingerprint}
+		<p class="break-all text-sm text-muted-foreground">
+			Current fingerprint: <span class="font-mono">{hostKeyResetTarget.fingerprint}</span>
+		</p>
+	{/if}
+</AlertDialog>

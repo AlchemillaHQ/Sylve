@@ -25,20 +25,26 @@ const (
 
 // BackupTarget represents a remote ZFS host reachable via SSH for Zelta replication.
 type BackupTarget struct {
-	ID               uint                              `gorm:"primaryKey" json:"id"`
-	Name             string                            `gorm:"uniqueIndex;not null" json:"name"`
-	SSHHost          string                            `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
-	SSHPort          int                               `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
-	SSHKeyPath       string                            `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // legacy/local execution path; managed paths are derived per node
-	SSHKey           string                            `gorm:"column:ssh_key;type:text" json:"-"`
-	BackupRoot       string                            `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
-	CreateBackupRoot bool                              `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
-	Description      string                            `json:"description"`
-	Enabled          bool                              `json:"enabled"`
-	CreatedAt        time.Time                         `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt        time.Time                         `gorm:"autoUpdateTime" json:"updatedAt"`
-	Jobs             []BackupJob                       `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Readiness        []BackupTargetNodeReadinessStatus `json:"readiness,omitempty" gorm:"-"`
+	ID                 uint                              `gorm:"primaryKey" json:"id"`
+	Name               string                            `gorm:"uniqueIndex;not null" json:"name"`
+	SSHHost            string                            `gorm:"column:ssh_host;" json:"sshHost"`           // user@host
+	SSHPort            int                               `gorm:"column:ssh_port;default:22" json:"sshPort"` // SSH port (default 22)
+	SSHKeyPath         string                            `gorm:"column:ssh_key_path" json:"sshKeyPath"`     // legacy/local execution path; managed paths are derived per node
+	SSHKey             string                            `gorm:"column:ssh_key;type:text" json:"-"`
+	BackupRoot         string                            `gorm:"column:backup_root;" json:"backupRoot"` // target pool/dataset prefix (e.g., tank/Backups)
+	CreateBackupRoot   bool                              `gorm:"column:create_backup_root;default:false" json:"createBackupRoot"`
+	Description        string                            `json:"description"`
+	Enabled            bool                              `json:"enabled"`
+	CreatedAt          time.Time                         `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt          time.Time                         `gorm:"autoUpdateTime" json:"updatedAt"`
+	Jobs               []BackupJob                       `json:"jobs,omitempty" gorm:"foreignKey:TargetID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Readiness          []BackupTargetNodeReadinessStatus `json:"readiness,omitempty" gorm:"-"`
+	HostKey            *BackupTargetSSHHostKeyStatus     `json:"hostKey,omitempty" gorm:"-"`
+	SSHHostKey         string                            `json:"-" gorm:"-"`
+	SSHClusterNodeID   string                            `json:"-" gorm:"-"`
+	SSHHostKeyRevision uint64                            `json:"-" gorm:"-"`
+	SSHHostKeyFile     string                            `json:"-" gorm:"-"`
+	SSHFreshConnection bool                              `json:"-" gorm:"-"`
 }
 
 type BackupTargetReplicationPayload struct {

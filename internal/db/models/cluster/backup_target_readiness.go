@@ -39,6 +39,7 @@ type BackupTargetNodeReadinessStatus struct {
 // BackupTargetNodeReadiness is the replicated durable observation made by one
 // exact node against one exact target configuration.
 type BackupTargetNodeReadiness struct {
+	HostKeyRevision      uint64     `gorm:"not null;default:0" json:"hostKeyRevision,omitempty"`
 	TargetID             uint       `gorm:"primaryKey;autoIncrement:false;index" json:"targetId"`
 	NodeID               string     `gorm:"primaryKey;size:255;index" json:"nodeId"`
 	TargetFingerprint    string     `gorm:"size:64;not null;index" json:"targetFingerprint"`
@@ -59,6 +60,7 @@ type BackupTargetNodeReadiness struct {
 // including timestamps, is supplied before apply so the FSM remains
 // deterministic and never consults a local clock or remote service.
 type BackupTargetNodeReadinessUpdate struct {
+	HostKeyRevision     uint64     `json:"hostKeyRevision,omitempty"`
 	TargetID            uint       `json:"targetId"`
 	NodeID              string     `json:"nodeId"`
 	TargetFingerprint   string     `json:"targetFingerprint"`
@@ -119,7 +121,8 @@ func UpsertBackupTargetNodeReadinessBackfillTxn(db *gorm.DB, row *BackupTargetNo
 		return fmt.Errorf("backup_target_readiness_backfill_invalid")
 	}
 	update := BackupTargetNodeReadinessUpdate{
-		TargetID: row.TargetID, NodeID: row.NodeID, TargetFingerprint: row.TargetFingerprint,
+		HostKeyRevision: row.HostKeyRevision,
+		TargetID:        row.TargetID, NodeID: row.NodeID, TargetFingerprint: row.TargetFingerprint,
 		ValidationSucceeded: row.ValidationSucceeded, LastVerifiedAt: row.LastVerifiedAt,
 		ReadyUntil: row.ReadyUntil, LastError: row.LastError,
 		RaftAppliedIndex: row.RaftAppliedIndex,
@@ -160,7 +163,8 @@ func UpsertBackupTargetNodeReadinessBackfillTxn(db *gorm.DB, row *BackupTargetNo
 		updatedAt = normalized.LastVerifiedAt
 	}
 	backfill := BackupTargetNodeReadiness{
-		TargetID: normalized.TargetID, NodeID: normalized.NodeID,
+		HostKeyRevision: row.HostKeyRevision,
+		TargetID:        normalized.TargetID, NodeID: normalized.NodeID,
 		TargetFingerprint: normalized.TargetFingerprint, ValidationSucceeded: normalized.ValidationSucceeded,
 		LastVerifiedAt: normalized.LastVerifiedAt, ReadyUntil: normalized.ReadyUntil,
 		LastError: normalized.LastError, Revision: revision,
@@ -170,7 +174,7 @@ func UpsertBackupTargetNodeReadinessBackfillTxn(db *gorm.DB, row *BackupTargetNo
 		Columns: []clause.Column{{Name: "target_id"}, {Name: "node_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"target_fingerprint", "validation_succeeded", "last_verified_at",
-			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at",
+			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at", "host_key_revision",
 		}),
 	}).Create(&backfill).Error
 }
@@ -236,6 +240,18 @@ func ApplyBackupTargetNodeReadinessUpdateTxn(db *gorm.DB, update *BackupTargetNo
 	if current := BackupTargetConnectivityFingerprint(&target); current != update.TargetFingerprint {
 		return fmt.Errorf("backup_target_readiness_fingerprint_mismatch")
 	}
+	if update.HostKeyRevision != 0 {
+		trust, err := GetBackupTargetSSHHostTrust(db, &target)
+		if err != nil {
+			return err
+		}
+		if trust.Revision != update.HostKeyRevision {
+			return fmt.Errorf("backup_target_host_key_revision_conflict")
+		}
+		if update.ValidationSucceeded && trust.PublicKey == "" {
+			return fmt.Errorf("backup_target_host_key_unlearned")
+		}
+	}
 
 	var existing BackupTargetNodeReadiness
 	existingResult := db.
@@ -249,6 +265,7 @@ func ApplyBackupTargetNodeReadinessUpdateTxn(db *gorm.DB, update *BackupTargetNo
 		revision = existing.Revision + 1
 	}
 	row := BackupTargetNodeReadiness{
+		HostKeyRevision:     update.HostKeyRevision,
 		TargetID:            update.TargetID,
 		NodeID:              update.NodeID,
 		TargetFingerprint:   update.TargetFingerprint,
@@ -264,7 +281,14 @@ func ApplyBackupTargetNodeReadinessUpdateTxn(db *gorm.DB, update *BackupTargetNo
 		Columns: []clause.Column{{Name: "target_id"}, {Name: "node_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"target_fingerprint", "validation_succeeded", "last_verified_at",
-			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at",
+			"ready_until", "last_error", "revision", "raft_applied_index", "updated_at", "host_key_revision",
 		}),
 	}).Create(&row).Error
+}
+
+func ApplyBackupTargetNodeReadinessUpdateV2Txn(db *gorm.DB, update *BackupTargetNodeReadinessUpdate) error {
+	if update == nil || update.HostKeyRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return db.Transaction(func(tx *gorm.DB) error { return ApplyBackupTargetNodeReadinessUpdateTxn(tx, update) })
 }

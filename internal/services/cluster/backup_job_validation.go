@@ -43,6 +43,7 @@ type BackupJobPlacementAuthorization struct {
 }
 
 type BackupJobSafetyValidationRequest struct {
+	HostKeyRevision         uint64 `json:"hostKeyRevision,omitempty"`
 	ExpectedNodeID          string `json:"expectedNodeId"`
 	MinimumRaftAppliedIndex uint64 `json:"minimumRaftAppliedIndex,omitempty"`
 	Mode                    string `json:"mode"`
@@ -300,6 +301,7 @@ func (s *Service) ValidateBackupJobSafetyLocal(
 			return result, fmt.Errorf("backup_target_validation_scope_invalid")
 		}
 		targetReadiness, err := s.ValidateBackupTargetConnectivityLocal(ctx, BackupTargetValidationRequest{
+			HostKeyRevision:         request.HostKeyRevision,
 			ExpectedNodeID:          request.ExpectedNodeID,
 			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
 			TargetID:                request.TargetID,
@@ -514,6 +516,7 @@ func validateBackupJobSafetyReceipt(
 	}
 	if request.TargetID != 0 || request.TargetFingerprint != "" {
 		targetRequest := BackupTargetValidationRequest{
+			HostKeyRevision:         request.HostKeyRevision,
 			ExpectedNodeID:          request.ExpectedNodeID,
 			MinimumRaftAppliedIndex: request.MinimumRaftAppliedIndex,
 			TargetID:                request.TargetID,
@@ -643,6 +646,7 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		return empty, nil, fmt.Errorf("backup_runner_node_id_required")
 	}
 	targetFingerprint := ""
+	var hostRevision uint64
 	if validateTarget {
 		if job.TargetID == 0 {
 			return empty, nil, fmt.Errorf("target_id_required")
@@ -658,6 +662,11 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 			return empty, nil, fmt.Errorf("backup_target_disabled")
 		}
 		targetFingerprint = clusterModels.BackupTargetConnectivityFingerprint(&target)
+		trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB.WithContext(ctx), &target)
+		if err != nil {
+			return empty, nil, err
+		}
+		hostRevision = trust.Revision
 	}
 	validateAndRecord := func(
 		request BackupJobSafetyValidationRequest,
@@ -684,6 +693,7 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		if validateTarget {
 			request.TargetID = job.TargetID
 			request.TargetFingerprint = targetFingerprint
+			request.HostKeyRevision = hostRevision
 		}
 		result, err := s.ValidateBackupJobSafetyLocal(ctx, request)
 		if err != nil {
@@ -709,6 +719,7 @@ func (s *Service) validateBackupJobOnRunnerWithTarget(
 		if validateTarget {
 			request.TargetID = job.TargetID
 			request.TargetFingerprint = targetFingerprint
+			request.HostKeyRevision = hostRevision
 		}
 		var result BackupJobSafetyValidationResult
 		if local {

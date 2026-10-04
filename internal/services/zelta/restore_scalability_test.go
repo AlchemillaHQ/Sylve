@@ -25,7 +25,7 @@ func TestFilterRestorableTargetSnapshotsBatchesCommitMetadata(t *testing.T) {
 	harness := newFakeSSHHarness(t)
 	snapshots, _, metadataBySnapshot, remoteNames := backupInventoryScaleFixture(t, 257)
 	harness.SetScenario(backupCommitBatchScenario(t, remoteNames, metadataBySnapshot))
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"}
+	target := &clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"}
 
 	filtered, err := (&Service{}).filterRestorableTargetSnapshots(
 		context.Background(),
@@ -84,7 +84,7 @@ func TestLoadRemoteRestoreSnapshotInventoryListsOnlySelectedGeneration(t *testin
 
 	inventory, err := (&Service{}).loadRemoteRestoreSnapshotInventory(
 		context.Background(),
-		&clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"},
+		&clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"},
 		remoteRoot,
 		snapshot,
 		true,
@@ -131,7 +131,7 @@ func TestResolveRemoteDatasetForSnapshotUsesExactSnapshotQueries(t *testing.T) {
 
 	resolved, err := (&Service{}).resolveRemoteDatasetForSnapshot(
 		context.Background(),
-		&clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"},
+		&clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"},
 		"backup/root",
 		snapshot,
 	)
@@ -177,7 +177,7 @@ func TestRecheckRemoteRestoreDatasetPlanRejectsChangedGUID(t *testing.T) {
 
 	err := (&Service{}).recheckRemoteRestoreDatasetPlan(
 		context.Background(),
-		&clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "backup"},
+		&clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "backup"},
 		plan,
 	)
 	if err == nil || !strings.Contains(err.Error(), "restore_snapshot_changed_after_preflight") {

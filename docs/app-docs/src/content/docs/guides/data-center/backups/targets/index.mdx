@@ -37,6 +37,8 @@ In a cluster, each participating node needs to be able to reach the target with 
 
 Validation does not send a backup. It is a safe way to check the selected node's path to the remote ZFS target before assigning or running a job.
 
+Sylve manages SSH host keys separately from system `known_hosts` files. Backup targets store the key after the first successful connection and check it on later connections. If a target's key changes, select **Reset host key** to clear the stored key and run validation again. Cluster-node connections use their published keys automatically.
+
 VM and jail migrations also validate the destination's access to every target used by an enabled backup job for that guest. The check runs during the initial preflight and again before cutover. Migration is blocked if a required target is missing, disabled, unreachable, or cannot use the configured SSH and ZFS path from the destination node.
 
 ![Backup target validation showing the selected cluster node and a Ready connectivity result](./backups-target-validate.png)

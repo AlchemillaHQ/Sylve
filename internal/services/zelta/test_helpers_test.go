@@ -17,8 +17,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -38,6 +40,8 @@ type fakeSSHResponse struct {
 	Stderr   string `json:"stderr"`
 	ExitCode int    `json:"exitCode"`
 }
+
+func fakeSSHHostKey() string { return os.Getenv("ZELTA_TEST_SSH_HOST_KEY") }
 
 type fakeSSHScenario struct {
 	Responses map[string][]fakeSSHResponse `json:"responses"`
@@ -81,6 +85,8 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&clusterModels.ScheduledRunResultOutbox{},
 		&clusterModels.ReplicationTransitionEvent{},
 		&clusterModels.BackupTargetRestoreOperation{},
+		&clusterModels.BackupTargetSSHHostTrust{},
+		&clusterModels.ClusterOption{},
 	)
 
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
@@ -104,6 +110,11 @@ func newFakeSSHHarness(t *testing.T) *fakeSSHHarness {
 	resetZeltaTestGlobals(t)
 
 	dir := t.TempDir()
+	SSHKeyDirectory = filepath.Join(dir, "keys")
+	if err := os.MkdirAll(SSHKeyDirectory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ZELTA_TEST_SSH_HOST_KEY", testutil.SSHHostKey(t))
 	scriptPath := filepath.Join(dir, "ssh")
 	scenarioPath := filepath.Join(dir, "scenario.json")
 	statePath := filepath.Join(dir, "state.json")
@@ -139,6 +150,25 @@ exec "$ZELTA_TEST_HELPER_BINARY" -test.run TestZeltaFakeSSHHelperProcess -- "$@"
 	return h
 }
 
+func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget, keys ...string) {
+	t.Helper()
+	if err := database.AutoMigrate(&clusterModels.BackupTargetSSHHostTrust{}); err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := clusterModels.BackupTargetSSHEndpointFingerprint(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: endpoint,
+		PublicKey: testutil.SSHHostKey(t), OccurredAt: time.Now().UTC()}
+	if len(keys) > 0 {
+		change.PublicKey = keys[0]
+	}
+	if err := clusterModels.ApplyBackupTargetSSHHostTrustTxn(database, "initialize_v1", &change); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func (h *fakeSSHHarness) SetScenario(s fakeSSHScenario) {
 	h.t.Helper()
 
@@ -159,6 +189,9 @@ func (h *fakeSSHHarness) SetScenario(s fakeSSHScenario) {
 	}
 	if err := os.WriteFile(h.logFile, nil, 0600); err != nil {
 		h.t.Fatalf("failed to initialize fake ssh log file: %v", err)
+	}
+	if err := os.WriteFile(h.logFile+".args", nil, 0600); err != nil {
+		h.t.Fatal(err)
 	}
 }
 
@@ -202,6 +235,13 @@ func TestZeltaFakeSSHHelperProcess(_ *testing.T) {
 		_, _ = fmt.Fprintln(os.Stderr, fmt.Sprintf("fake_ssh_log_append_failed: %v", err))
 		os.Exit(2)
 	}
+	serializedArgs, err := json.Marshal(args)
+	if err != nil {
+		os.Exit(2)
+	}
+	if err := fakeSSHAppendLog(os.Getenv(fakeSSHLogFileEnv)+".args", string(serializedArgs)); err != nil {
+		os.Exit(2)
+	}
 
 	scenario, err := fakeSSHLoadScenario(os.Getenv(fakeSSHScenarioFileEnv))
 	if err != nil {
@@ -241,11 +281,47 @@ func TestZeltaFakeSSHHelperProcess(_ *testing.T) {
 	if response.Stdout != "" {
 		_, _ = os.Stdout.WriteString(response.Stdout)
 	}
+	var learningPath, alias string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "UserKnownHostsFile=") {
+			learningPath, _ = strconv.Unquote(strings.TrimPrefix(arg, "UserKnownHostsFile="))
+		}
+		if strings.HasPrefix(arg, "HostKeyAlias=") {
+			alias = strings.TrimPrefix(arg, "HostKeyAlias=")
+		}
+	}
+	for _, arg := range args {
+		if arg == "StrictHostKeyChecking=accept-new" && learningPath != "" {
+			if err := os.WriteFile(learningPath, []byte(alias+" "+os.Getenv("ZELTA_TEST_SSH_HOST_KEY")+"\n"), 0600); err != nil {
+				os.Exit(2)
+			}
+		}
+	}
 	if response.Stderr != "" {
 		_, _ = os.Stderr.WriteString(response.Stderr)
 	}
 
 	os.Exit(response.ExitCode)
+}
+
+func (h *fakeSSHHarness) Arguments() [][]string {
+	h.t.Helper()
+	content, err := os.ReadFile(h.logFile + ".args")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	var calls [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
+		if line == "" {
+			continue
+		}
+		var args []string
+		if err := json.Unmarshal([]byte(line), &args); err != nil {
+			h.t.Fatal(err)
+		}
+		calls = append(calls, args)
+	}
+	return calls
 }
 
 func fakeSSHExtractArgs(args []string) ([]string, error) {

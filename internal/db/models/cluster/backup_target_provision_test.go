@@ -5,6 +5,9 @@ package clusterModels
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func backupTargetProvisionTestPrepare(token string) BackupTargetProvisionPrepare {
@@ -19,40 +22,62 @@ func backupTargetProvisionTestPrepare(token string) BackupTargetProvisionPrepare
 }
 
 func TestBackupTargetProvisionPrepareCompleteAndReplay(t *testing.T) {
-	db := newClusterModelTestDB(t, &BackupTarget{}, &BackupTargetProvisionOperation{})
-	prepare := backupTargetProvisionTestPrepare("provision-token")
-	if err := PrepareBackupTargetProvisionOperationTxn(db, &prepare); err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-	if err := PrepareBackupTargetProvisionOperationTxn(db, &prepare); err != nil {
-		t.Fatalf("prepare replay: %v", err)
-	}
-	var targetCount int64
-	if err := db.Model(&BackupTarget{}).Count(&targetCount).Error; err != nil || targetCount != 0 {
-		t.Fatalf("target visible before completion count=%d err=%v", targetCount, err)
-	}
-	transition := BackupTargetProvisionTransition{
-		Token: prepare.Token, TargetID: prepare.Target.ID, ProposedFingerprint: prepare.ProposedFingerprint,
-	}
-	if err := CompleteBackupTargetProvisionOperationTxn(db, &transition); err != nil {
-		t.Fatalf("complete: %v", err)
-	}
-	if err := CompleteBackupTargetProvisionOperationTxn(db, &transition); err != nil {
-		t.Fatalf("complete replay: %v", err)
-	}
-	var target BackupTarget
-	if err := db.First(&target, prepare.Target.ID).Error; err != nil {
-		t.Fatalf("load target: %v", err)
-	}
-	if BackupTargetConfigurationFingerprint(&target) != prepare.ProposedFingerprint {
-		t.Fatalf("committed target mismatch: %+v", target)
-	}
-	var operation BackupTargetProvisionOperation
-	if err := db.First(&operation, "token = ?", prepare.Token).Error; err != nil {
-		t.Fatalf("load operation: %v", err)
-	}
-	if operation.State != BackupTargetProvisionStateCompleted || operation.Revision != 2 || operation.TargetPayload != "" {
-		t.Fatalf("operation: %+v", operation)
+	for name, managed := range map[string]bool{"legacy": false, "managed host key": true} {
+		t.Run(name, func(t *testing.T) {
+			db := newClusterModelTestDB(t, &BackupTarget{}, &BackupTargetSSHHostTrust{}, &BackupTargetProvisionOperation{})
+			prepare := backupTargetProvisionTestPrepare("provision-token")
+			prepareTxn := PrepareBackupTargetProvisionOperationTxn
+			if managed {
+				prepare.HostKey, prepare.OccurredAt = testutil.SSHHostKey(t), time.Now().UTC()
+				prepareTxn = PrepareBackupTargetProvisionOperationV2Txn
+			}
+			for attempt := range 2 {
+				if err := prepareTxn(db, &prepare); err != nil {
+					t.Fatalf("prepare attempt %d: %v", attempt, err)
+				}
+			}
+			var targetCount int64
+			if err := db.Model(&BackupTarget{}).Count(&targetCount).Error; err != nil || targetCount != 0 {
+				t.Fatalf("target visible before completion count=%d err=%v", targetCount, err)
+			}
+			var operation BackupTargetProvisionOperation
+			if err := db.First(&operation, "token = ?", prepare.Token).Error; err != nil {
+				t.Fatal(err)
+			}
+			target, err := DecodeBackupTargetProvisionTarget(&operation)
+			if err != nil || target.SSHHostKey != prepare.HostKey {
+				t.Fatalf("prepared target=%+v err=%v", target, err)
+			}
+			if managed {
+				replacement := prepare
+				replacement.HostKey = testutil.SSHHostKey(t)
+				if err := prepareTxn(db, &replacement); err == nil {
+					t.Fatal("prepared host key was replaced")
+				}
+			}
+			transition := BackupTargetProvisionTransition{Token: prepare.Token, TargetID: target.ID, ProposedFingerprint: prepare.ProposedFingerprint}
+			for attempt := range 2 {
+				if err := CompleteBackupTargetProvisionOperationTxn(db, &transition); err != nil {
+					t.Fatalf("complete attempt %d: %v", attempt, err)
+				}
+			}
+			if err := db.First(&target, prepare.Target.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if BackupTargetConfigurationFingerprint(&target) != prepare.ProposedFingerprint {
+				t.Fatalf("committed target mismatch: %+v", target)
+			}
+			if err := db.First(&operation, "token = ?", prepare.Token).Error; err != nil ||
+				operation.State != BackupTargetProvisionStateCompleted || operation.Revision != 2 || operation.TargetPayload != "" {
+				t.Fatalf("completed operation=%+v err=%v", operation, err)
+			}
+			if managed {
+				trust, err := GetBackupTargetSSHHostTrust(db, &target)
+				if err != nil || trust.PublicKey != prepare.HostKey || trust.Revision != 1 {
+					t.Fatalf("completed trust=%+v err=%v", trust, err)
+				}
+			}
+		})
 	}
 }
 

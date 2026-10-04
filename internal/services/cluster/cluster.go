@@ -110,6 +110,7 @@ type Service struct {
 	leaveMembershipForNode           func(context.Context, clusterModels.Cluster, string) (MembershipStatus, error)
 	leaveRemovalForNode              func(context.Context, string, RemoveMembershipRequest) error
 	backupTargetValidator            func(context.Context, *clusterModels.BackupTarget) error
+	backupTargetHostKeyEnroller      func(context.Context, *clusterModels.BackupTarget) error
 	backupJobIDGenerator             func() (uint, error)
 	raftMembershipForNode            func(string) (RaftMembership, error)
 	readdressIdentityForNode         func(context.Context, string, raft.ServerAddress) (ReaddressIdentity, error)

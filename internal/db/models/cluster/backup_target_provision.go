@@ -12,6 +12,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,17 +30,21 @@ const (
 // before create-time remote-root provisioning. The proposed target remains
 // invisible to jobs until exact completion atomically creates it.
 type BackupTargetProvisionOperation struct {
-	Token               string `gorm:"primaryKey" json:"token"`
-	TargetID            uint   `gorm:"index;not null" json:"targetId"`
-	TargetName          string `gorm:"index;not null" json:"targetName"`
-	ProposedFingerprint string `gorm:"index;not null" json:"proposedFingerprint"`
-	TargetPayload       string `gorm:"type:text;not null" json:"targetPayload"`
-	State               string `gorm:"index;not null" json:"state"`
-	Error               string `gorm:"type:text" json:"error"`
-	Revision            uint64 `gorm:"not null;default:1" json:"revision"`
+	HostKey             string     `gorm:"type:text" json:"hostKey,omitempty"`
+	HostKeyCapturedAt   *time.Time `json:"hostKeyCapturedAt,omitempty"`
+	Token               string     `gorm:"primaryKey" json:"token"`
+	TargetID            uint       `gorm:"index;not null" json:"targetId"`
+	TargetName          string     `gorm:"index;not null" json:"targetName"`
+	ProposedFingerprint string     `gorm:"index;not null" json:"proposedFingerprint"`
+	TargetPayload       string     `gorm:"type:text;not null" json:"targetPayload"`
+	State               string     `gorm:"index;not null" json:"state"`
+	Error               string     `gorm:"type:text" json:"error"`
+	Revision            uint64     `gorm:"not null;default:1" json:"revision"`
 }
 
 type BackupTargetProvisionPrepare struct {
+	HostKey             string                         `json:"hostKey,omitempty"`
+	OccurredAt          time.Time                      `json:"occurredAt,omitempty"`
 	Token               string                         `json:"token"`
 	Target              BackupTargetReplicationPayload `json:"target"`
 	ProposedFingerprint string                         `json:"proposedFingerprint"`
@@ -56,6 +63,17 @@ func normalizedBackupTargetProvisionPrepare(
 	prepare.Token = strings.TrimSpace(prepare.Token)
 	prepare.ProposedFingerprint = strings.ToLower(strings.TrimSpace(prepare.ProposedFingerprint))
 	target := normalizeBackupTarget(prepare.Target.ToModel())
+	if prepare.HostKey != "" {
+		canonical, err := remoteexec.CanonicalSSHHostKey(prepare.HostKey)
+		if err != nil {
+			return prepare, target, "", err
+		}
+		prepare.HostKey = canonical
+		if prepare.OccurredAt.IsZero() {
+			return prepare, target, "", fmt.Errorf("backup_target_host_key_time_required")
+		}
+		prepare.OccurredAt = NormalizeCommandTime(prepare.OccurredAt)
+	}
 	prepare.Target = BackupTargetToReplicationPayload(target)
 	if prepare.Token == "" {
 		return prepare, target, "", fmt.Errorf("backup_target_provision_token_required")
@@ -90,6 +108,7 @@ func backupTargetProvisionOperationMatches(
 	payload string,
 ) bool {
 	if existing == nil || existing.Token != prepare.Token || existing.TargetID != target.ID ||
+		existing.HostKey != prepare.HostKey ||
 		strings.TrimSpace(existing.TargetName) != target.Name ||
 		strings.ToLower(strings.TrimSpace(existing.ProposedFingerprint)) != prepare.ProposedFingerprint {
 		return false
@@ -152,7 +171,13 @@ func PrepareBackupTargetProvisionOperationTxn(db *gorm.DB, prepare *BackupTarget
 			return fmt.Errorf("backup_target_provision_pending")
 		}
 
+		var capturedAt *time.Time
+		if normalized.HostKey != "" {
+			capturedAt = &normalized.OccurredAt
+		}
 		return tx.Create(&BackupTargetProvisionOperation{
+			HostKey:             normalized.HostKey,
+			HostKeyCapturedAt:   capturedAt,
 			Token:               normalized.Token,
 			TargetID:            target.ID,
 			TargetName:          target.Name,
@@ -164,6 +189,13 @@ func PrepareBackupTargetProvisionOperationTxn(db *gorm.DB, prepare *BackupTarget
 	})
 }
 
+func PrepareBackupTargetProvisionOperationV2Txn(db *gorm.DB, prepare *BackupTargetProvisionPrepare) error {
+	if prepare == nil || prepare.HostKey == "" {
+		return fmt.Errorf("backup_target_host_key_required")
+	}
+	return PrepareBackupTargetProvisionOperationTxn(db, prepare)
+}
+
 func DecodeBackupTargetProvisionTarget(operation *BackupTargetProvisionOperation) (BackupTarget, error) {
 	if operation == nil {
 		return BackupTarget{}, fmt.Errorf("backup_target_provision_operation_required")
@@ -173,6 +205,7 @@ func DecodeBackupTargetProvisionTarget(operation *BackupTargetProvisionOperation
 		return BackupTarget{}, fmt.Errorf("decode_backup_target_provision_payload: %w", err)
 	}
 	target := normalizeBackupTarget(payload.ToModel())
+	target.SSHHostKey = operation.HostKey
 	if target.ID != operation.TargetID || target.Name != strings.TrimSpace(operation.TargetName) ||
 		BackupTargetConfigurationFingerprint(&target) != strings.ToLower(strings.TrimSpace(operation.ProposedFingerprint)) {
 		return BackupTarget{}, fmt.Errorf("backup_target_provision_payload_mismatch")
@@ -254,6 +287,20 @@ func CompleteBackupTargetProvisionOperationTxn(db *gorm.DB, transition *BackupTa
 		}
 		if idResult.RowsAffected == 0 && nameResult.RowsAffected == 0 {
 			if err := tx.Create(&target).Error; err != nil {
+				return err
+			}
+		}
+		if operation.HostKey != "" {
+			if operation.HostKeyCapturedAt == nil {
+				return fmt.Errorf("backup_target_host_key_time_required")
+			}
+			endpoint, err := BackupTargetSSHEndpointFingerprint(&target)
+			if err != nil {
+				return err
+			}
+			if err := ApplyBackupTargetSSHHostTrustTxn(tx, "initialize_v1", &BackupTargetSSHHostTrustChange{
+				TargetID: target.ID, EndpointFingerprint: endpoint, PublicKey: operation.HostKey, OccurredAt: *operation.HostKeyCapturedAt,
+			}); err != nil {
 				return err
 			}
 		}

@@ -1652,7 +1652,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		Str("snapshot", snapshot).
 		Msg("starting_target_dataset_restore")
 
-	extraEnv := s.buildZeltaEnv(target)
+	extraEnv, err := s.buildZeltaEnv(target)
+	if err != nil {
+		recordRestoreFailure(err)
+		return "", err
+	}
 	receiveTopOptions, err := stagingIdentity.receiveTopOptions()
 	if err != nil {
 		restoreErr = err
@@ -1678,6 +1682,7 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 		remoteEndpoint,
 		restorePath,
 	)
+	restoreErr = targetSSHHostKeyError(target, output, restoreErr)
 	if restoreErr != nil {
 		restoreErr = s.cleanupOwnedRestoreStagingAfterError(restorePath, stagingIdentity, restoreErr)
 		logger.L.Warn().

@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
 
@@ -66,6 +67,7 @@ func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
 		if err := service.DB.Create(&target).Error; err != nil {
 			t.Fatalf("seed target on %s: %v", service.NodeID, err)
 		}
+		seedBackupTargetHostTrust(t, service.DB, &target)
 	}
 	runner.SetBackupTargetValidator(func(context.Context, *clusterModels.BackupTarget) error { return nil })
 
@@ -73,7 +75,8 @@ func TestBackupTargetValidationRecordsPerNodeOutcomes(t *testing.T) {
 	defer sim.Close()
 	registerBackupTargetValidationPeer(t, sim, runner)
 	request := BackupTargetValidationRequest{
-		ExpectedNodeID: "node-runner", TargetID: target.ID,
+		HostKeyRevision: 1,
+		ExpectedNodeID:  "node-runner", TargetID: target.ID,
 		TargetFingerprint: clusterModels.BackupTargetConnectivityFingerprint(&target),
 	}
 	remote, err := leader.fetchBackupTargetValidation(t.Context(), "node-runner", sim.Addr(), request)
@@ -167,6 +170,9 @@ func TestGuestBackupTargetMigrationPreflightCoversVMAndJail(t *testing.T) {
 			}
 			if err := db.Create(&targets).Error; err != nil {
 				t.Fatalf("seed targets: %v", err)
+			}
+			for i := range targets {
+				seedBackupTargetHostTrust(t, db, &targets[i])
 			}
 
 			matching := test.matching
@@ -267,6 +273,7 @@ func TestIntegrationGuestBackupTargetMigrationPreflightRunsFromFollower(t *testi
 		if err := node.service.DB.Create(&backupTarget).Error; err != nil {
 			t.Fatalf("seed target on %s: %v", node.id, err)
 		}
+		seedBackupTargetHostTrust(t, node.service.DB, &backupTarget)
 		if err := node.service.DB.Create(&backupJob).Error; err != nil {
 			t.Fatalf("seed job on %s: %v", node.id, err)
 		}
@@ -312,10 +319,12 @@ func TestBackupTargetValidationReceiptRejectsStaleOrExtendedReadiness(t *testing
 	now := time.Now().UTC()
 	request := BackupTargetValidationRequest{
 		ExpectedNodeID: "node-a", TargetID: 5, TargetFingerprint: strings.Repeat("a", 64),
+		HostKeyRevision: 1,
 	}
 	readyUntil := now.Add(BackupTargetReadinessTTL)
 	update := &clusterModels.BackupTargetNodeReadinessUpdate{
-		TargetID: 5, NodeID: "node-a", TargetFingerprint: request.TargetFingerprint,
+		HostKeyRevision: 1,
+		TargetID:        5, NodeID: "node-a", TargetFingerprint: request.TargetFingerprint,
 		ValidationSucceeded: true, LastVerifiedAt: now, ReadyUntil: &readyUntil,
 	}
 	if err := validateBackupTargetReadinessReceipt(request, update); err != nil {
@@ -360,10 +369,23 @@ func TestIntegrationRaftBackupTargetReadinessSurvivesLeadershipChange(t *testing
 	if err := leader.service.DB.First(&target, 61).Error; err != nil {
 		t.Fatalf("load target: %v", err)
 	}
+	if err := leader.service.InitializeBackupTargetHostTrust(); err != nil {
+		t.Fatal(err)
+	}
+	trust, err := clusterModels.GetBackupTargetSSHHostTrust(leader.service.DB, &target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := leader.service.InstallBackupTargetHostKey(t.Context(), clusterModels.BackupTargetSSHHostTrustChange{
+		TargetID: target.ID, EndpointFingerprint: trust.EndpointFingerprint, ExpectedRevision: trust.Revision, PublicKey: testutil.SSHHostKey(t),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	verifiedAt := time.Now().UTC()
 	readyUntil := verifiedAt.Add(BackupTargetReadinessTTL)
 	if err := leader.service.UpdateBackupTargetNodeReadiness(clusterModels.BackupTargetNodeReadinessUpdate{
-		TargetID: target.ID, NodeID: nextLeader.id,
+		HostKeyRevision: 2,
+		TargetID:        target.ID, NodeID: nextLeader.id,
 		TargetFingerprint:   clusterModels.BackupTargetConnectivityFingerprint(&target),
 		ValidationSucceeded: true, LastVerifiedAt: verifiedAt, ReadyUntil: &readyUntil,
 	}, false); err != nil {

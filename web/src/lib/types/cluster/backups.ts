@@ -14,6 +14,12 @@ export const BackupTargetNodeReadinessSchema = z.object({
 	configurationCurrent: z.boolean().default(true)
 });
 
+export const BackupTargetHostKeySchema = z.object({
+	state: z.enum(['unlearned', 'trusted']),
+	revision: z.number().int().positive(),
+	fingerprint: z.string().default('')
+});
+
 export const BackupTargetSchema = z.object({
 	id: z.number(),
 	name: z.string(),
@@ -25,6 +31,7 @@ export const BackupTargetSchema = z.object({
 	description: z.string().optional().default(''),
 	enabled: z.boolean().default(true),
 	readiness: z.array(BackupTargetNodeReadinessSchema).optional().default([]),
+	hostKey: BackupTargetHostKeySchema.nullable().optional(),
 	createdAt: z.string().optional(),
 	updatedAt: z.string().optional()
 });

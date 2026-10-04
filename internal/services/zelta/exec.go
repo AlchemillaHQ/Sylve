@@ -272,7 +272,7 @@ func runZeltaWithEnvStreaming(
 	finalOutput := strings.TrimSpace(output.String())
 
 	if waitErr != nil {
-		return finalOutput, fmt.Errorf("zelta_failed: %s: %s", waitErr, finalOutput)
+		return finalOutput, fmt.Errorf("zelta_failed: %s: %s", waitErr, remoteexec.SSHDiagnostic(finalOutput))
 	}
 
 	return finalOutput, nil

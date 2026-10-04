@@ -37,6 +37,7 @@ var replicatedStateManifest = []ReplicatedStateTable{
 	{Table: "backup_job_runner_rebinds", Model: &BackupJobRunnerRebind{}, SnapshotField: "BackupJobRebinds"},
 	{Table: "backup_target_restore_operations", Model: &BackupTargetRestoreOperation{}, SnapshotField: "BackupTargetRestoreOperations"},
 	{Table: "backup_target_node_readinesses", Model: &BackupTargetNodeReadiness{}, SnapshotField: "BackupTargetReadiness"},
+	{Table: "backup_target_ssh_host_trusts", Model: &BackupTargetSSHHostTrust{}, SnapshotField: "BackupTargetHostTrust"},
 	{Table: "backup_target_provision_operations", Model: &BackupTargetProvisionOperation{}, SnapshotField: "BackupTargetProvisions"},
 	{Table: "backup_job_operations", Model: &BackupJobOperation{}, SnapshotField: "BackupJobOperations"},
 	{Table: "replication_guest_operation_receipts", Model: &ReplicationGuestOperationReceipt{}, SnapshotField: "GuestOperationReceipts"},
@@ -162,6 +163,11 @@ func captureClusterSnapshot(db *gorm.DB) (*ClusterSnapshot, error) {
 	}
 	if db.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
 		if err := db.Order("target_id ASC, node_id ASC").Find(&snap.BackupTargetReadiness).Error; err != nil {
+			return nil, err
+		}
+	}
+	if db.Migrator().HasTable(&BackupTargetSSHHostTrust{}) {
+		if err := db.Order("target_id ASC").Find(&snap.BackupTargetHostTrust).Error; err != nil {
 			return nil, err
 		}
 	}

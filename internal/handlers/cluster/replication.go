@@ -958,6 +958,10 @@ func UpsertClusterSSHIdentityInternal(cS *cluster.Service) gin.HandlerFunc {
 
 func ReconcileClusterSSHNow(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if _, err := cS.ResolveCurrentRaftMember(c.GetString("IssuerNodeID")); err != nil {
+			c.JSON(http.StatusForbidden, internal.APIResponse[any]{Status: "error", Message: "cluster_member_required", Error: "cluster_member_required"})
+			return
+		}
 		if err := cS.EnsureAndPublishLocalSSHIdentity(); err != nil {
 			c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{
 				Status:  "error",

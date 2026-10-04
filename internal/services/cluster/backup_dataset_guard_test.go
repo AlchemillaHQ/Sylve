@@ -188,6 +188,7 @@ func TestBackupJobValidationRejectsManagedGuestAncestorsOnlyForDatasetMode(t *te
 	if err := service.DB.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, service.DB, &target)
 	enabled := true
 
 	datasetInput := clusterServiceInterfaces.BackupJobReq{
@@ -349,6 +350,7 @@ func TestBackupJobCreateAndUpdateEnforceGuestModeSafety(t *testing.T) {
 	if err := service.DB.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, service.DB, &target)
 	enabled := true
 
 	vmInput := clusterServiceInterfaces.BackupJobReq{

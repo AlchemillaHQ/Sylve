@@ -81,6 +81,7 @@ type ScheduledRunResultOutbox struct {
 }
 
 type BackupJobScheduleDecision struct {
+	HostKeyRevision          uint64     `json:"hostKeyRevision,omitempty"`
 	JobID                    uint       `json:"jobId"`
 	ExpectedScheduleRevision uint64     `json:"expectedScheduleRevision"`
 	ExpectedNextRunAt        *time.Time `json:"expectedNextRunAt"`
@@ -282,6 +283,11 @@ func ApplyBackupJobScheduleDecisionTxn(db *gorm.DB, decision *BackupJobScheduleD
 				return fmt.Errorf("backup_target_disabled")
 			}
 		}
+		if decision.HostKeyRevision != 0 {
+			if err := RequireBackupTargetHostKeyRevision(tx, job.TargetID, decision.HostKeyRevision, false); err != nil {
+				return err
+			}
+		}
 		rebindPending, err := BackupJobRunnerRebindPendingForJob(tx, decision.JobID)
 		if err != nil {
 			return err
@@ -312,6 +318,13 @@ func ApplyBackupJobScheduleDecisionTxn(db *gorm.DB, decision *BackupJobScheduleD
 			AcquiredAt: decision.DecidedAt, UpdatedAt: decision.DecidedAt,
 		}).Error
 	})
+}
+
+func ApplyBackupJobScheduleDecisionV2Txn(db *gorm.DB, decision *BackupJobScheduleDecision) error {
+	if decision == nil || (decision.ClaimToken != "" && decision.HostKeyRevision == 0) {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	return ApplyBackupJobScheduleDecisionTxn(db, decision)
 }
 
 func ApplyReplicationPolicyScheduleDecisionTxn(db *gorm.DB, decision *ReplicationPolicyScheduleDecision) error {

@@ -28,7 +28,8 @@ func TestReconcileBackupTargetProvisionOperationCompletesPreparedCreate(t *testi
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	candidate := &clusterModels.BackupTarget{
-		Name: "target", SSHHost: "root@backup", SSHPort: 22, SSHKey: "private-key",
+		SSHHostKey: fakeSSHHostKey(),
+		Name:       "target", SSHHost: "root@backup", SSHPort: 22, SSHKey: "private-key",
 		BackupRoot: "tank/backups", CreateBackupRoot: true, Enabled: true,
 	}
 	operation, err := cluster.PrepareBackupTargetProvisionCreate(candidate, "provision:reconcile", true)
@@ -80,7 +81,8 @@ func TestReconcileBackupTargetProvisionCompletesAfterCrashFollowingRemoteCreate(
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	operation, err := cluster.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
-		Name: "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
+		SSHHostKey: fakeSSHHostKey(),
+		Name:       "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
 		CreateBackupRoot: true, Enabled: true,
 	}, "provision:after-create-crash", true)
 	if err != nil {
@@ -111,7 +113,8 @@ func TestReconcileBackupTargetProvisionKeepsTransientFailurePending(t *testing.T
 	service := newTestZeltaService(database)
 	service.Cluster = cluster
 	operation, err := cluster.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
-		Name: "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
+		SSHHostKey: fakeSSHHostKey(),
+		Name:       "target", SSHHost: "root@backup", SSHKey: "key", BackupRoot: "tank/backups",
 		CreateBackupRoot: true, Enabled: true,
 	}, "provision:pending", true)
 	if err != nil {

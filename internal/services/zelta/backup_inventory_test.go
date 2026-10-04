@@ -121,6 +121,7 @@ func TestFilterRestorableBackupSnapshotsBatchesCommitMetadata(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		ID: 1,
 		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "backup",
 		},
@@ -154,6 +155,7 @@ func TestBackupRetentionProofsReuseManifestInventory(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		ID: 1,
 		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "backup",
 		},

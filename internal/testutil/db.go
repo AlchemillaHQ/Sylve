@@ -9,9 +9,13 @@
 package testutil
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	"golang.org/x/crypto/ssh"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -43,4 +47,17 @@ func NewSQLiteTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	}
 
 	return db
+}
+
+func SSHHostKey(t *testing.T) string {
+	t.Helper()
+	publicKey, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := ssh.NewPublicKey(publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 }

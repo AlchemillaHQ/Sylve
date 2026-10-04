@@ -22,13 +22,14 @@ import (
 func BackupJobOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			Action         string    `json:"action"`
-			JobID          uint      `json:"jobId"`
-			Token          string    `json:"token"`
-			Operation      string    `json:"operation"`
-			HolderNodeID   string    `json:"holderNodeId"`
-			RequestPayload string    `json:"requestPayload"`
-			OccurredAt     time.Time `json:"occurredAt"`
+			HostKeyRevision uint64    `json:"hostKeyRevision"`
+			Action          string    `json:"action"`
+			JobID           uint      `json:"jobId"`
+			Token           string    `json:"token"`
+			Operation       string    `json:"operation"`
+			HolderNodeID    string    `json:"holderNodeId"`
+			RequestPayload  string    `json:"requestPayload"`
+			OccurredAt      time.Time `json:"occurredAt"`
 		}
 		if cS == nil || cS.DB == nil {
 			c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{
@@ -56,13 +57,15 @@ func BackupJobOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 		var err error
 		if action == "acquire" {
 			err = cS.AcquireBackupJobOperation(clusterModels.BackupJobOperationAcquire{
-				JobID: req.JobID, Token: req.Token, Operation: req.Operation,
+				HostKeyRevision: req.HostKeyRevision,
+				JobID:           req.JobID, Token: req.Token, Operation: req.Operation,
 				HolderNodeID: req.HolderNodeID, RequestPayload: req.RequestPayload,
 				AcquiredAt: req.OccurredAt,
 			}, bypassRaft)
 		} else {
 			err = cS.TransitionBackupJobOperation(action, clusterModels.BackupJobOperationTransition{
-				JobID: req.JobID, Token: req.Token, Operation: req.Operation,
+				HostKeyRevision: req.HostKeyRevision,
+				JobID:           req.JobID, Token: req.Token, Operation: req.Operation,
 				HolderNodeID: req.HolderNodeID, RequestPayload: req.RequestPayload,
 				OccurredAt: req.OccurredAt,
 			}, bypassRaft)

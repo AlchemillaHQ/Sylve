@@ -43,6 +43,7 @@ func newRestoreObservabilityService(t *testing.T) (*Service, *gorm.DB, clusterMo
 	if err := mainDB.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, mainDB, &target)
 	return service, telemetryDB, target
 }
 

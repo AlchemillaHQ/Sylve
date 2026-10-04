@@ -487,7 +487,11 @@ func (s *Service) runRestoreJob(
 	// Override recv flags: skip readonly=on (RECV_TOP default) so the restored
 	// dataset is writable. Setting RECV_TOP=no makes zelta treat it as falsy (0),
 	// which arr_join() skips. RECV_FS keeps its default flags.
-	extraEnv := s.buildZeltaEnv(&job.Target)
+	extraEnv, err := s.buildZeltaEnv(&job.Target)
+	if err != nil {
+		s.finalizeRestoreEvent(&event, err, output)
+		return err
+	}
 	receiveTopOptions, err := stagingIdentity.receiveTopOptions()
 	if err != nil {
 		restoreErr = err
@@ -517,6 +521,7 @@ func (s *Service) runRestoreJob(
 		},
 		restoreArgs...,
 	)
+	restoreErr = targetSSHHostKeyError(&job.Target, output, restoreErr)
 
 	logger.L.Info().
 		Str("zelta_output", output).

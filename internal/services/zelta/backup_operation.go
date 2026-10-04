@@ -64,9 +64,9 @@ func (s *Service) applyBackupJobOperation(
 	applyLocal := func() error {
 		switch action {
 		case "acquire":
-			return clusterModels.AcquireBackupJobOperationTxn(s.DB, &acquire)
+			return clusterModels.AcquireBackupJobOperationV2Txn(s.DB, &acquire)
 		case "start":
-			return clusterModels.StartBackupJobOperationTxn(s.DB, &transition)
+			return clusterModels.StartBackupJobOperationV2Txn(s.DB, &transition)
 		case "finish":
 			return clusterModels.FinishBackupJobOperationTxn(s.DB, &transition)
 		case "abort":
@@ -92,23 +92,25 @@ func (s *Service) applyBackupJobOperation(
 	}
 
 	payload := map[string]any{
-		"action":         action,
-		"jobId":          transition.JobID,
-		"token":          transition.Token,
-		"operation":      transition.Operation,
-		"holderNodeId":   transition.HolderNodeID,
-		"occurredAt":     transition.OccurredAt,
-		"requestPayload": transition.RequestPayload,
+		"hostKeyRevision": transition.HostKeyRevision,
+		"action":          action,
+		"jobId":           transition.JobID,
+		"token":           transition.Token,
+		"operation":       transition.Operation,
+		"holderNodeId":    transition.HolderNodeID,
+		"occurredAt":      transition.OccurredAt,
+		"requestPayload":  transition.RequestPayload,
 	}
 	if action == "acquire" {
 		payload = map[string]any{
-			"action":         action,
-			"jobId":          acquire.JobID,
-			"token":          acquire.Token,
-			"operation":      acquire.Operation,
-			"holderNodeId":   acquire.HolderNodeID,
-			"occurredAt":     acquire.AcquiredAt,
-			"requestPayload": acquire.RequestPayload,
+			"hostKeyRevision": acquire.HostKeyRevision,
+			"action":          action,
+			"jobId":           acquire.JobID,
+			"token":           acquire.Token,
+			"operation":       acquire.Operation,
+			"holderNodeId":    acquire.HolderNodeID,
+			"occurredAt":      acquire.AcquiredAt,
+			"requestPayload":  acquire.RequestPayload,
 		}
 	}
 
@@ -162,6 +164,7 @@ func backupJobOperationApplicationError(err error) bool {
 	}
 	text := strings.ToLower(err.Error())
 	for _, marker := range []string{
+		"backup_target_host_key_",
 		"backup_job_running",
 		"backup_job_not_found",
 		"backup_job_operation_runner_mismatch",
@@ -209,8 +212,13 @@ func (s *Service) acquireDurableBackupJobOperation(
 		HolderNodeID:   holderNodeID,
 		RequestPayload: strings.TrimSpace(requestPayload),
 	}
+	hostRevision, err := s.backupJobHostKeyRevision(ctx, jobID)
+	if err != nil {
+		return backupJobOperationHandle{}, err
+	}
 	payload := clusterModels.BackupJobOperationAcquire{
-		JobID: handle.JobID, Token: handle.Token, Operation: handle.Operation,
+		HostKeyRevision: hostRevision,
+		JobID:           handle.JobID, Token: handle.Token, Operation: handle.Operation,
 		HolderNodeID: handle.HolderNodeID, RequestPayload: handle.RequestPayload,
 		AcquiredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	}
@@ -225,11 +233,32 @@ func (s *Service) transitionDurableBackupJobOperation(
 	action string,
 	handle backupJobOperationHandle,
 ) error {
+	var revision uint64
+	if action == "start" {
+		var err error
+		revision, err = s.backupJobHostKeyRevision(ctx, handle.JobID)
+		if err != nil {
+			return err
+		}
+	}
 	return s.applyBackupJobOperation(ctx, action, clusterModels.BackupJobOperationAcquire{}, clusterModels.BackupJobOperationTransition{
-		JobID: handle.JobID, Token: handle.Token, Operation: handle.Operation,
+		HostKeyRevision: revision,
+		JobID:           handle.JobID, Token: handle.Token, Operation: handle.Operation,
 		HolderNodeID: handle.HolderNodeID, RequestPayload: handle.RequestPayload,
 		OccurredAt: time.Now().UTC(), RequireEnabledTarget: true,
 	})
+}
+
+func (s *Service) backupJobHostKeyRevision(ctx context.Context, jobID uint) (uint64, error) {
+	var job clusterModels.BackupJob
+	if err := s.DB.WithContext(ctx).Preload("Target").First(&job, jobID).Error; err != nil {
+		return 0, err
+	}
+	trust, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB.WithContext(ctx), &job.Target)
+	if err != nil {
+		return 0, err
+	}
+	return trust.Revision, nil
 }
 
 func (s *Service) abortDurableBackupJobOperation(ctx context.Context, handle backupJobOperationHandle) error {

@@ -30,6 +30,7 @@ func allSnapshotModels() []any {
 		&ClusterNote{},
 		&ClusterOption{},
 		&BackupTarget{},
+		&BackupTargetSSHHostTrust{},
 		&BackupTargetProvisionOperation{},
 		&BackupTargetNodeReadiness{},
 		&BackupJob{},
@@ -101,7 +102,7 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("failed to seed second note: %v", err)
 	}
 
-	if err := sourceDB.Create(&ClusterOption{ID: 1, KeyboardLayout: "us"}).Error; err != nil {
+	if err := sourceDB.Create(&ClusterOption{ID: 1, KeyboardLayout: "us", SSHHostTrustInitialized: true}).Error; err != nil {
 		t.Fatalf("failed to seed option: %v", err)
 	}
 
@@ -111,6 +112,15 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	}
 	if err := sourceDB.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed backup target: %v", err)
+	}
+	endpoint, err := BackupTargetSSHEndpointFingerprint(&target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust := BackupTargetSSHHostTrust{TargetID: target.ID, EndpointFingerprint: endpoint, Revision: 7,
+		PublicKey: testutil.SSHHostKey(t), UpdatedAt: NormalizeCommandTime(time.Now())}
+	if err := sourceDB.Create(&trust).Error; err != nil {
+		t.Fatal(err)
 	}
 	pendingTarget := BackupTarget{
 		ID: 101, Name: "pending-target", SSHHost: "root@pending", SSHPort: 22,
@@ -305,7 +315,7 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 
 	var opts []ClusterOption
 	destDB.Find(&opts)
-	if len(opts) != 1 || opts[0].KeyboardLayout != "us" {
+	if len(opts) != 1 || opts[0].KeyboardLayout != "us" || !opts[0].SSHHostTrustInitialized {
 		t.Fatalf("options mismatch: %+v", opts)
 	}
 
@@ -314,6 +324,11 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 	if len(targets) != 1 || targets[0].Name != "t1" ||
 		targets[0].SSHKeyPath != "" || targets[0].SSHKey != "snapshot-key" {
 		t.Fatalf("targets mismatch: %+v", targets)
+	}
+	restoredTrust, err := GetBackupTargetSSHHostTrust(destDB, &target)
+	if err != nil || restoredTrust.PublicKey != trust.PublicKey || restoredTrust.Revision != trust.Revision ||
+		!restoredTrust.UpdatedAt.Equal(trust.UpdatedAt) {
+		t.Fatalf("restored host trust=%+v err=%v", restoredTrust, err)
 	}
 	var targetProvisions []BackupTargetProvisionOperation
 	destDB.Find(&targetProvisions)
@@ -444,9 +459,14 @@ func TestClusterSnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("encryption keys mismatch: %+v", keys)
 	}
 
-	_, sourceDigest, err := CaptureReplicatedStateDigest(sourceDB)
+	sourceSnapshot, sourceDigest, err := CaptureReplicatedStateDigest(sourceDB)
 	if err != nil {
 		t.Fatalf("capture source digest: %v", err)
+	}
+	sourceSnapshot.BackupTargetHostTrust = nil
+	withoutTrustDigest, err := ClusterSnapshotDigest(sourceSnapshot)
+	if err != nil || sourceDigest == withoutTrustDigest {
+		t.Fatalf("host trust omitted from digest: %v", err)
 	}
 	_, destinationDigest, err := CaptureReplicatedStateDigest(destDB)
 	if err != nil {

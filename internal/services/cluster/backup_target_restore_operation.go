@@ -27,7 +27,7 @@ func (s *Service) AcquireBackupTargetRestoreOperation(
 		payload.AcquiredAt = time.Now().UTC()
 	}
 	if bypassRaft {
-		return clusterModels.AcquireBackupTargetRestoreOperationTxn(s.DB, &payload)
+		return clusterModels.AcquireBackupTargetRestoreOperationV2Txn(s.DB, &payload)
 	}
 	if s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
@@ -45,7 +45,7 @@ func (s *Service) AcquireBackupTargetRestoreOperation(
 		return fmt.Errorf("failed_to_marshal_backup_target_restore_operation_acquire: %w", err)
 	}
 	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_target_restore_operation", Action: "acquire", Data: data,
+		Type: "backup_target_restore_operation", Action: "acquire_v2", Data: data,
 	})
 }
 
@@ -68,7 +68,7 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 	if bypassRaft {
 		switch action {
 		case "start":
-			return clusterModels.StartBackupTargetRestoreOperationTxn(s.DB, &payload)
+			return clusterModels.StartBackupTargetRestoreOperationV2Txn(s.DB, &payload)
 		case "finish":
 			return clusterModels.FinishBackupTargetRestoreOperationTxn(s.DB, &payload)
 		case "requeue":
@@ -95,6 +95,9 @@ func (s *Service) TransitionBackupTargetRestoreOperation(
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_target_restore_operation_%s: %w", action, err)
+	}
+	if action == "start" {
+		action = "start_v2"
 	}
 	return s.applyRaftCommand(clusterModels.Command{
 		Type: "backup_target_restore_operation", Action: action, Data: data,

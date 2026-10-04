@@ -151,8 +151,14 @@ func (s *Service) ListBackupTargets() ([]clusterModels.BackupTarget, error) {
 	if err := s.requireBackupTargetReadinessBarrier(); err != nil {
 		return nil, err
 	}
+	if err := s.InitializeBackupTargetHostTrust(); err != nil {
+		return nil, err
+	}
 	var targets []clusterModels.BackupTarget
 	if err := s.DB.Order("name ASC").Find(&targets).Error; err != nil {
+		return nil, err
+	}
+	if err := s.attachBackupTargetHostTrust(targets); err != nil {
 		return nil, err
 	}
 	if err := s.attachBackupTargetReadiness(targets); err != nil {
@@ -176,7 +182,7 @@ func (s *Service) GetBackupTargetByID(id uint) (*clusterModels.BackupTarget, err
 	return &target, nil
 }
 
-func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool) error {
+func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.BackupTargetReq, bypassRaft bool, hostKey string) error {
 	resolvedSSHKey, err := resolveSSHKeyMaterial(input.SSHKey, input.SSHKeyPath)
 	if err != nil {
 		return err
@@ -186,6 +192,7 @@ func (s *Service) ProposeBackupTargetCreate(input clusterServiceInterfaces.Backu
 	if err != nil {
 		return err
 	}
+	candidate.SSHHostKey = hostKey
 	_, err = s.ProposeBackupTargetCreateCandidate(candidate, bypassRaft)
 	return err
 }

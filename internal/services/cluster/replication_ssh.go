@@ -21,6 +21,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/hashicorp/raft"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -78,15 +79,10 @@ func (s *Service) ensureLocalClusterSSHKeyPair() (string, string, string, error)
 	publicPath := filepath.Join(dir, clusterSSHPublicFileName)
 
 	privateOK := false
-	publicOK := false
 	if fi, statErr := os.Stat(privatePath); statErr == nil && !fi.IsDir() {
 		privateOK = true
 	}
-	if fi, statErr := os.Stat(publicPath); statErr == nil && !fi.IsDir() {
-		publicOK = true
-	}
-
-	if !privateOK || !publicOK {
+	if !privateOK {
 		detail := s.Detail()
 		keyComment := "sylve-cluster"
 		if detail != nil && strings.TrimSpace(detail.NodeID) != "" {
@@ -109,17 +105,22 @@ func (s *Service) ensureLocalClusterSSHKeyPair() (string, string, string, error)
 	if err := os.Chmod(privatePath, 0600); err != nil {
 		return "", "", "", fmt.Errorf("cluster_ssh_private_chmod_failed: %w", err)
 	}
-	if err := os.Chmod(publicPath, 0644); err != nil {
-		return "", "", "", fmt.Errorf("cluster_ssh_public_chmod_failed: %w", err)
-	}
-
-	pubRaw, err := os.ReadFile(publicPath)
+	privateRaw, err := os.ReadFile(privatePath)
 	if err != nil {
-		return "", "", "", fmt.Errorf("cluster_ssh_pubkey_read_failed: %w", err)
+		return "", "", "", fmt.Errorf("cluster_ssh_private_read_failed: %w", err)
 	}
-	pubKey := strings.TrimSpace(string(pubRaw))
-	if pubKey == "" {
-		return "", "", "", fmt.Errorf("cluster_ssh_pubkey_empty")
+	signer, err := ssh.ParsePrivateKey(privateRaw)
+	if err != nil {
+		return "", "", "", fmt.Errorf("cluster_ssh_private_parse_failed: %w", err)
+	}
+	pubKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	if existing, readErr := os.ReadFile(publicPath); readErr != nil || strings.TrimSpace(string(existing)) != pubKey {
+		if err := utils.AtomicWriteFile(publicPath, []byte(pubKey+"\n"), 0644); err != nil {
+			return "", "", "", err
+		}
+	}
+	if err := os.Chmod(publicPath, 0644); err != nil {
+		return "", "", "", err
 	}
 
 	return privatePath, publicPath, pubKey, nil

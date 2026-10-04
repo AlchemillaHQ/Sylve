@@ -13,7 +13,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
+	"time"
+
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -211,6 +215,247 @@ func proposedBackupTargetForUpdate(existing BackupTarget, update BackupTargetUpd
 		return BackupTarget{}, fmt.Errorf("invalid_backup_target_update_kind")
 	}
 	return normalizeBackupTarget(proposed), nil
+}
+
+type BackupTargetSSHHostTrust struct {
+	TargetID            uint      `gorm:"primaryKey;autoIncrement:false" json:"targetId"`
+	EndpointFingerprint string    `gorm:"not null" json:"endpointFingerprint"`
+	Revision            uint64    `gorm:"not null" json:"revision"`
+	PublicKey           string    `gorm:"type:text" json:"publicKey"`
+	UpdatedAt           time.Time `gorm:"not null" json:"updatedAt"`
+}
+
+type BackupTargetSSHHostKeyStatus struct {
+	State       string `json:"state"`
+	Revision    uint64 `json:"revision"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+func (trust BackupTargetSSHHostTrust) Status() BackupTargetSSHHostKeyStatus {
+	state, fingerprint := "unlearned", ""
+	if trust.PublicKey != "" {
+		state = "trusted"
+		fingerprint, _ = remoteexec.SSHHostKeyFingerprint(trust.PublicKey)
+	}
+	return BackupTargetSSHHostKeyStatus{State: state, Revision: trust.Revision, Fingerprint: fingerprint}
+}
+
+type BackupTargetSSHHostTrustChange struct {
+	TargetID            uint      `json:"targetId"`
+	EndpointFingerprint string    `json:"endpointFingerprint"`
+	ExpectedRevision    uint64    `json:"expectedRevision"`
+	PublicKey           string    `json:"publicKey,omitempty"`
+	OccurredAt          time.Time `json:"occurredAt"`
+}
+
+func BackupTargetSSHEndpointFingerprint(target *BackupTarget) (string, error) {
+	if target == nil {
+		return "", fmt.Errorf("backup_target_required")
+	}
+	destination, err := remoteexec.ParseSSHDestination(target.SSHHost)
+	if err != nil {
+		return "", err
+	}
+	port := target.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	if port < 1 || port > 65535 {
+		return "", fmt.Errorf("invalid_ssh_port")
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", destination.String(), port)))
+	return fmt.Sprintf("%x", sum[:]), nil
+}
+
+func GetBackupTargetSSHHostTrust(db *gorm.DB, target *BackupTarget) (*BackupTargetSSHHostTrust, error) {
+	if db == nil || target == nil || target.ID == 0 {
+		return nil, fmt.Errorf("backup_target_host_key_state_unavailable")
+	}
+	var trust BackupTargetSSHHostTrust
+	if err := db.Where("target_id = ?", target.ID).First(&trust).Error; err != nil {
+		return nil, fmt.Errorf("backup_target_host_key_state_unavailable: %w", err)
+	}
+	endpoint, err := BackupTargetSSHEndpointFingerprint(target)
+	if err != nil || trust.Revision == 0 || trust.EndpointFingerprint != endpoint {
+		return nil, fmt.Errorf("backup_target_host_key_state_unavailable")
+	}
+	if trust.PublicKey != "" {
+		canonical, err := remoteexec.CanonicalSSHHostKey(trust.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("backup_target_host_key_state_unavailable: %w", err)
+		}
+		trust.PublicKey = canonical
+	}
+	return &trust, nil
+}
+
+func RequireBackupTargetHostKeyRevision(db *gorm.DB, targetID uint, revision uint64, requireKey bool) error {
+	if revision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	var target BackupTarget
+	if err := db.First(&target, targetID).Error; err != nil {
+		return fmt.Errorf("backup_target_not_found: %w", err)
+	}
+	trust, err := GetBackupTargetSSHHostTrust(db, &target)
+	if err != nil {
+		return err
+	}
+	if trust.Revision != revision {
+		return fmt.Errorf("backup_target_host_key_revision_conflict")
+	}
+	if requireKey && trust.PublicKey == "" {
+		return fmt.Errorf("backup_target_host_key_unlearned: select Validate before this operation")
+	}
+	return nil
+}
+
+func ApplyBackupTargetSSHHostTrustTxn(db *gorm.DB, action string, change *BackupTargetSSHHostTrustChange) error {
+	if db == nil || change == nil || change.TargetID == 0 || change.OccurredAt.IsZero() || change.ExpectedRevision == math.MaxUint64 {
+		return fmt.Errorf("backup_target_host_key_change_invalid")
+	}
+	change.OccurredAt = NormalizeCommandTime(change.OccurredAt)
+	change.PublicKey = strings.TrimSpace(change.PublicKey)
+	if action != "initialize_v1" && action != "install_v1" && action != "reset_v1" {
+		return fmt.Errorf("backup_target_host_key_action_invalid")
+	}
+	if action != "initialize_v1" && change.ExpectedRevision == 0 {
+		return fmt.Errorf("backup_target_host_key_revision_required")
+	}
+	if change.PublicKey != "" {
+		canonical, err := remoteexec.CanonicalSSHHostKey(change.PublicKey)
+		if err != nil {
+			return err
+		}
+		change.PublicKey = canonical
+	}
+	if action == "install_v1" && change.PublicKey == "" || action == "reset_v1" && change.PublicKey != "" {
+		return fmt.Errorf("backup_target_host_key_change_invalid")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var target BackupTarget
+		if err := tx.First(&target, change.TargetID).Error; err != nil {
+			return fmt.Errorf("backup_target_not_found: %w", err)
+		}
+		endpoint, err := BackupTargetSSHEndpointFingerprint(&target)
+		if err != nil || endpoint != change.EndpointFingerprint {
+			return fmt.Errorf("backup_target_host_key_endpoint_conflict")
+		}
+		var current BackupTargetSSHHostTrust
+		result := tx.Where("target_id = ?", target.ID).Limit(1).Find(&current)
+		if result.Error != nil {
+			return result.Error
+		}
+		if action == "initialize_v1" {
+			if change.ExpectedRevision != 0 {
+				return fmt.Errorf("backup_target_host_key_change_invalid")
+			}
+			if result.RowsAffected != 0 {
+				if current.EndpointFingerprint == endpoint {
+					if change.PublicKey != "" && current.Revision == 1 && current.PublicKey != change.PublicKey {
+						return fmt.Errorf("backup_target_host_key_install_conflict")
+					}
+					return nil
+				}
+				return fmt.Errorf("backup_target_host_key_endpoint_conflict")
+			}
+			return tx.Create(&BackupTargetSSHHostTrust{TargetID: target.ID, EndpointFingerprint: endpoint,
+				Revision: 1, PublicKey: change.PublicKey, UpdatedAt: change.OccurredAt}).Error
+		}
+		if result.RowsAffected == 0 || current.EndpointFingerprint != endpoint {
+			return fmt.Errorf("backup_target_host_key_state_unavailable")
+		}
+		if current.Revision == change.ExpectedRevision+1 && current.PublicKey == change.PublicKey && current.UpdatedAt.Equal(change.OccurredAt) {
+			return nil
+		}
+		if current.Revision != change.ExpectedRevision {
+			return fmt.Errorf("backup_target_host_key_reset_stale")
+		}
+		if action == "install_v1" && current.PublicKey != "" {
+			return fmt.Errorf("backup_target_host_key_already_trusted")
+		}
+		if action == "reset_v1" {
+			active, err := backupTargetActiveOperationCountTxn(tx, target.ID)
+			if err != nil {
+				return err
+			}
+			if active != 0 {
+				return fmt.Errorf("backup_target_host_key_reset_busy: wait for active backups and restores to stop")
+			}
+		}
+		updated := tx.Model(&BackupTargetSSHHostTrust{}).Where("target_id = ? AND revision = ?", target.ID, current.Revision).
+			Updates(map[string]any{"public_key": change.PublicKey, "revision": current.Revision + 1, "updated_at": change.OccurredAt})
+		if updated.Error != nil {
+			return updated.Error
+		}
+		if updated.RowsAffected != 1 {
+			return fmt.Errorf("backup_target_host_key_revision_conflict")
+		}
+		if tx.Migrator().HasTable(&BackupTargetNodeReadiness{}) {
+			return tx.Where("target_id = ?", target.ID).Delete(&BackupTargetNodeReadiness{}).Error
+		}
+		return nil
+	})
+}
+
+type BackupTargetCreateV3 struct {
+	BackupTargetCreateV2
+	HostKey    string    `json:"hostKey"`
+	OccurredAt time.Time `json:"occurredAt"`
+}
+
+func InitializeBackupTargetSSHHostTrustTxn(db *gorm.DB, occurredAt time.Time) error {
+	if db == nil || occurredAt.IsZero() {
+		return fmt.Errorf("backup_target_host_key_change_invalid")
+	}
+	occurredAt = NormalizeCommandTime(occurredAt)
+	return db.Transaction(func(tx *gorm.DB) error {
+		var options ClusterOption
+		if err := tx.Where("id = ?", 1).Limit(1).Find(&options).Error; err != nil {
+			return err
+		}
+		if options.SSHHostTrustInitialized {
+			return nil
+		}
+		var targets []BackupTarget
+		if err := tx.Order("id ASC").Find(&targets).Error; err != nil {
+			return err
+		}
+		for i := range targets {
+			endpoint, err := BackupTargetSSHEndpointFingerprint(&targets[i])
+			if err != nil {
+				return err
+			}
+			if err := ApplyBackupTargetSSHHostTrustTxn(tx, "initialize_v1", &BackupTargetSSHHostTrustChange{
+				TargetID: targets[i].ID, EndpointFingerprint: endpoint, OccurredAt: occurredAt,
+			}); err != nil {
+				return err
+			}
+		}
+		return tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoUpdates: clause.Assignments(map[string]any{"ssh_host_trust_initialized": true, "updated_at": occurredAt}),
+		}).Create(&ClusterOption{ID: 1, SSHHostTrustInitialized: true, CreatedAt: occurredAt, UpdatedAt: occurredAt}).Error
+	})
+}
+
+func ApplyBackupTargetCreateV3Txn(db *gorm.DB, command *BackupTargetCreateV3) error {
+	if db == nil || command == nil || command.HostKey == "" {
+		return fmt.Errorf("backup_target_host_key_required")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := ApplyBackupTargetCreateV2Txn(tx, &command.BackupTargetCreateV2); err != nil {
+			return err
+		}
+		target := command.Target.ToModel()
+		endpoint, err := BackupTargetSSHEndpointFingerprint(&target)
+		if err != nil {
+			return err
+		}
+		return ApplyBackupTargetSSHHostTrustTxn(tx, "initialize_v1", &BackupTargetSSHHostTrustChange{
+			TargetID: target.ID, EndpointFingerprint: endpoint, PublicKey: command.HostKey, OccurredAt: command.OccurredAt,
+		})
+	})
 }
 
 func ApplyBackupTargetUpdateV2Txn(db *gorm.DB, command *BackupTargetUpdateV2) error {

@@ -70,7 +70,7 @@ func (s *Service) applyBackupJobScheduleDecision(
 	if !bypassRaft {
 		return fmt.Errorf("cluster_service_unavailable")
 	}
-	return clusterModels.ApplyBackupJobScheduleDecisionTxn(s.DB, &decision)
+	return clusterModels.ApplyBackupJobScheduleDecisionV2Txn(s.DB, &decision)
 }
 
 func (s *Service) applyReplicationPolicyScheduleDecision(

@@ -22,6 +22,7 @@ import (
 func BackupTargetRestoreOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
+			HostKeyRevision    uint64    `json:"hostKeyRevision"`
 			Action             string    `json:"action"`
 			Token              string    `json:"token"`
 			TargetID           uint      `json:"targetId"`
@@ -50,13 +51,15 @@ func BackupTargetRestoreOperationInternal(cS *cluster.Service) gin.HandlerFunc {
 		var err error
 		if action == "acquire" {
 			err = cS.AcquireBackupTargetRestoreOperation(clusterModels.BackupTargetRestoreOperationAcquire{
-				Token: req.Token, TargetID: req.TargetID, HolderNodeID: req.HolderNodeID,
+				HostKeyRevision: req.HostKeyRevision,
+				Token:           req.Token, TargetID: req.TargetID, HolderNodeID: req.HolderNodeID,
 				DestinationDataset: req.DestinationDataset, RequestPayload: req.RequestPayload,
 				AcquiredAt: req.OccurredAt,
 			}, false)
 		} else {
 			err = cS.TransitionBackupTargetRestoreOperation(action, clusterModels.BackupTargetRestoreOperationTransition{
-				Token: req.Token, TargetID: req.TargetID, HolderNodeID: req.HolderNodeID,
+				HostKeyRevision: req.HostKeyRevision,
+				Token:           req.Token, TargetID: req.TargetID, HolderNodeID: req.HolderNodeID,
 				DestinationDataset: req.DestinationDataset, RequestPayload: req.RequestPayload,
 				OccurredAt: req.OccurredAt,
 			}, false)

@@ -324,6 +324,7 @@ func NewService(
 	}
 	if clusterService != nil {
 		clusterService.SetBackupTargetValidator(service.ValidateTargetReadiness)
+		clusterService.SetBackupTargetHostKeyEnroller(service.EnsureBackupTargetHostKey)
 	}
 	return service
 }
@@ -414,10 +415,13 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 	}
 	sourceDataset = parsedSource.String()
 	snapshotName = parsedSnapshot.String()
-	extraEnv := s.buildZeltaEnv(target)
+	extraEnv, err := s.buildZeltaEnv(target)
+	if err != nil {
+		return "", err
+	}
 	extraEnv = setEnvValue(extraEnv, "ZELTA_LOG_LEVEL", "3")
 
-	return runZeltaWithEnvStreaming(
+	output, runErr := runZeltaWithEnvStreaming(
 		ctx,
 		extraEnv,
 		func(line string) {
@@ -430,6 +434,7 @@ func (s *Service) backupWithEventProgressSnapshotNameRecursive(
 		},
 		backupZeltaArgs(sourceDataset, zeltaEndpoint, snapshotName, recursive)...,
 	)
+	return output, targetSSHHostKeyError(target, output, runErr)
 }
 
 func (s *Service) RegisterJobs() {
@@ -818,8 +823,14 @@ func (s *Service) runBackupSchedulerTick(ctx context.Context) error {
 			publishAfter = publishAfter.Add(jitter)
 		}
 		occurrenceAt := job.NextRunAt.UTC()
+		hostRevision, err := s.backupJobHostKeyRevision(ctx, job.ID)
+		if err != nil {
+			logger.L.Warn().Err(err).Uint("job_id", job.ID).Msg("backup_target_host_key_unavailable")
+			continue
+		}
 		decision := clusterModels.BackupJobScheduleDecision{
-			JobID: job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
+			HostKeyRevision: hostRevision,
+			JobID:           job.ID, ExpectedScheduleRevision: job.ScheduleRevision,
 			ExpectedNextRunAt: job.NextRunAt, NextRunAt: &nextAt, DecidedAt: now,
 			ClaimToken:   fmt.Sprintf("backup:%s:%s", holderNodeID, uuid.NewString()),
 			HolderNodeID: holderNodeID, OccurrenceAt: &occurrenceAt, PublishAfter: &publishAfter,
@@ -1192,6 +1203,9 @@ func (s *Service) runBackupJobCore(
 		return fmt.Errorf("backup_target_ssh_key_materialize_failed: %w", err)
 	}
 	defer releaseTargetKey()
+	if err := s.EnsureBackupTargetHostKey(ctx, &job.Target); err != nil {
+		return err
+	}
 
 	if err := s.validateBackupScopesDoNotOverlapTarget(ctx, job, backupScopes); err != nil {
 		return fmt.Errorf("backup_scope_validation_failed: %w", err)
@@ -2797,16 +2811,18 @@ func (s *Service) startBackupEventHeartbeat(ctx context.Context, eventID uint, i
 	return cancel
 }
 
-func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
-	sshBase := "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
-	if target.SSHPort != 0 && target.SSHPort != 22 {
-		portArg := fmt.Sprintf(" -p %d", target.SSHPort)
-		sshBase += portArg
+func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) ([]string, error) {
+	args, err := s.buildSSHArgs(target)
+	if err != nil {
+		return nil, err
 	}
-	if target.SSHKeyPath != "" {
-		keyArg := fmt.Sprintf(" -i %s", target.SSHKeyPath)
-		sshBase += keyArg
+	base := []string{"ssh"}
+	for _, arg := range args {
+		if arg != "-n" {
+			base = append(base, arg)
+		}
 	}
+	sshBase := remoteexec.ShellCommandString(base...)
 	sshDefault := sshBase + " -n"
 	sshSend := sshDefault
 	sshRecv := sshBase
@@ -2818,7 +2834,7 @@ func (s *Service) buildZeltaEnv(target *clusterModels.BackupTarget) []string {
 		"ZELTA_REMOTE_RECV=" + sshRecv,
 		"ZELTA_LOG_MODE=json",
 		"ZELTA_LOG_LEVEL=2",
-	}
+	}, nil
 }
 
 func isJobAlreadyRunningErr(err error) bool {

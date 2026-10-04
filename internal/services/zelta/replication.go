@@ -3347,7 +3347,15 @@ func (s *Service) replicationTargetSpec(
 ) (*clusterModels.BackupTarget, string, error) {
 	identity, ok := identities[strings.TrimSpace(targetNodeID)]
 	if !ok {
-		return nil, "", fmt.Errorf("replication_target_identity_missing")
+		return nil, "", fmt.Errorf("cluster_ssh_identity_invalid: node=%s: published identity is missing", targetNodeID)
+	}
+	if identity.NodeUUID != strings.TrimSpace(targetNodeID) {
+		return nil, "", fmt.Errorf("cluster_ssh_identity_invalid: node=%s", targetNodeID)
+	}
+	if s.Cluster != nil && s.Cluster.Raft != nil {
+		if _, err := s.Cluster.ResolveCurrentRaftMember(targetNodeID); err != nil {
+			return nil, "", err
+		}
 	}
 	targetHost := strings.TrimSpace(identity.SSHHost)
 	if targetHost == "" {
@@ -3359,11 +3367,13 @@ func (s *Service) replicationTargetSpec(
 	}
 	backupRoot, destSuffix := splitDatasetForTarget(sourceDataset)
 	return &clusterModels.BackupTarget{
-		SSHHost:    fmt.Sprintf("%s@%s", targetUser, targetHost),
-		SSHPort:    identity.SSHPort,
-		SSHKeyPath: privateKeyPath,
-		BackupRoot: backupRoot,
-		Enabled:    true,
+		SSHClusterNodeID: identity.NodeUUID,
+		SSHHostKey:       identity.PublicKey,
+		SSHHost:          fmt.Sprintf("%s@%s", targetUser, targetHost),
+		SSHPort:          identity.SSHPort,
+		SSHKeyPath:       privateKeyPath,
+		BackupRoot:       backupRoot,
+		Enabled:          true,
 	}, destSuffix, nil
 }
 
@@ -3694,6 +3704,14 @@ func (s *Service) replicatePolicyGenerationToTarget(
 	privateKeyPath, err := s.Cluster.ClusterSSHPrivateKeyPath()
 	if err != nil {
 		return result, fmt.Errorf("cluster_ssh_private_key_path_failed: %w", err)
+	}
+	target, _, err := s.replicationTargetSpec(targetNodeID, sourceDatasets[0], identityByNode, privateKeyPath)
+	if err != nil {
+		return result, err
+	}
+	target.SSHFreshConnection = true
+	if err := s.ensureSSHConnectivity(ctx, target); err != nil {
+		return result, err
 	}
 
 	staged := make([]replicationStagedDataset, 0, len(manifest))

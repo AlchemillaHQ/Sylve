@@ -471,7 +471,7 @@ func TestTargetDatasetExistsTolerantOfSSHBanner(t *testing.T) {
 	})
 
 	s := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "tank/backups"}
+	target := &clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "tank/backups"}
 
 	exists, err := s.targetDatasetExists(context.Background(), target, ds)
 	if err != nil {
@@ -494,7 +494,7 @@ func TestTargetDatasetExistsMissing(t *testing.T) {
 	})
 
 	s := &Service{}
-	target := &clusterModels.BackupTarget{SSHHost: "user@target", BackupRoot: "tank/backups"}
+	target := &clusterModels.BackupTarget{SSHHostKey: fakeSSHHostKey(), SSHHost: "user@target", BackupRoot: "tank/backups"}
 
 	exists, err := s.targetDatasetExists(context.Background(), target, ds)
 	if err != nil {

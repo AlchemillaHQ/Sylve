@@ -12,17 +12,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -364,6 +366,9 @@ func (s *Service) ReconcileBackupTargetSSHKeys() error {
 	if s.Cluster == nil {
 		return nil
 	}
+	if err := s.Cluster.InitializeBackupTargetHostTrust(); err != nil {
+		return err
+	}
 
 	targets, err := s.Cluster.ListBackupTargetsForSync()
 	if err != nil {
@@ -432,6 +437,7 @@ func (s *Service) cleanupOrphanTargetSSHKeys(targets []clusterModels.BackupTarge
 type BackupTargetValidationResult struct {
 	RootExists               bool
 	RootProvisioningRequired bool
+	HostKey                  string
 }
 
 type BackupTargetProvisionError struct {
@@ -481,7 +487,16 @@ func (s *Service) InspectTargetCandidate(
 		return BackupTargetValidationResult{}, err
 	}
 	defer cleanup()
-	return s.inspectTarget(ctx, candidate, candidate.CreateBackupRoot)
+	if candidate.ID == 0 && candidate.SSHHostKey == "" {
+		key, err := s.learnTargetSSHHostKey(ctx, candidate)
+		if err != nil {
+			return BackupTargetValidationResult{}, err
+		}
+		candidate.SSHHostKey = key
+	}
+	result, err := s.inspectTarget(ctx, candidate, candidate.CreateBackupRoot)
+	result.HostKey = candidate.SSHHostKey
+	return result, err
 }
 
 func (s *Service) ValidateTargetCandidate(ctx context.Context, target *clusterModels.BackupTarget) error {
@@ -500,6 +515,9 @@ func (s *Service) ValidateTargetCandidateReadiness(ctx context.Context, target *
 		return err
 	}
 	defer cleanup()
+	if err := s.EnsureBackupTargetHostKey(ctx, candidate); err != nil {
+		return err
+	}
 	_, err = s.inspectTarget(ctx, candidate, false)
 	return err
 }
@@ -521,12 +539,18 @@ func prepareBackupTargetValidationCandidate(
 	candidate := *target
 	candidate.SSHKey = ""
 	candidate.SSHKeyPath = keyPath
+	candidate.SSHFreshConnection = true
 	return &candidate, func() { RemoveTemporarySSHKey(keyPath) }, nil
 }
 
 // ValidateTargetReadiness performs a runner-side observational check.
 func (s *Service) ValidateTargetReadiness(ctx context.Context, target *clusterModels.BackupTarget) error {
-	_, err := s.inspectTarget(ctx, target, false)
+	if target == nil {
+		return fmt.Errorf("backup_target_required")
+	}
+	candidate := *target
+	candidate.SSHFreshConnection = true
+	_, err := s.inspectTarget(ctx, &candidate, false)
 	return err
 }
 
@@ -779,19 +803,26 @@ func (s *Service) runTargetRemoteCommand(
 	if err != nil {
 		// Failures keep the historical stdout+stderr payload: callers match stderr-only diagnostics in output.
 		combined := combinedRemoteCommandOutput(stdout, stderr)
-		return combined, fmt.Errorf("%s: %w", strings.TrimSpace(combined), err)
+		return combined, fmt.Errorf("%s: %w", remoteexec.SSHDiagnostic(combined), targetSSHHostKeyError(target, stderr, err))
 	}
 	if warning := strings.TrimSpace(stderr); warning != "" {
 		event := logger.L.Debug().
 			Str("command_kind", kind).
 			Uint("target_id", target.ID).
-			Str("stderr", warning)
+			Str("stderr", remoteexec.SSHDiagnostic(warning))
 		if dataset != "" {
 			event.Str("dataset", remoteDatasetForLog(dataset))
 		}
 		event.Msg("remote_command_stderr")
 	}
 	return stdout, nil
+}
+
+func targetSSHHostKeyError(target *clusterModels.BackupTarget, output string, err error) error {
+	if target.SSHClusterNodeID != "" {
+		return remoteexec.SSHHostKeyError("cluster", target.SSHClusterNodeID, output, err)
+	}
+	return remoteexec.SSHHostKeyError("backup", target.Name, output, err)
 }
 
 func combinedRemoteCommandOutput(stdout, stderr string) string {
@@ -825,7 +856,11 @@ func (s *Service) targetRemoteCommandArgs(
 	if err != nil {
 		return nil, err
 	}
-	sshArgs, err := command.SSHArgs(s.buildSSHArgs(target), destination, readsStdin)
+	base, err := s.buildSSHArgs(target)
+	if err != nil {
+		return nil, err
+	}
+	sshArgs, err := command.SSHArgs(base, destination, readsStdin)
 	if err != nil {
 		return nil, err
 	}
@@ -902,30 +937,40 @@ func remoteDatasetForLog(dataset string) string {
 	return strings.Join(parts, "/")
 }
 
-func sshControlPath(target *clusterModels.BackupTarget, keyPath string) string {
-	h := fnv.New32a()
-	fmt.Fprintf(h, "%s:%d:%s", target.SSHHost, target.SSHPort, keyPath)
-	return filepath.Join(os.TempDir(), fmt.Sprintf("sylve-ssh-%x.sock", h.Sum32()))
-}
-
-func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
+func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) ([]string, error) {
+	trust, err := s.targetSSHHostTrust(target)
+	if err != nil {
+		return nil, err
+	}
+	path := target.SSHHostKeyFile
+	learning := path != "" && trust.PublicKey == ""
+	if !learning {
+		dir, err := GetSSHKeyDir()
+		if err != nil {
+			return nil, fmt.Errorf("ssh_host_key_file_unavailable: Check the Sylve data directory and permissions: %w", err)
+		}
+		path, err = remoteexec.PrepareSSHHostKey(filepath.Join(dir, "host-keys"), trust)
+		if err != nil {
+			return nil, err
+		}
+	}
 	keyPath := ""
 	if target != nil && (strings.TrimSpace(target.SSHKey) != "" || strings.TrimSpace(target.SSHKeyPath) != "") {
-		keyPath = s.resolvedSSHKeyPath(target)
+		keyPath, err = s.targetSSHKeyPath(target)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	args := []string{
-		"-n",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
+	args, err := remoteexec.SSHHostKeyOptions(trust, path, keyPath, target.SSHFreshConnection, learning)
+	if err != nil {
+		return nil, err
+	}
+	args = append(args, "-n",
 		"-o", "LogLevel=ERROR",
 		"-o", "ConnectTimeout=3",
 		"-o", "ConnectionAttempts=1",
-		"-o", "UpdateHostKeys=no",
-		"-o", "ControlMaster=auto",
-		"-o", fmt.Sprintf("ControlPath=%s", sshControlPath(target, keyPath)),
-		"-o", "ControlPersist=60",
-	}
+	)
 
 	if target.SSHPort != 0 && target.SSHPort != 22 {
 		args = append(args, "-p", fmt.Sprintf("%d", target.SSHPort))
@@ -935,5 +980,157 @@ func (s *Service) buildSSHArgs(target *clusterModels.BackupTarget) []string {
 		args = append(args, "-i", keyPath)
 	}
 
-	return args
+	return args, nil
+}
+
+func (s *Service) targetSSHHostTrust(target *clusterModels.BackupTarget) (remoteexec.SSHHostTrust, error) {
+	if target == nil {
+		return remoteexec.SSHHostTrust{}, fmt.Errorf("backup_target_required")
+	}
+	destination, err := remoteexec.ParseSSHDestination(target.SSHHost)
+	if err != nil {
+		return remoteexec.SSHHostTrust{}, err
+	}
+	port := target.SSHPort
+	if port == 0 {
+		port = 22
+	}
+	if port < 1 || port > 65535 {
+		return remoteexec.SSHHostTrust{}, fmt.Errorf("invalid_ssh_port")
+	}
+	trust := remoteexec.SSHHostTrust{Scope: "backup", Target: fmt.Sprint(target.ID), Endpoint: destination.String(),
+		Port: port, PublicKey: target.SSHHostKey, Revision: target.SSHHostKeyRevision}
+	if target.SSHClusterNodeID != "" {
+		trust.Scope, trust.Target = "cluster", target.SSHClusterNodeID
+		canonical, err := remoteexec.CanonicalSSHHostKey(trust.PublicKey)
+		if err != nil {
+			return trust, fmt.Errorf("cluster_ssh_identity_invalid: node=%s: Check that node's published SSH identity: %w", trust.Target, err)
+		}
+		trust.PublicKey = canonical
+		return trust, nil
+	}
+	if target.ID == 0 {
+		trust.Target = "candidate:" + destination.String() + ":" + fmt.Sprint(port)
+	}
+	if trust.PublicKey != "" || target.SSHHostKeyFile != "" {
+		return trust, nil
+	}
+	record, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB, target)
+	if err != nil {
+		return trust, err
+	}
+	if trust.Revision != 0 && trust.Revision != record.Revision {
+		return trust, fmt.Errorf("backup_target_host_key_revision_conflict")
+	}
+	if record.PublicKey == "" {
+		return trust, fmt.Errorf("backup_target_host_key_unlearned: target=%s: select Validate before this operation", target.Name)
+	}
+	trust.PublicKey, trust.Revision = record.PublicKey, record.Revision
+	return trust, nil
+}
+
+func (s *Service) learnTargetSSHHostKey(ctx context.Context, target *clusterModels.BackupTarget) (string, error) {
+	if target == nil || target.SSHClusterNodeID != "" {
+		return "", fmt.Errorf("backup_target_host_key_enrollment_not_permitted")
+	}
+	dir, err := GetSSHKeyDir()
+	if err != nil {
+		return "", fmt.Errorf("ssh_host_key_file_unavailable: Check the Sylve data directory and permissions: %w", err)
+	}
+	file, err := os.CreateTemp(dir, ".host-key-enrollment-*")
+	if err != nil {
+		return "", fmt.Errorf("ssh_host_key_file_unavailable: Check the Sylve data directory and permissions: %w", err)
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	defer os.Remove(path)
+	candidate := *target
+	candidate.SSHHostKey, candidate.SSHHostKeyFile = "", path
+	trust, err := s.targetSSHHostTrust(&candidate)
+	if err != nil {
+		return "", err
+	}
+	if err := s.ensureSSHConnectivity(ctx, &candidate); err != nil {
+		return "", err
+	}
+	return remoteexec.ReadLearnedSSHHostKey(path, trust)
+}
+
+func (s *Service) EnsureBackupTargetHostKey(ctx context.Context, target *clusterModels.BackupTarget) error {
+	if target == nil {
+		return fmt.Errorf("backup_target_required")
+	}
+	if target.SSHClusterNodeID != "" || target.SSHHostKey != "" {
+		return nil
+	}
+	record, err := clusterModels.GetBackupTargetSSHHostTrust(s.DB, target)
+	if err != nil {
+		return err
+	}
+	if target.SSHHostKeyRevision != 0 && target.SSHHostKeyRevision != record.Revision {
+		return fmt.Errorf("backup_target_host_key_revision_conflict")
+	}
+	if record.PublicKey != "" {
+		target.SSHHostKey, target.SSHHostKeyRevision = record.PublicKey, record.Revision
+		return nil
+	}
+	if s.Cluster == nil {
+		if _, err := s.runtimeStateBypassRaft(); err != nil {
+			return err
+		}
+	}
+	release, err := s.acquireBackupTargetSSHKey(target)
+	if err != nil {
+		return err
+	}
+	defer release()
+	key, err := s.learnTargetSSHHostKey(ctx, target)
+	if err != nil {
+		return err
+	}
+	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: record.EndpointFingerprint,
+		ExpectedRevision: record.Revision, PublicKey: key, OccurredAt: time.Now().UTC()}
+	if s.Cluster != nil {
+		err = s.Cluster.InstallBackupTargetHostKey(ctx, change)
+	} else {
+		err = clusterModels.ApplyBackupTargetSSHHostTrustTxn(s.DB, "install_v1", &change)
+	}
+	if err != nil {
+		current, readErr := clusterModels.GetBackupTargetSSHHostTrust(s.DB, target)
+		if readErr != nil || current.PublicKey == "" || current.Revision != record.Revision+1 {
+			return err
+		}
+		target.SSHHostKey, target.SSHHostKeyRevision = current.PublicKey, current.Revision
+		return s.ValidateTargetReadiness(ctx, target)
+	}
+	target.SSHHostKey, target.SSHHostKeyRevision = key, record.Revision+1
+	s.recordBackupTargetHostKeyInstall(target)
+	return nil
+}
+
+func (s *Service) recordBackupTargetHostKeyInstall(target *clusterModels.BackupTarget) {
+	if s.TelemetryDB == nil {
+		return
+	}
+	fingerprint, err := remoteexec.SSHHostKeyFingerprint(target.SSHHostKey)
+	if err != nil {
+		return
+	}
+	now := time.Now().UTC()
+	actor := s.localNodeID()
+	if actor == "" {
+		actor = "local"
+	}
+	action, err := json.Marshal(map[string]any{"method": "INSTALL", "path": "/api/cluster/backups/targets/" + fmt.Sprint(target.ID) + "/host-key",
+		"response": map[string]any{"targetId": target.ID, "fingerprint": fingerprint, "revision": target.SSHHostKeyRevision}})
+	if err != nil {
+		return
+	}
+	if err := s.TelemetryDB.Create(&infoModels.AuditRecord{User: actor, AuthType: "cluster-node", Node: actor,
+		Started: now, Ended: now, Status: "success", Action: string(action), Version: 2}).Error; err != nil {
+		logger.L.Warn().Err(err).Uint("target_id", target.ID).Msg("backup_target_host_key_install_audit_failed")
+	}
 }

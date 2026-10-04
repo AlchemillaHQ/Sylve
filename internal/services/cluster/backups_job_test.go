@@ -182,6 +182,7 @@ func TestProposeBackupJobCreateAndUpdatePersistsEncryption(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target)
 
 	enabled := true
 	encrypted := true
@@ -258,6 +259,7 @@ func TestProposeBackupJobCreateRetriesOccupiedGeneratedID(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target)
 	existing := clusterModels.BackupJob{
 		ID: 7001, Name: "existing-job", TargetID: target.ID, RunnerNodeID: "node-create",
 		Mode: clusterModels.BackupJobModeDataset, SourceDataset: "zroot/existing",

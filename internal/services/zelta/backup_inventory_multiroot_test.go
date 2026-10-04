@@ -21,6 +21,7 @@ func TestBackupRetentionProofsScaleLinearlyAcrossRoots(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		ID: 1,
 		Target: clusterModels.BackupTarget{
+			SSHHostKey: fakeSSHHostKey(),
 			SSHHost:    "user@target",
 			BackupRoot: "backup",
 		},

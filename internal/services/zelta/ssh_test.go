@@ -12,11 +12,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestSaveSSHKeyWritesTrimmedKeyWithTrailingNewline(t *testing.T) {
@@ -54,34 +56,40 @@ func TestSaveSSHKeyWritesTrimmedKeyWithTrailingNewline(t *testing.T) {
 }
 
 func TestBuildSSHArgsDoesNotInventIdentityForPasswordlessTarget(t *testing.T) {
-	t.Parallel()
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = t.TempDir()
+	hostKey := testutil.SSHHostKey(t)
 
 	service := &Service{}
-	withoutKey := service.buildSSHArgs(&clusterModels.BackupTarget{ID: 42, SSHHost: "root@localhost"})
-	for _, arg := range withoutKey {
-		if arg == "-i" {
-			t.Fatalf("target without configured key received identity flag: %v", withoutKey)
-		}
+	withoutKey, err := service.buildSSHArgs(&clusterModels.BackupTarget{ID: 42, SSHHost: "root@localhost", SSHHostKey: hostKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(withoutKey, "-i") {
+		t.Fatalf("target without configured key received identity flag: %v", withoutKey)
 	}
 
-	withKey := service.buildSSHArgs(&clusterModels.BackupTarget{
+	loginKey := filepath.Join(t.TempDir(), "configured-key")
+	if err := os.WriteFile(loginKey, []byte("login key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	withKey, err := service.buildSSHArgs(&clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		ID:         42,
 		SSHHost:    "root@localhost",
-		SSHKeyPath: "/configured/key",
+		SSHKeyPath: loginKey,
 	})
-	foundIdentity := false
-	for i := 0; i+1 < len(withKey); i++ {
-		if withKey[i] == "-i" && withKey[i+1] == "/configured/key" {
-			foundIdentity = true
-			break
-		}
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !foundIdentity {
+	if i := slices.Index(withKey, "-i"); i < 0 || i+1 >= len(withKey) || withKey[i+1] != loginKey {
 		t.Fatalf("configured key was omitted: %v", withKey)
 	}
 }
 
 func TestRunTargetSSHUsesEncodedRemoteCommands(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = t.TempDir()
 	dir := t.TempDir()
 	sshPath := filepath.Join(dir, "ssh")
 	if err := os.WriteFile(sshPath, []byte("#!/bin/sh\nfor arg do remote=$arg; done\nexec /bin/sh -c \"$remote\"\n"), 0755); err != nil {
@@ -91,6 +99,7 @@ func TestRunTargetSSHUsesEncodedRemoteCommands(t *testing.T) {
 
 	service := &Service{}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: testutil.SSHHostKey(t),
 		SSHHost:    "root@localhost",
 		SSHPort:    22,
 		BackupRoot: "tank/backups",
@@ -164,8 +173,11 @@ func TestRemoteCommandLogFieldsRedactCommandData(t *testing.T) {
 }
 
 func TestTargetRemoteCommandArgsPreserveStreamingWithoutExposingArguments(t *testing.T) {
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = t.TempDir()
 	service := &Service{}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: testutil.SSHHostKey(t),
 		ID:         42,
 		SSHHost:    "root@backup.example",
 		SSHPort:    22,
@@ -309,6 +321,7 @@ func TestPrepareBackupTargetValidationCandidateStagesManagedKey(t *testing.T) {
 	}
 	target := &clusterModels.BackupTarget{
 		ID: 42, SSHKey: "replacement-key", SSHHost: "root@backup", BackupRoot: "tank/backups",
+		SSHHostKey: testutil.SSHHostKey(t),
 	}
 
 	candidate, cleanup, err := prepareBackupTargetValidationCandidate(target)
@@ -324,28 +337,15 @@ func TestPrepareBackupTargetValidationCandidateStagesManagedKey(t *testing.T) {
 	}
 	stagedPath := candidate.SSHKeyPath
 	service := &Service{}
-	sshArgs := service.buildSSHArgs(candidate)
-	committedArgs := service.buildSSHArgs(target)
-	foundIdentity := false
-	for i := 0; i+1 < len(sshArgs); i++ {
-		if sshArgs[i] == "-i" && sshArgs[i+1] == stagedPath {
-			foundIdentity = true
-			break
-		}
+	sshArgs, err := service.buildSSHArgs(candidate)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !foundIdentity {
+	if i := slices.Index(sshArgs, "-i"); i < 0 || i+1 >= len(sshArgs) || sshArgs[i+1] != stagedPath {
 		t.Fatalf("staged identity omitted from SSH args: %v", sshArgs)
 	}
-	controlPath := func(args []string) string {
-		for _, arg := range args {
-			if strings.HasPrefix(arg, "ControlPath=") {
-				return arg
-			}
-		}
-		return ""
-	}
-	if controlPath(sshArgs) == "" || controlPath(sshArgs) == controlPath(committedArgs) {
-		t.Fatalf("staged validation reused committed SSH control path: staged=%v committed=%v", sshArgs, committedArgs)
+	if !slices.Contains(sshArgs, "ControlPath=none") {
+		t.Fatalf("staged validation can reuse an SSH connection: %v", sshArgs)
 	}
 	if content, err := os.ReadFile(stagedPath); err != nil || string(content) != "replacement-key\n" {
 		t.Fatalf("staged key content=%q err=%v", string(content), err)
@@ -626,9 +626,6 @@ func TestVersionedBackupTargetKeysRemainImmutableWhileLeased(t *testing.T) {
 	if oldTarget.SSHKeyPath == newTarget.SSHKeyPath {
 		t.Fatalf("old and new versions share path %q", oldTarget.SSHKeyPath)
 	}
-	if sshControlPath(&oldTarget, oldTarget.SSHKeyPath) == sshControlPath(&newTarget, newTarget.SSHKeyPath) {
-		t.Fatal("old and new versions share SSH control path")
-	}
 	if content, err := os.ReadFile(oldTarget.SSHKeyPath); err != nil || string(content) != "old-key\n" {
 		t.Fatalf("old content=%q err=%v", string(content), err)
 	}
@@ -732,6 +729,7 @@ func TestDestroyTargetSnapshotsReportsBlockedRemoteDelete(t *testing.T) {
 	}})
 
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: fakeSSHHostKey(),
 		SSHHost:    "root@backup.example",
 		BackupRoot: "tank/backups",
 	}

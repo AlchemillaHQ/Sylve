@@ -16,10 +16,11 @@ import (
 )
 
 type ClusterOption struct {
-	ID             uint      `gorm:"primaryKey;autoIncrement:false" json:"id"`
-	KeyboardLayout string    `json:"keyboardLayout"`
-	CreatedAt      time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt      time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	SSHHostTrustInitialized bool      `gorm:"not null;default:false" json:"sshHostTrustInitialized,omitempty"`
+	ID                      uint      `gorm:"primaryKey;autoIncrement:false" json:"id"`
+	KeyboardLayout          string    `json:"keyboardLayout"`
+	CreatedAt               time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt               time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 func upsertOption(db *gorm.DB, o *ClusterOption) error {

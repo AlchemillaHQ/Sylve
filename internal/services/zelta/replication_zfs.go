@@ -672,7 +672,8 @@ func (s *Service) runReplicationPipelineWithProperties(
 	}
 
 	if recvErr != nil {
-		return combined.String(), fmt.Errorf("%s: %w", combined.String(), recvErr)
+		recvErr = targetSSHHostKeyError(target, recvOut, recvErr)
+		return combined.String(), fmt.Errorf("%s: %w", remoteexec.SSHDiagnostic(combined.String()), recvErr)
 	}
 	if sendErr != nil {
 		return combined.String(), fmt.Errorf("zfs_send_failed: %w", sendErr)

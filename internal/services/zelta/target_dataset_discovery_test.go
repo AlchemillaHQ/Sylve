@@ -77,6 +77,7 @@ func TestListRemoteTargetDatasetsDoesNotEnumerateSnapshots(t *testing.T) {
 
 	database := newZeltaServiceTestDB(t)
 	target := clusterModels.BackupTarget{
+		SSHHostKey: fakeSSHHostKey(),
 		Name:       "target",
 		SSHHost:    "user@target",
 		BackupRoot: "backup",
@@ -85,6 +86,7 @@ func TestListRemoteTargetDatasetsDoesNotEnumerateSnapshots(t *testing.T) {
 	if err := database.Create(&target).Error; err != nil {
 		t.Fatalf("create target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, database, &target)
 
 	datasets, err := newTestZeltaService(database).ListRemoteTargetDatasets(context.Background(), target.ID)
 	if err != nil {

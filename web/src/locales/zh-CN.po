@@ -19011,3 +19011,50 @@ msgstr ""
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 msgid "Any ICMP type"
 msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Host key reset. The connection test failed. Check the target and try Validate again."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Host key reset. The connection test passed."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Sylve cannot confirm the host-key reset. Refresh the page before you try again."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Reset host key"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "The first successful connection stores the target's SSH host key. Sylve checks this key on later connections."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "SSH host key: <0/>"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "The SSH host key is not stored. Select Validate before you restore or read backup data."
+msgstr ""
+
+#. 0: hostKeyResetTarget?.name || ''
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Reset the SSH host key for {0}?"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Sylve will trust the host key from the next successful connection. Continue only if you expect the target's host key to have changed."
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Resetting host key"
+msgstr ""
+
+#: src/routes/datacenter/backups/targets/+page.svelte
+msgid "Current fingerprint: <0/>"
+msgstr ""

@@ -27,7 +27,7 @@ func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOpera
 		return err
 	}
 	if bypassRaft {
-		return clusterModels.AcquireBackupJobOperationTxn(s.DB, &payload)
+		return clusterModels.AcquireBackupJobOperationV2Txn(s.DB, &payload)
 	}
 	if s.Raft == nil {
 		return fmt.Errorf("raft_not_initialized")
@@ -45,7 +45,7 @@ func (s *Service) AcquireBackupJobOperation(payload clusterModels.BackupJobOpera
 		return fmt.Errorf("failed_to_marshal_backup_job_operation_acquire: %w", err)
 	}
 	return s.applyRaftCommand(clusterModels.Command{
-		Type: "backup_job_operation", Action: "acquire", Data: data,
+		Type: "backup_job_operation", Action: "acquire_v2", Data: data,
 	})
 }
 
@@ -69,7 +69,7 @@ func (s *Service) TransitionBackupJobOperation(
 	if bypassRaft {
 		switch action {
 		case "start":
-			return clusterModels.StartBackupJobOperationTxn(s.DB, &payload)
+			return clusterModels.StartBackupJobOperationV2Txn(s.DB, &payload)
 		case "finish":
 			return clusterModels.FinishBackupJobOperationTxn(s.DB, &payload)
 		case "abort":
@@ -94,6 +94,9 @@ func (s *Service) TransitionBackupJobOperation(
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed_to_marshal_backup_job_operation_%s: %w", action, err)
+	}
+	if action == "start" {
+		action = "start_v2"
 	}
 	return s.applyRaftCommand(clusterModels.Command{
 		Type: "backup_job_operation", Action: action, Data: data,
