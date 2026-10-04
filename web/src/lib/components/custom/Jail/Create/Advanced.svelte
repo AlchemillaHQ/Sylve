@@ -169,6 +169,7 @@
 	function templateSelect() {
 		if (jailType === 'freebsd') {
 			allowedOptions = [
+				'allow.chflags',
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
@@ -182,6 +183,7 @@
 			}
 		} else if (jailType === 'linux') {
 			allowedOptions = [
+				'allow.chflags',
 				'allow.set_hostname',
 				'allow.raw_sockets',
 				'allow.socket_af',
