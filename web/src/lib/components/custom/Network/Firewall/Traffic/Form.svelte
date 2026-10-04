@@ -605,9 +605,6 @@
 
 		<Dialog.Footer class="pt-2">
 			<div class="flex items-center gap-2">
-				<Button size="sm" variant="outline" onclick={() => (open = false)} disabled={saving}
-					>Cancel</Button
-				>
 				<Button size="sm" onclick={save} disabled={saving}>
 					{#if saving}
 						<span class="icon-[mdi--loading] mr-2 h-4 w-4 animate-spin"></span>
