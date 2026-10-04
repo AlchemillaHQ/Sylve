@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net"
@@ -456,6 +457,9 @@ func (f *iscsiIntegrationFixture) recordSessions(sessions []integrationSession, 
 			f.manifest.SessionIDs = append(f.manifest.SessionIDs, session.ID)
 		}
 		for _, device := range session.Devices.LUNs {
+			if iscsiTestProbePattern.MatchString(device.Device) {
+				continue
+			}
 			matched := false
 			for _, lun := range luns.LUNs {
 				if lun.Name != session.Target.Name+",lun,"+strconv.Itoa(device.Number) {
@@ -572,9 +576,15 @@ func (f *iscsiIntegrationFixture) session(t *testing.T, name, endpoint string, c
 			if session.Target.Name != name || session.Target.Portal != endpoint || session.Initiator.Name != f.initiatorName() {
 				continue
 			}
-			if connected && session.State == "Connected" && len(session.Devices.LUNs) > 0 {
-				result = session
-				return true
+			if connected {
+				device, err := integrationSessionDisk(session)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if device != "" {
+					result = session
+					return true
+				}
 			}
 			if !connected {
 				if session.State == "Connected" || len(session.Devices.LUNs) > 0 {
@@ -735,47 +745,104 @@ func (f *iscsiIntegrationFixture) discoveryInventory(t *testing.T, endpoint stri
 }
 
 var iscsiTestDiskPattern = regexp.MustCompile(`^da[0-9]+$`)
+var iscsiTestProbePattern = regexp.MustCompile(`^probe[0-9]+$`)
 
-func (f *iscsiIntegrationFixture) disk(t *testing.T, target iscsiModels.ISCSITarget, endpoint string) string {
-	t.Helper()
-	session := f.session(t, target.TargetName, endpoint, true)
+func integrationSessionDisk(session integrationSession) (string, error) {
+	if session.State != "Connected" {
+		return "", nil
+	}
 	device := ""
 	for _, lun := range session.Devices.LUNs {
 		if lun.Number == 0 && iscsiTestDiskPattern.MatchString(lun.Device) {
 			if device != "" {
-				t.Fatal("ambiguous test disk identity")
+				return "", errors.New("ambiguous test disk identity")
 			}
 			device = lun.Device
 		}
 	}
-	if device == "" {
-		t.Fatal("test session has no identified LUN 0 disk")
+	return device, nil
+}
+
+func (f *iscsiIntegrationFixture) readyDisk(ctx context.Context, name, endpoint string) (string, error) {
+	sessions, err := integrationSessions(ctx, f.service)
+	if err != nil {
+		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	var session *integrationSession
+	for i := range sessions {
+		candidate := &sessions[i]
+		if candidate.Target.Name == name && candidate.Target.Portal == endpoint && candidate.Initiator.Name == f.initiatorName() {
+			if session != nil {
+				return "", errors.New("ambiguous test session identity")
+			}
+			session = candidate
+		}
+	}
+	if session == nil {
+		return "", nil
+	}
+	if !f.ownsSession(*session) {
+		return "", errors.New("test session is not fixture-owned")
+	}
+	device, err := integrationSessionDisk(*session)
+	if err != nil || device == "" {
+		return "", err
+	}
 	luns, err := f.service.readCTLLUNs(ctx)
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 	var backing ctlLUN
 	for _, lun := range luns.LUNs {
-		if lun.Name == target.TargetName+",lun,0" {
+		if lun.Name == name+",lun,0" {
+			if backing.Name != "" {
+				return "", errors.New("ambiguous test backing identity")
+			}
 			backing = lun
 		}
 	}
 	serial := strings.Trim(backing.Serial, " \t\r\n\x00")
 	if serial == "" || !f.ownsLUN(backing) {
-		t.Fatal("test backing has no owned CTL identity")
+		return "", errors.New("test backing has no owned CTL identity")
 	}
 	actual, err := f.service.runTargetCommand(ctx, "", "/sbin/camcontrol", "inquiry", device, "-S")
-	if err != nil || strings.TrimSpace(actual) != serial {
-		t.Fatal("CAM serial does not match the owned target LUN; refusing disk I/O")
+	if err != nil {
+		return "", nil
+	}
+	if strings.TrimSpace(actual) != serial {
+		return "", errors.New("CAM serial does not match the owned target LUN; refusing disk I/O")
 	}
 	geometry, err := f.service.runTargetCommand(ctx, "", "/usr/sbin/diskinfo", "/dev/"+device)
-	fields := strings.Fields(geometry)
-	if err != nil || len(fields) < 3 || fields[1] != strconv.FormatUint(backing.Blocksize, 10) || fields[2] != strconv.FormatUint(backing.Blocks*backing.Blocksize, 10) {
-		t.Fatal("initiator capacity or blocksize does not match the owned backing")
+	if err != nil {
+		return "", nil
 	}
+	fields := strings.Fields(geometry)
+	if len(fields) < 3 || fields[1] != strconv.FormatUint(backing.Blocksize, 10) || fields[2] != strconv.FormatUint(backing.Blocks*backing.Blocksize, 10) {
+		return "", errors.New("initiator capacity or blocksize does not match the owned backing")
+	}
+	if err := f.recordSessions([]integrationSession{*session}, luns); err != nil {
+		return "", err
+	}
+	if err := f.saveManifest(); err != nil {
+		return "", err
+	}
+	return device, nil
+}
+
+func (f *iscsiIntegrationFixture) disk(t *testing.T, target iscsiModels.ISCSITarget, endpoint string) string {
+	t.Helper()
+	var device string
+	waitIntegration(t, "owned LUN 0 disk identity", func(ctx context.Context) bool {
+		var err error
+		device, err = f.readyDisk(ctx, target.TargetName, endpoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return device != ""
+	})
+	f.record(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	for _, command := range []string{"/sbin/mount", "/usr/sbin/swapinfo"} {
 		args := []string{"-p"}
 		if command == "/usr/sbin/swapinfo" {
@@ -1014,8 +1081,15 @@ func TestISCSIFixtureOwnershipNeedsRecordedIdentities(t *testing.T) {
 	session.Initiator.Name = f.initiatorName()
 	session.Target.Name = f.manifest.Targets[0]
 	session.Target.Portal = f.manifest.Endpoints[0]
-	session.Devices.LUNs = []integrationDevice{{Number: 0, Device: "da8"}}
 	backing := ctlLUN{Name: session.Target.Name + ",lun,0", File: "/dev/zvol/" + f.manifest.Pool + "/volume", Serial: "owned-serial"}
+	session.Devices.LUNs = []integrationDevice{{Number: 0, Device: "probe0"}}
+	if err := f.recordSessions([]integrationSession{session}, &ctlLUNs{LUNs: []ctlLUN{backing}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.manifest.Disks) != 0 {
+		t.Fatal("CAM probe was recorded as a disk")
+	}
+	session.Devices.LUNs = []integrationDevice{{Number: 0, Device: "probe0"}, {Number: 0, Device: "da8"}}
 	if err := f.recordSessions([]integrationSession{session}, &ctlLUNs{LUNs: []ctlLUN{backing}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1026,6 +1100,9 @@ func TestISCSIFixtureOwnershipNeedsRecordedIdentities(t *testing.T) {
 		func(s *integrationSession, _ *ctlLUN) { s.Initiator.Name = iscsiTestIQNPrefix + "other:initiator" },
 		func(s *integrationSession, _ *ctlLUN) { s.Target.Portal = "127.0.0.1:49223" },
 		func(s *integrationSession, _ *ctlLUN) { s.Target.Name = iscsiTestIQNPrefix + "other:target" },
+		func(s *integrationSession, _ *ctlLUN) {
+			s.Devices.LUNs = []integrationDevice{{Number: 0, Device: "ada8"}}
+		},
 		func(_ *integrationSession, l *ctlLUN) { l.File = "/dev/zvol/non-test/volume" },
 		func(_ *integrationSession, l *ctlLUN) { l.Serial = "" },
 	} {
@@ -1034,5 +1111,153 @@ func TestISCSIFixtureOwnershipNeedsRecordedIdentities(t *testing.T) {
 		if err := f.recordSessions([]integrationSession{candidate}, &ctlLUNs{LUNs: []ctlLUN{lun}}); err == nil {
 			t.Fatal("unproven disk or session identity was accepted")
 		}
+	}
+}
+
+func TestISCSIFixtureSessionDiskReadiness(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		state  string
+		luns   []integrationDevice
+		want   string
+		unsafe bool
+	}{
+		{name: "no-devices", state: "Connected"},
+		{name: "probing", state: "Connected", luns: []integrationDevice{{Number: 0, Device: "probe0"}}},
+		{name: "wrong-lun", state: "Connected", luns: []integrationDevice{{Number: 1, Device: "da8"}}},
+		{name: "disconnected", state: "Disconnected", luns: []integrationDevice{{Number: 0, Device: "da8"}}},
+		{name: "invalid-device", state: "Connected", luns: []integrationDevice{{Number: 0, Device: "/dev/da8"}}},
+		{name: "ready", state: "Connected", luns: []integrationDevice{{Number: 0, Device: "da8"}}, want: "da8"},
+		{name: "probe-and-disk", state: "Connected", luns: []integrationDevice{{Number: 0, Device: "probe0"}, {Number: 0, Device: "da8"}}, want: "da8"},
+		{name: "ambiguous", state: "Connected", luns: []integrationDevice{{Number: 0, Device: "da8"}, {Number: 0, Device: "da9"}}, unsafe: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			session := integrationSession{State: test.state}
+			session.Devices.LUNs = test.luns
+			device, err := integrationSessionDisk(session)
+			if device != test.want || (err != nil) != test.unsafe {
+				t.Fatalf("device=%q error=%v want device=%q unsafe=%v", device, err, test.want, test.unsafe)
+			}
+		})
+	}
+}
+
+func TestISCSIFixtureDiskWaitsForProbeAndDeviceReadiness(t *testing.T) {
+	f := &iscsiIntegrationFixture{directory: t.TempDir(), manifest: integrationManifest{
+		RunID: "disk-readiness", Pool: "sylve-test-owned",
+		Targets: []string{iscsiTestIQNPrefix + "disk-readiness:target"}, Endpoints: []string{"127.0.0.1:49222"},
+	}}
+	session := integrationSession{ID: 12, State: "Connected"}
+	session.Initiator.Name = f.initiatorName()
+	session.Target.Name = f.manifest.Targets[0]
+	session.Target.Portal = f.manifest.Endpoints[0]
+	backing := ctlLUN{Name: session.Target.Name + ",lun,0", File: "/dev/zvol/" + f.manifest.Pool + "/volume", Serial: "owned-serial", Blocks: 128, Blocksize: 512}
+	inventory, err := xml.Marshal(ctlLUNs{LUNs: []ctlLUN{backing}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage, inquiries, geometries := 0, 0, 0
+	f.service = &Service{runtime: &targetRuntime{run: func(_ context.Context, _, command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/bin/iscsictl":
+			device := "da8"
+			if stage == 0 {
+				device = "probe0"
+			}
+			session.Devices.LUNs = []integrationDevice{{Number: 0, Device: device}}
+			data, err := json.Marshal(map[string]any{"iscsictl": map[string]any{"session": []integrationSession{session}}})
+			return string(data), err
+		case "/usr/sbin/ctladm":
+			if slices.Equal(args, []string{"devlist", "-x"}) {
+				return string(inventory), nil
+			}
+		case "/sbin/camcontrol":
+			if slices.Equal(args, []string{"inquiry", "da8", "-S"}) {
+				inquiries++
+				if stage == 1 {
+					return "", errors.New("CAM disk is not ready")
+				}
+				return "owned-serial\n", nil
+			}
+		case "/usr/sbin/diskinfo":
+			if slices.Equal(args, []string{"/dev/da8"}) {
+				geometries++
+				if stage == 2 {
+					return "", errors.New("disk node is not ready")
+				}
+				return "/dev/da8 512 65536", nil
+			}
+		}
+		t.Fatalf("unexpected disk command: %s %v", command, args)
+		return "", nil
+	}}}
+	for stage = 0; stage < 4; stage++ {
+		device, err := f.readyDisk(t.Context(), session.Target.Name, session.Target.Portal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stage < 3 {
+			if device != "" || len(f.manifest.Disks) != 0 {
+				t.Fatalf("unready disk accepted at stage %d", stage)
+			}
+		} else if device != "da8" || !slices.Contains(f.manifest.Disks, integrationDisk{Device: "da8", Serial: "owned-serial"}) {
+			t.Fatal("ready disk identity was not returned and recorded")
+		}
+	}
+	if inquiries != 3 || geometries != 2 {
+		t.Fatalf("inquiries=%d geometries=%d", inquiries, geometries)
+	}
+	data, err := os.ReadFile(filepath.Join(f.directory, "manifest.json"))
+	var saved integrationManifest
+	if err != nil || json.Unmarshal(data, &saved) != nil || !slices.Contains(saved.Disks, integrationDisk{Device: "da8", Serial: "owned-serial"}) {
+		t.Fatal("ready disk identity was not saved before I/O")
+	}
+}
+
+func TestISCSIFixtureDiskRejectsUnprovenIdentity(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*ctlLUN, *string, *string)
+	}{
+		{name: "foreign-backing", change: func(lun *ctlLUN, _, _ *string) { lun.File = "/dev/zvol/non-test/volume" }},
+		{name: "missing-serial", change: func(lun *ctlLUN, _, _ *string) { lun.Serial = "" }},
+		{name: "foreign-cam-serial", change: func(_ *ctlLUN, serial, _ *string) { *serial = "foreign-serial" }},
+		{name: "wrong-blocksize", change: func(_ *ctlLUN, _, geometry *string) { *geometry = "/dev/da8 4096 65536" }},
+		{name: "wrong-capacity", change: func(_ *ctlLUN, _, geometry *string) { *geometry = "/dev/da8 512 32768" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := &iscsiIntegrationFixture{directory: t.TempDir(), manifest: integrationManifest{
+				RunID: "disk-identity", Pool: "sylve-test-owned",
+				Targets: []string{iscsiTestIQNPrefix + "disk-identity:target"}, Endpoints: []string{"127.0.0.1:49222"},
+			}}
+			session := integrationSession{ID: 12, State: "Connected"}
+			session.Initiator.Name = f.initiatorName()
+			session.Target.Name = f.manifest.Targets[0]
+			session.Target.Portal = f.manifest.Endpoints[0]
+			session.Devices.LUNs = []integrationDevice{{Number: 0, Device: "da8"}}
+			backing := ctlLUN{Name: session.Target.Name + ",lun,0", File: "/dev/zvol/" + f.manifest.Pool + "/volume", Serial: "owned-serial", Blocks: 128, Blocksize: 512}
+			serial, geometry := "owned-serial", "/dev/da8 512 65536"
+			test.change(&backing, &serial, &geometry)
+			f.service = &Service{runtime: &targetRuntime{run: func(_ context.Context, _, command string, _ ...string) (string, error) {
+				switch command {
+				case "/usr/bin/iscsictl":
+					data, err := json.Marshal(map[string]any{"iscsictl": map[string]any{"session": []integrationSession{session}}})
+					return string(data), err
+				case "/usr/sbin/ctladm":
+					data, err := xml.Marshal(ctlLUNs{LUNs: []ctlLUN{backing}})
+					return string(data), err
+				case "/sbin/camcontrol":
+					return serial, nil
+				case "/usr/sbin/diskinfo":
+					return geometry, nil
+				default:
+					t.Fatalf("unsafe disk command: %s", command)
+					return "", nil
+				}
+			}}}
+			if device, err := f.readyDisk(t.Context(), session.Target.Name, session.Target.Portal); err == nil || device != "" || len(f.manifest.Disks) != 0 {
+				t.Fatalf("unproven disk accepted: device=%q error=%v", device, err)
+			}
+		})
 	}
 }

@@ -703,6 +703,221 @@ func TestTargetAsyncStartExitIsNotSuccess(t *testing.T) {
 	}
 }
 
+func TestFixtureTargetPIDFileNeedsVerifiedProcessInventory(t *testing.T) {
+	exitOne := exec.Command("/usr/bin/false").Run()
+	var exitErr *exec.ExitError
+	if !errors.As(exitOne, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatal("cannot create exit-one fixture")
+	}
+	for _, test := range []struct {
+		name      string
+		contents  string
+		missing   bool
+		processes string
+		inspect   error
+		want      error
+	}{
+		{name: "missing", missing: true, inspect: exitOne, want: errTargetStopped},
+		{name: "empty", inspect: exitOne, want: errTargetStopped},
+		{name: "whitespace", contents: " \n", inspect: exitOne, want: errTargetStopped},
+		{name: "inventory-failure", inspect: errors.New("inventory failed"), want: errors.New("failed_to_check_target_process")},
+		{name: "empty-success", want: errors.New("failed_to_check_target_process")},
+		{name: "conflicting-inventory", processes: "23942", inspect: exitOne, want: errors.New("failed_to_check_target_process")},
+		{name: "malformed", contents: "not-a-pid", want: errors.New("invalid_target_pidfile")},
+		{name: "pid-one", contents: "1", want: errors.New("invalid_target_pidfile")},
+		{name: "multiple-pids", contents: "23942 23943", want: errors.New("invalid_target_pidfile")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ctld.pid")
+			if !test.missing {
+				if err := os.WriteFile(path, []byte(test.contents), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			svc := &Service{runtime: &targetRuntime{pidFile: path}}
+			svc.runtime.run = func(_ context.Context, _, command string, args ...string) (string, error) {
+				if command != "/bin/pgrep" || !slices.Equal(args, []string{"-x", "ctld"}) {
+					t.Fatalf("unverified process command: %s %v", command, args)
+				}
+				return test.processes, test.inspect
+			}
+			for _, action := range []string{"onestatus", "onereload", "onestop"} {
+				if _, err := svc.targetService(t.Context(), action); err == nil || err.Error() != test.want.Error() || errors.Is(err, errTargetStopped) != errors.Is(test.want, errTargetStopped) {
+					t.Fatalf("%s error=%v want %v", action, err, test.want)
+				}
+			}
+			data, err := os.ReadFile(path)
+			if test.missing {
+				if !os.IsNotExist(err) {
+					t.Fatal("status inspection created a PID file")
+				}
+			} else if err != nil || string(data) != test.contents {
+				t.Fatal("status inspection changed or removed the PID file")
+			}
+		})
+	}
+}
+
+func TestFixtureTargetWaitsForPIDFileOrProcessExit(t *testing.T) {
+	exitOne := exec.Command("/usr/bin/false").Run()
+	var exitErr *exec.ExitError
+	if !errors.As(exitOne, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatal("cannot create exit-one fixture")
+	}
+	for _, test := range []struct {
+		name   string
+		action string
+	}{
+		{name: "exits", action: "onestatus"},
+		{name: "publishes-owned-pid", action: "onestatus"},
+		{name: "foreign-stop", action: "onestop"},
+		{name: "foreign-reload", action: "onereload"},
+		{name: "pending", action: "onestop"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, "ctld.pid")
+			if err := os.WriteFile(path, nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			svc := &Service{runtime: &targetRuntime{pidFile: path, configFile: filepath.Join(directory, "ctl.conf"), deadline: time.Second, interval: time.Microsecond}}
+			if test.name == "pending" {
+				svc.runtime.deadline = 20 * time.Millisecond
+			}
+			checks := 0
+			svc.runtime.run = func(_ context.Context, _, command string, args ...string) (string, error) {
+				switch command {
+				case "/bin/pgrep":
+					checks++
+					if checks > 1 {
+						if test.name == "exits" {
+							return "", exitOne
+						}
+						if test.name != "pending" {
+							if err := os.WriteFile(path, []byte("23942"), 0600); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					return "23942", nil
+				case "/bin/ps":
+					if slices.Equal(args, []string{"-p", "23942", "-o", "comm="}) {
+						return "ctld", nil
+					}
+					if slices.Equal(args, []string{"-p", "23942", "-o", "args="}) {
+						if strings.HasPrefix(test.name, "foreign-") {
+							return "/usr/sbin/ctld -f /etc/ctl.conf", nil
+						}
+						return "/usr/sbin/ctld -f " + svc.targetPath(), nil
+					}
+				}
+				t.Fatalf("unverified process command: %s %v", command, args)
+				return "", nil
+			}
+			status, err := svc.targetService(t.Context(), test.action)
+			switch test.name {
+			case "exits":
+				if !errors.Is(err, errTargetStopped) {
+					t.Fatalf("error=%v", err)
+				}
+			case "publishes-owned-pid":
+				if err != nil || status != "ctld is running as pid 23942." {
+					t.Fatalf("status=%q error=%v", status, err)
+				}
+			case "pending":
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("unverified process was not left pending: %v", err)
+				}
+			default:
+				if err == nil || err.Error() != "target_pidfile_process_not_owned" {
+					t.Fatalf("foreign process error=%v", err)
+				}
+			}
+			if checks < 2 {
+				t.Fatal("PID file state was not checked again")
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatal("PID file was removed during inspection")
+			}
+		})
+	}
+}
+
+func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
+	svc := newTargetTestService(t)
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:empty-pid", AuthMethod: "None", Portals: []iscsiModels.ISCSITargetPortal{{Address: "127.0.0.1", Port: 3260}}, LUNs: []iscsiModels.ISCSITargetLUN{{LUNNumber: 0, ZVol: "tank/test"}}}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	exitOne := exec.Command("/usr/bin/false").Run()
+	var exitErr *exec.ExitError
+	if !errors.As(exitOne, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatal("cannot create exit-one fixture")
+	}
+	svc.runtime.pidFile = filepath.Join(t.TempDir(), "ctld.pid")
+	svc.runtime.deadline = 250 * time.Millisecond
+	fixture := &fakeTargetRuntime{service: svc}
+	starts := 0
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/sbin/ctld":
+			if slices.Equal(args, []string{"-f", svc.targetPath()}) {
+				starts++
+				if _, err := fixture.run(ctx, input, "/usr/sbin/service", "ctld", "onestart"); err != nil {
+					return "", err
+				}
+				if starts == 1 {
+					fixture.running = false
+					return "", os.WriteFile(svc.runtime.pidFile, nil, 0600)
+				}
+				return "", os.WriteFile(svc.runtime.pidFile, []byte("23942"), 0600)
+			}
+		case "/bin/pgrep":
+			if !fixture.running {
+				return "", exitOne
+			}
+		case "/bin/ps":
+			if !fixture.running {
+				return "", exitOne
+			}
+			if slices.Equal(args, []string{"-p", "23942", "-o", "comm="}) {
+				return "ctld", nil
+			}
+			if slices.Equal(args, []string{"-p", "23942", "-o", "args="}) {
+				return "/usr/sbin/ctld -f " + svc.targetPath(), nil
+			}
+		case "/bin/kill":
+			if slices.Equal(args, []string{"-TERM", "23942"}) {
+				return fixture.run(ctx, input, "/usr/sbin/service", "ctld", "onestop")
+			}
+			t.Fatalf("unexpected signal: %v", args)
+		}
+		return fixture.run(ctx, input, command, args...)
+	}
+	if err := svc.StartTargets(); !errors.Is(err, ErrApplyFailed) {
+		t.Fatalf("failed-start result=%v", err)
+	}
+	if _, err := svc.targetPID(t.Context()); !errors.Is(err, errTargetStopped) {
+		t.Fatalf("failed-start status=%v", err)
+	}
+	if fixture.live == nil || len(fixture.live.targets) != 1 {
+		t.Fatal("fixture did not retain kernel state after the failed start")
+	}
+	svc.runtime.deadline = time.Second
+	if err := svc.StartTargets(); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if starts != 2 {
+		t.Fatalf("start attempts=%d want 2", starts)
+	}
+	if err := svc.SetEnabled(false); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if fixture.running || fixture.live != nil {
+		t.Fatal("owned runtime state remains after stop")
+	}
+}
+
 func TestTargetAuthOnlyChecksDoNotAcknowledgeReload(t *testing.T) {
 	svc := newTargetTestService(t)
 	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:auth-only", AuthMethod: "None", Portals: []iscsiModels.ISCSITargetPortal{{Address: "127.0.0.1", Port: 3260}}}

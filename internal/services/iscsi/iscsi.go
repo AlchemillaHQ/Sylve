@@ -139,16 +139,38 @@ func (s *Service) targetService(ctx context.Context, action string) (string, err
 	if action == "onestart" {
 		return s.runTargetCommand(ctx, "", "/usr/sbin/ctld", "-f", s.targetPath())
 	}
-	data, err := os.ReadFile(s.runtime.pidFile)
-	if err != nil {
-		if os.IsNotExist(err) {
+	deadline := 10 * time.Second
+	if s.runtime.deadline > 0 {
+		deadline = s.runtime.deadline
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+	_, interval := s.targetTimings()
+	var pid int
+	for {
+		data, err := os.ReadFile(s.runtime.pidFile)
+		if err != nil && !os.IsNotExist(err) {
+			return "", errors.New("failed_to_read_target_pidfile")
+		}
+		value := strings.TrimSpace(string(data))
+		if value != "" {
+			pid, err = strconv.Atoi(value)
+			if err != nil || pid <= 1 {
+				return "", errors.New("invalid_target_pidfile")
+			}
+			break
+		}
+		processes, err := s.runTargetCommand(ctx, "", "/bin/pgrep", "-x", "ctld")
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && strings.TrimSpace(processes) == "" {
 			return "", errTargetStopped
 		}
-		return "", errors.New("failed_to_read_target_pidfile")
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 1 {
-		return "", errors.New("invalid_target_pidfile")
+		if err != nil || strings.TrimSpace(processes) == "" {
+			return "", errors.New("failed_to_check_target_process")
+		}
+		if err := waitTarget(ctx, interval); err != nil {
+			return "", err
+		}
 	}
 	comm, err := s.runTargetCommand(ctx, "", "/bin/ps", "-p", strconv.Itoa(pid), "-o", "comm=")
 	if err != nil {
@@ -161,18 +183,15 @@ func (s *Service) targetService(ctx context.Context, action string) (string, err
 	if filepath.Base(strings.TrimSpace(comm)) != "ctld" {
 		return "", errTargetStopped
 	}
+	if err := s.checkFixtureProcess(ctx, pid); err != nil {
+		return "", err
+	}
 	switch action {
 	case "onestatus":
 		return "ctld is running as pid " + strconv.Itoa(pid) + ".", nil
 	case "onereload":
-		if err := s.checkFixtureProcess(ctx, pid); err != nil {
-			return "", err
-		}
 		return s.runTargetCommand(ctx, "", "/bin/kill", "-HUP", strconv.Itoa(pid))
 	case "onestop":
-		if err := s.checkFixtureProcess(ctx, pid); err != nil {
-			return "", err
-		}
 		return s.runTargetCommand(ctx, "", "/bin/kill", "-TERM", strconv.Itoa(pid))
 	default:
 		return "", errors.New("invalid_target_service_action")
