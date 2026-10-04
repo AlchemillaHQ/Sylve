@@ -252,6 +252,13 @@ func SetServiceState(systemService *system.Service, networkSvc *networkService.S
 			},
 		)
 		if err != nil {
+			if service == models.ISCSI && errors.Is(err, iscsiService.ErrApplyFailed) {
+				c.JSON(http.StatusAccepted, internal.APIResponse[ServiceStateResponse]{
+					Status: "success", Message: "iscsi_configuration_saved_apply_pending", Error: err.Error(),
+					Data: ServiceStateResponse{Service: service, Enabled: *req.Enabled, Changed: changed},
+				})
+				return
+			}
 			writeBasicSettingsError(c, "service_state_update_failed", err)
 			return
 		}

@@ -16,7 +16,6 @@ import (
 
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +27,7 @@ func validateChapSecret(secret, field string) error {
 		return invalidRequest(fmt.Sprintf("%s_must_be_12_to_16_characters", field))
 	}
 	for i := 0; i < len(secret); i++ {
-		if secret[i] < 0x20 || secret[i] > 0x7e {
+		if secret[i] < 0x20 || secret[i] > 0x7e || secret[i] == '"' {
 			return invalidRequest(fmt.Sprintf("%s_contains_invalid_characters", field))
 		}
 	}
@@ -43,7 +42,7 @@ func validateAuthMethod(authMethod, chapName, chapSecret, tgtChapName, tgtChapSe
 		if chapName == "" || chapSecret == "" {
 			return invalidRequest("chap_name_and_secret_required_for_chap")
 		}
-		if err := validateQuotedConfigValue(chapName, "chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(chapName, "chap_name"); err != nil {
 			return err
 		}
 		if err := validateChapSecret(chapSecret, "chap_secret"); err != nil {
@@ -57,10 +56,10 @@ func validateAuthMethod(authMethod, chapName, chapSecret, tgtChapName, tgtChapSe
 		if tgtChapName == "" || tgtChapSecret == "" {
 			return invalidRequest("tgt_chap_name_and_secret_required_for_mutual_chap")
 		}
-		if err := validateQuotedConfigValue(chapName, "chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(chapName, "chap_name"); err != nil {
 			return err
 		}
-		if err := validateQuotedConfigValue(tgtChapName, "tgt_chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(tgtChapName, "tgt_chap_name"); err != nil {
 			return err
 		}
 		if err := validateChapSecret(chapSecret, "chap_secret"); err != nil {
@@ -188,7 +187,7 @@ func (s *Service) CreateInitiator(nickname, targetAddress, targetName, initiator
 	if err := s.writeConfig(false); err != nil {
 		return err
 	}
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
+	if _, err := s.runInitiatorCommand("-An", initiator.Nickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", initiator.ID).Msg("failed to add iSCSI initiator session")
 		return applyFailed("failed_to_add_iscsi_session", err)
 	}
@@ -275,7 +274,7 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 	}
 	// Nickname-based removal reads the current entry from iscsi.conf, so the
 	// old session must be removed before changing the record or config file.
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", previousNickname); err != nil {
+	if _, err := s.runInitiatorCommand("-Rn", previousNickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove previous iSCSI initiator session")
 		return runtimeFailed("failed_to_remove_iscsi_session", err)
 	}
@@ -300,7 +299,7 @@ func (s *Service) UpdateInitiator(id uint, nickname, targetAddress, targetName, 
 	if err := s.writeConfig(false); err != nil {
 		return err
 	}
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
+	if _, err := s.runInitiatorCommand("-An", initiator.Nickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to add updated iSCSI initiator session")
 		return applyFailed("failed_to_add_iscsi_session", err)
 	}
@@ -323,7 +322,7 @@ func (s *Service) DeleteInitiator(id uint) error {
 	}
 	// Keep the nickname in iscsi.conf until iscsictl has used it to identify
 	// and remove the live session.
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
+	if _, err := s.runInitiatorCommand("-Rn", initiator.Nickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to remove iSCSI initiator session")
 		return runtimeFailed("failed_to_remove_iscsi_session", err)
 	}
@@ -356,11 +355,11 @@ func (s *Service) ConnectInitiator(id uint) error {
 	// Reconnect only this initiator. A remove failure can also mean that there
 	// is no current session, so still attempt the add and let that determine
 	// whether the requested session is available afterward.
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-Rn", initiator.Nickname); err != nil {
+	if _, err := s.runInitiatorCommand("-Rn", initiator.Nickname); err != nil {
 		logger.L.Debug().Err(err).Uint("initiator_id", id).Msg("iSCSI initiator session was not removed before reconnect")
 	}
 
-	if _, err := utils.RunCommandAllowExitCode("/usr/bin/iscsictl", []int{0}, "-An", initiator.Nickname); err != nil {
+	if _, err := s.runInitiatorCommand("-An", initiator.Nickname); err != nil {
 		logger.L.Error().Err(err).Uint("initiator_id", id).Msg("failed to connect iSCSI initiator")
 		return applyFailed("failed_to_connect_initiator", err)
 	}

@@ -9,14 +9,20 @@
 package iscsi
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"net/netip"
 	"path"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 )
 
 const (
@@ -24,6 +30,7 @@ const (
 	maxNicknameLength  = 128
 	maxQuotedLength    = 255
 	maxZVolLength      = 1024
+	maxTargetLUNNumber = 1023
 )
 
 func validateBareConfigToken(value, field string, maxLength int) error {
@@ -95,23 +102,17 @@ func normalizeInitiatorTargetAddress(value string) (string, error) {
 	return normalizeHostname(value)
 }
 
-func normalizePortalAddress(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", invalidRequest("portal_address_required")
+func validateNativeQuotedValue(value, field string) error {
+	if err := validateQuotedConfigValue(value, field, maxQuotedLength); err != nil {
+		return err
 	}
-
-	if strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]") {
-		value = strings.TrimSuffix(strings.TrimPrefix(value, "["), "]")
+	if strings.Contains(value, `"`) {
+		return invalidRequest(field + "_contains_invalid_characters")
 	}
-
-	addr, err := netip.ParseAddr(value)
-	if err != nil {
-		return "", invalidRequest("portal_address_must_be_an_ip_address")
-	}
-
-	return formatAddress(addr), nil
+	return nil
 }
+
+func nativeQuote(value string) string { return `"` + value + `"` }
 
 func normalizeAddressHost(value string) (string, error) {
 	if addr, err := netip.ParseAddr(value); err == nil {
@@ -178,4 +179,163 @@ func validateZVol(value string) error {
 	}
 
 	return nil
+}
+
+var portalZonePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+
+type portalEndpoint struct {
+	address netip.Addr
+	port    int
+	scope   int
+}
+
+func (e portalEndpoint) key() string {
+	family := "v4"
+	if e.address.Is6() {
+		family = "v6"
+	}
+	address := e.address.String()
+	return fmt.Sprintf("tcp|%s|%d:%s|%d", family, len(address), address, e.port)
+}
+
+func (e portalEndpoint) listen() string {
+	return net.JoinHostPort(e.address.String(), strconv.Itoa(e.port))
+}
+
+func (e portalEndpoint) sameSocket(other portalEndpoint) bool {
+	return e.port == other.port && e.scope == other.scope && e.address.WithZone("") == other.address.WithZone("")
+}
+
+func (e portalEndpoint) overlaps(other portalEndpoint, v6Only bool) bool {
+	if e.port != other.port {
+		return false
+	}
+	if e.sameSocket(other) {
+		return true
+	}
+	if e.address.Is4() == other.address.Is4() {
+		return e.address.IsUnspecified() || other.address.IsUnspecified()
+	}
+	return !v6Only && (e.address.Is6() && e.address.IsUnspecified() || other.address.Is6() && other.address.IsUnspecified())
+}
+
+func (s *Service) endpoint(address string, port int) (portalEndpoint, error) {
+	var result portalEndpoint
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return result, invalidRequest("portal_address_required")
+	}
+	if strings.HasPrefix(address, "[") && strings.HasSuffix(address, "]") {
+		address = address[1 : len(address)-1]
+	}
+	parsed, err := netip.ParseAddr(address)
+	if err != nil {
+		return result, invalidRequest("portal_address_must_be_an_ip_address")
+	}
+	if parsed.Is4In6() {
+		return result, invalidRequest("portal_ipv4_mapped_ipv6_not_supported")
+	}
+	if port == 0 {
+		port = 3260
+	}
+	if port < 1 || port > 65535 {
+		return result, invalidRequest("portal_port_must_be_between_1_and_65535")
+	}
+	zone := parsed.Zone()
+	if parsed.IsLinkLocalUnicast() && parsed.Is6() {
+		if !portalZonePattern.MatchString(zone) {
+			return result, invalidRequest("portal_ipv6_interface_zone_required")
+		}
+		lookup := s.interfaceLookup
+		if lookup == nil {
+			lookup = net.InterfaceByName
+		}
+		iface, err := lookup(zone)
+		if err != nil || iface == nil || iface.Index <= 0 || !portalZonePattern.MatchString(iface.Name) {
+			return result, invalidRequest("portal_ipv6_interface_zone_unknown")
+		}
+		parsed = parsed.WithZone(iface.Name)
+		result.scope = iface.Index
+	} else if zone != "" {
+		return result, invalidRequest("portal_ipv6_zone_not_allowed")
+	}
+	result.address, result.port = parsed, port
+	return result, nil
+}
+
+func (s *Service) groupName(endpoint portalEndpoint) string {
+	if s.portalGroupName != nil {
+		return s.portalGroupName(endpoint)
+	}
+	hash := sha256.Sum256([]byte(endpoint.key()))
+	return fmt.Sprintf("pg-e-%x", hash[:8])
+}
+
+func (s *Service) readIPv6OnlyContext(ctx context.Context) bool {
+	if s.ipv6Only != nil {
+		return s.ipv6Only()
+	}
+	out, err := s.runTargetCommand(ctx, "", "/sbin/sysctl", "-n", "net.inet6.ip6.v6only")
+	return err == nil && strings.TrimSpace(out) == "1"
+}
+
+func (s *Service) endpointsOverlap(ctx context.Context, endpoints []portalEndpoint) bool {
+	v6Only := true
+	for _, endpoint := range endpoints {
+		if endpoint.address.Is6() && endpoint.address.IsUnspecified() {
+			v6Only = s.readIPv6OnlyContext(ctx)
+			break
+		}
+	}
+	for i, endpoint := range endpoints {
+		for _, other := range endpoints[:i] {
+			if endpoint.overlaps(other, v6Only) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (s *Service) collectPortalEndpoints(targets []iscsiModels.ISCSITarget) ([]portalEndpoint, map[uint][]portalEndpoint, error) {
+	ctx, cancel := s.targetContext()
+	defer cancel()
+	return s.collectPortalEndpointsContext(ctx, targets)
+}
+
+func (s *Service) collectPortalEndpointsContext(ctx context.Context, targets []iscsiModels.ISCSITarget) ([]portalEndpoint, map[uint][]portalEndpoint, error) {
+	attachments := make(map[uint][]portalEndpoint)
+	unique := make(map[string]portalEndpoint)
+	names := make(map[string]string)
+	for _, target := range targets {
+		seen := make(map[string]bool)
+		for _, portal := range target.Portals {
+			endpoint, err := s.endpoint(portal.Address, portal.Port)
+			if err != nil {
+				return nil, nil, err
+			}
+			key := endpoint.key()
+			if seen[key] {
+				return nil, nil, resourceConflict("portal_already_exists", nil)
+			}
+			seen[key] = true
+			name := s.groupName(endpoint)
+			if old, exists := names[name]; exists && old != key {
+				return nil, nil, resourceConflict("portal_group_hash_collision", nil)
+			}
+			names[name] = key
+			unique[key] = endpoint
+			attachments[target.ID] = append(attachments[target.ID], endpoint)
+		}
+		sort.Slice(attachments[target.ID], func(i, j int) bool { return attachments[target.ID][i].key() < attachments[target.ID][j].key() })
+	}
+	endpoints := make([]portalEndpoint, 0, len(unique))
+	for _, endpoint := range unique {
+		endpoints = append(endpoints, endpoint)
+	}
+	sort.Slice(endpoints, func(i, j int) bool { return endpoints[i].key() < endpoints[j].key() })
+	if s.endpointsOverlap(ctx, endpoints) {
+		return nil, nil, resourceConflict("portal_listener_overlap", nil)
+	}
+	return endpoints, attachments, nil
 }

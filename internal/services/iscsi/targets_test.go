@@ -9,25 +9,38 @@
 package iscsi
 
 import (
+	"context"
+	"encoding/xml"
 	"errors"
-	"os/exec"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func newTargetTestService(t *testing.T) *Service {
 	t.Helper()
 	db := testutil.NewSQLiteTestDB(t,
+		&models.BasicSettings{},
 		&iscsiModels.ISCSIInitiator{},
 		&iscsiModels.ISCSITarget{},
 		&iscsiModels.ISCSITargetPortal{},
 		&iscsiModels.ISCSITargetLUN{},
 	)
-	return &Service{DB: db}
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.ISCSI}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{DB: db, ipv6Only: func() bool { return true }, backingStat: func(string) (os.FileInfo, error) { return os.Stat("/dev/null") }}
+	fixture := &fakeTargetRuntime{service: svc}
+	svc.runtime = &targetRuntime{run: fixture.run, deadline: 10 * time.Second, settle: time.Microsecond, interval: time.Microsecond}
+	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
+	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
+	return svc
 }
 
 func TestCreateTargetMissingTargetName(t *testing.T) {
@@ -84,22 +97,22 @@ func TestAddPortalMissingAddress(t *testing.T) {
 
 func TestAddPortalDefaultsPort(t *testing.T) {
 	svc := newTargetTestService(t)
-	svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:target0", AuthMethod: "None"})
-	var tgt iscsiModels.ISCSITarget
-	svc.DB.First(&tgt)
-
-	// port=0 should be stored as 3260
-	portal := iscsiModels.ISCSITargetPortal{
-		TargetID: tgt.ID,
-		Address:  "192.168.1.10",
-		Port:     0,
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:target0", AuthMethod: "None"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatal(err)
 	}
-	// Apply the same defaulting logic as AddPortal
-	if portal.Port == 0 {
-		portal.Port = 3260
+	if err := svc.AddPortal(target.ID, "[0:0:0:0:0:0:0:1]", 0); err != nil {
+		t.Fatal(err)
 	}
-	if portal.Port != 3260 {
-		t.Fatalf("expected port to default to 3260, got %d", portal.Port)
+	var portal iscsiModels.ISCSITargetPortal
+	if err := svc.DB.Where("target_id = ?", target.ID).First(&portal).Error; err != nil {
+		t.Fatal(err)
+	}
+	if portal.Port != 3260 || portal.Address != "[::1]" {
+		t.Fatalf("stored portal=%s:%d; want [::1]:3260", portal.Address, portal.Port)
+	}
+	if err := svc.AddPortal(target.ID, "::1", 3260); !errors.Is(err, ErrConflict) {
+		t.Fatalf("canonical duplicate error=%v", err)
 	}
 }
 
@@ -128,20 +141,11 @@ func TestAddLUNDuplicateLUNNumber(t *testing.T) {
 
 func TestDeleteTarget(t *testing.T) {
 	svc := newTargetTestService(t)
-	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
 	svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:todelete", AuthMethod: "None"})
 	var tgt iscsiModels.ISCSITarget
 	if err := svc.DB.Where("target_name = ?", "iqn.2025-01.com.example:todelete").First(&tgt).Error; err != nil {
 		t.Fatalf("fixture not found: %v", err)
 	}
-	restoreCommand := utils.SetCommandForTest(func(command string, _ ...string) *exec.Cmd {
-		if command == "/usr/sbin/ctladm" {
-			return exec.Command("/usr/bin/printf", "<connections></connections>")
-		}
-		return exec.Command("/usr/bin/true")
-	})
-	t.Cleanup(restoreCommand)
-
 	if err := svc.DeleteTarget(tgt.ID); err != nil {
 		t.Fatalf("DeleteTarget: %v", err)
 	}
@@ -167,16 +171,12 @@ func TestDeleteTargetRejectsActiveConnections(t *testing.T) {
 		t.Fatalf("create LUN: %v", err)
 	}
 
-	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	svc.runtime.run = func(_ context.Context, _, command string, args ...string) (string, error) {
 		if command != "/usr/sbin/ctladm" || !strings.Contains(strings.Join(args, " "), "islist -x") {
 			t.Fatalf("unexpected command: %s %v", command, args)
 		}
-		return exec.Command(
-			"/usr/bin/printf",
-			"<connections><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></connections>",
-		)
-	})
-	t.Cleanup(restoreCommand)
+		return "<connections><connection><initiator>iqn.client</initiator><target>" + target.TargetName + "</target></connection></connections>", nil
+	}
 
 	err := svc.DeleteTarget(target.ID)
 	if !errors.Is(err, ErrConflict) || err.Error() != "target_has_active_connections" {
@@ -316,12 +316,6 @@ func TestConcurrentAddLUNAllowsOnlyOneTargetToUseZVol(t *testing.T) {
 		t.Fatalf("create second target: %v", err)
 	}
 
-	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
-		return exec.Command("/usr/bin/true")
-	})
-	t.Cleanup(restoreCommand)
-
 	results := make(chan error, 2)
 	go func() { results <- svc.AddLUN(first.ID, 0, "tank/shared") }()
 	go func() { results <- svc.AddLUN(second.ID, 0, "tank/shared") }()
@@ -357,7 +351,7 @@ func TestGenerateTargetConfigFormatsIPv6Portal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateTargetConfig: %v", err)
 	}
-	if !strings.Contains(cfg, "listen [2001:db8::10]:3260") {
+	if !strings.Contains(cfg, `listen "[2001:db8::10]:3260"`) {
 		t.Fatalf("generated config does not contain bracketed IPv6 portal:\n%s", cfg)
 	}
 }
@@ -391,11 +385,6 @@ func TestRemoveTargetChildrenEnforcesOwnership(t *testing.T) {
 
 func TestUpdateTargetPreservesOmittedSecrets(t *testing.T) {
 	svc := newTargetTestService(t)
-	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
-		return exec.Command("true")
-	})
-	defer restoreCommand()
 
 	target := iscsiModels.ISCSITarget{
 		TargetName:       "iqn.2025-01.com.example:target0",
@@ -427,6 +416,192 @@ func TestUpdateTargetPreservesOmittedSecrets(t *testing.T) {
 		t.Fatalf("load updated target: %v", err)
 	}
 	if updated.CHAPSecret != target.CHAPSecret || updated.MutualCHAPSecret != target.MutualCHAPSecret {
-		t.Fatalf("secrets changed: chap=%q mutual=%q", updated.CHAPSecret, updated.MutualCHAPSecret)
+		t.Fatal("omitted secrets were changed")
 	}
+}
+
+func TestPortalCandidateConflictDoesNotCommit(t *testing.T) {
+	svc := newTargetTestService(t)
+	first := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:first", AuthMethod: "None", Portals: []iscsiModels.ISCSITargetPortal{{Address: "0.0.0.0", Port: 3260}}}
+	second := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:second", AuthMethod: "None"}
+	svc.DB.Create(&first)
+	svc.DB.Create(&second)
+	before := []byte("preserved file")
+	os.WriteFile(svc.targetPath(), before, 0600)
+	if err := svc.AddPortal(second.ID, "127.0.0.1", 3260); !errors.Is(err, ErrConflict) {
+		t.Fatalf("error=%v", err)
+	}
+	var count int64
+	svc.DB.Model(&iscsiModels.ISCSITargetPortal{}).Where("target_id = ?", second.ID).Count(&count)
+	if count != 0 {
+		t.Fatal("rejected portal committed")
+	}
+	after, _ := os.ReadFile(svc.targetPath())
+	if string(after) != string(before) {
+		t.Fatal("rejected portal replaced config")
+	}
+}
+
+func TestPortalHashCollisionFailsBeforeInsert(t *testing.T) {
+	svc := newTargetTestService(t)
+	svc.portalGroupName = func(portalEndpoint) string { return "pg-e-collision" }
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:collision", AuthMethod: "None", Portals: []iscsiModels.ISCSITargetPortal{{Address: "127.0.0.1", Port: 3260}}}
+	svc.DB.Create(&target)
+	if err := svc.AddPortal(target.ID, "127.0.0.2", 3260); !errors.Is(err, ErrConflict) || err.Error() != "portal_group_hash_collision" {
+		t.Fatalf("error=%v", err)
+	}
+	var count int64
+	svc.DB.Model(&iscsiModels.ISCSITargetPortal{}).Count(&count)
+	if count != 1 {
+		t.Fatal("collision committed")
+	}
+}
+
+func TestAddLUNRequiresExistingDeviceBeforeCommit(t *testing.T) {
+	svc := newTargetTestService(t)
+	svc.backingStat = os.Stat
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:missing", AuthMethod: "None"}
+	svc.DB.Create(&target)
+	if err := svc.AddLUN(target.ID, 0, "sylve-missing-test/backing"); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("error=%v", err)
+	}
+	var count int64
+	svc.DB.Model(&iscsiModels.ISCSITargetLUN{}).Count(&count)
+	if count != 0 {
+		t.Fatal("missing backing committed")
+	}
+}
+
+func TestAddLUNRejectsNativeNumberLimitBeforeCommit(t *testing.T) {
+	svc := newTargetTestService(t)
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:lun-limit", AuthMethod: "None"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.AddLUN(target.ID, 1024, "tank/test"); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("error=%v", err)
+	}
+	var count int64
+	if err := svc.DB.Model(&iscsiModels.ISCSITargetLUN{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatal("out-of-range LUN number was committed")
+	}
+}
+
+type fakeTargetRuntime struct {
+	service *Service
+	running bool
+	live    *targetConfiguration
+}
+
+func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args ...string) (string, error) {
+	if ctx.Err() != nil {
+		return "", ctx.Err()
+	}
+	switch command {
+	case "/usr/sbin/diskinfo":
+		return "fixture 512 65536", nil
+	case "/usr/sbin/ctld":
+		return "", nil
+	case "/usr/bin/iscsictl":
+		return "", nil
+	case "/bin/ps":
+		return "fixture process birth", nil
+	case "/bin/pgrep":
+		if f.running {
+			return "23942", nil
+		}
+		return "", nil
+	case "/usr/sbin/service":
+		if args[0] == "iscsid" {
+			return "", nil
+		}
+		switch args[1] {
+		case "onestatus":
+			if f.running {
+				return "ctld is running as pid 23942.", nil
+			}
+			return "", errTargetStopped
+		case "onestop":
+			f.running = false
+			f.live = nil
+			return "", nil
+		case "onestart", "onereload":
+			data, err := os.ReadFile(f.service.targetPath())
+			if err != nil {
+				return "", err
+			}
+			f.live, err = f.service.inspectTargetConfig(string(data))
+			if err != nil {
+				return "", err
+			}
+			for i := range f.live.targets {
+				for j := range f.live.targets[i].luns {
+					f.live.targets[i].luns[j].size = 65536
+				}
+			}
+			f.running = true
+			return "", nil
+		}
+	case "/usr/bin/sockstat":
+		var out strings.Builder
+		if f.live != nil && f.running {
+			for _, endpoint := range f.live.activeEndpoints() {
+				family := "tcp4"
+				if endpoint.address.Is6() {
+					family = "tcp6"
+				}
+				fmt.Fprintf(&out, "root ctld 23942 3 %s %s *:*\n", family, endpoint.listen())
+			}
+		}
+		return out.String(), nil
+	case "/usr/sbin/ctladm":
+		ports, luns := f.inventory()
+		var data []byte
+		var err error
+		if args[0] == "portlist" {
+			data, err = xml.Marshal(ports)
+		} else if args[0] == "devlist" {
+			data, err = xml.Marshal(luns)
+		} else if args[0] == "islist" {
+			return "<ctlislist/>", nil
+		} else {
+			return "", errors.New("unexpected CTL command")
+		}
+		return string(data), err
+	}
+	return "", errors.New("unexpected test command")
+}
+
+func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
+	ports, luns := &ctlPorts{}, &ctlLUNs{}
+	if f.live == nil {
+		return ports, luns
+	}
+	ids := make(map[string]int)
+	for _, target := range f.live.targets {
+		for _, lun := range target.luns {
+			ids[lun.name] = len(luns.LUNs)
+			luns.LUNs = append(luns.LUNs, ctlLUN{ID: ids[lun.name], Name: lun.name, Backend: "block", Blocks: 128, Blocksize: 512, File: lun.path})
+		}
+	}
+	tags := make(map[string]int)
+	for _, target := range f.live.targets {
+		for _, name := range target.groups {
+			if len(f.live.groups[name].listeners) == 0 {
+				continue
+			}
+			if tags[name] == 0 {
+				tags[name] = len(tags) + 1
+			}
+			port := ctlPort{ID: len(ports.Ports) + 3, Target: target.name, Group: name, Frontend: "iscsi", Online: "YES", Tag: tags[name], LUNMap: "on"}
+			for _, lun := range target.luns {
+				port.LUNs = append(port.LUNs, struct {
+					Number int `xml:"id,attr"`
+					ID     int `xml:",chardata"`
+				}{lun.number, ids[lun.name]})
+			}
+			ports.Ports = append(ports.Ports, port)
+		}
+	}
+	return ports, luns
 }

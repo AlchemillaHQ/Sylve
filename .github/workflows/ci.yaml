@@ -105,9 +105,14 @@ jobs:
               mkdir -p "$GOCACHE" "$GOMODCACHE"
               go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
 
-              for module in zfs pf vmm nlsysevent if_bridge if_epair; do
+              for module in zfs pf vmm nlsysevent if_bridge if_epair ctl iscsi; do
                 kldstat -q -m "$module" || kldload "$module"
               done
+
+              [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] || {
+                echo "CTL and iSCSI kernel devices are required for integration tests"
+                exit 1
+              }
 
               service libvirtd onestart || service libvirtd onerestart
               service sshd onestart 2>/dev/null || service sshd onerestart

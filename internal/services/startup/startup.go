@@ -257,14 +257,18 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			return fmt.Errorf("failed to initialize iSCSI: %w", err)
 		}
 
-		if err := ensureServiceStarted("iscsid"); err != nil {
+		if err := ensureISCSIInitiatorDaemon(ctx); err != nil {
 			logger.L.Error().Err(err).Msg("unable to start iscsid")
 		} else if err := s.ISCSI.WriteConfig(true); err != nil {
 			logger.L.Error().Err(err).Msg("unable to load configured iSCSI initiator sessions")
 		}
 
-		if err := ensureServiceStarted("ctld"); err != nil {
-			logger.L.Error().Err(err).Msg("unable to start ctld")
+		if targetErr := s.ISCSI.StartTargets(); targetErr != nil {
+			logger.L.Warn().Str("reasonCode", targetErr.Error()).Msg("iSCSI target startup pending")
+		}
+	} else if s.ISCSI != nil {
+		if err := s.ISCSI.SetEnabled(false); err != nil {
+			logger.L.Warn().Str("reasonCode", err.Error()).Msg("iSCSI target stop pending")
 		}
 	}
 

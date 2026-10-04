@@ -3,9 +3,15 @@
 package startup
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 func TestBackupUnmanagedISCSIConfigUsesMode0600(t *testing.T) {
@@ -80,5 +86,34 @@ func TestBackupUnmanagedISCSIConfigSkipsManagedSource(t *testing.T) {
 	}
 	if _, err := os.Stat(backup); !os.IsNotExist(err) {
 		t.Fatalf("managed source unexpectedly backed up: %v", err)
+	}
+}
+
+func TestBackupISCSIConfigRequiresMarkerAtStart(t *testing.T) {
+	dir := t.TempDir()
+	source, backup := filepath.Join(dir, "ctl.conf"), filepath.Join(dir, "ctl.conf.pre-sylve")
+	content := "# unmanaged file\n" + iscsiConfigMarker + "\n"
+	if err := os.WriteFile(source, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := backupUnmanagedISCSIConfig(source, backup); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(backup)
+	if err != nil || string(got) != content {
+		t.Fatal("embedded marker skipped unmanaged backup")
+	}
+}
+
+func TestISCSIInitiatorStartupHasSharedDeadline(t *testing.T) {
+	t.Cleanup(utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", "sleep 5 & wait")
+	}))
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	err := ensureISCSIInitiatorDaemon(ctx)
+	if err == nil || strings.Contains(err.Error(), "sleep") || time.Since(start) > time.Second {
+		t.Fatalf("unbounded or unsafe startup result: %v", err)
 	}
 }

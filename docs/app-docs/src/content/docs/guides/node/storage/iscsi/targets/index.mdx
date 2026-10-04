@@ -64,7 +64,9 @@ Select one target in the table, choose **Edit Target**, then open the **Portals*
 | **Address** | Required IPv4 or IPv6 address on this node. Hostnames are not accepted for target portals. Use a specific storage-network address rather than a public address. |
 | **Port** | TCP listen port. The conventional iSCSI port is `3260`; Sylve accepts `1` through `65535`. The same address and port cannot be added twice to one target. |
 
-A target can have more than one portal, for example separate storage-network interfaces. A portal is copied to the clipboard by selecting its displayed address. Removing a portal stops that target from listening there after its configuration reloads.
+A target can have more than one portal. Targets that use the same address and port share a listener, but keep separate authentication. Removing a portal does not affect other targets that use it. Select a portal address to copy it. A target with no portals is not available to initiators.
+
+Do not mix wildcard and specific addresses on the same port. IPv4-mapped IPv6 addresses are not supported. Link-local IPv6 addresses need an interface-name zone, such as `fe80::1%em0`.
 
 ## Add ZFS volumes as LUNs
 
@@ -77,7 +79,7 @@ Open the **LUNs** tab in the same target editor. Select a ZFS volume and give it
 
 | Field | What it controls |
 | --- | --- |
-| **LUN #** | Non-negative number used by the remote initiator to identify this disk within the target. Start at `0` for a simple one-volume target. Each number must be unique on that target. |
+| **LUN #** | Integer from `0` through `1023`, used by the remote initiator to identify this disk within the target. Start at `0` for a simple one-volume target. Each number must be unique on that target. |
 | **ZFS Volume** | The ZFS volume exported as `/dev/zvol/<volume name>`. A volume can belong to only one Sylve iSCSI LUN. |
 
 Adding or removing a LUN changes only the iSCSI export. It does not create, delete, resize, or wipe the ZFS volume. Before removing a LUN, safely unmount or detach it from every remote client.
@@ -86,12 +88,24 @@ Adding or removing a LUN changes only the iSCSI export. It does not create, dele
 
 The **Status** column reports **Connected (n)** when `n` remote initiator sessions are active, otherwise **Idle**. Sylve refreshes target-session information every three seconds while the page is visible.
 
-Editing a target, portal, or LUN validates and regenerates Sylve's managed `ctld` configuration. Sylve reloads `ctld` when it is already running, or starts it when it is stopped.
+Editing a target, portal, or LUN updates the managed `ctld` configuration. Sylve starts or reloads targets only when iSCSI is enabled. Disabling targets does not stop `iscsid` or detach initiator storage.
 
 Sylve refuses to delete a target while one or more remote initiators are connected to it. Disconnect those clients and confirm the target is **Idle** first. If Sylve cannot safely read the target session state, it also leaves the target unchanged. Once deletion is allowed, it removes the target's portal and LUN assignments from Sylve but leaves the underlying ZFS volumes intact.
 
-If the configuration is saved but the target service cannot start or reload, the page displays a warning that the runtime change is pending. The saved configuration is retained, but its new target state is not live until the service can apply it successfully. Resolve the reported service issue, then make a small safe target edit or restart the iSCSI service to apply the stored configuration.
+If a change is saved but runtime checks fail, the page shows a pending warning. Sylve keeps the saved change and does not roll back a partial apply. Correct the reported problem, then retry a safe edit or the same service state.
+
+## Upgrade and recovery
+
+Back up `/etc/ctl.conf` before the first shared-listener upgrade. Use a maintenance window because clients can disconnect. If Sylve reports `iscsi_listener_normalization_requires_stop`, disable targets, confirm the stop, then enable them.
+
+After a zvol rename, disconnect clients, restore the backing path, then remove and add the affected LUN assignment. This does not delete the zvol. Test client I/O before use.
 
 :::note
-Sylve owns the iSCSI configuration files it generates. When iSCSI is first enabled, it preserves pre-existing unmanaged `/etc/iscsi.conf` and `/etc/ctl.conf` files as `.pre-sylve` backups. Do not hand-edit the active generated files, because Sylve replaces them on later changes.
+At startup, Sylve backs up unmanaged `/etc/iscsi.conf` and `/etc/ctl.conf` files as `.pre-sylve`. It does not back up each change. Do not edit generated files; later changes replace them.
 :::
+
+:::caution
+ctld can write configuration values to system logs during validation. Restrict access to these logs.
+:::
+
+Aliases and CHAP values cannot contain double quotes or control characters.

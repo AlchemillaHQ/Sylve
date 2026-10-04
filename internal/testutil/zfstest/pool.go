@@ -40,6 +40,7 @@ type ownedPool struct {
 	name     string
 	owner    string
 	stateDir string
+	preserve bool
 }
 
 var sharedPackagePool struct {
@@ -103,12 +104,25 @@ func DedicatedPool(t testing.TB) (poolName string, client *gzfs.Client) {
 	dedicatedPools.Store(pool.name, pool)
 
 	t.Cleanup(func() {
+		if pool.preserve {
+			t.Errorf("preserved owned pool %s after dependent fixture teardown failure (state: %s)", pool.name, pool.stateDir)
+			return
+		}
 		if err := pool.destroy(); err != nil {
 			t.Errorf("clean up dedicated ZFS pool %s: %v", pool.name, err)
 		}
 	})
 
 	return pool.name, gzfs.NewClient(gzfs.Options{})
+}
+
+func PreserveDedicatedPool(t testing.TB, poolName string) {
+	t.Helper()
+	pool := lookupDedicatedPool(t, poolName)
+	if err := pool.verifyOwnership(); err != nil {
+		t.Errorf("verify pool before preservation: %v", err)
+	}
+	pool.preserve = true
 }
 
 // ExportDedicatedPool exports a pool created by DedicatedPool after checking

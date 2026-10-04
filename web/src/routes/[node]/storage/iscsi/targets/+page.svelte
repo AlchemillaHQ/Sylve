@@ -122,7 +122,7 @@
 
 	function notifyMutation(response: { message?: string }, successMessage: string) {
 		if (response.message === 'iscsi_configuration_saved_apply_pending') {
-			toast.warning('Saved, but the iSCSI runtime could not apply the change', {
+			toast.warning('Saved; iSCSI runtime checks are pending', {
 				position: 'bottom-center'
 			});
 			return;
@@ -288,8 +288,10 @@
 		if (!activeTarget) return;
 
 		const lun = Number(lunForm.lunNumber);
-		if (isNaN(lun) || lun < 0) {
-			toast.error('LUN number must be a non-negative integer', { position: 'bottom-center' });
+		if (!Number.isInteger(lun) || lun < 0 || lun > 1023) {
+			toast.error('LUN number must be an integer from 0 through 1023', {
+				position: 'bottom-center'
+			});
 			return;
 		}
 		if (!lunForm.zvol) {

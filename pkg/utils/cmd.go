@@ -13,8 +13,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 )
 
 var execCommand = exec.Command
@@ -24,6 +27,37 @@ func SetCommandForTest(fn func(string, ...string) *exec.Cmd) func() {
 	original := execCommand
 	execCommand = fn
 	return func() { execCommand = original }
+}
+
+func SetCommandWithContextForTest(fn func(string, ...string) *exec.Cmd) func() {
+	originalContext := execCommandContext
+	execCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		fixture := fn(name, args...)
+		cmd := exec.CommandContext(ctx, fixture.Path, fixture.Args[1:]...)
+		cmd.Env, cmd.Dir, cmd.ExtraFiles, cmd.SysProcAttr = fixture.Env, fixture.Dir, fixture.ExtraFiles, fixture.SysProcAttr
+		return cmd
+	}
+	return func() { execCommandContext = originalContext }
+}
+
+func RunCommandWithInputContext(ctx context.Context, input, command string, args ...string) (string, error) {
+	cmd := execCommandContext(ctx, command, args...)
+	cmd.Stdin = strings.NewReader(input)
+	var stdout bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, io.Discard
+	cmd.WaitDelay = 250 * time.Millisecond
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Setpgid = true
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return stdout.String(), ctx.Err()
+		}
+		return stdout.String(), fmt.Errorf("command_execution_failed: %w", err)
+	}
+	return stdout.String(), nil
 }
 
 func RunCommand(command string, args ...string) (string, error) {

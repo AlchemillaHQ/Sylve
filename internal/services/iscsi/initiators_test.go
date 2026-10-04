@@ -107,7 +107,7 @@ func TestCreateInitiatorMutualCHAPRequiresBothCredentials(t *testing.T) {
 func TestCreateInitiatorNormalizesIPv6TargetAddress(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command("/usr/bin/true")
 	})
 	t.Cleanup(restoreCommand)
@@ -141,7 +141,7 @@ func TestCreateInitiatorAddsOnlyCreatedSession(t *testing.T) {
 	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
 
 	var calls [][]string
-	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(command string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{command}, args...))
 		return exec.Command("/usr/bin/true")
 	})
@@ -150,7 +150,7 @@ func TestCreateInitiatorAddsOnlyCreatedSession(t *testing.T) {
 	if err := svc.CreateInitiator("fblock0", "192.0.2.10", "iqn.2025-01.com.example:target0", "", "None", "", "", "", ""); err != nil {
 		t.Fatalf("CreateInitiator: %v", err)
 	}
-	want := [][]string{{"/usr/bin/iscsictl", "-An", "fblock0"}}
+	want := [][]string{{"/usr/bin/iscsictl", "-c", configPath, "-An", "fblock0"}}
 	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) {
 		t.Fatalf("commands = %#v, want %#v", calls, want)
 	}
@@ -173,16 +173,16 @@ func TestUpdateInitiatorReconnectsOnlyUpdatedSession(t *testing.T) {
 	}
 
 	var calls [][]string
-	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(command string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{command}, args...))
 		config, err := os.ReadFile(configPath)
 		if err != nil {
 			t.Fatalf("read config during %v: %v", args, err)
 		}
-		if slices.Equal(args, []string{"-Rn", "old-name"}) && !strings.Contains(string(config), "old-name {") {
+		if slices.Equal(args, []string{"-c", configPath, "-Rn", "old-name"}) && !strings.Contains(string(config), "old-name {") {
 			t.Fatalf("old nickname was removed from config before session logout: %s", config)
 		}
-		if slices.Equal(args, []string{"-An", "new-name"}) && !strings.Contains(string(config), "new-name {") {
+		if slices.Equal(args, []string{"-c", configPath, "-An", "new-name"}) && !strings.Contains(string(config), "new-name {") {
 			t.Fatalf("new nickname was not written before session login: %s", config)
 		}
 		return exec.Command("/usr/bin/true")
@@ -193,8 +193,8 @@ func TestUpdateInitiatorReconnectsOnlyUpdatedSession(t *testing.T) {
 		t.Fatalf("UpdateInitiator: %v", err)
 	}
 	want := [][]string{
-		{"/usr/bin/iscsictl", "-Rn", "old-name"},
-		{"/usr/bin/iscsictl", "-An", "new-name"},
+		{"/usr/bin/iscsictl", "-c", configPath, "-Rn", "old-name"},
+		{"/usr/bin/iscsictl", "-c", configPath, "-An", "new-name"},
 	}
 	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) || !slices.Equal(calls[1], want[1]) {
 		t.Fatalf("commands = %#v, want %#v", calls, want)
@@ -214,7 +214,7 @@ func TestConnectInitiatorReconnectsOnlySelectedSession(t *testing.T) {
 	}
 
 	var calls [][]string
-	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(command string, args ...string) *exec.Cmd {
 		calls = append(calls, append([]string{command}, args...))
 		return exec.Command("/usr/bin/true")
 	})
@@ -224,8 +224,8 @@ func TestConnectInitiatorReconnectsOnlySelectedSession(t *testing.T) {
 		t.Fatalf("ConnectInitiator: %v", err)
 	}
 	want := [][]string{
-		{"/usr/bin/iscsictl", "-Rn", "fblock0"},
-		{"/usr/bin/iscsictl", "-An", "fblock0"},
+		{"/usr/bin/iscsictl", "-c", configPath, "-Rn", "fblock0"},
+		{"/usr/bin/iscsictl", "-c", configPath, "-An", "fblock0"},
 	}
 	if len(calls) != len(want) || !slices.Equal(calls[0], want[0]) || !slices.Equal(calls[1], want[1]) {
 		t.Fatalf("commands = %#v, want %#v", calls, want)
@@ -244,8 +244,8 @@ func TestConnectInitiatorAddsSessionWhenNoSessionCanBeRemoved(t *testing.T) {
 		t.Fatalf("create fixture: %v", err)
 	}
 
-	restoreCommand := utils.SetCommandForTest(func(_ string, args ...string) *exec.Cmd {
-		if slices.Equal(args, []string{"-Rn", "fblock0"}) {
+	restoreCommand := utils.SetCommandWithContextForTest(func(_ string, args ...string) *exec.Cmd {
+		if slices.Equal(args, []string{"-c", configPath, "-Rn", "fblock0"}) {
 			return exec.Command("/usr/bin/false")
 		}
 		return exec.Command("/usr/bin/true")
@@ -275,7 +275,7 @@ func TestInitiatorMutationsRejectConnectedZPoolDevice(t *testing.T) {
 		return svc, initiator
 	}
 
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command("/usr/bin/printf", "Target Portal State\n"+targetName+" 192.0.2.10 Connected:\n")
 	})
 	t.Cleanup(restoreCommand)
@@ -354,7 +354,7 @@ func TestDeleteInitiatorLogsOutBeforeRemovingConfigAndRecord(t *testing.T) {
 		t.Fatalf("write initial config: %v", err)
 	}
 
-	restoreCommand := utils.SetCommandForTest(func(_ string, args ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(_ string, args ...string) *exec.Cmd {
 		config, err := os.ReadFile(configPath)
 		if err != nil {
 			t.Fatalf("read config during %v: %v", args, err)
@@ -390,7 +390,7 @@ func TestDeleteInitiatorLogoutFailurePreservesRecord(t *testing.T) {
 		t.Fatalf("create fixture: %v", err)
 	}
 
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command("/usr/bin/false")
 	})
 	t.Cleanup(restoreCommand)
@@ -495,7 +495,7 @@ func TestGenerateInitiatorConfig(t *testing.T) {
 func TestUpdateInitiatorPreservesOmittedSecrets(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command("true")
 	})
 	defer restoreCommand()
@@ -542,7 +542,7 @@ func TestUpdateInitiatorPreservesOmittedSecrets(t *testing.T) {
 func TestUpdateInitiatorClearsUnusedSecrets(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command("true")
 	})
 	defer restoreCommand()

@@ -10,6 +10,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,32 @@ func fakeExecCommand(command string, args ...string) *exec.Cmd {
 	cmd := exec.Command(os.Args[0], cs...)
 	cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
 	return cmd
+}
+
+func TestRunCommandWithInputContextSeparatesOutputAndSafeErrors(t *testing.T) {
+	t.Cleanup(SetCommandWithContextForTest(fakeExecCommand))
+	out, err := RunCommandWithInputContext(t.Context(), "", "mixed")
+	if err != nil || out != "stdout payload\n" {
+		t.Fatalf("stdout=%q error=%v", out, err)
+	}
+	_, err = RunCommandWithInputContext(t.Context(), "", "failure")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || strings.Contains(err.Error(), "something went wrong") {
+		t.Fatalf("unsafe error=%v", err)
+	}
+}
+
+func TestRunCommandWithInputContextBoundsDescendants(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := RunCommandWithInputContext(ctx, "", "/bin/sh", "-c", "sleep 5 & wait")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error=%v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("command descendants exceeded shared deadline")
+	}
 }
 
 func fakeExecCommandContext(ctx context.Context, command string, args ...string) *exec.Cmd {

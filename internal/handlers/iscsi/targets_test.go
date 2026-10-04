@@ -12,12 +12,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -28,16 +30,22 @@ import (
 func newTargetHandlerTestService(t *testing.T) *iscsi.Service {
 	t.Helper()
 	db := testutil.NewSQLiteTestDB(t,
+		&models.BasicSettings{},
 		&iscsiModels.ISCSITarget{},
 		&iscsiModels.ISCSITargetPortal{},
 		&iscsiModels.ISCSITargetLUN{},
 	)
-	return &iscsi.Service{DB: db}
+	if err := db.Create(&models.BasicSettings{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := &iscsi.Service{DB: db}
+	t.Cleanup(svc.SetBackingStatForTest(func(string) (os.FileInfo, error) { return os.Stat("/dev/null") }))
+	return svc
 }
 
 func setupTargetTestConfig(t *testing.T) {
 	t.Helper()
-	iscsi.SetTargetConfigPath(t.TempDir() + "/ctl.conf")
+	t.Cleanup(iscsi.SetTargetConfigPath(t.TempDir() + "/ctl.conf"))
 }
 
 func createTargetFixture(t *testing.T, svc *iscsi.Service, name string) iscsiModels.ISCSITarget {
@@ -96,10 +104,26 @@ func TestCreateTargetHandlerReturnsCreated(t *testing.T) {
 }
 
 func TestCreateTargetHandlerReturnsAcceptedWhenSavedButReloadFails(t *testing.T) {
-	setupTargetTestConfig(t)
+	path := t.TempDir() + "/ctl.conf"
+	t.Cleanup(iscsi.SetTargetConfigPath(path))
 	svc := newTargetHandlerTestService(t)
-	restoreCommand := utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	if err := svc.DB.Model(&models.BasicSettings{}).Where("1 = 1").Select("Services").Updates(&models.BasicSettings{Services: []models.AvailableService{models.ISCSI}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	config, err := svc.GenerateTargetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reloads := 0
+	restoreCommand := utils.SetCommandWithContextForTest(func(command string, args ...string) *exec.Cmd {
+		if command == "/usr/sbin/service" && slices.Equal(args, []string{"ctld", "onestatus"}) {
+			return exec.Command("/usr/bin/printf", "ctld is running as pid 23.")
+		}
 		if command == "/usr/sbin/service" && slices.Equal(args, []string{"ctld", "onereload"}) {
+			reloads++
 			return exec.Command("/usr/bin/false")
 		}
 		return exec.Command("/usr/bin/true")
@@ -114,6 +138,9 @@ func TestCreateTargetHandlerReturnsAcceptedWhenSavedButReloadFails(t *testing.T)
 	})
 	rr := testutil.PerformJSONRequest(t, router, http.MethodPost, "/targets", body)
 
+	if reloads != 1 {
+		t.Fatalf("reload attempts=%d want 1", reloads)
+	}
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -165,7 +192,7 @@ func TestCreateTargetHandlerMapsDomainErrors(t *testing.T) {
 func TestDeleteTargetHandlerRejectsActiveConnections(t *testing.T) {
 	svc := newTargetHandlerTestService(t)
 	target := createTargetFixture(t, svc, "iqn.2025-01.com.example:active")
-	restoreCommand := utils.SetCommandForTest(func(string, ...string) *exec.Cmd {
+	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command(
 			"/usr/bin/printf",
 			"<connections><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></connections>",

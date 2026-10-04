@@ -10,6 +10,7 @@ package iscsiHandlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -39,11 +40,11 @@ func newTestService(t *testing.T) *iscsi.Service {
 
 func setupTestConfig(t *testing.T) {
 	t.Helper()
-	iscsi.SetConfigPath(t.TempDir() + "/iscsi.conf")
+	t.Cleanup(iscsi.SetConfigPath(t.TempDir() + "/iscsi.conf"))
 }
 
 func enableMockExec() func() {
-	return utils.SetCommandForTest(func(command string, args ...string) *exec.Cmd {
+	return utils.SetCommandWithContextForTest(func(command string, args ...string) *exec.Cmd {
 		cs := []string{"-test.run=TestMockExecHelper", "--", command}
 		cs = append(cs, args...)
 		cmd := exec.Command(os.Args[0], cs...)
@@ -55,6 +56,25 @@ func enableMockExec() func() {
 func TestMockExecHelper(t *testing.T) {
 	if os.Getenv("GO_MOCK_EXEC") != "1" {
 		return
+	}
+	for i, arg := range os.Args {
+		if arg != "--" || i+1 >= len(os.Args) {
+			continue
+		}
+		command, args := os.Args[i+1], os.Args[i+2:]
+		if command == "/usr/sbin/service" && len(args) == 2 && args[0] == "ctld" && args[1] == "onestatus" {
+			os.Exit(1)
+		}
+		if command == "/bin/pgrep" {
+			os.Exit(1)
+		}
+		if command == "/usr/sbin/ctladm" && len(args) > 0 && args[0] == "portlist" {
+			fmt.Print("<ctlportlist/>")
+		}
+		if command == "/usr/sbin/diskinfo" {
+			fmt.Print("fixture 512 65536")
+		}
+		break
 	}
 	os.Exit(0)
 }

@@ -21,6 +21,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
+	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -297,6 +298,18 @@ func (s *Service) SetServiceEnabled(
 		return false, newSettingsError(SettingsErrorInternal, "basic_settings_retrieval_failed", "", err)
 	}
 	currentlyEnabled := serviceIsEnabled(basicSettings.Services, service)
+	if service == models.ISCSI {
+		if externalApply == nil {
+			return false, newSettingsError(SettingsErrorInternal, "iscsi_service_runtime_unavailable", "", nil)
+		}
+		if err := externalApply(ctx, service, enabled); err != nil {
+			if errors.Is(err, iscsiService.ErrApplyFailed) {
+				return currentlyEnabled != enabled, err
+			}
+			return false, newSettingsError(SettingsErrorInternal, "service_state_persist_failed", string(service), err)
+		}
+		return currentlyEnabled != enabled, nil
+	}
 	if currentlyEnabled == enabled {
 		return false, nil
 	}

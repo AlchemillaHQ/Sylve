@@ -25,10 +25,13 @@ func validateTargetAuthMethod(authMethod, chapName, chapSecret, mutualChapName, 
 		if chapName == "" || chapSecret == "" {
 			return invalidRequest("chap_name_and_secret_required_for_chap")
 		}
-		if err := validateQuotedConfigValue(chapName, "chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(chapName, "chap_name"); err != nil {
 			return err
 		}
 		if err := validateChapSecret(chapSecret, "chap_secret"); err != nil {
+			return err
+		}
+		if err := validateNativeQuotedValue(chapSecret, "chap_secret"); err != nil {
 			return err
 		}
 		return nil
@@ -39,16 +42,22 @@ func validateTargetAuthMethod(authMethod, chapName, chapSecret, mutualChapName, 
 		if mutualChapName == "" || mutualChapSecret == "" {
 			return invalidRequest("mutual_chap_name_and_secret_required_for_mutual_chap")
 		}
-		if err := validateQuotedConfigValue(chapName, "chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(chapName, "chap_name"); err != nil {
 			return err
 		}
-		if err := validateQuotedConfigValue(mutualChapName, "mutual_chap_name", maxQuotedLength); err != nil {
+		if err := validateNativeQuotedValue(mutualChapName, "mutual_chap_name"); err != nil {
 			return err
 		}
 		if err := validateChapSecret(chapSecret, "chap_secret"); err != nil {
 			return err
 		}
 		if err := validateChapSecret(mutualChapSecret, "mutual_chap_secret"); err != nil {
+			return err
+		}
+		if err := validateNativeQuotedValue(chapSecret, "chap_secret"); err != nil {
+			return err
+		}
+		if err := validateNativeQuotedValue(mutualChapSecret, "mutual_chap_secret"); err != nil {
 			return err
 		}
 		return nil
@@ -80,7 +89,7 @@ func (s *Service) CreateTarget(targetName, alias, authMethod, chapName, chapSecr
 	if err := validateBareConfigToken(targetName, "target_name", maxISCSINameLength); err != nil {
 		return err
 	}
-	if err := validateQuotedConfigValue(alias, "alias", maxQuotedLength); err != nil {
+	if err := validateNativeQuotedValue(alias, "alias"); err != nil {
 		return err
 	}
 
@@ -141,7 +150,7 @@ func (s *Service) UpdateTarget(id uint, targetName, alias, authMethod, chapName,
 	if err := validateBareConfigToken(targetName, "target_name", maxISCSINameLength); err != nil {
 		return err
 	}
-	if err := validateQuotedConfigValue(alias, "alias", maxQuotedLength); err != nil {
+	if err := validateNativeQuotedValue(alias, "alias"); err != nil {
 		return err
 	}
 
@@ -239,21 +248,11 @@ func (s *Service) AddPortal(targetID uint, address string, port int) error {
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 
-	address = strings.TrimSpace(address)
-	if address == "" {
-		return invalidRequest("portal_address_required")
-	}
-	if port == 0 {
-		port = 3260
-	}
-	if port < 1 || port > 65535 {
-		return invalidRequest("portal_port_must_be_between_1_and_65535")
-	}
-	var err error
-	address, err = normalizePortalAddress(address)
+	endpoint, err := s.endpoint(address, port)
 	if err != nil {
 		return err
 	}
+	address, port = formatAddress(endpoint.address), endpoint.port
 
 	if err := s.DB.Where("id = ?", targetID).First(&iscsiModels.ISCSITarget{}).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -262,14 +261,21 @@ func (s *Service) AddPortal(targetID uint, address string, port int) error {
 		return fmt.Errorf("failed_to_get_target: %w", err)
 	}
 
-	var duplicateCount int64
-	if err := s.DB.Model(&iscsiModels.ISCSITargetPortal{}).
-		Where("target_id = ? AND address = ? AND port = ?", targetID, address, port).
-		Count(&duplicateCount).Error; err != nil {
-		return fmt.Errorf("failed_to_check_target_portal: %w", err)
+	var targets []iscsiModels.ISCSITarget
+	if err := s.DB.Preload("Portals").Find(&targets).Error; err != nil {
+		return fmt.Errorf("failed_to_check_target_portals: %w", err)
 	}
-	if duplicateCount > 0 {
-		return resourceConflict("portal_already_exists", nil)
+	for i := range targets {
+		if targets[i].ID == targetID {
+			targets[i].Portals = append(targets[i].Portals, iscsiModels.ISCSITargetPortal{Address: address, Port: port})
+		}
+	}
+	endpoints, _, err := s.collectPortalEndpoints(targets)
+	if err != nil {
+		return err
+	}
+	if err := s.preflightListenerTransition(endpoints); err != nil {
+		return resourceConflict(err.Error(), nil)
 	}
 
 	portal := iscsiModels.ISCSITargetPortal{
@@ -316,6 +322,9 @@ func (s *Service) AddLUN(targetID uint, lunNumber int, zvol string) error {
 	if lunNumber < 0 {
 		return invalidRequest("lun_number_must_be_non_negative")
 	}
+	if lunNumber > maxTargetLUNNumber {
+		return invalidRequest("lun_number_must_be_between_0_and_1023")
+	}
 
 	if err := s.DB.Where("id = ?", targetID).First(&iscsiModels.ISCSITarget{}).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -341,6 +350,9 @@ func (s *Service) AddLUN(targetID uint, lunNumber int, zvol string) error {
 	}
 	if duplicateCount > 0 {
 		return resourceConflict("zvol_already_in_use", nil)
+	}
+	if _, err := s.statBacking("/dev/zvol/" + zvol); err != nil {
+		return invalidRequest("zvol_backing_not_available")
 	}
 
 	lun := iscsiModels.ISCSITargetLUN{
@@ -373,4 +385,24 @@ func (s *Service) RemoveLUN(targetID, id uint) error {
 	}
 
 	return s.writeTargetConfig(true)
+}
+
+func (s *Service) preflightListenerTransition(endpoints []portalEndpoint) error {
+	enabled, err := s.desiredTargetEnabled()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	ctx, cancel := s.targetContext()
+	defer cancel()
+	pid, err := s.targetPID(ctx)
+	if errors.Is(err, errTargetStopped) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return s.checkListenerTransition(ctx, pid, endpoints)
 }

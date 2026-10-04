@@ -338,7 +338,9 @@
 		names={{ parent: serviceName, element: '' }}
 		customTitle={serviceKey === 'mdns'
 			? mdnsTitle
-			: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
+			: serviceKey === 'iscsi'
+				? `You are about to ${enabled ? 'disable' : 'enable'} iSCSI targets.${enabled ? ' Initiator connections will stay active.' : ''}`
+				: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
 		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
 		loadingLabel={enabled ? 'Disabling...' : 'Enabling...'}
 		keepOpenOnConfirm
@@ -357,7 +359,11 @@
 					await updateCache('system-basic-settings', updatedSettings);
 					await basicSettings.refetch();
 					setEnabledServicesForHostname(storage.hostname, basicSettings.current.services);
-					toast.success(`${serviceName} ${desiredEnabled ? 'enabled' : 'disabled'}`, toastOpts);
+					if (response.message === 'iscsi_configuration_saved_apply_pending') {
+						toast.warning('iSCSI state saved; runtime checks are pending', toastOpts);
+					} else {
+						toast.success(`${serviceName} ${desiredEnabled ? 'enabled' : 'disabled'}`, toastOpts);
+					}
 					modals[serviceKey].open = false;
 				} else {
 					handleAPIError(response);

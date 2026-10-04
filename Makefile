@@ -15,6 +15,7 @@ GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 INTEGRATION_PACKAGES := \
 	./internal/mountutil \
 	./internal/services/disk \
+	./internal/services/iscsi \
 	./internal/services/jail \
 	./internal/services/libvirt \
 	./internal/services/migration \
@@ -116,16 +117,29 @@ test-external-preflight:
 	@command -v zfs >/dev/null || { echo "zfs is required for external-state tests"; exit 1; }
 
 test-integration: test-external-preflight
-	@./scripts/check-zfs-test-leaks.sh
+	@for tool in ctld iscsid iscsictl ctladm diskinfo sockstat camcontrol timeout; do \
+		command -v "$$tool" >/dev/null || { echo "$$tool is required for iSCSI integration tests"; exit 1; }; \
+	 done
+	@[ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] || { echo "iSCSI integration tests need /dev/cam/ctl and /dev/iscsi; load ctl and iscsi"; exit 1; }
+	@set +e; \
+	./scripts/check-zfs-test-leaks.sh; \
+	zfs_leak_rc="$$?"; \
+	./scripts/check-iscsi-test-leaks.sh; \
+	iscsi_leak_rc="$$?"; \
+	if [ "$$zfs_leak_rc" -ne 0 ]; then exit "$$zfs_leak_rc"; fi; \
+	exit "$$iscsi_leak_rc"
 	@set +e; \
 	go test $(GO_TEST_FLAGS) -count=1 -p=2 \
 		-timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegration' $(INTEGRATION_PACKAGES); \
 	test_rc="$$?"; \
 	./scripts/check-zfs-test-leaks.sh; \
-	leak_rc="$$?"; \
+	zfs_leak_rc="$$?"; \
+	./scripts/check-iscsi-test-leaks.sh; \
+	iscsi_leak_rc="$$?"; \
 	if [ "$$test_rc" -ne 0 ]; then exit "$$test_rc"; fi; \
-	exit "$$leak_rc"
+	if [ "$$zfs_leak_rc" -ne 0 ]; then exit "$$zfs_leak_rc"; fi; \
+	exit "$$iscsi_leak_rc"
 
 test-vlan-integration:
 	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "bridge VLAN integration tests must run on FreeBSD"; exit 1; }
