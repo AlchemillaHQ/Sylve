@@ -21,9 +21,7 @@ func invalidFirewallAdvancedSettings(cause error) error {
 	return errors.Join(ErrInvalidFirewallAdvancedSettings, cause)
 }
 
-// FirewallAdvancedValidationDetail returns a sanitized PF validation diagnostic
-// suitable for an authenticated local administrator.
-func FirewallAdvancedValidationDetail(err error) string {
+func FirewallValidationDetail(err error) string {
 	var validationErr *pfValidationError
 	if errors.As(err, &validationErr) {
 		return validationErr.Error()

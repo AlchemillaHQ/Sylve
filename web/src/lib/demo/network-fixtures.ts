@@ -877,6 +877,11 @@ function createState(hostname: string): DemoNetworkState {
 			{
 				id: 1,
 				name: 'Allow web ingress',
+				kind: 'standard',
+				rawPF: '',
+				statePolicy: 'default',
+				blockResponse: 'default',
+				icmpTypes: [],
 				description: 'Publish the production web tier',
 				visible: true,
 				enabled: true,
@@ -903,6 +908,11 @@ function createState(hostname: string): DemoNetworkState {
 			{
 				id: 2,
 				name: 'Allow DNS egress',
+				kind: 'standard',
+				rawPF: '',
+				statePolicy: 'default',
+				blockResponse: 'default',
+				icmpTypes: [],
 				description: 'Permit guests to use trusted resolvers',
 				visible: true,
 				enabled: true,
@@ -929,6 +939,11 @@ function createState(hostname: string): DemoNetworkState {
 			{
 				id: 3,
 				name: 'Default deny',
+				kind: 'standard',
+				rawPF: '',
+				statePolicy: 'default',
+				blockResponse: 'default',
+				icmpTypes: [],
 				description: 'Block unmatched inbound traffic',
 				visible: true,
 				enabled: true,
@@ -957,6 +972,9 @@ function createState(hostname: string): DemoNetworkState {
 			{
 				id: 1,
 				name: 'Production outbound NAT',
+				passRedirectedTraffic: false,
+				targetAddressScope: 'all',
+				targetHandling: 'single',
 				description: 'Masquerade production guests on the uplink',
 				visible: true,
 				enabled: true,
@@ -988,6 +1006,9 @@ function createState(hostname: string): DemoNetworkState {
 			{
 				id: 2,
 				name: 'Publish web tier',
+				passRedirectedTraffic: false,
+				targetAddressScope: 'all',
+				targetHandling: 'single',
 				description: 'Forward HTTPS to the first web node',
 				visible: true,
 				enabled: true,
@@ -1478,6 +1499,19 @@ function buildTrafficRule(
 	return {
 		id,
 		name: stringValue(body, 'name', existing?.name ?? `Traffic rule ${id}`),
+		kind: pick('kind', ['standard', 'advanced'], existing?.kind ?? 'standard'),
+		rawPF: stringValue(body, 'rawPF', existing?.rawPF ?? ''),
+		statePolicy: pick(
+			'statePolicy',
+			['default', 'keep', 'none'],
+			existing?.statePolicy ?? 'default'
+		),
+		blockResponse: pick(
+			'blockResponse',
+			['default', 'drop', 'return'],
+			existing?.blockResponse ?? 'default'
+		),
+		icmpTypes: stringArray(body, 'icmpTypes'),
 		description: stringValue(body, 'description', existing?.description ?? ''),
 		visible: true,
 		enabled: booleanValue(body, 'enabled', existing?.enabled ?? true),
@@ -1488,7 +1522,7 @@ function buildTrafficRule(
 		direction: pick('direction', ['in', 'out'], existing?.direction ?? 'in'),
 		protocol: pick(
 			'protocol',
-			['any', 'tcp', 'udp', 'tcp_udp', 'icmp'],
+			['any', 'tcp', 'udp', 'tcp_udp', 'icmp', 'icmp6'],
 			existing?.protocol ?? 'any'
 		),
 		ingressInterfaces: stringArray(body, 'ingressInterfaces'),
@@ -1525,6 +1559,21 @@ function buildNATRule(
 		log: booleanValue(body, 'log', existing?.log ?? false),
 		priority: Math.trunc(numberValue(body, 'priority', existing?.priority ?? id * 10)),
 		natType: pick('natType', ['snat', 'dnat', 'binat'], existing?.natType ?? 'snat'),
+		passRedirectedTraffic: booleanValue(
+			body,
+			'passRedirectedTraffic',
+			existing?.passRedirectedTraffic ?? false
+		),
+		targetAddressScope: pick(
+			'targetAddressScope',
+			['all', 'private', 'public'],
+			existing?.targetAddressScope ?? 'all'
+		),
+		targetHandling: pick(
+			'targetHandling',
+			['single', 'round_robin'],
+			existing?.targetHandling ?? 'single'
+		),
 		policyRoutingEnabled: booleanValue(
 			body,
 			'policyRoutingEnabled',
@@ -1534,7 +1583,11 @@ function buildNATRule(
 		ingressInterfaces: stringArray(body, 'ingressInterfaces'),
 		egressInterfaces: stringArray(body, 'egressInterfaces'),
 		family: pick('family', ['any', 'inet', 'inet6'], existing?.family ?? 'any'),
-		protocol: pick('protocol', ['any', 'tcp', 'udp', 'icmp'], existing?.protocol ?? 'any'),
+		protocol: pick(
+			'protocol',
+			['any', 'tcp', 'udp', 'tcp_udp', 'icmp', 'icmp6'],
+			existing?.protocol ?? 'any'
+		),
 		sourceRaw: stringValue(body, 'sourceRaw', existing?.sourceRaw ?? ''),
 		sourceObjId: nullableNumber(body, 'sourceObjId'),
 		destRaw: stringValue(body, 'destRaw', existing?.destRaw ?? ''),

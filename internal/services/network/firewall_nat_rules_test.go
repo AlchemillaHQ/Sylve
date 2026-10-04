@@ -75,11 +75,11 @@ func TestValidateFirewallNATRuleRequestRejectsAmbiguousSelectorsAndUnsafeInterfa
 	}
 }
 
-func TestValidateFirewallNATRuleRequestRejectsTCPUDP(t *testing.T) {
+func TestValidateFirewallNATRuleRequestAcceptsTCPUDP(t *testing.T) {
 	req := validFirewallNATRuleRequest("combined-protocol")
 	req.Protocol = "tcp_udp"
-	if err := (&Service{}).validateFirewallNATRuleRequest(&req); !errors.Is(err, ErrInvalidFirewallNATRule) {
-		t.Fatalf("expected tcp_udp to remain invalid for NAT rules, got %v", err)
+	if err := (&Service{}).validateFirewallNATRuleRequest(&req); err != nil {
+		t.Fatalf("expected combined TCP/UDP NAT matching, got %v", err)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestNormalizeFirewallNATRuleIDsRejectsInvalidSets(t *testing.T) {
 }
 
 func TestValidateFirewallNATRuleRequestRequiresSingleAddressHostTargets(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &networkModels.Object{}, &networkModels.ObjectEntry{})
+	svc, db := newNetworkServiceForTest(t, &networkModels.Object{}, &networkModels.ObjectEntry{}, &networkModels.ObjectResolution{})
 	objects := []networkModels.Object{
 		{Name: "target.example", Type: "FQDN"},
 		{Name: "multiple-hosts", Type: "Host"},
@@ -136,6 +136,80 @@ func TestValidateFirewallNATRuleRequestRequiresSingleAddressHostTargets(t *testi
 	req.TranslateToObjID = &singleHost.ID
 	if err := svc.validateFirewallNATRuleRequest(&req); err != nil {
 		t.Fatalf("expected single-address Host object to be accepted, got %v", err)
+	}
+}
+
+func TestFirewallBINATSourceObjectsRequireOneAddressPerRenderedFamily(t *testing.T) {
+	for _, test := range []struct {
+		name, kind, family, target string
+		values, want               []string
+	}{
+		{name: "Host", kind: "Host", family: "inet", values: []string{"10.0.0.10"}, want: []string{"inet from 10.0.0.10 to any"}},
+		{name: "IPv6 Host", kind: "Host", family: "inet6", values: []string{"fd00::10"}, want: []string{"inet6 from fd00::10 to any"}},
+		{name: "single host prefix", kind: "Network", family: "inet", values: []string{"10.0.0.10/32"}, want: []string{"inet from 10.0.0.10/32 to any"}},
+		{name: "FQDN", kind: "FQDN", family: "inet", values: []string{"10.0.0.10"}, want: []string{"inet from 10.0.0.10 to any"}},
+		{name: "List", kind: "List", family: "inet", values: []string{"10.0.0.10"}, want: []string{"inet from 10.0.0.10 to any"}},
+		{name: "duplicate addresses", kind: "Host", family: "inet", values: []string{"10.0.0.10", "10.0.0.10"}, want: []string{"inet from 10.0.0.10 to any"}},
+		{name: "one per family", kind: "Host", family: "any", values: []string{"10.0.0.10", "fd00::10"}, want: []string{"inet from 10.0.0.10 to any", "inet6 from fd00::10 to any"}},
+		{name: "irrelevant IPv6 cardinality", kind: "FQDN", family: "any", target: "192.0.2.10", values: []string{"10.0.0.10", "fd00::10", "fd00::11"}, want: []string{"inet from 10.0.0.10 to any"}},
+		{name: "multiple Hosts", kind: "Host", family: "inet", values: []string{"10.0.0.10", "10.0.0.11"}},
+		{name: "multiple FQDN answers", kind: "FQDN", family: "inet", values: []string{"10.0.0.10", "10.0.0.11"}},
+		{name: "multiple List entries", kind: "List", family: "inet", values: []string{"10.0.0.10", "10.0.0.11"}},
+		{name: "empty object", kind: "Host", family: "inet"},
+		{name: "wrong family", kind: "Host", family: "inet", values: []string{"fd00::10"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := newNetworkServiceForTest(t, &networkModels.Object{}, &networkModels.ObjectEntry{}, &networkModels.ObjectResolution{}, &networkModels.ObjectListSnapshot{})
+			obj := networkModels.Object{ID: 17, Name: test.name, Type: test.kind}
+			if test.kind == "FQDN" || test.kind == "List" {
+				obj.Entries = []networkModels.ObjectEntry{{Value: "source.example"}}
+				obj.Resolutions = buildResolutionRows(obj.ID, test.values)
+			} else {
+				for _, value := range test.values {
+					obj.Entries = append(obj.Entries, networkModels.ObjectEntry{Value: value})
+				}
+			}
+			if err := db.Create(&obj).Error; err != nil {
+				t.Fatal(err)
+			}
+			if test.kind == "List" {
+				if err := storeListSnapshot(db, obj.ID, objectValuesChecksum(test.values), test.values); err != nil {
+					t.Fatal(err)
+				}
+			}
+			req := validFirewallNATRuleRequest(test.name)
+			req.NATType, req.Family, req.SourceRaw, req.SourceObjID = "binat", test.family, "", &obj.ID
+			if test.target != "" {
+				req.TranslateMode, req.TranslateToRaw = "address", test.target
+			}
+			validationErr := svc.validateFirewallNATRuleRequest(&req)
+			rule := networkModels.FirewallNATRule{ID: 5, Name: test.name, Enabled: true, NATType: "binat", Family: test.family,
+				SourceObjID: &obj.ID, SourceObj: &obj, EgressInterfaces: req.EgressInterfaces, TranslateMode: req.TranslateMode, TranslateToRaw: req.TranslateToRaw}
+			tables := buildFirewallObjectTables(nil, []networkModels.FirewallNATRule{rule})
+			text, renderErr := svc.renderNATRules([]networkModels.FirewallNATRule{rule}, tables)
+			if len(test.want) == 0 {
+				if !errors.Is(validationErr, ErrInvalidFirewallNATRule) || renderErr == nil || text != "" {
+					t.Fatalf("ambiguous/unusable BINAT source accepted: validation=%v render=%v text=%s", validationErr, renderErr, text)
+				}
+				return
+			}
+			if validationErr != nil || renderErr != nil || strings.Contains(text, "<sylve_obj_") {
+				t.Fatalf("single-address BINAT source rejected or table-backed: validation=%v render=%v text=%s", validationErr, renderErr, text)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(text, want) {
+					t.Fatalf("missing %q in %s", want, text)
+				}
+			}
+			if test.target != "" && strings.Contains(text, "inet6") {
+				t.Fatalf("unrendered family affected BINAT source selection: %s", text)
+			}
+			rule.NATType = "snat"
+			text, renderErr = svc.renderNATRules([]networkModels.FirewallNATRule{rule}, tables)
+			if renderErr != nil || !strings.Contains(text, "from <sylve_obj_17_") {
+				t.Fatalf("BINAT fix changed shared SNAT matching: text=%s err=%v", text, renderErr)
+			}
+		})
 	}
 }
 
@@ -225,12 +299,9 @@ func TestDeleteFirewallNATRulesRestoresCompleteSnapshotAfterApplyFailure(t *test
 	applyCalls := 0
 	err = svc.deleteFirewallNATRules([]uint{rules[1].ID, rules[2].ID}, func() error {
 		applyCalls++
-		if applyCalls == 1 {
-			return applyErr
-		}
-		return nil
+		return applyErr
 	})
-	if !errors.Is(err, applyErr) || applyCalls != 2 {
+	if !errors.Is(err, applyErr) || applyCalls != 1 {
 		t.Fatalf("unexpected apply/rollback result: err=%v applyCalls=%d", err, applyCalls)
 	}
 
@@ -326,14 +397,10 @@ func TestRestoreFirewallNATRulesAfterApplyFailureRestoresExactSnapshot(t *testin
 		t.Fatal(err)
 	}
 
-	reapplyCalls := 0
 	applyErr := errors.New("apply failed")
-	err = svc.restoreFirewallNATRulesAfterApplyFailure(snapshot, applyErr, func() error {
-		reapplyCalls++
-		return nil
-	})
-	if !errors.Is(err, applyErr) || reapplyCalls != 1 {
-		t.Fatalf("unexpected rollback result: err=%v reapplyCalls=%d", err, reapplyCalls)
+	err = svc.restoreFirewallNATRulesAfterApplyFailure(snapshot, applyErr)
+	if !errors.Is(err, applyErr) {
+		t.Fatalf("unexpected rollback result: %v", err)
 	}
 
 	restored, err := snapshotFirewallNATRules(db)

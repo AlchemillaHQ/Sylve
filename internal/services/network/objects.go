@@ -591,9 +591,6 @@ func (s *Service) deleteObjects(ids []uint) error {
 		if rollbackErr := s.restoreObjectStates(previousStates); rollbackErr != nil {
 			return fmt.Errorf("failed to apply firewall after network object deletion: %w (rollback_failed: %v)", err, rollbackErr)
 		}
-		if reapplyErr := s.ApplyFirewallIfEnabled(); reapplyErr != nil {
-			return fmt.Errorf("failed to apply firewall after network object deletion: %w (firewall_restore_failed: %v)", err, reapplyErr)
-		}
 		return err
 	}
 

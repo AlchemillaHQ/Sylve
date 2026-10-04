@@ -101,7 +101,7 @@ func validFirewallNATRuleBody(name string) []byte {
 }
 
 func TestCreateFirewallNATRuleReturnsCreatedID(t *testing.T) {
-	router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
+	router, db := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/nat", validFirewallNATRuleBody("masquerade-lan"))
 
 	if rr.Code != http.StatusCreated {
@@ -112,10 +112,14 @@ func TestCreateFirewallNATRuleReturnsCreatedID(t *testing.T) {
 	if response.Status != "success" || json.Unmarshal(response.Data, &id) != nil || id == 0 {
 		t.Fatalf("unexpected create response: %+v", response)
 	}
+	var rule networkModels.FirewallNATRule
+	if err := db.First(&rule, id).Error; err != nil || rule.PassRedirectedTraffic || rule.TargetAddressScope != "all" || rule.TargetHandling != "single" {
+		t.Fatalf("incompatible NAT defaults: %+v err=%v", rule, err)
+	}
 }
 
-func TestCreateFirewallNATRuleRejectsTCPUDP(t *testing.T) {
-	router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
+func TestCreateFirewallNATRuleAcceptsTCPUDP(t *testing.T) {
+	router, db := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	var payload map[string]any
 	if err := json.Unmarshal(validFirewallNATRuleBody("combined-protocol"), &payload); err != nil {
 		t.Fatal(err)
@@ -125,8 +129,12 @@ func TestCreateFirewallNATRuleRejectsTCPUDP(t *testing.T) {
 
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/nat", body)
 	response := decodeFirewallNATHandlerResponse(t, rr)
-	if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_request" {
+	if rr.Code != http.StatusCreated || response.Status != "success" {
 		t.Fatalf("status=%d response=%+v", rr.Code, response)
+	}
+	var rule networkModels.FirewallNATRule
+	if err := db.First(&rule).Error; err != nil || rule.Protocol != "tcp_udp" {
+		t.Fatalf("combined protocol was not persisted: %+v err=%v", rule, err)
 	}
 }
 

@@ -3286,6 +3286,8 @@ definitions:
       natType:
         description: snat|dnat|binat
         type: string
+      passRedirectedTraffic:
+        type: boolean
       policyRouteGateway:
         type: string
       policyRoutingEnabled:
@@ -3293,7 +3295,6 @@ definitions:
       priority:
         type: integer
       protocol:
-        description: any|tcp|udp|icmp
         type: string
       redirectPortObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
@@ -3306,6 +3307,10 @@ definitions:
       sourceObjId:
         type: integer
       sourceRaw:
+        type: string
+      targetAddressScope:
+        type: string
+      targetHandling:
         type: string
       translateMode:
         description: interface|address
@@ -3325,6 +3330,8 @@ definitions:
     properties:
       action:
         description: pass|block
+        type: string
+      blockResponse:
         type: string
       createdAt:
         type: string
@@ -3353,12 +3360,18 @@ definitions:
       family:
         description: any|inet|inet6
         type: string
+      icmpTypes:
+        items:
+          type: string
+        type: array
       id:
         type: integer
       ingressInterfaces:
         items:
           type: string
         type: array
+      kind:
+        type: string
       log:
         type: boolean
       name:
@@ -3366,10 +3379,11 @@ definitions:
       priority:
         type: integer
       protocol:
-        description: any|tcp|udp|tcp_udp|icmp
         type: string
       quick:
         type: boolean
+      rawPF:
+        type: string
       sourceObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
       sourceObjId:
@@ -3381,6 +3395,8 @@ definitions:
       srcPortObjId:
         type: integer
       srcPortsRaw:
+        type: string
+      statePolicy:
         type: string
       updatedAt:
         type: string
@@ -6281,6 +6297,8 @@ definitions:
         - dnat
         - binat
         type: string
+      passRedirectedTraffic:
+        type: boolean
       policyRouteGateway:
         maxLength: 64
         type: string
@@ -6294,7 +6312,9 @@ definitions:
         - any
         - tcp
         - udp
+        - tcp_udp
         - icmp
+        - icmp6
         type: string
       redirectPortObjId:
         type: integer
@@ -6305,6 +6325,17 @@ definitions:
         type: integer
       sourceRaw:
         maxLength: 2048
+        type: string
+      targetAddressScope:
+        enum:
+        - all
+        - private
+        - public
+        type: string
+      targetHandling:
+        enum:
+        - single
+        - round_robin
         type: string
       translateMode:
         enum:
@@ -6330,6 +6361,12 @@ definitions:
         enum:
         - pass
         - block
+        type: string
+      blockResponse:
+        enum:
+        - default
+        - drop
+        - return
         type: string
       description:
         maxLength: 2048
@@ -6363,12 +6400,23 @@ definitions:
         - inet
         - inet6
         type: string
+      icmpTypes:
+        items:
+          type: string
+        maxItems: 256
+        type: array
+        uniqueItems: true
       ingressInterfaces:
         items:
           type: string
         maxItems: 64
         type: array
         uniqueItems: true
+      kind:
+        enum:
+        - standard
+        - advanced
+        type: string
       log:
         type: boolean
       name:
@@ -6384,9 +6432,13 @@ definitions:
         - udp
         - tcp_udp
         - icmp
+        - icmp6
         type: string
       quick:
         type: boolean
+      rawPF:
+        maxLength: 262144
+        type: string
       sourceObjId:
         type: integer
       sourceRaw:
@@ -6397,14 +6449,17 @@ definitions:
       srcPortsRaw:
         maxLength: 2048
         type: string
+      statePolicy:
+        enum:
+        - default
+        - keep
+        - none
+        type: string
     required:
-    - action
-    - direction
     - egressInterfaces
-    - family
+    - icmpTypes
     - ingressInterfaces
     - name
-    - protocol
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.UpsertStaticRouteRequest:
     properties:
@@ -8681,7 +8736,7 @@ definitions:
       newPrimaryGroup:
         type: boolean
       password:
-        maxLength: 128
+        maxLength: 72
         minLength: 8
         type: string
       primaryGroupId:
@@ -8730,6 +8785,7 @@ definitions:
       newPrimaryGroup:
         type: boolean
       password:
+        maxLength: 72
         type: string
       primaryGroupId:
         type: integer
@@ -8772,6 +8828,7 @@ definitions:
       newPrimaryGroup:
         type: boolean
       password:
+        maxLength: 72
         type: string
       primaryGroupId:
         type: integer
@@ -8832,7 +8889,7 @@ definitions:
       admin:
         type: boolean
       password:
-        maxLength: 128
+        maxLength: 72
         minLength: 8
         type: string
       username:
@@ -10833,7 +10890,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new local Sylve user
+      description: Create a new local Sylve user; passwords are limited to 72 UTF-8
+        bytes
       parameters:
       - description: Local user
         in: body
@@ -10937,8 +10995,8 @@ paths:
       consumes:
       - application/json
       description: Replace the editable representation of a user identified by its
-        positive database ID; a PAM password change synchronizes Unix and Sylve credentials
-        and Samba intent is explicit
+        positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password
+        change synchronizes Unix and Sylve credentials and Samba intent is explicit
       parameters:
       - description: User ID
         in: path
@@ -11122,7 +11180,8 @@ paths:
       consumes:
       - application/json
       description: Adopt an existing Unix account as a managed PAM-backed Sylve user
-        without changing its Unix password or group membership
+        without changing its Unix password or group membership; the optional Sylve
+        password is limited to 72 UTF-8 bytes
       parameters:
       - description: Import user settings
         in: body
@@ -11210,7 +11269,8 @@ paths:
       consumes:
       - application/json
       description: Create one managed Unix/PAM account and its corresponding Sylve
-        user record, synchronizing the required password and optional Samba credential
+        user record, synchronizing the required password and optional Samba credential;
+        passwords are limited to 72 UTF-8 bytes
       parameters:
       - description: Create PAM User Request
         in: body

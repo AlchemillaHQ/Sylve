@@ -19,9 +19,14 @@ type FirewallTrafficRule struct {
 	Log               bool      `json:"log" gorm:"default:false"`
 	Quick             bool      `json:"quick" gorm:"default:false"`
 	Priority          int       `json:"priority" gorm:"index;default:1"`
+	Kind              string    `json:"kind" gorm:"not null;default:standard"`
+	RawPF             string    `json:"rawPF"`
+	StatePolicy       string    `json:"statePolicy" gorm:"not null;default:default"`
+	BlockResponse     string    `json:"blockResponse" gorm:"not null;default:default"`
+	ICMPTypes         []string  `json:"icmpTypes" gorm:"serializer:json;type:json"`
 	Action            string    `json:"action" gorm:"not null"` // pass|block
 	Direction         string    `json:"direction" gorm:"not null;default:in"`
-	Protocol          string    `json:"protocol" gorm:"not null;default:any"` // any|tcp|udp|tcp_udp|icmp
+	Protocol          string    `json:"protocol" gorm:"not null;default:any"`
 	IngressInterfaces []string  `json:"ingressInterfaces" gorm:"serializer:json;type:json"`
 	EgressInterfaces  []string  `json:"egressInterfaces" gorm:"serializer:json;type:json"`
 	Family            string    `json:"family" gorm:"not null;default:any"` // any|inet|inet6
@@ -42,41 +47,44 @@ type FirewallTrafficRule struct {
 }
 
 type FirewallNATRule struct {
-	ID                   uint      `json:"id" gorm:"primaryKey"`
-	Name                 string    `json:"name" gorm:"not null"`
-	Description          string    `json:"description"`
-	Visible              bool      `json:"visible" gorm:"not null;default:true"`
-	Enabled              bool      `json:"enabled" gorm:"default:true"`
-	Log                  bool      `json:"log" gorm:"default:false"`
-	Priority             int       `json:"priority" gorm:"index;default:1"`
-	NATType              string    `json:"natType" gorm:"not null;default:snat"` // snat|dnat|binat
-	PolicyRoutingEnabled bool      `json:"policyRoutingEnabled" gorm:"not null;default:false"`
-	PolicyRouteGateway   string    `json:"policyRouteGateway"`
-	IngressInterfaces    []string  `json:"ingressInterfaces" gorm:"serializer:json;type:json"` // received-on style match
-	EgressInterfaces     []string  `json:"egressInterfaces" gorm:"serializer:json;type:json"`  // on style match
-	Family               string    `json:"family" gorm:"not null;default:any"`                 // any|inet|inet6
-	Protocol             string    `json:"protocol" gorm:"not null;default:any"`               // any|tcp|udp|icmp
-	SourceRaw            string    `json:"sourceRaw"`
-	SourceObjID          *uint     `json:"sourceObjId"`
-	SourceObj            *Object   `json:"sourceObj"`
-	DestRaw              string    `json:"destRaw"`
-	DestObjID            *uint     `json:"destObjId"`
-	DestObj              *Object   `json:"destObj"`
-	TranslateMode        string    `json:"translateMode" gorm:"not null;default:interface"` // interface|address
-	TranslateToRaw       string    `json:"translateToRaw"`
-	TranslateToObjID     *uint     `json:"translateToObjId"`
-	TranslateToObj       *Object   `json:"translateToObj"`
-	DNATTargetRaw        string    `json:"dnatTargetRaw"`
-	DNATTargetObjID      *uint     `json:"dnatTargetObjId"`
-	DNATTargetObj        *Object   `json:"dnatTargetObj"`
-	DstPortsRaw          string    `json:"dstPortsRaw"`
-	DstPortObjID         *uint     `json:"dstPortObjId"`
-	DstPortObj           *Object   `json:"dstPortObj"`
-	RedirectPortsRaw     string    `json:"redirectPortsRaw"`
-	RedirectPortObjID    *uint     `json:"redirectPortObjId"`
-	RedirectPortObj      *Object   `json:"redirectPortObj"`
-	CreatedAt            time.Time `json:"createdAt"`
-	UpdatedAt            time.Time `json:"updatedAt"`
+	ID                    uint      `json:"id" gorm:"primaryKey"`
+	Name                  string    `json:"name" gorm:"not null"`
+	Description           string    `json:"description"`
+	Visible               bool      `json:"visible" gorm:"not null;default:true"`
+	Enabled               bool      `json:"enabled" gorm:"default:true"`
+	Log                   bool      `json:"log" gorm:"default:false"`
+	Priority              int       `json:"priority" gorm:"index;default:1"`
+	NATType               string    `json:"natType" gorm:"not null;default:snat"` // snat|dnat|binat
+	PassRedirectedTraffic bool      `json:"passRedirectedTraffic" gorm:"not null;default:false"`
+	TargetAddressScope    string    `json:"targetAddressScope" gorm:"not null;default:all"`
+	TargetHandling        string    `json:"targetHandling" gorm:"not null;default:single"`
+	PolicyRoutingEnabled  bool      `json:"policyRoutingEnabled" gorm:"not null;default:false"`
+	PolicyRouteGateway    string    `json:"policyRouteGateway"`
+	IngressInterfaces     []string  `json:"ingressInterfaces" gorm:"serializer:json;type:json"` // received-on style match
+	EgressInterfaces      []string  `json:"egressInterfaces" gorm:"serializer:json;type:json"`  // on style match
+	Family                string    `json:"family" gorm:"not null;default:any"`                 // any|inet|inet6
+	Protocol              string    `json:"protocol" gorm:"not null;default:any"`
+	SourceRaw             string    `json:"sourceRaw"`
+	SourceObjID           *uint     `json:"sourceObjId"`
+	SourceObj             *Object   `json:"sourceObj"`
+	DestRaw               string    `json:"destRaw"`
+	DestObjID             *uint     `json:"destObjId"`
+	DestObj               *Object   `json:"destObj"`
+	TranslateMode         string    `json:"translateMode" gorm:"not null;default:interface"` // interface|address
+	TranslateToRaw        string    `json:"translateToRaw"`
+	TranslateToObjID      *uint     `json:"translateToObjId"`
+	TranslateToObj        *Object   `json:"translateToObj"`
+	DNATTargetRaw         string    `json:"dnatTargetRaw"`
+	DNATTargetObjID       *uint     `json:"dnatTargetObjId"`
+	DNATTargetObj         *Object   `json:"dnatTargetObj"`
+	DstPortsRaw           string    `json:"dstPortsRaw"`
+	DstPortObjID          *uint     `json:"dstPortObjId"`
+	DstPortObj            *Object   `json:"dstPortObj"`
+	RedirectPortsRaw      string    `json:"redirectPortsRaw"`
+	RedirectPortObjID     *uint     `json:"redirectPortObjId"`
+	RedirectPortObj       *Object   `json:"redirectPortObj"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
 }
 
 type FirewallAdvancedSettings struct {

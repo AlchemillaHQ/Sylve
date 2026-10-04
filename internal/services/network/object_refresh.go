@@ -34,6 +34,8 @@ const objectResolutionInsertBatchSize = 100
 const networkObjectRefreshTimeout = 60 * time.Second
 const maxNetworkObjectRedirects = 3
 
+var refreshNetworkObjectFQDN = resolveNetworkObjectFQDN
+
 func uniqueStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	out := make([]string, 0, len(values))
@@ -259,7 +261,7 @@ func (s *Service) refreshObjectResolutions(object *networkModels.Object) (bool, 
 			if fqdn == "" {
 				continue
 			}
-			resolved, err := resolveNetworkObjectFQDN(ctx, fqdn)
+			resolved, err := refreshNetworkObjectFQDN(ctx, fqdn)
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 					return false, networkObjectUpstream("network_object_refresh_timeout", err)
@@ -314,6 +316,11 @@ func (s *Service) refreshObjectResolutions(object *networkModels.Object) (bool, 
 	}
 
 	values = uniqueStrings(values)
+	s.firewallMutex.Lock()
+	defer s.firewallMutex.Unlock()
+	if err := s.validateFirewallNATObjectRefresh(object, values); err != nil {
+		return false, err
+	}
 	incomingChecksum := objectValuesChecksum(values)
 
 	existingChecksum := strings.TrimSpace(object.ResolutionChecksum)
@@ -402,7 +409,7 @@ func (s *Service) RefreshDynamicObjects() (bool, error) {
 		return false, err
 	}
 
-	changed := false
+	changedIDs := []uint{}
 	now := time.Now().UTC()
 	for i := range objects {
 		intervalSeconds := objects[i].RefreshIntervalSeconds
@@ -422,18 +429,20 @@ func (s *Service) RefreshDynamicObjects() (bool, error) {
 			_ = s.DB.Model(&networkModels.Object{}).Where("id = ?", objects[i].ID).Update("last_refresh_error", err.Error()).Error
 			continue
 		}
-		if updated {
-			changed = true
+		if updated || strings.HasPrefix(objects[i].LastRefreshError, "firewall_apply_failed:") {
+			changedIDs = append(changedIDs, objects[i].ID)
 		}
 	}
 
-	if changed {
-		if err := s.ApplyFirewallIfEnabled(); err != nil {
-			return true, err
-		}
+	if len(changedIDs) == 0 {
+		return false, nil
 	}
-
-	return changed, nil
+	if err := s.ApplyFirewallIfEnabled(); err != nil {
+		_ = s.DB.Model(&networkModels.Object{}).Where("id IN ?", changedIDs).
+			Update("last_refresh_error", "firewall_apply_failed: "+err.Error()).Error
+		return true, err
+	}
+	return true, nil
 }
 
 func (s *Service) RefreshObjectByID(id uint) error {
@@ -448,10 +457,47 @@ func (s *Service) RefreshObjectByID(id uint) error {
 		return err
 	}
 
-	if changed {
-		return s.ApplyFirewallIfEnabled()
+	if changed || strings.HasPrefix(object.LastRefreshError, "firewall_apply_failed:") {
+		if err := s.ApplyFirewallIfEnabled(); err != nil {
+			_ = s.DB.Model(&networkModels.Object{}).Where("id = ?", id).
+				Update("last_refresh_error", "firewall_apply_failed: "+err.Error()).Error
+			return err
+		}
 	}
 
+	return nil
+}
+
+func (s *Service) validateFirewallNATObjectRefresh(object *networkModels.Object, values []string) error {
+	if !s.DB.Migrator().HasTable(&networkModels.FirewallNATRule{}) {
+		return nil
+	}
+	var rules []networkModels.FirewallNATRule
+	if err := s.DB.Preload("SourceObj.Entries").Preload("DestObj.Entries").
+		Preload("TranslateToObj.Entries").Preload("DNATTargetObj.Entries").
+		Preload("DstPortObj.Entries").Preload("RedirectPortObj.Entries").
+		Where("enabled = ? AND (translate_to_obj_id = ? OR dnat_target_obj_id = ? OR (nat_type = ? AND source_obj_id = ?))", true, object.ID, object.ID, "binat", object.ID).
+		Find(&rules).Error; err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	if _, err := s.buildFirewallObjectTables(nil, rules); err != nil {
+		return err
+	}
+	candidate := *object
+	candidate.Resolutions = buildResolutionRows(object.ID, values)
+	for i := range rules {
+		for _, ref := range []**networkModels.Object{&rules[i].SourceObj, &rules[i].DestObj, &rules[i].TranslateToObj, &rules[i].DNATTargetObj} {
+			if *ref != nil && (*ref).ID == object.ID {
+				*ref = &candidate
+			}
+		}
+	}
+	if _, err := s.renderNATRules(rules, buildFirewallObjectTables(nil, rules)); err != nil {
+		return fmt.Errorf("network_object_refresh_invalid_nat_rule: %w", err)
+	}
 	return nil
 }
 

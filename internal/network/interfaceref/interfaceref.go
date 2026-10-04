@@ -11,6 +11,7 @@ package interfaceref
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +21,8 @@ import (
 )
 
 var ErrFilteredStandardSwitchL2Only = errors.New("filtered_standard_switch_l2_only")
+
+var dynamicAddressPattern = regexp.MustCompile(`^\(([A-Za-z0-9][A-Za-z0-9_.-]{0,63})\)$`)
 
 type Coordinator struct {
 	mutex sync.RWMutex
@@ -43,6 +46,14 @@ func (c *Coordinator) WriteLock() func() {
 	}
 	c.mutex.Lock()
 	return c.mutex.Unlock
+}
+
+func DynamicAddressInterface(value string) (string, bool) {
+	match := dynamicAddressPattern.FindStringSubmatch(strings.TrimSpace(value))
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
 }
 
 func RejectFilteredStandardBridgeInterfaces(db *gorm.DB, interfaces ...string) error {

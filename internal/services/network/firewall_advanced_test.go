@@ -102,7 +102,7 @@ func TestPreviewRenderedConfigReturnsSanitizedValidationDetail(t *testing.T) {
 	if !errors.Is(err, ErrInvalidFirewallAdvancedSettings) {
 		t.Fatalf("expected invalid advanced settings, got %v", err)
 	}
-	detail := FirewallAdvancedValidationDetail(err)
+	detail := FirewallValidationDetail(err)
 	if !strings.Contains(detail, "pf_validation_failed") || !strings.Contains(detail, "syntax error") {
 		t.Fatalf("missing sanitized validation detail: %q", detail)
 	}
@@ -126,27 +126,23 @@ func TestUpdateFirewallAdvancedSettingsValidatesBeforePersisting(t *testing.T) {
 	}
 }
 
-func TestRestoreFirewallAdvancedSettingsAfterApplyFailureRestoresAndReapplies(t *testing.T) {
+func TestRestoreFirewallAdvancedSettingsAfterApplyFailureRestoresDatabaseSettings(t *testing.T) {
 	svc, db, previous := setupFirewallAdvancedService(t)
 	if err := db.Model(&previous).Updates(map[string]any{"pre_rules": "candidate", "post_rules": "block all"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	applyErr := errors.New("apply failed")
-	reapplyCalls := 0
-	err := svc.restoreFirewallAdvancedSettingsAfterApplyFailure(previous, applyErr, func() error {
-		reapplyCalls++
-		var restored networkModels.FirewallAdvancedSettings
-		if err := db.First(&restored, previous.ID).Error; err != nil {
-			return err
-		}
-		if restored.PreRules != previous.PreRules || restored.PostRules != previous.PostRules {
-			return errors.New("previous settings were not restored before reapply")
-		}
-		return nil
-	})
-	if !errors.Is(err, applyErr) || reapplyCalls != 1 {
-		t.Fatalf("unexpected rollback result: err=%v reapplyCalls=%d", err, reapplyCalls)
+	err := svc.restoreFirewallAdvancedSettingsAfterApplyFailure(previous, applyErr)
+	if !errors.Is(err, applyErr) {
+		t.Fatalf("unexpected rollback result: %v", err)
+	}
+	var restored networkModels.FirewallAdvancedSettings
+	if err := db.First(&restored, previous.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if restored.PreRules != previous.PreRules || restored.PostRules != previous.PostRules {
+		t.Fatalf("previous settings were not restored: %+v", restored)
 	}
 }
 

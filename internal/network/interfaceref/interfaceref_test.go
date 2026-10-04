@@ -47,6 +47,21 @@ func TestCoordinatorSerializesInterfaceMutationWithReferencePersistence(t *testi
 	}
 }
 
+func TestDynamicAddressInterface(t *testing.T) {
+	for _, test := range []struct {
+		value, name string
+	}{
+		{"(igb0)", "igb0"}, {"(igb1.3)", "igb1.3"}, {" (wg0) ", "wg0"},
+		{"igb1.3", ""}, {"()", ""}, {"(igb1.3:network)", ""}, {"($lan_if)", ""},
+		{"(igb0)\npass all", ""}, {"(igb0 wg0)", ""}, {"((igb0))", ""},
+	} {
+		name, ok := DynamicAddressInterface(test.value)
+		if name != test.name || ok != (test.name != "") {
+			t.Errorf("DynamicAddressInterface(%q) = %q, %t; want %q", test.value, name, ok, test.name)
+		}
+	}
+}
+
 func TestRejectFilteredStandardBridgeInterfaces(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{})
 	if err := db.Create(&networkModels.StandardSwitch{

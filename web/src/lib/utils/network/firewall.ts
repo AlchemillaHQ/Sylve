@@ -1,65 +1,27 @@
+import type {
+	FirewallTrafficRuleUpsertRequest,
+	FirewallNATRuleUpsertRequest
+} from '$lib/api/network/firewall';
 import { isValidIPv4, isValidIPv6, isValidPortNumber } from '$lib/utils/string';
-
-type RuleFamily = 'any' | 'inet' | 'inet6' | string;
-type RuleProtocol = 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | string;
-type RuleDirection = 'in' | 'out' | string;
-type NATType = 'snat' | 'dnat' | 'binat' | string;
-type TranslateMode = 'interface' | 'address' | string;
-
-export interface FirewallTrafficRulePayload {
-	name: string;
-	description?: string;
-	priority?: number;
-	action: 'pass' | 'block' | string;
-	direction: RuleDirection;
-	protocol: RuleProtocol;
-	family: RuleFamily;
-	ingressInterfaces?: string[];
-	egressInterfaces?: string[];
-	sourceRaw?: string;
-	sourceObjId?: number | null;
-	destRaw?: string;
-	destObjId?: number | null;
-	srcPortsRaw?: string;
-	srcPortObjId?: number | null;
-	dstPortsRaw?: string;
-	dstPortObjId?: number | null;
-}
-
-export interface FirewallNATRulePayload {
-	name: string;
-	description?: string;
-	enabled?: boolean;
-	log?: boolean;
-	priority?: number;
-	natType: NATType;
-	policyRoutingEnabled?: boolean | null;
-	policyRouteGateway?: string;
-	protocol: RuleProtocol;
-	family: RuleFamily;
-	ingressInterfaces?: string[];
-	egressInterfaces?: string[];
-	sourceRaw?: string;
-	sourceObjId?: number | null;
-	destRaw?: string;
-	destObjId?: number | null;
-	translateMode?: TranslateMode;
-	translateToRaw?: string;
-	translateToObjId?: number | null;
-	dnatTargetRaw?: string;
-	dnatTargetObjId?: number | null;
-	dstPortsRaw?: string;
-	dstPortObjId?: number | null;
-	redirectPortsRaw?: string;
-	redirectPortObjId?: number | null;
-}
 
 export interface RuleValidationResult {
 	valid: boolean;
 	error?: string;
 }
 
-function parseFamily(family: RuleFamily): {
+export function firewallValidationDetail(data: unknown): string | null {
+	if (
+		typeof data === 'object' &&
+		data !== null &&
+		'detail' in data &&
+		typeof data.detail === 'string'
+	) {
+		return data.detail;
+	}
+	return null;
+}
+
+function parseFamily(family: string | undefined): {
 	value: 'any' | 'inet' | 'inet6' | null;
 	error?: string;
 } {
@@ -72,11 +34,8 @@ function parseFamily(family: RuleFamily): {
 	return { value: null, error: `Unsupported address family: ${String(family ?? '')}` };
 }
 
-function parseProtocol(
-	protocol: RuleProtocol,
-	allowTCPUDP = false
-): {
-	value: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | null;
+function parseProtocol(protocol: string | undefined): {
+	value: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | 'icmp6' | null;
 	error?: string;
 } {
 	const normalized = String(protocol ?? '')
@@ -86,15 +45,19 @@ function parseProtocol(
 		normalized === 'any' ||
 		normalized === 'tcp' ||
 		normalized === 'udp' ||
-		(allowTCPUDP && normalized === 'tcp_udp') ||
-		normalized === 'icmp'
+		normalized === 'tcp_udp' ||
+		normalized === 'icmp' ||
+		normalized === 'icmp6'
 	) {
 		return { value: normalized };
 	}
 	return { value: null, error: `Unsupported protocol: ${String(protocol ?? '')}` };
 }
 
-function parseDirection(direction: RuleDirection): { value: 'in' | 'out' | null; error?: string } {
+function parseDirection(direction: string | undefined): {
+	value: 'in' | 'out' | null;
+	error?: string;
+} {
 	const normalized = String(direction ?? '')
 		.trim()
 		.toLowerCase();
@@ -104,7 +67,7 @@ function parseDirection(direction: RuleDirection): { value: 'in' | 'out' | null;
 	return { value: null, error: `Unsupported direction: ${String(direction ?? '')}` };
 }
 
-function parseNATType(natType: NATType): {
+function parseNATType(natType: string): {
 	value: 'snat' | 'dnat' | 'binat' | null;
 	error?: string;
 } {
@@ -117,7 +80,7 @@ function parseNATType(natType: NATType): {
 	return { value: null, error: `Unsupported NAT type: ${String(natType ?? '')}` };
 }
 
-function parseTranslateMode(mode: TranslateMode | undefined): {
+function parseTranslateMode(mode: string | undefined): {
 	value: 'interface' | 'address' | null;
 	error?: string;
 } {
@@ -137,21 +100,19 @@ function hasSelector(raw: string | undefined, objId: number | null | undefined):
 	return String(raw ?? '').trim() !== '' || (objId ?? 0) > 0;
 }
 
-function hasPortSelector(raw: string | undefined, objId: number | null | undefined): boolean {
-	return hasSelector(raw, objId);
-}
-
 function validateFamilyAgainstRawAddress(
 	value: string | undefined,
 	family: 'any' | 'inet' | 'inet6',
 	allowCIDR: boolean,
 	allowAnyLiteral: boolean,
-	fieldLabel: string
+	fieldLabel: string,
+	allowDynamic = true
 ): string | null {
 	const v = String(value ?? '').trim();
 	if (!v) return null;
 
 	if (allowAnyLiteral && v.toLowerCase() === 'any') return null;
+	if (allowDynamic && /^\([A-Za-z0-9][A-Za-z0-9_.-]{0,63}\)$/.test(v)) return null;
 
 	const isV4 = isValidIPv4(v, false);
 	const isV6 = isValidIPv6(v, false);
@@ -263,7 +224,7 @@ function validateFirewallSelectorPair(
 }
 
 export function validateFirewallTrafficRulePayload(
-	payload: FirewallTrafficRulePayload
+	payload: FirewallTrafficRuleUpsertRequest
 ): RuleValidationResult {
 	const name = String(payload.name ?? '').trim();
 	if (!name) {
@@ -279,19 +240,57 @@ export function validateFirewallTrafficRulePayload(
 	) {
 		return { valid: false, error: 'Priority must be a positive whole number' };
 	}
+	if (payload.kind === 'advanced') {
+		const raw = payload.rawPF ?? '';
+		if (!raw.trim()) return { valid: false, error: 'Advanced PF filtering rules are required' };
+		if (raw.length > 262144 || raw.includes('\0') || raw.includes('\r')) {
+			return { valid: false, error: 'Advanced PF text is invalid or too long' };
+		}
+		return { valid: true };
+	}
+	if (payload.rawPF) return { valid: false, error: 'PF text requires an Advanced PF row' };
+	const state = payload.statePolicy ?? 'default';
+	const response = payload.blockResponse ?? 'default';
+	if (
+		!['default', 'keep', 'none'].includes(state) ||
+		!['default', 'drop', 'return'].includes(response)
+	) {
+		return { valid: false, error: 'Unsupported state policy or block response' };
+	}
+	if (payload.action !== 'pass' && state !== 'default') {
+		return { valid: false, error: 'State handling is only available for Pass rules' };
+	}
+	if (payload.action !== 'block' && response !== 'default') {
+		return { valid: false, error: 'Block response is only available for Block rules' };
+	}
 	if (payload.action !== 'pass' && payload.action !== 'block') {
 		return { valid: false, error: 'Unsupported firewall action' };
 	}
 
 	const familyResult = parseFamily(payload.family);
 	if (!familyResult.value) return { valid: false, error: familyResult.error };
-	const protocolResult = parseProtocol(payload.protocol, true);
+	const protocolResult = parseProtocol(payload.protocol);
 	if (!protocolResult.value) return { valid: false, error: protocolResult.error };
 	const directionResult = parseDirection(payload.direction);
 	if (!directionResult.value) return { valid: false, error: directionResult.error };
 	const family = familyResult.value;
 	const protocol = protocolResult.value;
 	const direction = directionResult.value;
+	const addressFamily = protocol === 'icmp' ? 'inet' : protocol === 'icmp6' ? 'inet6' : family;
+	if ((protocol === 'icmp' && family === 'inet6') || (protocol === 'icmp6' && family === 'inet')) {
+		return { valid: false, error: 'ICMP protocol does not match the selected address family' };
+	}
+	const types = payload.icmpTypes ?? [];
+	const allowed = protocol === 'icmp6' ? icmp6TypeOptions : icmpTypeOptions;
+	if (types.length > 0 && protocol !== 'icmp' && protocol !== 'icmp6') {
+		return { valid: false, error: 'ICMP types require an ICMP protocol' };
+	}
+	if (
+		new Set(types).size !== types.length ||
+		types.some((type) => !allowed.some((option) => option.value === type))
+	) {
+		return { valid: false, error: 'Invalid ICMP type selection' };
+	}
 
 	const ingressError = validateFirewallInterfaceList(
 		payload.ingressInterfaces,
@@ -322,7 +321,7 @@ export function validateFirewallTrafficRulePayload(
 
 	const sourceError = validateFamilyAgainstRawAddress(
 		payload.sourceRaw,
-		family,
+		addressFamily,
 		true,
 		true,
 		'Source'
@@ -331,7 +330,7 @@ export function validateFirewallTrafficRulePayload(
 
 	const destError = validateFamilyAgainstRawAddress(
 		payload.destRaw,
-		family,
+		addressFamily,
 		true,
 		true,
 		'Destination'
@@ -340,8 +339,8 @@ export function validateFirewallTrafficRulePayload(
 
 	if (protocol !== 'tcp' && protocol !== 'udp' && protocol !== 'tcp_udp') {
 		if (
-			hasPortSelector(payload.srcPortsRaw, payload.srcPortObjId) ||
-			hasPortSelector(payload.dstPortsRaw, payload.dstPortObjId)
+			hasSelector(payload.srcPortsRaw, payload.srcPortObjId) ||
+			hasSelector(payload.dstPortsRaw, payload.dstPortObjId)
 		) {
 			return { valid: false, error: 'Port selectors are only allowed for TCP/UDP rules' };
 		}
@@ -356,7 +355,7 @@ export function validateFirewallTrafficRulePayload(
 }
 
 export function validateFirewallNATRulePayload(
-	payload: FirewallNATRulePayload
+	payload: FirewallNATRuleUpsertRequest
 ): RuleValidationResult {
 	const name = String(payload.name ?? '').trim();
 	if (!name) {
@@ -385,8 +384,24 @@ export function validateFirewallNATRulePayload(
 	const natType = natTypeResult.value;
 	const protocol = protocolResult.value;
 	const family = familyResult.value;
+	const addressFamily = protocol === 'icmp' ? 'inet' : protocol === 'icmp6' ? 'inet6' : family;
 	const translateMode = translateModeResult.value;
 	const policyRoutingEnabled = Boolean(payload.policyRoutingEnabled);
+	if (natType !== 'dnat' && payload.passRedirectedTraffic) {
+		return { valid: false, error: 'Pass Redirected Traffic is only available for DNAT' };
+	}
+	if (
+		!['all', 'private', 'public'].includes(payload.targetAddressScope ?? 'all') ||
+		!['single', 'round_robin'].includes(payload.targetHandling ?? 'single')
+	) {
+		return { valid: false, error: 'Unsupported NAT target settings' };
+	}
+	if (natType === 'binat' && payload.targetHandling === 'round_robin') {
+		return { valid: false, error: 'BINAT requires a single translation target' };
+	}
+	if ((protocol === 'icmp' && family === 'inet6') || (protocol === 'icmp6' && family === 'inet')) {
+		return { valid: false, error: 'ICMP protocol does not match the selected address family' };
+	}
 	const policyRouteGateway = String(payload.policyRouteGateway ?? '').trim();
 	if (policyRouteGateway.length > 64) {
 		return { valid: false, error: 'Policy route gateway cannot exceed 64 characters' };
@@ -418,7 +433,7 @@ export function validateFirewallNATRulePayload(
 
 	const sourceError = validateFamilyAgainstRawAddress(
 		payload.sourceRaw,
-		family,
+		addressFamily,
 		true,
 		true,
 		'Source'
@@ -426,7 +441,7 @@ export function validateFirewallNATRulePayload(
 	if (sourceError) return { valid: false, error: sourceError };
 	const destError = validateFamilyAgainstRawAddress(
 		payload.destRaw,
-		family,
+		addressFamily,
 		true,
 		true,
 		'Destination'
@@ -434,7 +449,7 @@ export function validateFirewallNATRulePayload(
 	if (destError) return { valid: false, error: destError };
 	const translateError = validateFamilyAgainstRawAddress(
 		payload.translateToRaw,
-		family,
+		addressFamily,
 		false,
 		false,
 		'Translate target'
@@ -442,7 +457,7 @@ export function validateFirewallNATRulePayload(
 	if (translateError) return { valid: false, error: translateError };
 	const dnatTargetError = validateFamilyAgainstRawAddress(
 		payload.dnatTargetRaw,
-		family,
+		addressFamily,
 		false,
 		false,
 		'DNAT target'
@@ -454,9 +469,14 @@ export function validateFirewallNATRulePayload(
 	const redirectPortRawError = validateRawPortSelector(payload.redirectPortsRaw, 'Redirect ports');
 	if (redirectPortRawError) return { valid: false, error: redirectPortRawError };
 
-	const hasDNATMatchPort = hasPortSelector(payload.dstPortsRaw, payload.dstPortObjId);
-	const hasDNATRewritePort = hasPortSelector(payload.redirectPortsRaw, payload.redirectPortObjId);
-	if ((hasDNATMatchPort || hasDNATRewritePort) && protocol !== 'tcp' && protocol !== 'udp') {
+	const hasDNATMatchPort = hasSelector(payload.dstPortsRaw, payload.dstPortObjId);
+	const hasDNATRewritePort = hasSelector(payload.redirectPortsRaw, payload.redirectPortObjId);
+	if (
+		(hasDNATMatchPort || hasDNATRewritePort) &&
+		protocol !== 'tcp' &&
+		protocol !== 'udp' &&
+		protocol !== 'tcp_udp'
+	) {
 		return { valid: false, error: 'DNAT port match/rewrite requires TCP or UDP protocol' };
 	}
 	if (hasDNATRewritePort && !hasDNATMatchPort) {
@@ -478,8 +498,8 @@ export function validateFirewallNATRulePayload(
 		}
 		if (
 			hasSelector(payload.dnatTargetRaw, payload.dnatTargetObjId) ||
-			hasPortSelector(payload.dstPortsRaw, payload.dstPortObjId) ||
-			hasPortSelector(payload.redirectPortsRaw, payload.redirectPortObjId)
+			hasDNATMatchPort ||
+			hasDNATRewritePort
 		) {
 			return { valid: false, error: `${natType.toUpperCase()} does not allow DNAT-only fields` };
 		}
@@ -496,15 +516,6 @@ export function validateFirewallNATRulePayload(
 				return {
 					valid: false,
 					error: 'Translate target is required when Translate Mode is Specific Address'
-				};
-			}
-			if (
-				String(payload.translateToRaw ?? '').trim() !== '' &&
-				(payload.translateToObjId ?? 0) > 0
-			) {
-				return {
-					valid: false,
-					error: 'Choose either translate target raw value or object, not both'
 				};
 			}
 		}
@@ -533,7 +544,8 @@ export function validateFirewallNATRulePayload(
 				family,
 				false,
 				false,
-				'Policy route gateway'
+				'Policy route gateway',
+				false
 			);
 			if (gatewayError) return { valid: false, error: gatewayError };
 		}
@@ -558,13 +570,65 @@ export function validateFirewallNATRulePayload(
 		if (!hasSelector(payload.dnatTargetRaw, payload.dnatTargetObjId)) {
 			return { valid: false, error: 'DNAT target host is required' };
 		}
-		if (String(payload.dnatTargetRaw ?? '').trim() !== '' && (payload.dnatTargetObjId ?? 0) > 0) {
-			return {
-				valid: false,
-				error: 'Choose either DNAT target raw value or object, not both'
-			};
-		}
 	}
 
 	return { valid: true };
 }
+
+export const icmpTypeOptions = [
+	'echoreq',
+	'echorep',
+	'unreach',
+	'squench',
+	'redir',
+	'althost',
+	'routeradv',
+	'routersol',
+	'timex',
+	'paramprob',
+	'timereq',
+	'timerep',
+	'inforeq',
+	'inforep',
+	'maskreq',
+	'maskrep',
+	'trace',
+	'dataconv',
+	'mobredir',
+	'ipv6-where',
+	'ipv6-here',
+	'mobregreq',
+	'mobregrep',
+	'skip',
+	'photuris'
+].map((value) => ({ value, label: value }));
+
+export const icmp6TypeOptions = [
+	'unreach',
+	'toobig',
+	'timex',
+	'paramprob',
+	'echoreq',
+	'echorep',
+	'groupqry',
+	'listqry',
+	'grouprep',
+	'listenrep',
+	'groupterm',
+	'listendone',
+	'routersol',
+	'routeradv',
+	'neighbrsol',
+	'neighbradv',
+	'redir',
+	'routrrenum',
+	'wrureq',
+	'wrurep',
+	'fqdnreq',
+	'fqdnrep',
+	'niqry',
+	'nirep',
+	'mtraceresp',
+	'mtrace',
+	'listenrepv2'
+].map((value) => ({ value, label: value }));

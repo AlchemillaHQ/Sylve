@@ -17,12 +17,17 @@ type UpsertFirewallTrafficRuleRequest struct {
 	Log               *bool    `json:"log"`
 	Quick             *bool    `json:"quick"`
 	Priority          *int     `json:"priority" binding:"omitempty,gt=0,lte=1000000"`
-	Action            string   `json:"action" binding:"required,oneof=pass block"`
-	Direction         string   `json:"direction" binding:"required,oneof=in out"`
-	Protocol          string   `json:"protocol" binding:"required,oneof=any tcp udp tcp_udp icmp"`
+	Kind              string   `json:"kind" binding:"omitempty,oneof=standard advanced"`
+	RawPF             string   `json:"rawPF" binding:"max=262144"`
+	StatePolicy       string   `json:"statePolicy" binding:"omitempty,oneof=default keep none"`
+	BlockResponse     string   `json:"blockResponse" binding:"omitempty,oneof=default drop return"`
+	ICMPTypes         []string `json:"icmpTypes" binding:"max=256,unique,dive,required,max=32"`
+	Action            string   `json:"action" binding:"required_unless=Kind advanced,omitempty,oneof=pass block"`
+	Direction         string   `json:"direction" binding:"required_unless=Kind advanced,omitempty,oneof=in out"`
+	Protocol          string   `json:"protocol" binding:"required_unless=Kind advanced,omitempty,oneof=any tcp udp tcp_udp icmp icmp6"`
 	IngressInterfaces []string `json:"ingressInterfaces" binding:"max=64,unique,dive,required,max=64"`
 	EgressInterfaces  []string `json:"egressInterfaces" binding:"max=64,unique,dive,required,max=64"`
-	Family            string   `json:"family" binding:"required,oneof=any inet inet6"`
+	Family            string   `json:"family" binding:"required_unless=Kind advanced,omitempty,oneof=any inet inet6"`
 	SourceRaw         string   `json:"sourceRaw" binding:"max=2048"`
 	SourceObjID       *uint    `json:"sourceObjId" binding:"omitempty,gt=0"`
 	DestRaw           string   `json:"destRaw" binding:"max=2048"`
@@ -38,31 +43,34 @@ type BulkDeleteFirewallTrafficRulesRequest struct {
 }
 
 type UpsertFirewallNATRuleRequest struct {
-	Name                 string   `json:"name" binding:"required,max=128"`
-	Description          string   `json:"description" binding:"max=2048"`
-	Enabled              *bool    `json:"enabled"`
-	Log                  *bool    `json:"log"`
-	Priority             *int     `json:"priority" binding:"omitempty,gt=0,lte=1000000"`
-	NATType              string   `json:"natType" binding:"required,oneof=snat dnat binat"`
-	PolicyRoutingEnabled *bool    `json:"policyRoutingEnabled"`
-	PolicyRouteGateway   string   `json:"policyRouteGateway" binding:"max=64"`
-	IngressInterfaces    []string `json:"ingressInterfaces" binding:"max=64,unique,dive,required,max=64"`
-	EgressInterfaces     []string `json:"egressInterfaces" binding:"max=64,unique,dive,required,max=64"`
-	Family               string   `json:"family" binding:"required,oneof=any inet inet6"`
-	Protocol             string   `json:"protocol" binding:"required,oneof=any tcp udp icmp"`
-	SourceRaw            string   `json:"sourceRaw" binding:"max=2048"`
-	SourceObjID          *uint    `json:"sourceObjId" binding:"omitempty,gt=0"`
-	DestRaw              string   `json:"destRaw" binding:"max=2048"`
-	DestObjID            *uint    `json:"destObjId" binding:"omitempty,gt=0"`
-	TranslateMode        string   `json:"translateMode" binding:"omitempty,oneof=interface address"`
-	TranslateToRaw       string   `json:"translateToRaw" binding:"max=2048"`
-	TranslateToObjID     *uint    `json:"translateToObjId" binding:"omitempty,gt=0"`
-	DNATTargetRaw        string   `json:"dnatTargetRaw" binding:"max=2048"`
-	DNATTargetObjID      *uint    `json:"dnatTargetObjId" binding:"omitempty,gt=0"`
-	DstPortsRaw          string   `json:"dstPortsRaw" binding:"max=2048"`
-	DstPortObjID         *uint    `json:"dstPortObjId" binding:"omitempty,gt=0"`
-	RedirectPortsRaw     string   `json:"redirectPortsRaw" binding:"max=2048"`
-	RedirectPortObjID    *uint    `json:"redirectPortObjId" binding:"omitempty,gt=0"`
+	Name                  string   `json:"name" binding:"required,max=128"`
+	Description           string   `json:"description" binding:"max=2048"`
+	Enabled               *bool    `json:"enabled"`
+	Log                   *bool    `json:"log"`
+	Priority              *int     `json:"priority" binding:"omitempty,gt=0,lte=1000000"`
+	NATType               string   `json:"natType" binding:"required,oneof=snat dnat binat"`
+	PassRedirectedTraffic *bool    `json:"passRedirectedTraffic"`
+	TargetAddressScope    string   `json:"targetAddressScope" binding:"omitempty,oneof=all private public"`
+	TargetHandling        string   `json:"targetHandling" binding:"omitempty,oneof=single round_robin"`
+	PolicyRoutingEnabled  *bool    `json:"policyRoutingEnabled"`
+	PolicyRouteGateway    string   `json:"policyRouteGateway" binding:"max=64"`
+	IngressInterfaces     []string `json:"ingressInterfaces" binding:"max=64,unique,dive,required,max=64"`
+	EgressInterfaces      []string `json:"egressInterfaces" binding:"max=64,unique,dive,required,max=64"`
+	Family                string   `json:"family" binding:"required,oneof=any inet inet6"`
+	Protocol              string   `json:"protocol" binding:"required,oneof=any tcp udp tcp_udp icmp icmp6"`
+	SourceRaw             string   `json:"sourceRaw" binding:"max=2048"`
+	SourceObjID           *uint    `json:"sourceObjId" binding:"omitempty,gt=0"`
+	DestRaw               string   `json:"destRaw" binding:"max=2048"`
+	DestObjID             *uint    `json:"destObjId" binding:"omitempty,gt=0"`
+	TranslateMode         string   `json:"translateMode" binding:"omitempty,oneof=interface address"`
+	TranslateToRaw        string   `json:"translateToRaw" binding:"max=2048"`
+	TranslateToObjID      *uint    `json:"translateToObjId" binding:"omitempty,gt=0"`
+	DNATTargetRaw         string   `json:"dnatTargetRaw" binding:"max=2048"`
+	DNATTargetObjID       *uint    `json:"dnatTargetObjId" binding:"omitempty,gt=0"`
+	DstPortsRaw           string   `json:"dstPortsRaw" binding:"max=2048"`
+	DstPortObjID          *uint    `json:"dstPortObjId" binding:"omitempty,gt=0"`
+	RedirectPortsRaw      string   `json:"redirectPortsRaw" binding:"max=2048"`
+	RedirectPortObjID     *uint    `json:"redirectPortObjId" binding:"omitempty,gt=0"`
 }
 
 type BulkDeleteFirewallNATRulesRequest struct {

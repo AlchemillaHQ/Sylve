@@ -312,7 +312,7 @@ func (s *Service) SetServiceEnabled(
 		basicSettings.Services = previousServices
 		persistRollbackErr := s.DB.Save(&basicSettings).Error
 		var runtimeRollbackErr error
-		if persistRollbackErr == nil {
+		if persistRollbackErr == nil && !(service == models.Firewall && enabled) {
 			runtimeRollbackErr = s.applyServiceRuntimeState(ctx, service, currentlyEnabled, externalApply)
 		}
 

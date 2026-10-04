@@ -414,6 +414,7 @@
 	}
 
 	let columns: Column[] = $derived([
+		{ field: 'kind', title: 'Type', visible: false },
 		{ field: 'id', title: 'ID', visible: false },
 		{ field: 'direction', title: 'direction', visible: false },
 		{ field: 'protocol', title: 'protocol', visible: false },
@@ -432,19 +433,34 @@
 		{
 			field: 'hits',
 			title: 'Hits',
-			formatter: (cell: CellComponent) => Number(cell.getValue() ?? 0).toLocaleString()
+			formatter: (cell: CellComponent) =>
+				cell.getRow().getData().kind === 'advanced'
+					? '—'
+					: Number(cell.getValue() ?? 0).toLocaleString()
 		},
 		{
 			field: 'bytes',
 			title: 'Bytes',
-			formatter: (cell: CellComponent) => formatBytesBinary(cell.getValue(), { fallback: '0 B' })
+			formatter: (cell: CellComponent) =>
+				cell.getRow().getData().kind === 'advanced'
+					? '—'
+					: formatBytesBinary(cell.getValue(), { fallback: '0 B' })
 		},
 		{
 			field: 'action',
 			title: 'Action',
 			formatter: (cell: CellComponent) => {
 				const d = cell.getRow().getData();
-				return formatAction(d.action, d.direction, d.quick, d.log);
+				if (d.kind === 'advanced')
+					return renderWithIcon('mdi:code-braces', 'Advanced PF', 'text-amber-400');
+				const detail =
+					d.action === 'block'
+						? ({ drop: 'Drop', return: 'Return' } as Record<string, string>)[d.blockResponse]
+						: ({ keep: 'Keep State', none: 'No State' } as Record<string, string>)[d.statePolicy];
+				return (
+					formatAction(d.action, d.direction, d.quick, d.log) +
+					(detail ? ` <span class="text-xs text-muted-foreground">${detail}</span>` : '')
+				);
 			}
 		},
 		{
@@ -463,6 +479,7 @@
 			field: 'ingressInterfaces',
 			title: 'Ingress',
 			formatter: (cell: CellComponent) => {
+				if (cell.getRow().getData().kind === 'advanced') return '—';
 				const v = cell.getValue();
 				if (!v || v === 'any') return renderWithIcon('mdi:earth', 'Any', 'text-sky-400');
 				return renderWithIcon('mdi:arrow-down-circle-outline', v, 'text-blue-400');
@@ -472,6 +489,7 @@
 			field: 'egressInterfaces',
 			title: 'Egress',
 			formatter: (cell: CellComponent) => {
+				if (cell.getRow().getData().kind === 'advanced') return '—';
 				const v = cell.getValue();
 				if (!v || v === 'any') return renderWithIcon('mdi:earth', 'Any', 'text-sky-400');
 				return renderWithIcon('mdi:arrow-up-circle-outline', v, 'text-orange-400');
@@ -482,6 +500,7 @@
 			title: 'Source',
 			formatter: (cell: CellComponent) => {
 				const d = cell.getRow().getData();
+				if (d.kind === 'advanced') return '—';
 				return formatSource(cell.getValue(), d.sourceIsObj, d.family, d.srcPort);
 			}
 		},
@@ -490,6 +509,7 @@
 			title: 'Destination',
 			formatter: (cell: CellComponent) => {
 				const d = cell.getRow().getData();
+				if (d.kind === 'advanced') return '—';
 				return formatDestination(cell.getValue(), d.destIsObj, d.protocol, d.dstPort);
 			}
 		},
@@ -506,6 +526,9 @@
 			const counter = counterByRuleID.get(rule.id);
 			return {
 				id: rule.id,
+				kind: rule.kind ?? 'standard',
+				statePolicy: rule.statePolicy ?? 'default',
+				blockResponse: rule.blockResponse ?? 'default',
 				name: rule.name,
 				action: rule.action,
 				log: rule.log ?? false,

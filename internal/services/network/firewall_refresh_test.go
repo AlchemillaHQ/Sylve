@@ -665,7 +665,7 @@ func TestRenderTrafficRulesUsesPFProtocolListForTCPUDP(t *testing.T) {
 	}
 }
 
-func TestParseTrafficRuleCountersFromPFAggregatesByLabel(t *testing.T) {
+func TestParseLabeledRuleCountersAggregatesTrafficLabels(t *testing.T) {
 	output := strings.Join([]string{
 		`@101 block in quick inet from 10.0.0.2 to any label "sylve_trf_11"`,
 		`  [ Evaluations: 88      Packets: 9         Bytes: 3000        States: 0     ]`,
@@ -677,7 +677,7 @@ func TestParseTrafficRuleCountersFromPFAggregatesByLabel(t *testing.T) {
 		`  [ Evaluations: 12      Packets: 5         Bytes: 1024        States: 1     ]`,
 	}, "\n")
 
-	counters := parseTrafficRuleCountersFromPF(output)
+	counters, _ := parseLabeledRuleCounters(output, pfTrafficRuleLabelPattern)
 
 	if len(counters) != 2 {
 		t.Fatalf("expected 2 labeled counter entries, got %d (%v)", len(counters), counters)
@@ -1272,7 +1272,7 @@ func TestBuildPFMainConfigIncludesObjectTablesInline(t *testing.T) {
 }
 
 func TestBuildPFMainConfigOmitsEmptyTablesBlock(t *testing.T) {
-	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{})
+	tablesRendered := renderFirewallObjectTables(map[uint]firewallObjectTable{}, "")
 	rendered := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 
 	if strings.Contains(rendered, `sylve/object-tables`) {
@@ -1291,7 +1291,7 @@ func TestBuildPFMainConfigPlacesPreRulesBeforeTranslationHooks(t *testing.T) {
 
 	natHook := strings.Index(rendered, `nat-anchor "sylve/nat-rules" all`)
 	preRule := strings.Index(rendered, "pass in all keep state")
-	trafficAnchor := strings.Index(rendered, `anchor "sylve/traffic-rules"`)
+	trafficAnchor := strings.Index(rendered, `anchor "sylve" {`)
 
 	if natHook == -1 || preRule == -1 || trafficAnchor == -1 {
 		t.Fatalf("expected nat hook, pre rule, and traffic anchor in rendered output, got:\n%s", rendered)
@@ -1410,7 +1410,7 @@ func TestRenderFirewallObjectTablesSortedOutput(t *testing.T) {
 			Inet6Name:   "",
 			Inet6Values: nil,
 		},
-	})
+	}, "")
 
 	firstObjectIdx := strings.Index(rendered, "table <sylve_obj_2_inet>")
 	secondObjectIdx := strings.Index(rendered, "table <sylve_obj_10_inet>")
@@ -1521,9 +1521,13 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 	if err := os.MkdirAll(entriesDir, 0755); err != nil {
 		t.Fatalf("failed to create entries dir: %v", err)
 	}
-	stalePath := filepath.Join(entriesDir, "stale_file")
+	stalePath := filepath.Join(entriesDir, "sylve_obj_1_inet")
 	if err := os.WriteFile(stalePath, []byte("stale"), 0644); err != nil {
 		t.Fatalf("failed to write stale file: %v", err)
+	}
+	unmanagedPath := filepath.Join(entriesDir, "operator-notes")
+	if err := os.WriteFile(unmanagedPath, []byte("keep this"), 0644); err != nil {
+		t.Fatal(err)
 	}
 
 	if err := writeFirewallObjectTableEntries(map[uint]firewallObjectTable{}, entriesDir); err != nil {
@@ -1531,167 +1535,14 @@ func TestWriteFirewallObjectTableEntriesEmptyTablesCleansUp(t *testing.T) {
 	}
 
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
-		t.Fatalf("expected stale_file to be removed, got err: %v", err)
+		t.Fatalf("expected stale managed table file to be removed, got err: %v", err)
+	}
+	if content, err := os.ReadFile(unmanagedPath); err != nil || string(content) != "keep this" {
+		t.Fatalf("unmanaged file was changed: content=%q err=%v", content, err)
 	}
 }
 
-func TestLoadFirewallObjectTableEntriesUsesReplace(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	calls := []string{}
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		calls = append(calls, command+" "+strings.Join(args, " "))
-		return "", nil
-	}
-
-	tables := map[uint]firewallObjectTable{
-		2: {
-			ObjectID:    2,
-			InetName:    "sylve_obj_2_inet",
-			InetValues:  []string{"192.0.2.1"},
-			Inet6Name:   "sylve_obj_2_inet6",
-			Inet6Values: []string{"2001:db8::1"},
-		},
-	}
-
-	if err := (&Service{}).loadFirewallObjectTableEntries(tables); err != nil {
-		t.Fatalf("expected table entries to load, got: %v", err)
-	}
-
-	expected := []string{
-		"/sbin/pfctl -t sylve_obj_2_inet -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet"),
-		"/sbin/pfctl -t sylve_obj_2_inet6 -T replace -f " + filepath.Join(pfObjectTableEntriesDir, "sylve_obj_2_inet6"),
-	}
-	if !slices.Equal(calls, expected) {
-		t.Fatalf("unexpected pfctl calls:\nexpected: %v\nactual:   %v", expected, calls)
-	}
-}
-
-func TestReplaceFirewallObjectTableEntriesPrunesStaleEntriesAfterENOMEM(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	replaceCalls := 0
-	sequence := []string{}
-	deletedEntries := ""
-	stalePath := ""
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command != "/sbin/pfctl" || len(args) < 4 {
-			t.Fatalf("unexpected command call: %s %v", command, args)
-		}
-
-		operation := args[3]
-		sequence = append(sequence, operation)
-		switch operation {
-		case "replace":
-			replaceCalls++
-			if replaceCalls == 1 {
-				return "", errors.New("command execution failed: exit status 255, output: pfctl: Cannot allocate memory")
-			}
-			return "", nil
-		case "show":
-			return "  10.0.0.1\n  192.0.2.1\n10.0.0.9\n", nil
-		case "delete":
-			if len(args) != 6 || args[4] != "-f" {
-				t.Fatalf("unexpected delete arguments: %v", args)
-			}
-			stalePath = args[5]
-			data, err := os.ReadFile(stalePath)
-			if err != nil {
-				t.Fatalf("failed to read stale entries file: %v", err)
-			}
-			deletedEntries = string(data)
-			return "", nil
-		default:
-			t.Fatalf("unexpected pfctl operation: %s", operation)
-			return "", nil
-		}
-	}
-
-	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{
-		"10.0.0.0/24",
-		"10.0.0.1",
-		"10.0.0.2",
-	})
-	if err != nil {
-		t.Fatalf("expected memory recovery to succeed, got: %v", err)
-	}
-	if !slices.Equal(sequence, []string{"replace", "show", "delete", "replace"}) {
-		t.Fatalf("unexpected recovery sequence: %v", sequence)
-	}
-	if deletedEntries != "10.0.0.9\n192.0.2.1\n" {
-		t.Fatalf("expected only sorted stale entries to be deleted, got %q", deletedEntries)
-	}
-	if stalePath == "" {
-		t.Fatal("expected recovery to create a stale entries file")
-	}
-	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
-		t.Fatalf("expected stale entries file to be removed, got: %v", err)
-	}
-}
-
-func TestReplaceFirewallObjectTableEntriesDoesNotPruneOtherErrors(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	calls := 0
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		calls++
-		if command != "/sbin/pfctl" || len(args) != 6 || args[3] != "replace" {
-			t.Fatalf("unexpected command call: %s %v", command, args)
-		}
-		return "", errors.New("permission denied")
-	}
-
-	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
-	if err == nil || !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("expected replace error to be returned, got: %v", err)
-	}
-	if calls != 1 {
-		t.Fatalf("expected no destructive recovery for a non-memory error, got %d calls", calls)
-	}
-}
-
-func TestReplaceFirewallObjectTableEntriesRequiresStaleEntriesForRecovery(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	calls := 0
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		calls++
-		if command != "/sbin/pfctl" || len(args) < 4 {
-			t.Fatalf("unexpected command call: %s %v", command, args)
-		}
-		switch args[3] {
-		case "replace":
-			return "", errors.New("pfctl: Cannot allocate memory")
-		case "show":
-			return "10.0.0.1\n", nil
-		default:
-			t.Fatalf("unexpected recovery operation: %s", args[3])
-			return "", nil
-		}
-	}
-
-	err := replaceFirewallObjectTableEntries("sylve_obj_13_inet", []string{"10.0.0.1"})
-	if err == nil || !strings.Contains(err.Error(), "no_stale_table_entries_to_prune") {
-		t.Fatalf("expected recovery to preserve the original table, got: %v", err)
-	}
-	if calls != 2 {
-		t.Fatalf("expected replace and show only, got %d calls", calls)
-	}
-}
-
-func TestRenderTrafficRulesSkipsRuleWhenObjectTableEmpty(t *testing.T) {
+func TestRenderTrafficRulesRejectsEnabledRuleWhenObjectTableEmpty(t *testing.T) {
 	svc := &Service{}
 	rules := []networkModels.FirewallTrafficRule{
 		{
@@ -1716,15 +1567,8 @@ func TestRenderTrafficRulesSkipsRuleWhenObjectTableEmpty(t *testing.T) {
 
 	tables := buildFirewallObjectTables(rules, nil)
 	rendered, err := svc.renderTrafficRules(rules, tables)
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if strings.Contains(rendered, "block in") {
-		t.Fatalf("expected traffic rule line to be skipped for empty object table, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, "skipped traffic rule id=77") {
-		t.Fatalf("expected skip warning comment in rendered rules, got:\n%s", rendered)
+	if err == nil || !strings.Contains(err.Error(), "id=77") || rendered != "" {
+		t.Fatalf("expected unusable enabled rule to fail the whole candidate, got rendered=%q err=%v", rendered, err)
 	}
 }
 
@@ -2421,7 +2265,7 @@ func TestRenderNATRulesRendersSNATAddressAndBINATInterface(t *testing.T) {
 	if !strings.Contains(rendered, "nat log on em0 inet from 10.0.0.0/24 to any tag sylve_nat_51 -> 203.0.113.50") {
 		t.Fatalf("expected snat address translation line, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "binat log on em0 inet from 10.0.1.10 to any tag sylve_nat_52 -> (em0)") {
+	if !strings.Contains(rendered, "binat log on em0 inet from 10.0.1.10 to any tag sylve_nat_52 -> (em0:0)") {
 		t.Fatalf("expected binat interface translation line, got:\n%s", rendered)
 	}
 }
@@ -2640,8 +2484,8 @@ func TestRenderNATRulesSkipsIncompatibleFamilyForRawTranslateTarget(t *testing.T
 	if strings.Contains(rendered, "nat log on em0 inet6") {
 		t.Fatalf("did not expect inet6 line with ipv4 translation target, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "raw target \"203.0.113.60\" is not valid for family inet6") {
-		t.Fatalf("expected skip warning for incompatible inet6 family line, got:\n%s", rendered)
+	if strings.Contains(rendered, "skipped") {
+		t.Fatalf("expected family intersection without silently skipped rules, got:\n%s", rendered)
 	}
 }
 
@@ -3834,6 +3678,37 @@ func TestIntegrationPFConfigValidation(t *testing.T) {
 		validateGeneratedConfig(t, svc, nil, rules, "", "")
 	})
 
+	t.Run("mixed_advanced_macros_and_standard_state_block_icmp", func(t *testing.T) {
+		pre := "lan_net=\"10.32.50.0/24\"\nset block-policy return\nset state-defaults max 1000\ntable <friends> persist { 10.32.51.0/24 }\ntable <sshguard> persist"
+		rules := []networkModels.FirewallTrafficRule{
+			{ID: 1, Priority: 1, Enabled: true, Kind: "advanced", RawPF: "pass in quick from <friends> to any\n"},
+			{ID: 2, Priority: 2, Enabled: true, Action: "pass", Direction: "in", Protocol: "any", Family: "any", StatePolicy: "none"},
+			{ID: 3, Priority: 3, Enabled: true, Kind: "advanced", RawPF: "pass in from $lan_net to any keep state\nblock in from <sshguard> to any\n"},
+			{ID: 4, Priority: 4, Enabled: true, Action: "block", Direction: "in", Protocol: "tcp", Family: "inet", BlockResponse: "return"},
+			{ID: 5, Priority: 5, Enabled: true, Action: "pass", Direction: "in", Protocol: "icmp6", Family: "any", ICMPTypes: []string{"neighbrsol", "neighbradv"}, StatePolicy: "keep"},
+			{ID: 6, Priority: 6, Enabled: true, Action: "block", Direction: "in", Protocol: "any", Family: "any"},
+			{ID: 7, Priority: 7, Enabled: true, Action: "pass", Direction: "out", Protocol: "tcp", Family: "inet"},
+		}
+		validateGeneratedConfig(t, svc, nil, rules, pre, "pass out all")
+	})
+
+	t.Run("dnat_pass_and_fqdn_pools", func(t *testing.T) {
+		target := &networkModels.Object{ID: 8, Type: "FQDN", Resolutions: buildResolutionRows(8, []string{"10.0.0.10", "10.0.0.11"})}
+		rules := []networkModels.FirewallNATRule{
+			{ID: 1, Priority: 1, Enabled: true, NATType: "dnat", Protocol: "tcp_udp", Family: "inet", PassRedirectedTraffic: true,
+				IngressInterfaces: []string{"lo0"}, DNATTargetObj: target, TargetAddressScope: "private", TargetHandling: "round_robin", DstPortsRaw: "53", RedirectPortsRaw: "153"},
+			{ID: 2, Priority: 2, Enabled: true, NATType: "snat", Protocol: "tcp", Family: "inet", TranslateMode: "address",
+				EgressInterfaces: []string{"lo0"}, TranslateToObj: target, TargetHandling: "round_robin"},
+		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("dynamic_interface_dns_redirect", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{{ID: 1, Enabled: true, NATType: "dnat", Protocol: "tcp_udp", Family: "inet",
+			IngressInterfaces: []string{"lo0"}, DestRaw: "(lo0)", DNATTargetRaw: "(lo0)", DstPortsRaw: "53", RedirectPortsRaw: "153"}}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
 	t.Run("snat_with_object_table_source", func(t *testing.T) {
 		rules := []networkModels.FirewallNATRule{
 			{
@@ -4057,13 +3932,27 @@ func TestIntegrationPFConfigValidation(t *testing.T) {
 				SourceObj: &networkModels.Object{
 					ID:   50,
 					Type: "Host",
-					Resolutions: []networkModels.ObjectResolution{
-						{ResolvedValue: "10.254.254.1"},
+					Entries: []networkModels.ObjectEntry{
+						{Value: "10.254.254.1"},
 					},
 				},
 				DestRaw: "any",
 			},
 		}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("binat_fqdn_source_and_target_per_family", func(t *testing.T) {
+		source := &networkModels.Object{ID: 51, Type: "FQDN", Resolutions: buildResolutionRows(51, []string{"10.0.0.10", "fd00::10"})}
+		target := &networkModels.Object{ID: 52, Type: "FQDN", Resolutions: buildResolutionRows(52, []string{"10.0.1.10", "fd01::10"})}
+		rules := []networkModels.FirewallNATRule{{ID: 111, Enabled: true, NATType: "binat", EgressInterfaces: []string{"lo0"},
+			TranslateMode: "address", Family: "any", SourceObj: source, TranslateToObj: target, TargetAddressScope: "private"}}
+		validateGeneratedConfig(t, svc, rules, nil, "", "")
+	})
+
+	t.Run("binat_dynamic_source_and_target", func(t *testing.T) {
+		rules := []networkModels.FirewallNATRule{{ID: 112, Enabled: true, NATType: "binat", EgressInterfaces: []string{"lo0"},
+			TranslateMode: "address", Family: "inet", SourceRaw: "(lo0)", TranslateToRaw: "(lo0)"}}
 		validateGeneratedConfig(t, svc, rules, nil, "", "")
 	})
 
@@ -4091,7 +3980,7 @@ func TestIntegrationPFConfigValidation(t *testing.T) {
 			},
 		}
 		tables := buildFirewallObjectTables(nil, rules)
-		tablesRendered := renderFirewallObjectTables(tables)
+		tablesRendered := renderFirewallObjectTables(tables, "")
 		config := buildPFMainConfig("", "", "", "", "", "", tablesRendered, "/tmp/nat.conf", "/tmp/traffic.conf")
 		if !strings.Contains(config, `table <sylve_obj_8_inet> persist`) {
 			t.Fatal("expected table definition in pf.conf before " +
@@ -4120,7 +4009,11 @@ func validateGeneratedConfig(t *testing.T, svc *Service, natRules []networkModel
 	}
 	defer os.RemoveAll(tmpDir)
 
-	tablesRendered := renderFirewallObjectTables(tables)
+	entriesDir := filepath.Join(tmpDir, "entries")
+	if err := writeFirewallObjectTableEntries(tables, entriesDir); err != nil {
+		t.Fatal(err)
+	}
+	tablesRendered := renderFirewallObjectTables(tables, entriesDir)
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
 	trafficPath := filepath.Join(tmpDir, "traffic-rules.conf")

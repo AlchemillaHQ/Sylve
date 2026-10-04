@@ -602,11 +602,12 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 
 	if s.DB.Migrator().HasTable(&networkModels.FirewallTrafficRule{}) {
 		var rules []networkModels.FirewallTrafficRule
-		if err := s.DB.Select("ingress_interfaces", "egress_interfaces").Find(&rules).Error; err != nil {
+		if err := s.DB.Select("ingress_interfaces", "egress_interfaces", "source_raw", "dest_raw").Find(&rules).Error; err != nil {
 			return fmt.Errorf("check standard switch firewall traffic usage: %w", err)
 		}
 		for _, rule := range rules {
-			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) {
+			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) ||
+				firewallDynamicAddressesReference(bridgeName, rule.SourceRaw, rule.DestRaw) {
 				return standardSwitchInUse("standard_switch_in_use_by_firewall")
 			}
 		}
@@ -614,11 +615,12 @@ func (s *Service) checkStandardSwitchExternalUsage(bridgeName string) error {
 
 	if s.DB.Migrator().HasTable(&networkModels.FirewallNATRule{}) {
 		var rules []networkModels.FirewallNATRule
-		if err := s.DB.Select("ingress_interfaces", "egress_interfaces").Find(&rules).Error; err != nil {
+		if err := s.DB.Select("ingress_interfaces", "egress_interfaces", "source_raw", "dest_raw", "translate_to_raw", "dnat_target_raw").Find(&rules).Error; err != nil {
 			return fmt.Errorf("check standard switch firewall NAT usage: %w", err)
 		}
 		for _, rule := range rules {
-			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) {
+			if interfaceListContains(rule.IngressInterfaces, bridgeName) || interfaceListContains(rule.EgressInterfaces, bridgeName) ||
+				firewallDynamicAddressesReference(bridgeName, rule.SourceRaw, rule.DestRaw, rule.TranslateToRaw, rule.DNATTargetRaw) {
 				return standardSwitchInUse("standard_switch_in_use_by_firewall")
 			}
 		}

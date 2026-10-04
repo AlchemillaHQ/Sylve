@@ -82,11 +82,15 @@ func writeFirewallTrafficRuleError(c *gin.Context, message string, fallbackCode 
 		logger.L.Error().Err(err).Str("operation", message).Msg("firewall_traffic_rule_request_failed")
 	}
 
+	var details any
+	if detail := network.FirewallValidationDetail(err); detail != "" {
+		details = map[string]string{"detail": detail}
+	}
 	c.JSON(status, internal.APIResponse[any]{
 		Status:  "error",
 		Message: message,
 		Error:   code,
-		Data:    nil,
+		Data:    details,
 	})
 }
 
@@ -150,11 +154,15 @@ func writeFirewallNATRuleError(c *gin.Context, message string, fallbackCode stri
 		logger.L.Error().Err(err).Str("operation", message).Msg("firewall_nat_rule_request_failed")
 	}
 
+	var details any
+	if detail := network.FirewallValidationDetail(err); detail != "" {
+		details = map[string]string{"detail": detail}
+	}
 	c.JSON(status, internal.APIResponse[any]{
 		Status:  "error",
 		Message: message,
 		Error:   code,
-		Data:    nil,
+		Data:    details,
 	})
 }
 
@@ -805,7 +813,7 @@ func bindFirewallAdvancedJSON(c *gin.Context, destination any) bool {
 func writeFirewallAdvancedError(c *gin.Context, message string, fallbackCode string, err error) {
 	if errors.Is(err, network.ErrInvalidFirewallAdvancedSettings) {
 		var details *networkServiceInterfaces.FirewallAdvancedValidationDetails
-		if detail := network.FirewallAdvancedValidationDetail(err); detail != "" {
+		if detail := network.FirewallValidationDetail(err); detail != "" {
 			details = &networkServiceInterfaces.FirewallAdvancedValidationDetails{Detail: detail}
 		}
 		c.JSON(http.StatusBadRequest, internal.APIResponse[*networkServiceInterfaces.FirewallAdvancedValidationDetails]{

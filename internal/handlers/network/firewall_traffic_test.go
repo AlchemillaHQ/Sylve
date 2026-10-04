@@ -134,6 +134,29 @@ func TestCreateFirewallTrafficRuleAcceptsTCPUDPWithPorts(t *testing.T) {
 	}
 }
 
+func TestCreateAndEditAdvancedFirewallTrafficRowPreservesPFText(t *testing.T) {
+	router, db := setupFirewallTrafficHandlerRouter(t, networkService.MaxRequestBodyBytes)
+	raw := "# manually ordered exception\nblock in from <sshguard> to any\n"
+	body, _ := json.Marshal(map[string]any{"kind": "advanced", "name": "SSHGuard", "rawPF": raw})
+	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/traffic", body)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("raw filtering row should not require structured fields: status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var rule networkModels.FirewallTrafficRule
+	if err := db.First(&rule).Error; err != nil || rule.Kind != "advanced" || rule.RawPF != raw || rule.Quick || rule.Log {
+		t.Fatalf("raw text rewritten or options injected: %+v err=%v", rule, err)
+	}
+	raw = "pass in quick from <friends> to any\n" + raw
+	body, _ = json.Marshal(map[string]any{"kind": "advanced", "name": "exceptions", "rawPF": raw})
+	rr = performNetworkJSONRequest(t, router, http.MethodPut, "/network/firewall/traffic/"+strconv.Itoa(int(rule.ID)), body)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("raw row edit failed: %d %s", rr.Code, rr.Body.String())
+	}
+	if err := db.First(&rule, rule.ID).Error; err != nil || rule.RawPF != raw {
+		t.Fatalf("raw text not preserved on edit: %+v err=%v", rule, err)
+	}
+}
+
 func TestBulkDeleteFirewallTrafficRulesUsesCollectionDelete(t *testing.T) {
 	router, db := setupFirewallTrafficHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	rules := []networkModels.FirewallTrafficRule{

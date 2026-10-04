@@ -18,7 +18,10 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
-	import { validateFirewallNATRulePayload } from '$lib/utils/network/firewall';
+	import {
+		validateFirewallNATRulePayload,
+		firewallValidationDetail
+	} from '$lib/utils/network/firewall';
 	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { toast } from 'svelte-sonner';
 
@@ -64,13 +67,13 @@
 	function resolveHostTarget(val: string): { raw: string; objId: number | null } {
 		const trimmed = val.trim();
 		if (!trimmed) return { raw: '', objId: null };
-		const obj = objects.find((o) => isSingleAddressHost(o) && String(o.id) === trimmed);
+		const obj = objects.find((o) => isTranslationTarget(o) && String(o.id) === trimmed);
 		if (obj) return { raw: '', objId: obj.id };
 		return { raw: trimmed, objId: null };
 	}
 
-	function isSingleAddressHost(object: NetworkObject): boolean {
-		return object.type === 'Host' && object.entries?.length === 1;
+	function isTranslationTarget(object: NetworkObject): boolean {
+		return (object.type === 'Host' && object.entries?.length === 1) || object.type === 'FQDN';
 	}
 
 	function resolvePort(val: string): { raw: string; objId: number | null } {
@@ -93,9 +96,12 @@
 		log: boolean;
 		priority: number;
 		natType: 'snat' | 'dnat' | 'binat';
+		passRedirectedTraffic: boolean;
+		targetAddressScope: 'all' | 'private' | 'public';
+		targetHandling: 'single' | 'round_robin';
 		policyRoutingEnabled: boolean;
 		policyRouteGateway: string;
-		protocol: 'any' | 'tcp' | 'udp' | 'icmp';
+		protocol: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | 'icmp6';
 		family: 'any' | 'inet' | 'inet6';
 		ingressInterfaces: string[];
 		egressInterfaces: string[];
@@ -117,6 +123,9 @@
 			log: false,
 			priority: maxPriority + 1,
 			natType: 'snat',
+			passRedirectedTraffic: false,
+			targetAddressScope: 'all',
+			targetHandling: 'single',
 			policyRoutingEnabled: false,
 			policyRouteGateway: '',
 			protocol: 'any',
@@ -142,6 +151,9 @@
 			log: rule.log ?? false,
 			priority: rule.priority,
 			natType: rule.natType ?? 'snat',
+			passRedirectedTraffic: rule.passRedirectedTraffic ?? false,
+			targetAddressScope: rule.targetAddressScope ?? 'all',
+			targetHandling: rule.targetHandling ?? 'single',
 			policyRoutingEnabled: rule.policyRoutingEnabled ?? false,
 			policyRouteGateway: rule.policyRouteGateway ?? '',
 			protocol: rule.protocol,
@@ -162,6 +174,7 @@
 	// svelte-ignore state_referenced_locally
 	let form = $state(formForRule(editingRule));
 	let saving = $state(false);
+	let validationError = $state<string | null>(null);
 
 	let cbOpen = $state({
 		ingressInterfaces: false,
@@ -184,7 +197,9 @@
 		{ value: 'any', label: 'Any' },
 		{ value: 'tcp', label: 'TCP' },
 		{ value: 'udp', label: 'UDP' },
-		{ value: 'icmp', label: 'ICMP' }
+		{ value: 'tcp_udp', label: 'TCP/UDP' },
+		{ value: 'icmp', label: 'ICMPv4' },
+		{ value: 'icmp6', label: 'ICMPv6' }
 	];
 
 	const familyOptions = [
@@ -196,6 +211,15 @@
 	const translateModeOptions = [
 		{ value: 'interface', label: 'Interface Address' },
 		{ value: 'address', label: 'Specific Address' }
+	];
+	const addressScopeOptions = [
+		{ value: 'all', label: 'All Addresses' },
+		{ value: 'private', label: 'Private Only' },
+		{ value: 'public', label: 'Public Only' }
+	];
+	const targetHandlingOptions = [
+		{ value: 'single', label: 'Single Address' },
+		{ value: 'round_robin', label: 'Round-robin Pool' }
 	];
 
 	const ifaceOptions = $derived.by(() => {
@@ -221,7 +245,7 @@
 	);
 
 	const hostTargetOptions = $derived(
-		objects.filter(isSingleAddressHost).map((obj) => ({ label: obj.name, value: String(obj.id) }))
+		objects.filter(isTranslationTarget).map((obj) => ({ label: obj.name, value: String(obj.id) }))
 	);
 
 	const portObjectOptions = $derived(
@@ -233,16 +257,21 @@
 	const showDNATFields = $derived(form.natType === 'dnat');
 	const showSNATOrBINATFields = $derived(form.natType === 'snat' || form.natType === 'binat');
 	const showTranslateTarget = $derived(showSNATOrBINATFields && form.translateMode === 'address');
-	const supportsPorts = $derived(form.protocol === 'tcp' || form.protocol === 'udp');
-	const showPolicyRoutingSettings = $derived(showSNATOrBINATFields);
+	const supportsPorts = $derived(
+		form.protocol === 'tcp' || form.protocol === 'udp' || form.protocol === 'tcp_udp'
+	);
+	const targetIsFQDN = $derived.by(() => {
+		if (!showDNATFields && !showTranslateTarget) return false;
+		const value = showDNATFields ? form.dnatTarget : form.translateTo;
+		return objects.some((object) => object.type === 'FQDN' && String(object.id) === value);
+	});
 	const enforceSingleEgressForPolicyRouting = $derived(
-		showPolicyRoutingSettings && form.policyRoutingEnabled
+		showSNATOrBINATFields && form.policyRoutingEnabled
 	);
 
 	$effect(() => {
-		if (!showPolicyRoutingSettings) {
+		if (!showSNATOrBINATFields) {
 			form.policyRoutingEnabled = false;
-			form.policyRouteGateway = '';
 		}
 		if (!form.policyRoutingEnabled) {
 			form.policyRouteGateway = '';
@@ -255,15 +284,12 @@
 	function resetForm() {
 		if (saving) return;
 		form = formForRule(editingRule);
+		validationError = null;
 	}
 
 	async function save() {
 		if (saving) return;
-
-		if (!form.name.trim()) {
-			toast.error('Rule name is required', { position: 'bottom-center' });
-			return;
-		}
+		validationError = null;
 
 		const src = resolveAddr(form.source);
 		const dst = resolveAddr(form.dest);
@@ -277,6 +303,7 @@
 			showDNATFields && supportsPorts ? resolvePort(form.dstPort) : { raw: '', objId: null };
 		const redirectPort =
 			showDNATFields && supportsPorts ? resolvePort(form.redirectPort) : { raw: '', objId: null };
+		const policyRoutingEnabled = showSNATOrBINATFields && form.policyRoutingEnabled;
 
 		const payload: FirewallNATRuleUpsertRequest = {
 			name: form.name.trim(),
@@ -285,29 +312,28 @@
 			log: form.log,
 			priority: Number(form.priority),
 			natType: form.natType,
-			policyRoutingEnabled: showSNATOrBINATFields ? form.policyRoutingEnabled : false,
-			policyRouteGateway:
-				showSNATOrBINATFields && form.policyRoutingEnabled ? form.policyRouteGateway.trim() : '',
+			passRedirectedTraffic: showDNATFields && form.passRedirectedTraffic,
+			targetAddressScope: targetIsFQDN ? form.targetAddressScope : 'all',
+			targetHandling: targetIsFQDN && form.natType !== 'binat' ? form.targetHandling : 'single',
+			policyRoutingEnabled,
+			policyRouteGateway: policyRoutingEnabled ? form.policyRouteGateway.trim() : '',
 			protocol: form.protocol,
 			family: form.family,
-			ingressInterfaces:
-				showDNATFields || (showSNATOrBINATFields && form.policyRoutingEnabled)
-					? form.ingressInterfaces
-					: [],
+			ingressInterfaces: showDNATFields || policyRoutingEnabled ? form.ingressInterfaces : [],
 			egressInterfaces: showSNATOrBINATFields ? form.egressInterfaces : [],
 			sourceRaw: src.raw,
 			sourceObjId: src.objId,
 			destRaw: dst.raw,
 			destObjId: dst.objId,
 			translateMode: showSNATOrBINATFields ? form.translateMode : undefined,
-			translateToRaw: showTranslateTarget ? translate.raw : '',
-			translateToObjId: showTranslateTarget ? translate.objId : null,
-			dnatTargetRaw: showDNATFields ? dnatTarget.raw : '',
-			dnatTargetObjId: showDNATFields ? dnatTarget.objId : null,
-			dstPortsRaw: showDNATFields && supportsPorts ? dstPort.raw : '',
-			dstPortObjId: showDNATFields && supportsPorts ? dstPort.objId : null,
-			redirectPortsRaw: showDNATFields && supportsPorts ? redirectPort.raw : '',
-			redirectPortObjId: showDNATFields && supportsPorts ? redirectPort.objId : null
+			translateToRaw: translate.raw,
+			translateToObjId: translate.objId,
+			dnatTargetRaw: dnatTarget.raw,
+			dnatTargetObjId: dnatTarget.objId,
+			dstPortsRaw: dstPort.raw,
+			dstPortObjId: dstPort.objId,
+			redirectPortsRaw: redirectPort.raw,
+			redirectPortObjId: redirectPort.objId
 		};
 
 		const validation = validateFirewallNATRulePayload(payload);
@@ -334,6 +360,7 @@
 			}
 
 			handleAPIError(result);
+			validationError = firewallValidationDetail(result.data);
 			toast.error(`Failed to ${edit ? 'update' : 'create'} NAT rule`, {
 				position: 'bottom-center'
 			});
@@ -375,6 +402,11 @@
 
 		<ScrollArea orientation="vertical" class="h-[68vh] pr-2">
 			<div class="space-y-5">
+				{#if validationError}
+					<p role="alert" class="whitespace-pre-wrap break-words text-xs text-destructive">
+						{validationError}
+					</p>
+				{/if}
 				<section>
 					<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
 						Basic Info
@@ -400,9 +432,15 @@
 							classes="space-y-1.5"
 						/>
 					</div>
-					<div class="mt-3 flex flex-row gap-4">
+					<div class="mt-3 flex flex-row flex-wrap gap-4">
 						<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
 						<CustomCheckbox label="Log" bind:checked={form.log} />
+						{#if showDNATFields}
+							<CustomCheckbox
+								label="Pass Redirected Traffic"
+								bind:checked={form.passRedirectedTraffic}
+							/>
+						{/if}
 					</div>
 				</section>
 
@@ -423,7 +461,15 @@
 							label="Protocol"
 							options={protocolOptions}
 							bind:value={form.protocol}
-							onChange={(v) => (form.protocol = v as Form['protocol'])}
+							onChange={(v) => {
+								form.protocol = v as Form['protocol'];
+								if (v === 'icmp') form.family = 'inet';
+								if (v === 'icmp6') form.family = 'inet6';
+								if (v !== 'tcp' && v !== 'udp' && v !== 'tcp_udp') {
+									form.dstPort = '';
+									form.redirectPort = '';
+								}
+							}}
 						/>
 						<SimpleSelect
 							label="Family"
@@ -487,7 +533,7 @@
 						Source & Destination Match
 					</p>
 					<p class="mb-3 text-xs text-muted-foreground">
-						Select a network object or type a raw IP / CIDR. Leave empty to match any.
+						Select an object or enter an IP, CIDR, or (interface). Leave empty to match any.
 					</p>
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<ComboBox
@@ -533,7 +579,7 @@
 									bind:value={form.translateTo}
 									data={hostTargetOptions}
 									classes="space-y-1"
-									placeholder="Host object or 198.51.100.50"
+									placeholder="Host/FQDN object, IP, or (igb0)"
 									width="w-full"
 									allowCustom={true}
 								/>
@@ -582,10 +628,29 @@
 							bind:value={form.dnatTarget}
 							data={hostTargetOptions}
 							classes="space-y-1"
-							placeholder="Host object or 10.0.0.10"
+							placeholder="Host/FQDN object, IP, or (igb1.3)"
 							width="w-full"
 							allowCustom={true}
 						/>
+					</section>
+				{/if}
+
+				{#if targetIsFQDN}
+					<section class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<SimpleSelect
+							label="Address Scope"
+							options={addressScopeOptions}
+							bind:value={form.targetAddressScope}
+							onChange={(v) => (form.targetAddressScope = v as Form['targetAddressScope'])}
+						/>
+						{#if form.natType !== 'binat'}
+							<SimpleSelect
+								label="Target Handling"
+								options={targetHandlingOptions}
+								bind:value={form.targetHandling}
+								onChange={(v) => (form.targetHandling = v as Form['targetHandling'])}
+							/>
+						{/if}
 					</section>
 				{/if}
 

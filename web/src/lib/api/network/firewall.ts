@@ -30,20 +30,25 @@ export interface FirewallTrafficRuleUpsertRequest {
 	log?: boolean;
 	quick?: boolean;
 	priority?: number;
-	action: 'pass' | 'block';
-	direction: 'in' | 'out';
-	protocol: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp';
-	ingressInterfaces: string[];
-	egressInterfaces: string[];
-	family: 'any' | 'inet' | 'inet6';
-	sourceRaw: string;
-	sourceObjId: number | null;
-	destRaw: string;
-	destObjId: number | null;
-	srcPortsRaw: string;
-	srcPortObjId: number | null;
-	dstPortsRaw: string;
-	dstPortObjId: number | null;
+	kind?: 'standard' | 'advanced';
+	rawPF?: string;
+	statePolicy?: 'default' | 'keep' | 'none';
+	blockResponse?: 'default' | 'drop' | 'return';
+	icmpTypes?: string[];
+	action?: 'pass' | 'block';
+	direction?: 'in' | 'out';
+	protocol?: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | 'icmp6';
+	ingressInterfaces?: string[];
+	egressInterfaces?: string[];
+	family?: 'any' | 'inet' | 'inet6';
+	sourceRaw?: string;
+	sourceObjId?: number | null;
+	destRaw?: string;
+	destObjId?: number | null;
+	srcPortsRaw?: string;
+	srcPortObjId?: number | null;
+	dstPortsRaw?: string;
+	dstPortObjId?: number | null;
 }
 
 export interface FirewallNATRuleUpsertRequest {
@@ -53,12 +58,15 @@ export interface FirewallNATRuleUpsertRequest {
 	log?: boolean;
 	priority?: number;
 	natType: 'snat' | 'dnat' | 'binat';
+	passRedirectedTraffic?: boolean;
+	targetAddressScope?: 'all' | 'private' | 'public';
+	targetHandling?: 'single' | 'round_robin';
 	policyRoutingEnabled?: boolean;
 	policyRouteGateway?: string;
 	ingressInterfaces: string[];
 	egressInterfaces: string[];
 	family: 'any' | 'inet' | 'inet6';
-	protocol: 'any' | 'tcp' | 'udp' | 'icmp';
+	protocol: 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | 'icmp6';
 	sourceRaw: string;
 	sourceObjId: number | null;
 	destRaw: string;

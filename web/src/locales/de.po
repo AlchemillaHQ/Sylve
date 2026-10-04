@@ -1872,6 +1872,7 @@ msgstr "Zuerst geändert"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
@@ -5098,7 +5099,7 @@ msgstr "Speichern & zurück zu Sockeln"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "Aktualisieren "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -8580,11 +8581,6 @@ msgstr "NAT-Regeln"
 msgid "Object #{0}"
 msgstr "Objekt #{0}"
 
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-msgid "Rule name is required"
-msgstr "Regelname ist erforderlich"
-
 #. 0: edit ? 'updated' \\: 'created'
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "NAT rule {0}"
@@ -8670,10 +8666,6 @@ msgstr "Quellports"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 msgid "Destination Ports"
 msgstr "Zielports"
-
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-msgid "Select a network object or type a raw IP / CIDR. Leave empty to match any."
-msgstr "Wählen Sie ein Netzwerkobjekt aus oder geben Sie eine rohe IP / CIDR ein. Leer lassen, um auf alle zu passen."
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 msgid "Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave empty for any."
@@ -8822,10 +8814,6 @@ msgid "Translate To"
 msgstr "Übersetzen nach"
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-msgid "Host object or 198.51.100.50"
-msgstr "Hostobjekt oder 198.51.100.50"
-
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "For interface mode, PF uses the selected egress interface address automatically."
 msgstr "Im Interface-Modus verwendet PF automatisch die Adresse des ausgewählten ausgehenden Interfaces."
 
@@ -8836,10 +8824,6 @@ msgstr "DNAT-Ziel"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "Target Host"
 msgstr "Ziel-Host"
-
-#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
-msgid "Host object or 10.0.0.10"
-msgstr "Hostobjekt oder 10.0.0.10"
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "DNAT Ports"
@@ -8951,6 +8935,7 @@ msgstr "Noch keine Protokolleinträge erfasst"
 msgid "Filter"
 msgstr "Filter"
 
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 msgid "Rule Type"
 msgstr "Regeltyp"
@@ -9274,10 +9259,6 @@ msgstr "Host → {0}"
 #: src/lib/components/custom/TreeTableRemote.svelte
 msgid "Columns"
 msgstr "Spalten"
-
-#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-msgid "Select a network object or type a raw IP / CIDR, leave empty to match any."
-msgstr "Wählen Sie ein Netzwerkobjekt aus oder geben Sie eine rohe IP / CIDR ein; leer lassen, um alle zu berücksichtigen."
 
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "Optional scope for policy routing"
@@ -18921,4 +18902,117 @@ msgstr ""
 #. 0: identity
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Operation ID {0}"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Advanced PF"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Drop"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Return"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "Keep State"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/network/firewall/traffic/+page.svelte
+msgid "No State"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "ICMPv4"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "ICMPv6"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "All Addresses"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Private Only"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Public Only"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Single Address"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Round-robin Pool"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Select an object or enter an IP, CIDR, or (interface). Leave empty to match any."
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Host/FQDN object, IP, or (igb0)"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Host/FQDN object, IP, or (igb1.3)"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Pass Redirected Traffic"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Address Scope"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
+msgid "Target Handling"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Standard Rule"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Default"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "PF Filtering Rules"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Inserted unchanged at this row's position. Keep table declarations, macros, options, and NAT in Advanced Firewall Settings."
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "State Handling"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Block Response"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "ICMP Types"
+msgstr ""
+
+#: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+msgid "Any ICMP type"
 msgstr ""

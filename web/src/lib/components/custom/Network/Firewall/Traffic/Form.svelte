@@ -18,7 +18,12 @@
 	import type { SwitchList } from '$lib/types/network/switch';
 	import type { WireGuardClient } from '$lib/types/network/wireguard';
 	import { handleAPIError } from '$lib/utils/http';
-	import { validateFirewallTrafficRulePayload } from '$lib/utils/network/firewall';
+	import {
+		validateFirewallTrafficRulePayload,
+		firewallValidationDetail,
+		icmpTypeOptions,
+		icmp6TypeOptions
+	} from '$lib/utils/network/firewall';
 	import { buildHostInterfaceOptions } from '$lib/utils/network/helpers';
 	import { toast } from 'svelte-sonner';
 
@@ -77,6 +82,11 @@
 	}
 
 	type Form = {
+		kind: 'standard' | 'advanced';
+		rawPF: string;
+		statePolicy: 'default' | 'keep' | 'none';
+		blockResponse: 'default' | 'drop' | 'return';
+		icmpTypes: string[];
 		name: string;
 		description: string;
 		enabled: boolean;
@@ -98,6 +108,11 @@
 	function defaultForm(): Form {
 		const maxPriority = trafficRules.reduce((maximum, rule) => Math.max(maximum, rule.priority), 0);
 		return {
+			kind: 'standard',
+			rawPF: '',
+			statePolicy: 'default',
+			blockResponse: 'default',
+			icmpTypes: [],
 			name: '',
 			description: '',
 			enabled: true,
@@ -120,13 +135,18 @@
 	function formForRule(rule: FirewallTrafficRule | null): Form {
 		if (!rule) return defaultForm();
 		return {
+			kind: rule.kind ?? 'standard',
+			rawPF: rule.rawPF ?? '',
+			statePolicy: rule.statePolicy ?? 'default',
+			blockResponse: rule.blockResponse ?? 'default',
+			icmpTypes: [...(rule.icmpTypes ?? [])],
 			name: rule.name,
 			description: rule.description ?? '',
 			enabled: rule.enabled ?? true,
 			log: rule.log ?? false,
 			quick: rule.quick ?? false,
 			priority: rule.priority,
-			action: rule.action,
+			action: rule.action || 'pass',
 			direction: rule.direction,
 			protocol: rule.protocol,
 			family: rule.family ?? 'any',
@@ -143,8 +163,10 @@
 	// svelte-ignore state_referenced_locally
 	let form = $state(formForRule(editingRule));
 	let saving = $state(false);
+	let validationError = $state<string | null>(null);
 
 	let cbOpen = $state({
+		icmpTypes: false,
 		ingressInterfaces: false,
 		egressInterfaces: false,
 		source: false,
@@ -153,6 +175,20 @@
 		dstPort: false
 	});
 
+	const kindOptions = [
+		{ value: 'standard', label: 'Standard Rule' },
+		{ value: 'advanced', label: 'Advanced PF' }
+	];
+	const stateOptions = [
+		{ value: 'default', label: 'Default' },
+		{ value: 'keep', label: 'Keep State' },
+		{ value: 'none', label: 'No State' }
+	];
+	const blockResponseOptions = [
+		{ value: 'default', label: 'Default' },
+		{ value: 'drop', label: 'Drop' },
+		{ value: 'return', label: 'Return' }
+	];
 	const actionOptions = [
 		{ value: 'pass', label: 'Pass' },
 		{ value: 'block', label: 'Block' }
@@ -166,7 +202,8 @@
 		{ value: 'tcp', label: 'TCP' },
 		{ value: 'udp', label: 'UDP' },
 		{ value: 'tcp_udp', label: 'TCP/UDP' },
-		{ value: 'icmp', label: 'ICMP' }
+		{ value: 'icmp', label: 'ICMPv4' },
+		{ value: 'icmp6', label: 'ICMPv6' }
 	];
 	const familyOptions = [
 		{ value: 'any', label: 'Any' },
@@ -209,19 +246,17 @@
 	);
 	const isInbound = $derived(form.direction === 'in');
 	const isOutbound = $derived(form.direction === 'out');
+	const showICMPTypes = $derived(form.protocol === 'icmp' || form.protocol === 'icmp6');
 
 	function resetForm() {
 		if (saving) return;
 		form = formForRule(editingRule);
+		validationError = null;
 	}
 
 	async function save() {
 		if (saving) return;
-
-		if (!form.name.trim()) {
-			toast.error('Rule name is required', { position: 'bottom-center' });
-			return;
-		}
+		validationError = null;
 
 		const src = resolveAddr(form.source);
 		const dst = resolveAddr(form.dest);
@@ -232,23 +267,31 @@
 			name: form.name.trim(),
 			description: form.description.trim(),
 			enabled: form.enabled,
-			log: form.log,
-			quick: form.quick,
 			priority: Number(form.priority),
-			action: form.action as 'pass' | 'block',
-			direction: form.direction as 'in' | 'out',
-			protocol: form.protocol as 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp',
-			family: form.family as 'any' | 'inet' | 'inet6',
-			ingressInterfaces: isInbound ? form.ingressInterfaces : [],
-			egressInterfaces: isOutbound ? form.egressInterfaces : [],
-			sourceRaw: src.raw,
-			sourceObjId: src.objId,
-			destRaw: dst.raw,
-			destObjId: dst.objId,
-			srcPortsRaw: sp.raw,
-			srcPortObjId: sp.objId,
-			dstPortsRaw: dp.raw,
-			dstPortObjId: dp.objId
+			...(form.kind === 'advanced'
+				? { kind: 'advanced', rawPF: form.rawPF }
+				: {
+						kind: 'standard',
+						statePolicy: form.action === 'pass' ? form.statePolicy : 'default',
+						blockResponse: form.action === 'block' ? form.blockResponse : 'default',
+						icmpTypes: showICMPTypes ? form.icmpTypes : [],
+						log: form.log,
+						quick: form.quick,
+						action: form.action as 'pass' | 'block',
+						direction: form.direction as 'in' | 'out',
+						protocol: form.protocol as 'any' | 'tcp' | 'udp' | 'tcp_udp' | 'icmp' | 'icmp6',
+						family: form.family as 'any' | 'inet' | 'inet6',
+						ingressInterfaces: isInbound ? form.ingressInterfaces : [],
+						egressInterfaces: isOutbound ? form.egressInterfaces : [],
+						sourceRaw: src.raw,
+						sourceObjId: src.objId,
+						destRaw: dst.raw,
+						destObjId: dst.objId,
+						srcPortsRaw: sp.raw,
+						srcPortObjId: sp.objId,
+						dstPortsRaw: dp.raw,
+						dstPortObjId: dp.objId
+					})
 		};
 
 		const validation = validateFirewallTrafficRulePayload(payload);
@@ -275,6 +318,7 @@
 			}
 
 			handleAPIError(result);
+			validationError = firewallValidationDetail(result.data);
 			toast.error(`Failed to ${edit ? 'update' : 'create'} traffic rule`, {
 				position: 'bottom-center'
 			});
@@ -316,6 +360,17 @@
 
 		<ScrollArea orientation="vertical" class="h-[68vh] pr-2">
 			<div class="space-y-5">
+				{#if validationError}
+					<p role="alert" class="whitespace-pre-wrap break-words text-xs text-destructive">
+						{validationError}
+					</p>
+				{/if}
+				<SimpleSelect
+					label="Rule Type"
+					options={kindOptions}
+					bind:value={form.kind}
+					onChange={(v) => (form.kind = v as Form['kind'])}
+				/>
 				<section>
 					<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 						<CustomValueInput
@@ -342,153 +397,209 @@
 
 				<div class="border-t"></div>
 
-				<!-- Rule Settings -->
-				<section>
-					<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Rule Settings
+				{#if form.kind === 'advanced'}
+					<CustomValueInput
+						label="PF Filtering Rules"
+						placeholder="block in from <sshguard> to any"
+						type="textarea"
+						textAreaClasses="min-h-64 font-mono text-xs"
+						bind:value={form.rawPF}
+					/>
+					<p class="text-xs text-muted-foreground">
+						Inserted unchanged at this row's position. Keep table declarations, macros, options, and
+						NAT in Advanced Firewall Settings.
 					</p>
-					<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-						<SimpleSelect
-							label="Action"
-							options={actionOptions}
-							bind:value={form.action}
-							onChange={(v) => (form.action = v)}
-						/>
-						<SimpleSelect
-							label="Direction"
-							options={directionOptions}
-							bind:value={form.direction}
-							onChange={(v) => (form.direction = v)}
-						/>
-						<SimpleSelect
-							label="Protocol"
-							options={protocolOptions}
-							bind:value={form.protocol}
-							onChange={(v) => (form.protocol = v)}
-						/>
-						<SimpleSelect
-							label="Family"
-							options={familyOptions}
-							bind:value={form.family}
-							onChange={(v) => (form.family = v)}
-						/>
-					</div>
-				</section>
-
-				<div class="border-t"></div>
-
-				<!-- Interfaces -->
-				<section>
-					<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Interfaces
-					</p>
-					{#if interfaces.length > 0}
-						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<ComboBox
-								bind:open={cbOpen.ingressInterfaces}
-								label="Ingress Interfaces"
-								bind:value={form.ingressInterfaces}
-								data={ifaceOptions}
-								classes="space-y-1"
-								placeholder={isOutbound ? 'Not used for outbound rules' : 'Any ingress interface'}
-								disabled={isOutbound}
-								width="w-full"
-								multiple={true}
-							/>
-							<ComboBox
-								bind:open={cbOpen.egressInterfaces}
-								label="Egress Interfaces"
-								bind:value={form.egressInterfaces}
-								data={ifaceOptions}
-								classes="space-y-1"
-								placeholder={isInbound ? 'Not used for inbound rules' : 'Any egress interface'}
-								disabled={isInbound}
-								width="w-full"
-								multiple={true}
-							/>
-						</div>
-					{:else}
-						<p class="text-xs text-muted-foreground">
-							No interfaces available — rule matches on any interface direction.
-						</p>
-					{/if}
-				</section>
-
-				<div class="border-t"></div>
-
-				<!-- Source & Destination -->
-				<section>
-					<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Source & Destination
-					</p>
-					<p class="mb-3 text-xs text-muted-foreground">
-						Select a network object or type a raw IP / CIDR, leave empty to match any.
-					</p>
-					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-						<ComboBox
-							bind:open={cbOpen.source}
-							label="Source"
-							bind:value={form.source}
-							data={addrObjectOptions}
-							classes="space-y-1"
-							placeholder="any - object or 192.168.1.0/24"
-							width="w-full"
-							allowCustom={true}
-						/>
-						<ComboBox
-							bind:open={cbOpen.dest}
-							label="Destination"
-							bind:value={form.dest}
-							data={addrObjectOptions}
-							classes="space-y-1"
-							placeholder="any - object or 10.0.0.0/8"
-							width="w-full"
-							allowCustom={true}
-						/>
-					</div>
-				</section>
-
-				{#if showPorts}
-					<div class="border-t"></div>
-
-					<!-- Ports -->
+				{:else}
+					<!-- Rule Settings -->
 					<section>
 						<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-							Ports
+							Rule Settings
+						</p>
+						<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+							<SimpleSelect
+								label="Action"
+								options={actionOptions}
+								bind:value={form.action}
+								onChange={(v) => {
+									form.action = v;
+									form.statePolicy = 'default';
+									form.blockResponse = 'default';
+								}}
+							/>
+							<SimpleSelect
+								label="Direction"
+								options={directionOptions}
+								bind:value={form.direction}
+								onChange={(v) => (form.direction = v)}
+							/>
+							<SimpleSelect
+								label="Protocol"
+								options={protocolOptions}
+								bind:value={form.protocol}
+								onChange={(v) => {
+									form.protocol = v;
+									form.icmpTypes = [];
+									if (v === 'icmp') form.family = 'inet';
+									if (v === 'icmp6') form.family = 'inet6';
+									if (v !== 'tcp' && v !== 'udp' && v !== 'tcp_udp') {
+										form.srcPort = '';
+										form.dstPort = '';
+									}
+								}}
+							/>
+							<SimpleSelect
+								label="Family"
+								options={familyOptions}
+								bind:value={form.family}
+								onChange={(v) => (form.family = v)}
+							/>
+						</div>
+						<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+							{#if form.action === 'pass'}
+								<SimpleSelect
+									label="State Handling"
+									options={stateOptions}
+									bind:value={form.statePolicy}
+									onChange={(v) => (form.statePolicy = v as Form['statePolicy'])}
+								/>
+							{:else}
+								<SimpleSelect
+									label="Block Response"
+									options={blockResponseOptions}
+									bind:value={form.blockResponse}
+									onChange={(v) => (form.blockResponse = v as Form['blockResponse'])}
+								/>
+							{/if}
+							{#if showICMPTypes}
+								<ComboBox
+									bind:open={cbOpen.icmpTypes}
+									label="ICMP Types"
+									bind:value={form.icmpTypes}
+									data={form.protocol === 'icmp6' ? icmp6TypeOptions : icmpTypeOptions}
+									placeholder="Any ICMP type"
+									multiple={true}
+									width="w-full"
+								/>
+							{/if}
+						</div>
+					</section>
+
+					<div class="border-t"></div>
+
+					<!-- Interfaces -->
+					<section>
+						<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Interfaces
+						</p>
+						{#if interfaces.length > 0}
+							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<ComboBox
+									bind:open={cbOpen.ingressInterfaces}
+									label="Ingress Interfaces"
+									bind:value={form.ingressInterfaces}
+									data={ifaceOptions}
+									classes="space-y-1"
+									placeholder={isOutbound ? 'Not used for outbound rules' : 'Any ingress interface'}
+									disabled={isOutbound}
+									width="w-full"
+									multiple={true}
+								/>
+								<ComboBox
+									bind:open={cbOpen.egressInterfaces}
+									label="Egress Interfaces"
+									bind:value={form.egressInterfaces}
+									data={ifaceOptions}
+									classes="space-y-1"
+									placeholder={isInbound ? 'Not used for inbound rules' : 'Any egress interface'}
+									disabled={isInbound}
+									width="w-full"
+									multiple={true}
+								/>
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">
+								No interfaces available — rule matches on any interface direction.
+							</p>
+						{/if}
+					</section>
+
+					<div class="border-t"></div>
+
+					<!-- Source & Destination -->
+					<section>
+						<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+							Source & Destination
 						</p>
 						<p class="mb-3 text-xs text-muted-foreground">
-							Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave empty for any.
+							Select an object or enter an IP, CIDR, or (interface). Leave empty to match any.
 						</p>
 						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<ComboBox
-								bind:open={cbOpen.srcPort}
-								label="Source Ports"
-								bind:value={form.srcPort}
-								data={portObjectOptions}
+								bind:open={cbOpen.source}
+								label="Source"
+								bind:value={form.source}
+								data={addrObjectOptions}
 								classes="space-y-1"
-								placeholder="any - object or 1024:65535"
+								placeholder="any - object, IP/CIDR, or (igb1.3)"
 								width="w-full"
 								allowCustom={true}
 							/>
 							<ComboBox
-								bind:open={cbOpen.dstPort}
-								label="Destination Ports"
-								bind:value={form.dstPort}
-								data={portObjectOptions}
+								bind:open={cbOpen.dest}
+								label="Destination"
+								bind:value={form.dest}
+								data={addrObjectOptions}
 								classes="space-y-1"
-								placeholder="any - object or 80, 443"
+								placeholder="any - object, IP/CIDR, or (igb0)"
 								width="w-full"
 								allowCustom={true}
 							/>
 						</div>
 					</section>
-				{/if}
 
-				<div class="mt-3 flex flex-row gap-4">
-					<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
-					<CustomCheckbox label="Log" bind:checked={form.log} />
-					<CustomCheckbox label="Quick" bind:checked={form.quick} />
-				</div>
+					{#if showPorts}
+						<div class="border-t"></div>
+
+						<!-- Ports -->
+						<section>
+							<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Ports
+							</p>
+							<p class="mb-3 text-xs text-muted-foreground">
+								Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave empty for
+								any.
+							</p>
+							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<ComboBox
+									bind:open={cbOpen.srcPort}
+									label="Source Ports"
+									bind:value={form.srcPort}
+									data={portObjectOptions}
+									classes="space-y-1"
+									placeholder="any - object or 1024:65535"
+									width="w-full"
+									allowCustom={true}
+								/>
+								<ComboBox
+									bind:open={cbOpen.dstPort}
+									label="Destination Ports"
+									bind:value={form.dstPort}
+									data={portObjectOptions}
+									classes="space-y-1"
+									placeholder="any - object or 80, 443"
+									width="w-full"
+									allowCustom={true}
+								/>
+							</div>
+						</section>
+					{/if}
+
+					<div class="mt-3 flex flex-row gap-4">
+						<CustomCheckbox label="Log" bind:checked={form.log} />
+						<CustomCheckbox label="Quick" bind:checked={form.quick} />
+					</div>
+				{/if}
+				<CustomCheckbox label="Enabled" bind:checked={form.enabled} />
 			</div>
 		</ScrollArea>
 

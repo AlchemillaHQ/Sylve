@@ -269,6 +269,28 @@ func TestSetServiceEnabledRestoresExternalRuntimeStateAfterFailure(t *testing.T)
 	}
 }
 
+func TestSetServiceEnabledFailedFirewallEnableDoesNotDisableIndependentPF(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := db.Create(&models.BasicSettings{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var states []bool
+	applyFailure := errors.New("PF candidate rejected; previous policy left running")
+	service := &Service{DB: db}
+	_, err := service.SetServiceEnabled(t.Context(), models.Firewall, true,
+		func(_ context.Context, _ models.AvailableService, enabled bool) error {
+			states = append(states, enabled)
+			return applyFailure
+		})
+	if !errors.Is(err, applyFailure) || !reflect.DeepEqual(states, []bool{true}) {
+		t.Fatalf("failed first enable must not invoke disable: states=%v err=%v", states, err)
+	}
+	var settings models.BasicSettings
+	if err := db.First(&settings).Error; err != nil || hasService(settings.Services, models.Firewall) {
+		t.Fatalf("firewall database flag not restored: %+v err=%v", settings, err)
+	}
+}
+
 func TestSetServiceEnabledRestoresDHCPRuntimeStateAfterFailure(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
 	if err := db.Create(&models.BasicSettings{

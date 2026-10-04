@@ -846,7 +846,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new local Sylve user",
+                "description": "Create a new local Sylve user; passwords are limited to 72 UTF-8 bytes",
                 "consumes": [
                     "application/json"
                 ],
@@ -958,7 +958,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership",
+                "description": "Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership; the optional Sylve password is limited to 72 UTF-8 bytes",
                 "consumes": [
                     "application/json"
                 ],
@@ -1094,7 +1094,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create one managed Unix/PAM account and its corresponding Sylve user record, synchronizing the required password and optional Samba credential",
+                "description": "Create one managed Unix/PAM account and its corresponding Sylve user record, synchronizing the required password and optional Samba credential; passwords are limited to 72 UTF-8 bytes",
                 "consumes": [
                     "application/json"
                 ],
@@ -1224,7 +1224,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Replace the editable representation of a user identified by its positive database ID; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit",
+                "description": "Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit",
                 "consumes": [
                     "application/json"
                 ],
@@ -33129,6 +33129,9 @@ const docTemplate = `{
                     "description": "snat|dnat|binat",
                     "type": "string"
                 },
+                "passRedirectedTraffic": {
+                    "type": "boolean"
+                },
                 "policyRouteGateway": {
                     "type": "string"
                 },
@@ -33139,7 +33142,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "protocol": {
-                    "description": "any|tcp|udp|icmp",
                     "type": "string"
                 },
                 "redirectPortObj": {
@@ -33158,6 +33160,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "sourceRaw": {
+                    "type": "string"
+                },
+                "targetAddressScope": {
+                    "type": "string"
+                },
+                "targetHandling": {
                     "type": "string"
                 },
                 "translateMode": {
@@ -33186,6 +33194,9 @@ const docTemplate = `{
             "properties": {
                 "action": {
                     "description": "pass|block",
+                    "type": "string"
+                },
+                "blockResponse": {
                     "type": "string"
                 },
                 "createdAt": {
@@ -33228,6 +33239,12 @@ const docTemplate = `{
                     "description": "any|inet|inet6",
                     "type": "string"
                 },
+                "icmpTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -33236,6 +33253,9 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "kind": {
+                    "type": "string"
                 },
                 "log": {
                     "type": "boolean"
@@ -33247,11 +33267,13 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "protocol": {
-                    "description": "any|tcp|udp|tcp_udp|icmp",
                     "type": "string"
                 },
                 "quick": {
                     "type": "boolean"
+                },
+                "rawPF": {
+                    "type": "string"
                 },
                 "sourceObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
@@ -33269,6 +33291,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "srcPortsRaw": {
+                    "type": "string"
+                },
+                "statePolicy": {
                     "type": "string"
                 },
                 "updatedAt": {
@@ -37600,6 +37625,9 @@ const docTemplate = `{
                         "binat"
                     ]
                 },
+                "passRedirectedTraffic": {
+                    "type": "boolean"
+                },
                 "policyRouteGateway": {
                     "type": "string",
                     "maxLength": 64
@@ -37617,7 +37645,9 @@ const docTemplate = `{
                         "any",
                         "tcp",
                         "udp",
-                        "icmp"
+                        "tcp_udp",
+                        "icmp",
+                        "icmp6"
                     ]
                 },
                 "redirectPortObjId": {
@@ -37633,6 +37663,21 @@ const docTemplate = `{
                 "sourceRaw": {
                     "type": "string",
                     "maxLength": 2048
+                },
+                "targetAddressScope": {
+                    "type": "string",
+                    "enum": [
+                        "all",
+                        "private",
+                        "public"
+                    ]
+                },
+                "targetHandling": {
+                    "type": "string",
+                    "enum": [
+                        "single",
+                        "round_robin"
+                    ]
                 },
                 "translateMode": {
                     "type": "string",
@@ -37653,13 +37698,10 @@ const docTemplate = `{
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.UpsertFirewallTrafficRuleRequest": {
             "type": "object",
             "required": [
-                "action",
-                "direction",
                 "egressInterfaces",
-                "family",
+                "icmpTypes",
                 "ingressInterfaces",
-                "name",
-                "protocol"
+                "name"
             ],
             "properties": {
                 "action": {
@@ -37667,6 +37709,14 @@ const docTemplate = `{
                     "enum": [
                         "pass",
                         "block"
+                    ]
+                },
+                "blockResponse": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "drop",
+                        "return"
                     ]
                 },
                 "description": {
@@ -37713,6 +37763,14 @@ const docTemplate = `{
                         "inet6"
                     ]
                 },
+                "icmpTypes": {
+                    "type": "array",
+                    "maxItems": 256,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "ingressInterfaces": {
                     "type": "array",
                     "maxItems": 64,
@@ -37720,6 +37778,13 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "kind": {
+                    "type": "string",
+                    "enum": [
+                        "standard",
+                        "advanced"
+                    ]
                 },
                 "log": {
                     "type": "boolean"
@@ -37739,11 +37804,16 @@ const docTemplate = `{
                         "tcp",
                         "udp",
                         "tcp_udp",
-                        "icmp"
+                        "icmp",
+                        "icmp6"
                     ]
                 },
                 "quick": {
                     "type": "boolean"
+                },
+                "rawPF": {
+                    "type": "string",
+                    "maxLength": 262144
                 },
                 "sourceObjId": {
                     "type": "integer"
@@ -37758,6 +37828,14 @@ const docTemplate = `{
                 "srcPortsRaw": {
                     "type": "string",
                     "maxLength": 2048
+                },
+                "statePolicy": {
+                    "type": "string",
+                    "enum": [
+                        "default",
+                        "keep",
+                        "none"
+                    ]
                 }
             }
         },
@@ -41185,7 +41263,7 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string",
-                    "maxLength": 128,
+                    "maxLength": 72,
                     "minLength": 8
                 },
                 "primaryGroupId": {
@@ -41250,7 +41328,8 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "password": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 72
                 },
                 "primaryGroupId": {
                     "type": "integer"
@@ -41311,7 +41390,8 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "password": {
-                    "type": "string"
+                    "type": "string",
+                    "maxLength": 72
                 },
                 "primaryGroupId": {
                     "type": "integer"
@@ -41403,7 +41483,7 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string",
-                    "maxLength": 128,
+                    "maxLength": 72,
                     "minLength": 8
                 },
                 "username": {

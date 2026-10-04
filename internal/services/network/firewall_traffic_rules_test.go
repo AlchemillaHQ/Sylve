@@ -18,6 +18,82 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 )
 
+type legacyFirewallTrafficRule struct {
+	ID        uint `gorm:"primaryKey"`
+	Name      string
+	Visible   bool
+	Enabled   bool
+	Quick     bool
+	Priority  int
+	Action    string
+	Direction string
+	Family    string
+	Protocol  string
+	SourceRaw string
+	DestRaw   string
+}
+
+func (legacyFirewallTrafficRule) TableName() string { return "firewall_traffic_rules" }
+
+type legacyFirewallNATRule struct {
+	ID            uint `gorm:"primaryKey"`
+	Name          string
+	Visible       bool
+	Enabled       bool
+	Priority      int
+	NATType       string
+	Family        string
+	Protocol      string
+	TranslateMode string
+	DNATTargetRaw string
+}
+
+func (legacyFirewallNATRule) TableName() string { return "firewall_nat_rules" }
+
+func TestFirewallMigrationPreservesExistingRuleDefaultsAndFlags(t *testing.T) {
+	svc, db := newNetworkServiceForTest(t, &legacyFirewallTrafficRule{}, &legacyFirewallNATRule{})
+	traffic := legacyFirewallTrafficRule{ID: 17, Name: "legacy", Visible: true, Enabled: false, Priority: 4,
+		Action: "pass", Direction: "in", Family: "inet", Protocol: "any", SourceRaw: "any", DestRaw: "any"}
+	nat := legacyFirewallNATRule{ID: 23, Name: "legacy-forward", Visible: true, Enabled: false, Priority: 5,
+		NATType: "dnat", Family: "inet", Protocol: "tcp", TranslateMode: "interface", DNATTargetRaw: "10.0.0.10"}
+	if err := db.Create(&traffic).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&nat).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&networkModels.FirewallTrafficRule{}, &networkModels.FirewallNATRule{}); err != nil {
+		t.Fatal(err)
+	}
+	var migratedTraffic networkModels.FirewallTrafficRule
+	var migratedNAT networkModels.FirewallNATRule
+	if err := db.First(&migratedTraffic, traffic.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.First(&migratedNAT, nat.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if migratedTraffic.Kind != "standard" || migratedTraffic.RawPF != "" || migratedTraffic.StatePolicy != "default" ||
+		migratedTraffic.BlockResponse != "default" || len(migratedTraffic.ICMPTypes) != 0 || migratedTraffic.Enabled || migratedTraffic.Quick || migratedTraffic.Priority != traffic.Priority {
+		t.Fatalf("incompatible traffic migration: %+v", migratedTraffic)
+	}
+	if migratedNAT.PassRedirectedTraffic || migratedNAT.TargetAddressScope != "all" || migratedNAT.TargetHandling != "single" ||
+		migratedNAT.Enabled || migratedNAT.Priority != nat.Priority || migratedNAT.DNATTargetRaw != nat.DNATTargetRaw {
+		t.Fatalf("incompatible NAT migration: %+v", migratedNAT)
+	}
+	migratedTraffic.Enabled = true
+	text, err := svc.renderTrafficRules([]networkModels.FirewallTrafficRule{migratedTraffic}, nil)
+	if err != nil || !strings.Contains(text, `pass in inet from any to any label "sylve_trf_17"`) || strings.Contains(text, " state") {
+		t.Fatalf("default traffic rendering changed: text=%s err=%v", text, err)
+	}
+	migratedNAT.Enabled = true
+	migratedNAT.IngressInterfaces = []string{"em0"}
+	text, err = svc.renderNATRules([]networkModels.FirewallNATRule{migratedNAT}, nil)
+	if err != nil || strings.Contains(text, "rdr pass") || !strings.Contains(text, "rdr on em0 inet proto tcp") {
+		t.Fatalf("default NAT rendering changed: text=%s err=%v", text, err)
+	}
+}
+
 func TestValidateFirewallTrafficRuleRequestRejectsAmbiguousSelectorsAndUnsafeInterfaces(t *testing.T) {
 	objectID := uint(1)
 	tests := []struct {
@@ -165,12 +241,9 @@ func TestDeleteFirewallTrafficRulesRestoresCompleteSnapshotAfterApplyFailure(t *
 	applyCalls := 0
 	err = svc.deleteFirewallTrafficRules([]uint{rules[1].ID, rules[2].ID}, func() error {
 		applyCalls++
-		if applyCalls == 1 {
-			return applyErr
-		}
-		return nil
+		return applyErr
 	})
-	if !errors.Is(err, applyErr) || applyCalls != 2 {
+	if !errors.Is(err, applyErr) || applyCalls != 1 {
 		t.Fatalf("unexpected apply/rollback result: err=%v applyCalls=%d", err, applyCalls)
 	}
 
@@ -252,7 +325,9 @@ func TestRestoreFirewallTrafficRulesAfterApplyFailureRestoresExactSnapshot(t *te
 	svc, db := newNetworkServiceForTest(t, &networkModels.FirewallTrafficRule{})
 	rules := []networkModels.FirewallTrafficRule{
 		{Name: "managed", Visible: true, Enabled: true, Priority: 1, Action: "pass", Direction: "in", Protocol: "any", Family: "any"},
-		{Name: "visible", Visible: true, Enabled: false, Priority: 2, Action: "block", Direction: "out", Protocol: "any", Family: "inet"},
+		{Name: "visible", Visible: true, Enabled: false, Priority: 2, Action: "block", Direction: "out", Protocol: "any", Family: "inet", BlockResponse: "return"},
+		{Name: "SSHGuard", Visible: true, Enabled: true, Priority: 3, Kind: "advanced", RawPF: "block in from <sshguard>\n"},
+		{Name: "ICMPv6", Visible: true, Enabled: true, Priority: 4, Action: "pass", Direction: "in", Protocol: "icmp6", Family: "inet6", StatePolicy: "keep", ICMPTypes: []string{"neighbrsol", "neighbradv"}},
 	}
 	if err := db.Create(&rules).Error; err != nil {
 		t.Fatal(err)
@@ -268,7 +343,7 @@ func TestRestoreFirewallTrafficRulesAfterApplyFailureRestoresExactSnapshot(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Delete(&networkModels.FirewallTrafficRule{}, rules[1].ID).Error; err != nil {
+	if err := db.Delete(&networkModels.FirewallTrafficRule{}, []uint{rules[1].ID, rules[2].ID}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Create(&networkModels.FirewallTrafficRule{
@@ -278,22 +353,18 @@ func TestRestoreFirewallTrafficRulesAfterApplyFailureRestoresExactSnapshot(t *te
 		t.Fatal(err)
 	}
 
-	reapplyCalls := 0
 	applyErr := errors.New("apply failed")
-	err = svc.restoreFirewallTrafficRulesAfterApplyFailure(snapshot, applyErr, func() error {
-		reapplyCalls++
-		return nil
-	})
-	if !errors.Is(err, applyErr) || reapplyCalls != 1 {
-		t.Fatalf("unexpected rollback result: err=%v reapplyCalls=%d", err, reapplyCalls)
+	err = svc.restoreFirewallTrafficRulesAfterApplyFailure(snapshot, applyErr)
+	if !errors.Is(err, applyErr) {
+		t.Fatalf("unexpected rollback result: %v", err)
 	}
 
-	var restored []networkModels.FirewallTrafficRule
-	if err := db.Order("id asc").Find(&restored).Error; err != nil {
+	restored, err := snapshotFirewallTrafficRules(db)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if len(restored) != 2 || restored[0].Name != "managed" || restored[0].Visible || restored[1].Name != "visible" || restored[1].Enabled {
-		t.Fatalf("snapshot was not restored exactly: %+v", restored)
+	if !reflect.DeepEqual(restored, snapshot) {
+		t.Fatalf("snapshot was not restored exactly:\nbefore=%+v\nafter=%+v", snapshot, restored)
 	}
 }
 

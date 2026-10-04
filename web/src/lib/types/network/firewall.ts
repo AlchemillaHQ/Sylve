@@ -45,9 +45,14 @@ export const FirewallTrafficRuleSchema = z.object({
 		.nullish()
 		.transform((value) => value ?? false),
 	priority: z.number().int(),
-	action: z.enum(['pass', 'block']),
+	kind: z.enum(['standard', 'advanced']).optional().default('standard'),
+	rawPF: nullableString,
+	statePolicy: z.enum(['default', 'keep', 'none']).optional().default('default'),
+	blockResponse: z.enum(['default', 'drop', 'return']).optional().default('default'),
+	icmpTypes: nullableStringArray,
+	action: z.enum(['pass', 'block', '']),
 	direction: z.enum(['in', 'out']),
-	protocol: z.enum(['any', 'tcp', 'udp', 'tcp_udp', 'icmp']),
+	protocol: z.enum(['any', 'tcp', 'udp', 'tcp_udp', 'icmp', 'icmp6']),
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
 	family: z.enum(['any', 'inet', 'inet6']).optional().default('any'),
@@ -78,6 +83,9 @@ export const FirewallNATRuleSchema = z.object({
 		.transform((value) => value ?? false),
 	priority: z.number().int(),
 	natType: natTypeSchema,
+	passRedirectedTraffic: z.boolean().optional().default(false),
+	targetAddressScope: z.enum(['all', 'private', 'public']).optional().default('all'),
+	targetHandling: z.enum(['single', 'round_robin']).optional().default('single'),
 	policyRoutingEnabled: z
 		.boolean()
 		.nullish()
@@ -86,7 +94,7 @@ export const FirewallNATRuleSchema = z.object({
 	ingressInterfaces: nullableStringArray,
 	egressInterfaces: nullableStringArray,
 	family: z.enum(['any', 'inet', 'inet6']).optional().default('any'),
-	protocol: z.enum(['any', 'tcp', 'udp', 'icmp']),
+	protocol: z.enum(['any', 'tcp', 'udp', 'tcp_udp', 'icmp', 'icmp6']),
 	sourceRaw: nullableString,
 	sourceObjId: z.number().int().nullable().optional().default(null),
 	destRaw: nullableString,
