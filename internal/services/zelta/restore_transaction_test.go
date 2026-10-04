@@ -213,7 +213,7 @@ func TestIntegrationActivateTargetGenerationsRollsBackEarlierSwapRealZFS(t *test
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 
 	backupRoot := pool + "/backup"
 	activeA := backupRoot + "/a"
@@ -228,6 +228,7 @@ func TestIntegrationActivateTargetGenerationsRollsBackEarlierSwapRealZFS(t *test
 
 	service := &Service{GZFS: client}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		SSHHost:    sshHost,
 		SSHKeyPath: sshKeyPath,
 		BackupRoot: backupRoot,
@@ -282,7 +283,7 @@ func TestIntegrationRollbackTargetGenerationResumesPartialSwapRealZFS(t *testing
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 
 	backupRoot := pool + "/backup"
 	active := backupRoot + "/data"
@@ -296,6 +297,7 @@ func TestIntegrationRollbackTargetGenerationResumesPartialSwapRealZFS(t *testing
 
 	service := &Service{GZFS: client}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		SSHHost:    sshHost,
 		SSHKeyPath: sshKeyPath,
 		BackupRoot: backupRoot,
@@ -329,7 +331,7 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 	zfstest.SkipIfUnavailable(t)
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 
 	backupRoot := pool + "/backup"
 	remoteDataset := backupRoot + "/encrypted"
@@ -355,6 +357,7 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupEvent{})
 	service := &Service{DB: database, GZFS: client}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		ID:         57,
 		SSHHost:    sshHost,
 		SSHKeyPath: sshKeyPath,

@@ -38,7 +38,7 @@ func requireBackupSnapshotCount(t *testing.T, dataset, prefix string, want int) 
 
 func TestIntegrationRunBackupJobMultiPoolPruneFailureIsReportedAndRetryable(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolA, client := zfstest.DedicatedPool(t)
 	poolB, _ := zfstest.DedicatedPool(t)
@@ -79,6 +79,7 @@ func TestIntegrationRunBackupJobMultiPoolPruneFailureIsReportedAndRetryable(t *t
 	if err := svc.DB.Create(&target).Error; err != nil {
 		t.Fatalf("seed backup target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, svc.DB, &target, hostKey)
 	vm := vmModels.VM{RID: rid, Name: "multi-pool-prune-error"}
 	if err := svc.DB.Create(&vm).Error; err != nil {
 		t.Fatalf("seed VM: %v", err)

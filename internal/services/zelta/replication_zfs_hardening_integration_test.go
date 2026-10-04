@@ -25,6 +25,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/remoteexec"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
@@ -110,6 +111,7 @@ func setRealZFSReadonly(t *testing.T, dataset string) {
 
 func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
+	hostKey := requireLocalhostSSHHostKey(t, "root@127.0.0.1", "")
 
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -125,6 +127,7 @@ func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	targetRoot := pool + "/replicas"
 	targetDataset := targetRoot + "/guest"
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		SSHHost:    "root@127.0.0.1",
 		SSHPort:    22,
 		BackupRoot: targetRoot,
@@ -132,19 +135,6 @@ func TestIntegrationCleanTargetFirstReplicationRealZFSOverSSH(t *testing.T) {
 	service := &Service{}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	preflight := exec.CommandContext(
-		ctx,
-		"ssh",
-		"-n",
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
-		"-o", "ConnectTimeout=3",
-		"root@127.0.0.1",
-		"true",
-	)
-	if output, err := preflight.CombinedOutput(); err != nil {
-		t.Skipf("localhost root SSH is unavailable for real replication integration: %v (%s)", err, output)
-	}
 	if output, err := service.runTargetSSH(ctx, target, "zfs", "version"); err != nil {
 		t.Fatalf("production target SSH invocation failed after localhost preflight: %v (%s)", err, output)
 	}
@@ -554,8 +544,45 @@ func TestIntegrationReplicationPolicyDeleteHeldSnapshotKeepsDeletingRealZFS(t *t
 	}
 }
 
+func TestIntegrationPolicyGenerationCancellationDuringSSHPreflightCleansSourceSnapshotRealZFS(t *testing.T) {
+	testPolicyGenerationCancellationCleansSourceSnapshotRealZFS(t, false)
+}
+
 func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnapshotRealZFS(t *testing.T) {
+	testPolicyGenerationCancellationCleansSourceSnapshotRealZFS(t, true)
+}
+
+func testPolicyGenerationCancellationCleansSourceSnapshotRealZFS(t *testing.T, bypassSSHPreflight bool) {
+	t.Helper()
 	zfstest.SkipIfUnavailable(t)
+	resetZeltaTestGlobals(t)
+	step := "SSH preflight"
+	if bypassSSHPreflight {
+		step = "first readiness probe"
+		ssh, err := exec.LookPath("ssh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		preflight, err := remoteexec.NewCommand("zfs", "version")
+		if err != nil {
+			t.Fatal(err)
+		}
+		preflightArgument, err := preflight.SSHArgument()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ZELTA_TEST_SSH_PREFLIGHT_COMMAND", preflightArgument)
+		dir := t.TempDir()
+		// Let the connectivity preflight succeed, then use real SSH against
+		// the cancellation listener for the first dataset readiness probe.
+		script := "#!/bin/sh\nfor arg do command=\"$arg\"; done\n" +
+			"if [ \"$command\" = \"$ZELTA_TEST_SSH_PREFLIGHT_COMMAND\" ]; then exit 0; fi\n" +
+			fmt.Sprintf("exec %q \"$@\"\n", ssh)
+		if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
 
 	pool, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -597,7 +624,7 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 	}
 	policy := &clusterModels.ReplicationPolicy{
 		ID:              731,
-		Name:            "cancel-before-first-probe",
+		Name:            "cancel-during-" + step,
 		GuestType:       clusterModels.ReplicationGuestTypeJail,
 		GuestID:         guestID,
 		SourceNodeID:    localNodeID,
@@ -631,7 +658,7 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("listen for readiness SSH probe: %v", err)
+		t.Fatalf("listen for %s: %v", step, err)
 	}
 	defer listener.Close()
 	port := listener.Addr().(*net.TCPAddr).Port
@@ -640,7 +667,7 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 		SSHUser:   "root",
 		SSHHost:   "127.0.0.1",
 		SSHPort:   port,
-		PublicKey: "test-listener-does-not-authenticate",
+		PublicKey: testutil.SSHHostKey(t),
 	}).Error; err != nil {
 		t.Fatalf("seed target SSH identity: %v", err)
 	}
@@ -680,12 +707,12 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 		replicationTargetNetworkCheck{},
 	)
 	if err == nil {
-		t.Fatal("expected cancellation during the first readiness probe to fail the generation")
+		t.Fatalf("expected cancellation during %s to fail the generation", step)
 	}
 	select {
 	case <-probeAccepted:
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for the readiness SSH probe")
+		t.Fatalf("timed out waiting for %s: %v", step, err)
 	}
 	if ctx.Err() == nil {
 		t.Fatal("test did not cancel the replication context")
@@ -693,8 +720,12 @@ func TestIntegrationPolicyGenerationCancellationBeforeFirstProbeCleansSourceSnap
 	if errors.Is(err, errReplicationGenerationCommitUncertain) {
 		t.Fatalf("unmutated first target was incorrectly rolled back and labeled commit-uncertain: %v", err)
 	}
-	if !strings.Contains(err.Error(), "verify_replication_dataset_generation_"+source+"_failed") {
-		t.Fatalf("generation did not fail at the first readiness probe: %v", err)
+	wantError := "ssh_connection_failed"
+	if bypassSSHPreflight {
+		wantError = "verify_replication_dataset_generation_" + source + "_failed"
+	}
+	if !strings.Contains(err.Error(), wantError) {
+		t.Fatalf("generation did not fail during %s: %v", step, err)
 	}
 
 	snapshot, err := replicationGenerationSnapshotName(policy.ID, generationID)

@@ -40,7 +40,7 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 
-func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget) {
+func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget, keys ...string) {
 	t.Helper()
 	endpoint, err := clusterModels.BackupTargetSSHEndpointFingerprint(target)
 	if err != nil {
@@ -48,6 +48,9 @@ func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterM
 	}
 	change := clusterModels.BackupTargetSSHHostTrustChange{TargetID: target.ID, EndpointFingerprint: endpoint,
 		PublicKey: testutil.SSHHostKey(t), OccurredAt: time.Now().UTC()}
+	if len(keys) > 0 {
+		change.PublicKey = keys[0]
+	}
 	if err := clusterModels.ApplyBackupTargetSSHHostTrustTxn(database, "initialize_v1", &change); err != nil {
 		t.Fatal(err)
 	}

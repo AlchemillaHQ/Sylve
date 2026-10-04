@@ -300,6 +300,7 @@ func TestIntegrationZeltaBackupWithEphemeralZFS(t *testing.T) {
 
 func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -316,7 +317,7 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -332,6 +333,7 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 
 	job := clusterModels.BackupJob{
 		ID: 1, Name: "ephemeral-test", Mode: "dataset", TargetID: 1,
@@ -346,10 +348,13 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 
 	err := svc.runBackupJob(ctx, &loaded)
 	if err != nil {
-		t.Logf("runBackupJob completed with error (expected if no SSH to localhost): %v", err)
+		t.Fatalf("runBackupJob failed after localhost SSH preflight: %v", err)
 	}
 
 	updated := fetchJob(t, db, 1)
+	if updated.LastRunAt == nil || updated.LastStatus != "success" {
+		t.Fatalf("backup did not succeed: status=%q error=%q", updated.LastStatus, updated.LastError)
+	}
 	if updated.LastRunAt != nil {
 		t.Logf("backup ran at %v with status=%q error=%q",
 			updated.LastRunAt, updated.LastStatus, updated.LastError)
@@ -357,6 +362,9 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 
 	var events []clusterModels.BackupEvent
 	db.Find(&events)
+	if len(events) != 1 || events[0].Status != "success" {
+		t.Fatalf("expected one successful backup event, got %+v", events)
+	}
 	t.Logf("created %d backup events", len(events))
 	for i, e := range events {
 		t.Logf("  event[%d]: status=%q source=%q target=%q output=%d bytes",
@@ -367,8 +375,14 @@ func TestIntegrationRunBackupJobWithEmbeddedZelta(t *testing.T) {
 	}
 
 	snapshots := listZFSSnapshots(t, poolName+"/source/backup")
+	if len(snapshots) == 0 {
+		t.Fatal("backup created no source snapshots")
+	}
 	t.Logf("ZFS snapshots on source: %v", snapshots)
 	snapshots = listZFSSnapshots(t, poolName+"/target")
+	if len(snapshots) == 0 {
+		t.Fatal("backup created no target snapshots")
+	}
 	t.Logf("ZFS snapshots on target: %v", snapshots)
 }
 

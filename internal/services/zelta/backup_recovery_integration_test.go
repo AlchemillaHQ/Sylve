@@ -19,7 +19,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"gorm.io/gorm"
 )
@@ -71,7 +70,7 @@ func listActiveGenerations(t *testing.T, activeDataset string) []string {
 
 func TestIntegrationCleanupRejectedBackupSnapshot(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -94,7 +93,8 @@ func TestIntegrationCleanupRejectedBackupSnapshot(t *testing.T) {
 	job := &clusterModels.BackupJob{
 		ID: 91,
 		Target: clusterModels.BackupTarget{
-			SSHHost: "root@localhost", BackupRoot: targetRoot,
+			SSHHostKey: hostKey,
+			SSHHost:    "root@localhost", BackupRoot: targetRoot,
 		},
 	}
 	if err := service.cleanupRejectedBackupSnapshot(
@@ -114,7 +114,7 @@ func TestIntegrationCleanupRejectedBackupSnapshot(t *testing.T) {
 
 func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotation(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -130,7 +130,7 @@ func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotat
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -146,6 +146,7 @@ func TestIntegrationRunBackupJobPreservesLegacyTargetSnapshotDuringTopologyRotat
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	job := clusterModels.BackupJob{
 		ID: 10, Name: "foreign-test", Mode: "dataset", TargetID: 10,
 		SourceDataset: poolName + "/source/foreign",
@@ -228,7 +229,7 @@ func firstReplicatedChild(t *testing.T, activeDataset string) (string, bool) {
 
 func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -245,7 +246,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -261,6 +262,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	job := clusterModels.BackupJob{
 		ID: 13, Name: "rchild-test", Mode: "dataset", TargetID: 13,
 		SourceDataset: poolName + "/source/rchild",
@@ -315,7 +317,7 @@ func TestIntegrationRunBackupJobRecursiveForeignSnapshotFailsClosed(t *testing.T
 
 func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -334,7 +336,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(
+	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},
@@ -361,6 +363,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	vm := vmModels.VM{RID: 100, Name: "backup-integration-vm"}
 	if err := db.Create(&vm).Error; err != nil {
 		t.Fatalf("seed registered VM: %v", err)
@@ -438,7 +441,7 @@ func TestIntegrationRunBackupJobVMForeignSnapshotFailsClosed(t *testing.T) {
 
 func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -455,7 +458,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(
+	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},
@@ -480,6 +483,7 @@ func TestIntegrationRunBackupJobJailForeignSnapshotFailsClosed(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	jail := jailModels.Jail{CTID: 42, Name: "backup-integration-jail", Type: jailModels.JailTypeFreeBSD}
 	if err := db.Create(&jail).Error; err != nil {
 		t.Fatalf("seed registered jail: %v", err)

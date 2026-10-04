@@ -151,7 +151,7 @@ func TestRunRestoreFromTargetVMRejectsLegacyBeforeRuntimeOrReceive(t *testing.T)
 
 func TestIntegrationLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolA, clientA := zfstest.DedicatedPool(t)
 	poolB, _ := zfstest.DedicatedPool(t)
@@ -176,6 +176,7 @@ func TestIntegrationLegacyVMRestoreMissingRootSnapshotFailsBeforeStaging(t *test
 		runningWorkloadOp:         make(map[string]string),
 	}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		ID:         1,
 		SSHHost:    "root@localhost",
 		SSHPort:    22,

@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -139,24 +140,43 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 func consumeJSON(input io.Reader, raw, human io.Writer, result *totals) error {
-	stream := io.TeeReader(input, raw)
-	decoder := json.NewDecoder(stream)
+	reader := bufio.NewReader(input)
 	for {
-		var event testEvent
-		err := decoder.Decode(&event)
-		if errors.Is(err, io.EOF) {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) > 0 {
+			var writeErr error
+			if strings.HasPrefix(strings.TrimSpace(string(line)), "{") {
+				var event testEvent
+				if err := json.Unmarshal(line, &event); err != nil {
+					_, writeErr := human.Write(line)
+					_, drainErr := io.Copy(human, reader)
+					return errors.Join(fmt.Errorf("decode go test JSON: %w", err), writeErr, drainErr)
+				}
+				if _, err := raw.Write(line); err != nil {
+					_, drainErr := io.Copy(io.Discard, reader)
+					return errors.Join(fmt.Errorf("write go test JSON: %w", err), drainErr)
+				}
+				result.add(event)
+				if event.Action == "output" {
+					_, writeErr = io.WriteString(human, event.Output)
+				}
+			} else {
+				// Make and prerequisite checks can print diagnostics alongside Go JSON.
+				_, writeErr = human.Write(line)
+			}
+			if writeErr != nil {
+				_, drainErr := io.Copy(io.Discard, reader)
+				return errors.Join(fmt.Errorf("write readable test output: %w", writeErr), drainErr)
+			}
+		}
+		if errors.Is(readErr, io.EOF) {
+			if result.events == 0 {
+				return errors.New("no go test JSON events received")
+			}
 			return nil
 		}
-		if err != nil {
-			_, drainErr := io.Copy(io.Discard, stream)
-			return errors.Join(fmt.Errorf("decode go test JSON: %w", err), drainErr)
-		}
-		result.add(event)
-		if event.Action == "output" {
-			if _, err := io.WriteString(human, event.Output); err != nil {
-				_, drainErr := io.Copy(io.Discard, stream)
-				return errors.Join(fmt.Errorf("write readable test output: %w", err), drainErr)
-			}
+		if readErr != nil {
+			return fmt.Errorf("read go test output: %w", readErr)
 		}
 	}
 }

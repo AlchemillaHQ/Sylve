@@ -129,6 +129,7 @@ func TestFilterSnapshotsForRestoreJob(t *testing.T) {
 
 func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -145,7 +146,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -161,6 +162,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 
 	job := clusterModels.BackupJob{
 		ID: 1, Name: "restore-snap-list", Mode: "dataset", TargetID: 1,
@@ -259,6 +261,7 @@ func TestIntegrationListRemoteSnapshotsWithEphemeralZFS(t *testing.T) {
 
 func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -277,7 +280,7 @@ func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -293,6 +296,7 @@ func TestIntegrationRunRestoreJobDatasetWithEphemeralZFS(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 
 	job := clusterModels.BackupJob{
 		ID: 2, Name: "restore-dataset", Mode: "dataset", TargetID: 2,
@@ -475,7 +479,7 @@ func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEph
 
 	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
 	missingChild := remoteRoot + "/child"
 	destination := poolName + "/live"
@@ -484,6 +488,7 @@ func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEph
 	mustRunRestoreZFSTestCommand(t, "snapshot", remoteRoot+"@selected")
 
 	target := clusterModels.BackupTarget{
+		SSHHostKey: hostKey,
 		SSHHost:    sshHost,
 		SSHKeyPath: sshKeyPath,
 		BackupRoot: poolName + "/backup",
@@ -535,7 +540,7 @@ func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t 
 
 	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
 	remoteChild := remoteRoot + "/child-without-selected-snapshot"
 	destination := poolName + "/live"
@@ -556,7 +561,7 @@ func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t 
 	selectedGUID := restoreZFSSnapshotGUID(t, remoteRoot, "selected")
 
 	extractZeltaToTemp(t)
-	database := testutil.NewSQLiteTestDB(
+	database := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},
@@ -573,6 +578,7 @@ func TestIntegrationRunNonrecursiveRestoreJobSelectedRootOnlyWithEphemeralZFS(t 
 	if err := database.Create(&target).Error; err != nil {
 		t.Fatalf("create backup target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, database, &target, hostKey)
 	job := clusterModels.BackupJob{
 		ID:            52,
 		Name:          "nonrecursive-restore-job",
@@ -633,7 +639,7 @@ func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *te
 
 	poolName, client, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
-	sshHost, sshKeyPath := requireRestoreLocalhostSSH(t)
+	sshHost, sshKeyPath, hostKey := requireRestoreLocalhostSSH(t)
 	remoteRoot := poolName + "/backup/tree"
 	remoteChild := remoteRoot + "/child"
 	remoteVolume := remoteRoot + "/disk0"
@@ -669,7 +675,7 @@ func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *te
 	}
 
 	extractZeltaToTemp(t)
-	db := testutil.NewSQLiteTestDB(
+	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},
@@ -686,6 +692,7 @@ func TestIntegrationRunRecursiveRestoreJobSelectedSnapshotWithEphemeralZFS(t *te
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("create backup target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	job := clusterModels.BackupJob{
 		ID:            42,
 		Name:          "recursive-restore-job",
@@ -814,7 +821,7 @@ func restoreZFSSnapshotInventory(t *testing.T, dataset string) string {
 	))
 }
 
-func requireRestoreLocalhostSSH(t *testing.T) (string, string) {
+func requireRestoreLocalhostSSH(t *testing.T) (string, string, string) {
 	t.Helper()
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -826,22 +833,12 @@ func requireRestoreLocalhostSSH(t *testing.T) (string, string) {
 		if _, err := os.Stat(keyPath); err != nil {
 			continue
 		}
-		cmd := exec.Command(
-			"ssh",
-			"-n",
-			"-i", keyPath,
-			"-o", "BatchMode=yes",
-			"-o", "StrictHostKeyChecking=accept-new",
-			"-o", "ConnectTimeout=3",
-			host,
-			"true",
-		)
-		if output, err := cmd.CombinedOutput(); err == nil {
-			return host, keyPath
+		if hostKey, err := tryLocalhostSSHHostKey(t, host, keyPath); err == nil {
+			return host, keyPath, hostKey
 		} else {
-			t.Logf("localhost SSH identity %s unavailable: %v (%s)", keyPath, err, strings.TrimSpace(string(output)))
+			t.Logf("localhost SSH identity %s unavailable: %v", keyPath, err)
 		}
 	}
 	t.Skip("real root localhost SSH is required for remote restore integration")
-	return "", ""
+	return "", "", ""
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t *testing.T) {
@@ -28,16 +29,23 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 		ID: 91, Name: "target", SSHHost: "root@backup", SSHPort: 22,
 		BackupRoot: "tank/backups", Enabled: true,
 	}
+	hostKey := testutil.SSHHostKey(t)
 	for _, node := range nodes {
 		if err := node.service.DB.Create(&target).Error; err != nil {
 			t.Fatalf("seed target on %s: %v", node.id, err)
 		}
+		seedBackupTargetHostTrust(t, node.service.DB, &target, hostKey)
 	}
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
+	trust, err := clusterModels.GetBackupTargetSSHHostTrust(leader.service.DB, &target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Date(2026, time.April, 5, 6, 7, 8, 0, time.UTC)
 	acquire := clusterModels.BackupTargetRestoreOperationAcquire{
-		Token: "target-restore:node-2:leadership", TargetID: target.ID, HolderNodeID: "node-2",
+		HostKeyRevision: trust.Revision,
+		Token:           "target-restore:node-2:leadership", TargetID: target.ID, HolderNodeID: "node-2",
 		DestinationDataset: "zroot/restored", RequestPayload: `{"targetId":91,"snapshot":"@bk_j1_c1_test"}`,
 		AcquiredAt: now,
 	}
@@ -77,7 +85,8 @@ func TestIntegrationRaftBackupTargetRestoreReservationSurvivesLeadershipChange(t
 	newLeader := waitForClusterRaftLeader(t, remaining, 8*time.Second)
 
 	transition := clusterModels.BackupTargetRestoreOperationTransition{
-		Token: acquire.Token, TargetID: acquire.TargetID, HolderNodeID: acquire.HolderNodeID,
+		HostKeyRevision: acquire.HostKeyRevision,
+		Token:           acquire.Token, TargetID: acquire.TargetID, HolderNodeID: acquire.HolderNodeID,
 		DestinationDataset: acquire.DestinationDataset, RequestPayload: acquire.RequestPayload,
 		OccurredAt: now.Add(2 * time.Second),
 	}

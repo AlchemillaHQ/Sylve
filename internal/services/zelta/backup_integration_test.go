@@ -22,7 +22,6 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	_ "github.com/mattn/go-sqlite3"
 	"maragu.dev/goqite"
 )
@@ -162,7 +161,7 @@ func TestGoqiteEnqueueAndReceive(t *testing.T) {
 
 func newBackupServiceForIntegration(t *testing.T) *Service {
 	t.Helper()
-	db := testutil.NewSQLiteTestDB(
+	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupTarget{},

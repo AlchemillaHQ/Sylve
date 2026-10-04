@@ -31,7 +31,7 @@ import (
 // lease is not required solely for OOB restore safety.
 func TestIntegrationOOBRestoreRemoteLineageOverlapIsFailSafeRealZFS(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -162,7 +162,8 @@ exec "$SYLVE_OVERLAP_REAL_ZFS" "$@"
 	}
 
 	target := &clusterModels.BackupTarget{
-		ID: 5, Name: "overlap-target", SSHHost: "root@localhost", SSHPort: 22,
+		SSHHostKey: hostKey,
+		ID:         5, Name: "overlap-target", SSHHost: "root@localhost", SSHPort: 22,
 		BackupRoot: backupRoot, Enabled: true,
 	}
 	service := &Service{GZFS: gzfsClient}

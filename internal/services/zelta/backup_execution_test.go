@@ -23,7 +23,7 @@ import (
 )
 
 func newRunBackupJobTestDB(t *testing.T) *Service {
-	db := testutil.NewSQLiteTestDB(
+	db := newZeltaServiceTestDB(
 		t,
 		&clusterModels.BackupJob{},
 		&clusterModels.BackupJobOperation{},

@@ -163,7 +163,7 @@ func TestIntegrationLocalRetentionProofPreservesSameNameNonrecursiveDescendant(t
 
 func TestIntegrationTargetRetentionProofPreservesSameNameNonrecursiveDescendant(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, _, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -210,7 +210,7 @@ func TestIntegrationTargetRetentionProofPreservesSameNameNonrecursiveDescendant(
 		t.Fatalf("proven target candidates = %v, want only %s", candidates, rootSnapshot)
 	}
 
-	target := &clusterModels.BackupTarget{SSHHost: "root@localhost", BackupRoot: root}
+	target := &clusterModels.BackupTarget{SSHHostKey: hostKey, SSHHost: "root@localhost", BackupRoot: root}
 	if err := (&Service{}).destroyTargetBackupSnapshotsWithProof(
 		context.Background(),
 		target,

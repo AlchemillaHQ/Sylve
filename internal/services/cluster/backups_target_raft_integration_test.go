@@ -122,7 +122,8 @@ func TestIntegrationRaftBackupTargetProvisionSurvivesLeadershipTransfer(t *testi
 
 	leader := waitForClusterRaftLeader(t, nodes, 8*time.Second)
 	operation, err := leader.service.PrepareBackupTargetProvisionCreate(&clusterModels.BackupTarget{
-		Name: "pending-target", SSHHost: "root@backup", SSHKey: "key",
+		SSHHostKey: testutil.SSHHostKey(t),
+		Name:       "pending-target", SSHHost: "root@backup", SSHKey: "key",
 		BackupRoot: "tank/pending", CreateBackupRoot: true, Enabled: true,
 	}, "provision:leadership-transfer", false)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/raft"
 )
 
@@ -79,12 +80,15 @@ func TestIntegrationRaftBackupJobRebindSurvivesLeadershipChange(t *testing.T) {
 	}
 	sourceA, targetB := remotes[0], remotes[1]
 
+	target := clusterModels.BackupTarget{
+		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	hostKey := testutil.SSHHostKey(t)
 	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.BackupTarget{
-			ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
-		}).Error; err != nil {
+		if err := node.service.DB.Create(&target).Error; err != nil {
 			t.Fatalf("seed target on %s: %v", node.id, err)
 		}
+		seedBackupTargetHostTrust(t, node.service.DB, &target, hostKey)
 		jobs := []clusterModels.BackupJob{
 			{
 				ID: 101, Name: "valid", TargetID: 1, RunnerNodeID: sourceA.id,
@@ -309,12 +313,15 @@ func TestIntegrationRaftFailoverBackupJobRebindReconcilesOnNewLeader(t *testing.
 	originalRunning := true
 	seedRemoteValidationVM(t, sourceA.service, 808, "fast", "source-vm")
 	seedRemoteValidationVM(t, targetB.service, 808, "fast", "failed-over-vm")
+	target := clusterModels.BackupTarget{
+		ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
+	}
+	hostKey := testutil.SSHHostKey(t)
 	for _, node := range nodes {
-		if err := node.service.DB.Create(&clusterModels.BackupTarget{
-			ID: 1, Name: "target", SSHHost: "backup", BackupRoot: "tank/backups", Enabled: true,
-		}).Error; err != nil {
+		if err := node.service.DB.Create(&target).Error; err != nil {
 			t.Fatalf("seed target on %s: %v", node.id, err)
 		}
+		seedBackupTargetHostTrust(t, node.service.DB, &target, hostKey)
 		policy := clusterModels.ReplicationPolicy{
 			ID: 808, Name: "failover", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 808,
 			SourceNodeID: sourceA.id, ActiveNodeID: sourceA.id, OwnerEpoch: 1,

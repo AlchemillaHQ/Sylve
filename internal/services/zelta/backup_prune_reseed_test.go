@@ -17,7 +17,6 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -57,7 +56,7 @@ func countSnapshotsForDatasetWithPrefix(snapshots []string, dataset, prefix stri
 
 func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -76,7 +75,7 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -92,6 +91,7 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 
 	job := clusterModels.BackupJob{
 		ID: 2, Name: "prune-test", Mode: "dataset", TargetID: 2,
@@ -174,7 +174,7 @@ func TestIntegrationRunBackupJobPruneAfterBackup(t *testing.T) {
 
 func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -190,7 +190,7 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 	}
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -205,6 +205,7 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 	job := clusterModels.BackupJob{
 		ID: 22, Name: "retained-test", Mode: "dataset", TargetID: target.ID,
 		SourceDataset: source, PruneKeepLast: 1, PruneTarget: false,
@@ -254,7 +255,7 @@ func TestIntegrationRunBackupJobAcceptsManifestProvenTargetOnlySnapshot(t *testi
 
 func TestIntegrationRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	zfstest.SkipIfUnavailable(t)
-	requireLocalhostBackupSSH(t)
+	hostKey := requireLocalhostBackupSSH(t)
 
 	poolName, gzfsClient, cleanup := zfstest.SharedPool(t)
 	defer cleanup()
@@ -271,7 +272,7 @@ func TestIntegrationRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 
 	extractZeltaToTemp(t)
 
-	db := testutil.NewSQLiteTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
+	db := newZeltaServiceTestDB(t, &clusterModels.BackupJob{}, &clusterModels.BackupTarget{}, &clusterModels.BackupEvent{})
 	svc := &Service{
 		DB:                db,
 		queuedJobs:        make(map[uint]struct{}),
@@ -287,6 +288,7 @@ func TestIntegrationRunBackupJobAutoReseedOnDivergedTarget(t *testing.T) {
 	if err := db.Create(&target).Error; err != nil {
 		t.Fatalf("failed to seed target: %v", err)
 	}
+	seedBackupTargetHostTrust(t, db, &target, hostKey)
 
 	job := clusterModels.BackupJob{
 		ID: 3, Name: "reseed-test", Mode: "dataset", TargetID: 3,

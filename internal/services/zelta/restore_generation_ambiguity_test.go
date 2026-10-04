@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -38,6 +39,8 @@ func TestIntegrationActivateTargetGenerationRollsBackAmbiguousArchiveRenameRealZ
 	// succeeds, then the shim reports a transport error to model an ambiguous SSH
 	// result.
 	dir := t.TempDir()
+	resetZeltaTestGlobals(t)
+	SSHKeyDirectory = filepath.Join(dir, "keys")
 	sshPath := filepath.Join(dir, "ssh")
 	statePath := filepath.Join(dir, "archive-rename-executed")
 	sshScript := `#!/bin/sh
@@ -78,6 +81,7 @@ exit 0
 
 	service := &Service{GZFS: client}
 	target := &clusterModels.BackupTarget{
+		SSHHostKey: testutil.SSHHostKey(t),
 		SSHHost:    "local-zfs-through-transport-shim",
 		BackupRoot: backupRoot,
 		Enabled:    true,
