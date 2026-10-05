@@ -117,10 +117,10 @@ test-external-preflight:
 	@command -v zfs >/dev/null || { echo "zfs is required for external-state tests"; exit 1; }
 
 test-integration: test-external-preflight
-	@for tool in ctld iscsid iscsictl ctladm diskinfo sockstat camcontrol timeout; do \
+	@for tool in ctld iscsid iscsictl ctladm nvmecontrol diskinfo sockstat camcontrol timeout; do \
 		command -v "$$tool" >/dev/null || { echo "$$tool is required for iSCSI integration tests"; exit 1; }; \
 	 done
-	@[ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] || { echo "iSCSI integration tests need /dev/cam/ctl and /dev/iscsi; load ctl and iscsi"; exit 1; }
+	@[ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] && [ -c /dev/nvmf ] || { echo "iSCSI and NVMe/TCP integration tests need ctl, iscsi, nvmft, nvmf, and nvmf_tcp"; exit 1; }
 	@set +e; \
 	./scripts/check-zfs-test-leaks.sh; \
 	zfs_leak_rc="$$?"; \

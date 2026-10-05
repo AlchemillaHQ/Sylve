@@ -105,14 +105,18 @@ jobs:
               mkdir -p "$GOCACHE" "$GOMODCACHE"
               go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
 
-              for module in zfs pf vmm nlsysevent if_bridge if_epair ctl iscsi; do
+              for module in zfs pf vmm nlsysevent if_bridge if_epair ctl iscsi nvmft nvmf; do
                 kldstat -q -m "$module" || kldload "$module"
               done
+              kldstat -q -m nvmf/tcp || kldload nvmf_tcp
 
-              [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] || {
-                echo "CTL and iSCSI kernel devices are required for integration tests"
+              [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] && [ -c /dev/nvmf ] || {
+                echo "CTL, iSCSI, and NVMe/TCP kernel devices are required for integration tests"
                 exit 1
               }
+
+              command -v nvmecontrol >/dev/null
+              ctladm nvlist -x | grep -q '<ctlnvmflist>'
 
               service libvirtd onestart || service libvirtd onerestart
               service sshd onestart 2>/dev/null || service sshd onerestart

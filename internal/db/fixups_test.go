@@ -16,6 +16,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -24,6 +25,51 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
+
+func TestSeedISCSISettingsIsTrackedAndPreservesSavedText(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &iscsiModels.ISCSISettings{})
+	for range 2 {
+		if err := seedISCSISettings(dbConn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var settings iscsiModels.ISCSISettings
+	if err := dbConn.First(&settings).Error; err != nil || settings.ID != 1 || settings.ExtraTargetConfig != "" {
+		t.Fatal("settings were not seeded")
+	}
+	text := "# saved editor text"
+	if err := dbConn.Model(&settings).Update("extra_target_config", text).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Where("name = ?", "iscsi_extra_target_config_v1").Delete(&models.Migrations{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := seedISCSISettings(dbConn); err != nil {
+		t.Fatal(err)
+	}
+	dbConn.First(&settings)
+	var rows, migrations int64
+	dbConn.Model(&iscsiModels.ISCSISettings{}).Count(&rows)
+	dbConn.Model(&models.Migrations{}).Where("name = ?", "iscsi_extra_target_config_v1").Count(&migrations)
+	if rows != 1 || migrations != 1 || settings.ExtraTargetConfig != text {
+		t.Fatal("migration duplicated settings or cleared saved text")
+	}
+}
+
+func TestSeedISCSISettingsFailureDoesNotMarkMigration(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &iscsiModels.ISCSISettings{})
+	if err := dbConn.Exec("CREATE TRIGGER reject_iscsi_seed BEFORE INSERT ON iscsi_settings BEGIN SELECT RAISE(ABORT, 'seed failed'); END").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := seedISCSISettings(dbConn); err == nil {
+		t.Fatal("failed seed returned success")
+	}
+	var count int64
+	dbConn.Model(&models.Migrations{}).Where("name = ?", "iscsi_extra_target_config_v1").Count(&count)
+	if count != 0 {
+		t.Fatal("failed seed was marked complete")
+	}
+}
 
 func TestNormalizeDownloadUncategorizedType(t *testing.T) {
 	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &utilitiesModels.Downloads{})

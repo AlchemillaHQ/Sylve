@@ -351,6 +351,9 @@ func RegisterRoutes(r *gin.Engine,
 	iscsiGroup.Use(middleware.LimitRequestBody(iscsi.MaxRequestBodyBytes))
 	iscsiGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
+		iscsiGroup.GET("/config", middleware.RequireLocalAdmin(authService), iscsiHandlers.GetConfig(iscsiService))
+		iscsiGroup.PUT("/config", iscsiHandlers.SetConfig(iscsiService))
+
 		iscsiGroup.GET("/initiators", iscsiHandlers.GetInitiators(iscsiService))
 		iscsiGroup.POST("/initiators", iscsiHandlers.CreateInitiator(iscsiService))
 		iscsiGroup.PUT("/initiators/:id", iscsiHandlers.UpdateInitiator(iscsiService))

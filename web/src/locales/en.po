@@ -2399,6 +2399,7 @@ msgstr "Enabled"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+#: src/lib/components/custom/iSCSI/Config.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -5097,8 +5098,8 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update"
-msgstr "Update"
+msgid "Update "
+msgstr "Update "
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
 msgid "Apply "
@@ -8560,6 +8561,7 @@ msgid "Error: {0}"
 msgstr "Error: {0}"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/iSCSI/Config.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -9815,6 +9817,7 @@ msgstr "Unknown error"
 #: src/lib/components/custom/Initialization/Initialize.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/iSCSI/ExtraConfig.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Retry"
 msgstr "Retry"
@@ -10411,6 +10414,7 @@ msgstr "Dismissed"
 msgid "Transport {0}"
 msgstr "Transport {0}"
 
+#: src/lib/components/custom/iSCSI/Config.svelte
 #: src/routes/[node]/settings/system/notifications/rules/+page.svelte
 msgid "<0/> Save"
 msgstr "<0/> Save"
@@ -12226,10 +12230,6 @@ msgstr "Port must be a number between 1 and 65535"
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "A portal with this address and port already exists"
 msgstr "A portal with this address and port already exists"
-
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
-msgid "LUN number must be a non-negative integer"
-msgstr "LUN number must be a non-negative integer"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "A LUN with this number already exists"
@@ -17138,7 +17138,6 @@ msgid "Client"
 msgstr "Client"
 
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
-#: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Saved, but the iSCSI runtime could not apply the change"
 msgstr "Saved, but the iSCSI runtime could not apply the change"
 
@@ -19049,3 +19048,133 @@ msgstr "Resetting host key"
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Current fingerprint: <0/>"
 msgstr "Current fingerprint: <0/>"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "The extra configuration exceeds the size limit."
+msgstr "The extra configuration exceeds the size limit."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Listeners overlap. Use separate addresses or ports."
+msgstr "Listeners overlap. Use separate addresses or ports."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Use a literal IP address and a valid port. Link-local IPv6 needs an interface name."
+msgstr "Use a literal IP address and a valid port. Link-local IPv6 needs an interface name."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "The name is reserved or conflicts with a managed object."
+msgstr "The name is reserved or conflicts with a managed object."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Define each referenced user group or LUN first. Each target or controller needs an explicit listener group."
+msgstr "Define each referenced user group or LUN first. Each target or controller needs an explicit listener group."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Check the backing path, backend, size, and blocksize."
+msgstr "Check the backing path, backend, size, and blocksize."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Use at most 16 bytes for a serial number and 64 bytes for a device ID."
+msgstr "Use at most 16 bytes for a serial number and 64 bytes for a device ID."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "The name, path, or option cannot be checked in the native inventory."
+msgstr "The name, path, or option cannot be checked in the native inventory."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "The native validator rejected the merged configuration. Check the supported syntax and values."
+msgstr "The native validator rejected the merged configuration. Check the supported syntax and values."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Stop the target service before changing the spelling of an existing listener."
+msgstr "Stop the target service before changing the spelling of an existing listener."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Repair the managed target configuration, then retry."
+msgstr "Repair the managed target configuration, then retry."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Check the target service and backing storage, then save again to retry."
+msgstr "Check the target service and backing storage, then save again to retry."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Check the supported syntax and configuration, then retry."
+msgstr "Check the supported syntax and configuration, then retry."
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Cannot read the iSCSI configuration status"
+msgstr "Cannot read the iSCSI configuration status"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Configuration was not saved"
+msgstr "Configuration was not saved"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Saved; runtime checks are pending"
+msgstr "Saved; runtime checks are pending"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Extra target configuration saved"
+msgstr "Extra target configuration saved"
+
+#. 0: validation.lineNumber
+#. 0: current.lineNumber
+#: src/lib/components/custom/iSCSI/Config.svelte
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Line {0}"
+msgstr "Line {0}"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Extra Target Configuration"
+msgstr "Extra Target Configuration"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "The extra configuration exceeds 256 KiB."
+msgstr "The extra configuration exceeds 256 KiB."
+
+#. 0: reasonMessage(validation.reasonCode)
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Not saved. {0}"
+msgstr "Not saved. {0}"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Saved; iSCSI runtime checks are pending"
+msgstr "Saved; iSCSI runtime checks are pending"
+
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "LUN number must be an integer from 0 through 1023"
+msgstr "LUN number must be an integer from 0 through 1023"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Saved Configuration"
+msgstr "Saved Configuration"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Checked"
+msgstr "Checked"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "Invalid"
+msgstr "Invalid"
+
+#: src/lib/components/custom/iSCSI/Config.svelte
+msgid "<0/> Refresh Status"
+msgstr "<0/> Refresh Status"
+
+#. 0: enabled ? 'disable' \\: 'enable'; 1: enabled ? ' Initiator connections will stay active.' \\: ''
+#: src/routes/[node]/settings/system/services/+page.svelte
+msgid "You are about to {0} iSCSI targets.{1}"
+msgstr "You are about to {0} iSCSI targets.{1}"
+
+#: src/lib/components/custom/iSCSI/ExtraConfig.svelte
+#: src/routes/[node]/storage/iscsi/targets/+page.svelte
+msgid "Target Settings"
+msgstr "Target Settings"
+
+#: src/lib/components/custom/iSCSI/ExtraConfig.svelte
+msgid "Loading..."
+msgstr "Loading..."
+
+#: src/lib/components/custom/iSCSI/ExtraConfig.svelte
+msgid "Cannot read the target configuration."
+msgstr "Cannot read the target configuration."

@@ -12,6 +12,7 @@
 	} from '$lib/api/iscsi/target';
 	import { getDatasets } from '$lib/api/zfs/datasets';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
+	import ExtraConfig from '$lib/components/custom/iSCSI/ExtraConfig.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -37,6 +38,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 
 	interface Data {
+		node: string;
 		targets: ISCSITarget[];
 		volumes: Dataset[];
 		sessions: TargetSessions;
@@ -108,7 +110,8 @@
 	let properties = $state({
 		create: { open: false },
 		edit: { open: false },
-		delete: { open: false }
+		delete: { open: false },
+		config: { open: false }
 	});
 
 	let loading = $state(false);
@@ -754,6 +757,19 @@
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete Target" />
 			</Button>
 		{/if}
+		<Button
+			onclick={() => (properties.config.open = true)}
+			size="sm"
+			variant="outline"
+			class="ml-auto h-6.5"
+		>
+			<SpanWithIcon
+				icon="icon-[mdi--cog-outline]"
+				size="h-4 w-4"
+				gap="gap-2"
+				title="Target Settings"
+			/>
+		</Button>
 	</div>
 
 	<TreeTable
@@ -764,6 +780,12 @@
 		bind:query
 	/>
 </div>
+
+{#if properties.config.open}
+	{#key data.node}
+		<ExtraConfig node={data.node} bind:open={properties.config.open} />
+	{/key}
+{/if}
 
 <Dialog.Root bind:open={properties.create.open}>
 	<Dialog.Content

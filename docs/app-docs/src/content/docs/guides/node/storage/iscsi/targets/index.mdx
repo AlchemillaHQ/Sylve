@@ -94,6 +94,67 @@ Sylve refuses to delete a target while one or more remote initiators are connect
 
 If a change is saved but runtime checks fail, the page shows a pending warning. Sylve keeps the saved change and does not roll back a partial apply. Correct the reported problem, then retry a safe edit or the same service state.
 
+## Extra target configuration
+
+Local administrators can open **Target Settings** on **Storage → iSCSI → Targets** to add independent native `ctl.conf` stanzas after the generated targets. The dialog applies to the target service on this node, not one selected target. This is a bounded extra-config field, not an arbitrary configuration editor. It cannot insert clauses inside a managed target. An empty field removes the extra block.
+
+The supported grammar is based on FreeBSD `releng/15.0` `token.l` and `parse.y`. Use `auth-group`, `portal-group`, `transport-group`, `lun`, `target`, or `controller`. Define groups and named LUNs before their references. Each user target needs an explicit user `portal-group`; each controller needs an explicit user `transport-group`. Empty groups are permitted. An unused, non-redirecting group does not open its listeners, but its endpoints remain reserved.
+
+- Global directives, UCL, includes, implicit or explicit default listener groups, `listen-iser`, `foreign`, `offload`, `tag`, and target `port` are not supported.
+- Group names starting with `pg-` or `ag-` are reserved, without regard to case. Do not redefine the built-in auth groups or reuse a managed target name. Built-in `no-authentication` is an explicit auth choice.
+- Use literal IPv4 or IPv6 listener addresses. Do not use hostnames, IPv4-mapped IPv6, or numeric zones. Link-local IPv6 needs a known interface-name zone; other addresses must not have a zone. TCP listeners cannot overlap managed or other user listeners, including unused groups and other protocols.
+- Omitted ports are `3260` for iSCSI, `4420` for NVMe/TCP, and `8009` for NVMe discovery/TCP. Saved editor text stays unchanged. Only parsed listener values are normalized in the file, with quoted canonical addresses and explicit ports.
+- Native backslashes are literal, not escape sequences. Empty quotes, quoted control characters, escaped quotes, and a backslash before a closing quote are rejected. The field limit is **256 KiB of UTF-8 text**; the request limit is **1 MiB**.
+- LUNs and namespaces support `block` (the default) or `ramdisk`. A block path must be absolute and must exist as a regular file or device. A ramdisk needs a size and no path. LUN IDs start at `0`; namespace IDs start at `1`; both are limited to `1023`. Serial numbers have a 16-byte limit; device IDs have a 64-byte limit.
+- Options must use identifier-like keys and cannot replace CTL ownership or core inventory fields. Names, paths, aliases, and option values cannot contain `<`, `>`, or `&`, because native inventory cannot safely report these values. Other syntax and values must pass the native validator.
+
+Sylve checks the complete merged file before saving. A validation error leaves the DB and file unchanged. A saved change with HTTP `202` means runtime work is pending, not that the text was rejected. Repair the problem, then select **Save** again; unchanged text also retries. Disabling iSCSI prevents starts and reloads during saves and target edits. A failed stop keeps the preceding file and remains pending.
+
+| Status | Meaning |
+| --- | --- |
+| **Checked** | The desired file and observable runtime checks match. This does **not** confirm reload completion, authentication, redirects, or daemon-only options. |
+| **Pending** | The desired file or observable runtime checks do not match. |
+| **Invalid** | The saved or merged configuration fails validation. The saved text remains available for repair. |
+| **Disabled** | iSCSI is disabled, the desired file matches, and the target daemon is stopped. |
+
+### Native examples
+
+Use existing backings and choose addresses on your storage network. These examples disable authentication; use them only on a protected test network. Do not give separate exports concurrent write access to one backing.
+
+NVMe/TCP uses namespace IDs starting at `1`:
+
+```text
+transport-group user-nvme {
+    listen tcp 192.0.2.10
+}
+controller nqn.2026-10.io.example:storage {
+    transport-group user-nvme
+    auth-group no-authentication
+    namespace 1 {
+        path /dev/zvol/tank/nvme-volume
+    }
+}
+```
+
+The omitted TCP port above is `4420`. Namespaces accept the same backing properties as iSCSI LUNs. A separate user iSCSI target can use a port that does not overlap managed listeners:
+
+```text
+portal-group user-iscsi {
+    listen 192.0.2.10:3261
+}
+target iqn.2026-10.io.example:extra {
+    portal-group user-iscsi
+    auth-group no-authentication
+    lun 0 {
+        path /srv/iscsi/extra.img
+    }
+}
+```
+
+:::caution
+Sylve redacts extra text and native output from its errors, logs, and audit records. Native ctld can still write configuration tokens to host syslog during validation or runtime. Protect local logs and any remote log destination. Sylve does not suppress this native path.
+:::
+
 ## Upgrade and recovery
 
 Back up `/etc/ctl.conf` before the first shared-listener upgrade. Use a maintenance window because clients can disconnect. If Sylve reports `iscsi_listener_normalization_requires_stop`, disable targets, confirm the stop, then enable them.
@@ -104,8 +165,6 @@ After a zvol rename, disconnect clients, restore the backing path, then remove a
 At startup, Sylve backs up unmanaged `/etc/iscsi.conf` and `/etc/ctl.conf` files as `.pre-sylve`. It does not back up each change. Do not edit generated files; later changes replace them.
 :::
 
-:::caution
-ctld can write configuration values to system logs during validation. Restrict access to these logs.
-:::
+Take an operator snapshot before migration. `.pre-sylve` is not a backup of the preceding generated file. If saved extra text is invalid at startup, Sylve continues startup and can use the last owned file only after independent syntax, listener, and backing checks. Without a valid owned file, it skips target startup. Initiator initialization remains separate. A failure after file replacement leaves the candidate file on disk, not a previous generated copy.
 
 Aliases and CHAP values cannot contain double quotes or control characters.

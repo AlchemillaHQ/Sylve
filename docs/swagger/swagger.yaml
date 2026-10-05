@@ -880,6 +880,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_iscsi.ISCSIConfig'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_jail_Jail:
     properties:
       data:
@@ -1793,6 +1804,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_iscsi.ISCSIConfigValidation'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailActionResponse:
     properties:
       data:
@@ -2345,6 +2367,8 @@ definitions:
         type: string
       enabled:
         type: boolean
+      hostKey:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.BackupTargetSSHHostKeyStatus'
       id:
         type: integer
       jobs:
@@ -2393,6 +2417,15 @@ definitions:
         type: integer
       validationSucceeded:
         type: boolean
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_cluster.BackupTargetSSHHostKeyStatus:
+    properties:
+      fingerprint:
+        type: string
+      revision:
+        type: integer
+      state:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_cluster.Cluster:
     properties:
@@ -2710,6 +2743,24 @@ definitions:
         type: integer
       usage:
         type: number
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_iscsi.ISCSIConfig:
+    properties:
+      applyStatus:
+        enum:
+        - checked
+        - pending
+        - invalid
+        - disabled
+        type: string
+      extraTargetConfig:
+        type: string
+      lineNumber:
+        type: integer
+        x-nullable: true
+      reasonCode:
+        type: string
+        x-nullable: true
     type: object
   github_com_alchemillahq_sylve_internal_db_models_iscsi.ISCSIInitiator:
     properties:
@@ -9176,6 +9227,20 @@ definitions:
       expiresIn:
         type: integer
       token:
+        type: string
+    type: object
+  internal_handlers_iscsi.ISCSIConfigRequest:
+    properties:
+      extraTargetConfig:
+        type: string
+        x-nullable: true
+    type: object
+  internal_handlers_iscsi.ISCSIConfigValidation:
+    properties:
+      lineNumber:
+        type: integer
+        x-nullable: true
+      reasonCode:
         type: string
     type: object
   internal_handlers_iscsi.ISCSIInitiatorRequest:
@@ -15727,6 +15792,75 @@ paths:
       summary: Sync Cluster Health
       tags:
       - Cluster Internal
+  /iscsi/config:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get extra target configuration and observable status
+      tags:
+      - iSCSI
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Omit or null for no change; empty string clears; an explicit
+          string retries
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_iscsi.ISCSIConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig'
+        "202":
+          description: Saved; runtime checks pending
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Save bounded native extra target configuration
+      tags:
+      - iSCSI
   /iscsi/initiators:
     get:
       consumes:

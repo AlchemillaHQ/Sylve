@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -472,7 +473,7 @@ func TestIntegrationISCSIColdStartFailureAndDisable(t *testing.T) {
 	for _, saved := range record.LUNs {
 		found := false
 		for _, lun := range luns.LUNs {
-			if lun == saved.LUN {
+			if reflect.DeepEqual(lun, saved.LUN) {
 				found = true
 			}
 		}

@@ -4,8 +4,9 @@ import { getDatasets } from '$lib/api/zfs/datasets';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
+import type { PageLoad } from './$types';
 
-export async function load() {
+export const load = (async ({ params }) => {
 	const cacheDuration = SEVEN_DAYS;
 	const [targets, volumes, sessions] = await Promise.all([
 		cachedFetch('iscsi-targets', async () => await getTargets(), cacheDuration),
@@ -18,8 +19,9 @@ export async function load() {
 	]);
 
 	return {
+		node: params.node,
 		targets,
 		volumes,
 		sessions
 	};
-}
+}) satisfies PageLoad;

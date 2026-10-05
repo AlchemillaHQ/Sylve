@@ -17,6 +17,7 @@ import (
 
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -30,6 +31,9 @@ import (
 )
 
 func Fixups(db *gorm.DB) error {
+	if err := seedISCSISettings(db); err != nil {
+		return err
+	}
 	if err := enforceBasicSettingsSingleton(db); err != nil {
 		return err
 	}
@@ -80,6 +84,26 @@ func Fixups(db *gorm.DB) error {
 	cleanupStaleAvahi(db)
 
 	return nil
+}
+
+func seedISCSISettings(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&iscsiModels.ISCSISettings{}) {
+		return nil
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		const name = "iscsi_extra_target_config_v1"
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", name).Count(&count).Error; err != nil {
+			return fmt.Errorf("check iSCSI settings migration: %w", err)
+		}
+		if count != 0 {
+			return nil
+		}
+		if err := tx.Where("id = ?", 1).FirstOrCreate(&iscsiModels.ISCSISettings{ID: 1}).Error; err != nil {
+			return fmt.Errorf("seed iSCSI settings: %w", err)
+		}
+		return tx.Create(&authModels.Migrations{Name: name}).Error
+	})
 }
 
 func validBridgeMigrationMAC(value net.HardwareAddr) bool {

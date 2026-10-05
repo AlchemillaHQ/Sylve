@@ -11,6 +11,8 @@ package iscsiServiceInterfaces
 import iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
 
 type ISCSIServiceInterface interface {
+	GetConfig() (*iscsiModels.ISCSIConfig, error)
+	SetExtraTargetConfig(extra *string) (*iscsiModels.ISCSIConfig, error)
 	SetEnabled(enabled bool) error
 	StartTargets() error
 	WriteConfig(reload bool) error

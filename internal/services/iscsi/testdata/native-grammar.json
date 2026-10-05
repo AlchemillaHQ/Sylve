@@ -1,0 +1,16 @@
+{
+  "revision": "FreeBSD releng/15.0 66b5296f1b29083634e2875ff08c32e7b6b866a8",
+  "lexerSHA256": "d078df496ed9946f71a06172d2abce9d033b1953365358a25d7815558d56cfaa",
+  "parserSHA256": "6685b04411b86ea7317e3081554c11c82565df0fb03cadce70643c766b4848ee",
+  "keywords": "alias auth-group auth-type backend blocksize chap chap-mutual controller ctl-lun debug device-id device-type discovery-auth-group discovery-filter discovery-tcp dscp pcp foreign host-address host-nqn initiator-name initiator-portal listen listen-iser lun maxproc namespace offload option path pidfile isns-server isns-period isns-timeout port portal-group redirect serial size tag target tcp timeout transport-group af11 af12 af13 af21 af22 af23 af31 af32 af33 af41 af42 af43 be ef cs0 cs1 cs2 cs3 cs4 cs5 cs6 cs7",
+  "accepted": [
+    "# quoted keywords and delimiters\nauth-group user { auth-type none initiator-name \"listen # {}\" } portal-group user { discovery-auth-group user listen 127.0.0.1:49222 dscp ef pcp 0 option note native } target iqn.2026-10.io.sylve:grammar { portal-group user user alias \"literal\\backslash\" lun 0 { backend ramdisk size 64K } }",
+    "auth-group user { auth-type none host-nqn nqn.2026-10.io.sylve:host host-address 127.0.0.1 } transport-group user { discovery-auth-group user listen tcp 127.0.0.1:49222 listen discovery-tcp 127.0.0.1:49223 dscp af11 pcp 0 } lun shared { backend ramdisk size 64K blocksize 512 device-type disk serial sixteen-byte-max device-id identifier option vendor SYLVE } controller nqn.2026-10.io.sylve:grammar { transport-group user user auth-group user namespace 1 shared }"
+  ],
+  "rejected": [
+    "auth-group user { chap listen literal }",
+    "portal-group user { listen \"[::1]\" } target iqn.2026-10.io.sylve:grammar { portal-group user port 1 }",
+    "auth-group user { chap \"x\\\" listen 127.0.0.1:3260 #\" }",
+    "transport-group user { listen \"tcp\" 127.0.0.1:4420 }"
+  ]
+}

@@ -13,16 +13,36 @@ import "errors"
 const (
 	// MaxRequestBodyBytes leaves ample room for iSCSI settings while bounding
 	// request logging and JSON decoding.
-	MaxRequestBodyBytes int64 = 64 * 1024
+	MaxRequestBodyBytes int64 = 1024 * 1024
+	MaxExtraConfigBytes       = 256 * 1024
 )
 
 var (
-	ErrInvalidRequest = errors.New("invalid iSCSI request")
-	ErrNotFound       = errors.New("iSCSI resource not found")
-	ErrConflict       = errors.New("iSCSI resource conflict")
-	ErrApplyFailed    = errors.New("iSCSI configuration apply failed")
-	ErrRuntimeFailed  = errors.New("iSCSI runtime operation failed")
+	ErrInvalidRequest      = errors.New("invalid iSCSI request")
+	ErrNotFound            = errors.New("iSCSI resource not found")
+	ErrConflict            = errors.New("iSCSI resource conflict")
+	ErrApplyFailed         = errors.New("iSCSI configuration apply failed")
+	ErrRuntimeFailed       = errors.New("iSCSI runtime operation failed")
+	ErrInvalidExtraConfig  = errors.New("invalid iSCSI extra configuration")
+	ErrExtraConfigTooLarge = errors.New("iSCSI extra configuration too large")
 )
+
+type ExtraConfigError struct {
+	ReasonCode string `json:"reasonCode"`
+	LineNumber *int   `json:"lineNumber"`
+	kind       error
+}
+
+func (e *ExtraConfigError) Error() string { return e.ReasonCode }
+func (e *ExtraConfigError) Unwrap() error { return e.kind }
+
+func invalidExtraConfig(reason string, line int) error {
+	e := &ExtraConfigError{ReasonCode: reason, kind: ErrInvalidExtraConfig}
+	if line > 0 {
+		e.LineNumber = &line
+	}
+	return e
+}
 
 type serviceError struct {
 	kind    error

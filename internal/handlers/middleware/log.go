@@ -72,6 +72,7 @@ func shouldRedactAuditPayload(path string) bool {
 	}
 
 	return isMetadataOnlyUploadAuditPath(path) ||
+		path == "/api/iscsi/config" ||
 		auditPathMatches(path, "/api/auth/login") ||
 		auditPathMatches(path, "/api/auth/passkeys/login") ||
 		path == "/api/auth/passkeys/register/finish" ||
@@ -150,6 +151,7 @@ func isSensitiveAuditKey(key string) bool {
 		"credential",
 		"credentials",
 		"extraglobalconfig",
+		"extratargetconfig",
 		"sessiondata",
 		"assertion",
 		"challenge",

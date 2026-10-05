@@ -29,6 +29,7 @@ export type APIRequestOptions = {
 	headers?: Record<string, string>;
 	skipAuditLog?: boolean;
 	preserveErrors?: boolean;
+	sensitive?: boolean;
 	signal?: AbortSignal;
 };
 
@@ -117,7 +118,7 @@ export async function apiRequest<T extends z.ZodType>(
 		if (apiResponse.data) {
 			if (apiResponse.data.status && apiResponse.data.status === 'error') {
 				registerErrorContext(apiResponse.data, errorContext);
-				stageErrorDetail(apiResponse.data, errorContext);
+				if (!options?.sensitive) stageErrorDetail(apiResponse.data, errorContext);
 				setReloadFlag();
 				if (options?.raw) return apiResponse.data as z.infer<T>;
 				return getDefaultValue(schema, apiResponse.data, options?.preserveErrors);
@@ -131,7 +132,7 @@ export async function apiRequest<T extends z.ZodType>(
 				status: 'error',
 				message: 'Invalid response format',
 				error: 'The server response did not match the expected API format.',
-				data: response.data
+				data: options?.sensitive ? undefined : response.data
 			};
 			registerErrorContext(invalidResponse, errorContext);
 			stageErrorDetail(invalidResponse, errorContext);
@@ -159,13 +160,14 @@ export async function apiRequest<T extends z.ZodType>(
 			return parsedEnvelope.data;
 		}
 
-		console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
+		if (!options?.sensitive)
+			console.warn('Zod Validation Error', parsedResult.error, apiResponse.data);
 		setReloadFlag();
 		const invalidResponse: APIResponse = {
 			status: 'error',
 			message: 'Invalid response data',
 			error: 'The server response data did not match the expected format.',
-			data: apiResponse.data.data
+			data: options?.sensitive ? undefined : apiResponse.data.data
 		};
 		registerErrorContext(invalidResponse, errorContext);
 		stageErrorDetail(invalidResponse, errorContext);
@@ -173,11 +175,11 @@ export async function apiRequest<T extends z.ZodType>(
 	} catch (error) {
 		if (isRequestCancellation(error)) throw error;
 		setReloadFlag();
-		console.error('API Request Error', error);
+		if (!options?.sensitive) console.error('API Request Error', error);
 		const failedResponse: APIResponse = {
 			status: 'error',
 			message: 'Request failed',
-			error: error instanceof Error ? error.message : 'Unknown error'
+			error: !options?.sensitive && error instanceof Error ? error.message : 'Request failed'
 		};
 		const errorContext = {
 			method,

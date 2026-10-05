@@ -10,6 +10,18 @@ package iscsiModels
 
 import "time"
 
+type ISCSISettings struct {
+	ID                uint   `json:"id" gorm:"primaryKey;autoIncrement:false;check:iscsi_settings_singleton,id = 1"`
+	ExtraTargetConfig string `json:"extraTargetConfig" gorm:"type:text;not null;default:''"`
+}
+
+type ISCSIConfig struct {
+	ExtraTargetConfig string  `json:"extraTargetConfig"`
+	ApplyStatus       string  `json:"applyStatus" enums:"checked,pending,invalid,disabled"`
+	ReasonCode        *string `json:"reasonCode" extensions:"x-nullable"`
+	LineNumber        *int    `json:"lineNumber" extensions:"x-nullable"`
+}
+
 type ISCSIInitiator struct {
 	ID            uint      `json:"id" gorm:"primaryKey;autoIncrement"`
 	Nickname      string    `json:"nickname" gorm:"uniqueIndex"`

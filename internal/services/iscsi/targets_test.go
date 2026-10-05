@@ -29,6 +29,7 @@ func newTargetTestService(t *testing.T) *Service {
 	db := testutil.NewSQLiteTestDB(t,
 		&models.BasicSettings{},
 		&iscsiModels.ISCSIInitiator{},
+		&iscsiModels.ISCSISettings{},
 		&iscsiModels.ISCSITarget{},
 		&iscsiModels.ISCSITargetPortal{},
 		&iscsiModels.ISCSITargetLUN{},
@@ -36,7 +37,11 @@ func newTargetTestService(t *testing.T) *Service {
 	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.ISCSI}}).Error; err != nil {
 		t.Fatal(err)
 	}
-	svc := &Service{DB: db, ipv6Only: func() bool { return true }, backingStat: func(string) (os.FileInfo, error) { return os.Stat("/dev/null") }}
+	backing, err := os.Stat("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{DB: db, ipv6Only: func() bool { return true }, backingStat: func(string) (os.FileInfo, error) { return backing, nil }}
 	fixture := &fakeTargetRuntime{service: svc}
 	svc.runtime = &targetRuntime{run: fixture.run, deadline: 10 * time.Second, settle: time.Microsecond, interval: time.Microsecond}
 	setTargetConfigPathForTest(t, t.TempDir()+"/ctl.conf")
@@ -540,10 +545,8 @@ func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args
 			if err != nil {
 				return "", err
 			}
-			for i := range f.live.targets {
-				for j := range f.live.targets[i].luns {
-					f.live.targets[i].luns[j].size = 65536
-				}
+			if err := f.service.prepareTargetLUNs(ctx, f.live); err != nil {
+				return "", err
 			}
 			f.running = true
 			f.removedPorts = nil
@@ -597,10 +600,19 @@ func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
 		return ports, luns
 	}
 	ids := make(map[string]int)
-	for _, target := range f.live.targets {
-		for _, lun := range target.luns {
-			ids[lun.name] = len(luns.LUNs)
-			luns.LUNs = append(luns.LUNs, ctlLUN{ID: ids[lun.name], Name: lun.name, Backend: "block", Blocks: 128, Blocksize: 512, File: lun.path, Serial: fmt.Sprintf("fixture-%d", ids[lun.name])})
+	for _, lun := range f.live.configuredLUNs() {
+		id := len(luns.LUNs)
+		if lun.ctlID != nil {
+			id = *lun.ctlID
+		}
+		ids[lun.name] = id
+		serial := lun.serial
+		if serial == "" {
+			serial = fmt.Sprintf("fixture-%d", id)
+		}
+		luns.LUNs = append(luns.LUNs, ctlLUN{ID: id, Name: lun.name, Backend: lun.backend, Blocks: lun.size / lun.blocksize, Blocksize: lun.blocksize, File: lun.path, Serial: serial, DeviceID: lun.deviceID, DeviceType: lun.deviceType})
+		for name, value := range lun.options {
+			luns.LUNs[len(luns.LUNs)-1].Options = append(luns.LUNs[len(luns.LUNs)-1].Options, ctlProperty{XMLName: xml.Name{Local: name}, Value: value})
 		}
 	}
 	tags := make(map[string]int)
@@ -614,6 +626,13 @@ func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
 				tags[name] = len(tags) + 1
 			}
 			port := ctlPort{ID: portID, Target: target.name, Group: name, Frontend: "iscsi", Online: "YES", Tag: tags[name], LUNMap: "on"}
+			for key, value := range f.live.groups[name].options {
+				port.Options = append(port.Options, ctlProperty{XMLName: xml.Name{Local: key}, Value: value})
+			}
+			if target.controller {
+				port.Target, port.Group, port.Tag = "", "", 0
+				port.NQN, port.TransportGroup, port.PortID, port.Frontend = target.name, name, tags[name], "nvmf"
+			}
 			portID++
 			for _, lun := range target.luns {
 				port.LUNs = append(port.LUNs, struct {
