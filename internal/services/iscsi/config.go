@@ -687,10 +687,28 @@ func (s *Service) writePreparedTargets(ctx context.Context, text string, state *
 
 func (s *Service) applyTargetRuntime(ctx context.Context, state *targetConfiguration, running bool) error {
 	action, reason := "onestart", "failed_to_start_target_service"
+	var before *targetStartBaseline
 	if running {
 		action, reason = "onereload", "failed_to_reload_target_config"
+	} else {
+		lock, err := s.lockTargetRecovery()
+		if err != nil {
+			return applyFailed(err.Error(), nil)
+		}
+		defer lock.Close()
+		if err := s.recoverTargetPorts(ctx); err != nil {
+			return applyFailed(err.Error(), nil)
+		}
+		if len(state.activeEndpoints()) != 0 {
+			before, _ = s.targetStartInventory(ctx)
+		}
 	}
 	if _, err := s.targetService(ctx, action); err != nil {
+		if !running && before != nil {
+			if recordErr := s.rememberFailedTargetStart(ctx, state, before); recordErr != nil {
+				return applyFailed("target_start_recovery_not_recorded", nil)
+			}
+		}
 		return applyFailed(reason, nil)
 	}
 	settle, interval := s.targetTimings()
@@ -711,6 +729,14 @@ func (s *Service) applyTargetRuntime(ctx context.Context, state *targetConfigura
 			}
 		} else {
 			matches, lastIdentity = 0, ""
+			if !running && errors.Is(err, errTargetStopped) {
+				if before != nil {
+					if recordErr := s.rememberFailedTargetStart(ctx, state, before); recordErr != nil {
+						return applyFailed("target_start_recovery_not_recorded", nil)
+					}
+				}
+				return applyFailed(reason, nil)
+			}
 		}
 		if err := waitTarget(ctx, interval); err != nil {
 			return applyFailed("target_runtime_checks_pending", nil)

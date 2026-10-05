@@ -10,13 +10,23 @@ package iscsi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 type ctladmConnection struct {
@@ -25,6 +35,7 @@ type ctladmConnection struct {
 }
 
 type ctladmIsList struct {
+	XMLName     xml.Name           `xml:"ctlislist"`
 	Connections []ctladmConnection `xml:"connection"`
 }
 
@@ -343,6 +354,434 @@ func (s *Service) matchCTLState(state *targetConfiguration, ports *ctlPorts, lun
 	}
 	if len(seenPorts) != len(wantedPorts) {
 		return errors.New("target_port_missing")
+	}
+	return nil
+}
+
+type targetBackingIdentity struct {
+	Device   uint64      `json:"device"`
+	Inode    uint64      `json:"inode"`
+	Rdev     uint64      `json:"rdev"`
+	Mode     os.FileMode `json:"mode"`
+	Modified int64       `json:"modified"`
+}
+
+type targetRecoveryLUN struct {
+	LUN     ctlLUN                `json:"lun"`
+	Backing targetBackingIdentity `json:"backing"`
+}
+
+type targetPortRecovery struct {
+	Version  int                 `json:"version"`
+	Config   string              `json:"config"`
+	Boot     string              `json:"boot"`
+	Ports    []ctlPort           `json:"ports"`
+	LUNs     []targetRecoveryLUN `json:"luns"`
+	Removing []int               `json:"removing,omitempty"`
+}
+
+type targetStartBaseline struct {
+	boot   string
+	config [sha256.Size]byte
+	ports  *ctlPorts
+	luns   *ctlLUNs
+}
+
+func (s *Service) targetRecoveryPath() string { return s.targetPath() + ".recovery.json" }
+
+func privateTargetFile(file *os.File) error {
+	info, err := file.Stat()
+	if err != nil {
+		return errors.New("failed_to_check_target_recovery_file")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || int(stat.Uid) != os.Geteuid() {
+		return errors.New("target_recovery_file_not_private")
+	}
+	return nil
+}
+
+func (s *Service) lockTargetRecovery() (*os.File, error) {
+	file, err := os.OpenFile(s.targetPath()+".recovery.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return nil, errors.New("failed_to_lock_target_recovery")
+	}
+	if err := privateTargetFile(file); err != nil {
+		file.Close()
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		file.Close()
+		return nil, errors.New("target_recovery_busy")
+	}
+	return file, nil
+}
+
+func (s *Service) targetBoot(ctx context.Context) (string, error) {
+	out, err := s.runTargetCommand(ctx, "", "/sbin/sysctl", "-n", "kern.boottime")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return "", errors.New("failed_to_check_target_boot_identity")
+	}
+	return strings.TrimSpace(out), nil
+}
+
+func (s *Service) checkTargetRecoveryQuiet(ctx context.Context) error {
+	out, err := s.runTargetCommand(ctx, "", "/bin/pgrep", "-x", "ctld")
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || strings.TrimSpace(out) != "" || ctx.Err() != nil {
+		return errors.New("target_recovery_requires_stopped_daemon")
+	}
+	listeners, err := s.targetListeners(ctx, 0)
+	if err != nil || len(listeners) != 0 {
+		return errors.New("target_recovery_requires_no_listeners")
+	}
+	out, err = s.runTargetCommand(ctx, "", "/usr/sbin/ctladm", "islist", "-x")
+	var sessions ctladmIsList
+	if err != nil || xml.Unmarshal([]byte(out), &sessions) != nil {
+		return errors.New("failed_to_check_target_recovery_sessions")
+	}
+	if len(sessions.Connections) != 0 {
+		return errors.New("target_recovery_requires_no_sessions")
+	}
+	return nil
+}
+
+func recoveryPort(port ctlPort) bool {
+	return port.Frontend == "iscsi" || port.Group != "" || port.TransportGroup != ""
+}
+
+func sortCTLInventory(ports *ctlPorts, luns *ctlLUNs) {
+	sort.Slice(ports.Ports, func(i, j int) bool { return ports.Ports[i].ID < ports.Ports[j].ID })
+	for i := range ports.Ports {
+		mappings := ports.Ports[i].LUNs
+		sort.Slice(mappings, func(i, j int) bool { return mappings[i].Number < mappings[j].Number })
+	}
+	sort.Slice(luns.LUNs, func(i, j int) bool { return luns.LUNs[i].ID < luns.LUNs[j].ID })
+}
+
+func (s *Service) targetStartInventory(ctx context.Context) (*targetStartBaseline, error) {
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return nil, err
+	}
+	boot, err := s.targetBoot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ports, err := s.readCTLPorts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, port := range ports.Ports {
+		if recoveryPort(port) {
+			return nil, errors.New("target_start_has_unrecorded_ports")
+		}
+	}
+	luns, err := s.readCTLLUNs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(s.targetPath())
+	if err != nil {
+		return nil, errors.New("failed_to_read_target_config")
+	}
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return nil, err
+	}
+	sortCTLInventory(ports, luns)
+	return &targetStartBaseline{boot: boot, config: sha256.Sum256(data), ports: ports, luns: luns}, nil
+}
+
+func (s *Service) targetBackingIdentity(lun ctlLUN) (targetBackingIdentity, error) {
+	path := lun.File
+	if path == "" {
+		path = lun.Device
+	}
+	info, err := s.statBacking(path)
+	if err != nil {
+		return targetBackingIdentity{}, err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return targetBackingIdentity{}, errors.New("invalid_target_backing_identity")
+	}
+	return targetBackingIdentity{Device: uint64(stat.Dev), Inode: uint64(stat.Ino), Rdev: uint64(stat.Rdev), Mode: info.Mode(), Modified: info.ModTime().UnixNano()}, nil
+}
+
+func (s *Service) rememberFailedTargetStart(ctx context.Context, state *targetConfiguration, before *targetStartBaseline) error {
+	if before == nil {
+		return errors.New("target_start_ownership_not_recorded")
+	}
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return err
+	}
+	boot, err := s.targetBoot(ctx)
+	if err != nil || boot != before.boot {
+		return errors.New("target_recovery_boot_changed")
+	}
+	data, err := os.ReadFile(s.targetPath())
+	if err != nil || sha256.Sum256(data) != before.config {
+		return errors.New("target_start_config_changed")
+	}
+	ports, err := s.readCTLPorts(ctx)
+	if err != nil {
+		return err
+	}
+	luns, err := s.readCTLLUNs(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.matchCTLState(state, ports, luns); err != nil {
+		return err
+	}
+	sortCTLInventory(ports, luns)
+	record := targetPortRecovery{Version: 1, Config: filepath.Clean(s.targetPath()), Boot: boot}
+	for _, port := range ports.Ports {
+		if !recoveryPort(port) {
+			continue
+		}
+		if port.Group == "" {
+			return errors.New("target_start_port_not_owned")
+		}
+		for _, old := range before.ports.Ports {
+			if old.ID == port.ID || old.Target == port.Target && old.Tag == port.Tag {
+				return errors.New("target_start_port_existed_before_attempt")
+			}
+		}
+		record.Ports = append(record.Ports, port)
+	}
+	if len(record.Ports) == 0 {
+		return nil
+	}
+	for _, lun := range luns.LUNs {
+		if lun.Name == "" {
+			continue
+		}
+		if strings.Trim(lun.Serial, " \t\r\n\x00") == "" {
+			return errors.New("target_start_lun_has_no_serial")
+		}
+		for _, old := range before.luns.LUNs {
+			if old.ID == lun.ID && old != lun {
+				return errors.New("target_start_lun_identity_changed")
+			}
+		}
+		identity, err := s.targetBackingIdentity(lun)
+		if err != nil {
+			return err
+		}
+		record.LUNs = append(record.LUNs, targetRecoveryLUN{LUN: lun, Backing: identity})
+	}
+	endPorts, err := s.readCTLPorts(ctx)
+	if err != nil {
+		return err
+	}
+	endLUNs, err := s.readCTLLUNs(ctx)
+	if err != nil {
+		return err
+	}
+	sortCTLInventory(endPorts, endLUNs)
+	if !reflect.DeepEqual(ports.Ports, endPorts.Ports) || !reflect.DeepEqual(luns.LUNs, endLUNs.LUNs) {
+		return errors.New("target_start_inventory_changed")
+	}
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return err
+	}
+	return s.saveTargetRecovery(&record)
+}
+
+func (s *Service) saveTargetRecovery(record *targetPortRecovery) error {
+	data, err := json.Marshal(record)
+	if err != nil || len(data) > 1<<20 {
+		return errors.New("failed_to_encode_target_recovery")
+	}
+	if err := utils.AtomicWriteFile(s.targetRecoveryPath(), data, 0600); err != nil {
+		return errors.New("failed_to_save_target_recovery")
+	}
+	return nil
+}
+
+func (s *Service) readTargetRecovery() (*targetPortRecovery, error) {
+	file, err := os.OpenFile(s.targetRecoveryPath(), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errors.New("failed_to_read_target_recovery")
+	}
+	defer file.Close()
+	if err := privateTargetFile(file); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
+	var record targetPortRecovery
+	if err != nil || len(data) > 1<<20 || json.Unmarshal(data, &record) != nil || record.Version != 1 || record.Config != filepath.Clean(s.targetPath()) || record.Boot == "" || len(record.Ports) == 0 {
+		return nil, errors.New("invalid_target_recovery_record")
+	}
+	return &record, nil
+}
+
+func (s *Service) checkTargetRecoveryInventory(ctx context.Context, record *targetPortRecovery) ([]ctlPort, error) {
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return nil, err
+	}
+	boot, err := s.targetBoot(ctx)
+	if err != nil || boot != record.Boot {
+		return nil, errors.New("target_recovery_boot_changed")
+	}
+	ports, err := s.readCTLPorts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	luns, err := s.readCTLLUNs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sortCTLInventory(ports, luns)
+	wantedPorts, selectors := make(map[int]ctlPort), make(map[string]bool)
+	wantedLUNs := make(map[int]targetRecoveryLUN)
+	invalid := errors.New("invalid_target_recovery_record")
+	for _, saved := range record.LUNs {
+		lun := saved.LUN
+		path := lun.File
+		if path == "" {
+			path = lun.Device
+		}
+		if _, exists := wantedLUNs[lun.ID]; exists || lun.ID < 0 || lun.Name == "" || lun.Backend != "block" || lun.DeviceType != 0 || lun.Blocksize == 0 || lun.Blocks == 0 || strings.Trim(lun.Serial, " \t\r\n\x00") == "" || !strings.HasPrefix(path, "/dev/zvol/") || validateZVol(strings.TrimPrefix(path, "/dev/zvol/")) != nil {
+			return nil, invalid
+		}
+		wantedLUNs[lun.ID] = saved
+	}
+	for _, port := range record.Ports {
+		selector := port.Target + "\x00" + strconv.Itoa(port.Tag)
+		if _, exists := wantedPorts[port.ID]; exists || port.ID < 0 || port.Target == "" || validateBareConfigToken(port.Target, "target_name", maxISCSINameLength) != nil || port.Frontend != "iscsi" || !strings.HasPrefix(port.Group, "pg-") || port.TransportGroup != "" || port.Tag < 1 || port.Tag > 65535 || port.LUNMap != "on" || port.Online != "YES" || selectors[selector] {
+			return nil, invalid
+		}
+		seen := make(map[int]bool)
+		for _, mapping := range port.LUNs {
+			lun, exists := wantedLUNs[mapping.ID]
+			if !exists || mapping.Number < 0 || mapping.Number > maxTargetLUNNumber || seen[mapping.Number] || lun.LUN.Name != port.Target+",lun,"+strconv.Itoa(mapping.Number) {
+				return nil, invalid
+			}
+			seen[mapping.Number] = true
+		}
+		wantedPorts[port.ID], selectors[selector] = port, true
+	}
+	removing := make(map[int]bool)
+	for _, id := range record.Removing {
+		if _, exists := wantedPorts[id]; !exists || removing[id] {
+			return nil, invalid
+		}
+		removing[id] = true
+	}
+	actualLUNs, lunIDs := make(map[int]bool), make(map[int]bool)
+	for _, lun := range luns.LUNs {
+		if lun.ID < 0 || lunIDs[lun.ID] {
+			return nil, errors.New("invalid_target_lun_inventory")
+		}
+		lunIDs[lun.ID] = true
+		if lun.Name == "" {
+			continue
+		}
+		saved, exists := wantedLUNs[lun.ID]
+		identity, err := s.targetBackingIdentity(lun)
+		if !exists || lun != saved.LUN || err != nil || identity != saved.Backing {
+			return nil, errors.New("target_recovery_lun_identity_changed")
+		}
+		actualLUNs[lun.ID] = true
+	}
+	var remaining []ctlPort
+	portIDs := make(map[int]bool)
+	for _, port := range ports.Ports {
+		if port.ID < 0 || portIDs[port.ID] {
+			return nil, errors.New("invalid_target_port_inventory")
+		}
+		portIDs[port.ID] = true
+		saved, exists := wantedPorts[port.ID]
+		if !recoveryPort(port) {
+			if exists {
+				return nil, errors.New("target_recovery_port_identity_changed")
+			}
+			continue
+		}
+		identity := port
+		if removing[port.ID] && port.Online == "NO" {
+			identity.Online = saved.Online
+		}
+		if !exists || !reflect.DeepEqual(identity, saved) {
+			return nil, errors.New("target_recovery_port_identity_changed")
+		}
+		for _, mapping := range port.LUNs {
+			if !actualLUNs[mapping.ID] {
+				return nil, errors.New("target_recovery_lun_missing")
+			}
+		}
+		remaining = append(remaining, port)
+	}
+	if err := s.checkTargetRecoveryQuiet(ctx); err != nil {
+		return nil, err
+	}
+	return remaining, nil
+}
+
+func (s *Service) recoverTargetPorts(ctx context.Context) error {
+	record, err := s.readTargetRecovery()
+	if err != nil || record == nil {
+		return err
+	}
+	remaining, err := s.checkTargetRecoveryInventory(ctx, record)
+	if err != nil {
+		return err
+	}
+	_, interval := s.targetTimings()
+	for _, port := range remaining {
+		current, err := s.checkTargetRecoveryInventory(ctx, record)
+		if err != nil {
+			return err
+		}
+		present := func(candidate ctlPort) bool { return candidate.ID == port.ID }
+		if !slices.ContainsFunc(current, present) {
+			continue
+		}
+		if !slices.Contains(record.Removing, port.ID) {
+			record.Removing = append(record.Removing, port.ID)
+			if err := s.saveTargetRecovery(record); err != nil {
+				return err
+			}
+		}
+		current, err = s.checkTargetRecoveryInventory(ctx, record)
+		if err != nil {
+			return err
+		}
+		index := slices.IndexFunc(current, present)
+		if index < 0 {
+			continue
+		}
+		if current[index].Online != "NO" {
+			if _, err := s.runTargetCommand(ctx, "", "/usr/sbin/ctladm", "port", "-r", "-d", "iscsi", "-p", strconv.Itoa(port.ID), "-O", "cfiscsi_target="+port.Target, "-O", "cfiscsi_portal_group_tag="+strconv.Itoa(port.Tag)); err != nil {
+				return errors.New("failed_to_remove_recorded_target_port")
+			}
+		}
+		for {
+			current, err := s.checkTargetRecoveryInventory(ctx, record)
+			if err != nil {
+				return err
+			}
+			if !slices.ContainsFunc(current, present) {
+				break
+			}
+			if err := waitTarget(ctx, interval); err != nil {
+				return errors.New("target_recovery_port_removal_pending")
+			}
+		}
+	}
+	current, err := s.checkTargetRecoveryInventory(ctx, record)
+	if err != nil {
+		return err
+	}
+	if len(current) != 0 {
+		return errors.New("target_recovery_ports_remain")
+	}
+	if err := os.Remove(s.targetRecoveryPath()); err != nil {
+		return errors.New("failed_to_clear_target_recovery")
 	}
 	return nil
 }

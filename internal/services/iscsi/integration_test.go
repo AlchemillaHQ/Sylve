@@ -409,14 +409,83 @@ func TestIntegrationISCSIColdStartFailureAndRetry(t *testing.T) {
 		t.Fatal("partial runtime failure restored or changed the candidate file")
 	}
 	f.record(t)
+	record, err := f.service.readTargetRecovery()
+	if err != nil || record == nil || len(record.Ports) != 1 {
+		t.Fatalf("failed-start port ownership was not saved: %v", err)
+	}
 	if err := blocker.Close(); err != nil {
 		t.Fatal(err)
 	}
+	f.service = &Service{DB: f.service.DB, runtime: f.service.runtime}
 	if err := f.service.StartTargets(); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(f.service.targetRecoveryPath()); !os.IsNotExist(err) {
+		t.Fatal("successful cold-start recovery retained its pending record")
+	}
 	f.initiator(t, target, endpoint, "bind-retry", "None", "", "", "", "")
 	f.io(t, target, endpoint, 'N')
+}
+
+func TestIntegrationISCSIColdStartFailureAndDisable(t *testing.T) {
+	f := requireISCSIIntegrationFixture(t)
+	target := f.target(t, "failed-start-disable", "", "None", "", "", "", "")
+	if err := f.service.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := f.endpoint(t)
+	blocker, err := net.Listen("tcp4", endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { blocker.Close() })
+	if err := f.service.AddPortal(target.ID, "127.0.0.1", mustPort(t, endpoint)); err != nil {
+		t.Fatal(err)
+	}
+	setIntegrationDesiredEnabled(t, f)
+	if err := f.service.StartTargets(); !errors.Is(err, ErrApplyFailed) {
+		t.Fatalf("bind failure result=%v", err)
+	}
+	f.record(t)
+	record, err := f.service.readTargetRecovery()
+	if err != nil || record == nil || len(record.Ports) != 1 {
+		t.Fatalf("failed-start ownership was not saved: %v", err)
+	}
+	if err := f.service.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := f.service.targetContext()
+	defer cancel()
+	ports, err := f.service.readCTLPorts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, port := range ports.Ports {
+		if recoveryPort(port) {
+			t.Fatal("failed-start target port remains after disable")
+		}
+	}
+	luns, err := f.service.readCTLLUNs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, saved := range record.LUNs {
+		found := false
+		for _, lun := range luns.LUNs {
+			if lun == saved.LUN {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("port recovery changed a backing LUN")
+		}
+	}
+	if enabled, err := f.service.desiredTargetEnabled(); err != nil || enabled {
+		t.Fatal("failed-start disable did not save the desired state")
+	}
+	if _, err := os.Stat(f.service.targetRecoveryPath()); !os.IsNotExist(err) {
+		t.Fatal("disable did not clear its completed recovery record")
+	}
 }
 
 func TestIntegrationISCSINativeValidationErrorIsSafe(t *testing.T) {

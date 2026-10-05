@@ -4,12 +4,15 @@ package iscsi
 
 import (
 	"context"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -863,6 +866,12 @@ func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
 		case "/usr/sbin/ctld":
 			if slices.Equal(args, []string{"-f", svc.targetPath()}) {
 				starts++
+				if starts > 1 {
+					ports, _ := fixture.inventory()
+					if len(ports.Ports) != 0 {
+						t.Fatal("stock ctld cannot adopt a retained kernel port")
+					}
+				}
 				if _, err := fixture.run(ctx, input, "/usr/sbin/service", "ctld", "onestart"); err != nil {
 					return "", err
 				}
@@ -903,6 +912,9 @@ func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
 	if fixture.live == nil || len(fixture.live.targets) != 1 {
 		t.Fatal("fixture did not retain kernel state after the failed start")
 	}
+	if record, err := svc.readTargetRecovery(); err != nil || record == nil || len(record.Ports) != 1 {
+		t.Fatalf("failed-start ownership was not saved: %v", err)
+	}
 	svc.runtime.deadline = time.Second
 	if err := svc.StartTargets(); err != nil {
 		t.Fatalf("retry: %v", err)
@@ -915,6 +927,491 @@ func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
 	}
 	if fixture.running || fixture.live != nil {
 		t.Fatal("owned runtime state remains after stop")
+	}
+}
+
+func newFailedTargetStartForTest(t *testing.T) (*Service, *fakeTargetRuntime, *targetConfiguration, *targetStartBaseline) {
+	t.Helper()
+	svc := newTargetTestService(t)
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:recovery", AuthMethod: "None", Portals: []iscsiModels.ISCSITargetPortal{{Address: "127.0.0.1", Port: 3260}, {Address: "127.0.0.2", Port: 3261}}, LUNs: []iscsiModels.ISCSITargetLUN{{LUNNumber: 0, ZVol: "tank/test"}}}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	exitOne := exec.Command("/usr/bin/false").Run()
+	var exitErr *exec.ExitError
+	if !errors.As(exitOne, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatal("cannot create exit-one fixture")
+	}
+	fixture := &fakeTargetRuntime{service: svc}
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		if command == "/bin/pgrep" && !fixture.running {
+			return "", exitOne
+		}
+		return fixture.run(ctx, input, command, args...)
+	}
+	text, err := svc.GenerateTargetConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := svc.prepareTargetConfig(t.Context(), text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.targetPath(), []byte(text), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := svc.targetStartInventory(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.live = state
+	return svc, fixture, state, before
+}
+
+func saveFailedTargetStartForTest(t *testing.T, svc *Service, state *targetConfiguration, before *targetStartBaseline) {
+	t.Helper()
+	if err := svc.rememberFailedTargetStart(t.Context(), state, before); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTargetRecoveryOnlyRemovesRecordedPorts(t *testing.T) {
+	svc, fixture, state, before := newFailedTargetStartForTest(t)
+	saveFailedTargetStartForTest(t, svc, state, before)
+	record, err := svc.readTargetRecovery()
+	if err != nil || record == nil || len(record.Ports) != 2 || len(record.LUNs) != 1 {
+		t.Fatalf("saved ownership=%v error=%v", record, err)
+	}
+	info, err := os.Stat(svc.targetRecoveryPath())
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("recovery record is not private")
+	}
+	data, err := os.ReadFile(svc.targetPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, luns := fixture.inventory()
+	run := svc.runtime.run
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		if command == "/usr/sbin/ctladm" && args[0] == "portlist" {
+			ports, _ := fixture.inventory()
+			ports.Ports = append(ports.Ports, ctlPort{ID: 90, Frontend: "ioctl", Online: "YES"})
+			out, err := xml.Marshal(ports)
+			return string(out), err
+		}
+		return run(ctx, input, command, args...)
+	}
+	lock, err := svc.lockTargetRecovery()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err := svc.recoverTargetPorts(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	ports, err := svc.readCTLPorts(t.Context())
+	if err != nil || len(ports.Ports) != 1 || ports.Ports[0].ID != 90 {
+		t.Fatal("unowned physical port was not left intact")
+	}
+	_, afterLUNs := fixture.inventory()
+	if !reflect.DeepEqual(luns, afterLUNs) {
+		t.Fatal("port recovery changed LUN identities")
+	}
+	after, err := os.ReadFile(svc.targetPath())
+	if err != nil || string(after) != string(data) {
+		t.Fatal("port recovery changed saved configuration")
+	}
+	if enabled, err := svc.desiredTargetEnabled(); err != nil || !enabled {
+		t.Fatal("port recovery changed desired service state")
+	}
+	if _, err := os.Stat(svc.targetRecoveryPath()); !os.IsNotExist(err) {
+		t.Fatal("completed recovery retained its pending record")
+	}
+}
+
+func TestTargetRecoveryRejectsUncertainState(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		command string
+		output  string
+		failure error
+		change  func(*ctlPorts, *ctlLUNs)
+		backing bool
+		late    bool
+	}{
+		{name: "live-daemon", command: "/bin/pgrep", output: "23942"},
+		{name: "failed-process-inventory", command: "/bin/pgrep", failure: errors.New("inventory failed")},
+		{name: "empty-successful-process-inventory", command: "/bin/pgrep"},
+		{name: "daemon-appears-between-checks", command: "/bin/pgrep", output: "23942", late: true},
+		{name: "live-listener", command: "/usr/bin/sockstat", output: "root ctld 23942 3 tcp4 127.0.0.1:3260 *:*\n"},
+		{name: "active-session", command: "/usr/sbin/ctladm islist", output: "<ctlislist><connection><target>iqn.2026-10.test:recovery</target></connection></ctlislist>"},
+		{name: "unknown-session-state", command: "/usr/sbin/ctladm islist", failure: errors.New("inventory failed")},
+		{name: "malformed-session-inventory", command: "/usr/sbin/ctladm islist", output: "<ctlislist>"},
+		{name: "wrong-session-inventory-root", command: "/usr/sbin/ctladm islist", output: "<not-sessions/>"},
+		{name: "malformed-port-inventory", command: "/usr/sbin/ctladm portlist", output: "<ctlportlist>"},
+		{name: "malformed-lun-inventory", command: "/usr/sbin/ctladm devlist", output: "<ctllunlist>"},
+		{name: "new-boot", command: "/sbin/sysctl", output: "different boot"},
+		{name: "unknown-boot", command: "/sbin/sysctl", failure: errors.New("inventory failed")},
+		{name: "reused-port-id", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Target = "iqn.2026-10.test:foreign" }},
+		{name: "reused-physical-port-id", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0] = ctlPort{ID: p.Ports[0].ID, Frontend: "ioctl"} }},
+		{name: "changed-tag", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Tag++ }},
+		{name: "changed-group", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Group = "pg-foreign" }},
+		{name: "changed-frontend", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Frontend = "ioctl" }},
+		{name: "changed-online-state", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Online = "NO" }},
+		{name: "changed-mapping", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].LUNs[0].Number++ }},
+		{name: "duplicate-port-id", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports = append(p.Ports, p.Ports[0]) }},
+		{name: "duplicate-selector", change: func(p *ctlPorts, _ *ctlLUNs) { port := p.Ports[0]; port.ID = 99; p.Ports = append(p.Ports, port) }},
+		{name: "foreign-port", change: func(p *ctlPorts, _ *ctlLUNs) {
+			p.Ports = append(p.Ports, ctlPort{ID: 99, Frontend: "iscsi", Target: "foreign", Group: "pg-foreign", Tag: 99})
+		}},
+		{name: "foreign-serial", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].Serial = "foreign" }},
+		{name: "foreign-path", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].File = "/dev/zvol/non-test/volume" }},
+		{name: "foreign-backend", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].Backend = "ramdisk" }},
+		{name: "changed-capacity", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].Blocks++ }},
+		{name: "changed-blocksize", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].Blocksize = 4096 }},
+		{name: "changed-lun-id", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs[0].ID++ }},
+		{name: "missing-lun", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs = nil }},
+		{name: "duplicate-lun-id", change: func(_ *ctlPorts, l *ctlLUNs) { l.LUNs = append(l.LUNs, l.LUNs[0]) }},
+		{name: "replaced-backing", backing: true},
+		{name: "changed-between-checks", change: func(p *ctlPorts, _ *ctlLUNs) { p.Ports[0].Tag++ }, late: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, fixture, state, before := newFailedTargetStartForTest(t)
+			saveFailedTargetStartForTest(t, svc, state, before)
+			if test.backing {
+				svc.backingStat = func(string) (os.FileInfo, error) { return os.Stat("/dev/zero") }
+			}
+			run := svc.runtime.run
+			portReads, keyReads, removals := 0, 0, 0
+			svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+				if command == "/usr/sbin/ctladm" && args[0] == "port" {
+					removals++
+					t.Fatal("unproven recovery attempted removal")
+				}
+				key := command
+				if command == "/usr/sbin/ctladm" {
+					key += " " + args[0]
+				}
+				if key == test.command {
+					keyReads++
+					if !test.late || keyReads > 2 {
+						return test.output, test.failure
+					}
+				}
+				if test.change != nil && command == "/usr/sbin/ctladm" && (args[0] == "portlist" || args[0] == "devlist") {
+					ports, luns := fixture.inventory()
+					if args[0] == "portlist" {
+						portReads++
+					}
+					if !test.late || portReads > 1 {
+						test.change(ports, luns)
+					}
+					var data []byte
+					var err error
+					if args[0] == "portlist" {
+						data, err = xml.Marshal(ports)
+					} else {
+						data, err = xml.Marshal(luns)
+					}
+					return string(data), err
+				}
+				return run(ctx, input, command, args...)
+			}
+			if err := svc.recoverTargetPorts(t.Context()); err == nil || removals != 0 {
+				t.Fatalf("unsafe recovery result=%v removals=%d", err, removals)
+			}
+			if _, err := os.Stat(svc.targetRecoveryPath()); err != nil {
+				t.Fatal("uncertain recovery discarded ownership evidence")
+			}
+		})
+	}
+}
+
+func TestTargetRecoveryRejectsUnsafeRecords(t *testing.T) {
+	for _, test := range []string{"malformed", "version", "other-config", "duplicate-port", "invalid-selector", "missing-lun-record", "mode", "symlink", "oversized"} {
+		t.Run(test, func(t *testing.T) {
+			svc, _, state, before := newFailedTargetStartForTest(t)
+			saveFailedTargetStartForTest(t, svc, state, before)
+			record, err := svc.readTargetRecovery()
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch test {
+			case "version":
+				record.Version++
+			case "other-config":
+				record.Config = "/etc/foreign.conf"
+			case "duplicate-port":
+				record.Ports = append(record.Ports, record.Ports[0])
+			case "invalid-selector":
+				record.Ports[0].Target = "target=foreign"
+			case "missing-lun-record":
+				record.LUNs = nil
+			}
+			data, err := json.Marshal(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test == "malformed" {
+				data = []byte("{")
+			} else if test == "oversized" {
+				data = append(data, []byte(strings.Repeat(" ", 1<<20))...)
+			}
+			if err := os.WriteFile(svc.targetRecoveryPath(), data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if test == "mode" {
+				if err := os.Chmod(svc.targetRecoveryPath(), 0644); err != nil {
+					t.Fatal(err)
+				}
+			} else if test == "symlink" {
+				if err := os.Remove(svc.targetRecoveryPath()); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(svc.targetPath(), svc.targetRecoveryPath()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			run := svc.runtime.run
+			svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+				if command == "/usr/sbin/ctladm" && args[0] == "port" {
+					t.Fatal("unsafe record authorized removal")
+				}
+				return run(ctx, input, command, args...)
+			}
+			if err := svc.recoverTargetPorts(t.Context()); err == nil {
+				t.Fatal("unsafe record accepted")
+			}
+			if _, err := os.Lstat(svc.targetRecoveryPath()); err != nil {
+				t.Fatal("unsafe record was removed")
+			}
+		})
+	}
+}
+
+func TestTargetRecoveryRetainsEvidenceAfterPartialRemoval(t *testing.T) {
+	svc, fixture, state, before := newFailedTargetStartForTest(t)
+	saveFailedTargetStartForTest(t, svc, state, before)
+	_, luns := fixture.inventory()
+	run := svc.runtime.run
+	removals := 0
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		if command == "/usr/sbin/ctladm" && args[0] == "port" {
+			removals++
+			if removals == 2 {
+				return "", errors.New("remove failed")
+			}
+		}
+		return run(ctx, input, command, args...)
+	}
+	if err := svc.recoverTargetPorts(t.Context()); err == nil {
+		t.Fatal("partial removal was accepted as complete")
+	}
+	ports, afterLUNs := fixture.inventory()
+	if len(ports.Ports) != 1 || !reflect.DeepEqual(luns, afterLUNs) {
+		t.Fatal("partial removal changed the wrong kernel objects")
+	}
+	if _, err := os.Stat(svc.targetRecoveryPath()); err != nil {
+		t.Fatal("partial recovery discarded its ownership record")
+	}
+	if err := svc.recoverTargetPorts(t.Context()); err != nil {
+		t.Fatalf("retry partial recovery: %v", err)
+	}
+	ports, afterLUNs = fixture.inventory()
+	if len(ports.Ports) != 0 || !reflect.DeepEqual(luns, afterLUNs) || removals != 3 {
+		t.Fatal("retry did not finish only the remaining port removal")
+	}
+}
+
+func TestTargetRecoveryWaitsForRequestedOfflinePort(t *testing.T) {
+	for _, interrupted := range []bool{false, true} {
+		t.Run(fmt.Sprint(interrupted), func(t *testing.T) {
+			svc, fixture, state, before := newFailedTargetStartForTest(t)
+			saveFailedTargetStartForTest(t, svc, state, before)
+			run := svc.runtime.run
+			pending, reads, removals := -1, 0, 0
+			svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+				if command == "/usr/sbin/ctladm" && args[0] == "port" {
+					removals++
+					if pending >= 0 {
+						t.Fatal("offline removal was issued twice")
+					}
+					id, err := strconv.Atoi(args[5])
+					if err != nil {
+						t.Fatal(err)
+					}
+					pending, reads = id, 0
+					if interrupted && removals == 1 {
+						return "", errors.New("interrupted removal")
+					}
+					return "", nil
+				}
+				if command == "/usr/sbin/ctladm" && args[0] == "portlist" && pending >= 0 {
+					reads++
+					if reads == 6 {
+						if fixture.removedPorts == nil {
+							fixture.removedPorts = make(map[int]bool)
+						}
+						fixture.removedPorts[pending] = true
+						pending = -1
+					}
+					ports, _ := fixture.inventory()
+					for i := range ports.Ports {
+						if ports.Ports[i].ID == pending {
+							ports.Ports[i].Online = "NO"
+						}
+					}
+					data, err := xml.Marshal(ports)
+					return string(data), err
+				}
+				return run(ctx, input, command, args...)
+			}
+			if interrupted {
+				if err := svc.recoverTargetPorts(t.Context()); err == nil {
+					t.Fatal("interrupted removal was accepted as complete")
+				}
+				saved, err := svc.readTargetRecovery()
+				if err != nil || saved == nil || !slices.Contains(saved.Removing, pending) {
+					t.Fatal("removal intent was not saved before the native command")
+				}
+			}
+			if err := svc.recoverTargetPorts(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if pending >= 0 || removals != 2 {
+				t.Fatalf("pending port=%d removal commands=%d", pending, removals)
+			}
+		})
+	}
+}
+
+func TestTargetRecoveryRequiresNewOwnedPortsFromFailedStart(t *testing.T) {
+	for _, test := range []string{"no-baseline", "preexisting-port-id", "preexisting-selector", "changed-config", "incomplete-apply", "no-serial", "unverified-baseline"} {
+		t.Run(test, func(t *testing.T) {
+			svc, fixture, state, before := newFailedTargetStartForTest(t)
+			switch test {
+			case "no-baseline":
+				before = nil
+			case "preexisting-port-id":
+				before.ports.Ports = []ctlPort{{ID: 3}}
+			case "preexisting-selector":
+				ports, _ := fixture.inventory()
+				port := ports.Ports[0]
+				port.ID = 99
+				before.ports.Ports = []ctlPort{port}
+			case "changed-config":
+				if err := os.WriteFile(svc.targetPath(), []byte("changed config"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "incomplete-apply":
+				fixture.removedPorts = map[int]bool{3: true}
+			case "unverified-baseline":
+				if _, err := svc.targetStartInventory(t.Context()); err == nil {
+					t.Fatal("existing ports were accepted as an empty baseline")
+				}
+				return
+			case "no-serial":
+				run := svc.runtime.run
+				svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+					if command == "/usr/sbin/ctladm" && args[0] == "devlist" {
+						_, luns := fixture.inventory()
+						luns.LUNs[0].Serial = ""
+						out, err := xml.Marshal(luns)
+						return string(out), err
+					}
+					return run(ctx, input, command, args...)
+				}
+			}
+			if err := svc.rememberFailedTargetStart(t.Context(), state, before); err == nil {
+				t.Fatal("unproven start created an ownership claim")
+			}
+			if _, err := os.Stat(svc.targetRecoveryPath()); !os.IsNotExist(err) {
+				t.Fatal("unproven start saved a recovery record")
+			}
+		})
+	}
+}
+
+func TestTargetRecoveryWithoutRecordDoesNotInspectOrRemovePorts(t *testing.T) {
+	svc := &Service{runtime: &targetRuntime{configFile: filepath.Join(t.TempDir(), "ctl.conf"), run: func(context.Context, string, string, ...string) (string, error) {
+		t.Fatal("normal startup entered orphan cleanup without a failed-start record")
+		return "", nil
+	}}}
+	if err := svc.recoverTargetPorts(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTargetReloadDoesNotRecoverPortsFromLiveExports(t *testing.T) {
+	svc, fixture, state, before := newFailedTargetStartForTest(t)
+	saveFailedTargetStartForTest(t, svc, state, before)
+	fixture.running = true
+	run := svc.runtime.run
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		if command == "/bin/pgrep" || command == "/sbin/sysctl" || command == "/usr/sbin/ctladm" && (args[0] == "port" || args[0] == "islist") {
+			t.Fatal("normal reload entered stopped-port recovery")
+		}
+		return run(ctx, input, command, args...)
+	}
+	if err := svc.WriteTargetConfig(true); err != nil {
+		t.Fatal(err)
+	}
+	ports, _ := fixture.inventory()
+	if !fixture.running || len(ports.Ports) != 2 {
+		t.Fatal("normal reload removed a live export")
+	}
+}
+
+func TestTargetRecoveryBlocksStartWhenIdentityChanges(t *testing.T) {
+	svc, _, state, before := newFailedTargetStartForTest(t)
+	saveFailedTargetStartForTest(t, svc, state, before)
+	svc.backingStat = func(string) (os.FileInfo, error) { return os.Stat("/dev/zero") }
+	run := svc.runtime.run
+	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
+		if command == "/usr/sbin/service" && args[0] == "ctld" && args[1] == "onestart" || command == "/usr/sbin/ctladm" && args[0] == "port" {
+			t.Fatal("uncertain ownership started or changed the target runtime")
+		}
+		return run(ctx, input, command, args...)
+	}
+	if err := svc.StartTargets(); !errors.Is(err, ErrApplyFailed) {
+		t.Fatalf("uncertain recovery result=%v", err)
+	}
+	if record, err := svc.readTargetRecovery(); err != nil || record == nil {
+		t.Fatal("blocked start discarded its ownership evidence")
+	}
+}
+
+func TestTargetRecoveryLockSerializesServiceInstances(t *testing.T) {
+	svc := &Service{runtime: &targetRuntime{configFile: filepath.Join(t.TempDir(), "ctl.conf")}}
+	lock, err := svc.lockTargetRecovery()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := &Service{runtime: &targetRuntime{configFile: svc.targetPath()}}
+	if second, err := other.lockTargetRecovery(); err == nil {
+		second.Close()
+		t.Fatal("another service instance acquired the recovery lock")
+	}
+	if err := lock.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := other.lockTargetRecovery()
+	if err != nil {
+		t.Fatal("recovery lock was not released")
+	}
+	second.Close()
+}
+
+func TestTargetStopRecoversOnlyFailedStartPorts(t *testing.T) {
+	svc, fixture, state, before := newFailedTargetStartForTest(t)
+	saveFailedTargetStartForTest(t, svc, state, before)
+	_, luns := fixture.inventory()
+	if err := svc.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	ports, afterLUNs := fixture.inventory()
+	if len(ports.Ports) != 0 || !reflect.DeepEqual(luns, afterLUNs) {
+		t.Fatal("stopped orphan recovery changed LUNs")
 	}
 }
 

@@ -315,6 +315,19 @@ func (s *Service) stopTarget(ctx context.Context) error {
 			}
 		}
 		if stopped {
+			lock, err := s.lockTargetRecovery()
+			if err != nil {
+				return applyFailed(err.Error(), nil)
+			}
+			err = s.recoverTargetPorts(ctx)
+			lock.Close()
+			if err != nil {
+				return applyFailed(err.Error(), nil)
+			}
+			ports, portErr = s.readCTLPorts(ctx)
+			if portErr != nil {
+				return applyFailed("failed_to_check_target_ports", nil)
+			}
 			for _, port := range ports.Ports {
 				if (port.Group != "" || port.TransportGroup != "") && port.Online != "NO" {
 					stopped = false

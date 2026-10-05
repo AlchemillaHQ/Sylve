@@ -225,7 +225,7 @@ func requireISCSIIntegrationFixture(t *testing.T) *iscsiIntegrationFixture {
 	}
 	svc.runtime = &targetRuntime{configFile: filepath.Join(directory, "ctl.conf"), initiatorFile: filepath.Join(directory, "iscsi.conf"), pidFile: filepath.Join(directory, "ctld.pid")}
 	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
-		if command == "/bin/kill" || command == "/usr/sbin/ctld" && !slices.Contains(args, "-t") {
+		if command == "/bin/kill" || command == "/usr/sbin/ctld" && !slices.Contains(args, "-t") || command == "/usr/sbin/ctladm" && len(args) > 0 && args[0] == "port" {
 			if err := f.checkOwnedNamespace(ctx); err != nil {
 				return "", err
 			}
@@ -1056,7 +1056,7 @@ func (f *iscsiIntegrationFixture) removeFiles(t *testing.T) {
 		t.Errorf("test pool remains; kept iSCSI manifest in %s", f.directory)
 		return
 	}
-	for _, name := range []string{"ctl.conf", "iscsi.conf", "discovery.conf", "ctld.pid", "test.db", "test.db-wal", "test.db-shm", "pattern"} {
+	for _, name := range []string{"ctl.conf", "ctl.conf.recovery.json", "ctl.conf.recovery.lock", "iscsi.conf", "discovery.conf", "ctld.pid", "test.db", "test.db-wal", "test.db-shm", "pattern"} {
 		if err := os.Remove(filepath.Join(f.directory, name)); err != nil && !os.IsNotExist(err) {
 			t.Errorf("remove owned fixture file: %v", err)
 			return

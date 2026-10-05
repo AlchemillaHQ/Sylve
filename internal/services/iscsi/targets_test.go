@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -175,7 +176,7 @@ func TestDeleteTargetRejectsActiveConnections(t *testing.T) {
 		if command != "/usr/sbin/ctladm" || !strings.Contains(strings.Join(args, " "), "islist -x") {
 			t.Fatalf("unexpected command: %s %v", command, args)
 		}
-		return "<connections><connection><initiator>iqn.client</initiator><target>" + target.TargetName + "</target></connection></connections>", nil
+		return "<ctlislist><connection><initiator>iqn.client</initiator><target>" + target.TargetName + "</target></connection></ctlislist>", nil
 	}
 
 	err := svc.DeleteTarget(target.ID)
@@ -488,9 +489,10 @@ func TestAddLUNRejectsNativeNumberLimitBeforeCommit(t *testing.T) {
 }
 
 type fakeTargetRuntime struct {
-	service *Service
-	running bool
-	live    *targetConfiguration
+	service      *Service
+	running      bool
+	live         *targetConfiguration
+	removedPorts map[int]bool
 }
 
 func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args ...string) (string, error) {
@@ -504,6 +506,10 @@ func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args
 		return "", nil
 	case "/usr/bin/iscsictl":
 		return "", nil
+	case "/sbin/sysctl":
+		if len(args) == 2 && args[0] == "-n" && args[1] == "kern.boottime" {
+			return "fixture boot", nil
+		}
 	case "/bin/ps":
 		return "fixture process birth", nil
 	case "/bin/pgrep":
@@ -540,6 +546,7 @@ func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args
 				}
 			}
 			f.running = true
+			f.removedPorts = nil
 			return "", nil
 		}
 	case "/usr/bin/sockstat":
@@ -564,6 +571,18 @@ func (f *fakeTargetRuntime) run(ctx context.Context, input, command string, args
 			data, err = xml.Marshal(luns)
 		} else if args[0] == "islist" {
 			return "<ctlislist/>", nil
+		} else if args[0] == "port" {
+			for _, port := range ports.Ports {
+				wanted := []string{"port", "-r", "-d", "iscsi", "-p", fmt.Sprint(port.ID), "-O", "cfiscsi_target=" + port.Target, "-O", "cfiscsi_portal_group_tag=" + fmt.Sprint(port.Tag)}
+				if slices.Equal(args, wanted) {
+					if f.removedPorts == nil {
+						f.removedPorts = make(map[int]bool)
+					}
+					f.removedPorts[port.ID] = true
+					return "", nil
+				}
+			}
+			return "", errors.New("unexpected port removal")
 		} else {
 			return "", errors.New("unexpected CTL command")
 		}
@@ -581,10 +600,11 @@ func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
 	for _, target := range f.live.targets {
 		for _, lun := range target.luns {
 			ids[lun.name] = len(luns.LUNs)
-			luns.LUNs = append(luns.LUNs, ctlLUN{ID: ids[lun.name], Name: lun.name, Backend: "block", Blocks: 128, Blocksize: 512, File: lun.path})
+			luns.LUNs = append(luns.LUNs, ctlLUN{ID: ids[lun.name], Name: lun.name, Backend: "block", Blocks: 128, Blocksize: 512, File: lun.path, Serial: fmt.Sprintf("fixture-%d", ids[lun.name])})
 		}
 	}
 	tags := make(map[string]int)
+	portID := 3
 	for _, target := range f.live.targets {
 		for _, name := range target.groups {
 			if len(f.live.groups[name].listeners) == 0 {
@@ -593,14 +613,17 @@ func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
 			if tags[name] == 0 {
 				tags[name] = len(tags) + 1
 			}
-			port := ctlPort{ID: len(ports.Ports) + 3, Target: target.name, Group: name, Frontend: "iscsi", Online: "YES", Tag: tags[name], LUNMap: "on"}
+			port := ctlPort{ID: portID, Target: target.name, Group: name, Frontend: "iscsi", Online: "YES", Tag: tags[name], LUNMap: "on"}
+			portID++
 			for _, lun := range target.luns {
 				port.LUNs = append(port.LUNs, struct {
 					Number int `xml:"id,attr"`
 					ID     int `xml:",chardata"`
 				}{lun.number, ids[lun.name]})
 			}
-			ports.Ports = append(ports.Ports, port)
+			if !f.removedPorts[port.ID] {
+				ports.Ports = append(ports.Ports, port)
+			}
 		}
 	}
 	return ports, luns
