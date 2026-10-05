@@ -165,8 +165,8 @@ func TestISCSIFixtureNVMeOwnershipAndDisconnect(t *testing.T) {
 		change func(*integrationNVMeController, *integrationNVMeAssociation, *string, *string, *[]string)
 	}{
 		{name: "owned"},
-		{name: "mounted namespace", unsafe: true, mount: "/dev/nvme0ns1 /mnt ufs rw 1 1\n"},
-		{name: "swap namespace", unsafe: true, swap: "/dev/nvme0ns1 16384 0 16384 0%\n"},
+		{name: "mounted namespace", unsafe: true, mount: "/dev/nvme0ns2 /mnt ufs rw 1 1\n"},
+		{name: "swap namespace", unsafe: true, swap: "/dev/nvme0ns2 16384 0 16384 0%\n"},
 		{name: "mounted CAM namespace", unsafe: true, mount: "/dev/nda0 /mnt ufs rw 1 1\n"},
 		{name: "foreign target", unsafe: true, change: func(_ *integrationNVMeController, a *integrationNVMeAssociation, _, _ *string, _ *[]string) {
 			a.Target = iscsiTestNQNPrefix + "other:extra"
@@ -202,11 +202,11 @@ func TestISCSIFixtureNVMeOwnershipAndDisconnect(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			id := 10
-			controller := integrationNVMeController{NQN: iscsiTestNQNPrefix + "ownership-unit:extra", HostNQN: iscsiTestNQNPrefix + "ownership-unit:host", Endpoint: "127.0.0.1:49222", Device: "nvme0", Namespace: "nvme0ns1", Serial: "owned-serial", ControllerID: &id}
+			controller := integrationNVMeController{NQN: iscsiTestNQNPrefix + "ownership-unit:extra", HostNQN: iscsiTestNQNPrefix + "ownership-unit:host", Endpoint: "127.0.0.1:49222", Device: "nvme0", Namespace: "nvme0ns2", Serial: "owned-serial", ControllerID: &id}
 			association := integrationNVMeAssociation{ID: id, Host: controller.HostNQN, Target: controller.NQN, Transport: 3}
 			inventory := "nvme0: CTL (connected via TCP 127.0.0.1:49222)\n"
 			identity := "NVM Subsystem Name: " + controller.NQN + "\nController ID: 0x000a\nSerial Number: owned-serial\n"
-			devices := []string{"/dev/nvme0", "/dev/nvme0ns1"}
+			devices := []string{"/dev/nvme0", "/dev/nvme0ns2"}
 			if test.change != nil {
 				test.change(&controller, &association, &inventory, &identity, &devices)
 			}
@@ -266,7 +266,7 @@ func TestISCSIFixtureNVMeEndpointInventoryMustBeExact(t *testing.T) {
 func TestISCSIFixtureNVMeConnectNamespaceIdentity(t *testing.T) {
 	controller := integrationNVMeController{NQN: iscsiTestNQNPrefix + "connect-unit:extra", HostNQN: iscsiTestNQNPrefix + "connect-unit:host", Endpoint: "127.0.0.1:49222"}
 	f := &iscsiIntegrationFixture{directory: t.TempDir(), manifest: integrationManifest{RunID: "connect-unit", NVMeControllers: []integrationNVMeController{controller}}}
-	f.nvmeDevices = func() ([]string, error) { return []string{"/dev/nvme0", "/dev/nvme0ns1"}, nil }
+	f.nvmeDevices = func() ([]string, error) { return []string{"/dev/nvme0", "/dev/nvme0ns2"}, nil }
 	f.service = &Service{runtime: &targetRuntime{run: func(_ context.Context, _, command string, args ...string) (string, error) {
 		if command == "/usr/sbin/ctladm" {
 			data, err := xml.Marshal(integrationNVMeAssociations{Connections: []integrationNVMeAssociation{{ID: 10, Host: controller.HostNQN, Target: controller.NQN, Transport: 3}}})
@@ -280,9 +280,9 @@ func TestISCSIFixtureNVMeConnectNamespaceIdentity(t *testing.T) {
 				return "nvme0: CTL (connected via TCP 127.0.0.1:49222)\n", nil
 			case "identify nvme0":
 				return "NVM Subsystem Name: " + controller.NQN + "\nController ID: 0x000a\nSerial Number: owned-serial\n", nil
-			case "nsid nvme0ns1":
-				return "nvme0\t1\n", nil
-			case "identify nvme0ns1":
+			case "nsid nvme0ns2":
+				return "nvme0\t2\n", nil
+			case "identify nvme0ns2":
 				return "Size:                        32768 blocks\nCurrent LBA Format:          LBA Format #00\nLBA Format #00: Data Size:   512  Metadata Size:     0  Performance: Best\n", nil
 			}
 		}
@@ -290,7 +290,7 @@ func TestISCSIFixtureNVMeConnectNamespaceIdentity(t *testing.T) {
 		return "", nil
 	}}}
 	connected := f.connectNVMe(t, controller)
-	if connected.Device != "nvme0" || connected.Namespace != "nvme0ns1" || connected.Serial != "owned-serial" || connected.ControllerID == nil || *connected.ControllerID != 10 {
+	if connected.Device != "nvme0" || connected.Namespace != "nvme0ns2" || connected.Serial != "owned-serial" || connected.ControllerID == nil || *connected.ControllerID != 10 {
 		t.Fatalf("native NVMe namespace identity was not recorded: %+v", connected)
 	}
 }
@@ -320,7 +320,7 @@ func (f *iscsiIntegrationFixture) disconnectNVMeControllers(ctx context.Context)
 			if !valid {
 				return errors.New("cannot record NVMe identity before disconnect")
 			}
-			controller.Device, controller.Namespace, controller.Serial, controller.ControllerID = device, device+"ns1", serial, &id
+			controller.Device, controller.Namespace, controller.Serial, controller.ControllerID = device, device+"ns2", serial, &id
 			f.manifest.NVMeControllers[i] = controller
 			if err := f.saveManifest(); err != nil {
 				return errors.New("cannot save NVMe identity before disconnect")
@@ -461,9 +461,9 @@ func (f *iscsiIntegrationFixture) connectNVMe(t *testing.T, controller integrati
 			if !valid || list.Connections[0].ID != id {
 				return false
 			}
-			namespace := device + "ns1"
+			namespace := device + "ns2"
 			nsid, err := f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "nsid", namespace)
-			if err != nil || strings.TrimSpace(nsid) != device+"\t1" {
+			if err != nil || strings.TrimSpace(nsid) != device+"\t2" {
 				return false
 			}
 			out, err = f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "identify", namespace)
@@ -505,7 +505,7 @@ func (f *iscsiIntegrationFixture) checkNVMeDiskUse(ctx context.Context, device s
 
 func (f *iscsiIntegrationFixture) nvmeIO(t *testing.T, controller integrationNVMeController, backing string, patternByte byte) {
 	t.Helper()
-	if !f.ownsNVMeController(controller.NQN) || !integrationNVMeDevicePattern.MatchString(controller.Device) || controller.Namespace != controller.Device+"ns1" {
+	if !f.ownsNVMeController(controller.NQN) || !integrationNVMeDevicePattern.MatchString(controller.Device) || controller.Namespace != controller.Device+"ns2" {
 		t.Fatal("unrecorded NVMe namespace; refusing I/O")
 	}
 	if controller.ControllerID == nil || controller.Serial == "" {
@@ -530,7 +530,7 @@ func (f *iscsiIntegrationFixture) nvmeIO(t *testing.T, controller integrationNVM
 		t.Fatal("NVMe controller identity changed; refusing I/O")
 	}
 	nsid, err := f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "nsid", controller.Namespace)
-	if err != nil || strings.TrimSpace(nsid) != controller.Device+"\t1" {
+	if err != nil || strings.TrimSpace(nsid) != controller.Device+"\t2" {
 		t.Fatal("NVMe namespace identity changed; refusing I/O")
 	}
 	if err := f.checkNVMeDiskUse(ctx, controller.Device); err != nil {
