@@ -195,7 +195,7 @@ func TestDeleteTargetHandlerRejectsActiveConnections(t *testing.T) {
 	restoreCommand := utils.SetCommandWithContextForTest(func(string, ...string) *exec.Cmd {
 		return exec.Command(
 			"/usr/bin/printf",
-			"<connections><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></connections>",
+			"<ctlislist><connection><initiator>iqn.client</initiator><target>"+target.TargetName+"</target></connection></ctlislist>",
 		)
 	})
 	t.Cleanup(restoreCommand)

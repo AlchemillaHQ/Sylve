@@ -419,14 +419,23 @@ func TestDeleteJailStopVerificationCancellationKeepsIdentity(t *testing.T) {
 	const ctID uint = 661
 	jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
 
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	stopCalled := false
 	runtime := inactiveJailDeleteRuntime()
 	runtime.isRunning = func(uint) (bool, error) { return true, nil }
+	runtime.stop = func(uint) error {
+		stopCalled = true
+		cancel()
+		return nil
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
 	service := &Service{DB: db}
 	_, err := service.deleteJailWithRuntime(ctx, ctID, false, true, runtime)
-	if err == nil || !strings.Contains(err.Error(), "jail_stop_verification_canceled") {
+	if !stopCalled {
+		t.Fatal("cancellation occurred before the stop callback")
+	}
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "jail_stop_verification_canceled") {
 		t.Fatalf("delete error = %v, want canceled stop verification", err)
 	}
 	if count := countJailDeleteRows(t, db, &jailModels.Jail{}, "id = ?", jailID); count != 1 {

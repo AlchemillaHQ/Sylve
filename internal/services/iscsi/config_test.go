@@ -858,7 +858,6 @@ func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
 		t.Fatal("cannot create exit-one fixture")
 	}
 	svc.runtime.pidFile = filepath.Join(t.TempDir(), "ctld.pid")
-	svc.runtime.deadline = 250 * time.Millisecond
 	fixture := &fakeTargetRuntime{service: svc}
 	starts := 0
 	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
@@ -903,19 +902,19 @@ func TestFixtureTargetRetriesAndStopsAfterEmptyPIDFile(t *testing.T) {
 		}
 		return fixture.run(ctx, input, command, args...)
 	}
-	if err := svc.StartTargets(); !errors.Is(err, ErrApplyFailed) {
-		t.Fatalf("failed-start result=%v", err)
+	startErr := svc.StartTargets()
+	if !errors.Is(startErr, ErrApplyFailed) {
+		t.Fatalf("failed-start result=%v", startErr)
 	}
 	if _, err := svc.targetPID(t.Context()); !errors.Is(err, errTargetStopped) {
 		t.Fatalf("failed-start status=%v", err)
 	}
 	if fixture.live == nil || len(fixture.live.targets) != 1 {
-		t.Fatal("fixture did not retain kernel state after the failed start")
+		t.Fatalf("fixture did not retain kernel state: starts=%d error=%v", starts, startErr)
 	}
 	if record, err := svc.readTargetRecovery(); err != nil || record == nil || len(record.Ports) != 1 {
 		t.Fatalf("failed-start ownership was not saved: %v", err)
 	}
-	svc.runtime.deadline = time.Second
 	if err := svc.StartTargets(); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
