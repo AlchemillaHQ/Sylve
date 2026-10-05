@@ -263,6 +263,38 @@ func TestISCSIFixtureNVMeEndpointInventoryMustBeExact(t *testing.T) {
 	}
 }
 
+func TestISCSIFixtureNVMeConnectNamespaceIdentity(t *testing.T) {
+	controller := integrationNVMeController{NQN: iscsiTestNQNPrefix + "connect-unit:extra", HostNQN: iscsiTestNQNPrefix + "connect-unit:host", Endpoint: "127.0.0.1:49222"}
+	f := &iscsiIntegrationFixture{directory: t.TempDir(), manifest: integrationManifest{RunID: "connect-unit", NVMeControllers: []integrationNVMeController{controller}}}
+	f.nvmeDevices = func() ([]string, error) { return []string{"/dev/nvme0", "/dev/nvme0ns1"}, nil }
+	f.service = &Service{runtime: &targetRuntime{run: func(_ context.Context, _, command string, args ...string) (string, error) {
+		if command == "/usr/sbin/ctladm" {
+			data, err := xml.Marshal(integrationNVMeAssociations{Connections: []integrationNVMeAssociation{{ID: 10, Host: controller.HostNQN, Target: controller.NQN, Transport: 3}}})
+			return string(data), err
+		}
+		if command == "/sbin/nvmecontrol" {
+			switch strings.Join(args, " ") {
+			case "connect -t tcp -q " + controller.HostNQN + " " + controller.Endpoint + " " + controller.NQN:
+				return "", nil
+			case "devlist":
+				return "nvme0: CTL (connected via TCP 127.0.0.1:49222)\n", nil
+			case "identify nvme0":
+				return "NVM Subsystem Name: " + controller.NQN + "\nController ID: 0x000a\nSerial Number: owned-serial\n", nil
+			case "nsid nvme0ns1":
+				return "nvme0\t1\n", nil
+			case "identify nvme0ns1":
+				return "Size:                        32768 blocks\nCurrent LBA Format:          LBA Format #00\nLBA Format #00: Data Size:   512  Metadata Size:     0  Performance: Best\n", nil
+			}
+		}
+		t.Fatalf("unexpected native NVMe command: %s %v", command, args)
+		return "", nil
+	}}}
+	connected := f.connectNVMe(t, controller)
+	if connected.Device != "nvme0" || connected.Namespace != "nvme0ns1" || connected.Serial != "owned-serial" || connected.ControllerID == nil || *connected.ControllerID != 10 {
+		t.Fatalf("native NVMe namespace identity was not recorded: %+v", connected)
+	}
+}
+
 func (f *iscsiIntegrationFixture) disconnectNVMeControllers(ctx context.Context) error {
 	for i, controller := range f.manifest.NVMeControllers {
 		if err := f.checkNVMeNamespace(ctx); err != nil {
@@ -412,7 +444,7 @@ func (f *iscsiIntegrationFixture) connectNVMe(t *testing.T, controller integrati
 		if err != nil || len(list.Connections) != 1 || list.Connections[0].Target != controller.NQN || list.Connections[0].Host != controller.HostNQN {
 			return false
 		}
-		devices, err := filepath.Glob("/dev/nvme[0-9]*")
+		devices, err := f.nvmeDevicePaths()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -431,7 +463,7 @@ func (f *iscsiIntegrationFixture) connectNVMe(t *testing.T, controller integrati
 			}
 			namespace := device + "ns1"
 			nsid, err := f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "nsid", namespace)
-			if err != nil || strings.TrimSpace(nsid) != "/dev/"+device+"\t1" {
+			if err != nil || strings.TrimSpace(nsid) != device+"\t1" {
 				return false
 			}
 			out, err = f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "identify", namespace)
@@ -498,7 +530,7 @@ func (f *iscsiIntegrationFixture) nvmeIO(t *testing.T, controller integrationNVM
 		t.Fatal("NVMe controller identity changed; refusing I/O")
 	}
 	nsid, err := f.service.runTargetCommand(ctx, "", "/sbin/nvmecontrol", "nsid", controller.Namespace)
-	if err != nil || strings.TrimSpace(nsid) != "/dev/"+controller.Device+"\t1" {
+	if err != nil || strings.TrimSpace(nsid) != controller.Device+"\t1" {
 		t.Fatal("NVMe namespace identity changed; refusing I/O")
 	}
 	if err := f.checkNVMeDiskUse(ctx, controller.Device); err != nil {
