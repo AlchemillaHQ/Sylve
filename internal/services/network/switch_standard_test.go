@@ -411,7 +411,7 @@ func TestClearBridgeMemberLayer3StopsDHCPAndDeletesEveryAddress(t *testing.T) {
 	stubSyncFunctions(t, syncStubSet{
 		ifaceGet: func(name string) (*iface.Interface, error) {
 			lookups++
-			if lookups > 1 {
+			if lookups > 2 {
 				return &iface.Interface{Name: name}, nil
 			}
 			return &iface.Interface{
@@ -455,6 +455,88 @@ func TestClearBridgeMemberLayer3StopsDHCPAndDeletesEveryAddress(t *testing.T) {
 	}
 }
 
+func TestClearBridgeMemberLayer3DeletesLateLinkLocalAddress(t *testing.T) {
+	var addresses []iface.IPv6
+	var operations []string
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			operations = append(operations, "inspect "+name)
+			return &iface.Interface{Name: name, IPv6: slices.Clone(addresses)}, nil
+		},
+		runCommand: func(command string, args ...string) (string, error) {
+			operations = append(operations, strings.Join(append([]string{command}, args...), " "))
+			if command != "/sbin/ifconfig" {
+				t.Fatalf("unexpected command: %s %v", command, args)
+			}
+			switch {
+			case slices.Equal(args, []string{"testport0", "inet6", "-auto_linklocal", "-accept_rtadv"}):
+				addresses = []iface.IPv6{{IP: net.ParseIP("fe80::1234")}}
+			case slices.Equal(args, []string{"testport0", "inet6", "fe80::1234%testport0", "delete"}):
+				addresses = nil
+			default:
+				t.Fatalf("unexpected interface change: %s %v", command, args)
+			}
+			return "", nil
+		},
+		stopDhclient: func(name string) error {
+			operations = append(operations, "stop-dhclient "+name)
+			return nil
+		},
+	})
+
+	if err := clearBridgeMemberLayer3("testport0"); err != nil {
+		t.Fatalf("clear late link-local address: %v", err)
+	}
+	wanted := []string{
+		"stop-dhclient testport0",
+		"inspect testport0",
+		"/sbin/ifconfig testport0 inet6 -auto_linklocal -accept_rtadv",
+		"inspect testport0",
+		"/sbin/ifconfig testport0 inet6 fe80::1234%testport0 delete",
+		"inspect testport0",
+	}
+	if !slices.Equal(operations, wanted) {
+		t.Fatalf("cleanup operations = %v, want %v", operations, wanted)
+	}
+}
+
+func TestClearBridgeMemberLayer3RefreshFailureStopsAddressDeletion(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "lookup-error", err: errors.New("interface lookup failed")},
+		{name: "missing-interface"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			lookups, deletes := 0, 0
+			stubSyncFunctions(t, syncStubSet{
+				ifaceGet: func(name string) (*iface.Interface, error) {
+					lookups++
+					if lookups > 1 {
+						return nil, test.err
+					}
+					return &iface.Interface{Name: name, IPv4: []iface.IPv4{{IP: net.ParseIP("192.0.2.10")}}}, nil
+				},
+				runCommand: func(_ string, args ...string) (string, error) {
+					if slices.Contains(args, "delete") {
+						deletes++
+					}
+					return "", nil
+				},
+				stopDhclient: func(string) error { return nil },
+			})
+
+			if err := clearBridgeMemberLayer3("testport0"); err == nil || !strings.Contains(err.Error(), "inspect addresses on testport0") {
+				t.Fatalf("refresh error = %v", err)
+			}
+			if deletes != 0 {
+				t.Fatalf("address deletion used an old inventory after refresh failed: %d", deletes)
+			}
+		})
+	}
+}
+
 func TestAddBridgeMemberClearsOnlyVLANMemberLayer3(t *testing.T) {
 	var commands []string
 	var stopped []string
@@ -486,6 +568,29 @@ func TestAddBridgeMemberClearsOnlyVLANMemberLayer3(t *testing.T) {
 			strings.HasPrefix(command, "/sbin/ifconfig em0 inet6 ") {
 			t.Fatalf("parent interface address configuration was changed: %v", commands)
 		}
+	}
+}
+
+func TestAddBridgeMemberRejectsRemainingAddresses(t *testing.T) {
+	attached := false
+	stubSyncFunctions(t, syncStubSet{
+		ifaceGet: func(name string) (*iface.Interface, error) {
+			return &iface.Interface{Name: name, IPv6: []iface.IPv6{{IP: net.ParseIP("fe80::1234")}}}, nil
+		},
+		runCommand: func(_ string, args ...string) (string, error) {
+			if slices.Contains(args, "addm") {
+				attached = true
+			}
+			return "", nil
+		},
+		stopDhclient: func(string) error { return nil },
+	})
+
+	if err := addBridgeMember("testbridge0", "testport0", 0, 0, false); err == nil || !strings.Contains(err.Error(), "0 IPv4 and 1 IPv6 addresses remain") {
+		t.Fatalf("remaining address error = %v", err)
+	}
+	if attached {
+		t.Fatal("bridge member was attached with a remaining address")
 	}
 }
 

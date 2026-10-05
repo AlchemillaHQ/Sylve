@@ -1563,6 +1563,13 @@ func clearBridgeMemberLayer3(name string) error {
 		!ignorableBridgeMemberIPv6CleanupError(err) {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("disable IPv6 autoconfiguration on %s: %w", name, err))
 	}
+	interfaceObj, err = syncIfaceGet(name)
+	if err != nil {
+		return fmt.Errorf("inspect addresses on %s: %v", name, err)
+	}
+	if interfaceObj == nil {
+		return fmt.Errorf("inspect addresses on %s: interface not found", name)
+	}
 	for _, address := range interfaceObj.IPv4 {
 		if _, err := syncRunCommand("/sbin/ifconfig", name, "inet", address.IP.String(), "delete"); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("delete IPv4 address %s from %s: %w", address.IP, name, err))
