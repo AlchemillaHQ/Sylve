@@ -82,6 +82,18 @@ func TestDownloadNotesPreservesSurroundingNotes(t *testing.T) {
 	}
 }
 
+func TestDownloadNotesBadgesShareLine(t *testing.T) {
+	notes, err := downloadNotes(releaseDownloads{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := "![amd64 downloads: 0](https://img.shields.io/badge/amd64-0-blue) " +
+		"![arm64 downloads: 0](https://img.shields.io/badge/arm64-0-blue)"
+	if !strings.Contains(notes, "\n"+row+"\n\n") {
+		t.Fatalf("badges must share one Markdown line: %s", notes)
+	}
+}
+
 func TestDownloadNotesReplacesTableWithBadges(t *testing.T) {
 	body := downloadsStart + "\n### Recorded downloads\n\n" +
 		"| Architecture | Downloads |\n| --- | ---: |\n| amd64 | 100 |\n| arm64 | 20 |\n" +

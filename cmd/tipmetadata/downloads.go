@@ -84,7 +84,7 @@ func downloadNotes(release releaseDownloads) (string, error) {
 		}
 	}
 
-	var badges strings.Builder
+	var badges []string
 	for _, arch := range []string{"amd64", "arm64"} {
 		name := "sylve-" + arch
 		checkpoint, exists := state[name]
@@ -113,14 +113,14 @@ func downloadNotes(release releaseDownloads) (string, error) {
 			checkpoint.Count = asset.Count
 		}
 		state[name] = checkpoint
-		fmt.Fprintf(&badges, "![%s downloads: %d](https://img.shields.io/badge/%s-%d-blue)\n", arch, checkpoint.Total, arch, checkpoint.Total)
+		badges = append(badges, fmt.Sprintf("![%s downloads: %d](https://img.shields.io/badge/%s-%d-blue)", arch, checkpoint.Total, arch, checkpoint.Total))
 	}
 	data, err := json.Marshal(state)
 	if err != nil {
 		return "", err
 	}
-	section := downloadsStart + "\n### Recorded downloads\n\n" + badges.String() +
-		"\n<!-- sylve-tip-downloads-state: " + string(data) + " -->\n" + downloadsEnd
+	section := downloadsStart + "\n### Recorded downloads\n\n" + strings.Join(badges, " ") +
+		"\n\n<!-- sylve-tip-downloads-state: " + string(data) + " -->\n" + downloadsEnd
 	if start >= 0 {
 		return release.Body[:start] + section + release.Body[end:], nil
 	}
