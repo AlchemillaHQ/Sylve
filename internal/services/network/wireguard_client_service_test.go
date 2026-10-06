@@ -494,16 +494,19 @@ func stubWireGuardClientRuntime(t *testing.T) {
 	t.Helper()
 
 	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
 	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
 	previousHasAddress := wireGuardInterfaceHasAddress
 	t.Cleanup(func() {
 		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
 		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardInterfaceHasAddress = previousHasAddress
 	})
 
 	runtime := newFakeWireGuardRuntime()
 	wireGuardRunCommand = runtime.runCommand
+	wireGuardListInterfaces = runtime.listInterfaces
 	wireGuardConfigureWithWGCtrl = func(string, wgtypes.Config) error {
 		return nil
 	}

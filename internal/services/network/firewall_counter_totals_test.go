@@ -10,7 +10,10 @@ package network
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -132,5 +135,58 @@ func TestResetFirewallCounterBaselinesPreservesTotals(t *testing.T) {
 	}
 	if updated.LastPFPackets != 0 || updated.LastPFBytes != 0 {
 		t.Fatalf("expected persisted PF baseline to reset, got %+v", updated)
+	}
+}
+
+func TestEnsureFirewallCountersFreshSharesConcurrentSample(t *testing.T) {
+	svc := &Service{firewallTelemetry: newFirewallTelemetryRuntime()}
+	svc.SetFirewallServiceEnabledForTelemetry(true)
+	previousRunCommand := firewallRunCommand
+	t.Cleanup(func() { firewallRunCommand = previousRunCommand })
+	var calls atomic.Int32
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		calls.Add(1)
+		if command != "/sbin/pfctl" || len(args) != 3 || args[0] != "-a" {
+			t.Errorf("unexpected counter command: %s %v", command, args)
+		}
+		return "", nil
+	}
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for range 32 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			svc.ensureFirewallCountersFresh()
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("concurrent reads executed %d commands, want 2", got)
+	}
+
+	rt := svc.getFirewallTelemetryRuntime()
+	rt.mu.Lock()
+	rt.countersUpdatedAt = time.Now().Add(-10 * time.Second)
+	rt.mu.Unlock()
+	svc.ensureFirewallCountersFresh()
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("fresh cached counters executed more commands: %d", got)
+	}
+
+	rt.mu.Lock()
+	rt.countersUpdatedAt = time.Now().Add(-firewallCounterSampleInterval - time.Second)
+	rt.mu.Unlock()
+	svc.ensureFirewallCountersFresh()
+	if got := calls.Load(); got != 4 {
+		t.Fatalf("expired counters executed %d commands, want 4", got)
+	}
+
+	svc.sampleFirewallCounters()
+	if got := calls.Load(); got != 6 {
+		t.Fatalf("forced sample was incorrectly cached: commands=%d, want 6", got)
 	}
 }

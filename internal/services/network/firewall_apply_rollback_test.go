@@ -195,6 +195,42 @@ func assertFirewallApplyFilesRestored(t *testing.T, files []firewallFileState) {
 	}
 }
 
+func TestFirewallApplySamplesBeforeReloadAndRefreshesRuleNumbersAfterward(t *testing.T) {
+	svc, runtime, _ := setupFirewallApplyTest(t, true)
+	svc.SetFirewallServiceEnabledForTelemetry(true)
+	var rule networkModels.FirewallTrafficRule
+	if err := svc.DB.First(&rule).Error; err != nil {
+		t.Fatal(err)
+	}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		output, err := runtime.run(command, args...)
+		if err != nil || command != "/sbin/pfctl" || len(args) != 3 || args[1] != "sylve/traffic-rules" {
+			return output, err
+		}
+		runtime.mu.Lock()
+		reloaded := len(runtime.loads) > 0
+		runtime.mu.Unlock()
+		if reloaded {
+			return fmt.Sprintf("@0 pass in from any to any label \"sylve_trf_%d\"\n  [ Evaluations: 1 Packets: 2 Bytes: 20 States: 0 ]", rule.ID), nil
+		}
+		return fmt.Sprintf("@9 pass in from any to any label \"sylve_trf_%d\"\n  [ Evaluations: 1 Packets: 10 Bytes: 100 States: 0 ]", rule.ID), nil
+	}
+
+	if err := svc.ApplyFirewallConfig(); err != nil {
+		t.Fatal(err)
+	}
+	rt := svc.getFirewallTelemetryRuntime()
+	key := firewallCounterKey{RuleType: "traffic", RuleID: rule.ID}
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	if total := rt.totals[key]; total.Packets != 12 || total.Bytes != 120 {
+		t.Fatalf("reload lost cumulative counters: %+v", total)
+	}
+	if rt.trafficRuleNumbers[0] != rule.ID || len(rt.trafficRuleNumbers) != 1 {
+		t.Fatalf("rule number mapping was not refreshed after reload: %v", rt.trafficRuleNumbers)
+	}
+}
+
 func TestFirewallApplySyntaxFailureLeavesRunningPFAndBootSettingsUntouched(t *testing.T) {
 	svc, runtime, files := setupFirewallApplyTest(t, true)
 	runtime.validationErr = errors.New("candidate has a syntax error")

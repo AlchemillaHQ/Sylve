@@ -34,6 +34,11 @@ const (
 	jailRetentionInterval = 10 * time.Minute
 )
 
+var (
+	jailStatsReadJIDsByName   = (*Service).readJIDsByName
+	jailStatsReadPSUsageByJID = (*Service).readPSUsageByJID
+)
+
 type psUsage struct {
 	TotalCPU float64
 	TotalRSS float64
@@ -181,12 +186,16 @@ func (s *Service) GetJailStats(ctId uint, jail *jailModels.Jail) (jailServiceInt
 }
 
 func (s *Service) GetStates() ([]jailServiceInterfaces.State, error) {
-	states := s.getCachedStates()
-	if len(states) > 0 {
+	if states := s.getCachedStates(); states != nil {
 		return states, nil
 	}
 
-	return s.refreshLiveStates()
+	s.liveStateRefreshMutex.Lock()
+	defer s.liveStateRefreshMutex.Unlock()
+	if states := s.getCachedStates(); states != nil {
+		return states, nil
+	}
+	return s.refreshLiveStatesLocked()
 }
 
 func (s *Service) GetStateByCtId(ctId uint) (jailServiceInterfaces.State, error) {
@@ -208,7 +217,8 @@ func (s *Service) getCachedStates() []jailServiceInterfaces.State {
 	s.liveStateMutex.RLock()
 	defer s.liveStateMutex.RUnlock()
 
-	if len(s.liveStateByCTID) == 0 {
+	// A completed refresh can legitimately contain no managed jails.
+	if len(s.liveStateByCTID) == 0 && s.liveStateUpdatedAt.IsZero() {
 		return nil
 	}
 
@@ -225,19 +235,31 @@ func (s *Service) getCachedStates() []jailServiceInterfaces.State {
 }
 
 func (s *Service) refreshLiveStates() ([]jailServiceInterfaces.State, error) {
+	s.liveStateRefreshMutex.Lock()
+	defer s.liveStateRefreshMutex.Unlock()
+	return s.refreshLiveStatesLocked()
+}
+
+func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, error) {
 	var jails []jailModels.Jail
 	if err := s.DB.Select("id, ct_id, resource_limits, cpu_set, cores").Find(&jails).Error; err != nil {
 		return nil, fmt.Errorf("failed to load jails: %w", err)
 	}
 
-	jidByName, err := s.readJIDsByName()
-	if err != nil {
-		return nil, err
-	}
-
-	stateByJID, err := s.readPSUsageByJID()
-	if err != nil {
-		return nil, err
+	var jidByName map[string]int
+	var stateByJID map[int]psUsage
+	if len(jails) > 0 {
+		var err error
+		jidByName, err = jailStatsReadJIDsByName(s)
+		if err != nil {
+			return nil, err
+		}
+		if len(jidByName) > 0 {
+			stateByJID, err = jailStatsReadPSUsageByJID(s)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	states := make([]jailServiceInterfaces.State, 0, len(jails))
@@ -520,13 +542,9 @@ func (s *Service) StoreJailUsage() error {
 		return nil
 	}
 
-	states := s.getCachedStates()
-	if len(states) == 0 {
-		var err error
-		states, err = s.refreshLiveStates()
-		if err != nil {
-			return fmt.Errorf("failed_to_get_jail_states: %w", err)
-		}
+	states, err := s.GetStates()
+	if err != nil {
+		return fmt.Errorf("failed_to_get_jail_states: %w", err)
 	}
 
 	if len(states) == 0 {

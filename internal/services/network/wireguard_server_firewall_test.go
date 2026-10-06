@@ -37,6 +37,7 @@ func stubWireGuardServerRuntime(t *testing.T) *fakeWireGuardRuntime {
 	})
 
 	runtime := newFakeWireGuardRuntime()
+	runtime.ifaces["bridge0"] = true
 	wireGuardRunCommand = runtime.runCommand
 	wireGuardConfigureWithWGCtrl = func(string, wgtypes.Config) error {
 		return nil
@@ -44,9 +45,7 @@ func stubWireGuardServerRuntime(t *testing.T) *fakeWireGuardRuntime {
 	wireGuardInterfaceHasAddress = func(string, string) (bool, error) {
 		return true, nil
 	}
-	wireGuardListInterfaces = func() ([]net.Interface, error) {
-		return []net.Interface{{Name: "bridge0"}}, nil
-	}
+	wireGuardListInterfaces = runtime.listInterfaces
 	wireGuardRuntimeOS = "linux"
 	return runtime
 }

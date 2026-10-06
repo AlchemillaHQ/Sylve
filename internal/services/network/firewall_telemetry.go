@@ -31,12 +31,13 @@ import (
 )
 
 const (
-	firewallCounterSampleInterval = 5 * time.Second
+	firewallCounterSampleInterval = 30 * time.Second
 	firewallCounterFlushInterval  = 60 * time.Second
 	firewallTelemetryRetention    = 7 * 24 * time.Hour
 	firewallLiveHitRetention      = 6 * time.Hour
 	firewallLiveHitMaxEntries     = 30000
 	firewallLiveLogRestartDelay   = 5 * time.Second
+	firewallLiveLogHealthInterval = 30 * time.Second
 	firewallLiveDefaultLimit      = 200
 	firewallLiveMaxLimit          = 2000
 	pflogInterfaceName            = "pflog0"
@@ -490,7 +491,16 @@ func (s *Service) ensureFirewallCountersFresh() {
 	if !updatedAt.IsZero() && time.Since(updatedAt) < firewallCounterSampleInterval {
 		return
 	}
-	s.sampleFirewallCounters()
+
+	s.firewallCounterSampleMutex.Lock()
+	defer s.firewallCounterSampleMutex.Unlock()
+	rt.mu.RLock()
+	updatedAt = rt.countersUpdatedAt
+	rt.mu.RUnlock()
+	if !updatedAt.IsZero() && time.Since(updatedAt) < firewallCounterSampleInterval {
+		return
+	}
+	s.sampleFirewallCountersLocked()
 }
 
 func (s *Service) flushFirewallCounterDeltas() {
@@ -1134,7 +1144,7 @@ func (s *Service) runFirewallLogWatcher(ctx context.Context) {
 		packetSource.Lazy = true
 		packetSource.NoCopy = true
 		packetCh := packetSource.Packets()
-		healthTicker := time.NewTicker(firewallLiveLogRestartDelay)
+		healthTicker := time.NewTicker(firewallLiveLogHealthInterval)
 
 		errText := "pflog_capture_closed"
 	captureLoop:

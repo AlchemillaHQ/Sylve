@@ -19,6 +19,15 @@ import (
 var wireGuardInterfaceHasAddress = wireGuardInterfaceHasAddressCIDR
 
 func wireGuardInterfaceExistsNativeOrShell(name string) (bool, error) {
+	if interfaces, err := wireGuardListInterfaces(); err == nil {
+		for _, iface := range interfaces {
+			if iface.Name == name {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
 	_, shellErr := wireGuardRunCommand("/sbin/ifconfig", name)
 	if shellErr == nil {
 		return true, nil

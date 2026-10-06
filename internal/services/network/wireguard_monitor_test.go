@@ -10,6 +10,7 @@ package network
 
 import (
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -57,19 +58,22 @@ func TestWireGuardClientMetricsAvailableBeforeDatabaseFlushWithoutServer(t *test
 	}
 
 	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
 	previousReadDevice := wireGuardReadDevice
 	previousCurrentTime := wireGuardCurrentTime
 	t.Cleanup(func() {
 		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
 		wireGuardReadDevice = previousReadDevice
 		wireGuardCurrentTime = previousCurrentTime
 	})
 	wireGuardCurrentTime = func() time.Time { return observedAt }
 	wireGuardRunCommand = func(command string, args ...string) (string, error) {
-		if command != "/sbin/ifconfig" || len(args) != 1 || args[0] != wireGuardClientInterfaceName(client.ID) {
-			t.Fatalf("unexpected interface check: %s %v", command, args)
-		}
-		return args[0], nil
+		t.Fatalf("metrics collection must not run a command: %s %v", command, args)
+		return "", nil
+	}
+	wireGuardListInterfaces = func() ([]net.Interface, error) {
+		return []net.Interface{{Name: wireGuardClientInterfaceName(client.ID)}}, nil
 	}
 	readCalls := 0
 	wireGuardReadDevice = func(_ *Service, iface string) (*wgtypes.Device, error) {
@@ -160,10 +164,12 @@ func TestGetWireGuardClientsFallsBackToPersistedMetricsWithoutSnapshot(t *testin
 
 func TestWireGuardClientRuntimeStateReportsMissingAndReadErrors(t *testing.T) {
 	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
 	previousReadDevice := wireGuardReadDevice
 	previousCurrentTime := wireGuardCurrentTime
 	t.Cleanup(func() {
 		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
 		wireGuardReadDevice = previousReadDevice
 		wireGuardCurrentTime = previousCurrentTime
 	})
@@ -174,8 +180,12 @@ func TestWireGuardClientRuntimeStateReportsMissingAndReadErrors(t *testing.T) {
 		7: {id: 7, runtimeState: networkModels.WireGuardClientRuntimeUnknown},
 	}}
 
-	wireGuardRunCommand = func(string, ...string) (string, error) {
-		return "", errors.New("interface does not exist")
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		t.Fatalf("metrics collection must not run a command: %s %v", command, args)
+		return "", nil
+	}
+	wireGuardListInterfaces = func() ([]net.Interface, error) {
+		return nil, nil
 	}
 	wireGuardReadDevice = func(*Service, string) (*wgtypes.Device, error) {
 		t.Fatal("missing interface must not be read")
@@ -186,7 +196,9 @@ func TestWireGuardClientRuntimeStateReportsMissingAndReadErrors(t *testing.T) {
 		t.Fatalf("runtime state = %q, want missing", got)
 	}
 
-	wireGuardRunCommand = func(string, ...string) (string, error) { return "wgc7", nil }
+	wireGuardListInterfaces = func() ([]net.Interface, error) {
+		return []net.Interface{{Name: "wgc7"}}, nil
+	}
 	wireGuardReadDevice = func(*Service, string) (*wgtypes.Device, error) {
 		return nil, errors.New("injected device read failure")
 	}

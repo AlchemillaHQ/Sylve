@@ -52,11 +52,12 @@ type Service struct {
 	actionMutex       sync.Mutex
 	networkUpdateChan chan int64
 
-	liveStateMutex     sync.RWMutex
-	liveStateByCTID    map[uint]jailServiceInterfaces.State
-	liveStateUpdatedAt time.Time
-	hashCacheMutex     sync.RWMutex
-	ctidHashByCTID     map[uint]string
+	liveStateMutex        sync.RWMutex
+	liveStateRefreshMutex sync.Mutex
+	liveStateByCTID       map[uint]jailServiceInterfaces.State
+	liveStateUpdatedAt    time.Time
+	hashCacheMutex        sync.RWMutex
+	ctidHashByCTID        map[uint]string
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)

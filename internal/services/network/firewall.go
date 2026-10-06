@@ -2475,6 +2475,8 @@ func (s *Service) ApplyFirewallConfig() (applyErr error) {
 		}
 	}
 	s.resetFirewallCounterBaselines()
+	// Refresh rule numbers immediately for live log attribution after reload.
+	s.sampleFirewallCountersLocked()
 	return nil
 }
 

@@ -392,14 +392,17 @@ func TestApplyWireGuardServerRuntimeFailureRollsBackInterface(t *testing.T) {
 	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
 	t.Cleanup(func() {
 		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
 	})
 
 	runtime := newFakeWireGuardRuntime()
 	wireGuardRunCommand = runtime.runCommand
+	wireGuardListInterfaces = runtime.listInterfaces
 	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
 		return errors.New("ioctl: bad address")
 	}
@@ -432,14 +435,17 @@ func TestApplyWireGuardClientRuntimeFailureRollsBackInterface(t *testing.T) {
 	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
 	t.Cleanup(func() {
 		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
 	})
 
 	runtime := newFakeWireGuardRuntime()
 	wireGuardRunCommand = runtime.runCommand
+	wireGuardListInterfaces = runtime.listInterfaces
 	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
 		return errors.New("ioctl: bad address")
 	}
@@ -473,19 +479,98 @@ func TestApplyWireGuardClientRuntimeFailureRollsBackInterface(t *testing.T) {
 	}
 }
 
-func TestEnsureWireGuardInterfaceUsesShellCommands(t *testing.T) {
+func TestWireGuardInterfaceExistsUsesNativeListingWithoutCommands(t *testing.T) {
+	previousListInterfaces := wireGuardListInterfaces
 	previousRunCommand := wireGuardRunCommand
 	t.Cleanup(func() {
+		wireGuardListInterfaces = previousListInterfaces
 		wireGuardRunCommand = previousRunCommand
 	})
 
+	interfaces := []net.Interface{{Name: "wgs0"}, {Name: "wgc7"}, {Name: "wgc70"}}
+	wireGuardListInterfaces = func() ([]net.Interface, error) { return interfaces, nil }
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		t.Fatalf("native existence check ran a command: %s %v", command, args)
+		return "", nil
+	}
+
+	for _, test := range []struct {
+		name   string
+		exists bool
+	}{
+		{name: "wgs0", exists: true},
+		{name: "wgc7", exists: true},
+		{name: "wgc", exists: false},
+		{name: "wgc8", exists: false},
+	} {
+		exists, err := wireGuardInterfaceExistsNativeOrShell(test.name)
+		if err != nil || exists != test.exists {
+			t.Fatalf("interface %s: exists=%t err=%v, want %t", test.name, exists, err, test.exists)
+		}
+	}
+
+	interfaces = nil
+	if exists, err := wireGuardInterfaceExistsNativeOrShell("wgc7"); err != nil || exists {
+		t.Fatalf("destroyed interface remained available: exists=%t err=%v", exists, err)
+	}
+	interfaces = []net.Interface{{Name: "wgc8"}}
+	if exists, err := wireGuardInterfaceExistsNativeOrShell("wgc8"); err != nil || !exists {
+		t.Fatalf("created interface was not available: exists=%t err=%v", exists, err)
+	}
+}
+
+func TestWireGuardInterfaceExistsFallsBackWhenNativeListingFails(t *testing.T) {
+	previousListInterfaces := wireGuardListInterfaces
+	previousRunCommand := wireGuardRunCommand
+	t.Cleanup(func() {
+		wireGuardListInterfaces = previousListInterfaces
+		wireGuardRunCommand = previousRunCommand
+	})
+	wireGuardListInterfaces = func() ([]net.Interface, error) {
+		return nil, errors.New("native enumeration failed")
+	}
+	permissionErr := errors.New("permission denied")
+
+	for _, test := range []struct {
+		name     string
+		shellErr error
+		exists   bool
+		wantErr  error
+	}{
+		{name: "present", exists: true},
+		{name: "missing", shellErr: errors.New("interface does not exist")},
+		{name: "error", shellErr: permissionErr, wantErr: permissionErr},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			wireGuardRunCommand = func(command string, args ...string) (string, error) {
+				calls++
+				if command != "/sbin/ifconfig" || len(args) != 1 || args[0] != "wgc7" {
+					t.Fatalf("unexpected fallback: %s %v", command, args)
+				}
+				return "", test.shellErr
+			}
+			exists, err := wireGuardInterfaceExistsNativeOrShell("wgc7")
+			if exists != test.exists || !errors.Is(err, test.wantErr) || calls != 1 {
+				t.Fatalf("exists=%t err=%v calls=%d, want exists=%t err=%v calls=1", exists, err, calls, test.exists, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestEnsureWireGuardInterfaceOnlyUsesShellCommandsForCreation(t *testing.T) {
+	previousRunCommand := wireGuardRunCommand
+	previousListInterfaces := wireGuardListInterfaces
+	t.Cleanup(func() {
+		wireGuardRunCommand = previousRunCommand
+		wireGuardListInterfaces = previousListInterfaces
+	})
+
+	wireGuardListInterfaces = func() ([]net.Interface, error) { return nil, nil }
 	var calls []string
 	wireGuardRunCommand = func(command string, args ...string) (string, error) {
 		all := append([]string{command}, args...)
 		calls = append(calls, strings.Join(all, " "))
-		if command == "/sbin/ifconfig" && len(args) == 1 {
-			return "", errors.New("does not exist")
-		}
 		if command == "/sbin/ifconfig" && len(args) == 2 && args[0] == "wg" && args[1] == "create" {
 			return "wg1\n", nil
 		}
@@ -497,7 +582,6 @@ func TestEnsureWireGuardInterfaceUsesShellCommands(t *testing.T) {
 	}
 
 	expected := []string{
-		"/sbin/ifconfig wgs0",
 		"/sbin/ifconfig wg create",
 		"/sbin/ifconfig wg1 name wgs0",
 	}
@@ -792,6 +876,14 @@ func newFakeWireGuardRuntime() *fakeWireGuardRuntime {
 
 func (f *fakeWireGuardRuntime) interfaceExists(name string) bool {
 	return f.ifaces[name]
+}
+
+func (f *fakeWireGuardRuntime) listInterfaces() ([]net.Interface, error) {
+	interfaces := make([]net.Interface, 0, len(f.ifaces))
+	for name := range f.ifaces {
+		interfaces = append(interfaces, net.Interface{Name: name})
+	}
+	return interfaces, nil
 }
 
 func (f *fakeWireGuardRuntime) destroyCount(name string) int {
