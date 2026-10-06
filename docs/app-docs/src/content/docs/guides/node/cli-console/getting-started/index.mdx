@@ -36,6 +36,8 @@ doas sylve --version
 doas sylve --help
 ```
 
+Use `sylve --version --json` to return the release version and baked-in commit hash as a JSON object with `version` and `commit` fields.
+
 The direct CLI currently includes commands for node and Data Center notes, cluster inspection and recovery, Jails, Virtual Machines, lifecycle tasks, network switches, network objects, and downloads.
 
 ## Configuration and the local socket
@@ -63,6 +65,19 @@ If none of these files exists, the command reports which paths it tried. If the 
 :::note
 The console socket and its parent directory are restricted to the owner. Commands do not send credentials over the network or require a web login; local access is controlled through root privileges and filesystem permissions.
 :::
+
+## Wait for service startup
+
+Direct commands normally fail immediately if the daemon is unavailable. For scripts that run during boot, add `--wait-service` to retry the connection for up to the specified number of seconds:
+
+```bash
+doas sylve switches list --wait-service 60
+doas sylve --wait-service 60 jails list --json
+```
+
+The value is a non-negative whole number of seconds; `0` (the default) disables waiting. This does not start the service or limit command execution. Only unavailable socket connections are retried; configuration and permission errors fail immediately.
+
+Timeouts return a non-zero exit status. Waiting is silent and cancellable with Ctrl-C, so `--json` remains machine-readable. Commands are never replayed after connecting, even if a response is lost. Existing command-specific `--wait` flags are unchanged.
 
 ## Run direct commands
 

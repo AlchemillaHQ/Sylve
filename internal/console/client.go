@@ -32,11 +32,21 @@ func ExecuteOperationResponse(socketPath, operation string, payload any) (Respon
 }
 
 func ExecuteOperationResponseContext(ctx context.Context, socketPath, operation string, payload any) (Response, error) {
+	return ExecuteOperationResponseWithWait(ctx, socketPath, operation, payload, 0)
+}
+
+// ExecuteOperationResponseWithWait retries unavailable daemon connections for up
+// to wait. The wait timeout does not apply to command execution, and requests are
+// never retried after connecting.
+func ExecuteOperationResponseWithWait(ctx context.Context, socketPath, operation string, payload any, wait time.Duration) (Response, error) {
+	if wait < 0 {
+		return Response{}, fmt.Errorf("service wait timeout must not be negative")
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return Response{}, fmt.Errorf("encode %s request: %w", operation, err)
 	}
-	return executeRequestResponseContext(ctx, socketPath, Request{Operation: operation, Payload: encoded})
+	return executeRequestResponseContext(ctx, socketPath, Request{Operation: operation, Payload: encoded}, wait)
 }
 
 func executeOperation(socketPath, operation string, payload any) (string, error) {
@@ -56,20 +66,17 @@ func executeRequest(socketPath string, request Request) (string, error) {
 }
 
 func executeRequestContext(ctx context.Context, socketPath string, request Request) (string, error) {
-	response, err := executeRequestResponseContext(ctx, socketPath, request)
+	response, err := executeRequestResponseContext(ctx, socketPath, request, 0)
 	if err != nil {
 		return "", err
 	}
 	return response.Output, nil
 }
 
-func executeRequestResponseContext(ctx context.Context, socketPath string, request Request) (Response, error) {
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+func executeRequestResponseContext(ctx context.Context, socketPath string, request Request, wait time.Duration) (Response, error) {
+	conn, err := dialService(ctx, socketPath, wait)
 	if err != nil {
-		if isSocketUnavailable(err) {
-			return Response{}, fmt.Errorf("sylve daemon is not running; start it first with 'sylve'")
-		}
-		return Response{}, fmt.Errorf("connect to daemon: %w", err)
+		return Response{}, err
 	}
 	defer conn.Close()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -101,21 +108,42 @@ func executeRequestResponseContext(ctx context.Context, socketPath string, reque
 	return resp, nil
 }
 
-func isSocketUnavailable(err error) bool {
-	if err == nil {
-		return false
+func dialService(ctx context.Context, socketPath string, wait time.Duration) (net.Conn, error) {
+	waitCtx := ctx
+	if wait > 0 {
+		var cancel context.CancelFunc
+		waitCtx, cancel = context.WithTimeout(ctx, wait)
+		defer cancel()
 	}
 
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
-		return true
-	}
+	dialer := &net.Dialer{}
+	for {
+		conn, err := dialer.DialContext(waitCtx, "unix", socketPath)
+		if err == nil {
+			return conn, nil
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("connect to daemon: %w", ctx.Err())
+		}
+		if wait > 0 && waitCtx.Err() != nil {
+			return nil, fmt.Errorf("Sylve service did not become available within %s: %w", wait, waitCtx.Err())
+		}
+		if !isSocketUnavailable(err) {
+			return nil, fmt.Errorf("connect to daemon: %w", err)
+		}
+		if wait == 0 {
+			return nil, fmt.Errorf("sylve daemon is not running; start it first with 'sylve'")
+		}
 
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
-		if errors.Is(opErr.Err, syscall.ENOENT) || errors.Is(opErr.Err, syscall.ECONNREFUSED) {
-			return true
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-waitCtx.Done():
+			timer.Stop()
+		case <-timer.C:
 		}
 	}
+}
 
-	return false
+func isSocketUnavailable(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)
 }

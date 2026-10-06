@@ -10,6 +10,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -78,10 +79,21 @@ func NewRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 }
 
 func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) error, isRoot func() bool) *cli.Command {
+	cli.VersionPrinter = func(command *cli.Command) {
+		if !command.Bool("json") {
+			cli.DefaultPrintVersion(command)
+			return
+		}
+		_ = json.NewEncoder(command.Root().Writer).Encode(struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		}{Version: Version, Commit: Commit})
+	}
+
 	cmd := &cli.Command{
 		Name:    "sylve",
 		Usage:   "FreeBSD management platform",
-		Version: Version,
+		Version: fmt.Sprintf("%s (commit: %s)", Version, Commit),
 		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			if !isRoot() {
 				return ctx, fmt.Errorf("root privileges required")
@@ -98,6 +110,16 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 				Name:    "console",
 				Usage:   "enable interactive command prompt",
 				Aliases: []string{"con"},
+			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "output version information as JSON (with --version)",
+				Local: true,
+			},
+			&cli.IntFlag{
+				Name:      "wait-service",
+				Usage:     "seconds to wait for the daemon before sending a command (0 disables waiting)",
+				Validator: validateServiceWait,
 			},
 		},
 		Commands: []*cli.Command{
@@ -144,7 +166,7 @@ func newBootstrapCommand() *cli.Command {
 					}
 					file = absolute
 				}
-				return executeConsoleOperation(command, console.OperationBootstrapApply, console.BootstrapApplyPayload{File: file, JSON: jsonMode}, jsonMode)
+				return executeConsoleOperation(ctx, command, console.OperationBootstrapApply, console.BootstrapApplyPayload{File: file, JSON: jsonMode}, jsonMode)
 			},
 		}},
 	}

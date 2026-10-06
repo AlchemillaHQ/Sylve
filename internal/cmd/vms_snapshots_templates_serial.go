@@ -50,7 +50,7 @@ func newVMSnapshotsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMSnapshotList,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMSnapshotList,
 						consoleprotocol.VMRIDPayload{RID: rid, JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -71,7 +71,7 @@ func newVMSnapshotsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMSnapshotCreate,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMSnapshotCreate,
 						consoleprotocol.VMSnapshotCreatePayload{RID: rid, Name: name, Description: description, JSON: command.Bool("json")},
 						command.Bool("json"))
 				},
@@ -93,7 +93,7 @@ func newVMSnapshotsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMSnapshotRollback,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMSnapshotRollback,
 						consoleprotocol.VMSnapshotRollbackPayload{RID: rid, SnapshotID: snapshotID, DestroyNewer: command.Bool("destroy-newer"), JSON: command.Bool("json")},
 						command.Bool("json"))
 				},
@@ -112,7 +112,7 @@ func newVMSnapshotsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMSnapshotDelete,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMSnapshotDelete,
 						consoleprotocol.VMSnapshotDeletePayload{RID: rid, SnapshotID: snapshotID, JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -128,7 +128,7 @@ func newVMTemplatesCommand() *cli.Command {
 			{
 				Name: "list", Usage: "List templates and source storage mapping IDs", Flags: []cli.Flag{jsonFlag()},
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateList,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMTemplateList,
 						consoleprotocol.JSONPayload{JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -142,7 +142,7 @@ func newVMTemplatesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateGet,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMTemplateGet,
 						consoleprotocol.VMTemplateGetPayload{TemplateID: templateID, JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -164,7 +164,7 @@ func newVMTemplatesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateConvert,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMTemplateConvert,
 						consoleprotocol.VMTemplateConvertPayload{RID: rid, Request: request, JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -179,7 +179,7 @@ func newVMTemplatesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateDelete,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMTemplateDelete,
 						consoleprotocol.VMTemplateDeletePayload{TemplateID: templateID, JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -253,7 +253,7 @@ func newVMTemplateCreateCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMTemplateCreate,
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMTemplateCreate,
 				consoleprotocol.VMTemplateCreatePayload{TemplateID: templateID, Request: request, JSON: command.Bool("json")}, command.Bool("json"))
 		},
 	}
@@ -274,20 +274,15 @@ func newVMAccessSerialCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeVMSerialConsoleOperation(command, consoleprotocol.VMAccessSerialPayload{
+			return executeVMSerialConsoleOperation(ctx, command, consoleprotocol.VMAccessSerialPayload{
 				RID: rid, BaudRate: command.String("baud"), JSON: command.Bool("json"),
 			})
 		},
 	}
 }
 
-func executeVMSerialConsoleOperation(command *cli.Command, payload consoleprotocol.VMAccessSerialPayload) error {
-	socketPath, err := consoleSocketPath(command.String("config"))
-	if err != nil {
-		printConsoleOperationError(payload.JSON, err)
-		return err
-	}
-	response, err := consoleprotocol.ExecuteOperationResponse(socketPath, consoleprotocol.OperationVMAccessSerial, payload)
+func executeVMSerialConsoleOperation(ctx context.Context, command *cli.Command, payload consoleprotocol.VMAccessSerialPayload) error {
+	response, err := executeConsoleOperationResponse(ctx, command, consoleprotocol.OperationVMAccessSerial, payload)
 	if err != nil {
 		printConsoleOperationError(payload.JSON, err)
 		return err

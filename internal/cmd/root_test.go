@@ -172,6 +172,56 @@ func TestNewRootCommand_Name(t *testing.T) {
 	}
 }
 
+func TestNewRootCommand_Version(t *testing.T) {
+	originalCommit := Commit
+	t.Cleanup(func() { Commit = originalCommit })
+
+	testCases := []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "long", args: []string{"--version"}},
+		{name: "short", args: []string{"-v"}},
+		{name: "json after long", args: []string{"--version", "--json"}, json: true},
+		{name: "json before long", args: []string{"--json", "--version"}, json: true},
+		{name: "json after short", args: []string{"-v", "--json"}, json: true},
+		{name: "json before short", args: []string{"--json", "-v"}, json: true},
+		{name: "json disabled", args: []string{"--version", "--json=false"}},
+		{name: "ignores service wait", args: []string{"--version", "--json", "--wait-service", "60"}, json: true},
+	}
+
+	for _, commit := range []string{"abc1234", "unknown"} {
+		for _, testCase := range testCases {
+			t.Run(commit+"/"+testCase.name, func(t *testing.T) {
+				Commit = commit
+				var output bytes.Buffer
+				called := false
+				root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
+					called = true
+					return nil
+				}, func() bool { return false })
+				root.Writer = &output
+
+				args := append([]string{"sylve"}, testCase.args...)
+				if err := root.Run(context.Background(), args); err != nil {
+					t.Fatalf("run version: %v", err)
+				}
+				want := fmt.Sprintf("sylve version %s (commit: %s)\n", Version, commit)
+				if testCase.json {
+					want = fmt.Sprintf("{\"version\":%q,\"commit\":%q}\n", Version, commit)
+				}
+				if output.String() != want {
+					t.Fatalf("version output = %q, want %q", output.String(), want)
+				}
+				if called {
+					t.Fatal("expected daemon action not to run for version flag")
+				}
+			})
+		}
+	}
+}
+
 func TestNewRootCommand_Flags_Defaults(t *testing.T) {
 	var configPath string
 	var console bool

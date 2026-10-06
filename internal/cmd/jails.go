@@ -94,7 +94,7 @@ func newJailActionCommand(action string) *cli.Command {
 					return err
 				}
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationJailAction, consoleprotocol.JailActionPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationJailAction, consoleprotocol.JailActionPayload{
 				CTID:   ctid,
 				Action: action,
 				All:    all,
@@ -165,7 +165,7 @@ func newJailsCommand() *cli.Command {
 				return err
 			}
 
-			return executeConsoleOperation(cmd, consoleprotocol.OperationJailCreate, consoleprotocol.JailCreatePayload{
+			return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailCreate, consoleprotocol.JailCreatePayload{
 				Request: request,
 				JSON:    cmd.Bool("json"),
 			}, cmd.Bool("json"))
@@ -188,7 +188,7 @@ func newJailsCommand() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return executeConsoleOperation(cmd, consoleprotocol.OperationBootstrapList, consoleprotocol.BootstrapListPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationBootstrapList, consoleprotocol.BootstrapListPayload{
 						Pool: cmd.String("pool"),
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
@@ -226,7 +226,7 @@ func newJailsCommand() *cli.Command {
 					}
 					bootstrapType := strings.ToLower(strings.TrimSpace(cmd.String("type")))
 
-					return executeConsoleOperation(cmd, consoleprotocol.OperationBootstrapCreate, consoleprotocol.BootstrapCreatePayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationBootstrapCreate, consoleprotocol.BootstrapCreatePayload{
 						Request: jailServiceInterfaces.BootstrapRequest{
 							Pool:  cmd.String("pool"),
 							Major: major,
@@ -255,7 +255,7 @@ func newJailsCommand() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return executeConsoleOperation(cmd, consoleprotocol.OperationBootstrapDelete, consoleprotocol.BootstrapDeletePayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationBootstrapDelete, consoleprotocol.BootstrapDeletePayload{
 						Pool: cmd.String("pool"),
 						Name: cmd.String("name"),
 						JSON: cmd.Bool("json"),
@@ -339,7 +339,7 @@ func newJailsCommand() *cli.Command {
 				Usage: "List all jails",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return executeConsoleOperation(cmd, consoleprotocol.OperationJailList, consoleprotocol.JailListPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailList, consoleprotocol.JailListPayload{
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
 				},
@@ -353,7 +353,7 @@ func newJailsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationJailGet, consoleprotocol.JailGetPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailGet, consoleprotocol.JailGetPayload{
 						CTID: ctid,
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
@@ -375,7 +375,7 @@ func newJailsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationJailDelete, consoleprotocol.JailDeletePayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailDelete, consoleprotocol.JailDeletePayload{
 						CTID:  ctid,
 						Purge: cmd.Bool("purge"),
 						JSON:  cmd.Bool("json"),
@@ -391,7 +391,7 @@ func newJailsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationJailNetworks, consoleprotocol.JailNetworksPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailNetworks, consoleprotocol.JailNetworksPayload{
 						CTID: ctid,
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
@@ -422,7 +422,7 @@ func newJailsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationJailRemoveNetwork, consoleprotocol.JailRemoveNetworkPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationJailRemoveNetwork, consoleprotocol.JailRemoveNetworkPayload{
 						CTID:      ctid,
 						NetworkID: networkID,
 						JSON:      cmd.Bool("json"),

@@ -55,7 +55,7 @@ func newTasksCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationTaskListActive, consoleprotocol.TaskActivePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationTaskListActive, consoleprotocol.TaskActivePayload{
 						GuestType: guestType,
 						GuestID:   guestID,
 						JSON:      command.Bool("json"),
@@ -75,7 +75,7 @@ func newTasksCommand() *cli.Command {
 					if limit < 1 || limit > 200 {
 						return fmt.Errorf("--limit must be between 1 and 200")
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationTaskListRecent, consoleprotocol.TaskRecentPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationTaskListRecent, consoleprotocol.TaskRecentPayload{
 						GuestType: guestType,
 						GuestID:   guestID,
 						Limit:     limit,
@@ -95,7 +95,7 @@ func newTasksCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationTaskGet, consoleprotocol.TaskGetPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationTaskGet, consoleprotocol.TaskGetPayload{
 						TaskID: taskID,
 						JSON:   command.Bool("json"),
 					}, command.Bool("json"))
