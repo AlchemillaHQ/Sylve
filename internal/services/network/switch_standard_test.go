@@ -44,6 +44,7 @@ type syncStubSet struct {
 	stopDhclient            func(string) error
 	inspectBridgeVLAN       func(string) (bridgevlan.BridgeState, error)
 	filteredPolicyMatches   func(string, string, bridgevlan.PortPolicy) (bool, error)
+	filteredPolicyContains  func(string, string, bridgevlan.PortPolicy) (bool, error)
 	configureFilteredMember func(string, string, *int, bridgevlan.PortPolicy) error
 	removeFilteredMember    func(string, string) error
 	setDefaultAccessVLAN    func(string, *int) error
@@ -116,6 +117,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	origStopDhclient := syncStopDhclient
 	origInspectBridgeVLAN := syncInspectBridgeVLAN
 	origFilteredPolicyMatches := syncFilteredMemberPolicyMatches
+	origFilteredPolicyContains := syncFilteredMemberPolicyContains
 	origConfigureFilteredMember := syncConfigureFilteredMember
 	origRemoveFilteredMember := syncRemoveFilteredMember
 	origSetDefaultAccessVLAN := syncSetDefaultAccessVLAN
@@ -137,6 +139,7 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 		syncStopDhclient = origStopDhclient
 		syncInspectBridgeVLAN = origInspectBridgeVLAN
 		syncFilteredMemberPolicyMatches = origFilteredPolicyMatches
+		syncFilteredMemberPolicyContains = origFilteredPolicyContains
 		syncConfigureFilteredMember = origConfigureFilteredMember
 		syncRemoveFilteredMember = origRemoveFilteredMember
 		syncSetDefaultAccessVLAN = origSetDefaultAccessVLAN
@@ -253,6 +256,12 @@ func stubSyncFunctions(t *testing.T, stubs syncStubSet) {
 	}
 	if stubs.filteredPolicyMatches != nil {
 		syncFilteredMemberPolicyMatches = stubs.filteredPolicyMatches
+	}
+	syncFilteredMemberPolicyContains = func(string, string, bridgevlan.PortPolicy) (bool, error) {
+		return true, nil
+	}
+	if stubs.filteredPolicyContains != nil {
+		syncFilteredMemberPolicyContains = stubs.filteredPolicyContains
 	}
 	if stubs.configureFilteredMember != nil {
 		syncConfigureFilteredMember = stubs.configureFilteredMember

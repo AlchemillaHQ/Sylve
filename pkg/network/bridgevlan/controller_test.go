@@ -249,6 +249,88 @@ func TestMemberPolicyMatchesIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestMemberPolicyContainedAcceptsOnlyDesiredOrNeutralState(t *testing.T) {
+	access := 10
+	native := 20
+
+	tests := []struct {
+		name   string
+		member memberState
+		policy PortPolicy
+		want   bool
+	}{
+		{
+			name:   "neutral member contains access policy",
+			member: memberState{VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{}},
+			policy: PortPolicy{Mode: ModeAccess, UntaggedVLAN: &access},
+			want:   true,
+		},
+		{
+			name:   "matching access member",
+			member: memberState{PVID: access, VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{}},
+			policy: PortPolicy{Mode: ModeAccess, UntaggedVLAN: &access},
+			want:   true,
+		},
+		{
+			name:   "foreign pvid",
+			member: memberState{PVID: 99, VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{}},
+			policy: PortPolicy{Mode: ModeAccess, UntaggedVLAN: &access},
+			want:   false,
+		},
+		{
+			name:   "tagged subset of trunk",
+			member: memberState{PVID: 0, VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{30}},
+			policy: PortPolicy{Mode: ModeTrunk, UntaggedVLAN: &native, TaggedVLANs: []int{30, 40}},
+			want:   true,
+		},
+		{
+			name:   "foreign tagged vlan",
+			member: memberState{PVID: 0, VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{50}},
+			policy: PortPolicy{Mode: ModeTrunk, UntaggedVLAN: &native, TaggedVLANs: []int{30, 40}},
+			want:   false,
+		},
+		{
+			name:   "qinq member",
+			member: memberState{PVID: 0, QinQ: true, VLANProtocol: vlanProtocol8021Q, TaggedVLANs: []int{}},
+			policy: PortPolicy{Mode: ModeAccess, UntaggedVLAN: &access},
+			want:   false,
+		},
+		{
+			name:   "non 8021q protocol",
+			member: memberState{PVID: 0, VLANProtocol: 0x88a8, TaggedVLANs: []int{}},
+			policy: PortPolicy{Mode: ModeAccess, UntaggedVLAN: &access},
+			want:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			backend := newFakeBackend()
+			backend.member = test.member
+			controller := newController(backend)
+
+			contained, err := controller.MemberPolicyContained("bridge0", "epair0a", test.policy)
+			if err != nil {
+				t.Fatalf("contained check: %v", err)
+			}
+			if contained != test.want {
+				t.Fatalf("contained = %t, want %t", contained, test.want)
+			}
+			if len(backend.calls) != 0 {
+				t.Fatalf("containment inspection mutated state: %v", backend.calls)
+			}
+		})
+	}
+}
+
+func TestMemberPolicyContainedRejectsInvalidPolicy(t *testing.T) {
+	backend := newFakeBackend()
+	controller := newController(backend)
+	if _, err := controller.MemberPolicyContained("bridge0", "epair0a", PortPolicy{Mode: ModeAccess}); !errors.Is(err, ErrMissingAccessVLAN) {
+		t.Fatalf("invalid policy error = %v", err)
+	}
+}
+
 func TestBridgeOperationsSerializePerBridgeAcrossControllers(t *testing.T) {
 	first, second := newController(nil), newController(nil)
 	entered, release := make(chan struct{}), make(chan struct{})

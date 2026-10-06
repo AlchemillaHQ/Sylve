@@ -37,19 +37,20 @@ var (
 	syncEditFilteredBridge         = func(oldSw, newSw networkModels.StandardSwitch, known map[string]struct{}) error {
 		return reconcileFilteredStandardBridge(oldSw, newSw, known)
 	}
-	syncCaptureFilteredPortClaims   = captureFilteredStandardSwitchPortClaims
-	syncRestoreFilteredPortClaims   = restoreFilteredStandardSwitchPortClaims
-	syncDeleteBridge                = deleteStandardBridge
-	syncStopDhclient                = stopDhclient
-	syncSetSysctlInt32              = sysctl.SetInt32
-	syncInspectBridgeVLAN           = bridgevlan.InspectBridge
-	syncPrepareFilteredBridge       = bridgevlan.PrepareManagedFilteredBridge
-	syncSetDefaultAccessVLAN        = bridgevlan.SetDefaultAccessVLAN
-	syncRemoveFilteredMember        = bridgevlan.RemoveMember
-	syncConfigureFilteredMember     = bridgevlan.ConfigureMember
-	syncFilteredMemberPolicyMatches = bridgevlan.MemberPolicyMatches
-	syncSetBridgeMemberPrivate      = bridgevlan.SetMemberPrivate
-	standardSwitchIsDomainShutOff   = func(s *Service, rid uint) (bool, error) {
+	syncCaptureFilteredPortClaims    = captureFilteredStandardSwitchPortClaims
+	syncRestoreFilteredPortClaims    = restoreFilteredStandardSwitchPortClaims
+	syncDeleteBridge                 = deleteStandardBridge
+	syncStopDhclient                 = stopDhclient
+	syncSetSysctlInt32               = sysctl.SetInt32
+	syncInspectBridgeVLAN            = bridgevlan.InspectBridge
+	syncPrepareFilteredBridge        = bridgevlan.PrepareManagedFilteredBridge
+	syncSetDefaultAccessVLAN         = bridgevlan.SetDefaultAccessVLAN
+	syncRemoveFilteredMember         = bridgevlan.RemoveMember
+	syncConfigureFilteredMember      = bridgevlan.ConfigureMember
+	syncFilteredMemberPolicyMatches  = bridgevlan.MemberPolicyMatches
+	syncFilteredMemberPolicyContains = bridgevlan.MemberPolicyContained
+	syncSetBridgeMemberPrivate       = bridgevlan.SetMemberPrivate
+	standardSwitchIsDomainShutOff    = func(s *Service, rid uint) (bool, error) {
 		if s.LibVirt == nil {
 			return false, fmt.Errorf("libvirt_service_unavailable")
 		}
@@ -292,7 +293,7 @@ func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchIn
 	}
 }
 
-func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switchID uint, retErr error) {
+func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, error) {
 	unlockInterfaceReferences := s.lockInterfaceReferencesWrite()
 	defer unlockInterfaceReferences()
 	s.syncMutex.Lock()
@@ -303,7 +304,17 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switch
 		return 0, err
 	}
 	bridgeName := utils.ShortHash("vm-" + normalizedName)
-	if err := s.checkStandardSwitchCreateConflicts(normalizedName, bridgeName); err != nil {
+
+	var existing networkModels.StandardSwitch
+	err = s.DB.Preload("Ports").Where("name = ?", normalizedName).First(&existing).Error
+	if err == nil {
+		return s.upsertExistingStandardSwitch(existing, request)
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, fmt.Errorf("load standard switch by name: %w", err)
+	}
+
+	if err := s.checkStandardSwitchCreateNameConflicts(normalizedName, bridgeName); err != nil {
 		return 0, err
 	}
 
@@ -314,7 +325,72 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (switch
 	if err := s.checkStandardSwitchPortsForHostInterfaceL3(input.ports); err != nil {
 		return 0, err
 	}
+
+	existingBridge, err := syncIfaceGet(bridgeName)
+	if err != nil && !isInterfaceMissingError(err) {
+		return 0, fmt.Errorf("inspect generated standard switch bridge %q: %w", bridgeName, err)
+	}
+	if existingBridge != nil {
+		return s.adoptStandardSwitchBridge(normalizedName, bridgeName, input, existingBridge)
+	}
+
+	return s.createStandardSwitchRuntime(normalizedName, bridgeName, input)
+}
+
+func (s *Service) upsertExistingStandardSwitch(
+	existing networkModels.StandardSwitch,
+	request CreateStandardSwitchRequest,
+) (uint, error) {
+	if err := s.checkStandardSwitchUpsertCrossTypeConflicts(existing); err != nil {
+		return 0, err
+	}
+	input, err := normalizeStandardSwitchInput(standardSwitchInputFromConfig(request.StandardSwitchConfig))
+	if err != nil {
+		return 0, err
+	}
+	if standardSwitchMatchesInput(existing, input) {
+		return existing.ID, nil
+	}
+	if err := s.editStandardSwitchLocked(UpdateStandardSwitchRequest{
+		ID:                   existing.ID,
+		StandardSwitchConfig: request.StandardSwitchConfig,
+	}); err != nil {
+		return 0, err
+	}
+	return existing.ID, nil
+}
+
+func (s *Service) checkStandardSwitchUpsertCrossTypeConflicts(existing networkModels.StandardSwitch) error {
+	var count int64
+	if err := s.DB.Model(&networkModels.ManualSwitch{}).
+		Where("name = ?", existing.Name).Count(&count).Error; err != nil {
+		return fmt.Errorf("check manual switch name conflict: %w", err)
+	}
+	if count > 0 {
+		return standardSwitchConflict("standard_switch_name_conflict", nil)
+	}
+	if existing.BridgeName == "" {
+		return nil
+	}
+
+	count = 0
+	if err := s.DB.Model(&networkModels.ManualSwitch{}).
+		Where("bridge = ?", existing.BridgeName).Count(&count).Error; err != nil {
+		return fmt.Errorf("check manual switch bridge conflict: %w", err)
+	}
+	if count > 0 {
+		return standardSwitchConflict("standard_switch_bridge_conflict", nil)
+	}
+	return nil
+}
+
+func (s *Service) createStandardSwitchRuntime(
+	normalizedName, bridgeName string,
+	input standardSwitchInput,
+) (switchID uint, retErr error) {
+	var err error
 	var claimedPortState []standardSwitchPortRuntimeSnapshot
+
 	if input.vlanConfig.Filtering {
 		claimedPortState, err = syncCaptureFilteredPortClaims(input.ports)
 		if err != nil {
@@ -455,6 +531,10 @@ func (s *Service) EditStandardSwitch(request UpdateStandardSwitchRequest) (retEr
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
+	return s.editStandardSwitchLocked(request)
+}
+
+func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) (retErr error) {
 	before, err := loadStandardSwitch(s.DB, request.ID)
 	if err != nil {
 		return err

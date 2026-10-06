@@ -64,7 +64,7 @@ func newVMCreateCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMCreate, consoleprotocol.VMCreatePayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMCreate, consoleprotocol.VMCreatePayload{
 				Request: request, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -160,7 +160,7 @@ func newVMConfigTextCommand(name, operation string) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, operation, consoleprotocol.VMConfigTextPayload{
+			return executeConsoleOperation(ctx, command, operation, consoleprotocol.VMConfigTextPayload{
 				RID: rid, Value: command.String(name), JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -193,7 +193,7 @@ func newVMConfigCPUCommand() *cli.Command {
 				CPUSockets: command.Int("sockets"), CPUCores: command.Int("cores"),
 				CPUThreads: command.Int("threads"), CPUPinning: pins,
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigCPU, consoleprotocol.VMConfigCPUPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigCPU, consoleprotocol.VMConfigCPUPayload{
 				RID: rid, Request: request, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -215,7 +215,7 @@ func newVMConfigMemoryCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigMemory, consoleprotocol.VMConfigMemoryPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigMemory, consoleprotocol.VMConfigMemoryPayload{
 				RID: rid, RAM: ram, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -250,7 +250,7 @@ func newVMConfigVNCCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigVNC, consoleprotocol.VMConfigVNCPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigVNC, consoleprotocol.VMConfigVNCPayload{
 				RID: rid, Changes: changes, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -270,7 +270,7 @@ func newVMConfigBoolCommand(name, operation, label string, poweredOff bool) *cli
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, operation, consoleprotocol.VMConfigBoolPayload{
+			return executeConsoleOperation(ctx, command, operation, consoleprotocol.VMConfigBoolPayload{
 				RID: rid, Enabled: command.Bool("enabled"), JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -295,7 +295,7 @@ func newVMConfigPCICommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigPCI, consoleprotocol.VMConfigPCIPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigPCI, consoleprotocol.VMConfigPCIPayload{
 				RID: rid, DeviceIDs: deviceIDs, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -319,7 +319,7 @@ func newVMConfigAutostartCommand() *cli.Command {
 			if command.Int("order") < 0 {
 				return fmt.Errorf("--order must be zero or greater")
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigAutostart, consoleprotocol.VMConfigAutostartPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigAutostart, consoleprotocol.VMConfigAutostartPayload{
 				RID: rid, Enabled: command.Bool("enabled"), Order: command.Int("order"), JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -341,7 +341,7 @@ func newVMConfigClockCommand() *cli.Command {
 			if offset != "utc" && offset != "localtime" {
 				return fmt.Errorf("--time-offset must be utc or localtime")
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigClock, consoleprotocol.VMConfigClockPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigClock, consoleprotocol.VMConfigClockPayload{
 				RID: rid, TimeOffset: offset, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -363,7 +363,7 @@ func newVMConfigShutdownCommand() *cli.Command {
 			if wait < 1 || wait > 3600 {
 				return fmt.Errorf("--wait-seconds must be between 1 and 3600")
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigShutdown, consoleprotocol.VMConfigShutdownPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigShutdown, consoleprotocol.VMConfigShutdownPayload{
 				RID: rid, WaitSeconds: wait, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -385,7 +385,7 @@ func newVMConfigBootROMCommand() *cli.Command {
 			if bootROM != "uefi" && bootROM != "uboot" && bootROM != "none" {
 				return fmt.Errorf("--boot-rom must be uefi, uboot, or none")
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigBootROM, consoleprotocol.VMConfigBootROMPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigBootROM, consoleprotocol.VMConfigBootROMPayload{
 				RID: rid, BootROM: bootROM, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -416,7 +416,7 @@ func newVMConfigCloudInitCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigCloudInit, consoleprotocol.VMConfigCloudInitPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigCloudInit, consoleprotocol.VMConfigCloudInitPayload{
 				RID: rid, Data: replacement.Data, Metadata: replacement.Metadata,
 				NetworkConfig: replacement.NetworkConfig, JSON: command.Bool("json"),
 			}, command.Bool("json"))
@@ -449,7 +449,7 @@ func newVMConfigBhyveOptionsCommand() *cli.Command {
 			if command.Bool("clear") {
 				options = []string{}
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMConfigBhyveOptions, consoleprotocol.VMConfigBhyveOptionsPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigBhyveOptions, consoleprotocol.VMConfigBhyveOptionsPayload{
 				RID: rid, Options: options, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},
@@ -471,7 +471,7 @@ func newVMAccessCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMAccessVNC, consoleprotocol.VMRIDPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMAccessVNC, consoleprotocol.VMRIDPayload{
 						RID: rid, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},

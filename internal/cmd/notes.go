@@ -30,7 +30,7 @@ func newNotesCommand() *cli.Command {
 				Usage: "List all notes",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteList, consoleprotocol.NoteListPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationNoteList, consoleprotocol.NoteListPayload{
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
 				},
@@ -54,7 +54,7 @@ func newNotesCommand() *cli.Command {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteAdd, consoleprotocol.NoteAddPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationNoteAdd, consoleprotocol.NoteAddPayload{
 						Title:   cmd.String("title"),
 						Content: cmd.String("content"),
 						JSON:    cmd.Bool("json"),
@@ -77,7 +77,7 @@ func newNotesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteGet, consoleprotocol.NoteGetPayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationNoteGet, consoleprotocol.NoteGetPayload{
 						ID:   id,
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))
@@ -99,7 +99,7 @@ func newNotesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(cmd, consoleprotocol.OperationNoteDelete, consoleprotocol.NoteDeletePayload{
+					return executeConsoleOperation(ctx, cmd, consoleprotocol.OperationNoteDelete, consoleprotocol.NoteDeletePayload{
 						ID:   id,
 						JSON: cmd.Bool("json"),
 					}, cmd.Bool("json"))

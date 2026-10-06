@@ -8294,6 +8294,114 @@ const docTemplate = `{
                 }
             }
         },
+        "/iscsi/config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "iSCSI"
+                ],
+                "summary": "Get extra target configuration and observable status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "iSCSI"
+                ],
+                "summary": "Save bounded native extra target configuration",
+                "parameters": [
+                    {
+                        "description": "Omit or null for no change; empty string clears; an explicit string retries",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_iscsi.ISCSIConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig"
+                        }
+                    },
+                    "202": {
+                        "description": "Saved; runtime checks pending",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/iscsi/initiators": {
             "get": {
                 "security": [
@@ -29484,6 +29592,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_iscsi_ISCSIConfig": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_iscsi.ISCSIConfig"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_jail_Jail": {
             "type": "object",
             "properties": {
@@ -30895,6 +31020,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_iscsi_ISCSIConfigValidation": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_iscsi.ISCSIConfigValidation"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailActionResponse": {
             "type": "object",
             "properties": {
@@ -31713,6 +31855,9 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "hostKey": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.BackupTargetSSHHostKeyStatus"
+                },
                 "id": {
                     "type": "integer"
                 },
@@ -31783,6 +31928,20 @@ const docTemplate = `{
                 },
                 "validationSucceeded": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_cluster.BackupTargetSSHHostKeyStatus": {
+            "type": "object",
+            "properties": {
+                "fingerprint": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
                 }
             }
         },
@@ -32264,6 +32423,31 @@ const docTemplate = `{
                 },
                 "usage": {
                     "type": "number"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_iscsi.ISCSIConfig": {
+            "type": "object",
+            "properties": {
+                "applyStatus": {
+                    "type": "string",
+                    "enum": [
+                        "checked",
+                        "pending",
+                        "invalid",
+                        "disabled"
+                    ]
+                },
+                "extraTargetConfig": {
+                    "type": "string"
+                },
+                "lineNumber": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "reasonCode": {
+                    "type": "string",
+                    "x-nullable": true
                 }
             }
         },
@@ -41909,6 +42093,27 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handlers_iscsi.ISCSIConfigRequest": {
+            "type": "object",
+            "properties": {
+                "extraTargetConfig": {
+                    "type": "string",
+                    "x-nullable": true
+                }
+            }
+        },
+        "internal_handlers_iscsi.ISCSIConfigValidation": {
+            "type": "object",
+            "properties": {
+                "lineNumber": {
+                    "type": "integer",
+                    "x-nullable": true
+                },
+                "reasonCode": {
                     "type": "string"
                 }
             }

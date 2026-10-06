@@ -9,28 +9,48 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
 
-func executeConsoleOperation(command *cli.Command, operation string, payload any, jsonMode bool) error {
+func executeConsoleOperation(ctx context.Context, command *cli.Command, operation string, payload any, jsonMode bool) error {
+	response, err := executeConsoleOperationResponse(ctx, command, operation, payload)
+	if response.Output != "" {
+		fmt.Print(response.Output)
+	} else if err != nil {
+		printConsoleOperationError(jsonMode, err)
+	}
+	return err
+}
+
+func executeConsoleOperationResponse(ctx context.Context, command *cli.Command, operation string, payload any) (console.Response, error) {
 	socketPath, err := consoleSocketPath(command.String("config"))
 	if err != nil {
-		printConsoleOperationError(jsonMode, err)
-		return err
+		return console.Response{}, err
 	}
 
-	output, err := console.ExecuteOperation(socketPath, operation, payload)
-	if err != nil {
-		printConsoleOperationError(jsonMode, err)
-		return err
-	}
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	wait := time.Duration(command.Int("wait-service")) * time.Second
+	return console.ExecuteOperationResponseWithWait(ctx, socketPath, operation, payload, wait)
+}
 
-	fmt.Print(output)
+func validateServiceWait(seconds int) error {
+	if seconds < 0 {
+		return fmt.Errorf("--wait-service must be zero or a positive number of seconds")
+	}
+	if int64(seconds) > math.MaxInt64/int64(time.Second) {
+		return fmt.Errorf("--wait-service is too large")
+	}
 	return nil
 }
 

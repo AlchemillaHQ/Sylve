@@ -45,7 +45,7 @@ func newObjectsCommand() *cli.Command {
 					&cli.StringFlag{Name: "type", Usage: "Optional object type filter"},
 				},
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationObjectList, consoleprotocol.ObjectListPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationObjectList, consoleprotocol.ObjectListPayload{
 						Type: command.String("type"),
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
@@ -56,7 +56,7 @@ func newObjectsCommand() *cli.Command {
 				Usage: "Create a network object",
 				Flags: append([]cli.Flag{jsonFlag}, objectRequestFlags...),
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationObjectCreate, consoleprotocol.ObjectCreatePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationObjectCreate, consoleprotocol.ObjectCreatePayload{
 						Request: networkObjectRequestFromCommand(command),
 						JSON:    command.Bool("json"),
 					}, command.Bool("json"))
@@ -78,7 +78,7 @@ func newObjectsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationObjectEdit, consoleprotocol.ObjectEditPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationObjectEdit, consoleprotocol.ObjectEditPayload{
 						ID:      id,
 						Request: request,
 						JSON:    command.Bool("json"),
@@ -97,7 +97,7 @@ func newObjectsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationObjectDelete, consoleprotocol.ObjectDeletePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationObjectDelete, consoleprotocol.ObjectDeletePayload{
 						ID:   id,
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))

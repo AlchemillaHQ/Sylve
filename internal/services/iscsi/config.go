@@ -150,11 +150,15 @@ func (s *Service) GenerateTargetConfig() (string, error) {
 	return s.generateTargetConfigContext(ctx)
 }
 
-func (s *Service) generateTargetConfigContext(ctx context.Context) (string, error) {
+func (s *Service) generateManagedTargetConfigContext(ctx context.Context) (string, error) {
 	var targets []iscsiModels.ISCSITarget
 	if err := s.DB.Preload("Portals").Preload("LUNs").Order("id").Find(&targets).Error; err != nil {
 		return "", fmt.Errorf("failed_to_load_targets: %w", err)
 	}
+	return s.renderManagedTargetConfigContext(ctx, targets)
+}
+
+func (s *Service) renderManagedTargetConfigContext(ctx context.Context, targets []iscsiModels.ISCSITarget) (string, error) {
 	endpoints, attachments, err := s.collectPortalEndpointsContext(ctx, targets)
 	if err != nil {
 		return "", err
@@ -260,28 +264,41 @@ func (s *Service) WriteTargetConfig(reload bool) error {
 }
 
 type targetLUN struct {
-	name      string
-	path      string
-	backing   os.FileInfo
-	number    int
-	size      uint64
-	blocksize uint64
+	name       string
+	path       string
+	backing    os.FileInfo
+	number     int
+	size       uint64
+	blocksize  uint64
+	backend    string
+	deviceType int
+	serial     string
+	deviceID   string
+	options    map[string]string
+	ctlID      *int
+	line       int
 }
 
 type targetDefinition struct {
-	name   string
-	groups []string
-	luns   []targetLUN
+	name       string
+	groups     []string
+	luns       []targetLUN
+	controller bool
+	line       int
 }
 
 type targetGroup struct {
 	listeners    []portalEndpoint
 	rawListeners []string
+	transport    bool
+	redirect     bool
+	options      map[string]string
 }
 
 type targetConfiguration struct {
 	groups  map[string]targetGroup
 	targets []targetDefinition
+	luns    []targetLUN
 }
 
 func (s *Service) statBacking(path string) (os.FileInfo, error) {
@@ -302,39 +319,47 @@ func (s *Service) statBacking(path string) (os.FileInfo, error) {
 type nativeConfigToken struct {
 	value  string
 	quoted bool
+	start  int
+	end    int
+	line   int
 }
 
 func nativeConfigTokens(text string) ([]nativeConfigToken, error) {
 	var tokens []nativeConfigToken
+	line := 1
 	for i := 0; i < len(text); {
 		switch text[i] {
-		case ' ', '\t', '\n':
+		case ' ', '\t':
+			i++
+		case '\n':
+			line++
 			i++
 		case '\r':
 			if i+1 >= len(text) || text[i+1] != '\n' {
-				return nil, errors.New("invalid_native_config_token")
+				return nil, invalidExtraConfig("invalid_native_config_token", line)
 			}
+			line++
 			i += 2
 		case '#':
 			for i < len(text) && text[i] != '\n' {
 				i++
 			}
 		case '{', '}', ';':
-			tokens = append(tokens, nativeConfigToken{value: text[i : i+1]})
+			tokens = append(tokens, nativeConfigToken{value: text[i : i+1], start: i, end: i + 1, line: line})
 			i++
 		case '"':
 			i++
 			start := i
 			for i < len(text) && text[i] != '"' {
 				if text[i] < 0x20 || text[i] == 0x7f {
-					return nil, errors.New("invalid_native_config_token")
+					return nil, invalidExtraConfig("invalid_native_config_token", line)
 				}
 				i++
 			}
-			if i == len(text) || i == start {
-				return nil, errors.New("invalid_native_config_quote")
+			if i == len(text) || i == start || text[i-1] == '\\' {
+				return nil, invalidExtraConfig("invalid_native_config_quote", line)
 			}
-			tokens = append(tokens, nativeConfigToken{value: text[start:i], quoted: true})
+			tokens = append(tokens, nativeConfigToken{value: text[start:i], quoted: true, start: start - 1, end: i + 1, line: line})
 			i++
 		default:
 			start := i
@@ -342,9 +367,9 @@ func nativeConfigTokens(text string) ([]nativeConfigToken, error) {
 				i++
 			}
 			if start == i {
-				return nil, errors.New("invalid_native_config_token")
+				return nil, invalidExtraConfig("invalid_native_config_token", line)
 			}
-			tokens = append(tokens, nativeConfigToken{value: text[start:i]})
+			tokens = append(tokens, nativeConfigToken{value: text[start:i], start: start, end: i, line: line})
 		}
 	}
 	return tokens, nil
@@ -370,7 +395,7 @@ func (p *configTokenReader) next(syntax bool) string {
 	return token.value
 }
 
-func (s *Service) inspectTargetConfig(text string) (*targetConfiguration, error) {
+func (s *Service) inspectManagedTargetConfig(text string) (*targetConfiguration, error) {
 	if !strings.HasPrefix(text, configMarker+"\n") {
 		return nil, errors.New("target_config_not_owned")
 	}
@@ -417,7 +442,7 @@ func (s *Service) inspectTargetConfig(text string) (*targetConfiguration, error)
 				if clause != "listen" {
 					return nil, invalid
 				}
-				endpoint, err := s.parseListener(value)
+				endpoint, err := s.parseListener(value, 3260)
 				if err != nil {
 					return nil, invalid
 				}
@@ -483,7 +508,7 @@ func (s *Service) inspectTargetConfig(text string) (*targetConfiguration, error)
 						return nil, invalid
 					}
 					seenLUNs[number] = true
-					lun := targetLUN{name: fmt.Sprintf("%s,lun,%d", name, number), number: number, blocksize: 512}
+					lun := targetLUN{name: fmt.Sprintf("%s,lun,%d", name, number), number: number, blocksize: 512, backend: "block"}
 					for {
 						field := p.next(true)
 						if field == "}" {
@@ -516,8 +541,8 @@ func (s *Service) inspectTargetConfig(text string) (*targetConfiguration, error)
 	return state, nil
 }
 
-func (s *Service) parseListener(value string) (portalEndpoint, error) {
-	if endpoint, err := s.endpoint(value, 3260); err == nil {
+func (s *Service) parseListener(value string, defaultPort int) (portalEndpoint, error) {
+	if endpoint, err := s.endpoint(value, defaultPort); err == nil {
 		return endpoint, nil
 	}
 	host, port, err := splitListener(value)
@@ -546,6 +571,12 @@ func splitListener(value string) (string, int, error) {
 func (state *targetConfiguration) activeEndpoints() []portalEndpoint {
 	used := make(map[string]bool)
 	var endpoints []portalEndpoint
+	for name, group := range state.groups {
+		if group.redirect {
+			used[name] = true
+			endpoints = append(endpoints, group.listeners...)
+		}
+	}
 	for _, target := range state.targets {
 		for _, name := range target.groups {
 			if used[name] {
@@ -577,30 +608,8 @@ func (s *Service) prepareTargetConfig(ctx context.Context, text string) (*target
 	if err := s.checkConfigEndpoints(ctx, state); err != nil {
 		return nil, err
 	}
-	for i := range state.targets {
-		for j := range state.targets[i].luns {
-			lun := &state.targets[i].luns[j]
-			lun.backing, err = s.statBacking(lun.path)
-			if err != nil {
-				return nil, err
-			}
-			out, err := s.runTargetCommand(ctx, "", "/usr/sbin/diskinfo", lun.path)
-			if err != nil {
-				return nil, errors.New("failed_to_check_backing_geometry")
-			}
-			fields := strings.Fields(out)
-			if len(fields) < 3 {
-				return nil, errors.New("invalid_backing_geometry")
-			}
-			lun.blocksize, err = strconv.ParseUint(fields[1], 10, 64)
-			if err != nil || lun.blocksize == 0 {
-				return nil, errors.New("invalid_backing_geometry")
-			}
-			lun.size, err = strconv.ParseUint(fields[2], 10, 64)
-			if err != nil || lun.size == 0 {
-				return nil, errors.New("invalid_backing_geometry")
-			}
-		}
+	if err := s.prepareTargetLUNs(ctx, state); err != nil {
+		return nil, err
 	}
 	if _, err := s.runTargetCommand(ctx, text, "/usr/sbin/ctld", "-t", "-f", "/dev/stdin"); err != nil {
 		return nil, errors.New("failed_to_validate_target_config")
@@ -609,10 +618,7 @@ func (s *Service) prepareTargetConfig(ctx context.Context, text string) (*target
 }
 
 func (s *Service) checkListenerTransition(ctx context.Context, pid int, endpoints []portalEndpoint) error {
-	data, err := os.ReadFile(s.targetPath())
-	if os.IsNotExist(err) {
-		return errors.New("iscsi_listener_normalization_requires_stop")
-	}
+	data, err := readOwnedTargetFile(s.targetPath())
 	if err != nil {
 		return errors.New("failed_to_read_target_config")
 	}
@@ -764,7 +770,7 @@ func (s *Service) StartTargets() error {
 			return s.writePreparedTargets(ctx, text, state, true)
 		}
 	}
-	data, err := os.ReadFile(s.targetPath())
+	data, err := readOwnedTargetFile(s.targetPath())
 	if err != nil {
 		return applyFailed("target_startup_no_valid_owned_file", nil)
 	}

@@ -146,6 +146,7 @@ export default defineConfig({
                                 'guides/node',
                                 'guides/node/notes',
                                 'guides/node/terminal',
+                                'guides/node/first-boot-bootstrap',
                                 {
                                     label: 'Network',
                                     collapsed: true,

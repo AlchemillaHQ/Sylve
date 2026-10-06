@@ -10,10 +10,14 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
 
@@ -75,10 +79,21 @@ func NewRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 }
 
 func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) error, isRoot func() bool) *cli.Command {
+	cli.VersionPrinter = func(command *cli.Command) {
+		if !command.Bool("json") {
+			cli.DefaultPrintVersion(command)
+			return
+		}
+		_ = json.NewEncoder(command.Root().Writer).Encode(struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		}{Version: Version, Commit: Commit})
+	}
+
 	cmd := &cli.Command{
 		Name:    "sylve",
 		Usage:   "FreeBSD management platform",
-		Version: Version,
+		Version: fmt.Sprintf("%s (commit: %s)", Version, Commit),
 		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			if !isRoot() {
 				return ctx, fmt.Errorf("root privileges required")
@@ -96,6 +111,16 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 				Usage:   "enable interactive command prompt",
 				Aliases: []string{"con"},
 			},
+			&cli.BoolFlag{
+				Name:  "json",
+				Usage: "output version information as JSON (with --version)",
+				Local: true,
+			},
+			&cli.IntFlag{
+				Name:      "wait-service",
+				Usage:     "seconds to wait for the daemon before sending a command (0 disables waiting)",
+				Validator: validateServiceWait,
+			},
 		},
 		Commands: []*cli.Command{
 			newDatacenterCommand(),
@@ -106,6 +131,7 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 			newSwitchesCommand(),
 			newObjectsCommand(),
 			newDownloadsCommand(),
+			newBootstrapCommand(),
 		},
 		CustomRootCommandHelpTemplate: asciiArtBlock + "\n\n" + cli.RootCommandHelpTemplate,
 	}
@@ -115,4 +141,33 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 	}
 
 	return cmd
+}
+
+func newBootstrapCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "bootstrap",
+		Usage: "Apply the declarative first-boot bootstrap document",
+		Commands: []*cli.Command{{
+			Name:  "apply",
+			Usage: "Apply a bootstrap JSON document through the running daemon",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "file", Usage: "path to the bootstrap JSON document, or 'default'", Value: "default"},
+				&cli.BoolFlag{Name: "json", Usage: "emit the full report as a single JSON document"},
+			},
+			Action: func(ctx context.Context, command *cli.Command) error {
+				file := strings.TrimSpace(command.String("file"))
+				jsonMode := command.Bool("json")
+				if file != "" && file != "default" {
+					absolute, err := filepath.Abs(file)
+					if err != nil {
+						err = fmt.Errorf("resolve bootstrap file path: %w", err)
+						printConsoleOperationError(jsonMode, err)
+						return err
+					}
+					file = absolute
+				}
+				return executeConsoleOperation(ctx, command, console.OperationBootstrapApply, console.BootstrapApplyPayload{File: file, JSON: jsonMode}, jsonMode)
+			},
+		}},
+	}
 }

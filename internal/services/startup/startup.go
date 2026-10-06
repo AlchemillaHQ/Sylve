@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
@@ -53,7 +54,14 @@ type Service struct {
 	Cluster   clusterServiceInterfaces.ClusterServiceInterface
 	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
 	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
+	Bootstrap BootstrapStartupApplier
 }
+
+type BootstrapStartupApplier interface {
+	ApplyStartup(ctx context.Context) bootstrap.Report
+}
+
+var ErrBootstrapRestartRequired = errors.New("bootstrap_restart_required")
 
 func NewStartupService(db *gorm.DB,
 	info infoServiceInterfaces.InfoServiceInterface,
@@ -89,7 +97,7 @@ func (s *Service) InitKeys(authService serviceInterfaces.AuthServiceInterface) e
 		return err
 	}
 
-	if err := os.MkdirAll("/etc/zfs/keys", os.ModePerm); err != nil {
+	if err := startupMkdirAll("/etc/zfs/keys", os.ModePerm); err != nil {
 		return err
 	}
 
@@ -136,6 +144,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 	}
 
 	s.SysctlSync()
+
+	if err := s.applyStartupBootstrap(ctx); err != nil {
+		return err
+	}
 
 	var basicSettings models.BasicSettings
 	result := s.DB.First(&basicSettings)

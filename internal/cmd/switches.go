@@ -33,7 +33,7 @@ func newSwitchesCommand() *cli.Command {
 				Usage: "List standard and manual switches",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationSwitchList, consoleprotocol.SwitchListPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchList, consoleprotocol.SwitchListPayload{
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -78,7 +78,7 @@ func newSwitchesCommand() *cli.Command {
 						return err
 					}
 					request.JSON = command.Bool("json")
-					return executeConsoleOperation(command, consoleprotocol.OperationSwitchCreate, request, command.Bool("json"))
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchCreate, request, command.Bool("json"))
 				},
 			},
 			{
@@ -94,7 +94,7 @@ func newSwitchesCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationSwitchDelete, consoleprotocol.SwitchDeletePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchDelete, consoleprotocol.SwitchDeletePayload{
 						Type: command.String("type"),
 						ID:   id,
 						JSON: command.Bool("json"),
@@ -142,7 +142,7 @@ func newSwitchesCommand() *cli.Command {
 						return err
 					}
 					request.JSON = command.Bool("json")
-					return executeConsoleOperation(command, consoleprotocol.OperationSwitchEdit, request, command.Bool("json"))
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchEdit, request, command.Bool("json"))
 				},
 			},
 		},

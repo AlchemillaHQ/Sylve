@@ -44,6 +44,7 @@ func TestShouldRedactAuditPayload(t *testing.T) {
 		want bool
 	}{
 		{path: "/api/auth/login", want: true},
+		{path: "/api/iscsi/config", want: true},
 		{path: "/api/auth/passkeys/login/begin", want: true},
 		{path: "/api/auth/passkeys/register/begin", want: false},
 		{path: "/api/auth/passkeys/register/finish", want: true},

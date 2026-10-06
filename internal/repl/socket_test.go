@@ -9,6 +9,7 @@
 package repl
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -18,9 +19,271 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
+
+type fakeBootstrapApplier struct {
+	applyReport bootstrap.Report
+	appliedPath string
+	onApply     func()
+}
+
+func (f *fakeBootstrapApplier) Apply(_ context.Context, path string) bootstrap.Report {
+	f.appliedPath = path
+	if f.onApply != nil {
+		f.onApply()
+	}
+	return f.applyReport
+}
+
+func bootstrapApplyPayload(t *testing.T, file string, jsonMode bool) json.RawMessage {
+	t.Helper()
+	payload, err := json.Marshal(consoleprotocol.BootstrapApplyPayload{File: file, JSON: jsonMode})
+	if err != nil {
+		t.Fatalf("marshal bootstrap apply payload: %v", err)
+	}
+	return payload
+}
+
+func TestBootstrapApplyUsesDefaultPathAndFullJSONReport(t *testing.T) {
+	fake := &fakeBootstrapApplier{applyReport: bootstrap.Report{RestartRequired: true}}
+	reply := processBootstrapApplySocketRequest(&Context{Bootstrap: fake, RequestRestart: func() {}}, bootstrapApplyPayload(t, "default", true))
+	if fake.appliedPath != bootstrap.DefaultPath {
+		t.Fatalf("applied path = %q, want %q", fake.appliedPath, bootstrap.DefaultPath)
+	}
+	if reply.response.Error != "" {
+		t.Fatalf("unexpected protocol error: %q", reply.response.Error)
+	}
+	if want := mustJSON(fake.applyReport) + "\n"; reply.response.Output != want {
+		t.Fatalf("output = %q, want %q", reply.response.Output, want)
+	}
+	if reply.afterResponse == nil {
+		t.Fatal("expected a post-response restart hook")
+	}
+}
+
+func TestBootstrapApplyEmptyPathUsesDefault(t *testing.T) {
+	fake := &fakeBootstrapApplier{}
+	_ = processBootstrapApplySocketRequest(&Context{Bootstrap: fake}, bootstrapApplyPayload(t, "", true))
+	if fake.appliedPath != bootstrap.DefaultPath {
+		t.Fatalf("applied path = %q, want default %q", fake.appliedPath, bootstrap.DefaultPath)
+	}
+}
+
+func TestBootstrapApplyExplicitPathIsForwarded(t *testing.T) {
+	fake := &fakeBootstrapApplier{}
+	_ = processBootstrapApplySocketRequest(&Context{Bootstrap: fake}, bootstrapApplyPayload(t, "/tmp/custom.json", true))
+	if fake.appliedPath != "/tmp/custom.json" {
+		t.Fatalf("applied path = %q, want explicit path", fake.appliedPath)
+	}
+}
+
+func TestBootstrapApplyFailedReportSetsErrorButKeepsOutput(t *testing.T) {
+	fake := &fakeBootstrapApplier{applyReport: bootstrap.Report{
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "service", Index: 0, Name: "jails", Status: systemServiceInterfaces.BootstrapFailed, Message: "missing dependency"},
+		},
+	}}
+	reply := processBootstrapApplySocketRequest(&Context{Bootstrap: fake}, bootstrapApplyPayload(t, "default", true))
+	if reply.response.Error != "bootstrap_apply_failed" {
+		t.Fatalf("protocol error = %q, want bootstrap_apply_failed", reply.response.Error)
+	}
+	if reply.response.Output == "" {
+		t.Fatal("failed report must still carry the full output")
+	}
+	if reply.afterResponse != nil {
+		t.Fatal("no restart was required, so no restart hook should be attached")
+	}
+}
+
+func TestBootstrapApplyWarningReportSucceeds(t *testing.T) {
+	fake := &fakeBootstrapApplier{applyReport: bootstrap.Report{
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "service", Index: 0, Name: "samba", Status: systemServiceInterfaces.BootstrapWarning, Message: "package missing"},
+		},
+	}}
+	reply := processBootstrapApplySocketRequest(&Context{Bootstrap: fake}, bootstrapApplyPayload(t, "default", true))
+	if reply.response.Error != "" {
+		t.Fatalf("warnings must not be a protocol error, got %q", reply.response.Error)
+	}
+}
+
+func TestBootstrapApplyUnavailableService(t *testing.T) {
+	reply := processBootstrapApplySocketRequest(&Context{}, bootstrapApplyPayload(t, "default", true))
+	if reply.response.Error != "bootstrap_service_unavailable" {
+		t.Fatalf("error = %q, want bootstrap_service_unavailable", reply.response.Error)
+	}
+}
+
+func TestBootstrapApplyRejectsUnknownPayloadFields(t *testing.T) {
+	reply := processBootstrapApplySocketRequest(&Context{Bootstrap: &fakeBootstrapApplier{}}, json.RawMessage(`{"unexpected":true}`))
+	if reply.response.Error == "" {
+		t.Fatal("expected invalid payload error")
+	}
+}
+
+func TestFormatBootstrapReportTextSurfacesGlobalErrors(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		report bootstrap.Report
+		want   string
+	}{
+		{"malformed document with no items", bootstrap.Report{DocumentError: "bootstrap_document_invalid_version"}, "bootstrap_document_invalid_version"},
+		{"archive error", bootstrap.Report{ArchiveError: "rename /x -> /x.applied: permission denied"}, "permission denied"},
+		{"general error", bootstrap.Report{GeneralError: "settings_service_unavailable"}, "settings_service_unavailable"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			out := formatBootstrapReport(testCase.report, false)
+			if !strings.Contains(out, testCase.want) || !strings.Contains(out, "failed=true") {
+				t.Fatalf("text report %q does not surface failure %q", out, testCase.want)
+			}
+		})
+	}
+}
+
+func TestFormatBootstrapReportTextIncludesItemsAndGlobalErrors(t *testing.T) {
+	report := bootstrap.Report{
+		RestartRequired: true, DocumentError: "doc_bad", ArchiveError: "archive_bad", GeneralError: "general_bad",
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "service", Index: 0, Name: "jails", Status: systemServiceInterfaces.BootstrapFailed, Message: "missing"},
+		},
+	}
+	out := formatBootstrapReport(report, false)
+	for _, want := range []string{"document error: doc_bad", "archive error: archive_bad", "general error: general_bad", "jails: failed (missing)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("text report %q missing %q", out, want)
+		}
+	}
+}
+
+func TestFormatBootstrapReportJSONIsUnchangedByGlobalErrors(t *testing.T) {
+	report := bootstrap.Report{
+		Archived: true, RestartRequired: true, DocumentError: "doc_bad", ArchiveError: "archive_bad", GeneralError: "general_bad",
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "pool", Index: 2, Name: "tank", Status: systemServiceInterfaces.BootstrapApplied},
+		},
+	}
+	if got, want := formatBootstrapReport(report, true), mustJSON(report)+"\n"; got != want {
+		t.Fatalf("json report = %q, want %q", got, want)
+	}
+}
+
+func TestHandleSocketConnEncodesResponseBeforeRestartHook(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		report    bootstrap.Report
+		wantError string
+	}{
+		{"successful restart", bootstrap.Report{RestartRequired: true}, ""},
+		{
+			"partial failure with restart",
+			bootstrap.Report{
+				RestartRequired: true,
+				Items: []systemServiceInterfaces.BootstrapItemResult{
+					{Kind: "switch", Index: 0, Name: "lan", Status: systemServiceInterfaces.BootstrapFailed, Message: "conflict"},
+				},
+			},
+			"bootstrap_apply_failed",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			serverConn, clientConn := net.Pipe()
+			defer clientConn.Close()
+			restartCalled := make(chan struct{})
+			ctx := &Context{
+				Bootstrap:      &fakeBootstrapApplier{applyReport: testCase.report},
+				RequestRestart: func() { close(restartCalled) },
+			}
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				handleSocketConn(ctx, serverConn)
+			}()
+			if err := json.NewEncoder(clientConn).Encode(consoleprotocol.Request{
+				Operation: consoleprotocol.OperationBootstrapApply,
+				Payload:   bootstrapApplyPayload(t, "default", true),
+			}); err != nil {
+				t.Fatalf("write request: %v", err)
+			}
+			select {
+			case <-restartCalled:
+				t.Fatal("restart requested before the response was encoded")
+			default:
+			}
+			var resp socketResponse
+			if err := json.NewDecoder(clientConn).Decode(&resp); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if resp.Output == "" || resp.Error != testCase.wantError {
+				t.Fatalf("response = %+v, want report and error %q", resp, testCase.wantError)
+			}
+			var decoded bootstrap.Report
+			if err := json.Unmarshal([]byte(strings.TrimSpace(resp.Output)), &decoded); err != nil {
+				t.Fatalf("decode full JSON report: %v\noutput: %s", err, resp.Output)
+			}
+			if !decoded.RestartRequired || decoded.Failed() != (testCase.wantError != "") {
+				t.Fatalf("decoded report lost restart or failure: %+v", decoded)
+			}
+			select {
+			case <-restartCalled:
+			case <-time.After(time.Second):
+				t.Fatal("restart hook was not invoked after the response")
+			}
+			_ = clientConn.Close()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("handleSocketConn did not return after client disconnect")
+			}
+		})
+	}
+}
+
+func TestHandleSocketConnRequestsRestartAfterFailedResponseEncode(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+	applyStarted := make(chan struct{})
+	releaseApply := make(chan struct{})
+	fake := &fakeBootstrapApplier{
+		applyReport: bootstrap.Report{RestartRequired: true},
+		onApply:     func() { close(applyStarted); <-releaseApply },
+	}
+	restartCalled := make(chan struct{})
+	ctx := &Context{Bootstrap: fake, RequestRestart: func() { close(restartCalled) }}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handleSocketConn(ctx, serverConn)
+	}()
+	if err := json.NewEncoder(clientConn).Encode(consoleprotocol.Request{
+		Operation: consoleprotocol.OperationBootstrapApply,
+		Payload:   bootstrapApplyPayload(t, "default", true),
+	}); err != nil {
+		t.Fatalf("write request: %v", err)
+	}
+	select {
+	case <-applyStarted:
+	case <-time.After(time.Second):
+		t.Fatal("bootstrap apply did not start")
+	}
+	if err := clientConn.Close(); err != nil {
+		t.Fatalf("close client: %v", err)
+	}
+	close(releaseApply)
+	select {
+	case <-restartCalled:
+	case <-time.After(time.Second):
+		t.Fatal("restart was not requested after the response encode failed")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handleSocketConn did not return after the encoding failure")
+	}
+}
 
 func TestProcessSocketRequestCommandRequired(t *testing.T) {
 	resp := processSocketRequest(&Context{}, socketRequest{Command: "   "})

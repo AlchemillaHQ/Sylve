@@ -31,6 +31,7 @@ func newTargetHandlerTestService(t *testing.T) *iscsi.Service {
 	t.Helper()
 	db := testutil.NewSQLiteTestDB(t,
 		&models.BasicSettings{},
+		&iscsiModels.ISCSISettings{},
 		&iscsiModels.ISCSITarget{},
 		&iscsiModels.ISCSITargetPortal{},
 		&iscsiModels.ISCSITargetLUN{},

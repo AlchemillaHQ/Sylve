@@ -1,0 +1,127 @@
+---
+title: First-Boot Bootstrap
+description: Provision a Sylve node declaratively from a single JSON document on first boot.
+---
+
+Sylve can provision a node from a single declarative JSON document, without clicking through the initialization dialog. The document describes the ZFS pools, services, DNS servers, and switches the node should end up with. Sylve checks for it once per daemon process, even on an initialized node. A change to initialization or enabled services triggers a daemon restart before operational startup.
+
+This is designed for unattended and repeatable installs: image a machine, drop one file at a known path, start Sylve, and the node configures itself.
+
+## Prerequisites
+
+- A working Sylve installation that can start and reach its initialization flow.
+- The bootstrap document written to `/usr/local/etc/sylve/bootstrap.json` (the default) or supplied with `--file`.
+- Any ZFS pools named in the document already imported on the host.
+- Any packages required by requested services already installed. Bootstrap **never** installs packages and **never** writes boot loader tunables (including `racct`).
+- Root privileges for the CLI.
+
+The document must be a JSON object with an integer `version` of `1`. The envelope is validated before any change is made; an invalid document performs no mutations. Individual array entries are validated separately, so one bad pool, service, or switch does not stop the others.
+
+## Document format
+
+```json
+{
+  "version": 1,
+  "initialized": true,
+  "pools": ["tank", "backup"],
+  "services": ["virtualization", "jails", "dhcp-server"],
+  "dns": ["192.0.2.53", "2001:db8::53"],
+  "switches": [
+    {
+      "type": "standard",
+      "standard": {
+        "name": "lan",
+        "mtu": 1500,
+        "ports": ["igb0", "igb1"],
+        "network4Manual": "192.0.2.1/24",
+        "network6Manual": "2001:db8::1/64",
+        "bridgeMac": { "mode": "port", "port": "igb0" }
+      }
+    },
+    {
+      "type": "manual",
+      "manual": {
+        "name": "external",
+        "bridge": "bridge0"
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `version` | integer | Required. Must be `1`. |
+| `initialized` | boolean | Optional. Only `true` marks the node initialized. Absent or `false` never de-initializes. |
+| `pools` | string[] | Optional. Sylve validates each pool and ensures its managed dataset namespace before registering it. |
+| `services` | string[] | Optional. Must be valid Sylve service identifiers. |
+| `dns` | string[] | Optional. Non-empty values are IP literals that replace the `nameserver` lines in `/etc/resolv.conf`. |
+| `switches` | object[] | Optional. Standard and manual switches, upserted by normalized name. |
+
+### Settings are additive
+
+Bootstrap settings are **additive and monotonic**. Pools and services already stored on the node are preserved; the document never removes them. Only an explicit `initialized: true` sets the node's initialized flag, and settings are persisted even if some items fail. The node's runtime mode is governed solely by the persisted `initialized` flag. A rejected document changes nothing; a partially failed apply retains successful settings, including initialization, and does not otherwise override the runtime mode.
+
+### Services
+
+Service identifiers are case-sensitive: `virtualization`, `jails`, `dhcp-server`, `samba-server`, `wol-server`, `firewall`, `wireguard`, `iscsi`, and `mdns`. An unsupported identifier is a failed item. Requested services are de-duplicated against already enabled services and against each other. Normal service prechecks still apply (virtualization, jails, DHCP, Samba, WireGuard). If a dependency or precheck fails, the item is reported as a **warning**, the newly requested service is not enabled, and an already-enabled service is never removed.
+
+### Switches
+
+Switch entries mirror the console `switches.create` payload: a `type` and exactly one matching `standard` or `manual` object, without the display-only `json` option. Standard switches use `network4Manual` / `gateway4Manual` and `network6Manual` / `gateway6Manual` for static addresses and gateways, and independent `dhcp` and `slaac` toggles (no DHCPv6). The bridge MAC source is required for standard switches. Switches are upserted by normalized name: standard and manual switch names must be unique across both types, and an existing switch of the other type with the same name is a conflict. An unchanged desired state is a no-op that leaves switch and port IDs stable. Changed desired state goes through the same edit safety checks as the UI and CLI, not a bypass. Bootstrap itself does not create network objects.
+
+A manual switch never creates, persists, or deletes a host bridge. If the named host bridge does not exist, the item fails.
+
+A standard switch keeps its generated bridge name. If the database row is missing but a bridge with the expected name exists, Sylve adopts it only when it is a real bridge with no database owner and its observable configuration is contained within the expected runtime surface from the request. Foreign members, foreign addresses, and mismatched interfaces are rejected before any runtime change.
+
+### DNS
+
+`dns` is a one-time seed of host DNS. If the field is absent or an empty array, `/etc/resolv.conf` is not read or written. When present, only the `nameserver` lines are replaced; all other lines are preserved, and the write is atomic. DNS is deferred if any other item failed. There is no database row or UI for host DNS, and clients are free to overwrite it later.
+
+## Applying the document
+
+### Automatic on startup
+
+On every daemon start, Sylve applies the default document `/usr/local/etc/sylve/bootstrap.json` once per process. The apply runs immediately after sysctl synchronization and before the initialization gate, so a first-boot node can become initialized in a single pass. A missing file is a no-op.
+
+If the document changed the initialized flag from `false` to `true`, or changed the normalized final service set, Sylve records that a restart is required. It then stops startup **before** preflight checks, service gates, or background workers and re-executes the daemon. Because the source file is archived after a successful apply, the second start sees no pending document and proceeds into normal operational mode. This is a **single daemon restart** — the host is not rebooted a second time.
+
+The restart applies even when some items failed, because the persisted settings already changed. Retries that leave the effective settings unchanged do not trigger another restart.
+
+### Explicit apply from the CLI
+
+```sh
+sylve bootstrap apply --file default --json
+```
+
+- `--file <path>` applies a specific document on the daemon's host. Relative paths are resolved against the CLI's working directory before being sent to the daemon. The default value `default` resolves to `/usr/local/etc/sylve/bootstrap.json`.
+- `--json` prints the full report as a single machine-readable JSON document.
+
+The CLI always talks to the running daemon over its console socket and uses the same shared engine and apply lock as startup, so explicit and automatic applies never run concurrently. If the daemon is not running, the command reports that and exits non-zero.
+
+Run the command with `--json` to get the complete report even when the apply fails. The report is written to standard output first, and the command then exits non-zero for a rejected document, a failed item, a DNS failure, or an archive failure. Warnings count as success. When the report requires a restart, the daemon attempts to write the complete socket response before requesting re-execution. If the client has disconnected, the required restart still takes place.
+
+## Results, warnings, and errors
+
+Each item is reported with a stable status:
+
+| Status | Meaning |
+| --- | --- |
+| `applied` | The item was applied or was already in the desired state. |
+| `warning` | The item was skipped or partially satisfied (for example a missing dependency). Warnings do not fail the apply. |
+| `failed` | The item could not be applied. |
+| `deferred` | The item was intentionally postponed (for example DNS when another item failed). |
+
+The report also includes whether the source was archived and whether a restart is required, along with any document or archive error. A failed item or document error keeps the source file in place.
+
+Failures and warnings are logged individually during startup but never crash the daemon; only an explicit restart requirement stops startup early.
+
+## Archival and retries
+
+After all ordinary items succeed (warnings allowed), Sylve writes the DNS seed and then archives the source document as `<file>.applied` in the same directory. The default file becomes `/usr/local/etc/sylve/bootstrap.json.applied`. The archive is never read automatically, so deleting a provisioned switch later does not resurrect it on restart. The verified source is consumed only if it has not been replaced; a replacement file is retained.
+
+Until the source is archived, it remains authoritative: a retry re-applies the successful entries and overwrites any UI edits made in the meantime. If any item, the document, DNS, or the archive step fails, the file stays put. A crash before archiving replays safely on the next start.
+
+## Limitations
+
+Bootstrap does not install packages, write boot-time loader tunables, configure hostnames or administrator accounts, persist DNS through Sylve, read a `bootstrap.d` directory, provision manual bridges, or perform global rollback/undo.

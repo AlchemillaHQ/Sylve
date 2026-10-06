@@ -306,7 +306,7 @@ func (s *Service) stopTarget(ctx context.Context) error {
 		_, statusErr := s.targetPID(ctx)
 		processes, processErr := s.runTargetCommand(ctx, "", "/bin/pgrep", "-x", "ctld")
 		listeners, listenErr := s.targetListeners(ctx, 0)
-		ports, portErr := s.readCTLPorts(ctx)
+		_, portErr := s.readCTLPorts(ctx)
 		stopped := errors.Is(statusErr, errTargetStopped) && strings.TrimSpace(processes) == "" && listenErr == nil && len(listeners) == 0 && portErr == nil
 		if processErr != nil {
 			var exitErr *exec.ExitError
@@ -324,7 +324,7 @@ func (s *Service) stopTarget(ctx context.Context) error {
 			if err != nil {
 				return applyFailed(err.Error(), nil)
 			}
-			ports, portErr = s.readCTLPorts(ctx)
+			ports, portErr := s.readCTLPorts(ctx)
 			if portErr != nil {
 				return applyFailed("failed_to_check_target_ports", nil)
 			}

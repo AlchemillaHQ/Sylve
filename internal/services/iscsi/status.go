@@ -101,18 +101,32 @@ func (s *Service) ensureTargetHasNoSessions(targetName string) error {
 }
 
 type ctlPort struct {
-	ID             int    `xml:"id,attr"`
-	Frontend       string `xml:"frontend_type"`
-	Online         string `xml:"online"`
-	Target         string `xml:"cfiscsi_target"`
-	Group          string `xml:"ctld_portal_group_name"`
-	TransportGroup string `xml:"ctld_transport_group_name"`
-	Tag            int    `xml:"cfiscsi_portal_group_tag"`
-	LUNMap         string `xml:"lun_map"`
+	ID             int           `xml:"id,attr"`
+	Frontend       string        `xml:"frontend_type"`
+	Online         string        `xml:"online"`
+	Target         string        `xml:"cfiscsi_target"`
+	Group          string        `xml:"ctld_portal_group_name"`
+	TransportGroup string        `xml:"ctld_transport_group_name"`
+	NQN            string        `xml:"nqn"`
+	SubNQN         string        `xml:"subnqn"`
+	PortID         int           `xml:"portid"`
+	Tag            int           `xml:"cfiscsi_portal_group_tag"`
+	LUNMap         string        `xml:"lun_map"`
+	Options        []ctlProperty `xml:",any"`
 	LUNs           []struct {
 		Number int `xml:"id,attr"`
 		ID     int `xml:",chardata"`
 	} `xml:"lun"`
+}
+
+func (p ctlPort) controllerName() string {
+	if p.NQN != "" {
+		if p.SubNQN != "" && p.SubNQN != p.NQN {
+			return ""
+		}
+		return p.NQN
+	}
+	return p.SubNQN
 }
 
 type ctlPorts struct {
@@ -121,15 +135,41 @@ type ctlPorts struct {
 }
 
 type ctlLUN struct {
-	ID         int    `xml:"id,attr"`
-	Name       string `xml:"ctld_name"`
-	Backend    string `xml:"backend_type"`
-	Blocks     uint64 `xml:"size"`
-	Blocksize  uint64 `xml:"blocksize"`
-	File       string `xml:"file"`
-	Device     string `xml:"dev"`
-	Serial     string `xml:"serial_number"`
-	DeviceType int    `xml:"lun_type"`
+	ID         int           `xml:"id,attr"`
+	Name       string        `xml:"ctld_name"`
+	Backend    string        `xml:"backend_type"`
+	Blocks     uint64        `xml:"size"`
+	Blocksize  uint64        `xml:"blocksize"`
+	File       string        `xml:"file"`
+	Device     string        `xml:"dev"`
+	Serial     string        `xml:"serial_number"`
+	DeviceID   string        `xml:"device_id"`
+	DeviceType int           `xml:"lun_type"`
+	Options    []ctlProperty `xml:",any"`
+}
+
+type ctlProperty struct {
+	XMLName xml.Name
+	Value   string `xml:",chardata"`
+}
+
+func matchCTLOptions(wanted map[string]string, actual []ctlProperty) bool {
+	properties := make(map[string]string)
+	for _, property := range actual {
+		if _, wantedProperty := wanted[property.XMLName.Local]; !wantedProperty {
+			continue
+		}
+		if _, duplicate := properties[property.XMLName.Local]; duplicate || property.XMLName.Space != "" {
+			return false
+		}
+		properties[property.XMLName.Local] = property.Value
+	}
+	for name, value := range wanted {
+		if actualValue, exists := properties[name]; !exists || actualValue != value {
+			return false
+		}
+	}
+	return true
 }
 
 type ctlLUNs struct {
@@ -258,10 +298,10 @@ func (s *Service) checkTargetRuntime(ctx context.Context, state *targetConfigura
 func (s *Service) matchCTLState(state *targetConfiguration, ports *ctlPorts, luns *ctlLUNs) error {
 	wantedLUNs := make(map[string]targetLUN)
 	wantedPorts := make(map[string]targetDefinition)
+	for _, lun := range state.configuredLUNs() {
+		wantedLUNs[lun.name] = lun
+	}
 	for _, target := range state.targets {
-		for _, lun := range target.luns {
-			wantedLUNs[lun.name] = lun
-		}
 		for _, group := range target.groups {
 			if len(state.groups[group].listeners) > 0 {
 				wantedPorts[target.name+"\x00"+group] = target
@@ -285,27 +325,38 @@ func (s *Service) matchCTLState(state *targetConfiguration, ports *ctlPorts, lun
 		if _, duplicate := actualLUNs[lun.Name]; duplicate {
 			return errors.New("duplicate_owned_target_lun")
 		}
-		if lun.Backend != "block" || lun.Blocksize != wanted.blocksize || lun.Blocksize == 0 || lun.Blocks != wanted.size/lun.Blocksize || wanted.size%lun.Blocksize != 0 || lun.DeviceType != 0 {
+		backend := wanted.backend
+		if backend == "" {
+			backend = "block"
+		}
+		if lun.Backend != backend || lun.Blocksize != wanted.blocksize || lun.Blocksize == 0 || lun.Blocks != wanted.size/lun.Blocksize || wanted.size%lun.Blocksize != 0 || lun.DeviceType != wanted.deviceType ||
+			wanted.serial != "" && strings.TrimRight(lun.Serial, "\x00 ") != strings.TrimRight(wanted.serial, " ") || wanted.deviceID != "" && strings.TrimRight(lun.DeviceID, "\x00 ") != strings.TrimRight(wanted.deviceID, " ") || wanted.ctlID != nil && lun.ID != *wanted.ctlID || !matchCTLOptions(wanted.options, lun.Options) {
 			return errors.New("target_lun_properties_mismatch")
 		}
 		path := lun.File
 		if path == "" {
 			path = lun.Device
 		}
-		actualInfo, err := s.statBacking(path)
-		if err != nil {
-			return errors.New("target_lun_backing_mismatch")
-		}
-		wantedInfo, err := s.statBacking(wanted.path)
-		if err != nil || wanted.backing == nil || !os.SameFile(actualInfo, wanted.backing) || !os.SameFile(wantedInfo, wanted.backing) {
-			return errors.New("target_lun_backing_mismatch")
+		if backend == "block" {
+			stat := s.statBacking
+			if wanted.line != 0 {
+				stat = s.statExtraBacking
+			}
+			actualInfo, err := stat(path)
+			if err != nil {
+				return errors.New("target_lun_backing_mismatch")
+			}
+			wantedInfo, err := stat(wanted.path)
+			if err != nil || wanted.backing == nil || !os.SameFile(actualInfo, wanted.backing) || !os.SameFile(wantedInfo, wanted.backing) {
+				return errors.New("target_lun_backing_mismatch")
+			}
 		}
 		actualLUNs[lun.Name] = lun.ID
 	}
 	if len(actualLUNs) != len(wantedLUNs) {
 		return errors.New("target_lun_missing")
 	}
-	seenPorts, groupTags, tagGroups := make(map[string]bool), make(map[string]int), make(map[int]string)
+	seenPorts, groupTags, protocolTags := make(map[string]bool), make(map[string]int), make(map[string]string)
 	seenPortIDs := make(map[int]bool)
 	for _, port := range ports.Ports {
 		if port.ID < 0 || seenPortIDs[port.ID] {
@@ -315,22 +366,34 @@ func (s *Service) matchCTLState(state *targetConfiguration, ports *ctlPorts, lun
 		if port.Group == "" && port.TransportGroup == "" {
 			continue
 		}
-		key := port.Target + "\x00" + port.Group
+		name, group, tag := port.Target, port.Group, port.Tag
+		if port.TransportGroup != "" {
+			name, group, tag = port.controllerName(), port.TransportGroup, port.PortID
+		}
+		key := name + "\x00" + group
 		target, exists := wantedPorts[key]
-		if !exists || seenPorts[key] || port.Frontend != "iscsi" || port.TransportGroup != "" {
+		if !exists || seenPorts[key] || target.controller && (port.Frontend != "nvmf" || port.Group != "" || port.TransportGroup == "") ||
+			!target.controller && (port.Frontend != "iscsi" || port.TransportGroup != "") {
 			return errors.New("unexpected_owned_target_port")
 		}
 		seenPorts[key] = true
-		if port.Online != "YES" || port.Tag <= 0 || port.LUNMap != "on" {
+		if !matchCTLOptions(state.groups[group].options, port.Options) {
+			return errors.New("target_port_properties_mismatch")
+		}
+		if port.Online != "YES" || tag <= 0 || port.LUNMap != "on" {
 			return errors.New("target_port_not_ready")
 		}
-		if tag, exists := groupTags[port.Group]; exists && tag != port.Tag {
+		if previous, exists := groupTags[group]; exists && previous != tag {
 			return errors.New("target_port_group_tag_mismatch")
 		}
-		if group, exists := tagGroups[port.Tag]; exists && group != port.Group {
+		tagKey := strconv.Itoa(tag)
+		if target.controller {
+			tagKey = "nvmf:" + tagKey
+		}
+		if previous, exists := protocolTags[tagKey]; exists && previous != group {
 			return errors.New("target_port_group_tag_mismatch")
 		}
-		groupTags[port.Group], tagGroups[port.Tag] = port.Tag, port.Group
+		groupTags[group], protocolTags[tagKey] = tag, group
 		if len(port.LUNs) != len(target.luns) {
 			return errors.New("target_lun_mapping_mismatch")
 		}
@@ -508,6 +571,16 @@ func (s *Service) targetBackingIdentity(lun ctlLUN) (targetBackingIdentity, erro
 }
 
 func (s *Service) rememberFailedTargetStart(ctx context.Context, state *targetConfiguration, before *targetStartBaseline) error {
+	for _, lun := range state.configuredLUNs() {
+		if lun.line != 0 {
+			return errors.New("target_start_extra_config_requires_operator_review")
+		}
+	}
+	for _, target := range state.targets {
+		if target.line != 0 {
+			return errors.New("target_start_extra_config_requires_operator_review")
+		}
+	}
 	if before == nil {
 		return errors.New("target_start_ownership_not_recorded")
 	}
@@ -560,7 +633,7 @@ func (s *Service) rememberFailedTargetStart(ctx context.Context, state *targetCo
 			return errors.New("target_start_lun_has_no_serial")
 		}
 		for _, old := range before.luns.LUNs {
-			if old.ID == lun.ID && old != lun {
+			if old.ID == lun.ID && !reflect.DeepEqual(old, lun) {
 				return errors.New("target_start_lun_identity_changed")
 			}
 		}
@@ -683,7 +756,7 @@ func (s *Service) checkTargetRecoveryInventory(ctx context.Context, record *targ
 		}
 		saved, exists := wantedLUNs[lun.ID]
 		identity, err := s.targetBackingIdentity(lun)
-		if !exists || lun != saved.LUN || err != nil || identity != saved.Backing {
+		if !exists || !reflect.DeepEqual(lun, saved.LUN) || err != nil || identity != saved.Backing {
 			return nil, errors.New("target_recovery_lun_identity_changed")
 		}
 		actualLUNs[lun.ID] = true

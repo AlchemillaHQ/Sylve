@@ -37,7 +37,7 @@ func newVMActionCommand(action string) *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMAction, consoleprotocol.VMActionPayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMAction, consoleprotocol.VMActionPayload{
 				RID:    rid,
 				Action: action,
 				JSON:   command.Bool("json"),
@@ -62,7 +62,7 @@ func newVMsCommand() *cli.Command {
 				Usage: "List all VMs",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationVMList, consoleprotocol.JSONPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMList, consoleprotocol.JSONPayload{
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -79,7 +79,7 @@ func newVMsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMGet, consoleprotocol.VMRIDPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMGet, consoleprotocol.VMRIDPayload{
 						RID:  rid,
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
@@ -112,7 +112,7 @@ func newVMsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMDelete, consoleprotocol.VMDeletePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMDelete, consoleprotocol.VMDeletePayload{
 						RID:            rid,
 						DeleteMACs:     command.Bool("delete-macs"),
 						DeleteRawDisks: command.Bool("delete-raw-disks"),
@@ -135,7 +135,7 @@ func newVMsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMPurge, consoleprotocol.VMPurgePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMPurge, consoleprotocol.VMPurgePayload{
 						RID:        rid,
 						DeleteMACs: command.Bool("delete-macs"),
 						JSON:       command.Bool("json"),
@@ -158,7 +158,7 @@ func newVMsCommand() *cli.Command {
 							if err != nil {
 								return err
 							}
-							return executeConsoleOperation(command, consoleprotocol.OperationVMQGAInfo, consoleprotocol.VMRIDPayload{
+							return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMQGAInfo, consoleprotocol.VMRIDPayload{
 								RID: rid, JSON: command.Bool("json"),
 							}, command.Bool("json"))
 						},
@@ -176,7 +176,7 @@ func newVMsCommand() *cli.Command {
 							if err != nil {
 								return err
 							}
-							return executeConsoleOperation(command, consoleprotocol.OperationVMQGASend, consoleprotocol.VMQGASendPayload{
+							return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMQGASend, consoleprotocol.VMQGASendPayload{
 								RID:     rid,
 								Command: command.String("command"),
 								JSON:    command.Bool("json"),

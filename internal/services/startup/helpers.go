@@ -10,6 +10,7 @@ package startup
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -19,8 +20,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -34,6 +37,7 @@ var (
 	startupSetSysctlInt64        = sysctl.SetInt64
 	startupGetSystemMemoryBytes  = utils.GetSystemMemoryBytes
 	startupRunCommand            = utils.RunCommand
+	startupMkdirAll              = os.MkdirAll
 	sambaSyslogDropInPath        = "/etc/syslog.d/sylve-samba-audit.conf"
 	sambaAuditLogPath            = "/var/log/samba4/audit.log"
 	sambaAuditRotationConfigPath = "/usr/local/etc/newsyslog.conf.d/sylve-samba-audit.conf"
@@ -53,6 +57,56 @@ func computeARCMax(memBytes int64) int64 {
 	}
 
 	return arcMax
+}
+
+func (s *Service) applyStartupBootstrap(ctx context.Context) error {
+	if s.Bootstrap == nil {
+		return nil
+	}
+	report := s.Bootstrap.ApplyStartup(ctx)
+	logBootstrapReport(report)
+	if report.RestartRequired {
+		return ErrBootstrapRestartRequired
+	}
+	return nil
+}
+
+func logBootstrapReport(report bootstrap.Report) {
+	for _, item := range report.Items {
+		event := logger.L.Info()
+		switch item.Status {
+		case systemServiceInterfaces.BootstrapWarning, systemServiceInterfaces.BootstrapDeferred:
+			event = logger.L.Warn()
+		case systemServiceInterfaces.BootstrapFailed:
+			event = logger.L.Error()
+		}
+		event.Str("source", "startup").
+			Str("kind", item.Kind).
+			Int("index", item.Index).
+			Str("name", item.Name).
+			Str("status", string(item.Status)).
+			Str("message", item.Message).
+			Msg("bootstrap_item_result")
+	}
+	if report.Failed() {
+		event := logger.L.Error().Str("source", "startup").
+			Bool("archived", report.Archived).
+			Bool("restartRequired", report.RestartRequired)
+		if report.DocumentError != "" {
+			event = event.Str("documentError", report.DocumentError)
+		}
+		if report.ArchiveError != "" {
+			event = event.Str("archiveError", report.ArchiveError)
+		}
+		if report.GeneralError != "" {
+			event = event.Str("generalError", report.GeneralError)
+		}
+		event.Msg("bootstrap_apply_failed")
+	} else if report.Archived {
+		logger.L.Info().Str("source", "startup").
+			Bool("restartRequired", report.RestartRequired).
+			Msg("bootstrap_apply_archived")
+	}
 }
 
 func (s *Service) SysctlSync() error {

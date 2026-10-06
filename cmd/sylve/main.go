@@ -48,6 +48,7 @@ import (
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/services/samba"
+	"github.com/alchemillahq/sylve/internal/services/startup"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
@@ -261,6 +262,10 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	err = sS.Initialize(aS.(*auth.Service), initContext, qCtx)
 	if err != nil {
+		if errors.Is(err, startup.ErrBootstrapRestartRequired) {
+			logger.L.Info().Msg("Bootstrap requires an immediate daemon restart")
+			return errSelfRestartRequested
+		}
 		logger.L.Fatal().Err(err).Msg("Failed to initialize at startup")
 	}
 
@@ -453,6 +458,8 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		Network:        nS.(*networkService.Service),
 		Utilities:      uS,
 		Status:         repl.NewStatusProvider(zS.(*zfs.Service), libvirtSvc, jailSvc, lifecycleSvc),
+		Bootstrap:      serviceRegistry.BootstrapService,
+		RequestRestart: func() { requestSelfRestart(selfRestartRequests) },
 		HistoryPath:    historyPath,
 		QuitChan:       replQuitChan,
 	}

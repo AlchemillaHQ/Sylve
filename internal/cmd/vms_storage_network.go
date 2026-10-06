@@ -70,7 +70,7 @@ func newVMStorageCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMStorageList, consoleprotocol.VMRIDPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMStorageList, consoleprotocol.VMRIDPayload{
 						RID: rid, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -100,7 +100,7 @@ func newVMStorageCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMStorageAttach, consoleprotocol.VMStorageAttachPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMStorageAttach, consoleprotocol.VMStorageAttachPayload{
 						RID: rid, Request: request, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -117,7 +117,7 @@ func newVMStorageCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMStorageUpdate, consoleprotocol.VMStorageUpdatePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMStorageUpdate, consoleprotocol.VMStorageUpdatePayload{
 						RID: rid, StorageID: storageID, Request: request, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -137,7 +137,7 @@ func newVMStorageCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMStorageUpdate, consoleprotocol.VMStorageUpdatePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMStorageUpdate, consoleprotocol.VMStorageUpdatePayload{
 						RID: rid, StorageID: storageID, Request: request, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -160,7 +160,7 @@ func newVMStorageCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMStorageDetach, consoleprotocol.VMStorageDetachPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMStorageDetach, consoleprotocol.VMStorageDetachPayload{
 						RID: rid, StorageID: storageID, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -246,7 +246,7 @@ func newVMNetworkCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworks, consoleprotocol.VMRIDPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMNetworks, consoleprotocol.VMRIDPayload{
 						RID: rid, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -271,7 +271,7 @@ func newVMNetworkCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkAttach, consoleprotocol.VMNetworkAttachPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMNetworkAttach, consoleprotocol.VMNetworkAttachPayload{
 						RID: rid,
 						Request: libvirtServiceInterfaces.NetworkAttachRequest{
 							SwitchName: command.String("switch"), Emulation: command.String("emulation"), MacID: macID,
@@ -299,7 +299,7 @@ func newVMNetworkCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkDetach, consoleprotocol.VMNetworkDetachPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMNetworkDetach, consoleprotocol.VMNetworkDetachPayload{
 						RID: rid, NetworkID: networkID, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -347,7 +347,7 @@ func newVMEditNetworkCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			return executeConsoleOperation(command, consoleprotocol.OperationVMNetworkUpdate, consoleprotocol.VMNetworkUpdatePayload{
+			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMNetworkUpdate, consoleprotocol.VMNetworkUpdatePayload{
 				RID: rid, NetworkID: networkID, Request: request, JSON: command.Bool("json"),
 			}, command.Bool("json"))
 		},

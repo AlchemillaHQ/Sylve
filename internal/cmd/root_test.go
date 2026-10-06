@@ -12,6 +12,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -21,6 +23,132 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	original := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create stdout pipe: %v", err)
+	}
+	os.Stdout = writer
+	defer func() { os.Stdout = original }()
+	defer reader.Close()
+	defer writer.Close()
+	fn()
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close stdout writer: %v", err)
+	}
+	out, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read captured stdout: %v", err)
+	}
+	return string(out)
+}
+
+func runBootstrapApplyCapture(t *testing.T, response consoleprotocol.Response, extraArgs ...string) (string, error, consoleprotocol.BootstrapApplyPayload) {
+	t.Helper()
+	t.Setenv("SYLVE_DATA_PATH", "")
+	configDir := t.TempDir()
+	dataPath := filepath.Join(configDir, "data")
+	configPath := filepath.Join(configDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(`{"dataPath":"`+dataPath+`"}`), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	socketPath := consoleprotocol.SocketPath(dataPath)
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0o700); err != nil {
+		t.Fatalf("create socket directory: %v", err)
+	}
+	listener, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	var payload consoleprotocol.BootstrapApplyPayload
+	serverErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			serverErr <- err
+			return
+		}
+		defer conn.Close()
+		var request consoleprotocol.Request
+		if err := json.NewDecoder(conn).Decode(&request); err != nil {
+			serverErr <- err
+			return
+		}
+		if request.Operation != consoleprotocol.OperationBootstrapApply {
+			serverErr <- fmt.Errorf("unexpected operation: %s", request.Operation)
+			return
+		}
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			serverErr <- err
+			return
+		}
+		serverErr <- json.NewEncoder(conn).Encode(response)
+	}()
+
+	root := newRootCommand(nil, func() bool { return true })
+	args := append([]string{"sylve", "--config", configPath, "bootstrap", "apply"}, extraArgs...)
+	var runErr error
+	out := captureStdout(t, func() { runErr = root.Run(context.Background(), args) })
+	if err := <-serverErr; err != nil {
+		t.Fatalf("serve response: %v", err)
+	}
+	return out, runErr, payload
+}
+
+func TestBootstrapApplyCLIEmitsFullJSONAndExitsNonzero(t *testing.T) {
+	reportJSON := `{"archived":false,"restartRequired":false,"items":[{"kind":"service","index":0,"status":"failed"}]}`
+	out, runErr, payload := runBootstrapApplyCapture(t, consoleprotocol.Response{
+		Output: reportJSON + "\n", Error: "bootstrap_apply_failed",
+	}, "--json")
+	if runErr == nil || !strings.Contains(runErr.Error(), "bootstrap_apply_failed") {
+		t.Fatalf("run error = %v, want bootstrap_apply_failed", runErr)
+	}
+	if out != reportJSON+"\n" {
+		t.Fatalf("stdout = %q, want full JSON report %q", out, reportJSON+"\n")
+	}
+	if payload.File != "default" || !payload.JSON {
+		t.Fatalf("payload = %+v, want default file and JSON", payload)
+	}
+}
+
+func TestBootstrapApplyCLISucceedsOnWarningReport(t *testing.T) {
+	reportJSON := `{"archived":true,"restartRequired":false,"items":[{"kind":"service","index":0,"status":"warning"}]}`
+	out, runErr, _ := runBootstrapApplyCapture(t, consoleprotocol.Response{Output: reportJSON + "\n"}, "--json")
+	if runErr != nil {
+		t.Fatalf("warning report must succeed, got %v", runErr)
+	}
+	if out != reportJSON+"\n" {
+		t.Fatalf("stdout = %q, want %q", out, reportJSON+"\n")
+	}
+}
+
+func TestBootstrapApplyCLIResolvesFilePath(t *testing.T) {
+	reportJSON := `{"archived":true,"restartRequired":false}`
+	absolute := filepath.Join(t.TempDir(), "absolute-doc.json")
+	wantRelative, err := filepath.Abs("./relative-doc.json")
+	if err != nil {
+		t.Fatalf("compute expected absolute path: %v", err)
+	}
+	for _, testCase := range []struct{ name, file, want string }{
+		{"relative path resolves against CLI cwd", "./relative-doc.json", wantRelative},
+		{"absolute path is forwarded unchanged", absolute, absolute},
+		{"default sentinel is preserved", "default", "default"},
+		{"empty value is preserved", "", ""},
+	} {
+		out, runErr, payload := runBootstrapApplyCapture(t, consoleprotocol.Response{Output: reportJSON + "\n"}, "--json", "--file", testCase.file)
+		if runErr != nil {
+			t.Fatalf("%s: run error = %v", testCase.name, runErr)
+		}
+		if payload.File != testCase.want || out != reportJSON+"\n" {
+			t.Fatalf("%s: payload = %+v, stdout = %q", testCase.name, payload, out)
+		}
+	}
+}
 
 func TestAsciiArt(t *testing.T) {
 	var buf bytes.Buffer
@@ -41,6 +169,56 @@ func TestNewRootCommand_Name(t *testing.T) {
 	root := NewRootCommand(nil)
 	if root.Name != "sylve" {
 		t.Fatalf("expected name sylve, got %q", root.Name)
+	}
+}
+
+func TestNewRootCommand_Version(t *testing.T) {
+	originalCommit := Commit
+	t.Cleanup(func() { Commit = originalCommit })
+
+	testCases := []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "long", args: []string{"--version"}},
+		{name: "short", args: []string{"-v"}},
+		{name: "json after long", args: []string{"--version", "--json"}, json: true},
+		{name: "json before long", args: []string{"--json", "--version"}, json: true},
+		{name: "json after short", args: []string{"-v", "--json"}, json: true},
+		{name: "json before short", args: []string{"--json", "-v"}, json: true},
+		{name: "json disabled", args: []string{"--version", "--json=false"}},
+		{name: "ignores service wait", args: []string{"--version", "--json", "--wait-service", "60"}, json: true},
+	}
+
+	for _, commit := range []string{"abc1234", "unknown"} {
+		for _, testCase := range testCases {
+			t.Run(commit+"/"+testCase.name, func(t *testing.T) {
+				Commit = commit
+				var output bytes.Buffer
+				called := false
+				root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
+					called = true
+					return nil
+				}, func() bool { return false })
+				root.Writer = &output
+
+				args := append([]string{"sylve"}, testCase.args...)
+				if err := root.Run(context.Background(), args); err != nil {
+					t.Fatalf("run version: %v", err)
+				}
+				want := fmt.Sprintf("sylve version %s (commit: %s)\n", Version, commit)
+				if testCase.json {
+					want = fmt.Sprintf("{\"version\":%q,\"commit\":%q}\n", Version, commit)
+				}
+				if output.String() != want {
+					t.Fatalf("version output = %q, want %q", output.String(), want)
+				}
+				if called {
+					t.Fatal("expected daemon action not to run for version flag")
+				}
+			})
+		}
 	}
 }
 
@@ -110,6 +288,7 @@ func TestNewRootCommand_Subcommands(t *testing.T) {
 		"switches":  false,
 		"objects":   false,
 		"downloads": false,
+		"bootstrap": false,
 	}
 	for _, sub := range root.Commands {
 		if _, ok := want[sub.Name]; ok {

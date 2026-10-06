@@ -66,6 +66,140 @@ func seedManualSwitch(t *testing.T, db *gorm.DB, name, bridge string) networkMod
 	return switchModel
 }
 
+func TestCreateManualSwitchUpsertEquivalentIsNoOp(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	created, err := svc.CreateManualSwitch("idem-manual", "bridge-idem")
+	if err != nil {
+		t.Fatalf("create manual switch: %v", err)
+	}
+	if err := db.Callback().Update().Before("gorm:update").Register("test_manual_noop", func(tx *gorm.DB) {
+		tx.AddError(errors.New("unexpected manual switch update"))
+	}); err != nil {
+		t.Fatalf("register update failure callback: %v", err)
+	}
+	again, err := svc.CreateManualSwitch("  idem-manual  ", " bridge-idem ")
+	if err != nil {
+		t.Fatalf("equivalent manual switch upsert failed: %v", err)
+	}
+	if again.ID != created.ID || again.Bridge != "bridge-idem" {
+		t.Fatalf("equivalent upsert = %#v, want stable ID %d bridge bridge-idem", again, created.ID)
+	}
+	var count int64
+	if err := db.Model(&networkModels.ManualSwitch{}).Count(&count).Error; err != nil {
+		t.Fatalf("count manual switches: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("manual switch count = %d, want 1", count)
+	}
+}
+
+func TestCreateManualSwitchUpsertChangedBridgeUsesNormalUpdate(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	created, err := svc.CreateManualSwitch("editable-manual", "bridge-first")
+	if err != nil {
+		t.Fatalf("create manual switch: %v", err)
+	}
+	updated, err := svc.CreateManualSwitch("editable-manual", "bridge-second")
+	if err != nil {
+		t.Fatalf("changed manual switch upsert: %v", err)
+	}
+	if updated.ID != created.ID || updated.Bridge != "bridge-second" {
+		t.Fatalf("changed upsert = %+v, want ID %d and bridge-second", updated, created.ID)
+	}
+	var persisted networkModels.ManualSwitch
+	if err := db.First(&persisted, created.ID).Error; err != nil {
+		t.Fatalf("reload manual switch: %v", err)
+	}
+	if persisted.Bridge != "bridge-second" {
+		t.Fatalf("persisted bridge = %q, want bridge-second", persisted.Bridge)
+	}
+	var count int64
+	if err := db.Model(&networkModels.ManualSwitch{}).Count(&count).Error; err != nil {
+		t.Fatalf("count manual switches: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("manual switch count = %d, want 1 (no duplicate row)", count)
+	}
+}
+
+func TestCreateManualSwitchUpsertChangedBridgeHonorsEditSafety(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	existing := seedManualSwitch(t, db, "busy-manual", "bridge-busy")
+	if err := db.Exec(`INSERT INTO dhcp_manual_switches (dhcp_config_id, manual_switch_id) VALUES (1, ?)`, existing.ID).Error; err != nil {
+		t.Fatalf("seed DHCP reference: %v", err)
+	}
+	_, err := svc.CreateManualSwitch("busy-manual", "bridge-other")
+	if !errors.Is(err, ErrManualSwitchInUse) || ManualSwitchErrorCode(err) != "manual_switch_in_use_by_dhcp_config" {
+		t.Fatalf("changed in-use upsert error = %v, want manual_switch_in_use_by_dhcp_config", err)
+	}
+	var persisted networkModels.ManualSwitch
+	if err := db.First(&persisted, existing.ID).Error; err != nil {
+		t.Fatalf("reload manual switch: %v", err)
+	}
+	if persisted.Bridge != "bridge-busy" {
+		t.Fatalf("in-use switch bridge changed to %q", persisted.Bridge)
+	}
+}
+
+func TestCreateManualSwitchUpsertEquivalentValidatesHostBridge(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		get  func(string) (*iface.Interface, error)
+		code string
+	}{
+		{
+			name: "missing bridge",
+			get: func(name string) (*iface.Interface, error) {
+				return nil, errors.New("interface " + name + " not found")
+			},
+			code: "manual_switch_bridge_not_found",
+		},
+		{
+			name: "non-bridge interface",
+			get:  func(name string) (*iface.Interface, error) { return &iface.Interface{Name: name}, nil },
+			code: "manual_switch_interface_not_bridge",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			svc, db := setupManualSwitchService(t)
+			existing, err := svc.CreateManualSwitch("gone-manual", "bridge-gone")
+			if err != nil {
+				t.Fatalf("create manual switch: %v", err)
+			}
+			stubManualSwitchInterface(t, test.get)
+			if _, err := svc.CreateManualSwitch("gone-manual", "bridge-gone"); !errors.Is(err, ErrInvalidManualSwitch) || ManualSwitchErrorCode(err) != test.code {
+				t.Fatalf("equivalent missing-bridge error = %v, want %s", err, test.code)
+			}
+			var persisted networkModels.ManualSwitch
+			if err := db.First(&persisted, existing.ID).Error; err != nil {
+				t.Fatalf("manual switch row disappeared: %v", err)
+			}
+			if persisted.Bridge != "bridge-gone" {
+				t.Fatalf("failed equivalent upsert changed bridge to %q", persisted.Bridge)
+			}
+		})
+	}
+}
+
+func TestCreateManualSwitchUpsertEquivalentRejectsCrossTypeDoubleOwner(t *testing.T) {
+	svc, db := setupManualSwitchService(t)
+	if err := db.Create(&networkModels.StandardSwitch{Name: "double-manual", BridgeName: "vm-double-manual"}).Error; err != nil {
+		t.Fatalf("seed standard switch: %v", err)
+	}
+	existing := seedManualSwitch(t, db, "double-manual", "bridge-double")
+	_, err := svc.CreateManualSwitch("double-manual", "bridge-double")
+	if !errors.Is(err, ErrManualSwitchConflict) || ManualSwitchErrorCode(err) != "manual_switch_name_conflict" {
+		t.Fatalf("double-owner manual upsert error = %v, want manual_switch_name_conflict", err)
+	}
+	var persisted networkModels.ManualSwitch
+	if err := db.First(&persisted, existing.ID).Error; err != nil {
+		t.Fatalf("manual switch row disappeared: %v", err)
+	}
+	if persisted.Bridge != "bridge-double" {
+		t.Fatalf("double-owner upsert changed bridge to %q", persisted.Bridge)
+	}
+}
+
 func TestCreateManualSwitchValidatesAndNormalizesInput(t *testing.T) {
 	svc, db := setupManualSwitchService(t)
 

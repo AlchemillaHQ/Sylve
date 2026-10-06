@@ -65,17 +65,36 @@ type integrationDisk struct {
 	Serial string `json:"serial"`
 }
 
+type integrationFileBacking struct {
+	Path   string `json:"path"`
+	Device uint64 `json:"device"`
+	Inode  uint64 `json:"inode"`
+}
+
+type integrationNVMeController struct {
+	NQN          string `json:"nqn"`
+	HostNQN      string `json:"hostNqn"`
+	Endpoint     string `json:"endpoint"`
+	Device       string `json:"device,omitempty"`
+	Namespace    string `json:"namespace,omitempty"`
+	Serial       string `json:"serial,omitempty"`
+	ControllerID *int   `json:"controllerId,omitempty"`
+}
+
 type integrationManifest struct {
-	RunID      string               `json:"runID"`
-	Pool       string               `json:"pool"`
-	PoolOwner  string               `json:"poolOwner"`
-	Targets    []string             `json:"targets"`
-	Endpoints  []string             `json:"endpoints"`
-	Processes  []integrationProcess `json:"processes"`
-	SessionIDs []int                `json:"sessionIDs"`
-	Disks      []integrationDisk    `json:"disks"`
-	Ports      []ctlPort            `json:"ports"`
-	LUNs       []ctlLUN             `json:"luns"`
+	RunID           string                      `json:"runID"`
+	Pool            string                      `json:"pool"`
+	PoolOwner       string                      `json:"poolOwner"`
+	Targets         []string                    `json:"targets"`
+	Endpoints       []string                    `json:"endpoints"`
+	Processes       []integrationProcess        `json:"processes"`
+	SessionIDs      []int                       `json:"sessionIDs"`
+	Disks           []integrationDisk           `json:"disks"`
+	Ports           []ctlPort                   `json:"ports"`
+	LUNs            []ctlLUN                    `json:"luns"`
+	FileBackings    []integrationFileBacking    `json:"fileBackings,omitempty"`
+	NVMeControllers []integrationNVMeController `json:"nvmeControllers,omitempty"`
+	NamedLUNs       []string                    `json:"namedLuns,omitempty"`
 }
 
 type iscsiIntegrationFixture struct {
@@ -85,6 +104,7 @@ type iscsiIntegrationFixture struct {
 	clean          bool
 	startedISCSID  bool
 	iscsidIdentity integrationProcess
+	nvmeDevices    func() ([]string, error)
 }
 
 func integrationCommand(svc *Service, command string, args ...string) (string, error) {
@@ -217,7 +237,7 @@ func requireISCSIIntegrationFixture(t *testing.T) *iscsiIntegrationFixture {
 			t.Errorf("close fixture database: %v", err)
 		}
 	})
-	if err := db.AutoMigrate(&models.BasicSettings{}, &iscsiModels.ISCSIInitiator{}, &iscsiModels.ISCSITarget{}, &iscsiModels.ISCSITargetPortal{}, &iscsiModels.ISCSITargetLUN{}); err != nil {
+	if err := db.AutoMigrate(&models.BasicSettings{}, &iscsiModels.ISCSISettings{}, &iscsiModels.ISCSIInitiator{}, &iscsiModels.ISCSITarget{}, &iscsiModels.ISCSITargetPortal{}, &iscsiModels.ISCSITargetLUN{}); err != nil {
 		t.Fatal("cannot create fixture database tables")
 	}
 	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.ISCSI}}).Error; err != nil {
@@ -225,7 +245,7 @@ func requireISCSIIntegrationFixture(t *testing.T) *iscsiIntegrationFixture {
 	}
 	svc.runtime = &targetRuntime{configFile: filepath.Join(directory, "ctl.conf"), initiatorFile: filepath.Join(directory, "iscsi.conf"), pidFile: filepath.Join(directory, "ctld.pid")}
 	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
-		if command == "/bin/kill" || command == "/usr/sbin/ctld" && !slices.Contains(args, "-t") || command == "/usr/sbin/ctladm" && len(args) > 0 && args[0] == "port" {
+		if command == "/bin/kill" || command == "/usr/sbin/ctld" && !slices.Contains(args, "-t") || command == "/usr/sbin/ctladm" && len(args) > 0 && args[0] == "port" || command == "/sbin/nvmecontrol" && len(args) > 0 && (args[0] == "connect" || args[0] == "disconnect" || args[0] == "io-passthru") {
 			if err := f.checkOwnedNamespace(ctx); err != nil {
 				return "", err
 			}
@@ -306,15 +326,62 @@ func (f *iscsiIntegrationFixture) ownsLUN(lun ctlLUN) bool {
 	if path == "" {
 		path = lun.Device
 	}
-	if !strings.HasPrefix(path, "/dev/zvol/"+f.manifest.Pool+"/") {
+	ownedBacking := strings.HasPrefix(path, "/dev/zvol/"+f.manifest.Pool+"/")
+	for _, file := range f.manifest.FileBackings {
+		if file.Path == path && f.ownsFileBacking(file) {
+			ownedBacking = true
+		}
+	}
+	if !ownedBacking {
 		return false
 	}
+	if slices.Contains(f.manifest.NamedLUNs, lun.Name) && strings.HasPrefix(lun.Name, iscsiTestIQNPrefix+f.manifest.RunID+":") {
+		return true
+	}
 	for _, target := range f.manifest.Targets {
-		if strings.HasPrefix(lun.Name, target+",lun,") {
+		if strings.HasPrefix(lun.Name, target+",lun,") || strings.HasPrefix(lun.Name, target+",nsid,") {
 			return true
 		}
 	}
 	return false
+}
+
+func (f *iscsiIntegrationFixture) ownsFileBacking(file integrationFileBacking) bool {
+	if filepath.Dir(file.Path) != f.directory {
+		return false
+	}
+	info, err := os.Lstat(file.Path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(stat.Uid) == os.Geteuid() && uint64(stat.Dev) == file.Device && uint64(stat.Ino) == file.Inode
+}
+
+func (f *iscsiIntegrationFixture) fileBacking(t *testing.T, label string) string {
+	t.Helper()
+	path := filepath.Join(f.directory, label+".img")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal("cannot create owned file backing")
+	}
+	defer file.Close()
+	if err := file.Truncate(16 << 20); err != nil {
+		t.Fatal("cannot size owned file backing")
+	}
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal("cannot inspect file backing")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("cannot identify file backing")
+	}
+	f.manifest.FileBackings = append(f.manifest.FileBackings, integrationFileBacking{Path: path, Device: uint64(stat.Dev), Inode: uint64(stat.Ino)})
+	if err := f.saveManifest(); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func (f *iscsiIntegrationFixture) checkOwnedNamespace(ctx context.Context) error {
@@ -330,7 +397,7 @@ func (f *iscsiIntegrationFixture) checkOwnedNamespace(ctx context.Context) error
 		return err
 	}
 	for _, port := range ports.Ports {
-		if (port.Group != "" || port.TransportGroup != "") && (!slices.Contains(f.manifest.Targets, port.Target) || port.TransportGroup != "") {
+		if port.Group != "" && !slices.Contains(f.manifest.Targets, port.Target) || port.TransportGroup != "" && !f.ownsNVMeController(port.controllerName()) {
 			return errors.New("non-test target port appeared; left untouched")
 		}
 	}
@@ -346,6 +413,11 @@ func (f *iscsiIntegrationFixture) checkOwnedNamespace(ctx context.Context) error
 	for _, session := range sessions {
 		if !f.ownsSession(session) {
 			return errors.New("non-test initiator session appeared; left untouched")
+		}
+	}
+	if len(f.manifest.NVMeControllers) != 0 {
+		if err := f.checkNVMeNamespace(ctx); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -707,7 +779,7 @@ func (f *iscsiIntegrationFixture) discoveryInventory(t *testing.T, endpoint stri
 			if !ok || err != nil || tag <= 0 || name == "" || !slices.Contains(expected[name], address) || slices.Contains(actual[name], address) {
 				t.Fatal("unexpected or duplicate discovery address")
 			}
-			listener, err := f.service.parseListener(address)
+			listener, err := f.service.parseListener(address, 3260)
 			if err != nil {
 				t.Fatal("invalid discovery listener")
 			}
@@ -944,6 +1016,9 @@ func (f *iscsiIntegrationFixture) close() error {
 	if err := f.checkOwnedNamespace(ctx); err != nil {
 		return err
 	}
+	if err := f.disconnectNVMeControllers(ctx); err != nil {
+		return err
+	}
 	sessions, err := integrationSessions(ctx, f.service)
 	if err != nil {
 		return err
@@ -984,6 +1059,9 @@ func (f *iscsiIntegrationFixture) close() error {
 	}
 	if err := f.service.DB.Model(&settings).Select("Services").Updates(&models.BasicSettings{Services: []models.AvailableService{models.ISCSI}}).Error; err != nil {
 		return err
+	}
+	if err := f.service.DB.Model(&iscsiModels.ISCSISettings{}).Where("id = ?", 1).Update("extra_target_config", "").Error; err != nil {
+		return errors.New("cannot clear fixture extra config")
 	}
 	if err := f.service.WriteTargetConfig(true); err != nil {
 		return err
@@ -1055,6 +1133,16 @@ func (f *iscsiIntegrationFixture) removeFiles(t *testing.T) {
 	if slices.Contains(strings.Fields(out), f.manifest.Pool) {
 		t.Errorf("test pool remains; kept iSCSI manifest in %s", f.directory)
 		return
+	}
+	for _, file := range f.manifest.FileBackings {
+		if !f.ownsFileBacking(file) {
+			t.Error("file backing identity changed; retained fixture evidence")
+			return
+		}
+		if err := os.Remove(file.Path); err != nil {
+			t.Error("cannot remove owned file backing")
+			return
+		}
 	}
 	for _, name := range []string{"ctl.conf", "ctl.conf.recovery.json", "ctl.conf.recovery.lock", "iscsi.conf", "discovery.conf", "ctld.pid", "test.db", "test.db-wal", "test.db-shm", "pattern"} {
 		if err := os.Remove(filepath.Join(f.directory, name)); err != nil && !os.IsNotExist(err) {

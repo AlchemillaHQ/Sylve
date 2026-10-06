@@ -43,8 +43,8 @@ func newDatacenterNotesCommand() *cli.Command {
 				Name:  "list",
 				Usage: "List datacenter notes",
 				Flags: []cli.Flag{datacenterJSONFlag()},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterNoteList, consoleprotocol.DatacenterNoteListPayload{
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterNoteList, consoleprotocol.DatacenterNoteListPayload{
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -56,12 +56,12 @@ func newDatacenterNotesCommand() *cli.Command {
 					datacenterJSONFlag(),
 					&cli.IntFlag{Name: "id", Usage: "note ID", Required: true},
 				},
-				Action: func(_ context.Context, command *cli.Command) error {
+				Action: func(ctx context.Context, command *cli.Command) error {
 					id, err := commandPositiveUint(command, "id")
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterNoteGet, consoleprotocol.DatacenterNoteGetPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterNoteGet, consoleprotocol.DatacenterNoteGetPayload{
 						ID: id, JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -70,20 +70,20 @@ func newDatacenterNotesCommand() *cli.Command {
 				Name:  "add",
 				Usage: "Add a datacenter note",
 				Flags: append(datacenterNoteTextFlags(false), datacenterJSONFlag()),
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeDatacenterNoteMutation(command, consoleprotocol.OperationDatacenterNoteAdd, 0)
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeDatacenterNoteMutation(ctx, command, consoleprotocol.OperationDatacenterNoteAdd, 0)
 				},
 			},
 			{
 				Name:  "update",
 				Usage: "Update a datacenter note",
 				Flags: append(datacenterNoteTextFlags(true), datacenterJSONFlag()),
-				Action: func(_ context.Context, command *cli.Command) error {
+				Action: func(ctx context.Context, command *cli.Command) error {
 					id, err := commandPositiveUint(command, "id")
 					if err != nil {
 						return err
 					}
-					return executeDatacenterNoteMutation(command, consoleprotocol.OperationDatacenterNoteUpdate, id)
+					return executeDatacenterNoteMutation(ctx, command, consoleprotocol.OperationDatacenterNoteUpdate, id)
 				},
 			},
 			{
@@ -93,12 +93,12 @@ func newDatacenterNotesCommand() *cli.Command {
 					datacenterJSONFlag(),
 					&cli.IntFlag{Name: "id", Usage: "note ID", Required: true},
 				},
-				Action: func(_ context.Context, command *cli.Command) error {
+				Action: func(ctx context.Context, command *cli.Command) error {
 					id, err := commandPositiveUint(command, "id")
 					if err != nil {
 						return err
 					}
-					return executeDatacenterNoteMutation(command, consoleprotocol.OperationDatacenterNoteDelete, id)
+					return executeDatacenterNoteMutation(ctx, command, consoleprotocol.OperationDatacenterNoteDelete, id)
 				},
 			},
 		},
@@ -114,8 +114,8 @@ func newDatacenterClusterCommand() *cli.Command {
 				Name:  "status",
 				Usage: "Show local cluster and consensus status",
 				Flags: []cli.Flag{datacenterJSONFlag()},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterStatus,
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterStatus,
 						consoleprotocol.DatacenterClusterReadPayload{JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -123,8 +123,8 @@ func newDatacenterClusterCommand() *cli.Command {
 				Name:  "members",
 				Usage: "List authoritative Raft members",
 				Flags: []cli.Flag{datacenterJSONFlag()},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterMembers,
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterMembers,
 						consoleprotocol.DatacenterClusterReadPayload{JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -136,8 +136,8 @@ func newDatacenterClusterCommand() *cli.Command {
 					&cli.StringFlag{Name: "new-ip", Usage: "new locally assigned cluster IP", Required: true},
 					clusterDisruptionFlag(),
 				},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterReaddress,
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterReaddress,
 						consoleprotocol.DatacenterClusterReaddressPayload{
 							NewIP: command.String("new-ip"), AllowDisruption: command.Bool("allow-disruption"),
 							JSON: command.Bool("json"),
@@ -153,8 +153,8 @@ func newDatacenterClusterCommand() *cli.Command {
 					&cli.StringFlag{Name: "new-ip", Usage: "recovered member's new cluster IP", Required: true},
 					clusterDisruptionFlag(),
 				},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterRepairAddress,
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterRepairAddress,
 						consoleprotocol.DatacenterClusterRepairAddressPayload{
 							NodeID: command.String("node-id"), NewIP: command.String("new-ip"),
 							AllowDisruption: command.Bool("allow-disruption"), JSON: command.Bool("json"),
@@ -176,8 +176,8 @@ func newDatacenterClusterGuestIDsCommand() *cli.Command {
 				Name:  "list",
 				Usage: "List shared guest ID claims",
 				Flags: []cli.Flag{datacenterJSONFlag()},
-				Action: func(_ context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterGuestIDsList,
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterGuestIDsList,
 						consoleprotocol.DatacenterClusterReadPayload{JSON: command.Bool("json")}, command.Bool("json"))
 				},
 			},
@@ -190,7 +190,7 @@ func newDatacenterClusterGuestIDsCommand() *cli.Command {
 					&cli.BoolFlag{Name: "force", Usage: "allow unavailable voters after externally fencing them"},
 					&cli.StringFlag{Name: "confirm", Usage: "exact guest ID required with --force"},
 				},
-				Action: func(_ context.Context, command *cli.Command) error {
+				Action: func(ctx context.Context, command *cli.Command) error {
 					guestID, err := commandPositiveUint(command, "id")
 					if err != nil {
 						return err
@@ -206,7 +206,7 @@ func newDatacenterClusterGuestIDsCommand() *cli.Command {
 					if !force && command.IsSet("confirm") {
 						return fmt.Errorf("--confirm requires --force")
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDatacenterClusterGuestIDReclaim,
 						consoleprotocol.DatacenterClusterGuestIDReclaimPayload{
 							GuestID: guestID, Force: force, Confirmation: confirmation, JSON: command.Bool("json"),
 						}, command.Bool("json"))
@@ -233,9 +233,9 @@ func datacenterNoteTextFlags(withID bool) []cli.Flag {
 	return flags
 }
 
-func executeDatacenterNoteMutation(command *cli.Command, operation string, id uint) error {
+func executeDatacenterNoteMutation(ctx context.Context, command *cli.Command, operation string, id uint) error {
 	payload := consoleprotocol.DatacenterNoteMutationPayload{
 		ID: id, Title: command.String("title"), Content: command.String("content"), JSON: command.Bool("json"),
 	}
-	return executeConsoleOperation(command, operation, payload, payload.JSON)
+	return executeConsoleOperation(ctx, command, operation, payload, payload.JSON)
 }

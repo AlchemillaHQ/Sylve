@@ -157,6 +157,24 @@ doas make test-integration
 
 Integration tests must run as `root` on FreeBSD with ZFS available. The target checks for leaked ZFS test resources before and after the suite and runs integration packages without the Go test cache.
 
+#### iSCSI and NVMe/TCP
+
+The same native Go tests run locally and in CI, without an opt-in flag or build tag. Use a reserved FreeBSD 15 or newer host or VM, not a jail. Load `ctl`, `iscsi`, `nvmft`, `nvmf`, and `nvmf_tcp`. Install the standard `ctld`, `iscsid`, `iscsictl`, `ctladm`, `nvmecontrol`, `diskinfo`, `sockstat`, `camcontrol`, and `timeout` tools. NVMe connections also need a valid host UUID. The fixture does not change host identity or kernel modules.
+
+For a focused run:
+
+```sh
+./scripts/check-iscsi-test-leaks.sh
+./scripts/check-zfs-test-leaks.sh
+go test -count=1 -p=1 -v -timeout=45m -run '^TestIntegrationISCSI' ./internal/services/iscsi
+./scripts/check-iscsi-test-leaks.sh
+./scripts/check-zfs-test-leaks.sh
+```
+
+Do not overlap native suites. The fixture uses a host lock and refuses existing ctld processes, stamped CTL objects, initiator sessions, or interrupted manifests. The NVMe case also requires a host without existing NVMe controllers or associations. Setup does not stop another daemon or remove another run's storage. Tests use recorded zvols, private file backings, loopback endpoints, and disk identities before I/O. Default-port cases check port availability first. Missing NVMe coverage is not a release pass.
+
+After an interruption, keep `/tmp/sylve-iscsi-test-*/manifest.json` and the matching ZFS ownership record. The leak scripts are read-only. Compare process start times, controller NQNs and host NQNs, session IDs, CTL mappings, file device/inode pairs, and pool ownership before manual repair. Do not remove resources by prefix alone. Retry only after the matching owned sessions, daemons, CTL objects, backings, and pool are gone and both leak checks pass.
+
 The repository also provides more specialized suites:
 
 | Command | Use it when |

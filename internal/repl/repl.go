@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 
+	bootstrap "github.com/alchemillahq/sylve/internal/bootstrap"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/auth"
@@ -24,6 +25,10 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/network"
 )
 
+type BootstrapApplier interface {
+	Apply(ctx context.Context, path string) bootstrap.Report
+}
+
 type Context struct {
 	Auth           *auth.Service
 	Cluster        *cluster.Service
@@ -34,6 +39,8 @@ type Context struct {
 	Network        *network.Service
 	Utilities      utilitiesServiceInterfaces.UtilitiesServiceInterface
 	Status         *StatusProvider
+	Bootstrap      BootstrapApplier
+	RequestRestart func()
 	HistoryPath    string
 	QuitChan       chan os.Signal
 	Out            io.Writer

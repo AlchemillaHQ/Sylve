@@ -124,6 +124,9 @@ func (s *Service) CreateTarget(targetName, alias, authMethod, chapName, chapSecr
 		MutualCHAPName:   mutualChapName,
 		MutualCHAPSecret: mutualChapSecret,
 	}
+	if err := s.preflightStoredExtra(&target, nil); err != nil {
+		return err
+	}
 
 	if err := s.DB.Create(&target).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -193,6 +196,7 @@ func (s *Service) UpdateTarget(id uint, targetName, alias, authMethod, chapName,
 		return err
 	}
 
+	rename := target.TargetName != targetName
 	target.TargetName = targetName
 	target.Alias = alias
 	target.AuthMethod = authMethod
@@ -200,6 +204,11 @@ func (s *Service) UpdateTarget(id uint, targetName, alias, authMethod, chapName,
 	target.CHAPSecret = chapSecret
 	target.MutualCHAPName = mutualChapName
 	target.MutualCHAPSecret = mutualChapSecret
+	if rename {
+		if err := s.preflightStoredExtra(&target, nil); err != nil {
+			return err
+		}
+	}
 
 	if err := s.DB.Save(&target).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -274,14 +283,16 @@ func (s *Service) AddPortal(targetID uint, address string, port int) error {
 	if err != nil {
 		return err
 	}
-	if err := s.preflightListenerTransition(endpoints); err != nil {
-		return resourceConflict(err.Error(), nil)
-	}
-
 	portal := iscsiModels.ISCSITargetPortal{
 		TargetID: targetID,
 		Address:  address,
 		Port:     port,
+	}
+	if err := s.preflightStoredExtra(nil, &portal); err != nil {
+		return err
+	}
+	if err := s.preflightListenerTransition(endpoints); err != nil {
+		return resourceConflict(err.Error(), nil)
 	}
 
 	if err := s.DB.Create(&portal).Error; err != nil {

@@ -99,6 +99,10 @@ func MemberPolicyMatches(bridge, member string, policy PortPolicy) (bool, error)
 	return defaultController.MemberPolicyMatches(bridge, member, policy)
 }
 
+func MemberPolicyContained(bridge, member string, policy PortPolicy) (bool, error) {
+	return defaultController.MemberPolicyContained(bridge, member, policy)
+}
+
 func SetMemberPrivate(bridge, member string, enabled bool) error {
 	return defaultController.SetMemberPrivate(bridge, member, enabled)
 }
@@ -313,6 +317,42 @@ func (c *controller) MemberPolicyMatches(bridge, member string, policy PortPolic
 		return nil
 	})
 	return matched, err
+}
+
+func (c *controller) MemberPolicyContained(bridge, member string, policy PortPolicy) (bool, error) {
+	normalized, err := Normalize(policy)
+	if err != nil {
+		return false, err
+	}
+	contained := false
+	err = c.withBridgeLock(bridge, func() error {
+		state, err := c.inspectMember(bridge, member)
+		if err != nil {
+			return err
+		}
+		contained = memberPolicyContained(state, normalized)
+		return nil
+	})
+	return contained, err
+}
+
+func memberPolicyContained(state memberState, policy PortPolicy) bool {
+	if state.QinQ || state.VLANProtocol != vlanProtocol8021Q {
+		return false
+	}
+	desiredPVID := 0
+	if policy.UntaggedVLAN != nil {
+		desiredPVID = *policy.UntaggedVLAN
+	}
+	if state.PVID != 0 && state.PVID != desiredPVID {
+		return false
+	}
+	for _, vlan := range state.TaggedVLANs {
+		if !slices.Contains(policy.TaggedVLANs, vlan) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *controller) SetMemberPrivate(bridge, member string, enabled bool) error {

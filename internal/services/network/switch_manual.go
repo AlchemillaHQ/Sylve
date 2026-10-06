@@ -47,6 +47,26 @@ func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.Manual
 	if err != nil {
 		return nil, err
 	}
+
+	var existing networkModels.ManualSwitch
+	err = s.DB.Where("name = ?", name).First(&existing).Error
+	switch {
+	case err == nil:
+		if existing.Bridge == bridge {
+			if err := s.checkManualSwitchConflicts(existing.ID, name, bridge); err != nil {
+				return nil, err
+			}
+			if err := validateManualSwitchBridge(bridge); err != nil {
+				return nil, err
+			}
+			observeManualSwitchVLANState(&existing)
+			return &existing, nil
+		}
+		return s.updateManualSwitchLocked(existing.ID, name, bridge)
+	case !errors.Is(err, gorm.ErrRecordNotFound):
+		return nil, fmt.Errorf("load manual switch by name: %w", err)
+	}
+
 	if err := s.checkManualSwitchConflicts(0, name, bridge); err != nil {
 		return nil, err
 	}
@@ -100,6 +120,10 @@ func (s *Service) UpdateManualSwitch(id uint, name, bridge string) (*networkMode
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
+	return s.updateManualSwitchLocked(id, name, bridge)
+}
+
+func (s *Service) updateManualSwitchLocked(id uint, name, bridge string) (*networkModels.ManualSwitch, error) {
 	var oldSw networkModels.ManualSwitch
 	if err := s.DB.First(&oldSw, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

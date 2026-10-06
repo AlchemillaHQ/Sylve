@@ -18,6 +18,7 @@ ports="$(timeout -k 1s 10s ctladm portlist -x)" || { echo "Cannot check iSCSI ta
 port_ids="$(printf '%s\n' "$ports" | awk '
 	/<targ_port id=/ { id=$0; sub(/^.*id="/, "", id); sub(/".*$/, "", id); owned=0 }
 	/<cfiscsi_target>iqn\.2026-10\.io\.sylve:test-/ { owned=1 }
+	/<(nqn|subnqn)>nqn\.2026-10\.io\.sylve:test-/ { owned=1 }
 	/<\/targ_port>/ && owned { print id }
 ')"
 if [ -n "$port_ids" ]; then
@@ -29,6 +30,7 @@ luns="$(timeout -k 1s 10s ctladm devlist -x)" || { echo "Cannot check iSCSI targ
 lun_ids="$(printf '%s\n' "$luns" | awk '
 	/<lun id=/ { id=$0; sub(/^.*id="/, "", id); sub(/".*$/, "", id); owned=0 }
 	/<ctld_name>iqn\.2026-10\.io\.sylve:test-/ { owned=1 }
+	/<ctld_name>nqn\.2026-10\.io\.sylve:test-/ { owned=1 }
 	/<\/lun>/ && owned { print id }
 ')"
 if [ -n "$lun_ids" ]; then
@@ -41,6 +43,26 @@ session_count="$(printf '%s\n' "$sessions" | awk '$1 ~ /^iqn\.2026-10\.io\.sylve
 if [ "$session_count" -ne 0 ]; then
 	printf 'iSCSI test initiator sessions remain: %s\n' "$session_count" >&2
 	leaked=1
+fi
+
+if [ -c /dev/nvmf ]; then
+	command -v nvmecontrol >/dev/null || { echo "nvmecontrol is required for the NVMe leak check" >&2; exit 1; }
+	associations="$(timeout -k 1s 10s ctladm nvlist -x)" || { echo "Cannot check NVMe associations" >&2; exit 1; }
+	printf '%s\n' "$associations" | grep -q '<ctlnvmflist>' || { echo "Invalid NVMe association inventory" >&2; exit 1; }
+	if printf '%s\n' "$associations" | grep -q '<subnqn>nqn\.2026-10\.io\.sylve:test-'; then
+		echo "Test NVMe associations remain" >&2
+		leaked=1
+	fi
+	for device in /dev/nvme[0-9]*; do
+		[ -e "$device" ] || continue
+		name="${device##*/}"
+		expr "$name" : 'nvme[0-9][0-9]*$' >/dev/null || continue
+		identity="$(timeout -k 1s 10s nvmecontrol identify "$name")" || { echo "Cannot check NVMe controller identity" >&2; exit 1; }
+		if printf '%s\n' "$identity" | grep -q 'NVM Subsystem Name:.*nqn\.2026-10\.io\.sylve:test-'; then
+			printf 'Test NVMe controller remains: %s\n' "$name" >&2
+			leaked=1
+		fi
+	done
 fi
 
 processes="$(timeout -k 1s 10s ps -ax -o pid= -o args=)" || { echo "Cannot check iSCSI test processes" >&2; exit 1; }

@@ -101,7 +101,7 @@ func TestISCSIStopFailureReturnsAcceptedAndRetriesSavedState(t *testing.T) {
 }
 
 func TestISCSIEnableFailureReturnsAcceptedAndRetriesSavedState(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &iscsiModels.ISCSIInitiator{},
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &iscsiModels.ISCSISettings{}, &iscsiModels.ISCSIInitiator{},
 		&iscsiModels.ISCSITarget{}, &iscsiModels.ISCSITargetPortal{}, &iscsiModels.ISCSITargetLUN{})
 	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Jails}}).Error; err != nil {
 		t.Fatal(err)

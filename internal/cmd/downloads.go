@@ -32,7 +32,7 @@ func newDownloadsCommand() *cli.Command {
 				Usage: "List downloads",
 				Flags: []cli.Flag{jsonFlag},
 				Action: func(ctx context.Context, command *cli.Command) error {
-					return executeConsoleOperation(command, consoleprotocol.OperationDownloadList, consoleprotocol.DownloadListPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDownloadList, consoleprotocol.DownloadListPayload{
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))
 				},
@@ -55,7 +55,7 @@ func newDownloadsCommand() *cli.Command {
 						value := command.String("filename")
 						filename = &value
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationDownloadStart, consoleprotocol.DownloadStartPayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDownloadStart, consoleprotocol.DownloadStartPayload{
 						Request: utilitiesServiceInterfaces.DownloadFileRequest{
 							URL:                    command.String("url"),
 							Filename:               filename,
@@ -80,7 +80,7 @@ func newDownloadsCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return executeConsoleOperation(command, consoleprotocol.OperationDownloadDelete, consoleprotocol.DownloadDeletePayload{
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDownloadDelete, consoleprotocol.DownloadDeletePayload{
 						ID:   id,
 						JSON: command.Bool("json"),
 					}, command.Bool("json"))

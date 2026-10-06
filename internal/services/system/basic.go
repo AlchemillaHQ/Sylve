@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -136,6 +137,8 @@ func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.InitializeRequest) []error {
 	s.initMutex.Lock()
 	defer s.initMutex.Unlock()
+	s.serviceSettingsMutex.Lock()
+	defer s.serviceSettingsMutex.Unlock()
 
 	normalizedReq, validationErrors := normalizeInitializeRequest(req)
 	if len(validationErrors) > 0 {
@@ -144,12 +147,14 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 	req = normalizedReq
 
 	var basicSettings models.BasicSettings
+	rowExists := true
 	err := s.DB.First(&basicSettings).Error
 
 	if err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return []error{newInitializationError(InitializationErrorInternal, err)}
 		}
+		rowExists = false
 		basicSettings = models.BasicSettings{ID: 1}
 	}
 
@@ -279,9 +284,14 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 	basicSettings.Restarted = false
 
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&basicSettings).Error; err != nil {
+		if rowExists {
+			if err := tx.Save(&basicSettings).Error; err != nil {
+				return err
+			}
+		} else if err := tx.Create(&basicSettings).Error; err != nil {
 			return err
 		}
+
 		return db.InvalidateZFSCaches(tx)
 	}); err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -311,4 +321,218 @@ func (s *Service) GetBasicSettings() (models.BasicSettings, error) {
 	}
 
 	return settings, nil
+}
+
+type bootstrapPendingItem struct {
+	result    systemServiceInterfaces.BootstrapItemResult
+	persisted bool
+}
+
+func (s *Service) ApplyBootstrapSettings(ctx context.Context, req systemServiceInterfaces.BootstrapSettingsRequest) (systemServiceInterfaces.BootstrapSettingsResult, error) {
+	s.initMutex.Lock()
+	s.serviceSettingsMutex.Lock()
+
+	result, poolsChanged, err := s.applyBootstrapSettingsLocked(ctx, req)
+
+	s.serviceSettingsMutex.Unlock()
+	s.initMutex.Unlock()
+
+	if poolsChanged && s.OnUsablePoolsChanged != nil {
+		if hookErr := s.OnUsablePoolsChanged(ctx); hookErr != nil {
+			logger.L.Warn().Err(hookErr).Msg("failed to reconcile ZFS telemetry after bootstrap added pools")
+		}
+	}
+
+	return result, err
+}
+
+func (s *Service) applyBootstrapSettingsLocked(ctx context.Context, req systemServiceInterfaces.BootstrapSettingsRequest) (systemServiceInterfaces.BootstrapSettingsResult, bool, error) {
+	empty := systemServiceInterfaces.BootstrapSettingsResult{Items: []systemServiceInterfaces.BootstrapItemResult{}}
+	var basicSettings models.BasicSettings
+	rowExists := true
+	if err := s.DB.WithContext(ctx).First(&basicSettings).Error; err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return empty, false, fmt.Errorf("failed_to_fetch_basic_settings: %w", err)
+		}
+		rowExists = false
+		basicSettings = models.BasicSettings{ID: 1}
+	}
+
+	finalPools := normalizeUsablePools(basicSettings.Pools)
+	poolSet := make(map[string]struct{}, len(finalPools))
+	for _, pool := range finalPools {
+		poolSet[pool] = struct{}{}
+	}
+	var finalServices []models.AvailableService
+	serviceSet := make(map[models.AvailableService]struct{}, len(basicSettings.Services))
+	for _, service := range basicSettings.Services {
+		if _, exists := serviceSet[service]; !exists {
+			serviceSet[service] = struct{}{}
+			finalServices = append(finalServices, service)
+		}
+	}
+	initialServiceCount := len(finalServices)
+	wasInitialized := basicSettings.Initialized
+
+	items := make([]bootstrapPendingItem, 0, len(req.Pools)+len(req.Services)+1)
+	poolOutcomes := make(map[string]bootstrapPendingItem, len(req.Pools))
+	serviceOutcomes := make(map[models.AvailableService]bootstrapPendingItem, len(req.Services))
+	invalidateCaches := false
+
+	for index, rawPool := range req.Pools {
+		poolName := strings.TrimSpace(rawPool)
+		if poolName == "" {
+			items = append(items, newBootstrapItem("pool", index, "", systemServiceInterfaces.BootstrapFailed, "empty_pool_name"))
+			continue
+		}
+		if previous, seen := poolOutcomes[poolName]; seen {
+			previous.result.Index = index
+			items = append(items, previous)
+			continue
+		}
+
+		item := newBootstrapItem("pool", index, poolName, systemServiceInterfaces.BootstrapApplied, "")
+		datasetsCreated, err := s.ensureBootstrapPool(ctx, poolName)
+		invalidateCaches = invalidateCaches || datasetsCreated || err == nil
+		if err != nil {
+			item.result.Status = systemServiceInterfaces.BootstrapFailed
+			item.result.Message = err.Error()
+		} else if _, alreadyRegistered := poolSet[poolName]; !alreadyRegistered {
+			poolSet[poolName] = struct{}{}
+			finalPools = append(finalPools, poolName)
+			item.persisted = true
+		}
+		poolOutcomes[poolName] = item
+		items = append(items, item)
+	}
+
+	for index, service := range req.Services {
+		if !models.IsAvailableService(service) {
+			items = append(items, newBootstrapItem("service", index, string(service), systemServiceInterfaces.BootstrapFailed, fmt.Sprintf("unsupported_service_%s", service)))
+			continue
+		}
+		if previous, seen := serviceOutcomes[service]; seen {
+			previous.result.Index = index
+			items = append(items, previous)
+			continue
+		}
+
+		_, alreadyEnabled := serviceSet[service]
+		item := newBootstrapItem("service", index, string(service), systemServiceInterfaces.BootstrapApplied, "")
+		if err := s.bootstrapServicePrecheck(service); err != nil {
+			item.result.Status = systemServiceInterfaces.BootstrapWarning
+			if alreadyEnabled {
+				item.result.Message = fmt.Sprintf("precheck_failed_existing_service_preserved: %v", err)
+			} else {
+				item.result.Message = fmt.Sprintf("precheck_failed_service_not_enabled: %v", err)
+			}
+		} else if !alreadyEnabled {
+			serviceSet[service] = struct{}{}
+			finalServices = append(finalServices, service)
+			item.persisted = true
+		}
+		serviceOutcomes[service] = item
+		items = append(items, item)
+	}
+
+	finalInitialized := wasInitialized || req.Initialized
+	if req.Initialized {
+		item := newBootstrapItem("initialized", 0, "initialized", systemServiceInterfaces.BootstrapApplied, "")
+		item.persisted = !wasInitialized
+		items = append(items, item)
+	}
+
+	poolsChanged := !slices.Equal(finalPools, basicSettings.Pools)
+	changed := poolsChanged || !slices.Equal(finalServices, basicSettings.Services) || finalInitialized != wasInitialized
+	if changed {
+		basicSettings.Pools = finalPools
+		basicSettings.Services = finalServices
+		basicSettings.Initialized = finalInitialized
+
+		var invalidateErr error
+		saveErr := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if rowExists {
+				if err := tx.Save(&basicSettings).Error; err != nil {
+					return err
+				}
+			} else if err := tx.Create(&basicSettings).Error; err != nil {
+				return err
+			}
+			if invalidateCaches {
+				invalidateErr = db.InvalidateZFSCaches(tx)
+				return invalidateErr
+			}
+			return nil
+		})
+		if saveErr != nil {
+			for i := range items {
+				if items[i].persisted && items[i].result.Status == systemServiceInterfaces.BootstrapApplied {
+					items[i].result.Status = systemServiceInterfaces.BootstrapFailed
+					items[i].result.Message = "settings_persist_failed"
+				}
+			}
+			failure := "failed_to_persist_basic_settings"
+			if invalidateErr != nil {
+				failure = "failed_to_invalidate_zfs_caches"
+			}
+			return bootstrapItemsResult(items), false, fmt.Errorf("%s: %w", failure, saveErr)
+		}
+	} else if invalidateCaches {
+		if err := db.InvalidateZFSCaches(s.DB.WithContext(ctx)); err != nil {
+			return bootstrapItemsResult(items), false, fmt.Errorf("failed_to_invalidate_zfs_caches: %w", err)
+		}
+	}
+
+	result := bootstrapItemsResult(items)
+	result.RestartRequired = len(finalServices) != initialServiceCount || (finalInitialized && !wasInitialized)
+	return result, poolsChanged, nil
+}
+
+func (s *Service) ensureBootstrapPool(ctx context.Context, poolName string) (bool, error) {
+	if s.ensureBootstrapPoolFn != nil {
+		return s.ensureBootstrapPoolFn(ctx, poolName)
+	}
+	if s.GZFS == nil || s.GZFS.Zpool == nil {
+		return false, fmt.Errorf("zfs_client_not_configured")
+	}
+	created, err := s.ensureSylveDatasetsOnPool(ctx, poolName)
+	return len(created) > 0, err
+}
+
+func (s *Service) bootstrapServicePrecheck(service models.AvailableService) error {
+	if s.bootstrapServicePrecheckFn != nil {
+		return s.bootstrapServicePrecheckFn(service)
+	}
+	switch service {
+	case models.Virtualization:
+		return s.CheckVirtualization()
+	case models.Jails:
+		return s.CheckJails()
+	case models.DHCPServer:
+		return s.CheckDHCPServer()
+	case models.SambaServer:
+		return s.CheckSambaServer()
+	case models.WireGuard:
+		return s.CheckWireGuard()
+	default:
+		return nil
+	}
+}
+
+func newBootstrapItem(kind string, index int, name string, status systemServiceInterfaces.BootstrapItemStatus, message string) bootstrapPendingItem {
+	return bootstrapPendingItem{result: systemServiceInterfaces.BootstrapItemResult{
+		Kind:    kind,
+		Index:   index,
+		Name:    name,
+		Status:  status,
+		Message: message,
+	}}
+}
+
+func bootstrapItemsResult(items []bootstrapPendingItem) systemServiceInterfaces.BootstrapSettingsResult {
+	results := make([]systemServiceInterfaces.BootstrapItemResult, 0, len(items))
+	for _, item := range items {
+		results = append(results, item.result)
+	}
+	return systemServiceInterfaces.BootstrapSettingsResult{Items: results}
 }

@@ -205,6 +205,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&dynamicDNSModels.Entry{},
 
 		&iscsiModels.ISCSIInitiator{},
+		&iscsiModels.ISCSISettings{},
 		&iscsiModels.ISCSITarget{},
 		&iscsiModels.ISCSITargetPortal{},
 		&iscsiModels.ISCSITargetLUN{},
