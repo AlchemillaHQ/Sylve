@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/config"
+	"github.com/alchemillahq/sylve/internal/db/models"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -52,6 +53,9 @@ type Service struct {
 	jailed                    bool
 	restartRequester          func()
 	runCommand                func(string, ...string) (string, error)
+
+	bootstrapServicePrecheckFn func(models.AvailableService) error
+	ensureBootstrapPoolFn      func(context.Context, string) (bool, error)
 
 	MdnsRebuild          func() error
 	OnUsablePoolsChanged func(context.Context) error

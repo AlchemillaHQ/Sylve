@@ -8,7 +8,11 @@
 
 package console
 
-import "github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+import (
+	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+)
 
 const (
 	OperationSwitchList   = "switches.list"
@@ -56,6 +60,45 @@ type StandardSwitchCreateRequest struct {
 	DefaultAccessVLAN     *int                             `json:"defaultAccessVlan"`
 	HostVLAN              *int                             `json:"hostVlan"`
 	PortPolicies          map[string]bridgevlan.PortPolicy `json:"portPolicies"`
+}
+
+func StandardSwitchServiceRequest(request StandardSwitchCreateRequest) networkServiceInterfaces.CreateStandardSwitchRequest {
+	return networkServiceInterfaces.CreateStandardSwitchRequest{
+		Name: request.Name,
+		StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
+			MTU:        request.MTU,
+			VLAN:       request.VLAN,
+			Network4ID: request.Network4,
+			Network6ID: request.Network6,
+			Gateway4ID: request.Gateway4,
+			Gateway6ID: request.Gateway6,
+			Ports:      request.Ports,
+			MACSource: networkModels.StandardSwitchMACSource{
+				Mode:        request.BridgeMAC.Mode,
+				Port:        request.BridgeMAC.Port,
+				MACObjectID: request.BridgeMAC.MACObjectID,
+			},
+			Private:               request.Private,
+			DHCP:                  request.DHCP,
+			DisableIPv6:           request.DisableIPv6,
+			SLAAC:                 request.SLAAC,
+			DefaultRoute:          request.DefaultRoute,
+			DefaultRoute6:         request.DefaultRoute6,
+			DisableBridgeOffloads: request.DisableBridgeOffloads,
+			Manual: networkModels.StandardSwitchManualAddresses{
+				Network4: request.Network4Manual,
+				Gateway4: request.Gateway4Manual,
+				Network6: request.Network6Manual,
+				Gateway6: request.Gateway6Manual,
+			},
+			VLANConfig: networkModels.StandardSwitchVLANConfig{
+				Filtering:         request.VLANFiltering,
+				DefaultAccessVLAN: request.DefaultAccessVLAN,
+				HostVLAN:          request.HostVLAN,
+				PortPolicies:      request.PortPolicies,
+			},
+		},
+	}
 }
 
 type ManualSwitchCreateRequest struct {

@@ -13,6 +13,7 @@ GO_TEST_FLAGS ?=
 GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
 INTEGRATION_PACKAGES := \
+	./internal/console \
 	./internal/mountutil \
 	./internal/services/disk \
 	./internal/services/iscsi \

@@ -95,7 +95,7 @@ func executeRequestResponseContext(ctx context.Context, socketPath string, reque
 	}
 
 	if resp.Error != "" {
-		return Response{}, fmt.Errorf("%s", resp.Error)
+		return resp, fmt.Errorf("%s", resp.Error)
 	}
 
 	return resp, nil

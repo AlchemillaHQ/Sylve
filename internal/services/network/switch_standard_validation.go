@@ -12,6 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -23,13 +26,17 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
 var (
-	standardSwitchNamePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-	standardSwitchPortPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
+	standardSwitchNamePattern   = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+	standardSwitchPortPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]*$`)
+	standardSwitchDHCPLeasePath = func(br string) string {
+		return filepath.Join("/var/db", "dhclient.leases."+br)
+	}
 )
 
 type standardSwitchInput struct {
@@ -508,7 +515,7 @@ func (s *Service) validateStandardSwitchInput(
 	return input, nil
 }
 
-func (s *Service) checkStandardSwitchCreateConflicts(name, bridgeName string) error {
+func (s *Service) checkStandardSwitchCreateNameConflicts(name, bridgeName string) error {
 	checks := []struct {
 		query *gorm.DB
 		code  string
@@ -544,14 +551,6 @@ func (s *Service) checkStandardSwitchCreateConflicts(name, bridgeName string) er
 		if count > 0 {
 			return standardSwitchConflict(check.code, nil)
 		}
-	}
-
-	interfaceObj, err := syncIfaceGet(bridgeName)
-	if err == nil && interfaceObj != nil {
-		return standardSwitchConflict("standard_switch_bridge_conflict", nil)
-	}
-	if err != nil && !isInterfaceMissingError(err) {
-		return fmt.Errorf("inspect generated standard switch bridge %q: %w", bridgeName, err)
 	}
 
 	return nil
@@ -810,4 +809,353 @@ func (s *Service) checkStandardSwitchUsage(id uint, bridgeName string) error {
 	}
 
 	return s.checkStandardSwitchExternalUsage(bridgeName)
+}
+
+type standardSwitchDHCPLease struct {
+	address netip.Addr
+	prefix  int
+}
+
+func unquoteDhclientValue(value string) string {
+	return strings.Trim(strings.TrimSpace(value), `"`)
+}
+
+type dhcpLeaseBlock struct {
+	matches bool
+	invalid bool
+	address netip.Addr
+	prefix  int
+}
+
+func (b *dhcpLeaseBlock) applyMask(value string) {
+	mask := net.ParseIP(unquoteDhclientValue(value)).To4()
+	if mask == nil {
+		b.invalid = true
+		return
+	}
+	ones, bits := net.IPMask(mask).Size()
+	if bits != 32 || ones < 0 {
+		b.invalid = true
+		return
+	}
+	b.prefix = ones
+}
+
+func (b *dhcpLeaseBlock) consume(line, ifaceName string) {
+	fields := strings.Fields(strings.TrimSuffix(line, ";"))
+	if len(fields) < 2 {
+		return
+	}
+	switch fields[0] {
+	case "interface":
+		b.matches = strings.EqualFold(unquoteDhclientValue(strings.Join(fields[1:], " ")), ifaceName)
+	case "fixed-address":
+		address, err := netip.ParseAddr(unquoteDhclientValue(fields[1]))
+		if err != nil || !address.Is4() {
+			b.invalid = true
+			return
+		}
+		b.address = address
+	case "option":
+		if len(fields) >= 3 && strings.EqualFold(fields[1], "subnet-mask") {
+			b.applyMask(fields[2])
+		}
+	case "subnet-mask":
+		b.applyMask(fields[1])
+	}
+}
+
+func parseStandardSwitchDHCPLeases(data []byte, ifaceName string) []standardSwitchDHCPLease {
+	leases := make([]standardSwitchDHCPLease, 0, 4)
+	var block *dhcpLeaseBlock
+	flush := func() {
+		if block != nil && block.matches && !block.invalid && block.address.IsValid() {
+			leases = append(leases, standardSwitchDHCPLease{address: block.address, prefix: block.prefix})
+		}
+		block = nil
+	}
+	for _, raw := range strings.Split(string(data), "\n") {
+		line, _, _ := strings.Cut(raw, "#")
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		switch line {
+		case "lease {":
+			flush()
+			block = &dhcpLeaseBlock{prefix: -1}
+		case "}":
+			flush()
+		default:
+			if block != nil {
+				block.consume(line, ifaceName)
+			}
+		}
+	}
+	flush()
+	return leases
+}
+
+func standardSwitchManagedDHCPLeases(br string) ([]standardSwitchDHCPLease, error) {
+	data, err := os.ReadFile(standardSwitchDHCPLeasePath(br))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parseStandardSwitchDHCPLeases(data, br), nil
+}
+
+func dhcpLeaseMatches(leases []standardSwitchDHCPLease, address netip.Addr, prefixLength int) bool {
+	for _, lease := range leases {
+		if lease.address == address && (lease.prefix < 0 || lease.prefix == prefixLength) {
+			return true
+		}
+	}
+	return false
+}
+
+func interfaceIPv4AddressMatchesPrefix(address iface.IPv4, desired string) bool {
+	observed, ok := interfaceIPv4Prefix(address)
+	if !ok {
+		return false
+	}
+	prefix, err := netip.ParsePrefix(strings.TrimSpace(desired))
+	return err == nil && observed == prefix
+}
+
+func interfaceIPv6AddressMatchesPrefix(address iface.IPv6, desired string) bool {
+	prefix, err := netip.ParsePrefix(strings.TrimSpace(desired))
+	if err != nil {
+		return false
+	}
+	observed, ok := netip.AddrFromSlice(address.IP)
+	return ok && netip.PrefixFrom(observed.Unmap(), address.PrefixLength) == prefix
+}
+
+type standardSwitchAdoptionAddressPolicy struct {
+	layer2Only  bool
+	dhcp        bool
+	dhcpLeases  []standardSwitchDHCPLease
+	static4     string
+	static6     string
+	disableIPv6 bool
+	slaac       bool
+}
+
+func validateStandardSwitchAdoptionLayer3(sw networkModels.StandardSwitch, target *iface.Interface, targetName string) error {
+	var dhcpLeases []standardSwitchDHCPLease
+	if sw.DHCP {
+		var err error
+		dhcpLeases, err = standardSwitchManagedDHCPLeases(targetName)
+		if err != nil {
+			return fmt.Errorf("inspect DHCP leases for existing interface %s: %w", targetName, err)
+		}
+	}
+	return validateStandardSwitchAdoptionAddresses(standardSwitchAdoptionAddressPolicy{
+		dhcp:        sw.DHCP,
+		dhcpLeases:  dhcpLeases,
+		static4:     sw.Network(4),
+		static6:     sw.Network(6),
+		disableIPv6: sw.DisableIPv6,
+		slaac:       sw.SLAAC,
+	}, target, targetName)
+}
+
+func validateStandardSwitchAdoptionAddresses(policy standardSwitchAdoptionAddressPolicy, target *iface.Interface, targetName string) error {
+	if target == nil {
+		return nil
+	}
+	var problems []string
+	for _, address := range target.IPv4 {
+		ip := address.IP.String()
+		if policy.layer2Only {
+			problems = append(problems, fmt.Sprintf("%s has unmanaged IPv4 address %s", targetName, ip))
+			continue
+		}
+		if policy.dhcp {
+			observed, ok := interfaceIPv4Prefix(address)
+			if !ok || !dhcpLeaseMatches(policy.dhcpLeases, observed.Addr().Unmap(), observed.Bits()) {
+				problems = append(problems, fmt.Sprintf("%s has IPv4 address %s without a matching Sylve DHCP lease", targetName, ip))
+			}
+			continue
+		}
+		if policy.static4 == "" || !interfaceIPv4AddressMatchesPrefix(address, policy.static4) {
+			problems = append(problems, fmt.Sprintf("%s has unexpected IPv4 address %s", targetName, ip))
+		}
+	}
+	for _, address := range target.IPv6 {
+		if address.IP.IsLinkLocalUnicast() {
+			continue
+		}
+		ip := address.IP.String()
+		if policy.layer2Only {
+			problems = append(problems, fmt.Sprintf("%s has unmanaged IPv6 address %s", targetName, ip))
+			continue
+		}
+		if policy.disableIPv6 {
+			problems = append(problems, fmt.Sprintf("%s has IPv6 address %s while IPv6 is disabled", targetName, ip))
+			continue
+		}
+		if policy.slaac {
+			if !address.AutoConf {
+				problems = append(problems, fmt.Sprintf("%s has non-SLAAC IPv6 address %s", targetName, ip))
+			}
+			continue
+		}
+		if policy.static6 == "" || !interfaceIPv6AddressMatchesPrefix(address, policy.static6) {
+			problems = append(problems, fmt.Sprintf("%s has unexpected IPv6 address %s", targetName, ip))
+		}
+	}
+	if len(problems) != 0 {
+		return standardSwitchConflict("standard_switch_runtime_address_conflict",
+			fmt.Errorf("existing interface %s is not contained within the requested runtime surface: %s", targetName, strings.Join(problems, "; ")))
+	}
+	return nil
+}
+
+func (s *Service) validateAdoptionLegacyVLANInterface(sw networkModels.StandardSwitch, portName string) error {
+	if sw.VLANFiltering || sw.VLAN == 0 {
+		return nil
+	}
+	name := fmt.Sprintf("%s.%d", portName, sw.VLAN)
+	vlanInterface, err := syncIfaceGet(name)
+	if err != nil {
+		if isInterfaceMissingError(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect existing legacy VLAN interface %s: %w", name, err)
+	}
+	if vlanInterface == nil {
+		return nil
+	}
+	if !utils.Contains(vlanInterface.Groups, "svm-vlan") || vlanInterface.VLANParent != portName || vlanInterface.VLANTag != sw.VLAN {
+		return standardSwitchConflict("standard_switch_vlan_interface_conflict",
+			fmt.Errorf("interface %s is not the managed VLAN %d on %s (group=%v parent=%q tag=%d)",
+				name, sw.VLAN, portName, vlanInterface.Groups, vlanInterface.VLANParent, vlanInterface.VLANTag))
+	}
+	return validateStandardSwitchAdoptionAddresses(standardSwitchAdoptionAddressPolicy{layer2Only: true}, vlanInterface, name)
+}
+
+func (s *Service) validateAdoptionFilteredMemberPolicies(sw networkModels.StandardSwitch, bridge *iface.Interface) error {
+	attached := make(map[string]struct{}, len(bridge.BridgeMembers))
+	for _, member := range bridge.BridgeMembers {
+		attached[member.Name] = struct{}{}
+	}
+	for _, port := range sw.Ports {
+		if _, ok := attached[port.Name]; !ok {
+			continue
+		}
+		contained, err := syncFilteredMemberPolicyContains(sw.BridgeName, port.Name, port.VLANPolicy)
+		if err != nil {
+			return fmt.Errorf("inspect adopted filtered member %s VLAN policy: %w", port.Name, err)
+		}
+		if !contained {
+			return standardSwitchConflict("standard_switch_member_vlan_conflict",
+				fmt.Errorf("member %s has active VLAN configuration outside the requested policy", port.Name))
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateAdoptionRawLegacyMemberLayer3(sw networkModels.StandardSwitch, bridge *iface.Interface) error {
+	if sw.VLANFiltering || sw.VLAN == 0 {
+		return nil
+	}
+	attached := make(map[string]struct{}, len(bridge.BridgeMembers))
+	for _, member := range bridge.BridgeMembers {
+		attached[member.Name] = struct{}{}
+	}
+	for _, port := range sw.Ports {
+		if _, ok := attached[port.Name]; !ok {
+			continue
+		}
+		member, err := syncIfaceGet(port.Name)
+		if err != nil {
+			if isInterfaceMissingError(err) {
+				continue
+			}
+			return fmt.Errorf("inspect raw legacy bridge member %s: %w", port.Name, err)
+		}
+		if err := validateStandardSwitchAdoptionAddresses(standardSwitchAdoptionAddressPolicy{layer2Only: true}, member, port.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) validateAdoptableStandardSwitchBridge(sw networkModels.StandardSwitch, bridge *iface.Interface) error {
+	if bridge == nil {
+		return standardSwitchConflict("standard_switch_bridge_conflict", fmt.Errorf("bridge %s not found", sw.BridgeName))
+	}
+	if !utils.Contains(bridge.Groups, "bridge") {
+		return standardSwitchConflict("standard_switch_bridge_conflict", fmt.Errorf("interface %s exists but is not a real bridge", sw.BridgeName))
+	}
+	state, err := syncInspectBridgeVLAN(sw.BridgeName)
+	if err != nil {
+		return fmt.Errorf("inspect existing bridge %s VLAN state: %w", sw.BridgeName, err)
+	}
+	if state.VLANFiltering != sw.VLANFiltering {
+		return standardSwitchConflict("standard_switch_runtime_vlan_mode_conflict",
+			fmt.Errorf("existing bridge %s has VLAN filtering=%t, requested=%t; refusing to convert an unowned bridge", sw.BridgeName, state.VLANFiltering, sw.VLANFiltering))
+	}
+	if state.VLANFiltering && state.DefaultQinQ {
+		return standardSwitchConflict("standard_switch_runtime_vlan_conflict", fmt.Errorf("existing bridge %s has default Q-in-Q enabled", sw.BridgeName))
+	}
+	if state.VLANFiltering && state.DefaultPVID != 0 && state.DefaultPVID != optionalVLANValue(sw.DefaultAccessVLAN) {
+		return standardSwitchConflict("standard_switch_runtime_vlan_conflict",
+			fmt.Errorf("existing bridge %s has active default PVID %d outside the requested surface", sw.BridgeName, state.DefaultPVID))
+	}
+	expectedMembers := standardSwitchManagedMembers(sw)
+	for _, port := range sw.Ports {
+		expectedMembers[port.Name] = struct{}{}
+	}
+	if sw.VLANFiltering {
+		if hostName := standardSwitchHostInterfaceName(sw); hostName != "" {
+			expectedMembers[hostName] = struct{}{}
+		}
+	}
+	for _, member := range bridge.BridgeMembers {
+		if _, expected := expectedMembers[member.Name]; !expected {
+			return standardSwitchConflict("standard_switch_runtime_member_conflict",
+				fmt.Errorf("existing bridge %s has unexpected member %s", sw.BridgeName, member.Name))
+		}
+	}
+	if !sw.VLANFiltering {
+		for _, port := range sw.Ports {
+			if err := s.validateAdoptionLegacyVLANInterface(sw, port.Name); err != nil {
+				return err
+			}
+		}
+		if err := s.validateAdoptionRawLegacyMemberLayer3(sw, bridge); err != nil {
+			return err
+		}
+		return validateStandardSwitchAdoptionLayer3(sw, bridge, sw.BridgeName)
+	}
+	if err := s.validateAdoptionFilteredMemberPolicies(sw, bridge); err != nil {
+		return err
+	}
+	if err := validateStandardSwitchAdoptionAddresses(standardSwitchAdoptionAddressPolicy{layer2Only: true}, bridge, sw.BridgeName); err != nil {
+		return err
+	}
+	hostName := standardSwitchHostInterfaceName(sw)
+	if hostName == "" {
+		return nil
+	}
+	host, err := syncIfaceGet(hostName)
+	if err != nil {
+		if isInterfaceMissingError(err) {
+			return nil
+		}
+		return fmt.Errorf("inspect existing host VLAN interface %s: %w", hostName, err)
+	}
+	if host == nil {
+		return nil
+	}
+	if !managedStandardSwitchHostVLAN(host) || host.VLANParent != sw.BridgeName || host.VLANTag != *sw.HostVLAN {
+		return standardSwitchConflict("standard_switch_host_vlan_interface_conflict",
+			fmt.Errorf("interface %s is not the managed host VLAN for bridge %s", hostName, sw.BridgeName))
+	}
+	return validateStandardSwitchAdoptionLayer3(sw, host, hostName)
 }

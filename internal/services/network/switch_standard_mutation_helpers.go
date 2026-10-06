@@ -17,8 +17,10 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func loadStandardSwitch(db *gorm.DB, id uint) (networkModels.StandardSwitch, error) {
@@ -485,4 +487,117 @@ func validateStandardSwitchDeleteMembers(sw networkModels.StandardSwitch) error 
 	}
 
 	return nil
+}
+
+func detachAdoptedRawLegacyMembers(sw networkModels.StandardSwitch) error {
+	if sw.VLANFiltering || sw.VLAN == 0 {
+		return nil
+	}
+	bridge, err := syncIfaceGet(sw.BridgeName)
+	if err != nil {
+		return fmt.Errorf("inspect adopted bridge %s raw members: %w", sw.BridgeName, err)
+	}
+	if bridge == nil {
+		return nil
+	}
+	attached := make(map[string]struct{}, len(bridge.BridgeMembers))
+	for _, member := range bridge.BridgeMembers {
+		attached[member.Name] = struct{}{}
+	}
+	var detachErrors []error
+	for _, port := range sw.Ports {
+		if _, ok := attached[port.Name]; !ok {
+			continue
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "deletem", port.Name); err != nil {
+			detachErrors = append(detachErrors, fmt.Errorf("detach raw legacy member %s from %s: %w", port.Name, sw.BridgeName, err))
+			continue
+		}
+		if _, err := syncRunCommand("/sbin/ifconfig", port.Name, "up"); err != nil {
+			detachErrors = append(detachErrors, fmt.Errorf("bring up detached raw legacy member %s: %w", port.Name, err))
+		}
+	}
+	return errors.Join(detachErrors...)
+}
+
+func reconcileAdoptedStandardSwitch(sw networkModels.StandardSwitch) error {
+	if sw.VLANFiltering {
+		state, err := syncInspectBridgeVLAN(sw.BridgeName)
+		if err != nil {
+			return fmt.Errorf("inspect adopted bridge %s VLAN state: %w", sw.BridgeName, err)
+		}
+		baseline := sw
+		baseline.DefaultAccessVLAN = optionalVLANFromPVID(state.DefaultPVID)
+		known := map[string]struct{}{}
+		if hostName := standardSwitchHostInterfaceName(sw); hostName != "" {
+			known[hostName] = struct{}{}
+		}
+		if err := syncEditFilteredBridge(baseline, sw, known); err != nil {
+			return fmt.Errorf("reconcile adopted standard switch %s: %w", sw.BridgeName, err)
+		}
+		return nil
+	}
+	if err := detachAdoptedRawLegacyMembers(sw); err != nil {
+		return fmt.Errorf("reconcile adopted legacy switch %s: %w", sw.BridgeName, err)
+	}
+	if err := syncEditBridge(sw, sw); err != nil {
+		return fmt.Errorf("reconcile adopted standard switch %s: %w", sw.BridgeName, err)
+	}
+	return nil
+}
+
+func hydrateStandardSwitchObjects(db *gorm.DB, sw *networkModels.StandardSwitch) error {
+	refs := []struct {
+		id     *uint
+		target **networkModels.Object
+	}{
+		{sw.NetworkID, &sw.NetworkObj},
+		{sw.Network6ID, &sw.Network6Obj},
+		{sw.GatewayAddressID, &sw.GatewayAddressObj},
+		{sw.Gateway6AddressID, &sw.Gateway6AddressObj},
+		{sw.BridgeMACObjectID, &sw.BridgeMACObject},
+	}
+	for _, ref := range refs {
+		if ref.id == nil || *ref.id == 0 {
+			continue
+		}
+		var object networkModels.Object
+		if err := db.Preload("Entries").First(&object, *ref.id).Error; err != nil {
+			return fmt.Errorf("load standard switch referenced object %d: %w", *ref.id, err)
+		}
+		*ref.target = &object
+	}
+	return nil
+}
+
+func (s *Service) adoptStandardSwitchBridge(name, bridgeName string, input standardSwitchInput, bridge *iface.Interface) (uint, error) {
+	sw := standardSwitchFromInput(name, bridgeName, input)
+	sw.Ports = standardSwitchPorts(0, input.ports, input.vlanConfig.PortPolicies)
+	if err := hydrateStandardSwitchObjects(s.DB, &sw); err != nil {
+		return 0, err
+	}
+	if err := s.validateAdoptableStandardSwitchBridge(sw, bridge); err != nil {
+		return 0, err
+	}
+	if err := reconcileAdoptedStandardSwitch(sw); err != nil {
+		return 0, err
+	}
+	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Omit(clause.Associations).Create(&sw).Error; err != nil {
+			if isStandardSwitchDuplicateError(err) {
+				return standardSwitchConflict("standard_switch_name_or_bridge_conflict", err)
+			}
+			return fmt.Errorf("create adopted standard switch: %w", err)
+		}
+		portRows := standardSwitchPorts(sw.ID, input.ports, input.vlanConfig.PortPolicies)
+		if len(portRows) > 0 {
+			if err := tx.Create(&portRows).Error; err != nil {
+				return fmt.Errorf("create adopted standard switch ports: %w", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return 0, fmt.Errorf("persist adopted standard switch: %w", err)
+	}
+	return sw.ID, nil
 }

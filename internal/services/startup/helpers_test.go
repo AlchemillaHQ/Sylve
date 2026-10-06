@@ -9,14 +9,174 @@
 package startup
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/rs/zerolog"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
+
+type fakeStartupBootstrap struct {
+	report bootstrap.Report
+	calls  int
+}
+
+func (f *fakeStartupBootstrap) ApplyStartup(context.Context) bootstrap.Report {
+	f.calls++
+	return f.report
+}
+
+type startupTestAuth struct {
+	serviceInterfaces.AuthServiceInterface
+}
+
+func (*startupTestAuth) InitSecret(string, int) error { return nil }
+
+func isolateStartupEffects(t *testing.T) {
+	t.Helper()
+	previousRunCommand := startupRunCommand
+	previousGet := startupGetSysctlInt64
+	previousSet32 := startupSetSysctlInt32
+	previousSet64 := startupSetSysctlInt64
+	previousMkdirAll := startupMkdirAll
+	t.Cleanup(func() {
+		startupRunCommand = previousRunCommand
+		startupGetSysctlInt64 = previousGet
+		startupSetSysctlInt32 = previousSet32
+		startupSetSysctlInt64 = previousSet64
+		startupMkdirAll = previousMkdirAll
+	})
+	startupRunCommand = func(string, ...string) (string, error) { return "", nil }
+	startupGetSysctlInt64 = func(string) (int64, error) { return 8, nil }
+	startupSetSysctlInt32 = func(string, int32) error { return nil }
+	startupSetSysctlInt64 = func(string, int64) error { return nil }
+	startupMkdirAll = func(string, os.FileMode) error { return nil }
+}
+
+func TestLogBootstrapReportSurfacesGlobalErrors(t *testing.T) {
+	for _, testCase := range []struct {
+		name   string
+		report bootstrap.Report
+		field  string
+		value  string
+	}{
+		{"malformed document", bootstrap.Report{DocumentError: "bootstrap_document_invalid_version"}, "documentError", "bootstrap_document_invalid_version"},
+		{"archive failure", bootstrap.Report{ArchiveError: "rename_failed"}, "archiveError", "rename_failed"},
+		{"general failure", bootstrap.Report{GeneralError: "settings_service_unavailable"}, "generalError", "settings_service_unavailable"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			previous := logger.L
+			var logs bytes.Buffer
+			logger.L = zerolog.New(&logs)
+			t.Cleanup(func() { logger.L = previous })
+			logBootstrapReport(testCase.report)
+			for _, want := range []string{"bootstrap_apply_failed", "source", "startup", testCase.field, testCase.value} {
+				if !strings.Contains(logs.String(), want) {
+					t.Fatalf("log output %q missing %q", logs.String(), want)
+				}
+			}
+		})
+	}
+}
+
+func TestLogBootstrapReportKeepsItemFailuresActionable(t *testing.T) {
+	previous := logger.L
+	var logs bytes.Buffer
+	logger.L = zerolog.New(&logs)
+	t.Cleanup(func() { logger.L = previous })
+	logBootstrapReport(bootstrap.Report{
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "pool", Index: 0, Name: "tank", Status: systemServiceInterfaces.BootstrapFailed, Message: "pool_missing"},
+		},
+	})
+	for _, want := range []string{"bootstrap_item_result", "pool", "tank", "pool_missing", "bootstrap_apply_failed"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("log output %q missing %q", logs.String(), want)
+		}
+	}
+}
+
+func TestApplyStartupBootstrapNilEngineIsNoop(t *testing.T) {
+	if err := (&Service{}).applyStartupBootstrap(context.Background()); err != nil {
+		t.Fatalf("nil bootstrap engine must be a no-op, got %v", err)
+	}
+}
+
+func TestApplyStartupBootstrapCallsEngineOnce(t *testing.T) {
+	fake := &fakeStartupBootstrap{}
+	if err := (&Service{Bootstrap: fake}).applyStartupBootstrap(context.Background()); err != nil {
+		t.Fatalf("apply startup bootstrap: %v", err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("ApplyStartup calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestApplyStartupBootstrapFailureDoesNotReturnError(t *testing.T) {
+	fake := &fakeStartupBootstrap{report: bootstrap.Report{
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "pool", Index: 0, Name: "tank", Status: systemServiceInterfaces.BootstrapFailed, Message: "missing"},
+		},
+	}}
+	if err := (&Service{Bootstrap: fake}).applyStartupBootstrap(context.Background()); err != nil {
+		t.Fatalf("item failure must not fail daemon bootstrap: %v", err)
+	}
+}
+
+func TestApplyStartupBootstrapRestartRequiredReturnsSentinel(t *testing.T) {
+	fake := &fakeStartupBootstrap{report: bootstrap.Report{RestartRequired: true}}
+	err := (&Service{Bootstrap: fake}).applyStartupBootstrap(context.Background())
+	if !errors.Is(err, ErrBootstrapRestartRequired) {
+		t.Fatalf("error = %v, want ErrBootstrapRestartRequired", err)
+	}
+}
+
+func TestInitializeStopsBeforeOperationalGatesWhenRestartRequired(t *testing.T) {
+	isolateStartupEffects(t)
+	fake := &fakeStartupBootstrap{report: bootstrap.Report{RestartRequired: true}}
+	service := &Service{Bootstrap: fake}
+	err := service.Initialize(&startupTestAuth{}, context.Background(), context.Background())
+	if !errors.Is(err, ErrBootstrapRestartRequired) {
+		t.Fatalf("error = %v, want ErrBootstrapRestartRequired", err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("ApplyStartup calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestInitializeContinuesWhenBootstrapFailsWithoutRestart(t *testing.T) {
+	isolateStartupEffects(t)
+	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := database.AutoMigrate(&models.BasicSettings{}); err != nil {
+		t.Fatalf("migrate basic settings: %v", err)
+	}
+	fake := &fakeStartupBootstrap{report: bootstrap.Report{
+		Items: []systemServiceInterfaces.BootstrapItemResult{
+			{Kind: "service", Index: 0, Name: "jails", Status: systemServiceInterfaces.BootstrapFailed, Message: "missing"},
+		},
+	}}
+	service := &Service{DB: database, Bootstrap: fake}
+	if err := service.Initialize(&startupTestAuth{}, context.Background(), context.Background()); err != nil {
+		t.Fatalf("failed bootstrap report must not fail startup: %v", err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("ApplyStartup calls = %d, want 1", fake.calls)
+	}
+}
 
 func TestLoadKernelModuleVerifiesSuccessfulLoad(t *testing.T) {
 	original := startupRunCommand

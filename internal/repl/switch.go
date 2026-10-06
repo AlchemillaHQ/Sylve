@@ -666,44 +666,7 @@ func createSwitch(ctx *Context, request consoleprotocol.SwitchCreatePayload) (sw
 				return switchCreateResult{}, fmt.Errorf("invalid_standard_switch_ports")
 			}
 		}
-		manual := networkModels.StandardSwitchManualAddresses{
-			Network4: standard.Network4Manual,
-			Gateway4: standard.Gateway4Manual,
-			Network6: standard.Network6Manual,
-			Gateway6: standard.Gateway6Manual,
-		}
-		macSource := networkModels.StandardSwitchMACSource{
-			Mode:        standard.BridgeMAC.Mode,
-			Port:        standard.BridgeMAC.Port,
-			MACObjectID: standard.BridgeMAC.MACObjectID,
-		}
-		id, err := ctx.Network.NewStandardSwitch(networkServiceInterfaces.CreateStandardSwitchRequest{
-			Name: standard.Name,
-			StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
-				MTU:                   standard.MTU,
-				VLAN:                  standard.VLAN,
-				Network4ID:            standard.Network4,
-				Network6ID:            standard.Network6,
-				Gateway4ID:            standard.Gateway4,
-				Gateway6ID:            standard.Gateway6,
-				Ports:                 standard.Ports,
-				MACSource:             macSource,
-				Private:               standard.Private,
-				DHCP:                  standard.DHCP,
-				DisableIPv6:           standard.DisableIPv6,
-				SLAAC:                 standard.SLAAC,
-				DefaultRoute:          standard.DefaultRoute,
-				DefaultRoute6:         standard.DefaultRoute6,
-				DisableBridgeOffloads: standard.DisableBridgeOffloads,
-				Manual:                manual,
-				VLANConfig: networkModels.StandardSwitchVLANConfig{
-					Filtering:         standard.VLANFiltering,
-					DefaultAccessVLAN: standard.DefaultAccessVLAN,
-					HostVLAN:          standard.HostVLAN,
-					PortPolicies:      standard.PortPolicies,
-				},
-			},
-		})
+		id, err := ctx.Network.NewStandardSwitch(consoleprotocol.StandardSwitchServiceRequest(standard))
 		if err != nil {
 			return switchCreateResult{}, fmt.Errorf("failed_to_create_standard_switch: %w", err)
 		}

@@ -10,6 +10,13 @@ package console
 
 import "encoding/json"
 
+const OperationBootstrapApply = "bootstrap.apply"
+
+type BootstrapApplyPayload struct {
+	File string `json:"file,omitempty"`
+	JSON bool   `json:"json"`
+}
+
 type Request struct {
 	Command   string          `json:"command,omitempty"`
 	Operation string          `json:"operation,omitempty"`

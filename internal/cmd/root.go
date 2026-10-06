@@ -13,7 +13,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/alchemillahq/sylve/internal/console"
 	"github.com/urfave/cli/v3"
 )
 
@@ -106,6 +109,7 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 			newSwitchesCommand(),
 			newObjectsCommand(),
 			newDownloadsCommand(),
+			newBootstrapCommand(),
 		},
 		CustomRootCommandHelpTemplate: asciiArtBlock + "\n\n" + cli.RootCommandHelpTemplate,
 	}
@@ -115,4 +119,33 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 	}
 
 	return cmd
+}
+
+func newBootstrapCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "bootstrap",
+		Usage: "Apply the declarative first-boot bootstrap document",
+		Commands: []*cli.Command{{
+			Name:  "apply",
+			Usage: "Apply a bootstrap JSON document through the running daemon",
+			Flags: []cli.Flag{
+				&cli.StringFlag{Name: "file", Usage: "path to the bootstrap JSON document, or 'default'", Value: "default"},
+				&cli.BoolFlag{Name: "json", Usage: "emit the full report as a single JSON document"},
+			},
+			Action: func(ctx context.Context, command *cli.Command) error {
+				file := strings.TrimSpace(command.String("file"))
+				jsonMode := command.Bool("json")
+				if file != "" && file != "default" {
+					absolute, err := filepath.Abs(file)
+					if err != nil {
+						err = fmt.Errorf("resolve bootstrap file path: %w", err)
+						printConsoleOperationError(jsonMode, err)
+						return err
+					}
+					file = absolute
+				}
+				return executeConsoleOperation(command, console.OperationBootstrapApply, console.BootstrapApplyPayload{File: file, JSON: jsonMode}, jsonMode)
+			},
+		}},
+	}
 }

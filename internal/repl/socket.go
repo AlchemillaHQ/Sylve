@@ -21,6 +21,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	"github.com/alchemillahq/sylve/internal/logger"
 	libvirt "github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -117,29 +118,97 @@ func handleSocketConn(ctx *Context, conn net.Conn) {
 			return
 		}
 
-		resp := processSocketRequest(ctx, req)
-		if err := enc.Encode(resp); err != nil {
+		reply := processSocketRequestReply(ctx, req)
+		encodeErr := enc.Encode(reply.response)
+		if reply.afterResponse != nil {
+			reply.afterResponse()
+		}
+		if encodeErr != nil {
 			return
 		}
 
-		if resp.Close {
+		if reply.response.Close {
 			return
 		}
 	}
 }
 
+type socketReply struct {
+	response      socketResponse
+	afterResponse func()
+}
+
 func processSocketRequest(ctx *Context, req socketRequest) socketResponse {
-	if req.Operation == "" || !typedSocketOperationRequiresMutation(req.Operation) || ctx == nil || ctx.Cluster == nil {
-		return processSocketRequestAdmitted(ctx, req)
+	return processSocketRequestReply(ctx, req).response
+}
+
+func processSocketRequestReply(ctx *Context, req socketRequest) socketReply {
+	if req.Operation != "" && typedSocketOperationRequiresMutation(req.Operation) && ctx != nil && ctx.Cluster != nil {
+		admittedCtx, release, err := ctx.Cluster.EnterMutation(operationContext(ctx))
+		if err != nil {
+			return socketReply{response: socketResponse{Error: err.Error()}}
+		}
+		defer release()
+		localCtx := *ctx
+		localCtx.mutationContext = admittedCtx
+		ctx = &localCtx
 	}
-	admittedCtx, release, err := ctx.Cluster.EnterMutation(operationContext(ctx))
-	if err != nil {
-		return socketResponse{Error: err.Error()}
+	if req.Operation == consoleprotocol.OperationBootstrapApply {
+		return processBootstrapApplySocketRequest(ctx, req.Payload)
 	}
-	defer release()
-	localCtx := *ctx
-	localCtx.mutationContext = admittedCtx
-	return processSocketRequestAdmitted(&localCtx, req)
+	return socketReply{response: processSocketRequestAdmitted(ctx, req)}
+}
+
+func processBootstrapApplySocketRequest(ctx *Context, payload json.RawMessage) socketReply {
+	var request consoleprotocol.BootstrapApplyPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketReply{response: socketResponse{Error: "invalid_bootstrap_apply_request: " + err.Error()}}
+	}
+	if ctx == nil || ctx.Bootstrap == nil {
+		return socketReply{response: socketResponse{Error: "bootstrap_service_unavailable"}}
+	}
+	path := strings.TrimSpace(request.File)
+	if path == "" || path == "default" {
+		path = bootstrap.DefaultPath
+	}
+	report := ctx.Bootstrap.Apply(operationContext(ctx), path)
+	reply := socketReply{response: socketResponse{Output: formatBootstrapReport(report, request.JSON)}}
+	if report.Failed() {
+		reply.response.Error = "bootstrap_apply_failed"
+	}
+	if report.RestartRequired {
+		reply.afterResponse = ctx.RequestRestart
+	}
+	return reply
+}
+
+func formatBootstrapReport(report bootstrap.Report, jsonMode bool) string {
+	if jsonMode {
+		return mustJSON(report) + "\n"
+	}
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "Bootstrap: archived=%t restartRequired=%t failed=%t\n", report.Archived, report.RestartRequired, report.Failed())
+	if report.DocumentError != "" {
+		fmt.Fprintf(&builder, "  document error: %s\n", report.DocumentError)
+	}
+	if report.ArchiveError != "" {
+		fmt.Fprintf(&builder, "  archive error: %s\n", report.ArchiveError)
+	}
+	if report.GeneralError != "" {
+		fmt.Fprintf(&builder, "  general error: %s\n", report.GeneralError)
+	}
+	for _, item := range report.Items {
+		label := strings.TrimSpace(item.Name)
+		if label == "" {
+			label = fmt.Sprintf("%s[%d]", item.Kind, item.Index)
+		}
+		if item.Message == "" {
+			fmt.Fprintf(&builder, "  - %s: %s\n", label, item.Status)
+		} else {
+			fmt.Fprintf(&builder, "  - %s: %s (%s)\n", label, item.Status, item.Message)
+		}
+	}
+	return builder.String()
 }
 
 func typedSocketOperationRequiresMutation(operation string) bool {

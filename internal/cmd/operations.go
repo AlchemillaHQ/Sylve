@@ -24,14 +24,13 @@ func executeConsoleOperation(command *cli.Command, operation string, payload any
 		return err
 	}
 
-	output, err := console.ExecuteOperation(socketPath, operation, payload)
-	if err != nil {
+	response, err := console.ExecuteOperationResponse(socketPath, operation, payload)
+	if response.Output != "" {
+		fmt.Print(response.Output)
+	} else if err != nil {
 		printConsoleOperationError(jsonMode, err)
-		return err
 	}
-
-	fmt.Print(output)
-	return nil
+	return err
 }
 
 func printConsoleOperationError(jsonMode bool, err error) {

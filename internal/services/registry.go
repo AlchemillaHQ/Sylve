@@ -9,6 +9,7 @@
 package services
 
 import (
+	bootstrap "github.com/alchemillahq/sylve/internal/bootstrap"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -65,6 +66,7 @@ type ServiceRegistry struct {
 	CertificateService *certificates.Service
 	ZeltaService       *zelta.Service
 	MigrationService   *migration.Service
+	BootstrapService   *bootstrap.Service
 	GzfsClient         *gzfs.Client
 }
 
@@ -222,9 +224,26 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		zeltaService.(*zelta.Service),
 	)
 
+	bootstrapService := bootstrap.NewService(sysSvc, networkService.(*network.Service))
+	startupService := NewService[startup.Service](
+		db,
+		infoService,
+		zfsService,
+		networkService,
+		libvirtService,
+		utilitiesService,
+		systemService,
+		sambaService,
+		jailService,
+		clusterService,
+		iscsiService,
+		mdnsService,
+	).(*startup.Service)
+	startupService.Bootstrap = bootstrapService
+
 	return &ServiceRegistry{
 		AuthService:        authService.(serviceInterfaces.AuthServiceInterface),
-		StartupService:     NewService[startup.Service](db, infoService, zfsService, networkService, libvirtService, utilitiesService, systemService, sambaService, jailService, clusterService, iscsiService, mdnsService).(*startup.Service),
+		StartupService:     startupService,
 		InfoService:        infoService.(infoServiceInterfaces.InfoServiceInterface),
 		ZfsService:         zfsService.(*zfs.Service),
 		DiskService:        diskService.(*disk.Service),
@@ -241,6 +260,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		CertificateService: certificateService,
 		ZeltaService:       zeltaService.(*zelta.Service),
 		MigrationService:   migrationService,
+		BootstrapService:   bootstrapService,
 		GzfsClient:         gzfs,
 	}
 }
