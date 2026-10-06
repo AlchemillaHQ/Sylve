@@ -15,7 +15,8 @@ permissions:
 
 concurrency:
   group: tip-release-master
-  cancel-in-progress: true
+  # Let an in-flight publisher finish replacing assets and metadata.
+  cancel-in-progress: false
 
 jobs:
   select-runner:
@@ -102,34 +103,6 @@ jobs:
 
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
 
-      - name: Move tip tag
-        if: steps.vars.outputs.should_publish == 'true'
-        run: |
-          set -euo pipefail
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -fa tip -m "Latest Continuous Release" "${{ steps.vars.outputs.head_sha }}"
-          git push --force origin tip
-
-      - name: Ensure tip prerelease exists
-        if: steps.vars.outputs.should_publish == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          if gh release view tip >/dev/null 2>&1; then
-            echo "tip release already exists"
-            exit 0
-          fi
-
-          gh release create tip \
-            --title "tip" \
-            --target "${{ steps.vars.outputs.head_sha }}" \
-            --prerelease \
-            --notes "Rolling prerelease for Sylve tip."
-
   build-web:
     needs:
       - select-runner
@@ -164,41 +137,21 @@ jobs:
           path: internal/assets/web-files/
           retention-days: 1
 
-      - name: Verify tip still points to this commit
-        id: freshness
-        run: |
-          set -euo pipefail
-
-          EXPECTED_SHA="${{ needs.prepare-release.outputs.head_sha }}"
-          TIP_SHA="$(git ls-remote origin "refs/tags/tip^{}" | awk '{print $1}')"
-
-          if [ -z "${TIP_SHA}" ] || [ "${TIP_SHA}" != "${EXPECTED_SHA}" ]; then
-            echo "upload=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping web upload; tip points to '${TIP_SHA}' and this run built '${EXPECTED_SHA}'."
-            exit 0
-          fi
-
-          echo "upload=true" >> "$GITHUB_OUTPUT"
-
       - name: Package Web Assets
-        if: steps.freshness.outputs.upload == 'true'
         run: |
           set -euo pipefail
           tar -czf sylve-web-assets.tar.gz -C internal/assets web-files
           tar -czf sylve-web-demo-assets.tar.gz -C web/build .
 
-      - name: Upload web assets to tip prerelease
-        if: steps.freshness.outputs.upload == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          for ASSET_NAME in sylve-web-assets.tar.gz sylve-web-demo-assets.tar.gz; do
-            while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
-              echo "Deleted existing ${ASSET_NAME}"
-            done
-            gh release upload tip "${ASSET_NAME}"
-          done
+      - name: Stage web release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: tip-web-packages
+          path: |
+            sylve-web-assets.tar.gz
+            sylve-web-demo-assets.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
   build-freebsd:
     needs:
@@ -210,6 +163,8 @@ jobs:
     timeout-minutes: 30
     env:
       FREEBSD_VERSION: "15"
+      ARCH: ${{ matrix.arch }}
+      SOURCE_SHA: ${{ needs.prepare-release.outputs.head_sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -254,7 +209,7 @@ jobs:
         env:
           FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
         run: |
-          make cross-build-${{ matrix.arch }}
+          make "cross-build-${ARCH}" GIT_COMMIT="${SOURCE_SHA}"
 
       - name: Verify binary format
         run: |
@@ -268,31 +223,109 @@ jobs:
             grep -Eq "aarch64|arm64|ARM aarch64" /tmp/sylve-file.txt
           fi
 
-      - name: Verify tip still points to this commit
-        id: freshness
+      - name: Record binary build metadata
+        env:
+          FREEBSD_RELEASE: ${{ steps.freebsd.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p tip-assets
+          cp bin/sylve "tip-assets/sylve-${ARCH}"
+          go run ./cmd/tipmetadata record \
+            -binary "tip-assets/sylve-${ARCH}" -arch "${ARCH}" \
+            -freebsd "${FREEBSD_RELEASE}" -commit "${SOURCE_SHA}"
+
+      - name: Stage binary and build metadata
+        uses: actions/upload-artifact@v7
+        with:
+          name: tip-build-${{ matrix.arch }}
+          path: tip-assets/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-release:
+    needs:
+      - select-runner
+      - prepare-release
+      - build-web
+      - build-freebsd
+    if: needs.prepare-release.outputs.should_publish == 'true'
+    runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-release.outputs.head_sha }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+
+      - name: Download binary builds
+        uses: actions/download-artifact@v8
+        with:
+          pattern: tip-build-*
+          merge-multiple: true
+          path: tip-assets
+
+      - name: Download web release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: tip-web-packages
+          path: tip-assets
+
+      - name: Publish tip assets and metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.prepare-release.outputs.head_sha }}
         run: |
           set -euo pipefail
 
-          EXPECTED_SHA="${{ needs.prepare-release.outputs.head_sha }}"
-          TIP_SHA="$(git ls-remote origin "refs/tags/tip^{}" | awk '{print $1}')"
-
-          if [ -z "${TIP_SHA}" ] || [ "${TIP_SHA}" != "${EXPECTED_SHA}" ]; then
-            echo "upload=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping upload; tip points to '${TIP_SHA}' and this run built '${EXPECTED_SHA}'."
+          MASTER_SHA="$(git ls-remote --heads origin master | awk '{print $1}')"
+          if [ "${SOURCE_SHA}" != "${MASTER_SHA}" ]; then
+            echo "Skipping stale build for ${SOURCE_SHA}; master is ${MASTER_SHA}."
             exit 0
           fi
 
-          echo "upload=true" >> "$GITHUB_OUTPUT"
+          # Check both builds before changing the existing release.
+          go run ./cmd/tipmetadata generate -dir tip-assets -commit "${SOURCE_SHA}"
 
-      - name: Upload binary to tip prerelease
-        if: steps.freshness.outputs.upload == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          ASSET_NAME="sylve-${{ matrix.arch }}"
-          while gh release delete-asset tip "${ASSET_NAME}" --yes >/dev/null 2>&1; do
-            echo "Deleted existing ${ASSET_NAME}"
+          if ! gh release view tip >/dev/null 2>&1; then
+            gh release create tip --title "tip" --target "${SOURCE_SHA}" \
+              --prerelease --notes "Rolling prerelease for Sylve tip."
+          fi
+
+          # Save counts before any assets are replaced; asset IDs make retries safe.
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/tip" > tip-release.json
+          go run ./cmd/tipmetadata downloads -release tip-release.json -out tip-notes.md
+          gh release edit tip --notes-file tip-notes.md
+
+          ASSET_NAMES="$(jq -r '.assets[].name' tip-release.json)"
+          for NAME in SHA256SUMS sylve-version.json; do
+            if printf '%s\n' "${ASSET_NAMES}" | grep -Fxq "${NAME}"; then
+              gh release delete-asset tip "${NAME}" --yes
+            fi
           done
-          cp bin/sylve "${ASSET_NAME}"
-          gh release upload tip "${ASSET_NAME}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa tip -m "Latest Continuous Release" "${SOURCE_SHA}"
+          git push --force origin tip
+
+          gh release upload tip --clobber \
+            tip-assets/sylve-amd64 tip-assets/sylve-arm64 \
+            tip-assets/sylve-web-assets.tar.gz tip-assets/sylve-web-demo-assets.tar.gz
+
+          # Hash the actual published assets, not just the local build outputs.
+          gh release download tip --dir published-assets
+          cp tip-assets/build-amd64.json tip-assets/build-arm64.json published-assets/
+          go run ./cmd/tipmetadata generate -dir published-assets -commit "${SOURCE_SHA}"
+
+          TIP_SHA="$(git ls-remote origin 'refs/tags/tip^{}' | awk '{print $1}')"
+          if [ "${TIP_SHA}" != "${SOURCE_SHA}" ]; then
+            echo "::error::tip moved during publication; refusing to upload metadata."
+            exit 1
+          fi
+
+          gh release upload tip published-assets/sylve-version.json
+          gh release upload tip published-assets/SHA256SUMS
