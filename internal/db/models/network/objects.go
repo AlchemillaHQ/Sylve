@@ -11,23 +11,30 @@ package networkModels
 import "time"
 
 type Object struct {
-	ID                     uint       `json:"id" gorm:"primaryKey"`
-	Name                   string     `json:"name" gorm:"uniqueIndex;not null"`
-	Type                   string     `json:"type" gorm:"not null"` // "Host", "Mac", "Network", "Port", "Country", "List", "FQDN", "DUID"
-	Comment                string     `json:"description"`
-	AutoUpdate             bool       `json:"autoUpdate" gorm:"default:true"`
-	RefreshIntervalSeconds uint       `json:"refreshIntervalSeconds" gorm:"default:300"`
-	SourceChecksum         string     `json:"sourceChecksum"`
-	ResolutionChecksum     string     `json:"resolutionChecksum"`
-	LastRefreshAt          *time.Time `json:"lastRefreshAt"`
-	LastRefreshError       string     `json:"lastRefreshError"`
-	CreatedAt              time.Time  `json:"createdAt"`
-	UpdatedAt              time.Time  `json:"updatedAt"`
-	IsUsed                 bool       `json:"isUsed" gorm:"-"`
-	IsUsedBy               string     `json:"isUsedBy" gorm:"-"` // "", "dhcp" for now
+	ID                     uint          `json:"id" gorm:"primaryKey"`
+	Name                   string        `json:"name" gorm:"uniqueIndex;not null"`
+	Type                   string        `json:"type" gorm:"not null"` // "Host", "Mac", "Network", "Port", "Country", "List", "FQDN", "DUID"
+	Comment                string        `json:"description"`
+	AutoUpdate             bool          `json:"autoUpdate" gorm:"default:true"`
+	RefreshIntervalSeconds uint          `json:"refreshIntervalSeconds" gorm:"default:300"`
+	SourceChecksum         string        `json:"sourceChecksum"`
+	ResolutionChecksum     string        `json:"resolutionChecksum"`
+	LastRefreshAt          *time.Time    `json:"lastRefreshAt"`
+	LastRefreshError       string        `json:"lastRefreshError"`
+	CreatedAt              time.Time     `json:"createdAt"`
+	UpdatedAt              time.Time     `json:"updatedAt"`
+	IsUsed                 bool          `json:"isUsed" gorm:"-"`
+	IsUsedBy               string        `json:"isUsedBy" gorm:"-"`
+	UsedBy                 []ObjectUsage `json:"usedBy" gorm:"-"`
 
 	Entries     []ObjectEntry      `json:"entries" gorm:"foreignKey:ObjectID"`
 	Resolutions []ObjectResolution `json:"resolutions" gorm:"foreignKey:ObjectID"`
+}
+
+type ObjectUsage struct {
+	Type string `json:"type"`
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
 }
 
 type ObjectEntry struct {

@@ -92,6 +92,43 @@ func TestCreateNetworkObjectReturnsCreatedID(t *testing.T) {
 	}
 }
 
+func TestListNetworkObjectsIncludesNamedUsage(t *testing.T) {
+	router, db := setupNetworkObjectHandlerRouter(t, networkService.MaxRequestBodyBytes)
+	objects := []networkModels.Object{
+		{Name: "lan-address", Type: "Host"},
+		{Name: "unused-address", Type: "Host"},
+	}
+	if err := db.Create(&objects).Error; err != nil {
+		t.Fatalf("seed objects: %v", err)
+	}
+	sw := networkModels.StandardSwitch{Name: "lan", BridgeName: "vm-lan", AddressID: &objects[0].ID}
+	if err := db.Create(&sw).Error; err != nil {
+		t.Fatalf("seed switch: %v", err)
+	}
+	rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/object", nil)
+	response := decodeNetworkObjectHandlerResponse(t, rr)
+	if rr.Code != http.StatusOK || response.Status != "success" {
+		t.Fatalf("list status=%d response=%+v", rr.Code, response)
+	}
+	var listed []networkModels.Object
+	if err := json.Unmarshal(response.Data, &listed); err != nil {
+		t.Fatalf("decode objects: %v", err)
+	}
+	if len(listed) != 2 {
+		t.Fatalf("listed %d objects, want 2", len(listed))
+	}
+	for _, object := range listed {
+		if object.ID == objects[0].ID {
+			want := networkModels.ObjectUsage{Type: "switch", ID: sw.ID, Name: sw.Name}
+			if !object.IsUsed || len(object.UsedBy) != 1 || object.UsedBy[0] != want {
+				t.Fatalf("named switch usage missing from API: %+v", object)
+			}
+		} else if object.IsUsed || object.UsedBy == nil || len(object.UsedBy) != 0 {
+			t.Fatalf("unused object should have an empty usage array: %+v", object)
+		}
+	}
+}
+
 func TestNetworkObjectHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("invalid object", func(t *testing.T) {
 		router, _ := setupNetworkObjectHandlerRouter(t, networkService.MaxRequestBodyBytes)

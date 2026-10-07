@@ -6,6 +6,7 @@
 	} from '$lib/api/network/object';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import CreateOrEdit from '$lib/components/custom/Network/Objects/CreateOrEdit.svelte';
+	import Usages from '$lib/components/custom/Network/Objects/Usages.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -13,6 +14,10 @@
 	import type { Column } from '$lib/types/components/tree-table';
 	import type { NetworkObject, NetworkObjectRow } from '$lib/types/network/object';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import {
+		formatNetworkObjectUsage,
+		getNetworkObjectUsageLabels
+	} from '$lib/utils/network/object-usage';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -59,8 +64,13 @@
 		bulkDelete: {
 			open: false,
 			count: 0
+		},
+		usages: {
+			open: false,
+			id: 0
 		}
 	});
+	const usageObject = $derived(objects.current.find((object) => object.id === modals.usages.id));
 
 	let columns: Column[] = $derived([
 		{
@@ -131,6 +141,14 @@
 			copyOnClick: true
 		},
 		{
+			field: 'usedBy',
+			title: 'Used by',
+			width: 300,
+			minWidth: 180,
+			sorter: 'string',
+			formatter: formatNetworkObjectUsage
+		},
+		{
 			field: 'updatedAt',
 			title: 'Updated At',
 			formatter: (cell: CellComponent) => {
@@ -163,11 +181,15 @@
 	const tableData: { rows: NetworkObjectRow[]; columns: Column[] } = $derived({
 		columns,
 		rows: objects.current.map((object) => {
+			const usageLabels = getNetworkObjectUsageLabels(object);
 			return {
 				id: object.id,
 				name: object.name,
 				type: object.type,
 				entries: object.entries,
+				usedBy: usageLabels.join(', ') || '-',
+				usageLabels,
+				usages: object.usedBy ?? [],
 				updatedAt: object.updatedAt,
 				refreshStatus: {
 					type: object.type,
@@ -219,6 +241,21 @@
 					<span>Edit</span>
 				</div>
 			</Button>
+		{:else if type === 'usages' && activeRow?.usageLabels.length}
+			<Button
+				onclick={() => {
+					modals.usages.id = Number(activeRow?.id);
+					modals.usages.open = true;
+				}}
+				size="sm"
+				variant="outline"
+				class="h-6.5"
+			>
+				<div class="flex items-center">
+					<span class="icon-[mdi--format-list-bulleted] mr-1 h-4 w-4"></span>
+					<span>View usages</span>
+				</div>
+			</Button>
 		{/if}
 	{/if}
 
@@ -268,6 +305,7 @@
 
 		{@render button('edit')}
 		{@render button('delete')}
+		{@render button('usages')}
 		{@render button('bulk-delete')}
 	</div>
 
@@ -300,6 +338,10 @@
 			objects.refetch();
 		}}
 	/>
+{/if}
+
+{#if modals.usages.open && usageObject}
+	<Usages bind:open={modals.usages.open} object={usageObject} />
 {/if}
 
 <AlertDialog

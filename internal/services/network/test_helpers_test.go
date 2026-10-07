@@ -20,8 +20,9 @@ import (
 )
 
 type networkServiceTestVM struct {
-	ID  uint `gorm:"primaryKey"`
-	RID uint `gorm:"column:rid"`
+	ID   uint `gorm:"primaryKey"`
+	RID  uint `gorm:"column:rid"`
+	Name string
 }
 
 func (networkServiceTestVM) TableName() string { return "vms" }
@@ -29,6 +30,7 @@ func (networkServiceTestVM) TableName() string { return "vms" }
 type networkServiceTestJail struct {
 	ID   uint `gorm:"primaryKey"`
 	CTID uint `gorm:"column:ct_id"`
+	Name string
 }
 
 func (networkServiceTestJail) TableName() string { return "jails" }

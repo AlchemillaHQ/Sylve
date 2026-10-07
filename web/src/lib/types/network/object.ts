@@ -15,6 +15,14 @@ export const NetworkObjectType = z.enum([
 export const ListsType = z.enum(['firehol', 'cloudflare', 'abusedb']);
 export type ListsType = z.infer<typeof ListsType>;
 
+export const NetworkObjectUsageSchema = z.object({
+	type: z.enum(['vm', 'jail', 'switch', 'dhcp', 'firewall-traffic', 'firewall-nat', 'route']),
+	id: z.number().int().positive(),
+	name: z.string()
+});
+
+export type NetworkObjectUsage = z.infer<typeof NetworkObjectUsageSchema>;
+
 export const NetworkObjectSchema = z.object({
 	id: z.number().int().positive(),
 	name: z.string(),
@@ -30,6 +38,10 @@ export const NetworkObjectSchema = z.object({
 	updatedAt: z.string(),
 	isUsed: z.boolean().optional().default(false),
 	isUsedBy: z.string().optional().default(''),
+	usedBy: z
+		.array(NetworkObjectUsageSchema)
+		.nullish()
+		.transform((value) => value ?? []),
 	entries: z
 		.array(
 			z.object({
@@ -60,6 +72,9 @@ export type NetworkObjectRow = Pick<
 	'id' | 'name' | 'type' | 'entries' | 'updatedAt'
 > &
 	Row & {
+		usedBy: string;
+		usageLabels: string[];
+		usages: NetworkObjectUsage[];
 		refreshStatus: {
 			type: NetworkObject['type'];
 			at: string | null;

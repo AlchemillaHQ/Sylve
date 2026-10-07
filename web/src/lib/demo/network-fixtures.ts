@@ -19,7 +19,7 @@ import type {
 import type { Iface } from '$lib/types/network/iface';
 import type { HostInterfaceL3Entry, HostInterfaceL3PendingEntry } from '$lib/types/network/ifaceL3';
 import type { MdnsRecordWithManaged, MdnsSettings } from '$lib/types/network/mdns';
-import type { NetworkObject } from '$lib/types/network/object';
+import type { NetworkObject, NetworkObjectUsage } from '$lib/types/network/object';
 import type { StaticRoute } from '$lib/types/network/route';
 import type { DynamicDNSEntry, DynamicDNSEntryInput } from '$lib/types/services/dynamic-dns';
 import type {
@@ -276,6 +276,7 @@ function createObject(
 		updatedAt,
 		isUsed: false,
 		isUsedBy: '',
+		usedBy: [],
 		entries: values.map((value, index) => ({
 			id: id * 100 + index + 1,
 			objectId: id,
@@ -1262,47 +1263,61 @@ function stateFor(hostname: string): DemoNetworkState {
 
 function refreshObjectUsage(state: DemoNetworkState) {
 	const used = new Map<number, Set<string>>();
-	const mark = (id: number | null | undefined, source: string) => {
+	const consumers = new Map<number, NetworkObjectUsage[]>();
+	const mark = (id: number | null | undefined, source: string, consumer: NetworkObjectUsage) => {
 		if (!id) return;
 		if (!used.has(id)) used.set(id, new Set());
 		used.get(id)?.add(source);
+		const usages = consumers.get(id) ?? [];
+		if (!usages.some((usage) => usage.type === consumer.type && usage.id === consumer.id)) {
+			usages.push(consumer);
+		}
+		consumers.set(id, usages);
 	};
 
 	for (const sw of state.switches.standard) {
-		mark(sw.networkObj?.id, 'Standard switch');
-		mark(sw.network6Obj?.id, 'Standard switch');
-		mark(sw.gatewayAddressObj?.id, 'Standard switch');
-		mark(sw.gateway6AddressObj?.id, 'Standard switch');
-		mark(sw.bridgeMacObjectId, 'Standard switch');
+		const consumer: NetworkObjectUsage = { type: 'switch', id: sw.id, name: sw.name };
+		mark(sw.addressObj?.id, 'Standard switch', consumer);
+		mark(sw.address6Obj?.id, 'Standard switch', consumer);
+		mark(sw.networkObj?.id, 'Standard switch', consumer);
+		mark(sw.network6Obj?.id, 'Standard switch', consumer);
+		mark(sw.gatewayAddressObj?.id, 'Standard switch', consumer);
+		mark(sw.gateway6AddressObj?.id, 'Standard switch', consumer);
+		mark(sw.bridgeMacObjectId, 'Standard switch', consumer);
 	}
 	for (const lease of state.staticLeases) {
-		mark(lease.ipObjectId, 'DHCP lease');
-		mark(lease.macObjectId, 'DHCP lease');
-		mark(lease.duidObjectId, 'DHCP lease');
+		const consumer: NetworkObjectUsage = { type: 'dhcp', id: lease.id, name: lease.hostname };
+		mark(lease.ipObjectId, 'DHCP lease', consumer);
+		mark(lease.macObjectId, 'DHCP lease', consumer);
+		mark(lease.duidObjectId, 'DHCP lease', consumer);
 	}
 	for (const route of state.routes) {
-		mark(route.destinationObjId, 'Static route');
-		mark(route.gatewayObjId, 'Static route');
-	}
-	for (const rule of [...state.trafficRules, ...state.natRules]) {
-		mark(rule.sourceObjId, 'Firewall rule');
-		mark(rule.destObjId, 'Firewall rule');
+		const consumer: NetworkObjectUsage = { type: 'route', id: route.id, name: route.name };
+		mark(route.destinationObjId, 'Static route', consumer);
+		mark(route.gatewayObjId, 'Static route', consumer);
 	}
 	for (const rule of state.trafficRules) {
-		mark(rule.srcPortObjId, 'Firewall rule');
-		mark(rule.dstPortObjId, 'Firewall rule');
+		const consumer: NetworkObjectUsage = { type: 'firewall-traffic', id: rule.id, name: rule.name };
+		mark(rule.sourceObjId, 'Firewall rule', consumer);
+		mark(rule.destObjId, 'Firewall rule', consumer);
+		mark(rule.srcPortObjId, 'Firewall rule', consumer);
+		mark(rule.dstPortObjId, 'Firewall rule', consumer);
 	}
 	for (const rule of state.natRules) {
-		mark(rule.translateToObjId, 'NAT rule');
-		mark(rule.dnatTargetObjId, 'NAT rule');
-		mark(rule.dstPortObjId, 'NAT rule');
-		mark(rule.redirectPortObjId, 'NAT rule');
+		const consumer: NetworkObjectUsage = { type: 'firewall-nat', id: rule.id, name: rule.name };
+		mark(rule.sourceObjId, 'Firewall rule', consumer);
+		mark(rule.destObjId, 'Firewall rule', consumer);
+		mark(rule.translateToObjId, 'NAT rule', consumer);
+		mark(rule.dnatTargetObjId, 'NAT rule', consumer);
+		mark(rule.dstPortObjId, 'NAT rule', consumer);
+		mark(rule.redirectPortObjId, 'NAT rule', consumer);
 	}
 
 	for (const object of state.objects) {
 		const sources = [...(used.get(object.id) ?? [])];
 		object.isUsed = sources.length > 0;
 		object.isUsedBy = sources.join(', ');
+		object.usedBy = consumers.get(object.id) ?? [];
 	}
 }
 

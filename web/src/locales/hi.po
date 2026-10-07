@@ -19178,3 +19178,21 @@ msgstr ""
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
 msgid "Cannot read the target configuration."
 msgstr ""
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "Used by"
+msgstr ""
+
+#: src/routes/[node]/network/objects/+page.svelte
+msgid "View usages"
+msgstr ""
+
+#. 0: labels.length
+#: src/lib/components/custom/Network/Objects/Usages.svelte
+msgid "References: {0}"
+msgstr ""
+
+#. 0: object.name
+#: src/lib/components/custom/Network/Objects/Usages.svelte
+msgid "Object Usages - {0}"
+msgstr ""
