@@ -4101,10 +4101,9 @@ msgstr "IPv4 网络"
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
-#: src/routes/[node]/network/firewall/nat/+page.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -4134,10 +4133,9 @@ msgstr "IPv6 网络"
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
-#: src/routes/[node]/network/firewall/nat/+page.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -8669,22 +8667,22 @@ msgid "Select a port object or type raw ports (e.g. 80, 443, 8000:9000). Leave e
 msgstr "选择端口对象或输入原始端口（例如 80, 443, 8000:9000）。留空表示匹配任意。"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Pass"
 msgstr "通过"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Block"
 msgstr "阻止"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "In"
 msgstr "入站"
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Out"
 msgstr "出站"
 
@@ -8692,11 +8690,10 @@ msgstr "出站"
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
-#: src/routes/[node]/network/firewall/nat/+page.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
@@ -18904,22 +18901,22 @@ msgid "Advanced PF"
 msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Drop"
 msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Return"
 msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "Keep State"
 msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
-#: src/routes/[node]/network/firewall/traffic/+page.svelte
+#: src/lib/utils/network/firewall-format.svelte.ts
 msgid "No State"
 msgstr ""
 

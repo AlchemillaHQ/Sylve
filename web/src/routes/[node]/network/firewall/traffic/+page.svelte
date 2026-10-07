@@ -29,6 +29,11 @@
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { handleAPIError, updateCache } from '$lib/utils/http';
+	import {
+		formatFirewallAction,
+		formatFirewallDestination,
+		formatFirewallSource
+	} from '$lib/utils/network/firewall-format.svelte';
 	import { renderWithIcon } from '$lib/utils/table';
 	import { onMount } from 'svelte';
 	import type { CellComponent, RowComponent } from 'tabulator-tables';
@@ -229,80 +234,6 @@
 		return renderWithIcon('mdi:close-circle', '', 'text-red-400');
 	}
 
-	function quickBadge(quick: boolean): string {
-		if (!quick) return '';
-		return '<span class="inline-flex items-center text-xs font-mono px-1 rounded border text-emerald-400 border-emerald-400/50 leading-tight">QUICK</span>';
-	}
-
-	function logBadge(log: boolean): string {
-		if (!log) return '';
-		return '<span class="inline-flex items-center text-xs font-mono px-1 rounded border text-amber-400 border-amber-400/50 leading-tight">LOG</span>';
-	}
-
-	function formatAction(action: string, direction: string, quick: boolean, log: boolean): string {
-		const isPass = action === 'pass';
-		const actionPart = renderWithIcon(
-			isPass ? 'mdi:check-circle-outline' : 'mdi:close-octagon-outline',
-			isPass ? 'Pass' : 'Block',
-			isPass ? 'text-green-500' : 'text-red-400'
-		);
-		const dirPart = renderWithIcon(
-			direction === 'in' ? 'mdi:arrow-down-circle-outline' : 'mdi:arrow-up-circle-outline',
-			direction === 'in' ? 'In' : 'Out',
-			direction === 'in' ? 'text-blue-400' : 'text-orange-400'
-		);
-		const qb = quickBadge(quick);
-		const lb = logBadge(log);
-		return `<span class="inline-flex items-center gap-1.5">${actionPart}<span class="text-muted-foreground/50">·</span>${dirPart}${qb ? '<span class="text-muted-foreground/50">·</span>' + qb : ''}${lb ? '<span class="text-muted-foreground/50">·</span>' + lb : ''}</span>`;
-	}
-
-	function familyBadge(family: string): string {
-		if (!family || family === 'any') return '';
-		const label = family === 'inet' ? 'IPv4' : 'IPv6';
-		const color =
-			family === 'inet'
-				? 'text-blue-400 border-blue-400/50'
-				: 'text-violet-400 border-violet-400/50';
-		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${label}</span>`;
-	}
-
-	function protoBadge(protocol: string): string {
-		if (!protocol || protocol === 'any') return '';
-		const colors: Record<string, string> = {
-			tcp: 'text-cyan-400 border-cyan-400/50',
-			udp: 'text-amber-400 border-amber-400/50',
-			tcp_udp: 'text-teal-400 border-teal-400/50',
-			icmp: 'text-pink-400 border-pink-400/50'
-		};
-		const color = colors[protocol] || 'text-muted-foreground border-muted-foreground/50';
-		const label = protocol === 'tcp_udp' ? 'TCP/UDP' : protocol.toUpperCase();
-		return `<span class="inline-flex items-center text-xs font-mono px-1 rounded border ${color} leading-tight">${label}</span>`;
-	}
-
-	function formatEndpointParts(addr: string, isObj: boolean): string {
-		if (!addr || addr === 'any') return renderWithIcon('mdi:earth', 'Any', 'text-sky-400');
-		if (isObj) return renderWithIcon('mdi:tag-outline', addr, 'text-purple-400');
-		return renderWithIcon('mdi:ip-network', addr, 'text-indigo-400');
-	}
-
-	function formatSource(addr: string, isObj: boolean, family: string, port: string): string {
-		const parts: string[] = [];
-		const fb = familyBadge(family);
-		if (fb) parts.push(fb);
-		parts.push(formatEndpointParts(addr, isObj));
-		if (port) parts.push(renderWithIcon('mdi:pound', port, 'text-zinc-400'));
-		return `<span class="inline-flex items-center gap-1.5">${parts.join('<span class="text-muted-foreground/40 text-xs">·</span>')}</span>`;
-	}
-
-	function formatDestination(addr: string, isObj: boolean, protocol: string, port: string): string {
-		const parts: string[] = [];
-		const pb = protoBadge(protocol);
-		if (pb) parts.push(pb);
-		parts.push(formatEndpointParts(addr, isObj));
-		if (port) parts.push(renderWithIcon('mdi:pound', port, 'text-zinc-400'));
-		return `<span class="inline-flex items-center gap-1.5">${parts.join('<span class="text-muted-foreground/40 text-xs">·</span>')}</span>`;
-	}
-
 	async function refreshCounters(intent: 'auto' | 'manual' = 'auto') {
 		if (countersUpdating) {
 			return;
@@ -453,14 +384,14 @@
 				const d = cell.getRow().getData();
 				if (d.kind === 'advanced')
 					return renderWithIcon('mdi:code-braces', 'Advanced PF', 'text-amber-400');
-				const detail =
-					d.action === 'block'
-						? ({ drop: 'Drop', return: 'Return' } as Record<string, string>)[d.blockResponse]
-						: ({ keep: 'Keep State', none: 'No State' } as Record<string, string>)[d.statePolicy];
-				return (
-					formatAction(d.action, d.direction, d.quick, d.log) +
-					(detail ? ` <span class="text-xs text-muted-foreground">${detail}</span>` : '')
-				);
+				return formatFirewallAction({
+					action: d.action,
+					direction: d.direction,
+					quick: d.quick,
+					log: d.log,
+					statePolicy: d.statePolicy,
+					blockResponse: d.blockResponse
+				});
 			}
 		},
 		{
@@ -501,7 +432,7 @@
 			formatter: (cell: CellComponent) => {
 				const d = cell.getRow().getData();
 				if (d.kind === 'advanced') return '—';
-				return formatSource(cell.getValue(), d.sourceIsObj, d.family, d.srcPort);
+				return formatFirewallSource(cell.getValue(), d.sourceIsObj, d.family, d.srcPort);
 			}
 		},
 		{
@@ -510,7 +441,7 @@
 			formatter: (cell: CellComponent) => {
 				const d = cell.getRow().getData();
 				if (d.kind === 'advanced') return '—';
-				return formatDestination(cell.getValue(), d.destIsObj, d.protocol, d.dstPort);
+				return formatFirewallDestination(cell.getValue(), d.destIsObj, d.protocol, d.dstPort);
 			}
 		},
 		{

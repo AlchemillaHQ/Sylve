@@ -210,6 +210,11 @@
 		{ value: 'inet', label: 'IPv4' },
 		{ value: 'inet6', label: 'IPv6' }
 	];
+	const selectClasses = {
+		parent: 'min-w-0 space-y-1',
+		label: 'flex h-7 w-full items-center text-sm',
+		trigger: 'inline-flex h-9 w-full min-w-0 max-w-full items-center overflow-hidden px-3 text-left'
+	};
 
 	const ifaceOptions = $derived.by(() => {
 		return buildHostInterfaceOptions({
@@ -454,10 +459,11 @@
 								onChange={(v) => (form.family = v)}
 							/>
 						</div>
-						<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+						<div class="mt-3 grid grid-cols-1 gap-3 {showICMPTypes ? 'sm:grid-cols-2' : ''}">
 							{#if form.action === 'pass'}
 								<SimpleSelect
 									label="State Handling"
+									classes={selectClasses}
 									options={stateOptions}
 									bind:value={form.statePolicy}
 									onChange={(v) => (form.statePolicy = v as Form['statePolicy'])}
@@ -465,6 +471,7 @@
 							{:else}
 								<SimpleSelect
 									label="Block Response"
+									classes={selectClasses}
 									options={blockResponseOptions}
 									bind:value={form.blockResponse}
 									onChange={(v) => (form.blockResponse = v as Form['blockResponse'])}
