@@ -577,30 +577,6 @@ func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUP
 	return nil
 }
 
-func (s *Service) GeneratePinArgs(pins []vmModels.VMCPUPinning) []string {
-	var args []string
-	vcpu := 0
-
-	socketCount := utils.GetSocketCount(cpuid.CPU.PhysicalCores, cpuid.CPU.ThreadsPerCore)
-	if socketCount <= 0 {
-		socketCount = 1
-	}
-
-	coresPerSocket := utils.GetLogicalCores() / socketCount
-	if coresPerSocket <= 0 {
-		coresPerSocket = cpuid.CPU.LogicalCores
-	}
-
-	for _, p := range pins {
-		for _, localCPU := range p.HostCPU {
-			globalCPU := p.HostSocket*coresPerSocket + localCPU
-			args = append(args, fmt.Sprintf("-p %d:%d", vcpu, globalCPU))
-			vcpu++
-		}
-	}
-	return args
-}
-
 func (s *Service) GetVMConfigDirectory(rid uint) (string, error) {
 	vmDir, err := config.GetVMsPath()
 	if err != nil {

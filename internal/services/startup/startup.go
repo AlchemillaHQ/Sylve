@@ -202,6 +202,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 			logger.L.Warn().Err(err).Msg("VNC migration had issues")
 		}
 
+		if err := s.Libvirt.MigrateCPUPinningToNativeFormat(); err != nil {
+			logger.L.Warn().Err(err).Msg("CPU pinning migration had issues")
+		}
+
 		if err := s.Libvirt.MigrateIgnoreUMSRToNativeFormat(); err != nil {
 			logger.L.Warn().Err(err).Msg("IgnoreUMSR migration had issues")
 		}

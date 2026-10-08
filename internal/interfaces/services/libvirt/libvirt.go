@@ -68,7 +68,6 @@ type LibvirtServiceInterface interface {
 	CreateVMDirectory(rid uint) (string, error)
 	ResetUEFIVars(rid uint) error
 	ValidateCPUPins(rid uint, pins []CPUPinning, hostLogicalPerSocket int) error
-	GeneratePinArgs(pins []vmModels.VMCPUPinning) []string
 	GetVMConfigDirectory(rid uint) (string, error)
 	CreateCloudInitISO(vm vmModels.VM) error
 	GetCloudInitISOPath(rid uint) (string, error)
@@ -105,6 +104,7 @@ type LibvirtServiceInterface interface {
 	IsVirtualizationEnabled() bool
 
 	MigrateVNCToNativeFormat() error
+	MigrateCPUPinningToNativeFormat() error
 	MigrateIgnoreUMSRToNativeFormat() error
 	MigrateVirtio9PToNativeFormat() error
 }
@@ -194,6 +194,15 @@ type Topology struct {
 
 type CPU struct {
 	Topology Topology `xml:"topology"`
+}
+
+type VCPUPin struct {
+	VCPU   int    `xml:"vcpu,attr"`
+	CPUSet string `xml:"cpuset,attr"`
+}
+
+type CPUTune struct {
+	VCPUPins []VCPUPin `xml:"vcpupin"`
 }
 
 type OSType struct {
@@ -396,6 +405,7 @@ type Domain struct {
 	MemoryBacking *MemoryBacking `xml:"memoryBacking,omitempty"`
 	CPU           CPU            `xml:"cpu"`
 	VCPU          int            `xml:"vcpu"`
+	CPUTune       *CPUTune       `xml:"cputune,omitempty"`
 	OS            OS             `xml:"os"`
 	Features      Features       `xml:"features"`
 	Clock         Clock          `xml:"clock"`

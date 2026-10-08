@@ -338,15 +338,8 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		}
 	}
 
-	if len(vm.CPUPinning) > 0 {
-		pinArgs := s.GeneratePinArgs(vm.CPUPinning)
-		for _, arg := range pinArgs {
-			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
-				{
-					Value: arg,
-				},
-			})
-		}
+	if pins := nativeCPUPins(vm.CPUPinning); len(pins) > 0 {
+		domain.CPUTune = &libvirtServiceInterfaces.CPUTune{VCPUPins: pins}
 	}
 
 	if vm.VNCEnabled {
@@ -1224,6 +1217,10 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 
 	if err := s.ensureQemuGuestAgentNativeXML(*domain, vm); err != nil {
 		return fmt.Errorf("failed_to_ensure_native_qga_xml: %w", err)
+	}
+
+	if err := s.ensureCPUPinningNativeXML(s.conn(), *domain, vm.RID); err != nil {
+		return fmt.Errorf("failed_to_ensure_native_cpu_pinning_xml: %w", err)
 	}
 
 	if err := s.validateVMNetworksForStart(vm.ID); err != nil {

@@ -50,16 +50,6 @@ func updateMemory(xml string, ram int) (string, error) {
 	return out, nil
 }
 
-func removePinArgs(cmd *etree.Element) {
-	for _, arg := range append([]*etree.Element{}, cmd.SelectElements("bhyve:arg")...) {
-		if v := arg.SelectAttrValue("value", ""); v != "" {
-			if strings.HasPrefix(v, "-p ") || strings.Contains(v, " -p ") {
-				cmd.RemoveChild(arg)
-			}
-		}
-	}
-}
-
 func (s *Service) updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cpuPinning []vmModels.VMCPUPinning) (string, error) {
 	doc := etree.NewDocument()
 	if err := doc.ReadFromString(xml); err != nil {
@@ -91,40 +81,8 @@ func (s *Service) updateCPU(xml string, cpuSockets, cpuCores, cpuThreads int, cp
 	topology.CreateAttr("cores", strconv.Itoa(cpuCores))
 	topology.CreateAttr("threads", strconv.Itoa(cpuThreads))
 
-	if len(cpuPinning) > 0 {
-		bhyveCommandline := doc.FindElement("//commandline")
-		if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
-			root := doc.Root()
-			if root.SelectAttr("xmlns:bhyve") == nil {
-				root.CreateAttr("xmlns:bhyve", "http://libvirt.org/schemas/domain/bhyve/1.0")
-			}
-			bhyveCommandline = root.CreateElement("bhyve:commandline")
-		}
-
-		removePinArgs(bhyveCommandline)
-
-		pinStr := ""
-		pinArr := s.GeneratePinArgs(cpuPinning)
-
-		for i, pin := range pinArr {
-			if i > 0 {
-				pinStr += " "
-			}
-
-			pinStr += pin
-		}
-
-		if pinStr != "" {
-			arg := bhyveCommandline.CreateElement("bhyve:arg")
-			arg.CreateAttr("value", pinStr)
-		}
-	} else {
-		if bhyveCommandline := doc.FindElement("//bhyve:commandline"); bhyveCommandline != nil {
-			removePinArgs(bhyveCommandline)
-			if len(bhyveCommandline.ChildElements()) == 0 {
-				bhyveCommandline.Parent().RemoveChild(bhyveCommandline)
-			}
-		}
+	if _, err := setCPUPinningXML(doc, nativeCPUPins(cpuPinning)); err != nil {
+		return "", err
 	}
 
 	out, err := doc.WriteToString()
