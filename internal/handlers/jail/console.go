@@ -16,12 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal"
-	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
@@ -294,7 +292,7 @@ type jailConsoleService interface {
 	JailExistsByCTID(ctID uint) (bool, error)
 	JailRestoreInProgress(ctID uint) (bool, error)
 	CanMutateProtectedJail(ctID uint) (bool, error)
-	GetStateByCtId(ctID uint) (jailServiceInterfaces.State, error)
+	IsJailRunning(ctID uint) (bool, error)
 }
 
 func writeJailConsoleError(c *gin.Context, status int, code string, err error) {
@@ -325,7 +323,7 @@ func writeJailConsoleError(c *gin.Context, status int, code string, err error) {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail/{ctid}/console [get]
-func HandleJailTerminalWebsocket(jailService jailConsoleService) gin.HandlerFunc {
+func HandleJailTerminalWebsocket(jailService jailConsoleService, lifecycleService jailLifecycleStateService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctID, ok := parseJailCTID(c, "ctid")
 		if !ok {
@@ -363,12 +361,22 @@ func HandleJailTerminalWebsocket(jailService jailConsoleService) gin.HandlerFunc
 			return
 		}
 
-		state, err := jailService.GetStateByCtId(ctID)
+		activeTask, err := lifecycleService.GetActiveTaskForGuest("jail", ctID)
+		if err != nil {
+			writeJailConsoleError(c, http.StatusServiceUnavailable, "jail_console_guard_unavailable", err)
+			return
+		}
+		if activeTask != nil {
+			writeJailConsoleError(c, http.StatusConflict, "lifecycle_task_in_progress", nil)
+			return
+		}
+
+		running, err := jailService.IsJailRunning(ctID)
 		if err != nil {
 			writeJailConsoleError(c, http.StatusServiceUnavailable, "jail_state_unavailable", err)
 			return
 		}
-		if !strings.EqualFold(strings.TrimSpace(state.State), "ACTIVE") {
+		if !running {
 			writeJailConsoleError(c, http.StatusConflict, "jail_console_requires_active_jail", nil)
 			return
 		}

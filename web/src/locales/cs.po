@@ -19417,3 +19417,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Waiting for selected node CPU information"
 msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
+msgid "Waiting..."
+msgstr ""

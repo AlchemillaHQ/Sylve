@@ -718,7 +718,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.GET("/:ctid/stats/:step", jailHandlers.GetJailStats(jailService))
 		jail.GET("/:ctid/console",
 			middleware.RequireLocalAdmin(authService),
-			jailHandlers.HandleJailTerminalWebsocket(jailService),
+			jailHandlers.HandleJailTerminalWebsocket(jailService, lifecycleService),
 		)
 		jail.PUT("/:ctid/hardware/ram", jailHandlers.UpdateJailMemory(jailService))
 		jail.PUT("/:ctid/hardware/cpu", jailHandlers.UpdateJailCPU(jailService))

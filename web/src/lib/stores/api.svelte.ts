@@ -34,6 +34,7 @@ export function planClusterLeaveRestart(): boolean {
 export const jailPowerSignal = $state({
 	token: 0,
 	ctId: 0,
+	hostname: '',
 	action: '' as '' | 'start' | 'stop' | 'restart'
 });
 

@@ -2,7 +2,7 @@
 	import { storage } from '$lib';
 	import { getSimpleJailByCTID } from '$lib/api/jail/jail';
 	import { jailPowerSignal } from '$lib/stores/api.svelte';
-	import type { SimpleJail } from '$lib/types/jail/jail';
+	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { toHex } from '$lib/utils/string';
 	import {
@@ -13,7 +13,7 @@
 		useInterval,
 		watch
 	} from 'runed';
-	import { onMount, untrack, type Component } from 'svelte';
+	import { getContext, onMount, untrack, type Component } from 'svelte';
 	import { Xterm, XtermAddon } from '@battlefieldduck/xterm-svelte';
 	import type {
 		ITerminalOptions,
@@ -25,7 +25,6 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
-	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
 	import { isDemoMode } from '$lib/demo/runtime';
@@ -40,6 +39,11 @@
 	}
 
 	let { data }: { data: Data } = $props();
+	const jailState = getContext<{
+		current: JailState | null;
+		refetch(): Promise<unknown>;
+	}>('jailState');
+	let runtimeState = $derived(jailState.current?.state ?? 'UNKNOWN');
 	let DemoJailConsoleComponent = $state<Component<{
 		node: string;
 		jailName: string;
@@ -54,6 +58,13 @@
 	let connectionState = $state<'disconnected' | 'connecting' | 'connected'>('disconnected');
 	let connectionError = $state('');
 	let connectionToken = 0;
+	let readyTerminal = $state<Terminal>();
+	let refreshingPowerAction = $state(false);
+	let lifecyclePending = $derived(refreshingPowerAction || !!jailState.current?.pendingAction);
+	let powerRefreshVersion = 0;
+	let retryAttempts = 0;
+	let retryTimer: ReturnType<typeof setTimeout> | undefined;
+	let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 	function consoleStorageKey(suffix: string): string {
 		const scopedKey = `node-${data.node}-jail-${data.ctId}-console-${suffix}`;
@@ -189,6 +200,10 @@
 	}
 
 	function disconnectSocket() {
+		clearTimeout(retryTimer);
+		clearTimeout(connectionTimer);
+		retryTimer = undefined;
+		connectionTimer = undefined;
 		connectionToken += 1;
 		connectionState = 'disconnected';
 
@@ -200,11 +215,6 @@
 			socket.onmessage = null;
 			socket.onerror = null;
 			socket.onclose = null;
-		}
-
-		if (socket && socket.readyState === WebSocket.OPEN) {
-			socket.close();
-		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
 		}
 	}
@@ -212,26 +222,17 @@
 	function disconnectForStateChange() {
 		cState.current = false;
 		connectionError = '';
+		retryAttempts = 0;
 		disconnectSocket();
+		terminal?.reset();
 	}
 
 	function reconnect() {
 		if (isSocketActive()) return;
+		disconnectSocket();
+		retryAttempts = 0;
 		cState.current = false;
-		if (!terminal) return;
-		void connect();
-	}
-
-	async function refetchUntilState(targetState: 'ACTIVE' | 'INACTIVE', attempts = 8) {
-		for (let i = 0; i < attempts; i += 1) {
-			await jail.refetch();
-			if (jail.current?.state === targetState) return true;
-			if (i < attempts - 1) {
-				await sleep(500);
-			}
-		}
-
-		return jail.current?.state === targetState;
+		connect();
 	}
 
 	useResizeObserver(
@@ -244,12 +245,12 @@
 	let destroyed = $state(false);
 
 	const connect = () => {
-		if (destroyed || !terminal) return;
+		if (destroyed || cState.current || !terminal || terminal !== readyTerminal || lifecyclePending)
+			return;
 		if (!jail.current.ctId) return;
-		if (jail.current.state !== 'ACTIVE') return;
+		if (runtimeState !== 'ACTIVE') return;
 		if (isSocketActive()) return;
 
-		cState.current = false;
 		connectionState = 'connecting';
 		connectionError = '';
 
@@ -274,8 +275,11 @@
 				return;
 
 			opened = true;
+			clearTimeout(connectionTimer);
+			connectionTimer = undefined;
 			connectionState = 'connected';
 			connectionError = '';
+			activeTerminal.reset();
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => fitAndSend());
 			});
@@ -285,35 +289,38 @@
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
-			if (e.data instanceof ArrayBuffer) {
-				try {
-					activeTerminal?.write(new Uint8Array(e.data));
-				} catch {
-					return;
-				}
-			} else {
-				try {
+			try {
+				if (e.data instanceof ArrayBuffer) {
+					activeTerminal.write(new Uint8Array(e.data));
+				} else {
 					const message = String(e.data || 'Jail console unavailable');
 					connectionError = message;
-					activeTerminal?.write(message);
-				} catch {
-					return;
+					activeTerminal.write(message);
 				}
+			} catch {
+				return;
 			}
 		};
 
-		socket.onclose = socket.onerror = () => {
+		const endConnection = () => {
 			if (activeConnectionToken !== connectionToken) return;
-			if (ws === socket) {
-				ws = null;
-			}
-			connectionState = 'disconnected';
-			if (!destroyed && !cState.current && !connectionError) {
-				connectionError = opened
-					? 'The jail console session ended.'
-					: 'Unable to connect to the jail console.';
+			disconnectSocket();
+			if (destroyed || cState.current || lifecyclePending) return;
+			if (retryAttempts < 3) {
+				retryAttempts += 1;
+				connectionError = '';
+				retryTimer = setTimeout(() => {
+					retryTimer = undefined;
+					connect();
+				}, 1000);
+			} else {
+				connectionError =
+					connectionError ||
+					(opened ? 'The jail console session ended.' : 'Unable to connect to the jail console.');
 			}
 		};
+		socket.onclose = socket.onerror = endConnection;
+		connectionTimer = setTimeout(endConnection, 10000);
 	};
 
 	function onData(data: string) {
@@ -322,9 +329,23 @@
 	}
 
 	async function onLoad(t: Terminal) {
+		disconnectSocket();
+		readyTerminal?.dispose();
+		readyTerminal = undefined;
+		fitAddon = null;
 		terminal = t;
-		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
+		const { FitAddon } = await XtermAddon.FitAddon();
+		if (destroyed || terminal !== t || runtimeState !== 'ACTIVE') {
+			t.dispose();
+			return;
+		}
+		fitAddon = new FitAddon();
 		t.loadAddon(fitAddon);
+		t.options.fontSize = theme.current.fontSize || 14;
+		t.options.theme = {
+			background: theme.current.background,
+			foreground: theme.current.foreground
+		};
 
 		t.attachCustomKeyEventHandler((e) => {
 			const zoomModifier = isMac ? e.metaKey : e.ctrlKey;
@@ -344,14 +365,13 @@
 			return true;
 		});
 
-		if (destroyed) return;
+		retryAttempts = 0;
+		readyTerminal = t;
 
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
+				if (destroyed || terminal !== t) return;
 				fitAndSend();
-				if (jail.current.state === 'ACTIVE' && !cState.current && !isSocketActive()) {
-					void connect();
-				}
 			});
 		});
 	}
@@ -375,6 +395,9 @@
 		(identity, previousIdentity) => {
 			if (!previousIdentity || identity === previousIdentity) return;
 
+			powerRefreshVersion += 1;
+			refreshingPowerAction = false;
+			retryAttempts = 0;
 			disconnectSocket();
 			connectionError = '';
 			terminal?.reset();
@@ -395,7 +418,7 @@
 				};
 			}
 			void jail.refetch();
-			if (terminal && jail.current.state === 'ACTIVE' && !cState.current) reconnect();
+			if (terminal && runtimeState === 'ACTIVE' && !cState.current) reconnect();
 		},
 		{ lazy: true }
 	);
@@ -410,16 +433,20 @@
 	);
 
 	watch(
-		() => jail.current.state,
-		(state) => {
-			if (state !== 'ACTIVE') {
+		() => [runtimeState, lifecyclePending, readyTerminal] as const,
+		([state, pending]) => {
+			if (state !== 'ACTIVE' || pending) {
 				disconnectForStateChange();
+				if (state !== 'ACTIVE') {
+					readyTerminal?.dispose();
+					readyTerminal = undefined;
+					fitAddon = null;
+					terminal = undefined;
+				}
 				return;
 			}
 
-			if (state === 'ACTIVE' && !cState.current && !isSocketActive()) {
-				reconnect();
-			}
+			connect();
 		},
 		{ lazy: true }
 	);
@@ -427,65 +454,44 @@
 	watch(
 		() => jailPowerSignal.token,
 		() => {
-			void (async () => {
-				if (jailPowerSignal.ctId !== data.ctId) return;
-				if (jailPowerSignal.action === 'stop') {
-					disconnectForStateChange();
-					await refetchUntilState('INACTIVE');
-					return;
+			if (jailPowerSignal.ctId !== data.ctId || jailPowerSignal.hostname !== data.node) return;
+			const identity = consoleIdentity;
+			const version = ++powerRefreshVersion;
+			refreshingPowerAction = true;
+			disconnectForStateChange();
+			void Promise.allSettled([jailState.refetch(), jail.refetch()]).then(() => {
+				if (!destroyed && identity === consoleIdentity && version === powerRefreshVersion) {
+					refreshingPowerAction = false;
 				}
-
-				if (jailPowerSignal.action === 'restart') {
-					disconnectForStateChange();
-					await refetchUntilState('INACTIVE');
-				}
-
-				if (jailPowerSignal.action === 'start' || jailPowerSignal.action === 'restart') {
-					cState.current = false;
-					const isActive = await refetchUntilState('ACTIVE');
-					if (isActive) {
-						reconnect();
-					}
-				}
-			})();
+			});
 		},
 		{ lazy: true }
 	);
 
 	onMount(() => {
-		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
 		if (isDemoMode) {
 			void import('$lib/components/custom/Jail/DemoJailConsole.svelte').then((module) => {
-				if (!cancelled) DemoJailConsoleComponent = module.default;
+				if (!destroyed) DemoJailConsoleComponent = module.default;
 			});
 		}
 
 		return () => {
-			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
-			connectionToken += 1;
-			connectionState = 'disconnected';
-
-			if (ws) {
-				ws.onopen = null;
-				ws.onmessage = null;
-				ws.onerror = null;
-				ws.onclose = null;
-				ws.close();
-				ws = null;
-			}
+			disconnectSocket();
 
 			applyFontSize.cancel?.();
 			applyThemeDebounced.cancel?.();
-			terminal?.dispose?.();
+			terminal?.dispose();
+			readyTerminal = undefined;
+			fitAddon = null;
 			terminal = undefined;
 		};
 	});
 </script>
 
-{#if isDemoMode && jail.current.state === 'ACTIVE'}
+{#if isDemoMode && runtimeState === 'ACTIVE'}
 	{#if DemoJailConsoleComponent}
 		<DemoJailConsoleComponent node={data.node} jailName={jail.current.name} />
 	{:else}
@@ -493,7 +499,7 @@
 			<span class="icon-[mdi--loading] text-primary h-10 w-10 animate-spin"></span>
 		</div>
 	{/if}
-{:else if jail.current.state === 'INACTIVE'}
+{:else if runtimeState === 'INACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
@@ -503,7 +509,7 @@
 			Start the Jail to access its console.
 		</div>
 	</div>
-{:else if jail.current.state !== 'ACTIVE'}
+{:else if runtimeState !== 'ACTIVE'}
 	<div
 		class="dark:text-secondary text-primary/70 flex h-full w-full flex-col items-center justify-center space-y-3 text-center text-base"
 	>
@@ -528,12 +534,18 @@
 				<Button
 					size="sm"
 					class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-					disabled={connectionState === 'connecting'}
+					disabled={connectionState === 'connecting' || lifecyclePending || !readyTerminal}
 					onclick={reconnect}
 				>
 					<div class="flex items-center gap-2">
 						<span class="icon-[mdi--refresh] h-4 w-4"></span>
-						<span>{connectionState === 'connecting' ? 'Connecting...' : 'Reconnect'}</span>
+						<span>
+							{lifecyclePending
+								? 'Waiting...'
+								: connectionState === 'connecting'
+									? 'Connecting...'
+									: 'Reconnect'}
+						</span>
 					</div>
 				</Button>
 			{/if}
@@ -564,7 +576,7 @@
 			</div>
 		</div>
 
-		{#if connectionError && connectionState === 'disconnected' && !cState.current}
+		{#if connectionError && connectionState === 'disconnected' && !cState.current && !lifecyclePending}
 			<div
 				class="flex shrink-0 items-center justify-center gap-2 border-x border-b px-3 py-2 text-sm text-red-500"
 			>

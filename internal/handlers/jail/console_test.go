@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
-	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
@@ -27,12 +27,15 @@ type jailConsoleHandlerStub struct {
 	restoreErr  error
 	allowed     bool
 	guardErr    error
-	state       jailServiceInterfaces.State
+	running     bool
 	stateErr    error
+	activeTask  *taskModels.GuestLifecycleTask
+	taskErr     error
 	existsCTID  uint
 	restoreCTID uint
 	guardCTID   uint
 	runtimeCTID uint
+	taskCTID    uint
 }
 
 func (s *jailConsoleHandlerStub) JailExistsByCTID(ctID uint) (bool, error) {
@@ -50,9 +53,17 @@ func (s *jailConsoleHandlerStub) CanMutateProtectedJail(ctID uint) (bool, error)
 	return s.allowed, s.guardErr
 }
 
-func (s *jailConsoleHandlerStub) GetStateByCtId(ctID uint) (jailServiceInterfaces.State, error) {
+func (s *jailConsoleHandlerStub) IsJailRunning(ctID uint) (bool, error) {
 	s.runtimeCTID = ctID
-	return s.state, s.stateErr
+	return s.running, s.stateErr
+}
+
+func (s *jailConsoleHandlerStub) GetActiveTaskForGuest(guestType string, ctID uint) (*taskModels.GuestLifecycleTask, error) {
+	if guestType != "jail" {
+		return nil, errors.New("unexpected guest type")
+	}
+	s.taskCTID = ctID
+	return s.activeTask, s.taskErr
 }
 
 func performJailConsoleRequest(
@@ -63,7 +74,7 @@ func performJailConsoleRequest(
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/jail/:ctid/console", HandleJailTerminalWebsocket(service))
+	router.GET("/jail/:ctid/console", HandleJailTerminalWebsocket(service, service))
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
 	return recorder
@@ -85,7 +96,11 @@ func TestJailConsoleReturnsStandardPreUpgradeErrors(t *testing.T) {
 		{name: "ownership guard failure", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.guardErr = errors.New("replication database unavailable") }, wantStatus: http.StatusServiceUnavailable, wantCode: "jail_console_guard_unavailable"},
 		{name: "replication lease not owned", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.allowed = false }, wantStatus: http.StatusForbidden, wantCode: "replication_lease_not_owned"},
 		{name: "runtime state unavailable", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.stateErr = errors.New("jls unavailable") }, wantStatus: http.StatusServiceUnavailable, wantCode: "jail_state_unavailable"},
-		{name: "jail inactive", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.state.State = "INACTIVE" }, wantStatus: http.StatusConflict, wantCode: "jail_console_requires_active_jail"},
+		{name: "jail inactive", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.running = false }, wantStatus: http.StatusConflict, wantCode: "jail_console_requires_active_jail"},
+		{name: "lifecycle guard failure", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.taskErr = errors.New("task database unavailable") }, wantStatus: http.StatusServiceUnavailable, wantCode: "jail_console_guard_unavailable"},
+		{name: "jail starting", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.activeTask = &taskModels.GuestLifecycleTask{Action: "start"} }, wantStatus: http.StatusConflict, wantCode: "lifecycle_task_in_progress"},
+		{name: "jail stopping", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.activeTask = &taskModels.GuestLifecycleTask{Action: "stop"} }, wantStatus: http.StatusConflict, wantCode: "lifecycle_task_in_progress"},
+		{name: "jail restarting", path: "/jail/104/console", configure: func(s *jailConsoleHandlerStub) { s.activeTask = &taskModels.GuestLifecycleTask{Action: "restart"} }, wantStatus: http.StatusConflict, wantCode: "lifecycle_task_in_progress"},
 		{name: "upgrade required", path: "/jail/104/console", wantStatus: http.StatusBadRequest, wantCode: "websocket_upgrade_required"},
 	}
 
@@ -94,7 +109,7 @@ func TestJailConsoleReturnsStandardPreUpgradeErrors(t *testing.T) {
 			service := &jailConsoleHandlerStub{
 				exists:  true,
 				allowed: true,
-				state:   jailServiceInterfaces.State{CTID: 104, State: "ACTIVE"},
+				running: true,
 			}
 			if test.configure != nil {
 				test.configure(service)
@@ -108,6 +123,9 @@ func TestJailConsoleReturnsStandardPreUpgradeErrors(t *testing.T) {
 			if response.Message != test.wantCode || response.Data != nil {
 				t.Fatalf("response = %+v, want code %q and null data", response, test.wantCode)
 			}
+			if (service.activeTask != nil || service.taskErr != nil) && service.runtimeCTID != 0 {
+				t.Fatal("console checked the runtime while its lifecycle guard blocked attachment")
+			}
 		})
 	}
 }
@@ -116,19 +134,20 @@ func TestJailConsolePreflightUsesCanonicalCTID(t *testing.T) {
 	service := &jailConsoleHandlerStub{
 		exists:  true,
 		allowed: true,
-		state:   jailServiceInterfaces.State{CTID: 104, State: "ACTIVE"},
+		running: true,
 	}
 	recorder := performJailConsoleRequest(t, "/jail/000104/console", service)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if service.existsCTID != 104 || service.restoreCTID != 104 || service.guardCTID != 104 || service.runtimeCTID != 104 {
+	if service.existsCTID != 104 || service.restoreCTID != 104 || service.guardCTID != 104 || service.runtimeCTID != 104 || service.taskCTID != 104 {
 		t.Fatalf(
-			"service CTIDs = exists:%d restore:%d guard:%d runtime:%d",
+			"service CTIDs = exists:%d restore:%d guard:%d runtime:%d lifecycle:%d",
 			service.existsCTID,
 			service.restoreCTID,
 			service.guardCTID,
 			service.runtimeCTID,
+			service.taskCTID,
 		)
 	}
 }

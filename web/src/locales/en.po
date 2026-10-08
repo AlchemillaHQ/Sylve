@@ -19414,3 +19414,7 @@ msgstr "Unable to determine selected node CPU information"
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 msgid "Waiting for selected node CPU information"
 msgstr "Waiting for selected node CPU information"
+
+#: src/routes/[node]/jail/[ctid]/console/+page.svelte
+msgid "Waiting..."
+msgstr "Waiting..."

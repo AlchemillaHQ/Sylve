@@ -327,9 +327,10 @@
 			}
 
 			reload.leftPanel = true;
-			jailPowerSignal.token += 1;
 			jailPowerSignal.ctId = targetCTID;
+			jailPowerSignal.hostname = hostname;
 			jailPowerSignal.action = action;
+			jailPowerSignal.token += 1;
 
 			toast.success(messages.success, {
 				duration: 5000,
