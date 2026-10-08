@@ -102,6 +102,10 @@ type vmDomainService interface {
 	GetLvDomain(rid uint) (*libvirtServiceInterfaces.LvDomain, error)
 }
 
+type vmConfigReinitializationService interface {
+	ReinitializeVMConfig(rid uint, ctx context.Context) error
+}
+
 type vmDomainLifecycleService interface {
 	GetActiveTaskForGuest(guestType string, guestID uint) (*taskModels.GuestLifecycleTask, error)
 }
@@ -377,6 +381,36 @@ func classifyRemoveVMError(err error, fallback string) (int, string) {
 		return http.StatusServiceUnavailable, "vm_delete_dependency_not_ready"
 	default:
 		return http.StatusInternalServerError, fallback
+	}
+}
+
+func classifyReinitializeVMConfigError(err error) (int, string) {
+	if isVMNotFoundError(err) {
+		return http.StatusNotFound, "vm_not_found"
+	}
+	errText := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(errText, "replication_lease_not_owned"):
+		return http.StatusForbidden, "replication_lease_not_owned"
+	case strings.Contains(errText, "vm_not_orphaned"):
+		return http.StatusConflict, "vm_not_orphaned"
+	case strings.Contains(errText, "lifecycle_task_in_progress"):
+		return http.StatusConflict, "lifecycle_task_in_progress"
+	case strings.Contains(errText, "guest_identity_claim_conflict"):
+		return http.StatusConflict, "guest_identity_claim_conflict"
+	case strings.Contains(errText, "guest_identity_inventory_conflict"):
+		return http.StatusConflict, "guest_identity_inventory_conflict"
+	case strings.Contains(errText, "guest_identity_registry_initializing"),
+		strings.Contains(errText, "guest_identity_cluster_formation_in_progress"):
+		return http.StatusServiceUnavailable, "guest_identity_registry_initializing"
+	case strings.Contains(errText, "cluster_consensus_unavailable"):
+		return http.StatusServiceUnavailable, "cluster_consensus_unavailable"
+	case strings.Contains(errText, "libvirt_connection_unavailable"),
+		strings.Contains(errText, "vm_orphan_check_unavailable"),
+		strings.Contains(errText, "libvirt_service_not_initialized"):
+		return http.StatusServiceUnavailable, "libvirt_connection_unavailable"
+	default:
+		return http.StatusInternalServerError, "failed_to_reinitialize_vm_config"
 	}
 }
 
@@ -705,6 +739,47 @@ func writeVMDomainLifecycleError(c *gin.Context, err error) {
 		Error:   err.Error(),
 		Data:    nil,
 	})
+}
+
+// @Summary Reinitialize an orphaned Virtual Machine's libvirt configuration
+// @Description Rebuild an absent libvirt definition from the saved VM settings without provisioning disks, clearing existing runtime state, or starting the VM.
+// @Tags VM
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param rid path int true "Virtual Machine RID" minimum(1)
+// @Success 200 {object} internal.APIResponse[any] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /vm/{rid}/domain/reinitialize [post]
+func ReinitializeVMConfig(libvirtService vmConfigReinitializationService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rid, ok := parseVMRID(c)
+		if !ok {
+			return
+		}
+		if err := libvirtService.ReinitializeVMConfig(rid, c.Request.Context()); err != nil {
+			statusCode, errorCode := classifyReinitializeVMConfigError(err)
+			c.JSON(statusCode, internal.APIResponse[any]{
+				Status:  "error",
+				Message: errorCode,
+				Data:    nil,
+				Error:   err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{
+			Status:  "success",
+			Message: "vm_config_reinitialized",
+			Data:    nil,
+			Error:   "",
+		})
+	}
 }
 
 // @Summary Create a new Virtual Machine

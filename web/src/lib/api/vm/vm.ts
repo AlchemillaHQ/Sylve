@@ -208,6 +208,16 @@ export async function getVMDomain(
 	return await apiRequestResult(`/vm/${rid}/domain`, VMDomainSchema, 'GET', undefined, options);
 }
 
+export async function reinitializeVMConfig(rid: number, hostname?: string): Promise<APIResponse> {
+	return await apiRequestResult(
+		`/vm/${rid}/domain/reinitialize`,
+		APIResponseSchema,
+		'POST',
+		undefined,
+		{ hostname }
+	);
+}
+
 export async function actionVm(
 	rid: number | string,
 	action: VMLifecycleAction,

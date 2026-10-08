@@ -640,6 +640,7 @@ func RegisterRoutes(r *gin.Engine,
 			vmHandlers.RemoveVM(libvirtService),
 		)
 		vm.GET("/:rid/domain", vmHandlers.GetLvDomain(libvirtService, lifecycleService))
+		vm.POST("/:rid/domain/reinitialize", vmHandlers.ReinitializeVMConfig(libvirtService))
 		vm.GET("/:rid/logs", vmHandlers.GetVMLogs(libvirtService))
 		vm.GET("/:rid/stats", vmHandlers.GetVMStatsBootstrap(libvirtService))
 		vm.GET("/:rid/stats/:step", vmHandlers.GetVMStats(libvirtService))

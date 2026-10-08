@@ -7371,6 +7371,7 @@ msgstr "DNS 预设"
 msgid "Select DNS"
 msgstr "选择 DNS"
 
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -19312,4 +19313,53 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "No eligible jail root datasets found. Registered jails, internal datasets, and unsupported roots are excluded."
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Error reinitializing libvirt config"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "This VM already has a libvirt configuration"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "This node does not own the right to restore this VM"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Libvirt is unavailable; try again when it is running"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Libvirt config reinitialized; VM has not been started"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Reinitialize libvirt config"
+msgstr ""
+
+#. 0: rid
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Reinitialize libvirt config for VM {0}?"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Rebuild the missing libvirt configuration from its saved Sylve settings. Existing disks and UEFI/TPM state will be preserved. The VM will not be started."
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Reinitialize"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Reinitializing..."
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Reinitializing libvirt config"
+msgstr ""
+
+#: src/lib/components/custom/VM/ReinitializeConfig.svelte
+msgid "Restoring the VM definition from its saved settings without changing its disks."
 msgstr ""

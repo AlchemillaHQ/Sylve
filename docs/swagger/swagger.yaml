@@ -25483,6 +25483,60 @@ paths:
       summary: Get a Virtual Machine's Domain
       tags:
       - VM
+  /vm/{rid}/domain/reinitialize:
+    post:
+      consumes:
+      - application/json
+      description: Rebuild an absent libvirt definition from the saved VM settings
+        without provisioning disks, clearing existing runtime state, or starting the
+        VM.
+      parameters:
+      - description: Virtual Machine RID
+        in: path
+        minimum: 1
+        name: rid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Reinitialize an orphaned Virtual Machine's libvirt configuration
+      tags:
+      - VM
   /vm/{rid}/guest-agent:
     get:
       description: Retrieve operating-system and network information reported by the

@@ -46,6 +46,7 @@
 		getVMLifecycleBadgeStyle
 	} from '$lib/utils/vm/vm';
 	import GuestAgent from '$lib/components/custom/VM/Summary/GuestAgent.svelte';
+	import ReinitializeConfig from '$lib/components/custom/VM/ReinitializeConfig.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import { resolve } from '$app/paths';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
@@ -891,6 +892,9 @@
 			/>
 		</Button>
 	{:else if type === 'remove-orphan' && !shouldHideActionButtons && isOrphanState}
+		{#key `${data.node}:${data.rid}`}
+			<ReinitializeConfig rid={data.rid} hostname={data.node} oncomplete={refreshLifecycleState} />
+		{/key}
 		<Button
 			onclick={() => openRemoveModal()}
 			size="sm"

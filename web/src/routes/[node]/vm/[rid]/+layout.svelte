@@ -13,6 +13,7 @@
 		purgeVMRegistration
 	} from '$lib/api/vm/vm';
 	import LoadingDialog from '$lib/components/custom/Dialog/Loading.svelte';
+	import ReinitializeConfig from '$lib/components/custom/VM/ReinitializeConfig.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { storage } from '$lib';
@@ -586,6 +587,7 @@
 					{/if}
 
 					{#if isOrphanState && !shouldHideActionButtons}
+						<ReinitializeConfig {rid} hostname={node} oncomplete={refreshVmDomain} />
 						<Button
 							onclick={() => openRemoveModal()}
 							size="sm"
