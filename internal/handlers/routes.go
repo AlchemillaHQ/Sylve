@@ -769,6 +769,7 @@ func RegisterRoutes(r *gin.Engine,
 		utilitiesJSON.POST("/downloads", utilitiesHandlers.DownloadFile(utilitiesService))
 		utilitiesJSON.GET("/downloads", utilitiesHandlers.ListDownloads(utilitiesService))
 		utilitiesJSON.GET("/downloads/paths", utilitiesHandlers.GetDownloadPaths())
+		utilitiesJSON.GET("/downloads/storage", utilitiesHandlers.GetDownloadStorage(utilitiesService))
 		utilitiesJSON.GET("/downloads/utype", utilitiesHandlers.ListDownloadsByUType(utilitiesService))
 		utilitiesJSON.PATCH("/downloads/:id", utilitiesHandlers.UpdateDownload(utilitiesService))
 		utilitiesJSON.DELETE("/downloads/:id", utilitiesHandlers.DeleteDownload(utilitiesService))

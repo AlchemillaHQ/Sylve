@@ -77,6 +77,7 @@ type ReceiveOptions struct {
 	MaxFileBytes  int64
 	NormalizeName func(string) (string, error)
 	Open          func(string) (*os.File, string, string, *Failure)
+	RemovePartial func(string) error
 }
 
 func OpenMultipartRequest(
@@ -134,7 +135,11 @@ func ReceiveSingle(
 	keepPartial := false
 	defer func() {
 		if !keepPartial && staged != nil && staged.PartialPath != "" {
-			_ = os.Remove(staged.PartialPath)
+			remove := options.RemovePartial
+			if remove == nil {
+				remove = os.Remove
+			}
+			_ = remove(staged.PartialPath)
 		}
 	}()
 

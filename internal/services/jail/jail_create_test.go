@@ -398,10 +398,21 @@ func seedSwitch(t *testing.T, db *gorm.DB, name string) {
 
 func seedBaseDownload(t *testing.T, db *gorm.DB, uuid string, extractedPath string) {
 	t.Helper()
+	if os.Getenv("SYLVE_DATA_PATH") == "" {
+		t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	}
+	managedPath := filepath.Join(os.Getenv("SYLVE_DATA_PATH"), "downloads", "extracted", uuid)
+	if err := os.MkdirAll(filepath.Dir(managedPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(extractedPath, managedPath); err != nil {
+		t.Fatal(err)
+	}
+	extractedPath = managedPath
 
 	record := utilitiesModels.Downloads{
 		UUID:          uuid,
-		Path:          filepath.Join(extractedPath, ".source"),
+		Path:          filepath.Join(os.Getenv("SYLVE_DATA_PATH"), "downloads", "path", uuid+".txz"),
 		Name:          filepath.Base(extractedPath),
 		Type:          utilitiesModels.DownloadTypePath,
 		URL:           "https://example.invalid/" + uuid,

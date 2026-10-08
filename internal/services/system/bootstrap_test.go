@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	dbpkg "github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -28,7 +29,7 @@ import (
 
 func newBootstrapTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	return testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &models.ZFSCacheInvalidation{})
+	return testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &models.ZFSCacheInvalidation{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
 }
 
 func loadBootstrapSettings(t *testing.T, db *gorm.DB) models.BasicSettings {

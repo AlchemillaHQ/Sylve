@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -130,6 +131,11 @@ func (s *Service) DeleteVolume(ctx context.Context, guid string) error {
 	}
 
 	if volume != nil && volume.Type == gzfs.DatasetTypeVolume {
+		release, err := s.guardDownloadStorageMutation(ctx, volume.Name)
+		if err != nil {
+			return err
+		}
+		defer release()
 		wasEncrypted := volume.IsEncrypted()
 
 		if err := volume.Destroy(ctx, true, false); err != nil {
@@ -161,6 +167,11 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 	}
 
 	if volume != nil && volume.Type == gzfs.DatasetTypeVolume {
+		release, err := s.guardDownloadStorageMutation(ctx, volume.Name)
+		if err != nil {
+			return err
+		}
+		defer release()
 		if s.IsDatasetInUse(guid, false) {
 			return classifyError(ErrConflict, "dataset_in_use_by_vm")
 		}
@@ -176,8 +187,16 @@ func (s *Service) FlashVolume(ctx context.Context, guid string, uuid string) err
 		pSize := utils.HumanFormatToSize(volSizeProp.Value)
 
 		if pSize > 0 {
+			var download utilitiesModels.Downloads
+			if err := s.DB.WithContext(ctx).Where("uuid = ?", uuid).First(&download).Error; err != nil {
+				return classifyError(ErrSourceNotFound, "source_not_found: %w", err)
+			}
+			defer s.DownloadStorage.ReadLock(download.StoragePool)()
 			file, err := s.Libvirt.FindISOByUUID(uuid, true)
 			if file == "" || err != nil {
+				if err != nil {
+					return classifyError(ErrSourceNotFound, "source_not_found: %w", err)
+				}
 				return classifyError(ErrSourceNotFound, "source_not_found")
 			}
 

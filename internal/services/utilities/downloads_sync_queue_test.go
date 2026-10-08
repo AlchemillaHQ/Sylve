@@ -71,7 +71,7 @@ func TestListDownloads_EnqueueSyncOnceWhileQueued(t *testing.T) {
 }
 
 func TestListDownloads_DoesNotEnqueueSyncWhenNoPending(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{}, &utilitiesModels.Upload{})
 
 	enqueueCalls := 0
 	service := &Service{
@@ -105,7 +105,7 @@ func TestListDownloads_DoesNotEnqueueSyncWhenNoPending(t *testing.T) {
 }
 
 func TestListDownloadsEnqueuesSyncForProcessingDownloadAtFullTransferProgress(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{}, &utilitiesModels.Upload{})
 	enqueueCalls := 0
 	service := &Service{
 		DB:            database,

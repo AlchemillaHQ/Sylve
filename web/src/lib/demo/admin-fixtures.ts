@@ -35,7 +35,7 @@ export type DemoAdminResponse<T = unknown> = {
 	ok: boolean;
 };
 
-type PendingUpload = { name: string; size: number };
+type PendingUpload = { name: string; size: number; storagePool: string };
 
 type DemoAdminState = {
 	downloads: Download[];
@@ -108,8 +108,10 @@ function createDownloads(): Download[] {
 		id: index + 1,
 		uuid: profile.media.uuid,
 		path: `/var/sylve/downloads/${profile.media.fileName}`,
+		storagePool: '',
 		name: profile.media.fileName,
 		type: 'http' as const,
+		isUpload: false,
 		url: profile.media.url,
 		progress: 100,
 		size: profile.media.size,
@@ -126,8 +128,10 @@ function createDownloads(): Download[] {
 		id: media.length + 1,
 		uuid: 'demo-freebsd-base-rootfs',
 		path: '/var/sylve/downloads/base.txz',
+		storagePool: '',
 		name: 'FreeBSD 15.0 base.txz',
 		type: 'http',
+		isUpload: false,
 		url: 'https://download.freebsd.org/releases/amd64/15.0-RELEASE/base.txz',
 		progress: 100,
 		size: 210 * 1024 ** 2,
@@ -426,9 +430,14 @@ function stateFor(hostname: string): DemoAdminState {
 	return state;
 }
 
-export function stageDemoDownloaderUpload(hostname: string, name: string, size: number): string {
+export function stageDemoDownloaderUpload(
+	hostname: string,
+	name: string,
+	size: number,
+	storagePool = ''
+): string {
 	const uploadID = `demo-upload-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-	stateFor(hostname).pendingUploads[uploadID] = { name, size };
+	stateFor(hostname).pendingUploads[uploadID] = { name, size, storagePool };
 	return uploadID;
 }
 
@@ -526,6 +535,14 @@ export function handleDemoAdminRequest<T = unknown>(
 ): DemoAdminResponse<T> | null {
 	const state = stateFor(hostname);
 	const body = payload(config);
+	if (path === '/utilities/downloads/storage' && method === 'GET') {
+		return success({
+			choices: [
+				{ storagePool: '', label: 'Default', available: true },
+				{ storagePool: 'atlas', label: 'atlas', available: true }
+			]
+		}) as DemoAdminResponse<T>;
+	}
 
 	if (path === '/utilities/downloads/utype' && method === 'GET') {
 		return success(
@@ -547,8 +564,10 @@ export function handleDemoAdminRequest<T = unknown>(
 			id,
 			uuid: `demo-download-${id}-${Date.now().toString(36)}`,
 			path: `/var/sylve/downloads/${name}`,
+			storagePool: stringValue(body, 'storagePool'),
 			name,
 			type: url.startsWith('/') ? 'path' : url.startsWith('magnet:') ? 'torrent' : 'http',
+			isUpload: false,
 			url,
 			progress: 100,
 			size: 384 * 1024 ** 2,
@@ -579,8 +598,10 @@ export function handleDemoAdminRequest<T = unknown>(
 			id,
 			uuid: `demo-uploaded-${id}`,
 			path: `/var/sylve/downloads/${pending.name}`,
+			storagePool: pending.storagePool,
 			name: pending.name,
 			type: 'path',
+			isUpload: true,
 			url: `/tmp/${pending.name}`,
 			progress: 100,
 			size: pending.size,

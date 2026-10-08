@@ -322,7 +322,10 @@ func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
 	const mediaUUID = "cloud-media-qcow2"
 	const poolName = "tank"
 
-	mediaPath := filepath.Join(t.TempDir(), "cloud-image.img")
+	mediaPath := filepath.Join(config.GetDownloadsPath("path"), "cloud-image.img")
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(mediaPath, []byte("qcow2"), 0o644); err != nil {
 		t.Fatalf("failed to create media file: %v", err)
 	}
@@ -440,7 +443,10 @@ func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
 	const mediaUUID = "cloud-media-raw"
 	const poolName = "tank"
 
-	mediaPath := filepath.Join(t.TempDir(), "cloud-image.raw")
+	mediaPath := filepath.Join(config.GetDownloadsPath("path"), "cloud-image.raw")
+	if err := os.MkdirAll(filepath.Dir(mediaPath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(mediaPath, []byte("raw"), 0o644); err != nil {
 		t.Fatalf("failed to create media file: %v", err)
 	}

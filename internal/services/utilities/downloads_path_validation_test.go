@@ -116,7 +116,7 @@ func TestDownloadFileKeepsPendingIdentityWhenQueueIsUnavailable(t *testing.T) {
 }
 
 func TestUpdateDownloadKeepsStoredPathAndPreservesExplicitFalse(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{}, &utilitiesModels.Upload{})
 	download := utilitiesModels.Downloads{
 		UUID:                   "metadata-update",
 		Path:                   "/managed/original.img",

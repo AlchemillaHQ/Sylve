@@ -14,6 +14,7 @@ GIT_COMMIT != git rev-parse --short HEAD 2>/dev/null || echo unknown
 
 INTEGRATION_PACKAGES := \
 	./internal/console \
+	./internal/downloadstorage \
 	./internal/mountutil \
 	./internal/services/disk \
 	./internal/services/iscsi \
@@ -23,6 +24,7 @@ INTEGRATION_PACKAGES := \
 	./internal/services/network \
 	./internal/services/cluster \
 	./internal/services/zelta \
+	./internal/services/utilities \
 	./internal/services/zfs \
 	./internal/zfsutil \
 	./pkg/network/bridgevlan \

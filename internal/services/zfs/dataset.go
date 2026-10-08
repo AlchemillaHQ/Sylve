@@ -18,12 +18,25 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
 var ErrCannotDeletePoolRootDataset = errors.New("cannot_delete_pool_root_dataset")
+
+func (s *Service) guardDownloadStorageMutation(ctx context.Context, names ...string) (func(), error) {
+	release, err := s.DownloadStorage.TryMutation(names...)
+	if err != nil {
+		return nil, downloadStorageMutationError(err)
+	}
+	if err := downloadstorage.RequireDatasetUnused(ctx, s.DB, names...); err != nil {
+		release()
+		return nil, downloadStorageMutationError(err)
+	}
+	return release, nil
+}
 
 func validateDatasetDeletionTargets(datasets ...*gzfs.Dataset) error {
 	for _, dataset := range datasets {
@@ -199,7 +212,7 @@ func (s *Service) BulkDeleteDataset(
 		return err
 	}
 
-	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads"}
 	selected := make([]*gzfs.Dataset, 0, len(targets))
 	for _, target := range targets {
 		dataset, lookupErr := s.GZFS.ZFS.Get(ctx, target.Name, false)
@@ -226,6 +239,17 @@ func (s *Service) BulkDeleteDataset(
 		}
 		selected = append(selected, dataset)
 	}
+	var names []string
+	for _, dataset := range selected {
+		if dataset.Type != gzfs.DatasetTypeSnapshot {
+			names = append(names, dataset.Name)
+		}
+	}
+	release, err := s.guardDownloadStorageMutation(ctx, names...)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	// A recursive parent deletion already covers selected descendants and
 	// snapshots. Keeping only independent roots avoids a second destroy call on
@@ -280,6 +304,9 @@ func (s *Service) BulkDeleteDataset(
 }
 
 func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {
+	if err := downloadstorage.RequireDatasetGUIDUnused(context.Background(), s.DB, guid); err != nil {
+		return true
+	}
 	var count int64
 
 	if err := s.DB.

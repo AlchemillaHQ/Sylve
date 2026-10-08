@@ -27,6 +27,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -47,6 +48,8 @@ type Service struct {
 	NetworkService networkServiceInterfaces.NetworkServiceInterface
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
+
+	DownloadStorage *downloadstorage.Resolver
 
 	crudMutex              sync.Mutex
 	createMutex            sync.Mutex
@@ -111,6 +114,7 @@ func NewJailService(
 	systemService systemServiceInterfaces.SystemServiceInterface,
 	gzfs *gzfs.Client) jailServiceInterfaces.JailServiceInterface {
 	s := &Service{
+		DownloadStorage:     downloadstorage.New(db, gzfs),
 		DB:                  db,
 		NetworkService:      networkService,
 		System:              systemService,

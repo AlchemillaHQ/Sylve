@@ -21,14 +21,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
-	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/cavaliergopher/grab/v3"
@@ -58,15 +57,26 @@ func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 	}
 
 	needsSync := false
+	var paths []string
 	for i := range downloads {
 		dl := &downloads[i]
 		if dl.Files == nil {
 			dl.Files = make([]utilitiesModels.DownloadedFile, 0)
 		}
+		if dl.Type == utilitiesModels.DownloadTypePath {
+			paths = append(paths, dl.URL)
+		}
 		if dl.Status == utilitiesModels.DownloadStatusPending ||
 			dl.Status == utilitiesModels.DownloadStatusProcessing {
 			needsSync = true
 		}
+	}
+	uploads, err := s.completedDownloaderUploadPaths(paths)
+	if err != nil {
+		return nil, err
+	}
+	for i := range downloads {
+		downloads[i].IsUpload = uploads[downloads[i].URL]
 	}
 
 	if needsSync {
@@ -74,6 +84,24 @@ func (s *Service) ListDownloads() ([]utilitiesModels.Downloads, error) {
 	}
 
 	return downloads, nil
+}
+
+func (s *Service) completedDownloaderUploadPaths(paths []string) (map[string]bool, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	var uploadedPaths []string
+	if err := s.DB.Model(&utilitiesModels.Upload{}).
+		Where("scope = ? AND status = ? AND path IN ?",
+			utilitiesModels.UploadScopeDownloader, utilitiesModels.UploadStatusCompleted, paths).
+		Pluck("path", &uploadedPaths).Error; err != nil {
+		return nil, fmt.Errorf("resolve download origins: %w", err)
+	}
+	uploads := make(map[string]bool, len(uploadedPaths))
+	for _, path := range uploadedPaths {
+		uploads[path] = true
+	}
+	return uploads, nil
 }
 
 func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGroupedDownload, error) {
@@ -92,7 +120,7 @@ func (s *Service) ListDownloadsByUType() ([]utilitiesServiceInterfaces.UTypeGrou
 
 		label := dl.Name
 
-		if dl.ExtractedPath != "" {
+		if _, err := s.resolveDownloadStorage(&dl, false); err == nil && dl.ExtractedPath != "" {
 			info, err := os.Stat(dl.ExtractedPath)
 			if err == nil {
 				var targetFile string
@@ -197,7 +225,6 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, fmt.Errorf("%w: torrent post-processing is not supported", ErrDownloadUnprocessable)
 		}
 		download.Type = utilitiesModels.DownloadTypeTorrent
-		download.Path = filepath.Join(config.GetDownloadsPath("torrents"), download.UUID)
 		download.IgnoreTLS = false
 
 	case isHTTPDownloadSource(source):
@@ -216,7 +243,6 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			}
 		}
 		download.Type = utilitiesModels.DownloadTypeHTTP
-		download.Path = filepath.Clean(filepath.Join(config.GetDownloadsPath("http"), download.Name))
 
 	case filepath.IsAbs(source):
 		sourcePath := filepath.Clean(source)
@@ -242,7 +268,6 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 		}
 		download.URL = sourcePath
 		download.Type = utilitiesModels.DownloadTypePath
-		download.Path = filepath.Clean(filepath.Join(config.GetDownloadsPath("path"), download.Name))
 		download.IgnoreTLS = false
 
 	default:
@@ -250,10 +275,27 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 	}
 
 	if err := ValidateDownloaderPostProcessOptions(
-		filepath.Base(download.Path),
+		download.Name,
 		download.AutomaticExtraction,
 		download.AutomaticRawConversion,
 	); err != nil {
+		return 0, err
+	}
+	defer s.DownloadStorage.ReadLock(req.StoragePool)()
+	storage, layout, err := s.DownloadStorage.Reserve(context.Background(), req.StoragePool)
+	if err != nil {
+		return 0, err
+	}
+	download.DownloadStorage = storage
+	switch download.Type {
+	case utilitiesModels.DownloadTypeTorrent:
+		download.Path = filepath.Join(layout.Dir("torrents"), download.UUID)
+	case utilitiesModels.DownloadTypeHTTP:
+		download.Path = filepath.Join(layout.Dir("http"), download.Name)
+	case utilitiesModels.DownloadTypePath:
+		download.Path = filepath.Join(layout.Dir("path"), download.Name)
+	}
+	if _, err := s.resolveDownloadStorage(&download, true); err != nil {
 		return 0, err
 	}
 	if download.Type != utilitiesModels.DownloadTypeTorrent && download.URL != download.Path {
@@ -419,6 +461,12 @@ func (s *Service) StartDownload(id *uint) error {
 		download.Status == utilitiesModels.DownloadStatusFailed {
 		return nil
 	}
+	defer s.DownloadStorage.ReadLock(download.StoragePool)()
+	layout, err := s.resolveDownloadStorage(download, true)
+	if err != nil {
+		s.interruptDownloadStorage(download, err)
+		return err
+	}
 	if download.Status == utilitiesModels.DownloadStatusProcessing &&
 		(download.Type == utilitiesModels.DownloadTypeHTTP || download.Type == utilitiesModels.DownloadTypePath) {
 		info, err := os.Stat(download.Path)
@@ -440,14 +488,14 @@ func (s *Service) StartDownload(id *uint) error {
 		if !utils.IsMagnetURI(download.URL) {
 			return s.failDownload(download, fmt.Errorf("invalid_torrent_source"))
 		}
-		torrentRoot := filepath.Join(config.GetDownloadsPath("torrents"), download.UUID)
-		if filepath.Clean(download.Path) != torrentRoot {
-			return s.failDownload(download, fmt.Errorf("invalid_torrent_destination"))
-		}
-
+		torrentRoot := filepath.Join(layout.Dir("torrents"), download.UUID)
 		download.Path = torrentRoot
-		t, err := client.AddURI(download.URL, download.UUID, torrentRoot)
+		t, err := client.AddURI(download.URL, download.UUID, torrentRoot, layout.ValidatePath)
 		if err != nil {
+			if downloadstorage.IsError(err) {
+				s.interruptDownloadStorage(download, err)
+				return err
+			}
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("Failed to add torrent")
 			download.Status = utilitiesModels.DownloadStatusFailed
 			download.Error = err.Error()
@@ -464,7 +512,9 @@ func (s *Service) StartDownload(id *uint) error {
 			return err
 		}
 
-		download.Name = t.Name()
+		if name := t.Name(); name != "" {
+			download.Name = name
+		}
 		download.Error = ""
 
 		if err := s.DB.Save(download).Error; err != nil {
@@ -475,15 +525,14 @@ func (s *Service) StartDownload(id *uint) error {
 		if !isHTTPDownloadSource(download.URL) {
 			return s.failDownload(download, fmt.Errorf("invalid_http_source"))
 		}
-		if download.Error != "" {
-			if err := s.DB.Model(download).UpdateColumn("error", "").Error; err != nil {
-				return fmt.Errorf("clear_download_error: %w", err)
-			}
-			download.Error = ""
-		}
 		if download.Progress == 0 {
 			if err := ensureDownloadDestinationAvailable(download.Path); err != nil {
 				return s.failDownload(download, err)
+			}
+			// Persist admission before grab creates a partial file. A restart must
+			// distinguish our reserved transfer from a late destination collision.
+			if err := s.DB.Model(download).UpdateColumn("progress", 1).Error; err != nil {
+				return err
 			}
 		}
 		req, err := grab.NewRequest(download.Path, download.URL)
@@ -502,6 +551,11 @@ func (s *Service) StartDownload(id *uint) error {
 		s.httpRspMu.Lock()
 		s.httpResponses[download.UUID] = resp
 		s.httpRspMu.Unlock()
+		if download.Error != "" {
+			if err := s.DB.Model(download).UpdateColumn("error", "").Error; err != nil {
+				return fmt.Errorf("clear_download_error: %w", err)
+			}
+		}
 
 	case utilitiesModels.DownloadTypePath:
 		destPath := filepath.Clean(download.Path)
@@ -514,9 +568,18 @@ func (s *Service) StartDownload(id *uint) error {
 		if sourcePath != destPath {
 			publishedUpload, err := s.publishCompletedDownloaderUpload(sourcePath, destPath)
 			if err == nil && !publishedUpload {
-				err = copyFileNoReplace(sourcePath, destPath)
+				err = copyFileNoReplace(sourcePath, destPath, func() error {
+					if err := s.DownloadStorage.Recheck(context.Background(), layout, true); err != nil {
+						return err
+					}
+					return layout.ValidatePath(destPath)
+				})
 			}
 			if err != nil {
+				if downloadstorage.IsError(err) {
+					s.interruptDownloadStorage(download, err)
+					return err
+				}
 				logger.L.Error().Uint("download_id", *id).Err(err).Msg("path_publish_failed")
 				download.Status = utilitiesModels.DownloadStatusFailed
 				download.Error = err.Error()
@@ -553,6 +616,10 @@ func (s *Service) StartDownload(id *uint) error {
 			}
 		}
 
+		if _, err := s.resolveDownloadStorage(download, true); err != nil {
+			s.interruptDownloadStorage(download, err)
+			return err
+		}
 		info, err := os.Stat(destPath)
 		if err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("file_stat_failed")
@@ -584,11 +651,12 @@ func (s *Service) StartDownload(id *uint) error {
 			download.Status = utilitiesModels.DownloadStatusDone
 		}
 
-		if err := s.DB.Model(download).Select("Status", "Progress", "Size", "Path").Updates(map[string]any{
+		if err := s.DB.Model(download).Select("Status", "Progress", "Size", "Path", "Error").Updates(map[string]any{
 			"status":   download.Status,
 			"progress": download.Progress,
 			"size":     download.Size,
 			"path":     download.Path,
+			"error":    "",
 		}).Error; err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("failed_to_update_download_record")
 			return fmt.Errorf("failed_to_update_download_record: %w", err)
@@ -645,6 +713,12 @@ func (s *Service) StartPostProcess(id *uint) (resultErr error) {
 	if d.Status != utilitiesModels.DownloadStatusProcessing {
 		return nil
 	}
+	defer s.DownloadStorage.ReadLock(d.StoragePool)()
+	layout, err := s.resolveDownloadStorage(&d, true)
+	if err != nil {
+		s.interruptDownloadStorage(&d, err)
+		return err
+	}
 
 	if !d.AutomaticExtraction && !d.AutomaticRawConversion {
 		return s.finishDownload(&d, "")
@@ -660,7 +734,11 @@ func (s *Service) StartPostProcess(id *uint) (resultErr error) {
 	var extractedPath string
 
 	if d.AutomaticExtraction {
-		extractsPath := filepath.Join(config.GetDownloadsPath("extracted"), d.UUID)
+		extractsPath := filepath.Join(layout.Dir("extracted"), d.UUID)
+		if err := layout.ValidateTree(extractsPath); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
+		}
 		if err := utils.ResetDir(extractsPath); err != nil {
 			return s.failDownload(&d, fmt.Errorf("reset extracts: %w", err))
 		}
@@ -689,10 +767,18 @@ func (s *Service) StartPostProcess(id *uint) (resultErr error) {
 
 		outName := defaultOutName(d.Path, kind.Extension)
 		outFile := filepath.Join(extractsPath, outName)
+		if err := layout.ValidatePath(outFile); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
+		}
 
 		if err := utils.DecompressOne(mime, d.Path, outFile); err != nil {
 			logger.L.Error().Msgf("decompress failed: %v", err)
 			return s.failDownload(&d, err)
+		}
+		if err := s.DownloadStorage.Recheck(context.Background(), layout, true); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
 		}
 
 		if files, _ := os.ReadDir(extractsPath); len(files) == 1 {
@@ -709,13 +795,33 @@ func (s *Service) StartPostProcess(id *uint) (resultErr error) {
 		if extractedPath != "" {
 			srcPath = extractedPath
 		}
+		if err := layout.ValidatePath(srcPath); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
+		}
 
 		dstPath := strings.TrimSuffix(srcPath, filepath.Ext(srcPath)) + ".raw"
-		err := qemuimg.Convert(srcPath, dstPath, qemuimg.FormatRaw)
+		if err := layout.ValidatePath(dstPath); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
+		}
+		err := s.convertDownloadToRaw(d, layout, srcPath, dstPath)
 
 		if err != nil {
+			if downloadstorage.IsError(err) {
+				s.interruptDownloadStorage(&d, err)
+				return err
+			}
 			logger.L.Error().Msgf("raw conversion failed: %v", err)
 			return s.failDownload(&d, err)
+		}
+		if err := s.DownloadStorage.Recheck(context.Background(), layout, true); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
+		}
+		if err := layout.ValidatePath(srcPath); err != nil {
+			s.interruptDownloadStorage(&d, err)
+			return err
 		}
 
 		if err := os.Remove(srcPath); err != nil {
@@ -774,14 +880,20 @@ func (s *Service) flipToProcessing(id uint) bool {
 func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath string) error {
 	d.Progress = 100
 	d.ExtractedPath = extractedPath
+	if _, err := s.resolveDownloadStorage(d, true); err != nil {
+		s.interruptDownloadStorage(d, err)
+		return err
+	}
 
-	err := s.DB.Model(d).Select("Status", "Progress", "ExtractedPath", "Name", "Path").
+	err := s.DB.Model(d).Select("Status", "Progress", "Size", "ExtractedPath", "Name", "Path", "Error").
 		Updates(map[string]any{
 			"name":           d.Name,
 			"path":           d.Path,
 			"status":         utilitiesModels.DownloadStatusDone,
 			"progress":       d.Progress,
+			"size":           d.Size,
 			"extracted_path": d.ExtractedPath,
+			"error":          "",
 		}).Error
 
 	if err == nil && s.TelemetryDB != nil {
@@ -795,6 +907,12 @@ func (s *Service) finishDownload(d *utilitiesModels.Downloads, extractedPath str
 }
 
 func (s *Service) failDownload(d *utilitiesModels.Downloads, cause error) error {
+	if d.StoragePool != "" {
+		if _, err := s.resolveDownloadStorage(d, true); err != nil {
+			s.interruptDownloadStorage(d, err)
+			return err
+		}
+	}
 	d.Status = "failed"
 	d.Error = cause.Error()
 	err := s.DB.Model(d).Select("Status", "Error").
@@ -864,6 +982,13 @@ func (s *Service) UpdateDownload(
 	); err != nil {
 		return nil, err
 	}
+	if d.Type == utilitiesModels.DownloadTypePath {
+		uploads, err := s.completedDownloaderUploadPaths([]string{d.URL})
+		if err != nil {
+			return nil, err
+		}
+		d.IsUpload = uploads[d.URL]
+	}
 
 	updates := map[string]any{}
 
@@ -888,6 +1013,9 @@ func (s *Service) UpdateDownload(
 		return nil, fmt.Errorf("%w: post-processing requires a completed download", ErrDownloadActive)
 	}
 	if needPostProc {
+		if _, err := s.resolveDownloadStorage(&d, true); err != nil {
+			return nil, err
+		}
 		updates["status"] = utilitiesModels.DownloadStatusProcessing
 		updates["error"] = ""
 	}
@@ -920,6 +1048,7 @@ func (s *Service) UpdateDownload(
 	if updated.Files == nil {
 		updated.Files = make([]utilitiesModels.DownloadedFile, 0)
 	}
+	updated.IsUpload = d.IsUpload
 	return &updated, nil
 }
 
@@ -939,11 +1068,20 @@ func (s *Service) SyncDownloadProgress() error {
 		if s.isDownloadDeleting(d.ID) {
 			continue
 		}
+		releaseStorage := s.DownloadStorage.ReadLock(d.StoragePool)
+		if d.Status == utilitiesModels.DownloadStatusPending || d.Status == utilitiesModels.DownloadStatusProcessing {
+			if _, err := s.resolveDownloadStorage(&d, true); err != nil {
+				s.interruptDownloadStorage(&d, err)
+				releaseStorage()
+				continue
+			}
+		}
 		switch d.Type {
 		case utilitiesModels.DownloadTypeTorrent:
 			client, err := s.activeTorrentClient()
 			if err != nil {
-				return err
+				releaseStorage()
+				continue
 			}
 			s.syncTorrent(client, &d)
 		case utilitiesModels.DownloadTypeHTTP:
@@ -953,6 +1091,7 @@ func (s *Service) SyncDownloadProgress() error {
 		default:
 			logger.L.Warn().Msgf("Unknown download type: %s", d.Type)
 		}
+		releaseStorage()
 	}
 	return nil
 }
@@ -998,7 +1137,9 @@ func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.D
 		download.Progress = min(99, int(100*st.BytesCompleted/st.Size))
 	}
 	download.Size = st.Size
-	download.Name = st.Name
+	if st.Name != "" {
+		download.Name = st.Name
+	}
 
 	if st.MetadataReady && st.Complete {
 		files, err := t.Files()
@@ -1006,6 +1147,9 @@ func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.D
 			err = s.persistCompletedTorrentFiles(download, files)
 		}
 		if err != nil {
+			if downloadstorage.IsError(err) {
+				s.interruptDownloadStorage(download, err)
+			}
 			logger.L.Error().Err(err).Msgf("Failed to persist completed torrent %s", download.UUID)
 			return
 		}
@@ -1047,7 +1191,11 @@ func (s *Service) persistCompletedTorrentFiles(
 		return errors.New("completed torrent contains no files")
 	}
 
-	torrentRoot := filepath.Clean(config.GetDownloadsPath("torrents"))
+	layout, err := s.resolveDownloadStorage(download, true)
+	if err != nil {
+		return err
+	}
+	torrentRoot := layout.Dir("torrents")
 	downloadRoot := filepath.Clean(filepath.Join(torrentRoot, download.UUID))
 	if !managedDescendant(torrentRoot, downloadRoot) || filepath.Clean(download.Path) != downloadRoot {
 		return errors.New("completed torrent has an unsafe path")
@@ -1064,6 +1212,9 @@ func (s *Service) persistCompletedTorrentFiles(
 		if !managedDescendant(downloadRoot, candidate) {
 			return errors.New("completed torrent file escapes its managed root")
 		}
+		if err := layout.ValidatePath(candidate); err != nil {
+			return err
+		}
 		resolvedCandidate, err := resolveSignedDownloadPath(downloadRoot, candidate)
 		if err != nil {
 			return fmt.Errorf("inspect completed torrent file: %w", err)
@@ -1079,8 +1230,11 @@ func (s *Service) persistCompletedTorrentFiles(
 			Size:       info.Size(),
 		})
 	}
+	if err := s.DownloadStorage.Recheck(context.Background(), layout, true); err != nil {
+		return err
+	}
 
-	err := s.DB.Transaction(func(tx *gorm.DB) error {
+	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("download_id = ?", download.ID).
 			Delete(&utilitiesModels.DownloadedFile{}).Error; err != nil {
 			return fmt.Errorf("replace completed torrent file catalog: %w", err)
@@ -1131,7 +1285,7 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 	s.httpRspMu.Unlock()
 
 	if ok {
-		download.Progress = int(100 * resp.Progress())
+		download.Progress = max(1, int(100*resp.Progress()))
 		if info, err := os.Stat(resp.Filename); err == nil {
 			download.Size = info.Size()
 		}
@@ -1140,6 +1294,10 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 
 		if resp.IsComplete() {
 			if err := resp.Err(); err != nil {
+				if _, storageErr := s.resolveDownloadStorage(download, true); storageErr != nil {
+					s.interruptDownloadStorage(download, storageErr)
+					return
+				}
 				download.Error = err.Error()
 				download.Status = "failed"
 				failed = true
@@ -1196,16 +1354,8 @@ func (s *Service) syncHTTP(download *utilitiesModels.Downloads) {
 		download.Size = info.Size()
 
 		if !download.AutomaticExtraction && !download.AutomaticRawConversion {
-			download.Progress = 100
-			download.Status = utilitiesModels.DownloadStatusDone
-			if err := s.DB.Model(download).Select("Progress", "Size", "Status").Updates(download).Error; err != nil {
+			if err := s.finishDownload(download, download.ExtractedPath); err != nil {
 				logger.L.Error().Msgf("syncHTTP: failed to finalize processing download ID=%d: %v", download.ID, err)
-			}
-			if s.TelemetryDB != nil {
-				db.FinalizeAsyncAuditRecord(s.TelemetryDB, "file_download", download.ID, "success", "", map[string]any{
-					"downloadId": download.ID,
-					"status":     "success",
-				})
 			}
 			return
 		}
@@ -1398,12 +1548,22 @@ func addDownloadCleanupPath(
 	return nil
 }
 
-func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadCleanupPlan, error) {
+func (s *Service) buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadCleanupPlan, error) {
 	plan := downloadCleanupPlan{Paths: make([]downloadCleanupPath, 0, 2)}
-	extractedBase := filepath.Clean(config.GetDownloadsPath("extracted"))
+	layout, err := s.DownloadStorage.Resolve(context.Background(), download.DownloadStorage, true)
+	if err != nil {
+		return plan, err
+	}
+	if download.UUID == "" || strings.HasPrefix(download.UUID, ".") || strings.ContainsAny(download.UUID, "/\\\x00") {
+		return plan, downloadstorage.ErrMismatch
+	}
+	extractedBase := layout.Dir("extracted")
 	extractedRoot := filepath.Clean(filepath.Join(extractedBase, download.UUID))
 	if !managedDescendant(extractedBase, extractedRoot) {
 		return plan, fmt.Errorf("unsafe extracted download path")
+	}
+	if err := layout.ValidatePath(extractedRoot); err != nil {
+		return plan, err
 	}
 	if err := addDownloadCleanupPath(&plan, extractedRoot, true, true); err != nil {
 		return plan, err
@@ -1415,8 +1575,11 @@ func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadClean
 		if download.Type == utilitiesModels.DownloadTypePath {
 			managedRootName = "path"
 		}
-		managedRoot := filepath.Clean(config.GetDownloadsPath(managedRootName))
+		managedRoot := layout.Dir(managedRootName)
 		primaryPath := filepath.Clean(download.Path)
+		if err := layout.ValidatePath(primaryPath); err != nil {
+			return plan, err
+		}
 		if !managedDescendant(managedRoot, primaryPath) && !managedDescendant(extractedRoot, primaryPath) {
 			return plan, fmt.Errorf("unsafe managed download path")
 		}
@@ -1432,7 +1595,7 @@ func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadClean
 		}
 
 	case utilitiesModels.DownloadTypeTorrent:
-		torrentBase := filepath.Clean(config.GetDownloadsPath("torrents"))
+		torrentBase := layout.Dir("torrents")
 		expectedPath := filepath.Clean(filepath.Join(torrentBase, download.UUID))
 		if !managedDescendant(torrentBase, expectedPath) {
 			return plan, fmt.Errorf("unsafe torrent download path")
@@ -1443,6 +1606,9 @@ func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadClean
 			if storedPath != expectedPath {
 				return plan, fmt.Errorf("unexpected torrent download path")
 			}
+			if err := layout.ValidatePath(storedPath); err != nil {
+				return plan, err
+			}
 			if err := addDownloadCleanupPath(&plan, storedPath, true, false); err != nil {
 				return plan, err
 			}
@@ -1452,6 +1618,13 @@ func buildDownloadCleanupPlan(download utilitiesModels.Downloads) (downloadClean
 		return plan, fmt.Errorf("unsupported download type")
 	}
 
+	for _, target := range plan.Paths {
+		if target.Recursive {
+			if err := layout.ValidateTree(target.Path); err != nil {
+				return plan, err
+			}
+		}
+	}
 	return plan, nil
 }
 
@@ -1600,6 +1773,13 @@ func (s *Service) deletePreparedDownload(
 		return err
 	}
 	for _, target := range plan.Paths {
+		layout, err := s.DownloadStorage.Resolve(context.Background(), download.DownloadStorage, true)
+		if err != nil {
+			return err
+		}
+		if err := layout.ValidateTree(target.Path); err != nil {
+			return err
+		}
 		if err := removeDownloadCleanupPath(target); err != nil {
 			return err
 		}
@@ -1692,6 +1872,11 @@ func (s *Service) DeleteDownloads(
 	if err := s.DB.Where("id IN ?", requested).Find(&found).Error; err != nil {
 		return result, fmt.Errorf("load downloads for deletion: %w", err)
 	}
+	pools := make([]string, 0, len(found))
+	for _, download := range found {
+		pools = append(pools, download.StoragePool)
+	}
+	defer s.DownloadStorage.ReadLock(pools...)()
 	byID := make(map[uint]utilitiesModels.Downloads, len(found))
 	for _, download := range found {
 		byID[download.ID] = download
@@ -1714,12 +1899,17 @@ func (s *Service) DeleteDownloads(
 
 	plans := make(map[uint]downloadCleanupPlan, len(downloads))
 	unsafeCleanup := false
+	preflightError := ErrDownloadConflict
 	for i := range downloads {
 		download := &downloads[i]
-		plan, err := buildDownloadCleanupPlan(*download)
+		plan, err := s.buildDownloadCleanupPlan(*download)
 		if err != nil {
 			logger.L.Warn().Uint("download_id", download.ID).Err(err).Msg("Rejected unsafe download cleanup plan")
 			failure := downloadDeleteFailure(download, download.ID, "download_cleanup_unsafe")
+			if downloadstorage.IsError(err) {
+				failure.Code = downloadstorage.ErrorCode(err)
+				preflightError = err
+			}
 			for _, candidate := range []string{download.Path, download.ExtractedPath} {
 				candidate = strings.TrimSpace(candidate)
 				if candidate != "" && !utils.Contains(failure.RetainedPaths, candidate) {
@@ -1733,7 +1923,7 @@ func (s *Service) DeleteDownloads(
 		plans[download.ID] = plan
 	}
 	if unsafeCleanup {
-		return result, ErrDownloadConflict
+		return result, preflightError
 	}
 
 	references, err := s.findDownloadVMReferences(downloads)
@@ -1782,17 +1972,38 @@ func (s *Service) DeleteDownloads(
 
 	for _, download := range downloads {
 		plan := plans[download.ID]
+		if _, err := s.buildDownloadCleanupPlan(download); err != nil {
+			failure := downloadDeleteFailure(&download, download.ID, "download_cleanup_unsafe")
+			if downloadstorage.IsError(err) {
+				failure.Code = downloadstorage.ErrorCode(err)
+				failure.RetainedPaths = []string{download.Path}
+				preflightError = err
+			} else {
+				failure.RetainedPaths = retainedDownloadPaths(plan)
+			}
+			result.Failed = append(result.Failed, failure)
+			continue
+		}
 		if err := s.deletePreparedDownload(download, plan); err != nil {
 			logger.L.Error().Uint("download_id", download.ID).Err(err).Msg("Failed to delete download cleanly")
-			s.markDownloadDeleteCleanupFailed(download)
 			failure := downloadDeleteFailure(&download, download.ID, "download_cleanup_failed")
-			failure.RetainedPaths = retainedDownloadPaths(plan)
+			if downloadstorage.IsError(err) {
+				failure.Code = downloadstorage.ErrorCode(err)
+				failure.RetainedPaths = []string{download.Path}
+				preflightError = err
+			} else {
+				s.markDownloadDeleteCleanupFailed(download)
+				failure.RetainedPaths = retainedDownloadPaths(plan)
+			}
 			result.Failed = append(result.Failed, failure)
 			continue
 		}
 		result.Deleted = append(result.Deleted, downloadDeleteItem(download))
 	}
 	if len(result.Failed) > 0 {
+		if downloadstorage.IsError(preflightError) {
+			return result, preflightError
+		}
 		return result, ErrDownloadCleanup
 	}
 	return result, nil

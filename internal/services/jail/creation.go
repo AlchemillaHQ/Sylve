@@ -596,7 +596,11 @@ func (s *Service) provisionJailRoot(ctx context.Context, req jailServiceInterfac
 		}
 		source, err = s.resolveBootstrapMountpoint(ctx, identity)
 	} else {
-		source, err = s.FindBaseByUUID(req.Base)
+		var release func()
+		source, release, err = s.acquireBaseByUUID(req.Base)
+		if release != nil {
+			defer release()
+		}
 	}
 	if err != nil {
 		return nil, "", err

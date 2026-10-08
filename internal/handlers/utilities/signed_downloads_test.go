@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -161,5 +162,29 @@ func TestSignedDownloadURLIncludesFilename(t *testing.T) {
 	}
 	if got := response.Header().Get("Content-Disposition"); !strings.Contains(got, download.Name) {
 		t.Fatalf("Content-Disposition=%q", got)
+	}
+}
+
+func TestSignedDownloadHandlerDoesNotServeDefaultForUnavailablePool(t *testing.T) {
+	service, download := newSignedDownloadHandlerService(t)
+	capability, err := service.CreateSignedDownloadURL(download.UUID, download.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DB.Model(&download).Updates(map[string]any{"storage_pool": "missing", "storage_root": "/missing", "storage_pool_guid": "pool", "storage_dataset_guid": "dataset"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Match([]string{http.MethodGet, http.MethodHead}, "/api/utilities/downloads/:uuid/:filename", DownloadFileFromSignedURL(service))
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(method, capability.URL, nil))
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "download-payload") {
+			t.Fatalf("unavailable pool served Default: HTTP %d %q", response.Code, response.Body.String())
+		}
+		if method == http.MethodGet && !strings.Contains(response.Body.String(), downloadstorage.ErrUnavailable.Error()) {
+			t.Fatalf("storage error hidden: %s", response.Body.String())
+		}
 	}
 }

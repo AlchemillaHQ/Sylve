@@ -15,8 +15,12 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailService "github.com/alchemillahq/sylve/internal/services/jail"
+	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
 	startupService "github.com/alchemillahq/sylve/internal/services/startup"
+	systemService "github.com/alchemillahq/sylve/internal/services/system"
+	utilitiesService "github.com/alchemillahq/sylve/internal/services/utilities"
+	zfsService "github.com/alchemillahq/sylve/internal/services/zfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -90,5 +94,12 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 	}
 	if apiNetwork != zeltaNetwork {
 		t.Fatal("expected API network service and zelta network service to share the same instance")
+	}
+	resolver := registry.UtilitiesService.(*utilitiesService.Service).DownloadStorage
+	if resolver == nil || resolver != jailSvc.DownloadStorage ||
+		resolver != registry.LibvirtService.(*libvirtService.Service).DownloadStorage ||
+		resolver != registry.SystemService.(*systemService.Service).DownloadStorage ||
+		resolver != registry.ZfsService.(*zfsService.Service).DownloadStorage || resolver != registry.ZeltaService.DownloadStorage {
+		t.Fatal("download payload users and destructive operations must share one storage gate")
 	}
 }

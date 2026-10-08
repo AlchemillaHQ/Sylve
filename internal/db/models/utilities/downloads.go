@@ -43,12 +43,23 @@ type DownloadedFile struct {
 	Size       int64     `json:"size" gorm:"not null"`
 }
 
+// DownloadStorage binds managed payloads to a server-resolved storage target.
+// Empty fields on older records retain the Default storage contract.
+type DownloadStorage struct {
+	StoragePool        string `json:"storagePool" gorm:"not null;default:'';index"`
+	StorageRoot        string `json:"-" gorm:"not null;default:''"`
+	StoragePoolGUID    string `json:"-" gorm:"not null;default:''"`
+	StorageDatasetGUID string `json:"-" gorm:"not null;default:''"`
+}
+
 type Downloads struct {
+	DownloadStorage
 	ID                     uint             `json:"id" gorm:"primaryKey"`
 	UUID                   string           `json:"uuid" gorm:"unique;not null"`
 	Path                   string           `json:"path" gorm:"unique;not null"`
 	Name                   string           `json:"name" gorm:"not null"`
 	Type                   DownloadType     `json:"type" gorm:"not null"`
+	IsUpload               bool             `json:"isUpload" gorm:"-"`
 	URL                    string           `json:"url" gorm:"unique;not null"`
 	Progress               int              `json:"progress" gorm:"not null"`
 	Size                   int64            `json:"size" gorm:"not null"`

@@ -36,7 +36,7 @@ func handleDownloads(ctx *Context, args []string) {
 	if len(cleanArgs) == 0 {
 		printSubHelp(ctx, "downloads", []cmdHelp{
 			{"list", "List downloads"},
-			{"start <url> [--type <base-rootfs|cloud-init|other>] [--filename <name>] [--ignore-tls] [--extract] [--raw]", "Start a download"},
+			{"start <url> [--pool <name>] [--type <base-rootfs|cloud-init|other>] [--filename <name>] [--ignore-tls] [--extract] [--raw]", "Start a download"},
 			{"delete <id>", "Delete a download"},
 		})
 		return
@@ -76,7 +76,7 @@ func handleDownloads(ctx *Context, args []string) {
 }
 
 func buildConsoleDownloadRequest(args []string) (utilitiesServiceInterfaces.DownloadFileRequest, error) {
-	const usage = "Usage: downloads start <url> [--type <base-rootfs|cloud-init|other>] [--filename <name>] [--ignore-tls] [--extract] [--raw]"
+	const usage = "Usage: downloads start <url> [--pool <name>] [--type <base-rootfs|cloud-init|other>] [--filename <name>] [--ignore-tls] [--extract] [--raw]"
 	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 		return utilitiesServiceInterfaces.DownloadFileRequest{}, fmt.Errorf("%s", usage)
 	}
@@ -99,6 +99,12 @@ func buildConsoleDownloadRequest(args []string) (utilitiesServiceInterfaces.Down
 			}
 			filename := strings.TrimSpace(args[i+1])
 			request.Filename = &filename
+			i++
+		case "--pool":
+			if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
+				return utilitiesServiceInterfaces.DownloadFileRequest{}, fmt.Errorf("%s", usage)
+			}
+			request.StoragePool = args[i+1]
 			i++
 		case "--ignore-tls":
 			request.IgnoreTLS = boolPointer(true)
@@ -187,17 +193,22 @@ func formatDownloads(downloads []utilitiesModels.Downloads) string {
 		return "No downloads found."
 	}
 
-	headers := []string{"ID", "Name", "Type", "Category", "Status", "Progress", "Size", "Error"}
+	headers := []string{"ID", "Name", "Type", "Storage", "Category", "Status", "Progress", "Size", "Error"}
 	rows := make([][]string, 0, len(downloads))
 	for _, download := range downloads {
 		errText := download.Error
 		if errText == "" {
 			errText = "-"
 		}
+		storage := download.StoragePool
+		if storage == "" {
+			storage = "Default"
+		}
 		rows = append(rows, []string{
 			strconv.FormatUint(uint64(download.ID), 10),
 			download.Name,
 			string(download.Type),
+			storage,
 			string(download.UType),
 			string(download.Status),
 			fmt.Sprintf("%d%%", download.Progress),

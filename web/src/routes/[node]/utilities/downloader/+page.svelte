@@ -14,6 +14,7 @@
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
 	import DownloaderUploadModal from '$lib/components/custom/Utilities/Downloader/UploadModal.svelte';
+	import StorageSelect from '$lib/components/custom/Utilities/Downloader/StorageSelect.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
@@ -22,7 +23,8 @@
 	import {
 		DownloadDeleteResultSchema,
 		type Download,
-		type DownloadDeleteResult
+		type DownloadDeleteResult,
+		type DownloadStorageChoices
 	} from '$lib/types/utilities/downloader';
 	import {
 		handleAPIError,
@@ -49,6 +51,7 @@
 	interface Data {
 		node: string;
 		downloads: Download[];
+		storageChoices: DownloadStorageChoices;
 		loadErrors: APIResponse[];
 	}
 
@@ -143,6 +146,7 @@
 		title: '',
 		url: '',
 		name: '',
+		storagePool: '',
 		ignoreTLS: false,
 		automaticExtraction: false,
 		automaticRawConversion: false,
@@ -152,15 +156,17 @@
 
 	let modalState = $state(options);
 	let uploadModalState = $state({ isOpen: false });
+	let storageBlocked = $state(false);
 	let editState = $state({
 		isOpen: false,
 		loading: false,
 		id: 0,
 		type: '',
+		isUpload: false,
 		name: '',
 		url: '',
+		storagePool: '',
 		uType: 'uncategorized' as DownloadType,
-		ignoreTLS: false,
 		automaticExtraction: false,
 		automaticRawConversion: false,
 		extractedPath: ''
@@ -288,7 +294,7 @@
 	}
 
 	async function newDownload() {
-		if (modalState.loading) return;
+		if (modalState.loading || storageBlocked) return;
 		if (!modalState.url) {
 			toast.error('Please enter a valid URL', { position: 'bottom-center' });
 			return;
@@ -329,7 +335,8 @@
 				modalState.ignoreTLS,
 				modalState.automaticExtraction,
 				modalState.automaticRawConversion,
-				data.node
+				data.node,
+				modalState.storagePool
 			);
 
 			if (isAPIResponse(result)) {
@@ -448,10 +455,11 @@
 			loading: false,
 			id: download.id,
 			type: download.type,
+			isUpload: download.isUpload,
 			name: download.name,
 			url: download.url,
+			storagePool: download.storagePool,
 			uType: (download.uType as DownloadType) || 'uncategorized',
-			ignoreTLS: download.ignoreTLS,
 			automaticExtraction: download.automaticExtraction,
 			automaticRawConversion: download.automaticRawConversion,
 			extractedPath: download.extractedPath || ''
@@ -472,10 +480,11 @@
 			loading: false,
 			id: download.id,
 			type: download.type,
+			isUpload: download.isUpload,
 			name: download.name,
 			url: download.url,
+			storagePool: download.storagePool,
 			uType: (download.uType as DownloadType) || 'uncategorized',
-			ignoreTLS: download.ignoreTLS,
 			automaticExtraction: alreadyExtracted || download.automaticExtraction,
 			automaticRawConversion: alreadyRaw || download.automaticRawConversion,
 			extractedPath: download.extractedPath || ''
@@ -513,6 +522,16 @@
 			editState.loading = false;
 		}
 	}
+
+	watch(
+		() => data.node,
+		() => {
+			modalState = { ...options };
+			editState.isOpen = false;
+			activeRows = null;
+			detectedName = '';
+		}
+	);
 
 	watch(
 		() => modalState.downloadType,
@@ -657,12 +676,11 @@
 			showCloseButton={true}
 			showResetButton={true}
 			onClose={() => {
-				modalState.isOpen = false;
-				modalState.url = '';
+				modalState = { ...options };
 				detectedName = '';
 			}}
 			onReset={() => {
-				modalState.url = '';
+				modalState = { ...options, isOpen: true };
 				detectedName = '';
 			}}
 		>
@@ -689,6 +707,15 @@
 				type="textarea"
 				textAreaClasses="h-24 w-full break-all"
 			/>
+
+			<div class="mt-3">
+				<StorageSelect
+					storageChoices={data.storageChoices}
+					bind:value={modalState.storagePool}
+					bind:blocked={storageBlocked}
+					disabled={modalState.loading}
+				/>
+			</div>
 
 			{#if (modalState.url && isDownloadURL(modalState.url)) || isValidAbsPath(modalState.url)}
 				<div class="flex flex-col gap-4">
@@ -760,7 +787,7 @@
 						onclick={newDownload}
 						type="submit"
 						size="sm"
-						disabled={modalState.loading || Boolean(newDownloadProcessingError)}
+						disabled={modalState.loading || storageBlocked || Boolean(newDownloadProcessingError)}
 					>
 						{#if modalState.loading}
 							<span class="icon-[mdi--loading] h-4 w-4 animate-spin"></span>
@@ -775,7 +802,7 @@
 
 	<Dialog.Root bind:open={editState.isOpen}>
 		<Dialog.Content
-			class="gap-0 pt-6 px-6 pb-3 max-w-xl"
+			class="gap-0 pt-6 px-6 pb-3 sm:max-w-xl"
 			showCloseButton={true}
 			onClose={() => {
 				editState.isOpen = false;
@@ -789,19 +816,38 @@
 							: 'icon-[mdi--pencil] text-primary'}
 						size="h-5 w-5"
 						gap="gap-2"
-						title={editState.type === 'torrent' ? 'View' : 'Edit'}
+						title={editState.type === 'torrent'
+							? 'View'
+							: editState.isUpload
+								? 'Edit - Upload'
+								: 'Edit - Download'}
 					/>
 				</Dialog.Title>
 			</Dialog.Header>
 
-			<div class="flex flex-col gap-4 mt-4">
-				<CustomValueInput
-					label="Name"
-					placeholder="download-name.iso"
-					bind:value={editState.name}
-					classes="flex-1 space-y-1"
-					disabled={editState.type === 'torrent'}
-				/>
+			<div class="flex flex-col gap-4 mt-2">
+				<div class="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+					<SimpleSelect
+						label="Storage"
+						options={[
+							{
+								value: editState.storagePool || '__default__',
+								label: editState.storagePool || 'Default'
+							}
+						]}
+						value={editState.storagePool || '__default__'}
+						onChange={() => {}}
+						disabled={true}
+						classes={{ parent: 'space-y-1 w-full', label: 'h-7 text-sm', trigger: 'w-full' }}
+					/>
+					<CustomValueInput
+						label="Name"
+						placeholder="download-name.iso"
+						bind:value={editState.name}
+						classes="flex-1 space-y-1"
+						disabled={editState.type === 'torrent'}
+					/>
+				</div>
 
 				<CustomValueInput
 					label={editState.type === 'torrent' ? 'Magnet' : 'URL'}
@@ -832,15 +878,6 @@
 					/>
 
 					<div class="flex flex-row gap-2">
-						{#if editState.type === 'http'}
-							<CustomCheckbox
-								label="Ignore TLS Errors"
-								bind:checked={editState.ignoreTLS}
-								disabled={true}
-								classes="flex items-center gap-2"
-							/>
-						{/if}
-
 						<CustomCheckbox
 							label="Extract Automatically"
 							bind:checked={editState.automaticExtraction}
@@ -892,6 +929,8 @@
 
 	<DownloaderUploadModal
 		bind:open={uploadModalState.isOpen}
+		hostname={data.node}
+		storageChoices={data.storageChoices}
 		onClose={() => {
 			uploadModalState.isOpen = false;
 		}}

@@ -21,9 +21,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/pkg/crypto"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -267,12 +267,19 @@ func (s *Service) getSignedDownload(downloadUUID string) (*utilitiesModels.Downl
 	return &download, nil
 }
 
-func resolveSignedDownloadTarget(
+func (s *Service) resolveSignedDownloadTarget(
 	download *utilitiesModels.Downloads,
 	resourceID int,
 ) (utilitiesServiceInterfaces.SignedDownloadTarget, error) {
 	if download == nil || resourceID <= 0 {
 		return utilitiesServiceInterfaces.SignedDownloadTarget{}, ErrSignedDownloadInvalid
+	}
+	layout, err := s.resolveDownloadStorage(download, false)
+	if err != nil {
+		if errors.Is(err, downloadstorage.ErrMismatch) || errors.Is(err, downloadstorage.ErrInvalid) {
+			return utilitiesServiceInterfaces.SignedDownloadTarget{}, fmt.Errorf("%w: %w", ErrSignedDownloadUnsafe, err)
+		}
+		return utilitiesServiceInterfaces.SignedDownloadTarget{}, err
 	}
 
 	target := utilitiesServiceInterfaces.SignedDownloadTarget{
@@ -292,8 +299,8 @@ func resolveSignedDownloadTarget(
 		if download.Type == utilitiesModels.DownloadTypePath {
 			rootName = "path"
 		}
-		managedRoot := filepath.Clean(config.GetDownloadsPath(rootName))
-		extractedRoot := filepath.Clean(filepath.Join(config.GetDownloadsPath("extracted"), download.UUID))
+		managedRoot := layout.Dir(rootName)
+		extractedRoot := filepath.Join(layout.Dir("extracted"), download.UUID)
 		candidate := filepath.Clean(download.Path)
 		switch {
 		case managedDescendant(managedRoot, candidate):
@@ -312,11 +319,7 @@ func resolveSignedDownloadTarget(
 		target.Path = candidate
 
 	case utilitiesModels.DownloadTypeTorrent:
-		torrentRoot := filepath.Clean(config.GetDownloadsPath("torrents"))
-		downloadRoot := filepath.Clean(filepath.Join(torrentRoot, download.UUID))
-		if !managedDescendant(torrentRoot, downloadRoot) || filepath.Clean(download.Path) != downloadRoot {
-			return target, ErrSignedDownloadUnsafe
-		}
+		downloadRoot := filepath.Join(layout.Dir("torrents"), download.UUID)
 
 		var selected *utilitiesModels.DownloadedFile
 		for i := range download.Files {
@@ -351,6 +354,9 @@ func resolveSignedDownloadTarget(
 		return target, ErrSignedDownloadUnsafe
 	}
 
+	if err := layout.ValidatePath(target.Path); err != nil {
+		return target, fmt.Errorf("%w: %w", ErrSignedDownloadUnsafe, err)
+	}
 	resolvedPath, err := resolveSignedDownloadPath(targetRoot, target.Path)
 	if err != nil {
 		return target, err
@@ -363,14 +369,33 @@ func (s *Service) ResolveSignedDownloadTargetByID(
 	downloadUUID string,
 	resourceID int,
 ) (utilitiesServiceInterfaces.SignedDownloadTarget, error) {
+	target, release, err := s.AcquireSignedDownloadTargetByID(downloadUUID, resourceID)
+	if release != nil {
+		release()
+	}
+	return target, err
+}
+
+// AcquireSignedDownloadTargetByID keeps pool mutation fenced for the caller's
+// entire response, even if the download record is deleted after the file opens.
+func (s *Service) AcquireSignedDownloadTargetByID(
+	downloadUUID string,
+	resourceID int,
+) (utilitiesServiceInterfaces.SignedDownloadTarget, func(), error) {
 	if resourceID <= 0 {
-		return utilitiesServiceInterfaces.SignedDownloadTarget{}, ErrSignedDownloadInvalid
+		return utilitiesServiceInterfaces.SignedDownloadTarget{}, nil, ErrSignedDownloadInvalid
 	}
 	download, err := s.getSignedDownload(downloadUUID)
 	if err != nil {
-		return utilitiesServiceInterfaces.SignedDownloadTarget{}, err
+		return utilitiesServiceInterfaces.SignedDownloadTarget{}, nil, err
 	}
-	return resolveSignedDownloadTarget(download, resourceID)
+	release := s.DownloadStorage.ReadLock(download.StoragePool)
+	target, err := s.resolveSignedDownloadTarget(download, resourceID)
+	if err != nil {
+		release()
+		return target, nil, err
+	}
+	return target, release, nil
 }
 
 func (s *Service) ResolveSignedDownloadTargetByName(
@@ -383,6 +408,7 @@ func (s *Service) ResolveSignedDownloadTargetByName(
 	if err != nil {
 		return utilitiesServiceInterfaces.SignedDownloadTarget{}, err
 	}
+	defer s.DownloadStorage.ReadLock(download.StoragePool)()
 
 	resourceID := int(download.ID)
 	switch download.Type {
@@ -405,7 +431,7 @@ func (s *Service) ResolveSignedDownloadTargetByName(
 		return utilitiesServiceInterfaces.SignedDownloadTarget{}, ErrSignedDownloadUnsafe
 	}
 
-	return resolveSignedDownloadTarget(download, resourceID)
+	return s.resolveSignedDownloadTarget(download, resourceID)
 }
 
 func (s *Service) signedDownloadNode() (string, error) {

@@ -28,6 +28,7 @@ const (
 // Device and inode are retained solely so revert and cleanup cannot remove a
 // different file that later appears at the same path.
 type Upload struct {
+	DownloadStorage
 	ID          string       `json:"uploadId" gorm:"primaryKey;size:36"`
 	Scope       UploadScope  `json:"scope" gorm:"index;not null"`
 	Path        string       `json:"-" gorm:"index;not null"`

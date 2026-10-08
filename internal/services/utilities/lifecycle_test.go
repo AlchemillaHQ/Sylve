@@ -27,7 +27,7 @@ type fakeTorrentRuntime struct {
 	removed    []string
 }
 
-func (*fakeTorrentRuntime) AddURI(string, string, string) (torrentDownload, error) {
+func (*fakeTorrentRuntime) AddURI(string, string, string, func(string) error) (torrentDownload, error) {
 	return nil, nil
 }
 
@@ -38,6 +38,8 @@ func (f *fakeTorrentRuntime) RemoveTorrent(id string) error {
 	f.download = nil
 	return nil
 }
+
+func (f *fakeTorrentRuntime) StopTorrent(id string) error { return f.RemoveTorrent(id) }
 
 func (f *fakeTorrentRuntime) Close() error {
 	f.closeCalls++

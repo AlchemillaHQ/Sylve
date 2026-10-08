@@ -993,6 +993,11 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMore
 	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
 		return datasetLookupError(err, "snapshot_with_guid_%s_not_found", guid)
 	}
+	release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	err = dataset.Rollback(ctx, destroyMoreRecent)
 	if err != nil {
@@ -1015,6 +1020,11 @@ func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName strin
 		}
 		return datasetLookupError(nil, "snapshot_not_found: %s", snapshotName)
 	}
+	release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	err = dataset.Rollback(ctx, destroyMoreRecent)
 	if err != nil {

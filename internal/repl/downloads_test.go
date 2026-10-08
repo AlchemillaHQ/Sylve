@@ -17,7 +17,7 @@ import (
 
 func TestBuildConsoleDownloadRequest(t *testing.T) {
 	request, err := buildConsoleDownloadRequest([]string{
-		"https://example.test/base.txz", "--type", "base-rootfs", "--filename", "base.txz", "--ignore-tls", "--raw",
+		"https://example.test/base.txz", "--pool", "tank", "--type", "base-rootfs", "--filename", "base.txz", "--ignore-tls", "--raw",
 	})
 	if err != nil {
 		t.Fatalf("build console download request: %v", err)
@@ -28,6 +28,9 @@ func TestBuildConsoleDownloadRequest(t *testing.T) {
 	}
 	if request.DownloadType != utilitiesModels.DownloadUTypeBase {
 		t.Fatalf("download type = %q, want %q", request.DownloadType, utilitiesModels.DownloadUTypeBase)
+	}
+	if request.StoragePool != "tank" {
+		t.Fatalf("pool = %q, want tank", request.StoragePool)
 	}
 	if request.Filename == nil || *request.Filename != "base.txz" {
 		t.Fatalf("filename = %v, want base.txz", request.Filename)
@@ -74,5 +77,15 @@ func TestBuildConsoleDownloadRequestRejectsUnknownOption(t *testing.T) {
 	_, err := buildConsoleDownloadRequest([]string{"https://example.test/file", "--unknown"})
 	if err == nil {
 		t.Fatal("expected unknown option error")
+	}
+}
+
+func TestBuildConsoleDownloadRequestDefaultsStorageAndRequiresPoolValue(t *testing.T) {
+	request, err := buildConsoleDownloadRequest([]string{"https://example.test/file"})
+	if err != nil || request.StoragePool != "" {
+		t.Fatalf("Default storage: %+v %v", request, err)
+	}
+	if _, err := buildConsoleDownloadRequest([]string{"https://example.test/file", "--pool"}); err == nil {
+		t.Fatal("missing pool name accepted")
 	}
 }

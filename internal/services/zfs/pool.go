@@ -158,6 +158,11 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		args = append(args, "spare")
 		args = append(args, req.Spares...)
 	}
+	release, err := s.guardDownloadStorageMutation(ctx, req.Name)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	err = s.GZFS.Zpool.CreateWithOptions(ctx, req.Name, gzfs.ZPoolCreateOptions{
 		Force:      req.CreateForce,
@@ -350,6 +355,11 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 	if err != nil || pool == nil {
 		return poolLookupError(err, "pool_not_found")
 	}
+	release, err := s.guardDownloadStorageMutation(ctx, pool.Name)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	datasets, err := pool.Datasets(ctx, gzfs.DatasetTypeAll)
 	if err != nil {

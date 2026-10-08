@@ -21,6 +21,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 	uploadCore "github.com/alchemillahq/sylve/internal/upload"
@@ -88,6 +89,60 @@ func (s *Service) uploadStagingDir() string {
 	return config.GetDownloadsPath("uploads")
 }
 
+func (s *Service) PrepareDownloaderUpload(ctx context.Context, pool string) (utilitiesModels.DownloadStorage, string, func(), error) {
+	release := s.DownloadStorage.ReadLock(pool)
+	ref, layout, err := s.DownloadStorage.Reserve(ctx, pool)
+	if err != nil {
+		release()
+		return ref, "", nil, err
+	}
+	directory := layout.Dir("uploads")
+	if pool == "" && s.uploadStagingDirFn != nil {
+		directory = s.uploadStagingDir()
+	}
+	return ref, directory, release, nil
+}
+
+func (s *Service) validateDownloaderUpload(record utilitiesModels.Upload) (downloadstorage.Layout, error) {
+	layout, err := s.DownloadStorage.Resolve(context.Background(), record.DownloadStorage, true)
+	if err != nil {
+		return layout, err
+	}
+	directory := layout.Dir("uploads")
+	if record.StoragePool == "" && record.StorageRoot == "" {
+		directory = s.uploadStagingDir()
+	}
+	if record.StoragePool != "" {
+		if err := layout.ValidatePath(directory); err != nil {
+			return layout, err
+		}
+	}
+	directory, err = canonicalUploadDirectory(directory)
+	if err != nil {
+		return layout, fmt.Errorf("%w: upload staging unavailable", downloadstorage.ErrUnavailable)
+	}
+	if filepath.Clean(record.Path) != filepath.Join(directory, DownloaderUploadFinalName(record.ID)) {
+		return layout, downloadstorage.ErrMismatch
+	}
+	if record.StoragePool != "" {
+		if err := layout.ValidatePath(record.Path); err != nil {
+			return layout, err
+		}
+	}
+	return layout, nil
+}
+
+func (s *Service) ValidateDownloaderUploadPath(ctx context.Context, ref utilitiesModels.DownloadStorage, path string) error {
+	layout, err := s.DownloadStorage.Resolve(ctx, ref, true)
+	if err != nil {
+		return err
+	}
+	if ref.StoragePool != "" {
+		return layout.ValidatePath(path)
+	}
+	return nil
+}
+
 func canonicalUploadDirectory(path string) (string, error) {
 	absolute, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
@@ -137,6 +192,7 @@ func (s *Service) RegisterDownloaderUpload(
 	size int64,
 	userID uint,
 	info os.FileInfo,
+	storage utilitiesModels.DownloadStorage,
 ) (utilitiesModels.Upload, error) {
 	if s == nil || s.DB == nil || userID == 0 || size < 0 {
 		return utilitiesModels.Upload{}, fmt.Errorf("%w: missing upload metadata", ErrDownloaderUploadInvalid)
@@ -150,7 +206,20 @@ func (s *Service) RegisterDownloaderUpload(
 		return utilitiesModels.Upload{}, fmt.Errorf("%w: %v", ErrDownloaderUploadInvalid, err)
 	}
 
-	stagingDir, err := canonicalUploadDirectory(s.uploadStagingDir())
+	layout, err := s.DownloadStorage.Resolve(ctx, storage, true)
+	if err != nil {
+		return utilitiesModels.Upload{}, err
+	}
+	stagingPath := layout.Dir("uploads")
+	if storage.StorageRoot == "" && storage.StoragePool == "" {
+		stagingPath = s.uploadStagingDir()
+	}
+	if storage.StoragePool != "" {
+		if err := layout.ValidatePath(path); err != nil {
+			return utilitiesModels.Upload{}, err
+		}
+	}
+	stagingDir, err := canonicalUploadDirectory(stagingPath)
 	if err != nil {
 		return utilitiesModels.Upload{}, fmt.Errorf("%w: resolve staging directory: %v", ErrDownloaderUploadPersistence, err)
 	}
@@ -173,17 +242,21 @@ func (s *Service) RegisterDownloaderUpload(
 	}
 
 	record := utilitiesModels.Upload{
-		ID:        uploadID,
-		Scope:     utilitiesModels.UploadScopeDownloader,
-		Path:      canonicalPath,
-		Name:      name,
-		Size:      size,
-		UserID:    userID,
-		Node:      node,
-		Status:    utilitiesModels.UploadStatusStaged,
-		Device:    identity.Device,
-		Inode:     identity.Inode,
-		CreatedAt: s.uploadNow(),
+		DownloadStorage: storage,
+		ID:              uploadID,
+		Scope:           utilitiesModels.UploadScopeDownloader,
+		Path:            canonicalPath,
+		Name:            name,
+		Size:            size,
+		UserID:          userID,
+		Node:            node,
+		Status:          utilitiesModels.UploadStatusStaged,
+		Device:          identity.Device,
+		Inode:           identity.Inode,
+		CreatedAt:       s.uploadNow(),
+	}
+	if _, err := s.validateDownloaderUpload(record); err != nil {
+		return utilitiesModels.Upload{}, err
 	}
 
 	s.uploadLifecycleMu.Lock()
@@ -243,6 +316,11 @@ func (s *Service) CompleteDownloaderUpload(
 	if err != nil {
 		return result, fmt.Errorf("%w: lookup upload: %v", ErrDownloaderUploadPersistence, err)
 	}
+	defer s.DownloadStorage.ReadLock(record.StoragePool)()
+	layout, err := s.validateDownloaderUpload(record)
+	if err != nil {
+		return result, err
+	}
 	if record.Status == utilitiesModels.UploadStatusStaged &&
 		!record.CreatedAt.IsZero() &&
 		!record.CreatedAt.Add(DownloaderUploadTTL).After(s.uploadNow()) {
@@ -291,7 +369,10 @@ func (s *Service) CompleteDownloaderUpload(
 				return fmt.Errorf("%w: completed upload has no downloader entry", ErrDownloaderUploadPersistence)
 			}
 
-			destinationPath := filepath.Clean(filepath.Join(config.GetDownloadsPath("path"), current.Name))
+			destinationPath := filepath.Join(layout.Dir("path"), current.Name)
+			if err := layout.ValidatePath(destinationPath); err != nil {
+				return err
+			}
 			if _, err := os.Lstat(destinationPath); err == nil {
 				return ErrDownloaderUploadDestinationExists
 			} else if !os.IsNotExist(err) {
@@ -308,6 +389,7 @@ func (s *Service) CompleteDownloaderUpload(
 			}
 
 			download = utilitiesModels.Downloads{
+				DownloadStorage:        current.DownloadStorage,
 				URL:                    current.Path,
 				UUID:                   utils.GenerateDeterministicUUID(current.Path),
 				Path:                   destinationPath,
@@ -322,6 +404,7 @@ func (s *Service) CompleteDownloaderUpload(
 				UType:                  req.DownloadType,
 				IgnoreTLS:              false,
 			}
+			download.StorageRoot = layout.Root
 			if err := tx.Create(&download).Error; err != nil {
 				return fmt.Errorf("%w: create downloader entry: %v", ErrDownloaderUploadPersistence, err)
 			}
@@ -381,6 +464,9 @@ func (s *Service) removeCompletedDownloaderUploadSource(sourcePath string) error
 	if err != nil {
 		return fmt.Errorf("lookup completed upload source: %w", err)
 	}
+	if _, err := s.validateDownloaderUpload(record); err != nil {
+		return err
+	}
 
 	_, err = uploadCore.RemoveIfSame(record.Path, uploadCore.FileIdentity{
 		Device: record.Device,
@@ -413,6 +499,16 @@ func (s *Service) publishCompletedDownloaderUpload(sourcePath, destinationPath s
 	}
 	if err != nil {
 		return true, fmt.Errorf("lookup completed upload source: %w", err)
+	}
+	layout, err := s.validateDownloaderUpload(record)
+	if err != nil {
+		return true, err
+	}
+	if filepath.Clean(destinationPath) != filepath.Join(layout.Dir("path"), record.Name) {
+		return true, downloadstorage.ErrMismatch
+	}
+	if err := layout.ValidatePath(destinationPath); err != nil {
+		return true, err
 	}
 
 	identity := uploadCore.FileIdentity{
@@ -462,7 +558,12 @@ func (s *Service) publishCompletedDownloaderUpload(sourcePath, destinationPath s
 	// A separately mounted uploads directory cannot use hard links. Preserve
 	// compatibility with that layout, but publish via a private temporary file
 	// so an interrupted copy never exposes a partial final destination.
-	if err := copyFileNoReplace(sourcePath, destinationPath); err != nil {
+	if err := copyFileNoReplace(sourcePath, destinationPath, func() error {
+		if err := s.DownloadStorage.Recheck(context.Background(), layout, true); err != nil {
+			return err
+		}
+		return layout.ValidatePath(destinationPath)
+	}); err != nil {
 		return true, fmt.Errorf("copy completed upload across filesystems: %w", err)
 	}
 	if _, err := uploadCore.RemoveIfSame(sourcePath, identity); err != nil {
@@ -471,7 +572,12 @@ func (s *Service) publishCompletedDownloaderUpload(sourcePath, destinationPath s
 	return true, nil
 }
 
-func copyFileNoReplace(sourcePath, destinationPath string) error {
+func copyFileNoReplace(sourcePath, destinationPath string, beforePublish func() error) error {
+	if beforePublish != nil {
+		if err := beforePublish(); err != nil {
+			return err
+		}
+	}
 	source, err := os.Open(sourcePath)
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
@@ -485,7 +591,7 @@ func copyFileNoReplace(sourcePath, destinationPath string) error {
 	published := false
 	defer func() {
 		_ = destination.Close()
-		if !published {
+		if !published && (beforePublish == nil || beforePublish() == nil) {
 			_ = os.Remove(partialPath)
 		}
 	}()
@@ -498,6 +604,11 @@ func copyFileNoReplace(sourcePath, destinationPath string) error {
 	}
 	if err := destination.Close(); err != nil {
 		return fmt.Errorf("close destination partial: %w", err)
+	}
+	if beforePublish != nil {
+		if err := beforePublish(); err != nil {
+			return err
+		}
 	}
 	if err := uploadCore.PublishNoReplace(partialPath, destinationPath); err != nil {
 		return fmt.Errorf("publish destination: %w", err)
@@ -539,11 +650,15 @@ func (s *Service) AbortDownloaderUpload(
 	if err != nil {
 		return false, fmt.Errorf("%w: lookup upload: %v", ErrDownloaderUploadPersistence, err)
 	}
+	defer s.DownloadStorage.ReadLock(record.StoragePool)()
 	if record.Status == utilitiesModels.UploadStatusCompleted {
 		return true, nil
 	}
 	if s.isDownloaderUploadActive(uploadID) {
 		return false, ErrDownloaderUploadActive
+	}
+	if _, err := s.validateDownloaderUpload(record); err != nil {
+		return false, err
 	}
 
 	_, err = uploadCore.RemoveIfSame(record.Path, uploadCore.FileIdentity{
@@ -583,8 +698,15 @@ func (s *Service) CleanupExpiredUploads(ctx context.Context) error {
 	var cleanupErr error
 	for i := range records {
 		record := &records[i]
+		releaseStorage := s.DownloadStorage.ReadLock(record.StoragePool)
 		if record.Scope == utilitiesModels.UploadScopeDownloader {
 			if s.isDownloaderUploadActive(record.ID) {
+				releaseStorage()
+				continue
+			}
+			if _, err := s.validateDownloaderUpload(*record); err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				releaseStorage()
 				continue
 			}
 			_, removeErr := uploadCore.RemoveIfSame(record.Path, uploadCore.FileIdentity{
@@ -593,16 +715,26 @@ func (s *Service) CleanupExpiredUploads(ctx context.Context) error {
 			})
 			if removeErr != nil {
 				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove expired upload %s: %w", record.ID, removeErr))
+				releaseStorage()
 				continue
 			}
 		}
 		if err := s.DB.WithContext(ctx).Delete(record).Error; err != nil {
 			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("delete expired upload %s: %w", record.ID, err))
 		}
+		releaseStorage()
 	}
 
-	if err := s.cleanupDownloaderUploadDirectory(ctx, node, cutoff); err != nil {
-		cleanupErr = errors.Join(cleanupErr, err)
+	layouts, err := s.DownloadStorage.CleanupLayouts(ctx)
+	cleanupErr = errors.Join(cleanupErr, err)
+	for _, layout := range layouts {
+		directory := layout.Dir("uploads")
+		if layout.Pool() == "" {
+			directory = s.uploadStagingDir()
+		}
+		if err := s.cleanupDownloaderUploadDirectory(ctx, node, cutoff, directory, layout); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		}
 	}
 	return cleanupErr
 }
@@ -611,8 +743,19 @@ func (s *Service) cleanupDownloaderUploadDirectory(
 	ctx context.Context,
 	node string,
 	cutoff time.Time,
+	stagingDirectory string,
+	layout downloadstorage.Layout,
 ) error {
-	directory, err := canonicalUploadDirectory(s.uploadStagingDir())
+	defer s.DownloadStorage.ReadLock(layout.Pool())()
+	if err := s.DownloadStorage.Recheck(ctx, layout, true); err != nil {
+		return err
+	}
+	if layout.Pool() != "" {
+		if err := layout.ValidatePath(stagingDirectory); err != nil {
+			return err
+		}
+	}
+	directory, err := canonicalUploadDirectory(stagingDirectory)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -652,7 +795,18 @@ func (s *Service) cleanupDownloaderUploadDirectory(
 			}
 		}
 
-		if err := os.Remove(filepath.Join(directory, entry.Name())); err != nil && !os.IsNotExist(err) {
+		path := filepath.Join(directory, entry.Name())
+		if err := s.DownloadStorage.Recheck(ctx, layout, true); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+			continue
+		}
+		if layout.Pool() != "" {
+			if err := layout.ValidatePath(path); err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove upload staging entry %s: %w", entry.Name(), err))
 		}
 	}

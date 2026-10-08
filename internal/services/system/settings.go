@@ -20,6 +20,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	"github.com/alchemillahq/sylve/internal/logger"
 	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/pkg/pkg"
@@ -28,6 +29,12 @@ import (
 )
 
 func (s *Service) checkPoolUsage(poolName string) error {
+	if err := downloadstorage.RequireDatasetUnused(context.Background(), s.DB, poolName); err != nil {
+		if errors.Is(err, downloadstorage.ErrInUse) {
+			return newSettingsError(SettingsErrorConflict, downloadstorage.ErrInUse.Error(), poolName, err)
+		}
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName, err)
+	}
 	var count int64
 
 	if err := s.DB.Model(&vmModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
@@ -110,6 +117,12 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		}
 		return newSettingsError(SettingsErrorInternal, "basic_settings_retrieval_failed", "", err)
 	}
+	lockPools := append(append([]string(nil), basicSettings.Pools...), pools...)
+	release, err := s.DownloadStorage.TryMutation(lockPools...)
+	if err != nil {
+		return newSettingsError(SettingsErrorConflict, downloadstorage.ErrInUse.Error(), "", err)
+	}
+	defer release()
 
 	zpools, err := s.GZFS.Zpool.GetPoolNames(ctx)
 	if err != nil {

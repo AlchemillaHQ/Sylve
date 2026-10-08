@@ -22,6 +22,7 @@ var requiredSylveDatasetSuffixes = []string{
 	"sylve/virtual-machines",
 	"sylve/jails",
 	"sylve/bootstraps",
+	"sylve/downloads",
 }
 
 func EnsureSylveNamespace(
@@ -29,6 +30,16 @@ func EnsureSylveNamespace(
 	client *gzfs.Client,
 	poolName string,
 ) ([]*gzfs.Dataset, error) {
+	return ensureNamespace(ctx, client, poolName, requiredSylveDatasetSuffixes)
+}
+
+// EnsureDownloadNamespace provisions only the namespace needed by an explicit
+// download reservation on an already managed pool.
+func EnsureDownloadNamespace(ctx context.Context, client *gzfs.Client, poolName string) ([]*gzfs.Dataset, error) {
+	return ensureNamespace(ctx, client, poolName, []string{"sylve", "sylve/downloads"})
+}
+
+func ensureNamespace(ctx context.Context, client *gzfs.Client, poolName string, suffixes []string) ([]*gzfs.Dataset, error) {
 	if client == nil || client.ZFS == nil || client.Zpool == nil {
 		return nil, fmt.Errorf("zfs_client_not_configured")
 	}
@@ -56,10 +67,10 @@ func EnsureSylveNamespace(
 	}
 
 	var created []*gzfs.Dataset
-	for _, suffix := range requiredSylveDatasetSuffixes {
+	for _, suffix := range suffixes {
 		datasetName := poolName + "/" + suffix
 		dataset, getErr := client.ZFS.Get(ctx, datasetName, false)
-		if getErr != nil && !datasetDoesNotExist(getErr) {
+		if getErr != nil && !DatasetDoesNotExist(getErr) {
 			return created, fmt.Errorf("failed_to_check_dataset_%s: %w", datasetName, getErr)
 		}
 
@@ -126,7 +137,7 @@ func nonDefaultAltroot(properties map[string]gzfs.ZFSProperty) string {
 	return ""
 }
 
-func datasetDoesNotExist(err error) bool {
+func DatasetDoesNotExist(err error) bool {
 	if err == nil {
 		return false
 	}

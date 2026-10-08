@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 
@@ -24,6 +25,7 @@ import (
 var _ zfsServiceInterfaces.ZfsServiceInterface = (*Service)(nil)
 
 type Service struct {
+	DownloadStorage           *downloadstorage.Resolver
 	DB                        *gorm.DB
 	TelemetryDB               *gorm.DB
 	GZFS                      *gzfs.Client
@@ -42,6 +44,7 @@ type Service struct {
 
 func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {
 	return &Service{
+		DownloadStorage:           downloadstorage.New(db, gzfsClient),
 		DB:                        db,
 		TelemetryDB:               telemetryDB,
 		GZFS:                      gzfsClient,

@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
@@ -33,6 +34,10 @@ type BulkDeleteDownloadRequest struct {
 
 func signedDownloadMintError(err error) (int, string) {
 	switch {
+	case errors.Is(err, downloadstorage.ErrUnavailable):
+		return http.StatusServiceUnavailable, downloadstorage.ErrUnavailable.Error()
+	case errors.Is(err, downloadstorage.ErrMismatch), errors.Is(err, downloadstorage.ErrInvalid):
+		return http.StatusConflict, downloadstorage.ErrorCode(err)
 	case errors.Is(err, utilities.ErrSignedDownloadInvalid):
 		return http.StatusBadRequest, "invalid_signed_download_request"
 	case errors.Is(err, utilities.ErrSignedDownloadNotFound):
@@ -92,6 +97,12 @@ func writeUtilitiesJSONBindError(c *gin.Context, err error) {
 
 func downloadMutationError(err error, fallback string) (int, string) {
 	switch {
+	case errors.Is(err, downloadstorage.ErrInvalid):
+		return http.StatusUnprocessableEntity, downloadstorage.ErrInvalid.Error()
+	case errors.Is(err, downloadstorage.ErrUnavailable):
+		return http.StatusServiceUnavailable, downloadstorage.ErrUnavailable.Error()
+	case errors.Is(err, downloadstorage.ErrMismatch), errors.Is(err, downloadstorage.ErrReadOnly), errors.Is(err, downloadstorage.ErrInUse):
+		return http.StatusConflict, downloadstorage.ErrorCode(err)
 	case errors.Is(err, utilities.ErrDownloadInvalid):
 		return http.StatusBadRequest, "invalid_download_request"
 	case errors.Is(err, utilities.ErrDownloadNotFound):
@@ -118,7 +129,7 @@ func downloadMutationError(err error, fallback string) (int, string) {
 }
 
 // @Summary Get Download Paths
-// @Description Get configured filesystem paths used by downloader for HTTP and Path downloads
+// @Description Get Default storage paths used by downloader for HTTP and Path downloads
 // @Tags Utilities
 // @Produce json
 // @Security BearerAuth
@@ -135,6 +146,23 @@ func GetDownloadPaths() gin.HandlerFunc {
 				HTTP: config.GetDownloadsPath("http"),
 				Path: config.GetDownloadsPath("path"),
 			},
+		})
+	}
+}
+
+// @Summary List Download Storage
+// @Description Discover Default and local managed pool targets without provisioning storage
+// @Tags Utilities
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[downloadstorage.Choices] "Choices and discovery errors"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Router /utilities/downloads/storage [get]
+func GetDownloadStorage(service *utilities.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, internal.APIResponse[downloadstorage.Choices]{
+			Status: "success", Message: "download_storage_listed",
+			Data: service.DownloadStorage.Choices(c.Request.Context()),
 		})
 	}
 }
@@ -572,9 +600,13 @@ func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerF
 			return
 		}
 
-		target, err := utilitiesService.ResolveSignedDownloadTargetByID(uuid, id)
+		target, releaseStorage, err := utilitiesService.AcquireSignedDownloadTargetByID(uuid, id)
 		if err != nil {
 			switch {
+			case errors.Is(err, downloadstorage.ErrUnavailable):
+				writePublicDownloadError(c, http.StatusServiceUnavailable, downloadstorage.ErrUnavailable.Error())
+			case errors.Is(err, downloadstorage.ErrMismatch), errors.Is(err, downloadstorage.ErrInvalid):
+				writePublicDownloadError(c, http.StatusConflict, downloadstorage.ErrorCode(err))
 			case errors.Is(err, utilities.ErrSignedDownloadNotFound),
 				errors.Is(err, utilities.ErrSignedDownloadNotReady):
 				writePublicDownloadError(c, http.StatusNotFound, "file_not_found")
@@ -586,6 +618,7 @@ func DownloadFileFromSignedURL(utilitiesService *utilities.Service) gin.HandlerF
 			}
 			return
 		}
+		defer releaseStorage()
 
 		before, err := os.Lstat(target.Path)
 		if errors.Is(err, os.ErrNotExist) {

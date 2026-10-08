@@ -9,17 +9,22 @@
 package zelta
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestRequireNoManagedGuestsWithinRestore(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(
 		t,
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.Upload{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&vmModels.VM{},
@@ -85,6 +90,8 @@ func TestRequireNoManagedGuestsWithinRestore(t *testing.T) {
 func TestRequireNoManagedGuestsAllowsFreshInventory(t *testing.T) {
 	database := testutil.NewSQLiteTestDB(
 		t,
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.Upload{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&vmModels.VM{},
@@ -98,7 +105,7 @@ func TestRequireNoManagedGuestsAllowsFreshInventory(t *testing.T) {
 }
 
 func TestRequireNoManagedGuestsFailsClosedForPartialInventory(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(t, &jailModels.Jail{}, &jailModels.Storage{})
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{}, &jailModels.Jail{}, &jailModels.Storage{})
 	if err := database.Migrator().DropTable(&jailModels.Storage{}); err != nil {
 		t.Fatalf("drop jail storage inventory: %v", err)
 	}
@@ -107,5 +114,18 @@ func TestRequireNoManagedGuestsFailsClosedForPartialInventory(t *testing.T) {
 	err := service.requireNoManagedGuestsWithinRestore(t.Context(), "zroot/sylve")
 	if err == nil || !strings.Contains(err.Error(), "restore_jail_inventory_unavailable") {
 		t.Fatalf("partial inventory did not fail closed: %v", err)
+	}
+}
+
+func TestGenericRestoreRejectsDownloadStorageAndAncestors(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	if err := database.Create(&utilitiesModels.Downloads{DownloadStorage: utilitiesModels.DownloadStorage{StoragePool: "tank"}, UUID: "download", Path: "payload", URL: "source"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: database}
+	for _, destination := range []string{"tank", "tank/sylve", "tank/sylve/downloads", "tank/sylve/downloads/child"} {
+		if err := service.requireNoManagedGuestsWithinRestore(t.Context(), destination); !errors.Is(err, downloadstorage.ErrInUse) {
+			t.Fatalf("restore %s was not protected: %v", destination, err)
+		}
 	}
 }

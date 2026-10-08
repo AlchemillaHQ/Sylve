@@ -405,7 +405,11 @@ func TestCreateStorageFromImageRequiresCompletedDownload(t *testing.T) {
 
 func TestCreateStorageFromImageRejectsTargetSmallerThanVirtualSize(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
-	imagePath := filepath.Join(t.TempDir(), "router.qcow2")
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	imagePath := filepath.Join(os.Getenv("SYLVE_DATA_PATH"), "downloads", "path", "router.qcow2")
+	if err := os.MkdirAll(filepath.Dir(imagePath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(imagePath, []byte("image"), 0o600); err != nil {
 		t.Fatalf("seed source image: %v", err)
 	}

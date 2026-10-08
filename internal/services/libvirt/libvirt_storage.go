@@ -1764,10 +1764,11 @@ func (s *Service) CreateStorageFromImage(
 	if download.Status != utilitiesModels.DownloadStatusDone {
 		return nil, fmt.Errorf("download_not_ready")
 	}
+	defer s.DownloadStorage.ReadLock(download.StoragePool)()
 
 	sourcePath, err := s.findISOByUUIDWithDB(db, req.DownloadUUID, true)
 	if err != nil {
-		return nil, fmt.Errorf("source_file_missing")
+		return nil, fmt.Errorf("source_file_missing: %w", err)
 	}
 	source, err := inspectStorageImageSource(sourcePath)
 	if err != nil {

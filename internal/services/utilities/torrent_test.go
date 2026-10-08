@@ -161,7 +161,7 @@ func TestTorrentRuntimeDownloadsMagnetFromLocalPeer(t *testing.T) {
 	runtime := newTestTorrentRuntime(t, t.TempDir())
 	id := utils.GenerateDeterministicUUID(magnet)
 	root := filepath.Join(t.TempDir(), id)
-	download, err := runtime.AddURI(magnet, id, root)
+	download, err := runtime.AddURI(magnet, id, root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestTorrentRuntimeRestartsAndVerifiesPartialFiles(t *testing.T) {
 	}
 	runtime := newTestTorrentRuntime(t, dataDir)
 	cacheTestTorrentMetadata(t, runtime, id, mi)
-	download, err := runtime.AddURI(magnet, id, root)
+	download, err := runtime.AddURI(magnet, id, root, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestTorrentRuntimeRestartsAndVerifiesPartialFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime = newTestTorrentRuntime(t, dataDir)
-	download, err = runtime.AddURI(magnet, id, root)
+	download, err = runtime.AddURI(magnet, id, root, func(string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,18 +234,18 @@ func TestTorrentRuntimeRejectsDuplicateInfohash(t *testing.T) {
 	firstRoot, secondRoot := filepath.Join(t.TempDir(), firstID), filepath.Join(t.TempDir(), secondID)
 	cacheTestTorrentMetadata(t, runtime, firstID, mi)
 	cacheTestTorrentMetadata(t, runtime, secondID, mi)
-	first, err := runtime.AddURI(magnet, firstID, firstRoot)
+	first, err := runtime.AddURI(magnet, firstID, firstRoot, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	repeated, err := runtime.AddURI(magnet, firstID, firstRoot)
+	repeated, err := runtime.AddURI(magnet, firstID, firstRoot, nil)
 	if err != nil || repeated != first {
 		t.Fatalf("repeated add was not idempotent: %v", err)
 	}
-	if _, err := runtime.AddURI(magnet, firstID, secondRoot); !errors.Is(err, ErrDownloadConflict) {
+	if _, err := runtime.AddURI(magnet, firstID, secondRoot, nil); !errors.Is(err, ErrDownloadConflict) {
 		t.Fatalf("changed destination error=%v, want conflict", err)
 	}
-	if _, err := runtime.AddURI(magnet, secondID, secondRoot); !errors.Is(err, ErrDownloadConflict) {
+	if _, err := runtime.AddURI(magnet, secondID, secondRoot, nil); !errors.Is(err, ErrDownloadConflict) {
 		t.Fatalf("duplicate infohash error=%v, want conflict", err)
 	}
 	if runtime.GetTorrent(secondID) != nil || runtime.GetTorrent(firstID) != first {
@@ -274,7 +274,7 @@ func TestTorrentRuntimeVerifiesMultifileDownloads(t *testing.T) {
 	runtime := newTestTorrentRuntime(t, t.TempDir())
 	id := utils.GenerateRandomUUID()
 	cacheTestTorrentMetadata(t, runtime, id, mi)
-	download, err := runtime.AddURI(magnet, id, root)
+	download, err := runtime.AddURI(magnet, id, root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestTorrentFileStorageRejectsUnsafeOrCollidingPathsBeforeCreatingFiles(t *t
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
-			fileStorage := torrentFileStorage{storage.NewFileOpts(storage.NewFileClientOpts{
+			fileStorage := torrentFileStorage{ClientImplCloser: storage.NewFileOpts(storage.NewFileClientOpts{
 				ClientBaseDir: root, PieceCompletion: storage.NewMapPieceCompletion(),
 			})}
 			defer fileStorage.Close()
@@ -341,7 +341,7 @@ func TestTorrentRuntimeRemovalRetainsPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	cacheTestTorrentMetadata(t, runtime, id, mi)
-	download, err := runtime.AddURI(magnet, id, root)
+	download, err := runtime.AddURI(magnet, id, root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,17 +368,17 @@ func TestTorrentRuntimeRemovalRetainsPayload(t *testing.T) {
 func TestTorrentRuntimeRejectsInvalidIdentityAndSymlinkDirectory(t *testing.T) {
 	_, magnet, _ := newTorrentFixture(t, "media.iso", []byte("media"))
 	runtime := newTestTorrentRuntime(t, t.TempDir())
-	if _, err := runtime.AddURI(magnet, "../../outside", t.TempDir()); !errors.Is(err, ErrDownloadInvalid) {
+	if _, err := runtime.AddURI(magnet, "../../outside", t.TempDir(), nil); !errors.Is(err, ErrDownloadInvalid) {
 		t.Fatalf("unsafe ID error=%v", err)
 	}
-	if _, err := runtime.AddURI("magnet:?xt=urn:btih:"+strings.Repeat("0", 40), utils.GenerateRandomUUID(), t.TempDir()); !errors.Is(err, ErrDownloadInvalid) {
+	if _, err := runtime.AddURI("magnet:?xt=urn:btih:"+strings.Repeat("0", 40), utils.GenerateRandomUUID(), t.TempDir(), nil); !errors.Is(err, ErrDownloadInvalid) {
 		t.Fatalf("zero infohash error=%v", err)
 	}
 	root := filepath.Join(t.TempDir(), "symlink")
 	if err := os.Symlink(t.TempDir(), root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runtime.AddURI(magnet, utils.GenerateRandomUUID(), root); err == nil {
+	if _, err := runtime.AddURI(magnet, utils.GenerateRandomUUID(), root, nil); err == nil {
 		t.Fatal("symlink torrent directory was accepted")
 	}
 }
@@ -389,7 +389,7 @@ func TestTorrentRuntimeRejectsMismatchedCachedMetadata(t *testing.T) {
 	runtime := newTestTorrentRuntime(t, t.TempDir())
 	id := utils.GenerateRandomUUID()
 	cacheTestTorrentMetadata(t, runtime, id, mi)
-	if _, err := runtime.AddURI(magnet, id, filepath.Join(t.TempDir(), id)); err == nil {
+	if _, err := runtime.AddURI(magnet, id, filepath.Join(t.TempDir(), id), nil); err == nil {
 		t.Fatal("cached metadata from a different torrent was accepted")
 	}
 }

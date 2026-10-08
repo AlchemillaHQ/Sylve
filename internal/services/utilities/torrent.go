@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,9 +40,10 @@ type torrentDownload interface {
 }
 
 type torrentRuntime interface {
-	AddURI(uri, id, directory string) (torrentDownload, error)
+	AddURI(uri, id, directory string, validate func(string) error) (torrentDownload, error)
 	GetTorrent(id string) torrentDownload
 	RemoveTorrent(id string) error
+	StopTorrent(id string) error
 	Close() error
 }
 
@@ -117,7 +119,7 @@ func newAnacrolixTorrentRuntime(options torrentRuntimeOptions) (torrentRuntime, 
 	}, nil
 }
 
-func (r *anacrolixTorrentRuntime) AddURI(uri, id, directory string) (torrentDownload, error) {
+func (r *anacrolixTorrentRuntime) AddURI(uri, id, directory string, validate func(string) error) (torrentDownload, error) {
 	parsedID, err := uuid.Parse(id)
 	if err != nil || parsedID.String() != id || !filepath.IsAbs(directory) {
 		return nil, ErrDownloadInvalid
@@ -147,6 +149,11 @@ func (r *anacrolixTorrentRuntime) AddURI(uri, id, directory string) (torrentDown
 	if err := loadTorrentMetadata(spec, metadataPath); err != nil {
 		return nil, err
 	}
+	if validate != nil {
+		if err := validate(directory); err != nil {
+			return nil, err
+		}
+	}
 	if err := os.MkdirAll(directory, 0750); err != nil {
 		return nil, fmt.Errorf("create torrent directory: %w", err)
 	}
@@ -161,7 +168,7 @@ func (r *anacrolixTorrentRuntime) AddURI(uri, id, directory string) (torrentDown
 		FilePathMaker:   torrentFilePath,
 	}
 	fileOptions.UsePartFiles.Set(false)
-	fileStorage := torrentFileStorage{storage.NewFileOpts(fileOptions)}
+	fileStorage := torrentFileStorage{ClientImplCloser: storage.NewFileOpts(fileOptions), directory: directory, validate: validate}
 	spec.Storage = fileStorage
 	t, added, err := r.client.AddTorrentSpec(spec)
 	if err == nil && !added {
@@ -231,6 +238,17 @@ func (r *anacrolixTorrentRuntime) GetTorrent(id string) torrentDownload {
 }
 
 func (r *anacrolixTorrentRuntime) RemoveTorrent(id string) error {
+	err := r.StopTorrent(id)
+	if err != nil {
+		return err
+	}
+	if removeErr := os.Remove(filepath.Join(r.metadataDir, id+".torrent")); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return removeErr
+	}
+	return nil
+}
+
+func (r *anacrolixTorrentRuntime) StopTorrent(id string) error {
 	parsedID, err := uuid.Parse(id)
 	if err != nil || parsedID.String() != id {
 		return ErrDownloadInvalid
@@ -239,13 +257,11 @@ func (r *anacrolixTorrentRuntime) RemoveTorrent(id string) error {
 	defer r.mu.Unlock()
 	if download := r.torrents[id]; download != nil {
 		download.mu.Lock()
+		err = download.saveMetadata()
 		download.torrent.Drop()
-		err = download.storage.Close()
+		err = errors.Join(err, download.storage.Close())
 		download.mu.Unlock()
 		delete(r.torrents, id)
-	}
-	if removeErr := os.Remove(filepath.Join(r.metadataDir, id+".torrent")); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-		err = errors.Join(err, removeErr)
 	}
 	// Payload deletion remains owned by the service's managed-path preflight.
 	return err
@@ -332,11 +348,14 @@ func torrentFilePath(opts storage.FilePathMakerOpts) string {
 
 type torrentFileStorage struct {
 	storage.ClientImplCloser
+	directory string
+	validate  func(string) error
 }
 
 func (s torrentFileStorage) OpenTorrent(ctx context.Context, info *metainfo.Info, hash metainfo.Hash) (storage.TorrentImpl, error) {
 	paths := make(map[string]struct{})
-	for _, file := range info.UpvertedFiles() {
+	files := info.UpvertedFiles()
+	for _, file := range files {
 		for _, component := range append([]string{info.BestName()}, file.BestPath()...) {
 			if strings.TrimSpace(component) == ".." {
 				return storage.TorrentImpl{}, errors.New("invalid torrent file path")
@@ -350,8 +369,83 @@ func (s torrentFileStorage) OpenTorrent(ctx context.Context, info *metainfo.Info
 			return storage.TorrentImpl{}, fmt.Errorf("duplicate torrent file path: %q", path)
 		}
 		paths[path] = struct{}{}
+		if s.validate != nil {
+			if err := s.validate(filepath.Join(s.directory, path)); err != nil {
+				return storage.TorrentImpl{}, err
+			}
+		}
 	}
-	return s.ClientImplCloser.OpenTorrent(ctx, info, hash)
+	impl, err := s.ClientImplCloser.OpenTorrent(ctx, info, hash)
+	if err != nil || s.validate == nil {
+		return impl, err
+	}
+	pieceImpl := impl.Piece
+	impl.Piece = func(piece metainfo.Piece) storage.PieceImpl {
+		start, end := piece.Offset(), piece.Offset()+piece.Length()
+		first := sort.Search(len(files), func(i int) bool { return files[i].TorrentOffset+files[i].Length > start })
+		return guardedTorrentPiece{PieceImpl: pieceImpl(piece), length: piece.Length(), validate: func() error {
+			if err := s.validate(s.directory); err != nil {
+				return err
+			}
+			for _, file := range files[first:] {
+				if file.TorrentOffset >= end {
+					break
+				}
+				path := torrentFilePath(storage.FilePathMakerOpts{Info: info, File: &file})
+				if err := s.validate(filepath.Join(s.directory, path)); err != nil {
+					return err
+				}
+			}
+			return nil
+		}}
+	}
+	return impl, nil
+}
+
+type guardedTorrentPiece struct {
+	storage.PieceImpl
+	length   int64
+	validate func() error
+}
+
+// Preserve native hashing of short/sparse files. Falling back to ReadAt loses
+// the file backend's EOF handling for an existing, partially downloaded file.
+func (p guardedTorrentPiece) WriteTo(writer io.Writer) (int64, error) {
+	if err := p.validate(); err != nil {
+		return 0, err
+	}
+	if native, ok := p.PieceImpl.(io.WriterTo); ok {
+		return native.WriteTo(writer)
+	}
+	return io.Copy(writer, io.NewSectionReader(p, 0, p.length))
+}
+
+func (p guardedTorrentPiece) ReadAt(buffer []byte, offset int64) (int, error) {
+	if err := p.validate(); err != nil {
+		return 0, err
+	}
+	return p.PieceImpl.ReadAt(buffer, offset)
+}
+
+func (p guardedTorrentPiece) WriteAt(buffer []byte, offset int64) (int, error) {
+	if err := p.validate(); err != nil {
+		return 0, err
+	}
+	return p.PieceImpl.WriteAt(buffer, offset)
+}
+
+func (p guardedTorrentPiece) MarkComplete() error {
+	if err := p.validate(); err != nil {
+		return err
+	}
+	return p.PieceImpl.MarkComplete()
+}
+
+func (p guardedTorrentPiece) Completion() storage.Completion {
+	if err := p.validate(); err != nil {
+		return storage.Completion{Err: err}
+	}
+	return p.PieceImpl.Completion()
 }
 
 func (d *anacrolixTorrentDownload) metadataReady() bool {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
@@ -44,6 +45,8 @@ type Service struct {
 	TelemetryDB  *gorm.DB
 	GrabClient   *grab.Client
 	GrabInsecure *grab.Client
+
+	DownloadStorage *downloadstorage.Resolver
 
 	torrentMu        sync.RWMutex
 	torrentClient    torrentRuntime
@@ -118,6 +121,7 @@ func NewUtilitiesService(
 	}
 
 	return &Service{
+		DownloadStorage:      downloadstorage.New(dbConn, nil),
 		DB:                   dbConn,
 		TelemetryDB:          telemetryDB,
 		GrabClient:           secureClient,

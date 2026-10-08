@@ -144,7 +144,10 @@ func TestUpdateDownloadRejectsKnownTarAndRawCombinationBeforeMutation(t *testing
 func TestStartPostProcessRejectsRenamedTarAndRawCombination(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SYLVE_DATA_PATH", root)
-	source := filepath.Join(root, "renamed-image.bin")
+	if err := os.MkdirAll(filepath.Join(root, "downloads", "path"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "downloads", "path", "renamed-image.bin")
 	file, err := os.Create(source)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +212,10 @@ func TestStartPostProcessRejectsRenamedTarAndRawCombination(t *testing.T) {
 func TestStartPostProcessRejectsUnsupportedExtractionFormat(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SYLVE_DATA_PATH", root)
-	source := filepath.Join(root, "plain.txt")
+	if err := os.MkdirAll(filepath.Join(root, "downloads", "path"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(root, "downloads", "path", "plain.txt")
 	if err := os.WriteFile(source, []byte("not compressed"), 0o600); err != nil {
 		t.Fatal(err)
 	}

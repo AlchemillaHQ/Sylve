@@ -15,6 +15,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -27,6 +28,7 @@ import (
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
+	DownloadStorage         *downloadstorage.Resolver
 	DB                      *gorm.DB
 	initMutex               sync.Mutex
 	syncMutex               sync.Mutex
@@ -63,10 +65,11 @@ type Service struct {
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {
 	return &Service{
-		DB:         db,
-		GZFS:       gzfs,
-		jailed:     config.IsRunningInJail(),
-		runCommand: utils.RunCommand,
+		DownloadStorage: downloadstorage.New(db, gzfs),
+		DB:              db,
+		GZFS:            gzfs,
+		jailed:          config.IsRunningInJail(),
+		runCommand:      utils.RunCommand,
 	}
 }
 

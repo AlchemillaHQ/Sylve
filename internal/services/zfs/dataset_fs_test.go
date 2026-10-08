@@ -13,6 +13,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
@@ -93,7 +94,7 @@ func TestEditFilesystemProtectsManagedDatasetMountpoints(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			runner := &editFilesystemRunner{datasetName: test.datasetName, guid: "123"}
 			service := &Service{
-				DB:        testutil.NewSQLiteTestDB(t, &models.ZFSCacheInvalidation{}),
+				DB:        testutil.NewSQLiteTestDB(t, &models.ZFSCacheInvalidation{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{}),
 				GZFS:      gzfs.NewClient(gzfs.Options{Runner: runner}),
 				syncMutex: &sync.Mutex{},
 			}

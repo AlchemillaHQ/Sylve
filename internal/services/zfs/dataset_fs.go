@@ -79,6 +79,16 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	if _, editsMountpoint := props["mountpoint"]; editsMountpoint && isSylveManagedDataset(dataset.Name) {
 		return classifyError(ErrConflict, "managed_dataset_mountpoint_edit_not_supported")
 	}
+	for _, property := range []string{"mountpoint", "canmount", "readonly", "keylocation"} {
+		if _, changes := props[property]; changes {
+			release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
+			if err != nil {
+				return err
+			}
+			defer release()
+			break
+		}
+	}
 
 	if mp, ok := props["mountpoint"]; ok && mp == "" {
 		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
@@ -114,13 +124,19 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return err
 	}
 
-	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails"}
+	noDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads"}
 	relativeName := strings.TrimPrefix(foundFS.Name, foundFS.Pool+"/")
 	for _, name := range noDelete {
 		if relativeName == name {
 			return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
 		}
 	}
+
+	release, err := s.guardDownloadStorageMutation(ctx, foundFS.Name)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
 	if err != nil {

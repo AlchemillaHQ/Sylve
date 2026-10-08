@@ -4,6 +4,7 @@ import {
 	DownloadSchema,
 	DownloadDeleteResultSchema,
 	DownloadStartResultSchema,
+	DownloadStorageChoicesSchema,
 	DownloaderUploadAbortSchema,
 	DownloaderUploadCompletionSchema,
 	SignedDownloadURLResultSchema,
@@ -11,6 +12,7 @@ import {
 	type Download,
 	type DownloadDeleteResult,
 	type DownloadStartResult,
+	type DownloadStorageChoices,
 	type DownloadType,
 	type DownloaderUploadAbort,
 	type DownloaderUploadCompletion,
@@ -28,6 +30,21 @@ export async function getDownloadsResult(
 		...options,
 		preserveErrors: true
 	});
+}
+
+export async function getDownloadStorageChoices(
+	options?: NodeAPIRequestOptions
+): Promise<DownloadStorageChoices | APIResponse> {
+	return await apiRequest(
+		'/utilities/downloads/storage',
+		DownloadStorageChoicesSchema,
+		'GET',
+		undefined,
+		{
+			...options,
+			preserveErrors: true
+		}
+	);
 }
 
 export async function getDownloadsByUTypeResult(
@@ -49,7 +66,8 @@ export async function startDownload(
 	ignoreTLS?: boolean,
 	automaticExtraction?: boolean,
 	automaticRawConversion?: boolean,
-	hostname?: string
+	hostname?: string,
+	storagePool = ''
 ): Promise<DownloadStartResult | APIResponse> {
 	return await apiRequest(
 		'/utilities/downloads',
@@ -57,6 +75,7 @@ export async function startDownload(
 		'POST',
 		{
 			url,
+			storagePool,
 			filename,
 			ignoreTLS,
 			automaticExtraction,

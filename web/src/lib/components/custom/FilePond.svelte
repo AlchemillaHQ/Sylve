@@ -34,11 +34,11 @@
 	} = $props();
 
 	watch(
-		[() => isSupported, () => root, () => instance, () => options],
-		([isSupported, root, instance, options]) => {
+		[() => isSupported, () => root, () => instance, () => ({ ...options })],
+		([isSupported, root, pond, options]) => {
 			if (!isSupported || !root) return;
-			if (!instance) {
-				instance = FilePond.create(root, { ...options });
+			if (!pond) {
+				instance = FilePond.create(root, options);
 				addFile = instance.addFile;
 				addFiles = instance.addFiles;
 				removeFile = instance.removeFile;
@@ -53,7 +53,7 @@
 				processFiles = instance.processFiles;
 				sort = instance.sort;
 			} else {
-				instance.setOptions(options);
+				pond.setOptions(options);
 			}
 		}
 	);

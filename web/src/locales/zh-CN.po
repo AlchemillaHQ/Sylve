@@ -26,6 +26,7 @@ msgstr "控制台"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
@@ -18898,6 +18899,7 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
 msgid "Default"
 msgstr ""
 
@@ -19391,4 +19393,36 @@ msgstr ""
 
 #: src/lib/components/custom/Task/Activity.svelte
 msgid "Loading recent tasks…"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Storage:"
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Default (dataPath)"
+msgstr ""
+
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Storage is fixed when the download is created."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
+msgid "Loading storage targets…"
+msgstr ""
+
+#. 0: choices.current.error
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
+msgid "Pool storage discovery failed ({0}). Default is still available."
+msgstr ""
+
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Storage stays locked until the batch is empty."
+msgstr ""
+
+#. 0: uploadHostname
+#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+msgid "Target node: {0}. Files stage and publish on the selected storage. <0/>"
 msgstr ""

@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/config"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	uploadCore "github.com/alchemillahq/sylve/internal/upload"
@@ -82,6 +83,7 @@ func normalizeDownloaderUploadPolicy(policy downloaderUploadPolicy) downloaderUp
 // @Produce json
 // @Security BearerAuth
 // @Param filepond formData file true "File to stage"
+// @Param storagePool query string false "Managed storage pool (omitted uses Default dataPath)"
 // @Success 201 {object} internal.APIResponse[DownloaderUploadReceipt] "Upload staged"
 // @Header 201 {string} Location "/api/utilities/downloader-uploads/{id}"
 // @Failure 400 {object} internal.APIResponse[any] "Invalid filename, file field, or multipart request"
@@ -103,7 +105,7 @@ func UploadDownloaderFile(
 	return newDownloaderUploadHandler(
 		utilitiesService,
 		configuredDownloaderUploadPolicy(),
-		config.GetDownloadsPath("uploads"),
+		"",
 		admission,
 	)
 }
@@ -125,7 +127,21 @@ func newDownloaderUploadHandler(
 			))
 			return
 		}
-		directory, err := canonicalDownloaderUploadDirectory(stagingDirectory)
+		poolValues, supplied := c.Request.URL.Query()["storagePool"]
+		if supplied && len(poolValues) != 1 {
+			writeDownloaderUploadFailure(c, mapDownloaderUploadServiceFailure(downloadstorage.ErrInvalid))
+			return
+		}
+		storage, selectedDirectory, releaseStorage, err := utilitiesService.PrepareDownloaderUpload(c.Request.Context(), c.Query("storagePool"))
+		if err != nil {
+			writeDownloaderUploadFailure(c, mapDownloaderUploadServiceFailure(err))
+			return
+		}
+		defer releaseStorage()
+		if stagingDirectory != "" {
+			selectedDirectory = stagingDirectory
+		}
+		directory, err := canonicalDownloaderUploadDirectory(selectedDirectory)
 		if err != nil {
 			writeDownloaderUploadFailure(c, uploadCore.FilesystemFailure(err, "staging_unavailable"))
 			return
@@ -160,6 +176,7 @@ func newDownloaderUploadHandler(
 			c.GetUint("UserID"),
 			utilitiesService,
 			policy.maxFileBytes,
+			storage,
 		)
 		if failure != nil {
 			writeDownloaderUploadFailure(c, failure)
@@ -203,14 +220,24 @@ func receiveDownloaderMultipartUpload(
 	userID uint,
 	utilitiesService *utilities.Service,
 	maxFileBytes int64,
+	storage utilitiesModels.DownloadStorage,
 ) (DownloaderUploadReceipt, *uploadCore.Failure) {
 	staged, receiveFailure := uploadCore.ReceiveSingle(ctx, reader, uploadCore.ReceiveOptions{
 		Field:         downloaderUploadField,
 		MaxFileBytes:  maxFileBytes,
 		NormalizeName: sanitizeDownloaderUploadName,
+		RemovePartial: func(path string) error {
+			if err := utilitiesService.ValidateDownloaderUploadPath(context.WithoutCancel(ctx), storage, path); err != nil {
+				return err
+			}
+			return os.Remove(path)
+		},
 		Open: func(name string) (*os.File, string, string, *uploadCore.Failure) {
 			partialPath := filepath.Join(directory, utilities.DownloaderUploadPartialName(uploadID))
 			finalPath := filepath.Join(directory, utilities.DownloaderUploadFinalName(uploadID))
+			if err := utilitiesService.ValidateDownloaderUploadPath(ctx, storage, partialPath); err != nil {
+				return nil, "", "", mapDownloaderUploadServiceFailure(err)
+			}
 			file, err := uploadCore.OpenExclusive(partialPath)
 			if errors.Is(err, os.ErrExist) {
 				failure := uploadCore.NewFailure(http.StatusConflict, "upload_id_collision", err)
@@ -227,10 +254,13 @@ func receiveDownloaderMultipartUpload(
 		return DownloaderUploadReceipt{}, receiveFailure
 	}
 	defer func() {
-		if staged.PartialPath != "" {
+		if staged.PartialPath != "" && utilitiesService.ValidateDownloaderUploadPath(context.WithoutCancel(ctx), storage, staged.PartialPath) == nil {
 			_ = os.Remove(staged.PartialPath)
 		}
 	}()
+	if err := utilitiesService.ValidateDownloaderUploadPath(ctx, storage, staged.FinalPath); err != nil {
+		return DownloaderUploadReceipt{}, mapDownloaderUploadServiceFailure(err)
+	}
 
 	if err := uploadCore.PublishNoReplace(staged.PartialPath, staged.FinalPath); err != nil {
 		if errors.Is(err, os.ErrExist) {
@@ -254,9 +284,13 @@ func receiveDownloaderMultipartUpload(
 		staged.Bytes,
 		userID,
 		staged.FileInfo,
+		storage,
 	)
 	if err != nil {
-		cleanupErr := removePublishedDownloaderUpload(staged.FinalPath, staged.FileInfo)
+		cleanupErr := utilitiesService.ValidateDownloaderUploadPath(context.WithoutCancel(ctx), storage, staged.FinalPath)
+		if cleanupErr == nil {
+			cleanupErr = removePublishedDownloaderUpload(staged.FinalPath, staged.FileInfo)
+		}
 		if cleanupErr != nil {
 			err = fmt.Errorf("%w; published file cleanup failed: %v", err, cleanupErr)
 		}
@@ -391,6 +425,14 @@ func AbortDownloaderUpload(utilitiesService *utilities.Service) gin.HandlerFunc 
 
 func mapDownloaderUploadServiceFailure(err error) *uploadCore.Failure {
 	switch {
+	case errors.Is(err, downloadstorage.ErrInvalid):
+		return uploadCore.NewFailure(http.StatusUnprocessableEntity, downloadstorage.ErrInvalid.Error(), err)
+	case errors.Is(err, downloadstorage.ErrMismatch), errors.Is(err, downloadstorage.ErrReadOnly):
+		return uploadCore.NewFailure(http.StatusConflict, downloadstorage.ErrorCode(err), err)
+	case errors.Is(err, downloadstorage.ErrUnavailable):
+		failure := uploadCore.NewFailure(http.StatusServiceUnavailable, downloadstorage.ErrUnavailable.Error(), err)
+		failure.Retryable = true
+		return failure
 	case errors.Is(err, utilities.ErrDownloaderUploadNotFound):
 		return uploadCore.NewFailure(http.StatusNotFound, "upload_not_found", err)
 	case errors.Is(err, utilities.ErrDownloaderUploadExpired):

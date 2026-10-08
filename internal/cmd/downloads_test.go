@@ -18,6 +18,19 @@ func TestNewDownloadsCommandIncludesExpectedWorkflows(t *testing.T) {
 		if _, ok := want[subcommand.Name]; ok {
 			want[subcommand.Name] = true
 		}
+		if subcommand.Name == "start" {
+			foundPool := false
+			for _, flag := range subcommand.Flags {
+				for _, name := range flag.Names() {
+					if name == "pool" {
+						foundPool = true
+					}
+				}
+			}
+			if !foundPool {
+				t.Fatal("downloads start is missing --pool")
+			}
+		}
 	}
 
 	for name, found := range want {

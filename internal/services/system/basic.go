@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 
@@ -163,6 +164,19 @@ func (s *Service) Initialize(ctx context.Context, req systemServiceInterfaces.In
 			InitializationErrorConflict,
 			fmt.Errorf("system_already_initialized"),
 		)}
+	}
+	lockPools := append(append([]string(nil), basicSettings.Pools...), req.Pools...)
+	release, err := s.DownloadStorage.TryMutation(lockPools...)
+	if err != nil {
+		return []error{newInitializationError(InitializationErrorConflict, err)}
+	}
+	defer release()
+	for _, pool := range basicSettings.Pools {
+		if !slices.Contains(req.Pools, pool) {
+			if err := downloadstorage.RequireDatasetUnused(ctx, s.DB, pool); err != nil {
+				return []error{newInitializationError(InitializationErrorConflict, err)}
+			}
+		}
 	}
 
 	var newSets []*gzfs.Dataset
@@ -357,6 +371,11 @@ func (s *Service) applyBootstrapSettingsLocked(ctx context.Context, req systemSe
 		rowExists = false
 		basicSettings = models.BasicSettings{ID: 1}
 	}
+	release, err := s.DownloadStorage.TryMutation(normalizeUsablePools(req.Pools)...)
+	if err != nil {
+		return empty, false, err
+	}
+	defer release()
 
 	finalPools := normalizeUsablePools(basicSettings.Pools)
 	poolSet := make(map[string]struct{}, len(finalPools))

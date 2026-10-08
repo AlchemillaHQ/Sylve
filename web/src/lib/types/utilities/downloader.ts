@@ -14,8 +14,10 @@ export const DownloadSchema = z.object({
 	id: z.number(),
 	uuid: z.string(),
 	path: z.string(),
+	storagePool: z.string().default(''),
 	name: z.string(),
 	type: z.enum(['http', 'torrent', 'path']),
+	isUpload: z.boolean().default(false),
 	url: z.string(),
 	progress: z.number(),
 	size: z.number(),
@@ -80,6 +82,18 @@ export const DetectFilenameResultSchema = z.object({
 	filename: z.string()
 });
 
+export const DownloadStorageChoicesSchema = z.object({
+	choices: z.array(
+		z.object({
+			storagePool: z.string(),
+			label: z.string(),
+			available: z.boolean(),
+			reason: z.string().optional()
+		})
+	),
+	error: z.string().optional()
+});
+
 export const DownloaderUploadCompletionSchema = z.object({
 	uploadId: z.string(),
 	downloadId: z.number(),
@@ -92,6 +106,7 @@ export const DownloaderUploadAbortSchema = z.object({
 });
 
 export type Download = z.infer<typeof DownloadSchema>;
+export type DownloadStorageChoices = z.infer<typeof DownloadStorageChoicesSchema>;
 export type DownloadType = z.infer<typeof DownloadUTypeSchema>;
 export type DownloadStartResult = z.infer<typeof DownloadStartResultSchema>;
 export type DownloadDeleteResult = z.infer<typeof DownloadDeleteResultSchema>;

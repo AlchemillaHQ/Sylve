@@ -304,6 +304,11 @@ func (s *Service) runRestoreJob(
 	if err != nil {
 		return err
 	}
+	releaseDownloadStorage, err := s.DownloadStorage.TryMutation(sourceDataset)
+	if err != nil {
+		return err
+	}
+	defer releaseDownloadStorage()
 	if !s.beginJob(job.ID) {
 		return fmt.Errorf("backup_job_already_running")
 	}

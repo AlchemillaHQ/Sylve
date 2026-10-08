@@ -146,6 +146,7 @@ func TestEnsureSylveNamespaceCreatesInheritedDatasets(t *testing.T) {
 		"tank/sylve/virtual-machines",
 		"tank/sylve/jails",
 		"tank/sylve/bootstraps",
+		"tank/sylve/downloads",
 	}
 	if !reflect.DeepEqual(names, wantNames) {
 		t.Fatalf("created datasets = %v, want %v", names, wantNames)

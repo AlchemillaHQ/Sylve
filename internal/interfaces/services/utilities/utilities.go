@@ -17,6 +17,7 @@ import (
 
 type DownloadFileRequest struct {
 	URL                    string                        `json:"url" binding:"required"`
+	StoragePool            string                        `json:"storagePool"`
 	Filename               *string                       `json:"filename"`
 	IgnoreTLS              *bool                         `json:"ignoreTLS"`
 	AutomaticExtraction    *bool                         `json:"automaticExtraction"`

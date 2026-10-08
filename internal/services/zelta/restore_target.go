@@ -1464,6 +1464,11 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	if !isValidRestoreDestinationDataset(destinationDataset) {
 		return "", fmt.Errorf("destination_dataset_invalid: expected fully qualified dataset like 'pool/path'")
 	}
+	releaseDownloadStorage, err := s.DownloadStorage.TryMutation(destinationDataset)
+	if err != nil {
+		return "", err
+	}
+	defer releaseDownloadStorage()
 	if !datasetWithinRoot(target.BackupRoot, remoteDataset) {
 		return "", fmt.Errorf("remote_dataset_outside_backup_root")
 	}
@@ -1484,7 +1489,6 @@ func (s *Service) runRestoreFromTargetSingleDataset(
 	}
 
 	var restorePlan remoteRestoreDatasetPlan
-	var err error
 	if preparedPlan != nil {
 		if normalizeDatasetPath(preparedPlan.preferredRemoteDataset) != normalizeDatasetPath(preferredRemoteDataset) ||
 			strings.TrimSpace(preparedPlan.snapshot) != snapshot {

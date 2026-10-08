@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 )
 
 var (
@@ -39,6 +40,13 @@ func classifyError(kind error, format string, args ...any) error {
 		kind:   kind,
 		detail: fmt.Errorf(format, args...),
 	}
+}
+
+func downloadStorageMutationError(err error) error {
+	if errors.Is(err, downloadstorage.ErrInUse) {
+		return classifyError(ErrConflict, "%w", err)
+	}
+	return err
 }
 
 func gzfsCommandReportsMissingResource(err error) bool {

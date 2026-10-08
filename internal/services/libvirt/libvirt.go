@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
@@ -39,7 +40,8 @@ var _ libvirtServiceInterfaces.LibvirtServiceInterface = (*Service)(nil)
 const minimumLibvirtVersion uint64 = 12_005_000
 
 type Service struct {
-	DB *gorm.DB
+	DB              *gorm.DB
+	DownloadStorage *downloadstorage.Resolver
 
 	System systemServiceInterfaces.SystemServiceInterface
 
@@ -106,11 +108,12 @@ func (s *Service) SetGuestIdentityCoordinator(
 
 func NewLibvirtService(db *gorm.DB, system systemServiceInterfaces.SystemServiceInterface, gzfs *gzfs.Client) libvirtServiceInterfaces.LibvirtServiceInterface {
 	skeleton := &Service{
-		DB:     db,
-		System: system,
-		Conn:   nil,
-		GZFS:   gzfs,
-		uri:    "bhyve:///system",
+		DownloadStorage: downloadstorage.New(db, gzfs),
+		DB:              db,
+		System:          system,
+		Conn:            nil,
+		GZFS:            gzfs,
+		uri:             "bhyve:///system",
 	}
 
 	var basicSettings models.BasicSettings

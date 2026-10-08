@@ -17,10 +17,11 @@ import (
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 )
 
 // requireNoManagedGuestsWithinRestore prevents a generic dataset-mode restore
-// from replacing a registered jail or VM, or any of its dataset ancestors.
+// from replacing a registered jail, VM, or download payload tree or its ancestors.
 // Guest-mode restores have their own quiescence and reconciliation paths; a
 // generic parent restore does not. Rejecting even stopped guests also closes the
 // start-during-receive race without relying on an advisory in-process lock.
@@ -28,13 +29,15 @@ func (s *Service) requireNoManagedGuestsWithinRestore(
 	ctx context.Context,
 	destination string,
 ) error {
-	_ = ctx
 	destination = normalizeRestoreDestinationDataset(destination)
 	if destination == "" {
 		return fmt.Errorf("destination_dataset_required")
 	}
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("restore_managed_guest_inventory_unavailable")
+	}
+	if err := downloadstorage.RequireDatasetUnused(ctx, s.DB, destination); err != nil {
+		return err
 	}
 
 	blocking := make([]string, 0)

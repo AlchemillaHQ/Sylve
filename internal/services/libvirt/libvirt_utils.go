@@ -134,13 +134,21 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 		First(&download).Error; err != nil {
 		return "", fmt.Errorf("failed_to_find_download: %w", err)
 	}
+	defer s.DownloadStorage.ReadLock(download.StoragePool)()
+	layout, err := s.DownloadStorage.ResolveWithDB(context.Background(), db, download.DownloadStorage, false)
+	if err != nil {
+		return "", err
+	}
+	if err := layout.ValidateDownload(download); err != nil {
+		return "", err
+	}
 
 	fileExists := func(p string) bool {
 		if p == "" {
 			return false
 		}
 		fi, err := os.Stat(p)
-		return err == nil && !fi.IsDir()
+		return err == nil && fi.Mode().IsRegular()
 	}
 	compressedCache := map[string]bool{}
 
@@ -262,6 +270,9 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 		if dir == "" {
 			return
 		}
+		if err := layout.ValidatePath(dir); err != nil {
+			return
+		}
 
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -277,9 +288,9 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 		}
 	}
 
-	httpMainPath := filepath.Join(config.GetDownloadsPath("http"), download.Name)
-	pathFallbackPath := filepath.Join(config.GetDownloadsPath("path"), download.Name)
-	extractedRoot := filepath.Join(config.GetDownloadsPath("extracted"), download.UUID)
+	httpMainPath := filepath.Join(layout.Dir("http"), download.Name)
+	pathFallbackPath := filepath.Join(layout.Dir("path"), download.Name)
+	extractedRoot := filepath.Join(layout.Dir("extracted"), download.UUID)
 
 	switch download.Type {
 	case "http":
@@ -291,9 +302,11 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 		addCandidatesFromDir(extractedRoot)
 
 	case "torrent":
-		torrentsRoot := filepath.Join(config.GetDownloadsPath("torrents"), uuid)
+		torrentsRoot := filepath.Join(layout.Dir("torrents"), uuid)
 		for _, f := range download.Files {
-			addCandidate(filepath.Join(torrentsRoot, f.Name))
+			if path, err := layout.TorrentFile(download.UUID, f.Name); err == nil {
+				addCandidate(path)
+			}
 		}
 
 		addCandidate(filepath.Join(torrentsRoot, download.Name))
@@ -316,6 +329,9 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 	}
 
 	for _, candidate := range candidates {
+		if err := layout.ValidatePath(candidate); err != nil {
+			continue
+		}
 		if isResolvableMediaFile(candidate) {
 			return candidate, nil
 		}
@@ -326,19 +342,10 @@ func (s *Service) findISOByUUIDWithDB(db *gorm.DB, uuid string, includeImg bool)
 	}
 
 	if download.Type == "path" {
-		return "", fmt.Errorf(
-			"iso_or_img_not_found_in_path: path=%s (exists=%t, allowed=%t) fallback=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
-			download.Path, fileExists(download.Path), isResolvableMediaFile(download.Path),
-			pathFallbackPath, fileExists(pathFallbackPath), isResolvableMediaFile(pathFallbackPath),
-			download.ExtractedPath, fileExists(download.ExtractedPath), isResolvableMediaFile(download.ExtractedPath),
-		)
+		return "", fmt.Errorf("iso_or_img_not_found_in_path: %s", uuid)
 	}
 
-	return "", fmt.Errorf(
-		"iso_or_img_not_found: main=%s (exists=%t, allowed=%t) extracted=%s (exists=%t, allowed=%t)",
-		httpMainPath, fileExists(httpMainPath), isResolvableMediaFile(httpMainPath),
-		download.ExtractedPath, fileExists(download.ExtractedPath), isResolvableMediaFile(download.ExtractedPath),
-	)
+	return "", fmt.Errorf("iso_or_img_not_found: %s", uuid)
 }
 
 func (s *Service) GetDomainStates() ([]libvirtServiceInterfaces.DomainState, error) {

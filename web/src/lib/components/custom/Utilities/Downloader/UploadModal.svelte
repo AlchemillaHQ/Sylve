@@ -3,11 +3,13 @@
 	import { abortDownloaderUpload, completeDownloaderUpload } from '$lib/api/utilities/downloader';
 	import FilePond from '$lib/components/custom/FilePond.svelte';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
+	import StorageSelect from '$lib/components/custom/Utilities/Downloader/StorageSelect.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { APIResponse } from '$lib/types/common';
+	import type { DownloadStorageChoices } from '$lib/types/utilities/downloader';
 	import { isDemoMode } from '$lib/demo/runtime';
 	import { formatBytesBinary } from '$lib/utils/bytes';
 	import { getDownloaderProcessingOptionsError } from '$lib/utils/downloader-processing';
@@ -44,6 +46,7 @@
 		pondId: string;
 		uploadId: string;
 		hostname: string;
+		storagePool: string;
 		name: string;
 		size: number;
 		completionState: CompletionState;
@@ -53,11 +56,13 @@
 
 	interface Props {
 		open: boolean;
+		hostname: string;
+		storageChoices: DownloadStorageChoices;
 		onClose: () => void;
 		onCompleted?: () => void;
 	}
 
-	let { open = $bindable(false), onClose, onCompleted }: Props = $props();
+	let { open = $bindable(false), hostname, storageChoices, onClose, onCompleted }: Props = $props();
 
 	const clientUploadConcurrency = 2;
 	const downloadTypeOptions = [
@@ -76,6 +81,11 @@
 	let pond = $state<FilePondType | undefined>(undefined);
 	let isCompletingAll = $state(false);
 	let uploadHostname = $state(getFilePondRequestHostname());
+	let storagePool = $state('');
+	let storageBlocked = $state(false);
+	let batchFileCount = $state(0);
+	let batchStorageChoices = $state<DownloadStorageChoices | null>(null);
+	let resetStorageWhenEmpty = false;
 	let uploadReady = $derived(isDemoMode || Boolean(storage.token?.trim()));
 
 	let completableItems = $derived(
@@ -94,11 +104,22 @@
 	watch(
 		() => open,
 		(current, previous) => {
-			if (current && previous !== true) {
-				uploadHostname = getFilePondRequestHostname();
+			if (current && previous !== true && batchFileCount === 0) {
+				uploadHostname = hostname;
+				storagePool = '';
 			}
 			if (previous === true && !current) {
 				clearQueue();
+			}
+		}
+	);
+
+	watch(
+		() => hostname,
+		(current) => {
+			if (open && batchFileCount === 0) {
+				uploadHostname = current;
+				storagePool = '';
 			}
 		}
 	);
@@ -135,6 +156,7 @@
 		if (existing) {
 			existing.uploadId = uploadId;
 			existing.hostname = uploadHostname;
+			existing.storagePool = storagePool;
 			existing.completionState = 'pending';
 			existing.completionError = '';
 			return;
@@ -144,6 +166,7 @@
 			pondId: file.id,
 			uploadId,
 			hostname: uploadHostname,
+			storagePool,
 			name: file.filename,
 			size: file.fileSize,
 			completionState: 'pending',
@@ -206,7 +229,7 @@
 				const { stageDemoDownloaderUpload } = await import('$lib/demo/admin-fixtures');
 				if (cancelled) return;
 				progress(true, file.size, file.size);
-				load(stageDemoDownloaderUpload(uploadHostname, file.name, file.size));
+				load(stageDemoDownloaderUpload(uploadHostname, file.name, file.size, storagePool));
 			} catch {
 				if (!cancelled) error('Failed to upload file');
 			}
@@ -221,18 +244,18 @@
 		};
 	};
 
-	let uploadServer = $derived.by(() => ({
+	let uploadServer = $derived({
 		process: isDemoMode
 			? processDemoUpload
 			: {
-					url: '/api/utilities/downloader-uploads',
+					url: `/api/utilities/downloader-uploads?storagePool=${encodeURIComponent(storagePool)}`,
 					method: 'POST' as const,
 					headers: getFilePondRequestHeaders(uploadHostname),
 					onload: (response: string) => parseFilePondUploadID(response),
 					onerror: (response: string) => parseFilePondUploadError(response)
 				},
 		revert: revertUpload
-	}));
+	});
 
 	function handleSharedDownloadTypeChange(value: string) {
 		sharedOptions.downloadType = value as DownloadType;
@@ -287,6 +310,9 @@
 
 			if ('downloadId' in result) {
 				item.completionState = 'done';
+				if (pond?.getFile(item.pondId)) {
+					void pond.removeFile(item.pondId, { revert: false });
+				}
 				onCompleted?.();
 				if (notify) {
 					toast.success(`${item.name} added to the downloader`, {
@@ -357,7 +383,23 @@
 
 	function handleReset() {
 		sharedOptions = { ...defaultOptions };
+		resetStorageWhenEmpty = batchFileCount > 0;
 		clearQueue();
+		if (batchFileCount === 0) storagePool = '';
+	}
+
+	function handleUpdateFiles(files: FilePondFile[]) {
+		if (files.length > 0 && batchFileCount === 0) {
+			batchStorageChoices = storageChoices;
+		} else if (files.length === 0) {
+			batchStorageChoices = null;
+		}
+		batchFileCount = files.length;
+		if (batchFileCount === 0 && (uploadHostname !== hostname || resetStorageWhenEmpty)) {
+			uploadHostname = hostname;
+			storagePool = '';
+			resetStorageWhenEmpty = false;
+		}
 	}
 
 	function handleClose() {
@@ -410,6 +452,12 @@
 			</Dialog.Title>
 		</Dialog.Header>
 
+		<StorageSelect
+			storageChoices={batchStorageChoices ?? storageChoices}
+			bind:value={storagePool}
+			bind:blocked={storageBlocked}
+			disabled={batchFileCount > 0}
+		/>
 		{#if uploadReady}
 			<FilePond
 				bind:instance={pond}
@@ -417,10 +465,12 @@
 				name="filepond"
 				server={uploadServer}
 				allowMultiple={true}
+				disabled={storageBlocked}
 				maxParallelUploads={clientUploadConcurrency}
 				allowRevert={true}
 				onprocessfile={handleProcessFile}
 				onremovefile={handleRemoveFile}
+				onupdatefiles={handleUpdateFiles}
 				credits={false}
 			/>
 		{:else}
@@ -483,7 +533,9 @@
 						<div class="flex min-w-0 flex-wrap items-start justify-between gap-2">
 							<div class="min-w-0">
 								<p class="truncate text-sm font-medium" title={item.name}>{item.name}</p>
-								<p class="text-muted-foreground text-xs">{formatBytesBinary(item.size)}</p>
+								<p class="text-muted-foreground text-xs">
+									{formatBytesBinary(item.size)} · {item.storagePool || 'Default'}
+								</p>
 							</div>
 							<span class={`shrink-0 text-xs font-medium ${statusClass(item)}`}>
 								{statusLabel(item)}

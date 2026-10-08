@@ -27,6 +27,7 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
@@ -137,6 +138,8 @@ type Service struct {
 	mutationGate interface {
 		EnterMutation(context.Context) (context.Context, func(), error)
 	}
+
+	DownloadStorage *downloadstorage.Resolver
 
 	jobMu       sync.Mutex
 	runningJobs map[uint]struct{}
@@ -301,6 +304,7 @@ func NewService(
 	gzfsClient *gzfs.Client,
 ) *Service {
 	service := &Service{
+		DownloadStorage:           downloadstorage.New(db, gzfsClient),
 		DB:                        db,
 		TelemetryDB:               telemetryDB,
 		Cluster:                   clusterService,

@@ -44,6 +44,7 @@ func newDownloadsCommand() *cli.Command {
 					jsonFlag,
 					&cli.StringFlag{Name: "url", Usage: "HTTP URL, magnet URI, or absolute local path", Required: true},
 					&cli.StringFlag{Name: "filename", Usage: "Optional destination filename"},
+					&cli.StringFlag{Name: "pool", Usage: "Managed storage pool (omitted uses Default dataPath)"},
 					&cli.StringFlag{Name: "type", Usage: "Download category: base-rootfs, cloud-init, or other", Value: "other"},
 					&cli.BoolFlag{Name: "ignore-tls", Usage: "skip TLS certificate verification"},
 					&cli.BoolFlag{Name: "extract", Usage: "automatically extract the completed download"},
@@ -58,6 +59,7 @@ func newDownloadsCommand() *cli.Command {
 					return executeConsoleOperation(ctx, command, consoleprotocol.OperationDownloadStart, consoleprotocol.DownloadStartPayload{
 						Request: utilitiesServiceInterfaces.DownloadFileRequest{
 							URL:                    command.String("url"),
+							StoragePool:            command.String("pool"),
 							Filename:               filename,
 							IgnoreTLS:              commandEnabledBool(command, "ignore-tls"),
 							AutomaticExtraction:    commandEnabledBool(command, "extract"),

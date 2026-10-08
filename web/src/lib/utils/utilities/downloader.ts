@@ -80,6 +80,11 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 			}
 		},
 		{
+			field: 'storagePool',
+			title: 'Storage',
+			formatter: (cell: CellComponent) => escapeHTML(cell.getValue() || 'Default')
+		},
+		{
 			field: 'size',
 			title: 'Size',
 			formatter: (cell: CellComponent) => {
@@ -165,6 +170,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 		const row: Row = {
 			id: download.id,
 			uuid: download.uuid,
+			storagePool: download.storagePool,
 			name: download.name,
 			size: download.size,
 			type: download.type,
@@ -187,6 +193,7 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 				children: [],
 				progress: '-',
 				parentUUID: download.uuid,
+				storagePool: download.storagePool,
 				status: '-'
 			};
 

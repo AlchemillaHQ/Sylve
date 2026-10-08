@@ -85,6 +85,7 @@ func stageDownloaderUpload(
 		info.Size(),
 		userID,
 		info,
+		utilitiesModels.DownloadStorage{},
 	)
 	if err != nil {
 		t.Fatalf("register downloader upload: %v", err)
@@ -190,6 +191,89 @@ func TestCompleteDownloaderUploadIsIdempotentAndPreservesOptions(t *testing.T) {
 	}
 	if _, err := os.Stat(record.Path); err != nil {
 		t.Fatalf("abort removed completed downloader source: %v", err)
+	}
+}
+
+func TestDownloadOriginsDistinguishUploadsFromPathDownloads(t *testing.T) {
+	service, staging := newDownloaderUploadTestService(t)
+	tests := []struct {
+		name     string
+		typeName utilitiesModels.DownloadType
+		scope    utilitiesModels.UploadScope
+		status   utilitiesModels.UploadStatus
+		isUpload bool
+	}{
+		{name: "completed-upload", typeName: utilitiesModels.DownloadTypePath, scope: utilitiesModels.UploadScopeDownloader, status: utilitiesModels.UploadStatusCompleted, isUpload: true},
+		{name: "local-path", typeName: utilitiesModels.DownloadTypePath},
+		{name: "staged-upload", typeName: utilitiesModels.DownloadTypePath, scope: utilitiesModels.UploadScopeDownloader, status: utilitiesModels.UploadStatusStaged},
+		{name: "file-explorer", typeName: utilitiesModels.DownloadTypePath, scope: utilitiesModels.UploadScopeFileExplorer, status: utilitiesModels.UploadStatusCompleted},
+		{name: "http", typeName: utilitiesModels.DownloadTypeHTTP, scope: utilitiesModels.UploadScopeDownloader, status: utilitiesModels.UploadStatusCompleted},
+		{name: "torrent", typeName: utilitiesModels.DownloadTypeTorrent},
+	}
+	for _, test := range tests {
+		source := filepath.Join(staging, DownloaderUploadFinalName(utils.GenerateRandomUUID()))
+		download := utilitiesModels.Downloads{
+			UUID: test.name, Name: test.name + ".img", URL: source,
+			Path: filepath.Join(t.TempDir(), test.name+".img"),
+			Type: test.typeName, Status: utilitiesModels.DownloadStatusDone,
+		}
+		if err := service.DB.Create(&download).Error; err != nil {
+			t.Fatal(err)
+		}
+		if test.scope != "" {
+			if err := service.DB.Create(&utilitiesModels.Upload{
+				ID: utils.GenerateRandomUUID(), Path: source, Scope: test.scope, Status: test.status,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	listed, err := service.ListDownloads()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != len(tests) {
+		t.Fatalf("listed %d records, want %d", len(listed), len(tests))
+	}
+	for i, test := range tests {
+		if listed[i].IsUpload != test.isUpload {
+			t.Errorf("%s: isUpload=%v want %v", test.name, listed[i].IsUpload, test.isUpload)
+		}
+	}
+	name := "renamed-upload.img"
+	updated, err := service.UpdateDownload(listed[0].ID, utilitiesServiceInterfaces.UpdateDownloadRequest{Name: &name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.IsUpload {
+		t.Fatal("metadata update lost the upload origin")
+	}
+}
+
+func TestDownloadOriginsFailOnUploadLookupError(t *testing.T) {
+	service, _ := newDownloaderUploadTestService(t)
+	download := utilitiesModels.Downloads{
+		UUID: "lookup-failure", Name: "disk.img", Type: utilitiesModels.DownloadTypePath,
+		URL: "/source/disk.img", Path: "/downloads/disk.img", Status: utilitiesModels.DownloadStatusDone,
+	}
+	if err := service.DB.Create(&download).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DB.Migrator().DropTable(&utilitiesModels.Upload{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ListDownloads(); err == nil {
+		t.Fatal("origin lookup failure was silently treated as a download")
+	}
+	name := "renamed.img"
+	if _, err := service.UpdateDownload(download.ID, utilitiesServiceInterfaces.UpdateDownloadRequest{Name: &name}); err == nil {
+		t.Fatal("metadata update ignored the origin lookup failure")
+	}
+	if err := service.DB.First(&download, download.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if download.Name != "disk.img" {
+		t.Fatal("metadata changed before the origin lookup succeeded")
 	}
 }
 
@@ -500,6 +584,13 @@ func TestCompletedDownloaderUploadMovesThroughExistingPathDownloadLifecycle(t *t
 	if _, err := os.Stat(record.Path); !os.IsNotExist(err) {
 		t.Fatalf("completed staging source was not released: %v", err)
 	}
+	listed, err := service.ListDownloads()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || !listed[0].IsUpload {
+		t.Fatal("completed upload origin was lost after releasing its staging source")
+	}
 
 	retry, err := service.CompleteDownloaderUpload(
 		context.Background(),
@@ -638,7 +729,7 @@ func TestCopyFileNoReplaceNeverExposesOrOverwritesPartialDestination(t *testing.
 		t.Fatal(err)
 	}
 
-	if err := copyFileNoReplace(source, destination); err == nil {
+	if err := copyFileNoReplace(source, destination, nil); err == nil {
 		t.Fatal("copy unexpectedly replaced destination")
 	}
 	content, err := os.ReadFile(destination)

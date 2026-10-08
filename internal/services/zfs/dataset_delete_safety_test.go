@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alchemillahq/gzfs"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -45,7 +46,7 @@ func TestIntegrationDatasetDeletionMethodsRejectPoolRootRealZFS(t *testing.T) {
 		t.Fatalf("get child dataset: %v", err)
 	}
 
-	database := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{})
+	database := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
 	service := &Service{
 		DB:        database,
 		GZFS:      client,
@@ -150,7 +151,7 @@ func TestIntegrationBulkDeleteDatasetSnapshotByExactTargetRealZFS(t *testing.T) 
 		t.Fatalf("create snapshot: %v", err)
 	}
 
-	database := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{})
+	database := testutil.NewSQLiteTestDB(t, &vmModels.VMStorageDataset{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
 	var notifiedGUIDs []string
 	service := &Service{
 		DB:        database,

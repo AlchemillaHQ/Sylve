@@ -10,6 +10,7 @@ package services
 
 import (
 	bootstrap "github.com/alchemillahq/sylve/internal/bootstrap"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -172,6 +173,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		ZDBCacheTTLSeconds: 0,
 	})
 
+	downloadStorage := downloadstorage.New(db, gzfs)
 	authService := NewService[auth.Service](db)
 	systemService := NewService[system.Service](db, gzfs)
 	libvirtService := NewService[libvirt.Service](db, systemService, gzfs)
@@ -195,6 +197,12 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	diskService := NewService[disk.Service](db, zfsService, gzfs)
 	iscsiService.(*iscsi.Service).SetInitiatorZPoolChecker(diskService.(*disk.Service))
 	zeltaService := NewService[zelta.Service](db, telemetryDB, clusterService, jailService, networkService, libvirtService, gzfs)
+	systemService.(*system.Service).DownloadStorage = downloadStorage
+	libvirtService.(*libvirt.Service).DownloadStorage = downloadStorage
+	jailService.(*jail.Service).DownloadStorage = downloadStorage
+	zfsService.(*zfs.Service).DownloadStorage = downloadStorage
+	utilitiesService.(*utilities.Service).DownloadStorage = downloadStorage
+	zeltaService.(*zelta.Service).DownloadStorage = downloadStorage
 
 	sambaSvc := sambaService.(*samba.Service)
 	zfsSvc := zfsService.(*zfs.Service)

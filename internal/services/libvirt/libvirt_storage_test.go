@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -987,6 +988,7 @@ func TestStorageAttachApplyCleansUpFilesystemMetadataWhenSyncFails(t *testing.T)
 }
 
 func TestStorageAttachApplyCleansUpDiskImageMetadataWhenSyncFails(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	db := testutil.NewSQLiteTestDB(
 		t,
 		&vmModels.VM{},
@@ -999,7 +1001,10 @@ func TestStorageAttachApplyCleansUpDiskImageMetadataWhenSyncFails(t *testing.T) 
 	if err := db.Create(&vm).Error; err != nil {
 		t.Fatalf("failed to seed VM: %v", err)
 	}
-	imagePath := filepath.Join(t.TempDir(), "installer.iso")
+	imagePath := filepath.Join(config.GetDownloadsPath("path"), "installer.iso")
+	if err := os.MkdirAll(filepath.Dir(imagePath), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(imagePath, []byte("iso"), 0o600); err != nil {
 		t.Fatalf("failed to seed disk image: %v", err)
 	}

@@ -20,6 +20,9 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
+	"github.com/alchemillahq/sylve/internal/downloadstorage"
+	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -441,7 +444,7 @@ func (r *settingsPoolRunner) Run(
 }
 
 func TestAddUsablePoolsCleansCreatedDatasetsWhenPersistenceFails(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
 	if err := db.Create(&models.BasicSettings{}).Error; err != nil {
 		t.Fatalf("failed to seed basic settings: %v", err)
 	}
@@ -473,6 +476,7 @@ func TestAddUsablePoolsCleansCreatedDatasetsWhenPersistenceFails(t *testing.T) {
 	}
 
 	wantDestroyed := []string{
+		"tank/sylve/downloads",
 		"tank/sylve/bootstraps",
 		"tank/sylve/jails",
 		"tank/sylve/virtual-machines",
@@ -488,5 +492,84 @@ func TestAddUsablePoolsCleansCreatedDatasetsWhenPersistenceFails(t *testing.T) {
 	}
 	if len(current.Pools) != 0 {
 		t.Fatalf("persisted pools = %v; want none", current.Pools)
+	}
+}
+
+func TestManagedPoolRemovalRejectsReceivingAndStagedUploads(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	if err := database.Create(&models.BasicSettings{Pools: []string{"tank"}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	resolver := downloadstorage.New(database, nil)
+	service := &Service{DB: database, DownloadStorage: resolver}
+	release := resolver.ReadLock("tank")
+	err := service.AddUsablePools(t.Context(), nil)
+	release()
+	if !errors.Is(err, downloadstorage.ErrInUse) {
+		t.Fatalf("receiving upload was orphaned: %v", err)
+	}
+	if err := database.Create(&utilitiesModels.Upload{ID: "upload", Scope: utilitiesModels.UploadScopeDownloader, DownloadStorage: utilitiesModels.DownloadStorage{StoragePool: "tank"}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.checkPoolUsage("tank"); !errors.Is(err, downloadstorage.ErrInUse) {
+		t.Fatalf("staged upload was orphaned: %v", err)
+	}
+}
+
+func TestPoolBootstrapDoesNotRecreateReferencedDownloadStorage(t *testing.T) {
+	for _, upload := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upload=%t", upload), func(t *testing.T) {
+			database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+			binding := utilitiesModels.DownloadStorage{StoragePool: "tank", StorageRoot: "/mnt/tank/sylve/downloads", StoragePoolGUID: "pool", StorageDatasetGUID: "dataset"}
+			var record any = &utilitiesModels.Downloads{DownloadStorage: binding, UUID: "download", URL: "source", Path: "/mnt/tank/sylve/downloads/path/file.iso"}
+			if upload {
+				record = &utilitiesModels.Upload{DownloadStorage: binding, ID: "upload", Scope: utilitiesModels.UploadScopeDownloader}
+			}
+			if err := database.Create(record).Error; err != nil {
+				t.Fatal(err)
+			}
+			runner := newSettingsPoolRunner()
+			service := &Service{DB: database, GZFS: gzfs.NewClient(gzfs.Options{Runner: runner})}
+			if _, err := service.ensureSylveDatasetsOnPool(t.Context(), "tank"); !errors.Is(err, downloadstorage.ErrInUse) {
+				t.Fatalf("referenced storage was recreated: %v", err)
+			}
+			if len(runner.created) != 0 {
+				t.Fatalf("bootstrap mutated referenced namespace: %v", runner.created)
+			}
+		})
+	}
+}
+
+func TestPoolBootstrapFencesReceivingUploads(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	if err := database.Create(&models.BasicSettings{Pools: []string{"tank"}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	resolver := downloadstorage.New(database, nil)
+	service := &Service{DB: database, DownloadStorage: resolver}
+	defer resolver.ReadLock("tank")()
+	if errs := service.Initialize(t.Context(), systemServiceInterfaces.InitializeRequest{}); len(errs) != 1 || !errors.Is(errs[0], downloadstorage.ErrInUse) {
+		t.Fatalf("initialization orphaned a receiving upload: %v", errs)
+	}
+	if _, err := service.ApplyBootstrapSettings(t.Context(), systemServiceInterfaces.BootstrapSettingsRequest{Pools: []string{"tank"}}); !errors.Is(err, downloadstorage.ErrInUse) {
+		t.Fatalf("bootstrap raced a receiving upload: %v", err)
+	}
+}
+
+func TestInitializeCannotDeregisterDownloadStorage(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	settings := models.BasicSettings{Pools: []string{"tank"}}
+	if err := database.Create(&settings).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&utilitiesModels.Downloads{DownloadStorage: utilitiesModels.DownloadStorage{StoragePool: "tank"}, UUID: "download", URL: "source", Path: "payload"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: database, DownloadStorage: downloadstorage.New(database, nil)}
+	if errs := service.Initialize(t.Context(), systemServiceInterfaces.InitializeRequest{}); len(errs) != 1 || !errors.Is(errs[0], downloadstorage.ErrInUse) {
+		t.Fatalf("initialization orphaned download storage: %v", errs)
+	}
+	if err := database.First(&settings).Error; err != nil || len(settings.Pools) != 1 || settings.Pools[0] != "tank" || settings.Initialized {
+		t.Fatalf("blocked initialization changed settings: %+v %v", settings, err)
 	}
 }
