@@ -314,7 +314,9 @@
 
 	async function handleStart() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'start', node);
+		const target = vm.current;
+		const hostname = node;
+		const result = await actionVm(target.rid, 'start', hostname);
 
 		if (isAPIResponse(result)) {
 			toast.error(
@@ -329,9 +331,10 @@
 			);
 		} else {
 			reload.leftPanel = true;
-			vmPowerSignal.token += 1;
-			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.rid = target.rid;
+			vmPowerSignal.hostname = hostname;
 			vmPowerSignal.action = 'start';
+			vmPowerSignal.token += 1;
 
 			toast.success('VM start queued', {
 				duration: 5000,
@@ -371,9 +374,10 @@
 			);
 		} else {
 			reload.leftPanel = true;
-			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = target.rid;
+			vmPowerSignal.hostname = hostname;
 			vmPowerSignal.action = 'stop';
+			vmPowerSignal.token += 1;
 
 			if (result.outcome === 'force_stop_requested') {
 				toast.warning('Force stop requested', {
@@ -420,6 +424,11 @@
 			);
 		} else {
 			reload.leftPanel = true;
+			vmPowerSignal.rid = target.rid;
+			vmPowerSignal.hostname = hostname;
+			vmPowerSignal.action = 'stop';
+			vmPowerSignal.token += 1;
+
 			toast.warning('Force stop requested', {
 				duration: 5000,
 				position: 'bottom-center'
@@ -458,9 +467,10 @@
 			);
 		} else {
 			reload.leftPanel = true;
-			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = target.rid;
+			vmPowerSignal.hostname = hostname;
 			vmPowerSignal.action = 'shutdown';
+			vmPowerSignal.token += 1;
 
 			toast.success('VM shutdown queued', {
 				duration: 5000,
@@ -500,9 +510,10 @@
 			);
 		} else {
 			reload.leftPanel = true;
-			vmPowerSignal.token += 1;
 			vmPowerSignal.rid = target.rid;
+			vmPowerSignal.hostname = hostname;
 			vmPowerSignal.action = 'reboot';
+			vmPowerSignal.token += 1;
 
 			toast.success('VM reboot queued', {
 				duration: 5000,

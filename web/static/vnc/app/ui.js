@@ -69,6 +69,7 @@ const UI = {
 	inhibitReconnect: true,
 	reconnectCallback: null,
 	reconnectPassword: null,
+	reconnectAttempts: 0,
 	forceOvertake: false,
 
 	async start(options = {}) {
@@ -1050,10 +1051,17 @@ const UI = {
 		return reason.toLowerCase().includes(SESSION_CONFLICT_TOKEN);
 	},
 
-	connect(event, password) {
+	connect(event, password, reconnecting = false) {
 		// Ignore when rfb already exists
 		if (typeof UI.rfb !== 'undefined') {
 			return;
+		}
+
+		if (!reconnecting) {
+			clearTimeout(UI.reconnectCallback);
+			UI.reconnectCallback = null;
+			UI.reconnectAttempts = 0;
+			UI.inhibitReconnect = false;
 		}
 
 		const host = UI.getSetting('host');
@@ -1163,10 +1171,11 @@ const UI = {
 			return;
 		}
 
-		UI.connect(null, UI.reconnectPassword);
+		UI.connect(null, UI.reconnectPassword, true);
 	},
 
 	cancelReconnect() {
+		UI.inhibitReconnect = true;
 		if (UI.reconnectCallback !== null) {
 			clearTimeout(UI.reconnectCallback);
 			UI.reconnectCallback = null;
@@ -1181,6 +1190,7 @@ const UI = {
 	connectFinished(e) {
 		UI.connected = true;
 		UI.inhibitReconnect = false;
+		UI.reconnectAttempts = 0;
 
 		let msg;
 		if (UI.getSetting('encrypt')) {
@@ -1205,10 +1215,17 @@ const UI = {
 		UI.connected = false;
 
 		UI.rfb = undefined;
+		const hasSessionConflict = UI.isSessionConflict(e.detail.reason);
+		if (hasSessionConflict || e.detail.reason === 'VNC session was overtaken by another client') {
+			UI.inhibitReconnect = true;
+		}
+		const shouldReconnect =
+			UI.getSetting('reconnect', false) === true &&
+			!UI.inhibitReconnect &&
+			UI.reconnectAttempts < 3;
 
-		if (!e.detail.clean) {
+		if (!e.detail.clean && !shouldReconnect) {
 			UI.updateVisualState('disconnected');
-			const hasSessionConflict = UI.isSessionConflict(e.detail.reason);
 			if (hasSessionConflict) {
 				UI.showOvertakeOption();
 			} else {
@@ -1228,7 +1245,8 @@ const UI = {
 			}
 		}
 		// If reconnecting is allowed process it now
-		if (UI.getSetting('reconnect', false) === true && !UI.inhibitReconnect) {
+		if (shouldReconnect) {
+			UI.reconnectAttempts += 1;
 			UI.updateVisualState('reconnecting');
 
 			const delay = parseInt(UI.getSetting('reconnect_delay'));
@@ -1236,7 +1254,7 @@ const UI = {
 			return;
 		} else {
 			UI.updateVisualState('disconnected');
-			UI.showStatus(_('Disconnected'), 'normal');
+			if (e.detail.clean) UI.showStatus(_('Disconnected'), 'normal');
 		}
 
 		document.title = PAGE_TITLE;
@@ -1246,6 +1264,7 @@ const UI = {
 	},
 
 	securityFailed(e) {
+		UI.inhibitReconnect = true;
 		let msg = '';
 		// On security failures we might get a string with a reason
 		// directly from the server. Note that we can't control if

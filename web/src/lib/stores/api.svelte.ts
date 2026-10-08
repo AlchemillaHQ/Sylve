@@ -41,5 +41,6 @@ export const jailPowerSignal = $state({
 export const vmPowerSignal = $state({
 	token: 0,
 	rid: 0,
+	hostname: '',
 	action: '' as '' | 'start' | 'stop' | 'shutdown' | 'reboot'
 });

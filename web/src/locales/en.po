@@ -19416,5 +19416,6 @@ msgid "Waiting for selected node CPU information"
 msgstr "Waiting for selected node CPU information"
 
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
+#: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Waiting..."
 msgstr "Waiting..."

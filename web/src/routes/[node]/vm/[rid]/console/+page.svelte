@@ -27,7 +27,6 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import ColorPicker from 'svelte-awesome-color-picker';
 	import { swatches } from '$lib/utils/terminal';
-	import { sleep } from '$lib/utils';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { isMac } from '$lib/hooks/is-mac.svelte';
 	import { isDemoMode } from '$lib/demo/runtime';
@@ -63,7 +62,10 @@
 	const initialData = untrack(() => data);
 	let consoleIdentity = $derived(`${data.node}\u0000${data.rid}`);
 
-	const domain = getContext<{ current: VMDomain | null; refetch(): void }>('vmDomain');
+	const domain = getContext<{
+		current: VMDomain | null;
+		refetch(): Promise<unknown>;
+	}>('vmDomain');
 
 	type VMConsoleSnapshot = { identity: string; vm: VM };
 	const vmResource = resource(
@@ -166,6 +168,14 @@
 	let wrapper = $state<HTMLElement | null>(null);
 	let connectionToken = 0;
 	let destroyed = $state(false);
+	let readyTerminal = $state<Terminal>();
+	let refreshingPowerAction = $state(false);
+	let pendingAction = $derived(domain.current?.pendingAction || '');
+	let lifecyclePending = $derived(refreshingPowerAction || !!pendingAction);
+	let powerRefreshVersion = 0;
+	let retryAttempts = 0;
+	let retryTimer: ReturnType<typeof setTimeout> | undefined;
+	let connectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const options: ITerminalOptions & ITerminalInitOnlyOptions = {
 		cursorBlink: true,
@@ -262,18 +272,20 @@
 			password: vm.current.vncPassword,
 			resize: 'scale',
 			show_dot: 'true',
+			reconnect: 'true',
+			reconnect_delay: '1000',
 			theme: mode.current ?? 'system'
 		});
 		return `/vnc/vnc.html?${params.toString()}`;
 	});
 
-	let vncLoading = $state(false);
+	let vncLoading = $state(true);
 	let vncSettling = $state(false);
 
 	function startVncLoading() {
-		if (!vm.current.vncEnabled) return;
 		vncLoading = true;
 		vncSettling = true;
+		let settlingTimer: ReturnType<typeof setTimeout> | undefined;
 
 		/*
             The below code is fucking ugly, I know..but I don't know how else we could get rid of the ugly fucking animation that shows when no VNC is just being mounted by Svelte, I have wasted way too much time on this already but feel free to take a crack at it, if you're reading this it's not a backend issue, do not touch the websocket <-> VNC bridge/proxy, if you do I will point at you and laugh.
@@ -284,15 +296,20 @@
         */
 
 		// Don't mount the iframe until layout is stable
-		setTimeout(() => {
+		const loadingTimer = setTimeout(() => {
 			vncLoading = false;
 
 			// We keep the overlay up for a bit longer, even though iframe is mounted now,
 			// to hide noVNC's own connect animation/flicker
-			setTimeout(() => {
+			settlingTimer = setTimeout(() => {
 				vncSettling = false;
 			}, 800);
 		}, 600);
+
+		return () => {
+			clearTimeout(loadingTimer);
+			clearTimeout(settlingTimer);
+		};
 	}
 
 	let normalizedDomainStatus = $derived(
@@ -308,6 +325,14 @@
 		);
 	}
 	let isConsoleDomainAvailable = $derived(consoleStatusAvailable(normalizedDomainStatus));
+	let isVncReady = $derived(
+		isConsoleDomainAvailable &&
+			consoleType === 'vnc' &&
+			vm.current.vncEnabled &&
+			!refreshingPowerAction &&
+			(!pendingAction ||
+				(vm.current.vncWait && (pendingAction === 'start' || pendingAction === 'reboot')))
+	);
 	let showConsoleToolbar = $derived(
 		isConsoleDomainAvailable &&
 			(isDemoMode
@@ -351,10 +376,14 @@
 		if (terminal) terminal.options.disableStdin = !state.hasControl;
 		if (!gainedControl) return;
 
+		const activeConnectionToken = connectionToken;
+		const activeTerminal = terminal;
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
+				if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+					return;
 				fitAndSend();
-				terminal?.focus();
+				activeTerminal?.focus();
 			});
 		});
 	}
@@ -382,6 +411,10 @@
 	}
 
 	function cleanupSerial() {
+		clearTimeout(retryTimer);
+		clearTimeout(connectionTimer);
+		retryTimer = undefined;
+		connectionTimer = undefined;
 		connectionToken += 1;
 		serialConnectionState = 'disconnected';
 		serialConnectionError = false;
@@ -395,11 +428,6 @@
 			socket.onmessage = null;
 			socket.onerror = null;
 			socket.onclose = null;
-		}
-
-		if (socket && socket.readyState === WebSocket.OPEN) {
-			socket.close();
-		} else if (socket && socket.readyState === WebSocket.CONNECTING) {
 			socket.close();
 		}
 	}
@@ -411,7 +439,9 @@
 
 	function disconnectSerialForStateChange() {
 		cState.current = false;
+		retryAttempts = 0;
 		cleanupSerial();
+		terminal?.reset();
 	}
 
 	watch(
@@ -419,6 +449,9 @@
 		(identity, previousIdentity) => {
 			if (!previousIdentity || identity === previousIdentity) return;
 
+			powerRefreshVersion += 1;
+			refreshingPowerAction = false;
+			retryAttempts = 0;
 			cleanupSerial();
 			terminal?.reset();
 			cState = new PersistedState(consoleStorageKey('state'), false);
@@ -438,39 +471,16 @@
 				};
 			}
 			consoleType = resolveInitialConsole();
-			if (consoleType === 'vnc' && vm.current.vncEnabled) startVncLoading();
 		},
 		{ lazy: true }
 	);
 
 	function reconnectSerial() {
 		if (isSerialSocketActive()) return;
+		cleanupSerial();
+		retryAttempts = 0;
 		cState.current = false;
-		if (!terminal) return;
 		serialConnect();
-	}
-
-	async function refetchUntilDomainStatus(targetStatus: 'running' | 'shutoff', attempts = 10) {
-		for (let i = 0; i < attempts; i += 1) {
-			await Promise.all([vm.refetch(), domain.refetch()]);
-			if (
-				String(domain.current?.status || '')
-					.trim()
-					.toLowerCase() === targetStatus
-			) {
-				return true;
-			}
-
-			if (i < attempts - 1) {
-				await sleep(500);
-			}
-		}
-
-		return (
-			String(domain.current?.status || '')
-				.trim()
-				.toLowerCase() === targetStatus
-		);
 	}
 
 	useResizeObserver(
@@ -481,17 +491,17 @@
 	);
 
 	function serialConnect() {
-		if (destroyed || !terminal) return;
-		if (!vm.current.serial) return;
+		if (destroyed || cState.current || !terminal || terminal !== readyTerminal || lifecyclePending)
+			return;
+		if (consoleType !== 'serial' || !vm.current.serial) return;
 		if (!isConsoleDomainAvailable) return;
 		if (isSerialSocketActive()) return;
 
-		cState.current = false;
 		serialConnectionError = false;
 		resetSerialControlState();
 
 		const wssAuth = getWSSAuth();
-		const url = `/api/vm/${encodeURIComponent(String(vm.current.rid))}/console?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
+		const url = `/api/vm/${encodeURIComponent(String(data.rid))}/console?auth=${encodeURIComponent(toHex(JSON.stringify(wssAuth)))}`;
 
 		const activeConnectionToken = ++connectionToken;
 		const activeTerminal = terminal;
@@ -504,10 +514,17 @@
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
+			clearTimeout(connectionTimer);
+			connectionTimer = undefined;
 			serialConnectionState = 'connected';
 			serialConnectionError = false;
+			activeTerminal.reset();
 			requestAnimationFrame(() => {
-				requestAnimationFrame(() => fitAndSend());
+				requestAnimationFrame(() => {
+					if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
+						return;
+					fitAndSend();
+				});
 			});
 		};
 
@@ -515,40 +532,43 @@
 			if (destroyed || activeConnectionToken !== connectionToken || terminal !== activeTerminal)
 				return;
 
-			if (e.data instanceof ArrayBuffer) {
-				try {
-					activeTerminal?.write(new Uint8Array(e.data));
-				} catch {
-					return;
-				}
-			} else if (typeof e.data === 'string') {
-				try {
-					const message: unknown = JSON.parse(e.data);
-					if (isVMConsoleControlState(message)) {
-						applySerialControlState(message);
-						return;
+			try {
+				if (e.data instanceof ArrayBuffer) {
+					activeTerminal.write(new Uint8Array(e.data));
+				} else if (typeof e.data === 'string') {
+					try {
+						const message: unknown = JSON.parse(e.data);
+						if (isVMConsoleControlState(message)) {
+							applySerialControlState(message);
+							return;
+						}
+					} catch {
+						// Preserve existing plain-text server messages in the terminal.
 					}
-				} catch {
-					// Preserve existing plain-text server messages in the terminal.
-				}
 
-				try {
-					activeTerminal?.write(e.data);
-				} catch {
-					return;
+					activeTerminal.write(e.data);
 				}
+			} catch {
+				return;
 			}
 		};
 
-		socket.onclose = socket.onerror = () => {
+		const endConnection = () => {
 			if (activeConnectionToken !== connectionToken) return;
-			if (ws === socket) {
-				ws = null;
+			cleanupSerial();
+			if (destroyed || cState.current || lifecyclePending || !isConsoleDomainAvailable) return;
+			if (retryAttempts < 3) {
+				retryAttempts += 1;
+				retryTimer = setTimeout(() => {
+					retryTimer = undefined;
+					serialConnect();
+				}, 1000);
+			} else {
+				serialConnectionError = true;
 			}
-			serialConnectionState = 'disconnected';
-			serialConnectionError = true;
-			resetSerialControlState();
 		};
+		socket.onclose = socket.onerror = endConnection;
+		connectionTimer = setTimeout(endConnection, 10000);
 	}
 
 	function onData(data: string) {
@@ -558,9 +578,23 @@
 	}
 
 	async function onLoad(t: Terminal) {
+		cleanupSerial();
+		readyTerminal?.dispose();
+		readyTerminal = undefined;
+		fitAddon = null;
 		terminal = t;
-		fitAddon = new (await XtermAddon.FitAddon()).FitAddon();
+		const { FitAddon } = await XtermAddon.FitAddon();
+		if (destroyed || terminal !== t || consoleType !== 'serial' || !isConsoleDomainAvailable) {
+			t.dispose();
+			return;
+		}
+		fitAddon = new FitAddon();
 		t.loadAddon(fitAddon);
+		t.options.fontSize = theme.current.fontSize || 14;
+		t.options.theme = {
+			background: theme.current.background,
+			foreground: theme.current.foreground
+		};
 
 		t.attachCustomKeyEventHandler((e) => {
 			const zoomModifier = isMac ? e.metaKey : e.ctrlKey;
@@ -580,20 +614,13 @@
 			return true;
 		});
 
-		if (destroyed) return;
+		retryAttempts = 0;
+		readyTerminal = t;
 
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
+				if (destroyed || terminal !== t) return;
 				fitAndSend();
-				if (
-					consoleType === 'serial' &&
-					vm.current.serial &&
-					isConsoleDomainAvailable &&
-					!cState.current &&
-					!isSerialSocketActive()
-				) {
-					serialConnect();
-				}
 			});
 		});
 	}
@@ -606,7 +633,6 @@
 	}
 
 	onMount(() => {
-		let cancelled = false;
 		window.addEventListener('beforeunload', handleBeforeUnload);
 
 		if (isDemoMode) {
@@ -614,34 +640,22 @@
 				import('$lib/components/custom/VM/DemoVMConsole.svelte'),
 				import('$lib/demo/vm-profiles')
 			]).then(([consoleModule, profileModule]) => {
-				if (cancelled) return;
+				if (destroyed) return;
 				DemoVMConsoleComponent = consoleModule.default;
 				resolveDemoVMProfile = profileModule.resolveDemoVMProfile;
 			});
-		} else if (consoleType === 'vnc' && vm.current.vncEnabled) {
-			startVncLoading();
 		}
 
 		return () => {
-			cancelled = true;
 			window.removeEventListener('beforeunload', handleBeforeUnload);
 			destroyed = true;
-			connectionToken += 1;
-			serialConnectionState = 'disconnected';
-			resetSerialControlState();
-
-			if (ws) {
-				ws.onopen = null;
-				ws.onmessage = null;
-				ws.onerror = null;
-				ws.onclose = null;
-				ws.close();
-				ws = null;
-			}
+			cleanupSerial();
 
 			applyFontSize.cancel?.();
 			applyThemeDebounced.cancel?.();
-			terminal?.dispose?.();
+			terminal?.dispose();
+			readyTerminal = undefined;
+			fitAddon = null;
 			terminal = undefined;
 		};
 	});
@@ -651,8 +665,6 @@
 		(type) => {
 			if (type === 'vnc' && vm.current.vncEnabled) {
 				localStorage.setItem(consoleStorageKey('preferred'), 'vnc');
-				startVncLoading();
-				cleanupSerial();
 			} else if (type === 'serial' && vm.current.serial) {
 				localStorage.setItem(consoleStorageKey('preferred'), 'serial');
 			}
@@ -661,26 +673,40 @@
 	);
 
 	watch(
-		() => normalizedDomainStatus,
-		(status, previousStatus) => {
-			if (status === 'shutoff') {
+		() => [isVncReady, consoleIdentity] as const,
+		([ready]) => {
+			vncLoading = true;
+			vncSettling = false;
+			if (ready && !isDemoMode) return startVncLoading();
+		}
+	);
+
+	watch(
+		() =>
+			[
+				isConsoleDomainAvailable,
+				lifecyclePending,
+				consoleType,
+				vm.current.serial,
+				readyTerminal
+			] as const,
+		([available, pending, type, serial]) => {
+			if (!available || type !== 'serial' || !serial) {
+				if (!available) disconnectSerialForStateChange();
+				else cleanupSerial();
+				readyTerminal?.dispose();
+				readyTerminal = undefined;
+				fitAddon = null;
+				terminal = undefined;
+				return;
+			}
+
+			if (pending) {
 				disconnectSerialForStateChange();
 				return;
 			}
 
-			if (consoleStatusAvailable(status)) {
-				if (consoleType === 'serial' && vm.current.serial && !cState.current) {
-					reconnectSerial();
-				}
-
-				if (
-					consoleType === 'vnc' &&
-					vm.current.vncEnabled &&
-					!consoleStatusAvailable(previousStatus)
-				) {
-					startVncLoading();
-				}
-			}
+			serialConnect();
 		},
 		{ lazy: true }
 	);
@@ -688,27 +714,16 @@
 	watch(
 		() => vmPowerSignal.token,
 		() => {
-			void (async () => {
-				if (vmPowerSignal.rid !== data.rid) return;
-
-				if (vmPowerSignal.action === 'stop' || vmPowerSignal.action === 'shutdown') {
-					disconnectSerialForStateChange();
-					await refetchUntilDomainStatus('shutoff');
-					return;
+			if (vmPowerSignal.rid !== data.rid || vmPowerSignal.hostname !== data.node) return;
+			const identity = consoleIdentity;
+			const version = ++powerRefreshVersion;
+			refreshingPowerAction = true;
+			disconnectSerialForStateChange();
+			void Promise.allSettled([domain.refetch(), vm.refetch()]).then(() => {
+				if (!destroyed && identity === consoleIdentity && version === powerRefreshVersion) {
+					refreshingPowerAction = false;
 				}
-
-				if (vmPowerSignal.action === 'start' || vmPowerSignal.action === 'reboot') {
-					const isRunning = await refetchUntilDomainStatus('running');
-					if (!isRunning) return;
-
-					if (consoleType === 'serial' && vm.current.serial) {
-						cState.current = false;
-						reconnectSerial();
-					} else if (consoleType === 'vnc' && vm.current.vncEnabled) {
-						startVncLoading();
-					}
-				}
-			})();
+			});
 		},
 		{ lazy: true }
 	);
@@ -751,12 +766,18 @@
 					<Button
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"
-						disabled={serialConnectionState === 'connecting'}
+						disabled={serialConnectionState === 'connecting' || lifecyclePending || !readyTerminal}
 						onclick={reconnectSerial}
 					>
 						<div class="flex items-center gap-2">
 							<span class="icon-[mdi--refresh] h-4 w-4"></span>
-							<span>{serialConnectionState === 'connecting' ? 'Connecting...' : 'Reconnect'}</span>
+							<span>
+								{lifecyclePending
+									? 'Waiting...'
+									: serialConnectionState === 'connecting'
+										? 'Connecting...'
+										: 'Reconnect'}
+							</span>
 						</div>
 					</Button>
 				{/if}
@@ -848,7 +869,9 @@
 					vmName={vm.current.name}
 					runtimeKey={String(data.rid)}
 					view={consoleType === 'serial' ? 'serial' : 'vga'}
-					powerToken={vmPowerSignal.rid === data.rid ? vmPowerSignal.token : 0}
+					powerToken={vmPowerSignal.rid === data.rid && vmPowerSignal.hostname === data.node
+						? vmPowerSignal.token
+						: 0}
 					powerAction={vmPowerSignal.action}
 				/>
 			{/key}
@@ -858,7 +881,7 @@
 			</div>
 		{:else if consoleType === 'vnc' && vm.current.vncEnabled}
 			<div class="relative flex min-h-0 w-full flex-1 flex-col">
-				{#if !vncLoading}
+				{#if isVncReady && !vncLoading}
 					<iframe class="w-full flex-1" src={noVNCSource} title="VM Console"></iframe>
 				{/if}
 
@@ -870,7 +893,7 @@
 			</div>
 		{:else if consoleType === 'serial' && vm.current.serial}
 			<div class="flex min-h-0 w-full flex-1 flex-col">
-				{#if serialConnectionError && !cState.current}
+				{#if serialConnectionError && serialConnectionState === 'disconnected' && !cState.current && !lifecyclePending}
 					<div
 						class="border-b border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-amber-200"
 					>
