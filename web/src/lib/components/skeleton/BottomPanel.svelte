@@ -3,7 +3,6 @@
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getAuditRecords } from '$lib/api/info/audit';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
-	import { getActiveLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import AuditDetailModal from '$lib/components/custom/Dialog/AuditDetailModal.svelte';
@@ -13,9 +12,8 @@
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
-	import type { ActiveLifecycleGuest, LifecycleTask } from '$lib/types/task/lifecycle';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
-	import { isAPIResponse, updateCache } from '$lib/utils/http';
+	import { updateCache } from '$lib/utils/http';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, useInterval, watch } from 'runed';
 	import { SvelteSet } from 'svelte/reactivity';
@@ -23,13 +21,12 @@
 
 	interface Props {
 		clustered?: boolean;
-		onLifecycleActiveChange?: (active: boolean, activeGuests: ActiveLifecycleGuest[]) => void;
 	}
 
 	type AuditDetailSection = 'request' | 'response';
 	type ResolvedAuditRecord = AuditRecord & { resolvedAction: string };
 
-	let { clustered = false, onLifecycleActiveChange }: Props = $props();
+	let { clustered = false }: Props = $props();
 
 	let selectedHostname = $state(storage.hostname || '');
 	const effectiveHostname = $derived(selectedHostname || storage.hostname || '');
@@ -123,20 +120,9 @@
 		}
 	);
 
-	const activeLifecycleTasks = resource(
-		() => `active-lifecycle-tasks-${effectiveHostname || 'default'}`,
-		async () => {
-			return await getActiveLifecycleTasks(undefined, undefined, effectiveHostname || undefined);
-		},
-		{
-			initialValue: [] as LifecycleTask[]
-		}
-	);
-
 	useInterval(() => 2000, {
 		callback: () => {
 			if (!storage.visible) return;
-			activeLifecycleTasks.refetch();
 			if (auditRecords.current?.some((r) => r.status === 'pending')) {
 				auditRecords.refetch();
 			}
@@ -1958,24 +1944,6 @@
 		});
 	});
 
-	let activeLifecycleGuests = $derived.by((): ActiveLifecycleGuest[] => {
-		if (!Array.isArray(activeLifecycleTasks.current)) return [];
-
-		return activeLifecycleTasks.current.map((task) => ({
-			hostname: effectiveHostname,
-			guestType: task.guestType,
-			guestId: task.guestId
-		}));
-	});
-	let activeLifecycleCount = $derived(activeLifecycleGuests.length);
-
-	watch(
-		() => activeLifecycleGuests,
-		(activeGuests) => {
-			onLifecycleActiveChange?.(activeGuests.length > 0, activeGuests);
-		}
-	);
-
 	function toTitleCase(value: string): string {
 		return value
 			.trim()
@@ -1983,108 +1951,6 @@
 			.filter(Boolean)
 			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
 			.join(' ');
-	}
-
-	function lifecycleActionLabel(action: string): string {
-		return toTitleCase(action.replace(/[_-]+/g, ' ')) || 'Working';
-	}
-
-	function lifecycleStatusLabel(status: LifecycleTask['status']): string {
-		switch (status) {
-			case 'queued':
-				return 'Queued';
-			case 'running':
-				return 'Running';
-			case 'success':
-				return 'Success';
-			case 'failed':
-				return 'Failed';
-			default:
-				return toTitleCase(status);
-		}
-	}
-
-	function lifecycleGuestLabel(task: LifecycleTask): string {
-		if (task.guestType === 'vm') {
-			const name = vmNameById.get(task.guestId);
-			return name ? `VM ${name} (${task.guestId})` : `VM ${task.guestId}`;
-		}
-
-		if (task.guestType === 'jail-template') {
-			const templateName = templateNameById.get(task.guestId);
-			return templateName
-				? `Template ${templateName} (${task.guestId})`
-				: `Jail Template ${task.guestId}`;
-		}
-
-		if (task.guestType === 'vm-template') {
-			const templateName = vmTemplateNameById.get(task.guestId);
-			return templateName
-				? `Template ${templateName} (${task.guestId})`
-				: `VM Template ${task.guestId}`;
-		}
-
-		const jailName = jailNameByCtId.get(task.guestId);
-		return jailName ? `Jail ${jailName} (${task.guestId})` : `Jail ${task.guestId}`;
-	}
-
-	function lifecycleTaskLabel(task: LifecycleTask): string {
-		if (task.guestType === 'jail' && task.action === 'create') {
-			let name = jailNameByCtId.get(task.guestId) || '';
-			let source = '';
-			try {
-				const request = JSON.parse(task.payload || '{}');
-				if (typeof request.name === 'string') name = request.name;
-				source = request.zfsSource ? 'ZFS copy' : request.bootstrapName ? 'Bootstrap' : 'Base';
-			} catch {
-				// Older task payloads may not include creation settings.
-			}
-			return `Create Jail - ${name ? `${name} (CTID ${task.guestId})` : `CTID ${task.guestId}`}${source ? ` - ${source}` : ''}`;
-		}
-		if (task.action === 'migrate') {
-			if (task.guestType === 'vm') {
-				const name = vmNameById.get(task.guestId);
-				return name
-					? `Migrate VM - ${name} (RID ${task.guestId})`
-					: `Migrate VM - RID ${task.guestId}`;
-			}
-			if (task.guestType === 'jail') {
-				const name = jailNameByCtId.get(task.guestId);
-				return name
-					? `Migrate Jail - ${name} (CTID ${task.guestId})`
-					: `Migrate Jail - CTID ${task.guestId}`;
-			}
-		}
-
-		if (task.guestType === 'jail-template' && task.action === 'create') {
-			const templateName = templateNameById.get(task.guestId);
-			return templateName
-				? `Create Jail - Template ${templateName} (Template ID ${task.guestId})`
-				: `Create Jail - Template ID ${task.guestId}`;
-		}
-
-		if (task.guestType === 'jail-template' && task.action === 'convert') {
-			const jailName = jailNameByCtId.get(task.guestId);
-			return jailName
-				? `Create Jail Template - ${jailName} (Jail CTID ${task.guestId})`
-				: `Create Jail Template - Jail CTID ${task.guestId}`;
-		}
-
-		if (task.guestType === 'vm-template' && task.action === 'create') {
-			const templateName = vmTemplateNameById.get(task.guestId);
-			return templateName
-				? `Create VM - Template ${templateName}`
-				: `Create VM - Template ${task.guestId}`;
-		}
-
-		if (task.guestType === 'vm-template' && task.action === 'convert') {
-			const vmName = vmNameById.get(task.guestId);
-			return vmName
-				? `Create VM Template - ${vmName} (VM RID ${task.guestId})`
-				: `Create VM Template - VM RID ${task.guestId}`;
-		}
-
-		return `${lifecycleActionLabel(task.action)} - ${lifecycleGuestLabel(task)}`;
 	}
 
 	let auditDetailModal = $state<{
@@ -2126,26 +1992,6 @@
 <Tabs.Root value="cluster" class="flex h-full w-full flex-col">
 	<Tabs.Content value="cluster" class="flex h-full flex-col border-x border-b">
 		<div class="relative flex h-full flex-col" transition:fade|global={{ duration: 400 }}>
-			{#if activeLifecycleCount > 0}
-				<div class="bg-muted/35 border-b px-3 py-1.5 text-xs">
-					<div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap">
-						<span class="inline-flex items-center gap-1 font-medium">
-							<span class="icon-[mdi--loading] h-3.5 w-3.5 animate-spin"></span>
-							{activeLifecycleCount}
-							active lifecycle task{activeLifecycleCount === 1 ? '' : 's'}
-						</span>
-
-						{#if !isAPIResponse(activeLifecycleTasks.current) && Array.isArray(activeLifecycleTasks.current)}
-							{#each activeLifecycleTasks.current as task (task.id)}
-								<span class="bg-background rounded border px-2 py-0.5">
-									{lifecycleTaskLabel(task)} ({lifecycleStatusLabel(task.status)})
-								</span>
-							{/each}
-						{/if}
-					</div>
-				</div>
-			{/if}
-
 			<div class="flex-1 min-h-0 overflow-auto" style="overflow-anchor: none">
 				<Table.Root class="w-full table-auto border-collapse">
 					<Table.Header class="bg-background sticky top-0 z-10">

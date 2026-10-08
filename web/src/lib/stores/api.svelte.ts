@@ -14,6 +14,8 @@ export const reload = $state({
 	auditLogHostname: null as string | null,
 	clusterDetails: false,
 	notifications: false,
+	lifecycleTasksPulse: 0,
+	lifecycleTasksHostname: null as string | null,
 	datacenterNodesPulse: 0,
 	datacenterDetailsPulse: 0
 });

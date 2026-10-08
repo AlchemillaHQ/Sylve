@@ -1,7 +1,8 @@
-<script>
+<script lang="ts">
 	import { page } from '$app/state';
 	import { getJWTClaims, logOut } from '$lib/api/auth';
 	import ReplicationActivity from '$lib/components/custom/DataCenter/Replication/Activity.svelte';
+	import TaskActivity from '$lib/components/custom/Task/Activity.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
@@ -14,6 +15,14 @@
 	import { getBasicInfo } from '$lib/api/info/basic';
 	import { resource } from 'runed';
 	import { isDemoMode } from '$lib/demo/runtime';
+	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
+
+	interface Props {
+		clustered?: boolean;
+		onActiveGuestsChange?: (activeGuests: ActiveLifecycleGuest[]) => void;
+	}
+
+	let { clustered = false, onActiveGuestsChange }: Props = $props();
 
 	let options = {
 		createVM: {
@@ -177,6 +186,8 @@
 		</div>
 	</nav>
 	<div class="flex w-full items-center justify-end gap-2 md:ml-auto lg:gap-4">
+		<TaskActivity hostname={activeNode} {clustered} {onActiveGuestsChange} />
+
 		<div class="hidden items-center gap-4 lg:flex">
 			{#if storage.showReplication}
 				<ReplicationActivity />

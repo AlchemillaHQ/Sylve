@@ -18,7 +18,8 @@ export async function getLifecycleTask(
 export async function getActiveLifecycleTasks(
 	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId?: number,
-	hostname?: string
+	hostname?: string,
+	signal?: AbortSignal
 ): Promise<LifecycleTask[] | APIResponse> {
 	const params = new URLSearchParams();
 	if (guestType) {
@@ -32,6 +33,7 @@ export async function getActiveLifecycleTasks(
 	const endpoint = query ? `/tasks/lifecycle/active?${query}` : '/tasks/lifecycle/active';
 	const result = await apiRequest(endpoint, z.array(LifecycleTaskSchema), 'GET', undefined, {
 		hostname,
+		signal,
 		preserveErrors: true
 	});
 
@@ -67,7 +69,8 @@ export async function getRecentLifecycleTasks(
 	limit: number = 50,
 	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId?: number,
-	hostname?: string
+	hostname?: string,
+	signal?: AbortSignal
 ): Promise<LifecycleTask[] | APIResponse> {
 	const params = new URLSearchParams();
 	params.set('limit', String(limit));
@@ -83,7 +86,7 @@ export async function getRecentLifecycleTasks(
 		z.array(LifecycleTaskSchema),
 		'GET',
 		undefined,
-		{ hostname, preserveErrors: true }
+		{ hostname, signal, preserveErrors: true }
 	);
 
 	return result ?? [];

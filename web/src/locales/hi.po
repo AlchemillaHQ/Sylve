@@ -433,6 +433,7 @@ msgstr "जेल - विवरण अपडेट करें"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -483,6 +484,7 @@ msgid "Login - Create"
 msgstr "लॉगिन - बनाएं"
 
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -520,6 +522,8 @@ msgstr "समाप्त होने का समय"
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/Task/Activity.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/Create/Basic.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -842,6 +846,7 @@ msgstr "नाम"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
@@ -1029,6 +1034,7 @@ msgstr "रीसेट करें"
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -2742,9 +2748,9 @@ msgstr "जबरन हटाएँ"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2814,17 +2820,15 @@ msgstr "त्रुटि कॉपी करने में विफल"
 
 #. 0: task.guestId
 #. 0: task.guestId
-#. 0: task.guestId
 #. 0: jailMatch[1]
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Jail {0}"
 msgstr "जेल {0}"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2832,9 +2836,9 @@ msgid "Success"
 msgstr "सफल"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
@@ -3011,6 +3015,8 @@ msgid "OOB Restore"
 msgstr "OOB पुनर्स्थापना"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Task/Activity.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
@@ -3137,6 +3143,7 @@ msgstr "पथ"
 msgid "Message"
 msgstr "संदेश"
 
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Finished"
 msgstr "समाप्त हुआ"
@@ -4176,7 +4183,6 @@ msgid "Select ZFS pool"
 msgstr "ZFS पूल चुनें"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Base"
 msgstr "बेस"
 
@@ -4582,6 +4588,7 @@ msgstr "टेम्पलेट {0} {1}"
 msgid "Edit Template - {0}"
 msgstr "टेम्पलेट संपादित करें - {0}"
 
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -7442,7 +7449,7 @@ msgstr ""
 msgid "Jail start queued"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 msgid "Working"
 msgstr ""
 
@@ -7668,47 +7675,15 @@ msgid "Name Prefix"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Queued"
-msgstr ""
-
-#. 0: templateName; 1: task.guestId
-#. 0: templateName; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Template {0} ({1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail Template {0}"
-msgstr ""
-
-#. 0: jailName; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Jail {0} ({1})"
 msgstr ""
 
 #. 0: templateName
 #: src/lib/components/custom/Jail/Template/Create.svelte
 msgid "Create Jail - Template {0}"
-msgstr ""
-
-#. 0: jailName; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail Template - {0} (Jail CTID {1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail Template - Jail CTID {0}"
-msgstr ""
-
-#. 0: activeLifecycleCount; 1: activeLifecycleCount === 1 ? '' \\: 's'
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "<0/> {0} active lifecycle task{1}"
 msgstr ""
 
 #. 0: templateId
@@ -7974,30 +7949,9 @@ msgstr ""
 msgid "Add {0} to last VDEV"
 msgstr ""
 
+#: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "VM Template"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "VM Template {0}"
-msgstr ""
-
-#. 0: templateName
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM - Template {0}"
-msgstr ""
-
-#. 0: vmName; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM Template - {0} (VM RID {1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create VM Template - VM RID {0}"
 msgstr ""
 
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -9822,7 +9776,6 @@ msgid "Retry"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
-#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Bootstrap"
 msgstr ""
 
@@ -11459,26 +11412,6 @@ msgstr ""
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "No other online nodes available in the cluster."
-msgstr ""
-
-#. 0: name; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Migrate VM - {0} (RID {1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Migrate VM - RID {0}"
-msgstr ""
-
-#. 0: name; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Migrate Jail - {0} (CTID {1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Migrate Jail - CTID {0}"
 msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -16112,16 +16045,6 @@ msgstr ""
 msgid "Jail - Update Name - {0}"
 msgstr ""
 
-#. 0: templateName; 1: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail - Template {0} (Template ID {1})"
-msgstr ""
-
-#. 0: task.guestId
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail - Template ID {0}"
-msgstr ""
-
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
@@ -19188,15 +19111,6 @@ msgstr ""
 msgid "Object Usages - {0}"
 msgstr ""
 
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "ZFS copy"
-msgstr ""
-
-#. 0: name ? `${name} (CTID ${task.guestId})` \\: `CTID ${task.guestId}`; 1: source ? ` - ${source}` \\: ''
-#: src/lib/components/skeleton/BottomPanel.svelte
-msgid "Create Jail - {0}{1}"
-msgstr ""
-
 #. 0: data.name
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 msgid "Jail {0} creation queued"
@@ -19418,4 +19332,66 @@ msgstr ""
 #: src/routes/[node]/jail/[ctid]/console/+page.svelte
 #: src/routes/[node]/vm/[rid]/console/+page.svelte
 msgid "Waiting..."
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Failed to load active tasks."
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Execution order: oldest first"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Execution order: newest first"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Create from Template"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Jail Template"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Task status unavailable"
+msgstr ""
+
+#. 0: effectiveHostname
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Tasks on {0}"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Open tasks; task status unavailable"
+msgstr ""
+
+#. 0: activeCount; 1: effectiveHostname
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Open tasks ({0} active on {1})"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Tasks"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Requested By"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Recent Tasks"
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Failed to load cluster nodes."
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "No recent tasks on this node."
+msgstr ""
+
+#: src/lib/components/custom/Task/Activity.svelte
+msgid "Loading recent tasks…"
 msgstr ""

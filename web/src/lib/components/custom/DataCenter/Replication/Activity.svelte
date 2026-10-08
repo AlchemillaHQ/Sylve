@@ -318,7 +318,7 @@
 
 {#if runningReplicationCount > 0}
 	<Button
-		class="relative h-6"
+		class="h-6 shrink-0 gap-2"
 		size="sm"
 		variant="outline"
 		onclick={() => {
@@ -326,16 +326,13 @@
 			replicationActivity.refetch();
 		}}
 	>
-		<div class="flex items-center gap-2">
-			<span class="icon-[mdi--progress-clock] h-4 w-4"></span>
-			<span>Replication</span>
-		</div>
-		{#if runningReplicationCount > 0}
-			<span
-				class="bg-primary text-primary-foreground absolute -right-2 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px]"
-				>{runningReplicationCount}</span
-			>
-		{/if}
+		<span class="icon-[mdi--progress-clock] h-4 w-4"></span>
+		<span>Replication</span>
+		<span
+			class="bg-primary text-primary-foreground inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px]"
+		>
+			{runningReplicationCount}
+		</span>
 	</Button>
 {/if}
 

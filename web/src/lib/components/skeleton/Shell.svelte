@@ -70,7 +70,6 @@
 	let leftPanelClusteredRef = $state<
 		{ expandAll: () => void; collapseAll: () => void } | undefined
 	>();
-	let lifecycleActive = $state(false);
 	let activeLifecycleGuests = $state.raw<ActiveLifecycleGuest[]>([]);
 
 	function expandTree() {
@@ -81,28 +80,13 @@
 		(clustered ? leftPanelClusteredRef : leftPanelRef)?.collapseAll();
 	}
 
-	let leftPaneDefaultSize = $state(12);
-	let topPaneDefaultSize = $state(90);
-	let bottomPaneDefaultSize = $state(10);
-
-	const lifecyclePaneBoost = 6;
-
-	function handleLifecycleActiveChange(active: boolean, activeGuests: ActiveLifecycleGuest[]) {
-		activeLifecycleGuests = activeGuests;
-		if (lifecycleActive === active) return;
-
-		lifecycleActive = active;
-		bottomPaneDefaultSize = active ? 10 + lifecyclePaneBoost : 10;
-		topPaneDefaultSize = 100 - bottomPaneDefaultSize;
-	}
-
 	function updateTreePreferences(preferences: ResourceTreePreferences) {
 		resourceTreePreferences.current = normalizeResourceTreePreferences(preferences);
 	}
 </script>
 
 <div class="flex min-h-screen w-full flex-col">
-	<Header />
+	<Header {clustered} onActiveGuestsChange={(guests) => (activeLifecycleGuests = guests)} />
 	<GuestActionDialog />
 	<main class="flex flex-1 flex-col">
 		<div class="h-[95vh] w-full md:h-[96vh]">
@@ -111,13 +95,13 @@
 				id="child-pane-auto"
 				autoSaveId="child-pane-auto-save"
 			>
-				<Resizable.Pane defaultSize={topPaneDefaultSize}>
+				<Resizable.Pane defaultSize={90}>
 					<Resizable.PaneGroup
 						direction="horizontal"
 						id="child-left-pane-auto"
 						autoSaveId="child-left-pane-auto-save"
 					>
-						<Resizable.Pane defaultSize={leftPaneDefaultSize} minSize={12} class="border-l">
+						<Resizable.Pane defaultSize={12} minSize={12} class="border-l">
 							<div class="flex h-full min-h-0 flex-col">
 								<ResourceTreeToolbar
 									preferences={treePreferences}
@@ -156,8 +140,8 @@
 
 				<Resizable.Handle withHandle gripPreferenceKey="shell-bottom-panel" />
 
-				<Resizable.Pane class="h-full min-h-20" defaultSize={bottomPaneDefaultSize}>
-					<BottomPanel {clustered} onLifecycleActiveChange={handleLifecycleActiveChange} />
+				<Resizable.Pane class="h-full min-h-20" defaultSize={10}>
+					<BottomPanel {clustered} />
 				</Resizable.Pane>
 			</Resizable.PaneGroup>
 		</div>

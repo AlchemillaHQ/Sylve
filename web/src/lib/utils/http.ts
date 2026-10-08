@@ -87,10 +87,28 @@ export async function apiRequest<T extends z.ZodType>(
 ): Promise<z.infer<T> | APIResponse> {
 	const auditHostname = options?.hostname || null;
 
-	function setReloadFlag() {
+	function setReloadFlag(data?: unknown) {
 		if (method !== 'GET' && !options?.skipAuditLog) {
 			reload.auditLogHostname = auditHostname;
 			reload.auditLog = true;
+		}
+		if (
+			browser &&
+			method !== 'GET' &&
+			/^\/(vm|jail)(\/|$)/.test(endpoint) &&
+			data !== null &&
+			typeof data === 'object' &&
+			'taskId' in data &&
+			typeof data.taskId === 'number' &&
+			Number.isSafeInteger(data.taskId) &&
+			data.taskId > 0
+		) {
+			const bodyHostname =
+				body !== null && typeof body === 'object' && 'node' in body && typeof body.node === 'string'
+					? body.node
+					: null;
+			reload.lifecycleTasksHostname = options?.hostname || bodyHostname;
+			reload.lifecycleTasksPulse += 1;
 		}
 	}
 
@@ -141,13 +159,13 @@ export async function apiRequest<T extends z.ZodType>(
 
 		/* Caller asked for a raw response */
 		if (options?.raw) {
-			setReloadFlag();
+			setReloadFlag(apiResponse.data.data);
 			return apiResponse.data as z.infer<T>;
 		}
 
 		const parsedResult = schema.safeParse(apiResponse.data.data);
 		if (parsedResult.success) {
-			setReloadFlag();
+			setReloadFlag(parsedResult.data);
 			return parsedResult.data;
 		}
 
@@ -156,7 +174,7 @@ export async function apiRequest<T extends z.ZodType>(
 		// contract failure.
 		const parsedEnvelope = schema.safeParse(apiResponse.data);
 		if (parsedEnvelope.success) {
-			setReloadFlag();
+			setReloadFlag(apiResponse.data.data);
 			return parsedEnvelope.data;
 		}
 
