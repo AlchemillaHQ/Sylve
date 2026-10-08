@@ -144,6 +144,7 @@ type NetworkServiceInterface interface {
 
 type StartupNetworkServiceInterface interface {
 	NetworkServiceInterface
+	StartWireGuardMonitor(ctx context.Context)
 	RecoverHostInterfaceL3() error
 	ReconcileHostInterfaceL3() error
 	StartHostInterfaceL3Sweeper(ctx context.Context)

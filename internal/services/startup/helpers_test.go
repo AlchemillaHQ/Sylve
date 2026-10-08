@@ -14,12 +14,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
+	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/rs/zerolog"
@@ -175,6 +177,48 @@ func TestInitializeContinuesWhenBootstrapFailsWithoutRestart(t *testing.T) {
 	}
 	if fake.calls != 1 {
 		t.Fatalf("ApplyStartup calls = %d, want 1", fake.calls)
+	}
+}
+
+type wireGuardStartupNetwork struct {
+	networkServiceInterfaces.StartupNetworkServiceInterface
+	enableErr  error
+	calls      []string
+	monitorCtx context.Context
+}
+
+func (n *wireGuardStartupNetwork) EnableWireGuardService(context.Context) error {
+	n.calls = append(n.calls, "enable")
+	return n.enableErr
+}
+
+func (n *wireGuardStartupNetwork) StartWireGuardMonitor(ctx context.Context) {
+	n.calls = append(n.calls, "monitor")
+	n.monitorCtx = ctx
+}
+
+func TestWireGuardMonitorStartsRegardlessOfServiceStateOrStartupFailure(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		enabled   bool
+		enableErr error
+		wantCalls []string
+	}{
+		{name: "disabled", wantCalls: []string{"monitor"}},
+		{name: "enabled", enabled: true, wantCalls: []string{"enable", "monitor"}},
+		{name: "startup failure", enabled: true, enableErr: errors.New("firewall failure"), wantCalls: []string{"enable", "monitor"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			network := &wireGuardStartupNetwork{enableErr: test.enableErr}
+			svc := &Service{Network: network}
+			svc.startWireGuard(t.Context(), test.enabled)
+			if !slices.Equal(network.calls, test.wantCalls) {
+				t.Fatalf("startup calls = %v, want %v", network.calls, test.wantCalls)
+			}
+			if network.monitorCtx != t.Context() {
+				t.Fatal("monitor did not receive the daemon context")
+			}
+		})
 	}
 }
 

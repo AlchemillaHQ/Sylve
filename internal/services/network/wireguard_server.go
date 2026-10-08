@@ -540,7 +540,36 @@ func (s *Service) GetWireGuardServer() (*networkModels.WireGuardServer, error) {
 		return nil, err
 	}
 
+	s.overlayWireGuardServerRuntime(&server)
 	return &server, nil
+}
+
+func (s *Service) overlayWireGuardServerRuntime(server *networkModels.WireGuardServer) {
+	now := wireGuardCurrentTime()
+
+	s.wgMetricsMutex.RLock()
+	defer s.wgMetricsMutex.RUnlock()
+
+	cache := s.wgServerCache
+	if cache == nil || cache.id != server.ID {
+		return
+	}
+	server.RX = cache.rx
+	server.TX = cache.tx
+	server.LastHandshake = cache.lastHandshake
+	if server.Enabled && !cache.restartedAt.IsZero() && !now.Before(cache.restartedAt) {
+		server.Uptime = uint64(now.Sub(cache.restartedAt) / time.Second)
+	}
+	for i := range server.Peers {
+		peer := &server.Peers[i]
+		cached, ok := cache.peers[strings.TrimSpace(peer.PublicKey)]
+		if !ok || cached.id != peer.ID {
+			continue
+		}
+		peer.RX = cached.rx
+		peer.TX = cached.tx
+		peer.LastHandshake = cached.lastHandshake
+	}
 }
 
 func (s *Service) InitWireGuardServer(req *InitWireGuardServerRequest) error {

@@ -91,6 +91,8 @@ type Service struct {
 	firewallTelOnce              sync.Once
 	wgMonitorMutex               sync.Mutex
 	wgMonitorCancel              context.CancelFunc
+	wgMonitorDone                chan struct{}
+	wgRuntimeSyncPending         bool // guarded by wireGuardServerMutationMutex
 	wgClient                     *wgctrl.Client
 	wgClientMutex                sync.Mutex
 	wgMetricsMutex               sync.RWMutex

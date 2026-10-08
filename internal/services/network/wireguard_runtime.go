@@ -744,7 +744,11 @@ func (s *Service) readWireGuardDeviceWithClient(iface string) (*wgtypes.Device, 
 	defer s.wgClientMutex.Unlock()
 
 	if s.wgClient == nil {
-		return nil, fmt.Errorf("wireguard_monitor_client_not_initialized")
+		client, err := wireGuardNewWGClient()
+		if err != nil {
+			return nil, err
+		}
+		s.wgClient = client
 	}
 
 	dev, err := s.wgClient.Device(iface)
@@ -762,36 +766,35 @@ func (s *Service) readWireGuardDeviceWithClient(iface string) (*wgtypes.Device, 
 	return dev, nil
 }
 
-func (s *Service) EnableWireGuardService(ctx context.Context) error {
+func (s *Service) syncWireGuardServiceFirewall() error {
+	var server networkModels.WireGuardServer
+	if err := s.DB.First(&server).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return s.syncWireGuardManagedFirewallRules(nil, false)
+		}
+		return err
+	}
+	return s.syncWireGuardManagedFirewallRules(&server, server.Enabled)
+}
+
+func (s *Service) EnableWireGuardService(_ context.Context) error {
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
+	s.wgRuntimeSyncPending = true
 
 	if err := loadWireGuardKernelModule(); err != nil {
 		return err
 	}
 
 	runtimeErr := s.syncWireGuardRuntime()
-
-	var server networkModels.WireGuardServer
-	serverErr := s.DB.First(&server).Error
-	if serverErr != nil && !errors.Is(serverErr, gorm.ErrRecordNotFound) {
-		return errors.Join(runtimeErr, serverErr, s.teardownWireGuardRuntime())
-	}
-	var configuredServer *networkModels.WireGuardServer
-	active := false
-	if serverErr == nil {
-		configuredServer = &server
-		active = server.Enabled
-	}
-	if err := s.syncWireGuardManagedFirewallRules(configuredServer, active); err != nil {
+	if err := s.syncWireGuardServiceFirewall(); err != nil {
 		return errors.Join(runtimeErr, err, s.teardownWireGuardRuntime())
 	}
-
-	s.StartWireGuardMonitor(ctx)
+	s.wgRuntimeSyncPending = false
 	return runtimeErr
 }
 
-func (s *Service) DisableWireGuardService(ctx context.Context) error {
+func (s *Service) DisableWireGuardService(_ context.Context) error {
 	s.wireGuardServerMutationMutex.Lock()
 	defer s.wireGuardServerMutationMutex.Unlock()
 
@@ -808,13 +811,14 @@ func (s *Service) DisableWireGuardService(ctx context.Context) error {
 		return err
 	}
 
-	s.stopWireGuardMonitor()
+	s.flushWireGuardMetrics()
 	if err := s.teardownWireGuardRuntime(); err != nil {
 		runtimeRollbackErr := s.syncWireGuardRuntime()
 		firewallRollbackErr := s.syncWireGuardManagedFirewallRules(configuredServer, configuredServer != nil && configuredServer.Enabled)
-		s.StartWireGuardMonitor(ctx)
+		s.wgRuntimeSyncPending = firewallRollbackErr != nil
 		return errors.Join(err, runtimeRollbackErr, firewallRollbackErr)
 	}
+	s.wgRuntimeSyncPending = false
 	return nil
 }
 

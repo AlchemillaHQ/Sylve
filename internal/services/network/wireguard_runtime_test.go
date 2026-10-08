@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -723,11 +724,13 @@ func TestListManagedWireGuardInterfacesFiltersAndSorts(t *testing.T) {
 
 func TestWireGuardRuntimeIsolatesFailuresAndRetries(t *testing.T) {
 	svc, db := newNetworkServiceForTest(t,
+		&models.BasicSettings{},
 		&networkModels.WireGuardServer{},
 		&networkModels.WireGuardServerPeer{},
 		&networkModels.WireGuardClient{},
 		&networkModels.StaticRoute{},
 	)
+	seedWireGuardServiceEnabled(t, db)
 	runtime := stubWireGuardServerRuntime(t)
 	svc.wgEndpointCache = make(map[string][]string)
 

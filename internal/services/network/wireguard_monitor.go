@@ -10,6 +10,7 @@ package network
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -18,20 +19,25 @@ import (
 	"gorm.io/gorm"
 )
 
+// StartWireGuardMonitor owns the monitor for the daemon lifetime. Service
+// enable/disable requests only change the desired state observed by the loop.
 func (s *Service) StartWireGuardMonitor(ctx context.Context) {
 	s.wgMonitorMutex.Lock()
+	defer s.wgMonitorMutex.Unlock()
 	if s.wgMonitorCancel != nil {
-		s.wgMonitorMutex.Unlock()
 		return
 	}
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if ctx.Err() != nil {
+		return
+	}
 
 	runCtx, cancel := context.WithCancel(ctx)
 	s.wgMonitorCancel = cancel
-	s.wgMonitorMutex.Unlock()
+	s.wgMonitorDone = make(chan struct{})
 
 	s.wgClientMutex.Lock()
 	if client, err := wireGuardNewWGClient(); err != nil {
@@ -46,20 +52,15 @@ func (s *Service) StartWireGuardMonitor(ctx context.Context) {
 
 func (s *Service) stopWireGuardMonitor() {
 	s.wgMonitorMutex.Lock()
+	done := s.wgMonitorDone
 	if s.wgMonitorCancel != nil {
 		s.wgMonitorCancel()
-		s.wgMonitorCancel = nil
 	}
 	s.wgMonitorMutex.Unlock()
 
-	s.wgClientMutex.Lock()
-	if s.wgClient != nil {
-		s.wgClient.Close()
-		s.wgClient = nil
+	if done != nil {
+		<-done
 	}
-	s.wgClientMutex.Unlock()
-
-	s.flushWireGuardMetrics()
 }
 
 func (s *Service) flushWireGuardMetricsOnConfigChange() {
@@ -75,6 +76,22 @@ func (s *Service) flushWireGuardMetricsOnConfigChange() {
 }
 
 func (s *Service) runWireGuardMonitor(ctx context.Context) {
+	defer func() {
+		s.wgMonitorMutex.Lock()
+		defer s.wgMonitorMutex.Unlock()
+		s.wgClientMutex.Lock()
+		if s.wgClient != nil {
+			_ = s.wgClient.Close()
+			s.wgClient = nil
+		}
+		s.wgClientMutex.Unlock()
+		s.wgMonitorCancel()
+		s.wgMonitorCancel = nil
+		done := s.wgMonitorDone
+		s.wgMonitorDone = nil
+		close(done)
+	}()
+
 	s.seedWireGuardMetricsCache()
 
 	metricsTicker := time.NewTicker(5 * time.Second)
@@ -97,9 +114,6 @@ func (s *Service) runWireGuardMonitor(ctx context.Context) {
 			}
 			s.flushWireGuardMetrics()
 		case <-endpointTicker.C:
-			if !s.isWireGuardServiceEnabled() {
-				continue
-			}
 			s.retryWireGuardRuntime()
 		}
 	}
@@ -187,8 +201,9 @@ func (s *Service) collectWireGuardServerMetrics() {
 		return
 	}
 
-	dev, err := s.readWireGuardDeviceWithClient(wireGuardServerInterfaceName)
+	dev, err := wireGuardReadDevice(s, wireGuardServerInterfaceName)
 	if err != nil {
+		logger.L.Debug().Err(err).Msg("failed to read wireguard server metrics")
 		return
 	}
 
@@ -304,6 +319,7 @@ func (s *Service) collectWireGuardClientMetrics() {
 		dev, err := wireGuardReadDevice(s, interfaceName)
 		if err != nil {
 			cc.runtimeState = networkModels.WireGuardClientRuntimeError
+			logger.L.Debug().Err(err).Str("interface", interfaceName).Msg("failed to read wireguard client metrics")
 			continue
 		}
 		cc.runtimeState = networkModels.WireGuardClientRuntimeAvailable
@@ -405,14 +421,17 @@ func (s *Service) resyncMetricsCacheAfterFlush() {
 	// Resync server peers
 	if s.wgServerCache != nil {
 		var server networkModels.WireGuardServer
-		if err := s.DB.Preload("Peers").First(&server).Error; err == nil {
+		err := s.DB.Preload("Peers").First(&server).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && server.ID != s.wgServerCache.id) {
+			s.wgServerCache = nil
+		} else if err == nil {
 			s.wgServerCache.restartedAt = server.RestartedAt
 
 			currentPubs := make(map[string]struct{}, len(server.Peers))
 			for _, peer := range server.Peers {
 				pub := strings.TrimSpace(peer.PublicKey)
 				currentPubs[pub] = struct{}{}
-				if _, ok := s.wgServerCache.peers[pub]; !ok {
+				if cached, ok := s.wgServerCache.peers[pub]; !ok || cached.id != peer.ID {
 					s.wgServerCache.peers[pub] = &wgPeerMetrics{
 						id:            peer.ID,
 						rx:            peer.RX,
@@ -474,7 +493,23 @@ func equalStringSlice(a []string, b []string) bool {
 }
 
 func (s *Service) retryWireGuardRuntime() {
-	runtimeChanged := s.retryWireGuardServerRuntime()
+	s.wireGuardServerMutationMutex.Lock()
+	defer s.wireGuardServerMutationMutex.Unlock()
+	if !s.isWireGuardServiceEnabled() {
+		return
+	}
+	if s.wgRuntimeSyncPending {
+		if err := loadWireGuardKernelModule(); err != nil {
+			logger.L.Debug().Err(err).Msg("failed to load wireguard kernel module for recovery")
+			return
+		}
+		if err := s.syncWireGuardServiceFirewall(); err != nil {
+			logger.L.Debug().Err(err).Msg("failed to reconcile wireguard firewall for recovery")
+			return
+		}
+		s.wgRuntimeSyncPending = false
+	}
+	runtimeChanged := s.retryWireGuardServerRuntimeLocked()
 	clientsChanged, err := s.refreshWireGuardClientEndpoints()
 	if err != nil {
 		logger.L.Debug().Err(err).Msg("failed to refresh wireguard client endpoints")
@@ -487,10 +522,7 @@ func (s *Service) retryWireGuardRuntime() {
 	}
 }
 
-func (s *Service) retryWireGuardServerRuntime() bool {
-	s.wireGuardServerMutationMutex.Lock()
-	defer s.wireGuardServerMutationMutex.Unlock()
-
+func (s *Service) retryWireGuardServerRuntimeLocked() bool {
 	var server networkModels.WireGuardServer
 	if err := s.DB.Preload("Peers").First(&server).Error; err != nil {
 		if err != gorm.ErrRecordNotFound {

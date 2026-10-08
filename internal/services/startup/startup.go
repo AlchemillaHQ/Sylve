@@ -134,6 +134,15 @@ func (s *Service) PreFlightChecklist(basicSettings models.BasicSettings) error {
 	return nil
 }
 
+func (s *Service) startWireGuard(ctx context.Context, enabled bool) {
+	if enabled {
+		if err := s.Network.EnableWireGuardService(ctx); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_enable_wireguard_service_on_startup")
+		}
+	}
+	s.Network.StartWireGuardMonitor(ctx)
+}
+
 func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context, dCtx context.Context) error {
 	if err := s.InitKeys(authService); err != nil {
 		return err
@@ -226,11 +235,7 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 
 	s.Network.StartFirewallMonitor(dCtx)
 
-	if slices.Contains(basicSettings.Services, models.WireGuard) {
-		if err := s.Network.EnableWireGuardService(dCtx); err != nil {
-			logger.L.Error().Err(err).Msg("failed_to_enable_wireguard_service_on_startup")
-		}
-	}
+	s.startWireGuard(dCtx, slices.Contains(basicSettings.Services, models.WireGuard))
 
 	if err := s.Network.ReconcileManagedRoutes(); err != nil {
 		logger.L.Error().Err(err).Msg("failed_to_reconcile_managed_routes_on_startup")
