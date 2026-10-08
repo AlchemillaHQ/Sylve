@@ -14,6 +14,8 @@
 			onCancel: () => void;
 		};
 		customTitle?: string;
+		description?: string;
+		onOpenChange?: (open: boolean) => void;
 		title?: string;
 		confirmLabel?: string;
 		loadingLabel?: string;
@@ -27,6 +29,8 @@
 		names,
 		actions,
 		customTitle,
+		description,
+		onOpenChange,
 		title = 'Are you sure?',
 		confirmLabel = 'Continue',
 		loadingLabel = 'Processing...',
@@ -67,7 +71,7 @@
 	}
 </script>
 
-<AlertDialog.Root bind:open>
+<AlertDialog.Root bind:open {onOpenChange}>
 	<AlertDialog.Content
 		onInteractOutside={(e) => e.preventDefault()}
 		onEscapeKeydown={handleEscapeKeydown}
@@ -80,7 +84,9 @@
 				<SpanWithIcon icon="icon-[lucide--alert-triangle]" size="h-5 w-5" gap="gap-2" {title} />
 			</AlertDialog.Title>
 			<AlertDialog.Description>
-				{#if customTitle}
+				{#if description}
+					{description}
+				{:else if customTitle}
 					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 					{@html customTitle}
 				{:else if names && names.parent && names.element}

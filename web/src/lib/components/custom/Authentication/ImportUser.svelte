@@ -7,6 +7,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { ImportableUnixUser } from '$lib/types/auth';
 	import { sleep } from '$lib/utils';
 	import { handleAPIError, isAPIResponse, isRequestCancellation } from '$lib/utils/http';
@@ -27,6 +28,7 @@
 	let selectedUsername = $state({ open: false, value: '' });
 	let password = $state('');
 	let admin = $state(false);
+	let confirmGuestActions = $state(false);
 	let submitting = $state(false);
 	let listController: AbortController | null = null;
 	let componentActive = true;
@@ -71,6 +73,7 @@
 		selectedUsername = { open: false, value: '' };
 		password = '';
 		admin = false;
+		confirmGuestActions = false;
 	}
 
 	function closeDialog() {
@@ -115,7 +118,8 @@
 		const payload = {
 			username,
 			password: password || undefined,
-			admin
+			admin,
+			confirmGuestActions
 		};
 		submitting = true;
 		try {
@@ -214,9 +218,30 @@
 					/>
 
 					<div class="space-y-1.5">
-						<div class="flex items-center gap-2">
-							<Checkbox id="import-admin" bind:checked={admin} />
-							<Label for="import-admin" class="cursor-pointer text-sm">Admin</Label>
+						<div class="flex flex-wrap items-center gap-6">
+							<div class="flex items-center gap-2">
+								<Checkbox id="import-admin" bind:checked={admin} />
+								<Label for="import-admin" class="cursor-pointer text-sm">Admin</Label>
+							</div>
+							<div class="flex items-center gap-2">
+								<Checkbox id="import-confirm-guest-actions" bind:checked={confirmGuestActions} />
+								<Tooltip.Root>
+									<Tooltip.Trigger>
+										{#snippet child({ props })}
+											<Label
+												{...props}
+												for="import-confirm-guest-actions"
+												class="cursor-pointer text-sm"
+											>
+												Fat Finger Protection
+											</Label>
+										{/snippet}
+									</Tooltip.Trigger>
+									<Tooltip.Content side="top" sideOffset={2} class="max-w-xs whitespace-normal">
+										Confirm stop, shutdown, and restart actions for VMs and jails.
+									</Tooltip.Content>
+								</Tooltip.Root>
+							</div>
 						</div>
 
 						<p class="text-muted-foreground text-xs text-justify">

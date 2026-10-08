@@ -26,42 +26,44 @@ import (
 )
 
 type CreateUserRequest struct {
-	Username        string `json:"username" binding:"required,min=1,max=128"`
-	FullName        string `json:"fullName"`
-	Password        string `json:"password" maxLength:"72"`
-	Email           string `json:"email"`
-	Admin           *bool  `json:"admin" binding:"required"`
-	UID             int    `json:"uid"`
-	Shell           string `json:"shell"`
-	HomeDirectory   string `json:"homeDirectory"`
-	HomeDirPerms    uint   `json:"homeDirPerms"`
-	SSHPublicKey    string `json:"sshPublicKey"`
-	DisablePassword bool   `json:"disablePassword"`
-	Locked          bool   `json:"locked"`
-	DoasEnabled     bool   `json:"doasEnabled"`
-	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
-	PrimaryGroupID  *uint  `json:"primaryGroupId"`
-	AuxGroupIDs     []uint `json:"auxGroupIds"`
+	Username            string `json:"username" binding:"required,min=1,max=128"`
+	FullName            string `json:"fullName"`
+	Password            string `json:"password" maxLength:"72"`
+	Email               string `json:"email"`
+	Admin               *bool  `json:"admin" binding:"required"`
+	ConfirmGuestActions bool   `json:"confirmGuestActions"`
+	UID                 int    `json:"uid"`
+	Shell               string `json:"shell"`
+	HomeDirectory       string `json:"homeDirectory"`
+	HomeDirPerms        uint   `json:"homeDirPerms"`
+	SSHPublicKey        string `json:"sshPublicKey"`
+	DisablePassword     bool   `json:"disablePassword"`
+	Locked              bool   `json:"locked"`
+	DoasEnabled         bool   `json:"doasEnabled"`
+	NewPrimaryGroup     bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID      *uint  `json:"primaryGroupId"`
+	AuxGroupIDs         []uint `json:"auxGroupIds"`
 }
 
 type EditUserRequest struct {
-	FullName        string `json:"fullName"`
-	Username        string `json:"username"`
-	Password        string `json:"password" maxLength:"72"`
-	Email           string `json:"email"`
-	Admin           *bool  `json:"admin" binding:"required"`
-	UID             int    `json:"uid"`
-	Shell           string `json:"shell"`
-	HomeDirectory   string `json:"homeDirectory"`
-	HomeDirPerms    uint   `json:"homeDirPerms"`
-	SSHPublicKey    string `json:"sshPublicKey"`
-	DisablePassword bool   `json:"disablePassword"`
-	Locked          bool   `json:"locked"`
-	DoasEnabled     bool   `json:"doasEnabled"`
-	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
-	PrimaryGroupID  *uint  `json:"primaryGroupId"`
-	AuxGroupIDs     []uint `json:"auxGroupIds"`
-	SambaAction     string `json:"sambaAction" binding:"omitempty,oneof=keep upsert remove"`
+	FullName            string `json:"fullName"`
+	Username            string `json:"username"`
+	Password            string `json:"password" maxLength:"72"`
+	Email               string `json:"email"`
+	Admin               *bool  `json:"admin" binding:"required"`
+	ConfirmGuestActions *bool  `json:"confirmGuestActions"`
+	UID                 int    `json:"uid"`
+	Shell               string `json:"shell"`
+	HomeDirectory       string `json:"homeDirectory"`
+	HomeDirPerms        uint   `json:"homeDirPerms"`
+	SSHPublicKey        string `json:"sshPublicKey"`
+	DisablePassword     bool   `json:"disablePassword"`
+	Locked              bool   `json:"locked"`
+	DoasEnabled         bool   `json:"doasEnabled"`
+	NewPrimaryGroup     bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID      *uint  `json:"primaryGroupId"`
+	AuxGroupIDs         []uint `json:"auxGroupIds"`
+	SambaAction         string `json:"sambaAction" binding:"omitempty,oneof=keep upsert remove"`
 }
 
 func writeUserBindingError(c *gin.Context, err error, request any) {
@@ -245,6 +247,7 @@ func CreateUserHandler(authService *auth.Service) gin.HandlerFunc {
 		model.Password = req.Password
 		model.Email = req.Email
 		model.Admin = admin
+		model.ConfirmGuestActions = req.ConfirmGuestActions
 		model.UID = req.UID
 		model.Shell = req.Shell
 		model.HomeDirectory = req.HomeDirectory
@@ -309,20 +312,21 @@ func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		user := &models.User{
-			Username:        req.Username,
-			FullName:        req.FullName,
-			Password:        req.Password,
-			Email:           req.Email,
-			Admin:           admin,
-			UID:             req.UID,
-			Shell:           req.Shell,
-			HomeDirectory:   req.HomeDirectory,
-			HomeDirPerms:    req.HomeDirPerms,
-			SSHPublicKey:    req.SSHPublicKey,
-			DisablePassword: req.DisablePassword,
-			Locked:          req.Locked,
-			DoasEnabled:     req.DoasEnabled,
-			PrimaryGroupID:  req.PrimaryGroupID,
+			Username:            req.Username,
+			FullName:            req.FullName,
+			Password:            req.Password,
+			Email:               req.Email,
+			Admin:               admin,
+			ConfirmGuestActions: req.ConfirmGuestActions,
+			UID:                 req.UID,
+			Shell:               req.Shell,
+			HomeDirectory:       req.HomeDirectory,
+			HomeDirPerms:        req.HomeDirPerms,
+			SSHPublicKey:        req.SSHPublicKey,
+			DisablePassword:     req.DisablePassword,
+			Locked:              req.Locked,
+			DoasEnabled:         req.DoasEnabled,
+			PrimaryGroupID:      req.PrimaryGroupID,
 		}
 
 		opts := auth.CreateUserOpts{
@@ -445,23 +449,24 @@ func EditUserHandler(authService *auth.Service) gin.HandlerFunc {
 		}
 
 		err := authService.EditUser(userID, auth.EditUserOpts{
-			FullName:        req.FullName,
-			Username:        req.Username,
-			Password:        req.Password,
-			Email:           req.Email,
-			Admin:           admin,
-			UID:             req.UID,
-			Shell:           req.Shell,
-			HomeDirectory:   req.HomeDirectory,
-			HomeDirPerms:    req.HomeDirPerms,
-			SSHPublicKey:    req.SSHPublicKey,
-			DisablePassword: req.DisablePassword,
-			Locked:          req.Locked,
-			DoasEnabled:     req.DoasEnabled,
-			NewPrimaryGroup: req.NewPrimaryGroup,
-			PrimaryGroupID:  req.PrimaryGroupID,
-			AuxGroupIDs:     req.AuxGroupIDs,
-			SambaAction:     req.SambaAction,
+			FullName:            req.FullName,
+			Username:            req.Username,
+			Password:            req.Password,
+			Email:               req.Email,
+			Admin:               admin,
+			ConfirmGuestActions: req.ConfirmGuestActions,
+			UID:                 req.UID,
+			Shell:               req.Shell,
+			HomeDirectory:       req.HomeDirectory,
+			HomeDirPerms:        req.HomeDirPerms,
+			SSHPublicKey:        req.SSHPublicKey,
+			DisablePassword:     req.DisablePassword,
+			Locked:              req.Locked,
+			DoasEnabled:         req.DoasEnabled,
+			NewPrimaryGroup:     req.NewPrimaryGroup,
+			PrimaryGroupID:      req.PrimaryGroupID,
+			AuxGroupIDs:         req.AuxGroupIDs,
+			SambaAction:         req.SambaAction,
 		})
 
 		if err != nil {
@@ -545,29 +550,31 @@ func UserCapabilitiesHandler() gin.HandlerFunc {
 }
 
 type ImportUserRequest struct {
-	Username string `json:"username" binding:"required,min=1,max=128"`
-	Password string `json:"password" binding:"omitempty,min=8,max=72"`
-	Admin    *bool  `json:"admin" binding:"required"`
+	Username            string `json:"username" binding:"required,min=1,max=128"`
+	Password            string `json:"password" binding:"omitempty,min=8,max=72"`
+	Admin               *bool  `json:"admin" binding:"required"`
+	ConfirmGuestActions bool   `json:"confirmGuestActions"`
 }
 
 type CreatePamUserRequest struct {
-	Username        string `json:"username" binding:"required,min=1,max=128"`
-	FullName        string `json:"fullName"`
-	Password        string `json:"password" binding:"required,min=8,max=72"`
-	Email           string `json:"email"`
-	Admin           *bool  `json:"admin" binding:"required"`
-	UID             int    `json:"uid" binding:"required,gte=1000,lte=65533"`
-	Shell           string `json:"shell"`
-	HomeDirectory   string `json:"homeDirectory"`
-	HomeDirPerms    uint   `json:"homeDirPerms" binding:"required,gte=1,lte=511"`
-	SSHPublicKey    string `json:"sshPublicKey"`
-	DisablePassword bool   `json:"disablePassword"`
-	Locked          bool   `json:"locked"`
-	DoasEnabled     bool   `json:"doasEnabled"`
-	NewPrimaryGroup bool   `json:"newPrimaryGroup"`
-	PrimaryGroupID  *uint  `json:"primaryGroupId"`
-	AuxGroupIDs     []uint `json:"auxGroupIds"`
-	CreateSamba     bool   `json:"createSamba"`
+	Username            string `json:"username" binding:"required,min=1,max=128"`
+	FullName            string `json:"fullName"`
+	Password            string `json:"password" binding:"required,min=8,max=72"`
+	Email               string `json:"email"`
+	Admin               *bool  `json:"admin" binding:"required"`
+	ConfirmGuestActions bool   `json:"confirmGuestActions"`
+	UID                 int    `json:"uid" binding:"required,gte=1000,lte=65533"`
+	Shell               string `json:"shell"`
+	HomeDirectory       string `json:"homeDirectory"`
+	HomeDirPerms        uint   `json:"homeDirPerms" binding:"required,gte=1,lte=511"`
+	SSHPublicKey        string `json:"sshPublicKey"`
+	DisablePassword     bool   `json:"disablePassword"`
+	Locked              bool   `json:"locked"`
+	DoasEnabled         bool   `json:"doasEnabled"`
+	NewPrimaryGroup     bool   `json:"newPrimaryGroup"`
+	PrimaryGroupID      *uint  `json:"primaryGroupId"`
+	AuxGroupIDs         []uint `json:"auxGroupIds"`
+	CreateSamba         bool   `json:"createSamba"`
 }
 
 // @Summary Import Unix user
@@ -600,7 +607,7 @@ func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
 			admin = *req.Admin
 		}
 
-		user, err := authService.ImportUser(req.Username, req.Password, admin)
+		user, err := authService.ImportUser(req.Username, req.Password, admin, req.ConfirmGuestActions)
 
 		if err != nil {
 			writeUserServiceError(c, "failed_to_import_user", err)

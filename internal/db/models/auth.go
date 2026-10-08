@@ -13,27 +13,28 @@ import (
 )
 
 type User struct {
-	ID              uint      `gorm:"primarykey" json:"id"`
-	Username        string    `gorm:"unique" json:"username"`
-	FullName        string    `json:"fullName"`
-	Email           string    `json:"email"`
-	Password        string    `json:"-"`
-	Notes           string    `json:"notes"`
-	TOTP            string    `json:"totp"`
-	Admin           bool      `json:"admin"`
-	UID             int       `json:"uid"`
-	Shell           string    `json:"shell" gorm:"default:'/usr/sbin/nologin'"`
-	HomeDirectory   string    `json:"homeDirectory" gorm:"default:'/nonexistent'"`
-	HomeDirPerms    uint      `json:"homeDirPerms" gorm:"default:493"`
-	SSHPublicKey    string    `json:"sshPublicKey"`
-	DisablePassword bool      `json:"disablePassword"`
-	Locked          bool      `json:"locked"`
-	DoasEnabled     bool      `json:"doasEnabled"`
-	PrimaryGroupID  *uint     `json:"primaryGroupId" gorm:"index"`
-	Source          string    `json:"source" gorm:"default:'local';index"`
-	CreatedAt       time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt       time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
-	LastLoginTime   time.Time `json:"lastLoginTime"`
+	ID                  uint      `gorm:"primarykey" json:"id"`
+	Username            string    `gorm:"unique" json:"username"`
+	FullName            string    `json:"fullName"`
+	Email               string    `json:"email"`
+	Password            string    `json:"-"`
+	Notes               string    `json:"notes"`
+	TOTP                string    `json:"totp"`
+	Admin               bool      `json:"admin"`
+	ConfirmGuestActions bool      `json:"confirmGuestActions" gorm:"not null;default:false"`
+	UID                 int       `json:"uid"`
+	Shell               string    `json:"shell" gorm:"default:'/usr/sbin/nologin'"`
+	HomeDirectory       string    `json:"homeDirectory" gorm:"default:'/nonexistent'"`
+	HomeDirPerms        uint      `json:"homeDirPerms" gorm:"default:493"`
+	SSHPublicKey        string    `json:"sshPublicKey"`
+	DisablePassword     bool      `json:"disablePassword"`
+	Locked              bool      `json:"locked"`
+	DoasEnabled         bool      `json:"doasEnabled"`
+	PrimaryGroupID      *uint     `json:"primaryGroupId" gorm:"index"`
+	Source              string    `json:"source" gorm:"default:'local';index"`
+	CreatedAt           time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt           time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	LastLoginTime       time.Time `json:"lastLoginTime"`
 
 	Tokens []Token `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"tokens,omitempty"`
 	Groups []Group `gorm:"many2many:user_groups;constraint:OnDelete:CASCADE" json:"groups,omitempty"`

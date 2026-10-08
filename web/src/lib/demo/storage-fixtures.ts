@@ -264,6 +264,11 @@ function userFromPayload(
 		email: stringValue(body, 'email', previous?.email ?? ''),
 		notes: stringValue(body, 'notes', previous?.notes ?? ''),
 		admin: booleanValue(body, 'admin', previous?.admin ?? false),
+		confirmGuestActions: booleanValue(
+			body,
+			'confirmGuestActions',
+			previous?.confirmGuestActions ?? false
+		),
 		uid: Math.trunc(numberValue(body, 'uid', previous?.uid ?? 1000 + id)),
 		shell: stringValue(body, 'shell', previous?.shell ?? '/usr/sbin/nologin'),
 		homeDirectory: stringValue(body, 'homeDirectory', previous?.homeDirectory ?? '/nonexistent'),
@@ -749,6 +754,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			email: 'admin@sylve.local',
 			notes: 'Demo administrator',
 			admin: true,
+			confirmGuestActions: false,
 			uid: 1001,
 			shell: '/bin/sh',
 			homeDirectory: '/home/admin',
@@ -772,6 +778,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			email: 'alice@sylve.local',
 			notes: 'Application owner',
 			admin: false,
+			confirmGuestActions: false,
 			uid: 1002,
 			shell: '/usr/sbin/nologin',
 			homeDirectory: '/nonexistent',
@@ -795,6 +802,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			email: '',
 			notes: 'Service account for media workflows',
 			admin: false,
+			confirmGuestActions: false,
 			uid: 1003,
 			shell: '/usr/sbin/nologin',
 			homeDirectory: '/nonexistent',
@@ -818,6 +826,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			email: 'deploy@sylve.local',
 			notes: 'FreeBSD account imported for deployment work',
 			admin: false,
+			confirmGuestActions: false,
 			uid: 1201,
 			shell: '/bin/sh',
 			homeDirectory: '/home/deploy',
@@ -1779,6 +1788,13 @@ export function handleDemoStorageRequest<T = unknown>(
 		const available = new Set(state.pools.map((pool) => pool.name));
 		state.usablePools = requested.filter((pool) => available.has(pool));
 		return mutationSuccess('usable_pools_updated') as DemoStorageResponse<T>;
+	}
+
+	if (path === '/auth/preferences' && method === 'GET') {
+		const user = state.users.find((candidate) => candidate.id === 1);
+		if (!user)
+			return failure('invalid_credentials', 'invalid_credentials', 401) as DemoStorageResponse<T>;
+		return success({ confirmGuestActions: user.confirmGuestActions }) as DemoStorageResponse<T>;
 	}
 
 	if (path === '/auth/users' && method === 'GET') {

@@ -435,7 +435,12 @@
 					return;
 				}
 
-				if (jailPowerSignal.action === 'start') {
+				if (jailPowerSignal.action === 'restart') {
+					disconnectForStateChange();
+					await refetchUntilState('INACTIVE');
+				}
+
+				if (jailPowerSignal.action === 'start' || jailPowerSignal.action === 'restart') {
 					cState.current = false;
 					const isActive = await refetchUntilState('ACTIVE');
 					if (isActive) {

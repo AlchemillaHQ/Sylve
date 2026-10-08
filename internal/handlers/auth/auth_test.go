@@ -313,3 +313,107 @@ func TestLoginHandlerRejectsOversizedBody(t *testing.T) {
 		t.Fatalf("Cache-Control=%q want=no-store", response.Header().Get("Cache-Control"))
 	}
 }
+
+func preferencesTestRouter(service *authService.Service, userID uint, scope string) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("UserID", userID)
+		c.Set("AuthScope", scope)
+	})
+	router.Use(middleware.RequireLocalSession())
+	router.GET("/api/auth/preferences", GetUserPreferencesHandler(service))
+	return router
+}
+
+func TestUserPreferencesArePerUser(t *testing.T) {
+	for _, source := range []string{"local", "pam"} {
+		t.Run(source, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Group{})
+			user := models.User{Username: "operator", Source: source, Password: "unchanged"}
+			other := models.User{Username: "other", Admin: true}
+			if err := db.Create(&user).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&other).Error; err != nil {
+				t.Fatal(err)
+			}
+			router := preferencesTestRouter(&authService.Service{DB: db}, user.ID, "local")
+
+			for _, enabled := range []bool{false, true, true, false, false} {
+				if err := db.Model(&user).Update("confirm_guest_actions", enabled).Error; err != nil {
+					t.Fatal(err)
+				}
+				response := performJSON(t, router, http.MethodGet, "/api/auth/preferences", nil)
+				if response.Code != http.StatusOK {
+					t.Fatalf("get: status=%d body=%s", response.Code, response.Body.String())
+				}
+				if response.Header().Get("Cache-Control") != "no-store" {
+					t.Fatal("preferences must not be cached")
+				}
+				var result internal.APIResponse[UserPreferences]
+				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.Data.ConfirmGuestActions != enabled {
+					t.Fatalf("confirmGuestActions=%v want=%v", result.Data.ConfirmGuestActions, enabled)
+				}
+				var saved, savedOther models.User
+				if err := db.First(&saved, user.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				if err := db.First(&savedOther, other.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				if saved.ConfirmGuestActions != enabled || savedOther.ConfirmGuestActions {
+					t.Fatal("preferences affected the wrong user")
+				}
+				if saved.Admin || saved.Password != "unchanged" || !savedOther.Admin {
+					t.Fatal("reading preferences changed authentication fields")
+				}
+				if publicUserFromModel(saved).ConfirmGuestActions != enabled {
+					t.Fatal("public user omitted preferences")
+				}
+			}
+		})
+	}
+}
+
+func TestUserPreferencesRequireLocalSession(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		userID uint
+		scope  string
+	}{
+		{name: "unauthenticated"},
+		{name: "missing user", scope: "local"},
+		{name: "cluster proxy", userID: 1, scope: "cluster"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			router := preferencesTestRouter(nil, test.userID, test.scope)
+			response := performJSON(t, router, http.MethodGet, "/api/auth/preferences", nil)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestUserPreferencesAreReadOnly(t *testing.T) {
+	router := preferencesTestRouter(nil, 1, "local")
+	response := performJSON(t, router, http.MethodPut, "/api/auth/preferences", map[string]any{
+		"confirmGuestActions": true,
+	})
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestUserPreferencesRejectsMissingUser(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.User{}, &models.Group{})
+	router := preferencesTestRouter(&authService.Service{DB: db}, 123, "local")
+	response := performJSON(t, router, http.MethodGet, "/api/auth/preferences", nil)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}

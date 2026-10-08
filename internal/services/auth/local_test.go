@@ -197,6 +197,37 @@ func TestGetUserByIDPreloadsGroups(t *testing.T) {
 	}
 }
 
+func TestUserPreferencesMigrationDefaultsOff(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t)
+	if err := db.Exec(`CREATE TABLE users (id integer PRIMARY KEY, username text)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO users (id, username) VALUES (1, 'existing')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&models.User{}, &models.Group{}); err != nil {
+		t.Fatal(err)
+	}
+	var user models.User
+	if err := db.First(&user, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if user.ConfirmGuestActions {
+		t.Fatal("existing users must retain immediate power actions by default")
+	}
+	newUser := models.User{Username: "new"}
+	if err := db.Create(&newUser).Error; err != nil {
+		t.Fatal(err)
+	}
+	var savedNewUser models.User
+	if err := db.First(&savedNewUser, newUser.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if savedNewUser.ConfirmGuestActions {
+		t.Fatal("new users must default to disabled confirmations")
+	}
+}
+
 func TestCreateUserInvalidEmail(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedBasicSettings(t, svc)
@@ -1013,7 +1044,7 @@ func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
 
 func TestImportUserProtectedSystemUser(t *testing.T) {
 	svc := newLocalTestService(t)
-	_, err := svc.ImportUser("nobody", "", false)
+	_, err := svc.ImportUser("nobody", "", false, false)
 	if err == nil {
 		t.Fatalf("expected error for protected system user")
 	}
@@ -1027,7 +1058,7 @@ func TestImportUserAlreadyExists(t *testing.T) {
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "alice", Password: "hashed"})
 
-	_, err := svc.ImportUser("alice", "password123", false)
+	_, err := svc.ImportUser("alice", "password123", false, false)
 	if err == nil {
 		t.Fatalf("expected error for already-existing user")
 	}
@@ -1092,7 +1123,7 @@ func TestImportUserDuplicateWhenLocalExists(t *testing.T) {
 	seedBasicSettings(t, svc)
 	seedUser(t, svc, models.User{Username: "localjohn", Password: "hashed", Source: "local"})
 
-	_, err := svc.ImportUser("localjohn", "password123", false)
+	_, err := svc.ImportUser("localjohn", "password123", false, false)
 	if err == nil {
 		t.Fatalf("expected error when local user with same name exists")
 	}

@@ -10,7 +10,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { storage } from '$lib';
 	import { jailPowerSignal, reload } from '$lib/stores/api.svelte';
-	import type { JailState, SimpleJail } from '$lib/types/jail/jail';
+	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
+	import type { JailLifecycleAction, JailState, SimpleJail } from '$lib/types/jail/jail';
 	import { getJailLifecycleBadgeStyle, removeStaleJailCacheByCTID } from '$lib/utils/jail/jail';
 	import { isAPIResponse, updateCache } from '$lib/utils/http';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
@@ -287,19 +288,36 @@
 		}
 	}
 
-	async function handleStop() {
+	async function handleAction(action: JailLifecycleAction) {
 		if (!jail.current || actionRequestInFlight) return;
-		const targetCTID = jail.current.ctId;
+		const target = jail.current;
+		const targetCTID = target.ctId;
+		const hostname = node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'jail',
+				guestId: targetCTID,
+				name: target.name,
+				hostname,
+				action
+			}))
+		)
+			return;
+		const messages = {
+			start: { error: 'Error starting jail', success: 'Jail start queued' },
+			stop: { error: 'Error stopping jail', success: 'Jail stop queued' },
+			restart: { error: 'Error restarting jail', success: 'Jail restart queued' }
+		}[action];
 		actionRequestInFlight = true;
 
 		try {
-			const result = await jailAction(targetCTID, 'stop', node);
+			const result = await jailAction(targetCTID, action, hostname);
 			if (isAPIResponse(result)) {
 				toast.error(
 					result.message === 'lifecycle_task_in_progress' ||
 						result.message === 'migration_in_progress'
 						? 'Jail action already in progress'
-						: 'Error stopping jail',
+						: messages.error,
 					{
 						duration: 5000,
 						position: 'bottom-center'
@@ -311,55 +329,14 @@
 			reload.leftPanel = true;
 			jailPowerSignal.token += 1;
 			jailPowerSignal.ctId = targetCTID;
-			jailPowerSignal.action = 'stop';
+			jailPowerSignal.action = action;
 
-			toast.success('Jail stop queued', {
+			toast.success(messages.success, {
 				duration: 5000,
 				position: 'bottom-center'
 			});
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Error stopping jail', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} finally {
-			await Promise.allSettled([jail.refetch(), jState.refetch()]);
-			actionRequestInFlight = false;
-		}
-	}
-
-	async function handleStart() {
-		if (!jail.current || actionRequestInFlight) return;
-		const targetCTID = jail.current.ctId;
-		actionRequestInFlight = true;
-
-		try {
-			const result = await jailAction(targetCTID, 'start', node);
-			if (isAPIResponse(result)) {
-				toast.error(
-					result.message === 'lifecycle_task_in_progress' ||
-						result.message === 'migration_in_progress'
-						? 'Jail action already in progress'
-						: 'Error starting jail',
-					{
-						duration: 5000,
-						position: 'bottom-center'
-					}
-				);
-				return;
-			}
-
-			reload.leftPanel = true;
-			jailPowerSignal.token += 1;
-			jailPowerSignal.ctId = targetCTID;
-			jailPowerSignal.action = 'start';
-
-			toast.success('Jail start queued', {
-				duration: 5000,
-				position: 'bottom-center'
-			});
-		} catch (error) {
-			toast.error(error instanceof Error ? error.message : 'Error starting jail', {
+			toast.error(error instanceof Error ? error.message : messages.error, {
 				duration: 5000,
 				position: 'bottom-center'
 			});
@@ -395,7 +372,15 @@
 			{#if jail.current && jState.current}
 				{#if !shouldHideActionButtons && jState.current.state === 'ACTIVE'}
 					<Button
-						onclick={handleStop}
+						onclick={() => handleAction('restart')}
+						disabled={actionRequestInFlight}
+						size="sm"
+						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
+					>
+						<SpanWithIcon icon="icon-[mdi--restart]" size="h-4 w-4" gap="gap-1" title="Restart" />
+					</Button>
+					<Button
+						onclick={() => handleAction('stop')}
 						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-yellow-600 disabled:hover:bg-neutral-600 dark:text-white"
@@ -404,7 +389,7 @@
 					</Button>
 				{:else if !shouldHideActionButtons}
 					<Button
-						onclick={handleStart}
+						onclick={() => handleAction('start')}
 						disabled={actionRequestInFlight}
 						size="sm"
 						class="bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-green-600 disabled:hover:bg-neutral-600 dark:text-white"

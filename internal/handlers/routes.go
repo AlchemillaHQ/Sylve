@@ -792,6 +792,7 @@ func RegisterRoutes(r *gin.Engine,
 	{
 		authSession.POST("/logout", authHandlers.LogoutHandler(authService))
 		authSession.POST("/sse-tokens", eventsHandlers.CreateSSEToken(authService))
+		authSession.GET("/preferences", authHandlers.GetUserPreferencesHandler(authService))
 	}
 
 	authManagement := api.Group("/auth")

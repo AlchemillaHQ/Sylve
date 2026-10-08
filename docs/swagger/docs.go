@@ -737,6 +737,49 @@ const docTemplate = `{
                 }
             }
         },
+        "/auth/preferences": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve the preferences of the current local-session user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Get User Preferences",
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_UserPreferences"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/sse-tokens": {
             "post": {
                 "security": [
@@ -31237,6 +31280,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_UserPreferences": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handlers_auth.UserPreferences"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_cluster_JoinKeyResponse": {
             "type": "object",
             "properties": {
@@ -41703,6 +41763,9 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "confirmGuestActions": {
+                    "type": "boolean"
+                },
                 "createSamba": {
                     "type": "boolean"
                 },
@@ -41774,6 +41837,9 @@ const docTemplate = `{
                         "type": "integer"
                     }
                 },
+                "confirmGuestActions": {
+                    "type": "boolean"
+                },
                 "disablePassword": {
                     "type": "boolean"
                 },
@@ -41835,6 +41901,9 @@ const docTemplate = `{
                     "items": {
                         "type": "integer"
                     }
+                },
+                "confirmGuestActions": {
+                    "type": "boolean"
                 },
                 "disablePassword": {
                     "type": "boolean"
@@ -41952,6 +42021,9 @@ const docTemplate = `{
                 "admin": {
                     "type": "boolean"
                 },
+                "confirmGuestActions": {
+                    "type": "boolean"
+                },
                 "password": {
                     "type": "string",
                     "maxLength": 72,
@@ -42063,6 +42135,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "admin": {
+                    "type": "boolean"
+                },
+                "confirmGuestActions": {
                     "type": "boolean"
                 },
                 "createdAt": {
@@ -42177,6 +42252,14 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handlers_auth.UserPreferences": {
+            "type": "object",
+            "properties": {
+                "confirmGuestActions": {
+                    "type": "boolean"
                 }
             }
         },

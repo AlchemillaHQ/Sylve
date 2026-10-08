@@ -33,6 +33,7 @@ export interface UserPayload {
 	email?: string;
 	password?: string;
 	admin: boolean;
+	confirmGuestActions?: boolean;
 	uid?: number;
 	shell?: string;
 	homeDirectory?: string;
@@ -111,6 +112,7 @@ export interface ImportUserPayload {
 	username: string;
 	password?: string;
 	admin: boolean;
+	confirmGuestActions?: boolean;
 }
 
 export async function importUser(

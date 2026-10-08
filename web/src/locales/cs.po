@@ -2094,15 +2094,14 @@ msgid "Jail deleted"
 msgstr "Jail smazán"
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "Error stopping jail"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "Error starting jail"
 msgstr ""
 
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -2110,6 +2109,7 @@ msgstr ""
 msgid "Stop"
 msgstr "Zastavit"
 
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
@@ -2758,6 +2758,7 @@ msgstr ""
 msgid "Running"
 msgstr "Spuštěné"
 
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -7426,12 +7427,12 @@ msgstr ""
 msgid "VM reboot queued"
 msgstr ""
 
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Force Stop"
 msgstr ""
 
-#: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "Jail action already in progress"
 msgstr ""
@@ -16970,7 +16971,9 @@ msgstr ""
 msgid "Rebooting..."
 msgstr ""
 
+#: src/lib/components/custom/Dialog/GuestAction.svelte
 #: src/lib/components/custom/Initialization/Reboot.svelte
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
 msgid "Restart"
 msgstr ""
 
@@ -17757,18 +17760,6 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Default Route"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-msgid "Failed to determine selected node architecture"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-msgid "Unable to determine selected node architecture"
-msgstr ""
-
-#: src/lib/components/custom/VM/Create/CreateVM.svelte
-msgid "Waiting for selected node architecture"
 msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -19368,4 +19359,61 @@ msgstr ""
 
 #: src/lib/components/custom/VM/ReinitializeConfig.svelte
 msgid "Restoring the VM definition from its saved settings without changing its disks."
+msgstr ""
+
+#: src/lib/stores/guest-actions.svelte.ts
+msgid "Unable to load user preferences. Please try again."
+msgstr ""
+
+#: src/lib/components/skeleton/TreeViewCluster.svelte
+msgid "<0/> Restart"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Fat Finger Protection"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Confirm stop, shutdown, and restart actions for VMs and jails."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/GuestAction.svelte
+msgid "Shut Down"
+msgstr ""
+
+#: src/lib/components/custom/Dialog/GuestAction.svelte
+msgid "Running workloads will be interrupted. Unsaved data may be lost."
+msgstr ""
+
+#: src/lib/components/custom/Dialog/GuestAction.svelte
+msgid "This will interrupt the guest’s running workloads."
+msgstr ""
+
+#. 0: target.hostname
+#: src/lib/components/custom/Dialog/GuestAction.svelte
+msgid "Node: {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Error restarting jail"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "Jail restart queued"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Failed to determine selected node CPU information"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Unable to determine selected node CPU information"
+msgstr ""
+
+#: src/lib/components/custom/VM/Create/CreateVM.svelte
+msgid "Waiting for selected node CPU information"
 msgstr ""

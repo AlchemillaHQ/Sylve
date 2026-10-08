@@ -146,8 +146,8 @@ func (s *Service) CreatePamUser(user *models.User, opts CreateUserOpts) error {
 	return s.createPamUser(user, opts)
 }
 
-func (s *Service) ImportUser(username, password string, admin bool) (*models.User, error) {
-	return s.importPamUser(username, password, admin)
+func (s *Service) ImportUser(username, password string, admin, confirmGuestActions bool) (*models.User, error) {
+	return s.importPamUser(username, password, admin, confirmGuestActions)
 }
 
 func (s *Service) ListImportableUnixUsers() ([]ImportableUnixUser, error) {
@@ -264,6 +264,9 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 		"username":  opts.Username,
 		"email":     opts.Email,
 		"admin":     opts.Admin,
+	}
+	if opts.ConfirmGuestActions != nil {
+		updates["confirm_guest_actions"] = *opts.ConfirmGuestActions
 	}
 	if hashedPassword != "" {
 		updates["password"] = hashedPassword

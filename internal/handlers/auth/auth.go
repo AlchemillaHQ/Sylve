@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type LoginRequest struct {
@@ -41,6 +42,10 @@ type SuccessfulLogin struct {
 
 type LoginConfig struct {
 	PAMEnabled bool `json:"pamEnabled"`
+}
+
+type UserPreferences struct {
+	ConfirmGuestActions bool `json:"confirmGuestActions"`
 }
 
 func setSensitiveAuthResponseHeaders(c *gin.Context) {
@@ -256,6 +261,36 @@ func LogoutHandler(authService *auth.Service) gin.HandlerFunc {
 			Message: "logout_successful",
 			Error:   "",
 			Data:    nil,
+		})
+	}
+}
+
+// @Summary Get User Preferences
+// @Description Retrieve the preferences of the current local-session user
+// @Tags Authentication
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[UserPreferences] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /auth/preferences [get]
+func GetUserPreferencesHandler(authService *auth.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		setSensitiveAuthResponseHeaders(c)
+		user, err := authService.GetUserByID(c.GetUint("UserID"))
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				writeAuthCodeError(c, http.StatusUnauthorized, "invalid_credentials")
+			} else {
+				writeAuthCodeError(c, http.StatusInternalServerError, "internal_server_error")
+			}
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[UserPreferences]{
+			Status:  "success",
+			Message: "user_preferences_retrieved",
+			Data:    UserPreferences{ConfirmGuestActions: user.ConfirmGuestActions},
 		})
 	}
 }

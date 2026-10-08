@@ -34,7 +34,7 @@ export function planClusterLeaveRestart(): boolean {
 export const jailPowerSignal = $state({
 	token: 0,
 	ctId: 0,
-	action: '' as '' | 'start' | 'stop'
+	action: '' as '' | 'start' | 'stop' | 'restart'
 });
 
 export const vmPowerSignal = $state({

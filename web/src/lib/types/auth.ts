@@ -27,6 +27,7 @@ export const UserSchema = z.object({
 	email: z.string().optional().default(''),
 	notes: z.string(),
 	admin: z.boolean(),
+	confirmGuestActions: z.boolean().default(false),
 	uid: z.number().optional().default(0),
 	shell: z.string().optional().default('/usr/sbin/nologin'),
 	homeDirectory: z.string().optional().default('/nonexistent'),
@@ -59,6 +60,10 @@ export const GroupSchema = z.object({
 	createdAt: z.string(),
 	updatedAt: z.string(),
 	users: z.array(UserSchema).optional()
+});
+
+export const UserPreferencesSchema = z.object({
+	confirmGuestActions: z.boolean()
 });
 
 export const GroupMutationResultSchema = z.object({
@@ -120,6 +125,7 @@ export const BasicSettingsSchema = z.object({
 
 export type JWTClaims = z.infer<typeof JWTClaimsSchema>;
 export type User = z.infer<typeof UserSchema>;
+export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
 export type Group = z.infer<typeof GroupSchema>;
 export type GroupMutationResult = z.infer<typeof GroupMutationResultSchema>;
 export type Passkey = z.infer<typeof PasskeySchema>;

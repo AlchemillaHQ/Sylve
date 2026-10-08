@@ -16,6 +16,7 @@
 	} from '$lib/api/vm/vm';
 	import * as ContextMenu from '$lib/components/ui/context-menu/index.js';
 	import { reload } from '$lib/stores/api.svelte';
+	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
 	import { slide } from 'svelte/transition';
 	import { toast } from 'svelte-sonner';
 	import SidebarElement from './TreeViewCluster.svelte';
@@ -30,7 +31,7 @@
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
-	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop';
+	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop' | 'restart';
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -176,13 +177,24 @@
 		actionInFlight = true;
 
 		try {
+			if (
+				!(await confirmGuestAction({
+					guestType: resourceType,
+					guestId: resourceId,
+					name: baseGuestName(item.label),
+					hostname,
+					action
+				}))
+			)
+				return;
 			let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
 			if (resourceType === 'jail') {
-				if (action !== 'start' && action !== 'stop') {
+				if (action !== 'start' && action !== 'stop' && action !== 'restart') {
 					return;
 				}
 				result = await jailAction(resourceId, action, hostname);
 			} else {
+				if (action === 'restart') return;
 				result = await actionVm(resourceId, action, hostname);
 			}
 
@@ -446,6 +458,14 @@
 			<ContextMenu.Content>
 				{#if item.resourceType === 'jail'}
 					{#if item.state === 'active'}
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('restart')}
+						>
+							<span class="icon-[mdi--restart] h-4 w-4"></span>
+							Restart
+						</ContextMenu.Item>
 						<ContextMenu.Item
 							class="gap-2"
 							disabled={actionInFlight || lifecycleActive}

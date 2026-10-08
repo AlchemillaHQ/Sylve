@@ -2,6 +2,7 @@
 	import { getDetails } from '$lib/api/cluster/cluster';
 	import { storage } from '$lib';
 	import Header from '$lib/components/custom/Header.svelte';
+	import GuestActionDialog from '$lib/components/custom/Dialog/GuestAction.svelte';
 	import BottomPanel from '$lib/components/skeleton/BottomPanel.svelte';
 	import LeftPanel from '$lib/components/skeleton/LeftPanel.svelte';
 	import * as Resizable from '$lib/components/ui/resizable';
@@ -102,6 +103,7 @@
 
 <div class="flex min-h-screen w-full flex-col">
 	<Header />
+	<GuestActionDialog />
 	<main class="flex flex-1 flex-col">
 		<div class="h-[95vh] w-full md:h-[96vh]">
 			<Resizable.PaneGroup

@@ -11,10 +11,10 @@
 import { browser } from '$app/environment';
 import { storage } from '$lib';
 import { useSafeGoto } from '$lib/hooks/navigation.svelte';
-import type { JWTClaims } from '$lib/types/auth';
+import { UserPreferencesSchema, type JWTClaims, type UserPreferences } from '$lib/types/auth';
 import type { APIResponse } from '$lib/types/common';
 import { kvStorage } from '$lib/types/db';
-import { handleAPIError } from '$lib/utils/http';
+import { apiRequestResult, handleAPIError } from '$lib/utils/http';
 import { buildLoginOptions, isPasskeySupported, serializeCredential } from '$lib/utils/passkeys';
 import { sha256 } from '$lib/utils/string';
 import { toast } from 'svelte-sonner';
@@ -357,6 +357,12 @@ export async function isTokenValid(): Promise<boolean> {
 	}
 
 	return false;
+}
+
+export async function getUserPreferences(): Promise<UserPreferences | APIResponse> {
+	return await apiRequestResult('/auth/preferences', UserPreferencesSchema, 'GET', undefined, {
+		hostname: storage.localHostname || undefined
+	});
 }
 
 export async function logOut(message?: string) {

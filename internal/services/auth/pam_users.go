@@ -549,7 +549,7 @@ func (s *Service) createPamUser(user *models.User, opts CreateUserOpts) error {
 	return nil
 }
 
-func (s *Service) importPamUser(username, sylvePassword string, admin bool) (*models.User, error) {
+func (s *Service) importPamUser(username, sylvePassword string, admin, confirmGuestActions bool) (*models.User, error) {
 	if err := validatePAMUsername(username); err != nil {
 		return nil, err
 	}
@@ -628,15 +628,16 @@ func (s *Service) importPamUser(username, sylvePassword string, admin bool) (*mo
 	}
 
 	user := &models.User{
-		Username:      username,
-		FullName:      info.FullName,
-		Password:      hashedPassword,
-		Admin:         admin,
-		UID:           info.UID,
-		Shell:         info.Shell,
-		HomeDirectory: info.HomeDir,
-		HomeDirPerms:  homePerms,
-		Source:        "pam",
+		Username:            username,
+		FullName:            info.FullName,
+		Password:            hashedPassword,
+		Admin:               admin,
+		ConfirmGuestActions: confirmGuestActions,
+		UID:                 info.UID,
+		Shell:               info.Shell,
+		HomeDirectory:       info.HomeDir,
+		HomeDirPerms:        homePerms,
+		Source:              "pam",
 	}
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
@@ -1094,6 +1095,9 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		"locked":           opts.Locked,
 		"doas_enabled":     opts.DoasEnabled,
 		"primary_group_id": primaryGroupID,
+	}
+	if opts.ConfirmGuestActions != nil {
+		updates["confirm_guest_actions"] = *opts.ConfirmGuestActions
 	}
 	if hashedPassword != "" {
 		updates["password"] = hashedPassword

@@ -21,27 +21,28 @@ type PublicGroupSummary struct {
 // PublicUser is the API representation of a user. Database-only authentication
 // state is deliberately excluded from this type.
 type PublicUser struct {
-	ID              uint                 `json:"id"`
-	Username        string               `json:"username"`
-	FullName        string               `json:"fullName"`
-	Email           string               `json:"email"`
-	Notes           string               `json:"notes"`
-	Admin           bool                 `json:"admin"`
-	UID             int                  `json:"uid"`
-	Shell           string               `json:"shell"`
-	HomeDirectory   string               `json:"homeDirectory"`
-	HomeDirPerms    uint                 `json:"homeDirPerms"`
-	SSHPublicKey    string               `json:"sshPublicKey"`
-	DisablePassword bool                 `json:"disablePassword"`
-	Locked          bool                 `json:"locked"`
-	DoasEnabled     bool                 `json:"doasEnabled"`
-	PrimaryGroupID  *uint                `json:"primaryGroupId"`
-	Source          string               `json:"source"`
-	PasskeyEligible bool                 `json:"passkeyEligible"`
-	CreatedAt       time.Time            `json:"createdAt"`
-	UpdatedAt       time.Time            `json:"updatedAt"`
-	LastLoginTime   time.Time            `json:"lastLoginTime"`
-	Groups          []PublicGroupSummary `json:"groups,omitempty"`
+	ID                  uint                 `json:"id"`
+	Username            string               `json:"username"`
+	FullName            string               `json:"fullName"`
+	Email               string               `json:"email"`
+	Notes               string               `json:"notes"`
+	Admin               bool                 `json:"admin"`
+	ConfirmGuestActions bool                 `json:"confirmGuestActions"`
+	UID                 int                  `json:"uid"`
+	Shell               string               `json:"shell"`
+	HomeDirectory       string               `json:"homeDirectory"`
+	HomeDirPerms        uint                 `json:"homeDirPerms"`
+	SSHPublicKey        string               `json:"sshPublicKey"`
+	DisablePassword     bool                 `json:"disablePassword"`
+	Locked              bool                 `json:"locked"`
+	DoasEnabled         bool                 `json:"doasEnabled"`
+	PrimaryGroupID      *uint                `json:"primaryGroupId"`
+	Source              string               `json:"source"`
+	PasskeyEligible     bool                 `json:"passkeyEligible"`
+	CreatedAt           time.Time            `json:"createdAt"`
+	UpdatedAt           time.Time            `json:"updatedAt"`
+	LastLoginTime       time.Time            `json:"lastLoginTime"`
+	Groups              []PublicGroupSummary `json:"groups,omitempty"`
 }
 
 // PublicGroup is the public group representation used when group responses
@@ -73,27 +74,28 @@ func publicUserFromModel(user models.User) PublicUser {
 	}
 
 	return PublicUser{
-		ID:              user.ID,
-		Username:        user.Username,
-		FullName:        user.FullName,
-		Email:           user.Email,
-		Notes:           user.Notes,
-		Admin:           user.Admin,
-		UID:             user.UID,
-		Shell:           user.Shell,
-		HomeDirectory:   user.HomeDirectory,
-		HomeDirPerms:    user.HomeDirPerms,
-		SSHPublicKey:    user.SSHPublicKey,
-		DisablePassword: user.DisablePassword,
-		Locked:          user.Locked,
-		DoasEnabled:     user.DoasEnabled,
-		PrimaryGroupID:  user.PrimaryGroupID,
-		Source:          user.Source,
-		PasskeyEligible: auth.IsPasskeyRegistrationEligible(user),
-		CreatedAt:       user.CreatedAt,
-		UpdatedAt:       user.UpdatedAt,
-		LastLoginTime:   user.LastLoginTime,
-		Groups:          groups,
+		ID:                  user.ID,
+		Username:            user.Username,
+		FullName:            user.FullName,
+		Email:               user.Email,
+		Notes:               user.Notes,
+		Admin:               user.Admin,
+		ConfirmGuestActions: user.ConfirmGuestActions,
+		UID:                 user.UID,
+		Shell:               user.Shell,
+		HomeDirectory:       user.HomeDirectory,
+		HomeDirPerms:        user.HomeDirPerms,
+		SSHPublicKey:        user.SSHPublicKey,
+		DisablePassword:     user.DisablePassword,
+		Locked:              user.Locked,
+		DoasEnabled:         user.DoasEnabled,
+		PrimaryGroupID:      user.PrimaryGroupID,
+		Source:              user.Source,
+		PasskeyEligible:     auth.IsPasskeyRegistrationEligible(user),
+		CreatedAt:           user.CreatedAt,
+		UpdatedAt:           user.UpdatedAt,
+		LastLoginTime:       user.LastLoginTime,
+		Groups:              groups,
 	}
 }
 

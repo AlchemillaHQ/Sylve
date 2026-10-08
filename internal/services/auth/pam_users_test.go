@@ -523,19 +523,19 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 			}))
 
 			for _, password := range []string{strings.Repeat("a", 73), strings.Repeat("é", 37)} {
-				if _, err := service.ImportUser(username, password, true); err == nil || !strings.Contains(err.Error(), "invalid_password_length") {
+				if _, err := service.ImportUser(username, password, true, true); err == nil || !strings.Contains(err.Error(), "invalid_password_length") {
 					t.Fatalf("expected password validation error, got: %v", err)
 				}
 			}
 			sylvePassword := strings.Repeat("é", 36)
-			user, err := service.ImportUser(username, sylvePassword, true)
+			user, err := service.ImportUser(username, sylvePassword, true, true)
 			if err != nil {
 				t.Fatalf("import PAM user: %v", err)
 			}
 			if mutatingCommand || passwordInputUsed {
 				t.Fatal("import mutated the existing Unix identity or password")
 			}
-			if user.Username != username || user.UID != 1001 || user.Source != "pam" || !user.Admin ||
+			if user.Username != username || user.UID != 1001 || user.Source != "pam" || !user.Admin || !user.ConfirmGuestActions ||
 				user.HomeDirectory != home || user.Shell != shell ||
 				!service.passwordHasher.Verify(sylvePassword, user.Password) {
 				t.Fatalf("unexpected imported identity: %+v", user)
@@ -577,7 +577,7 @@ func TestImportPamUserRejectsUIDAlreadyManagedBySylve(t *testing.T) {
 		return "", nil
 	}))
 
-	_, err := service.ImportUser("alias", "", false)
+	_, err := service.ImportUser("alias", "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "uid_already_in_use") {
 		t.Fatalf("expected managed UID conflict, got: %v", err)
 	}

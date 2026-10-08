@@ -18,6 +18,7 @@
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import { storage } from '$lib';
 	import { reload, vmPowerSignal } from '$lib/stores/api.svelte';
+	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import { toast } from 'svelte-sonner';
 	import type { SimpleVm, VMDomain } from '$lib/types/vm/vm';
@@ -343,7 +344,19 @@
 
 	async function handleStop() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'stop', node);
+		const target = vm.current;
+		const hostname = node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'stop'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'stop', hostname);
 
 		if (isAPIResponse(result)) {
 			toast.error(
@@ -359,7 +372,7 @@
 		} else {
 			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
-			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.rid = target.rid;
 			vmPowerSignal.action = 'stop';
 
 			if (result.outcome === 'force_stop_requested') {
@@ -380,7 +393,19 @@
 
 	async function handleForceStop() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'stop', node);
+		const target = vm.current;
+		const hostname = node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'force-stop'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'stop', hostname);
 
 		if (isAPIResponse(result)) {
 			toast.error(
@@ -406,7 +431,19 @@
 
 	async function handleShutdown() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'shutdown', node);
+		const target = vm.current;
+		const hostname = node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'shutdown'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'shutdown', hostname);
 
 		if (isAPIResponse(result)) {
 			toast.error(
@@ -422,7 +459,7 @@
 		} else {
 			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
-			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.rid = target.rid;
 			vmPowerSignal.action = 'shutdown';
 
 			toast.success('VM shutdown queued', {
@@ -436,7 +473,19 @@
 
 	async function handleReboot() {
 		if (!vm.current) return;
-		const result = await actionVm(vm.current.rid, 'reboot', node);
+		const target = vm.current;
+		const hostname = node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'reboot'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'reboot', hostname);
 
 		if (isAPIResponse(result)) {
 			toast.error(
@@ -452,7 +501,7 @@
 		} else {
 			reload.leftPanel = true;
 			vmPowerSignal.token += 1;
-			vmPowerSignal.rid = vm.current.rid;
+			vmPowerSignal.rid = target.rid;
 			vmPowerSignal.action = 'reboot';
 
 			toast.success('VM reboot queued', {

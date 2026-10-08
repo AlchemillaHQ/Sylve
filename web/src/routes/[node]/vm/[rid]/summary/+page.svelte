@@ -21,6 +21,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { Progress } from '$lib/components/ui/progress/index.js';
 	import { reload } from '$lib/stores/api.svelte';
+	import { confirmGuestAction } from '$lib/stores/guest-actions.svelte';
 	import {
 		VMStatSchema,
 		type QGAInfo,
@@ -687,7 +688,19 @@
 	}
 
 	async function handleStop() {
-		const result = await actionVm(vm.current.rid, 'stop', data.node);
+		const target = vm.current;
+		const hostname = data.node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'stop'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'stop', hostname);
 		domain.refetch();
 
 		if (isAPIResponse(result)) {
@@ -726,7 +739,19 @@
 	}
 
 	async function handleForceStop() {
-		const result = await actionVm(vm.current.rid, 'stop', data.node);
+		const target = vm.current;
+		const hostname = data.node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'force-stop'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'stop', hostname);
 		domain.refetch();
 
 		if (isAPIResponse(result) && result.status === 'error') {
@@ -752,7 +777,19 @@
 	}
 
 	async function handleShutdown() {
-		const result = await actionVm(vm.current.rid, 'shutdown', data.node);
+		const target = vm.current;
+		const hostname = data.node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'shutdown'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'shutdown', hostname);
 		domain.refetch();
 
 		if (isAPIResponse(result)) {
@@ -787,7 +824,19 @@
 	}
 
 	async function handleReboot() {
-		const result = await actionVm(vm.current.rid, 'reboot', data.node);
+		const target = vm.current;
+		const hostname = data.node;
+		if (
+			!(await confirmGuestAction({
+				guestType: 'vm',
+				guestId: target.rid,
+				name: target.name,
+				hostname,
+				action: 'reboot'
+			}))
+		)
+			return;
+		const result = await actionVm(target.rid, 'reboot', hostname);
 		domain.refetch();
 
 		if (isAPIResponse(result)) {

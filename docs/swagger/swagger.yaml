@@ -1782,6 +1782,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_UserPreferences:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handlers_auth.UserPreferences'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_cluster_JoinKeyResponse:
     properties:
       data:
@@ -8789,6 +8800,8 @@ definitions:
         items:
           type: integer
         type: array
+      confirmGuestActions:
+        type: boolean
       createSamba:
         type: boolean
       disablePassword:
@@ -8842,6 +8855,8 @@ definitions:
         items:
           type: integer
         type: array
+      confirmGuestActions:
+        type: boolean
       disablePassword:
         type: boolean
       doasEnabled:
@@ -8885,6 +8900,8 @@ definitions:
         items:
           type: integer
         type: array
+      confirmGuestActions:
+        type: boolean
       disablePassword:
         type: boolean
       doasEnabled:
@@ -8961,6 +8978,8 @@ definitions:
   internal_handlers_auth.ImportUserRequest:
     properties:
       admin:
+        type: boolean
+      confirmGuestActions:
         type: boolean
       password:
         maxLength: 72
@@ -9042,6 +9061,8 @@ definitions:
     properties:
       admin:
         type: boolean
+      confirmGuestActions:
+        type: boolean
       createdAt:
         type: string
       disablePassword:
@@ -9116,6 +9137,11 @@ definitions:
         type: integer
       username:
         type: string
+    type: object
+  internal_handlers_auth.UserPreferences:
+    properties:
+      confirmGuestActions:
+        type: boolean
     type: object
   internal_handlers_cluster.AcceptJoinRequest:
     properties:
@@ -10906,6 +10932,33 @@ paths:
       security:
       - BearerAuth: []
       summary: Finish passkey registration
+      tags:
+      - Authentication
+  /auth/preferences:
+    get:
+      description: Retrieve the preferences of the current local-session user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_auth_UserPreferences'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get User Preferences
       tags:
       - Authentication
   /auth/sse-tokens:

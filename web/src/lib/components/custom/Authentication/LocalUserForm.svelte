@@ -7,6 +7,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import type { User } from '$lib/types/auth';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { isValidEmail, isValidUsername } from '$lib/utils/string';
@@ -38,7 +39,8 @@
 			email: edit && user ? (user.email ?? '') : '',
 			password: '',
 			confirmPassword: '',
-			admin: edit && user ? user.admin : false
+			admin: edit && user ? user.admin : false,
+			confirmGuestActions: edit && user ? user.confirmGuestActions : false
 		};
 	}
 
@@ -98,7 +100,8 @@
 			username: properties.username,
 			email: properties.email,
 			password: properties.password,
-			admin: properties.admin
+			admin: properties.admin,
+			confirmGuestActions: properties.confirmGuestActions
 		};
 		const requestHostname = hostname;
 
@@ -213,9 +216,26 @@
 					bind:value={properties.confirmPassword}
 				/>
 			</div>
-			<div class="flex items-center gap-2 pt-2">
-				<Checkbox id="admin" bind:checked={properties.admin} />
-				<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
+			<div class="flex flex-wrap items-center gap-6 pt-2">
+				<div class="flex items-center gap-2">
+					<Checkbox id="admin" bind:checked={properties.admin} />
+					<Label for="admin" class="cursor-pointer text-sm">Admin</Label>
+				</div>
+				<div class="flex items-center gap-2">
+					<Checkbox id="confirm-guest-actions" bind:checked={properties.confirmGuestActions} />
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Label {...props} for="confirm-guest-actions" class="cursor-pointer text-sm">
+									Fat Finger Protection
+								</Label>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Content side="top" sideOffset={2} class="max-w-xs whitespace-normal">
+							Confirm stop, shutdown, and restart actions for VMs and jails.
+						</Tooltip.Content>
+					</Tooltip.Root>
+				</div>
 			</div>
 		</div>
 

@@ -47,23 +47,24 @@ type ImportableUnixUser struct {
 }
 
 type EditUserOpts struct {
-	FullName        string
-	Username        string
-	Password        string
-	Email           string
-	Admin           bool
-	UID             int
-	Shell           string
-	HomeDirectory   string
-	HomeDirPerms    uint
-	SSHPublicKey    string
-	DisablePassword bool
-	Locked          bool
-	DoasEnabled     bool
-	NewPrimaryGroup bool
-	PrimaryGroupID  *uint
-	AuxGroupIDs     []uint
-	SambaAction     string
+	FullName            string
+	Username            string
+	Password            string
+	Email               string
+	Admin               bool
+	ConfirmGuestActions *bool
+	UID                 int
+	Shell               string
+	HomeDirectory       string
+	HomeDirPerms        uint
+	SSHPublicKey        string
+	DisablePassword     bool
+	Locked              bool
+	DoasEnabled         bool
+	NewPrimaryGroup     bool
+	PrimaryGroupID      *uint
+	AuxGroupIDs         []uint
+	SambaAction         string
 }
 
 type AuthServiceInterface interface {
@@ -96,7 +97,7 @@ type AuthServiceInterface interface {
 	GetUserByID(id uint) (*models.User, error)
 	GetUserByUsername(username string) (*models.User, error)
 	CreateUser(user *models.User, opts CreateUserOpts) error
-	ImportUser(username string, password string, admin bool) (*models.User, error)
+	ImportUser(username string, password string, admin, confirmGuestActions bool) (*models.User, error)
 	ListImportableUnixUsers() ([]ImportableUnixUser, error)
 	DeleteUser(userID uint, removeHome bool) error
 	EditUser(userID uint, opts EditUserOpts) error

@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -727,5 +728,110 @@ func TestGetNextUIDHandlerReportsDiscoveryFailure(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "pw unavailable") {
 		t.Fatalf("response exposed dependency details: %s", w.Body.String())
+	}
+}
+
+func TestUserHandlersPersistGuestActionSetting(t *testing.T) {
+	for _, source := range []string{"local", "pam"} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/%t", source, enabled), func(t *testing.T) {
+				service := newTestAuthService(t)
+				router := setupRouter(service)
+				unixCreated := false
+				if source == "pam" {
+					if err := service.DB.Create(&models.Group{Name: "sylve_g"}).Error; err != nil {
+						t.Fatal(err)
+					}
+					t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+						switch command {
+						case "/usr/bin/id":
+							if !unixCreated {
+								return "no such user", errors.New("exit status 1")
+							}
+							if len(args) > 0 && args[0] == "-Gn" {
+								return "sylve_g", nil
+							}
+							return "uid=1001(testuser) gid=1001(sylve_g)", nil
+						case "/usr/bin/getent":
+							return "sylve_g:*:1001:", nil
+						case "/usr/sbin/pw":
+							if len(args) > 1 && args[0] == "usershow" {
+								return "no such user", errors.New("exit status 67")
+							}
+							if len(args) > 1 && args[0] == "user" && args[1] == "add" {
+								unixCreated = true
+							}
+						}
+						return "", nil
+					}))
+					t.Cleanup(system.SetRunCommandWithInput(func(string, string, ...string) (string, error) {
+						return "", nil
+					}))
+				}
+
+				body := map[string]any{
+					"username":            "testuser",
+					"password":            "password123",
+					"admin":               true,
+					"confirmGuestActions": enabled,
+					"uid":                 1001,
+					"shell":               "/bin/sh",
+					"homeDirectory":       "/nonexistent",
+					"homeDirPerms":        493,
+				}
+				endpoint := "/auth/users"
+				if source == "pam" {
+					endpoint += "/pam"
+				}
+				response := performJSON(t, router, http.MethodPost, endpoint, body)
+				if response.Code != http.StatusCreated {
+					t.Fatalf("create: status=%d body=%s", response.Code, response.Body.String())
+				}
+				user, err := service.GetUserByUsername("testuser")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if user.ConfirmGuestActions != enabled {
+					t.Fatalf("create: confirmGuestActions=%v want=%v", user.ConfirmGuestActions, enabled)
+				}
+				if err := service.DB.Create(&models.Token{UserID: user.ID, Token: "unchanged-session"}).Error; err != nil {
+					t.Fatal(err)
+				}
+				delete(body, "password")
+				for _, edit := range []struct {
+					value any
+					want  bool
+				}{
+					{value: true, want: true},
+					{value: nil, want: true},
+					{value: false, want: false},
+					{value: nil, want: false},
+				} {
+					if edit.value == nil {
+						delete(body, "confirmGuestActions")
+					} else {
+						body["confirmGuestActions"] = edit.value
+					}
+					response = performJSON(t, router, http.MethodPut, fmt.Sprintf("/auth/users/%d", user.ID), body)
+					if response.Code != http.StatusOK {
+						t.Fatalf("edit: status=%d body=%s", response.Code, response.Body.String())
+					}
+					updated, err := service.GetUserByID(user.ID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if updated.ConfirmGuestActions != edit.want || publicUserFromModel(*updated).ConfirmGuestActions != edit.want {
+						t.Fatalf("edit: confirmGuestActions=%v want=%v", updated.ConfirmGuestActions, edit.want)
+					}
+					var count int64
+					if err := service.DB.Model(&models.Token{}).Where("user_id = ?", user.ID).Count(&count).Error; err != nil {
+						t.Fatal(err)
+					}
+					if count != 1 {
+						t.Fatal("changing confirmation settings must not revoke sessions")
+					}
+				}
+			})
+		}
 	}
 }
