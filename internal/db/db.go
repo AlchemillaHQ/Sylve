@@ -155,6 +155,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&jailModels.JailTemplate{},
 		&jailModels.Jail{},
 		&jailModels.JailBootstrap{},
+		&jailModels.JailCreation{},
 
 		&models.PassedThroughIDs{},
 		&models.Triggers{},

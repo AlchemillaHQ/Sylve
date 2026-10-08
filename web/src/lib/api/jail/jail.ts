@@ -49,9 +49,10 @@ import {
 import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 import { parseVLANPolicyDraft } from '$lib/utils/network/vlan';
 import type { VLANPortPolicy } from '$lib/types/network/switch';
+import { DatasetSchema, type Dataset } from '$lib/types/zfs/dataset';
 import { z } from 'zod/v4';
 
-export async function newJail(data: CreateData, hostname?: string): Promise<APIResponse> {
+function jailCreationRequest(data: CreateData) {
 	const hasAttachedSwitch = !['none', 'inherit'].includes(data.network.switch.toLowerCase());
 	const vlanPolicy = data.network.vlanFiltering
 		? (parseVLANPolicyDraft(
@@ -60,53 +61,78 @@ export async function newJail(data: CreateData, hostname?: string): Promise<APIR
 				data.network.vlanPolicyTagged
 			) ?? undefined)
 		: undefined;
+	return {
+		name: data.name,
+		hostname: data.hostname,
+		ctId: Number(data.id.toString()),
+		description: data.description,
+		pool: data.storage.pool,
+		base: data.storage.base,
+		bootstrapName: data.storage.bootstrapName,
+		zfsSource: data.storage.source === 'zfs' ? data.storage.zfsSource : undefined,
+		fstab: data.storage.fstab,
+		resolvConf: data.network.resolvConf,
+		switchName: data.network.switch,
+		dhcp: data.network.dhcp,
+		slaac: data.network.slaac,
+		inheritIPv4: data.network.inheritIPv4,
+		inheritIPv6: data.network.inheritIPv6,
+		ipv4: data.network.ipv4,
+		ipv4Raw: data.network.ipv4Raw,
+		ipv4Gw: data.network.ipv4Gateway,
+		ipv4GwRaw: data.network.ipv4GatewayRaw,
+		ipv6: data.network.ipv6,
+		ipv6Raw: data.network.ipv6Raw,
+		ipv6Gw: data.network.ipv6Gateway,
+		ipv6GwRaw: data.network.ipv6GatewayRaw,
+		mac: data.network.mac,
+		macRaw: data.network.macRaw,
+		vlanPolicy: hasAttachedSwitch ? vlanPolicy : undefined,
+		resourceLimits: data.hardware.resourceLimits,
+		cores: Number(data.hardware.cpuCores.toString()),
+		memory: Number(data.hardware.ram.toString()),
+		startAtBoot: data.hardware.startAtBoot,
+		startOrder: Number(data.hardware.bootOrder),
+		devfsRuleset: data.hardware.devfsRuleset,
+		jailType: data.advanced.jailType,
+		additionalOptions: data.advanced.additionalOptions,
+		allowedOptions: data.advanced.allowedOptions,
+		hooks: data.advanced.execScripts,
+		cleanEnvironment: data.advanced.cleanEnvironment,
+		type: data.advanced.jailType,
+		metadataMeta: data.advanced.metadata.meta,
+		metadataEnv: data.advanced.metadata.env
+	};
+}
+
+export async function newJail(data: CreateData, hostname?: string): Promise<APIResponse> {
 	return await apiRequestResult(
-		'/jail',
+		'/jail?async=true',
 		APIResponseSchema,
 		'POST',
-		{
-			name: data.name,
-			hostname: data.hostname,
-			ctId: Number(data.id.toString()),
-			description: data.description,
-			pool: data.storage.pool,
-			base: data.storage.base,
-			bootstrapName: data.storage.bootstrapName,
-			fstab: data.storage.fstab,
-			resolvConf: data.network.resolvConf,
-			switchName: data.network.switch,
-			dhcp: data.network.dhcp,
-			slaac: data.network.slaac,
-			inheritIPv4: data.network.inheritIPv4,
-			inheritIPv6: data.network.inheritIPv6,
-			ipv4: data.network.ipv4,
-			ipv4Raw: data.network.ipv4Raw,
-			ipv4Gw: data.network.ipv4Gateway,
-			ipv4GwRaw: data.network.ipv4GatewayRaw,
-			ipv6: data.network.ipv6,
-			ipv6Raw: data.network.ipv6Raw,
-			ipv6Gw: data.network.ipv6Gateway,
-			ipv6GwRaw: data.network.ipv6GatewayRaw,
-			mac: data.network.mac,
-			macRaw: data.network.macRaw,
-			vlanPolicy: hasAttachedSwitch ? vlanPolicy : undefined,
-			resourceLimits: data.hardware.resourceLimits,
-			cores: Number(data.hardware.cpuCores.toString()),
-			memory: Number(data.hardware.ram.toString()),
-			startAtBoot: data.hardware.startAtBoot,
-			startOrder: Number(data.hardware.bootOrder),
-			devfsRuleset: data.hardware.devfsRuleset,
-			jailType: data.advanced.jailType,
-			additionalOptions: data.advanced.additionalOptions,
-			allowedOptions: data.advanced.allowedOptions,
-			hooks: data.advanced.execScripts,
-			cleanEnvironment: data.advanced.cleanEnvironment,
-			type: data.advanced.jailType,
-			metadataMeta: data.advanced.metadata.meta,
-			metadataEnv: data.advanced.metadata.env
-		},
+		jailCreationRequest(data),
 		{ hostname }
 	);
+}
+
+export async function validateNewJail(data: CreateData, hostname?: string): Promise<APIResponse> {
+	return await apiRequestResult(
+		'/jail/validate',
+		APIResponseSchema,
+		'POST',
+		jailCreationRequest(data),
+		{ hostname }
+	);
+}
+
+export async function getJailZFSSources(
+	hostname?: string,
+	signal?: AbortSignal
+): Promise<Dataset[] | APIResponse> {
+	return await apiRequestResult('/jail/zfs-sources', DatasetSchema.array(), 'GET', undefined, {
+		hostname,
+		signal
+	});
 }
 
 export async function getSimpleJails(

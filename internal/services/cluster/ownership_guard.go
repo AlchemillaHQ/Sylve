@@ -9,13 +9,16 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"gorm.io/gorm"
 )
 
@@ -24,7 +27,54 @@ import (
 var ErrReplicationRunInProgress = errors.New("replication_run_in_progress")
 
 func CanNodeMutateProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
-	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "")
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "", "")
+}
+
+// CanNodeProvisionJail checks replication protection while allowing only the
+// creation journal that owns this destination to provision its initial root.
+func CanNodeProvisionJail(db *gorm.DB, guestID uint, localNodeID, creationID string) (bool, error) {
+	var owned int64
+	if err := db.Model(&jailModels.JailCreation{}).Where("id = ? AND active_ct_id = ? AND phase = ?", creationID, guestID, "preparing").Count(&owned).Error; err != nil {
+		return false, err
+	}
+	if owned != 1 {
+		return false, fmt.Errorf("jail_creation_ownership_unverified")
+	}
+	return canNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeJail, guestID, localNodeID, "", "", creationID)
+}
+
+func requireJailCreationMutationAllowed(db *gorm.DB, guestType string, guestID uint, creationID string) error {
+	if guestType != clusterModels.ReplicationGuestTypeJail || !db.Migrator().HasTable(&jailModels.JailCreation{}) {
+		return nil
+	}
+	var pending int64
+	if err := db.Model(&jailModels.Jail{}).Where("ct_id = ? AND creation_pending = ?", guestID, true).Count(&pending).Error; err != nil {
+		return err
+	}
+	if pending != 0 {
+		return fmt.Errorf("jail_creation_in_progress")
+	}
+	var operations []jailModels.JailCreation
+	if err := db.Where("active_ct_id IS NOT NULL").Find(&operations).Error; err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		if operation.CTID == guestID && operation.ID != creationID {
+			return fmt.Errorf("jail_creation_in_progress")
+		}
+		var request jailServiceInterfaces.CreateJailRequest
+		if err := json.Unmarshal([]byte(operation.Request), &request); err != nil {
+			return fmt.Errorf("jail_creation_guard_unavailable: %w", err)
+		}
+		if request.ZFSSource == nil {
+			continue
+		}
+		parts := strings.Split(request.ZFSSource.Dataset, "/")
+		if len(parts) >= 4 && parts[1] == "sylve" && parts[2] == "jails" && parts[3] == fmt.Sprint(guestID) {
+			return fmt.Errorf("jail_creation_in_progress: source_is_being_captured")
+		}
+	}
+	return nil
 }
 
 // CanMutateProtectedGuestStorageTopology fails closed while replication is
@@ -38,6 +88,9 @@ func CanMutateProtectedGuestStorageTopology(db *gorm.DB, guestType string, guest
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
 	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
 		return false, fmt.Errorf("invalid_guest_type")
+	}
+	if err := requireJailCreationMutationAllowed(db, guestType, guestID, ""); err != nil {
+		return false, err
 	}
 	if replicationguard.GuestOperationSchemaReady(db) {
 		var operation clusterModels.ReplicationGuestOperation
@@ -88,7 +141,7 @@ func CanNodeMutateProtectedGuestForTransition(
 	localNodeID string,
 	transitionRunID string,
 ) (bool, error) {
-	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, transitionRunID, "")
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, transitionRunID, "", "")
 }
 
 func canNodeMutateProtectedGuest(
@@ -98,6 +151,7 @@ func canNodeMutateProtectedGuest(
 	localNodeID string,
 	transitionRunID string,
 	action string,
+	creationID string,
 ) (bool, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
 	localNodeID = strings.TrimSpace(localNodeID)
@@ -105,6 +159,9 @@ func canNodeMutateProtectedGuest(
 
 	if (guestType == "" || guestID == 0) && action == "" {
 		return true, nil
+	}
+	if err := requireJailCreationMutationAllowed(db, guestType, guestID, creationID); err != nil {
+		return false, err
 	}
 	if replicationguard.GuestOperationSchemaReady(db) {
 		var operation clusterModels.ReplicationGuestOperation
@@ -205,7 +262,7 @@ func canNodeMutateProtectedGuest(
 // sealed migration guard. It exists so cutover can quiesce the source while
 // every other ordinary source mutation remains blocked by the durable guard.
 func CanNodeStopGuestForMigration(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
-	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "stop")
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "stop", "")
 }
 
 func replicationPolicyTransitionInProgress(state string) bool {
@@ -221,7 +278,7 @@ func replicationPolicyTransitionInProgress(state string) bool {
 }
 
 func CanNodeStartProtectedGuest(db *gorm.DB, guestType string, guestID uint, localNodeID string) (bool, error) {
-	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "start")
+	return canNodeMutateProtectedGuest(db, guestType, guestID, localNodeID, "", "start", "")
 }
 
 func CanNodeStartProtectedGuestForTransition(

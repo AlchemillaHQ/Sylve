@@ -10,14 +10,17 @@ package jailHandlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
@@ -58,6 +61,18 @@ type jailCreateService interface {
 	CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error
 }
 
+type jailCreationValidator interface {
+	ValidateCreate(context.Context, jailServiceInterfaces.CreateJailRequest) error
+}
+
+type jailZFSSourceService interface {
+	ListZFSSources(context.Context) ([]*gzfs.Dataset, error)
+}
+
+type jailCreationLifecycleService interface {
+	RequestActionWithPayload(context.Context, string, uint, string, string, string, string) (*taskModels.GuestLifecycleTask, string, error)
+}
+
 type jailDescriptionService interface {
 	UpdateDescription(ctID uint, description string) error
 }
@@ -77,6 +92,11 @@ type jailDeletionService interface {
 }
 
 var jailCreateConflictCodes = map[string]struct{}{
+	"jail_creation_in_progress":             {},
+	"lifecycle_task_in_progress":            {},
+	"zfs_source_identity_changed":           {},
+	"zfs_source_jail_running":               {},
+	"zfs_source_protected":                  {},
 	"bootstrap_not_completed":               {},
 	"ipv4_already_used":                     {},
 	"ipv6_already_used":                     {},
@@ -87,6 +107,14 @@ var jailCreateConflictCodes = map[string]struct{}{
 }
 
 var jailCreateBadRequestCodes = map[string]struct{}{
+	"jail_source_mutually_exclusive":                 {},
+	"invalid_zfs_source":                             {},
+	"zfs_source_not_found":                           {},
+	"zfs_source_layout_unsupported":                  {},
+	"zfs_source_encryption_unsupported":              {},
+	"zfs_source_destination_overlap":                 {},
+	"zfs_source_insufficient_space":                  {},
+	"zfs_source_unsafe_configuration_path":           {},
 	"base_and_bootstrap_name_are_mutually_exclusive": {},
 	"base_is_not_a_directory":                        {},
 	"base_path_does_not_exist":                       {},
@@ -175,6 +203,17 @@ func classifyCreateJailError(err error) (int, string) {
 	}
 
 	errText := strings.ToLower(err.Error())
+	// Source errors include descriptive layout/capture details after their code.
+	// Keep those details from being mistaken for a separate leaf error code.
+	code, _, hasDetail := strings.Cut(errText, ":")
+	if hasDetail && (code == "jail_creation_in_progress" || strings.HasPrefix(code, "zfs_")) {
+		if _, ok := jailCreateBadRequestCodes[code]; ok {
+			return http.StatusBadRequest, code
+		}
+		if _, ok := jailCreateConflictCodes[code]; ok {
+			return http.StatusConflict, code
+		}
+	}
 	switch {
 	case strings.Contains(errText, "replication_lease_not_owned"):
 		return http.StatusForbidden, "replication_lease_not_owned"
@@ -220,7 +259,7 @@ func classifyCreateJailError(err error) (int, string) {
 		return http.StatusConflict, "jail_with_ctid_already_exists"
 	}
 
-	code := extractCreateJailErrorCode(errText)
+	code = extractCreateJailErrorCode(errText)
 	if alias, ok := jailCreateAliasCodes[code]; ok {
 		code = alias
 	}
@@ -611,7 +650,9 @@ func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param request body jailServiceInterfaces.CreateJailRequest true "Create Jail Request"
+// @Param async query bool false "Queue creation as a durable lifecycle task"
 // @Success 201 {object} internal.APIResponse[JailCreateResponse] "Created"
+// @Success 202 {object} internal.APIResponse[any] "Creation queued"
 // @Header 201 {string} Location "/api/jail/{ctid}"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 413 {object} internal.APIResponse[any] "Request Entity Too Large"
@@ -621,7 +662,7 @@ func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
 // @Router /jail [post]
-func CreateJail(jailService jailCreateService) gin.HandlerFunc {
+func CreateJail(jailService jailCreateService, lifecycleService jailCreationLifecycleService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req jailServiceInterfaces.CreateJailRequest
 
@@ -630,6 +671,37 @@ func CreateJail(jailService jailCreateService) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
+		async, parseErr := strconv.ParseBool(c.DefaultQuery("async", "false"))
+		if parseErr != nil {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_async", Error: "async must be true or false"})
+			return
+		}
+		if async {
+			if lifecycleService == nil {
+				c.JSON(http.StatusServiceUnavailable, internal.APIResponse[any]{Status: "error", Message: "jail_create_dependency_not_ready"})
+				return
+			}
+			payload, marshalErr := json.Marshal(req)
+			if marshalErr != nil {
+				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_request_data"})
+				return
+			}
+			task, outcome, err := lifecycleService.RequestActionWithPayload(ctx, taskModels.GuestTypeJail, *req.CTID, "create", taskModels.LifecycleTaskSourceUser, c.GetString("Username"), string(payload))
+			if err != nil {
+				status, code := classifyCreateJailError(err)
+				c.JSON(status, internal.APIResponse[any]{Status: "error", Message: code, Error: err.Error(), Data: task})
+				return
+			}
+			if task == nil || task.ID == 0 {
+				c.JSON(http.StatusInternalServerError, internal.APIResponse[any]{Status: "error", Message: "failed_to_enqueue_lifecycle_task", Error: "Lifecycle service returned no task"})
+				return
+			}
+			c.Set("AuditAsyncJobID", task.ID)
+			c.Set("AuditAsyncJobType", "jail_create")
+			c.Header("Location", "/api/tasks/lifecycle/"+strconv.FormatUint(uint64(task.ID), 10))
+			c.JSON(http.StatusAccepted, internal.APIResponse[any]{Status: "success", Message: "jail_creation_queued", Data: gin.H{"taskId": task.ID, "ctId": *req.CTID, "name": req.Name, "outcome": outcome}})
+			return
+		}
 		err := jailService.CreateJail(ctx, req)
 
 		if err != nil {
@@ -655,6 +727,56 @@ func CreateJail(jailService jailCreateService) gin.HandlerFunc {
 			Data:    created,
 			Error:   "",
 		})
+	}
+}
+
+// @Summary Validate a jail creation request
+// @Description Check common settings and root-source compatibility without creating a jail
+// @Tags Jail
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param request body jailServiceInterfaces.CreateJailRequest true "Create Jail Request"
+// @Success 200 {object} internal.APIResponse[any] "Validated"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /jail/validate [post]
+func ValidateCreateJail(service jailCreationValidator) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req jailServiceInterfaces.CreateJailRequest
+		if !bindJailJSON(c, &req, "invalid_request_data") {
+			return
+		}
+		if err := service.ValidateCreate(c.Request.Context(), req); err != nil {
+			status, code := classifyCreateJailError(err)
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: code, Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[any]{Status: "success", Message: "jail_creation_validated"})
+	}
+}
+
+// @Summary List existing jail root datasets
+// @Description List mounted, self-contained external ZFS roots without modifying their contents
+// @Tags Jail
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} internal.APIResponse[[]gzfs.Dataset] "Success"
+// @Failure 401 {object} internal.APIResponse[any] "Unauthorized"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Failure 503 {object} internal.APIResponse[any] "Service Unavailable"
+// @Router /jail/zfs-sources [get]
+func ListJailZFSSources(service jailZFSSourceService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sources, err := service.ListZFSSources(c.Request.Context())
+		if err != nil {
+			status, _ := classifyCreateJailError(err)
+			c.JSON(status, internal.APIResponse[any]{Status: "error", Message: "failed_to_list_jail_zfs_sources", Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[[]*gzfs.Dataset]{Status: "success", Message: "jail_zfs_sources_listed", Data: sources})
 	}
 }
 

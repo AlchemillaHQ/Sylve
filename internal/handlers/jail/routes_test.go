@@ -50,4 +50,9 @@ func TestJailRouteMiddlewareOrderAndConsoleAuthorization(t *testing.T) {
 	if !consoleAdmin.MatchString(source) {
 		t.Error("Jail console route is missing its route-specific administrator check")
 	}
+	sourceIndex := strings.Index(source, `jail.GET("/zfs-sources", jailHandlers.ListJailZFSSources(jailService))`)
+	detailIndex := strings.Index(source, `jail.GET("/:ctid",`)
+	if sourceIndex < loggerIndex || sourceIndex >= detailIndex {
+		t.Error("Jail source discovery must use the Jail middleware and precede the dynamic detail route")
+	}
 }

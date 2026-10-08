@@ -58,3 +58,12 @@ type GuestIdentityCoordinator interface {
 		operationToken string,
 	) error
 }
+
+// Creation persists a reservation's identity before acquiring it, so recovery
+// can release the exact claim even after a crash during admission.
+type GuestIdentityCreationCoordinator interface {
+	GuestIdentityCoordinator
+	PrepareGuestIdentityReservation(context.Context, string, []uint, string) (GuestIdentityReservation, error)
+	AcquireGuestIdentityReservation(context.Context, GuestIdentityReservation) error
+	RestoreGuestIdentityReservation(context.Context, GuestIdentityReservation) error
+}

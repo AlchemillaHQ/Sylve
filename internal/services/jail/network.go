@@ -1419,6 +1419,9 @@ func (s *Service) processNetworkUpdateBatch(ids []int64) {
 				logger.L.Warn().Int64("id", id).Msg("Jail disappeared before worker could sync")
 				return
 			}
+			if jail.CreationPending {
+				return
+			}
 			if err := s.SyncNetwork(jail.CTID, jail); err != nil {
 				logger.L.Error().Err(err).Uint("ctid", jail.CTID).Msg("Sync failed")
 			}

@@ -4,6 +4,7 @@ package zfs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -30,6 +32,34 @@ func replicationDatasetPathsOverlap(left, right string) bool {
 	right = normalizedMutationDataset(right)
 	return left != "" && right != "" &&
 		(left == right || strings.HasPrefix(left, right+"/") || strings.HasPrefix(right, left+"/"))
+}
+
+func (s *Service) requireCreationDatasetMutationAllowed(ctx context.Context, names ...string) error {
+	if !s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+		return nil
+	}
+	var operations []jailModels.JailCreation
+	if err := s.DB.WithContext(ctx).Where("active_ct_id IS NOT NULL").Find(&operations).Error; err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		var request jailServiceInterfaces.CreateJailRequest
+		if err := json.Unmarshal([]byte(operation.Request), &request); err != nil {
+			return fmt.Errorf("jail_creation_guard_unavailable: %w", err)
+		}
+		roots := []string{fmt.Sprintf("%s/sylve/jails/%d", request.Pool, operation.CTID), request.Pool + "/sylve/jails/create-" + operation.ID}
+		if request.ZFSSource != nil {
+			roots = append(roots, request.ZFSSource.Dataset)
+		}
+		for _, name := range names {
+			for _, root := range roots {
+				if replicationDatasetPathsOverlap(name, root) {
+					return fmt.Errorf("jail_creation_dataset_mutation_blocked: %s", name)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) protectedReplicationDatasetRoots(
@@ -143,6 +173,9 @@ func (s *Service) RequireReplicationDatasetMutationAllowed(ctx context.Context, 
 	if s == nil || s.DB == nil || s.GZFS == nil {
 		return fmt.Errorf("replication_dataset_guard_unavailable")
 	}
+	if err := s.requireCreationDatasetMutationAllowed(ctx, names...); err != nil {
+		return err
+	}
 	policies, protectedPolicyIDs, err := s.replicationMutationProtectionState()
 	if err != nil {
 		return err
@@ -197,6 +230,9 @@ func (s *Service) RequireReplicationDatasetMutationAllowed(ctx context.Context, 
 func (s *Service) RequireReplicationDatasetCreateAllowed(ctx context.Context, prospectiveName string) error {
 	if s == nil || s.DB == nil {
 		return fmt.Errorf("replication_dataset_guard_unavailable")
+	}
+	if err := s.requireCreationDatasetMutationAllowed(ctx, prospectiveName); err != nil {
+		return err
 	}
 	name := normalizedMutationDataset(prospectiveName)
 	if name == "" || !strings.Contains(name, "/") {

@@ -762,6 +762,19 @@ func (s *Service) ReserveGuestIdentities(
 	guestKind string,
 	guestIDs []uint,
 ) (clusterServiceInterfaces.GuestIdentityReservation, error) {
+	reservation, err := s.PrepareGuestIdentityReservation(ctx, guestKind, guestIDs, uuid.NewString())
+	if err != nil {
+		return clusterServiceInterfaces.GuestIdentityReservation{}, err
+	}
+	if err := s.AcquireGuestIdentityReservation(ctx, reservation); err != nil {
+		return clusterServiceInterfaces.GuestIdentityReservation{}, err
+	}
+	return reservation, nil
+}
+
+func (s *Service) PrepareGuestIdentityReservation(
+	ctx context.Context, guestKind string, guestIDs []uint, operationToken string,
+) (clusterServiceInterfaces.GuestIdentityReservation, error) {
 	var reservation clusterServiceInterfaces.GuestIdentityReservation
 	if ctx == nil {
 		ctx = context.Background()
@@ -774,7 +787,9 @@ func (s *Service) ReserveGuestIdentities(
 	if err != nil {
 		return reservation, err
 	}
-	operationToken := uuid.NewString()
+	if strings.TrimSpace(operationToken) == "" {
+		return reservation, fmt.Errorf("guest_identity_operation_token_required")
+	}
 	reservation = clusterServiceInterfaces.GuestIdentityReservation{
 		OwnerNodeID:         s.localGuestIdentityOwner(),
 		Token:               operationToken,
@@ -782,24 +797,50 @@ func (s *Service) ReserveGuestIdentities(
 		Entries:             references,
 		Clustered:           clustered,
 	}
-	if clustered {
+	return reservation, nil
+}
+
+func (s *Service) AcquireGuestIdentityReservation(ctx context.Context, reservation clusterServiceInterfaces.GuestIdentityReservation) error {
+	guestIDs := make([]uint, 0, len(reservation.Entries))
+	for _, entry := range reservation.Entries {
+		guestIDs = append(guestIDs, entry.GuestID)
+	}
+	if err := s.requireJailCreationIdentityAvailable(ctx, guestIDs, reservation.Token); err != nil {
+		return err
+	}
+	if reservation.Clustered {
 		if err := s.trackClusterGuestIdentityOperation(reservation); err != nil {
-			return clusterServiceInterfaces.GuestIdentityReservation{}, err
+			return err
 		}
-		_, err = s.dispatchGuestIdentityControl(ctx, GuestIdentityControlRequest{
+		_, err := s.dispatchGuestIdentityControl(ctx, GuestIdentityControlRequest{
 			Operation:   guestIdentityControlReserve,
 			Reservation: reservation,
 		})
 		if err != nil {
 			s.clearGuestIdentityOperation(reservation)
-			return clusterServiceInterfaces.GuestIdentityReservation{}, err
+			return err
 		}
-		return reservation, nil
+		return nil
 	}
-	if err := s.reserveStandaloneGuestIdentities(ctx, reservation); err != nil {
-		return clusterServiceInterfaces.GuestIdentityReservation{}, err
+	return s.reserveStandaloneGuestIdentities(ctx, reservation)
+}
+
+func (s *Service) RestoreGuestIdentityReservation(ctx context.Context, reservation clusterServiceInterfaces.GuestIdentityReservation) error {
+	normalized, err := normalizeGuestIdentityReservation(reservation)
+	if err != nil {
+		return err
 	}
-	return reservation, nil
+	clustered, err := s.guestIdentityClustered(ctx)
+	if err != nil {
+		return err
+	}
+	if clustered != normalized.Clustered || normalized.OwnerNodeID != s.localGuestIdentityOwner() {
+		return fmt.Errorf("guest_identity_claim_conflict: creation_owner_changed")
+	}
+	if err := s.requireGuestIdentityOperationOwned(normalized); err == nil {
+		return nil
+	}
+	return s.beginGuestIdentityOperation(normalized, clusterModels.ErrGuestIdentityClaimConflict)
 }
 
 func (s *Service) FinalizeGuestIdentities(

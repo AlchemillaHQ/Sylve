@@ -2812,7 +2812,11 @@ msgid "Failed to copy error"
 msgstr "复制错误失败"
 
 #. 0: task.guestId
+#. 0: task.guestId
+#. 0: task.guestId
 #. 0: jailMatch[1]
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Jail {0}"
@@ -2849,6 +2853,7 @@ msgid "Failed to load event progress"
 msgstr "加载事件进度失败"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
@@ -2919,6 +2924,7 @@ msgstr "按作业过滤"
 msgid "Select node"
 msgstr "选择节点"
 
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "View Progress"
 msgstr "查看进度"
@@ -3982,15 +3988,6 @@ msgid "Basic"
 msgstr "基础"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Failed to create jail"
-msgstr ""
-
-#. 0: data.name
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
-msgid "Jail {0} created"
-msgstr "Jail {0} 已创建"
-
-#: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -4178,6 +4175,7 @@ msgid "Select ZFS pool"
 msgstr "选择 ZFS 存储池"
 
 #: src/lib/components/custom/Jail/Create/Storage.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Base"
 msgstr "基础"
 
@@ -5096,7 +5094,7 @@ msgstr "保存并返回插槽"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
-msgid "Update "
+msgid "Update"
 msgstr "更新"
 
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
@@ -6284,6 +6282,7 @@ msgid "Select mode"
 msgstr "选择模式"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
+#: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Source Dataset"
 msgstr "源数据集"
 
@@ -7663,6 +7662,7 @@ msgstr "数量"
 msgid "Name Prefix"
 msgstr "名称前缀"
 
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -9817,6 +9817,7 @@ msgid "Retry"
 msgstr "重试"
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Bootstrap"
 msgstr "引导"
 
@@ -13193,6 +13194,7 @@ msgstr ""
 msgid "Could not inspect target dataset"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Finalizing"
 msgstr ""
@@ -19189,4 +19191,125 @@ msgstr ""
 #. 0: object.name
 #: src/lib/components/custom/Network/Objects/Usages.svelte
 msgid "Object Usages - {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS copy"
+msgstr ""
+
+#. 0: name ? `${name} (CTID ${task.guestId})` \\: `CTID ${task.guestId}`; 1: source ? ` - ${source}` \\: ''
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Create Jail - {0}{1}"
+msgstr ""
+
+#. 0: data.name
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Jail {0} creation queued"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Failed to queue jail creation"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Could not load creation task"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Close and reopen the dialog to retry. The task is not cancelled."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Loading creation task…"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Creation not allowed"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Create Another Jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Open Jail"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Base / Bootstrap"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Existing ZFS"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Select jail root dataset"
+msgstr ""
+
+#. 0: formatBytesBinary(sourceSize)
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Referenced data estimate: {0}. Actual copy size may differ."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Preparing"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Provisioning / Copying"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Verifying"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Configuring"
+msgstr ""
+
+#. 0: task.id
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Task #{0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Finalization pending"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Jail created"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "The filesystem copy and configuration are complete. The jail was created stopped."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Creation failed"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Creation could not be completed."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "A retry is a new attempt. Retained resources or pending cleanup must be resolved before reusing the same ID."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreateJail.svelte
+msgid "Could not load source datasets. Close and reopen the dialog to retry."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Loading source datasets…"
+msgstr ""
+
+#. 0: name; 1: task.guestId
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "{0} - CTID {1}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "No eligible jail root datasets found. Registered jails, internal datasets, and unsupported roots are excluded."
 msgstr ""

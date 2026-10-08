@@ -33,6 +33,7 @@ import (
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/mountutil"
+	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -47,10 +48,11 @@ type Service struct {
 	System         systemServiceInterfaces.SystemServiceInterface
 	GZFS           *gzfs.Client
 
-	crudMutex         sync.Mutex
-	createMutex       sync.Mutex
-	actionMutex       sync.Mutex
-	networkUpdateChan chan int64
+	crudMutex              sync.Mutex
+	createMutex            sync.Mutex
+	creationAdmissionMutex sync.Mutex
+	actionMutex            sync.Mutex
+	networkUpdateChan      chan int64
 
 	liveStateMutex        sync.RWMutex
 	liveStateRefreshMutex sync.Mutex
@@ -79,6 +81,9 @@ type Service struct {
 	bootstrapRunFn          bootstrapRunner
 	hardwareOps             jailHardwareOps
 	optionOps               jailOptionHostOps
+	creationCommand         *gzfs.Cmd
+	creationMountCheck      func(context.Context, string, string) error
+	creationRunningPaths    func(context.Context) ([]string, error)
 }
 
 func (s *Service) SetMutationAdmission(gate interface {
@@ -281,6 +286,16 @@ func simpleJailListItem(jail jailModels.Jail, state string) jailServiceInterface
 }
 
 func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) error {
+	return s.validateCreate(ctx, data, "")
+}
+
+func (s *Service) validateCreate(ctx context.Context, data jailServiceInterfaces.CreateJailRequest, operationID string) error {
+	if s.System == nil {
+		return fmt.Errorf("system_service_not_initialized")
+	}
+	if s.GZFS == nil || s.GZFS.ZFS == nil {
+		return fmt.Errorf("zfs_client_not_initialized")
+	}
 	if data.Name == "" || !utils.IsValidVMName(data.Name) {
 		return fmt.Errorf("invalid_vm_name")
 	}
@@ -301,6 +316,9 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 	}
 	if existingCount > 0 {
 		return fmt.Errorf("jail_with_ctid_already_exists")
+	}
+	if err := s.requireCreationAvailable(ctx, *data.CTID, operationID); err != nil {
+		return err
 	}
 
 	if err := s.validateNoStaleJailCreateArtifacts(ctx, *data.CTID); err != nil {
@@ -337,6 +355,9 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 
 	if data.Base != "" && data.BootstrapName != "" {
 		return fmt.Errorf("base_and_bootstrap_name_are_mutually_exclusive")
+	}
+	if data.SourceCount() > 1 {
+		return fmt.Errorf("jail_source_mutually_exclusive")
 	}
 
 	if data.Base != "" {
@@ -375,6 +396,10 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		}
 
 		if _, err := s.resolveBootstrapMountpoint(ctx, identity); err != nil {
+			return err
+		}
+	} else if data.ZFSSource != nil {
+		if _, err := s.inspectZFSSource(ctx, *data.ZFSSource, data.Pool); err != nil {
 			return err
 		}
 	} else {
@@ -532,7 +557,7 @@ func (s *Service) ValidateCreate(ctx context.Context, data jailServiceInterfaces
 		return err
 	}
 
-	if s.guestIdentityChecker != nil {
+	if operationID == "" && s.guestIdentityChecker != nil {
 		if err := s.guestIdentityChecker.RequireGuestIDAvailable(ctx, *data.CTID); err != nil {
 			return err
 		}
@@ -802,145 +827,6 @@ func (s *Service) validateNoStaleJailCreateArtifacts(ctx context.Context, ctid u
 	return nil
 }
 
-func (s *Service) forceRemoveJailRuntimeArtifacts(ctid uint, warnings *[]string) {
-	jailsPath, err := config.GetJailsPath()
-	if err != nil {
-		appendJailCreateCleanupWarning(warnings, ctid, "failed_to_get_jails_path_for_create_rollback", err)
-		return
-	}
-
-	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctid))
-	if _, statErr := os.Stat(jailDir); statErr == nil {
-		if removeErr := os.RemoveAll(jailDir); removeErr != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_remove_jail_runtime_dir_for_create_rollback", removeErr)
-		}
-	}
-}
-
-func (s *Service) forceRemoveJailZFSDatasets(ctx context.Context, ctid uint, fallbackPool string, warnings *[]string) {
-	if s.GZFS == nil || s.GZFS.ZFS == nil {
-		appendJailCreateCleanupWarning(warnings, ctid, "zfs_client_not_initialized_during_jail_create_rollback", fmt.Errorf("zfs_client_not_initialized"))
-		return
-	}
-
-	poolNames := make(map[string]struct{})
-	if fallbackPool = strings.TrimSpace(fallbackPool); fallbackPool != "" {
-		poolNames[fallbackPool] = struct{}{}
-	}
-
-	if s.System != nil {
-		pools, err := s.System.GetUsablePools(ctx)
-		if err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_list_usable_pools_for_jail_create_rollback", err)
-		} else {
-			for _, pool := range pools {
-				if pool == nil {
-					continue
-				}
-
-				poolName := strings.TrimSpace(pool.Name)
-				if poolName == "" {
-					continue
-				}
-
-				poolNames[poolName] = struct{}{}
-			}
-		}
-	}
-
-	var jailIDs []uint
-	if err := s.DB.Model(&jailModels.Jail{}).
-		Where("ct_id = ?", ctid).
-		Pluck("id", &jailIDs).Error; err != nil {
-		appendJailCreateCleanupWarning(warnings, ctid, "failed_to_lookup_jail_ids_for_zfs_rollback", err)
-	}
-
-	if len(jailIDs) > 0 {
-		var storagePools []string
-		if err := s.DB.Model(&jailModels.Storage{}).
-			Where("jid IN ?", jailIDs).
-			Where("pool IS NOT NULL AND pool <> ''").
-			Pluck("pool", &storagePools).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_lookup_jail_storage_pools_for_zfs_rollback", err)
-		} else {
-			for _, pool := range storagePools {
-				poolName := strings.TrimSpace(pool)
-				if poolName == "" {
-					continue
-				}
-
-				poolNames[poolName] = struct{}{}
-			}
-		}
-	}
-
-	for poolName := range poolNames {
-		datasetName := fmt.Sprintf("%s/sylve/jails/%d", poolName, ctid)
-
-		ds, getErr := s.GZFS.ZFS.Get(ctx, datasetName, false)
-		if getErr != nil {
-			if isZFSDatasetMissingError(getErr) {
-				continue
-			}
-			appendJailCreateCleanupWarning(
-				warnings,
-				ctid,
-				fmt.Sprintf("failed_to_get_jail_dataset_%s_for_create_rollback", datasetName),
-				getErr,
-			)
-			continue
-		}
-
-		if ds == nil {
-			continue
-		}
-
-		if destroyErr := ds.Destroy(ctx, true, false); destroyErr != nil && !isZFSDatasetMissingError(destroyErr) {
-			appendJailCreateCleanupWarning(
-				warnings,
-				ctid,
-				fmt.Sprintf("failed_to_destroy_jail_dataset_%s_for_create_rollback", datasetName),
-				destroyErr,
-			)
-		}
-	}
-}
-
-func (s *Service) forceRemoveJailDBRecords(ctid uint, warnings *[]string) {
-	var jailIDs []uint
-	if err := s.DB.Model(&jailModels.Jail{}).
-		Where("ct_id = ?", ctid).
-		Pluck("id", &jailIDs).Error; err != nil {
-		appendJailCreateCleanupWarning(warnings, ctid, "failed_to_lookup_jail_ids_for_db_rollback", err)
-		return
-	}
-
-	if len(jailIDs) > 0 {
-		if err := s.DB.Where("jid IN ?", jailIDs).Delete(&jailModels.Network{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_networks_for_create_rollback", err)
-		}
-		if err := s.DB.Where("jid IN ?", jailIDs).Delete(&jailModels.JailHooks{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_hooks_for_create_rollback", err)
-		}
-		if err := s.DB.Where("jid IN ?", jailIDs).Delete(&jailModels.JailStats{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_stats_for_create_rollback", err)
-		}
-		if err := s.DB.Where("jid IN ?", jailIDs).Delete(&jailModels.JailSnapshot{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_snapshots_for_create_rollback", err)
-		}
-		if err := s.DB.Where("jid IN ?", jailIDs).Delete(&jailModels.Storage{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_storages_for_create_rollback", err)
-		}
-		if err := s.DB.Where("id IN ?", jailIDs).Delete(&jailModels.Jail{}).Error; err != nil {
-			appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_rows_for_create_rollback", err)
-		}
-	}
-
-	if err := s.DB.Where("ct_id = ?", ctid).Delete(&jailModels.Jail{}).Error; err != nil {
-		appendJailCreateCleanupWarning(warnings, ctid, "failed_to_delete_jail_rows_by_ctid_for_create_rollback", err)
-	}
-}
-
 func (s *Service) cleanupAutoCreatedJailCreateObjects(ctid uint, autoCreatedIDs []uint, warnings *[]string) {
 	for _, objID := range uniqueUintValues(autoCreatedIDs) {
 		if s.NetworkService != nil {
@@ -1031,37 +917,6 @@ func (s *Service) cleanupAutoCreatedJailCreateObjects(ctid uint, autoCreatedIDs 
 				err,
 			)
 		}
-	}
-}
-
-func (s *Service) cleanupFailedJailCreate(ctid uint, fallbackPool string, autoCreatedIDs []uint) {
-	if ctid == 0 {
-		return
-	}
-
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	warnings := make([]string, 0)
-
-	s.forceRemoveJailRuntimeArtifacts(ctid, &warnings)
-	s.forceRemoveJailZFSDatasets(cleanupCtx, ctid, fallbackPool, &warnings)
-	s.forceRemoveJailDBRecords(ctid, &warnings)
-	s.cleanupAutoCreatedJailCreateObjects(ctid, autoCreatedIDs, &warnings)
-
-	if !config.IsDevFSDisabled() {
-		if _, statErr := os.Stat("/etc/devfs.rules"); statErr == nil {
-			if err := s.RemoveDevfsRulesForCTID(ctid); err != nil {
-				appendJailCreateCleanupWarning(&warnings, ctid, "failed_to_remove_devfs_rules_for_create_rollback", err)
-			}
-		}
-	}
-
-	if len(warnings) > 0 {
-		logger.L.Warn().
-			Uint("ctid", ctid).
-			Strs("warnings", warnings).
-			Msg("jail_create_rollback_cleanup_warnings")
 	}
 }
 
@@ -1390,15 +1245,13 @@ func resolveRawIP(ptr *int, raw string, tx *gorm.DB, objType, baseName string, a
 	return nil, nil
 }
 
-func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest) (err error) {
-	s.createMutex.Lock()
-	defer s.createMutex.Unlock()
+func (s *Service) createJail(ctx context.Context, data jailServiceInterfaces.CreateJailRequest, operation *jailModels.JailCreation, ownership *creationState) (err error) {
 	if strings.TrimSpace(data.BootstrapName) != "" {
 		s.bootstrapUseMu.RLock()
 		defer s.bootstrapUseMu.RUnlock()
 	}
 
-	if err = s.ValidateCreate(ctx, data); err != nil {
+	if err = s.validateCreate(ctx, data, operation.ID); err != nil {
 		logger.L.Debug().Err(err).Msg("create_jail: validation failed")
 		return err
 	}
@@ -1439,7 +1292,11 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 		}
 	}
 	if replicationguard.GuestOperationSchemaReady(s.DB) {
-		allowed, leaseErr := s.canMutateProtectedJail(ctid)
+		nodeID, nodeErr := utils.GetSystemUUID()
+		if nodeErr != nil {
+			return nodeErr
+		}
+		allowed, leaseErr := clusterService.CanNodeProvisionJail(s.DB, ctid, strings.TrimSpace(nodeID), operation.ID)
 		if leaseErr != nil {
 			return fmt.Errorf("replication_lease_check_failed: %w", leaseErr)
 		}
@@ -1447,49 +1304,10 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 			return fmt.Errorf("replication_lease_not_owned")
 		}
 	}
-	var identityReservation *clusterServiceInterfaces.GuestIdentityReservation
-	if s.guestIdentityCoordinator != nil {
-		reserved, reserveErr := s.guestIdentityCoordinator.ReserveGuestIdentities(ctx, clusterModels.ReplicationGuestTypeJail, []uint{ctid})
-		if reserveErr != nil {
-			return reserveErr
-		}
-		identityReservation = &reserved
-	}
-	defer func() {
-		if identityReservation == nil || err == nil {
-			return
-		}
-		if releaseErr := s.guestIdentityCoordinator.ReleaseGuestIdentities(ctx, *identityReservation); releaseErr != nil {
-			err = errors.Join(err, fmt.Errorf("guest_identity_release_failed: %w", releaseErr))
-		}
-	}()
-
 	autoCreatedIDs := make([]uint, 0, 5)
-
-	defer func() {
-		if err == nil {
-			return
-		}
-
-		s.cleanupFailedJailCreate(ctid, data.Pool, autoCreatedIDs)
-	}()
-
-	datasetName := fmt.Sprintf("%s/sylve/jails/%d", data.Pool, ctid)
-
-	var dataset *gzfs.Dataset
-	dataset, err = s.GZFS.ZFS.CreateFilesystem(ctx, datasetName, map[string]string{})
-	if err != nil || dataset == nil {
-		if err == nil {
-			err = fmt.Errorf("nil_dataset_returned")
-		}
-
-		err = fmt.Errorf("failed_to_create_jail_dataset: %w", err)
-		return
-	}
-	var mountPoint string
-	mountPoint, err = validateFilesystemDatasetMountpoint(dataset, datasetName, "")
+	dataset, mountPoint, err := s.provisionJailRoot(ctx, data, operation, ownership)
 	if err != nil {
-		return fmt.Errorf("jail_dataset_mountpoint_not_usable: %w", err)
+		return err
 	}
 
 	var jail jailModels.Jail
@@ -1497,6 +1315,7 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	jail.Name = data.Name
 	jail.Hostname = data.Hostname
 	jail.CTID = ctid
+	jail.CreationPending = true
 	jail.Description = data.Description
 	jail.StartAtBoot = data.StartAtBoot
 	jail.StartOrder = data.StartOrder
@@ -1593,6 +1412,8 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	defer func() {
 		if err != nil && !txCommitted {
 			_ = tx.Rollback()
+			ownership.JailID = 0
+			ownership.AutoObjectIDs = nil
 		}
 	}()
 
@@ -1757,59 +1578,19 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	// Update jail.Networks to reflect the saved state with proper JailID
 	jail.Networks = createdNetworks
 
-	// Commit the transaction before the potentially long-running file copy
+	ownership.JailID = jail.ID
+	ownership.AutoObjectIDs = autoCreatedIDs
+	if err = s.saveCreation(tx, operation, ownership, "configuring"); err != nil {
+		return err
+	}
+	// The filesystem is already provisioned; registration is a short transaction.
 	if err = tx.Commit().Error; err != nil {
-		/*
-			2025/12/05 06:53:39 /zroot/projects/Sylve/internal/services/jail/jail.go:1081 duplicated key not allowed
-			[0.167ms] [rows:0] INSERT INTO `jail_networks` (`jid`,`name`,`switch_id`,`switch_type`,`mac_id`,`ipv4_id`,`ipv4_gw_id`,`ipv6_id`,`ipv6_gw_id`,`default_gateway`,`dhcp`,`sla_ac`) VALUES (53,"Initial Switch",1,"manual",42,0,0,0,0,true,false,false) ON CONFLICT (`id`) DO UPDATE SET `jid`=`excluded`.`jid` RETURNING `id`
-		*/
-		// ^ If duplicate just continue?
-		if strings.Contains(err.Error(), "duplicated key not allowed") {
-			err = nil
-		} else {
-			err = fmt.Errorf("failed_to_commit_tx: %w", err)
-			return
-		}
+		return fmt.Errorf("failed_to_commit_tx: %w", err)
 	}
 	txCommitted = true
 	if unlockSwitchLifecycle != nil {
 		unlockSwitchLifecycle()
 		unlockSwitchLifecycle = nil
-	}
-
-	if data.BootstrapName != "" {
-		identity, identityErr := canonicalBootstrapIdentity(data.Pool, data.BootstrapName)
-		if identityErr != nil {
-			err = identityErr
-			return
-		}
-		var bootstrapMount string
-		bootstrapMount, err = s.resolveBootstrapMountpoint(ctx, identity)
-		if err != nil {
-			return
-		}
-		if err = utils.CopyDirContents(bootstrapMount, mountPoint); err != nil {
-			err = fmt.Errorf("failed_to_copy_bootstrap: %w", err)
-			return
-		}
-	} else {
-		var base string
-		base, err = s.FindBaseByUUID(data.Base)
-		if err != nil {
-			err = fmt.Errorf("failed_to_find_base: %w", err)
-			return
-		}
-
-		isDir, _ := utils.IsDir(base)
-		if isDir {
-			if err = utils.CopyDirContents(base, mountPoint); err != nil {
-				err = fmt.Errorf("failed_to_copy_base: %w", err)
-				return
-			}
-		} else {
-			err = fmt.Errorf("base_is_not_a_directory")
-			return
-		}
 	}
 
 	var jailsPath string
@@ -1825,9 +1606,8 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	jailDir := filepath.Join(jailsPath, fmt.Sprintf("%d", ctid))
-	if err = os.MkdirAll(jailDir, 0755); err != nil {
-		err = fmt.Errorf("failed_to_create_jail_directory: %w", err)
-		return
+	if err = s.prepareCreationConfigDir(ctx, operation, ownership, jailsPath); err != nil {
+		return err
 	}
 
 	logsPath := filepath.Join(jailDir, fmt.Sprintf("%d.log", ctid))
@@ -1856,6 +1636,12 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	}
 
 	var jCfg string
+	if !config.IsDevFSDisabled() && jail.DevFSRuleset != "" {
+		ownership.DevFSRules = true
+		if err = s.saveCreation(s.DB.WithContext(ctx), operation, ownership, "configuring"); err != nil {
+			return err
+		}
+	}
 	jCfg, err = s.CreateJailConfig(jail, mountPoint)
 	if err != nil {
 		err = fmt.Errorf("failed_to_create_jail_config: %w", err)
@@ -1884,13 +1670,6 @@ func (s *Service) CreateJail(ctx context.Context, data jailServiceInterfaces.Cre
 	if err = s.SyncNetwork(ctid, *reloaded); err != nil {
 		err = fmt.Errorf("failed_to_sync_created_jail_network: %w", err)
 		return
-	}
-
-	if identityReservation != nil {
-		if finalizeErr := s.guestIdentityCoordinator.FinalizeGuestIdentities(ctx, *identityReservation); finalizeErr != nil {
-			return fmt.Errorf("guest_identity_finalize_failed: %w", finalizeErr)
-		}
-		identityReservation = nil
 	}
 
 	return nil

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	"gorm.io/gorm"
 )
 
@@ -350,6 +351,9 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 		}
 		requested[guestID] = struct{}{}
 	}
+	if err := s.requireJailCreationIdentityAvailable(ctx, guestIDs, ""); err != nil {
+		return err
+	}
 
 	clustered, err := s.guestIdentityClustered(ctx)
 	if err != nil {
@@ -392,6 +396,21 @@ func (s *Service) RequireGuestIDsAvailable(ctx context.Context, guestIDs []uint)
 		}
 	}
 
+	return nil
+}
+
+func (s *Service) requireJailCreationIdentityAvailable(ctx context.Context, guestIDs []uint, operationToken string) error {
+	if !s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+		return nil
+	}
+	var count int64
+	if err := s.DB.WithContext(ctx).Model(&jailModels.JailCreation{}).
+		Where("active_ct_id IN ? AND id <> ?", guestIDs, operationToken).Count(&count).Error; err != nil {
+		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)
+	}
+	if count != 0 {
+		return fmt.Errorf("%w: jail_creation_in_progress", clusterModels.ErrGuestIdentityAlreadyInUse)
+	}
 	return nil
 }
 

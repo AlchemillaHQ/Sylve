@@ -166,7 +166,7 @@ func (s *Service) ReconcileLifecycleConfigs() error {
 	}
 
 	var jails []jailModels.Jail
-	if err := s.DB.Preload("JailHooks").Find(&jails).Error; err != nil {
+	if err := s.DB.Where("creation_pending = ?", false).Preload("JailHooks").Find(&jails).Error; err != nil {
 		return fmt.Errorf("failed_to_load_jails: %w", err)
 	}
 

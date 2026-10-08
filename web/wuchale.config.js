@@ -5,6 +5,7 @@ import { defineConfig } from 'wuchale';
 
 export default defineConfig({
 	locales: ['en', 'de', 'mal', 'hi', 'zh-CN', 'cs'],
+	hmr: false,
 	adapters: {
 		main: svelte({ sourceLocale: 'en', loader: 'sveltekit' }),
 		js: js({

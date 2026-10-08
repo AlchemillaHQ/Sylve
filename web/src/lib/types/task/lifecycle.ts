@@ -30,7 +30,7 @@ const activeLifecycleTaskStatuses = new Set<LifecycleTask['status']>(['queued', 
 
 export function isLifecycleTaskActive(
 	task: LifecycleTask | null | undefined
-): task is LifecycleTask {
+): task is LifecycleTask & { status: 'queued' | 'running' } {
 	if (!task) {
 		return false;
 	}

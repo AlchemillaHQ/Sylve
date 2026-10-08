@@ -684,6 +684,7 @@ func RegisterRoutes(r *gin.Engine,
 	jail.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	{
 		jail.GET("/simple", jailHandlers.ListJailsSimple(jailService))
+		jail.GET("/zfs-sources", jailHandlers.ListJailZFSSources(jailService))
 		jail.GET("/bootstraps", jailHandlers.ListBootstraps(jailService))
 		jail.POST("/bootstraps", jailHandlers.CreateBootstrap(jailService))
 		jail.DELETE("/bootstraps/:name", jailHandlers.DeleteBootstrap(jailService))
@@ -722,7 +723,8 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PUT("/:ctid/hardware/cpu", jailHandlers.UpdateJailCPU(jailService))
 		jail.PUT("/:ctid/hardware/resource-limits", jailHandlers.UpdateResourceLimits(jailService))
 
-		jail.POST("", jailHandlers.CreateJail(jailService))
+		jail.POST("", jailHandlers.CreateJail(jailService, lifecycleService))
+		jail.POST("/validate", jailHandlers.ValidateCreateJail(jailService))
 		jail.DELETE("/:ctid",
 			jailHandlers.RequireJailDeletionDetached(jailService, "ctid"),
 			jailHandlers.RequireJailReplicationTopologyMutable(jailService, "ctid"),
@@ -1035,6 +1037,7 @@ func RegisterRoutes(r *gin.Engine,
 			lifecycleTasks.GET("/active", taskHandlers.ActiveLifecycleTasks(lifecycleService))
 			lifecycleTasks.GET("/active/:guestType/:guestId", taskHandlers.ActiveLifecycleTaskForGuest(lifecycleService))
 			lifecycleTasks.GET("/recent", taskHandlers.RecentLifecycleTasks(lifecycleService))
+			lifecycleTasks.GET("/:taskId", taskHandlers.LifecycleTask(lifecycleService))
 		}
 
 		migrationTasks := tasks.Group("/migration")

@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -108,6 +109,8 @@ func (f jailCreateTestSystemService) GetUsablePools(_ context.Context) ([]*gzfs.
 type jailCreateTestZFSDataset struct {
 	guid       string
 	mountpoint string
+	owner      string
+	policyID   string
 }
 
 type jailCreateTestZFSRunner struct {
@@ -163,6 +166,8 @@ func (r *jailCreateTestZFSRunner) Run(_ context.Context, _ io.Reader, stdout, _ 
 	switch args[0] {
 	case "list":
 		return r.runList(stdout, args)
+	case "get":
+		return r.runList(stdout, args)
 	case "create":
 		return r.runCreate(args)
 	case "destroy":
@@ -174,6 +179,7 @@ func (r *jailCreateTestZFSRunner) Run(_ context.Context, _ io.Reader, stdout, _ 
 
 func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error {
 	target := parseJailCreateZFSTargetArg(args)
+	recursive := slices.Contains(args, "-r")
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -181,7 +187,9 @@ func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error
 	datasets := map[string]any{}
 	for datasetName, dataset := range r.datasets {
 		if target != "" && datasetName != target {
-			continue
+			if !recursive || !strings.HasPrefix(datasetName, target+"/") {
+				continue
+			}
 		}
 
 		datasets[datasetName] = map[string]any{
@@ -189,6 +197,9 @@ func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error
 			"pool": jailCreateDatasetPoolName(datasetName),
 			"type": string(gzfs.DatasetTypeFilesystem),
 			"properties": map[string]any{
+				creationOwnerProperty:         map[string]any{"value": dataset.owner, "source": map[string]any{"type": "local", "data": ""}},
+				"sylve:replication-policy-id": map[string]any{"value": dataset.policyID, "source": map[string]any{"type": "local", "data": ""}},
+				"encryption":                  map[string]any{"value": "off", "source": map[string]any{"type": "default", "data": ""}},
 				"guid": map[string]any{
 					"value":  dataset.guid,
 					"source": map[string]any{"type": "default", "data": ""},
@@ -244,9 +255,17 @@ func (r *jailCreateTestZFSRunner) runCreate(args []string) error {
 		if err := os.MkdirAll(mountpoint, 0o755); err != nil {
 			return err
 		}
+		var owner string
+		for _, arg := range args {
+			if value, ok := strings.CutPrefix(arg, creationOwnerProperty+"="); ok {
+				owner = value
+				break
+			}
+		}
 		r.datasets[datasetName] = jailCreateTestZFSDataset{
 			guid:       strconv.Itoa(len(r.datasets) + 1),
 			mountpoint: mountpoint,
+			owner:      owner,
 		}
 	}
 
@@ -346,6 +365,9 @@ func jailCreateDatasetPoolName(datasetName string) string {
 }
 
 func newJailCreateTestService(db *gorm.DB, runner *jailCreateTestZFSRunner, pools ...string) *Service {
+	if err := db.AutoMigrate(&jailModels.JailCreation{}); err != nil {
+		panic(err)
+	}
 	usablePools := make([]*gzfs.ZPool, 0, len(pools))
 	for _, poolName := range pools {
 		usablePools = append(usablePools, &gzfs.ZPool{Name: poolName})
@@ -1045,7 +1067,7 @@ func TestValidateCreate_RejectsInvalidRawIPv4CIDR(t *testing.T) {
 	}
 }
 
-func TestCleanupFailedJailCreate_RemovesArtifactsAndOnlyAutoCreatedMACs(t *testing.T) {
+func TestCreationRollback_RemovesOwnedArtifactsAndOnlyAutoCreatedMACs(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
 	db := testutil.NewSQLiteTestDB(
@@ -1088,9 +1110,10 @@ func TestCleanupFailedJailCreate_RemovesArtifactsAndOnlyAutoCreatedMACs(t *testi
 	}
 
 	jail := jailModels.Jail{
-		Name: "jail-740",
-		CTID: ctid,
-		Type: jailModels.JailTypeFreeBSD,
+		Name:            "jail-740",
+		CTID:            ctid,
+		Type:            jailModels.JailTypeFreeBSD,
+		CreationPending: true,
 	}
 	if err := db.Create(&jail).Error; err != nil {
 		t.Fatalf("failed to seed jail row: %v", err)
@@ -1156,7 +1179,23 @@ func TestCleanupFailedJailCreate_RemovesArtifactsAndOnlyAutoCreatedMACs(t *testi
 		t.Fatalf("failed to seed jail runtime config file: %v", err)
 	}
 
-	svc.cleanupFailedJailCreate(ctid, "tank", []uint{autoMAC.ID})
+	activeCTID := ctid
+	op := jailModels.JailCreation{ID: "owned-cleanup", CTID: ctid, ActiveCTID: &activeCTID, State: "{}", Request: "{}", Phase: "configuring"}
+	if err := db.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	dataset := runner.datasets[rootDataset]
+	dataset.owner = op.ID
+	runner.datasets[rootDataset] = dataset
+	if err := os.WriteFile(filepath.Join(jailDir, ".creation-operation"), []byte(op.ID), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := creationState{JailID: jail.ID, ConfigDir: jailDir, AutoObjectIDs: []uint{autoMAC.ID}, Datasets: []creationDataset{{Name: rootDataset, GUID: dataset.guid}}}
+	for range 2 {
+		if err := svc.failCreation(t.Context(), &op, &state, fmt.Errorf("injected_failure")); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	if _, statErr := os.Stat(jailDir); !os.IsNotExist(statErr) {
 		t.Fatalf("expected jail runtime directory to be removed, statErr=%v", statErr)

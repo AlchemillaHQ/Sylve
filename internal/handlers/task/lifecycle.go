@@ -232,3 +232,34 @@ func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service) gin.Handle
 		})
 	}
 }
+
+// @Summary Get a lifecycle task by ID
+// @Description Observe an exact queued, running, or terminal task without executing it
+// @Tags Tasks
+// @Produce json
+// @Security BearerAuth
+// @Param taskId path int true "Task ID" minimum(1)
+// @Success 200 {object} internal.APIResponse[taskModels.GuestLifecycleTask] "Success"
+// @Failure 400 {object} internal.APIResponse[any] "Bad Request"
+// @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
+// @Router /tasks/lifecycle/{taskId} [get]
+func LifecycleTask(service *lifecycle.Service) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.ParseUint(c.Param("taskId"), 10, strconv.IntSize)
+		if err != nil || id == 0 {
+			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_task_id"})
+			return
+		}
+		task, err := service.GetTask(uint(id))
+		if err != nil {
+			writeLifecycleServiceError(c, "failed_to_get_lifecycle_task", err)
+			return
+		}
+		if task == nil {
+			c.JSON(http.StatusNotFound, internal.APIResponse[any]{Status: "error", Message: "lifecycle_task_not_found"})
+			return
+		}
+		c.JSON(http.StatusOK, internal.APIResponse[*taskModels.GuestLifecycleTask]{Status: "success", Data: task})
+	}
+}

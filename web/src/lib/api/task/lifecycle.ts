@@ -3,6 +3,18 @@ import { type LifecycleTask, LifecycleTaskSchema } from '$lib/types/task/lifecyc
 import { apiRequest, isAPIResponse } from '$lib/utils/http';
 import { z } from 'zod/v4';
 
+export async function getLifecycleTask(
+	taskId: number,
+	hostname?: string,
+	signal?: AbortSignal
+): Promise<LifecycleTask | APIResponse> {
+	return await apiRequest(`/tasks/lifecycle/${taskId}`, LifecycleTaskSchema, 'GET', undefined, {
+		hostname,
+		signal,
+		preserveErrors: true
+	});
+}
+
 export async function getActiveLifecycleTasks(
 	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
 	guestId?: number,

@@ -9,7 +9,9 @@
 package jailServiceInterfaces
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 
 	"github.com/alchemillahq/sylve/internal/db"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
@@ -30,17 +32,36 @@ type Hooks struct {
 	Poststop  HookPhase `json:"poststop"`
 }
 
+type ZFSSource struct {
+	Dataset string `json:"dataset"`
+	GUID    string `json:"guid"`
+}
+
+func (s *ZFSSource) UnmarshalJSON(data []byte) error {
+	type source ZFSSource
+	var decoded source
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	// A retired snapshot field must not silently become a current-state copy.
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&decoded); err != nil {
+		return err
+	}
+	*s = ZFSSource(decoded)
+	return nil
+}
+
 type CreateJailRequest struct {
 	Name        string `json:"name" binding:"required"`
 	CTID        *uint  `json:"ctId" binding:"required"`
 	Hostname    string `json:"hostname"`
 	Description string `json:"description"`
 
-	Pool          string `json:"pool" binding:"required"`
-	Base          string `json:"base"`
-	BootstrapName string `json:"bootstrapName"`
-	Fstab         string `json:"fstab"`
-	ResolvConf    string `json:"resolvConf"`
+	Pool          string     `json:"pool" binding:"required"`
+	Base          string     `json:"base"`
+	BootstrapName string     `json:"bootstrapName"`
+	ZFSSource     *ZFSSource `json:"zfsSource,omitempty"`
+	Fstab         string     `json:"fstab"`
+	ResolvConf    string     `json:"resolvConf"`
 
 	SwitchName string `json:"switchName"`
 
@@ -80,6 +101,20 @@ type CreateJailRequest struct {
 
 	MetadataMeta string `json:"metadataMeta"`
 	MetadataEnv  string `json:"metadataEnv"`
+}
+
+func (r CreateJailRequest) SourceCount() int {
+	count := 0
+	if r.Base != "" {
+		count++
+	}
+	if r.BootstrapName != "" {
+		count++
+	}
+	if r.ZFSSource != nil {
+		count++
+	}
+	return count
 }
 
 type SimpleList struct {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
@@ -162,5 +163,31 @@ func TestIntegrationReplicationDatasetGuardProtectsLegacyEnabledFilesystemShare(
 	}
 	if err := svc.RequireReplicationDatasetMutationAllowed(context.Background(), disabledShare); err != nil {
 		t.Fatalf("disabled filesystem share was treated as protected workload data: %v", err)
+	}
+}
+
+func TestCreationDatasetMutationGuardProtectsSourceStagingAndDestination(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.JailCreation{})
+	svc := &Service{DB: db}
+	ctID := uint(873)
+	op := jailModels.JailCreation{ID: "copy-operation", CTID: ctID, ActiveCTID: &ctID, Phase: "failed", State: "{}", Request: `{"pool":"dest","zfsSource":{"dataset":"source/foreign"}}`}
+	if err := db.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"source", "source/foreign", "source/foreign@selected", "source/foreign/app", "dest/sylve/jails", "dest/sylve/jails/873", "dest/sylve/jails/create-copy-operation/root"} {
+		if err := svc.requireCreationDatasetMutationAllowed(t.Context(), name); err == nil {
+			t.Fatalf("creation dataset mutation allowed: %s", name)
+		}
+	}
+	for _, name := range []string{"source/foreign-other", "dest/sylve/jails/8730", "unrelated/root"} {
+		if err := svc.requireCreationDatasetMutationAllowed(t.Context(), name); err != nil {
+			t.Fatalf("unrelated mutation blocked: %s: %v", name, err)
+		}
+	}
+	if err := db.Model(&op).Update("active_ct_id", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.requireCreationDatasetMutationAllowed(t.Context(), "source/foreign"); err != nil {
+		t.Fatalf("completed cleanup retains dataset guard: %v", err)
 	}
 }

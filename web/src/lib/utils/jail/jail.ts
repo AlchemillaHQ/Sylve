@@ -91,7 +91,12 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 		return false;
 	}
 
-	if (modal.storage.base.length < 1 && modal.storage.bootstrapName.length < 1) {
+	if (modal.storage.source === 'zfs') {
+		if (!modal.storage.zfsSource.dataset || !modal.storage.zfsSource.guid) {
+			toast.error('Select a ZFS source dataset', toastConfig);
+			return false;
+		}
+	} else if (modal.storage.base.length < 1 && modal.storage.bootstrapName.length < 1) {
 		toast.error('No base selected', toastConfig);
 		return false;
 	}
@@ -178,6 +183,22 @@ function toJailCreateErrorText(error: APIResponse['error']): string {
 }
 
 const jailCreateErrorMessageByCode: Record<string, string> = {
+	jail_creation_in_progress:
+		'Creation is already active for this ID. Open its task or choose another ID.',
+	zfs_source_identity_changed: 'The ZFS source changed. Select it again and retry.',
+	zfs_source_jail_running: 'Stop the source jail before copying its current contents.',
+	zfs_source_protected:
+		'The source is read-only, replication-protected, or has another active operation. Choose another dataset.',
+	zfs_source_layout_unsupported:
+		'Select a self-contained jail root filesystem. Thin jails and external base mounts are not supported.',
+	zfs_source_encryption_unsupported:
+		'Encrypted ZFS sources and encrypted copy destinations are not supported.',
+	zfs_source_insufficient_space:
+		'The destination has less available space than the estimated source size.',
+	zfs_source_unsafe_configuration_path:
+		'The copied root contains symlinked configuration paths that cannot be safely rewritten.',
+	zfs_source_destination_overlap:
+		'The source must not contain the destination or staging datasets.',
 	bootstrap_mountpoint_not_usable:
 		'The selected bootstrap dataset does not have a usable filesystem mountpoint.',
 	bootstrap_record_mismatch:

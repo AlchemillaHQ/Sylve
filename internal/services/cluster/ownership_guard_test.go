@@ -10,10 +10,14 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
+	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func TestStorageTopologyMutationBlocksOnlyRunningReplication(t *testing.T) {
@@ -424,5 +428,68 @@ func TestMigrationGuestOperationBlocksSourceButAllowsSealedTarget(t *testing.T) 
 	allowed, err = CanMutateProtectedGuestStorageTopology(db, clusterModels.ReplicationGuestTypeVM, 404)
 	if err != nil || allowed {
 		t.Fatalf("storage topology changed during migration: allowed=%v err=%v", allowed, err)
+	}
+}
+
+func TestCreationMutationGuardAllowsOnlyOwnedInitialProvisioning(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{}, &jailModels.JailCreation{}, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{})
+	ctID := uint(870)
+	op := jailModels.JailCreation{ID: "creation-owner", CTID: ctID, ActiveCTID: &ctID, Phase: "preparing", Request: "{}", State: "{}"}
+	if err := db.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := CanNodeMutateProtectedGuest(db, "jail", ctID, "node-a"); allowed || err == nil {
+		t.Fatalf("ordinary mutation allowed active creation: %v, %v", allowed, err)
+	}
+	if allowed, err := CanNodeProvisionJail(db, ctID, "node-a", "foreign"); allowed || err == nil {
+		t.Fatalf("foreign creation bypass: %v, %v", allowed, err)
+	}
+	if allowed, err := CanNodeProvisionJail(db, ctID, "node-a", op.ID); !allowed || err != nil {
+		t.Fatalf("owned initial provisioning: %v, %v", allowed, err)
+	}
+	guard := clusterModels.ReplicationGuestOperation{GuestType: "jail", GuestID: ctID, Operation: clusterModels.ReplicationGuestOperationRestore}
+	if err := db.Create(&guard).Error; err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := CanNodeProvisionJail(db, ctID, "node-a", op.ID); allowed || err != nil {
+		t.Fatalf("creation bypassed restore protection: %v, %v", allowed, err)
+	}
+}
+
+func TestCreationMutationGuardProtectsSourceUntilCleanupCompletes(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &jailModels.Jail{}, &jailModels.JailCreation{}, &clusterModels.ReplicationPolicy{})
+	ctID := uint(871)
+	op := jailModels.JailCreation{ID: "capture", CTID: ctID, ActiveCTID: &ctID, Phase: "copying", Request: `{"zfsSource":{"dataset":"pool/sylve/jails/872"}}`, State: "{}"}
+	if err := db.Create(&op).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, guestID := range []uint{ctID, 872} {
+		for _, action := range []string{"mutate", "start", "stop", "transition", "topology"} {
+			t.Run(fmt.Sprintf("%d/%s", guestID, action), func(t *testing.T) {
+				var allowed bool
+				var err error
+				switch action {
+				case "mutate":
+					allowed, err = CanNodeMutateProtectedGuest(db, "jail", guestID, "node-a")
+				case "start":
+					allowed, err = CanNodeStartProtectedGuest(db, "jail", guestID, "node-a")
+				case "stop":
+					allowed, err = CanNodeStopGuestForMigration(db, "jail", guestID, "node-a")
+				case "transition":
+					allowed, err = CanNodeMutateProtectedGuestForTransition(db, "jail", guestID, "node-a", "transition-run")
+				case "topology":
+					allowed, err = CanMutateProtectedGuestStorageTopology(db, "jail", guestID)
+				}
+				if allowed || err == nil || !strings.Contains(err.Error(), "jail_creation_in_progress") {
+					t.Fatalf("creation mutation allowed: %v, %v", allowed, err)
+				}
+			})
+		}
+	}
+	if err := db.Model(&op).Update("active_ct_id", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := requireJailCreationMutationAllowed(db, "jail", 872, ""); err != nil {
+		t.Fatalf("completed cleanup still blocked source mutation: %v", err)
 	}
 }

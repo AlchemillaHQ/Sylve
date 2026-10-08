@@ -10,6 +10,7 @@ package taskHandlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -124,5 +125,33 @@ func TestLifecycleHandlerDoesNotExposeStorageErrors(t *testing.T) {
 	}
 	if message := lifecycleResponseMessage(t, recorder); message != "failed_to_list_active_lifecycle_tasks" {
 		t.Fatalf("message = %q", message)
+	}
+}
+
+func TestLifecycleTaskObservationKeepsExactTerminalAttempt(t *testing.T) {
+	service := newLifecycleHandlerTestService(t)
+	first := taskModels.GuestLifecycleTask{GuestType: "jail", GuestID: 42, Action: "create", Status: "failed", Error: "first attempt"}
+	second := taskModels.GuestLifecycleTask{GuestType: "jail", GuestID: 42, Action: "create", Status: "queued"}
+	for _, task := range []*taskModels.GuestLifecycleTask{&first, &second} {
+		if err := service.DB.Create(task).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", fmt.Sprintf("/tasks/lifecycle/%d", first.ID), LifecycleTask(service))
+	var response internal.APIResponse[*taskModels.GuestLifecycleTask]
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if recorder.Code != 200 || response.Data == nil || response.Data.ID != first.ID || response.Data.Status != "failed" {
+		t.Fatalf("response = %s", recorder.Body.String())
+	}
+	for _, tc := range []struct {
+		target string
+		status int
+	}{{"0", 400}, {"invalid", 400}, {"9999", 404}} {
+		recorder := performLifecycleRequest(t, "/tasks/lifecycle/:taskId", "/tasks/lifecycle/"+tc.target, LifecycleTask(service))
+		if recorder.Code != tc.status {
+			t.Fatalf("%s: status=%d body=%s", tc.target, recorder.Code, recorder.Body.String())
+		}
 	}
 }

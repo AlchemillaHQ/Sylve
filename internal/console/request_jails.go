@@ -114,8 +114,8 @@ func normalizeJailCreateCoreFields(request jailServiceInterfaces.CreateJailReque
 
 	request.Base = strings.TrimSpace(request.Base)
 	request.BootstrapName = strings.TrimSpace(request.BootstrapName)
-	if (request.Base == "") == (request.BootstrapName == "") {
-		return jailServiceInterfaces.CreateJailRequest{}, fmt.Errorf("specify exactly one base or bootstrap source")
+	if request.SourceCount() != 1 {
+		return jailServiceInterfaces.CreateJailRequest{}, fmt.Errorf("specify exactly one base, bootstrap, or ZFS source")
 	}
 
 	request.SwitchName = strings.TrimSpace(request.SwitchName)

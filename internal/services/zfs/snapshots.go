@@ -43,7 +43,7 @@ var (
 	ErrSnapshotCreationBlocked   = errors.New("snapshot_creation_blocked")
 )
 
-var reservedUserSnapshotPrefixes = []string{"ha_", "bk_", "sylve-migrate-"}
+var reservedUserSnapshotPrefixes = []string{"ha_", "bk_", "sylve-migrate-", "sylve_create_"}
 
 func validateUserSnapshotNamespace(name string) error {
 	name = strings.ToLower(strings.TrimSpace(name))
@@ -170,6 +170,9 @@ func (s *Service) requireUserSnapshotCreationAllowed(
 	dataset = normalizedMutationDataset(dataset)
 	if dataset == "" {
 		return fmt.Errorf("snapshot_creation_dataset_required")
+	}
+	if err := s.requireCreationDatasetMutationAllowed(ctx, dataset); err != nil {
+		return err
 	}
 
 	if replicationguard.GuestOperationSchemaReady(s.DB) {

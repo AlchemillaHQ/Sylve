@@ -2029,6 +2029,18 @@
 	}
 
 	function lifecycleTaskLabel(task: LifecycleTask): string {
+		if (task.guestType === 'jail' && task.action === 'create') {
+			let name = jailNameByCtId.get(task.guestId) || '';
+			let source = '';
+			try {
+				const request = JSON.parse(task.payload || '{}');
+				if (typeof request.name === 'string') name = request.name;
+				source = request.zfsSource ? 'ZFS copy' : request.bootstrapName ? 'Bootstrap' : 'Base';
+			} catch {
+				// Older task payloads may not include creation settings.
+			}
+			return `Create Jail - ${name ? `${name} (CTID ${task.guestId})` : `CTID ${task.guestId}`}${source ? ` - ${source}` : ''}`;
+		}
 		if (task.action === 'migrate') {
 			if (task.guestType === 'vm') {
 				const name = vmNameById.get(task.guestId);

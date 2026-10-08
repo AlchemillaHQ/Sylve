@@ -246,12 +246,13 @@ const (
 )
 
 type Jail struct {
-	ID          uint     `json:"id" gorm:"primaryKey"`
-	CTID        uint     `json:"ctId" gorm:"unique;not null;uniqueIndex"`
-	Name        string   `json:"name" gorm:"not null;unique"`
-	Hostname    string   `json:"hostname"`
-	Description string   `json:"description"`
-	Type        JailType `json:"type"`
+	ID              uint     `json:"id" gorm:"primaryKey"`
+	CTID            uint     `json:"ctId" gorm:"unique;not null;uniqueIndex"`
+	Name            string   `json:"name" gorm:"not null;unique"`
+	Hostname        string   `json:"hostname"`
+	Description     string   `json:"description"`
+	Type            JailType `json:"type"`
+	CreationPending bool     `json:"-" gorm:"not null;default:false"`
 
 	StartAtBoot *bool `json:"startAtBoot" gorm:"default:false"`
 	StartOrder  int   `json:"startOrder"`
@@ -290,6 +291,22 @@ type Jail struct {
 	StartedAt            *time.Time `json:"startedAt" gorm:"default:null"`
 	StoppedAt            *time.Time `json:"stoppedAt" gorm:"default:null"`
 	IntentionallyStopped bool       `json:"intentionallyStopped" gorm:"default:false"`
+}
+
+// JailCreation tracks each attempt's CTID reservation and created resources
+// for cleanup and restart recovery, separately from API-visible task state.
+// ActiveCTID remains set when cleanup is blocked, even if the task has failed.
+type JailCreation struct {
+	ID         string `gorm:"primaryKey"`
+	TaskID     *uint  `gorm:"uniqueIndex"`
+	CTID       uint
+	ActiveCTID *uint  `gorm:"uniqueIndex"`
+	Request    string `gorm:"type:text;not null"`
+	State      string `gorm:"type:text;not null"`
+	Phase      string
+	Error      string `gorm:"type:text"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type JailBootstrap struct {

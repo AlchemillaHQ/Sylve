@@ -281,6 +281,9 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		if err := cS.InitRaft(fsm); err != nil {
 			logger.L.Fatal().Err(err).Msg("Failed to initialize RAFT")
 		}
+		if err := lifecycleSvc.PrepareStartup(qCtx); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
+		}
 		clusterSvc.StartMembershipReconcilers(qCtx)
 
 		clusterTLSConfig, err = aS.GetClusterTLSConfig()
@@ -315,10 +318,6 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 				}
 			}
 		}()
-
-		if err := lifecycleSvc.PrepareStartup(qCtx); err != nil {
-			logger.L.Error().Err(err).Msg("failed_to_prepare_lifecycle_startup")
-		}
 
 		if err := nS.(*networkService.Service).SyncFirewallRuntimeState(); err != nil {
 			logger.L.Error().Err(err).Msg("failed_to_sync_firewall_runtime_state_during_startup")

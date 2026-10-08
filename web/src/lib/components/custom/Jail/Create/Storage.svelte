@@ -4,6 +4,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import type { BootstrapEntry } from '$lib/types/jail/bootstrap';
 	import type { Dataset } from '$lib/types/zfs/dataset';
+	import type { CreateData } from '$lib/types/jail/jail';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { fstabPlaceholder } from '$lib/utils/placeholders';
@@ -11,6 +12,7 @@
 	import * as Select from '$lib/components/ui/select/index.js';
 	import { generateSimpleLinuxFSTab, resolveJailRootPreview } from '$lib/utils/jail/jail';
 	import { watch } from 'runed';
+	import { formatBytesBinary } from '$lib/utils/bytes';
 	import Bootstrap from './Bootstrap.svelte';
 
 	interface Props {
@@ -24,6 +26,11 @@
 		bootstrapRefetch: boolean;
 		base: string;
 		fstab: string;
+		source: 'base' | 'zfs';
+		zfsSource: CreateData['storage']['zfsSource'];
+		sourceDatasets: Dataset[];
+		sourcesLoading: boolean;
+		sourcesError: string;
 	}
 
 	let {
@@ -36,10 +43,44 @@
 		bootstrapRefetch = $bindable(),
 		pool = $bindable(),
 		base = $bindable(),
-		fstab = $bindable()
+		fstab = $bindable(),
+		source = $bindable(),
+		zfsSource = $bindable(),
+		sourceDatasets,
+		sourcesLoading,
+		sourcesError
 	}: Props = $props();
 
 	let bootstrapModalOpen = $state(false);
+	let sourceOpen = $state(false);
+	let datasetOpen = $state(false);
+	let datasetOptions = $derived(
+		sourceDatasets.map((dataset) => ({ label: dataset.name, value: dataset.name }))
+	);
+	let sourceMembers = $derived(
+		datasets.filter(
+			(dataset) =>
+				zfsSource.dataset &&
+				(dataset.name === zfsSource.dataset || dataset.name.startsWith(zfsSource.dataset + '/'))
+		)
+	);
+	let sourceSize = $derived(sourceMembers.reduce((sum, dataset) => sum + dataset.referenced, 0));
+
+	function selectSource(value: string | string[]) {
+		if (value === 'zfs') {
+			base = '';
+		} else {
+			zfsSource = { dataset: '', guid: '' };
+		}
+	}
+
+	function selectDataset(value: string | string[]) {
+		const dataset = sourceDatasets.find((dataset) => dataset.name === value);
+		zfsSource = {
+			dataset: dataset?.name || '',
+			guid: dataset?.guid || ''
+		};
+	}
 
 	let poolOptions = $derived.by(() => {
 		return pools.map((pool) => ({
@@ -84,7 +125,7 @@
 	let fstabMode = $state<'manual' | 'simple-linux'>('manual');
 
 	watch([() => base, () => enableFstabInput], ([baseVal, fstabEnabled]) => {
-		if (fstabEnabled && !baseVal) {
+		if (fstabEnabled && !baseVal && source !== 'zfs') {
 			toast.warning('Select a base/rootfs to add FStab entries', {
 				position: 'bottom-center'
 			});
@@ -126,6 +167,19 @@
 </script>
 
 <div class="flex flex-col gap-4 p-4">
+	<CustomComboBox
+		bind:open={sourceOpen}
+		label="Source"
+		bind:value={source}
+		data={[
+			{ label: 'Base / Bootstrap', value: 'base' },
+			{ label: 'Existing ZFS', value: 'zfs' }
+		]}
+		onValueChange={selectSource}
+		disallowEmpty
+		triggerWidth="w-full"
+		width="w-full"
+	/>
 	<div class="grid grid-cols-2 gap-4">
 		<CustomComboBox
 			bind:open={comboBoxes.pool.open}
@@ -138,28 +192,57 @@
 			width="w-full"
 		></CustomComboBox>
 
-		<CustomComboBox
-			bind:open={comboBoxes.base.open}
-			label="Base"
-			bind:value={base}
-			data={baseOptions}
-			classes="flex-1 space-y-1"
-			placeholder="Select base"
-			triggerWidth="w-full"
-			width="w-full"
-			disabled={disableBaseSelection}
-			topRightButton={pool
-				? {
-						icon: 'icon-[mdi--download-box-outline]',
-						tooltip: 'Bootstrap a base',
-						function: async () => {
-							bootstrapModalOpen = true;
-							return '';
+		{#if source === 'base'}
+			<CustomComboBox
+				bind:open={comboBoxes.base.open}
+				label="Base"
+				bind:value={base}
+				data={baseOptions}
+				classes="flex-1 space-y-1"
+				placeholder="Select base"
+				triggerWidth="w-full"
+				width="w-full"
+				disabled={disableBaseSelection}
+				topRightButton={pool
+					? {
+							icon: 'icon-[mdi--download-box-outline]',
+							tooltip: 'Bootstrap a base',
+							function: async () => {
+								bootstrapModalOpen = true;
+								return '';
+							}
 						}
-					}
-				: undefined}
-		></CustomComboBox>
+					: undefined}
+			></CustomComboBox>
+		{:else}
+			<div
+				class="min-w-0"
+				title={!sourcesLoading && !sourcesError && sourceDatasets.length === 0
+					? 'No eligible jail root datasets found. Registered jails, internal datasets, and unsupported roots are excluded.'
+					: undefined}
+			>
+				<CustomComboBox
+					bind:open={datasetOpen}
+					label="Source Dataset"
+					value={zfsSource.dataset}
+					data={datasetOptions}
+					onValueChange={selectDataset}
+					placeholder={sourcesLoading ? 'Loading source datasets…' : 'Select jail root dataset'}
+					disabled={sourcesLoading || sourcesError !== '' || datasetOptions.length === 0}
+					triggerWidth="w-full"
+					width="w-full"
+				/>
+			</div>
+		{/if}
 	</div>
+	{#if source === 'zfs'}
+		{#if sourcesError}
+			<p class="text-destructive text-xs" role="alert">{sourcesError}</p>
+		{/if}
+		{#if sourceMembers.length > 0}<p class="text-muted-foreground text-xs">
+				Referenced data estimate: {formatBytesBinary(sourceSize)}. Actual copy size may differ.
+			</p>{/if}
+	{/if}
 	<CustomCheckbox
 		label="FStab Additions"
 		bind:checked={enableFstabInput}

@@ -23,6 +23,11 @@ export interface CreateData {
 		pool: string;
 		base: string;
 		bootstrapName: string;
+		source: 'base' | 'zfs';
+		zfsSource: {
+			dataset: string;
+			guid: string;
+		};
 		fstab: string;
 	};
 	network: {
@@ -67,6 +72,13 @@ export interface CreateData {
 		};
 	};
 }
+
+export const JailCreationAcceptedSchema = z.object({
+	taskId: z.number().int().positive(),
+	ctId: z.number().int().positive(),
+	name: z.string(),
+	outcome: z.string()
+});
 export const JailStorageSchema = z.object({
 	id: z.number().int(),
 	jid: z.number().int(),

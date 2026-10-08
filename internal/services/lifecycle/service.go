@@ -22,6 +22,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -92,6 +93,9 @@ type Service struct {
 
 	jailTemplateConvertFn func(ctx context.Context, ctid uint, req jail.ConvertToTemplateRequest) error
 	jailTemplateCreateFn  func(ctx context.Context, templateID uint, req jail.CreateFromTemplateRequest) error
+	jailCreatePrepareFn   func(context.Context, uint, jailServiceInterfaces.CreateJailRequest) error
+	jailCreateFn          func(context.Context, uint) error
+	jailCreateCancelFn    func(context.Context, uint, error) error
 
 	vmTemplateConvertFn func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
@@ -137,6 +141,9 @@ func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.S
 		s.jailActiveFn = jailService.IsJailActive
 		s.jailTemplateConvertFn = jailService.ConvertJailToTemplate
 		s.jailTemplateCreateFn = jailService.CreateJailsFromTemplate
+		s.jailCreatePrepareFn = jailService.PrepareCreateJail
+		s.jailCreateFn = jailService.ExecuteCreateJail
+		s.jailCreateCancelFn = jailService.CancelCreateJail
 	}
 
 	return s
@@ -169,7 +176,7 @@ func validateAction(guestType, action string) error {
 		}
 	case taskModels.GuestTypeJail:
 		switch action {
-		case "start", "stop", "restart", "migrate":
+		case "start", "stop", "restart", "migrate", "create":
 			return nil
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
@@ -329,6 +336,10 @@ func (s *Service) executeQueuedTask(ctx context.Context, taskID uint) error {
 		if errors.As(err, &notStarted) {
 			return err
 		}
+		var pending lifecycleRetryPending
+		if errors.As(err, &pending) && pending.LifecycleRetryPending() {
+			return err
+		}
 	}
 
 	return nil
@@ -341,12 +352,44 @@ func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
 func (s *Service) PrepareStartup(ctx context.Context) error {
 	var jailErr error
 	if s.Jail != nil {
-		jailErr = s.Jail.ReconcileLifecycleConfigs()
+		jailErr = errors.Join(s.Jail.RecoverCreations(ctx), s.Jail.ReconcileLifecycleConfigs())
 	}
 	return errors.Join(jailErr, s.RecoverInterruptedTasks(ctx))
 }
 
+func (s *Service) reconcileCreationTasks(ctx context.Context) error {
+	if !s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+		return nil
+	}
+	var operations []jailModels.JailCreation
+	if err := s.DB.WithContext(ctx).Where("task_id IS NOT NULL AND phase IN ?", []string{"committed", "failed"}).Find(&operations).Error; err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		var task taskModels.GuestLifecycleTask
+		if err := s.DB.WithContext(ctx).First(&task, *operation.TaskID).Error; err != nil {
+			return err
+		}
+		status, message, failure := taskModels.LifecycleTaskStatusFailed, "failed", operation.Error
+		if operation.Phase == "committed" {
+			status, message, failure = taskModels.LifecycleTaskStatusSuccess, "completed", ""
+		}
+		if task.Status != status || task.Message != message || task.Error != failure {
+			now := time.Now().UTC()
+			if err := s.DB.WithContext(ctx).Model(&task).Updates(map[string]any{"status": status, "message": message, "error": failure, "finished_at": now}).Error; err != nil {
+				return err
+			}
+			task.Status, task.Message, task.Error, task.FinishedAt = status, message, failure, &now
+		}
+		s.finalizeTerminalLifecycleTaskAudit(task)
+	}
+	return nil
+}
+
 func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
+	if err := s.reconcileCreationTasks(ctx); err != nil {
+		return err
+	}
 	var interruptedTasks []taskModels.GuestLifecycleTask
 	if err := s.DB.WithContext(ctx).
 		Where("status IN ?", []string{taskModels.LifecycleTaskStatusQueued, taskModels.LifecycleTaskStatusRunning}).
@@ -358,6 +401,15 @@ func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
 	var recoveredCount int64
 	for i := range interruptedTasks {
 		task := interruptedTasks[i]
+		if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+			var count int64
+			if err := s.DB.WithContext(ctx).Model(&jailModels.JailCreation{}).Where("task_id = ? AND phase = ?", task.ID, "ready").Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				continue
+			}
+		}
 		if task.Action == "migrate" {
 			if task.Status == taskModels.LifecycleTaskStatusRunning {
 				continue
@@ -421,6 +473,13 @@ func (s *Service) RequestActionWithPayload(
 	payload string,
 ) (*taskModels.GuestLifecycleTask, string, error) {
 	return s.createTask(ctx, guestType, guestID, action, source, requestedBy, payload, true)
+}
+
+func (s *Service) cancelUnpublishedCreation(ctx context.Context, task *taskModels.GuestLifecycleTask, cause error) error {
+	if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" && s.jailCreateCancelFn != nil {
+		return errors.Join(cause, s.jailCreateCancelFn(context.WithoutCancel(ctx), task.ID, cause))
+	}
+	return cause
 }
 
 func (s *Service) createTask(
@@ -533,15 +592,34 @@ func (s *Service) createTask(
 	if err := s.DB.WithContext(ctx).Create(task).Error; err != nil {
 		return nil, "", err
 	}
+	if guestType == taskModels.GuestTypeJail && action == "create" {
+		var req jailServiceInterfaces.CreateJailRequest
+		if err := json.Unmarshal([]byte(payload), &req); err != nil || req.CTID == nil || *req.CTID != guestID {
+			cause := fmt.Errorf("invalid_jail_create_payload")
+			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", cause)
+			return nil, "", cause
+		}
+		if s.jailCreatePrepareFn == nil {
+			cause := fmt.Errorf("jail_create_function_not_configured")
+			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", cause)
+			return nil, "", cause
+		}
+		if err := s.jailCreatePrepareFn(ctx, task.ID, req); err != nil {
+			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", err)
+			return nil, "", err
+		}
+	}
 
 	if enqueue {
 		auditRef, err := s.prepareLifecycleAudit(ctx, guestType, action, task.ID)
 		if err != nil {
+			err = s.cancelUnpublishedCreation(ctx, task, err)
 			s.markLifecycleTaskPublishFailed(task.ID, "audit_prepare_failed", err)
 			return nil, "", err
 		}
 
 		if err := db.EnqueueJSON(ctx, guestLifecycleExecQueueName, guestLifecycleExecPayload{TaskID: task.ID}); err != nil {
+			err = s.cancelUnpublishedCreation(ctx, task, err)
 			s.markLifecycleTaskPublishFailed(task.ID, "enqueue_failed", err)
 			s.finalizePreparedLifecycleAudit(auditRef, err)
 			return nil, "", err
@@ -638,6 +716,9 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 			updates["status"] = taskModels.LifecycleTaskStatusRunning
 			updates["finished_at"] = nil
 			updates["message"] = "migration_recovery_pending"
+			if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" {
+				updates["message"] = "creation_completion_pending"
+			}
 			updates["error"] = runErr.Error()
 		} else if errors.Is(runErr, errGuestAlreadyRunning) {
 			updates["status"] = taskModels.LifecycleTaskStatusSuccess
@@ -687,8 +768,13 @@ func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action
 	if action == "migrate" {
 		claimableStatuses = append(claimableStatuses, taskModels.LifecycleTaskStatusRunning)
 	}
-	result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
-		Where("id = ? AND status IN ?", taskID, claimableStatuses).Updates(map[string]any{
+	query := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID)
+	if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_creations WHERE task_id = ? AND phase = ?))", "queued", "running", taskID, "ready")
+	} else {
+		query = query.Where("status IN ?", claimableStatuses)
+	}
+	result := query.Updates(map[string]any{
 		"status":     taskModels.LifecycleTaskStatusRunning,
 		"started_at": startedAt,
 		"message":    "running",
@@ -728,6 +814,12 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 		return s.vmActionFn(task.GuestID, task.Action)
 
 	case taskModels.GuestTypeJail:
+		if task.Action == "create" {
+			if s.jailCreateFn == nil {
+				return fmt.Errorf("jail_create_function_not_configured")
+			}
+			return s.jailCreateFn(ctx, task.ID)
+		}
 		if task.Action == "migrate" {
 			if s.migrateFn == nil {
 				return fmt.Errorf("migration_executor_not_configured")
@@ -924,7 +1016,7 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 	jails := []jailModels.Jail{}
 	if err := s.DB.WithContext(ctx).
 		Model(&jailModels.Jail{}).
-		Where("start_at_boot = ?", true).
+		Where("start_at_boot = ? AND creation_pending = ?", true, false).
 		Order("start_order ASC").
 		Order("ct_id ASC").
 		Find(&jails).Error; err != nil {

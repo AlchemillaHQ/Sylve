@@ -22,7 +22,9 @@
 		},
 		createJail: {
 			open: false,
-			minimize: false
+			minimize: false,
+			taskId: 0,
+			taskHostname: ''
 		}
 	};
 
@@ -55,6 +57,10 @@
 	}
 
 	function openCreateJail() {
+		if (!properties.createJail.minimize) {
+			properties.createJail.taskId = 0;
+			properties.createJail.taskHostname = '';
+		}
 		properties.createJail.open = true;
 		properties.createJail.minimize = false;
 	}
@@ -217,6 +223,8 @@
 			<CreateJail
 				bind:open={properties.createJail.open}
 				bind:minimize={properties.createJail.minimize}
+				bind:taskId={properties.createJail.taskId}
+				bind:taskHostname={properties.createJail.taskHostname}
 				{devFSDisabled}
 			/>
 		{/if}
