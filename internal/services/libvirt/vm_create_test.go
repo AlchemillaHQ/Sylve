@@ -10,8 +10,10 @@ package libvirt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"testing"
 
@@ -169,6 +171,82 @@ func newVMCreatePrecheckTestService(db *gorm.DB, pools []string, existingDataset
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner: &vmCreatePrecheckZFSRunner{existing: existing},
 		}),
+		getVMMMaxCPUsFn: func() (int64, error) { return 64, nil },
+	}
+}
+
+func TestValidateCreateVCPULimit(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	tests := []struct {
+		name     string
+		sockets  int
+		cores    int
+		threads  int
+		maxCPUs  int64
+		readErr  error
+		wantCode string
+	}{
+		{name: "below limit", sockets: 1, cores: 8, threads: 2, maxCPUs: 64},
+		{name: "at limit", sockets: 2, cores: 8, threads: 4, maxCPUs: 64},
+		{name: "custom host limit", sockets: 1, cores: 100, threads: 1, maxCPUs: 100},
+		{name: "too many sockets", sockets: 65, cores: 1, threads: 1, maxCPUs: 64, wantCode: "vm_vcpu_limit_exceeded"},
+		{name: "too many cores", sockets: 1, cores: 65, threads: 1, maxCPUs: 64, wantCode: "vm_vcpu_limit_exceeded"},
+		{name: "too many threads", sockets: 1, cores: 1, threads: 65, maxCPUs: 64, wantCode: "vm_vcpu_limit_exceeded"},
+		{name: "combined topology exceeds limit", sockets: 4, cores: 4, threads: 8, maxCPUs: 64, wantCode: "vm_vcpu_limit_exceeded"},
+		{name: "overflowing topology", sockets: math.MaxInt, cores: 2, threads: 2, maxCPUs: 64, wantCode: "vm_vcpu_limit_exceeded"},
+		{name: "sysctl read fails", sockets: 1, cores: 1, threads: 1, readErr: errors.New("sysctl failed"), wantCode: "vm_cpu_limit_unavailable"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+			svc := newVMCreatePrecheckTestService(db, nil, nil)
+			svc.getVMMMaxCPUsFn = func() (int64, error) { return tt.maxCPUs, tt.readErr }
+			req := testCreateRequest(518, 0)
+			disabled := false
+			req.VNCEnabled = &disabled
+			req.CPUSockets, req.CPUCores, req.CPUThreads = tt.sockets, tt.cores, tt.threads
+
+			err := svc.validateCreate(req, context.Background())
+			if tt.wantCode == "" {
+				if err != nil {
+					t.Fatalf("valid topology rejected: %v", err)
+				}
+			} else if err == nil || !strings.HasPrefix(err.Error(), tt.wantCode+":") {
+				t.Fatalf("validation error = %v, want %s", err, tt.wantCode)
+			}
+			if tt.wantCode == "vm_vcpu_limit_exceeded" && !strings.Contains(err.Error(), fmt.Sprintf("max=%d", tt.maxCPUs)) {
+				t.Fatalf("limit missing from validation error: %v", err)
+			}
+			if tt.readErr != nil && !errors.Is(err, tt.readErr) {
+				t.Fatalf("sysctl error was not preserved: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreateVMRejectsVCPULimitBeforeProvisioning(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
+	svc := newVMCreatePrecheckTestService(db, nil, nil)
+	checker := &vmCreateGuestIdentityCheckerStub{}
+	svc.SetGuestIdentityAvailabilityChecker(checker)
+	req := testCreateRequest(519, 0)
+	req.CPUCores = 65
+
+	err := svc.CreateVM(req, context.Background())
+	if err == nil || !strings.HasPrefix(err.Error(), "vm_vcpu_limit_exceeded:") {
+		t.Fatalf("create error = %v, want vm_vcpu_limit_exceeded", err)
+	}
+	if len(checker.guestIDs) != 0 {
+		t.Fatalf("guest ID check ran before CPU limit validation: %v", checker.guestIDs)
+	}
+	var count int64
+	if err := db.Model(&vmModels.VM{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("VM rows after rejected create = %d, want 0", count)
 	}
 }
 

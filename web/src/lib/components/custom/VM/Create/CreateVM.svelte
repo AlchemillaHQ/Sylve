@@ -30,7 +30,7 @@
 	import { getBasicSettings } from '$lib/api/system/settings';
 	import { getCPUInfoResult } from '$lib/api/info/cpu';
 	import type { BasicSettings } from '$lib/types/system/settings';
-	import type { Architecture } from '$lib/types/info/cpu';
+	import type { Architecture, CPUInfo } from '$lib/types/info/cpu';
 	import { type CPUPin, type CreateData, type VMBootRom } from '$lib/types/vm/vm';
 	import {
 		handleAPIError,
@@ -239,14 +239,14 @@
 		{ initialValue: emptyBasicSettings }
 	);
 
-	type NodeArchitecture = {
+	type NodeCPUInfo = {
 		node: string;
-		architecture: Architecture;
+		info: CPUInfo;
 	};
 
-	const nodeArchitecture = resource(
+	const nodeCPUInfo = resource(
 		() => modal.node || '__default__',
-		async (selectedNode, _previousNode, { signal }): Promise<NodeArchitecture | null> => {
+		async (selectedNode, _previousNode, { signal }): Promise<NodeCPUInfo | null> => {
 			const hostname = selectedNode === '__default__' ? undefined : selectedNode;
 			try {
 				const result = await getCPUInfoResult({ hostname, signal });
@@ -255,24 +255,23 @@
 					return null;
 				}
 
-				return { node: selectedNode, architecture: result.architecture };
+				return { node: selectedNode, info: result };
 			} catch (error) {
 				if (isRequestCancellation(error)) return null;
-				toast.error('Failed to determine selected node architecture', {
+				toast.error('Failed to determine selected node CPU information', {
 					position: 'bottom-center'
 				});
 				return null;
 			}
 		},
-		{ initialValue: null as NodeArchitecture | null }
+		{ initialValue: null as NodeCPUInfo | null }
 	);
 
-	let selectedNodeArchitecture = $derived.by((): Architecture | undefined => {
+	let selectedNodeCPUInfo = $derived.by((): CPUInfo | undefined => {
 		const selectedNode = modal.node || '__default__';
-		return nodeArchitecture.current?.node === selectedNode
-			? nodeArchitecture.current.architecture
-			: undefined;
+		return nodeCPUInfo.current?.node === selectedNode ? nodeCPUInfo.current.info : undefined;
 	});
+	let selectedNodeArchitecture = $derived(selectedNodeCPUInfo?.architecture);
 
 	function reconcileBootROM(architecture: Architecture | undefined) {
 		if (!architecture || modal.advanced.bootRom === 'none') return;
@@ -299,7 +298,7 @@
 			jails.refetch();
 			clusterNodes.refetch();
 			basicSettings.refetch();
-			nodeArchitecture.refetch();
+			nodeCPUInfo.refetch();
 		}
 	});
 
@@ -389,15 +388,16 @@
 	);
 
 	async function create() {
-		if (!isDemoMode && !selectedNodeArchitecture) {
-			toast.error('Unable to determine selected node architecture', {
+		if (!isDemoMode && !selectedNodeCPUInfo) {
+			toast.error('Unable to determine selected node CPU information', {
 				position: 'bottom-center'
 			});
 			return;
 		}
 
 		const data: CreateData = $state.snapshot(modal);
-		if (!isValidCreateData(data, downloadsByUtype.current || [])) return;
+		const maxVCPUs = isDemoMode ? 1 : (selectedNodeCPUInfo?.maxVCPUs ?? 0);
+		if (!isValidCreateData(data, downloadsByUtype.current || [], maxVCPUs)) return;
 
 		loading = true;
 		try {
@@ -604,9 +604,9 @@
 					type="button"
 					class="h-8"
 					onclick={() => create()}
-					disabled={loading || (!isDemoMode && !selectedNodeArchitecture)}
-					title={!isDemoMode && !selectedNodeArchitecture
-						? 'Waiting for selected node architecture'
+					disabled={loading || (!isDemoMode && !selectedNodeCPUInfo)}
+					title={!isDemoMode && !selectedNodeCPUInfo
+						? 'Waiting for selected node CPU information'
 						: undefined}
 				>
 					{#if loading}

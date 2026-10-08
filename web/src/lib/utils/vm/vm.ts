@@ -16,7 +16,8 @@ import { removeCache } from '$lib/utils/http';
 
 export function isValidCreateData(
 	modal: CreateData,
-	utypeDownloads: UTypeGroupedDownload[]
+	utypeDownloads: UTypeGroupedDownload[],
+	maxVCPUs: number
 ): boolean {
 	const toastConfig: Record<string, unknown> = {
 		duration: 3000,
@@ -72,18 +73,32 @@ export function isValidCreateData(
 		}
 	}
 
-	if (modal.hardware.sockets < 1) {
-		toast.error('Sockets must be >= 1', toastConfig);
+	if (!Number.isSafeInteger(modal.hardware.sockets) || modal.hardware.sockets < 1) {
+		toast.error('Sockets must be an integer >= 1', toastConfig);
 		return false;
 	}
 
-	if (modal.hardware.cores < 1) {
-		toast.error('Cores must be >= 1', toastConfig);
+	if (!Number.isSafeInteger(modal.hardware.cores) || modal.hardware.cores < 1) {
+		toast.error('Cores must be an integer >= 1', toastConfig);
 		return false;
 	}
 
-	if (modal.hardware.threads < 1) {
-		toast.error('Threads must be >= 1', toastConfig);
+	if (!Number.isSafeInteger(modal.hardware.threads) || modal.hardware.threads < 1) {
+		toast.error('Threads must be an integer >= 1', toastConfig);
+		return false;
+	}
+
+	if (!Number.isSafeInteger(maxVCPUs) || maxVCPUs < 1) {
+		toast.error('Unable to determine selected node CPU limit (hw.vmm.maxcpu)', toastConfig);
+		return false;
+	}
+
+	const vcpus = modal.hardware.sockets * modal.hardware.cores * modal.hardware.threads;
+	if (vcpus > maxVCPUs) {
+		toast.error(
+			`Requested vCPU count of ${vcpus} exceeds the selected node limit of ${maxVCPUs} (hw.vmm.maxcpu)`,
+			toastConfig
+		);
 		return false;
 	}
 
@@ -200,8 +215,10 @@ const vmCreateErrorMessageByCode: Record<string, string> = {
 	vm_create_runtime_failure: 'VM provisioning failed while applying runtime resources',
 	vm_create_stale_artifacts_detected:
 		'Stale VM artifacts were found for this ID. Clean up leftovers before retrying',
+	vm_cpu_limit_unavailable: 'Unable to determine selected node CPU limit (hw.vmm.maxcpu)',
 	vm_id_already_exists:
 		'VM ID already exists in libvirt. Choose a different ID or clean up the existing domain',
+	vm_vcpu_limit_exceeded: 'Requested vCPUs exceed the selected node limit (hw.vmm.maxcpu)',
 	vnc_port_already_in_use_by_another_service:
 		'VNC port is already used by another service. Choose a different port',
 	vnc_port_already_in_use_by_another_vm:

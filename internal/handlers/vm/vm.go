@@ -161,6 +161,7 @@ var vmCreateBadRequestCodes = map[string]struct{}{
 	"unsupported_download_type":                        {},
 	"uboot_only_available_on_arm64":                    {},
 	"uefi_firmware_not_available_on_arm64":             {},
+	"vm_vcpu_limit_exceeded":                           {},
 	"vnc_password_cannot_contain_commas":               {},
 	"vnc_password_required":                            {},
 	"vnc_port_must_be_between_1_and_65535":             {},
@@ -255,6 +256,8 @@ func classifyCreateVMError(err error) (int, string) {
 		return http.StatusConflict, "guest_identity_claim_conflict"
 	case strings.Contains(errText, "guest_id_already_in_use"):
 		return http.StatusConflict, "guest_id_already_in_use"
+	case strings.Contains(errText, "vm_cpu_limit_unavailable"):
+		return http.StatusServiceUnavailable, "vm_cpu_limit_unavailable"
 	case strings.Contains(errText, "failed_to_inspect_manual_switch_vlan_state"):
 		return http.StatusServiceUnavailable, "failed_to_inspect_manual_switch_vlan_state"
 	case strings.Contains(errText, "unfiltered_switch_runtime_inspection_failed"):

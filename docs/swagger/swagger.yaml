@@ -3512,7 +3512,6 @@ definitions:
       isUsed:
         type: boolean
       isUsedBy:
-        description: '"", "dhcp" for now'
         type: string
       lastRefreshAt:
         type: string
@@ -3536,6 +3535,10 @@ definitions:
         type: string
       updatedAt:
         type: string
+      usedBy:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.ObjectUsage'
+        type: array
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.ObjectEntry:
     properties:
@@ -3565,6 +3568,15 @@ definitions:
       resolvedValue:
         type: string
       updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.ObjectUsage:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      type:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitch:
@@ -4977,6 +4989,8 @@ definitions:
         type: integer
       logicalCores:
         type: integer
+      maxVCPUs:
+        type: integer
       model:
         type: integer
       name:
@@ -5263,6 +5277,8 @@ definitions:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType'
       vlanPolicy:
         $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
+      zfsSource:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.ZFSSource'
     required:
     - ctId
     - name
@@ -5404,6 +5420,13 @@ definitions:
       pendingAction:
         type: string
       state:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.ZFSSource:
+    properties:
+      dataset:
+        type: string
+      guid:
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CPUPinning:
@@ -16457,6 +16480,10 @@ paths:
         required: true
         schema:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.CreateJailRequest'
+      - description: Queue creation as a durable lifecycle task
+        in: query
+        name: async
+        type: boolean
       produces:
       - application/json
       responses:
@@ -16468,6 +16495,10 @@ paths:
               type: string
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-internal_handlers_jail_JailCreateResponse'
+        "202":
+          description: Creation queued
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "400":
           description: Bad Request
           schema:
@@ -18843,6 +18874,75 @@ paths:
       security:
       - BearerAuth: []
       summary: Create jails from a template
+      tags:
+      - Jail
+  /jail/validate:
+    post:
+      consumes:
+      - application/json
+      description: Check common settings and root-source compatibility without creating
+        a jail
+      parameters:
+      - description: Create Jail Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.CreateJailRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Validated
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Validate a jail creation request
+      tags:
+      - Jail
+  /jail/zfs-sources:
+    get:
+      description: List mounted, self-contained external ZFS roots without modifying
+        their contents
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_gzfs_Dataset'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List existing jail root datasets
       tags:
       - Jail
   /mdns/config:
@@ -23919,6 +24019,41 @@ paths:
       summary: List Sysctl Tunables
       tags:
       - System
+  /tasks/lifecycle/{taskId}:
+    get:
+      description: Observe an exact queued, running, or terminal task without executing
+        it
+      parameters:
+      - description: Task ID
+        in: path
+        minimum: 1
+        name: taskId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_task_GuestLifecycleTask'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get a lifecycle task by ID
+      tags:
+      - Tasks
   /tasks/lifecycle/active:
     get:
       description: List queued and running guest lifecycle tasks, optionally filtered

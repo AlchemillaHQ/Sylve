@@ -93,6 +93,8 @@ func (s *Service) GetCPUInfo(usageOnly bool) (infoServiceInterfaces.CPUInfo, err
 	info.PhysicalCores = physical
 	info.ThreadsPerCore = threadsPerCore
 	info.LogicalCores = logical
+	// Keep CPU information available on nodes without the vmm module loaded.
+	info.MaxVCPUs, _ = utils.GetVMMMaxCPUs()
 	info.Family = int16(cpuid.CPU.Family)
 	info.Model = int16(cpuid.CPU.Model)
 	info.Features = cpuid.CPU.FeatureSet()

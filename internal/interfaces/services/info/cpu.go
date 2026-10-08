@@ -30,6 +30,7 @@ type CPUInfo struct {
 	PhysicalCores  int16        `json:"physicalCores"`
 	ThreadsPerCore int16        `json:"threadsPerCore"`
 	LogicalCores   int16        `json:"logicalCores"`
+	MaxVCPUs       int64        `json:"maxVCPUs"`
 	Family         int16        `json:"family"`
 	Model          int16        `json:"model"`
 	Features       []string     `json:"features"`

@@ -75,6 +75,18 @@ func TestClassifyCreateVMError(t *testing.T) {
 			wantCode:   "vm_create_dependency_not_ready",
 		},
 		{
+			name:       "vCPU count exceeds host limit",
+			err:        fmt.Errorf("vm_vcpu_limit_exceeded: sockets=2 cores=32 threads=2 max=64 (hw.vmm.maxcpu)"),
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "vm_vcpu_limit_exceeded",
+		},
+		{
+			name:       "host vCPU limit unavailable",
+			err:        fmt.Errorf("vm_cpu_limit_unavailable: sysctl_read_failed"),
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "vm_cpu_limit_unavailable",
+		},
+		{
 			name:       "manual switch inspection unavailable",
 			err:        fmt.Errorf("failed_to_create_lv_vm: failed_to_inspect_manual_switch_vlan_state: LAN: ioctl failed"),
 			wantStatus: http.StatusServiceUnavailable,

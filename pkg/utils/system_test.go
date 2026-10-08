@@ -334,6 +334,45 @@ func TestReadDiskSectorRejectsInvalidGeometry(t *testing.T) {
 	}
 }
 
+func TestGetVMMMaxCPUs(t *testing.T) {
+	original := getSysctlInt64
+	t.Cleanup(func() { getSysctlInt64 = original })
+	readErr := errors.New("sysctl failed")
+
+	tests := []struct {
+		name    string
+		value   int64
+		readErr error
+		want    int64
+		wantErr bool
+	}{
+		{name: "host limit", value: 64, want: 64},
+		{name: "custom host limit", value: 128, want: 128},
+		{name: "unavailable sysctl", readErr: readErr, wantErr: true},
+		{name: "zero limit", value: 0, wantErr: true},
+		{name: "negative limit", value: -1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getSysctlInt64 = func(key string) (int64, error) {
+				if key != "hw.vmm.maxcpu" {
+					t.Fatalf("unexpected sysctl key: %s", key)
+				}
+				return tt.value, tt.readErr
+			}
+
+			got, err := GetVMMMaxCPUs()
+			if got != tt.want || (err != nil) != tt.wantErr {
+				t.Fatalf("GetVMMMaxCPUs() = (%d, %v), want (%d, error=%t)", got, err, tt.want, tt.wantErr)
+			}
+			if tt.readErr != nil && !errors.Is(err, tt.readErr) {
+				t.Fatalf("sysctl error was not preserved: %v", err)
+			}
+		})
+	}
+}
+
 func TestIsGPT(t *testing.T) {
 	tests := []struct {
 		name     string

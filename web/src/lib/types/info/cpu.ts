@@ -28,6 +28,7 @@ export const CPUInfoSchema = z.object({
 	physicalCores: z.number().default(0),
 	threadsPerCore: z.number().default(0),
 	logicalCores: z.number().default(0),
+	maxVCPUs: z.number().int().nonnegative().default(0),
 	family: z.number().default(0),
 	model: z.number().default(0),
 	features: z.array(z.string()).default([]),

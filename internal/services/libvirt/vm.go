@@ -490,6 +490,25 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 		return fmt.Errorf("cpu_sockets_cores_threads_must_be_greater_than_1")
 	}
 
+	getMaxCPUs := utils.GetVMMMaxCPUs
+	if s.getVMMMaxCPUsFn != nil {
+		getMaxCPUs = s.getVMMMaxCPUsFn
+	}
+	maxCPUs, err := getMaxCPUs()
+	if err != nil {
+		return fmt.Errorf("vm_cpu_limit_unavailable: %w", err)
+	}
+
+	vcpu := int64(1)
+	for _, count := range []int{data.CPUSockets, data.CPUCores, data.CPUThreads} {
+		// Compare before multiplying so an overflowing topology cannot bypass the limit.
+		if int64(count) > maxCPUs/vcpu {
+			return fmt.Errorf("vm_vcpu_limit_exceeded: sockets=%d cores=%d threads=%d max=%d (hw.vmm.maxcpu)",
+				data.CPUSockets, data.CPUCores, data.CPUThreads, maxCPUs)
+		}
+		vcpu *= int64(count)
+	}
+
 	if len(data.CPUPinning) > 0 {
 		socketCount := utils.GetSocketCount(cpuid.CPU.PhysicalCores, cpuid.CPU.ThreadsPerCore)
 		if socketCount <= 0 {

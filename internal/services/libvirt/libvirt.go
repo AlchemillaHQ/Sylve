@@ -57,6 +57,7 @@ type Service struct {
 	lastVMUsageRetention time.Time
 
 	isDomainShutOffFn func(rid uint) (bool, error)
+	getVMMMaxCPUsFn   func() (int64, error)
 
 	leftPanelRefreshEmitterMu sync.RWMutex
 	leftPanelRefreshEmitter   func(reason string)

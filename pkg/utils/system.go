@@ -217,6 +217,18 @@ func GetLogicalCores() int {
 	return int(ncpu)
 }
 
+func GetVMMMaxCPUs() (int64, error) {
+	maxCPUs, err := getSysctlInt64("hw.vmm.maxcpu")
+	if err != nil {
+		return 0, err
+	}
+	if maxCPUs < 1 {
+		return 0, fmt.Errorf("hw.vmm.maxcpu must be positive: %d", maxCPUs)
+	}
+
+	return maxCPUs, nil
+}
+
 func GetSocketCount(coresPerSocket, threadsPerCore int) int {
 	ncpu := GetLogicalCores()
 
