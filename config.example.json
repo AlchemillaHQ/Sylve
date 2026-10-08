@@ -19,11 +19,6 @@
         "reset": false
     },
     "btt": {
-        "rpc": {
-            "enabled": false,
-            "address": "127.0.0.1",
-            "port": 6890
-        },
         "dht": {
             "enabled": false,
             "port": 7246

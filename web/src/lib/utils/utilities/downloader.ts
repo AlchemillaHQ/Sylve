@@ -27,7 +27,11 @@ export function generateTableData(data: Download[]): { rows: Row[]; columns: Col
 				const data = row.getData();
 				if (data.type !== '-') {
 					if (data.type === 'torrent') {
-						return renderWithIcon('mdi:magnet', value);
+						const placeholder =
+							data.status === 'pending' || data.status === 'processing'
+								? 'Loading torrent…'
+								: 'Unnamed torrent';
+						return renderWithIcon('mdi:magnet', value || placeholder);
 					} else if (data.type === 'http') {
 						return renderWithIcon('mdi:internet', value);
 					} else {

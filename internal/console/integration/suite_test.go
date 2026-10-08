@@ -349,7 +349,6 @@ func (s *consoleIntegrationSuite) configure() error {
 		},
 		Auth: sylve.AuthConfig{EnablePAM: false},
 		BTT: sylve.BTT{
-			RPC: sylve.BTTRPC{Enabled: false},
 			DHT: sylve.DHTConfig{Enabled: false},
 		},
 		ZFS: sylve.ZFSConfig{Tune: false},
@@ -378,7 +377,7 @@ func (s *consoleIntegrationSuite) configure() error {
 		return err
 	}
 	s.binaryPath = filepath.Join(s.root, "sylve")
-	command := exec.Command("go", "build", "-buildvcs=false", "-o", s.binaryPath, "./cmd/sylve")
+	command := exec.Command("go", "build", "-tags=nosqlite", "-buildvcs=false", "-o", s.binaryPath, "./cmd/sylve")
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("build suite CLI: %w: %s", err, strings.TrimSpace(string(output)))

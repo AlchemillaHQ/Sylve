@@ -28,14 +28,7 @@ type DHTConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
-type BTTRPC struct {
-	Enabled bool   `json:"enabled"`
-	Address string `json:"address"`
-	Port    int    `json:"port"`
-}
-
 type BTT struct {
-	RPC BTTRPC    `json:"rpc"`
 	DHT DHTConfig `json:"dht"`
 }
 

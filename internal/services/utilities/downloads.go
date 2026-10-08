@@ -32,7 +32,6 @@ import (
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/cavaliergopher/grab/v3"
-	"github.com/cenkalti/rain/v2/torrent"
 	"gorm.io/gorm"
 )
 
@@ -198,7 +197,7 @@ func (s *Service) DownloadFile(req utilitiesServiceInterfaces.DownloadFileReques
 			return 0, fmt.Errorf("%w: torrent post-processing is not supported", ErrDownloadUnprocessable)
 		}
 		download.Type = utilitiesModels.DownloadTypeTorrent
-		download.Path = filepath.Join("/non-existent", download.UUID)
+		download.Path = filepath.Join(config.GetDownloadsPath("torrents"), download.UUID)
 		download.IgnoreTLS = false
 
 	case isHTTPDownloadSource(source):
@@ -441,12 +440,13 @@ func (s *Service) StartDownload(id *uint) error {
 		if !utils.IsMagnetURI(download.URL) {
 			return s.failDownload(download, fmt.Errorf("invalid_torrent_source"))
 		}
-		torrentOpts := torrent.AddTorrentOptions{
-			ID:                utils.GenerateDeterministicUUID(download.URL),
-			StopAfterDownload: false,
+		torrentRoot := filepath.Join(config.GetDownloadsPath("torrents"), download.UUID)
+		if filepath.Clean(download.Path) != torrentRoot {
+			return s.failDownload(download, fmt.Errorf("invalid_torrent_destination"))
 		}
 
-		t, err := client.AddURI(download.URL, &torrentOpts)
+		download.Path = torrentRoot
+		t, err := client.AddURI(download.URL, download.UUID, torrentRoot)
 		if err != nil {
 			logger.L.Error().Uint("download_id", *id).Err(err).Msg("Failed to add torrent")
 			download.Status = utilitiesModels.DownloadStatusFailed
@@ -464,8 +464,6 @@ func (s *Service) StartDownload(id *uint) error {
 			return err
 		}
 
-		download.UUID = t.ID()
-		download.Path = t.Dir()
 		download.Name = t.Name()
 		download.Error = ""
 
@@ -960,7 +958,7 @@ func (s *Service) SyncDownloadProgress() error {
 }
 
 func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.Downloads) {
-	if download.Status == utilitiesModels.DownloadStatusDone {
+	if download.Status == utilitiesModels.DownloadStatusDone || download.Status == utilitiesModels.DownloadStatusFailed {
 		return
 	}
 
@@ -973,12 +971,15 @@ func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.D
 		return
 	}
 
-	st := t.Stats()
-	have, total := st.Pieces.Have, st.Pieces.Total
+	st, err := t.Stats()
+	if err != nil {
+		logger.L.Error().Err(err).Str("uuid", download.UUID).Msg("Failed to read torrent progress")
+		return
+	}
 
-	if total == 0 {
+	if !st.MetadataReady {
 		staleWindow := time.Now().Add(-15 * time.Minute)
-		if download.UpdatedAt.Before(staleWindow) {
+		if st.StartedAt.Before(staleWindow) {
 			download.Error = "magnet_metadata_timeout"
 			download.Status = utilitiesModels.DownloadStatusFailed
 			s.DB.Model(download).Select("Error", "Status").Updates(download)
@@ -989,24 +990,26 @@ func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.D
 					"error":      download.Error,
 				})
 			}
-			client.RemoveTorrent(download.UUID, true)
+			client.RemoveTorrent(download.UUID)
 			return
 		}
 		download.Progress = 0
-	} else {
-		download.Progress = int((have * 100) / total)
+	} else if st.Size > 0 {
+		download.Progress = min(99, int(100*st.BytesCompleted/st.Size))
 	}
-	download.Size = st.Bytes.Total
+	download.Size = st.Size
 	download.Name = st.Name
 
-	isFinished := total > 0 && have == total
-
-	if isFinished {
-		if err := s.persistCompletedTorrent(download, t); err != nil {
+	if st.MetadataReady && st.Complete {
+		files, err := t.Files()
+		if err == nil {
+			err = s.persistCompletedTorrentFiles(download, files)
+		}
+		if err != nil {
 			logger.L.Error().Err(err).Msgf("Failed to persist completed torrent %s", download.UUID)
 			return
 		}
-		if err := client.RemoveTorrent(download.UUID, true); err != nil {
+		if err := client.RemoveTorrent(download.UUID); err != nil {
 			logger.L.Error().Err(err).Msgf("Failed to remove completed torrent %s", download.UUID)
 		}
 		if s.TelemetryDB != nil {
@@ -1019,35 +1022,13 @@ func (s *Service) syncTorrent(client torrentRuntime, download *utilitiesModels.D
 	}
 
 	download.Status = utilitiesModels.DownloadStatusProcessing
-	err := s.DB.Model(download).
+	err = s.DB.Model(download).
 		Select("Progress", "Size", "Name", "Status").
 		Updates(download).Error
 
 	if err != nil {
 		logger.L.Error().Err(err).Msgf("Failed to update database for download %s", download.UUID)
 	}
-}
-
-func (s *Service) persistCompletedTorrent(
-	download *utilitiesModels.Downloads,
-	t *torrent.Torrent,
-) error {
-	if download == nil || t == nil {
-		return errors.New("completed torrent is unavailable")
-	}
-
-	files, err := t.Files()
-	if err != nil {
-		return fmt.Errorf("read completed torrent files: %w", err)
-	}
-	catalog := make([]completedTorrentFile, 0, len(files))
-	for _, file := range files {
-		catalog = append(catalog, completedTorrentFile{
-			Path: file.Path(),
-			Size: file.Length(),
-		})
-	}
-	return s.persistCompletedTorrentFiles(download, catalog)
 }
 
 type completedTorrentFile struct {
@@ -1604,7 +1585,7 @@ func (s *Service) stopDownloadActivity(download utilitiesModels.Downloads) error
 		if err != nil {
 			return err
 		}
-		if err := client.RemoveTorrent(download.UUID, false); err != nil {
+		if err := client.RemoveTorrent(download.UUID); err != nil {
 			return fmt.Errorf("stop torrent before deletion: %w", err)
 		}
 	}

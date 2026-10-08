@@ -55,6 +55,9 @@ func Fixups(db *gorm.DB) error {
 	if err := normalizeDownloadUncategorizedType(db); err != nil {
 		return err
 	}
+	if err := failLegacyTorrentDownloads(db); err != nil {
+		return err
+	}
 	if err := migrateStandardSwitchMACSources(db); err != nil {
 		return err
 	}
@@ -383,6 +386,32 @@ func normalizeDownloadUncategorizedType(db *gorm.DB) error {
 			return fmt.Errorf("failed recording download category migration: %w", err)
 		}
 		return nil
+	})
+}
+
+func failLegacyTorrentDownloads(db *gorm.DB) error {
+	const migrationName = "fail_unfinished_rain_downloads_1"
+	if !db.Migrator().HasTable(&utilitiesModels.Downloads{}) {
+		return nil
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&authModels.Migrations{}).Where("name = ?", migrationName).Count(&count).Error; err != nil {
+			return fmt.Errorf("check torrent library migration: %w", err)
+		}
+		if count > 0 {
+			return nil
+		}
+		if err := tx.Model(&utilitiesModels.Downloads{}).
+			Where("type = ? AND status IN (?, ?)", utilitiesModels.DownloadTypeTorrent,
+				utilitiesModels.DownloadStatusPending, utilitiesModels.DownloadStatusProcessing).
+			Updates(map[string]any{
+				"status": utilitiesModels.DownloadStatusFailed,
+				"error":  "torrent_library_changed",
+			}).Error; err != nil {
+			return fmt.Errorf("fail unfinished Rain downloads: %w", err)
+		}
+		return tx.Create(&authModels.Migrations{Name: migrationName}).Error
 	})
 }
 

@@ -10,7 +10,6 @@
 
 import { getIcon, loadIcon } from '@iconify/svelte';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
-import { decode as magnetDecode, encode as magnetEncode } from 'magnet-uri';
 import { customRandom, nanoid } from 'nanoid';
 import isEmail from 'validator/lib/isEmail';
 import isMACAddress from 'validator/lib/isMACAddress';
@@ -274,7 +273,7 @@ export function isValidEmail(email: string): boolean {
 
 export function addTrackersToMagnet(uri: string): string {
 	try {
-		const parsed = magnetDecode(uri);
+		const parsed = new URL(uri);
 		const knownTrackers = [
 			'udp://tracker.opentrackr.org:1337/announce',
 			'udp://open.demonii.com:1337/announce',
@@ -288,11 +287,12 @@ export function addTrackersToMagnet(uri: string): string {
 			'udp://new-line.net:6969/announce'
 		];
 
-		const existing = parsed.tr && Array.isArray(parsed.tr) ? parsed.tr : [];
-		const merged = [...new Set([...existing, ...knownTrackers])];
-		parsed.tr = merged;
-		parsed.announce = merged;
-		return magnetEncode(parsed);
+		const existing = new Set(parsed.searchParams.getAll('tr'));
+		parsed.search += knownTrackers
+			.filter((tracker) => !existing.has(tracker))
+			.map((tracker) => `&tr=${encodeURIComponent(tracker)}`)
+			.join('');
+		return parsed.toString();
 	} catch (e) {
 		console.error('Invalid magnet URI:', e);
 	}

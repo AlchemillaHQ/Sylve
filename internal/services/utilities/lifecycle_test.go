@@ -19,20 +19,25 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
-	"github.com/cenkalti/rain/v2/torrent"
 )
 
 type fakeTorrentRuntime struct {
 	closeCalls int
+	download   torrentDownload
+	removed    []string
 }
 
-func (*fakeTorrentRuntime) AddURI(string, *torrent.AddTorrentOptions) (*torrent.Torrent, error) {
+func (*fakeTorrentRuntime) AddURI(string, string, string) (torrentDownload, error) {
 	return nil, nil
 }
 
-func (*fakeTorrentRuntime) GetTorrent(string) *torrent.Torrent { return nil }
+func (f *fakeTorrentRuntime) GetTorrent(string) torrentDownload { return f.download }
 
-func (*fakeTorrentRuntime) RemoveTorrent(string, bool) error { return nil }
+func (f *fakeTorrentRuntime) RemoveTorrent(id string) error {
+	f.removed = append(f.removed, id)
+	f.download = nil
+	return nil
+}
 
 func (f *fakeTorrentRuntime) Close() error {
 	f.closeCalls++
@@ -47,8 +52,8 @@ func TestNewUtilitiesServiceDoesNotStartTorrentRuntime(t *testing.T) {
 	if _, err := service.activeTorrentClient(); !errors.Is(err, ErrUtilitiesNotReady) {
 		t.Fatalf("active torrent client error = %v, want utilities not ready", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "downloads", "torrents", "torrent.db")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("torrent database exists before operational startup: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "downloads", "torrents", ".metadata")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("torrent metadata exists before operational startup: %v", err)
 	}
 }
 
@@ -64,7 +69,7 @@ func TestUtilitiesOperationalLifecycleIsExplicitAndIdempotent(t *testing.T) {
 	fake := &fakeTorrentRuntime{}
 	factoryCalls := 0
 	enqueueCalls := 0
-	service.newTorrentClient = func(torrent.Config) (torrentRuntime, error) {
+	service.newTorrentClient = func(torrentRuntimeOptions) (torrentRuntime, error) {
 		factoryCalls++
 		return fake, nil
 	}

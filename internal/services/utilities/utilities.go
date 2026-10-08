@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -29,7 +28,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 
 	"github.com/cavaliergopher/grab/v3"
-	"github.com/cenkalti/rain/v2/torrent"
 	"gorm.io/gorm"
 )
 
@@ -40,15 +38,6 @@ var _ utilitiesServiceInterfaces.UtilitiesServiceInterface = (*Service)(nil)
 const MaxRequestBodyBytes int64 = 1 * 1024 * 1024
 
 const downloaderUserAgent = "grab"
-
-type torrentRuntime interface {
-	AddURI(uri string, options *torrent.AddTorrentOptions) (*torrent.Torrent, error)
-	GetTorrent(id string) *torrent.Torrent
-	RemoveTorrent(id string, keepData bool) error
-	Close() error
-}
-
-type torrentRuntimeFactory func(torrent.Config) (torrentRuntime, error)
 
 type Service struct {
 	DB           *gorm.DB
@@ -129,13 +118,10 @@ func NewUtilitiesService(
 	}
 
 	return &Service{
-		DB:           dbConn,
-		TelemetryDB:  telemetryDB,
-		GrabClient:   secureClient,
-		GrabInsecure: insecureClient,
-		newTorrentClient: func(cfg torrent.Config) (torrentRuntime, error) {
-			return torrent.NewSession(cfg)
-		},
+		DB:                   dbConn,
+		TelemetryDB:          telemetryDB,
+		GrabClient:           secureClient,
+		GrabInsecure:         insecureClient,
 		httpResponses:        make(map[string]*grab.Response),
 		inflight:             make(map[uint]struct{}),
 		VMService:            vmService,
@@ -146,29 +132,6 @@ func NewUtilitiesService(
 		downloadStartQueued:  make(map[uint]struct{}),
 		activeUploads:        make(map[string]struct{}),
 	}
-}
-
-func torrentRuntimeConfig() torrent.Config {
-	cfg := torrent.DefaultConfig
-	cfg.Database = config.GetDownloadsPath("torrent.db")
-	cfg.DataDir = config.GetDownloadsPath("torrents")
-
-	if config.ParsedConfig == nil {
-		return cfg
-	}
-
-	cfg.RPCEnabled = config.ParsedConfig.BTT.RPC.Enabled
-	if cfg.RPCEnabled {
-		cfg.RPCHost = config.ParsedConfig.BTT.RPC.Address
-		cfg.RPCPort = config.ParsedConfig.BTT.RPC.Port
-	}
-
-	cfg.DHTEnabled = config.ParsedConfig.BTT.DHT.Enabled
-	if cfg.DHTEnabled {
-		cfg.DHTPort = uint16(config.ParsedConfig.BTT.DHT.Port)
-	}
-
-	return cfg
 }
 
 // StartOperational starts runtime-backed utility work after initialization has
@@ -186,12 +149,9 @@ func (s *Service) StartOperational() error {
 
 	factory := s.newTorrentClient
 	if factory == nil {
-		factory = func(cfg torrent.Config) (torrentRuntime, error) {
-			return torrent.NewSession(cfg)
-		}
+		factory = newAnacrolixTorrentRuntime
 	}
 
-	torrent.DisableLogging()
 	client, err := factory(torrentRuntimeConfig())
 	if err != nil {
 		s.torrentMu.Unlock()

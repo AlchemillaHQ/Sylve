@@ -30,7 +30,6 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 	config.ParsedConfig = &internal.SylveConfig{
 		DataPath: t.TempDir(),
 		BTT: internal.BTT{
-			RPC: internal.BTTRPC{Enabled: false},
 			DHT: internal.DHTConfig{Enabled: false},
 		},
 	}

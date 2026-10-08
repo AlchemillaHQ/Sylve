@@ -41,12 +41,12 @@ build: frontend backend
 backend:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
-		go build -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+		go build -tags=nosqlite -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 backend-debug:
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
-		go build -gcflags="all=-N -l" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+		go build -tags=nosqlite -gcflags="all=-N -l" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 backend-cross:
 	mkdir -p $(BIN_DIR)
@@ -75,7 +75,7 @@ backend-cross:
 	CGO_LDFLAGS="-fuse-ld=lld --sysroot=$$SYSROOT" \
 	CC="clang --target=$$TARGET --sysroot=$$SYSROOT" \
 	CXX="clang++ --target=$$TARGET --sysroot=$$SYSROOT" \
-	go build -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
+	go build -tags=nosqlite -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
 cross-build-amd64:
 	$(MAKE) backend-cross ARCH=amd64
@@ -109,7 +109,7 @@ quality-fix:
 	npm run lint:fix --prefix web
 
 test:
-	go test $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest
 
 test-external-preflight:
 	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "external-state tests must run on FreeBSD"; exit 1; }
@@ -130,7 +130,7 @@ test-integration: test-external-preflight
 	if [ "$$zfs_leak_rc" -ne 0 ]; then exit "$$zfs_leak_rc"; fi; \
 	exit "$$iscsi_leak_rc"
 	@set +e; \
-	go test $(GO_TEST_FLAGS) -count=1 -p=2 \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=2 \
 		-timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegration' $(INTEGRATION_PACKAGES); \
 	test_rc="$$?"; \
@@ -149,23 +149,23 @@ test-vlan-integration:
 	@command -v jail >/dev/null || { echo "jail is required for bridge VLAN integration tests"; exit 1; }
 	@command -v jexec >/dev/null || { echo "jexec is required for bridge VLAN integration tests"; exit 1; }
 	@command -v ping >/dev/null || { echo "ping is required for bridge VLAN integration tests"; exit 1; }
-	go test $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegrationVLANBridge' ./pkg/network/bridgevlan
-	go test $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegrationStandardSwitch(VLANFilteringModeTransitions|FilteredHostVLANLifecycle)$$' ./internal/services/network
 
 test-acceptance: test-external-preflight
-	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestAcceptance' $(ACCEPTANCE_PACKAGE)
 
 test-acceptance-full: test-external-preflight
-	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestFullAcceptance' $(ACCEPTANCE_PACKAGE)
 
 test-acceptance-all: test-external-preflight
 	@./scripts/check-console-test-leaks.sh
 	@set +e; \
-	go test $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^(TestAcceptance|TestFullAcceptance)' $(ACCEPTANCE_PACKAGE); \
 	test_rc="$$?"; \
 	./scripts/check-console-test-leaks.sh; \

@@ -11,6 +11,8 @@ package db
 import (
 	"errors"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -110,6 +112,104 @@ func TestNormalizeDownloadUncategorizedType(t *testing.T) {
 	}
 	if migrationCount != 1 {
 		t.Fatalf("migration count=%d want 1", migrationCount)
+	}
+}
+
+func TestFailLegacyTorrentDownloadsPreservesCompletedDownloadsAndRunsOnce(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+	root := t.TempDir()
+	downloads := []utilitiesModels.Downloads{
+		{UUID: "pending", Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusPending},
+		{UUID: "partial", Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusProcessing, Progress: 45},
+		{UUID: "completed", Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusDone, Progress: 100},
+		{UUID: "failed", Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusFailed, Error: "existing_error"},
+		{UUID: "http", Type: utilitiesModels.DownloadTypeHTTP, Status: utilitiesModels.DownloadStatusPending},
+		{UUID: "path", Type: utilitiesModels.DownloadTypePath, Status: utilitiesModels.DownloadStatusProcessing},
+	}
+	for i := range downloads {
+		downloads[i].Path = filepath.Join(root, downloads[i].UUID)
+		downloads[i].URL = "source-" + downloads[i].UUID
+	}
+	if err := dbConn.Create(&downloads).Error; err != nil {
+		t.Fatal(err)
+	}
+	completed := downloads[2]
+	if err := os.MkdirAll(completed.Path, 0750); err != nil {
+		t.Fatal(err)
+	}
+	payload := filepath.Join(completed.Path, "installer.iso")
+	if err := os.WriteFile(payload, []byte("installer"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file := utilitiesModels.DownloadedFile{DownloadID: int(completed.ID), Name: "installer.iso", Size: 9}
+	if err := dbConn.Create(&file).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := failLegacyTorrentDownloads(dbConn); err != nil {
+		t.Fatal(err)
+	}
+	for _, before := range downloads {
+		var stored utilitiesModels.Downloads
+		if err := dbConn.First(&stored, before.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		status, message := before.Status, before.Error
+		if before.UUID == "pending" || before.UUID == "partial" {
+			status, message = utilitiesModels.DownloadStatusFailed, "torrent_library_changed"
+		}
+		if stored.Status != status || stored.Error != message || stored.UUID != before.UUID ||
+			stored.Path != before.Path || stored.URL != before.URL || stored.Progress != before.Progress {
+			t.Fatalf("unexpected migrated download: %+v", stored)
+		}
+	}
+	var storedFile utilitiesModels.DownloadedFile
+	if err := dbConn.First(&storedFile, file.ID).Error; err != nil || storedFile.Name != file.Name || storedFile.Size != file.Size {
+		t.Fatalf("completed file catalog changed: %+v, %v", storedFile, err)
+	}
+	if data, err := os.ReadFile(payload); err != nil || string(data) != "installer" {
+		t.Fatalf("completed payload changed: %q, %v", data, err)
+	}
+
+	newDownload := utilitiesModels.Downloads{
+		UUID: "new-torrent", URL: "source-new", Path: filepath.Join(root, "new"),
+		Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusProcessing,
+	}
+	if err := dbConn.Create(&newDownload).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := failLegacyTorrentDownloads(dbConn); err != nil {
+		t.Fatal(err)
+	}
+	var stored utilitiesModels.Downloads
+	if err := dbConn.First(&stored, newDownload.ID).Error; err != nil || stored.Status != newDownload.Status {
+		t.Fatalf("new torrent was affected by repeated migration: %+v, %v", stored, err)
+	}
+	var count int64
+	if err := dbConn.Model(&models.Migrations{}).Where("name = ?", "fail_unfinished_rain_downloads_1").Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("migration count=%d, error=%v", count, err)
+	}
+}
+
+func TestFailLegacyTorrentDownloadsRollsBackIfMigrationCannotBeRecorded(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t, &models.Migrations{}, &utilitiesModels.Downloads{})
+	download := utilitiesModels.Downloads{
+		UUID: "partial", URL: "source-partial", Path: "/unused/partial",
+		Type: utilitiesModels.DownloadTypeTorrent, Status: utilitiesModels.DownloadStatusProcessing,
+	}
+	if err := dbConn.Create(&download).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Exec(`CREATE TRIGGER reject_torrent_migration BEFORE INSERT ON migrations
+		WHEN NEW.name = 'fail_unfinished_rain_downloads_1'
+		BEGIN SELECT RAISE(ABORT, 'migration failed'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := failLegacyTorrentDownloads(dbConn); err == nil {
+		t.Fatal("migration record failure was ignored")
+	}
+	var stored utilitiesModels.Downloads
+	if err := dbConn.First(&stored, download.ID).Error; err != nil || stored.Status != download.Status || stored.Error != "" {
+		t.Fatalf("failed migration changed the download: %+v, %v", stored, err)
 	}
 }
 

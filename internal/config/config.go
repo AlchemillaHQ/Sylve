@@ -231,8 +231,6 @@ func GetDownloadsPath(dType string) string {
 	switch dType {
 	case "torrents":
 		return filepath.Join(dataPath, "downloads", "torrents")
-	case "torrent.db":
-		return filepath.Join(dataPath, "downloads", "torrents", "torrent.db")
 	case "http":
 		return filepath.Join(dataPath, "downloads", "http")
 	case "path":
