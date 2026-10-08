@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - master
-    paths:
-      - "**"
-      - "!docs/**"
-      - "docs/changelogs/**"
     tags-ignore:
       - tip
   pull_request:
@@ -29,6 +25,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect Backend Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check backend and test inputs
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        with:
+          filters: |
+            backend:
+              - 'cmd/**'
+              - 'internal/**'
+              - 'pkg/**'
+              - '**/*.go'
+              - 'go.*'
+              - 'Makefile'
+              - 'scripts/**'
+              - 'config.example.json'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yaml'
+
   quality:
     name: Code Quality
     runs-on: ubuntu-latest
@@ -57,7 +82,10 @@ jobs:
 
   test:
     name: Test
-    needs: quality
+    needs:
+      - changes
+      - quality
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -408,6 +436,7 @@ jobs:
     name: CI Success
     if: always()
     needs:
+      - changes
       - quality
       - test
       - build-web
@@ -417,12 +446,20 @@ jobs:
     steps:
       - name: Verify required jobs succeeded
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           TEST_RESULT: ${{ needs.test.result }}
           BUILD_WEB_RESULT: ${{ needs.build-web.result }}
           BUILD_FREEBSD_RESULT: ${{ needs.build-freebsd.result }}
         run: |
+          test "$CHANGES_RESULT" = success
           test "$QUALITY_RESULT" = success
-          test "$TEST_RESULT" = success
+          if [ "$BACKEND_CHANGED" = true ]; then
+            test "$TEST_RESULT" = success
+          else
+            test "$BACKEND_CHANGED" = false
+            test "$TEST_RESULT" = skipped
+          fi
           test "$BUILD_WEB_RESULT" = success
           test "$BUILD_FREEBSD_RESULT" = success
