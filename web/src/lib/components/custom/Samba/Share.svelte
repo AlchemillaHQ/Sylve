@@ -39,6 +39,7 @@
 		| 'directoryMask'
 		| 'timeMachineMaxSize'
 		| 'auditRetentionDays'
+		| 'extraShareConfig'
 		| 'audit';
 	type FormErrors = Partial<Record<FormErrorField, string>>;
 
@@ -58,6 +59,7 @@
 		auditEnabled: boolean;
 		auditRetentionDays: number;
 		auditedOperations: { open: boolean; value: string[] };
+		extraShareConfig: string;
 	}
 
 	let {
@@ -88,7 +90,14 @@
 	const TAB_FIELDS: Record<ShareTab, FormErrorField[]> = {
 		details: ['name', 'dataset'],
 		access: ['access'],
-		options: ['createMask', 'directoryMask', 'timeMachineMaxSize', 'auditRetentionDays', 'audit']
+		options: [
+			'createMask',
+			'directoryMask',
+			'timeMachineMaxSize',
+			'auditRetentionDays',
+			'audit',
+			'extraShareConfig'
+		]
 	};
 
 	const FIELD_TABS: Record<FormErrorField, ShareTab> = {
@@ -99,7 +108,8 @@
 		directoryMask: 'options',
 		timeMachineMaxSize: 'options',
 		auditRetentionDays: 'options',
-		audit: 'options'
+		audit: 'options',
+		extraShareConfig: 'options'
 	};
 
 	let groupOptions = $derived.by(() => {
@@ -148,7 +158,8 @@
 			auditedOperations: {
 				open: false,
 				value: share?.auditedOperations ?? []
-			}
+			},
+			extraShareConfig: share?.extraShareConfig ?? ''
 		};
 	}
 
@@ -331,6 +342,15 @@
 				);
 			}
 		}
+		if (
+			form.extraShareConfig.includes('\0') ||
+			form.extraShareConfig.split('\n').some((line) => line.trimStart().startsWith('['))
+		) {
+			return showValidationError(
+				'extraShareConfig',
+				'Extra share configuration cannot contain section headers or null bytes'
+			);
+		}
 
 		if (!/^[0-7]{4}$/.test(form.createMask.trim())) {
 			return showValidationError(
@@ -422,7 +442,8 @@
 				form.timeMachine ? form.timeMachineMaxSize : 0,
 				form.auditEnabled,
 				form.auditRetentionDays,
-				form.auditEnabled ? form.auditedOperations.value : []
+				form.auditEnabled ? form.auditedOperations.value : [],
+				form.extraShareConfig
 			);
 		} else {
 			response = await createSambaShare(
@@ -437,7 +458,8 @@
 				form.timeMachine ? form.timeMachineMaxSize : 0,
 				form.auditEnabled,
 				form.auditRetentionDays,
-				form.auditEnabled ? form.auditedOperations.value : []
+				form.auditEnabled ? form.auditedOperations.value : [],
+				form.extraShareConfig
 			);
 		}
 
@@ -839,6 +861,24 @@
 								{/if}
 							</div>
 						</div>
+					</section>
+
+					<section class="space-y-3">
+						<CustomValueInput
+							label="Extra Share Configuration"
+							placeholder="smb encrypt = required"
+							bind:value={form.extraShareConfig}
+							onChange={() => clearError('extraShareConfig')}
+							classes="space-y-1.5"
+							type="textarea"
+							textAreaClasses={`h-36 font-mono text-xs ${errors.extraShareConfig ? 'border-destructive' : ''}`}
+							disabled={saving}
+							hint="One directive per line, without a [share] header. Appended after managed settings and checked with testparm."
+						/>
+						<p class="text-muted-foreground text-xs">
+							Extra directives can override generated Samba settings. They do not change filesystem
+							ACLs or configure AD membership and identity mapping.
+						</p>
 					</section>
 
 					<Accordion.Root

@@ -86,22 +86,7 @@ func SetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req SambaConfigRequest
 		if err := strictJSONBind(c, &req); err != nil {
-			status := http.StatusBadRequest
-			message := "invalid_request"
-			errorDetail := err.Error()
-			var maxBytesError *http.MaxBytesError
-			if errors.As(err, &maxBytesError) {
-				status = http.StatusRequestEntityTooLarge
-				message = "samba_request_too_large"
-				errorDetail = "Samba request body is too large"
-			}
-
-			c.JSON(status, internal.APIResponse[any]{
-				Status:  "error",
-				Message: message,
-				Error:   errorDetail,
-				Data:    nil,
-			})
+			sambaRequestBindError(c, err)
 			return
 		}
 

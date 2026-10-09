@@ -123,3 +123,23 @@ func TestSambaAuditLogRetentionMigrationDefaultsExistingRows(t *testing.T) {
 		t.Fatalf("unlimited retention days=%d want 0", got)
 	}
 }
+
+func TestSambaShareExtraConfigMigrationDefaultsExistingRows(t *testing.T) {
+	dbConn := testutil.NewSQLiteTestDB(t)
+	if err := dbConn.Exec(`CREATE TABLE samba_shares (id INTEGER PRIMARY KEY, name TEXT, dataset TEXT)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.Exec(`INSERT INTO samba_shares (id, name, dataset) VALUES (1, 'legacy', 'legacy-guid')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbConn.AutoMigrate(&sambaModels.SambaShare{}); err != nil {
+		t.Fatal(err)
+	}
+	var share sambaModels.SambaShare
+	if err := dbConn.First(&share, 1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if share.ExtraShareConfig != "" {
+		t.Fatalf("legacy share acquired extra configuration: %q", share.ExtraShareConfig)
+	}
+}

@@ -40,6 +40,7 @@ export const SambaShareSchema = z.object({
 	auditEnabled: z.boolean().default(false),
 	auditRetentionDays: z.number().int().min(0).default(70),
 	auditedOperations: z.array(z.string()).default([]),
+	extraShareConfig: z.string().default(''),
 	createdAt: z.string(),
 	updatedAt: z.string()
 });

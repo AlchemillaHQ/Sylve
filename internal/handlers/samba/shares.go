@@ -11,6 +11,7 @@ package sambaHandlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,6 +58,7 @@ type CreateSambaShareRequest struct {
 	AuditEnabled       *bool                   `json:"auditEnabled"`
 	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
+	ExtraShareConfig   string                  `json:"extraShareConfig"`
 }
 
 type UpdateSambaShareRequest struct {
@@ -72,6 +74,7 @@ type UpdateSambaShareRequest struct {
 	AuditEnabled       *bool                   `json:"auditEnabled"`
 	AuditRetentionDays *uint32                 `json:"auditRetentionDays"`
 	AuditedOperations  []string                `json:"auditedOperations"`
+	ExtraShareConfig   *string                 `json:"extraShareConfig"`
 }
 
 type SambaPrincipalUserResponse struct {
@@ -113,6 +116,7 @@ type SambaShareResponse struct {
 	AuditEnabled       bool                     `json:"auditEnabled"`
 	AuditRetentionDays uint32                   `json:"auditRetentionDays"`
 	AuditedOperations  []string                 `json:"auditedOperations"`
+	ExtraShareConfig   string                   `json:"extraShareConfig"`
 	CreatedAt          string                   `json:"createdAt"`
 	UpdatedAt          string                   `json:"updatedAt"`
 }
@@ -139,6 +143,24 @@ func strictJSONBind(c *gin.Context, dst any) error {
 
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(raw))
 	return nil
+}
+
+func sambaRequestBindError(c *gin.Context, err error) {
+	status := http.StatusBadRequest
+	message := "invalid_request"
+	errorDetail := err.Error()
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) {
+		status = http.StatusRequestEntityTooLarge
+		message = "samba_request_too_large"
+		errorDetail = "Samba request body is too large"
+	}
+	c.AbortWithStatusJSON(status, internal.APIResponse[any]{
+		Status:  "error",
+		Message: message,
+		Error:   errorDetail,
+		Data:    nil,
+	})
 }
 
 func mapUsers(users []authModels.User) []SambaPrincipalUserResponse {
@@ -186,6 +208,7 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 		AuditEnabled:       share.AuditEnabled,
 		AuditRetentionDays: sambaModels.AuditRetentionDaysValue(share.AuditRetentionDays),
 		AuditedOperations:  share.AuditedOperations,
+		ExtraShareConfig:   share.ExtraShareConfig,
 		CreatedAt:          share.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		UpdatedAt:          share.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -194,6 +217,9 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 func sambaShareServiceErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
+	}
+	if errors.Is(err, samba.ErrInvalidShareConfig) {
+		return http.StatusBadRequest
 	}
 
 	msg := err.Error()
@@ -267,18 +293,14 @@ func GetShares(smbService *samba.Service) gin.HandlerFunc {
 // @Success 201 {object} internal.APIResponse[any] "Created"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/shares [post]
 func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var request CreateSambaShareRequest
 		if err := strictJSONBind(c, &request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			sambaRequestBindError(c, err)
 			return
 		}
 
@@ -329,6 +351,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			auditRetentionDays,
 			request.AuditedOperations,
 			enabled,
+			request.ExtraShareConfig,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -360,6 +383,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
 // @Failure 409 {object} internal.APIResponse[any] "Conflict"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/shares/{id} [put]
 func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
@@ -377,12 +401,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 
 		var request UpdateSambaShareRequest
 		if err := strictJSONBind(c, &request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
-				Status:  "error",
-				Message: "invalid_request",
-				Error:   err.Error(),
-				Data:    nil,
-			})
+			sambaRequestBindError(c, err)
 			return
 		}
 
@@ -429,6 +448,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			auditRetentionDays,
 			request.AuditedOperations,
 			&request.Enabled,
+			request.ExtraShareConfig,
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -459,6 +479,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 404 {object} internal.APIResponse[any] "Not Found"
+// @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/shares/{id}/enabled [put]
 func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
@@ -471,7 +492,7 @@ func SetShareEnabled(smbService *samba.Service) gin.HandlerFunc {
 
 		var request SetSambaShareEnabledRequest
 		if err := strictJSONBind(c, &request); err != nil {
-			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_request", Error: err.Error()})
+			sambaRequestBindError(c, err)
 			return
 		}
 

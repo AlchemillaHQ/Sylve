@@ -378,6 +378,12 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 		if dataset.Mountpoint == "" || dataset.Mountpoint == "-" {
 			return fmt.Errorf("dataset_not_mounted")
 		}
+		if share.ExtraShareConfig != "" {
+			if err := s.validateShareConfig(ctx, share, dataset); err != nil {
+				return err
+			}
+		}
+
 		if err := s.ensureSambaDatasetACLProperties(ctx, dataset, true); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
@@ -416,6 +422,7 @@ func (s *Service) CreateShare(
 	auditRetentionDays uint32,
 	auditedOperations []string,
 	enabled bool,
+	extraShareConfig string,
 ) error {
 	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
 		return err
@@ -451,6 +458,10 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
+	if err := validateExtraShareConfig(extraShareConfig); err != nil {
+		return err
+	}
+
 	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
 		normalized.ReadUserIDs,
 		normalized.WriteUserIDs,
@@ -472,6 +483,32 @@ func (s *Service) CreateShare(
 
 	if fDataset.Mountpoint == "" || fDataset.Mountpoint == "-" {
 		return fmt.Errorf("dataset_not_mounted")
+	}
+
+	share := sambaModels.SambaShare{
+		Name:               name,
+		Dataset:            dataset,
+		CreateMask:         createMask,
+		DirectoryMask:      directoryMask,
+		GuestOk:            guestEnabled,
+		ReadOnly:           !guestWriteable && guestEnabled,
+		ExtraShareConfig:   extraShareConfig,
+		TimeMachine:        timeMachine,
+		TimeMachineMaxSize: timeMachineMaxSize,
+		AuditEnabled:       auditEnabled,
+		AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(auditRetentionDays),
+		AuditedOperations:  auditedOperations,
+		Enabled:            true,
+	}
+	if extraShareConfig != "" {
+		candidate := share
+		candidate.ReadOnlyUsers = readUsers
+		candidate.WriteableUsers = writeUsers
+		candidate.ReadOnlyGroups = readGroups
+		candidate.WriteableGroups = writeGroups
+		if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
+			return err
+		}
 	}
 
 	if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
@@ -497,21 +534,6 @@ func (s *Service) CreateShare(
 		true,
 	); err != nil {
 		return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
-	}
-
-	share := sambaModels.SambaShare{
-		Name:               name,
-		Dataset:            dataset,
-		CreateMask:         createMask,
-		DirectoryMask:      directoryMask,
-		GuestOk:            guestEnabled,
-		ReadOnly:           !guestWriteable && guestEnabled,
-		TimeMachine:        timeMachine,
-		TimeMachineMaxSize: timeMachineMaxSize,
-		AuditEnabled:       auditEnabled,
-		AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(auditRetentionDays),
-		AuditedOperations:  auditedOperations,
-		Enabled:            true,
 	}
 
 	tx := s.DB.Begin()
@@ -581,6 +603,7 @@ func (s *Service) UpdateShare(
 	auditRetentionDays uint32,
 	auditedOperations []string,
 	enabled *bool,
+	extraShareConfig *string,
 ) error {
 	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
 		return err
@@ -599,6 +622,10 @@ func (s *Service) UpdateShare(
 	desiredEnabled := share.Enabled
 	if enabled != nil {
 		desiredEnabled = *enabled
+	}
+	desiredExtraShareConfig := share.ExtraShareConfig
+	if extraShareConfig != nil {
+		desiredExtraShareConfig = *extraShareConfig
 	}
 
 	if name != share.Name {
@@ -635,6 +662,10 @@ func (s *Service) UpdateShare(
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
+	if err := validateExtraShareConfig(desiredExtraShareConfig); err != nil {
+		return err
+	}
+
 	readUsers, writeUsers, readGroups, writeGroups, err := s.loadUsersAndGroupsByIDs(
 		normalized.ReadUserIDs,
 		normalized.WriteUserIDs,
@@ -664,18 +695,43 @@ func (s *Service) UpdateShare(
 		fDataset = nil
 	}
 
+	previousShare := share
+	share.Name = name
+	share.Dataset = dataset
+	share.CreateMask = createMask
+	share.DirectoryMask = directoryMask
+	share.GuestOk = guestEnabled
+	share.ReadOnly = !guestWriteable && guestEnabled
+	share.ExtraShareConfig = desiredExtraShareConfig
+	share.TimeMachine = timeMachine
+	share.TimeMachineMaxSize = timeMachineMaxSize
+	share.AuditEnabled = auditEnabled
+	share.AuditRetentionDays = sambaModels.AuditRetentionDaysPointer(auditRetentionDays)
+	share.AuditedOperations = auditedOperations
+	share.Enabled = desiredEnabled
+	if previousShare.ExtraShareConfig != "" || desiredExtraShareConfig != "" {
+		candidate := share
+		candidate.ReadOnlyUsers = readUsers
+		candidate.WriteableUsers = writeUsers
+		candidate.ReadOnlyGroups = readGroups
+		candidate.WriteableGroups = writeGroups
+		if err := s.validateShareConfig(ctx, candidate, fDataset); err != nil {
+			return err
+		}
+	}
+
 	if fDataset != nil {
 		if err := s.ensureSambaDatasetACLProperties(ctx, fDataset, true); err != nil {
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
 
-		previousPrincipals := namesFromShareAssociations(share)
+		previousPrincipals := namesFromShareAssociations(previousShare)
 		desiredPrincipals := sambaPrincipalNames{}
 		if !guestEnabled {
 			desiredPrincipals = namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
 		}
 
-		if dataset == share.Dataset {
+		if dataset == previousShare.Dataset {
 			if err := s.syncSambaDatasetPrincipalACLs(
 				fDataset.Mountpoint,
 				previousPrincipals,
@@ -694,7 +750,7 @@ func (s *Service) UpdateShare(
 				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
 			}
 		} else {
-			oldDataset, oldDatasetErr := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
+			oldDataset, oldDatasetErr := s.GZFS.ZFS.GetByGUID(ctx, previousShare.Dataset, false)
 			if oldDatasetErr != nil {
 				return fmt.Errorf("failed_to_fetch_previous_dataset: %v", oldDatasetErr)
 			}
@@ -760,19 +816,6 @@ func (s *Service) UpdateShare(
 		tx.Rollback()
 		return fmt.Errorf("failed_to_clear_writeable_groups: %w", err)
 	}
-
-	share.Name = name
-	share.Dataset = dataset
-	share.CreateMask = createMask
-	share.DirectoryMask = directoryMask
-	share.GuestOk = guestEnabled
-	share.ReadOnly = !guestWriteable && guestEnabled
-	share.TimeMachine = timeMachine
-	share.TimeMachineMaxSize = timeMachineMaxSize
-	share.AuditEnabled = auditEnabled
-	share.AuditRetentionDays = sambaModels.AuditRetentionDaysPointer(auditRetentionDays)
-	share.AuditedOperations = auditedOperations
-	share.Enabled = desiredEnabled
 
 	if err := tx.Save(&share).Error; err != nil {
 		tx.Rollback()

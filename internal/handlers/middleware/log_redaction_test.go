@@ -469,6 +469,25 @@ func TestSambaExtraGlobalConfigIsRedactedFromAuditPayloads(t *testing.T) {
 	}
 }
 
+func TestSambaExtraShareConfigIsRedactedFromAuditPayloads(t *testing.T) {
+	t.Parallel()
+	for _, key := range []string{"extraShareConfig", "extra_share_config", "extra-share-config"} {
+		request := sanitizeAuditPayloadForPath("/api/samba/shares/1", map[string]interface{}{
+			"name": "documents", key: "include = /private/share.conf",
+		}).(map[string]interface{})
+		if request[key] != "[REDACTED]" || request["name"] != "documents" {
+			t.Fatalf("extra config not redacted or safe identity lost: %#v", request)
+		}
+		response := sanitizeAuditResponseForPath("/api/samba/shares", map[string]interface{}{
+			"data": []interface{}{map[string]interface{}{"name": "documents", key: "include = /private/share.conf"}},
+		}).(map[string]interface{})
+		share := response["data"].([]interface{})[0].(map[string]interface{})
+		if share[key] != "[REDACTED]" || share["name"] != "documents" {
+			t.Fatalf("extra config not redacted from response: %#v", response)
+		}
+	}
+}
+
 func TestSanitizeAuditPayloadForVMCloudInitRedactsOnlyDocuments(t *testing.T) {
 	t.Parallel()
 

@@ -1099,6 +1099,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 				auditEnabled: true,
 				auditRetentionDays: 70,
 				auditedOperations: ['create_file', 'mkdirat', 'renameat', 'unlinkat'],
+				extraShareConfig: '',
 				createdAt,
 				updatedAt
 			},
@@ -1119,6 +1120,7 @@ function seedStorageState(hostname: string): DemoStorageState {
 				auditEnabled: true,
 				auditRetentionDays: 70,
 				auditedOperations: ['create_file', 'renameat', 'unlinkat'],
+				extraShareConfig: '',
 				createdAt,
 				updatedAt
 			}
@@ -1652,6 +1654,7 @@ function buildSambaShare(
 		auditEnabled: booleanValue(body, 'auditEnabled', existing?.auditEnabled ?? false),
 		auditRetentionDays: numberValue(body, 'auditRetentionDays', existing?.auditRetentionDays ?? 70),
 		auditedOperations: stringArray(body, 'auditedOperations'),
+		extraShareConfig: stringValue(body, 'extraShareConfig', existing?.extraShareConfig ?? ''),
 		createdAt: existing?.createdAt ?? new Date().toISOString(),
 		updatedAt: new Date().toISOString()
 	};

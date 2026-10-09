@@ -25,7 +25,8 @@ export async function createSambaShare(
 	timeMachineMaxSize: number = 0,
 	auditEnabled: boolean = false,
 	auditRetentionDays: number = 70,
-	auditedOperations: string[] = []
+	auditedOperations: string[] = [],
+	extraShareConfig: string = ''
 ): Promise<APIResponse> {
 	return await apiRequestResult('/samba/shares', APIResponseSchema, 'POST', {
 		name,
@@ -39,7 +40,8 @@ export async function createSambaShare(
 		timeMachineMaxSize,
 		auditEnabled,
 		auditRetentionDays,
-		auditedOperations
+		auditedOperations,
+		extraShareConfig
 	});
 }
 
@@ -62,7 +64,8 @@ export async function updateSambaShare(
 	timeMachineMaxSize: number = 0,
 	auditEnabled: boolean = false,
 	auditRetentionDays: number = 70,
-	auditedOperations: string[] = []
+	auditedOperations: string[] = [],
+	extraShareConfig?: string
 ): Promise<APIResponse> {
 	return await apiRequestResult(`/samba/shares/${id}`, APIResponseSchema, 'PUT', {
 		name,
@@ -76,7 +79,8 @@ export async function updateSambaShare(
 		timeMachineMaxSize,
 		auditEnabled,
 		auditRetentionDays,
-		auditedOperations
+		auditedOperations,
+		extraShareConfig
 	});
 }
 

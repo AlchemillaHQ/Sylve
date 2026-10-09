@@ -17,6 +17,7 @@ import (
 
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,35 @@ import (
 func TestSambaShareServiceErrorStatusMapsNonPAMPrincipalToBadRequest(t *testing.T) {
 	if status := sambaShareServiceErrorStatus(fmt.Errorf("user_not_pam:admin")); status != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for non-PAM principal, got %d", status)
+	}
+}
+
+func TestSambaShareServiceErrorStatusMapsInvalidExtraConfigToBadRequest(t *testing.T) {
+	err := fmt.Errorf("testparm rejected config: %w", samba.ErrInvalidShareConfig)
+	if status := sambaShareServiceErrorStatus(err); status != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid extra config, got %d", status)
+	}
+}
+
+func TestShareHandlersRejectOversizedRequests(t *testing.T) {
+	router := gin.New()
+	router.Use(middleware.LimitRequestBody(samba.MaxRequestBodyBytes))
+	svc := &samba.Service{}
+	router.POST("/samba/shares", CreateShare(svc))
+	router.PUT("/samba/shares/:id", UpdateShare(svc))
+	router.PUT("/samba/shares/:id/enabled", SetShareEnabled(svc))
+	body := []byte(`{"padding":"` + strings.Repeat("x", int(samba.MaxRequestBodyBytes)) + `"}`)
+	for _, request := range []struct{ method, path string }{
+		{http.MethodPost, "/samba/shares"},
+		{http.MethodPut, "/samba/shares/1"},
+		{http.MethodPut, "/samba/shares/1/enabled"},
+	} {
+		t.Run(request.path+request.method, func(t *testing.T) {
+			rr := performSambaJSONRequest(t, router, request.method, request.path, body)
+			if rr.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("expected status 413, got %d: %s", rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
 
@@ -122,12 +152,13 @@ func TestGetSharesReturnsExpandedV2Permissions(t *testing.T) {
 	}
 
 	share := sambaModels.SambaShare{
-		Name:          "secure",
-		Dataset:       "dataset-guid",
-		GuestOk:       false,
-		ReadOnly:      true,
-		CreateMask:    "0664",
-		DirectoryMask: "2775",
+		Name:             "secure",
+		Dataset:          "dataset-guid",
+		GuestOk:          false,
+		ReadOnly:         true,
+		CreateMask:       "0664",
+		DirectoryMask:    "2775",
+		ExtraShareConfig: "smb encrypt = required",
 	}
 	if err := db.Create(&share).Error; err != nil {
 		t.Fatalf("failed creating share: %v", err)
@@ -166,6 +197,9 @@ func TestGetSharesReturnsExpandedV2Permissions(t *testing.T) {
 	got := resp.Data[0]
 	if got.Name != "secure" || got.Dataset != "dataset-guid" {
 		t.Fatalf("unexpected share identity payload: %+v", got)
+	}
+	if got.ExtraShareConfig != share.ExtraShareConfig {
+		t.Fatalf("extra share config=%q want %q", got.ExtraShareConfig, share.ExtraShareConfig)
 	}
 
 	if got.Guest.Enabled {

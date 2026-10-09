@@ -70,6 +70,19 @@ Use this tab for Apple Time Machine support, per-share auditing, and default per
 | Retention Days | How long Sylve keeps this share's audit records. Default: `70`. Enter a whole number of days, or `0` to retain records indefinitely. Changing it on an existing share also updates the retention applied to its existing records. |
 | Create Mask | Four octal digits controlling permissions for new files. Default: `0664`. |
 | Directory Mask | Four octal digits controlling permissions for new directories. Default: `2775`, which preserves the shared group on child directories. |
+| Extra Share Configuration | Raw Samba directives appended after Sylve-managed settings. Enter one directive per line without a section header. Checked with `testparm` before saving, including for disabled shares. |
+
+### Extra share configuration
+
+Use **Options → Extra share configuration** for Samba settings that Sylve does not expose. For example:
+
+```ini
+smb encrypt = required
+```
+
+Leave the field empty to use only Sylve-managed settings. API clients can set `extraShareConfig` when creating or updating a share; omitting it on update preserves the saved text, while an empty string clears it. Configuration text is redacted from request audit logs.
+
+Extra directives can override the share path, access rules, VFS modules, and other generated settings. Sylve's Access controls and filesystem ACL management remain unchanged; authenticated shares still require at least one managed principal. AD group rules such as `valid users = "@EXAMPLE\Share Users"` require domain membership, Winbind identity mapping, and filesystem permissions to be configured separately.
 
 ### Discovery and Time Machine advertising
 

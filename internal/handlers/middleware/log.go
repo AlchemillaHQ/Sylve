@@ -151,6 +151,7 @@ func isSensitiveAuditKey(key string) bool {
 		"credential",
 		"credentials",
 		"extraglobalconfig",
+		"extrashareconfig",
 		"extratargetconfig",
 		"sessiondata",
 		"assertion",

@@ -28,6 +28,7 @@ type SambaShare struct {
 	DirectoryMask      string         `json:"directoryMask" gorm:"default:'2775'"`
 	GuestOk            bool           `json:"guestOk" gorm:"default:false"`
 	ReadOnly           bool           `json:"readOnly" gorm:"default:false"`
+	ExtraShareConfig   string         `json:"extraShareConfig" gorm:"type:text;not null;default:''"`
 	TimeMachine        bool           `json:"timeMachine" gorm:"default:false"`
 	TimeMachineMaxSize uint64         `json:"timeMachineMaxSize" gorm:"default:0"`
 	AuditEnabled       bool           `json:"auditEnabled" gorm:"default:false"`

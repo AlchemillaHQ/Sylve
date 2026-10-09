@@ -19245,6 +19245,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
                     },
+                    "413": {
+                        "description": "Payload Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
@@ -19311,6 +19317,12 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -19428,6 +19440,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -21584,6 +21602,12 @@ const docTemplate = `{
                         "name": "filepond",
                         "in": "formData",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Managed storage pool (omitted uses Default dataPath)",
+                        "name": "storagePool",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -22141,7 +22165,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get configured filesystem paths used by downloader for HTTP and Path downloads",
+                "description": "Get Default storage paths used by downloader for HTTP and Path downloads",
                 "produces": [
                     "application/json"
                 ],
@@ -22239,6 +22263,37 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/utilities/downloads/storage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Discover Default and local managed pool targets without provisioning storage",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Utilities"
+                ],
+                "summary": "List Download Storage",
+                "responses": {
+                    "200": {
+                        "description": "Choices and discovery errors",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_downloadstorage_Choices"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -30209,6 +30264,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_downloadstorage_Choices": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_downloadstorage.Choices"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_cluster_ClusterDetails": {
             "type": "object",
             "properties": {
@@ -34672,6 +34744,9 @@ const docTemplate = `{
                 "ignoreTLS": {
                     "type": "boolean"
                 },
+                "isUpload": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -34686,6 +34761,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadStatus"
+                },
+                "storagePool": {
+                    "type": "string"
                 },
                 "type": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_utilities.DownloadType"
@@ -35346,6 +35424,37 @@ const docTemplate = `{
                 },
                 "recursive": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_downloadstorage.Choice": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "storagePool": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_downloadstorage.Choices": {
+            "type": "object",
+            "properties": {
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_downloadstorage.Choice"
+                    }
+                },
+                "error": {
+                    "type": "string"
                 }
             }
         },
@@ -38665,6 +38774,9 @@ const docTemplate = `{
                 },
                 "ignoreTLS": {
                     "type": "boolean"
+                },
+                "storagePool": {
+                    "type": "string"
                 },
                 "url": {
                     "type": "string"
@@ -43304,6 +43416,9 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "extraShareConfig": {
+                    "type": "string"
+                },
                 "guest": {
                     "$ref": "#/definitions/internal_handlers_samba.SambaGuestRequest"
                 },
@@ -43480,6 +43595,9 @@ const docTemplate = `{
                 "enabled": {
                     "type": "boolean"
                 },
+                "extraShareConfig": {
+                    "type": "string"
+                },
                 "guest": {
                     "$ref": "#/definitions/internal_handlers_samba.SambaGuestResponse"
                 },
@@ -43537,6 +43655,9 @@ const docTemplate = `{
                 },
                 "enabled": {
                     "type": "boolean"
+                },
+                "extraShareConfig": {
+                    "type": "string"
                 },
                 "guest": {
                     "$ref": "#/definitions/internal_handlers_samba.SambaGuestRequest"
