@@ -255,7 +255,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	assertConsoleZFSDataset(t, sourceZVOL, false)
 	assertConsoleZFSDataset(t, importedZVOL.Storage.Backing, true)
 
-	imagePath := filepath.Join(suite.root, "vm-storage-"+suite.runID+".iso")
+	imagePath := filepath.Join(suite.dataPath, "downloads", "path", "vm-storage-"+suite.runID+".iso")
 	if err := os.WriteFile(imagePath, []byte("console integration ISO placeholder"), 0o600); err != nil {
 		t.Fatalf("write image fixture: %v", err)
 	}
@@ -450,7 +450,7 @@ func decodeConsoleVMStorageAttach(t *testing.T, output string) consoleVMStorageA
 		t.Fatalf("decode VM storage attach: %v\noutput: %s", err, output)
 	}
 	if !result.Attached || result.RID == 0 || result.Storage.ID == 0 {
-		t.Fatalf("VM storage attach = %#v", result)
+		t.Fatalf("VM storage attach = %#v\noutput: %s", result, output)
 	}
 	return result
 }
