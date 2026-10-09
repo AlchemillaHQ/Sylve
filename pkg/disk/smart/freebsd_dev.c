@@ -28,6 +28,7 @@
 #include <dev/nvme/nvme.h>
 #include <camlib.h>
 #include <cam/cam.h>
+#include <cam/ata/ata_all.h>
 #include <cam/scsi/scsi_message.h>
 
 #include "libsmart.h"
@@ -2095,6 +2096,7 @@ __device_info_tunneled_ata(struct fbsd_smart *fsmart)
 		goto __device_info_tunneled_ata_out;
 	}
 
+	ata_param_fixup(&ident_data);
 	fsmart->common.info.supported = ident_data.support.command1 &
 		ATA_SUPPORT_SMART;
 	fsmart->common.info.sct_supported = (ident_data.sct & 0x0001) != 0;

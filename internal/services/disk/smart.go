@@ -1043,94 +1043,54 @@ func mapSelfTestStatusToInterface(status *smart.SelfTestStatus) diskServiceInter
 }
 
 func (s *Service) GetWearOut(smartData any) (float64, error) {
-	if smartData == nil {
+	switch data := smartData.(type) {
+	case nil:
 		return 0, errors.New("no SMART data available")
-	}
-
-	if nvmeData, ok := smartData.(diskServiceInterfaces.SMARTNvme); ok {
-		return float64(nvmeData.PercentageUsed), nil
-	}
-
-	if data, ok := smartData.(diskServiceInterfaces.SmartData); ok {
+	case diskServiceInterfaces.SMARTNvme:
+		return float64(data.PercentageUsed), nil
+	case diskServiceInterfaces.SmartData:
 		protocol := strings.ToUpper(strings.TrimSpace(data.Device.Protocol))
 		if protocol == "ATA" && !data.ChecksumValid {
 			return 0, errors.New("SMART attribute checksum is invalid")
 		}
-		var wear177, wear202, wear230, wear231, wear232, wear233, wearScsi *float64
-
-		for _, attr := range data.Attributes {
-			if protocol == "SCSI" {
+		if protocol == "SCSI" {
+			for _, attr := range data.Attributes {
 				if attr.Page == 0x11 && attr.ID == 1 && attr.RawValue >= 0 && attr.RawValue <= 100 {
-					val := float64(attr.RawValue)
-					wearScsi = &val
-				}
-				continue
-			}
-			switch attr.ID {
-			case 177:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear177 = &val
-				}
-			case 202:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear202 = &val
-				}
-			case 230:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear230 = &val
-				}
-			case 231:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear231 = &val
-				}
-			case 232:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear232 = &val
-				}
-			case 233:
-				if attr.Value >= 0 && attr.Value <= 100 {
-					val := 100.0 - float64(attr.Value)
-					wear233 = &val
+					return float64(attr.RawValue), nil
 				}
 			}
-		}
-
-		if wearScsi != nil {
-			return *wearScsi, nil
-		}
-		if wear202 != nil {
-			return *wear202, nil
-		}
-		if wear231 != nil {
-			return *wear231, nil
-		}
-		if wear232 != nil {
-			return *wear232, nil
-		}
-		if wear233 != nil {
-			return *wear233, nil
-		}
-		if wear230 != nil {
-			return *wear230, nil
-		}
-		if wear177 != nil {
-			return *wear177, nil
+		} else {
+			for _, id := range []int{202, 231, 233, 230, 177, 232} {
+				for _, attr := range data.Attributes {
+					if attr.ID != id {
+						continue
+					}
+					name := strings.ToLower(strings.ReplaceAll(attr.Name, " ", "_"))
+					switch name {
+					case "percent_lifetime_used", "perc_rated_life_used", "percent_life_used":
+						if attr.RawValue >= 0 && attr.RawValue <= 100 {
+							return float64(attr.RawValue), nil
+						}
+					case "wear_leveling_count", "media_wearout_indicator", "ssd_life_left", "ssd_life_left_perc",
+						"life_remaining_percent", "lifetime_left", "percent_lifetime_remain", "perc_rated_life_remain",
+						"remaining_lifetime_perc", "lifetime_remaining%", "drivelife_remaining%":
+						if attr.State != smart.AttrStateNoNormVal && attr.Value >= 0 && attr.Value <= 100 {
+							return 100.0 - float64(attr.Value), nil
+						}
+					}
+				}
+			}
 		}
 
 		return 0, errors.New("no SSD wearout indicators found")
+	default:
+		return 0, errors.New("unsupported SMART data type")
 	}
-
-	return 0, errors.New("unsupported SMART data type")
 }
 
 func (s *Service) formatWearOut(diskType string, smartData any) string {
 	switch strings.ToUpper(diskType) {
-	case "HDD":
+	case "HDD", "VIRTUAL":
 		return "N/A"
 	case "SSD", "NVME":
 		wearOut, err := s.GetWearOut(smartData)

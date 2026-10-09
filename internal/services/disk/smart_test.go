@@ -109,6 +109,40 @@ func TestMapLibSmartHealthAndRawValues(t *testing.T) {
 	}
 }
 
+func TestKingstonWearOutWithUnknownHealth(t *testing.T) {
+	defs := smart.LookupModelAttrs("KINGSTON SEDC500R960G", "SCEKJ2.8")
+	for id, want := range map[uint32]string{231: "SSD_Life_Left", 232: "Read_Fail_Count", 233: "Flash_Writes_GiB"} {
+		if defs[id].Name != want {
+			t.Fatalf("attribute %d: name=%q want=%q", id, defs[id].Name, want)
+		}
+	}
+	info := &smart.DeviceInfo{
+		Device:        "da0",
+		Model:         "KINGSTON SEDC500R960G",
+		Firmware:      "SCEKJ2.8",
+		Protocol:      "ATA",
+		HealthKnown:   false,
+		ChecksumValid: true,
+		Attributes: []smart.Attribute{
+			{ID: 231, Name: defs[231].Name, Value: 97, Worst: 97, RawValue: 97},
+			{ID: 232, Name: defs[232].Name, Value: 100, Worst: 100},
+			{ID: 233, Name: defs[233].Name, Value: 100, Worst: 100, RawValue: 132670},
+		},
+	}
+	data := mapLibSmartToInterface(info)
+	if data.HealthKnown || len(data.Attributes) != 3 || data.Attributes[0].Name != "SSD Life Left" {
+		t.Fatalf("data: %+v", data)
+	}
+	service := &Service{}
+	if got := service.formatWearOut("SSD", data); got != "3.00" {
+		t.Fatalf("wearout=%q want=3.00", got)
+	}
+	data.ChecksumValid = false
+	if got := service.formatWearOut("SSD", data); got != "Unknown" {
+		t.Fatalf("wearout accepted invalid checksum: %q", got)
+	}
+}
+
 func TestFormatWearOut(t *testing.T) {
 	service := &Service{}
 	if got := service.formatWearOut("HDD", nil); got != "N/A" {
@@ -134,9 +168,83 @@ func TestFormatWearOut(t *testing.T) {
 	ataExhausted := diskServiceInterfaces.SmartData{
 		Device:        diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
 		ChecksumValid: true,
-		Attributes:    []diskServiceInterfaces.ATASmartAttribute{{ID: 202, Value: 0}},
+		Attributes:    []diskServiceInterfaces.ATASmartAttribute{{ID: 202, Name: "Percent Lifetime Remain", Value: 0}},
 	}
 	if got := service.formatWearOut("SSD", ataExhausted); got != "100.00" {
 		t.Fatalf("exhausted ATA SSD: %q", got)
+	}
+}
+
+func TestATAWearOutUsesAttributeMeaning(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs []diskServiceInterfaces.ATASmartAttribute
+		want  string
+	}{
+		{
+			name: "Kingston counters without life remaining",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{
+				{ID: 232, Name: "Read Fail Count", Value: 100},
+				{ID: 233, Name: "Flash Writes GiB", Value: 100, RawValue: 132670},
+			},
+			want: "Unknown",
+		},
+		{
+			name:  "reserved space is not endurance",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 232, Name: "Available Reservd Space", Value: 90}},
+			want:  "Unknown",
+		},
+		{
+			name:  "temperature is not endurance",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 231, Name: "Temperature Celsius", Value: 71, RawValue: 29}},
+			want:  "Unknown",
+		},
+		{
+			name:  "unnamed vendor attribute",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 233, Value: 100}},
+			want:  "Unknown",
+		},
+		{
+			name:  "media wearout indicator",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 233, Name: "Media Wearout Indicator", Value: 92}},
+			want:  "8.00",
+		},
+		{
+			name:  "Samsung wear leveling",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 177, Name: "Wear_Leveling_Count", Value: 98, RawValue: 25}},
+			want:  "2.00",
+		},
+		{
+			name:  "percentage used raw value",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 232, Name: "Percent Life Used", Value: 100, RawValue: 7}},
+			want:  "7.00",
+		},
+		{
+			name:  "invalid normalized value",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 231, Name: "SSD Life Left", Value: 255}},
+			want:  "Unknown",
+		},
+		{
+			name:  "missing normalized value",
+			attrs: []diskServiceInterfaces.ATASmartAttribute{{ID: 231, Name: "SSD Life Left", State: smart.AttrStateNoNormVal}},
+			want:  "Unknown",
+		},
+	}
+	service := &Service{}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data := diskServiceInterfaces.SmartData{
+				Device:        diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
+				ChecksumValid: true,
+				Attributes:    test.attrs,
+			}
+			if got := service.formatWearOut("SSD", data); got != test.want {
+				t.Fatalf("wearout=%q want=%q", got, test.want)
+			}
+			data.ChecksumValid = false
+			if got := service.formatWearOut("SSD", data); got != "Unknown" {
+				t.Fatalf("wearout accepted invalid checksum: %q", got)
+			}
+		})
 	}
 }

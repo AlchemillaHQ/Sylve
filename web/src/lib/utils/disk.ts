@@ -313,8 +313,10 @@ export function generateTableData(disks: Disk[]): { rows: Row[]; columns: Column
 			usage: disk.usage,
 			size: disk.size,
 			gpt: disk.gpt ? 'Yes' : 'No',
-			model: disk.model,
-			serial: disk.serial,
+			model:
+				disk.model.trim() ||
+				(disk.device.startsWith('vtbd') ? 'VirtIO block device' : 'Not provided'),
+			serial: disk.serial.trim() || 'Not provided',
 			smartStatus: smartStatus(disk),
 			wearOut: disk.type === 'Virtual' ? '-' : disk.wearOut
 		};

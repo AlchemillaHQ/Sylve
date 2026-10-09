@@ -13,6 +13,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -557,6 +558,232 @@ func TestGetDiskDevicesWithoutSMARTSkipsReader(t *testing.T) {
 	}
 	if reads.Load() != 1 {
 		t.Fatalf("reads=%d", reads.Load())
+	}
+}
+
+func TestGetDiskDevicesForSMARTMonitorReadsSolidStateWithoutPowerProbe(t *testing.T) {
+	tests := []struct {
+		name      string
+		diskType  string
+		smartData any
+	}{
+		{
+			name: "da0", diskType: "SSD",
+			smartData: diskServiceInterfaces.SmartData{
+				Device:        diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
+				ChecksumValid: true,
+				Attributes:    []diskServiceInterfaces.ATASmartAttribute{{ID: 231, Name: "SSD Life Left", Value: 97, RawValue: 97}},
+			},
+		},
+		{
+			name: "nda0", diskType: "NVMe",
+			smartData: diskServiceInterfaces.SMARTNvme{PercentageUsed: 3},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.diskType, func(t *testing.T) {
+			var probes, reads int
+			item := diskServiceInterfaces.DiskInfo{
+				Name: test.name, Type: test.diskType, MediaSize: 1024,
+				Partitions: []diskServiceInterfaces.PartitionInfo{{Name: test.name + "p1", Size: 512}},
+			}
+			service := &Service{
+				physicalDiskSource: func() ([]diskServiceInterfaces.DiskInfo, error) {
+					return []diskServiceInterfaces.DiskInfo{item}, nil
+				},
+				diskGPTSource: func(string, int) bool { return true },
+				ataPowerModeSource: func(string) (smart.ATAPowerMode, error) {
+					probes++
+					return smart.ATAPowerModeUnknown, syscall.EIO
+				},
+				scsiPowerModeSource: func(string) (smart.SCSIPowerMode, error) {
+					probes++
+					return smart.SCSIPowerModeUnknown, syscall.EIO
+				},
+				smartDataSource: func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+					reads++
+					return test.smartData, nil, nil
+				},
+			}
+			disks, err := service.GetDiskDevicesForSMARTMonitor(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if probes != 0 || reads != 1 || len(disks) != 1 || disks[0].SmartData == nil || disks[0].WearOut != "3.00" || disks[0].SmartReadPowerSkipped {
+				t.Fatalf("probes=%d reads=%d disks=%+v", probes, reads, disks)
+			}
+			disks, err = service.GetDiskDevices(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if probes != 0 || reads != 2 || len(disks) != 1 || disks[0].SmartData == nil || disks[0].WearOut != "3.00" {
+				t.Fatalf("full listing: probes=%d reads=%d disks=%+v", probes, reads, disks)
+			}
+		})
+	}
+}
+
+func TestPowerProbeFailureDoesNotSuppressSMARTRead(t *testing.T) {
+	for _, protocol := range []string{"ATA", "SCSI"} {
+		t.Run(protocol, func(t *testing.T) {
+			var probes, reads int
+			item := diskServiceInterfaces.DiskInfo{
+				Name: "da0", Type: "HDD", MediaSize: 1024,
+				Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "da0p1", Size: 512}},
+			}
+			service := &Service{
+				physicalDiskSource: func() ([]diskServiceInterfaces.DiskInfo, error) {
+					return []diskServiceInterfaces.DiskInfo{item}, nil
+				},
+				diskGPTSource: func(string, int) bool { return true },
+				ataPowerModeSource: func(string) (smart.ATAPowerMode, error) {
+					if protocol == "SCSI" {
+						return smart.ATAPowerModeUnknown, smart.ErrUnsupportedFeature
+					}
+					probes++
+					return smart.ATAPowerModeUnknown, syscall.EIO
+				},
+				scsiPowerModeSource: func(string) (smart.SCSIPowerMode, error) {
+					probes++
+					return smart.SCSIPowerModeUnknown, syscall.EIO
+				},
+				smartDataSource: func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+					reads++
+					return diskServiceInterfaces.SmartData{HealthKnown: true, Passed: true}, nil, nil
+				},
+			}
+			for range 2 {
+				disks, err := service.GetDiskDevicesForSMARTMonitor(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(disks) != 1 || disks[0].SmartData != nil || reads != 0 {
+					t.Fatalf("monitor woke disk: reads=%d disks=%+v", reads, disks)
+				}
+			}
+			disks, err := service.GetDiskDevices(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if probes != 2 || reads != 1 || len(disks) != 1 || disks[0].SmartData == nil {
+				t.Fatalf("probes=%d reads=%d disks=%+v", probes, reads, disks)
+			}
+		})
+	}
+}
+
+func TestControllerErrorSkipsRemainingSMARTReads(t *testing.T) {
+	for _, stage := range []string{"ATA probe", "SCSI probe", "SMART read"} {
+		for _, controllerErr := range []error{smart.ErrControllerTimeout, smart.ErrControllerAborted} {
+			t.Run(stage+"/"+controllerErr.Error(), func(t *testing.T) {
+				items := []diskServiceInterfaces.DiskInfo{
+					{Name: "ada0", Type: "HDD", Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "ada0p1"}}},
+					{Name: "ada1", Type: "SSD", Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "ada1p1"}}},
+				}
+				reads := make(map[string]int)
+				service := &Service{
+					physicalDiskSource: func() ([]diskServiceInterfaces.DiskInfo, error) { return items, nil },
+					diskGPTSource:      func(string, int) bool { return true },
+					ataPowerModeSource: func(string) (smart.ATAPowerMode, error) {
+						switch stage {
+						case "ATA probe":
+							return smart.ATAPowerModeUnknown, controllerErr
+						case "SCSI probe":
+							return smart.ATAPowerModeUnknown, smart.ErrUnsupportedFeature
+						default:
+							return smart.ATAPowerModeActiveOrIdle, nil
+						}
+					},
+					scsiPowerModeSource: func(string) (smart.SCSIPowerMode, error) {
+						return smart.SCSIPowerModeUnknown, controllerErr
+					},
+					smartDataSource: func(item diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+						reads[item.Name]++
+						if item.Name == "ada0" {
+							return nil, nil, controllerErr
+						}
+						return diskServiceInterfaces.SmartData{HealthKnown: true, Passed: true}, nil, nil
+					},
+				}
+				disks, err := service.GetDiskDevicesForSMARTMonitor(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(disks) != 2 || disks[0].SmartData != nil || disks[1].SmartData != nil || reads["ada1"] != 0 {
+					t.Fatalf("reads continued after controller error: reads=%v disks=%+v", reads, disks)
+				}
+				firstReads := reads["ada0"]
+				disks, err = service.GetDiskDevices(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(disks) != 2 || disks[0].SmartData != nil || disks[1].SmartData == nil || reads["ada0"] != firstReads || reads["ada1"] != 1 {
+					t.Fatalf("full listing ignored controller failure cache: reads=%v disks=%+v", reads, disks)
+				}
+			})
+		}
+	}
+}
+
+func TestSMARTReadFailureStillSuppressesRetries(t *testing.T) {
+	var reads int
+	item := diskServiceInterfaces.DiskInfo{
+		Name: "da0", Type: "SSD", Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "da0p1"}},
+	}
+	service := &Service{
+		physicalDiskSource: func() ([]diskServiceInterfaces.DiskInfo, error) {
+			return []diskServiceInterfaces.DiskInfo{item}, nil
+		},
+		diskGPTSource: func(string, int) bool { return true },
+		smartDataSource: func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+			reads++
+			return nil, nil, syscall.EIO
+		},
+	}
+	for _, list := range []func(context.Context) ([]diskServiceInterfaces.Disk, error){
+		service.GetDiskDevicesForSMARTMonitor, service.GetDiskDevices,
+	} {
+		disks, err := list(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reads != 1 || len(disks) != 1 || disks[0].SmartData != nil {
+			t.Fatalf("SMART read failure was not cached: reads=%d disks=%+v", reads, disks)
+		}
+	}
+}
+
+func TestGetDiskDevicesSkipsSMARTForVirtualDisks(t *testing.T) {
+	service := &Service{
+		physicalDiskSource: func() ([]diskServiceInterfaces.DiskInfo, error) {
+			return []diskServiceInterfaces.DiskInfo{{
+				Name: "vtbd0", Type: "Virtual", MediaSize: 1024,
+				Partitions: []diskServiceInterfaces.PartitionInfo{{Name: "vtbd0p1", Size: 512}},
+			}}, nil
+		},
+		diskGPTSource: func(string, int) bool { return true },
+		ataPowerModeSource: func(string) (smart.ATAPowerMode, error) {
+			t.Fatal("probed virtual disk power state")
+			return smart.ATAPowerModeUnknown, nil
+		},
+		smartDataSource: func(diskServiceInterfaces.DiskInfo) (any, *diskServiceInterfaces.DiskSelfTestLog, error) {
+			t.Fatal("read virtual disk SMART data")
+			return nil, nil, nil
+		},
+	}
+	for _, list := range []func(context.Context) ([]diskServiceInterfaces.Disk, error){
+		service.GetDiskDevices, service.GetDiskDevicesForSMARTMonitor,
+	} {
+		disks, err := list(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(disks) != 1 || disks[0].SmartData != nil || disks[0].WearOut != "N/A" {
+			t.Fatalf("disks=%+v", disks)
+		}
+		if disks[0].Model != "" || disks[0].Serial != "" || disks[0].IdentityStable {
+			t.Fatalf("invented virtual disk identity: %+v", disks[0])
+		}
 	}
 }
 

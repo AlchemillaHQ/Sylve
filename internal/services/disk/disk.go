@@ -133,16 +133,17 @@ func ExtractDiskInfo(mesh *diskServiceInterfaces.Mesh) ([]diskServiceInterfaces.
 		diskType := "SSD"
 		isISCSI := strings.Contains(strings.ToLower(provider.Config.Descr), "iscsi")
 
-		if strings.Contains(strings.ToLower(provider.Config.Descr), "virtual") ||
+		if strings.HasPrefix(provider.Name, "vtbd") ||
+			strings.Contains(strings.ToLower(provider.Config.Descr), "virtual") ||
 			isISCSI {
 			diskType = "Virtual"
-		} else if provider.Config.RotationRate != "0" && provider.Config.RotationRate != "" {
-			diskType = "HDD"
 		} else if strings.HasPrefix(provider.Name, "nvme") ||
 			strings.HasPrefix(provider.Name, "nda") ||
 			strings.HasPrefix(provider.Name, "nvd") ||
 			strings.HasPrefix(provider.Alias, "nv") {
 			diskType = "NVMe"
+		} else if provider.Config.RotationRate != "0" && provider.Config.RotationRate != "" {
+			diskType = "HDD"
 		}
 
 		disk := diskServiceInterfaces.DiskInfo{
@@ -331,9 +332,9 @@ func (s *Service) getDiskDevices(ctx context.Context, includeSMART, avoidWake bo
 			disk.GPT = s.diskIsGPT("/dev/"+d.Name, d.SectorSize)
 		}
 
-		if includeSMART && !skipRemainingSMART {
+		if includeSMART && d.Type != "Virtual" && !skipRemainingSMART {
 			failed := s.smartReadSuppressed(d, time.Now())
-			if !failed && avoidWake && d.Type != "NVMe" {
+			if !failed && avoidWake && d.Type == "HDD" {
 				probe := s.ataPowerModeSource
 				if probe == nil {
 					probe = smart.CheckATAPowerMode
@@ -358,10 +359,10 @@ func (s *Service) getDiskDevices(ctx context.Context, includeSMART, avoidWake bo
 					}
 				}
 				if probeErr != nil && !errors.Is(probeErr, smart.ErrUnsupportedFeature) {
-					s.recordSmartFailure(d, time.Now())
 					logger.LogWithDeduplication(zerolog.DebugLevel, fmt.Sprintf("Failed to check disk power state %v", probeErr))
 					disk.SmartData = nil
 					if smart.IsControllerError(probeErr) {
+						s.recordSmartFailure(d, time.Now())
 						logger.L.Warn().Str("device", d.Name).Msg("controller_level_error_skipping_remaining_smart_reads")
 						skipRemainingSMART = true
 					}
