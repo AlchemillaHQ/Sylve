@@ -19,7 +19,6 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -504,7 +503,7 @@ func TestIntegrationRecursiveRestoreSnapshotCoverageRejectsIncompleteTreeWithEph
 		Recursive:     true,
 	}
 	svc := &Service{
-		DB:                testutil.NewSQLiteTestDB(t),
+		DB:                newZeltaServiceTestDB(t),
 		GZFS:              client,
 		runningJobs:       make(map[uint]struct{}),
 		runningWorkloadOp: make(map[string]string),

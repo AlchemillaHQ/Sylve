@@ -115,7 +115,7 @@ jobs:
           envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED
           prepare: |
             pkg update
-            pkg install -y go git libvirt bhyve-firmware
+            pkg install -y go git libvirt bhyve-firmware qemu-tools
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -144,6 +144,7 @@ jobs:
               }
 
               command -v nvmecontrol >/dev/null
+              command -v qemu-img >/dev/null
               ctladm nvlist -x | grep -q '<ctlnvmflist>'
 
               service libvirtd onestart || service libvirtd onerestart

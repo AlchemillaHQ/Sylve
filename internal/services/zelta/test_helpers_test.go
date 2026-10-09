@@ -23,6 +23,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -87,6 +88,8 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&clusterModels.BackupTargetRestoreOperation{},
 		&clusterModels.BackupTargetSSHHostTrust{},
 		&clusterModels.ClusterOption{},
+		&utilitiesModels.Downloads{},
+		&utilitiesModels.Upload{},
 	)
 
 	return testutil.NewSQLiteTestDB(t, migrateModels...)

@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
@@ -65,6 +66,7 @@ func newBootstrapIntegrationFixture(t *testing.T, withSwitch bool) *bootstrapInt
 	pool, client := zfstest.DedicatedPool(t)
 	db := testutil.NewSQLiteTestDB(t,
 		&models.BasicSettings{}, &models.ZFSCacheInvalidation{},
+		&utilitiesModels.Downloads{}, &utilitiesModels.Upload{},
 		&networkModels.StandardSwitch{}, &networkModels.NetworkPort{},
 		&networkModels.ManualSwitch{}, &networkModels.Object{},
 		&networkModels.ObjectEntry{}, &networkModels.HostInterfaceL3{},

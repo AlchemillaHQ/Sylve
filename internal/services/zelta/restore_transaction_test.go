@@ -17,7 +17,6 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
-	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
 
@@ -354,7 +353,7 @@ func TestIntegrationScheduledEncryptedRestoreActivationFailureRollsBackRealZFS(t
 	oldGUID := strings.TrimSpace(mustRunRestoreZFSTestCommand(t, "get", "-H", "-p", "-o", "value", "guid", destination))
 
 	extractZeltaToTemp(t)
-	database := testutil.NewSQLiteTestDB(t, &clusterModels.BackupEvent{})
+	database := newZeltaServiceTestDB(t, &clusterModels.BackupEvent{})
 	service := &Service{DB: database, GZFS: client}
 	target := &clusterModels.BackupTarget{
 		SSHHostKey: hostKey,

@@ -88,10 +88,8 @@ func TestRequireNoManagedGuestsWithinRestore(t *testing.T) {
 }
 
 func TestRequireNoManagedGuestsAllowsFreshInventory(t *testing.T) {
-	database := testutil.NewSQLiteTestDB(
+	database := newZeltaServiceTestDB(
 		t,
-		&utilitiesModels.Downloads{},
-		&utilitiesModels.Upload{},
 		&jailModels.Jail{},
 		&jailModels.Storage{},
 		&vmModels.VM{},
