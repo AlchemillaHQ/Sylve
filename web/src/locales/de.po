@@ -32,6 +32,7 @@ msgstr "Konsole"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Storage"
 msgstr "Speicher"
 
@@ -175,7 +176,6 @@ msgstr "Freigaben"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Settings"
 msgstr "Einstellungen"
 
@@ -225,11 +225,11 @@ msgstr "Knoten — <0/>"
 
 #: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Discord"
 msgstr "Discord"
 
@@ -533,7 +533,7 @@ msgstr "Knoten"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 msgid "User"
 msgstr "Benutzer"
@@ -560,9 +560,9 @@ msgstr "Aktion"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -827,13 +827,13 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
@@ -869,7 +869,7 @@ msgstr "Aktualisiert"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -909,12 +909,12 @@ msgstr "Anzeigen"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
@@ -949,16 +949,15 @@ msgstr "Löschen"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/fs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/volumes/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/utilities/cloud-init/+page.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
@@ -974,7 +973,7 @@ msgstr "Bearbeiten"
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
 msgid "Bulk Delete"
@@ -994,11 +993,11 @@ msgstr "Sammellöschung"
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
@@ -1434,8 +1433,8 @@ msgstr "Benutzer bearbeiten - {0}"
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "E-Mail"
 msgstr "E-Mail"
 
@@ -1485,7 +1484,7 @@ msgstr "Admin"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/datacenter/notes/+page.svelte
@@ -1544,7 +1543,7 @@ msgstr "Cluster-Informationen"
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
@@ -1557,8 +1556,8 @@ msgstr "Eigenschaft"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -1635,7 +1634,7 @@ msgstr "Abmelden"
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/vm/[rid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Continue"
@@ -1677,7 +1676,7 @@ msgid "Cancel"
 msgstr "Abbrechen"
 
 #: src/lib/components/custom/Dialog/SingleValue.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Enter value"
 msgstr "Wert eingeben"
 
@@ -1883,8 +1882,8 @@ msgstr "Zuerst geändert"
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "Typ"
@@ -1914,35 +1913,35 @@ msgid "Services"
 msgstr "Dienste"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Virtualization"
 msgstr "Virtualisierung"
 
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Jails"
 msgstr "Jails"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Samba Server"
 msgstr "Samba-Server"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "DHCP Server"
 msgstr "DHCP-Server"
 
@@ -2174,8 +2173,8 @@ msgstr "Metrik"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -2267,78 +2266,78 @@ msgid "Error deleting object {0}"
 msgstr "Fehler beim Löschen von Objekt {0}"
 
 #. 0: device; 1: vendor
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Are you sure you want to pass through <b>{0}</b> by <b>{1}</b>? This will make it unavailable to the host."
 msgstr "Möchten Sie <b>{0}</b> von <b>{1}</b> wirklich per Passthrough durchreichen? Dadurch wird es für den Host nicht mehr verfügbar."
 
 #. 0: device; 1: vendor
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Prepare passthrough for <b>{0}</b> by <b>{1}</b>? This updates /boot/loader.conf and applies after reboot."
 msgstr "Passthrough für <b>{0}</b> von <b>{1}</b> vorbereiten? Dadurch wird /boot/loader.conf aktualisiert und die Änderung nach dem Neustart angewendet."
 
 #. 0: device; 1: vendor
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Import <b>{0}</b> by <b>{1}</b> into Sylve passthrough management? This keeps current ppt state and adds it to the database."
 msgstr "<b>{0}</b> von <b>{1}</b> in die Sylve-Passthrough-Verwaltung importieren? Der aktuelle ppt-Status bleibt erhalten und wird zur Datenbank hinzugefügt."
 
 #. 0: device; 1: vendor
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Are you sure you want to remove passthrough for <b>{0}</b> by <b>{1}</b>? This will make it available to the host again."
 msgstr "Möchten Sie den Passthrough für <b>{0}</b> von <b>{1}</b> wirklich entfernen? Dadurch wird es für den Host wieder verfügbar."
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Enable Passthrough"
 msgstr "Passthrough aktivieren"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Prepare Passthrough"
 msgstr "Passthrough vorbereiten"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Import Passthrough"
 msgstr "Passthrough importieren"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Disable Passthrough"
 msgstr "Passthrough deaktivieren"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device added to passthrough"
 msgstr "Gerät zu Passthrough hinzugefügt"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Failed to add device to passthrough"
 msgstr "Gerät konnte nicht zu Passthrough hinzugefügt werden"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device prepared for passthrough. Reboot required."
 msgstr "Gerät für Passthrough vorbereitet. Neustart erforderlich."
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Failed to prepare device for passthrough"
 msgstr "Gerät konnte nicht für Passthrough vorbereitet werden"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device imported into passthrough management"
 msgstr "Gerät in die Passthrough-Verwaltung importiert"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Failed to import device into passthrough management"
 msgstr "Gerät konnte nicht in die Passthrough-Verwaltung importiert werden"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device removed from passthrough"
 msgstr "Gerät aus Passthrough entfernt"
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Failed to remove device from passthrough"
 msgstr "Gerät konnte nicht aus Passthrough entfernt werden"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "ZFS Pools"
 msgstr "ZFS-Pools"
 
@@ -2370,17 +2369,17 @@ msgstr "ZFS-Pools"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -2413,16 +2412,16 @@ msgstr "Aktiviert"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -2434,25 +2433,25 @@ msgid "Disabled"
 msgstr "Deaktiviert"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "WoL Server"
 msgstr "WoL-Server"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "At least one ZFS Pool must be selected"
 msgstr "Mindestens ein ZFS-Pool muss ausgewählt werden"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "No changes made to ZFS Pools"
 msgstr "An den ZFS-Pools wurden keine Änderungen vorgenommen"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Failed to update ZFS Pools"
 msgstr "ZFS-Pools konnten nicht aktualisiert werden"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "ZFS Pools updated"
 msgstr "ZFS-Pools aktualisiert"
 
@@ -2469,15 +2468,15 @@ msgstr "ZFS-Pools aktualisiert"
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Edit {0}"
 msgstr "{0} bearbeiten"
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Enter ZFS Pools"
 msgstr "ZFS-Pools eingeben"
 
@@ -2653,7 +2652,6 @@ msgstr "Basis / RootFS"
 msgid "Cloud-Init"
 msgstr "Cloud-Init"
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Ignore TLS Errors"
 msgstr "TLS-Fehler ignorieren"
@@ -2877,9 +2875,9 @@ msgstr "Quelle"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -3022,7 +3020,7 @@ msgstr "OOB-Wiederherstellung"
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 msgid "Refresh"
 msgstr "Aktualisieren"
@@ -3428,10 +3426,10 @@ msgstr "Manuell zurückwechseln"
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Never"
 msgstr "Nie"
 
@@ -3459,7 +3457,7 @@ msgstr "Aktiver Knoten"
 msgid "Behavior"
 msgstr "Verhalten"
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3666,7 +3664,7 @@ msgstr "Failback"
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -3692,7 +3690,7 @@ msgstr "Ja"
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -3956,8 +3954,8 @@ msgstr "Benutzerdefinierte Jail-Lebenszyklus-Hooks (exec.*-Skripte)"
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Enable"
 msgstr "Aktivieren"
@@ -4962,7 +4960,7 @@ msgstr "DB-Speicher"
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Import"
 msgstr "Importieren"
 
@@ -4990,8 +4988,8 @@ msgstr "Aktivieren oder deaktivieren Sie die TPM-Emulation (Trusted Platform Mod
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Disable"
 msgstr "Deaktivieren"
 
@@ -5886,49 +5884,49 @@ msgstr "Switch wird von einer VM verwendet"
 msgid "Error deleting switch"
 msgstr "Fehler beim Löschen des Switches"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Name and users are required"
 msgstr "Name und Benutzer sind erforderlich"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Group name already exists"
 msgstr "Gruppenname existiert bereits"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Failed to create group"
 msgstr "Gruppe konnte nicht erstellt werden"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Group created"
 msgstr "Gruppe erstellt"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Failed to modify users in group"
 msgstr "Benutzer in der Gruppe konnten nicht geändert werden"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Users modified in group"
 msgstr "In der Gruppe geänderte Benutzer"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Default Sylve Group (sylve_g)"
 msgstr "Standard-Sylve-Gruppe (sylve_g)"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Created At"
 msgstr "Erstellt am"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Edit Users"
 msgstr "Benutzer bearbeiten"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "New Group"
 msgstr "Neue Gruppe"
 
@@ -5937,30 +5935,30 @@ msgstr "Neue Gruppe"
 msgid "Select users"
 msgstr "Benutzer auswählen"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Modify Users"
 msgstr "Benutzer ändern"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Failed to delete group"
 msgstr "Gruppe konnte nicht gelöscht werden"
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Group deleted"
 msgstr "Gruppe gelöscht"
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Last Usage"
 msgstr "Letzte Verwendung"
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Failed to delete user"
 msgstr "Benutzer konnte nicht gelöscht werden"
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "User deleted"
 msgstr "Benutzer gelöscht"
 
@@ -7473,10 +7471,10 @@ msgstr "Experimentelle Funktionen"
 msgid "<0/> Passkey"
 msgstr "<0/> Passkey"
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Passkeys"
 msgstr "Passkeys"
 
@@ -7742,9 +7740,9 @@ msgstr "<0/> Vorlage anzeigen"
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Deleting..."
 msgstr "Wird gelöscht..."
 
@@ -7815,9 +7813,9 @@ msgid "Template dataset not found"
 msgstr "Vorlagen-Dataset nicht gefunden"
 
 #: src/lib/components/custom/Jail/Template/View.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Template"
 msgstr "Vorlage"
 
@@ -8395,10 +8393,10 @@ msgstr "Schreibgeschützte Freigabe"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Firewall"
 msgstr "Firewall"
 
@@ -8498,7 +8496,7 @@ msgstr "Verkehrsregeln"
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Destination"
 msgstr "Ziel"
 
@@ -8931,9 +8929,9 @@ msgstr "WireGuard-Server"
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "WireGuard"
 msgstr "WireGuard"
 
@@ -9938,8 +9936,8 @@ msgstr "CHAP-Secret muss 12-16 Zeichen lang sein (RFC 3720)"
 msgid "Target CHAP Secret must be 12-16 characters (RFC 3720)"
 msgstr "Ziel-CHAP-Secret muss 12-16 Zeichen lang sein (RFC 3720)"
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Test"
 msgstr "Test"
 
@@ -10369,7 +10367,7 @@ msgid "Transport {0}"
 msgstr ""
 
 #: src/lib/components/custom/iSCSI/Config.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "<0/> Save"
 msgstr ""
 
@@ -10425,11 +10423,11 @@ msgstr ""
 msgid "Password stored (leave blank to keep)"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Transport deleted"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Failed to delete transport"
 msgstr ""
 
@@ -10450,13 +10448,13 @@ msgstr ""
 msgid "Use TLS/STARTTLS"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Test notification sent"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Failed to send test notification"
 msgstr ""
 
@@ -10477,84 +10475,84 @@ msgid "Transports"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Rules"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Failed to update notification rules"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "In-App"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Email"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Inactive"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Choose a template and target before creating a rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Failed to create notification rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Notification rule created"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Failed to update notification rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Notification rule updated"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Failed to delete notification rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Notification rule deleted"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "No notification rules available"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "New Notification Rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "No available targets"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Channels"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "<0/> Create"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Edit Notification Rule"
 msgstr ""
 
@@ -10566,11 +10564,11 @@ msgstr ""
 msgid "Common Transport"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Cannot delete an auto-managed rule while its target is active"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "All available targets already have rules"
 msgstr ""
 
@@ -10673,8 +10671,8 @@ msgstr ""
 msgid "Browse"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Select Users"
 msgstr ""
 
@@ -10753,8 +10751,8 @@ msgstr ""
 msgid "Importing…"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Cannot delete this user"
 msgstr ""
 
@@ -10774,11 +10772,11 @@ msgstr ""
 msgid "Creating…"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Default system group, cannot be deleted"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "System group, cannot be deleted"
 msgstr ""
 
@@ -11261,80 +11259,80 @@ msgstr ""
 msgid "Home directory is already in use by another user"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Warning threshold must be lower than critical"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Temperature Thresholds"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Wear-Out Thresholds"
 msgstr ""
 
 #. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Warning{0}"
 msgstr ""
 
 #. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Critical{0}"
 msgstr ""
 
 #. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['warningCelsius'] ?? 55) \\: (editConfigDefaults['warningPercent'] ?? 80); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
 #. 0: modals.edit.templateKey === 'system.disk.smart.temperature' ? (editConfigDefaults['criticalCelsius'] ?? 65) \\: (editConfigDefaults['criticalPercent'] ?? 90); 1: modals.edit.templateKey === 'system.disk.smart.temperature' ? ' °C' \\: ' %'
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Default: {0}{1}"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Warning (60 °C)"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Critical (70 °C)"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Warning (85.0%)"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Critical (95.0%)"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "SMART Health Failed"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Sector Issues"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "NVMe Warning"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Faulted"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Select a template"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Test Notification Rule"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Condition"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "<0/> Send Test"
 msgstr ""
 
@@ -11623,19 +11621,19 @@ msgid "Tunables"
 msgstr ""
 
 #: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Writable"
 msgstr ""
 
 #. 0: editModal.name
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Tunable {0} updated"
 msgstr ""
 
 #. 0: serviceName
 #. 0: editModal.name
-#: src/routes/[node]/settings/system/services/+page.svelte
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Failed to update {0}"
 msgstr ""
 
@@ -11965,12 +11963,12 @@ msgstr ""
 msgid "Select Read Only"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Failed to delete notification rules"
 msgstr ""
 
 #. 0: modals.bulkDelete.ids.length
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "This will permanently delete <b>{0}</b> notification rule(s)."
 msgstr ""
 
@@ -12102,33 +12100,33 @@ msgstr ""
 msgid "On Disk"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Select at least one channel"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Bulk Update"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Bulk Update Notification Channels"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "No Change"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "<0/> Apply Changes"
 msgstr ""
 
 #. 0: modals.bulkUpdate.ids.length
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "{0} Rule(s) Selected"
 msgstr ""
 
 #. 0: group.count; 1: group.count !== 1 ? 's' \\: ''
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "{0} rule{1}"
 msgstr ""
 
@@ -12190,15 +12188,15 @@ msgstr ""
 msgid "Select operations"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Self-Test Failed"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Self-Test Passed"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Select an available target"
 msgstr ""
 
@@ -13344,20 +13342,20 @@ msgstr ""
 msgid "System did not come back online in time. You can try again."
 msgstr ""
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Disabling mDNS Discovery immediately stops Bonjour discovery, including discovery of any Samba Apple and Time Machine shares."
 msgstr ""
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Enabling mDNS Discovery immediately publishes existing managed and custom records."
 msgstr ""
 
 #. 0: enabled ? 'disable' \\: 'enable'; 1: displayName; 2: networkWarning
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "You are about to {0} {1}.{2} You will have to restart Sylve and/or the host system for changes to take effect."
 msgstr ""
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Disable anyway"
 msgstr ""
 
@@ -14156,11 +14154,11 @@ msgstr ""
 msgid "Check DNS mapping"
 msgstr ""
 
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Show tunables configured and persisted through Sylve"
 msgstr ""
 
-#: src/routes/[node]/settings/system/tunables/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 msgid "Configured Only"
 msgstr ""
 
@@ -15141,7 +15139,7 @@ msgstr ""
 #: src/lib/components/custom/VM/Options/StartOrder.svelte
 #: src/lib/components/custom/VM/Options/WoL.svelte
 #: src/routes/[node]/network/firewall/advanced/+page.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "<0/> Saving..."
 msgstr ""
 
@@ -15516,7 +15514,7 @@ msgstr ""
 
 #: src/lib/components/custom/FileExplorer/CreateFileOrFolderModal.svelte
 #: src/lib/components/custom/Network/Switch/Manual/Create.svelte
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "<0/> Creating..."
 msgstr ""
 
@@ -15637,28 +15635,28 @@ msgstr ""
 msgid "<0/> Renaming..."
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device is already attached to ppt; import it instead"
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device is already managed for passthrough"
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device is not currently attached to ppt"
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Passthrough removed. Reboot required to restore the host driver."
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Device is assigned to a VM and cannot be removed"
 msgstr ""
 
-#: src/routes/[node]/settings/device-passthrough/+page.svelte
+#: src/routes/[node]/system/device-passthrough/+page.svelte
 msgid "Applying..."
 msgstr ""
 
@@ -15670,11 +15668,11 @@ msgstr ""
 msgid "Finding Route..."
 msgstr ""
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Disabling..."
 msgstr ""
 
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "Enabling..."
 msgstr ""
 
@@ -16688,12 +16686,12 @@ msgid "Creating Template"
 msgstr ""
 
 #. 0: activeGroup?.name === 'wheel' ? ', including root,' \\: ''
-#: src/routes/[node]/settings/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
 msgid "Primary group members{0} cannot be removed here. This restriction is enforced by the system."
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/local/+page.svelte
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "View existing passkeys; registration is unavailable for this user"
 msgstr ""
 
@@ -17300,15 +17298,15 @@ msgid "Interval Type"
 msgstr ""
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/rules/+page.svelte
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "Pushover"
 msgstr ""
 
-#: src/routes/[node]/settings/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 msgid "User / group key configured"
 msgstr ""
 
@@ -18559,25 +18557,25 @@ msgstr ""
 msgid "Create an API user under API & Resellers in ClouDNS."
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Delete Home Directory"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Home directory retained"
 msgstr ""
 
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "The home directory and its contents will remain on disk."
 msgstr ""
 
 #. 0: escapeHTML(activeUser.homeDirectory)
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid " Home directory: <b class=\"break-all\">{0}</b>"
 msgstr ""
 
 #. 0: activeUser && activeUser.homeDirectory !== '/nonexistent' ? ` Home directory\\: <b class="break-all">${escapeHTML(activeUser.homeDirectory)}</b>` \\: ''
-#: src/routes/[node]/settings/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.{0}"
 msgstr ""
 
@@ -18902,7 +18900,11 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
+#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
 #: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
+#: src/routes/[node]/utilities/downloader/+page.svelte
+#: src/routes/[node]/utilities/downloader/+page.ts
 msgid "Default"
 msgstr ""
 
@@ -19078,7 +19080,7 @@ msgid "<0/> Refresh Status"
 msgstr ""
 
 #. 0: enabled ? 'disable' \\: 'enable'; 1: enabled ? ' Initiator connections will stay active.' \\: ''
-#: src/routes/[node]/settings/system/services/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 msgid "You are about to {0} iSCSI targets.{1}"
 msgstr ""
 
@@ -19398,34 +19400,15 @@ msgstr ""
 msgid "Loading recent tasks…"
 msgstr ""
 
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Storage:"
-msgstr ""
-
-#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
-#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Default (dataPath)"
-msgstr ""
-
-#: src/routes/[node]/utilities/downloader/+page.svelte
-msgid "Storage is fixed when the download is created."
-msgstr ""
-
-#: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
-msgid "Loading storage targets…"
-msgstr ""
-
-#. 0: choices.current.error
+#. 0: storageChoices.error
 #: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
 msgid "Pool storage discovery failed ({0}). Default is still available."
 msgstr ""
 
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Storage stays locked until the batch is empty."
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Edit - Upload"
 msgstr ""
 
-#. 0: uploadHostname
-#: src/lib/components/custom/Utilities/Downloader/UploadModal.svelte
-msgid "Target node: {0}. Files stage and publish on the selected storage. <0/>"
+#: src/routes/[node]/utilities/downloader/+page.svelte
+msgid "Edit - Download"
 msgstr ""

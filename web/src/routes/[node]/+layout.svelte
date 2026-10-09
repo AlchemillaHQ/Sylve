@@ -333,72 +333,66 @@
 			},
 
 			{
-				label: 'Settings',
-				icon: 'material-symbols--settings',
+				label: 'Authentication',
+				icon: 'mdi--shield-key',
 				children: [
 					{
-						label: 'Authentication',
-						icon: 'mdi--shield-key',
+						label: 'Users',
+						icon: 'mdi--account',
 						children: [
 							{
-								label: 'Users',
-								icon: 'mdi--account',
-								children: [
-									{
-										label: 'Local',
-										icon: 'mdi--account-box',
-										href: `/${node}/settings/authentication/users/local`
-									},
-									{
-										label: 'PAM',
-										icon: 'mdi--account-arrow-right',
-										href: `/${node}/settings/authentication/users/pam`
-									}
-								]
+								label: 'Local',
+								icon: 'mdi--account-box',
+								href: `/${node}/authentication/users/local`
 							},
 							{
-								label: 'Groups',
-								icon: 'mdi--account-group',
-								href: `/${node}/settings/authentication/groups`
+								label: 'PAM',
+								icon: 'mdi--account-arrow-right',
+								href: `/${node}/authentication/users/pam`
 							}
 						]
 					},
 					{
-						label: 'System',
-						icon: 'mdi--desktop-classic',
+						label: 'Groups',
+						icon: 'mdi--account-group',
+						href: `/${node}/authentication/groups`
+					}
+				]
+			},
+			{
+				label: 'System',
+				icon: 'mdi--desktop-classic',
+				children: [
+					{
+						label: 'Notifications',
+						icon: 'mdi--bell-ring-outline',
 						children: [
 							{
-								label: 'Notifications',
-								icon: 'mdi--bell-ring-outline',
-								children: [
-									{
-										label: 'Transports',
-										icon: 'mdi--swap-horizontal-bold',
-										href: `/${node}/settings/system/notifications/transports`
-									},
-									{
-										label: 'Rules',
-										icon: 'mdi--format-list-checks',
-										href: `/${node}/settings/system/notifications/rules`
-									}
-								]
+								label: 'Transports',
+								icon: 'mdi--swap-horizontal-bold',
+								href: `/${node}/system/notifications/transports`
 							},
 							{
-								label: 'Services',
-								icon: 'material-symbols--design-services-outline-rounded',
-								href: `/${node}/settings/system/services`
-							},
-							{
-								label: 'Tunables',
-								icon: 'mdi--tune-variant',
-								href: `/${node}/settings/system/tunables`
-							},
-							{
-								label: 'PCI Passthrough',
-								icon: 'eos-icons--hardware-circuit',
-								href: `/${node}/settings/device-passthrough`
+								label: 'Rules',
+								icon: 'mdi--format-list-checks',
+								href: `/${node}/system/notifications/rules`
 							}
 						]
+					},
+					{
+						label: 'Services',
+						icon: 'material-symbols--design-services-outline-rounded',
+						href: `/${node}/system/services`
+					},
+					{
+						label: 'Tunables',
+						icon: 'mdi--tune-variant',
+						href: `/${node}/system/tunables`
+					},
+					{
+						label: 'PCI Passthrough',
+						icon: 'eos-icons--hardware-circuit',
+						href: `/${node}/system/device-passthrough`
 					}
 				]
 			}
