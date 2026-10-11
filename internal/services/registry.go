@@ -28,6 +28,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	"github.com/alchemillahq/sylve/internal/services/info"
@@ -64,6 +65,7 @@ type ServiceRegistry struct {
 	ClusterService     clusterServiceInterfaces.ClusterServiceInterface
 	MdnsService        mdnsServiceInterfaces.MdnsServiceInterface
 	DynamicDNSService  *dynamicdns.Service
+	DirectoryService   *directoryservices.Service
 	CertificateService *certificates.Service
 	ZeltaService       *zelta.Service
 	MigrationService   *migration.Service
@@ -185,6 +187,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	sambaService := NewService[samba.Service](db, telemetryDB, zfsService, gzfs)
 	mdnsService := NewService[mdns.Service](db)
 	dynamicDNSService := dynamicdns.NewService(db)
+	directoryService := directoryservices.NewService(db)
 	certificateService := certificates.NewService(db)
 	iscsiService := NewService[iscsi.Service](db)
 	clusterService := NewService[cluster.Service](db, authService, jailService)
@@ -205,6 +208,10 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	zeltaService.(*zelta.Service).DownloadStorage = downloadStorage
 
 	sambaSvc := sambaService.(*samba.Service)
+	sambaSvc.Directory = directoryService
+	directoryService.WriteSamba = sambaSvc.WriteConfig
+	directoryService.ValidateSamba = sambaSvc.ValidateDirectoryConfig
+	directoryService.SharePrincipalsInUse = sambaSvc.DirectoryPrincipalsInUse
 	zfsSvc := zfsService.(*zfs.Service)
 	mdnsSvc := mdnsService.(*mdns.Service)
 	sysSvc := systemService.(*system.Service)
@@ -220,6 +227,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	sambaSvc.OnConfigChange = mdnsSvc.Rebuild
 	sambaSvc.EnsureMdnsEnabled = sysSvc.EnsureMdnsEnabled
 	sambaSvc.WithServiceSettingsLock = sysSvc.WithServiceSettingsLock
+	directoryService.WithServiceSettingsLock = sysSvc.WithServiceSettingsLock
 	sysSvc.MdnsRebuild = mdnsSvc.Rebuild
 
 	migrationService := migration.NewService(
@@ -248,6 +256,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		mdnsService,
 	).(*startup.Service)
 	startupService.Bootstrap = bootstrapService
+	startupService.Directory = directoryService
 
 	return &ServiceRegistry{
 		AuthService:        authService.(serviceInterfaces.AuthServiceInterface),
@@ -265,6 +274,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		ClusterService:     clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
 		MdnsService:        mdnsSvc,
 		DynamicDNSService:  dynamicDNSService,
+		DirectoryService:   directoryService,
 		CertificateService: certificateService,
 		ZeltaService:       zeltaService.(*zelta.Service),
 		MigrationService:   migrationService,

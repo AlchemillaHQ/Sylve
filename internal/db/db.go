@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
@@ -170,6 +171,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&networkModels.FirewallNATRule{},
 		&networkModels.FirewallAdvancedSettings{},
 		&networkModels.StaticRoute{},
+		&networkModels.GlobalConfig{},
 		&networkModels.WireGuardServer{},
 		&networkModels.WireGuardServerPeer{},
 		&networkModels.WireGuardClient{},
@@ -199,6 +201,10 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
+		&directoryModels.ActiveDirectory{},
+		&directoryModels.KerberosRealm{},
+		&directoryModels.KerberosKeytab{},
+		&directoryModels.KerberosSettings{},
 
 		&mdnsModels.MdnsSettings{},
 		&mdnsModels.MdnsRecord{},

@@ -47,15 +47,13 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
-	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
 const (
-	DefaultPath         = "/usr/local/etc/sylve/bootstrap.json"
-	DefaultResolverPath = "/etc/resolv.conf"
-	archiveSuffix       = ".applied"
-	documentVersion     = 1
-	maxDocumentBytes    = 1 << 20
+	DefaultPath      = "/usr/local/etc/sylve/bootstrap.json"
+	archiveSuffix    = ".applied"
+	documentVersion  = 1
+	maxDocumentBytes = 1 << 20
 )
 
 var (
@@ -101,6 +99,7 @@ func failedItem(kind string, index int, name, message string) systemServiceInter
 type NetworkApplier interface {
 	NewStandardSwitch(networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error)
 	CreateManualSwitch(name, bridge string) (*networkModels.ManualSwitch, error)
+	ApplyBootstrapDNS(context.Context, []string) error
 }
 
 type openedSource interface {
@@ -116,15 +115,12 @@ type Service struct {
 	mutex            sync.Mutex
 	startupAttempted bool
 
-	startupPath  string
-	resolverPath string
+	startupPath string
 
 	lstatPath     func(string) (os.FileInfo, error)
 	openPath      func(string) (openedSource, error)
-	readResolver  func(string) ([]byte, error)
 	linkPath      func(string, string) error
 	renamePath    func(string, string) error
-	writeResolver func(string, []byte, os.FileMode) error
 	consumeSource func(string, int) error
 }
 
@@ -133,13 +129,10 @@ func NewService(settings systemServiceInterfaces.BootstrapSettingsApplier, netwo
 		settings:      settings,
 		network:       network,
 		startupPath:   DefaultPath,
-		resolverPath:  DefaultResolverPath,
 		lstatPath:     os.Lstat,
 		openPath:      openSourceFile,
-		readResolver:  os.ReadFile,
 		linkPath:      os.Link,
 		renamePath:    os.Rename,
-		writeResolver: utils.AtomicWriteFile,
 		consumeSource: consumeVerifiedSource,
 	}
 }
@@ -359,32 +352,10 @@ func (s *Service) applyDNS(ctx context.Context, servers []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
-	path := s.resolverPath
-
-	var existing []byte
-	data, err := s.readResolver(path)
-	switch {
-	case err == nil:
-		existing = data
-	case errors.Is(err, fs.ErrNotExist):
-		existing = nil
-	default:
-		return fmt.Errorf("read resolver: %w", err)
+	if s.network == nil {
+		return errors.New("bootstrap_network_applier_not_available")
 	}
-
-	mode := os.FileMode(0o644)
-	if info, statErr := os.Stat(path); statErr == nil {
-		mode = info.Mode().Perm()
-	}
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.writeResolver(path, rewriteResolver(existing, servers), mode); err != nil {
-		return fmt.Errorf("write resolver: %w", err)
-	}
-	return nil
+	return s.network.ApplyBootstrapDNS(ctx, servers)
 }
 
 func (s *Service) archiveSource(path string, data []byte, info os.FileInfo) error {
@@ -770,36 +741,4 @@ func readBounded(reader io.Reader, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("bootstrap_source_too_large")
 	}
 	return data, nil
-}
-
-func rewriteResolver(existing []byte, servers []string) []byte {
-	var lines []string
-	if len(existing) > 0 {
-		lines = strings.Split(strings.TrimSuffix(string(existing), "\n"), "\n")
-	}
-	output := make([]string, 0, len(lines)+len(servers))
-	inserted := false
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && fields[0] == "nameserver" {
-			if !inserted {
-				for _, server := range servers {
-					output = append(output, "nameserver "+server)
-				}
-				inserted = true
-			}
-			continue
-		}
-		output = append(output, line)
-	}
-	if !inserted {
-		for _, server := range servers {
-			output = append(output, "nameserver "+server)
-		}
-	}
-	result := strings.Join(output, "\n")
-	if len(output) > 0 {
-		result += "\n"
-	}
-	return []byte(result)
 }

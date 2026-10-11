@@ -14,6 +14,7 @@ import type { ISCSIInitiator } from '$lib/types/iscsi/initiator';
 import type { ISCSITarget } from '$lib/types/iscsi/target';
 import type { SambaConfig } from '$lib/types/samba/config';
 import type { SambaShare } from '$lib/types/samba/shares';
+import { demoDirectoryPrincipals } from './directory-fixtures';
 import type { AvailableService } from '$lib/types/system/settings';
 
 type DemoStorageRequestConfig = {
@@ -1088,8 +1089,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 				dataset: apps.guid,
 				enabled: true,
 				permissions: {
-					read: { users: [users[1]], groups: [groups[0]] },
-					write: { users: [users[1]], groups: [groups[0]] }
+					read: { users: [users[1]], groups: [groups[0]], directory: [] },
+					write: { users: [users[1]], groups: [groups[0]], directory: [demoDirectoryPrincipals[2]] }
 				},
 				guest: { enabled: false, writeable: false },
 				createMask: '0664',
@@ -1109,8 +1110,8 @@ function seedStorageState(hostname: string): DemoStorageState {
 				dataset: mediaDataset.guid,
 				enabled: true,
 				permissions: {
-					read: { users: [users[2]], groups: [groups[1]] },
-					write: { users: [users[2]], groups: [groups[1]] }
+					read: { users: [users[2]], groups: [groups[1]], directory: [] },
+					write: { users: [users[2]], groups: [groups[1]], directory: [] }
 				},
 				guest: { enabled: true, writeable: false },
 				createMask: '0664',
@@ -1604,8 +1605,9 @@ function dashboardHistory(state: DemoStorageState, maxPoints: number) {
 
 function principals(
 	state: DemoStorageState,
-	value: unknown
-): { users: Array<{ id: number; username: string }>; groups: Array<{ id: number; name: string }> } {
+	value: unknown,
+	previous?: SambaShare['permissions']['read']
+): SambaShare['permissions']['read'] {
 	const input =
 		typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 	const userIds = numberArray(input.userIds);
@@ -1616,7 +1618,13 @@ function principals(
 			.map((user) => ({ id: user.id, username: user.username })),
 		groups: state.groups
 			.filter((group) => groupIds.includes(group.id))
-			.map((group) => ({ id: group.id, name: group.name }))
+			.map((group) => ({ id: group.id, name: group.name })),
+		directory:
+			input.directorySids === undefined
+				? (previous?.directory ?? [])
+				: demoDirectoryPrincipals.filter((principal) =>
+						stringArray(input, 'directorySids').includes(principal.sid)
+					)
 	};
 }
 
@@ -1640,8 +1648,8 @@ function buildSambaShare(
 		dataset: stringValue(body, 'dataset', existing?.dataset ?? ''),
 		enabled: booleanValue(body, 'enabled', existing?.enabled ?? true),
 		permissions: {
-			read: principals(state, permissions.read),
-			write: principals(state, permissions.write)
+			read: principals(state, permissions.read, existing?.permissions.read),
+			write: principals(state, permissions.write, existing?.permissions.write)
 		},
 		guest: {
 			enabled: booleanValue(guest, 'enabled', existing?.guest.enabled ?? false),

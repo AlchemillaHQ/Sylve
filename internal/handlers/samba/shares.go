@@ -20,15 +20,18 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	authModels "github.com/alchemillahq/sylve/internal/db/models"
+	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 
 	"github.com/gin-gonic/gin"
 )
 
 type SambaPrincipalIDsRequest struct {
-	UserIDs  []uint `json:"userIds"`
-	GroupIDs []uint `json:"groupIds"`
+	UserIDs       []uint   `json:"userIds"`
+	GroupIDs      []uint   `json:"groupIds"`
+	DirectorySIDs []string `json:"directorySids"`
 }
 
 type SambaPermissionsRequest struct {
@@ -88,8 +91,9 @@ type SambaPrincipalGroupResponse struct {
 }
 
 type SambaPrincipalSetResponse struct {
-	Users  []SambaPrincipalUserResponse  `json:"users"`
-	Groups []SambaPrincipalGroupResponse `json:"groups"`
+	Users     []SambaPrincipalUserResponse  `json:"users"`
+	Groups    []SambaPrincipalGroupResponse `json:"groups"`
+	Directory []directoryModels.Principal   `json:"directory"`
 }
 
 type SambaPermissionsResponse struct {
@@ -179,6 +183,20 @@ func mapGroups(groups []authModels.Group) []SambaPrincipalGroupResponse {
 	return mapped
 }
 
+func nonNilDirectory(principals []directoryModels.Principal) []directoryModels.Principal {
+	if principals == nil {
+		return []directoryModels.Principal{}
+	}
+	return principals
+}
+
+func directoryPermissionRequest(permissions SambaPermissionsRequest) *directoryservices.SharePermissionInput {
+	if permissions.Read.DirectorySIDs == nil && permissions.Write.DirectorySIDs == nil {
+		return nil
+	}
+	return &directoryservices.SharePermissionInput{ReadSIDs: permissions.Read.DirectorySIDs, WriteSIDs: permissions.Write.DirectorySIDs}
+}
+
 func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 	guestWriteable := share.GuestOk && !share.ReadOnly
 
@@ -189,12 +207,14 @@ func mapShareResponse(share sambaModels.SambaShare) SambaShareResponse {
 		Enabled: share.Enabled,
 		Permissions: SambaPermissionsResponse{
 			Read: SambaPrincipalSetResponse{
-				Users:  mapUsers(share.ReadOnlyUsers),
-				Groups: mapGroups(share.ReadOnlyGroups),
+				Users:     mapUsers(share.ReadOnlyUsers),
+				Groups:    mapGroups(share.ReadOnlyGroups),
+				Directory: nonNilDirectory(share.DirectoryPermissions.Read),
 			},
 			Write: SambaPrincipalSetResponse{
-				Users:  mapUsers(share.WriteableUsers),
-				Groups: mapGroups(share.WriteableGroups),
+				Users:     mapUsers(share.WriteableUsers),
+				Groups:    mapGroups(share.WriteableGroups),
+				Directory: nonNilDirectory(share.DirectoryPermissions.Write),
 			},
 		},
 		Guest: SambaGuestResponse{
@@ -218,8 +238,14 @@ func sambaShareServiceErrorStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
-	if errors.Is(err, samba.ErrInvalidShareConfig) {
+	if errors.Is(err, samba.ErrInvalidShareConfig) || errors.Is(err, directoryservices.ErrInvalid) {
 		return http.StatusBadRequest
+	}
+	if errors.Is(err, directoryservices.ErrUnavailable) {
+		return http.StatusBadGateway
+	}
+	if errors.Is(err, directoryservices.ErrBusy) || errors.Is(err, directoryservices.ErrConflict) {
+		return http.StatusConflict
 	}
 
 	msg := err.Error()
@@ -352,6 +378,7 @@ func CreateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.AuditedOperations,
 			enabled,
 			request.ExtraShareConfig,
+			directoryPermissionRequest(request.Permissions),
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",
@@ -449,6 +476,7 @@ func UpdateShare(smbService *samba.Service) gin.HandlerFunc {
 			request.AuditedOperations,
 			&request.Enabled,
 			request.ExtraShareConfig,
+			directoryPermissionRequest(request.Permissions),
 		); err != nil {
 			c.JSON(sambaShareServiceErrorStatus(err), internal.APIResponse[any]{
 				Status:  "error",

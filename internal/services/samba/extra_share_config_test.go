@@ -152,7 +152,7 @@ func TestCreateSharePersistsExtraConfigAndKeepsManagedACLs(t *testing.T) {
 		{Name: "tank/existing", GUID: "guid-existing", Mountpoint: "/mnt/existing"},
 	})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/documents", "", "", nil)
-	if err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, []uint{group.ID}, nil, false, false, "0664", "2775", false, 0, false, 70, nil, true, raw); err != nil {
+	if err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, []uint{group.ID}, nil, false, false, "0664", "2775", false, 0, false, 70, nil, true, raw, nil); err != nil {
 		t.Fatal(err)
 	}
 	var share sambaModels.SambaShare
@@ -197,11 +197,11 @@ func TestRejectedExtraConfigDoesNotPersistOrChangeACLs(t *testing.T) {
 			var err error
 			switch operation {
 			case "create":
-				err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, false, raw)
+				err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, false, raw, nil)
 			case "enable":
 				err = svc.SetShareEnabled(context.Background(), uint(share.ID), true)
 			default:
-				err = svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, &share.Enabled, &raw)
+				err = svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, &share.Enabled, &raw, nil)
 			}
 			if !errors.Is(err, ErrInvalidShareConfig) {
 				t.Fatalf("expected testparm rejection, got %v", err)
@@ -244,7 +244,7 @@ func TestUpdateSharePreservesAndClearsExtraConfig(t *testing.T) {
 	addDatasetLookupMocks(t, runner, []mockDataset{{Name: "tank/documents", GUID: "guid-documents", Mountpoint: "/mnt/documents"}})
 	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/documents", "", "", nil)
 	for _, extra := range []*string{nil, new(string)} {
-		if err := svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, nil, extra); err != nil {
+		if err := svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, nil, extra, nil); err != nil {
 			t.Fatal(err)
 		}
 		var stored sambaModels.SambaShare
@@ -264,7 +264,7 @@ func TestUpdateSharePreservesAndClearsExtraConfig(t *testing.T) {
 func TestExtraShareConfigDoesNotBypassManagedAccessValidation(t *testing.T) {
 	svc, _ := newSambaServiceWithMockRunner(t)
 	err := svc.CreateShare(context.Background(), "documents", "guid-documents", nil, nil, nil, nil,
-		false, false, "0664", "2775", false, 0, false, 70, nil, true, `valid users = "@EXAMPLE\Share Users"`)
+		false, false, "0664", "2775", false, 0, false, 70, nil, true, `valid users = "@EXAMPLE\Share Users"`, nil)
 	if err == nil || err.Error() != "no_principals_selected_and_guests_not_allowed" {
 		t.Fatalf("extra config bypassed managed principal requirement: %v", err)
 	}

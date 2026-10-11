@@ -32,6 +32,7 @@ import (
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
@@ -55,6 +56,7 @@ type Service struct {
 	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
 	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
 	Bootstrap BootstrapStartupApplier
+	Directory *directoryservices.Service
 }
 
 type BootstrapStartupApplier interface {
@@ -141,6 +143,24 @@ func (s *Service) startWireGuard(ctx context.Context, enabled bool) {
 		}
 	}
 	s.Network.StartWireGuardMonitor(ctx)
+}
+
+func (s *Service) startSamba(ctx, dCtx context.Context, enabled bool) {
+	if !enabled || (s.Directory != nil && s.Directory.RecoveryPending()) {
+		return
+	}
+	if err := s.InitSamba(ctx); err != nil {
+		logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
+	} else {
+		// FreeBSD's Samba rc script applies one* actions to every member
+		// daemon, including winbindd, regardless of its rc.conf enable flag.
+		if err := ensureServiceStarted("samba_server"); err != nil {
+			logger.L.Error().Err(err).Msg("unable to start samba server")
+		} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
+			logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
+		}
+	}
+	go s.Samba.WatchAuditLogs(dCtx)
 }
 
 func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface, ctx context.Context, dCtx context.Context) error {
@@ -245,6 +265,10 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		logger.L.Error().Err(err).Msg("failed_to_reconcile_managed_routes_on_startup")
 	}
 
+	if err := s.Network.ReconcileGlobalConfig(ctx); err != nil {
+		logger.L.Error().Err(err).Msg("failed_to_reconcile_network_global_config_on_startup")
+	}
+
 	if err := s.System.ReconcilePreparedPPTDevices(); err != nil {
 		return fmt.Errorf("failed to reconcile prepared passthrough devices: %w", err)
 	}
@@ -253,18 +277,15 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		return fmt.Errorf("failed to sync passthrough devices: %w", err)
 	}
 
-	if slices.Contains(basicSettings.Services, models.SambaServer) {
-		if err := s.InitSamba(ctx); err != nil {
-			logger.L.Error().Err(err).Msg("failed to initialize Samba; continuing startup")
-		} else {
-			if err := ensureServiceStarted("samba_server"); err != nil {
-				logger.L.Error().Err(err).Msg("unable to start samba server")
-			} else if output, err := utils.RunCommand("/usr/sbin/service", "samba_server", "onereload"); err != nil {
-				logger.L.Warn().Err(err).Str("output", strings.TrimSpace(output)).Msg("unable to reload samba server configuration")
-			}
+	if s.Directory != nil {
+		if err := s.Directory.Reconcile(ctx); err != nil {
+			logger.L.Error().Err(err).Msg("failed_to_reconcile_directory_services")
 		}
-
-		go s.Samba.WatchAuditLogs(dCtx)
+	}
+	s.startSamba(ctx, dCtx, slices.Contains(basicSettings.Services, models.SambaServer))
+	if s.Directory != nil {
+		go s.Directory.Monitor(dCtx)
+		go s.Directory.MonitorPrincipalCache(dCtx)
 	}
 
 	if slices.Contains(basicSettings.Services, models.Mdns) {

@@ -78,6 +78,7 @@ func shouldRedactAuditPayload(path string) bool {
 		path == "/api/auth/passkeys/register/finish" ||
 		auditPathMatches(path, "/api/dynamic-dns") ||
 		auditPathMatches(path, "/api/certificates") ||
+		auditPathMatches(path, "/api/directory-services") ||
 		(auditPathMatches(path, "/api/cluster") &&
 			!auditPathMatches(path, "/api/cluster/backups") &&
 			!isClusterLifecycleAuditPath(path))

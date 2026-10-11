@@ -14,6 +14,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,9 @@ type SambaConfigRequest struct {
 func sambaConfigServiceErrorStatus(err error) int {
 	if errors.Is(err, samba.ErrInvalidGlobalConfig) {
 		return http.StatusBadRequest
+	}
+	if errors.Is(err, directoryservices.ErrBusy) || errors.Is(err, directoryservices.ErrConflict) {
+		return http.StatusConflict
 	}
 
 	return http.StatusInternalServerError
@@ -79,6 +83,7 @@ func GetGlobalConfig(smbService *samba.Service) gin.HandlerFunc {
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
 // @Failure 403 {object} internal.APIResponse[any] "Forbidden"
+// @Failure 409 {object} internal.APIResponse[any] "Directory operation in progress"
 // @Failure 413 {object} internal.APIResponse[any] "Payload Too Large"
 // @Failure 500 {object} internal.APIResponse[any] "Internal Server Error"
 // @Router /samba/config [put]

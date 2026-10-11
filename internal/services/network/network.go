@@ -83,6 +83,7 @@ type Service struct {
 	firewallAdvancedMutex        sync.Mutex
 	staticRouteMutationMutex     sync.Mutex
 	dhcpRuntimeMutex             sync.Mutex
+	globalConfigMutex            sync.Mutex
 	wireGuardServerMutationMutex sync.Mutex
 	wireGuardClientMutationMutex sync.Mutex
 	firewallCounterSampleMutex   sync.Mutex
@@ -104,6 +105,7 @@ type Service struct {
 	interfaceReferenceCoordinator *interfaceref.Coordinator
 	wireGuardUDPPortInUse         func(port int) bool
 	dhcpRuntime                   dhcpRuntimeOperations
+	globalConfigRuntime           globalConfigRuntimeOperations
 	hostInterfaceL3Eligibility    func(*iface.Interface) string
 
 	LibVirt            libvirtServiceInterfaces.LibvirtServiceInterface

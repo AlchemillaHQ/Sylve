@@ -14,8 +14,10 @@ import (
 	"slices"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 )
 
 type sambaPermissionIDs struct {
@@ -227,15 +229,6 @@ func (s *Service) loadUsersAndGroupsByIDs(
 	return readUsers, writeUsers, readGroups, writeGroups, nil
 }
 
-func namesFromShareAssociations(share sambaModels.SambaShare) sambaPrincipalNames {
-	return sambaPrincipalNames{
-		ReadUsers:   usernames(share.ReadOnlyUsers),
-		WriteUsers:  usernames(share.WriteableUsers),
-		ReadGroups:  groupNames(share.ReadOnlyGroups),
-		WriteGroups: groupNames(share.WriteableGroups),
-	}
-}
-
 func namesFromACLPrincipals(
 	readUsers []models.User,
 	writeUsers []models.User,
@@ -315,6 +308,10 @@ func (s *Service) DisableSharesForDatasets(ctx context.Context, guids []string) 
 	if len(guids) == 0 {
 		return nil
 	}
+	if s.Directory != nil {
+		unlock := s.Directory.LockConfigurationForCleanup()
+		defer unlock()
+	}
 
 	var shares []sambaModels.SambaShare
 	if err := s.DB.Where("enabled = ? AND dataset IN ?", true, guids).Find(&shares).Error; err != nil {
@@ -354,6 +351,11 @@ func (s *Service) DisableSharesForDatasets(ctx context.Context, guids []string) 
 }
 
 func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) error {
+	unlock, err := s.lockDirectoryConfiguration()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	var share sambaModels.SambaShare
 	if err := s.DB.
 		Preload("ReadOnlyUsers").
@@ -378,7 +380,7 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 		if dataset.Mountpoint == "" || dataset.Mountpoint == "-" {
 			return fmt.Errorf("dataset_not_mounted")
 		}
-		if share.ExtraShareConfig != "" {
+		if share.ExtraShareConfig != "" || len(share.DirectoryPermissions.Read)+len(share.DirectoryPermissions.Write) > 0 {
 			if err := s.validateShareConfig(ctx, share, dataset); err != nil {
 				return err
 			}
@@ -388,7 +390,7 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
 
-		principals := namesFromShareAssociations(share)
+		principals := namesFromShareACLs(share)
 		if share.GuestOk {
 			if err := s.syncSambaDatasetGuestACL(dataset.Mountpoint, true, !share.ReadOnly, true); err != nil {
 				return fmt.Errorf("failed_to_enforce_samba_dataset_guest_acl: %w", err)
@@ -423,7 +425,13 @@ func (s *Service) CreateShare(
 	auditedOperations []string,
 	enabled bool,
 	extraShareConfig string,
+	directoryRequest *directoryservices.SharePermissionInput,
 ) error {
+	unlock, err := s.lockDirectoryConfiguration()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
 		return err
 	}
@@ -449,12 +457,17 @@ func (s *Service) CreateShare(
 	}
 
 	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
+	directoryPermissions, err := s.resolveDirectoryPermissions(ctx, directoryModels.SharePermissions{}, directoryRequest)
+	if err != nil {
+		return err
+	}
+	principalCount := normalized.principalCount() + len(directoryPermissions.Read) + len(directoryPermissions.Write)
 
-	if guestEnabled && normalized.principalCount() > 0 {
+	if guestEnabled && principalCount > 0 {
 		return fmt.Errorf("guest_only_share_cannot_have_principals")
 	}
 
-	if !guestEnabled && normalized.principalCount() == 0 {
+	if !guestEnabled && principalCount == 0 {
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
@@ -486,21 +499,22 @@ func (s *Service) CreateShare(
 	}
 
 	share := sambaModels.SambaShare{
-		Name:               name,
-		Dataset:            dataset,
-		CreateMask:         createMask,
-		DirectoryMask:      directoryMask,
-		GuestOk:            guestEnabled,
-		ReadOnly:           !guestWriteable && guestEnabled,
-		ExtraShareConfig:   extraShareConfig,
-		TimeMachine:        timeMachine,
-		TimeMachineMaxSize: timeMachineMaxSize,
-		AuditEnabled:       auditEnabled,
-		AuditRetentionDays: sambaModels.AuditRetentionDaysPointer(auditRetentionDays),
-		AuditedOperations:  auditedOperations,
-		Enabled:            true,
+		Name:                 name,
+		Dataset:              dataset,
+		CreateMask:           createMask,
+		DirectoryMask:        directoryMask,
+		GuestOk:              guestEnabled,
+		ReadOnly:             !guestWriteable && guestEnabled,
+		ExtraShareConfig:     extraShareConfig,
+		DirectoryPermissions: directoryPermissions,
+		TimeMachine:          timeMachine,
+		TimeMachineMaxSize:   timeMachineMaxSize,
+		AuditEnabled:         auditEnabled,
+		AuditRetentionDays:   sambaModels.AuditRetentionDaysPointer(auditRetentionDays),
+		AuditedOperations:    auditedOperations,
+		Enabled:              true,
 	}
-	if extraShareConfig != "" {
+	if extraShareConfig != "" || len(directoryPermissions.Read)+len(directoryPermissions.Write) > 0 {
 		candidate := share
 		candidate.ReadOnlyUsers = readUsers
 		candidate.WriteableUsers = writeUsers
@@ -515,7 +529,7 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 	}
 
-	desiredPrincipals := namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
+	desiredPrincipals := appendDirectoryACLPrincipals(namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups), directoryPermissions)
 	if !guestEnabled {
 		if err := s.syncSambaDatasetPrincipalACLs(
 			fDataset.Mountpoint,
@@ -604,7 +618,13 @@ func (s *Service) UpdateShare(
 	auditedOperations []string,
 	enabled *bool,
 	extraShareConfig *string,
+	directoryRequest *directoryservices.SharePermissionInput,
 ) error {
+	unlock, err := s.lockDirectoryConfiguration()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if err := validateSambaShareInput(name, createMask, directoryMask, auditedOperations); err != nil {
 		return err
 	}
@@ -653,12 +673,17 @@ func (s *Service) UpdateShare(
 	}
 
 	normalized := normalizeSambaPermissionIDs(readUserIDs, writeUserIDs, readGroupIDs, writeGroupIDs)
+	directoryPermissions, err := s.resolveDirectoryPermissions(ctx, share.DirectoryPermissions, directoryRequest)
+	if err != nil {
+		return err
+	}
+	principalCount := normalized.principalCount() + len(directoryPermissions.Read) + len(directoryPermissions.Write)
 
-	if guestEnabled && normalized.principalCount() > 0 {
+	if guestEnabled && principalCount > 0 {
 		return fmt.Errorf("guest_only_share_cannot_have_principals")
 	}
 
-	if !guestEnabled && normalized.principalCount() == 0 {
+	if !guestEnabled && principalCount == 0 {
 		return fmt.Errorf("no_principals_selected_and_guests_not_allowed")
 	}
 
@@ -703,13 +728,14 @@ func (s *Service) UpdateShare(
 	share.GuestOk = guestEnabled
 	share.ReadOnly = !guestWriteable && guestEnabled
 	share.ExtraShareConfig = desiredExtraShareConfig
+	share.DirectoryPermissions = directoryPermissions
 	share.TimeMachine = timeMachine
 	share.TimeMachineMaxSize = timeMachineMaxSize
 	share.AuditEnabled = auditEnabled
 	share.AuditRetentionDays = sambaModels.AuditRetentionDaysPointer(auditRetentionDays)
 	share.AuditedOperations = auditedOperations
 	share.Enabled = desiredEnabled
-	if previousShare.ExtraShareConfig != "" || desiredExtraShareConfig != "" {
+	if previousShare.ExtraShareConfig != "" || desiredExtraShareConfig != "" || len(directoryPermissions.Read)+len(directoryPermissions.Write) > 0 {
 		candidate := share
 		candidate.ReadOnlyUsers = readUsers
 		candidate.WriteableUsers = writeUsers
@@ -725,10 +751,10 @@ func (s *Service) UpdateShare(
 			return fmt.Errorf("failed_to_enforce_samba_dataset_acl_properties: %w", err)
 		}
 
-		previousPrincipals := namesFromShareAssociations(previousShare)
+		previousPrincipals := namesFromShareACLs(previousShare)
 		desiredPrincipals := sambaPrincipalNames{}
 		if !guestEnabled {
-			desiredPrincipals = namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups)
+			desiredPrincipals = appendDirectoryACLPrincipals(namesFromACLPrincipals(readUsers, writeUsers, readGroups, writeGroups), directoryPermissions)
 		}
 
 		if dataset == previousShare.Dataset {
@@ -870,6 +896,11 @@ func (s *Service) UpdateShare(
 }
 
 func (s *Service) DeleteShare(ctx context.Context, id uint) error {
+	unlock, err := s.lockDirectoryConfiguration()
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	var share sambaModels.SambaShare
 	if err := s.DB.
 		Preload("ReadOnlyUsers").
@@ -880,7 +911,7 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 		return fmt.Errorf("share_not_found: %w", err)
 	}
 
-	previousPrincipals := namesFromShareAssociations(share)
+	previousPrincipals := namesFromShareACLs(share)
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
 	if err != nil {
 		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")

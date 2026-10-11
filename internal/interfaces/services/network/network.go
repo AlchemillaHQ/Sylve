@@ -148,4 +148,5 @@ type StartupNetworkServiceInterface interface {
 	RecoverHostInterfaceL3() error
 	ReconcileHostInterfaceL3() error
 	StartHostInterfaceL3Sweeper(ctx context.Context)
+	ReconcileGlobalConfig(ctx context.Context) error
 }

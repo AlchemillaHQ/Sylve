@@ -1,5 +1,6 @@
 import { z } from 'zod/v4';
 import { GroupSchema, UserSchema } from '../auth';
+import { DirectoryPrincipalSchema } from '../directory-services';
 
 export const SambaPrincipalUserSchema = UserSchema.pick({
 	id: true,
@@ -13,7 +14,8 @@ export const SambaPrincipalGroupSchema = GroupSchema.pick({
 
 export const SambaPrincipalSetSchema = z.object({
 	users: z.array(SambaPrincipalUserSchema).default([]),
-	groups: z.array(SambaPrincipalGroupSchema).default([])
+	groups: z.array(SambaPrincipalGroupSchema).default([]),
+	directory: z.array(DirectoryPrincipalSchema).default([])
 });
 
 export const SambaPermissionsSchema = z.object({

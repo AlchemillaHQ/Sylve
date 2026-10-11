@@ -217,7 +217,12 @@
 								]
 							}
 						]
-					}
+					},
+					{
+						label: 'Global Configuration',
+						icon: 'mdi--cog-outline',
+						href: `/${node}/network/global-config`
+					},
 				].filter(Boolean) as NodeItem[]
 			},
 
@@ -331,7 +336,38 @@
 					}
 				]
 			},
-
+			{
+				label: 'Directory Services',
+				icon: 'carbon--directory-domain',
+				children: [
+					hasSamba && {
+						label: 'Active Directory',
+						icon: 'mdi--server-network',
+						href: `/${node}/directory-services/active-directory`
+					},
+					{
+						label: 'Kerberos',
+						icon: 'mdi--key-chain',
+						children: [
+							{
+								label: 'Realms',
+								icon: 'mdi--earth',
+								href: `/${node}/directory-services/kerberos/realms`
+							},
+							{
+								label: 'Keytabs',
+								icon: 'mdi--key-chain',
+								href: `/${node}/directory-services/kerberos/keytabs`
+							},
+							{
+								label: 'Settings',
+								icon: 'mdi--cog-outline',
+								href: `/${node}/directory-services/kerberos/settings`
+							}
+						]
+					}
+				].filter(Boolean) as NodeItem[]
+			},
 			{
 				label: 'Authentication',
 				icon: 'mdi--shield-key',

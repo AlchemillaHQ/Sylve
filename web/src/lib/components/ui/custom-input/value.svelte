@@ -8,6 +8,7 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 
 	interface Props {
+		id?: string;
 		label?: string;
 		labelHTML?: boolean;
 		value: string | number;
@@ -32,6 +33,7 @@
 	}
 
 	let {
+		id = '',
 		value = $bindable(''),
 		label = '',
 		labelHTML = false,
@@ -51,7 +53,7 @@
 	}: Props = $props();
 
 	// svelte-ignore state_referenced_locally
-	let nanoId = $state(generateNanoId(label));
+	let nanoId = $state(id || generateNanoId(label));
 	let passwordFocused = $state(false);
 	let effectiveType = $derived(
 		type === 'password' && revealOnFocus && passwordFocused ? 'text' : type

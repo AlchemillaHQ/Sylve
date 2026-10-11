@@ -25,6 +25,7 @@ import (
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	certificateHandlers "github.com/alchemillahq/sylve/internal/handlers/certificates"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
+	directoryHandlers "github.com/alchemillahq/sylve/internal/handlers/directoryservices"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	dynamicDNSHandlers "github.com/alchemillahq/sylve/internal/handlers/dynamicdns"
 	eventsHandlers "github.com/alchemillahq/sylve/internal/handlers/events"
@@ -46,6 +47,7 @@ import (
 	authServicePkg "github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/certificates"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 	diskServicePkg "github.com/alchemillahq/sylve/internal/services/disk"
 	"github.com/alchemillahq/sylve/internal/services/dynamicdns"
 	infoService "github.com/alchemillahq/sylve/internal/services/info"
@@ -297,6 +299,44 @@ func RegisterRoutes(r *gin.Engine,
 		samba.GET("/audit-logs", sambaHandlers.GetAuditLogs(sambaService))
 	}
 
+	if directoryService := sambaService.Directory; directoryService != nil {
+		recoveryGroup := api.Group("/directory-services/recovery")
+		recoveryGroup.Use(middleware.EnsureAuthenticated(authService))
+		recoveryGroup.Use(EnsureCorrectHost(db, authService))
+		recoveryGroup.Use(middleware.RequireLocalAdmin(authService))
+		recoveryGroup.Use(middleware.LimitRequestBody(directoryservices.MaxRecoveryRequestBytes))
+		recoveryGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		recoveryGroup.GET("", directoryHandlers.GetRecoveryInfo(directoryService))
+		recoveryGroup.POST("/export", directoryHandlers.ExportRecovery(directoryService))
+		recoveryGroup.POST("/restore", directoryHandlers.RestoreRecovery(directoryService))
+		recoveryGroup.POST("/rollback", directoryHandlers.RollbackRecovery(directoryService))
+		directoryGroup := api.Group("/directory-services")
+		directoryGroup.Use(middleware.EnsureAuthenticated(authService))
+		directoryGroup.Use(EnsureCorrectHost(db, authService))
+		directoryGroup.Use(middleware.LimitRequestBody(directoryservices.MaxRequestBodyBytes))
+		directoryGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		directoryGroup.GET("/active-directory", directoryHandlers.GetAD(directoryService))
+		directoryGroup.PUT("/active-directory", directoryHandlers.UpdateAD(directoryService))
+		directoryGroup.GET("/active-directory/status", directoryHandlers.GetStatus(directoryService))
+		directoryGroup.POST("/active-directory/check", directoryHandlers.CheckStatus(directoryService))
+		directoryGroup.POST("/active-directory/discover", directoryHandlers.DiscoverAD(directoryService))
+		directoryGroup.POST("/active-directory/join", directoryHandlers.Join(directoryService))
+		directoryGroup.POST("/active-directory/leave", directoryHandlers.Leave(directoryService))
+		directoryGroup.PUT("/active-directory/enabled", directoryHandlers.SetEnabled(directoryService))
+		directoryGroup.GET("/principals", directoryHandlers.Principals(directoryService))
+		directoryGroup.GET("/kerberos/realms", directoryHandlers.ListRealms(directoryService))
+		directoryGroup.POST("/kerberos/realms/discover", directoryHandlers.DiscoverRealm(directoryService))
+		directoryGroup.POST("/kerberos/realms", directoryHandlers.CreateRealm(directoryService))
+		directoryGroup.PUT("/kerberos/realms/:id", directoryHandlers.UpdateRealm(directoryService))
+		directoryGroup.DELETE("/kerberos/realms/:id", directoryHandlers.DeleteRealm(directoryService))
+		directoryGroup.GET("/kerberos/keytabs", directoryHandlers.ListKeytabs(directoryService))
+		directoryGroup.POST("/kerberos/keytabs", directoryHandlers.CreateKeytab(directoryService))
+		directoryGroup.PUT("/kerberos/keytabs/:id", directoryHandlers.UpdateKeytab(directoryService))
+		directoryGroup.DELETE("/kerberos/keytabs/:id", directoryHandlers.DeleteKeytab(directoryService))
+		directoryGroup.GET("/kerberos/settings", directoryHandlers.GetSettings(directoryService))
+		directoryGroup.PUT("/kerberos/settings", directoryHandlers.UpdateSettings(directoryService))
+	}
+
 	mdnsGroup := api.Group("/mdns")
 	mdnsGroup.Use(middleware.EnsureAuthenticated(authService))
 	mdnsGroup.Use(EnsureCorrectHost(db, authService))
@@ -474,6 +514,13 @@ func RegisterRoutes(r *gin.Engine,
 			routes.POST("", networkHandlers.CreateStaticRoute(networkService))
 			routes.PUT("/:id", networkHandlers.EditStaticRoute(networkService))
 			routes.DELETE("/:id", networkHandlers.DeleteStaticRoute(networkService))
+		}
+
+		globalConfig := network.Group("/global-config")
+		globalConfig.Use(middleware.RequireLocalAdminForWrites(authService))
+		{
+			globalConfig.GET("", networkHandlers.GetNetworkGlobalConfig(networkService))
+			globalConfig.PUT("", networkHandlers.UpdateNetworkGlobalConfig(networkService))
 		}
 
 		wireGuardServer := network.Group("/wireguard/server")

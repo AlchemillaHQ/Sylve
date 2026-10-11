@@ -11,7 +11,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +61,19 @@ type fakeNetwork struct {
 	manualCalls   []manualCall
 	standardFn    func(networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error)
 	manualFn      func(string, string) (*networkModels.ManualSwitch, error)
+	dnsCalls      [][]string
+	dnsFn         func(context.Context, []string) error
+}
+
+func (f *fakeNetwork) ApplyBootstrapDNS(ctx context.Context, servers []string) error {
+	f.mu.Lock()
+	f.dnsCalls = append(f.dnsCalls, append([]string{}, servers...))
+	dnsFn := f.dnsFn
+	f.mu.Unlock()
+	if dnsFn != nil {
+		return dnsFn(ctx, servers)
+	}
+	return nil
 }
 
 func (f *fakeNetwork) NewStandardSwitch(request networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error) {
@@ -105,7 +117,6 @@ func newTestEngine(t *testing.T, settings *fakeSettings, network *fakeNetwork) (
 	resolver := filepath.Join(directory, "resolv.conf")
 	service := NewService(settings, network)
 	service.startupPath = source
-	service.resolverPath = resolver
 	return service, source, resolver
 }
 
@@ -437,9 +448,6 @@ func TestApplySourceModificationIsNeverArchived(t *testing.T) {
 		return 1, nil
 	}
 
-	writeCalls := 0
-	engine.writeResolver = func(string, []byte, os.FileMode) error { writeCalls++; return nil }
-
 	report := engine.Apply(context.Background(), source)
 
 	if report.GeneralError == "" || !report.Failed() {
@@ -448,8 +456,8 @@ func TestApplySourceModificationIsNeverArchived(t *testing.T) {
 	if report.Archived {
 		t.Fatalf("modified source archived: %+v", report)
 	}
-	if writeCalls != 0 {
-		t.Fatalf("resolver written despite source change: %d", writeCalls)
+	if len(network.dnsCalls) != 0 {
+		t.Fatalf("DNS applied despite source change: %v", network.dnsCalls)
 	}
 	if item := mustFindItem(t, report, "dns", 0); item.Status != systemServiceInterfaces.BootstrapDeferred {
 		t.Fatalf("dns item = %+v", item)
@@ -496,24 +504,13 @@ func TestApplyWithoutDNSNeverTouchesResolver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	readCalls := 0
-	baseRead := engine.readResolver
-	engine.readResolver = func(path string) ([]byte, error) {
-		if path == resolver {
-			readCalls++
-		}
-		return baseRead(path)
-	}
-	writeCalls := 0
-	engine.writeResolver = func(string, []byte, os.FileMode) error { writeCalls++; return nil }
-
 	report := engine.Apply(context.Background(), source)
 
 	if report.Failed() || !report.Archived {
 		t.Fatalf("clean apply = %+v", report)
 	}
-	if readCalls != 0 || writeCalls != 0 {
-		t.Fatalf("resolver touched without dns: reads=%d writes=%d", readCalls, writeCalls)
+	if len(network.dnsCalls) != 0 {
+		t.Fatalf("DNS applied without dns: %v", network.dnsCalls)
 	}
 	content, err := os.ReadFile(resolver)
 	if err != nil || string(content) != "nameserver 9.9.9.9\n" {
@@ -530,9 +527,6 @@ func TestApplyDNSDeferredWhenOrdinaryItemFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeCalls := 0
-	engine.writeResolver = func(string, []byte, os.FileMode) error { writeCalls++; return nil }
-
 	report := engine.Apply(context.Background(), source)
 
 	if !report.Failed() || report.Archived {
@@ -542,8 +536,8 @@ func TestApplyDNSDeferredWhenOrdinaryItemFails(t *testing.T) {
 	if item.Status != systemServiceInterfaces.BootstrapDeferred {
 		t.Fatalf("dns item = %+v", item)
 	}
-	if writeCalls != 0 {
-		t.Fatalf("deferred DNS wrote resolver %d times", writeCalls)
+	if len(network.dnsCalls) != 0 {
+		t.Fatalf("deferred DNS dispatched: %v", network.dnsCalls)
 	}
 	content, _ := os.ReadFile(resolver)
 	if string(content) != "nameserver 9.9.9.9\n" {
@@ -551,99 +545,20 @@ func TestApplyDNSDeferredWhenOrdinaryItemFails(t *testing.T) {
 	}
 }
 
-func TestApplyDNSReplacesNameserversAndPreservesOtherLines(t *testing.T) {
+func TestApplyDNSUsesPersistentNetworkConfiguration(t *testing.T) {
 	settings := &fakeSettings{}
 	network := &fakeNetwork{}
-	engine, source, resolver := newTestEngine(t, settings, network)
+	engine, source, _ := newTestEngine(t, settings, network)
 	writeSource(t, source, `{"version":1,"dns":["1.1.1.1","2606:4700:4700::1111"]}`)
-	original := "# managed by hand\nsearch example.com\nnameserver 8.8.8.8\nnameserver 8.8.4.4\noptions edns0\n"
-	if err := os.WriteFile(resolver, []byte(original), 0o640); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(resolver, 0o640); err != nil {
-		t.Fatal(err)
-	}
-	originalFile, err := os.Open(resolver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer originalFile.Close()
-
 	report := engine.Apply(context.Background(), source)
-
 	if report.Failed() || !report.Archived {
 		t.Fatalf("dns apply = %+v", report)
 	}
 	if item := mustFindItem(t, report, "dns", 0); item.Status != systemServiceInterfaces.BootstrapApplied {
 		t.Fatalf("dns item = %+v", item)
 	}
-	content, err := os.ReadFile(resolver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := string(content)
-	for _, preserved := range []string{"# managed by hand", "search example.com", "options edns0"} {
-		if !strings.Contains(got, preserved) {
-			t.Fatalf("resolver lost %q: %q", preserved, got)
-		}
-	}
-	if strings.Contains(got, "8.8.8.8") || strings.Contains(got, "8.8.4.4") {
-		t.Fatalf("old nameservers retained: %q", got)
-	}
-	expected := "# managed by hand\nsearch example.com\nnameserver 1.1.1.1\nnameserver 2606:4700:4700::1111\noptions edns0\n"
-	if got != expected {
-		t.Fatalf("resolver = %q, want %q", got, expected)
-	}
-	info, err := os.Stat(resolver)
-	if err != nil || info.Mode().Perm() != 0o640 {
-		t.Fatalf("resolver permissions not preserved: info=%v error=%v", info, err)
-	}
-	previous, err := io.ReadAll(originalFile)
-	if err != nil || string(previous) != original {
-		t.Fatalf("resolver was overwritten in place: %q error=%v", previous, err)
-	}
-}
-
-func TestApplyDNSCreatesMissingResolver(t *testing.T) {
-	settings := &fakeSettings{}
-	network := &fakeNetwork{}
-	engine, source, resolver := newTestEngine(t, settings, network)
-	writeSource(t, source, `{"version":1,"dns":["1.1.1.1"]}`)
-
-	report := engine.Apply(context.Background(), source)
-
-	if report.Failed() || !report.Archived {
-		t.Fatalf("dns apply = %+v", report)
-	}
-	content, err := os.ReadFile(resolver)
-	if err != nil {
-		t.Fatalf("resolver not created: %v", err)
-	}
-	if string(content) != "nameserver 1.1.1.1\n" {
-		t.Fatalf("resolver = %q", content)
-	}
-}
-
-func TestRewriteResolver(t *testing.T) {
-	cases := []struct {
-		name     string
-		existing string
-		servers  []string
-		want     string
-	}{
-		{"empty", "", []string{"1.1.1.1"}, "nameserver 1.1.1.1\n"},
-		{"append when absent", "search x\n", []string{"1.1.1.1"}, "search x\nnameserver 1.1.1.1\n"},
-		{"replace in place", "a\nnameserver 8.8.8.8\nb\n", []string{"1.1.1.1", "2.2.2.2"}, "a\nnameserver 1.1.1.1\nnameserver 2.2.2.2\nb\n"},
-		{"comment untouched", "#nameserver 8.8.8.8\nnameserver 8.8.8.8\n", []string{"1.1.1.1"}, "#nameserver 8.8.8.8\nnameserver 1.1.1.1\n"},
-		{"no trailing newline preserved", "search x", []string{"1.1.1.1"}, "search x\nnameserver 1.1.1.1\n"},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			got := string(rewriteResolver([]byte(testCase.existing), testCase.servers))
-			if got != testCase.want {
-				t.Fatalf("rewriteResolver = %q, want %q", got, testCase.want)
-			}
-		})
+	if len(network.dnsCalls) != 1 || strings.Join(network.dnsCalls[0], ",") != "1.1.1.1,2606:4700:4700::1111" {
+		t.Fatalf("DNS calls = %v", network.dnsCalls)
 	}
 }
 
@@ -764,7 +679,6 @@ func TestApplySettingsNilApplierIsReported(t *testing.T) {
 	network := &fakeNetwork{}
 	engine := NewService(nil, network)
 	engine.startupPath = filepath.Join(t.TempDir(), "bootstrap.json")
-	engine.resolverPath = filepath.Join(t.TempDir(), "resolv.conf")
 	source := engine.startupPath
 	writeSource(t, source, `{"version":1,"services":["jails"]}`)
 
@@ -779,7 +693,6 @@ func TestApplyNilNetworkFailsSwitchesOnly(t *testing.T) {
 	settings := &fakeSettings{}
 	engine := NewService(settings, nil)
 	engine.startupPath = filepath.Join(t.TempDir(), "bootstrap.json")
-	engine.resolverPath = filepath.Join(t.TempDir(), "resolv.conf")
 	source := engine.startupPath
 	writeSource(t, source, `{"version":1,"switches":[{"type":"manual","manual":{"name":"uplink","bridge":"bridge0"}}]}`)
 
@@ -912,8 +825,7 @@ func TestApplyDNSFailureRetainsFileAndPermitsRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	writeResolver := engine.writeResolver
-	engine.writeResolver = func(string, []byte, os.FileMode) error { return errors.New("simulated resolver failure") }
+	network.dnsFn = func(context.Context, []string) error { return errors.New("simulated resolver failure") }
 
 	first := engine.Apply(context.Background(), source)
 	if !first.Failed() || first.Archived {
@@ -926,7 +838,9 @@ func TestApplyDNSFailureRetainsFileAndPermitsRetry(t *testing.T) {
 		t.Fatalf("source retained after dns failure: %v", err)
 	}
 
-	engine.writeResolver = writeResolver
+	network.dnsFn = func(_ context.Context, servers []string) error {
+		return os.WriteFile(resolver, []byte("nameserver "+servers[0]+"\n"), 0o644)
+	}
 	second := engine.Apply(context.Background(), source)
 	if second.Failed() || !second.Archived {
 		t.Fatalf("dns retry = %+v", second)
@@ -1303,7 +1217,7 @@ func TestApplyCancellationBeforeArchiveRetainsSuccesses(t *testing.T) {
 	}
 }
 
-func TestApplyCancellationDuringResolverReadDoesNotWrite(t *testing.T) {
+func TestApplyCancellationDuringDNSApplicationRetainsSource(t *testing.T) {
 	settings := &fakeSettings{}
 	network := &fakeNetwork{}
 	engine, source, resolver := newTestEngine(t, settings, network)
@@ -1313,17 +1227,15 @@ func TestApplyCancellationDuringResolverReadDoesNotWrite(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	engine.readResolver = func(string) ([]byte, error) {
+	network.dnsFn = func(ctx context.Context, _ []string) error {
 		cancel()
-		return []byte("nameserver 8.8.8.8\n"), nil
+		return ctx.Err()
 	}
-	writeCalls := 0
-	engine.writeResolver = func(string, []byte, os.FileMode) error { writeCalls++; return nil }
 
 	report := engine.Apply(ctx, source)
 
-	if writeCalls != 0 {
-		t.Fatalf("resolver written after cancellation: %d", writeCalls)
+	if content, err := os.ReadFile(resolver); err != nil || string(content) != "nameserver 8.8.8.8\n" {
+		t.Fatalf("resolver changed after cancellation: %q %v", content, err)
 	}
 	if report.Archived {
 		t.Fatalf("archive must not run after cancellation: %+v", report)

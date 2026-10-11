@@ -3,6 +3,7 @@
 	import * as Command from '$lib/components/ui/command/index.js';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import * as Popover from '$lib/components/ui/popover/index.js';
+	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { generateNanoId } from '$lib/utils/string';
 	import { cn } from '$lib/utils.js';
 	import { watch } from 'runed';
@@ -17,10 +18,15 @@
 	interface Props {
 		open: boolean;
 		label?: string;
+		hint?: string;
 		labelStatus?: { text: string; className?: string };
 		value: string | string[];
 		data: ComboBoxItem[];
 		onValueChange?: (value: string | string[]) => void;
+		onSearchChange?: (query: string) => void;
+		loading?: boolean;
+		loadingText?: string;
+		searchError?: string;
 		placeholder?: string;
 		disabled?: boolean;
 		classes?: string;
@@ -44,9 +50,14 @@
 	let {
 		open = $bindable(false),
 		label = '',
+		hint = '',
 		labelStatus,
 		data = [],
 		onValueChange = () => {},
+		onSearchChange,
+		loading = false,
+		loadingText = 'Loading...',
+		searchError = '',
 		placeholder = '',
 		disabled = false,
 		classes = 'space-y-1',
@@ -65,6 +76,10 @@
 	}: Props = $props();
 
 	let search = $state('');
+	watch(
+		() => search,
+		(value) => onSearchChange?.(value)
+	);
 	let suppressCustomInData = $state(false);
 	// svelte-ignore state_referenced_locally
 	let nanoId = $state(generateNanoId(label));
@@ -75,6 +90,7 @@
 			if (val) {
 				search = '';
 				suppressCustomInData = false;
+				onSearchChange?.('');
 			}
 		}
 	);
@@ -95,8 +111,8 @@
 	});
 
 	const filteredData = $derived.by(() => {
-		if (!search) return effectiveData;
-		const q = search.toLowerCase();
+		const q = search.trim().toLowerCase();
+		if (!q) return effectiveData;
 		return effectiveData.filter(
 			({ label, value }) => label.toLowerCase().includes(q) || value.toLowerCase().includes(q)
 		);
@@ -156,6 +172,19 @@
 					</span>
 				{/if}
 			</Label>
+			{#if hint}
+				<Tooltip.Root>
+					<Tooltip.Trigger
+						aria-label="Help Information"
+						class="inline-flex items-center justify-center"
+					>
+						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
+					</Tooltip.Trigger>
+					<Tooltip.Content class="text-pretty break-words" style="max-width: 250px">
+						{hint}
+					</Tooltip.Content>
+				</Tooltip.Root>
+			{/if}
 			{#if topRightButton}
 				<Button
 					variant="outline"
@@ -236,7 +265,18 @@
 						}
 					}}
 				/>
-				<Command.Empty>No data</Command.Empty>
+				<Command.Empty>{loading ? loadingText : searchError || 'No data'}</Command.Empty>
+				{#if loading && filteredData.length > 0}
+					<p class="text-muted-foreground px-3 py-2 text-xs" role="status">
+						{loadingText}
+					</p>
+				{/if}
+				{#if searchError && filteredData.length > 0}<p
+						class="text-destructive px-3 py-2 text-xs"
+						role="alert"
+					>
+						{searchError}
+					</p>{/if}
 				<div class="max-h-64 overflow-y-auto">
 					<Command.Group>
 						{#each filteredData as element (element.value)}
@@ -252,13 +292,7 @@
 								<span
 									class={`icon-[lucide--check] ${cn(
 										'mr-2 h-4 w-4',
-										multiple
-											? Array.isArray(value) && value.includes(element.value)
-												? 'opacity-100'
-												: 'opacity-0'
-											: value === element.value
-												? 'opacity-100'
-												: 'opacity-0'
+										isSelected(element.value) ? 'opacity-100' : 'opacity-0'
 									)}`}
 								></span>
 								{#if element.description}

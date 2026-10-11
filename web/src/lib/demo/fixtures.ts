@@ -12,6 +12,7 @@ import { demoVMProfiles, getDemoVMProfile, getDemoVMProfileByMedia } from './vm-
 import { handleDemoAdminRequest } from './admin-fixtures';
 import { handleDemoNetworkRequest } from './network-fixtures';
 import { handleDemoStorageRequest } from './storage-fixtures';
+import { handleDemoDirectoryRequest } from './directory-fixtures';
 
 type DemoRequestConfig = {
 	url: string;
@@ -2107,6 +2108,8 @@ export async function handleDemoRequest<T = unknown>(
 	const path = parsed.pathname.startsWith('/api/') ? parsed.pathname.slice(4) : parsed.pathname;
 	const method = (config.method || 'GET').toUpperCase();
 	const hostname = hostnameFor(config);
+	const directoryResponse = handleDemoDirectoryRequest<T>(config, parsed, path, method, hostname);
+	if (directoryResponse) return directoryResponse;
 	const networkResponse = handleDemoNetworkRequest<T>(config, parsed, path, method, hostname);
 	if (networkResponse) return networkResponse;
 	const storageResponse = handleDemoStorageRequest<T>(config, parsed, path, method, hostname);

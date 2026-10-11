@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/alchemillahq/gzfs"
+	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	sambaServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/samba"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
+	"github.com/alchemillahq/sylve/internal/services/directoryservices"
 
 	"gorm.io/gorm"
 )
@@ -31,6 +33,8 @@ type Service struct {
 	OnConfigChange          func() error
 	EnsureMdnsEnabled       func(*gorm.DB) error
 	WithServiceSettingsLock func(func() error) error
+	Directory               *directoryservices.Service
+	directoryOverride       *directoryModels.ActiveDirectory
 
 	interfaceReferenceCoordinator *interfaceref.Coordinator
 

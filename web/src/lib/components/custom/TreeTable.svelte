@@ -26,6 +26,7 @@
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
+		borderTop?: boolean;
 		customPlaceholder?: string;
 		initialSort?: { column: string; dir: 'asc' | 'desc' }[];
 		movable?: boolean;
@@ -42,6 +43,7 @@
 		parentActiveRow = $bindable([]),
 		query = $bindable(),
 		multipleSelect = true,
+		borderTop = false,
 		customPlaceholder = 'No data available',
 		initialSort,
 		movable = false,
@@ -420,7 +422,7 @@
 </script>
 
 <ContextMenu.Root>
-	<ContextMenu.Trigger class="flex flex-1 min-h-0">
+	<ContextMenu.Trigger class={['flex flex-1 min-h-0', borderTop && 'border-t']}>
 		<div
 			bind:this={tableComponent}
 			class="flex-1 min-h-0 cursor-pointer s-tree-table-container"

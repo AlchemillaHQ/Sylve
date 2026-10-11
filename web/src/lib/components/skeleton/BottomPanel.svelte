@@ -173,6 +173,7 @@
 		'/api/network/dhcp/config': 'DHCP Config',
 		'/api/network/dhcp/range': 'DHCP Range',
 		'/api/network/dhcp/lease': 'DHCP Lease',
+		'/api/network/global-config': 'Global Configuration',
 		'/api/network/interface/l3': 'Host IP',
 		'/api/network/interface/l3/pending': 'Host IP - Pending',
 		'/api/system/file-explorer/delete': 'File Explorer - Delete',
@@ -192,6 +193,22 @@
 		'/api/auth/users/pam': 'Auth User - PAM',
 		'/api/auth/users': 'Auth User',
 		'/api/samba/config': 'Samba Config - Edit',
+		'/api/directory-services/active-directory': 'Active Directory',
+		'/api/directory-services/active-directory/status': 'Active Directory - View Status',
+		'/api/directory-services/active-directory/check': 'Active Directory - Check Connection',
+		'/api/directory-services/active-directory/discover': 'Active Directory - Discover Domain',
+		'/api/directory-services/active-directory/join': 'Active Directory - Join Domain',
+		'/api/directory-services/active-directory/leave': 'Active Directory - Leave Domain',
+		'/api/directory-services/active-directory/enabled': 'Active Directory - Update State',
+		'/api/directory-services/principals': 'Active Directory - Search Principals',
+		'/api/directory-services/kerberos/realms': 'Kerberos Realm',
+		'/api/directory-services/kerberos/realms/discover': 'Kerberos Realm - Discover Servers',
+		'/api/directory-services/kerberos/keytabs': 'Kerberos Keytab',
+		'/api/directory-services/kerberos/settings': 'Kerberos Settings',
+		'/api/directory-services/recovery': 'Directory Services Recovery',
+		'/api/directory-services/recovery/export': 'Directory Services Recovery - Export Backup',
+		'/api/directory-services/recovery/restore': 'Directory Services Recovery - Restore State',
+		'/api/directory-services/recovery/rollback': 'Directory Services Recovery - Roll Back Restore',
 		'/api/zfs/datasets/snapshot/periodic': 'ZFS Periodic Snapshot',
 		'/api/zfs/datasets/snapshot': 'ZFS Snapshot',
 		'/api/vm/start': 'VM - Start',
@@ -369,6 +386,7 @@
 			'/api/network/interface/:interface/l3/reapply': 'Host IP - Reapply',
 			'/api/network/host-ip/pending/:id/confirm': 'Host IP - Confirm',
 			'/api/network/host-ip/pending/:id/revert': 'Host IP - Revert',
+			'/api/directory-services/kerberos/keytabs': 'Kerberos Keytab - Upload',
 			'/api/network/dhcp/range': 'DHCP Range - Create',
 			'/api/dynamic-dns/entries': 'Dynamic DNS Entry - Create',
 			'/api/dynamic-dns/entries/:id/sync': 'Dynamic DNS Entry - Sync',
@@ -1346,6 +1364,12 @@
 		return match ? `Policy ID ${match[1]}` : null;
 	}
 
+	function directoryEntryActionIdentity(path: string): string | null {
+		const match = path.match(/^\/api\/directory-services\/kerberos\/(realms|keytabs)\/(\d+)$/);
+		if (!match) return null;
+		return match[1] === 'realms' ? `Realm ID ${match[2]}` : `Keytab ID ${match[2]}`;
+	}
+
 	function normalizeActionPath(path: string): string {
 		const segments = path.split('/');
 		if (segments[1] === 'api' && segments[2] === 'disk' && segments.length === 5) {
@@ -1434,6 +1458,11 @@
 				resolvedAction += ` - ${replicationIdentity}`;
 			}
 
+			const directoryEntryIdentity = directoryEntryActionIdentity(path);
+			if (directoryEntryIdentity) {
+				resolvedAction += ` - ${directoryEntryIdentity}`;
+			}
+
 			const downloaderUploadTarget = downloaderUploadAuditTarget(
 				path,
 				method,
@@ -1469,7 +1498,7 @@
 				resolvedAction = `File Explorer - Batch ${move ? 'Move' : 'Copy'}`;
 			}
 
-			if (method.toUpperCase() === 'DELETE') {
+			if (method.toUpperCase() === 'DELETE' && recordCopy.action.body !== '[REDACTED]') {
 				const itemID = itemIDFromActionPath(path, normalizedPath);
 				if (itemID !== undefined) {
 					recordCopy.action.body = { id: itemID };

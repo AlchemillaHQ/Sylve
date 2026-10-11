@@ -17,6 +17,10 @@ import type {
 	RenderedConfig
 } from '$lib/types/network/firewall';
 import type { Iface } from '$lib/types/network/iface';
+import {
+	NetworkGlobalConfigUpdateSchema,
+	type NetworkGlobalConfig
+} from '$lib/types/network/global-config';
 import type { HostInterfaceL3Entry, HostInterfaceL3PendingEntry } from '$lib/types/network/ifaceL3';
 import type { MdnsRecordWithManaged, MdnsSettings } from '$lib/types/network/mdns';
 import type { NetworkObject, NetworkObjectUsage } from '$lib/types/network/object';
@@ -49,6 +53,7 @@ export type DemoNetworkResponse<T = unknown> = {
 };
 
 type DemoNetworkState = {
+	globalConfig: NetworkGlobalConfig;
 	objects: NetworkObject[];
 	interfaces: Iface[];
 	switches: SwitchList;
@@ -781,6 +786,20 @@ function createState(hostname: string): DemoNetworkState {
 	return {
 		objects,
 		interfaces: createInterfaces(hostname),
+		globalConfig: {
+			revision: 0,
+			dnsMode: 'os',
+			dnsServers: [],
+			searchDomainsOverride: false,
+			searchDomains: [],
+			hostAliases: [],
+			hostname,
+			effectiveDnsServers: ['10.30.0.1'],
+			effectiveSearchDomains: ['demo.sylve.io'],
+			ipv4Gateway: '10.30.0.1',
+			ipv6Gateway: null,
+			warnings: []
+		},
 		switches,
 		routes: [
 			{
@@ -1788,6 +1807,38 @@ export function handleDemoNetworkRequest<T = unknown>(
 ): DemoNetworkResponse<T> | null {
 	const state = stateFor(hostname);
 	const body = payload(config);
+
+	if (path === '/network/global-config' && method === 'GET') {
+		return success(state.globalConfig) as DemoNetworkResponse<T>;
+	}
+	if (path === '/network/global-config' && method === 'PUT') {
+		const parsed = NetworkGlobalConfigUpdateSchema.safeParse(body);
+		if (!parsed.success) {
+			return failure(
+				'Invalid global configuration',
+				'invalid_network_global_config_request',
+				400
+			) as DemoNetworkResponse<T>;
+		}
+		const { expectedRevision, ...settings } = parsed.data;
+		if (expectedRevision !== state.globalConfig.revision) {
+			return failure(
+				'Global configuration changed',
+				'global_config_revision_conflict',
+				409
+			) as DemoNetworkResponse<T>;
+		}
+		state.globalConfig = {
+			...state.globalConfig,
+			...settings,
+			revision: expectedRevision + 1,
+			effectiveDnsServers: settings.dnsMode === 'manual' ? settings.dnsServers : ['10.30.0.1'],
+			effectiveSearchDomains: settings.searchDomainsOverride
+				? settings.searchDomains
+				: ['demo.sylve.io']
+		};
+		return success(null, 'network_global_config_updated') as DemoNetworkResponse<T>;
+	}
 
 	if (path === '/network/interface' && method === 'GET') {
 		return success(state.interfaces) as DemoNetworkResponse<T>;

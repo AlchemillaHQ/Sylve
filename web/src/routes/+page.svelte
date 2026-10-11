@@ -1,5 +1,6 @@
-<!-- 
+<!--
 <span class="icon-[material-symbols-light--private-connectivity-outline]"></span>
+<span class="icon-[carbon--directory-domain]"></span>
 <span class="icon-[mdi--filter-variant]"></span>
 <span class="icon-[mdi--filter-off-outline]"></span>
 <span class="icon-[mdi--vote-outline]"></span>
@@ -282,7 +283,7 @@
 <span class="icon-[material-symbols--warning]"></span>
 <span class="icon-[mdi--close-circle]"></span>
 <span class="icon-[clarity--resource-pool-solid]"></span>
-<span class="icon-[fa7-solid--hexagon-nodes]"></span> 
+<span class="icon-[fa7-solid--hexagon-nodes]"></span>
 <span class="icon-[oui--ml-create-population-job]"></span>
 <span class="icon-[mdi--magnet]"></span>
 <span class="icon-[mdi--file]"></span>

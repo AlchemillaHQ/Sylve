@@ -14,10 +14,18 @@ export async function load({ params }) {
 	const [datasets, shares, groupsResult, usersResult, sambaConfig] = await Promise.all([
 		cachedFetch(
 			'zfs-filesystems',
-			async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM),
-			cacheDuration
+			async () => await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM, { hostname: node }),
+			cacheDuration,
+			false,
+			node
 		),
-		cachedFetch('samba-shares', async () => await getSambaShares(), cacheDuration),
+		cachedFetch(
+			'samba-shares',
+			async () => await getSambaShares({ hostname: node }),
+			cacheDuration,
+			false,
+			node
+		),
 		cachedFetch(
 			'groups',
 			async () => await listGroups({ hostname: node }),
@@ -32,7 +40,13 @@ export async function load({ params }) {
 			false,
 			node
 		),
-		cachedFetch('samba-config', async () => await getSambaConfig(), cacheDuration)
+		cachedFetch(
+			'samba-config',
+			async () => await getSambaConfig({ hostname: node }),
+			cacheDuration,
+			false,
+			node
+		)
 	]);
 
 	const loadErrors: APIResponse[] = [];

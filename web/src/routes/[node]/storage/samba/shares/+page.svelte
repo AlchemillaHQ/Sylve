@@ -23,6 +23,7 @@
 		updateCache
 	} from '$lib/utils/http';
 	import { renderWithIcon } from '$lib/utils/table';
+	import { escapeHTML } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource, watch } from 'runed';
 	import { onMount, untrack } from 'svelte';
@@ -42,29 +43,34 @@
 	let { data }: { data: Data } = $props();
 	const initialData = untrack(() => data);
 
-	// svelte-ignore state_referenced_locally
 	let datasets = resource(
-		() => 'zfs-filesystems',
-		async () => {
-			const result = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM);
-			updateCache('zfs-filesystems', result);
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			const result = await getDatasets(GZFSDatasetTypeSchema.enum.FILESYSTEM, {
+				hostname: node,
+				signal
+			});
+			if (signal.aborted || node !== data.node)
+				throw new DOMException('Node changed', 'AbortError');
+			void updateCache('zfs-filesystems', result, node);
 			return result;
 		},
 		{
-			initialValue: data.datasets
+			initialValue: initialData.datasets
 		}
 	);
 
-	// svelte-ignore state_referenced_locally
 	let shares = resource(
-		() => 'samba-shares',
-		async () => {
-			const result = await getSambaShares();
-			updateCache('samba-shares', result);
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			const result = await getSambaShares({ hostname: node, signal });
+			if (signal.aborted || node !== data.node)
+				throw new DOMException('Node changed', 'AbortError');
+			void updateCache('samba-shares', result, node);
 			return result;
 		},
 		{
-			initialValue: data.shares
+			initialValue: initialData.shares
 		}
 	);
 
@@ -75,15 +81,17 @@
 		async (node, _previousNode, { signal }) => {
 			try {
 				const result = await listGroups({ hostname: node, signal });
+				if (signal.aborted || node !== data.node)
+					throw new DOMException('Node changed', 'AbortError');
 				if (isAPIResponse(result)) {
 					handleAPIError(result);
 					return lastGroupsByNode[node] ?? [];
 				}
 				lastGroupsByNode[node] = result;
-				await updateCache('groups', result, node);
+				void updateCache('groups', result, node);
 				return result;
 			} catch (error) {
-				if (isRequestCancellation(error)) return lastGroupsByNode[node] ?? [];
+				if (isRequestCancellation(error)) throw new DOMException('Request canceled', 'AbortError');
 				throw error;
 			}
 		},
@@ -99,15 +107,17 @@
 		async (node, _previousNode, { signal }) => {
 			try {
 				const result = await listUsers(undefined, { hostname: node, signal });
+				if (signal.aborted || node !== data.node)
+					throw new DOMException('Node changed', 'AbortError');
 				if (isAPIResponse(result)) {
 					handleAPIError(result);
 					return lastUsersByNode[node] ?? [];
 				}
 				lastUsersByNode[node] = result;
-				await updateCache('users', result, node);
+				void updateCache('users', result, node);
 				return result;
 			} catch (error) {
-				if (isRequestCancellation(error)) return lastUsersByNode[node] ?? [];
+				if (isRequestCancellation(error)) throw new DOMException('Request canceled', 'AbortError');
 				throw error;
 			}
 		},
@@ -120,16 +130,17 @@
 		for (const loadError of initialData.loadErrors) handleAPIError(loadError);
 	});
 
-	// svelte-ignore state_referenced_locally
 	let sambaConfig = resource(
-		() => 'samba-config',
-		async () => {
-			const result = await getSambaConfig();
-			updateCache('samba-config', result);
+		() => data.node,
+		async (node, _previousNode, { signal }) => {
+			const result = await getSambaConfig({ hostname: node, signal });
+			if (signal.aborted || node !== data.node)
+				throw new DOMException('Node changed', 'AbortError');
+			void updateCache('samba-config', result, node);
 			return result;
 		},
 		{
-			initialValue: data.sambaConfig
+			initialValue: initialData.sambaConfig
 		}
 	);
 
@@ -166,6 +177,28 @@
 
 	let properties = $state(options);
 	let query = $state('');
+	watch.pre(
+		() => data.node,
+		(node, previous) => {
+			if (node === previous) return;
+			datasets.mutate(data.datasets);
+			shares.mutate(data.shares);
+			groups.mutate(data.groups);
+			users.mutate(data.users);
+			sambaConfig.mutate(data.sambaConfig);
+			lastGroupsByNode[node] = data.groups;
+			lastUsersByNode[node] = data.users;
+			activeRows = null;
+			properties = {
+				create: { open: false },
+				delete: { open: false },
+				edit: { open: false, share: null }
+			};
+			reload = false;
+			query = '';
+			if (previous) for (const loadError of data.loadErrors) handleAPIError(loadError);
+		}
+	);
 
 	function generateTableData(
 		shares: SambaShare[],
@@ -179,7 +212,7 @@
 			if (!principals?.length) return '-';
 
 			const shown = principals.slice(0, 5).join(', ');
-			return principals.length > 5 ? `${shown}, …` : shown;
+			return escapeHTML(principals.length > 5 ? `${shown}, …` : shown);
 		}
 
 		const rows: Row[] = [];
@@ -229,11 +262,17 @@
 			const dataset = datasets.find((ds) => ds.guid === share.dataset);
 			const readAccess = [
 				...share.permissions.read.users.map((user) => user.username),
-				...share.permissions.read.groups.map((group) => `@${group.name}`)
+				...share.permissions.read.groups.map((group) => `@${group.name}`),
+				...share.permissions.read.directory.map(
+					(principal) => `${principal.kind === 'group' ? '@' : ''}${principal.name}`
+				)
 			];
 			const writeAccess = [
 				...share.permissions.write.users.map((user) => user.username),
-				...share.permissions.write.groups.map((group) => `@${group.name}`)
+				...share.permissions.write.groups.map((group) => `@${group.name}`),
+				...share.permissions.write.directory.map(
+					(principal) => `${principal.kind === 'group' ? '@' : ''}${principal.name}`
+				)
 			];
 
 			const row: Row = {
@@ -312,17 +351,18 @@
 		{@render button('delete')}
 	</div>
 
-	<TreeTable
-		data={tableData}
-		name="samba-shares-tt"
-		bind:parentActiveRow={activeRows}
-		multipleSelect={true}
-		bind:query
-	/>
+	{#key data.node}<TreeTable
+			data={tableData}
+			name="samba-shares-tt"
+			bind:parentActiveRow={activeRows}
+			multipleSelect={true}
+			bind:query
+		/>{/key}
 </div>
 
 {#if properties.create.open}
 	<Share
+		node={data.node}
 		bind:open={properties.create.open}
 		shares={shares.current}
 		datasets={datasets.current}
@@ -335,6 +375,7 @@
 
 {#if properties.edit.open}
 	<Share
+		node={data.node}
 		bind:open={properties.edit.open}
 		shares={shares.current}
 		datasets={datasets.current}
@@ -353,7 +394,9 @@
 	actions={{
 		onConfirm: async () => {
 			if (activeRow) {
-				const response = await deleteSambaShare(Number(activeRow.id));
+				const node = data.node;
+				const response = await deleteSambaShare(Number(activeRow.id), { hostname: node });
+				if (node !== data.node) return;
 				if (response.status === 'error') {
 					handleAPIError(response);
 					toast.error('Failed to delete Samba share', {

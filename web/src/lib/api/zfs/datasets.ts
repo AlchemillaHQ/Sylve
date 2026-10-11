@@ -8,12 +8,19 @@ import {
 	type PeriodicSnapshot
 } from '$lib/types/zfs/dataset';
 
-import { apiRequestData, apiRequestResult } from '$lib/utils/http';
+import { apiRequestData, apiRequestResult, type NodeAPIDataRequestOptions } from '$lib/utils/http';
 
 export async function getDatasets(
-	type: GZFSDatasetType = GZFSDatasetTypeSchema.enum.ALL
+	type: GZFSDatasetType = GZFSDatasetTypeSchema.enum.ALL,
+	options?: NodeAPIDataRequestOptions
 ): Promise<Dataset[]> {
-	return await apiRequestData(`/zfs/datasets?type=${type}`, DatasetSchema.array(), 'GET');
+	return await apiRequestData(
+		`/zfs/datasets?type=${type}`,
+		DatasetSchema.array(),
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getDatasetsResult(

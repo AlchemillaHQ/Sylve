@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createSambaShare, updateSambaShare } from '$lib/api/samba/share';
+	import { getActiveDirectory, searchDirectoryPrincipals } from '$lib/api/directory-services';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import * as Accordion from '$lib/components/ui/accordion/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -12,13 +13,17 @@
 	import type { Group, User } from '$lib/types/auth';
 	import type { APIResponse } from '$lib/types/common';
 	import type { SambaShare } from '$lib/types/samba/shares';
+	import type { DirectoryPrincipal } from '$lib/types/directory-services';
 	import type { Dataset } from '$lib/types/zfs/dataset';
 	import { handleAPIError } from '$lib/utils/http';
 	import { toast } from 'svelte-sonner';
-	import { watch } from 'runed';
+	import { watch, Debounced } from 'runed';
+	import { onMount, onDestroy, untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	interface Props {
 		open: boolean;
+		node: string;
 		shares: SambaShare[];
 		datasets: Dataset[];
 		groups: Group[];
@@ -42,6 +47,13 @@
 		| 'extraShareConfig'
 		| 'audit';
 	type FormErrors = Partial<Record<FormErrorField, string>>;
+	type DirectorySearchState = {
+		query: string;
+		loading: boolean;
+		error: string;
+		controller?: AbortController;
+		key: string;
+	};
 
 	interface FormState {
 		name: string;
@@ -64,6 +76,7 @@
 
 	let {
 		open = $bindable(),
+		node,
 		shares,
 		datasets,
 		groups,
@@ -112,12 +125,19 @@
 		extraShareConfig: 'options'
 	};
 
-	let groupOptions = $derived.by(() => {
-		return groups.map((group) => ({
+	let groupOptions = $derived([
+		...directoryOptions('group'),
+		...groups.map((group) => ({
 			label: group.name,
 			value: String(group.id)
-		}));
-	});
+		}))
+	]);
+
+	function directoryValues(access: 'read' | 'write', kind: 'user' | 'group'): string[] {
+		return (share?.permissions[access].directory ?? [])
+			.filter((principal) => principal.kind === kind)
+			.map((principal) => `ad:${principal.sid}`);
+	}
 
 	function selectedAccessMode(): AccessMode {
 		if (!share?.guest.enabled) return 'authenticated';
@@ -135,19 +155,31 @@
 			accessMode: selectedAccessMode(),
 			readUsers: {
 				open: false,
-				value: share?.permissions.read.users.map((user) => String(user.id)) ?? []
+				value: [
+					...(share?.permissions.read.users.map((user) => String(user.id)) ?? []),
+					...directoryValues('read', 'user')
+				]
 			},
 			writeUsers: {
 				open: false,
-				value: share?.permissions.write.users.map((user) => String(user.id)) ?? []
+				value: [
+					...(share?.permissions.write.users.map((user) => String(user.id)) ?? []),
+					...directoryValues('write', 'user')
+				]
 			},
 			readGroups: {
 				open: false,
-				value: share?.permissions.read.groups.map((group) => String(group.id)) ?? []
+				value: [
+					...(share?.permissions.read.groups.map((group) => String(group.id)) ?? []),
+					...directoryValues('read', 'group')
+				]
 			},
 			writeGroups: {
 				open: false,
-				value: share?.permissions.write.groups.map((group) => String(group.id)) ?? []
+				value: [
+					...(share?.permissions.write.groups.map((group) => String(group.id)) ?? []),
+					...directoryValues('write', 'group')
+				]
 			},
 			createMask: share?.createMask ?? '0664',
 			directoryMask: share?.directoryMask ?? '2775',
@@ -180,6 +212,125 @@
 	}
 
 	let form = $state(createFormState());
+	const targetNode = untrack(() => node);
+	let mounted = true;
+	const adRequest = new AbortController();
+	let directory = $state<DirectoryPrincipal[]>(
+		untrack(() => [
+			...(share?.permissions.read.directory ?? []),
+			...(share?.permissions.write.directory ?? [])
+		])
+	);
+	let directoryEnabled = $state(false);
+	let directoryExactSearch = $state(false);
+	let directoryStatusError = $state('');
+	let directorySearch = $state<Record<'user' | 'group', DirectorySearchState>>({
+		user: { query: '', loading: false, error: '', key: '' },
+		group: { query: '', loading: false, error: '', key: '' }
+	});
+	// This editor's Read/Write selectors share display results; saves still resolve SIDs server-side.
+	const completedDirectorySearches = new SvelteSet<string>();
+
+	function directoryOptions(kind: 'user' | 'group') {
+		return directory
+			.filter((principal) => principal.kind === kind)
+			.map((principal) => ({
+				label: principal.name,
+				value: `ad:${principal.sid}`,
+				description: 'Active Directory'
+			}));
+	}
+	function setDirectoryQuery(query: string, kind: 'user' | 'group') {
+		const search = directorySearch[kind];
+		if (search.query === query) return;
+		search.controller?.abort();
+		search.loading = false;
+		search.error = '';
+		search.query = query;
+	}
+	async function searchDirectory(query: string, kind: 'user' | 'group') {
+		const search = directorySearch[kind];
+		const trimmed = query.trim();
+		const key = `${kind}:${trimmed.toLowerCase()}`;
+		if (search.controller && !search.controller.signal.aborted && search.key === key) return;
+		search.controller?.abort();
+		search.loading = false;
+		search.error = '';
+		if (
+			!directoryEnabled ||
+			(trimmed !== '' && trimmed.length < 2) ||
+			(directoryExactSearch && trimmed === '')
+		)
+			return;
+		if (!directoryExactSearch && completedDirectorySearches.has(key)) return;
+		const controller = new AbortController();
+		search.controller = controller;
+		search.key = key;
+		search.loading = true;
+		try {
+			const principals = await searchDirectoryPrincipals(query, kind, {
+				signal: controller.signal,
+				hostname: targetNode
+			});
+			if (controller.signal.aborted) return;
+			directory = [
+				...directory.filter(
+					(saved) => !principals.some((principal) => principal.sid === saved.sid)
+				),
+				...principals
+			];
+			if (!directoryExactSearch) completedDirectorySearches.add(key);
+		} catch (error) {
+			if (controller.signal.aborted) return;
+			search.error = error instanceof Error ? error.message : 'Directory lookup unavailable';
+		} finally {
+			if (!controller.signal.aborted) {
+				search.controller = undefined;
+				search.loading = false;
+			}
+		}
+	}
+	onMount(async () => {
+		try {
+			const ad = await getActiveDirectory({ hostname: targetNode, signal: adRequest.signal });
+			if (!mounted) return;
+			directoryExactSearch = ad.disableCache;
+			directoryEnabled = ad.enabled && ad.joined;
+		} catch (error) {
+			if (!mounted || adRequest.signal.aborted) return;
+			const message = error instanceof Error ? error.message : 'Directory status unavailable';
+			directoryStatusError = `Active Directory status could not be checked: ${message}`;
+		}
+	});
+	onDestroy(() => {
+		mounted = false;
+		adRequest.abort();
+		directorySearch.user.controller?.abort();
+		directorySearch.group.controller?.abort();
+	});
+	for (const kind of ['user', 'group'] as const) {
+		const debounced = new Debounced(() => directorySearch[kind].query, 400);
+		watch(
+			() => {
+				const selectorOpen =
+					kind === 'user'
+						? form.readUsers.open || form.writeUsers.open
+						: form.readGroups.open || form.writeGroups.open;
+				const query = directorySearch[kind].query;
+				return [
+					directoryEnabled &&
+						open &&
+						activeTab === 'access' &&
+						form.accessMode === 'authenticated' &&
+						selectorOpen,
+					!query.trim() ? '' : query === debounced.current ? query : null
+				] as const;
+			},
+			([active, query]) => {
+				if (active && query !== null) void searchDirectory(query, kind);
+			}
+		);
+	}
 	let saving = $state(false);
 	let activeTab = $state<ShareTab>('details');
 	let errors = $state<FormErrors>({});
@@ -191,22 +342,25 @@
 		// Local users can never authenticate over SMB, but selections that already
 		// exist on a share must stay visible so they can be removed.
 		const selectedUserIDs = new Set([...form.readUsers.value, ...form.writeUsers.value]);
-		return users
-			.filter((user) => user.source === 'pam' || selectedUserIDs.has(String(user.id)))
-			.map((user) => {
-				if (user.source !== 'pam') {
+		return [
+			...directoryOptions('user'),
+			...users
+				.filter((user) => user.source === 'pam' || selectedUserIDs.has(String(user.id)))
+				.map((user) => {
+					if (user.source !== 'pam') {
+						return {
+							label: user.username,
+							value: String(user.id),
+							disabled: true,
+							description: 'Local Sylve user — cannot sign in over SMB'
+						};
+					}
 					return {
 						label: user.username,
-						value: String(user.id),
-						disabled: true,
-						description: 'Local Sylve user — cannot sign in over SMB'
+						value: String(user.id)
 					};
-				}
-				return {
-					label: user.username,
-					value: String(user.id)
-				};
-			});
+				})
+		];
 	});
 
 	let datasetOptions = $derived.by(() => {
@@ -391,6 +545,7 @@
 	}
 
 	function resetForm() {
+		if (saving) return;
 		form = createFormState();
 		errors = {};
 		activeTab = 'details';
@@ -398,11 +553,13 @@
 	}
 
 	function closeDialog() {
+		if (saving) return;
 		resetForm();
 		open = false;
 	}
 
 	async function createOrEdit() {
+		if (saving) return;
 		if (!validateForm()) return;
 		if (edit && !share) {
 			toast.error('Unable to find the Samba share to update', { position: 'bottom-center' });
@@ -413,11 +570,21 @@
 		const permissions = {
 			read: {
 				userIds: authenticatedAccess ? toIDList(form.readUsers.value) : [],
-				groupIds: authenticatedAccess ? toIDList(form.readGroups.value) : []
+				groupIds: authenticatedAccess ? toIDList(form.readGroups.value) : [],
+				directorySids: authenticatedAccess
+					? [...form.readUsers.value, ...form.readGroups.value]
+							.filter((value) => value.startsWith('ad:'))
+							.map((value) => value.slice(3))
+					: []
 			},
 			write: {
 				userIds: authenticatedAccess ? toIDList(form.writeUsers.value) : [],
-				groupIds: authenticatedAccess ? toIDList(form.writeGroups.value) : []
+				groupIds: authenticatedAccess ? toIDList(form.writeGroups.value) : [],
+				directorySids: authenticatedAccess
+					? [...form.writeUsers.value, ...form.writeGroups.value]
+							.filter((value) => value.startsWith('ad:'))
+							.map((value) => value.slice(3))
+					: []
 			}
 		};
 		const guest = {
@@ -443,7 +610,8 @@
 				form.auditEnabled,
 				form.auditRetentionDays,
 				form.auditEnabled ? form.auditedOperations.value : [],
-				form.extraShareConfig
+				form.extraShareConfig,
+				{ hostname: targetNode }
 			);
 		} else {
 			response = await createSambaShare(
@@ -459,11 +627,13 @@
 				form.auditEnabled,
 				form.auditRetentionDays,
 				form.auditEnabled ? form.auditedOperations.value : [],
-				form.extraShareConfig
+				form.extraShareConfig,
+				{ hostname: targetNode }
 			);
 		}
 
 		saving = false;
+		if (!mounted) return;
 
 		if (response.status === 'error') {
 			handleAPIError(response);
@@ -494,7 +664,10 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden p-5 sm:h-[82dvh] sm:max-h-[42rem] sm:w-[calc(100vw-4rem)] sm:max-w-4xl! sm:p-6"
-		showCloseButton={true}
+		showCloseButton={!saving}
+		onEscapeKeydown={(event) => {
+			if (saving) event.preventDefault();
+		}}
 		showResetButton={edit}
 		onReset={resetForm}
 		onClose={closeDialog}
@@ -577,6 +750,7 @@
 
 							<CustomComboBox
 								label="Dataset"
+								hint="Only mounted, non-system datasets that are not already used by another Samba share are shown."
 								placeholder={datasetOptions.length ? 'Select dataset' : 'No datasets available'}
 								bind:open={form.dataset.open}
 								bind:value={form.dataset.value}
@@ -603,11 +777,6 @@
 								</p>
 							</div>
 						</div>
-
-						<p class="text-muted-foreground text-xs">
-							Only mounted, non-system datasets that are not already used by another Samba share are
-							shown.
-						</p>
 					</section>
 				</div>
 			</Tabs.Content>
@@ -688,76 +857,83 @@
 					</section>
 
 					{#if form.accessMode === 'authenticated'}
-						<section class="space-y-3" aria-labelledby="permission-heading">
-							<div>
-								<p id="permission-heading" class="text-sm font-semibold">Named permissions</p>
-								<p class="text-muted-foreground mt-1 text-xs">
-									Write access takes precedence over read access for the same user or group.
-								</p>
-							</div>
+						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<CustomComboBox
+								label="Read Users"
+								placeholder={directoryEnabled ? 'Select or search users' : 'Select users'}
+								bind:open={form.readUsers.open}
+								bind:value={form.readUsers.value}
+								data={userOptions}
+								onSearchChange={(query) => setDirectoryQuery(query, 'user')}
+								loading={directorySearch.user.loading}
+								loadingText="Searching directory..."
+								searchError={directorySearch.user.error || directoryStatusError}
+								onValueChange={() => clearError('access')}
+								multiple={true}
+								showCount={true}
+								showCountLabel=" users"
+								classes="space-y-1.5"
+								buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
+								width="w-full"
+							/>
 
-							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-								<CustomComboBox
-									label="Read Users"
-									placeholder="Select users"
-									bind:open={form.readUsers.open}
-									bind:value={form.readUsers.value}
-									data={userOptions}
-									onValueChange={() => clearError('access')}
-									multiple={true}
-									showCount={true}
-									showCountLabel=" users"
-									classes="space-y-1.5"
-									buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
-									width="w-full"
-								/>
+							<CustomComboBox
+								label="Write Users"
+								placeholder={directoryEnabled ? 'Select or search users' : 'Select users'}
+								bind:open={form.writeUsers.open}
+								bind:value={form.writeUsers.value}
+								data={userOptions}
+								onSearchChange={(query) => setDirectoryQuery(query, 'user')}
+								loading={directorySearch.user.loading}
+								loadingText="Searching directory..."
+								searchError={directorySearch.user.error || directoryStatusError}
+								onValueChange={() => clearError('access')}
+								multiple={true}
+								showCount={true}
+								showCountLabel=" users"
+								classes="space-y-1.5"
+								buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
+								width="w-full"
+							/>
 
-								<CustomComboBox
-									label="Write Users"
-									placeholder="Select users"
-									bind:open={form.writeUsers.open}
-									bind:value={form.writeUsers.value}
-									data={userOptions}
-									onValueChange={() => clearError('access')}
-									multiple={true}
-									showCount={true}
-									showCountLabel=" users"
-									classes="space-y-1.5"
-									buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
-									width="w-full"
-								/>
+							<CustomComboBox
+								label="Read Groups"
+								placeholder={directoryEnabled ? 'Select or search groups' : 'Select groups'}
+								bind:open={form.readGroups.open}
+								bind:value={form.readGroups.value}
+								data={groupOptions}
+								onSearchChange={(query) => setDirectoryQuery(query, 'group')}
+								loading={directorySearch.group.loading}
+								loadingText="Searching directory..."
+								searchError={directorySearch.group.error || directoryStatusError}
+								onValueChange={() => clearError('access')}
+								multiple={true}
+								showCount={true}
+								showCountLabel=" groups"
+								classes="space-y-1.5"
+								buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
+								width="w-full"
+							/>
 
-								<CustomComboBox
-									label="Read Groups"
-									placeholder="Select groups"
-									bind:open={form.readGroups.open}
-									bind:value={form.readGroups.value}
-									data={groupOptions}
-									onValueChange={() => clearError('access')}
-									multiple={true}
-									showCount={true}
-									showCountLabel=" groups"
-									classes="space-y-1.5"
-									buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
-									width="w-full"
-								/>
-
-								<CustomComboBox
-									label="Write Groups"
-									placeholder="Select groups"
-									bind:open={form.writeGroups.open}
-									bind:value={form.writeGroups.value}
-									data={groupOptions}
-									onValueChange={() => clearError('access')}
-									multiple={true}
-									showCount={true}
-									showCountLabel=" groups"
-									classes="space-y-1.5"
-									buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
-									width="w-full"
-								/>
-							</div>
-						</section>
+							<CustomComboBox
+								label="Write Groups"
+								placeholder={directoryEnabled ? 'Select or search groups' : 'Select groups'}
+								bind:open={form.writeGroups.open}
+								bind:value={form.writeGroups.value}
+								data={groupOptions}
+								onSearchChange={(query) => setDirectoryQuery(query, 'group')}
+								loading={directorySearch.group.loading}
+								loadingText="Searching directory..."
+								searchError={directorySearch.group.error || directoryStatusError}
+								onValueChange={() => clearError('access')}
+								multiple={true}
+								showCount={true}
+								showCountLabel=" groups"
+								classes="space-y-1.5"
+								buttonClass={errors.access ? 'h-9 border-destructive' : 'h-9'}
+								width="w-full"
+							/>
+						</div>
 					{:else}
 						<div class="rounded-md border border-primary/25 bg-primary/5 p-4 text-sm">
 							<p class="font-medium">
@@ -775,7 +951,7 @@
 			</Tabs.Content>
 
 			<Tabs.Content value="options" class="m-0 min-h-0 flex-1 overflow-y-auto py-2 pr-3">
-				<div class="space-y-5 pb-1">
+				<div class="space-y-3 pb-1">
 					{#if tabError('options')}
 						<div
 							class="border-destructive/40 bg-destructive/10 text-destructive rounded-md border px-3 py-2 text-sm"
@@ -832,35 +1008,36 @@
 										onchange={() => clearError('audit')}
 									/>
 								</div>
-
-								{#if form.auditEnabled}
-									<CustomComboBox
-										label="Operations to Audit"
-										placeholder="Select operations"
-										bind:open={form.auditedOperations.open}
-										bind:value={form.auditedOperations.value}
-										data={AUDIT_OPERATIONS}
-										onValueChange={() => clearError('audit')}
-										multiple={true}
-										showCount={true}
-										showCountLabel=" operations"
-										classes="space-y-1.5"
-										buttonClass={errors.audit ? 'h-9 border-destructive' : 'h-9'}
-										width="w-full"
-									/>
-									<CustomValueInput
-										label="Retention Days"
-										placeholder="70"
-										bind:value={form.auditRetentionDays}
-										onChange={() => clearError('auditRetentionDays')}
-										classes="space-y-1.5"
-										inputClasses={errors.auditRetentionDays ? 'border-destructive' : ''}
-										hint="Use 0 to keep audit records forever. Whole numbers only."
-										type="number"
-									/>
-								{/if}
 							</div>
 						</div>
+						{#if form.auditEnabled}
+							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+								<CustomComboBox
+									label="Operations to Audit"
+									placeholder="Select operations"
+									bind:open={form.auditedOperations.open}
+									bind:value={form.auditedOperations.value}
+									data={AUDIT_OPERATIONS}
+									onValueChange={() => clearError('audit')}
+									multiple={true}
+									showCount={true}
+									showCountLabel=" operations"
+									classes="space-y-1.5"
+									buttonClass={errors.audit ? 'h-9 border-destructive' : 'h-9'}
+									width="w-full"
+								/>
+								<CustomValueInput
+									label="Retention Days"
+									placeholder="70"
+									bind:value={form.auditRetentionDays}
+									onChange={() => clearError('auditRetentionDays')}
+									classes="space-y-1.5"
+									inputClasses={errors.auditRetentionDays ? 'border-destructive' : ''}
+									hint="Use 0 to keep audit records forever. Whole numbers only."
+									type="number"
+								/>
+							</div>
+						{/if}
 					</section>
 
 					<section class="space-y-3">

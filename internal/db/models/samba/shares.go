@@ -12,30 +12,32 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 )
 
 type SambaShare struct {
-	ID                 int            `json:"id" gorm:"primaryKey"`
-	Name               string         `json:"name" gorm:"uniqueIndex"`
-	Dataset            string         `json:"dataset" gorm:"uniqueIndex"`
-	Path               string         `json:"path"`
-	Enabled            bool           `json:"enabled" gorm:"not null;default:true"`
-	ReadOnlyUsers      []models.User  `json:"readOnlyUsers" gorm:"many2many:samba_share_read_only_users;"`
-	WriteableUsers     []models.User  `json:"writeableUsers" gorm:"many2many:samba_share_writeable_users;"`
-	ReadOnlyGroups     []models.Group `json:"readOnlyGroups" gorm:"many2many:samba_share_read_only_groups;"`
-	WriteableGroups    []models.Group `json:"writeableGroups" gorm:"many2many:samba_share_writeable_groups;"`
-	CreateMask         string         `json:"createMask" gorm:"default:'0664'"`
-	DirectoryMask      string         `json:"directoryMask" gorm:"default:'2775'"`
-	GuestOk            bool           `json:"guestOk" gorm:"default:false"`
-	ReadOnly           bool           `json:"readOnly" gorm:"default:false"`
-	ExtraShareConfig   string         `json:"extraShareConfig" gorm:"type:text;not null;default:''"`
-	TimeMachine        bool           `json:"timeMachine" gorm:"default:false"`
-	TimeMachineMaxSize uint64         `json:"timeMachineMaxSize" gorm:"default:0"`
-	AuditEnabled       bool           `json:"auditEnabled" gorm:"default:false"`
-	AuditRetentionDays *uint32        `json:"auditRetentionDays" gorm:"not null;default:70"`
-	AuditedOperations  []string       `json:"auditedOperations" gorm:"serializer:json;default:'[]'"`
-	CreatedAt          time.Time      `json:"createdAt" gorm:"autoCreateTime"`
-	UpdatedAt          time.Time      `json:"updatedAt" gorm:"autoUpdateTime"`
+	ID                   int                              `json:"id" gorm:"primaryKey"`
+	Name                 string                           `json:"name" gorm:"uniqueIndex"`
+	Dataset              string                           `json:"dataset" gorm:"uniqueIndex"`
+	Path                 string                           `json:"path"`
+	Enabled              bool                             `json:"enabled" gorm:"not null;default:true"`
+	ReadOnlyUsers        []models.User                    `json:"readOnlyUsers" gorm:"many2many:samba_share_read_only_users;"`
+	WriteableUsers       []models.User                    `json:"writeableUsers" gorm:"many2many:samba_share_writeable_users;"`
+	ReadOnlyGroups       []models.Group                   `json:"readOnlyGroups" gorm:"many2many:samba_share_read_only_groups;"`
+	WriteableGroups      []models.Group                   `json:"writeableGroups" gorm:"many2many:samba_share_writeable_groups;"`
+	CreateMask           string                           `json:"createMask" gorm:"default:'0664'"`
+	DirectoryMask        string                           `json:"directoryMask" gorm:"default:'2775'"`
+	GuestOk              bool                             `json:"guestOk" gorm:"default:false"`
+	ReadOnly             bool                             `json:"readOnly" gorm:"default:false"`
+	ExtraShareConfig     string                           `json:"extraShareConfig" gorm:"type:text;not null;default:''"`
+	DirectoryPermissions directoryModels.SharePermissions `json:"directoryPermissions" gorm:"serializer:json;type:text;not null;default:'{}'"`
+	TimeMachine          bool                             `json:"timeMachine" gorm:"default:false"`
+	TimeMachineMaxSize   uint64                           `json:"timeMachineMaxSize" gorm:"default:0"`
+	AuditEnabled         bool                             `json:"auditEnabled" gorm:"default:false"`
+	AuditRetentionDays   *uint32                          `json:"auditRetentionDays" gorm:"not null;default:70"`
+	AuditedOperations    []string                         `json:"auditedOperations" gorm:"serializer:json;default:'[]'"`
+	CreatedAt            time.Time                        `json:"createdAt" gorm:"autoCreateTime"`
+	UpdatedAt            time.Time                        `json:"updatedAt" gorm:"autoUpdateTime"`
 }
 
 type SambaAuditLog struct {

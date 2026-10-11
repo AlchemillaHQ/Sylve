@@ -1,10 +1,21 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import { SambaShareSchema, type SambaShare } from '$lib/types/samba/shares';
-import { apiRequestData, apiRequestResult } from '$lib/utils/http';
+import {
+	apiRequestData,
+	apiRequestResult,
+	type NodeAPIDataRequestOptions,
+	type NodeAPIRequestOptions
+} from '$lib/utils/http';
 import { z } from 'zod/v4';
 
-export async function getSambaShares(): Promise<SambaShare[]> {
-	return await apiRequestData('/samba/shares', z.array(SambaShareSchema), 'GET');
+export async function getSambaShares(options?: NodeAPIDataRequestOptions): Promise<SambaShare[]> {
+	return await apiRequestData(
+		'/samba/shares',
+		z.array(SambaShareSchema),
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function createSambaShare(
@@ -12,8 +23,8 @@ export async function createSambaShare(
 	dataset: string,
 	enabled: boolean,
 	permissions: {
-		read: { userIds: number[]; groupIds: number[] };
-		write: { userIds: number[]; groupIds: number[] };
+		read: { userIds: number[]; groupIds: number[]; directorySids?: string[] };
+		write: { userIds: number[]; groupIds: number[]; directorySids?: string[] };
 	},
 	guest: {
 		enabled: boolean;
@@ -26,23 +37,30 @@ export async function createSambaShare(
 	auditEnabled: boolean = false,
 	auditRetentionDays: number = 70,
 	auditedOperations: string[] = [],
-	extraShareConfig: string = ''
+	extraShareConfig: string = '',
+	options?: NodeAPIRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequestResult('/samba/shares', APIResponseSchema, 'POST', {
-		name,
-		dataset,
-		enabled,
-		permissions,
-		guest,
-		createMask,
-		directoryMask,
-		timeMachine,
-		timeMachineMaxSize,
-		auditEnabled,
-		auditRetentionDays,
-		auditedOperations,
-		extraShareConfig
-	});
+	return await apiRequestResult(
+		'/samba/shares',
+		APIResponseSchema,
+		'POST',
+		{
+			name,
+			dataset,
+			enabled,
+			permissions,
+			guest,
+			createMask,
+			directoryMask,
+			timeMachine,
+			timeMachineMaxSize,
+			auditEnabled,
+			auditRetentionDays,
+			auditedOperations,
+			extraShareConfig
+		},
+		options
+	);
 }
 
 export async function updateSambaShare(
@@ -51,8 +69,8 @@ export async function updateSambaShare(
 	dataset: string,
 	enabled: boolean,
 	permissions: {
-		read: { userIds: number[]; groupIds: number[] };
-		write: { userIds: number[]; groupIds: number[] };
+		read: { userIds: number[]; groupIds: number[]; directorySids?: string[] };
+		write: { userIds: number[]; groupIds: number[]; directorySids?: string[] };
 	},
 	guest: {
 		enabled: boolean;
@@ -65,23 +83,30 @@ export async function updateSambaShare(
 	auditEnabled: boolean = false,
 	auditRetentionDays: number = 70,
 	auditedOperations: string[] = [],
-	extraShareConfig?: string
+	extraShareConfig?: string,
+	options?: NodeAPIRequestOptions
 ): Promise<APIResponse> {
-	return await apiRequestResult(`/samba/shares/${id}`, APIResponseSchema, 'PUT', {
-		name,
-		dataset,
-		enabled,
-		permissions,
-		guest,
-		createMask,
-		directoryMask,
-		timeMachine,
-		timeMachineMaxSize,
-		auditEnabled,
-		auditRetentionDays,
-		auditedOperations,
-		extraShareConfig
-	});
+	return await apiRequestResult(
+		`/samba/shares/${id}`,
+		APIResponseSchema,
+		'PUT',
+		{
+			name,
+			dataset,
+			enabled,
+			permissions,
+			guest,
+			createMask,
+			directoryMask,
+			timeMachine,
+			timeMachineMaxSize,
+			auditEnabled,
+			auditRetentionDays,
+			auditedOperations,
+			extraShareConfig
+		},
+		options
+	);
 }
 
 export async function setSambaShareEnabled(id: number, enabled: boolean): Promise<APIResponse> {
@@ -90,6 +115,15 @@ export async function setSambaShareEnabled(id: number, enabled: boolean): Promis
 	});
 }
 
-export async function deleteSambaShare(id: number): Promise<APIResponse> {
-	return await apiRequestResult(`/samba/shares/${id}`, APIResponseSchema, 'DELETE');
+export async function deleteSambaShare(
+	id: number,
+	options?: NodeAPIRequestOptions
+): Promise<APIResponse> {
+	return await apiRequestResult(
+		`/samba/shares/${id}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		options
+	);
 }

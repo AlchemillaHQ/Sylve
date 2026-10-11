@@ -119,6 +119,7 @@ msgstr "സ്വിച്ചുകൾ"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
@@ -174,6 +175,7 @@ msgstr "സാംബ"
 msgid "Shares"
 msgstr "ഷെയറുകൾ"
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Settings"
@@ -697,6 +699,8 @@ msgstr "ഒബ്‌ജക്റ്റ് ({0} പ്രോപ്പർട്ട
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
 #: src/lib/components/custom/Login.svelte
 msgid "Username"
 msgstr "ഉപയോക്തൃനാമം"
@@ -706,12 +710,16 @@ msgid "Enter your username"
 msgstr "നിങ്ങളുടെ ഉപയോക്തൃനാമം നൽകുക"
 
 #: src/lib/components/custom/Authentication/LocalUserForm.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/VM/Hardware/VNC.svelte
 msgid "Password"
 msgstr "പാസ്‌വേഡ്"
 
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
 #: src/lib/components/custom/Login.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
 msgid "Realm"
 msgstr "മേഖല"
 
@@ -784,6 +792,7 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -814,6 +823,11 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
 #: src/lib/components/skeleton/ResourceTreeToolbar.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
@@ -827,15 +841,11 @@ msgstr "കുറിപ്പ് സൃഷ്ടിക്കുന്നതി�
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/notes/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
-#: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/groups/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
-#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
+#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
-#: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
@@ -1072,6 +1082,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
 #: src/lib/components/custom/Dialog/SingleValue.svelte
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
 #: src/lib/components/custom/Jail/Hardware/CPU.svelte
 #: src/lib/components/custom/Jail/Hardware/RAM.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
@@ -1087,6 +1098,7 @@ msgstr "ഇതൊരു കുറിപ്പാണ്"
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Network/Objects/CreateOrEdit.svelte
@@ -1270,6 +1282,7 @@ msgstr "സ്റ്റേജിംഗ്"
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
@@ -1366,6 +1379,7 @@ msgstr "ചാർട്ടുകൾ ലോഡ് ചെയ്യാൻ സാധ
 
 #: src/lib/components/custom/Jail/Create/Basic.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Network/MDNS/Config.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
@@ -1539,27 +1553,33 @@ msgid "Cluster Information"
 msgstr "ക്ലസ്റ്റർ വിവരങ്ങൾ"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
-#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Property"
 msgstr "പ്രോപ്പർട്ടി"
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/jail/[ctid]/hardware/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
-#: src/routes/[node]/system/services/+page.svelte
-#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
+#: src/routes/[node]/system/tunables/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Value"
@@ -1657,6 +1677,7 @@ msgstr "നിങ്ങൾക്ക് ഉറപ്പാണോ?"
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Cluster/RemovePeer.svelte
 #: src/lib/components/custom/Dialog/Alert.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -1717,6 +1738,7 @@ msgstr "പാർട്ടീഷനുകൾ സൃഷ്ടിക്കുക"
 msgid "Size"
 msgstr "വലിപ്പം"
 
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 msgid "Actions"
 msgstr "നടപടികൾ"
@@ -2246,6 +2268,7 @@ msgstr "DUID(കൾ)"
 msgid "Data"
 msgstr "ഡാറ്റ"
 
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 msgid "Updated At"
 msgstr "അവസാനം പുതുക്കിയത്"
@@ -2347,6 +2370,7 @@ msgstr "ZFS പൂളുകൾ"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Form.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
@@ -2364,11 +2388,13 @@ msgstr "ZFS പൂളുകൾ"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
@@ -2380,7 +2406,6 @@ msgstr "ZFS പൂളുകൾ"
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -2407,11 +2432,13 @@ msgstr "പ്രവർത്തനക്ഷമം"
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/iSCSI/Config.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
@@ -2422,7 +2449,6 @@ msgstr "പ്രവർത്തനക്ഷമം"
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
-#: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -2863,6 +2889,7 @@ msgstr "ഇവന്റ് പുരോഗതി ലോഡ് ചെയ്യു
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
@@ -2896,10 +2923,12 @@ msgstr "മോഡ്"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/OOBRestore.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Restore.svelte
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Restore"
 msgstr "പുനഃസ്ഥാപിക്കുക"
 
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 msgid "Backup"
 msgstr "ബാക്കപ്പ്"
@@ -3380,6 +3409,10 @@ msgstr "പരിശോധിക്കുക"
 #: src/lib/components/custom/ZFS/datasets/snapshots/CreateDetailed.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Retention.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
@@ -3660,14 +3693,15 @@ msgstr "ഫെയ്‌ൽബാക്ക്"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3686,14 +3720,15 @@ msgstr "അതെ"
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
 #: src/lib/components/custom/ZFS/pools/Edit.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
+#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
-#: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -4404,6 +4439,9 @@ msgstr "IPv6 വിലാസം"
 msgid "Default Gateway"
 msgstr "ഡിഫോൾട്ട് ഗേറ്റ്‌വേ"
 
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
@@ -4437,8 +4475,11 @@ msgstr "ഡിഎച്ച്സിപി കോൺഫിഗറേഷൻ പു�
 msgid "Update DHCP Configuration"
 msgstr "ഡിഎച്ച്സിപി കോൺഫിഗറേഷൻ പുതുക്കുക"
 
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 msgid "Domain"
@@ -5098,7 +5139,10 @@ msgstr "സേവ് ചെയ്ത് സോക്കറ്റുകളില�
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Update"
@@ -5692,6 +5736,7 @@ msgstr "സ്നാപ്പ്ഷോട്ട് ഇല്ലാതാക്�
 msgid "Failed to delete snapshot"
 msgstr "സ്നാപ്പ്ഷോട്ട് ഇല്ലാതാക്കുന്നതിൽ പരാജയപ്പെട്ടു"
 
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -5802,10 +5847,12 @@ msgid "Identifier"
 msgstr "ഐഡന്റിഫയർ"
 
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "IP Address"
 msgstr "ഐപി അഡ്രസ്സ്"
 
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 msgid "Range"
@@ -6035,7 +6082,9 @@ msgstr "തീയതി"
 msgid "Unix Charset"
 msgstr "യൂണിക്സ് ചാർസെറ്റ്"
 
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
 #: src/lib/components/custom/Samba/Config.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Workgroup"
 msgstr "വർക്ക് ഗ്രൂപ്പ്"
@@ -6183,11 +6232,14 @@ msgstr "നെറ്റ്‌വർക്ക് വേർപെടുത്ത�
 msgid "Network detached"
 msgstr "നെറ്റ്‌വർക്ക് വേർപെടുത്തി"
 
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "Configured"
 msgstr "ക്രമീകരിച്ചു"
 
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
@@ -8047,6 +8099,10 @@ msgstr ""
 msgid "Template data unavailable"
 msgstr ""
 
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 #: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 #: src/lib/components/custom/Network/VLANPolicyEditor.svelte
@@ -9280,6 +9336,7 @@ msgstr ""
 msgid "Generate new keypair"
 msgstr ""
 
+#: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/ui/custom-input/value.svelte
 msgid "Help Information"
 msgstr ""
@@ -9468,6 +9525,7 @@ msgstr ""
 msgid "Downloaded"
 msgstr ""
 
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
 msgid "Uploaded"
 msgstr ""
@@ -9770,6 +9828,9 @@ msgstr ""
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Retry"
 msgstr ""
@@ -13628,14 +13689,6 @@ msgid "Anyone can read and modify files"
 msgstr ""
 
 #: src/lib/components/custom/Samba/Share.svelte
-msgid "Named permissions"
-msgstr ""
-
-#: src/lib/components/custom/Samba/Share.svelte
-msgid "Write access takes precedence over read access for the same user or group."
-msgstr ""
-
-#: src/lib/components/custom/Samba/Share.svelte
 msgid "Guests can read this share without credentials."
 msgstr ""
 
@@ -14095,6 +14148,7 @@ msgid "Download Certificate & Key"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/storage/zfs/dashboard/+page.svelte
@@ -19090,6 +19144,7 @@ msgid "Target Settings"
 msgstr ""
 
 #: src/lib/components/custom/iSCSI/ExtraConfig.svelte
+#: src/lib/components/ui/custom-input/combobox.svelte
 msgid "Loading..."
 msgstr ""
 
@@ -19411,4 +19466,1063 @@ msgstr ""
 
 #: src/routes/[node]/utilities/downloader/+page.svelte
 msgid "Edit - Download"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Global Configuration"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Directory Services"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/+layout.svelte
+msgid "Active Directory"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Kerberos"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Realms"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Keytabs"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+msgid "Kerberos settings updated"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+msgid "Update Kerberos Settings"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+msgid "Application Defaults"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+msgid "Defaults for Kerberos applications. Application and realm blocks are supported; omit the [appdefaults] header."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+msgid "Library Defaults"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+msgid "One supported key = value setting per line. Omit the [libdefaults] header."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+msgid "Advanced defaults override generated values. Existing tickets are not reissued by saving these settings."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/KerberosSettings.svelte
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "<0/>Saving..."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Automatic (domain realm)"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Finish or recover the pending membership operation before adding a mapping."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Wait for the current save to finish."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "AUTORID assigns domain ranges automatically; manual mappings are not supported."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Enter a domain to discover."
+msgstr ""
+
+#. 0: result.workgroup; 1: result.site ? ` and site ${result.site}` \\: ''; 2: result.domainController; 3: result.warning
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Discovered workgroup {0}{1} through {2}. {3}"
+msgstr ""
+
+#. 0: result.workgroup
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "The configured workgroup does not match the discovered NetBIOS name {0}."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Domain discovery failed. Check the domain, DNS and controller connectivity."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "A domain and valid ID range are required."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "A mapping for this domain already exists."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Domain and computer name are required."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Select a keytab and principal."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Enter the join username and password."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "ID ranges must be whole numbers from 1000000, with high greater than low."
+msgstr ""
+
+#. 0: desiredEnabled ? 'enabling' \\: 'disabling'; 1: formatDirectoryServiceError(getAPIErrorText(result))
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Configuration saved, but {0} failed. {1}"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Configuration saved, but the connection check failed. Use Check Connection to retry."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Active Directory configuration updated."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Update Active Directory Configuration"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Configure this node's domain membership and identity mapping. Joining is a separate action."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "<0/>Details"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "<0/>Authentication"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "<0/>Options"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Automatic discovery"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "The AD domain's NetBIOS name. Leave blank to discover it when saving."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Computer Name"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Unique within the domain; at most 15 characters."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Kerberos Realm"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Discovering..."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Discover Domain"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Disabling stops domain access without leaving the domain. Applied when you save."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Join the domain before enabling integration."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Join Authentication"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Username and password"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Kerberos keytab"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Keytab"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Select uploaded keytab"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Principal"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Select principal"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Leave blank to keep saved password"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Join password"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Clear Saved Password"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Trusted Domain Mappings"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Add a trusted domain mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "<0/>Add Mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Allow Trusted Domains"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "AUTORID maps trusted domains automatically. Remove any manual mappings before saving with this backend."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Backend"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Edit mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Remove mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "No trusted domain mappings configured"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Domain NetBIOS Name"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Range Low"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Range High"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Schema"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Apply Mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "AD Site"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Preferred Domain Controller"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Computer Account OU"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Computers/Servers"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Samba OU path, separated by /, not an LDAP distinguished name. Used when joining."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Use Unqualified Usernames"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Disable Directory Enumeration and Cache"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Skip AD DNS Registration"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Used when joining. Manage the member's DNS record in AD separately when skipped."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Identity mapping"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/ActiveDirectory.svelte
+msgid "Mappings must stay consistent across nodes. Domain and existing mappings are locked while joined or referenced by any saved share. New trusted-domain mappings can be added without disabling AD or leaving the domain. RID derives IDs from domain RIDs. AD requires directory Unix attributes. AUTORID allocates domain ranges; preserve its mapping database when restoring or moving storage."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Keytabs must be at most 1 MiB"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Wait for a valid keytab file before saving"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "A name and keytab file are required"
+msgstr ""
+
+#. 0: keytab ? 'updated' \\: 'uploaded'
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Kerberos keytab {0}"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Unable to read the keytab file"
+msgstr ""
+
+#. 0: keytab.name
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Edit Kerberos Keytab - {0}"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Upload Kerberos Keytab"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Keytabs contain credentials. Sylve validates and securely stores the file; key material is not shown."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Storage service"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Drag & drop a replacement keytab (optional) or <span class=\"filepond--label-action\">Browse</span>"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Drag & drop a Kerberos keytab file or <span class=\"filepond--label-action\">Browse</span>"
+msgstr ""
+
+#. 0: keytab.principals.join(', ')
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Current principals: {0}"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Keytab.svelte
+msgid "Upload Keytab"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Join credentials are required."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Domain membership removed."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Domain joined."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Leave Active Directory Domain"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Join Active Directory Domain"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Leaving removes this node's domain membership. Existing domain share permissions and filesystem ACLs remain recorded, but domain users will lose access."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Remove local membership <0>ONLY</0> when the domain is unavailable. This disables local integration and removes Sylve's machine keytab; it does not delete the AD computer account or Samba's cached trust secrets. Remove the computer account in AD separately."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Domain integration is disabled. Retry finishes local cleanup without contacting the domain."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "The domain join is confirmed. Retry completes local configuration without enrolling again."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "AD DNS registration will be skipped; manage this member's DNS record separately."
+msgstr ""
+
+#. 0: ad.kerberosPrincipal
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Using keytab principal {0}. No password entry is needed here."
+msgstr ""
+
+#. 0: ad.joinUsername
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Using saved credentials for {0}. No password entry is needed here."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Use a domain account with permission to join this computer. These credentials are used for this join only and are not saved."
+msgstr ""
+
+#. 0: ad.computerName; 1: ad.domain
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Joining registers {0} with {1} and enables Active Directory integration on this node. Samba access remains controlled by each share's permissions. <0/> <1/>"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Optional; machine account by default"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Remove Local Membership Only"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Leaving..."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+msgid "Joining..."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Leave Domain"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Membership.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Join Domain"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Unable to discover Kerberos servers. Check the realm and node DNS."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Realm name is required"
+msgstr ""
+
+#. 0: realm ? 'updated' \\: 'created'
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Kerberos realm {0}"
+msgstr ""
+
+#. 0: realm.realm
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Edit Kerberos Realm - {0}"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Create Kerberos Realm"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Leave servers empty to use DNS discovery. Enter one server per line."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "KDC Servers"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Administration Servers"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Password Servers"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Discover Servers"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Realm.svelte
+msgid "Create Realm"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Recovery information could not be loaded. Local administrator access is required."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Select an encrypted recovery file of no more than 64 MiB."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Confirm the service interruption before continuing."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Use a recovery passphrase of 12 to 1024 bytes."
+msgstr ""
+
+#. 0: ad.computerName
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Enter {0} to confirm this node."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "The recovery passphrases do not match."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Encrypted recovery bundle downloaded. Keep it and its passphrase in separate secure locations."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Recovery state applied. Services paused by recovery were resumed; services that were already stopped before recovery remain stopped. Check the connection."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "The recovery operation could not be completed. Check the node connection and try again."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Directory Services Recovery"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Sylve temporarily stops running Samba and Winbind services to keep recovery state consistent. SMB clients will be disconnected. After completion or a safe rollback, only previously running services are resumed. Incomplete recovery leaves them stopped."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "An interrupted restore is pending. Enter the passphrase used for that restore to return to the protected previous state."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "The encrypted bundle includes machine-trust secrets, ID-allocation databases, Kerberos credentials, the encryption key and a Sylve database snapshot. It does not back up share data or the domain controller."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Restore requires the same node and saved configuration, plus a reachable domain controller to verify the saved trust. It does not rejoin the domain, replace unrelated Sylve settings, edit shares or change filesystem ACLs. Older credentials or changed share identities are rejected. Existing ID allocations and the Samba version must match the snapshot. Transient Samba caches are cleared."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Confirm Computer Name"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Recovery Passphrase"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Recovery passphrase"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "At least 12 bytes. This passphrase is not saved."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Repeat Passphrase"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Repeat recovery passphrase"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Encrypted Recovery File"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Drag & drop an encrypted recovery file or <span class='filepond--label-action'>Browse</span>"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Allow Sylve to temporarily stop Samba and Winbind"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "<0/>Working..."
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Download Backup"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Roll Back Restore"
+msgstr ""
+
+#: src/lib/components/custom/DirectoryServices/Recovery.svelte
+msgid "Restore State"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Directory lookup unavailable"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Directory status unavailable"
+msgstr ""
+
+#. 0: message
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Active Directory status could not be checked: {0}"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Extra share configuration cannot contain section headers or null bytes"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select or search users"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Searching directory..."
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Select or search groups"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Extra Share Configuration"
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "One directive per line, without a [share] header. Appended after managed settings and checked with testparm."
+msgstr ""
+
+#: src/lib/components/custom/Samba/Share.svelte
+msgid "Extra directives can override generated Samba settings. They do not change filesystem ACLs or configure AD membership and identity mapping."
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Connection Status"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Domain Membership"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Joined"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Not Joined"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Domain Controller"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Not Checked"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Automatic"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Alternate Domain Controller"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Not Verified"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "AD DNS Registration"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Skipped on Join"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Register on Join"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Username and Password"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Identity Mapping"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Trusted Domains"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Allowed"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Last Health Check"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Check Connection"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Retry Join"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Retry Cleanup"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Remove Membership"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Recovery"
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Displaying the last known configuration."
+msgstr ""
+
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Configuration is unavailable."
+msgstr ""
+
+#. 0: ad ? 'Displaying the last known configuration.' \\: 'Configuration is unavailable.'
+#: src/routes/[node]/directory-services/active-directory/+page.svelte
+msgid "Unable to refresh directory services. {0} Changes are disabled until the connection recovers."
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Hostname (Read-only)"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "DNS Mode"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Manual (Sylve-managed)"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "OS-managed"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Configured DNS Servers"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Effective DNS Servers"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Configured Search Domains"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "None (Search disabled)"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Effective Search Domains"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Managed Host Aliases"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "IPv4 Default Gateway (Read-only)"
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "IPv6 Default Gateway (Read-only)"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Global network configuration updated"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Settings changed while this dialog was open. Close it, refresh, and try again."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "The host resolver is managed outside resolvconf. Enable OS resolver management before applying DNS settings."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "A hostname conflicts with an existing unmanaged /etc/hosts entry."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Each hostname must be unique within an address family. Separate IPv4 and IPv6 entries are allowed."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Use unicast DNS server addresses. Link-local IPv6 addresses require an interface, such as fe80::1%bridge0."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Unable to apply the configuration. Review the error details before trying again."
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Update Global Configuration"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "DNS"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Host Aliases"
+msgstr ""
+
+#. 0: index + 1
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "DNS Server {0}"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Override DNS Search Domains"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Search Domains"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Add a search domain"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Additional Aliases"
+msgstr ""
+
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Add Host Alias"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Kerberos keytab deleted"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Principals"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "AD Machine Account"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "<0/>New"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Edit Keytab"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Delete Keytab"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
+msgid "Unable to load current keytabs. Changes are disabled until refresh succeeds."
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Kerberos realm deleted"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "DNS Discovery"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Edit Realm"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Delete Realm"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Unable to load current Kerberos realms. Changes are disabled until refresh succeeds."
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+msgid "Kerberos realm"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+msgid "Generated Defaults"
+msgstr ""
+
+#: src/routes/[node]/directory-services/kerberos/settings/+page.svelte
+msgid "Unable to load current Kerberos settings. Changes are disabled until refresh succeeds."
+msgstr ""
+
+#: src/routes/[node]/network/global-config/+page.svelte
+msgid "Unable to load the current global configuration. Changes are disabled until the connection recovers."
+msgstr ""
+
+#. 0: rowIndex + 1; 1: issue.message
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Entry {0}: {1}"
+msgstr ""
+
+#. 0: index + 1
+#: src/lib/components/custom/Network/GlobalConfig/Config.svelte
+msgid "Remove host alias {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - View Status"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Check Connection"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Discover Domain"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Join Domain"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Leave Domain"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Update State"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Active Directory - Search Principals"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Kerberos Realm - Discover Servers"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Kerberos Keytab"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Kerberos Settings"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Directory Services Recovery - Export Backup"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Directory Services Recovery - Restore State"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Directory Services Recovery - Roll Back Restore"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Kerberos Keytab - Upload"
+msgstr ""
+
+#. 0: match[2]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Realm ID {0}"
+msgstr ""
+
+#. 0: match[2]
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Keytab ID {0}"
 msgstr ""
