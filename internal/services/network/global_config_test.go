@@ -499,7 +499,7 @@ func testGlobalConfigNativeResolvconfLifecycle(t *testing.T, subscriberMode os.F
 	runtime := service.globalRuntime()
 	directory := filepath.Dir(runtime.resolverPath)
 	libexec, vardir := filepath.Join(directory, "libexec"), filepath.Join(directory, "state")
-	for _, path := range []string{libexec, filepath.Join(vardir, "keys")} {
+	for _, path := range []string{libexec, vardir} {
 		if err := os.MkdirAll(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -540,10 +540,19 @@ func testGlobalConfigNativeResolvconfLifecycle(t *testing.T, subscriberMode os.F
 	}
 	writeGlobalTestFile(t, runtime.resolvconfPath, fmt.Sprintf("resolv_conf='%s'\nlibc_restart=':'\n", runtime.resolverPath))
 	baseline := readGlobalTestFile(t, runtime.resolvconfPath)
+	// Let native resolvconf select its state layout (interfaces on FreeBSD 15,
+	// keys on newer versions) rather than writing subscriber inputs directly.
+	setResolverInput := func(name, content string) {
+		t.Helper()
+		if _, err := utils.RunCommandWithInputContext(t.Context(), content, script, "-a", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resolverBefore := readGlobalTestFile(t, runtime.resolverPath)
+	setResolverInput("bridge0", "search lan\nnameserver 192.0.2.1\noptions edns0\n")
+	setResolverInput("bridge0:slaac", "nameserver 2001:db8::1\n")
 	unsafePath := filepath.Join(directory, "must-not-exist")
-	writeGlobalTestFile(t, runtime.resolverPath, readGlobalTestFile(t, runtime.resolverPath)+"# Someone's literal $(touch "+unsafePath+") comment\n")
-	writeGlobalTestFile(t, filepath.Join(vardir, "keys", "bridge0"), "search lan\nnameserver 192.0.2.1\noptions edns0\n")
-	writeGlobalTestFile(t, filepath.Join(vardir, "keys", "bridge0:slaac"), "nameserver 2001:db8::1\n")
+	writeGlobalTestFile(t, runtime.resolverPath, resolverBefore+"# Someone's literal $(touch "+unsafePath+") comment\n")
 	service.globalConfigRuntime.runCommand = func(ctx context.Context, command string, args ...string) (string, error) {
 		if command == "/sbin/resolvconf" {
 			return utils.RunCommandWithContext(ctx, script, args...)
@@ -587,7 +596,7 @@ func testGlobalConfigNativeResolvconfLifecycle(t *testing.T, subscriberMode os.F
 		if step == 0 {
 			// A DHCP refresh runs resolvconf without involving Sylve. Overrides
 			// must survive it while DNS-service subscribers still see OS inputs.
-			writeGlobalTestFile(t, filepath.Join(vardir, "keys", "bridge0"), "search changed.lan\nnameserver 192.0.2.99\n")
+			setResolverInput("bridge0", "search changed.lan\nnameserver 192.0.2.99\n")
 			if _, err := utils.RunCommandWithContext(t.Context(), script, "-u"); err != nil {
 				t.Fatal(err)
 			}
@@ -595,7 +604,7 @@ func testGlobalConfigNativeResolvconfLifecycle(t *testing.T, subscriberMode os.F
 			if !slices.Equal(servers, request.DNSServers) || !slices.Equal(domains, request.SearchDomains) {
 				t.Fatalf("DHCP refresh replaced manual settings: %v %v", servers, domains)
 			}
-			writeGlobalTestFile(t, filepath.Join(vardir, "keys", "bridge0"), "search lan\nnameserver 192.0.2.1\noptions edns0\n")
+			setResolverInput("bridge0", "search lan\nnameserver 192.0.2.1\noptions edns0\n")
 		}
 		if step == 1 && len(state.EffectiveSearchDomains) > 0 {
 			t.Fatal("native empty search override failed")
