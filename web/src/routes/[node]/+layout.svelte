@@ -222,7 +222,7 @@
 						label: 'Global Configuration',
 						icon: 'mdi--cog-outline',
 						href: `/${node}/network/global-config`
-					},
+					}
 				].filter(Boolean) as NodeItem[]
 			},
 
