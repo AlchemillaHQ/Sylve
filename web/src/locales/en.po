@@ -12875,11 +12875,6 @@ msgstr "Dismiss All"
 msgid "Dismiss all notifications?"
 msgstr "Dismiss all notifications?"
 
-#. 0: count; 1: count === 1 ? '' \\: 's'
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "This will dismiss all {0} active notification{1}."
-msgstr "This will dismiss all {0} active notification{1}."
-
 #: src/lib/components/custom/Notifications/Bell.svelte
 msgid "<0/> Dismissing"
 msgstr "<0/> Dismissing"
@@ -20837,3 +20832,56 @@ msgstr "The pool remains online, but a scrub can substantially reduce <0>I/O</0>
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Schedule #{0} for {1} and its queued occurrence will be removed. Other schedules and completed history are retained."
 msgstr "Schedule #{0} for {1} and its queued occurrence will be removed. Other schedules and completed history are retained."
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Acknowledgement preview dismissed"
+msgstr "Acknowledgement preview dismissed"
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Historical error count acknowledged"
+msgstr "Historical error count acknowledged"
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Real counts unchanged."
+msgstr "Real counts unchanged."
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Acknowledge current historical error count"
+msgstr "Acknowledge current historical error count"
+
+#. 0: count; 1: count === 1 ? '' \\: 's'
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "This will dismiss all {0} active notification{1}. For supported historical-counter warnings, this acknowledges each current count. Increases and active disk faults will still notify you."
+msgstr "This will dismiss all {0} active notification{1}. For supported historical-counter warnings, this acknowledges each current count. Increases and active disk faults will still notify you."
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Reallocated Sectors (Acknowledgement Preview)"
+msgstr "Reallocated Sectors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Read Errors (Acknowledgement Preview)"
+msgstr "SCSI Read Errors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Write Errors (Acknowledgement Preview)"
+msgstr "SCSI Write Errors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Verify Errors (Acknowledgement Preview)"
+msgstr "SCSI Verify Errors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Non-Medium Errors (Acknowledgement Preview)"
+msgstr "SCSI Non-Medium Errors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Media Errors (Acknowledgement Preview)"
+msgstr "Media Errors (Acknowledgement Preview)"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "No available targets for this template"
+msgstr "No available targets for this template"
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "No available targets for this template."
+msgstr "No available targets for this template."

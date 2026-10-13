@@ -543,7 +543,7 @@ func (s *Service) evaluateDiskSmartCounters(ctx context.Context, disk diskServic
 		if s.emitDiskSmartNotification(ctx, target, disk.Device, counter.KindPrefix,
 			notifier.DiskSmartCounterCondition, "warning",
 			fmt.Sprintf("Disk %s has %s", disk.Device, strings.ToLower(counter.Label)),
-			fmt.Sprintf("%s recorded on disk %s: %s.", counter.Label, disk.Device, value),
+			fmt.Sprintf("Current count: %s.", value),
 			map[string]string{
 				"counter_key":     key,
 				"counter_value":   value.String(),

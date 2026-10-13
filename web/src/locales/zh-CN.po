@@ -12872,11 +12872,6 @@ msgstr ""
 msgid "Dismiss all notifications?"
 msgstr ""
 
-#. 0: count; 1: count === 1 ? '' \\: 's'
-#: src/lib/components/custom/Notifications/Bell.svelte
-msgid "This will dismiss all {0} active notification{1}."
-msgstr ""
-
 #: src/lib/components/custom/Notifications/Bell.svelte
 msgid "<0/> Dismissing"
 msgstr ""
@@ -20833,4 +20828,57 @@ msgstr ""
 #. 0: deleteSchedule?.id; 1: deleteSchedule?.poolName || ''
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Schedule #{0} for {1} and its queued occurrence will be removed. Other schedules and completed history are retained."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Acknowledgement preview dismissed"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Historical error count acknowledged"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Real counts unchanged."
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "Acknowledge current historical error count"
+msgstr ""
+
+#. 0: count; 1: count === 1 ? '' \\: 's'
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "This will dismiss all {0} active notification{1}. For supported historical-counter warnings, this acknowledges each current count. Increases and active disk faults will still notify you."
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Reallocated Sectors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Read Errors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Write Errors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Verify Errors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "SCSI Non-Medium Errors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Media Errors (Acknowledgement Preview)"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "No available targets for this template"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "No available targets for this template."
 msgstr ""

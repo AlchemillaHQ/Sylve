@@ -111,15 +111,17 @@
 		}
 
 		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
-		toast.success(
-			item.metadata.acknowledgement === 'smart_counter'
-				? 'Historical error count acknowledged'
-				: 'Notification dismissed',
-			{
-				duration: 3000,
-				position: 'bottom-center'
-			}
-		);
+		let message = 'Notification dismissed';
+		if (item.metadata.acknowledgement === 'smart_counter') {
+			message =
+				item.metadata.test === 'true'
+					? 'Acknowledgement preview dismissed'
+					: 'Historical error count acknowledged';
+		}
+		toast.success(message, {
+			duration: 3000,
+			position: 'bottom-center'
+		});
 	}
 
 	async function dismissAll() {
@@ -217,7 +219,9 @@
 			const note = document.createElement('p');
 			note.className = 'text-muted-foreground text-xs';
 			note.textContent =
-				'Acknowledging silences this historical counter up to its current value, including after restarts. Increases and active disk faults will still notify you.';
+				notification.metadata.test === 'true'
+					? 'Real counts unchanged.'
+					: '× Acknowledges this count; increases still alert.';
 			container.append(note);
 		}
 
@@ -240,10 +244,13 @@
 		button.disabled = row.dismissing;
 		button.className =
 			'inline-flex items-center justify-center opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none disabled:opacity-30';
-		button.title =
-			row.notification.metadata.acknowledgement === 'smart_counter'
-				? 'Acknowledge current historical error count'
-				: 'Dismiss';
+		button.title = 'Dismiss';
+		if (row.notification.metadata.acknowledgement === 'smart_counter') {
+			button.title = 'Acknowledge current historical error count';
+			if (row.notification.metadata.test === 'true') {
+				button.title += ' (test preview)';
+			}
+		}
 		button.setAttribute('aria-label', button.title);
 		icon.classList.add('icon-[lucide--x]');
 		button.append(icon);

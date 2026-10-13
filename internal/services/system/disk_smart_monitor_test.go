@@ -641,7 +641,9 @@ func TestHistoricalCounterMonitorRestartAndConfirmedGrowth(t *testing.T) {
 				svc.evaluateSmartData(ctx, disk, state, false)
 			}
 			items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
-			if err != nil || total != 1 || items[0].Metadata["counter_key"] != fixture.key {
+			counter, _ := notifier.DiskSmartCounterByKey(fixture.key)
+			if err != nil || total != 1 || items[0].Metadata["counter_key"] != fixture.key ||
+				items[0].Title != "Disk da5 has "+strings.ToLower(counter.Label) || items[0].Body != "Current count: 4." {
 				t.Fatalf("initial counter: items=%+v total=%d err=%v", items, total, err)
 			}
 			if err := notifications.Dismiss(ctx, items[0].ID); err != nil {
@@ -661,8 +663,8 @@ func TestHistoricalCounterMonitorRestartAndConfirmedGrowth(t *testing.T) {
 			}
 			svc.evaluateSmartData(ctx, disk, state, false)
 			items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
-			counter, _ := notifier.DiskSmartCounterByKey(fixture.key)
 			if err != nil || total != 1 || items[0].Title != "Disk da7 "+strings.ToLower(counter.Label)+" increased" ||
+				items[0].Body != "Increased from 4 to 5 (+1)." ||
 				items[0].Metadata["previous_counter_value"] != "4" || items[0].Metadata["counter_value"] != "5" || items[0].Metadata["counter_delta"] != "1" {
 				t.Fatalf("confirmed growth: items=%+v total=%d err=%v", items, total, err)
 			}

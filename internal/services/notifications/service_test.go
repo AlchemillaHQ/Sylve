@@ -175,7 +175,7 @@ func diskSmartCounterWarning(diskKey, counterKey, value string) notifier.EventIn
 	return notifier.EventInput{
 		Kind:        notifier.KindForDiskSmart(counter.KindPrefix, diskKey),
 		Title:       "Disk da5 has historical errors",
-		Body:        counter.Label + " recorded on disk da5: " + value + ".",
+		Body:        "Current count: " + value + ".",
 		Severity:    "warning",
 		Source:      "system.disk.smart",
 		Fingerprint: diskKey + "|counter:" + counterKey,
@@ -241,7 +241,7 @@ func TestHistoricalCounterBaselinesSurviveRestartAndGrowth(t *testing.T) {
 			counter, _ := notifier.DiskSmartCounterByKey(key)
 			if stored.DismissedAt != nil || stored.Title != "Disk da5 "+strings.ToLower(counter.Label)+" increased" ||
 				stored.Metadata["previous_counter_value"] != "4" || stored.Metadata["counter_delta"] != "1" ||
-				!strings.Contains(stored.Body, "from 4 to 5 (+1)") {
+				stored.Body != "Increased from 4 to 5 (+1)." {
 				t.Fatalf("growth=%+v", stored)
 			}
 			var baseline models.DiskSmartCounterAcknowledgement
@@ -1945,6 +1945,97 @@ func TestTestRuleEmitsThroughPipeline(t *testing.T) {
 	}
 }
 
+func TestTestRuleHistoricalCounterPreviewsDoNotChangeBaselines(t *testing.T) {
+	for _, key := range []string{
+		notifier.DiskSmartCounterReallocated, notifier.DiskSmartCounterNvmeMediaErrors,
+		notifier.DiskSmartCounterScsiReadErrors, notifier.DiskSmartCounterScsiWriteErrors,
+		notifier.DiskSmartCounterScsiVerifyErrors, notifier.DiskSmartCounterScsiNonMediumErrors,
+	} {
+		for _, scenario := range []struct {
+			name     string
+			baseline string
+			bulk     bool
+		}{
+			{name: "no baseline"},
+			{name: "lower baseline", baseline: "2", bulk: true},
+			{name: "higher baseline", baseline: "10"},
+		} {
+			t.Run(key+"/"+scenario.name, func(t *testing.T) {
+				ctx := context.Background()
+				const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+				disk := diskServiceInterfaces.Disk{Device: "da5", UUID: diskKey, IdentityStable: true, Type: "HDD"}
+				template := RuleTemplateDiskSmartHealth
+				counter, _ := notifier.DiskSmartCounterByKey(key)
+				if counter.KindPrefix == notifier.DiskSmartNvmeKindPrefix {
+					disk.Device = "nda0"
+					disk.Type = "NVMe"
+					template = RuleTemplateDiskSmartNvme
+				}
+				svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{disk})
+				baseline := models.DiskSmartCounterAcknowledgement{
+					DiskKey: diskKey, CounterKey: key, Value: scenario.baseline,
+					AcknowledgedAt: time.Date(2026, time.October, 13, 10, 0, 0, 0, time.UTC),
+				}
+				if scenario.baseline != "" {
+					if err := svc.DB.Create(&baseline).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := svc.TestRule(ctx, TestRuleInput{TemplateKey: template, TargetKey: diskKey, Condition: key}); err != nil {
+					t.Fatal(err)
+				}
+				var preview models.Notification
+				if err := svc.DB.First(&preview).Error; err != nil {
+					t.Fatal(err)
+				}
+				if preview.Source != "settings.notifications.test" || preview.Severity != models.NotificationSeverityWarning ||
+					preview.Title != "[TEST] Disk "+disk.Device+" has "+strings.ToLower(counter.Label) ||
+					preview.Body != "Current count: 4." ||
+					preview.Metadata["test"] != "true" || preview.Metadata["acknowledgement"] != "smart_counter" ||
+					preview.Metadata["condition"] != notifier.DiskSmartCounterCondition || preview.Metadata["counter_key"] != key ||
+					preview.Metadata["counter_value"] != "4" || preview.Metadata["disk_key"] != diskKey || preview.Metadata["device"] != disk.Device {
+					t.Fatalf("invalid acknowledgement preview: %+v", preview)
+				}
+				if scenario.bulk {
+					if dismissed, err := svc.DismissAll(ctx); err != nil || dismissed != 1 {
+						t.Fatalf("dismissed=%d err=%v", dismissed, err)
+					}
+				} else if err := svc.Dismiss(ctx, preview.ID); err != nil {
+					t.Fatal(err)
+				}
+				if active, err := svc.CountActive(ctx); err != nil || active != 0 {
+					t.Fatalf("preview was not dismissed: active=%d err=%v", active, err)
+				}
+				var baselines []models.DiskSmartCounterAcknowledgement
+				if err := svc.DB.Find(&baselines).Error; err != nil {
+					t.Fatal(err)
+				}
+				if scenario.baseline == "" {
+					if len(baselines) != 0 {
+						t.Fatalf("preview created a real baseline: %+v", baselines)
+					}
+				} else if len(baselines) != 1 || baselines[0] != baseline {
+					t.Fatalf("preview changed a real baseline: %+v", baselines)
+				}
+			})
+		}
+	}
+}
+
+func TestTestRuleActiveFaultsDoNotShowCounterAcknowledgement(t *testing.T) {
+	now := time.Date(2026, time.October, 13, 10, 0, 0, 0, time.UTC)
+	for _, condition := range []string{"health_failed", "sector_issues", "nvme_warning", "temperature_critical", "wearout_critical"} {
+		input := buildTestEventInput(RuleTemplateDiskSmartHealth, "da5", notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "da5"), condition, now)
+		if input.Metadata["acknowledgement"] != "" {
+			t.Fatalf("active-fault test marked acknowledgeable: %+v", input)
+		}
+	}
+	input := buildTestEventInput(RuleTemplateDiskSmartTemperature, "da5", notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, "da5"), notifier.DiskSmartCounterReallocated, now)
+	if input.Metadata["acknowledgement"] != "" {
+		t.Fatalf("unrelated template marked acknowledgeable: %+v", input)
+	}
+}
+
 func TestDiskSmartSelfTestDismissalDoesNotPersistSuppression(t *testing.T) {
 	kind := notifier.KindForDiskSmart(notifier.DiskSmartSelfTestKindPrefix, "ada0")
 	if shouldPersistSuppressionForKind(kind) {
@@ -2043,6 +2134,25 @@ func TestTestRuleRejectsTargetNotInTemplate(t *testing.T) {
 	}
 	if err.Error() != "notification_rule_target_not_found" {
 		t.Fatalf("expected_target_not_found got: %v", err)
+	}
+}
+
+func TestTestRuleNvmePreviewRequiresNvmeTarget(t *testing.T) {
+	ctx := context.Background()
+	const diskKey = "947c529b-0b81-5ca5-9667-1ed30e409f71"
+	svc := newTestServiceWithDisks(t, []diskServiceInterfaces.Disk{
+		{Device: "da5", UUID: diskKey, IdentityStable: true, Type: "SSD"},
+	})
+	err := svc.TestRule(ctx, TestRuleInput{
+		TemplateKey: RuleTemplateDiskSmartNvme,
+		TargetKey:   diskKey,
+		Condition:   notifier.DiskSmartCounterNvmeMediaErrors,
+	})
+	if err == nil || err.Error() != "notification_rule_no_targets" {
+		t.Fatalf("NVMe preview accepted a stale non-NVMe target: %v", err)
+	}
+	if active, err := svc.CountActive(ctx); err != nil || active != 0 {
+		t.Fatalf("invalid target emitted a notification: active=%d err=%v", active, err)
 	}
 }
 

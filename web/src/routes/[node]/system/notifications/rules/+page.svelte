@@ -123,7 +123,8 @@ under sponsorship from the FreeBSD Foundation.
 		{
 			field: 'uiEnabled',
 			title: 'Channels',
-			width: 310,
+			width: 360,
+			minWidth: 360,
 			formatter: (cell: CellComponent) => {
 				const rowData = cell.getRow().getData() as RuleRow;
 				if (rowData.isTemplateRow) {
@@ -145,7 +146,7 @@ under sponsorship from the FreeBSD Foundation.
 					const cls = enabled ? 'text-green-500' : 'text-muted-foreground opacity-40';
 					return `<span class="inline-flex items-center gap-0.5 ${cls}"><span class="${icon} h-3.5 w-3.5 shrink-0"></span><span>${label}</span></span>`;
 				});
-				return `<span class="inline-flex items-center gap-3">${parts.join('')}</span>`;
+				return `<span class="flex items-center gap-3">${parts.join('')}</span>`;
 			}
 		}
 	]);
@@ -705,6 +706,10 @@ under sponsorship from the FreeBSD Foundation.
 		return (template?.targets || []).map((t) => ({ key: t.key, label: t.label }));
 	});
 
+	let testTargetValid = $derived(
+		testTargetOptions.some((target) => target.key === modals.test.targetKey)
+	);
+
 	let testConditionOptions = $derived.by(() => {
 		switch (modals.test.templateKey) {
 			case 'system.disk.smart.temperature':
@@ -720,10 +725,36 @@ under sponsorship from the FreeBSD Foundation.
 			case 'system.disk.smart.health':
 				return [
 					{ key: 'health_failed', label: 'SMART Health Failed' },
-					{ key: 'sector_issues', label: 'Sector Issues' }
+					{ key: 'sector_issues', label: 'Sector Issues' },
+					{
+						key: 'ata_reallocated_sectors',
+						label: 'Reallocated Sectors (Acknowledgement Preview)'
+					},
+					{
+						key: 'scsi_read_uncorrected_errors',
+						label: 'SCSI Read Errors (Acknowledgement Preview)'
+					},
+					{
+						key: 'scsi_write_uncorrected_errors',
+						label: 'SCSI Write Errors (Acknowledgement Preview)'
+					},
+					{
+						key: 'scsi_verify_uncorrected_errors',
+						label: 'SCSI Verify Errors (Acknowledgement Preview)'
+					},
+					{
+						key: 'scsi_non_medium_uncorrected_errors',
+						label: 'SCSI Non-Medium Errors (Acknowledgement Preview)'
+					}
 				];
 			case 'system.disk.smart.nvme':
-				return [{ key: 'nvme_warning', label: 'NVMe Warning' }];
+				return [
+					{ key: 'nvme_warning', label: 'NVMe Warning' },
+					{
+						key: 'nvme_media_errors',
+						label: 'Media Errors (Acknowledgement Preview)'
+					}
+				];
 			case 'system.disk.smart.selftest':
 				return [
 					{ key: 'self_test_failed', label: 'Self-Test Failed' },
@@ -751,18 +782,10 @@ under sponsorship from the FreeBSD Foundation.
 
 	$effect(() => {
 		if (!modals.test.open) return;
-		if (
-			testTargetOptions.length > 0 &&
-			!testTargetOptions.some((t) => t.key === modals.test.targetKey)
-		) {
-			modals.test.targetKey = testTargetOptions[0].key;
+		if (!testTargetValid) {
+			modals.test.targetKey = testTargetOptions[0]?.key || '';
 		}
-		if (
-			modals.test.condition &&
-			!testConditionOptions.some((c) => c.key === modals.test.condition)
-		) {
-			modals.test.condition = testConditionOptions[0]?.key || '';
-		} else if (!modals.test.condition) {
+		if (!testConditionOptions.some((condition) => condition.key === modals.test.condition)) {
 			modals.test.condition = testConditionOptions[0]?.key || '';
 		}
 	});
@@ -773,15 +796,20 @@ under sponsorship from the FreeBSD Foundation.
 			toast.error('Select a template', { position: 'bottom-center' });
 			return;
 		}
-		if (!modals.test.targetKey) {
-			toast.error('Select an available target', { position: 'bottom-center' });
+		if (!testTargetValid) {
+			toast.error(
+				testTargetOptions.length === 0
+					? 'No available targets for this template'
+					: 'Select an available target',
+				{ position: 'bottom-center' }
+			);
 			return;
 		}
 
 		busy.test = true;
 		const response = await testNotificationRule({
 			templateKey: modals.test.templateKey,
-			targetKey: modals.test.targetKey || undefined,
+			targetKey: modals.test.targetKey,
 			condition: modals.test.condition || undefined
 		});
 		busy.test = false;
@@ -789,6 +817,12 @@ under sponsorship from the FreeBSD Foundation.
 		if (isAPIResponse(response) && response.status === 'error') {
 			handleAPIError(response);
 			toast.error('Failed to send test notification', { position: 'bottom-center' });
+			if (
+				response.error === 'notification_rule_no_targets' ||
+				response.error === 'notification_rule_target_not_found'
+			) {
+				await rulesResource.refetch();
+			}
 			return;
 		}
 
@@ -1150,6 +1184,9 @@ under sponsorship from the FreeBSD Foundation.
 						trigger: 'inline-flex h-9 w-full items-center overflow-hidden px-3 text-left'
 					}}
 				/>
+				{#if testTargetOptions.length === 0}
+					<p class="text-sm text-muted-foreground">No available targets for this template.</p>
+				{/if}
 
 				{#if testConditionOptions.length > 0}
 					<SimpleSelect
@@ -1167,11 +1204,7 @@ under sponsorship from the FreeBSD Foundation.
 			</div>
 
 			<Dialog.Footer>
-				<Button
-					onclick={sendTest}
-					size="sm"
-					disabled={busy.test || !modals.test.templateKey || !modals.test.targetKey}
-				>
+				<Button onclick={sendTest} size="sm" disabled={busy.test || !testTargetValid}>
 					{#if busy.test}
 						<span class="icon-[mdi--loading] mr-1 h-4 w-4 animate-spin"></span>
 					{/if}

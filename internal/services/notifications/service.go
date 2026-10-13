@@ -922,7 +922,7 @@ func applyDiskSmartCounterBaseline(tx *gorm.DB, input *notifier.EventInput) (boo
 	delta := new(big.Int).Sub(value, baseline).String()
 	device := input.Metadata["device"]
 	input.Title = fmt.Sprintf("Disk %s %s increased", device, strings.ToLower(counter.Label))
-	input.Body = fmt.Sprintf("%s on disk %s increased from %s to %s (+%s).", counter.Label, device, baseline, value, delta)
+	input.Body = fmt.Sprintf("Increased from %s to %s (+%s).", baseline, value, delta)
 	input.Metadata["previous_counter_value"] = baseline.String()
 	input.Metadata["counter_delta"] = delta
 	return false, nil
@@ -1090,6 +1090,22 @@ func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
 }
 
 func buildTestEventInput(templateKey, targetKey, kind, condition string, now time.Time) notifier.EventInput {
+	if counter, ok := notifier.DiskSmartCounterByKey(condition); ok && kind == notifier.KindForDiskSmart(counter.KindPrefix, targetKey) {
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("[TEST] Disk %s has %s", targetKey, strings.ToLower(counter.Label)),
+			Body:     "Current count: 4.",
+			Severity: string(models.NotificationSeverityWarning), Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata: map[string]string{
+				"device":          targetKey,
+				"condition":       notifier.DiskSmartCounterCondition,
+				"test":            "true",
+				"counter_key":     counter.Key,
+				"counter_value":   "4",
+				"acknowledgement": "smart_counter",
+			},
+		}
+	}
 	switch condition {
 	case "temperature_warning":
 		return notifier.EventInput{
