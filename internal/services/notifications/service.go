@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	hub "github.com/alchemillahq/sylve/internal/events"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
@@ -58,6 +59,7 @@ const (
 
 const (
 	RuleTemplateZFSPoolState   = "system.zfs.pool_state"
+	RuleTemplateZFSScrub       = "system.zfs.scrub"
 	ruleTemplateTargetTypePool = "pool"
 
 	RuleTemplateDiskSmartTemperature = "system.disk.smart.temperature"
@@ -107,8 +109,11 @@ type EmailSender func(ctx context.Context, cfg models.NotificationTransportConfi
 type DiscordSender func(ctx context.Context, cfg models.NotificationTransportConfig, input notifier.EventInput, webhookURL string) error
 
 type Service struct {
-	DB                *gorm.DB
-	DiskService       diskServiceInterfaces.DiskServiceInterface
+	DB          *gorm.DB
+	DiskService diskServiceInterfaces.DiskServiceInterface
+	PoolService interface {
+		GetUsablePools(context.Context) ([]*gzfs.ZPool, error)
+	}
 	httpClient        *http.Client
 	pushoverEndpoint  string
 	pushoverSlots     chan struct{}
@@ -942,8 +947,8 @@ func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
 		return fmt.Errorf("notification_rule_template_required")
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
-	definitions, _, err := s.loadRuleTemplateDefinitions(s.DB.WithContext(ctx), diskDefinitions)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
+	definitions, _, err := s.loadRuleTemplateDefinitions(s.DB.WithContext(ctx), storageDefinitions)
 	if err != nil {
 		return err
 	}
@@ -1073,6 +1078,20 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"device": targetKey, "condition": condition, "test": "true"},
 		}
+	case "scrub_failed", "scrub_passed", "scrub_started", "scrub_cancelled", "scrub_unknown", "scrub_missed", "scrub_start_failed":
+		severity := string(models.NotificationSeverityWarning)
+		if condition == "scrub_failed" {
+			severity = string(models.NotificationSeverityCritical)
+		} else if condition == "scrub_started" || condition == "scrub_passed" {
+			severity = string(models.NotificationSeverityInfo)
+		}
+		return notifier.EventInput{
+			Kind: kind, Title: fmt.Sprintf("ZFS pool scrub: %s", strings.ReplaceAll(condition, "_", " ")),
+			Body:     fmt.Sprintf("Test scrub notification for pool GUID %s.", targetKey),
+			Severity: severity, Source: "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
+			Metadata:    map[string]string{"pool_guid": targetKey, "condition": condition, "test": "true"},
+		}
 	case "pool_degraded":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is DEGRADED", targetKey),
@@ -1112,6 +1131,8 @@ func defaultTestConditionForTemplate(templateKey string) string {
 		return "nvme_warning"
 	case RuleTemplateDiskSmartSelfTest:
 		return "self_test_failed"
+	case RuleTemplateZFSScrub:
+		return "scrub_failed"
 	case RuleTemplateZFSPoolState:
 		return "pool_degraded"
 	default:
@@ -1333,9 +1354,9 @@ func (s *Service) GetRuleConfig(ctx context.Context) (RuleConfigView, error) {
 	}
 
 	var view RuleConfigView
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1368,10 +1389,10 @@ func (s *Service) UpdateRuleConfig(ctx context.Context, input RuleConfigUpdate) 
 
 	entries := append([]RuleConfigEntryUpdate{}, input.Rules...)
 	var view RuleConfigView
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1467,9 +1488,9 @@ func (s *Service) CreateRule(ctx context.Context, input RuleCreateInput) (RuleCo
 		return RuleConfigView{}, fmt.Errorf("notification_rule_target_required")
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, definitionsByKey, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1539,9 +1560,9 @@ func (s *Service) UpdateRule(ctx context.Context, id uint, input RuleUpdateInput
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1618,9 +1639,9 @@ func (s *Service) DeleteRule(ctx context.Context, id uint) (RuleConfigView, erro
 		return RuleConfigView{}, fmt.Errorf("invalid_notification_rule_id")
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1659,9 +1680,9 @@ func (s *Service) BulkDeleteRules(ctx context.Context, ids []uint) (RuleConfigVi
 		return RuleConfigView{}, err
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1699,9 +1720,9 @@ func (s *Service) BulkUpdateRules(ctx context.Context, ids []uint, uiEnabled, nt
 		return RuleConfigView{}, err
 	}
 
-	diskDefinitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	storageDefinitions := s.buildStorageTemplateDefinitions(ctx)
 	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		definitions, _, err := s.loadRuleTemplateDefinitions(tx, diskDefinitions)
+		definitions, _, err := s.loadRuleTemplateDefinitions(tx, storageDefinitions)
 		if err != nil {
 			return err
 		}
@@ -1840,7 +1861,7 @@ func (s *Service) listActivePools(tx *gorm.DB) ([]string, error) {
 	return normalizePoolNames(settings.Pools), nil
 }
 
-func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, diskDefinitions []*ruleTemplateDefinition) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
+func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, storageDefinitions []*ruleTemplateDefinition) ([]*ruleTemplateDefinition, map[string]*ruleTemplateDefinition, error) {
 	pools, err := s.listActivePools(tx)
 	if err != nil {
 		return nil, nil, err
@@ -1870,7 +1891,7 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, diskDefinitions []*ru
 		},
 	}
 
-	definitions = append(definitions, diskDefinitions...)
+	definitions = append(definitions, storageDefinitions...)
 
 	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
 	for _, definition := range definitions {
@@ -1878,6 +1899,33 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, diskDefinitions []*ru
 	}
 
 	return definitions, definitionsByKey, nil
+}
+
+func (s *Service) buildStorageTemplateDefinitions(ctx context.Context) []*ruleTemplateDefinition {
+	definitions := s.buildDiskSmartTemplateDefinitions(ctx)
+	if s.PoolService == nil {
+		return definitions
+	}
+	targets := make([]RuleTemplateTargetView, 0)
+	active := make(map[string]struct{})
+	pools, err := s.PoolService.GetUsablePools(ctx)
+	if err == nil {
+		for _, pool := range pools {
+			if pool == nil || pool.PoolGUID == "" {
+				continue
+			}
+			targets = append(targets, RuleTemplateTargetView{Key: pool.PoolGUID, Label: pool.Name})
+			active[pool.PoolGUID] = struct{}{}
+		}
+	}
+	return append(definitions, &ruleTemplateDefinition{
+		View: RuleTemplateView{
+			Key: RuleTemplateZFSScrub, Label: "ZFS Pool Scrub",
+			Description: "Manual and scheduled ZFS scrub lifecycle and result alerts.",
+			TargetType:  ruleTemplateTargetTypePool, Targets: targets,
+		},
+		AutoCreateRules: true, ActiveTargets: active,
+	})
 }
 
 func (s *Service) buildDiskSmartTemplateDefinitions(ctx context.Context) []*ruleTemplateDefinition {
@@ -3379,6 +3427,9 @@ func normalizeRuleTargetKey(value string) string {
 }
 
 func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
+	if guid, ok := notifier.PoolGUIDFromZFSScrubKind(kind); ok {
+		return RuleTemplateZFSScrub, guid, true
+	}
 	if pool, ok := notifier.PoolFromZFSPoolStateKind(kind); ok {
 		return RuleTemplateZFSPoolState, normalizeRuleTargetKey(pool), true
 	}
@@ -3413,6 +3464,8 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 	}
 
 	switch templateKey {
+	case RuleTemplateZFSScrub:
+		return notifier.KindForZFSScrub(targetKey), nil
 	case RuleTemplateZFSPoolState:
 		return notifier.KindForZFSPoolState(targetKey), nil
 	case RuleTemplateDiskSmartTemperature:
@@ -3455,7 +3508,8 @@ func suppressionKey(kind, fingerprint string) string {
 
 func shouldPersistSuppressionForKind(kind string) bool {
 	kind = strings.TrimSpace(strings.ToLower(kind))
-	return !strings.HasPrefix(kind, notifier.ZFSPoolStateKindPrefix) && !notifier.IsDiskSmartKind(kind)
+	return !strings.HasPrefix(kind, notifier.ZFSPoolStateKindPrefix) &&
+		!strings.HasPrefix(kind, notifier.ZFSScrubKindPrefix) && !notifier.IsDiskSmartKind(kind)
 }
 
 func ntfyTagForSeverity(severity string) string {

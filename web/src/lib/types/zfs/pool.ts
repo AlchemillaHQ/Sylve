@@ -1,5 +1,68 @@
 import { z } from 'zod/v4';
 
+export const PoolScrubStatusSchema = z.enum([
+	'idle',
+	'queued',
+	'starting',
+	'running',
+	'paused',
+	'passed',
+	'failed',
+	'cancelled',
+	'unknown',
+	'missed',
+	'skipped'
+]);
+
+export const PoolScrubScheduleSchema = z.object({
+	id: z.number().int().positive(),
+	poolGuid: z.string(),
+	poolName: z.string(),
+	cronExpr: z.string(),
+	enabled: z.boolean(),
+	active: z.boolean(),
+	queuedAt: z.string().nullable(),
+	lastRunAt: z.string().nullable(),
+	nextRunAt: z.string().nullable(),
+	lastStatus: PoolScrubStatusSchema,
+	lastError: z.string(),
+	progressPct: z.number().int(),
+	progressKnown: z.boolean()
+});
+
+export const PoolScrubRunSchema = z.object({
+	id: z.number().int().positive(),
+	poolGuid: z.string(),
+	poolName: z.string(),
+	source: z.enum(['manual', 'scheduled']),
+	scheduleId: z.number().nullable(),
+	scheduledFor: z.string().nullable(),
+	requestedAt: z.string(),
+	startedAt: z.string().nullable(),
+	completedAt: z.string().nullable(),
+	status: PoolScrubStatusSchema,
+	error: z.string(),
+	progressPct: z.number().int(),
+	progressKnown: z.boolean(),
+	errors: z.string().nullable(),
+	repairedBytes: z.string().nullable(),
+	examinedBytes: z.string().nullable(),
+	issuedBytes: z.string().nullable(),
+	totalBytes: z.string().nullable()
+});
+
+export type PoolScrubSchedule = z.infer<typeof PoolScrubScheduleSchema>;
+export type PoolScrubRun = z.infer<typeof PoolScrubRunSchema>;
+export type PoolScrubScheduleInput = {
+	poolGuid: string;
+	cronExpr: string;
+	enabled: boolean;
+};
+
+export function isPoolScrubActive(status: PoolScrubRun['status']): boolean {
+	return status === 'starting' || status === 'running' || status === 'paused';
+}
+
 export const IODelaySchema = z.object({
 	delay: z.number().default(0)
 });

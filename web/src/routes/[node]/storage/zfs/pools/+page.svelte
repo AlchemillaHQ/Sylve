@@ -9,9 +9,17 @@ under sponsorship from the FreeBSD Foundation.
 -->
 
 <script lang="ts">
+	import { page } from '$app/state';
 	import { handleAPIResponse } from '$lib/api/common';
 	import { listDisks } from '$lib/api/disk/disk';
-	import { deletePool, detachDevice, getPools, scrubPool } from '$lib/api/zfs/pool';
+	import {
+		deletePool,
+		detachDevice,
+		getPools,
+		getPoolStatusResult,
+		listPoolScrubRuns,
+		listPoolScrubSchedules
+	} from '$lib/api/zfs/pool';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import TreeTable from '$lib/components/custom/TreeTable.svelte';
 	import Search from '$lib/components/custom/TreeTable/Search.svelte';
@@ -19,18 +27,20 @@ under sponsorship from the FreeBSD Foundation.
 	import Edit from '$lib/components/custom/ZFS/pools/Edit.svelte';
 	import Replace from '$lib/components/custom/ZFS/pools/Replace.svelte';
 	import Status from '$lib/components/custom/ZFS/pools/Status.svelte';
+	import Scrub from '$lib/components/custom/ZFS/pools/Scrub.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import type { Row } from '$lib/types/components/tree-table';
 	import type { Disk } from '$lib/types/disk/disk';
-	import type { Zpool } from '$lib/types/zfs/pool';
+	import { isPoolScrubActive, type Zpool } from '$lib/types/zfs/pool';
 	import { deepSearchKey } from '$lib/utils/arr';
 	import { zpoolUseableDisks, zpoolUseablePartitions } from '$lib/utils/disk';
-	import { getAPIErrorText, updateCache } from '$lib/utils/http';
+	import { getAPIErrorText, isAPIResponse, updateCache } from '$lib/utils/http';
 	import {
 		generateTableData,
 		getPoolByDevice,
 		isPool,
+		isPoolScanActive,
 		isReplaceableDevice
 	} from '$lib/utils/zfs/pool';
 	import { untrack } from 'svelte';
@@ -129,11 +139,45 @@ under sponsorship from the FreeBSD Foundation.
 		return false;
 	});
 
-	let scrubbing = $derived.by(() => {
-		if (JSON.stringify(pools).toLowerCase().includes('scrub in progress since')) {
-			return true;
-		} else {
-			return false;
+	let selectedMutationPool = $derived.by(() => {
+		if (activePool) return activePool;
+		const name = activeRow ? getPoolByDevice(pools.current, String(activeRow.name || '')) : null;
+		return pools.current.find((candidate) => candidate.name === name) || null;
+	});
+	const poolActivity = resource(
+		() => `${page.params.node || ''}|${selectedMutationPool?.pool_guid || ''}`,
+		async (key) => {
+			const [hostname, guid] = key.split('|');
+			if (!guid) return null;
+			const options = { hostname };
+			const [status, schedules, runs] = await Promise.all([
+				getPoolStatusResult(guid, options),
+				listPoolScrubSchedules(options),
+				listPoolScrubRuns(guid, options)
+			]);
+			const poolStatus = status && !isAPIResponse(status) ? status : null;
+			const scrubSchedules = Array.isArray(schedules) ? schedules : [];
+			const scrubRuns = Array.isArray(runs) ? runs : [];
+			return {
+				hostname,
+				poolGuid: guid,
+				status: poolStatus,
+				schedules: scrubSchedules,
+				runs: scrubRuns,
+				active:
+					isPoolScanActive(poolStatus?.scan_stats) ||
+					scrubSchedules.some(
+						(schedule) => schedule.poolGuid === guid && isPoolScrubActive(schedule.lastStatus)
+					) ||
+					scrubRuns.some((run) => isPoolScrubActive(run.status))
+			};
+		},
+		{ initialValue: null }
+	);
+	let scrubbing = $derived(poolActivity.current?.active || false);
+	useInterval(15000, {
+		callback: () => {
+			if (visible.current && !storage.idle && selectedMutationPool) poolActivity.refetch();
 		}
 	});
 
@@ -158,6 +202,10 @@ under sponsorship from the FreeBSD Foundation.
 		status: {
 			open: false
 		},
+		scrub: {
+			open: false,
+			pool: null as Zpool | null
+		},
 		replace: {
 			open: false,
 			data: {
@@ -170,6 +218,12 @@ under sponsorship from the FreeBSD Foundation.
 			open: false
 		}
 	});
+	watch(
+		() => page.params.node,
+		() => {
+			modals.scrub.open = false;
+		}
+	);
 </script>
 
 {#snippet button(type: string)}
@@ -188,30 +242,17 @@ under sponsorship from the FreeBSD Foundation.
 				</Button>
 			{/if}
 
-			{#if type === 'pool-scrub'}
-				{#if typeof activeRow.name === 'string' && isPool(pools.current, activeRow.name)}
-					<Button
-						onclick={async () => {
-							const response = await scrubPool(activeRow?.guid as string);
-							if (response.status === 'error') {
-								toast.error(parsePoolActionError(response), {
-									position: 'bottom-center'
-								});
-							} else {
-								toast.success('Scrub started', {
-									position: 'bottom-center'
-								});
-							}
-						}}
-						size="sm"
-						variant="outline"
-						class="h-6.5"
-						disabled={scrubbing}
-						title={scrubbing ? 'A scrub is already in progress' : ''}
-					>
-						<SpanWithIcon icon="icon-[cil--scrubber]" size="h-4 w-4" gap="gap-1" title="Scrub" />
-					</Button>
-				{/if}
+			{#if type === 'pool-scrub' && activePool}
+				<Button
+					onclick={() => {
+						modals.scrub = { open: true, pool: activePool };
+					}}
+					size="sm"
+					variant="outline"
+					class="h-6.5"
+				>
+					<SpanWithIcon icon="icon-[cil--scrubber]" size="h-4 w-4" gap="gap-1" title="Scrub" />
+				</Button>
 			{/if}
 
 			{#if type === 'pool-edit'}
@@ -239,8 +280,10 @@ under sponsorship from the FreeBSD Foundation.
 					size="sm"
 					variant="outline"
 					class="h-6.5"
-					disabled={replacing}
-					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
+					disabled={replacing || scrubbing}
+					title={replacing || scrubbing
+						? 'Please wait for the current scan/replace operation to finish'
+						: ''}
 				>
 					<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 				</Button>
@@ -262,8 +305,8 @@ under sponsorship from the FreeBSD Foundation.
 					variant="outline"
 					size="sm"
 					class="h-6.5"
-					disabled={replacing}
-					title={replacing ? 'Replace already in progress' : ''}
+					disabled={replacing || scrubbing}
+					title={replacing || scrubbing ? 'A scan or replacement is already in progress' : ''}
 				>
 					<SpanWithIcon
 						icon="icon-[mdi--swap-horizontal]"
@@ -284,8 +327,10 @@ under sponsorship from the FreeBSD Foundation.
 					variant="outline"
 					size="sm"
 					class="h-6.5"
-					disabled={replacing}
-					title={replacing ? 'Please wait for the current replace operation to finish' : ''}
+					disabled={replacing || scrubbing}
+					title={replacing || scrubbing
+						? 'Please wait for the current scan/replace operation to finish'
+						: ''}
 				>
 					<SpanWithIcon
 						icon="icon-[mdi--link-variant-off]"
@@ -331,6 +376,15 @@ under sponsorship from the FreeBSD Foundation.
 
 {#if activePool}
 	<Status bind:open={modals.status.open} pool={activePool} />
+{/if}
+
+{#if modals.scrub.pool}
+	<Scrub
+		bind:open={modals.scrub.open}
+		pool={modals.scrub.pool}
+		pools={pools.current}
+		initialSnapshot={poolActivity.current ?? undefined}
+	/>
 {/if}
 
 <!-- Delete -->

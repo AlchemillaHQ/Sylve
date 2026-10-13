@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
+	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/disk"
@@ -42,17 +43,10 @@ func (s *Service) GetPoolStatus(ctx context.Context, guid string) (*gzfs.ZPoolSt
 }
 
 func (s *Service) ScrubPool(ctx context.Context, guid string) error {
-	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil || pool == nil {
-		return poolLookupError(err, "pool_not_found")
-	}
-
-	err = pool.Scrub(ctx)
-	if err != nil {
-		return fmt.Errorf("failed_to_start_scrub: %v", err)
-	}
-
-	return nil
+	return s.withPoolScrubLease(ctx, func(ctx context.Context) error {
+		_, err := s.startPoolScrubRun(ctx, guid, nil, time.Now().UTC())
+		return err
+	})
 }
 
 func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.CreateZPoolRequest) error {
@@ -234,6 +228,12 @@ func buildVdevArgs(vdevs []zfsServiceInterfaces.Vdev) []string {
 }
 
 func (s *Service) EditPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {
+	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
+		return s.editPool(ctx, guid, props, spares)
+	})
+}
+
+func (s *Service) editPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 	if len(props) == 0 && spares == nil {
@@ -347,6 +347,12 @@ func (s *Service) EditPool(ctx context.Context, guid string, props map[string]st
 }
 
 func (s *Service) DeletePool(ctx context.Context, guid string) error {
+	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
+		return s.deletePool(ctx, guid)
+	})
+}
+
+func (s *Service) deletePool(ctx context.Context, guid string) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
@@ -379,6 +385,12 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 	err = pool.Destroy(ctx)
 
 	if err != nil {
+		return err
+	}
+
+	if err := s.DB.WithContext(ctx).Model(&zfsModels.PoolScrubSchedule{}).Where("pool_guid = ?", guid).
+		Updates(map[string]any{"enabled": false, "queued_at": nil, "scheduled_for": nil, "next_run_at": nil,
+			"last_status": "idle", "last_error": "pool was destroyed"}).Error; err != nil {
 		return err
 	}
 
@@ -416,24 +428,26 @@ func (s *Service) DeletePool(ctx context.Context, guid string) error {
 }
 
 func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) error {
-	s.syncMutex.Lock()
-	defer s.syncMutex.Unlock()
+	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
+		s.syncMutex.Lock()
+		defer s.syncMutex.Unlock()
 
-	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil || pool == nil {
-		return poolLookupError(err, "pool_not_found")
-	}
+		pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+		if err != nil || pool == nil {
+			return poolLookupError(err, "pool_not_found")
+		}
 
-	if err := pool.ReplaceDevice(ctx, old, latest, false); err != nil {
-		return classifyError(ErrConflict, "failed_to_replace_device %s: %v", old, err)
-	}
+		if err := pool.ReplaceDevice(ctx, old, latest, false); err != nil {
+			return classifyError(ErrConflict, "failed_to_replace_device %s: %v", old, err)
+		}
 
-	pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil || pool == nil {
-		return fmt.Errorf("pool_not_found_after_replace")
-	}
+		pool, err = s.GZFS.Zpool.GetByGUID(ctx, guid)
+		if err != nil || pool == nil {
+			return fmt.Errorf("pool_not_found_after_replace")
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]zfsServiceInterfaces.PoolStatPoint, int, error) {
@@ -471,17 +485,19 @@ func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[s
 }
 
 func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
-	s.syncMutex.Lock()
-	defer s.syncMutex.Unlock()
+	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
+		s.syncMutex.Lock()
+		defer s.syncMutex.Unlock()
 
-	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
-	if err != nil || pool == nil {
-		return poolLookupError(err, "pool_not_found")
-	}
+		pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
+		if err != nil || pool == nil {
+			return poolLookupError(err, "pool_not_found")
+		}
 
-	if err := pool.Detach(ctx, device); err != nil {
-		return classifyError(ErrConflict, "detach_failed: %v", err)
-	}
+		if err := pool.Detach(ctx, device); err != nil {
+			return classifyError(ErrConflict, "detach_failed: %v", err)
+		}
 
-	return nil
+		return nil
+	})
 }

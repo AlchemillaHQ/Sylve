@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"gorm.io/gorm"
 )
@@ -21,6 +22,7 @@ const (
 	NotificationDismissedRetentionDays   = 30
 	NotificationSuppressionRetentionDays = 90
 	DiskSmartSelfTestEventRetentionDays  = 30
+	PoolScrubEventRetentionDays          = 30
 )
 
 func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
@@ -56,6 +58,7 @@ func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
 		}
 
 		for _, prefix := range []string{
+			notifier.ZFSScrubKindPrefix,
 			notifier.DiskSmartTemperatureKindPrefix,
 			notifier.DiskSmartWearoutKindPrefix,
 			notifier.DiskSmartHealthKindPrefix,
@@ -79,6 +82,14 @@ func EnforceNotificationRetention(db *gorm.DB, now time.Time) error {
 			Delete(&models.DiskSmartSelfTestEvent{}).
 			Error; err != nil {
 			return fmt.Errorf("failed_to_prune_dead_lettered_disk_smart_self_test_events: %w", err)
+		}
+	}
+
+	if db.Migrator().HasTable(&zfsModels.PoolScrubEvent{}) {
+		cutoff := now.UTC().Add(-PoolScrubEventRetentionDays * 24 * time.Hour)
+		if err := db.Where("dead_lettered_at IS NOT NULL AND dead_lettered_at < ?", cutoff).
+			Delete(&zfsModels.PoolScrubEvent{}).Error; err != nil {
+			return fmt.Errorf("failed_to_prune_dead_lettered_zfs_scrub_events: %w", err)
 		}
 	}
 

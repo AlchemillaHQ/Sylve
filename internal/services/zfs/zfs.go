@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
@@ -40,6 +41,10 @@ type Service struct {
 	pendingCacheInvalidations map[string]uint64
 	OnDatasetsDeleted         func(context.Context, []string) error
 	listHostPools             func(context.Context) ([]*gzfs.ZPool, error)
+	scrubDriver               poolScrubBackend
+	scrubJobsReady            atomic.Bool
+	scrubJobEnqueue           func(context.Context, poolScrubSchedulerJob) error
+	scrubEventEnqueue         func(context.Context, poolScrubEventJob) error
 }
 
 func NewZfsService(db *gorm.DB, telemetryDB *gorm.DB, libvirt libvirtServiceInterfaces.LibvirtServiceInterface, gzfsClient *gzfs.Client) zfsServiceInterfaces.ZfsServiceInterface {

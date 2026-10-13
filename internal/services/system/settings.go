@@ -174,13 +174,22 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	}
 
 	basicSettings.Pools = pools
-	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+	update := func(tx *gorm.DB) error {
 		if err := tx.Save(&basicSettings).Error; err != nil {
 			return err
 		}
 		return db.InvalidateZFSCaches(tx)
-	}); err != nil {
+	}
+	if s.WithUsablePoolsChange != nil {
+		err = s.WithUsablePoolsChange(ctx, pools, update)
+	} else {
+		err = s.DB.WithContext(ctx).Transaction(update)
+	}
+	if err != nil {
 		cleanupErr := cleanupCreatedDatasets(ctx, newSets)
+		if errors.Is(err, db.ErrPoolScrubActive) || errors.Is(err, db.ErrPoolScrubBusy) {
+			return newSettingsError(SettingsErrorConflict, "pool_scrub_operation_conflict", "", errors.Join(err, cleanupErr))
+		}
 		return newSettingsError(SettingsErrorInternal, "usable_pools_update_failed", "",
 			errors.Join(err, cleanupErr))
 	}

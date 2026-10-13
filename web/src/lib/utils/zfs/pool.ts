@@ -570,6 +570,11 @@ const parseStatsTime = (v: string | number | undefined) => {
 	return isNaN(t) ? 0 : Math.floor(t / 1000);
 };
 
+export function isPoolScanActive(stats: ZpoolStatusPool['scan_stats']): boolean {
+	const state = stats?.state?.toUpperCase();
+	return state === 'SCANNING' || state === 'ERRORSCRUBBING' || state === 'PAUSED';
+}
+
 export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSentenceResult {
 	if (!stats || !stats.function) return { title: '', text: null, progressPercent: null };
 
@@ -582,6 +587,13 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 	const errors = num(stats.errors);
 	const skipped = num(stats.skipped);
 	const processed = num(stats.processed);
+	const state = stats.state?.toUpperCase();
+	const paused =
+		state === 'PAUSED' || (state === 'SCANNING' && parseStatsTime(stats.scrub_pause) > 0);
+	const errorCount =
+		stats.errors !== undefined && /^\d+$/.test(String(stats.errors))
+			? String(stats.errors)
+			: 'not reported';
 	const _bytesPerScan = num(stats.bytes_per_scan);
 	const _issuedBytesPerScan = num(stats.issued_bytes_per_scan);
 
@@ -605,9 +617,16 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 	const handlers: Record<string, ScanHandler> = {
 		scrub: (s) => {
 			const progress =
-				toExamine > 0 && issued > 0 ? Math.min(99, Math.round((issued / toExamine) * 100)) : null;
+				toExamine > 0 ? Math.min(100, Math.round(((issued || examined) / toExamine) * 100)) : null;
 
-			if (s?.state === 'SCANNING') {
+			if (paused) {
+				return {
+					title: 'Pool Scrub',
+					text: `Scrub paused: ${h(examined)} / ${h(toExamine)} scanned, ${h(processed)} repaired, errors: ${errorCount}`,
+					progressPercent: progress
+				};
+			}
+			if (state === 'SCANNING') {
 				let timeRemaining = '';
 				if (issuedPerSec > 0 && toExamine > issued) {
 					timeRemaining = formatRemaining((toExamine - issued) / issuedPerSec);
@@ -615,14 +634,28 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 
 				let text = `Scrub in progress since ${epochToLocal(start)}: ${h(examined)} / ${h(toExamine)} scanned`;
 				if (scanRateStr) text += `, ${h(issued)} / ${h(toExamine)} issued at ${scanRateStr}`;
-				text += `, ${h(errors)} repaired`;
+				text += `, ${h(processed)} repaired, errors: ${errorCount}`;
 				if (progress !== null) text += `, ${progress}% done`;
 				if (timeRemaining) text += `, ${timeRemaining}`;
 
 				return { title: 'Pool Scrub', text, progressPercent: progress };
 			}
 
-			// finished / paused / canceled: show final summary (use end_time if available)
+			if (state === 'CANCELED' || state === 'CANCELLED') {
+				return {
+					title: 'Pool Scrub',
+					text: `Scrub cancelled (${end ? epochToLocal(end) : 'time not reported'}). Errors: ${errorCount}`,
+					progressPercent: null
+				};
+			}
+			if (state !== 'FINISHED') {
+				return {
+					title: 'Pool Scrub',
+					text: `Scrub state: ${s?.state || 'unknown'}`,
+					progressPercent: null
+				};
+			}
+
 			const durationSec = end > start ? end - start : Math.max(0, Date.now() / 1000 - start);
 			const durationText = (() => {
 				if (durationSec >= 3600)
@@ -632,7 +665,7 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 				return `${Math.floor(durationSec)}s`;
 			})();
 
-			const text = `Scrub finished (${epochToLocal(end || start)}). ${h(examined)} / ${h(toExamine)} scanned, ${h(errors)} repaired, took ${durationText}`;
+			const text = `Scrub finished (${epochToLocal(end || start)}). ${h(examined)} / ${h(toExamine)} scanned, ${h(processed)} repaired, errors: ${errorCount}, took ${durationText}`;
 			return { title: 'Pool Scrub', text, progressPercent: 100 };
 		},
 		resilver: (s) => {
@@ -640,7 +673,7 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 				toExamine > 0 ? Math.min(100, Math.round((processed / toExamine) * 100)) : null;
 
 			// ---------- SCANNING ----------
-			if (s?.state === 'SCANNING') {
+			if (state === 'SCANNING') {
 				const processedPerSec = processed > 0 ? processed / elapsed : 0;
 				let timeRemaining = '';
 
@@ -657,11 +690,19 @@ export function parseScanStats(stats: ZpoolStatusPool['scan_stats']): ScanSenten
 				}
 
 				if (skipped > 0) text += `, ${h(skipped)} skipped`;
-				if (errors > 0) text += `, ${h(errors)} errors`;
+				if (errors > 0) text += `, ${errorCount} errors`;
 				if (progress !== null) text += `, ${progress}% done`;
 				if (timeRemaining) text += `, ${timeRemaining}`;
 
 				return { title: 'Pool Resilver', text, progressPercent: progress };
+			}
+
+			if (state !== 'FINISHED') {
+				return {
+					title: 'Pool Resilver',
+					text: `Resilver ${s?.state?.toLowerCase() || 'state unknown'}`,
+					progressPercent: null
+				};
 			}
 
 			// ---------- FINISHED ----------

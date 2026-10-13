@@ -10,13 +10,14 @@ under sponsorship from the FreeBSD Foundation.
 
 <script lang="ts">
 	import { deepEqual } from 'fast-equals';
-	import { watch } from 'runed';
+	import { PersistedState, watch } from 'runed';
 	import { onMount, untrack } from 'svelte';
 	import { TabulatorFull as Tabulator, type ColumnDefinition, type Sorter } from 'tabulator-tables';
 
 	interface Props {
 		rows: Record<string, unknown>[];
 		columns: ColumnDefinition[];
+		name?: string;
 		pageSize?: number;
 		pageSizeOptions?: number[];
 		placeholder?: string;
@@ -26,6 +27,7 @@ under sponsorship from the FreeBSD Foundation.
 	let {
 		rows,
 		columns,
+		name,
 		pageSize = 10,
 		pageSizeOptions = [10, 20, 50],
 		placeholder = 'No data available',
@@ -49,9 +51,21 @@ under sponsorship from the FreeBSD Foundation.
 	onMount(() => {
 		if (!tableComponent) return;
 		const initialRows = rows;
+		const tableState = name
+			? new PersistedState<{ columnWidths: Record<string, number> }>(`${name}-state`, {
+					columnWidths: {}
+				})
+			: null;
+		const widths = tableState?.current.columnWidths || {};
+		const initialColumns = tableState
+			? columns.map((column) => {
+					const width = column.field ? widths[column.field] : undefined;
+					return width ? { ...column, width } : column;
+				})
+			: columns;
 		table = new Tabulator(tableComponent, {
 			data: rows,
-			columns,
+			columns: initialColumns,
 			height: '100%',
 			layout: 'fitColumns',
 			reactiveData: false,
@@ -68,6 +82,15 @@ under sponsorship from the FreeBSD Foundation.
 		table.on('tableBuilt', () => {
 			tableReady = true;
 			if (pendingRows !== initialRows) void replaceRows(pendingRows);
+		});
+		table.on('columnResized', () => {
+			if (!tableState || !tableReady || !table) return;
+			const columnWidths: Record<string, number> = {};
+			table.getColumns().forEach((column) => {
+				const field = column.getField();
+				if (field) columnWidths[field] = column.getWidth();
+			});
+			tableState.current = { columnWidths };
 		});
 		return () => {
 			tableReady = false;

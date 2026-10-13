@@ -127,6 +127,45 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_Principal
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_info_AuditRecord:
     properties:
       data:
@@ -699,6 +738,32 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubRunView:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubRunView'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView
+  : properties:
+      data:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView'
+        type: array
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_pkg_network_iface_Interface:
     properties:
       data:
@@ -862,6 +927,50 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationEvent'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosSettings
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings'
       error:
         type: string
       message:
@@ -1320,6 +1429,17 @@ definitions:
       status:
         type: string
     type: object
+  ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_GlobalConfigState
+  : properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.GlobalConfigState'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List
   : properties:
       data:
@@ -1551,6 +1671,28 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.ADStatus'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_RealmInput:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_disk_SelfTestScheduleView:
     properties:
       data:
@@ -1698,6 +1840,17 @@ definitions:
     properties:
       data:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView'
       error:
         type: string
       message:
@@ -2691,6 +2844,124 @@ definitions:
       weight:
         type: integer
     type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory:
+    properties:
+      allowTrustedDomains:
+        type: boolean
+      computerName:
+        type: string
+      computerOU:
+        type: string
+      disableCache:
+        type: boolean
+      domain:
+        type: string
+      domainController:
+        type: string
+      enabled:
+        type: boolean
+      idmapBackend:
+        type: string
+      idmapSchema:
+        type: string
+      joinPasswordConfigured:
+        type: boolean
+      joinUsername:
+        type: string
+      joinWarning:
+        type: string
+      joined:
+        type: boolean
+      kerberosPrincipal:
+        type: string
+      keytabId:
+        type: integer
+      membershipPending:
+        type: string
+      rangeHigh:
+        type: integer
+      rangeLow:
+        type: integer
+      realmId:
+        type: integer
+      site:
+        type: string
+      skipDNSRegistration:
+        type: boolean
+      trustedDomains:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap'
+        type: array
+      useDefaultDomain:
+        type: boolean
+      workgroup:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap:
+    properties:
+      backend:
+        type: string
+      domain:
+        type: string
+      rangeHigh:
+        type: integer
+      rangeLow:
+        type: integer
+      schema:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab:
+    properties:
+      id:
+        type: integer
+      managed:
+        type: boolean
+      name:
+        type: string
+      principals:
+        items:
+          type: string
+        type: array
+      updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm:
+    properties:
+      adminServer:
+        items:
+          type: string
+        type: array
+      id:
+        type: integer
+      kdc:
+        items:
+          type: string
+        type: array
+      kpasswdServer:
+        items:
+          type: string
+        type: array
+      realm:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings:
+    properties:
+      appDefaults:
+        type: string
+      libDefaults:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal:
+    properties:
+      kind:
+        type: string
+      name:
+        type: string
+      sid:
+        type: string
+      unixId:
+        type: integer
+    type: object
   github_com_alchemillahq_sylve_internal_db_models_info.AuditRecord:
     properties:
       action:
@@ -3475,6 +3746,17 @@ definitions:
         type: string
       visible:
         type: boolean
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.HostAlias:
+    properties:
+      address:
+        type: string
+      aliases:
+        items:
+          type: string
+        type: array
+      hostname:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.HostInterfaceL3AppliedAddress:
     properties:
@@ -6173,6 +6455,45 @@ definitions:
       updatedAt:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.GlobalConfigState:
+    properties:
+      dnsMode:
+        type: string
+      dnsServers:
+        items:
+          type: string
+        type: array
+      effectiveDnsServers:
+        items:
+          type: string
+        type: array
+      effectiveSearchDomains:
+        items:
+          type: string
+        type: array
+      hostAliases:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostAlias'
+        type: array
+      hostname:
+        type: string
+      ipv4Gateway:
+        type: string
+      ipv6Gateway:
+        type: string
+      revision:
+        type: integer
+      searchDomains:
+        items:
+          type: string
+        type: array
+      searchDomainsOverride:
+        type: boolean
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry:
     properties:
       address:
@@ -6365,6 +6686,27 @@ definitions:
         type: string
       sourceHint:
         type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_network.UpdateGlobalConfigRequest:
+    properties:
+      dnsMode:
+        type: string
+      dnsServers:
+        items:
+          type: string
+        type: array
+      expectedRevision:
+        type: integer
+      hostAliases:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostAlias'
+        type: array
+      searchDomains:
+        items:
+          type: string
+        type: array
+      searchDomainsOverride:
+        type: boolean
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_network.UpsertFirewallNATRuleRequest:
     properties:
@@ -7531,6 +7873,120 @@ definitions:
       state:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.ADInput:
+    properties:
+      allowTrustedDomains:
+        type: boolean
+      clearJoinPassword:
+        type: boolean
+      computerName:
+        type: string
+      computerOU:
+        type: string
+      disableCache:
+        type: boolean
+      domain:
+        type: string
+      domainController:
+        type: string
+      idmapBackend:
+        type: string
+      idmapSchema:
+        type: string
+      joinPassword:
+        type: string
+      joinUsername:
+        type: string
+      kerberosPrincipal:
+        type: string
+      keytabId:
+        type: integer
+      rangeHigh:
+        type: integer
+      rangeLow:
+        type: integer
+      realmId:
+        type: integer
+      site:
+        type: string
+      skipDNSRegistration:
+        type: boolean
+      trustedDomains:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap'
+        type: array
+      useDefaultDomain:
+        type: boolean
+      workgroup:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.ADStatus:
+    properties:
+      alternateController:
+        type: string
+      alternateVerified:
+        type: boolean
+      checkedAt:
+        type: string
+      domain:
+        type: string
+      domainController:
+        type: string
+      enabled:
+        type: boolean
+      error:
+        type: string
+      joined:
+        type: boolean
+      recoveryPending:
+        type: boolean
+      site:
+        type: string
+      state:
+        type: string
+      warning:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.JoinInput:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput:
+    properties:
+      file:
+        type: string
+      name:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.LeaveInput:
+    properties:
+      localOnly:
+        type: boolean
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput:
+    properties:
+      adminServer:
+        items:
+          type: string
+        type: array
+      kdc:
+        items:
+          type: string
+        type: array
+      kpasswdServer:
+        items:
+          type: string
+        type: array
+      realm:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal_services_disk.SelfTestScheduleInput:
     properties:
       cronExpr:
@@ -8259,6 +8715,94 @@ definitions:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotInfo'
         type: array
       nextCursor:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubRunView:
+    properties:
+      completedAt:
+        type: string
+      createdAt:
+        type: string
+      error:
+        type: string
+      errors:
+        type: string
+      examinedBytes:
+        type: string
+      id:
+        type: integer
+      issuedBytes:
+        type: string
+      poolGuid:
+        type: string
+      poolName:
+        type: string
+      progressKnown:
+        type: boolean
+      progressPct:
+        type: integer
+      repairedBytes:
+        type: string
+      requestedAt:
+        type: string
+      scheduleId:
+        type: integer
+      scheduledFor:
+        type: string
+      source:
+        type: string
+      startedAt:
+        type: string
+      status:
+        type: string
+      totalBytes:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput:
+    properties:
+      cronExpr:
+        type: string
+      enabled:
+        type: boolean
+      poolGuid:
+        type: string
+    required:
+    - cronExpr
+    - poolGuid
+    type: object
+  github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView:
+    properties:
+      active:
+        type: boolean
+      createdAt:
+        type: string
+      cronExpr:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: integer
+      lastError:
+        type: string
+      lastRunAt:
+        type: string
+      lastStatus:
+        type: string
+      nextRunAt:
+        type: string
+      poolGuid:
+        type: string
+      poolName:
+        type: string
+      progressKnown:
+        type: boolean
+      progressPct:
+        type: integer
+      queuedAt:
+        type: string
+      updatedAt:
         type: string
     type: object
   github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy:
@@ -9278,6 +9822,16 @@ definitions:
       snapshot:
         type: string
     type: object
+  internal_handlers_directoryservices.EnabledInput:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  internal_handlers_directoryservices.RealmDiscoveryInput:
+    properties:
+      realm:
+        type: string
+    type: object
   internal_handlers_disk.DiskActionRequest:
     properties:
       device:
@@ -9935,6 +10489,10 @@ definitions:
     type: object
   internal_handlers_samba.SambaPrincipalIDsRequest:
     properties:
+      directorySids:
+        items:
+          type: string
+        type: array
       groupIds:
         items:
           type: integer
@@ -9946,6 +10504,10 @@ definitions:
     type: object
   internal_handlers_samba.SambaPrincipalSetResponse:
     properties:
+      directory:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal'
+        type: array
       groups:
         items:
           $ref: '#/definitions/internal_handlers_samba.SambaPrincipalGroupResponse'
@@ -14665,6 +15227,427 @@ paths:
       summary: Resync Cluster State
       tags:
       - Cluster
+  /directory-services/active-directory:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory'
+      security:
+      - BearerAuth: []
+      summary: Get Active Directory configuration
+      tags:
+      - Directory Services
+    put:
+      consumes:
+      - application/json
+      description: Enrollment passwords are stored encrypted and never returned. A
+        blank or omitted password keeps the saved value; clearJoinPassword explicitly
+        removes it.
+      parameters:
+      - description: Configuration (does not join the domain)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.ADInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update Active Directory configuration
+      tags:
+      - Directory Services
+  /directory-services/active-directory/check:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus'
+      security:
+      - BearerAuth: []
+      summary: Check Active Directory trust and Winbind health
+      tags:
+      - Directory Services
+  /directory-services/active-directory/enabled:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Enabled state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_directoryservices.EnabledInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Enable or disable AD without leaving the domain
+      tags:
+      - Directory Services
+  /directory-services/active-directory/join:
+    post:
+      consumes:
+      - application/json
+      description: Uses supplied temporary credentials, the configured keytab, or
+        the encrypted saved enrollment credentials. Temporary overrides are not saved.
+      parameters:
+      - description: Optional temporary overrides (empty for configured keytab or
+          saved credentials)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.JoinInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Join the configured AD domain
+      tags:
+      - Directory Services
+  /directory-services/active-directory/leave:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Leave credentials, or explicit local-only removal during an outage
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.LeaveInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Leave the AD domain
+      tags:
+      - Directory Services
+  /directory-services/active-directory/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus'
+      security:
+      - BearerAuth: []
+      summary: Get cached Active Directory status
+      tags:
+      - Directory Services
+  /directory-services/kerberos/keytabs:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab'
+      security:
+      - BearerAuth: []
+      summary: List keytab metadata without key material
+      tags:
+      - Directory Services
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Name and base64 keytab file
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab'
+      security:
+      - BearerAuth: []
+      summary: Upload a Kerberos keytab
+      tags:
+      - Directory Services
+  /directory-services/kerberos/keytabs/{id}:
+    delete:
+      parameters:
+      - description: Keytab ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete an unused uploaded keytab
+      tags:
+      - Directory Services
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Keytab ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Name and optional base64 replacement file
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab'
+      security:
+      - BearerAuth: []
+      summary: Rename or replace an uploaded keytab
+      tags:
+      - Directory Services
+  /directory-services/kerberos/realms:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm'
+      security:
+      - BearerAuth: []
+      summary: List Kerberos realms
+      tags:
+      - Directory Services
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Realm
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm'
+      security:
+      - BearerAuth: []
+      summary: Create a Kerberos realm
+      tags:
+      - Directory Services
+  /directory-services/kerberos/realms/{id}:
+    delete:
+      parameters:
+      - description: Realm ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete an unused Kerberos realm
+      tags:
+      - Directory Services
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Realm ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Realm
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm'
+      security:
+      - BearerAuth: []
+      summary: Update a Kerberos realm
+      tags:
+      - Directory Services
+  /directory-services/kerberos/realms/discover:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Realm to discover (does not save)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handlers_directoryservices.RealmDiscoveryInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_RealmInput'
+      security:
+      - BearerAuth: []
+      summary: Discover Kerberos servers using DNS SRV records
+      tags:
+      - Directory Services
+  /directory-services/kerberos/settings:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosSettings'
+      security:
+      - BearerAuth: []
+      summary: Get Kerberos application and library defaults
+      tags:
+      - Directory Services
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Defaults without section headers
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update validated Kerberos defaults
+      tags:
+      - Directory Services
+  /directory-services/principals:
+    get:
+      parameters:
+      - description: Name, qualified name, or SID
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: user or group
+        in: query
+        name: kind
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_Principal'
+      security:
+      - BearerAuth: []
+      summary: Search AD users or groups
+      tags:
+      - Directory Services
   /disk:
     get:
       consumes:
@@ -20563,6 +21546,62 @@ paths:
       summary: Reorder Firewall Traffic Rules
       tags:
       - Network
+  /network/global-config:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_GlobalConfigState'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get this node's global network configuration
+      tags:
+      - Network
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Global network configuration
+        in: body
+        name: config
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.UpdateGlobalConfigRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update this node's DNS, search domains, and host aliases
+      tags:
+      - Network
   /network/host-ip/pending/{id}/confirm:
     post:
       parameters:
@@ -22993,6 +24032,10 @@ paths:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Directory operation in progress
           schema:
             $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
         "413":
@@ -29169,6 +30212,34 @@ paths:
       summary: Scrub Pool
       tags:
       - ZFS
+  /zfs/pools/{guid}/scrub/runs:
+    get:
+      parameters:
+      - description: Pool GUID
+        in: path
+        name: guid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubRunView'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List tracked ZFS scrub runs
+      tags:
+      - ZFS
   /zfs/pools/{guid}/status:
     get:
       description: Get the status of a ZFS pool
@@ -29215,6 +30286,157 @@ paths:
       security:
       - BearerAuth: []
       summary: Get Disk Usage
+      tags:
+      - ZFS
+  /zfs/pools/scrub/schedules:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: List ZFS scrub schedules
+      tags:
+      - ZFS
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Schedule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Create a ZFS scrub schedule
+      tags:
+      - ZFS
+  /zfs/pools/scrub/schedules/{id}:
+    delete:
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Delete a ZFS scrub schedule
+      tags:
+      - ZFS
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Schedule ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Schedule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Update a ZFS scrub schedule
       tags:
       - ZFS
 securityDefinitions:

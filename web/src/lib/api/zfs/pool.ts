@@ -1,6 +1,11 @@
 import { APIResponseSchema, type APIResponse } from '$lib/types/common';
 import {
 	PoolsDiskUsageSchema,
+	PoolScrubScheduleSchema,
+	PoolScrubRunSchema,
+	type PoolScrubSchedule,
+	type PoolScrubScheduleInput,
+	type PoolScrubRun,
 	ZFSDashboardHistorySchema,
 	ZFSDashboardSnapshotSchema,
 	ZpoolSchema,
@@ -107,8 +112,92 @@ export async function deletePool(guid: string) {
 	return await apiRequest(`/zfs/pools/${guid}`, APIResponseSchema, 'DELETE');
 }
 
-export async function scrubPool(guid: string) {
-	return await apiRequest(`/zfs/pools/${guid}/scrub`, APIResponseSchema, 'POST');
+export async function scrubPool(guid: string, options?: NodeAPIDataRequestOptions) {
+	return await apiRequest(
+		`/zfs/pools/${guid}/scrub`,
+		APIResponseSchema,
+		'POST',
+		undefined,
+		options
+	);
+}
+
+export async function getPoolStatusResult(
+	guid: string,
+	options?: NodeAPIDataRequestOptions
+): Promise<ZpoolStatusPool | APIResponse> {
+	return await apiRequestResult(
+		`/zfs/pools/${guid}/status`,
+		ZPoolStatusPoolSchema,
+		'GET',
+		undefined,
+		options
+	);
+}
+
+export async function listPoolScrubSchedules(
+	options?: NodeAPIDataRequestOptions
+): Promise<PoolScrubSchedule[] | APIResponse> {
+	return await apiRequestResult(
+		'/zfs/pools/scrub/schedules',
+		PoolScrubScheduleSchema.array(),
+		'GET',
+		undefined,
+		options
+	);
+}
+
+export async function createPoolScrubSchedule(
+	input: PoolScrubScheduleInput,
+	options?: NodeAPIDataRequestOptions
+): Promise<PoolScrubSchedule | APIResponse> {
+	return await apiRequestResult(
+		'/zfs/pools/scrub/schedules',
+		PoolScrubScheduleSchema,
+		'POST',
+		input,
+		options
+	);
+}
+
+export async function updatePoolScrubSchedule(
+	id: number,
+	input: PoolScrubScheduleInput,
+	options?: NodeAPIDataRequestOptions
+): Promise<PoolScrubSchedule | APIResponse> {
+	return await apiRequestResult(
+		`/zfs/pools/scrub/schedules/${id}`,
+		PoolScrubScheduleSchema,
+		'PUT',
+		input,
+		options
+	);
+}
+
+export async function deletePoolScrubSchedule(
+	id: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<APIResponse> {
+	return await apiRequest(
+		`/zfs/pools/scrub/schedules/${id}`,
+		APIResponseSchema,
+		'DELETE',
+		undefined,
+		options
+	);
+}
+
+export async function listPoolScrubRuns(
+	guid: string,
+	options?: NodeAPIDataRequestOptions
+): Promise<PoolScrubRun[] | APIResponse> {
+	return await apiRequestResult(
+		`/zfs/pools/${guid}/scrub/runs`,
+		PoolScrubRunSchema.array(),
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getZFSDashboardHistory(

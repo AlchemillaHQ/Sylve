@@ -224,6 +224,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 
 	zfsSvc.OnDatasetsDeleted = sambaSvc.DisableSharesForDatasets
 	sysSvc.OnUsablePoolsChanged = zfsSvc.ReconcileManagedPoolTelemetry
+	sysSvc.WithUsablePoolsChange = zfsSvc.WithUsablePoolsChange
 	sambaSvc.OnConfigChange = mdnsSvc.Rebuild
 	sambaSvc.EnsureMdnsEnabled = sysSvc.EnsureMdnsEnabled
 	sambaSvc.WithServiceSettingsLock = sysSvc.WithServiceSettingsLock

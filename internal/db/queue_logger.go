@@ -15,7 +15,18 @@ type zerologJobLogger struct {
 }
 
 func (l zerologJobLogger) Info(msg string, args ...any) {
-	evt := l.Logger.Debug()
+	level := zerolog.DebugLevel
+	if msg == "Running job" || msg == "Ran job" {
+		for i := 0; i < len(args)-1; i += 2 {
+			key, _ := args[i].(string)
+			name, _ := args[i+1].(string)
+			if key == "name" && (name == "disk-smart-scheduler-tick" || name == "zfs_scrub_scheduler_tick") {
+				level = zerolog.TraceLevel
+				break
+			}
+		}
+	}
+	evt := l.Logger.WithLevel(level)
 	for i := 0; i < len(args)-1; i += 2 {
 		key, _ := args[i].(string)
 		evt = evt.Interface(key, args[i+1])

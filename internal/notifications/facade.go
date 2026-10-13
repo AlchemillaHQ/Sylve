@@ -18,6 +18,7 @@ import (
 var ErrEmitterNotConfigured = errors.New("notifications_emitter_not_configured")
 
 const ZFSPoolStateKindPrefix = "system.zfs.pool_state."
+const ZFSScrubKindPrefix = "system.zfs.scrub."
 
 const (
 	DiskSmartTemperatureKindPrefix = "system.disk.smart.temperature."
@@ -170,6 +171,19 @@ func KindForZFSPoolState(pool string) string {
 	}
 
 	return ZFSPoolStateKindPrefix + pool
+}
+
+func KindForZFSScrub(guid string) string {
+	return ZFSScrubKindPrefix + strings.TrimSpace(guid)
+}
+
+func PoolGUIDFromZFSScrubKind(kind string) (string, bool) {
+	kind = strings.TrimSpace(strings.ToLower(kind))
+	if !strings.HasPrefix(kind, ZFSScrubKindPrefix) {
+		return "", false
+	}
+	guid := strings.TrimPrefix(kind, ZFSScrubKindPrefix)
+	return guid, guid != ""
 }
 
 func PoolFromZFSPoolStateKind(kind string) (string, bool) {

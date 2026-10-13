@@ -128,7 +128,34 @@ Select a pool and choose **Status** for the detailed ZFS status. It includes the
 
 ## Scrubbing, replacement, and detaching
 
-Select a pool and choose **Scrub** to begin an integrity scan. The Scrub button is disabled while a scrub is already in progress. Editing is also disabled while a scrub or a replacement is in progress, helping prevent conflicting pool changes.
+Select a pool and choose **Scrub** to open **Run Scrub / History / Schedule**. All three tabs apply to that selected pool. **Run Scrub** shows the current scan and asks for confirmation before starting an integrity scan. A successful start request is not a completed scrub: Sylve tracks the new ZFS scan before reporting a result. Editing, replacement, detaching, and deletion are blocked while a Sylve-tracked scrub is active.
+
+### Recurring scrubs
+
+Scrub scheduling is opt-in. Choose **Add Schedule** in the **Schedule** tab and choose a preset or enter a five-field cron expression for the selected pool. A pool can have multiple schedules, each with its own cron expression, enabled state, and last-run status. Schedule IDs identify the cards and their runs in **History**.
+
+| Preset | Cron expression | When it runs |
+| --- | --- | --- |
+| Monthly | `0 3 1 * *` | Day 1 of each month at 03:00. |
+| Weekly | `0 3 * * 0` | Every Sunday at 03:00. |
+
+Cron is evaluated in the **node's local timezone**, including daylight-saving changes. Next/last run timestamps and history dates are displayed in **browser-local time**. Custom expressions must have minute, hour, day-of-month, month, and day-of-week fields; timezone prefixes and `@every` expressions are not accepted.
+
+Only one scheduled scrub runs per node at a time. Scheduled scrubs wait behind that slot or a resilver on the same pool; a paused scrub still holds its slot. All schedules on a pool share a **24-hour minimum gap measured from scrub completion**, not its start. An occurrence overlapping a scrub or falling within that gap is **skipped**, not postponed into a back-to-back scrub. The first eligible occurrence runs; redundant queued work is skipped with a reason in **History**. Schedules remain enabled for future eligible occurrences. Verified manual or external scrub completion also counts toward the gap; a failed start, unknown result, or skipped occurrence does not restart the cooldown.
+
+Confirmed manual starts can override the cooldown, but never an active scan or a queued reservation. Manual scrubs on other pools and SMART tests remain independent, so plan maintenance windows to avoid unwanted I/O overlap. Disabling or deleting a queued schedule cancels only its queued work. Schedules for a pool with an active Sylve-tracked scrub cannot be edited or deleted.
+
+After Sylve downtime, the scheduler catches up only the latest occurrence per schedule within **24 hours**, subject to the same overlap/cooldown rule. Older work is recorded as missed rather than replaying every missed occurrence. Already queued work does not expire while waiting behind another pool's long scan or a resilver, and additional occurrences of that schedule are coalesced instead of building a backlog. Redundant same-pool work is skipped even if its queue wait outlasts the cooldown. Sylve does not create or modify OS periodic/cron scrub jobs; account for any existing OS schedules separately.
+
+Removing a pool from Sylve management or destroying it disables all its schedules and clears queued work while preserving history. These mutations are refused while a tracked scrub is active. Re-adding a pool does not automatically re-enable disabled schedules; a same-name replacement with a different GUID never inherits the old schedules.
+
+### Scrub results and notifications
+
+**History** retains up to 64 terminal Sylve-tracked manual/scheduled occurrences per pool and never prunes active runs. It does not invent history for external scrubs. Results distinguish clean completion, completion with errors, cancellation, skipped or missed work, and unknown outcomes. Skipped entries have a reason, no actual start/duration, and no invented scan counters; they do not generate failure notifications. The pool's cooldown is stored separately and survives history pruning, schedule deletion, and restart. **Errors** are counts; **Repaired** is a byte count, not the error count. Missing counters or progress are shown as unreported rather than zero.
+
+Sylve reconciles persisted runs after restart without blindly issuing another scrub command. An unconfirmed start becomes unknown after five minutes of readable status without matching scan evidence. Transient inspection failures keep the run reserved; after 24 hours without usable scan status the result becomes unknown. A fresh scan check is still required before another scrub can start. A healthy or paused scrub has no fixed runtime timeout, and closing the dialog does not stop it. Pause, resume, and stop controls are not available in this version.
+
+Configure **ZFS Pool Scrub** rules under **System → Notifications → Rules** for started, completed, failed-to-start, cancelled, unknown, and missed-run events. Rules target the stable pool GUID and display the pool name. Notification delivery failures do not rerun the scrub.
 
 Select an eligible device row to reveal **Replace Device** or **Detach Device**. Replacement starts a ZFS replacement operation. Detaching removes the selected device from the pool when ZFS permits it. Neither operation is a substitute for verifying the pool's redundancy and current health first.
 

@@ -179,6 +179,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	cS := serviceRegistry.ClusterService
 	zeltaS := serviceRegistry.ZeltaService
 	notificationService := notificationsService.NewService(d)
+	notificationService.PoolService = zS
 	notificationService.SetDiskService(dS)
 	notificationFacade.SetEmitter(notificationService)
 
@@ -247,6 +248,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	zeltaS.RegisterJobs()
 	lifecycleSvc.RegisterJobs()
 	dS.(*disk.Service).RegisterJobs()
+	zS.(*zfs.Service).RegisterScrubJobs()
 
 	zfs.EncryptionKeyCreatedHook = func(uuid, keyData, keyFormat string) {
 		if err := clusterSvc.ForwardEncryptionKeyToLeader(uuid, keyData, keyFormat); err != nil {
@@ -272,6 +274,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	var clusterTLSConfig *tls.Config
 	var queueDone <-chan struct{}
 	dS.(*disk.Service).SetSelfTestSchedulerReady(operationalAtBoot)
+	zS.(*zfs.Service).SetScrubSchedulerReady(operationalAtBoot)
 
 	if operationalAtBoot {
 		if err := notificationService.MigrateLegacyDiskSmartRecords(qCtx); err != nil {
@@ -333,6 +336,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go sysS.StartNetlinkWatcher(qCtx)
 		sysS.StartDiskSmartMonitor(qCtx)
 		go dS.(*disk.Service).StartSelfTestScheduler(qCtx)
+		go zS.(*zfs.Service).StartPoolScrubScheduler(qCtx)
 
 		if libvirtSvc.IsVirtualizationEnabled() {
 			go libvirtSvc.StartLifecycleWatcher(qCtx)

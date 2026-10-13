@@ -59,8 +59,9 @@ type Service struct {
 	bootstrapServicePrecheckFn func(models.AvailableService) error
 	ensureBootstrapPoolFn      func(context.Context, string) (bool, error)
 
-	MdnsRebuild          func() error
-	OnUsablePoolsChanged func(context.Context) error
+	MdnsRebuild           func() error
+	OnUsablePoolsChanged  func(context.Context) error
+	WithUsablePoolsChange func(context.Context, []string, func(*gorm.DB) error) error
 }
 
 func NewSystemService(db *gorm.DB, gzfs *gzfs.Client) systemServiceInterfaces.SystemServiceInterface {

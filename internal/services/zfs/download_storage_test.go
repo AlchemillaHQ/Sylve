@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -103,7 +104,8 @@ func TestIntegrationDownloadStorageDestructiveEntryPointsRealZFS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	database := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{},
+		&zfsModels.PoolScrubRun{}, &zfsModels.PoolScrubSchedulerLease{})
 	if err := database.Create(&utilitiesModels.Downloads{DownloadStorage: utilitiesModels.DownloadStorage{StoragePool: pool, StorageDatasetGUID: dataset.GUID}, UUID: "test", Path: "payload", URL: "source"}).Error; err != nil {
 		t.Fatal(err)
 	}

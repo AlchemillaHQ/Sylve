@@ -184,6 +184,11 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&infoModels.Note{},
 
 		&zfsModels.PeriodicSnapshot{},
+		&zfsModels.PoolScrubSchedule{},
+		&zfsModels.PoolScrubRun{},
+		&zfsModels.PoolScrubEvent{},
+		&zfsModels.PoolScrubSchedulerLease{},
+		&zfsModels.PoolScrubCooldown{},
 
 		&networkModels.ManualSwitch{},
 		&networkModels.StandardSwitch{},

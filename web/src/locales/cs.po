@@ -489,6 +489,7 @@ msgstr "Přihlášení – vytvořit"
 #: src/lib/components/custom/DataCenter/Replication/Activity.svelte
 #: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -1282,6 +1283,7 @@ msgstr "Dočasné úložiště"
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
@@ -1684,6 +1686,8 @@ msgstr "Opravdu to chcete?"
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/VM/Extra/CPUSelector.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/components/skeleton/TreeViewCluster.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
@@ -2388,6 +2392,8 @@ msgstr "ZFS fondy"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
@@ -2430,6 +2436,8 @@ msgstr "Zapnuto"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/components/custom/iSCSI/Config.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
@@ -2889,6 +2897,7 @@ msgstr ""
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
@@ -3008,6 +3017,7 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Schedule"
@@ -3456,13 +3466,14 @@ msgstr ""
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/local/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
-#: src/routes/[node]/authentication/users/local/+page.svelte
-#: src/routes/[node]/authentication/users/pam/+page.svelte
-#: src/routes/[node]/authentication/users/pam/+page.svelte
 msgid "Never"
 msgstr "Nikdy"
 
@@ -3738,6 +3749,7 @@ msgid "No"
 msgstr "Ne"
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Back"
 msgstr ""
 
@@ -5026,6 +5038,7 @@ msgstr ""
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/VM/Options/Serial.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
@@ -6129,14 +6142,6 @@ msgstr "Samba sdílení se nepodařilo smazat"
 msgid "Samba share deleted"
 msgstr "Samba sdílení smazáno"
 
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Scrub started"
-msgstr "Operace scrub zahájena"
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "A scrub is already in progress"
-msgstr "Operace scrub už probíhá"
-
 #: src/lib/components/custom/ZFS/Dashboard/PoolStatusList.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Scrub"
@@ -6147,14 +6152,8 @@ msgid "Please wait for the scrub/replace operation to finish"
 msgstr "Vyčkejte než bude operace scrub/nahrazení dokončena"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Please wait for the current replace operation to finish"
 msgstr "Vyčkejte, než bude stávající operace nahrazování dokončena"
-
-#: src/routes/[node]/storage/zfs/pools/+page.svelte
-msgid "Replace already in progress"
-msgstr "Nahrazení už probíhá"
 
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 msgid "Replace Device"
@@ -8921,6 +8920,7 @@ msgstr ""
 
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/stores/error-details.svelte.ts
 #: src/routes/+error.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
@@ -11578,6 +11578,7 @@ msgstr ""
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Cancelled"
 msgstr ""
 
@@ -12301,10 +12302,12 @@ msgid "Weekly on Sunday at 02:00"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Weekly on Sunday at 03:00"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Monthly on day 1 at 03:00"
 msgstr ""
 
@@ -12444,6 +12447,8 @@ msgid "Test progress"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Progress not reported"
 msgstr ""
 
@@ -12473,6 +12478,7 @@ msgid "Edit Schedule"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "New Schedule"
 msgstr ""
 
@@ -12481,14 +12487,17 @@ msgid "This schedule is starting or running and cannot be edited until the test 
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Invalid cron expression"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "<0/> Save Schedule"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Loading schedules"
 msgstr ""
 
@@ -12514,6 +12523,7 @@ msgid "An active schedule cannot be edited"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Edit schedule"
 msgstr ""
 
@@ -12524,22 +12534,27 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Delete schedule"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Schedule (Node Local)"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Next Run (Browser Local)"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Not scheduled"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Last Run (Browser Local)"
 msgstr ""
 
@@ -12598,6 +12613,7 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/OperationPreview.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Result"
 msgstr ""
 
@@ -12633,6 +12649,7 @@ msgid "<0/> Deleting"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Delete Schedule"
 msgstr ""
 
@@ -12768,6 +12785,9 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Not reported"
 msgstr ""
 
@@ -12841,6 +12861,7 @@ msgid "Daily at 03:00"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Select or enter a cron expression"
 msgstr ""
 
@@ -12996,6 +13017,7 @@ msgstr ""
 msgid "Unprotected"
 msgstr ""
 
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -13255,6 +13277,7 @@ msgid "API Request"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Errors"
 msgstr ""
 
@@ -13288,6 +13311,7 @@ msgid "Record ID"
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Duration"
 msgstr ""
 
@@ -14151,6 +14175,7 @@ msgid "Download Certificate & Key"
 msgstr ""
 
 #: src/lib/components/custom/Cluster/JoinInformation.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
@@ -20528,4 +20553,290 @@ msgstr ""
 #. 0: match[2]
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Keytab ID {0}"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub Schedule - Delete"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub Schedule - Create"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub Schedule - Update"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub Schedule - View"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "ZFS Pool - Scrub History - View"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to load scrub schedules"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to load scrub history"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to read pool scan status"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "This pool is unavailable or is no longer managed by Sylve."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to save scrub schedule"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub schedule updated"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub schedule created"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to disable scrub schedule"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub schedule disabled"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to delete scrub schedule"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub schedule deleted"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unable to request pool scrub"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub start requested; waiting for scan status"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Date (Browser Local)"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Repaired"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub progress"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "ZFS Pool Scrub"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Pool integrity scans, result history, and opt-in scheduling."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "<0/>Run Scrub"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "<0/>History"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "<0/>Schedule <1/>"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Pool State"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "External / untracked"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Start Scrub"
+msgstr ""
+
+#. 0: historyError
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "{0}. Last successfully loaded history is retained.<0>Retry</0>"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Loading scrub history"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "No tracked scrubs are available."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "<0/>Add Schedule"
+msgstr ""
+
+#. 0: schedulesError
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "{0}. Last successfully loaded schedules are retained.<0>Retry</0>"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Unavailable Pool"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "View history"
+msgstr ""
+
+#. 0: selectedName
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Start scrub on {0}?"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Starting"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Delete scrub schedule?"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "This pool has an active scrub. Wait for it to finish before deleting the schedule."
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "Please wait for the current scan/replace operation to finish"
+msgstr ""
+
+#: src/routes/[node]/storage/zfs/pools/+page.svelte
+msgid "A scan or replacement is already in progress"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Completed With Errors"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Completed Without Errors"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Unknown Result"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Missed Run"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Failed To Start"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Resilver progress"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Pool scan status"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Waiting for ZFS to report the new scrub."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Last observed scan"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Last scan"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Disable queued schedules to cancel pending work before starting manually."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scheduled scrub queued"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scan status unavailable"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "No scan in progress"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "A scrub verifies stored data and repairs damage where redundancy permits."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "No scrub history"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Scrub runs and skipped scheduled occurrences in Sylve will appear here."
+msgstr ""
+
+#. 0: form.id
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Edit Schedule #{0}"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Run automatically using the node's local time. Occurrences overlapping a scrub or within 24 hours after its completion are skipped, not postponed."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "This pool has an active scrub. Its schedules cannot be edited until the run finishes."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "No schedule configured"
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Create a weekly or monthly scrub schedule for this pool, or enter a custom cron expression."
+msgstr ""
+
+#. 0: schedule.id
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Periodic Scrub #{0}"
+msgstr ""
+
+#. 0: localTime(schedule.queuedAt)
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Queued {0} browser local; waiting for the scheduled slot or for a resilver. New occurrences are coalesced while waiting."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "This pool has an active scrub; its schedules cannot be edited or deleted."
+msgstr ""
+
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "The pool remains online, but a scrub can substantially reduce <0>I/O</0> performance. It may take hours or days. Closing this window does not stop it."
+msgstr ""
+
+#. 0: deleteSchedule?.id; 1: deleteSchedule?.poolName || ''
+#: src/lib/components/custom/ZFS/pools/Scrub.svelte
+msgid "Schedule #{0} for {1} and its queued occurrence will be removed. Other schedules and completed history are retained."
 msgstr ""

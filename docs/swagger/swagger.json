@@ -6386,6 +6386,688 @@
                 }
             }
         },
+        "/directory-services/active-directory": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Get Active Directory configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Enrollment passwords are stored encrypted and never returned. A blank or omitted password keeps the saved value; clearJoinPassword explicitly removes it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Update Active Directory configuration",
+                "parameters": [
+                    {
+                        "description": "Configuration (does not join the domain)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.ADInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/active-directory/check": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Check Active Directory trust and Winbind health",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/active-directory/enabled": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Enable or disable AD without leaving the domain",
+                "parameters": [
+                    {
+                        "description": "Enabled state",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_directoryservices.EnabledInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/active-directory/join": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Uses supplied temporary credentials, the configured keytab, or the encrypted saved enrollment credentials. Temporary overrides are not saved.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Join the configured AD domain",
+                "parameters": [
+                    {
+                        "description": "Optional temporary overrides (empty for configured keytab or saved credentials)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.JoinInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/active-directory/leave": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Leave the AD domain",
+                "parameters": [
+                    {
+                        "description": "Leave credentials, or explicit local-only removal during an outage",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.LeaveInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/active-directory/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Get cached Active Directory status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/keytabs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "List keytab metadata without key material",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Upload a Kerberos keytab",
+                "parameters": [
+                    {
+                        "description": "Name and base64 keytab file",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/keytabs/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Rename or replace an uploaded keytab",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Keytab ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Name and optional base64 replacement file",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Delete an unused uploaded keytab",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Keytab ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/realms": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "List Kerberos realms",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Create a Kerberos realm",
+                "parameters": [
+                    {
+                        "description": "Realm",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/realms/discover": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Discover Kerberos servers using DNS SRV records",
+                "parameters": [
+                    {
+                        "description": "Realm to discover (does not save)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handlers_directoryservices.RealmDiscoveryInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_RealmInput"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/realms/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Update a Kerberos realm",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Realm ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Realm",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Delete an unused Kerberos realm",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Realm ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/kerberos/settings": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Get Kerberos application and library defaults",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosSettings"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Update validated Kerberos defaults",
+                "parameters": [
+                    {
+                        "description": "Defaults without section headers",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/directory-services/principals": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Directory Services"
+                ],
+                "summary": "Search AD users or groups",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Name, qualified name, or SID",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "user or group",
+                        "name": "kind",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_Principal"
+                        }
+                    }
+                }
+            }
+        },
         "/disk": {
             "get": {
                 "security": [
@@ -15425,6 +16107,96 @@
                 }
             }
         },
+        "/network/global-config": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Get this node's global network configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_GlobalConfigState"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Update this node's DNS, search domains, and host aliases",
+                "parameters": [
+                    {
+                        "description": "Global network configuration",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.UpdateGlobalConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/network/host-ip/pending/{id}/confirm": {
             "post": {
                 "security": [
@@ -19140,6 +19912,12 @@
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Directory operation in progress",
                         "schema": {
                             "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
                         }
@@ -28233,6 +29011,244 @@
                 }
             }
         },
+        "/zfs/pools/scrub/schedules": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "List ZFS scrub schedules",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Create a ZFS scrub schedule",
+                "parameters": [
+                    {
+                        "description": "Schedule",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
+        "/zfs/pools/scrub/schedules/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Update a ZFS scrub schedule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Schedule ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Schedule",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "Delete a ZFS scrub schedule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Schedule ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/zfs/pools/{guid}": {
             "delete": {
                 "security": [
@@ -28533,6 +29549,51 @@
                 }
             }
         },
+        "/zfs/pools/{guid}/scrub/runs": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ZFS"
+                ],
+                "summary": "List tracked ZFS scrub runs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pool GUID",
+                        "name": "guid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubRunView"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/zfs/pools/{guid}/status": {
             "get": {
                 "security": [
@@ -28763,6 +29824,66 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationPolicy"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_db_models_directoryservices_Principal": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal"
                     }
                 },
                 "error": {
@@ -29656,6 +30777,46 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubRunView": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubRunView"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-array_github_com_alchemillahq_sylve_pkg_network_iface_Interface": {
             "type": "object",
             "properties": {
@@ -29906,6 +31067,74 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_cluster.ReplicationEvent"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_ActiveDirectory": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosKeytab": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosRealm": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_db_models_directoryservices_KerberosSettings": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings"
                 },
                 "error": {
                     "type": "string"
@@ -30615,6 +31844,23 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_GlobalConfigState": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_network.GlobalConfigState"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_network_HostInterfaceL3List": {
             "type": "object",
             "properties": {
@@ -30972,6 +32218,40 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_ADStatus": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.ADStatus"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_directoryservices_RealmInput": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_disk_SelfTestScheduleView": {
             "type": "object",
             "properties": {
@@ -31198,6 +32478,23 @@
             "properties": {
                 "data": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zelta.SnapshotPage"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_zfs_PoolScrubScheduleView": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView"
                 },
                 "error": {
                     "type": "string"
@@ -32688,6 +33985,186 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.ActiveDirectory": {
+            "type": "object",
+            "properties": {
+                "allowTrustedDomains": {
+                    "type": "boolean"
+                },
+                "computerName": {
+                    "type": "string"
+                },
+                "computerOU": {
+                    "type": "string"
+                },
+                "disableCache": {
+                    "type": "boolean"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "domainController": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "idmapBackend": {
+                    "type": "string"
+                },
+                "idmapSchema": {
+                    "type": "string"
+                },
+                "joinPasswordConfigured": {
+                    "type": "boolean"
+                },
+                "joinUsername": {
+                    "type": "string"
+                },
+                "joinWarning": {
+                    "type": "string"
+                },
+                "joined": {
+                    "type": "boolean"
+                },
+                "kerberosPrincipal": {
+                    "type": "string"
+                },
+                "keytabId": {
+                    "type": "integer"
+                },
+                "membershipPending": {
+                    "type": "string"
+                },
+                "rangeHigh": {
+                    "type": "integer"
+                },
+                "rangeLow": {
+                    "type": "integer"
+                },
+                "realmId": {
+                    "type": "integer"
+                },
+                "site": {
+                    "type": "string"
+                },
+                "skipDNSRegistration": {
+                    "type": "boolean"
+                },
+                "trustedDomains": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap"
+                    }
+                },
+                "useDefaultDomain": {
+                    "type": "boolean"
+                },
+                "workgroup": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap": {
+            "type": "object",
+            "properties": {
+                "backend": {
+                    "type": "string"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "rangeHigh": {
+                    "type": "integer"
+                },
+                "rangeLow": {
+                    "type": "integer"
+                },
+                "schema": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosKeytab": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "managed": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "principals": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosRealm": {
+            "type": "object",
+            "properties": {
+                "adminServer": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "kdc": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kpasswdServer": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "realm": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.KerberosSettings": {
+            "type": "object",
+            "properties": {
+                "appDefaults": {
+                    "type": "string"
+                },
+                "libDefaults": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sid": {
+                    "type": "string"
+                },
+                "unixId": {
+                    "type": "integer"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_db_models_info.AuditRecord": {
             "type": "object",
             "properties": {
@@ -33862,6 +35339,23 @@
                 },
                 "visible": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.HostAlias": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "aliases": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
                 }
             }
         },
@@ -37887,6 +39381,65 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.GlobalConfigState": {
+            "type": "object",
+            "properties": {
+                "dnsMode": {
+                    "type": "string"
+                },
+                "dnsServers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "effectiveDnsServers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "effectiveSearchDomains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "hostAliases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostAlias"
+                    }
+                },
+                "hostname": {
+                    "type": "string"
+                },
+                "ipv4Gateway": {
+                    "type": "string"
+                },
+                "ipv6Gateway": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "searchDomains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "searchDomainsOverride": {
+                    "type": "boolean"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_interfaces_services_network.HostInterfaceL3AddressEntry": {
             "type": "object",
             "properties": {
@@ -38178,6 +39731,38 @@
                 },
                 "sourceHint": {
                     "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_network.UpdateGlobalConfigRequest": {
+            "type": "object",
+            "properties": {
+                "dnsMode": {
+                    "type": "string"
+                },
+                "dnsServers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expectedRevision": {
+                    "type": "integer"
+                },
+                "hostAliases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.HostAlias"
+                    }
+                },
+                "searchDomains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "searchDomainsOverride": {
+                    "type": "boolean"
                 }
             }
         },
@@ -39901,6 +41486,180 @@
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.ADInput": {
+            "type": "object",
+            "properties": {
+                "allowTrustedDomains": {
+                    "type": "boolean"
+                },
+                "clearJoinPassword": {
+                    "type": "boolean"
+                },
+                "computerName": {
+                    "type": "string"
+                },
+                "computerOU": {
+                    "type": "string"
+                },
+                "disableCache": {
+                    "type": "boolean"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "domainController": {
+                    "type": "string"
+                },
+                "idmapBackend": {
+                    "type": "string"
+                },
+                "idmapSchema": {
+                    "type": "string"
+                },
+                "joinPassword": {
+                    "type": "string"
+                },
+                "joinUsername": {
+                    "type": "string"
+                },
+                "kerberosPrincipal": {
+                    "type": "string"
+                },
+                "keytabId": {
+                    "type": "integer"
+                },
+                "rangeHigh": {
+                    "type": "integer"
+                },
+                "rangeLow": {
+                    "type": "integer"
+                },
+                "realmId": {
+                    "type": "integer"
+                },
+                "site": {
+                    "type": "string"
+                },
+                "skipDNSRegistration": {
+                    "type": "boolean"
+                },
+                "trustedDomains": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.IDMap"
+                    }
+                },
+                "useDefaultDomain": {
+                    "type": "boolean"
+                },
+                "workgroup": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.ADStatus": {
+            "type": "object",
+            "properties": {
+                "alternateController": {
+                    "type": "string"
+                },
+                "alternateVerified": {
+                    "type": "boolean"
+                },
+                "checkedAt": {
+                    "type": "string"
+                },
+                "domain": {
+                    "type": "string"
+                },
+                "domainController": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "joined": {
+                    "type": "boolean"
+                },
+                "recoveryPending": {
+                    "type": "boolean"
+                },
+                "site": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "warning": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.JoinInput": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.KeytabInput": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.LeaveInput": {
+            "type": "object",
+            "properties": {
+                "localOnly": {
+                    "type": "boolean"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_directoryservices.RealmInput": {
+            "type": "object",
+            "properties": {
+                "adminServer": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kdc": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "kpasswdServer": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "realm": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal_services_disk.SelfTestScheduleInput": {
             "type": "object",
             "required": [
@@ -40993,6 +42752,139 @@
                     }
                 },
                 "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubRunView": {
+            "type": "object",
+            "properties": {
+                "completedAt": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "errors": {
+                    "type": "string"
+                },
+                "examinedBytes": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "issuedBytes": {
+                    "type": "string"
+                },
+                "poolGuid": {
+                    "type": "string"
+                },
+                "poolName": {
+                    "type": "string"
+                },
+                "progressKnown": {
+                    "type": "boolean"
+                },
+                "progressPct": {
+                    "type": "integer"
+                },
+                "repairedBytes": {
+                    "type": "string"
+                },
+                "requestedAt": {
+                    "type": "string"
+                },
+                "scheduleId": {
+                    "type": "integer"
+                },
+                "scheduledFor": {
+                    "type": "string"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "totalBytes": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleInput": {
+            "type": "object",
+            "required": [
+                "cronExpr",
+                "poolGuid"
+            ],
+            "properties": {
+                "cronExpr": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "poolGuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_services_zfs.PoolScrubScheduleView": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "cronExpr": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastRunAt": {
+                    "type": "string"
+                },
+                "lastStatus": {
+                    "type": "string"
+                },
+                "nextRunAt": {
+                    "type": "string"
+                },
+                "poolGuid": {
+                    "type": "string"
+                },
+                "poolName": {
+                    "type": "string"
+                },
+                "progressKnown": {
+                    "type": "boolean"
+                },
+                "progressPct": {
+                    "type": "integer"
+                },
+                "queuedAt": {
+                    "type": "string"
+                },
+                "updatedAt": {
                     "type": "string"
                 }
             }
@@ -42518,6 +44410,22 @@
                 }
             }
         },
+        "internal_handlers_directoryservices.EnabledInput": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handlers_directoryservices.RealmDiscoveryInput": {
+            "type": "object",
+            "properties": {
+                "realm": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handlers_disk.DiskActionRequest": {
             "type": "object",
             "required": [
@@ -43517,6 +45425,12 @@
         "internal_handlers_samba.SambaPrincipalIDsRequest": {
             "type": "object",
             "properties": {
+                "directorySids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "groupIds": {
                     "type": "array",
                     "items": {
@@ -43534,6 +45448,12 @@
         "internal_handlers_samba.SambaPrincipalSetResponse": {
             "type": "object",
             "properties": {
+                "directory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_directoryservices.Principal"
+                    }
+                },
                 "groups": {
                     "type": "array",
                     "items": {

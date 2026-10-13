@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
+	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -181,6 +182,30 @@ func TestEnforceNotificationRetentionPrunesDeadLetteredSmartSelfTestEvents(t *te
 	}
 	var kept []models.DiskSmartSelfTestEvent
 	if err := db.Order("event_key ASC").Find(&kept).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 2 || kept[0].EventKey != "fresh" || kept[1].EventKey != "pending" {
+		t.Fatalf("events=%+v", kept)
+	}
+}
+
+func TestEnforceNotificationRetentionPrunesDeadLetteredPoolScrubEvents(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &zfsModels.PoolScrubEvent{})
+	now := time.Now().UTC()
+	old, fresh := now.Add(-31*24*time.Hour), now.Add(-time.Hour)
+	events := []zfsModels.PoolScrubEvent{
+		{EventKey: "old", RunKey: "old", PoolGUID: "101", CreatedAt: old, DeadLetteredAt: &old},
+		{EventKey: "fresh", RunKey: "fresh", PoolGUID: "101", CreatedAt: fresh, DeadLetteredAt: &fresh},
+		{EventKey: "pending", RunKey: "pending", PoolGUID: "101", CreatedAt: old},
+	}
+	if err := database.Create(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := EnforceNotificationRetention(database, now); err != nil {
+		t.Fatal(err)
+	}
+	var kept []zfsModels.PoolScrubEvent
+	if err := database.Order("event_key ASC").Find(&kept).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(kept) != 2 || kept[0].EventKey != "fresh" || kept[1].EventKey != "pending" {

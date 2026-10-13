@@ -10,6 +10,7 @@
 
 import type { Group, Passkey, User } from '$lib/types/auth';
 import type { Disk, SmartSelfTestSchedule } from '$lib/types/disk/disk';
+import { isPoolScrubActive, type PoolScrubRun, type PoolScrubSchedule } from '$lib/types/zfs/pool';
 import type { ISCSIInitiator } from '$lib/types/iscsi/initiator';
 import type { ISCSITarget } from '$lib/types/iscsi/target';
 import type { SambaConfig } from '$lib/types/samba/config';
@@ -132,10 +133,12 @@ type DemoStorageState = {
 	disks: Disk[];
 	smartTests: Record<string, Record<string, unknown>>;
 	smartSchedules: SmartSelfTestSchedule[];
+	scrubSchedules: PoolScrubSchedule[];
+	scrubRuns: PoolScrubRun[];
+	scrubCooldowns: Record<string, string>;
 	pools: DemoPool[];
 	datasets: DemoDataset[];
 	periodicSnapshots: DemoPeriodicSnapshot[];
-	scrubbingPools: Set<string>;
 	files: Record<string, DemoFileEntry>;
 	sambaConfig: SambaConfig;
 	sambaShares: SambaShare[];
@@ -993,6 +996,54 @@ function seedStorageState(hostname: string): DemoStorageState {
 				createSmartTest(disk.device, disk.type === 'NVMe' ? 'NVMe' : 'ATA')
 			])
 	);
+	const now = Date.now();
+	const scrubRuns: PoolScrubRun[] = [
+		{
+			id: 1,
+			poolGuid: pools[0].pool_guid,
+			poolName: pools[0].name,
+			source: 'scheduled',
+			scheduleId: 1,
+			scheduledFor: new Date(now - 10_000).toISOString(),
+			requestedAt: new Date(now - 10_000).toISOString(),
+			startedAt: new Date(now - 10_000).toISOString(),
+			completedAt: null,
+			status: 'running',
+			error: '',
+			progressPct: 33,
+			progressKnown: true,
+			errors: '0',
+			repairedBytes: '0',
+			examinedBytes: String(Math.floor(pools[0].size / 3)),
+			issuedBytes: String(Math.floor(pools[0].size / 3)),
+			totalBytes: String(pools[0].size)
+		},
+		...(['passed', 'failed', 'cancelled', 'unknown'] as const).map((status, index) => ({
+			id: index + 2,
+			poolGuid: pools[0].pool_guid,
+			poolName: pools[0].name,
+			source: 'manual' as const,
+			scheduleId: null,
+			scheduledFor: null,
+			requestedAt: new Date(now - (index + 1) * 86400_000 - 7200_000).toISOString(),
+			startedAt: new Date(now - (index + 1) * 86400_000 - 7200_000).toISOString(),
+			completedAt: new Date(now - (index + 1) * 86400_000).toISOString(),
+			status,
+			error:
+				status === 'failed'
+					? 'scrub completed with 2 errors'
+					: status === 'unknown'
+						? 'scrub scan was replaced by a resilver'
+						: '',
+			progressPct: status === 'passed' || status === 'failed' ? 100 : -1,
+			progressKnown: status === 'passed' || status === 'failed',
+			errors: status === 'unknown' ? null : status === 'failed' ? '2' : '0',
+			repairedBytes: status === 'unknown' ? null : status === 'failed' ? '4096' : '0',
+			examinedBytes: status === 'unknown' ? null : String(pools[0].size),
+			issuedBytes: status === 'unknown' ? null : String(pools[0].size),
+			totalBytes: String(pools[0].size)
+		}))
+	];
 	return {
 		services: [...defaultServices],
 		usablePools: pools.map((pool) => pool.name),
@@ -1036,6 +1087,80 @@ function seedStorageState(hostname: string): DemoStorageState {
 				estimatedMinutes: 310
 			}
 		],
+		scrubRuns,
+		scrubCooldowns: Object.fromEntries(
+			scrubRuns
+				.filter(
+					(run) =>
+						run.startedAt &&
+						run.completedAt &&
+						['passed', 'failed', 'cancelled'].includes(run.status)
+				)
+				.sort((a, b) => Date.parse(a.completedAt!) - Date.parse(b.completedAt!))
+				.map((run) => [run.poolGuid, run.completedAt!])
+		),
+		scrubSchedules: [
+			{
+				id: 1,
+				poolGuid: pools[0].pool_guid,
+				poolName: pools[0].name,
+				cronExpr: '0 3 1 * *',
+				enabled: true,
+				active: true,
+				queuedAt: null,
+				lastRunAt: scrubRuns[0].requestedAt,
+				nextRunAt: new Date(now + 7 * 86400_000).toISOString(),
+				lastStatus: 'running',
+				lastError: '',
+				progressPct: 33,
+				progressKnown: true
+			},
+			{
+				id: 2,
+				poolGuid: pools[1].pool_guid,
+				poolName: pools[1].name,
+				cronExpr: '0 3 * * 0',
+				enabled: true,
+				active: false,
+				queuedAt: new Date(now).toISOString(),
+				lastRunAt: null,
+				nextRunAt: new Date(now + 7 * 86400_000).toISOString(),
+				lastStatus: 'queued',
+				lastError: '',
+				progressPct: -1,
+				progressKnown: false
+			},
+			{
+				id: 3,
+				poolGuid: '999999999999',
+				poolName: 'retired-backups',
+				cronExpr: '0 3 1 * *',
+				enabled: false,
+				active: false,
+				queuedAt: null,
+				lastRunAt: null,
+				nextRunAt: null,
+				lastStatus: 'idle',
+				lastError: 'pool is no longer managed by Sylve',
+				progressPct: -1,
+				progressKnown: false
+			},
+			{
+				id: 4,
+				poolGuid: pools[0].pool_guid,
+				poolName: pools[0].name,
+				cronExpr: '0 3 * * 0',
+				enabled: true,
+				active: true,
+				queuedAt: new Date(now).toISOString(),
+				lastRunAt: null,
+				nextRunAt: new Date(now + 7 * 86400_000).toISOString(),
+				lastStatus: 'queued',
+				lastError: '',
+				progressPct: -1,
+				progressKnown: false
+			}
+		],
 		pools,
 		datasets,
 		periodicSnapshots: [
@@ -1069,7 +1194,6 @@ function seedStorageState(hostname: string): DemoStorageState {
 				lastExecutedAt: '2026-08-14T02:15:04.000Z'
 			}
 		],
-		scrubbingPools: new Set<string>(),
 		files: createFiles(hostname),
 		sambaConfig: {
 			id: 1,
@@ -1382,7 +1506,7 @@ function detachVdev(vdevs: Record<string, DemoPoolVdev> | null | undefined, name
 	return false;
 }
 
-function poolStatus(pool: DemoPool, scrubbing: boolean) {
+function poolStatus(pool: DemoPool, scrub?: PoolScrubRun) {
 	const statusVdev = (vdev: DemoPoolVdev): Record<string, unknown> => ({
 		name: vdev.name,
 		vdev_type: vdev.vdev_type,
@@ -1413,25 +1537,32 @@ function poolStatus(pool: DemoPool, scrubbing: boolean) {
 		zpl_version: pool.zpl_version,
 		status: 'All devices are healthy.',
 		action: 'No action is required.',
-		scan_stats: scrubbing
-			? {
-					function: 'SCRUB',
-					state: 'SCANNING',
-					start_time: String(Math.floor(Date.now() / 1000) - 180),
-					end_time: '0',
-					to_examine: String(pool.size),
-					examined: String(pool.size * 0.31),
-					skipped: '0',
-					processed: String(pool.size * 0.31),
-					errors: '0',
-					bytes_per_scan: String(420 * 1024 ** 2),
-					pass_start: '0',
-					scrub_pause: '0',
-					scrub_spent_paused: '0',
-					issued_bytes_per_scan: String(420 * 1024 ** 2),
-					issued: String(pool.size * 0.31)
-				}
-			: null,
+		scan_stats:
+			scrub && scrub.startedAt
+				? {
+						function: 'SCRUB',
+						state: isPoolScrubActive(scrub.status)
+							? 'SCANNING'
+							: scrub.status === 'cancelled'
+								? 'CANCELED'
+								: 'FINISHED',
+						start_time: String(Math.floor(Date.parse(scrub.startedAt) / 1000)),
+						end_time: scrub.completedAt
+							? String(Math.floor(Date.parse(scrub.completedAt) / 1000))
+							: '0',
+						to_examine: String(pool.size),
+						examined: scrub.examinedBytes ?? '0',
+						skipped: '0',
+						processed: scrub.repairedBytes ?? '0',
+						errors: scrub.errors ?? '0',
+						bytes_per_scan: String(420 * 1024 ** 2),
+						pass_start: '0',
+						scrub_pause: scrub.status === 'paused' ? String(Math.floor(Date.now() / 1000)) : '0',
+						scrub_spent_paused: '0',
+						issued_bytes_per_scan: String(420 * 1024 ** 2),
+						issued: scrub.issuedBytes ?? '0'
+					}
+				: null,
 		vdevs: Object.fromEntries(
 			Object.entries(pool.vdevs).map(([key, vdev]) => [key, statusVdev(vdev)])
 		),
@@ -1445,6 +1576,186 @@ function poolStatus(pool: DemoPool, scrubbing: boolean) {
 		special: null,
 		dedup: null
 	};
+}
+
+function demoScrubSkipReason(
+	state: DemoStorageState,
+	guid: string,
+	due: string,
+	now: number
+): string {
+	if (state.scrubRuns.some((run) => run.poolGuid === guid && isPoolScrubActive(run.status))) {
+		return 'Scheduled occurrence skipped because another scrub is active or starting on this pool.';
+	}
+	const completedAt = state.scrubCooldowns[guid];
+	if (completedAt) {
+		const until = Date.parse(completedAt) + 24 * 3600_000;
+		if (now < until || Date.parse(due) < until) {
+			return `Scheduled occurrence skipped by the 24-hour minimum gap after scrub completion at ${completedAt} (UTC).`;
+		}
+	}
+	return '';
+}
+
+function trimDemoScrubHistory(state: DemoStorageState, guid: string) {
+	let completed = 0;
+	state.scrubRuns = state.scrubRuns.filter((run) => {
+		if (run.poolGuid !== guid || isPoolScrubActive(run.status)) return true;
+		completed++;
+		return completed <= 64;
+	});
+}
+
+function skipDemoScrub(
+	state: DemoStorageState,
+	schedule: PoolScrubSchedule,
+	due: string,
+	now: number,
+	reason: string
+) {
+	state.scrubRuns.unshift({
+		id: Math.max(0, ...state.scrubRuns.map((run) => run.id)) + 1,
+		poolGuid: schedule.poolGuid,
+		poolName: schedule.poolName,
+		source: 'scheduled',
+		scheduleId: schedule.id,
+		scheduledFor: due,
+		requestedAt: new Date(now).toISOString(),
+		startedAt: null,
+		completedAt: new Date(now).toISOString(),
+		status: 'skipped',
+		error: reason,
+		progressPct: -1,
+		progressKnown: false,
+		errors: null,
+		repairedBytes: null,
+		examinedBytes: null,
+		issuedBytes: null,
+		totalBytes: null
+	});
+	trimDemoScrubHistory(state, schedule.poolGuid);
+	if (!isPoolScrubActive(schedule.lastStatus)) {
+		schedule.lastStatus = 'skipped';
+		schedule.queuedAt = null;
+		schedule.lastError = reason;
+		schedule.progressPct = -1;
+		schedule.progressKnown = false;
+	}
+}
+
+function skipRedundantDemoScrubs(state: DemoStorageState, now: number) {
+	for (const schedule of state.scrubSchedules) {
+		if (!schedule.enabled || schedule.lastStatus !== 'queued' || !schedule.queuedAt) continue;
+		const reason = demoScrubSkipReason(state, schedule.poolGuid, schedule.queuedAt, now);
+		if (reason) skipDemoScrub(state, schedule, schedule.queuedAt, now, reason);
+	}
+}
+
+function startDemoScrub(state: DemoStorageState, pool: DemoPool, schedule?: PoolScrubSchedule) {
+	const now = new Date().toISOString();
+	state.scrubRuns.unshift({
+		id: Math.max(0, ...state.scrubRuns.map((run) => run.id)) + 1,
+		poolGuid: pool.pool_guid,
+		poolName: pool.name,
+		source: schedule ? 'scheduled' : 'manual',
+		scheduleId: schedule?.id ?? null,
+		scheduledFor: schedule?.queuedAt ?? null,
+		requestedAt: now,
+		startedAt: now,
+		completedAt: null,
+		status: 'running',
+		error: '',
+		progressPct: 0,
+		progressKnown: true,
+		errors: '0',
+		repairedBytes: '0',
+		examinedBytes: '0',
+		issuedBytes: '0',
+		totalBytes: String(pool.size)
+	});
+	if (schedule) {
+		schedule.queuedAt = null;
+		schedule.lastRunAt = now;
+		schedule.lastStatus = 'running';
+		schedule.lastError = '';
+	}
+	for (const candidate of state.scrubSchedules) {
+		if (candidate.poolGuid === pool.pool_guid) candidate.active = true;
+	}
+}
+
+// Demo scans finish in 30 seconds, with a short externally-paused phase. This
+// never runs native ZFS commands and does not represent real scrub durations.
+function advanceDemoScrubs(state: DemoStorageState) {
+	const now = Date.now();
+	for (const run of state.scrubRuns.filter((run) => isPoolScrubActive(run.status))) {
+		const elapsed = now - Date.parse(run.startedAt || run.requestedAt);
+		run.progressPct = Math.min(100, Math.floor(elapsed / 300));
+		run.examinedBytes = run.issuedBytes = String(
+			Math.floor((Number(run.totalBytes) * run.progressPct) / 100)
+		);
+		if (elapsed >= 30_000) {
+			run.status = run.poolName === 'vault' ? 'failed' : 'passed';
+			run.completedAt = new Date(
+				Date.parse(run.startedAt || run.requestedAt) + 30_000
+			).toISOString();
+			run.errors = run.status === 'failed' ? '2' : '0';
+			run.repairedBytes = run.status === 'failed' ? '4096' : '0';
+			run.error = run.status === 'failed' ? 'scrub completed with 2 errors' : '';
+			state.scrubCooldowns[run.poolGuid] = run.completedAt;
+			trimDemoScrubHistory(state, run.poolGuid);
+		} else {
+			run.status = elapsed >= 12_000 && elapsed < 18_000 ? 'paused' : 'running';
+		}
+		const schedule = state.scrubSchedules.find((candidate) => candidate.id === run.scheduleId);
+		if (schedule) {
+			schedule.lastStatus = run.status;
+			schedule.progressPct = run.progressPct;
+			schedule.progressKnown = run.progressKnown;
+			schedule.lastError = run.error;
+		}
+	}
+	skipRedundantDemoScrubs(state, now);
+	for (const schedule of state.scrubSchedules) {
+		schedule.active = state.scrubRuns.some(
+			(run) => run.poolGuid === schedule.poolGuid && isPoolScrubActive(run.status)
+		);
+		if (schedule.enabled && schedule.nextRunAt && Date.parse(schedule.nextRunAt) <= now) {
+			const due = schedule.nextRunAt;
+			const reason = demoScrubSkipReason(state, schedule.poolGuid, due, now);
+			if (reason) {
+				skipDemoScrub(state, schedule, due, now, reason);
+			} else if (schedule.lastStatus !== 'queued') {
+				schedule.lastStatus = 'queued';
+				schedule.queuedAt = due;
+				schedule.lastError = '';
+				schedule.progressPct = -1;
+				schedule.progressKnown = false;
+			}
+			schedule.nextRunAt = new Date(now + 60_000).toISOString();
+		}
+	}
+	if (!state.scrubRuns.some((run) => run.source === 'scheduled' && isPoolScrubActive(run.status))) {
+		const next = state.scrubSchedules
+			.filter(
+				(schedule) => schedule.enabled && schedule.lastStatus === 'queued' && !schedule.active
+			)
+			.sort(
+				(a, b) =>
+					(a.queuedAt ? Date.parse(a.queuedAt) : 0) - (b.queuedAt ? Date.parse(b.queuedAt) : 0) ||
+					a.id - b.id
+			)[0];
+		const pool =
+			next &&
+			state.pools.find(
+				(candidate) =>
+					candidate.pool_guid === next.poolGuid && state.usablePools.includes(candidate.name)
+			);
+		if (next && pool) {
+			startDemoScrub(state, pool, next);
+			skipRedundantDemoScrubs(state, now);
+		}
+	}
 }
 
 function dashboardSnapshot(state: DemoStorageState) {
@@ -1463,7 +1774,9 @@ function dashboardSnapshot(state: DemoStorageState) {
 			status: 'All devices are healthy.',
 			action: 'No action is required.',
 			errors: { read: 0, write: 0, checksum: 0, scan: 0 },
-			scan: state.scrubbingPools.has(pool.pool_guid)
+			scan: state.scrubRuns.some(
+				(run) => run.poolGuid === pool.pool_guid && isPoolScrubActive(run.status)
+			)
 				? {
 						function: 'SCRUB',
 						state: 'SCANNING',
@@ -1765,6 +2078,7 @@ export function handleDemoStorageRequest<T = unknown>(
 ): DemoStorageResponse<T> | null {
 	const state = stateFor(hostname);
 	const body = payload(config);
+	if (path.startsWith('/zfs/')) advanceDemoScrubs(state);
 
 	if ((path === '/basic/settings' || path === '/system/basic-settings') && method === 'GET') {
 		return success({
@@ -1797,7 +2111,27 @@ export function handleDemoStorageRequest<T = unknown>(
 			? config.data.filter((item): item is string => typeof item === 'string')
 			: [];
 		const available = new Set(state.pools.map((pool) => pool.name));
+		if (
+			state.scrubRuns.some(
+				(run) => isPoolScrubActive(run.status) && !requested.includes(run.poolName)
+			)
+		) {
+			return failure(
+				'pool_scrub_operation_conflict',
+				'pool_scrub_active',
+				409
+			) as DemoStorageResponse<T>;
+		}
 		state.usablePools = requested.filter((pool) => available.has(pool));
+		for (const schedule of state.scrubSchedules.filter(
+			(schedule) => !state.usablePools.includes(schedule.poolName)
+		)) {
+			schedule.enabled = false;
+			schedule.queuedAt = null;
+			schedule.nextRunAt = null;
+			schedule.lastStatus = 'idle';
+			schedule.lastError = 'pool is no longer managed by Sylve';
+		}
 		return mutationSuccess('usable_pools_updated') as DemoStorageResponse<T>;
 	}
 
@@ -2265,22 +2599,143 @@ export function handleDemoStorageRequest<T = unknown>(
 		updateDiskUsage(state);
 		return mutationSuccess('pool_created', 201) as DemoStorageResponse<T>;
 	}
+	if (path === '/zfs/pools/scrub/schedules' && method === 'GET') {
+		return success(structuredClone(state.scrubSchedules)) as DemoStorageResponse<T>;
+	}
+	const scrubScheduleMatch = path.match(/^\/zfs\/pools\/scrub\/schedules\/(\d+)$/);
+	if (
+		(path === '/zfs/pools/scrub/schedules' && method === 'POST') ||
+		(scrubScheduleMatch && method === 'PUT')
+	) {
+		const guid = stringValue(body, 'poolGuid');
+		const existing = scrubScheduleMatch
+			? state.scrubSchedules.find((schedule) => schedule.id === Number(scrubScheduleMatch[1]))
+			: undefined;
+		if (scrubScheduleMatch && !existing)
+			return failure('scrub_schedule_not_found', 'schedule_not_found') as DemoStorageResponse<T>;
+		if (existing?.active)
+			return failure(
+				'scrub_schedule_update_failed',
+				'pool_scrub_active',
+				409
+			) as DemoStorageResponse<T>;
+		if (existing && existing.poolGuid !== guid)
+			return failure(
+				'invalid_scrub_schedule_payload',
+				'scrub_schedule_pool_cannot_change',
+				400
+			) as DemoStorageResponse<T>;
+		const pool = state.pools.find(
+			(candidate) => candidate.pool_guid === guid && state.usablePools.includes(candidate.name)
+		);
+		const enabled = booleanValue(body, 'enabled');
+		if (!pool && (!existing || enabled))
+			return failure(
+				'scrub_schedule_create_failed',
+				'scrub_pool_unavailable_or_unmanaged'
+			) as DemoStorageResponse<T>;
+		const cronExpr = stringValue(body, 'cronExpr').trim();
+		if (cronExpr.split(/\s+/).length !== 5)
+			return failure(
+				'invalid_scrub_schedule_payload',
+				'scrub_schedule_requires_five_field_cron',
+				400
+			) as DemoStorageResponse<T>;
+		const schedule: PoolScrubSchedule = existing || {
+			id: Math.max(0, ...state.scrubSchedules.map((candidate) => candidate.id)) + 1,
+			poolGuid: guid,
+			poolName: pool!.name,
+			cronExpr,
+			enabled,
+			active: state.scrubRuns.some((run) => run.poolGuid === guid && isPoolScrubActive(run.status)),
+			queuedAt: null,
+			lastRunAt: null,
+			nextRunAt: null,
+			lastStatus: 'idle',
+			lastError: '',
+			progressPct: -1,
+			progressKnown: false
+		};
+		schedule.cronExpr = cronExpr;
+		schedule.enabled = enabled;
+		schedule.queuedAt = null;
+		schedule.lastError = '';
+		if (schedule.lastStatus === 'queued') schedule.lastStatus = 'idle';
+		schedule.nextRunAt = new Date(
+			Date.now() + (cronExpr === '* * * * *' ? 60_000 : 7 * 86400_000)
+		).toISOString();
+		if (!existing) state.scrubSchedules.push(schedule);
+		return success(
+			structuredClone(schedule),
+			existing ? 'scrub_schedule_updated' : 'scrub_schedule_created',
+			existing ? 200 : 201
+		) as DemoStorageResponse<T>;
+	}
+	if (scrubScheduleMatch && method === 'DELETE') {
+		const schedule = state.scrubSchedules.find(
+			(candidate) => candidate.id === Number(scrubScheduleMatch[1])
+		);
+		if (!schedule)
+			return failure('scrub_schedule_not_found', 'schedule_not_found') as DemoStorageResponse<T>;
+		if (schedule.active)
+			return failure(
+				'scrub_schedule_delete_failed',
+				'pool_scrub_active',
+				409
+			) as DemoStorageResponse<T>;
+		state.scrubSchedules = state.scrubSchedules.filter((candidate) => candidate.id !== schedule.id);
+		return mutationSuccess('scrub_schedule_deleted') as DemoStorageResponse<T>;
+	}
+	match = path.match(/^\/zfs\/pools\/([^/]+)\/scrub\/runs$/);
+	if (match && method === 'GET') {
+		const guid = match[1];
+		return success(
+			structuredClone(
+				state.scrubRuns
+					.filter((run) => run.poolGuid === guid)
+					.sort((a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt))
+					.slice(0, 65)
+			)
+		) as DemoStorageResponse<T>;
+	}
 	match = path.match(/^\/zfs\/pools\/([^/]+)\/status$/);
 	if (match && method === 'GET') {
 		const guid = decodeURIComponent(match[1]);
 		const pool = state.pools.find((item) => item.pool_guid === guid);
 		return (
 			pool
-				? success(poolStatus(pool, state.scrubbingPools.has(guid)))
+				? success(
+						poolStatus(
+							pool,
+							state.scrubRuns
+								.filter((run) => run.poolGuid === guid && run.startedAt !== null)
+								.sort((a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt))[0]
+						)
+					)
 				: failure('pool_not_found', `Pool ${guid} was not found`)
 		) as DemoStorageResponse<T>;
 	}
 	match = path.match(/^\/zfs\/pools\/([^/]+)\/scrub$/);
 	if (match && method === 'POST') {
 		const guid = decodeURIComponent(match[1]);
-		if (!state.pools.some((pool) => pool.pool_guid === guid))
+		const pool = state.pools.find(
+			(pool) => pool.pool_guid === guid && state.usablePools.includes(pool.name)
+		);
+		if (!pool)
 			return failure('pool_not_found', `Pool ${guid} was not found`) as DemoStorageResponse<T>;
-		state.scrubbingPools.add(guid);
+		if (
+			state.scrubRuns.some((run) => run.poolGuid === guid && isPoolScrubActive(run.status)) ||
+			state.scrubSchedules.some(
+				(schedule) => schedule.poolGuid === guid && schedule.lastStatus === 'queued'
+			)
+		) {
+			return failure(
+				'pool_scrub_failed',
+				'pool_scan_already_active_or_queued',
+				409
+			) as DemoStorageResponse<T>;
+		}
+		startDemoScrub(state, pool);
 		return mutationSuccess('pool_scrub_started') as DemoStorageResponse<T>;
 	}
 	match = path.match(/^\/zfs\/pools\/([^/]+)\/replace-device$/);
@@ -2357,6 +2812,16 @@ export function handleDemoStorageRequest<T = unknown>(
 		const index = state.pools.findIndex((item) => item.pool_guid === guid);
 		if (index < 0)
 			return failure('pool_not_found', `Pool ${guid} was not found`) as DemoStorageResponse<T>;
+		if (state.scrubRuns.some((run) => run.poolGuid === guid && isPoolScrubActive(run.status))) {
+			return failure('pool_delete_failed', 'pool_scrub_active', 409) as DemoStorageResponse<T>;
+		}
+		for (const schedule of state.scrubSchedules.filter((schedule) => schedule.poolGuid === guid)) {
+			schedule.enabled = false;
+			schedule.queuedAt = null;
+			schedule.nextRunAt = null;
+			schedule.lastStatus = 'idle';
+			schedule.lastError = 'pool was destroyed';
+		}
 		const [pool] = state.pools.splice(index, 1);
 		state.datasets = state.datasets.filter((item) => item.pool !== pool.name);
 		state.periodicSnapshots = state.periodicSnapshots.filter((item) => item.pool !== pool.name);

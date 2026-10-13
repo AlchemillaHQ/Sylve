@@ -211,7 +211,14 @@ func RegisterRoutes(r *gin.Engine,
 			pools.POST("", zfsHandlers.CreatePool(infoService, zfsService))
 			pools.PATCH("/:guid", zfsHandlers.EditPool(infoService, zfsService))
 			pools.GET("/:guid/status", zfsHandlers.GetPoolStatus(zfsService))
-			pools.POST("/:guid/scrub", zfsHandlers.ScrubPool(infoService, zfsService))
+			pools.POST("/:guid/scrub", middleware.RequireLocalAdminForWrites(authService), zfsHandlers.ScrubPool(infoService, zfsService))
+			pools.GET("/:guid/scrub/runs", zfsHandlers.ListPoolScrubRuns(zfsService))
+			scrubSchedules := pools.Group("/scrub/schedules")
+			scrubSchedules.Use(middleware.RequireLocalAdminForWrites(authService))
+			scrubSchedules.GET("", zfsHandlers.ListPoolScrubSchedules(zfsService))
+			scrubSchedules.POST("", zfsHandlers.CreatePoolScrubSchedule(zfsService))
+			scrubSchedules.PUT("/:id", zfsHandlers.UpdatePoolScrubSchedule(zfsService))
+			scrubSchedules.DELETE("/:id", zfsHandlers.DeletePoolScrubSchedule(zfsService))
 			pools.DELETE("/:guid",
 				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardPoolGUID),
 				zfsHandlers.DeletePool(infoService, zfsService),

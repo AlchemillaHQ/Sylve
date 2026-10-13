@@ -340,6 +340,7 @@
 			'/api/disk/:device/partition-table': 'Disk - Clear Partition Table',
 			'/api/disk/partitions/:partition': 'Disk - Delete Partition',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Delete',
+			'/api/zfs/pools/scrub/schedules/:id': 'ZFS Pool - Scrub Schedule - Delete',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Delete',
 			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Bulk Delete',
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Delete',
@@ -399,6 +400,7 @@
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - Start',
 			'/api/disk/smart/self-test/abort': 'Disk - S.M.A.R.T. Self-Test - Abort',
 			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - Create',
+			'/api/zfs/pools/scrub/schedules': 'ZFS Pool - Scrub Schedule - Create',
 			'/api/network/firewall/traffic': 'Firewall Traffic Rule - Create',
 			'/api/network/firewall/nat': 'Firewall NAT Rule - Create',
 			'/api/network/wireguard/server/peer': 'WireGuard Peer - Create',
@@ -429,6 +431,7 @@
 			'/api/network/dhcp/range/:id': 'DHCP Range - Update',
 			'/api/dynamic-dns/entries/:id': 'Dynamic DNS Entry - Update',
 			'/api/disk/smart/self-test/schedules/:id': 'Disk - S.M.A.R.T. Self-Test Schedule - Update',
+			'/api/zfs/pools/scrub/schedules/:id': 'ZFS Pool - Scrub Schedule - Update',
 			'/api/network/firewall/traffic/:id': 'Firewall Traffic Rule - Update',
 			'/api/network/firewall/traffic/reorder': 'Firewall Traffic Rule - Reorder',
 			'/api/network/firewall/nat/:id': 'Firewall NAT Rule - Update',
@@ -455,7 +458,9 @@
 		GET: {
 			'/api/certificates/:id/archive': 'TLS Certificate - Download',
 			'/api/disk/smart/self-test': 'Disk - S.M.A.R.T. Self-Test - View',
-			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View'
+			'/api/disk/smart/self-test/schedules': 'Disk - S.M.A.R.T. Self-Test Schedule - View',
+			'/api/zfs/pools/scrub/schedules': 'ZFS Pool - Scrub Schedule - View',
+			'/api/zfs/pools/:id/scrub/runs': 'ZFS Pool - Scrub History - View'
 		}
 	};
 

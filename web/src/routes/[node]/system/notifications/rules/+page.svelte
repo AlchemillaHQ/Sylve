@@ -734,6 +734,16 @@ under sponsorship from the FreeBSD Foundation.
 					{ key: 'pool_degraded', label: 'Degraded' },
 					{ key: 'pool_faulted', label: 'Faulted' }
 				];
+			case 'system.zfs.scrub':
+				return [
+					{ key: 'scrub_failed', label: 'Completed With Errors' },
+					{ key: 'scrub_passed', label: 'Completed Without Errors' },
+					{ key: 'scrub_started', label: 'Started' },
+					{ key: 'scrub_cancelled', label: 'Cancelled' },
+					{ key: 'scrub_unknown', label: 'Unknown Result' },
+					{ key: 'scrub_missed', label: 'Missed Run' },
+					{ key: 'scrub_start_failed', label: 'Failed To Start' }
+				];
 			default:
 				return [];
 		}
