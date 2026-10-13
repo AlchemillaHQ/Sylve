@@ -31,9 +31,11 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read
       pull-requests: read
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      test: ${{ steps.tests.outputs.required }}
     steps:
       - uses: actions/checkout@v7
 
@@ -55,6 +57,41 @@ jobs:
               - 'config.example.json'
               - '.github/actions/**'
               - '.github/workflows/ci.yaml'
+
+      - name: Determine whether Test is required
+        id: tests
+        uses: actions/github-script@v9
+        env:
+          BACKEND_CHANGED: ${{ steps.filter.outputs.backend }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        with:
+          script: |
+            if (process.env.BACKEND_CHANGED === "true") {
+              core.info("Backend or test inputs changed; running Test.");
+              core.setOutput("required", true);
+              return;
+            }
+
+            const { owner, repo } = context.repo;
+            const headRepository = context.payload.pull_request?.head.repo?.full_name || `${owner}/${repo}`;
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner, repo, workflow_id: "ci.yaml", branch: process.env.BRANCH,
+              event: context.eventName, per_page: 100,
+            });
+            for (const run of response.data.workflow_runs) {
+              if (run.id >= context.runId || run.head_repository?.full_name !== headRepository) continue;
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner, repo, run_id: run.id, filter: "latest", per_page: 100,
+              });
+              const result = jobs.find((job) => job.name === "Test")?.conclusion;
+              if (result === "skipped" && run.conclusion === "success") continue;
+              const required = result !== "success";
+              core.info(`Previous Test result: ${result || "not completed"}; running Test: ${required}.`);
+              core.setOutput("required", required);
+              return;
+            }
+            core.info("No previous Test result found; running Test.");
+            core.setOutput("required", true);
 
   quality:
     name: Code Quality
@@ -88,7 +125,7 @@ jobs:
       - changes
       - quality
       - build-csmwrap
-    if: needs.changes.outputs.backend == 'true'
+    if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -144,6 +181,9 @@ jobs:
             set +e
             (
               set -e
+              git config --global --add safe.directory "$PWD"
+              find "$PWD/third-party/csmwrap/source" -name .git -prune -exec sh -c \
+                'git config --global --add safe.directory "${1%/.git}"' sh {} \;
               mkdir -p "$GOCACHE" "$GOMODCACHE"
               go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
 
@@ -352,7 +392,7 @@ jobs:
           exit "$(cat test-results/acceptance.rc)"
 
   build-csmwrap:
-    name: Build CSMWrap (Linux)
+    name: Build CSMWrap
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -488,7 +528,7 @@ jobs:
       - name: Verify required jobs succeeded
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          BACKEND_CHANGED: ${{ needs.changes.outputs.backend }}
+          TEST_REQUIRED: ${{ needs.changes.outputs.test }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           TEST_RESULT: ${{ needs.test.result }}
           BUILD_WEB_RESULT: ${{ needs.build-web.result }}
@@ -497,10 +537,10 @@ jobs:
         run: |
           test "$CHANGES_RESULT" = success
           test "$QUALITY_RESULT" = success
-          if [ "$BACKEND_CHANGED" = true ]; then
+          if [ "$TEST_REQUIRED" = true ]; then
             test "$TEST_RESULT" = success
           else
-            test "$BACKEND_CHANGED" = false
+            test "$TEST_REQUIRED" = false
             test "$TEST_RESULT" = skipped
           fi
           test "$BUILD_WEB_RESULT" = success
