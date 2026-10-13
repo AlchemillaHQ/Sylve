@@ -97,9 +97,10 @@ const (
 type VMBootROM string
 
 const (
-	VMBootROMUEFI  VMBootROM = "uefi"
-	VMBootROMUBoot VMBootROM = "uboot"
-	VMBootROMNone  VMBootROM = "none"
+	VMBootROMUEFI        VMBootROM = "uefi"
+	VMBootROMUEFICSMWrap VMBootROM = "uefi_csmwrap"
+	VMBootROMUBoot       VMBootROM = "uboot"
+	VMBootROMNone        VMBootROM = "none"
 )
 
 type VMStorageDataset struct {
@@ -438,6 +439,8 @@ func defaultBootROM() VMBootROM {
 
 func (vm *VM) AfterFind(tx *gorm.DB) error {
 	switch strings.TrimSpace(strings.ToLower(string(vm.BootROM))) {
+	case string(VMBootROMUEFICSMWrap):
+		vm.BootROM = VMBootROMUEFICSMWrap
 	case string(VMBootROMNone):
 		vm.BootROM = VMBootROMNone
 	case string(VMBootROMUBoot):
@@ -453,6 +456,8 @@ func (vm *VM) AfterFind(tx *gorm.DB) error {
 
 func (template *VMTemplate) AfterFind(tx *gorm.DB) error {
 	switch strings.TrimSpace(strings.ToLower(string(template.BootROM))) {
+	case string(VMBootROMUEFICSMWrap):
+		template.BootROM = VMBootROMUEFICSMWrap
 	case string(VMBootROMNone):
 		template.BootROM = VMBootROMNone
 	case string(VMBootROMUBoot):

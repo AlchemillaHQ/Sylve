@@ -181,6 +181,9 @@ func updateVNC(xml string, vncPort int, vncBind string, vncResolution string, vn
 		resEl.CreateAttr("x", strconv.Itoa(width))
 		resEl.CreateAttr("y", strconv.Itoa(height))
 	}
+	if err := addressCSMWrapDocumentDevices(doc); err != nil {
+		return "", err
+	}
 
 	out, err := doc.WriteToString()
 	if err != nil {
@@ -538,6 +541,10 @@ func (s *Service) ModifyCPU(rid uint, req libvirtServiceInterfaces.ModifyCPURequ
 	if err != nil {
 		return err
 	}
+	if normalizeBootROMValue(vm.BootROM) == vmModels.VMBootROMUEFICSMWrap &&
+		req.CPUSockets*req.CPUCores*req.CPUThreads < 2 {
+		return fmt.Errorf("csmwrap_requires_two_vcpus")
+	}
 	if err := s.ValidateCPUPins(rid, req.CPUPinning, 0); err != nil {
 		return fmt.Errorf("failed_to_validate_cpu_pins: %w", err)
 	}
@@ -767,32 +774,53 @@ func (s *Service) ModifyPassthrough(rid uint, pciDevices []int) error {
 	}, vmHardwareMutationHooks{})
 }
 
-func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
-	used := make(map[int]bool)
-	if bhyveCommandline == nil {
-		return used
+func nextVMPCISlot(current *int, used map[int]bool) (int, error) {
+	for *current < 30 && used[*current] {
+		(*current)++
 	}
+	if *current >= 30 {
+		return 0, fmt.Errorf("no_free_pci_indices")
+	}
+	slot := *current
+	used[slot] = true
+	(*current)++
+	return slot, nil
+}
 
-	for _, arg := range bhyveCommandline.ChildElements() {
-		valueAttr := arg.SelectAttr("value")
-		if valueAttr == nil {
-			continue
+func parseUsedIndicesFromElement(bhyveCommandline *etree.Element) map[int]bool {
+	var arguments []string
+	if bhyveCommandline != nil {
+		for _, arg := range bhyveCommandline.ChildElements() {
+			arguments = append(arguments, arg.SelectAttrValue("value", ""))
 		}
-		value := strings.TrimSpace(valueAttr.Value)
-		if value == "" {
+	}
+	return parseUsedPCIIndices(arguments)
+}
+
+func parseUsedPCIIndices(arguments []string) map[int]bool {
+	used := make(map[int]bool)
+	for i, argument := range arguments {
+		rest, found := strings.CutPrefix(strings.TrimSpace(argument), "-s")
+		if !found {
 			continue
 		}
 
 		// handle "-s 10:0,...", "-s10:0,...", and "-s 10,virtio-console,..."
-		if strings.HasPrefix(value, "-s") {
-			rest := strings.TrimPrefix(value, "-s")
-			rest = strings.TrimSpace(rest)
-			sep := strings.IndexAny(rest, ":,")
-			if sep > 0 {
-				if idx, err := strconv.Atoi(rest[:sep]); err == nil {
-					used[idx] = true
-				}
-			}
+		rest = strings.TrimSpace(rest)
+		if rest == "" && i+1 < len(arguments) {
+			rest = arguments[i+1]
+		}
+		address, _, found := strings.Cut(rest, ",")
+		parts := strings.Split(address, ":")
+		if !found || len(parts) > 3 {
+			continue
+		}
+		slot := parts[0]
+		if len(parts) == 3 {
+			slot = parts[1]
+		}
+		if idx, err := strconv.Atoi(slot); err == nil {
+			used[idx] = true
 		}
 	}
 

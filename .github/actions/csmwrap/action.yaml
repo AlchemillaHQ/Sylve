@@ -1,0 +1,64 @@
+name: Build CSMWrap
+description: Cache a source-built x86-64 CSMWrap ISO
+inputs:
+  artifact-name:
+    description: Output artifact name
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Resolve helper build inputs
+      id: inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        test "$RUNNER_OS" = Linux
+        echo "key=$(./scripts/build-csmwrap.sh --key)" >> "$GITHUB_OUTPUT"
+        test -n "${ImageVersion:-}"
+        echo "builder=ubuntu-24.04-${ImageVersion}" >> "$GITHUB_OUTPUT"
+
+    - name: Check packaging and integrity logic
+      shell: bash
+      run: ./scripts/test-csmwrap.sh
+
+    - name: Cache completed helper artifacts
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: .cache/csmwrap
+        key: csmwrap-v1-${{ steps.inputs.outputs.builder }}-${{ steps.inputs.outputs.key }}
+
+    - name: Install missing build and packaging tools
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends gcc libc6-dev make binutils nasm xxd dosfstools mtools xorriso file jq python3
+
+    - name: Build or verify source-built ISO
+      shell: bash
+      env:
+        CSMWRAP_TOOLCHAIN_ID: ${{ steps.inputs.outputs.builder }}
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        if [ "$CACHE_HIT" = true ]; then
+          ./scripts/build-csmwrap.sh --verify --stage
+        else
+          ./scripts/build-csmwrap.sh --stage
+        fi
+
+    - name: Upload helper artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          .cache/csmwrap/CSMWrap.iso
+          .cache/csmwrap/CSMWrap.iso.gz
+          .cache/csmwrap/CSMWrap-build-manifest.json
+          .cache/csmwrap/SHA256SUMS
+        compression-level: 0
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 7

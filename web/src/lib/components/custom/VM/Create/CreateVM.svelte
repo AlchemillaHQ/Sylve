@@ -16,6 +16,7 @@
 		getNextGuestId,
 		getNextId,
 		getVMCreateErrorMessage,
+		handleCSMWrapCPUError,
 		isValidCreateData
 	} from '$lib/utils/vm/vm';
 	import Advanced from './Advanced.svelte';
@@ -277,6 +278,7 @@
 		if (!architecture || modal.advanced.bootRom === 'none') return;
 
 		const defaultBootROM: VMBootRom = architecture === 'arm64' ? 'uboot' : 'uefi';
+		if (architecture === 'amd64' && modal.advanced.bootRom === 'uefi_csmwrap') return;
 		if (modal.advanced.bootRom !== defaultBootROM) {
 			modal.advanced.bootRom = defaultBootROM;
 		}
@@ -285,6 +287,13 @@
 	watch(
 		() => selectedNodeArchitecture,
 		(architecture) => reconcileBootROM(architecture)
+	);
+
+	watch(
+		() => modal.advanced.bootRom,
+		(bootRom) => {
+			if (bootRom === 'uefi_csmwrap') modal.advanced.ignoreUmsrs = true;
+		}
 	);
 
 	watch([() => open, () => minimize], ([open, minimize]) => {
@@ -410,6 +419,7 @@
 				open = false;
 				reloadStore.leftPanel = true;
 			} else {
+				if (handleCSMWrapCPUError(response)) return;
 				handleAPIError(response);
 				toast.error(getVMCreateErrorMessage(response), {
 					duration: 3000,

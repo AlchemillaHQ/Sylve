@@ -20888,3 +20888,9 @@ msgstr ""
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "No available targets for this template."
 msgstr ""
+
+#: src/lib/components/custom/VM/Create/Advanced.svelte
+#: src/lib/components/custom/VM/Options/BootRom.svelte
+#: src/routes/[node]/vm/[rid]/options/+page.svelte
+msgid "UEFI + CSMWrap (Experimental)"
+msgstr ""

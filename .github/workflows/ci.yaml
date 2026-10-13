@@ -50,6 +50,8 @@ jobs:
               - 'go.*'
               - 'Makefile'
               - 'scripts/**'
+              - '.gitmodules'
+              - 'third-party/csmwrap/**'
               - 'config.example.json'
               - '.github/actions/**'
               - '.github/workflows/ci.yaml'
@@ -85,6 +87,7 @@ jobs:
     needs:
       - changes
       - quality
+      - build-csmwrap
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -93,6 +96,17 @@ jobs:
       GOMODCACHE: ${{ github.workspace }}/.cache/freebsd-go/mod
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Download source-built CSMWrap
+        uses: actions/download-artifact@v8
+        with:
+          name: csmwrap-assets
+          path: .cache/csmwrap
+
+      - name: Verify and stage CSMWrap embeds before FreeBSD checks
+        run: ./scripts/build-csmwrap.sh --verify --stage
 
       - name: Cache FreeBSD Go files
         id: freebsd_go_cache
@@ -115,7 +129,7 @@ jobs:
           envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED
           prepare: |
             pkg update
-            pkg install -y go git libvirt bhyve-firmware qemu-tools
+            pkg install -y go git libvirt bhyve-firmware qemu-tools jq
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -175,7 +189,7 @@ jobs:
               exit 0
             fi
 
-            go vet ./... > test-results/vet.log 2>&1
+            go vet ./... ./internal/assets/csmwrap > test-results/vet.log 2>&1
             vet_rc="$?"
             cat test-results/vet.log
             printf '%s\n' "$vet_rc" > test-results/vet.rc
@@ -337,6 +351,18 @@ jobs:
           fi
           exit "$(cat test-results/acceptance.rc)"
 
+  build-csmwrap:
+    name: Build CSMWrap (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: ./.github/actions/csmwrap
+        with:
+          artifact-name: csmwrap-assets
+
   build-web:
     name: Build Web
     needs: quality
@@ -367,7 +393,7 @@ jobs:
 
   build-freebsd:
     name: Build FreeBSD (${{ matrix.arch }})
-    needs: build-web
+    needs: [build-web, build-csmwrap]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -380,6 +406,8 @@ jobs:
           - arch: arm64
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -402,6 +430,17 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
         run: echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Download source-built CSMWrap
+        if: matrix.arch == 'amd64'
+        uses: actions/download-artifact@v8
+        with:
+          name: csmwrap-assets
+          path: .cache/csmwrap
+
+      - name: Verify and stage CSMWrap embeds
+        if: matrix.arch == 'amd64'
+        run: ./scripts/build-csmwrap.sh --verify --stage
 
       - name: Cache FreeBSD sysroot
         uses: actions/cache@v6
@@ -441,6 +480,7 @@ jobs:
       - quality
       - test
       - build-web
+      - build-csmwrap
       - build-freebsd
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -452,6 +492,7 @@ jobs:
           QUALITY_RESULT: ${{ needs.quality.result }}
           TEST_RESULT: ${{ needs.test.result }}
           BUILD_WEB_RESULT: ${{ needs.build-web.result }}
+          BUILD_CSMWRAP_RESULT: ${{ needs.build-csmwrap.result }}
           BUILD_FREEBSD_RESULT: ${{ needs.build-freebsd.result }}
         run: |
           test "$CHANGES_RESULT" = success
@@ -463,4 +504,5 @@ jobs:
             test "$TEST_RESULT" = skipped
           fi
           test "$BUILD_WEB_RESULT" = success
+          test "$BUILD_CSMWRAP_RESULT" = success
           test "$BUILD_FREEBSD_RESULT" = success

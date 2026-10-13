@@ -738,6 +738,9 @@ func (s *Service) preflightCreateVMsFromTemplate(
 	if err != nil {
 		return plan, err
 	}
+	if err := ValidateVMBootConfiguration(buildVMFromTemplate(template, vmTemplateCreateTarget{}, 0, "", "", "")); err != nil {
+		return plan, err
+	}
 	if replicationguard.GuestOperationSchemaReady(s.DB) {
 		for _, target := range targets {
 			if err := s.requireVMMutationOwnership(target.RID); err != nil {

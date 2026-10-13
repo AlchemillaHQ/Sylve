@@ -17,7 +17,7 @@ export interface CPUPin {
 	cores: number[];
 }
 
-export type VMBootRom = 'uefi' | 'uboot' | 'none';
+export type VMBootRom = 'uefi' | 'uefi_csmwrap' | 'uboot' | 'none';
 
 export interface CreateData {
 	name: string;
@@ -161,7 +161,7 @@ export const VMSchema = z.object({
 	cloudInitData: z.string().nullable(),
 	cloudInitMetaData: z.string().nullable(),
 	cloudInitNetworkConfig: z.string().nullable(),
-	bootRom: z.enum(['uefi', 'uboot', 'none']),
+	bootRom: z.enum(['uefi', 'uefi_csmwrap', 'uboot', 'none']),
 	extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
 	ignoreUMSR: z.boolean(),
 	qemuGuestAgent: z.boolean(),
@@ -266,7 +266,7 @@ export const VMTemplateSchema = z.object({
 	cloudInitData: z.string().nullable(),
 	cloudInitMetaData: z.string().nullable(),
 	cloudInitNetworkConfig: z.string().nullable(),
-	bootRom: z.enum(['uefi', 'uboot', 'none']),
+	bootRom: z.enum(['uefi', 'uefi_csmwrap', 'uboot', 'none']),
 	extraBhyveOptions: z.union([z.array(z.string()), z.null()]),
 	ignoreUMSR: z.boolean(),
 	qemuGuestAgent: z.boolean(),

@@ -31,6 +31,8 @@ import (
 
 type checkVMTargetResponse struct {
 	Data struct {
+		BootCompatibilityChecked    bool     `json:"bootCompatibilityChecked"`
+		BootErrors                  []string `json:"bootErrors"`
 		MissingMedia                []string `json:"missingMedia"`
 		VNCPortInUse                bool     `json:"vncPortInUse"`
 		MissingSwitches             []string `json:"missingSwitches"`
@@ -38,6 +40,27 @@ type checkVMTargetResponse struct {
 		MissingFsDatasets           []string `json:"missingFsDatasets"`
 		NetworkCompatibilityChecked bool     `json:"networkCompatibilityChecked"`
 	} `json:"data"`
+}
+
+func TestIntraClusterCheckVMTargetChecksHelperWithoutNetworks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{})
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/intra-cluster/migration/check-vm-target", strings.NewReader(
+		`{"bootRequirement":{"bootRom":"uefi_csmwrap","cpuSockets":1,"cpuCores":1,"cpuThreads":1}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	IntraClusterCheckVMTarget(&libvirt.Service{DB: db})(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("target check: %d: %s", w.Code, w.Body.String())
+	}
+	var response checkVMTargetResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.Data.BootCompatibilityChecked || len(response.Data.BootErrors) != 1 {
+		t.Fatalf("incompatible helper not rejected: %s", w.Body.String())
+	}
 }
 
 func TestIntraClusterCheckVMTarget(t *testing.T) {

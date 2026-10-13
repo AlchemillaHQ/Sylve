@@ -9,6 +9,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"debug/buildinfo"
 	"encoding/hex"
@@ -27,7 +28,8 @@ import (
 var (
 	commitPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	versionPattern = regexp.MustCompile(`(?m)^const Version = "([^"]+)"`)
-	payloadNames   = []string{"sylve-amd64", "sylve-arm64", "sylve-web-assets.tar.gz", "sylve-web-demo-assets.tar.gz"}
+	payloadNames   = []string{"sylve-amd64", "sylve-arm64", "sylve-web-assets.tar.gz", "sylve-web-demo-assets.tar.gz",
+		"CSMWrap.iso"}
 )
 
 type versionInfo struct {
@@ -40,8 +42,9 @@ type versionInfo struct {
 
 type buildRecord struct {
 	versionInfo
-	Arch   string `json:"arch"`
-	SHA256 string `json:"sha256"`
+	Arch          string `json:"arch"`
+	SHA256        string `json:"sha256"`
+	CSMWrapSHA256 string `json:"csmwrapSHA256,omitempty"`
 }
 
 func main() {
@@ -97,9 +100,44 @@ func record(binary, arch, freebsd, commit string) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(filepath.Dir(binary), "build-"+arch+".json"), buildRecord{
+	record := buildRecord{
 		versionInfo: metadata, Arch: arch, SHA256: digest,
-	})
+	}
+	if arch == "amd64" {
+		manifestData, err := os.ReadFile("internal/assets/csmwrap/CSMWrap-build-manifest.json")
+		if err != nil {
+			return err
+		}
+		var manifest struct {
+			Architecture string            `json:"architecture"`
+			SHA256       string            `json:"sha256"`
+			Size         int64             `json:"size"`
+			Files        map[string]string `json:"files"`
+		}
+		if err := json.Unmarshal(manifestData, &manifest); err != nil {
+			return err
+		}
+		if manifest.Architecture != "x86_64" || manifest.Size <= 0 || manifest.Size > 64<<20 || len(manifest.SHA256) != 64 {
+			return fmt.Errorf("invalid CSMWrap build manifest")
+		}
+		compressed, err := os.ReadFile("internal/assets/csmwrap/CSMWrap.iso.gz")
+		if err != nil {
+			return err
+		}
+		compressedHash := sha256.Sum256(compressed)
+		if hex.EncodeToString(compressedHash[:]) != manifest.Files["CSMWrap.iso.gz"] {
+			return fmt.Errorf("CSMWrap embedded asset checksum mismatch")
+		}
+		binaryData, err := os.ReadFile(binary)
+		if err != nil {
+			return err
+		}
+		if len(compressed) == 0 || !bytes.Contains(binaryData, compressed) || !bytes.Contains(binaryData, manifestData) {
+			return fmt.Errorf("amd64 binary does not embed the staged CSMWrap bundle")
+		}
+		record.CSMWrapSHA256 = manifest.SHA256
+	}
+	return writeJSON(filepath.Join(filepath.Dir(binary), "build-"+arch+".json"), record)
 }
 
 func metadataForBuild(info *debug.BuildInfo, version, arch, freebsd, commit string, builtAt time.Time) (versionInfo, error) {
@@ -139,6 +177,10 @@ func metadataForBuild(info *debug.BuildInfo, version, arch, freebsd, commit stri
 }
 
 func generate(dir, commit string) error {
+	helperDigest, err := checksum(filepath.Join(dir, "CSMWrap.iso"))
+	if err != nil {
+		return err
+	}
 	var metadata versionInfo
 	var latest time.Time
 	for _, arch := range []string{"amd64", "arm64"} {
@@ -165,6 +207,9 @@ func generate(dir, commit string) error {
 			return fmt.Errorf("sylve-%s checksum does not match its build record", arch)
 		}
 		if arch == "amd64" {
+			if record.CSMWrapSHA256 != helperDigest {
+				return fmt.Errorf("amd64 embedded CSMWrap differs from release bundle")
+			}
 			metadata = record.versionInfo
 		} else if metadata.Version != record.Version || metadata.Go != record.Go || metadata.FreeBSD != record.FreeBSD {
 			return fmt.Errorf("architecture builds disagree on version, Go version, or FreeBSD release")

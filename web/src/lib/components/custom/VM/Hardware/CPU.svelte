@@ -6,6 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { CPUPin, VM } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
+	import { checkCSMWrapCPUs, handleCSMWrapCPUError } from '$lib/utils/vm/vm';
 	import { toast } from 'svelte-sonner';
 	import CPUSelector from '../Extra/CPUSelector.svelte';
 
@@ -88,6 +89,7 @@
 			return;
 		}
 		const pinnedCount = pinnedCPUs.reduce((total, pin) => total + pin.cores.length, 0);
+		if (!checkCSMWrapCPUs(vm.bootRom, vcpuCount)) return;
 		if (pinnedCount > vcpuCount) {
 			toast.error(`CPU pinning cannot exceed ${vcpuCount} vCPUs`, {
 				position: 'bottom-center'
@@ -101,6 +103,7 @@
 				hostname: node
 			});
 			if (response.status !== 'success') {
+				if (handleCSMWrapCPUError(response)) return;
 				handleAPIError(response);
 				toast.error('Failed to modify CPU', { position: 'bottom-center' });
 				return;

@@ -87,6 +87,9 @@ func (s *Service) reinitializeVMConfig(
 	}
 	defer unlockSwitchLifecycle()
 
+	if err := ValidateVMBootConfiguration(vm); err != nil {
+		return err
+	}
 	vmPath, err := s.GetVMConfigDirectory(rid)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_config_directory: %w", err)

@@ -113,10 +113,13 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
-	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "missing web assets"} {
+	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "missing web assets", "missing helper", "changed helper", "wrong helper digest"} {
 		t.Run(name, func(t *testing.T) {
 			dir := fixtureRelease(t)
 			recordPath := filepath.Join(dir, "build-arm64.json")
+			if name == "wrong helper digest" {
+				recordPath = filepath.Join(dir, "build-amd64.json")
+			}
 			data, err := os.ReadFile(recordPath)
 			if err != nil {
 				t.Fatal(err)
@@ -146,6 +149,12 @@ func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
 				record.BuiltAt = "not-a-timestamp"
 			case "missing web assets":
 				err = os.Remove(filepath.Join(dir, "sylve-web-assets.tar.gz"))
+			case "missing helper":
+				err = os.Remove(filepath.Join(dir, "CSMWrap.iso"))
+			case "changed helper":
+				err = os.WriteFile(filepath.Join(dir, "CSMWrap.iso"), []byte("stale helper"), 0o644)
+			case "wrong helper digest":
+				record.CSMWrapSHA256 = strings.Repeat("a", 64)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -193,6 +202,10 @@ func fixtureRelease(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
+	helperDigest, err := checksum(filepath.Join(dir, "CSMWrap.iso"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, arch := range []string{"amd64", "arm64"} {
 		asset, err := os.ReadFile(filepath.Join(dir, "sylve-"+arch))
 		if err != nil {
@@ -205,6 +218,9 @@ func fixtureRelease(t *testing.T) string {
 				Go: "go1.26.8", FreeBSD: "15.1-RELEASE",
 			},
 			Arch: arch, SHA256: hex.EncodeToString(digest[:]),
+		}
+		if arch == "amd64" {
+			record.CSMWrapSHA256 = helperDigest
 		}
 		if err := writeJSON(filepath.Join(dir, "build-"+arch+".json"), record); err != nil {
 			t.Fatal(err)

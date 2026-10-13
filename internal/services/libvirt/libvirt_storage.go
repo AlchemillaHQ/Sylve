@@ -547,10 +547,40 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 	if err := doc.ReadFromString(xml); err != nil {
 		return fmt.Errorf("failed_to_parse_xml: %w", err)
 	}
+	if err := s.reconcileVMStorageDocument(ctx, db, rid, doc); err != nil {
+		return err
+	}
+	newXML, err := doc.WriteToString()
+	if err != nil {
+		return fmt.Errorf("failed to serialize XML: %w", err)
+	}
+	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
+		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
+	}
+	if err := s.writeVMJsonWithDB(db, rid); err != nil {
+		return fmt.Errorf("failed_to_write_vm_json_after_disk_sync: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) reconcileVMStorageDocument(ctx context.Context, db *gorm.DB, rid uint, doc *etree.Document) error {
+	root := doc.Root()
+	if root == nil {
+		return fmt.Errorf("malformed_vm_xml: missing_domain_element")
+	}
+	var vm vmModels.VM
+	if err := db.Where("rid = ?", rid).First(&vm).Error; err != nil {
+		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
+	}
+	extraStorageArgs := map[string]bool{}
+	if normalizeBootROMValue(vm.BootROM) == vmModels.VMBootROMUEFICSMWrap {
+		for _, option := range normalizeExtraBhyveOptions(vm.ExtraBhyveOptions) {
+			extraStorageArgs[option] = true
+		}
+	}
 
 	bhyveCommandline := doc.FindElement("//commandline")
 	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
-		root := doc.Root()
 		if root.SelectAttr("xmlns:bhyve") == nil {
 			root.CreateAttr("xmlns:bhyve", "http://libvirt.org/schemas/domain/bhyve/1.0")
 		}
@@ -565,7 +595,7 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 
 		val := valAttr.Value
 
-		if val == "" {
+		if val == "" || extraStorageArgs[strings.TrimSpace(val)] {
 			continue
 		}
 
@@ -582,7 +612,6 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 		}
 	}
 
-	root := doc.Root()
 	devicesEl := root.FindElement("devices")
 	if devicesEl == nil {
 		devicesEl = root.CreateElement("devices")
@@ -590,11 +619,6 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 
 	for _, el := range devicesEl.FindElements("filesystem") {
 		devicesEl.RemoveChild(el)
-	}
-
-	var vm vmModels.VM
-	if err := db.Where("rid = ?", rid).First(&vm).Error; err != nil {
-		return fmt.Errorf("failed_to_get_vm_by_rid: %w", err)
 	}
 
 	var storages []vmModels.Storage
@@ -610,6 +634,47 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 
 	used := parseUsedIndicesFromDocument(doc)
 	currentIndex := 10
+	// All CD arguments were removed above, including the managed helper. Always
+	// recreate it first, even after ejecting the final user installer.
+	helper, err := csmwrapMedia(vm, used)
+	if err != nil {
+		return err
+	}
+	if helper != "" {
+		argElement := etree.NewElement("bhyve:arg")
+		argElement.CreateAttr("value", helper)
+		bhyveCommandline.InsertChildAt(0, argElement)
+	}
+	osElement := root.FindElement("os")
+	if osElement == nil && helper != "" {
+		return fmt.Errorf("csmwrap_domain_os_missing")
+	}
+	var loader *etree.Element
+	if osElement != nil {
+		loader = osElement.FindElement("loader")
+	}
+	if helper != "" || (loader != nil && strings.Contains(loader.Text(), "_csmwrap_vars.fd")) {
+		vmPath, err := s.GetVMConfigDirectory(vm.RID)
+		if err != nil {
+			return err
+		}
+		if err := s.ensureVMBootROMArtifacts(vm.RID, vm.BootROM, vmPath); err != nil {
+			return err
+		}
+		desired := buildBootROMLoader(vm.BootROM, vmPath, vm.RID)
+		if desired == nil {
+			if loader != nil {
+				osElement.RemoveChild(loader)
+			}
+		} else {
+			if loader == nil {
+				loader = osElement.CreateElement("loader")
+			}
+			loader.CreateAttr("readonly", desired.ReadOnly)
+			loader.CreateAttr("type", desired.Type)
+			loader.SetText(desired.Path)
+		}
+	}
 
 	for _, storage := range storages {
 		if !storage.Enable {
@@ -638,17 +703,10 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 			continue
 		}
 
-		for currentIndex < 30 && used[currentIndex] {
-			currentIndex++
+		index, err := nextVMPCISlot(&currentIndex, used)
+		if err != nil {
+			return err
 		}
-
-		if currentIndex >= 30 {
-			return fmt.Errorf("no free indices available")
-		}
-
-		index := currentIndex
-		used[index] = true
-		currentIndex++
 
 		argCommon := fmt.Sprintf("-s %d:0,%s", index, storage.Emulation)
 		var argValue string
@@ -691,17 +749,12 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 		if err != nil {
 			return fmt.Errorf("failed_to_get_cloud_init_iso_path: %w", err)
 		}
-		for currentIndex < 30 && used[currentIndex] {
-			currentIndex++
+		index, err := nextVMPCISlot(&currentIndex, used)
+		if err != nil {
+			return err
 		}
 
-		if currentIndex >= 30 {
-			return fmt.Errorf("no_free_indices_available_for_cloud_init_iso")
-		}
-
-		used[currentIndex] = true
-
-		argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s,ro", currentIndex, cloudInitISOPath)
+		argValue := fmt.Sprintf("-s %d:0,ahci-cd,%s,ro", index, cloudInitISOPath)
 		argValues = append(argValues, argValue)
 	}
 
@@ -709,21 +762,7 @@ func (s *Service) syncVMDisksWithDB(ctx context.Context, db *gorm.DB, rid uint) 
 		argElement := bhyveCommandline.CreateElement("bhyve:arg")
 		argElement.CreateAttr("value", val)
 	}
-
-	newXML, err := doc.WriteToString()
-	if err != nil {
-		return fmt.Errorf("failed to serialize XML: %w", err)
-	}
-
-	if _, err := s.conn().DomainDefineXML(newXML); err != nil {
-		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
-	}
-
-	if err := s.writeVMJsonWithDB(db, rid); err != nil {
-		return fmt.Errorf("failed_to_write_vm_json_after_disk_sync: %w", err)
-	}
-
-	return nil
+	return addressCSMWrapDocumentDevices(doc)
 }
 
 func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {

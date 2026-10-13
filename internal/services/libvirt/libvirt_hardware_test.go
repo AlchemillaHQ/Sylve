@@ -10,6 +10,7 @@ package libvirt
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
+	"github.com/beevik/etree"
 
 	"gorm.io/gorm"
 )
@@ -84,6 +86,58 @@ func TestValidateVNCResolutionBounds(t *testing.T) {
 		if err := validateVNCResolution(resolution); err == nil {
 			t.Fatalf("expected %s to be invalid", resolution)
 		}
+	}
+}
+
+func TestParseUsedPCIIndices(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name      string
+		arguments []string
+		want      map[int]bool
+	}{
+		{name: "empty"},
+		{name: "inline", arguments: []string{"-s 9:0,ahci-cd,helper.iso"}, want: map[int]bool{9: true}},
+		{name: "compact", arguments: []string{"-s10:0,ahci-hd,/disk"}, want: map[int]bool{10: true}},
+		{name: "slot only", arguments: []string{"-s 11,virtio-console"}, want: map[int]bool{11: true}},
+		{name: "separate", arguments: []string{"-s", "0:12:0,ahci-hd,/disk"}, want: map[int]bool{12: true}},
+		{name: "multiple", arguments: []string{" -s 13:0,virtio-net,tap0 ", "-s", "14:0,ahci-hd,/disk"}, want: map[int]bool{13: true, 14: true}},
+		{name: "incomplete", arguments: []string{"-s 15:0", "-s"}},
+		{name: "invalid", arguments: []string{"-s bad:0,virtio-net,tap0", "-s 0:1:2:3,virtio-net,tap0"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			commandline := etree.NewElement("bhyve:commandline")
+			for _, argument := range test.arguments {
+				commandline.CreateElement("bhyve:arg").CreateAttr("value", argument)
+			}
+			for _, used := range []map[int]bool{parseUsedPCIIndices(test.arguments), parseUsedIndicesFromElement(commandline)} {
+				if !maps.Equal(used, test.want) {
+					t.Fatalf("PCI slots = %v, want %v", used, test.want)
+				}
+			}
+		})
+	}
+	if len(parseUsedIndicesFromElement(nil)) != 0 {
+		t.Fatal("nil command line reserved PCI slots")
+	}
+}
+
+func TestNextVMPCISlotSkipsReservationsAndStopsAtLimit(t *testing.T) {
+	t.Parallel()
+	used := map[int]bool{10: true, 12: true, 29: true}
+	current := 10
+	for _, expected := range []int{11, 13} {
+		slot, err := nextVMPCISlot(&current, used)
+		if err != nil || slot != expected || !used[slot] || current != slot+1 {
+			t.Fatalf("allocation: slot=%d current=%d error=%v", slot, current, err)
+		}
+	}
+	current = 28
+	if slot, err := nextVMPCISlot(&current, used); err != nil || slot != 28 {
+		t.Fatalf("last available slot: %d: %v", slot, err)
+	}
+	if _, err := nextVMPCISlot(&current, used); err == nil || !strings.Contains(err.Error(), "no_free_pci_indices") || used[30] {
+		t.Fatalf("PCI limit not enforced: %v", err)
 	}
 }
 

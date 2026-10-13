@@ -103,6 +103,20 @@ jobs:
 
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
 
+  build-csmwrap:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should_publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare-release.outputs.head_sha }}
+          submodules: recursive
+      - uses: ./.github/actions/csmwrap
+        with:
+          artifact-name: tip-csmwrap-assets
+
   build-web:
     needs:
       - select-runner
@@ -158,6 +172,7 @@ jobs:
       - select-runner
       - prepare-release
       - build-web
+      - build-csmwrap
     if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 30
@@ -175,6 +190,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.head_sha }}
+          submodules: recursive
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -198,6 +214,17 @@ jobs:
           ARCH: ${{ matrix.arch }}
         run: |
           echo "version=$(./scripts/resolve-freebsd-release.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Download source-built CSMWrap
+        if: matrix.arch == 'amd64'
+        uses: actions/download-artifact@v8
+        with:
+          name: tip-csmwrap-assets
+          path: .cache/csmwrap
+
+      - name: Verify and stage CSMWrap embeds
+        if: matrix.arch == 'amd64'
+        run: ./scripts/build-csmwrap.sh --verify --stage
 
       - name: Cache FreeBSD sysroot
         uses: actions/cache@v6
@@ -248,6 +275,7 @@ jobs:
       - prepare-release
       - build-web
       - build-freebsd
+      - build-csmwrap
     if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 15
@@ -255,6 +283,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare-release.outputs.head_sha }}
+          submodules: recursive
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -273,6 +302,18 @@ jobs:
         with:
           name: tip-web-packages
           path: tip-assets
+
+      - name: Download source-built helper bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: tip-csmwrap-assets
+          path: .cache/csmwrap
+
+      - name: Verify and stage helper release assets
+        run: |
+          set -euo pipefail
+          ./scripts/build-csmwrap.sh --verify
+          cp .cache/csmwrap/CSMWrap.iso tip-assets/
 
       - name: Publish tip assets and metadata
         env:
@@ -314,7 +355,8 @@ jobs:
 
           gh release upload tip --clobber \
             tip-assets/sylve-amd64 tip-assets/sylve-arm64 \
-            tip-assets/sylve-web-assets.tar.gz tip-assets/sylve-web-demo-assets.tar.gz
+            tip-assets/sylve-web-assets.tar.gz tip-assets/sylve-web-demo-assets.tar.gz \
+            tip-assets/CSMWrap.iso
 
           # Hash the actual published assets, not just the local build outputs.
           gh release download tip --dir published-assets

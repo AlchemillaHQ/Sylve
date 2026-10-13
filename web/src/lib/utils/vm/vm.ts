@@ -14,6 +14,22 @@ import { type ClusterNode } from '$lib/types/cluster/cluster';
 import { kvStorage } from '$lib/types/db';
 import { removeCache } from '$lib/utils/http';
 
+export function checkCSMWrapCPUs(bootRom: string, vcpus: number): boolean {
+	if (bootRom !== 'uefi_csmwrap' || vcpus >= 2) return true;
+	toast.warning('CSMWrap requires at least 2 vCPUs.', {
+		duration: 3000,
+		position: 'bottom-center'
+	});
+	return false;
+}
+
+export function handleCSMWrapCPUError(response: Pick<APIResponse, 'message' | 'error'>): boolean {
+	const text = `${response.message} ${toVMCreateErrorText(response.error)}`;
+	if (!text.includes('csmwrap_requires_two_vcpus')) return false;
+	checkCSMWrapCPUs('uefi_csmwrap', 1);
+	return true;
+}
+
 export function isValidCreateData(
 	modal: CreateData,
 	utypeDownloads: UTypeGroupedDownload[],
@@ -94,6 +110,7 @@ export function isValidCreateData(
 	}
 
 	const vcpus = modal.hardware.sockets * modal.hardware.cores * modal.hardware.threads;
+	if (!checkCSMWrapCPUs(modal.advanced.bootRom, vcpus)) return false;
 	if (vcpus > maxVCPUs) {
 		toast.error(
 			`Requested vCPU count of ${vcpus} exceeds the selected node limit of ${maxVCPUs} (hw.vmm.maxcpu)`,

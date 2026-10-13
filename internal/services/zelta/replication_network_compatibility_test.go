@@ -204,6 +204,63 @@ func TestBuildReplicationVMTargetProbeIncludesDisabledSwitchIdentity(t *testing.
 	}
 }
 
+func TestReplicationChecksHelperWithoutNetworks(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.Network{}, &clusterModels.ClusterNode{})
+	vm := vmModels.VM{Name: "vm-csmwrap", RID: 94, BootROM: vmModels.VMBootROMUEFICSMWrap,
+		CPUSockets: 1, CPUCores: 2, CPUThreads: 1}
+	if err := db.Create(&vm).Error; err != nil {
+		t.Fatal(err)
+	}
+	responseBody := `{"status":"success","data":{"networkCompatibilityChecked":true}}`
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var received replicationVMTargetProbe
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Error(err)
+		}
+		if received.BootRequirement == nil || received.BootRequirement.BootROM != vm.BootROM || received.BootRequirement.CPUCores != vm.CPUCores {
+			t.Errorf("helper requirements omitted: %+v", received)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(responseBody))
+	}))
+	defer server.Close()
+	if err := db.Create(&clusterModels.ClusterNode{NodeUUID: "target-node", API: strings.TrimPrefix(server.URL, "https://")}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, Cluster: &clusterService.Service{DB: db, AuthService: replicationNetworkAuthStub{}}}
+	live, err := service.buildReplicationTargetNetworkCheck(&clusterModels.ReplicationPolicy{
+		ID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: vm.RID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := json.Marshal(vm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captured, err := replicationVMTargetNetworkCheckFromMetadata(metadata, vm.RID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []replicationTargetNetworkCheck{live, captured} {
+		if check.action != "migration/check-vm-target" {
+			t.Fatal("network-free helper preflight was skipped")
+		}
+		err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", check)
+		if err == nil || !strings.Contains(err.Error(), "replication_target_boot_check_unsupported") {
+			t.Fatalf("old target accepted: %v", err)
+		}
+	}
+	responseBody = `{"status":"success","data":{"networkCompatibilityChecked":true,"bootCompatibilityChecked":true,"bootErrors":["csmwrap_requires_two_vcpus"]}}`
+	if err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", captured); err == nil || !strings.Contains(err.Error(), "replication_target_boot_incompatible") {
+		t.Fatalf("incompatible helper accepted: %v", err)
+	}
+	responseBody = `{"status":"success","data":{"networkCompatibilityChecked":true,"bootCompatibilityChecked":true,"bootErrors":[]}}`
+	if err := service.validateReplicationTargetNetworkCheck(context.Background(), "target-node", captured); err != nil {
+		t.Fatalf("compatible helper rejected: %v", err)
+	}
+}
+
 func TestBuildReplicationJailTargetProbePreservesVLANPolicy(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t,
 		&jailModels.Jail{},

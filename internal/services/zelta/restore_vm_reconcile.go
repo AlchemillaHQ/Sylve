@@ -76,6 +76,8 @@ func lockRestoredVMNetworkLifecycle(
 
 func normalizeRestoredVMBootROM(value vmModels.VMBootROM) vmModels.VMBootROM {
 	switch strings.TrimSpace(strings.ToLower(string(value))) {
+	case string(vmModels.VMBootROMUEFICSMWrap):
+		return vmModels.VMBootROMUEFICSMWrap
 	case string(vmModels.VMBootROMNone):
 		return vmModels.VMBootROMNone
 	case string(vmModels.VMBootROMUBoot):
@@ -152,6 +154,9 @@ func (s *Service) reconcileRestoredVMFromDataset(
 	restored.RID = fallbackRID
 	if restored.RID == 0 {
 		return fmt.Errorf("restored_vm_rid_missing")
+	}
+	if err := libvirt.ValidateVMBootConfiguration(*restored); err != nil {
+		return err
 	}
 	if strictAsNew {
 		rewriteRestoredVMMetadataIdentity(restoredMeta, fallbackRID)
@@ -1062,6 +1067,7 @@ func vmRuntimeArtifactNames(sourceRID, destinationRID uint) []vmRuntimeArtifactN
 	destination := strconv.FormatUint(uint64(destinationRID), 10)
 	return []vmRuntimeArtifactName{
 		{Source: source + "_vars.fd", Destination: destination + "_vars.fd"},
+		{Source: source + "_csmwrap_vars.fd", Destination: destination + "_csmwrap_vars.fd"},
 		{Source: source + "_tpm.log", Destination: destination + "_tpm.log"},
 		{Source: source + "_tpm.state", Destination: destination + "_tpm.state"},
 	}

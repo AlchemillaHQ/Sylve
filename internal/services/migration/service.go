@@ -25,6 +25,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	"github.com/alchemillahq/sylve/internal/logger"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
@@ -420,18 +421,21 @@ var (
 )
 
 type vmTargetProbe struct {
-	RID        uint                              `json:"rid"`
-	MediaUUIDs []string                          `json:"mediaUuids"`
-	VNCPort    int                               `json:"vncPort"`
-	Switches   []networkAttachment.NamedContract `json:"switches"`
-	FsDatasets []string                          `json:"fsDatasets"`
+	BootRequirement *libvirtServiceInterfaces.VMBootRequirement `json:"bootRequirement,omitempty"`
+	RID             uint                                        `json:"rid"`
+	MediaUUIDs      []string                                    `json:"mediaUuids"`
+	VNCPort         int                                         `json:"vncPort"`
+	Switches        []networkAttachment.NamedContract           `json:"switches"`
+	FsDatasets      []string                                    `json:"fsDatasets"`
 }
 
 type vmTargetResult struct {
 	networkAttachment.TargetResult
-	MissingMedia      []string `json:"missingMedia"`
-	VNCPortInUse      bool     `json:"vncPortInUse"`
-	MissingFsDatasets []string `json:"missingFsDatasets"`
+	BootCompatibilityChecked bool     `json:"bootCompatibilityChecked"`
+	BootErrors               []string `json:"bootErrors"`
+	MissingMedia             []string `json:"missingMedia"`
+	VNCPortInUse             bool     `json:"vncPortInUse"`
+	MissingFsDatasets        []string `json:"missingFsDatasets"`
 }
 
 type jailTargetProbe struct {
@@ -563,8 +567,9 @@ func (s *Service) buildVMTargetProbe(vm vmModels.VM) (vmTargetProbe, map[string]
 	uuids, nameByUUID := collectVMISOUUIDs(vm.Storages)
 
 	probe := vmTargetProbe{
-		RID:        vm.RID,
-		MediaUUIDs: uuids,
+		RID:             vm.RID,
+		MediaUUIDs:      uuids,
+		BootRequirement: libvirt.VMBootRequirement(vm),
 	}
 	if vm.VNCEnabled {
 		probe.VNCPort = vm.VNCPort
@@ -626,7 +631,7 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 	if probeErr != nil {
 		return []string{probeErr.Error()}
 	}
-	if len(probe.MediaUUIDs) == 0 && len(probe.Switches) == 0 && len(probe.FsDatasets) == 0 && probe.VNCPort == 0 {
+	if probe.BootRequirement == nil && len(probe.MediaUUIDs) == 0 && len(probe.Switches) == 0 && len(probe.FsDatasets) == 0 && probe.VNCPort == 0 {
 		return nil
 	}
 
@@ -639,6 +644,14 @@ func (s *Service) vmTargetPreflightReasons(ctx context.Context, vm vmModels.VM, 
 	}
 	if !result.NetworkCompatibilityChecked {
 		return []string{"target_network_compatibility_check_unsupported"}
+	}
+	if probe.BootRequirement != nil {
+		if !result.BootCompatibilityChecked {
+			return []string{"target_boot_compatibility_check_unsupported"}
+		}
+		if len(result.BootErrors) > 0 {
+			return result.BootErrors
+		}
 	}
 
 	var reasons []string

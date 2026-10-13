@@ -134,6 +134,13 @@ type SimpleTemplateList struct {
 	SourceVMName string `json:"sourceVmName"`
 }
 
+type VMBootRequirement struct {
+	BootROM    vmModels.VMBootROM `json:"bootRom"`
+	CPUSockets int                `json:"cpuSockets"`
+	CPUCores   int                `json:"cpuCores"`
+	CPUThreads int                `json:"cpuThreads"`
+}
+
 type DomainStateReason string
 
 const (

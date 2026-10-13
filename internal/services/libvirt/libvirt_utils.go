@@ -448,26 +448,17 @@ func (s *Service) ResetUEFIVars(rid uint) error {
 		return nil
 	}
 
-	vmDir, err := config.GetVMsPath()
+	unlocked := s.lockVMOptionMutation()
+	defer unlocked()
+	vm, err := s.prepareVMOptionMutation(rid, true)
 	if err != nil {
-		return fmt.Errorf("failed to get VMs path: %w", err)
+		return err
 	}
-
-	vmPath := fmt.Sprintf("%s/%d", vmDir, rid)
-	uefiVarsBase := "/usr/local/share/uefi-firmware/BHYVE_UEFI_VARS.fd"
-	uefiVarsPath := filepath.Join(vmPath, fmt.Sprintf("%d_vars.fd", rid))
-
-	err = utils.CopyFile(uefiVarsBase, uefiVarsPath)
-
+	vmPath, err := s.GetVMConfigDirectory(rid)
 	if err != nil {
-		if strings.Contains("failed_to_open_source", err.Error()) {
-			logger.L.Err(err).Msg("Error finding BHYVE_UEFI_VARS file, do we have bhyve-firmware?")
-		} else {
-			return err
-		}
+		return err
 	}
-
-	return nil
+	return writeVMBootVars(rid, vm.BootROM, vmPath)
 }
 
 func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUPinning, hostLogicalPerSocket int) error {

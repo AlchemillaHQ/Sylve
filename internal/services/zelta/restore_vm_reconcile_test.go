@@ -131,6 +131,7 @@ func TestNormalizeRestoredVMBootROMPreservesExplicitFirmware(t *testing.T) {
 		{name: "uboot", input: vmModels.VMBootROMUBoot, want: vmModels.VMBootROMUBoot},
 		{name: "uboot normalized", input: vmModels.VMBootROM(" UBOOT "), want: vmModels.VMBootROMUBoot},
 		{name: "uefi", input: vmModels.VMBootROMUEFI, want: vmModels.VMBootROMUEFI},
+		{name: "csmwrap", input: vmModels.VMBootROMUEFICSMWrap, want: vmModels.VMBootROMUEFICSMWrap},
 		{name: "none", input: vmModels.VMBootROMNone, want: vmModels.VMBootROMNone},
 		{name: "empty legacy value", input: "", want: defaultBootROM},
 		{name: "unknown legacy value", input: "unknown", want: vmModels.VMBootROMUEFI},

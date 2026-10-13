@@ -355,7 +355,14 @@ func validateCPUPins(
 }
 
 func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, ctx context.Context) error {
-	if _, err := parseBootROMValue(data.BootROM); err != nil {
+	bootROM, err := parseBootROMValue(data.BootROM)
+	if err != nil {
+		return err
+	}
+	if err := ValidateVMBootConfiguration(vmModels.VM{
+		BootROM: bootROM, CPUSockets: data.CPUSockets, CPUCores: data.CPUCores, CPUThreads: data.CPUThreads,
+		ExtraBhyveOptions: data.ExtraBhyveOptions,
+	}); err != nil {
 		return err
 	}
 
@@ -368,7 +375,7 @@ func (s *Service) validateCreate(data libvirtServiceInterfaces.CreateVMRequest, 
 	}
 
 	var count int64
-	err := s.DB.
+	err = s.DB.
 		Model(&vmModels.VM{}).
 		Where("(rid = ? OR name = ?) AND id != ?", *data.RID, data.Name, 0).
 		Count(&count).Error

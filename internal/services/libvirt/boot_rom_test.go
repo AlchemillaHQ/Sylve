@@ -180,8 +180,12 @@ func TestHostLibvirtArch(t *testing.T) {
 func TestAvailableBootROMs(t *testing.T) {
 	bootROMs := availableBootROMs()
 
-	if len(bootROMs) != 2 {
-		t.Fatalf("expected 2 available boot ROMs, got %d", len(bootROMs))
+	expected := 2
+	if runtime.GOARCH == "amd64" {
+		expected = 3
+	}
+	if len(bootROMs) != expected {
+		t.Fatalf("expected %d available boot ROMs, got %d", expected, len(bootROMs))
 	}
 
 	hasNone := false

@@ -308,6 +308,9 @@ func (s *Service) syncVMNetworksWithDB(ctx context.Context, db *gorm.DB, rid uin
 		modelElement := iface.CreateElement("model")
 		modelElement.CreateAttr("type", emulation)
 	}
+	if err := addressCSMWrapDocumentDevices(doc); err != nil {
+		return err
+	}
 
 	newXML, err := doc.WriteToString()
 	if err != nil {

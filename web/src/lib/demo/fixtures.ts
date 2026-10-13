@@ -13,6 +13,7 @@ import { handleDemoAdminRequest } from './admin-fixtures';
 import { handleDemoNetworkRequest } from './network-fixtures';
 import { handleDemoStorageRequest } from './storage-fixtures';
 import { handleDemoDirectoryRequest } from './directory-fixtures';
+import type { VMBootRom } from '$lib/types/vm/vm';
 
 type DemoRequestConfig = {
 	url: string;
@@ -49,7 +50,7 @@ type DemoVM = {
 	startAtBoot?: boolean;
 	startOrder?: number;
 	timeOffset?: 'utc' | 'localtime';
-	bootRom?: 'uefi' | 'uboot' | 'none';
+	bootRom?: VMBootRom;
 	pciDevices?: number[];
 	tpmEmulation?: boolean;
 	ignoreUMSR?: boolean;
@@ -1735,7 +1736,11 @@ function updateDemoVMDetails(vm: DemoVM, path: string, payload: Record<string, u
 		vm.timeOffset = payload.timeOffset === 'localtime' ? 'localtime' : 'utc';
 	} else if (path === 'options/boot-rom') {
 		vm.bootRom =
-			payload.bootRom === 'uefi' || payload.bootRom === 'uboot' ? payload.bootRom : 'none';
+			payload.bootRom === 'uefi' ||
+			payload.bootRom === 'uboot' ||
+			payload.bootRom === 'uefi_csmwrap'
+				? payload.bootRom
+				: 'none';
 	} else if (path === 'options/serial-console') {
 		vm.serial = booleanField(payload, 'enabled', vm.serial ?? true);
 	} else if (path === 'options/shutdown-wait-time') {
@@ -1887,7 +1892,12 @@ function createDemoVM(config: DemoRequestConfig, hostname: string): DemoClientRe
 		startAtBoot: booleanField(payload, 'startAtBoot'),
 		startOrder: Math.trunc(numberField(payload, 'startOrder')),
 		timeOffset: payload.timeOffset === 'localtime' ? 'localtime' : 'utc',
-		bootRom: payload.bootRom === 'uefi' || payload.bootRom === 'uboot' ? payload.bootRom : 'none',
+		bootRom:
+			payload.bootRom === 'uefi' ||
+			payload.bootRom === 'uboot' ||
+			payload.bootRom === 'uefi_csmwrap'
+				? payload.bootRom
+				: 'none',
 		pciDevices,
 		tpmEmulation: booleanField(payload, 'tpmEmulation'),
 		ignoreUMSR: booleanField(payload, 'ignoreUMSR'),

@@ -44,7 +44,7 @@ func newVMCreateCommand() *cli.Command {
 			&cli.StringFlag{Name: "cloud-init-network-config-file", Usage: "optional cloud-init network configuration file"},
 			&cli.StringFlag{Name: "switch", Usage: "network switch name or none"},
 			&cli.StringFlag{Name: "network-emulation", Usage: "network emulation: virtio or e1000"},
-			&cli.StringFlag{Name: "boot-rom", Usage: "boot ROM: uefi, uboot, or none (architecture dependent)"},
+			&cli.StringFlag{Name: "boot-rom", Usage: "boot ROM: uefi, uefi_csmwrap, uboot, or none (architecture dependent)"},
 			&cli.BoolFlag{Name: "vnc-enabled", Usage: "enable or disable VNC; accepts true or false"},
 			&cli.IntFlag{Name: "vnc-port", Usage: "VNC TCP port (1-65535)"},
 			&cli.StringFlag{Name: "vnc-bind", Usage: "VNC bind IP address"},
@@ -374,16 +374,16 @@ func newVMConfigBootROMCommand() *cli.Command {
 	return &cli.Command{
 		Name:        "boot-rom",
 		Usage:       "Set boot ROM for a powered-off VM",
-		Description: "Accepted values: uefi, uboot, or none. Availability depends on host architecture. Requires the VM to be powered off.",
-		Flags:       append(vmConfigBaseFlags(), &cli.StringFlag{Name: "boot-rom", Usage: "uefi, uboot, or none", Required: true}),
+		Description: "Accepted values: uefi, uefi_csmwrap, uboot, or none. Availability depends on host architecture. Requires the VM to be powered off.",
+		Flags:       append(vmConfigBaseFlags(), &cli.StringFlag{Name: "boot-rom", Usage: "uefi, uefi_csmwrap, uboot, or none", Required: true}),
 		Action: func(ctx context.Context, command *cli.Command) error {
 			rid, err := commandVMRID(command)
 			if err != nil {
 				return err
 			}
 			bootROM := strings.ToLower(strings.TrimSpace(command.String("boot-rom")))
-			if bootROM != "uefi" && bootROM != "uboot" && bootROM != "none" {
-				return fmt.Errorf("--boot-rom must be uefi, uboot, or none")
+			if bootROM != "uefi" && bootROM != "uefi_csmwrap" && bootROM != "uboot" && bootROM != "none" {
+				return fmt.Errorf("--boot-rom must be uefi, uefi_csmwrap, uboot, or none")
 			}
 			return executeConsoleOperation(ctx, command, consoleprotocol.OperationVMConfigBootROM, consoleprotocol.VMConfigBootROMPayload{
 				RID: rid, BootROM: bootROM, JSON: command.Bool("json"),

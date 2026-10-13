@@ -21,6 +21,7 @@ import {
 	type SimpleVm,
 	type SimpleVmTemplate,
 	type VM,
+	type VMBootRom,
 	type VMLogs,
 	type VMTemplate,
 	type VMTemplateCaptureTaskResponse,
@@ -451,7 +452,7 @@ export async function modifyClockOffset(
 
 export async function modifyBootRom(
 	rid: number,
-	bootRom: 'uefi' | 'uboot' | 'none',
+	bootRom: VMBootRom,
 	options?: NodeAPIDataRequestOptions
 ): Promise<APIResponse> {
 	return await apiRequestResult(

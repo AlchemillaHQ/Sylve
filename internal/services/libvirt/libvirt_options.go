@@ -578,6 +578,11 @@ func (s *Service) ModifyBootROM(rid uint, bootROM string) error {
 	if err != nil {
 		return err
 	}
+	requested := vm
+	requested.BootROM = normalizedBootROM
+	if err := ValidateVMBootConfiguration(requested); err != nil {
+		return err
+	}
 	if normalizeBootROMValue(vm.BootROM) == normalizedBootROM {
 		return fmt.Errorf("no_changes_detected: %d", rid)
 	}
@@ -586,7 +591,7 @@ func (s *Service) ModifyBootROM(rid uint, bootROM string) error {
 		return err
 	}
 
-	vm.BootROM = normalizedBootROM
+	vm = requested
 	vmPath, err := s.GetVMConfigDirectory(vm.RID)
 	if err != nil {
 		return fmt.Errorf("failed_to_get_vm_path: %w", err)

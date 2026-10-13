@@ -289,7 +289,9 @@ func TestBuildVMTargetProbeIncludesDisabledSwitchIdentity(t *testing.T) {
 	}
 
 	probe, _, err := (&Service{}).buildVMTargetProbe(vmModels.VM{
-		RID: 91,
+		RID:        91,
+		BootROM:    vmModels.VMBootROMUEFICSMWrap,
+		CPUSockets: 1, CPUCores: 2, CPUThreads: 1,
 		Networks: []vmModels.Network{
 			{SwitchID: 1, SwitchType: "standard", Enable: false},
 			{SwitchID: 1, SwitchType: "standard", Enable: true},
@@ -298,6 +300,9 @@ func TestBuildVMTargetProbeIncludesDisabledSwitchIdentity(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("build probe: %v", err)
+	}
+	if probe.BootRequirement == nil || probe.BootRequirement.BootROM != vmModels.VMBootROMUEFICSMWrap || probe.BootRequirement.CPUCores != 2 {
+		t.Fatalf("helper requirement omitted: %+v", probe)
 	}
 	if identityCalls != 2 {
 		t.Fatalf("identity resolver calls = %d, want 2", identityCalls)

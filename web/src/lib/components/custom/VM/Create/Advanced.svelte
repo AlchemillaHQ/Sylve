@@ -92,6 +92,9 @@
 				]
 			: [
 					{ label: 'UEFI (Default)', value: 'uefi' },
+					...(architecture === 'amd64'
+						? [{ label: 'UEFI + CSMWrap (Experimental)', value: 'uefi_csmwrap' }]
+						: []),
 					{ label: 'None', value: 'none' }
 				]
 	);

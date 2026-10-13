@@ -131,6 +131,8 @@ func classifyVMOptionError(err error) (int, string) {
 	case vmOptionHasErrorCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "rid_must_be_positive",
 		"invalid_time_offset", "invalid_boot_rom", "uefi_firmware_not_available_on_arm64",
+		"csmwrap_requires_two_vcpus", "csmwrap_only_available_on_amd64", "csmwrap_pci_slot_in_use",
+		"cpu_topology_must_be_positive", "cpu_topology_overflow",
 		"uboot_only_available_on_arm64", "start_order_must_be_greater_than_or_equal_to_0",
 		"shutdown_wait_time_out_of_range", "both_data_and_metadata_must_be_provided",
 		"invalid_yaml_in_cloud_init_data_or_metadata", "invalid_yaml_in_cloud_init_network_config",

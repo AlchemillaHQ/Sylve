@@ -7,6 +7,7 @@
 	import type { Architecture } from '$lib/types/info/cpu';
 	import type { VM, VMBootRom } from '$lib/types/vm/vm';
 	import { handleAPIError } from '$lib/utils/http';
+	import { checkCSMWrapCPUs, handleCSMWrapCPUError } from '$lib/utils/vm/vm';
 	import { toast } from 'svelte-sonner';
 	import { untrack } from 'svelte';
 
@@ -27,6 +28,9 @@
 				]
 			: [
 					{ label: 'UEFI (Default)', value: 'uefi' },
+					...(architecture === 'amd64'
+						? [{ label: 'UEFI + CSMWrap (Experimental)', value: 'uefi_csmwrap' }]
+						: []),
 					{ label: 'None', value: 'none' }
 				]
 	);
@@ -39,12 +43,14 @@
 
 	async function modify() {
 		if (saving) return;
+		if (!checkCSMWrapCPUs(comboBox.value, vm.cpuSockets * vm.cpuCores * vm.cpuThreads)) return;
 		saving = true;
 		try {
 			const response = await modifyBootRom(vm.rid, comboBox.value as VMBootRom, {
 				hostname: node
 			});
 			if (response.status !== 'success') {
+				if (handleCSMWrapCPUError(response)) return;
 				handleAPIError(response);
 				toast.error('Failed to modify boot ROM', { position: 'bottom-center' });
 				return;

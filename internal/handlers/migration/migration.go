@@ -843,11 +843,12 @@ type CheckVMTargetSwitch struct {
 }
 
 type CheckVMTargetRequest struct {
-	RID        uint                  `json:"rid"`
-	MediaUUIDs []string              `json:"mediaUuids"`
-	VNCPort    int                   `json:"vncPort"`
-	Switches   []CheckVMTargetSwitch `json:"switches"`
-	FsDatasets []string              `json:"fsDatasets"`
+	BootRequirement *libvirtServiceInterfaces.VMBootRequirement `json:"bootRequirement,omitempty"`
+	RID             uint                                        `json:"rid"`
+	MediaUUIDs      []string                                    `json:"mediaUuids"`
+	VNCPort         int                                         `json:"vncPort"`
+	Switches        []CheckVMTargetSwitch                       `json:"switches"`
+	FsDatasets      []string                                    `json:"fsDatasets"`
 }
 
 var validateTargetNetworkAttachments = func(
@@ -1057,6 +1058,10 @@ func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc 
 			}
 		}
 
+		bootErrors := []string{}
+		if err := libvirt.CheckVMBootRequirement(req.BootRequirement); err != nil {
+			bootErrors = append(bootErrors, err.Error())
+		}
 		c.JSON(http.StatusOK, internal.APIResponse[map[string]any]{
 			Status:  "success",
 			Message: "vm_target_check_complete",
@@ -1067,6 +1072,8 @@ func IntraClusterCheckVMTarget(libvirtService *libvirt.Service) gin.HandlerFunc 
 				"incompatibleSwitches":        networkResult.IncompatibleSwitches,
 				"missingFsDatasets":           missingFsDatasets,
 				"networkCompatibilityChecked": networkResult.NetworkCompatibilityChecked,
+				"bootCompatibilityChecked":    true,
+				"bootErrors":                  bootErrors,
 			},
 		})
 	}

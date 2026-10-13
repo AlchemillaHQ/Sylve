@@ -8,6 +8,8 @@ config.json
 bin/
 tmp/
 node_modules/
+__pycache__/
+*.py[cod]
 package-lock.json
 package.json
 !docs/app-docs/package.json

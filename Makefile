@@ -36,23 +36,23 @@ ACCEPTANCE_PACKAGE := ./internal/console/integration
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
 .PHONY: test test-external-preflight test-integration test-vlan-integration test-acceptance test-acceptance-full test-acceptance-all
-.PHONY: test-smart-integration clean
+.PHONY: test-smart-integration clean csmwrap csmwrap-assets
 
 all: build
 
 build: frontend backend
 
-backend:
+backend: csmwrap-assets
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
 		go build -tags="$(BUILD_TAGS)" -ldflags="-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=$(GIT_COMMIT)" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
-backend-debug:
+backend-debug: csmwrap-assets
 	mkdir -p $(BIN_DIR)
 	CGO_ENABLED=1 GOOS=freebsd GOARCH=$(ARCH) \
 		go build -tags="$(BUILD_TAGS)" -gcflags="all=-N -l" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/sylve
 
-backend-cross:
+backend-cross: csmwrap-assets
 	mkdir -p $(BIN_DIR)
 	@set -eu; \
 	RESOLVED_FREEBSD_VERSION="$$(ARCH="$(ARCH)" FREEBSD_VERSION="$(FREEBSD_VERSION)" ./scripts/resolve-freebsd-release.sh)"; \
@@ -87,6 +87,12 @@ cross-build-amd64:
 cross-build-arm64:
 	$(MAKE) backend-cross ARCH=arm64
 
+csmwrap:
+	./scripts/build-csmwrap.sh --stage
+
+csmwrap-assets:
+	@if [ "$(ARCH)" = "amd64" ]; then ./scripts/build-csmwrap.sh --stage; fi
+
 frontend:
 	npm ci --prefix web
 	npm run check --prefix web
@@ -112,8 +118,8 @@ quality-fix:
 		xargs -0 gofmt -w
 	npm run lint:fix --prefix web
 
-test:
-	go test -tags=nosqlite $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest
+test: csmwrap-assets
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -short ./... ./internal/testutil/zfstest ./internal/assets/csmwrap
 
 test-external-preflight:
 	@[ "$$(uname -s)" = "FreeBSD" ] || { echo "external-state tests must run on FreeBSD"; exit 1; }
@@ -121,7 +127,7 @@ test-external-preflight:
 	@command -v zpool >/dev/null || { echo "zpool is required for external-state tests"; exit 1; }
 	@command -v zfs >/dev/null || { echo "zfs is required for external-state tests"; exit 1; }
 
-test-integration: test-external-preflight
+test-integration: test-external-preflight csmwrap-assets
 	@for tool in ctld iscsid iscsictl ctladm nvmecontrol diskinfo sockstat camcontrol timeout; do \
 		command -v "$$tool" >/dev/null || { echo "$$tool is required for iSCSI integration tests"; exit 1; }; \
 	 done
@@ -158,15 +164,15 @@ test-vlan-integration:
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegrationStandardSwitch(VLANFilteringModeTransitions|FilteredHostVLANLifecycle)$$' ./internal/services/network
 
-test-acceptance: test-external-preflight
+test-acceptance: test-external-preflight csmwrap-assets
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestAcceptance' $(ACCEPTANCE_PACKAGE)
 
-test-acceptance-full: test-external-preflight
+test-acceptance-full: test-external-preflight csmwrap-assets
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestFullAcceptance' $(ACCEPTANCE_PACKAGE)
 
-test-acceptance-all: test-external-preflight
+test-acceptance-all: test-external-preflight csmwrap-assets
 	@./scripts/check-console-test-leaks.sh
 	@set +e; \
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \

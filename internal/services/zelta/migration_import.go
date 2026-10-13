@@ -24,6 +24,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
 )
 
@@ -105,6 +106,9 @@ func (s *Service) ImportMigratedVMWithRoots(
 	}
 	if metadataDataset == "" || migratedMetadata == nil {
 		return nil, fmt.Errorf("migrated_vm_metadata_invalid")
+	}
+	if err := libvirt.ValidateVMBootConfiguration(migratedMetadata.VM); err != nil {
+		return nil, err
 	}
 
 	if migratedMetadata.VM.VNCEnabled {

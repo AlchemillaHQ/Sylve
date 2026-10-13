@@ -88,6 +88,8 @@
 				return 'None';
 			case 'uboot':
 				return 'U-Boot (Default)';
+			case 'uefi_csmwrap':
+				return 'UEFI + CSMWrap (Experimental)';
 			default:
 				return 'UEFI (Default)';
 		}

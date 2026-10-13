@@ -422,6 +422,7 @@ func TestOOBJailReconcileNeverUpdatesExistingDestinationRecord(t *testing.T) {
 func TestVMRuntimeArtifactNamesRestoreAsNew(t *testing.T) {
 	want := []vmRuntimeArtifactName{
 		{Source: "107_vars.fd", Destination: "108_vars.fd"},
+		{Source: "107_csmwrap_vars.fd", Destination: "108_csmwrap_vars.fd"},
 		{Source: "107_tpm.log", Destination: "108_tpm.log"},
 		{Source: "107_tpm.state", Destination: "108_tpm.state"},
 	}

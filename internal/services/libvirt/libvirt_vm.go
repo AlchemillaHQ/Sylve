@@ -82,9 +82,18 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 	}
 
 	sIndex := 10
+	extraOptions := normalizeExtraBhyveOptions(vm.ExtraBhyveOptions)
+	usedSlots := parseUsedPCIIndices(extraOptions)
 
 	var bhyveArgs [][]libvirtServiceInterfaces.BhyveArg
-	for _, arg := range normalizeExtraBhyveOptions(vm.ExtraBhyveOptions) {
+	helper, err := csmwrapMedia(vm, usedSlots)
+	if err != nil {
+		return "", err
+	}
+	if helper != "" {
+		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{{Value: helper}})
+	}
+	for _, arg := range extraOptions {
 		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 			{
 				Value: arg,
@@ -149,6 +158,7 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 						Msg("skipping_disk_image_iso_not_found_on_this_node")
 					continue
 				}
+				disk += ",ro"
 			} else if storage.Type == vmModels.VMStorageTypeFilesystem {
 				sourcePath, err := s.resolveFilesystemSourcePath(
 					context.Background(),
@@ -175,10 +185,14 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				continue
 			}
 
+			slot, err := nextVMPCISlot(&sIndex, usedSlots)
+			if err != nil {
+				return "", err
+			}
 			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 				{
 					Value: fmt.Sprintf("-s %d:%d,%s,%s",
-						sIndex,
+						slot,
 						0,
 						storage.Emulation,
 						disk,
@@ -186,32 +200,37 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				},
 			})
 
-			sIndex++
 		}
 	}
 
-	if vm.CloudInitData != "" || vm.CloudInitMetaData != "" {
+	if vmHasCloudInitConfiguration(vm) {
 		cloudInitISOPath, err := s.GetCloudInitISOPath(vm.RID)
 		if err != nil {
 			return "", fmt.Errorf("failed_to_get_cloud_init_iso_path: %w", err)
 		}
 
+		slot, err := nextVMPCISlot(&sIndex, usedSlots)
+		if err != nil {
+			return "", err
+		}
 		bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 			{
 				Value: fmt.Sprintf("-s %d:0,ahci-cd,%s,ro",
-					sIndex,
+					slot,
 					cloudInitISOPath,
 				),
 			},
 		})
 
-		sIndex++
 	}
 
 	if vm.QemuGuestAgent {
-		devices.Controllers = append(devices.Controllers, qgaVirtioSerialController(sIndex))
+		slot, err := nextVMPCISlot(&sIndex, usedSlots)
+		if err != nil {
+			return "", err
+		}
+		devices.Controllers = append(devices.Controllers, qgaVirtioSerialController(slot))
 		devices.Channels = append(devices.Channels, qgaChannel(filepath.Join(vmPath, "qga.sock")))
-		sIndex++
 	}
 
 	var interfaces []libvirtServiceInterfaces.Interface
@@ -325,16 +344,19 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 				return "", fmt.Errorf("failed_to_find_pci_device: %w", err)
 			}
 
+			slot, err := nextVMPCISlot(&sIndex, usedSlots)
+			if err != nil {
+				return "", err
+			}
 			bhyveArgs = append(bhyveArgs, []libvirtServiceInterfaces.BhyveArg{
 				{
 					Value: fmt.Sprintf("-s %d:0,passthru,%s",
-						sIndex,
+						slot,
 						pciDevice.DeviceID,
 					),
 				},
 			})
 
-			sIndex++
 		}
 	}
 
@@ -393,7 +415,17 @@ func (s *Service) CreateVmXML(vm vmModels.VM, vmPath string) (string, error) {
 		return "", fmt.Errorf("failed_to_marshal_vm_xml: %w", err)
 	}
 
-	return string(out), nil
+	if helper == "" {
+		return string(out), nil
+	}
+	doc := etree.NewDocument()
+	if err := doc.ReadFromBytes(out); err != nil {
+		return "", err
+	}
+	if err := addressCSMWrapDocumentDevices(doc); err != nil {
+		return "", err
+	}
+	return doc.WriteToString()
 }
 
 func (s *Service) CreateLvVm(id int, ctx context.Context) error {
@@ -409,6 +441,9 @@ func (s *Service) CreateLvVm(id int, ctx context.Context) error {
 		return err
 	}
 
+	if err := ValidateVMBootConfiguration(vm); err != nil {
+		return err
+	}
 	vmPath, err := s.CreateVMDirectory(vm.RID)
 	if err != nil {
 		return err
@@ -1194,6 +1229,11 @@ func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	}
 	if state != int32(libvirt.DomainShutoff) {
 		return fmt.Errorf("domain_not_shutoff_for_start_state_%d", state)
+	}
+	if normalizeBootROMValue(vm.BootROM) == vmModels.VMBootROMUEFICSMWrap {
+		if err := s.SyncVMDisks(vm.RID); err != nil {
+			return fmt.Errorf("failed_to_prepare_csmwrap_media: %w", err)
+		}
 	}
 
 	lifecycleBridges, err := s.vmStandardSwitchLifecycleBridges(vm.ID, true)

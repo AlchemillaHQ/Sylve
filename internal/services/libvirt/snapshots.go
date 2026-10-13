@@ -785,7 +785,7 @@ func (s *Service) restoreVMRuntimeArtifactsFromSnapshot(
 	}
 
 	if hostUsesSplitFirmware() {
-		artifactNames = append(artifactNames, fmt.Sprintf("%d_vars.fd", rid))
+		artifactNames = append(artifactNames, fmt.Sprintf("%d_vars.fd", rid), fmt.Sprintf("%d_csmwrap_vars.fd", rid))
 	}
 
 	for _, artifactName := range artifactNames {
@@ -847,6 +847,9 @@ func (s *Service) preflightVMSnapshotRestore(
 	var restored vmModels.VM
 	if err := json.Unmarshal(metadataRaw, &restored); err != nil {
 		return vmModels.VM{}, nil, fmt.Errorf("invalid_snapshot_vm_json: %w", err)
+	}
+	if err := ValidateVMBootConfiguration(restored); err != nil {
+		return vmModels.VM{}, nil, err
 	}
 	if restored.RID != 0 && restored.RID != rid {
 		return vmModels.VM{}, nil, fmt.Errorf(
@@ -918,6 +921,9 @@ func (s *Service) restoreVMDatabaseFromSnapshotConfig(
 ) error {
 	if rid == 0 {
 		return fmt.Errorf("invalid_rid")
+	}
+	if err := ValidateVMBootConfiguration(restored); err != nil {
+		return err
 	}
 
 	current, err := s.GetVMByRID(rid)

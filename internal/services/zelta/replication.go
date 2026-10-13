@@ -33,6 +33,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/db/replicationguard"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/mountutil"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
@@ -3378,15 +3379,20 @@ func (s *Service) replicationTargetSpec(
 }
 
 type replicationVMTargetProbe struct {
-	RID      uint                              `json:"rid"`
-	Switches []networkAttachment.NamedContract `json:"switches"`
+	BootRequirement *libvirtServiceInterfaces.VMBootRequirement `json:"bootRequirement,omitempty"`
+	RID             uint                                        `json:"rid"`
+	Switches        []networkAttachment.NamedContract           `json:"switches"`
 }
 
 type replicationJailTargetProbe struct {
 	Networks []networkAttachment.NamedContract `json:"networks"`
 }
 
-type replicationNetworkTargetResult = networkAttachment.TargetResult
+type replicationNetworkTargetResult struct {
+	networkAttachment.TargetResult
+	BootCompatibilityChecked bool     `json:"bootCompatibilityChecked"`
+	BootErrors               []string `json:"bootErrors"`
+}
 
 type replicationTargetNetworkCheck struct {
 	action  string
@@ -3409,11 +3415,12 @@ func (s *Service) buildReplicationVMTargetProbe(guestID uint) (replicationVMTarg
 	probe := replicationVMTargetProbe{RID: guestID}
 	var vm vmModels.VM
 	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
-		Select("id").
+		Select("id", "boot_rom", "cpu_sockets", "cpu_cores", "cpu_threads").
 		Where("rid = ?", guestID).
 		First(&vm).Error; err != nil {
 		return probe, fmt.Errorf("replication_vm_network_owner_lookup_failed: %w", err)
 	}
+	probe.BootRequirement = libvirt.VMBootRequirement(vm)
 
 	var networks []vmModels.Network
 	if err := s.DB.Session(&gorm.Session{SkipHooks: true}).
@@ -3504,7 +3511,7 @@ func (s *Service) buildGuestTargetNetworkCheck(
 		if err != nil {
 			return replicationTargetNetworkCheck{}, err
 		}
-		if len(probe.Switches) == 0 {
+		if len(probe.Switches) == 0 && probe.BootRequirement == nil {
 			return replicationTargetNetworkCheck{}, nil
 		}
 		return replicationTargetNetworkCheck{
@@ -3577,6 +3584,14 @@ func (s *Service) validateReplicationTargetNetworkCheck(
 	}
 	if !response.Data.NetworkCompatibilityChecked {
 		return fmt.Errorf("replication_target_network_check_unsupported")
+	}
+	if probe, ok := check.payload.(replicationVMTargetProbe); ok && probe.BootRequirement != nil {
+		if !response.Data.BootCompatibilityChecked {
+			return fmt.Errorf("replication_target_boot_check_unsupported")
+		}
+		if len(response.Data.BootErrors) > 0 {
+			return fmt.Errorf("replication_target_boot_incompatible: %s", strings.Join(response.Data.BootErrors, "; "))
+		}
 	}
 
 	problems := make([]string, 0, len(response.Data.MissingSwitches)+len(response.Data.IncompatibleSwitches))

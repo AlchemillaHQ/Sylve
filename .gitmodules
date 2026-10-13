@@ -1,0 +1,3 @@
+[submodule "csmwrap"]
+	path = third-party/csmwrap/source
+	url = https://github.com/CSMWrap/CSMWrap

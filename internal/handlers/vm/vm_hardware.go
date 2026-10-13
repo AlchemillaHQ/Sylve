@@ -91,6 +91,7 @@ func vmHardwareErrorStatus(err error) int {
 	case vmHardwareErrorHasCode(codes,
 		"invalid_request", "invalid_rid", "invalid_vm_rid", "rid_must_be_positive",
 		"cpu_topology_must_be_positive", "cpu_topology_overflow",
+		"csmwrap_requires_two_vcpus",
 		"cpu_pinning_exceeds_vcpu_count", "invalid_host_socket_count",
 		"invalid_host_logical_cores", "socket_index_out_of_range",
 		"duplicate_socket_in_request", "empty_core_list_for_socket",

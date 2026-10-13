@@ -364,6 +364,7 @@ func (s *Service) writeVMJsonWithDB(db *gorm.DB, rid uint) error {
 
 	filesToCopy := []string{
 		fmt.Sprintf("%d_vars.fd", rid),
+		fmt.Sprintf("%d_csmwrap_vars.fd", rid),
 		fmt.Sprintf("%d_tpm.log", rid),
 		fmt.Sprintf("%d_tpm.state", rid),
 	}

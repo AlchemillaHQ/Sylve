@@ -80,7 +80,7 @@ func replicationVMTargetNetworkCheckFromMetadata(
 		)
 	}
 
-	probe := replicationVMTargetProbe{RID: expectedRID}
+	probe := replicationVMTargetProbe{RID: expectedRID, BootRequirement: libvirt.VMBootRequirement(metadata)}
 	seen := make(map[string]int, len(metadata.Networks))
 	for index, network := range metadata.Networks {
 		contract, err := libvirt.VMNetworkAttachmentFromMetadata(network)
@@ -120,7 +120,7 @@ func replicationVMTargetNetworkCheckFromMetadata(
 	}
 	sortReplicationVMTargetProbe(&probe)
 
-	if len(probe.Switches) == 0 {
+	if len(probe.Switches) == 0 && probe.BootRequirement == nil {
 		return replicationTargetNetworkCheck{}, nil
 	}
 	return replicationTargetNetworkCheck{

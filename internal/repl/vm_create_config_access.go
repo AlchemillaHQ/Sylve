@@ -44,7 +44,7 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 			{"autostart <rid> --enabled=<true|false> --order <n>", "Set start-at-boot and order"},
 			{"clock <rid> --time-offset <utc|localtime>", "Set guest clock; powered-off VM required"},
 			{"shutdown <rid> --wait-seconds <1-3600>", "Set graceful-shutdown wait time"},
-			{"boot-rom <rid> --boot-rom <uefi|uboot|none>", "Set boot ROM; powered-off VM required"},
+			{"boot-rom <rid> --boot-rom <uefi|uefi_csmwrap|uboot|none>", "Set boot ROM; powered-off VM required"},
 			{"cloud-init <rid> [replacement files|--clear]", "Replace cloud-init configuration; powered-off VM required"},
 			{"bhyve-options <rid> (--option <value>...|--clear)", "Replace extra bhyve options; powered-off VM required"},
 			{"unknown-msr <rid> --enabled=<true|false>", "Set unknown-MSR handling; powered-off VM required"},
@@ -268,8 +268,8 @@ func handleVMConfig(ctx *Context, args []string, jsonMode bool) {
 			return
 		}
 		bootROM := strings.ToLower(strings.TrimSpace(options["--boot-rom"]))
-		if bootROM != "uefi" && bootROM != "uboot" && bootROM != "none" {
-			printVMConfigParseError(ctx, fmt.Errorf("--boot-rom must be uefi, uboot, or none"))
+		if bootROM != "uefi" && bootROM != "uefi_csmwrap" && bootROM != "uboot" && bootROM != "none" {
+			printVMConfigParseError(ctx, fmt.Errorf("--boot-rom must be uefi, uefi_csmwrap, uboot, or none"))
 			return
 		}
 		vmsConfigMutation(ctx, rid, "boot-rom", jsonMode, func(service *libvirtService.Service) error {
