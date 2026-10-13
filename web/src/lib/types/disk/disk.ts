@@ -56,6 +56,8 @@ export const SCSISelfTestResultSchema = z.object({
 
 export const SmartDataSchema = z.object({
 	device: DeviceInfoSchema,
+	model: z.string().optional(),
+	firmware: z.string().optional(),
 	passed: z.boolean(),
 	health_known: z.boolean().default(false),
 	checksum_valid: z.boolean().default(false),

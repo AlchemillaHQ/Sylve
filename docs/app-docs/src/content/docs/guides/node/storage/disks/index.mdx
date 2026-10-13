@@ -13,7 +13,7 @@ Disk and partition actions can destroy data. Confirm the device name, model, ser
 
 Each parent row represents a disk. Expanded child rows represent its partitions. The table shows the device name, type, usage, capacity, GPT status, model, serial number, and wearout. Use the search field to narrow a long list of disks.
 
-Wearout is the percentage of an SSD or NVMe device's rated endurance that the device reports as consumed. A lower value is better. For NVMe, Sylve uses the drive's `Percentage Used` S.M.A.R.T. value. For ATA SSDs, it uses a supported remaining-life attribute and converts it to consumed endurance. SCSI devices can report their wearout directly. Hard disks show `N/A`, and `Unknown` means the drive did not provide a supported, valid value.
+Wearout is the percentage of an SSD or NVMe device's rated endurance that the device reports as consumed. A lower value is better. For NVMe, Sylve uses the drive's `Percentage Used` S.M.A.R.T. value. For ATA SSDs, it uses a verified model- and firmware-specific interpretation of the drive's endurance attribute, rather than guessing from its name. SCSI devices can report their wearout directly. Hard disks show `N/A`, and `Unknown` means the drive did not provide a supported, valid value or its endurance interpretation is not verified. Unknown wearout does not trigger wearout threshold alerts; S.M.A.R.T. health and error monitoring remain active.
 
 ![Disks table showing parent disks, expanded partitions, capacity, GPT status, model, serial number, and wearout](./ui.png)
 
@@ -28,6 +28,14 @@ Select a physical disk and choose **S.M.A.R.T. Values** to inspect the health in
 Use these values together with the disk's health status and vendor documentation. A single counter is not a complete diagnosis.
 
 ![NVMe S.M.A.R.T. values dialog showing health, endurance, temperature, read and write counters, and error information](./nvme-smart.png)
+
+### Acknowledging historical error counters
+
+For a disk with a stable physical identity, dismissing a supported historical-counter warning acknowledges that counter's current value. Sylve applies this to ATA reallocated sectors, NVMe media/data-integrity errors, and SCSI uncorrected-error totals (tracked separately for read, write, verify, and non-medium errors). For example, acknowledging a count of `4` keeps it quiet across Sylve restarts and notification-history cleanup. A confirmed increase to `5` creates a warning showing the increase from `4` to `5` (`+1`). **Dismiss All** acknowledges each eligible counter independently.
+
+Historical counters have separate warnings from active faults, even when both occur in the same sample. Pending sectors, ATA offline-uncorrectable sectors, NVMe critical-warning flags, low available spare, S.M.A.R.T. failures, overheating, and critical wear-out are not silenced by historical-counter acknowledgement. Unknown or model-dependent attributes are not automatically treated as historical counters.
+
+Counts remain visible in S.M.A.R.T. values; acknowledgement does not mark the disk healthy. A decrease or reset does not lower the acknowledged baseline or report recovery. Replacement disks do not inherit acknowledgements. Disks without a stable physical identity retain ordinary dismissal behavior.
 
 ## S.M.A.R.T. tests
 

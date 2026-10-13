@@ -111,10 +111,15 @@
 		}
 
 		await Promise.all([notificationCount.refetch(), notifications.refetch()]);
-		toast.success('Notification dismissed', {
-			duration: 3000,
-			position: 'bottom-center'
-		});
+		toast.success(
+			item.metadata.acknowledgement === 'smart_counter'
+				? 'Historical error count acknowledged'
+				: 'Notification dismissed',
+			{
+				duration: 3000,
+				position: 'bottom-center'
+			}
+		);
 	}
 
 	async function dismissAll() {
@@ -208,6 +213,13 @@
 			body.textContent = notification.body;
 			container.append(body);
 		}
+		if (notification.metadata.acknowledgement === 'smart_counter') {
+			const note = document.createElement('p');
+			note.className = 'text-muted-foreground text-xs';
+			note.textContent =
+				'Acknowledging silences this historical counter up to its current value, including after restarts. Increases and active disk faults will still notify you.';
+			container.append(note);
+		}
 
 		return container;
 	}
@@ -228,7 +240,11 @@
 		button.disabled = row.dismissing;
 		button.className =
 			'inline-flex items-center justify-center opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none disabled:opacity-30';
-		button.title = 'Dismiss';
+		button.title =
+			row.notification.metadata.acknowledgement === 'smart_counter'
+				? 'Acknowledge current historical error count'
+				: 'Dismiss';
+		button.setAttribute('aria-label', button.title);
 		icon.classList.add('icon-[lucide--x]');
 		button.append(icon);
 		button.addEventListener('click', () => void dismiss(row.notification));
@@ -360,7 +376,9 @@
 		<AlertDialog.Header>
 			<AlertDialog.Title>Dismiss all notifications?</AlertDialog.Title>
 			<AlertDialog.Description>
-				This will dismiss all {count} active notification{count === 1 ? '' : 's'}.
+				This will dismiss all {count} active notification{count === 1 ? '' : 's'}. For supported
+				historical-counter warnings, this acknowledges each current count. Increases and active disk
+				faults will still notify you.
 			</AlertDialog.Description>
 		</AlertDialog.Header>
 		<AlertDialog.Footer>

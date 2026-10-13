@@ -227,6 +227,8 @@ func mapLibSmartToInterface(info *smart.DeviceInfo) diskServiceInterfaces.SmartD
 	}
 
 	data.Passed = info.Passed
+	data.Model = info.Model
+	data.Firmware = info.Firmware
 	data.HealthKnown = info.HealthKnown
 	data.ChecksumValid = info.ChecksumValid
 	data.PowerOnHours = info.PowerOnHours
@@ -1059,27 +1061,8 @@ func (s *Service) GetWearOut(smartData any) (float64, error) {
 					return float64(attr.RawValue), nil
 				}
 			}
-		} else {
-			for _, id := range []int{202, 231, 233, 230, 177, 232} {
-				for _, attr := range data.Attributes {
-					if attr.ID != id {
-						continue
-					}
-					name := strings.ToLower(strings.ReplaceAll(attr.Name, " ", "_"))
-					switch name {
-					case "percent_lifetime_used", "perc_rated_life_used", "percent_life_used":
-						if attr.RawValue >= 0 && attr.RawValue <= 100 {
-							return float64(attr.RawValue), nil
-						}
-					case "wear_leveling_count", "media_wearout_indicator", "ssd_life_left", "ssd_life_left_perc",
-						"life_remaining_percent", "lifetime_left", "percent_lifetime_remain", "perc_rated_life_remain",
-						"remaining_lifetime_perc", "lifetime_remaining%", "drivelife_remaining%":
-						if attr.State != smart.AttrStateNoNormVal && attr.Value >= 0 && attr.Value <= 100 {
-							return 100.0 - float64(attr.Value), nil
-						}
-					}
-				}
-			}
+		} else if protocol == "ATA" {
+			return getATAWearout(data)
 		}
 
 		return 0, errors.New("no SSD wearout indicators found")

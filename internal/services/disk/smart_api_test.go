@@ -571,6 +571,8 @@ func TestGetDiskDevicesForSMARTMonitorReadsSolidStateWithoutPowerProbe(t *testin
 			name: "da0", diskType: "SSD",
 			smartData: diskServiceInterfaces.SmartData{
 				Device:        diskServiceInterfaces.DeviceInfo{Protocol: "ATA"},
+				Model:         "KINGSTON SEDC500R960G",
+				Firmware:      "SCEKJ2.8",
 				ChecksumValid: true,
 				Attributes:    []diskServiceInterfaces.ATASmartAttribute{{ID: 231, Name: "SSD Life Left", Value: 97, RawValue: 97}},
 			},

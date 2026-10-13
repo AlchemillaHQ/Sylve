@@ -11,6 +11,8 @@ package system
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
+	diskService "github.com/alchemillahq/sylve/internal/services/disk"
 	notificationService "github.com/alchemillahq/sylve/internal/services/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
@@ -43,6 +46,7 @@ func makeTestSystemService(t *testing.T, diskService diskServiceInterfaces.DiskS
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartCounterAcknowledgement{},
 		&models.DiskSmartSelfTestSchedule{},
 	)
 
@@ -110,6 +114,22 @@ func attrPage(page, id int, rawValue int64, name string) diskServiceInterfaces.A
 		RawValue: rawValue,
 		Name:     name,
 	}
+}
+
+var historicalCounterFixtures = []struct {
+	key    string
+	sample func(int64) any
+}{
+	{notifier.DiskSmartCounterReallocated, func(value int64) any { return makeATA(30, true, 0, attr(5, value)) }},
+	{notifier.DiskSmartCounterNvmeMediaErrors, func(value int64) any {
+		data := makeNVMe(30, "0x00")
+		data.MediaErrors = int(value)
+		return data
+	}},
+	{notifier.DiskSmartCounterScsiWriteErrors, func(value int64) any { return makeSCSI(30, true, attrPage(0x02, 6, value, "")) }},
+	{notifier.DiskSmartCounterScsiReadErrors, func(value int64) any { return makeSCSI(30, true, attrPage(0x03, 6, value, "")) }},
+	{notifier.DiskSmartCounterScsiVerifyErrors, func(value int64) any { return makeSCSI(30, true, attrPage(0x05, 6, value, "")) }},
+	{notifier.DiskSmartCounterScsiNonMediumErrors, func(value int64) any { return makeSCSI(30, true, attrPage(0x06, 6, value, "")) }},
 }
 
 // --- getTemperature tests ---
@@ -257,18 +277,18 @@ func TestGetTemperatureSCSIFallbackToConvenienceField(t *testing.T) {
 	}
 }
 
-// --- getReallocatedSectors tests ---
-
-func TestGetReallocatedSectorsATA(t *testing.T) {
-	svc := &Service{}
+func TestDiskSmartSectorSamplesATA(t *testing.T) {
 	ata := makeATA(0, true, 0,
 		diskServiceInterfaces.ATASmartAttribute{ID: 5, RawValue: 74},
 		diskServiceInterfaces.ATASmartAttribute{ID: 197, RawValue: 3},
 		diskServiceInterfaces.ATASmartAttribute{ID: 198, RawValue: 1},
 	)
-	realloc, pending, uncorrect := svc.getReallocatedSectors(ata)
-	if realloc != 74 {
-		t.Fatalf("expected reallocated=74, got %d", realloc)
+	pending, uncorrect, pendingKnown, uncorrectableKnown := getActiveSectorIssues(ata)
+	if value := diskSmartCounterSamples(ata)[notifier.DiskSmartCounterReallocated]; value != "74" {
+		t.Fatalf("expected reallocated=74, got %s", value)
+	}
+	if !pendingKnown || !uncorrectableKnown {
+		t.Fatal("expected known active sector counts")
 	}
 	if pending != 3 {
 		t.Fatalf("expected pending=3, got %d", pending)
@@ -278,8 +298,7 @@ func TestGetReallocatedSectorsATA(t *testing.T) {
 	}
 }
 
-func TestGetReallocatedSectorsSCSIReturnsUncorrectedErrors(t *testing.T) {
-	svc := &Service{}
+func TestDiskSmartCounterSamplesSCSI(t *testing.T) {
 	scsi := makeSCSI(0, true,
 		diskServiceInterfaces.ATASmartAttribute{Page: 0x02, ID: 5, RawValue: 89832143138920, Name: "Write Total bytes processed"},
 		diskServiceInterfaces.ATASmartAttribute{Page: 0x02, ID: 6, RawValue: 2, Name: "Write Total uncorrected errors"},
@@ -287,37 +306,48 @@ func TestGetReallocatedSectorsSCSIReturnsUncorrectedErrors(t *testing.T) {
 		diskServiceInterfaces.ATASmartAttribute{Page: 0x05, ID: 6, RawValue: 4, Name: "Verify Total uncorrected errors"},
 		diskServiceInterfaces.ATASmartAttribute{Page: 0x06, ID: 6, RawValue: 5, Name: "Non-medium Total uncorrected errors"},
 	)
-	realloc, pending, uncorrect := svc.getReallocatedSectors(scsi)
-	if realloc != 0 || pending != 0 || uncorrect != 14 {
-		t.Fatalf("expected (0,0,14) for SCSI, got (%d,%d,%d)", realloc, pending, uncorrect)
+	samples := diskSmartCounterSamples(scsi)
+	for key, expected := range map[string]string{
+		notifier.DiskSmartCounterScsiWriteErrors:     "2",
+		notifier.DiskSmartCounterScsiReadErrors:      "3",
+		notifier.DiskSmartCounterScsiVerifyErrors:    "4",
+		notifier.DiskSmartCounterScsiNonMediumErrors: "5",
+	} {
+		if samples[key] != expected {
+			t.Fatalf("%s: expected %s, got %s", key, expected, samples[key])
+		}
+	}
+	pending, uncorrect, pendingKnown, uncorrectableKnown := getActiveSectorIssues(scsi)
+	if pending != 0 || uncorrect != 0 || pendingKnown || uncorrectableKnown {
+		t.Fatal("SCSI historical errors were treated as active ATA faults")
 	}
 }
 
-func TestGetReallocatedSectorsNVMe(t *testing.T) {
-	svc := &Service{}
+func TestActiveSectorIssuesNVMe(t *testing.T) {
 	nvme := makeNVMe(50, "0x00")
-	realloc, pending, uncorrect := svc.getReallocatedSectors(nvme)
-	if realloc != 0 || pending != 0 || uncorrect != 0 {
-		t.Fatalf("expected (0,0,0) for NVMe, got (%d,%d,%d)", realloc, pending, uncorrect)
+	pending, uncorrect, pendingKnown, uncorrectableKnown := getActiveSectorIssues(nvme)
+	if pending != 0 || uncorrect != 0 || pendingKnown || uncorrectableKnown {
+		t.Fatal("expected no ATA faults for NVMe")
 	}
 }
 
-func TestGetReallocatedSectorsNil(t *testing.T) {
-	svc := &Service{}
-	realloc, pending, uncorrect := svc.getReallocatedSectors(nil)
-	if realloc != 0 || pending != 0 || uncorrect != 0 {
-		t.Fatalf("expected (0,0,0) for nil, got (%d,%d,%d)", realloc, pending, uncorrect)
+func TestDiskSmartSectorSamplesNil(t *testing.T) {
+	pending, uncorrect, pendingKnown, uncorrectableKnown := getActiveSectorIssues(nil)
+	if pending != 0 || uncorrect != 0 || pendingKnown || uncorrectableKnown || len(diskSmartCounterSamples(nil)) != 0 {
+		t.Fatal("missing SMART data was treated as known")
 	}
 }
 
-func TestGetReallocatedSectorsATAOnlyReallocated(t *testing.T) {
-	svc := &Service{}
+func TestDiskSmartSectorSamplesOnlyReallocated(t *testing.T) {
 	ata := makeATA(0, true, 0,
 		diskServiceInterfaces.ATASmartAttribute{ID: 5, RawValue: 10},
 	)
-	realloc, pending, uncorrect := svc.getReallocatedSectors(ata)
-	if realloc != 10 {
-		t.Fatalf("expected reallocated=10, got %d", realloc)
+	pending, uncorrect, pendingKnown, uncorrectableKnown := getActiveSectorIssues(ata)
+	if value := diskSmartCounterSamples(ata)[notifier.DiskSmartCounterReallocated]; value != "10" {
+		t.Fatalf("expected reallocated=10, got %s", value)
+	}
+	if pendingKnown || uncorrectableKnown {
+		t.Fatal("missing active counters were treated as known zeros")
 	}
 	if pending != 0 {
 		t.Fatalf("expected pending=0, got %d", pending)
@@ -424,6 +454,50 @@ func (c *emitCounter) Count() int32 {
 
 // --- evaluate wearout integration tests ---
 
+func TestEvaluateWearoutSupportedWDDoesNotFalseAlert(t *testing.T) {
+	svc, notifSvc := makeTestSystemService(t, &diskService.Service{})
+	data := makeATA(32, true, 19613,
+		diskServiceInterfaces.ATASmartAttribute{ID: 230, Name: "Media Wearout Indicator", Value: 3, RawValue: 0x030c0228030c},
+	)
+	data.Model = "WDC  WDS400T2B0A-00SM50"
+	data.Firmware = "411030WD"
+	disk := diskServiceInterfaces.Disk{Device: "da4", Type: "SSD", SmartData: data}
+	st := &diskSmartState{}
+	for i := 0; i < diskSmartConsecutiveTrigger+diskSmartConsecutiveClear; i++ {
+		svc.evaluateWearout(context.Background(), disk, st, false)
+	}
+	if st.wearoutPct != 3 || st.wearoutAlert != "" || st.wearCriticalCount != 0 || st.wearWarningCount != 0 {
+		t.Fatalf("WD percentage used was misinterpreted: %+v", st)
+	}
+	_, total, err := notifSvc.List(context.Background(), notificationService.ListScopeAll, 100, 0)
+	if err != nil || total != 0 {
+		t.Fatalf("WD three percent wear produced notifications: total=%d err=%v", total, err)
+	}
+}
+
+func TestEvaluateWearoutUnlistedWDDoesNotAlertOrRecover(t *testing.T) {
+	svc, notifSvc := makeTestSystemService(t, &diskService.Service{})
+	data := makeATA(32, true, 19613,
+		diskServiceInterfaces.ATASmartAttribute{ID: 230, Name: "Media Wearout Indicator", Value: 1, RawValue: 0x0160011e0160},
+	)
+	data.Model = "WDC  WDS400T2B0A-00SM50"
+	data.Firmware = "OTHER"
+	disk := diskServiceInterfaces.Disk{Device: "da4", Type: "SSD", SmartData: data}
+	for _, alert := range []string{"", "critical"} {
+		st := &diskSmartState{wearoutAlert: alert}
+		for i := 0; i < diskSmartConsecutiveTrigger+diskSmartConsecutiveClear; i++ {
+			svc.evaluateWearout(context.Background(), disk, st, false)
+		}
+		if st.wearoutAlert != alert || st.wearCriticalCount != 0 || st.wearWarningCount != 0 || st.wearNormalCount != 0 {
+			t.Fatalf("unknown wearout changed alert state: %+v", st)
+		}
+	}
+	_, total, err := notifSvc.List(context.Background(), notificationService.ListScopeAll, 100, 0)
+	if err != nil || total != 0 {
+		t.Fatalf("unknown wearout produced notifications: total=%d err=%v", total, err)
+	}
+}
+
 type mockDiskServiceForWearout struct {
 	wearoutFn func(smartData any) (float64, error)
 }
@@ -512,9 +586,7 @@ func TestEvaluateWearoutSCSISilentlySkips(t *testing.T) {
 	}
 }
 
-// --- evaluate reallocated integration tests ---
-
-func TestEvaluateReallocatedSCSINeverAlerts(t *testing.T) {
+func TestSCSIBytesProcessedDoNotTriggerSectorWarnings(t *testing.T) {
 	diskService := &mockDiskServiceForWearout{
 		wearoutFn: func(smartData any) (float64, error) {
 			return 0, errors.New("wearout not available for SCSI protocol")
@@ -535,15 +607,14 @@ func TestEvaluateReallocatedSCSINeverAlerts(t *testing.T) {
 
 	st := &diskSmartState{}
 
-	// Two consecutive polls — should normally trigger, but SCSI guard prevents it
-	svc.evaluateReallocated(context.Background(), disk, st, false)
-	if st.reallocCount != 0 {
-		t.Fatalf("expected reallocCount=0 for SCSI after first poll, got %d", st.reallocCount)
+	svc.evaluateSmartData(context.Background(), disk, st, false)
+	if st.sectorCount != 0 {
+		t.Fatalf("expected sectorCount=0 for SCSI after first poll, got %d", st.sectorCount)
 	}
 
-	svc.evaluateReallocated(context.Background(), disk, st, false)
-	if st.reallocCount != 0 {
-		t.Fatalf("expected reallocCount=0 for SCSI after second poll, got %d", st.reallocCount)
+	svc.evaluateSmartData(context.Background(), disk, st, false)
+	if st.sectorCount != 0 {
+		t.Fatalf("expected sectorCount=0 for SCSI after second poll, got %d", st.sectorCount)
 	}
 
 	active, err := notifSvc.CountActive(context.Background())
@@ -555,17 +626,312 @@ func TestEvaluateReallocatedSCSINeverAlerts(t *testing.T) {
 	}
 }
 
-func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
+func TestHistoricalCounterMonitorRestartAndConfirmedGrowth(t *testing.T) {
+	for _, fixture := range historicalCounterFixtures {
+		t.Run(fixture.key, func(t *testing.T) {
+			ctx := context.Background()
+			svc, notifications := makeTestSystemService(t, &diskService.Service{})
+			disk := diskServiceInterfaces.Disk{
+				Device: "da5", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true,
+				SmartData: fixture.sample(4),
+			}
+			state := &diskSmartState{}
+			svc.evaluateSmartData(ctx, disk, state, true)
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 1 || items[0].Metadata["counter_key"] != fixture.key {
+				t.Fatalf("initial counter: items=%+v total=%d err=%v", items, total, err)
+			}
+			if err := notifications.Dismiss(ctx, items[0].ID); err != nil {
+				t.Fatal(err)
+			}
+			notifications = notificationService.NewService(svc.DB)
+			notifier.SetEmitter(notifications)
+			state = &diskSmartState{}
+			disk.Device = "da7"
+			svc.evaluateSmartData(ctx, disk, state, true)
+			for _, count := range []int64{4, 3, 0, 4, 5, 4, 5} {
+				disk.SmartData = fixture.sample(count)
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			if active, err := notifications.CountActive(ctx); err != nil || active != 0 || state.counters[fixture.key].notifiedValue.String() != "4" {
+				t.Fatalf("acknowledged or isolated growth reopened: active=%d state=%+v err=%v", active, state, err)
+			}
+			svc.evaluateSmartData(ctx, disk, state, false)
+			items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			counter, _ := notifier.DiskSmartCounterByKey(fixture.key)
+			if err != nil || total != 1 || items[0].Title != "Disk da7 "+strings.ToLower(counter.Label)+" increased" ||
+				items[0].Metadata["previous_counter_value"] != "4" || items[0].Metadata["counter_value"] != "5" || items[0].Metadata["counter_delta"] != "1" {
+				t.Fatalf("confirmed growth: items=%+v total=%d err=%v", items, total, err)
+			}
+			if err := notifications.Dismiss(ctx, items[0].ID); err != nil {
+				t.Fatal(err)
+			}
+			state = &diskSmartState{}
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			if active, err := notifications.CountActive(ctx); err != nil || active != 0 {
+				t.Fatalf("updated baseline did not survive restart: active=%d err=%v", active, err)
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterGrowthRequiresConsecutiveReadings(t *testing.T) {
+	for _, fixture := range historicalCounterFixtures {
+		t.Run(fixture.key, func(t *testing.T) {
+			ctx := context.Background()
+			svc, notifications := makeTestSystemService(t, &diskService.Service{})
+			disk := diskServiceInterfaces.Disk{Device: "da5", SmartData: fixture.sample(4)}
+			state := &diskSmartState{}
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			for _, count := range []int64{5, 4, 5} {
+				disk.SmartData = fixture.sample(count)
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, _, err := notifications.List(ctx, notificationService.ListScopeAll, 100, 0)
+			if err != nil || len(items) != 1 || items[0].OccurrenceCount != 1 {
+				t.Fatalf("isolated growth alerted: items=%+v err=%v", items, err)
+			}
+			disk.SmartData = fixture.sample(6)
+			svc.evaluateSmartData(ctx, disk, state, false)
+			items, _, err = notifications.List(ctx, notificationService.ListScopeAll, 100, 0)
+			if err != nil || len(items) != 1 || items[0].OccurrenceCount != 2 || items[0].Metadata["counter_value"] != "6" {
+				t.Fatalf("sustained growth did not alert: items=%+v err=%v", items, err)
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterMissingAndInvalidSamplesBreakGrowthStreak(t *testing.T) {
+	for _, fixture := range historicalCounterFixtures {
+		t.Run(fixture.key, func(t *testing.T) {
+			ctx := context.Background()
+			svc, notifications := makeTestSystemService(t, &diskService.Service{})
+			state := &diskSmartState{}
+			disk := diskServiceInterfaces.Disk{Device: "da5", SmartData: fixture.sample(4)}
+			svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+			for _, unknown := range []any{nil, fixture.sample(-1)} {
+				disk.SmartData = unknown
+				svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+				disk.SmartData = fixture.sample(4)
+				svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+				if active, err := notifications.CountActive(ctx); err != nil || active != 0 {
+					t.Fatalf("unknown sample advanced streak: active=%d err=%v", active, err)
+				}
+			}
+			svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+			disk.SmartData = fixture.sample(0)
+			for range diskSmartConsecutiveClear {
+				svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+			}
+			var stored models.Notification
+			if err := notifications.DB.First(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if stored.Metadata["condition"] != notifier.DiskSmartCounterCondition || stored.OccurrenceCount != 1 || stored.Severity != models.NotificationSeverityWarning {
+				t.Fatalf("historical counter reported recovery after reset: %+v", stored)
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterMonitorRetriesFailedDelivery(t *testing.T) {
+	ctx := context.Background()
+	svc, notifications := makeTestSystemService(t, &diskService.Service{})
+	emitter := &retryingDiskSmartEmitter{err: errors.New("delivery failed")}
+	notifier.SetEmitter(emitter)
+	defer notifier.SetEmitter(notifications)
+	state := &diskSmartState{}
+	disk := diskServiceInterfaces.Disk{Device: "da5", SmartData: makeATA(30, true, 0, attr(5, 4))}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+	}
+	if emitter.calls != 1 || state.counters[notifier.DiskSmartCounterReallocated].notifiedValue != nil {
+		t.Fatalf("failed emission advanced state: calls=%d state=%+v", emitter.calls, state)
+	}
+	emitter.err = nil
+	svc.evaluateDiskSmartCounters(ctx, disk, state, false)
+	if emitter.calls != 2 || state.counters[notifier.DiskSmartCounterReallocated].notifiedValue.String() != "4" {
+		t.Fatalf("delivery was not retried: calls=%d state=%+v", emitter.calls, state)
+	}
+}
+
+func TestPowerSkippedSMARTReadInterruptsHistoricalCounterStreak(t *testing.T) {
+	ctx := context.Background()
+	svc, notifications := makeTestSystemService(t, &diskService.Service{})
+	disk := diskServiceInterfaces.Disk{Device: "da5", SmartData: makeATA(30, true, 0, attr(5, 4))}
+	states := make(map[string]*diskSmartState)
+	var mu sync.Mutex
+	svc.processDiskSmartSample(ctx, &mu, states, disk, false)
+	disk.SmartReadPowerSkipped = true
+	svc.processDiskSmartSample(ctx, &mu, states, disk, false)
+	disk.SmartReadPowerSkipped = false
+	svc.processDiskSmartSample(ctx, &mu, states, disk, false)
+	if active, err := notifications.CountActive(ctx); err != nil || active != 0 {
+		t.Fatalf("skipped read advanced streak: active=%d err=%v", active, err)
+	}
+	svc.processDiskSmartSample(ctx, &mu, states, disk, false)
+	if active, err := notifications.CountActive(ctx); err != nil || active != 1 {
+		t.Fatalf("confirmed count did not alert: active=%d err=%v", active, err)
+	}
+}
+
+func TestSCSICounterGrowthCannotBeMaskedByAnotherCounter(t *testing.T) {
+	ctx := context.Background()
+	svc, notifications := makeTestSystemService(t, &diskService.Service{})
+	disk := diskServiceInterfaces.Disk{
+		Device: "da5", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true,
+		SmartData: makeSCSI(30, true, attrPage(0x03, 6, 4, ""), attrPage(0x02, 6, 7, "")),
+	}
+	state := &diskSmartState{}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateSmartData(ctx, disk, state, false)
+	}
+	if dismissed, err := notifications.DismissAll(ctx); err != nil || dismissed != 2 {
+		t.Fatalf("dismissed=%d err=%v", dismissed, err)
+	}
+	disk.SmartData = makeSCSI(30, true, attrPage(0x03, 6, 3, ""), attrPage(0x02, 6, 8, ""))
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateSmartData(ctx, disk, state, false)
+	}
+	items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+	if err != nil || total != 1 || items[0].Metadata["counter_key"] != notifier.DiskSmartCounterScsiWriteErrors || items[0].Metadata["counter_delta"] != "1" {
+		t.Fatalf("growth masked by unchanged sum: items=%+v total=%d err=%v", items, total, err)
+	}
+}
+
+func TestNvmeHistoricalCounterAcknowledgementDoesNotSilenceActiveFaults(t *testing.T) {
+	for _, fault := range []string{"critical warning", "low spare"} {
+		t.Run(fault, func(t *testing.T) {
+			ctx := context.Background()
+			svc, notifications := makeTestSystemService(t, &diskService.Service{})
+			data := makeNVMe(30, "0x00")
+			data.MediaErrors = 4
+			if fault == "critical warning" {
+				data.CriticalWarning = "0x04"
+			} else {
+				data.AvailableSpare = 5
+				data.AvailableSpareThreshold = 10
+			}
+			disk := diskServiceInterfaces.Disk{
+				Device: "nda0", Type: "NVMe", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true, SmartData: data,
+			}
+			state := &diskSmartState{}
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 2 {
+				t.Fatalf("mixed sample did not split warnings: items=%+v total=%d err=%v", items, total, err)
+			}
+			for _, item := range items {
+				if item.Metadata["condition"] == notifier.DiskSmartCounterCondition {
+					if err := notifications.Dismiss(ctx, item.ID); err != nil {
+						t.Fatal(err)
+					}
+				} else if item.Metadata["condition"] != "nvme_warning" || item.Metadata["acknowledgement"] != "" {
+					t.Fatalf("active fault acknowledgeable: %+v", item)
+				}
+			}
+			state = &diskSmartState{}
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 1 || items[0].Metadata["condition"] != "nvme_warning" {
+				t.Fatalf("baseline silenced active fault: items=%+v total=%d err=%v", items, total, err)
+			}
+			data.CriticalWarning = "0x00"
+			data.AvailableSpare = 100
+			disk.SmartData = data
+			for range diskSmartConsecutiveClear {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 1 || items[0].Metadata["condition"] != "nvme_recovered" {
+				t.Fatalf("historical counter blocked active recovery: items=%+v total=%d err=%v", items, total, err)
+			}
+		})
+	}
+}
+
+func TestSCSICounterMonitorPreservesUnsignedPrecision(t *testing.T) {
+	ctx := context.Background()
+	svc, notifications := makeTestSystemService(t, &diskService.Service{})
+	const before = "9223372036854775808"
+	const after = "9223372036854775809"
+	attribute := attrPage(0x03, 6, 1<<63-1, "Read Total uncorrected errors")
+	attribute.RawString = before
+	disk := diskServiceInterfaces.Disk{
+		Device: "da5", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true,
+		SmartData: makeSCSI(30, true, attribute),
+	}
+	state := &diskSmartState{}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateSmartData(ctx, disk, state, false)
+	}
+	if dismissed, err := notifications.DismissAll(ctx); err != nil || dismissed != 1 {
+		t.Fatalf("dismissed=%d err=%v", dismissed, err)
+	}
+	attribute.RawString = after
+	disk.SmartData = makeSCSI(30, true, attribute)
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateSmartData(ctx, disk, state, false)
+	}
+	items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+	if err != nil || total != 1 || items[0].Metadata["counter_value"] != after || items[0].Metadata["previous_counter_value"] != before || items[0].Metadata["counter_delta"] != "1" {
+		t.Fatalf("SCSI counter lost precision: items=%+v total=%d err=%v", items, total, err)
+	}
+}
+
+func TestNewNvmeActiveFaultsBypassHistoricalBaseline(t *testing.T) {
+	ctx := context.Background()
+	svc, notifications := makeTestSystemService(t, &diskService.Service{})
+	data := makeNVMe(30, "0x04")
+	data.MediaErrors = 4
+	data.AvailableSpare = 15
+	data.AvailableSpareThreshold = 10
+	disk := diskServiceInterfaces.Disk{
+		Device: "nda0", Type: "NVMe", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true, SmartData: data,
+	}
+	state := &diskSmartState{}
+	for range diskSmartConsecutiveTrigger {
+		svc.evaluateSmartData(ctx, disk, state, false)
+	}
+	if dismissed, err := notifications.DismissAll(ctx); err != nil || dismissed != 2 {
+		t.Fatalf("dismissed=%d err=%v", dismissed, err)
+	}
+	data.CriticalWarning = "0x08"
+	disk.SmartData = data
+	svc.evaluateSmartData(ctx, disk, state, false)
+	items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+	if err != nil || total != 1 || items[0].Metadata["critical_warning"] != "0x08" || items[0].Metadata["acknowledgement"] != "" {
+		t.Fatalf("new critical bit suppressed: items=%+v total=%d err=%v", items, total, err)
+	}
+	data.AvailableSpareThreshold = 20
+	disk.SmartData = data
+	svc.evaluateSmartData(ctx, disk, state, false)
+	items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+	if err != nil || total != 1 || items[0].OccurrenceCount != 3 || !strings.Contains(items[0].Body, "available_spare=15%") {
+		t.Fatalf("new low-spare fault suppressed: items=%+v total=%d err=%v", items, total, err)
+	}
+}
+
+func TestEvaluateSectorIssuesStableAttributesAlertAndRecover(t *testing.T) {
 	tests := []struct {
 		name          string
 		id            int
-		reallocated   string
 		pending       string
 		uncorrectable string
 	}{
-		{name: "reallocated", id: 5, reallocated: "4", pending: "0", uncorrectable: "0"},
-		{name: "pending", id: 197, reallocated: "0", pending: "4", uncorrectable: "0"},
-		{name: "uncorrectable", id: 198, reallocated: "0", pending: "0", uncorrectable: "4"},
+		{name: "pending", id: 197, pending: "4", uncorrectable: "0"},
+		{name: "uncorrectable", id: 198, pending: "0", uncorrectable: "4"},
 	}
 
 	for _, test := range tests {
@@ -584,7 +950,7 @@ func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
 			}
 
 			for range diskSmartConsecutiveTrigger {
-				svc.evaluateReallocated(context.Background(), disk, state, false)
+				svc.evaluateSectorIssues(context.Background(), disk, state, false)
 			}
 
 			var notifications []models.Notification
@@ -595,7 +961,6 @@ func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
 				t.Fatalf("notifications=%d state=%+v", len(notifications), state)
 			}
 			if notifications[0].Metadata["condition"] != "sector_issues" ||
-				notifications[0].Metadata["reallocated"] != test.reallocated ||
 				notifications[0].Metadata["pending"] != test.pending ||
 				notifications[0].Metadata["uncorrectable"] != test.uncorrectable {
 				t.Fatalf("notification=%+v", notifications[0])
@@ -603,7 +968,7 @@ func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
 
 			disk.SmartData = makeATA(30, true, 0, attr(test.id, 0))
 			for range diskSmartConsecutiveClear {
-				svc.evaluateReallocated(context.Background(), disk, state, false)
+				svc.evaluateSectorIssues(context.Background(), disk, state, false)
 			}
 			if err := notifSvc.DB.Order("id ASC").Find(&notifications).Error; err != nil {
 				t.Fatal(err)
@@ -613,6 +978,53 @@ func TestEvaluateReallocatedStableAttributesAlertAndRecover(t *testing.T) {
 			}
 			if notifications[0].Metadata["condition"] != "sector_issues_cleared" || notifications[0].OccurrenceCount != 2 {
 				t.Fatalf("notification=%+v", notifications[0])
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterAcknowledgementDoesNotSilenceActiveSectors(t *testing.T) {
+	for _, id := range []int{197, 198} {
+		t.Run(strconv.Itoa(id), func(t *testing.T) {
+			ctx := context.Background()
+			svc, notifications := makeTestSystemService(t, &diskService.Service{})
+			disk := diskServiceInterfaces.Disk{
+				Device: "da5", UUID: "d782e080-43c1-5abc-9def-123456789abc", IdentityStable: true,
+				SmartData: makeATA(30, true, 0, attr(5, 4)),
+			}
+			state := &diskSmartState{}
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			if dismissed, err := notifications.DismissAll(ctx); err != nil || dismissed != 1 {
+				t.Fatalf("dismissed=%d err=%v", dismissed, err)
+			}
+			state = &diskSmartState{}
+			disk.SmartData = makeATA(30, true, 0, attr(5, 4), attr(id, 4))
+			for range diskSmartConsecutiveTrigger {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 1 || items[0].Metadata["condition"] != "sector_issues" || items[0].Metadata["acknowledgement"] != "" {
+				t.Fatalf("active sector fault suppressed: items=%+v total=%d err=%v", items, total, err)
+			}
+			for _, data := range []any{nil, makeATA(30, true, 0, attr(5, 4)), makeATA(30, true, 0, attr(id, -1))} {
+				disk.SmartData = data
+				for range diskSmartConsecutiveClear {
+					svc.evaluateSmartData(ctx, disk, state, false)
+				}
+				items, total, err := notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+				if err != nil || total != 1 || items[0].Severity != models.NotificationSeverityWarning || !state.sectorAlerted {
+					t.Fatalf("missing counter recovered: items=%+v state=%+v err=%v", items, state, err)
+				}
+			}
+			disk.SmartData = makeATA(30, true, 0, attr(5, 4), attr(id, 0))
+			for range diskSmartConsecutiveClear {
+				svc.evaluateSmartData(ctx, disk, state, false)
+			}
+			items, total, err = notifications.List(ctx, notificationService.ListScopeActive, 100, 0)
+			if err != nil || total != 1 || items[0].Metadata["condition"] != "sector_issues_cleared" || items[0].Severity != models.NotificationSeverityInfo || state.sectorAlerted {
+				t.Fatalf("confirmed zero did not recover: items=%+v state=%+v err=%v", items, state, err)
 			}
 		})
 	}
@@ -873,14 +1285,15 @@ func TestEvaluateNvmePreservesExactMediaErrorCounter(t *testing.T) {
 	disk := diskServiceInterfaces.Disk{Device: "nda0", Type: "NVMe"}
 	warning := makeNVMe(10, "0x00")
 	warning.MediaErrorsExact = "340282366920938463463374607431768211455"
+	disk.SmartData = warning
 	for range diskSmartConsecutiveTrigger {
-		svc.evaluateNvme(context.Background(), disk, &warning, state, false)
+		svc.evaluateSmartData(context.Background(), disk, state, false)
 	}
 	var notification models.Notification
 	if err := notifSvc.DB.First(&notification).Error; err != nil {
 		t.Fatal(err)
 	}
-	if notification.Metadata["media_errors"] != warning.MediaErrorsExact || state.nvmeMediaErrors != warning.MediaErrorsExact {
+	if notification.Metadata["counter_value"] != warning.MediaErrorsExact || state.counters[notifier.DiskSmartCounterNvmeMediaErrors].notifiedValue.String() != warning.MediaErrorsExact {
 		t.Fatalf("notification=%+v state=%+v", notification, state)
 	}
 }

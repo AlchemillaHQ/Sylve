@@ -51,6 +51,8 @@ type DiskSelfTestStatus struct {
 
 type SmartData struct {
 	Device              DeviceInfo              `json:"device"`
+	Model               string                  `json:"model,omitempty"`
+	Firmware            string                  `json:"firmware,omitempty"`
 	Passed              bool                    `json:"passed"`
 	HealthKnown         bool                    `json:"health_known"`
 	ChecksumValid       bool                    `json:"checksum_valid"`

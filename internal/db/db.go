@@ -123,6 +123,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartCounterAcknowledgement{},
 		&models.DiskSmartSelfTestSchedule{},
 		&models.DiskSmartSelfTestEvent{},
 		&models.DiskSmartSelfTestRun{},

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -500,6 +501,15 @@ func (s *Service) Emit(ctx context.Context, input notifier.EventInput) (notifier
 			}
 		}
 
+		suppressed, err := applyDiskSmartCounterBaseline(tx, &normalized)
+		if err != nil {
+			return err
+		}
+		if suppressed {
+			result.Suppressed = true
+			return nil
+		}
+
 		if uiSelected && kindRule.UIEnabled {
 			var existing models.Notification
 			err = tx.Where("fingerprint = ?", normalized.Fingerprint).First(&existing).Error
@@ -854,6 +864,9 @@ func (s *Service) dismissNotification(tx *gorm.DB, notification models.Notificat
 		}).Error; err != nil {
 			return err
 		}
+		if err := acknowledgeDiskSmartCounter(tx, notification, now); err != nil {
+			return err
+		}
 	}
 
 	if shouldPersistSuppressionForKind(notification.Kind) {
@@ -868,6 +881,78 @@ func (s *Service) dismissNotification(tx *gorm.DB, notification models.Notificat
 	}
 
 	return nil
+}
+
+func acknowledgeableDiskSmartCounter(kind, source, severity string, metadata map[string]string) (string, notifier.DiskSmartCounter, *big.Int, bool) {
+	prefix, target, ok := notifier.DiskNameFromSmartKind(kind)
+	diskKey := normalizeRuleTargetKey(metadata["disk_key"])
+	device := normalizeRuleTargetKey(metadata["device"])
+	counter, supported := notifier.DiskSmartCounterByKey(metadata["counter_key"])
+	if !ok || !supported || prefix != counter.KindPrefix || normalizeRuleTargetKey(target) != diskKey ||
+		source != "system.disk.smart" || severity != "warning" || metadata["condition"] != notifier.DiskSmartCounterCondition ||
+		metadata["identity_stable"] != "true" || diskKey == "" || device == "" || diskKey == device {
+		return "", notifier.DiskSmartCounter{}, nil, false
+	}
+	value, valid := notifier.ParseDiskSmartCounter(metadata["counter_value"])
+	return diskKey, counter, value, valid && value.Sign() > 0
+}
+
+func applyDiskSmartCounterBaseline(tx *gorm.DB, input *notifier.EventInput) (bool, error) {
+	diskKey, counter, value, ok := acknowledgeableDiskSmartCounter(input.Kind, input.Source, input.Severity, input.Metadata)
+	if !ok {
+		return false, nil
+	}
+	input.Metadata["acknowledgement"] = "smart_counter"
+	input.Metadata["counter_value"] = value.String()
+	var acknowledged models.DiskSmartCounterAcknowledgement
+	err := tx.Where("disk_key = ? AND counter_key = ?", diskKey, counter.Key).First(&acknowledged).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	baseline, valid := notifier.ParseDiskSmartCounter(acknowledged.Value)
+	if !valid {
+		return false, fmt.Errorf("invalid_disk_smart_counter_baseline")
+	}
+	if value.Cmp(baseline) <= 0 {
+		return true, nil
+	}
+	delta := new(big.Int).Sub(value, baseline).String()
+	device := input.Metadata["device"]
+	input.Title = fmt.Sprintf("Disk %s %s increased", device, strings.ToLower(counter.Label))
+	input.Body = fmt.Sprintf("%s on disk %s increased from %s to %s (+%s).", counter.Label, device, baseline, value, delta)
+	input.Metadata["previous_counter_value"] = baseline.String()
+	input.Metadata["counter_delta"] = delta
+	return false, nil
+}
+
+func acknowledgeDiskSmartCounter(tx *gorm.DB, notification models.Notification, now time.Time) error {
+	diskKey, counter, value, ok := acknowledgeableDiskSmartCounter(notification.Kind, notification.Source, string(notification.Severity), notification.Metadata)
+	if !ok {
+		return nil
+	}
+	var previous models.DiskSmartCounterAcknowledgement
+	err := tx.Where("disk_key = ? AND counter_key = ?", diskKey, counter.Key).First(&previous).Error
+	if err == nil {
+		baseline, valid := notifier.ParseDiskSmartCounter(previous.Value)
+		if !valid {
+			return fmt.Errorf("invalid_disk_smart_counter_baseline")
+		}
+		if value.Cmp(baseline) <= 0 {
+			return nil
+		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	acknowledged := models.DiskSmartCounterAcknowledgement{
+		DiskKey: diskKey, CounterKey: counter.Key, Value: value.String(), AcknowledgedAt: now,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "disk_key"}, {Name: "counter_key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "acknowledged_at"}),
+	}).Create(&acknowledged).Error
 }
 
 func (s *Service) DeleteTransport(ctx context.Context, id uint) error {
@@ -2237,7 +2322,7 @@ func (s *Service) migrateDiskSmartNotificationAlias(tx *gorm.DB, oldKind, newKin
 		notification.Metadata["device"] = alias.device
 		notification.Metadata["disk_key"] = alias.key
 		notification.Metadata["condition"] = condition
-		fingerprint := alias.key + "|" + diskSmartConditionCategory(condition)
+		fingerprint := alias.key + "|" + diskSmartConditionCategory(condition, notification.Metadata)
 		var current models.Notification
 		currentErr := tx.Where("fingerprint = ?", fingerprint).First(&current).Error
 		if currentErr != nil && currentErr != gorm.ErrRecordNotFound {
@@ -2331,7 +2416,10 @@ func (s *Service) migrateLegacyDiskSmartNotificationConditions(tx *gorm.DB, alia
 			continue
 		}
 		target := device
-		if key := aliasByDevice[device]; key != "" {
+		if _, existingTarget, ok := notifier.DiskNameFromSmartKind(notification.Kind); ok &&
+			normalizeRuleTargetKey(notification.Metadata["disk_key"]) == existingTarget && existingTarget != device {
+			target = existingTarget
+		} else if key := aliasByDevice[device]; key != "" {
 			target = key
 		}
 		if notification.Metadata == nil {
@@ -2340,7 +2428,7 @@ func (s *Service) migrateLegacyDiskSmartNotificationConditions(tx *gorm.DB, alia
 		notification.Metadata["device"] = device
 		notification.Metadata["disk_key"] = target
 		notification.Metadata["condition"] = condition
-		fingerprint := target + "|" + diskSmartConditionCategory(condition)
+		fingerprint := target + "|" + diskSmartConditionCategory(condition, notification.Metadata)
 
 		var current models.Notification
 		currentErr := tx.Where("fingerprint = ?", fingerprint).First(&current).Error
@@ -2399,14 +2487,17 @@ func (s *Service) migrateLegacyDiskSmartNotificationConditions(tx *gorm.DB, alia
 func currentDiskSmartCondition(condition string) (string, bool) {
 	condition = strings.TrimSpace(strings.ToLower(condition))
 	switch condition {
-	case "smart_unavailable", "smart_available", "temperature_critical", "temperature_warning", "temperature_normal", "health_failed", "health_recovered", "wearout_critical", "wearout_warning", "wearout_normal", "sector_issues", "sector_issues_cleared", "nvme_warning", "nvme_recovered", "self_test_started", "self_test_passed", "self_test_failed", "self_test_aborted", "self_test_completed_unknown", "self_test_schedule_failed", "self_test_schedule_missed", "self_test_device_unavailable", "self_test_capabilities_unavailable", "self_test_status_unavailable", "self_test_unsupported", "self_test_start_failed", "self_test_timeout_aborted", "self_test_result_unknown":
+	case notifier.DiskSmartCounterCondition, "smart_unavailable", "smart_available", "temperature_critical", "temperature_warning", "temperature_normal", "health_failed", "health_recovered", "wearout_critical", "wearout_warning", "wearout_normal", "sector_issues", "sector_issues_cleared", "nvme_warning", "nvme_recovered", "self_test_started", "self_test_passed", "self_test_failed", "self_test_aborted", "self_test_completed_unknown", "self_test_schedule_failed", "self_test_schedule_missed", "self_test_device_unavailable", "self_test_capabilities_unavailable", "self_test_status_unavailable", "self_test_unsupported", "self_test_start_failed", "self_test_timeout_aborted", "self_test_result_unknown":
 		return condition, true
 	default:
 		return "", false
 	}
 }
 
-func diskSmartConditionCategory(condition string) string {
+func diskSmartConditionCategory(condition string, metadata map[string]string) string {
+	if condition == notifier.DiskSmartCounterCondition {
+		return "counter:" + metadata["counter_key"]
+	}
 	if strings.HasPrefix(condition, "self_test_") {
 		return "selftest"
 	}

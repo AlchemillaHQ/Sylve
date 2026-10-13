@@ -35,6 +35,7 @@ func newTestService(t *testing.T) *Service {
 		&models.NotificationSuppression{},
 		&models.NotificationKindRule{},
 		&models.NotificationTransportConfig{},
+		&models.DiskSmartCounterAcknowledgement{},
 		&models.BasicSettings{},
 		&models.SystemSecrets{},
 	)
@@ -167,6 +168,422 @@ func newTestServiceWithDisks(t *testing.T, disks []diskServiceInterfaces.Disk) *
 	svc := newTestService(t)
 	svc.SetDiskService(&mockDiskService{disks: disks})
 	return svc
+}
+
+func diskSmartCounterWarning(diskKey, counterKey, value string) notifier.EventInput {
+	counter, _ := notifier.DiskSmartCounterByKey(counterKey)
+	return notifier.EventInput{
+		Kind:        notifier.KindForDiskSmart(counter.KindPrefix, diskKey),
+		Title:       "Disk da5 has historical errors",
+		Body:        counter.Label + " recorded on disk da5: " + value + ".",
+		Severity:    "warning",
+		Source:      "system.disk.smart",
+		Fingerprint: diskKey + "|counter:" + counterKey,
+		Metadata: map[string]string{
+			"condition":       notifier.DiskSmartCounterCondition,
+			"device":          "da5",
+			"disk_key":        diskKey,
+			"identity_stable": "true",
+			"counter_key":     counterKey,
+			"counter_value":   value,
+		},
+	}
+}
+
+func TestHistoricalCounterBaselinesSurviveRestartAndGrowth(t *testing.T) {
+	for _, key := range []string{
+		notifier.DiskSmartCounterReallocated, notifier.DiskSmartCounterNvmeMediaErrors,
+		notifier.DiskSmartCounterScsiReadErrors, notifier.DiskSmartCounterScsiWriteErrors,
+		notifier.DiskSmartCounterScsiVerifyErrors, notifier.DiskSmartCounterScsiNonMediumErrors,
+	} {
+		t.Run(key, func(t *testing.T) {
+			ctx := context.Background()
+			svc := newTestService(t)
+			const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+			input := diskSmartCounterWarning(diskKey, key, "4")
+			first, err := svc.Emit(ctx, input)
+			if err != nil || first.NotificationID == 0 || first.Suppressed {
+				t.Fatalf("first=%+v err=%v", first, err)
+			}
+			if input.Metadata["acknowledgement"] != "" {
+				t.Fatal("Emit mutated the caller's metadata")
+			}
+			if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+				t.Fatal(err)
+			}
+			svc = NewService(svc.DB)
+			if err := svc.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+				t.Fatal(err)
+			}
+			for _, count := range []string{"4", "3", "0004"} {
+				input := diskSmartCounterWarning(diskKey, key, count)
+				input.Metadata["device"] = "da7"
+				result, err := svc.Emit(ctx, input)
+				if err != nil || !result.Suppressed {
+					t.Fatalf("count=%s result=%+v err=%v", count, result, err)
+				}
+			}
+			var stored models.Notification
+			if err := svc.DB.First(&stored, first.NotificationID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if stored.DismissedAt == nil || stored.OccurrenceCount != 1 || stored.Metadata["acknowledgement"] != "smart_counter" {
+				t.Fatalf("unchanged count reopened notification: %+v", stored)
+			}
+			growth, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, key, "5"))
+			if err != nil || growth.Suppressed || growth.NotificationID != first.NotificationID {
+				t.Fatalf("growth=%+v err=%v", growth, err)
+			}
+			stored = models.Notification{}
+			if err := svc.DB.First(&stored, growth.NotificationID).Error; err != nil {
+				t.Fatal(err)
+			}
+			counter, _ := notifier.DiskSmartCounterByKey(key)
+			if stored.DismissedAt != nil || stored.Title != "Disk da5 "+strings.ToLower(counter.Label)+" increased" ||
+				stored.Metadata["previous_counter_value"] != "4" || stored.Metadata["counter_delta"] != "1" ||
+				!strings.Contains(stored.Body, "from 4 to 5 (+1)") {
+				t.Fatalf("growth=%+v", stored)
+			}
+			var baseline models.DiskSmartCounterAcknowledgement
+			if err := svc.DB.Where("disk_key = ? AND counter_key = ?", diskKey, key).First(&baseline).Error; err != nil {
+				t.Fatal(err)
+			}
+			if baseline.Value != "4" {
+				t.Fatal("emitting growth advanced the acknowledgement baseline")
+			}
+			if err := svc.Dismiss(ctx, growth.NotificationID); err != nil {
+				t.Fatal(err)
+			}
+			svc = NewService(svc.DB)
+			if result, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, key, "5")); err != nil || !result.Suppressed {
+				t.Fatalf("new baseline: result=%+v err=%v", result, err)
+			}
+			// A stale or reset reading must not lower a previously accepted baseline.
+			stored.Metadata["counter_value"] = "3"
+			stored.DismissedAt = nil
+			if err := svc.DB.Save(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.Dismiss(ctx, stored.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.DB.Where("disk_key = ? AND counter_key = ?", diskKey, key).First(&baseline).Error; err != nil {
+				t.Fatal(err)
+			}
+			if baseline.Value != "5" {
+				t.Fatalf("baseline decreased: %+v", baseline)
+			}
+			if err := svc.DB.Delete(&models.Notification{}, first.NotificationID).Error; err != nil {
+				t.Fatal(err)
+			}
+			svc = NewService(svc.DB)
+			if result, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, key, "5")); err != nil || !result.Suppressed {
+				t.Fatalf("history pruning lost baseline: result=%+v err=%v", result, err)
+			}
+			replacement, err := svc.Emit(ctx, diskSmartCounterWarning("replacement-disk", key, "4"))
+			if err != nil || replacement.Suppressed || replacement.NotificationID == 0 || replacement.NotificationID == first.NotificationID {
+				t.Fatalf("replacement inherited baseline: result=%+v err=%v", replacement, err)
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterAcknowledgementDoesNotSilenceOtherIssues(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*notifier.EventInput)
+	}{
+		{name: "pending", change: func(input *notifier.EventInput) {
+			input.Metadata["condition"] = "sector_issues"
+			input.Metadata["pending"] = "1"
+			input.Fingerprint = input.Metadata["disk_key"] + "|sectors"
+		}},
+		{name: "uncorrectable", change: func(input *notifier.EventInput) {
+			input.Metadata["condition"] = "sector_issues"
+			input.Metadata["uncorrectable"] = "1"
+			input.Fingerprint = input.Metadata["disk_key"] + "|sectors"
+		}},
+		{name: "critical severity", change: func(input *notifier.EventInput) { input.Severity = "critical" }},
+		{name: "SMART failure", change: func(input *notifier.EventInput) {
+			input.Severity = "critical"
+			input.Metadata["condition"] = "health_failed"
+			input.Fingerprint = input.Metadata["disk_key"] + "|health"
+		}},
+		{name: "temperature", change: func(input *notifier.EventInput) {
+			input.Kind = notifier.KindForDiskSmart(notifier.DiskSmartTemperatureKindPrefix, input.Metadata["disk_key"])
+			input.Metadata["condition"] = "temperature_critical"
+			input.Severity = "critical"
+		}},
+		{name: "wearout", change: func(input *notifier.EventInput) {
+			input.Kind = notifier.KindForDiskSmart(notifier.DiskSmartWearoutKindPrefix, input.Metadata["disk_key"])
+			input.Metadata["condition"] = "wearout_critical"
+			input.Severity = "critical"
+		}},
+		{name: "NVMe", change: func(input *notifier.EventInput) {
+			input.Kind = notifier.KindForDiskSmart(notifier.DiskSmartNvmeKindPrefix, input.Metadata["disk_key"])
+			input.Metadata["condition"] = "nvme_warning"
+		}},
+		{name: "unstable identity", change: func(input *notifier.EventInput) { input.Metadata["identity_stable"] = "false" }},
+		{name: "missing identity", change: func(input *notifier.EventInput) { delete(input.Metadata, "identity_stable") }},
+		{name: "missing device", change: func(input *notifier.EventInput) { delete(input.Metadata, "device") }},
+		{name: "device-name identity", change: func(input *notifier.EventInput) {
+			input.Metadata["disk_key"] = "da5"
+			input.Kind = notifier.KindForDiskSmart(notifier.DiskSmartHealthKindPrefix, "da5")
+		}},
+		{name: "missing counter value", change: func(input *notifier.EventInput) { delete(input.Metadata, "counter_value") }},
+		{name: "invalid counter value", change: func(input *notifier.EventInput) { input.Metadata["counter_value"] = "invalid" }},
+		{name: "negative counter value", change: func(input *notifier.EventInput) { input.Metadata["counter_value"] = "-1" }},
+		{name: "unknown counter", change: func(input *notifier.EventInput) { input.Metadata["counter_key"] = "unknown" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			svc := newTestService(t)
+			const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+			first, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, "4"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+				t.Fatal(err)
+			}
+			input := diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, "4")
+			test.change(&input)
+			result, err := svc.Emit(ctx, input)
+			if err != nil || result.Suppressed || result.NotificationID == 0 {
+				t.Fatalf("issue was suppressed: result=%+v err=%v", result, err)
+			}
+			var notification models.Notification
+			if err := svc.DB.First(&notification, result.NotificationID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if notification.Metadata["acknowledgement"] != "" {
+				t.Fatalf("issue was marked acknowledgeable: %+v", notification)
+			}
+		})
+	}
+}
+
+func TestAcknowledgedCountersDoNotHideActiveFaultOrRecovery(t *testing.T) {
+	for _, counter := range []string{"pending", "uncorrectable"} {
+		t.Run(counter, func(t *testing.T) {
+			ctx := context.Background()
+			svc := newTestService(t)
+			const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+			first, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, "4"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+				t.Fatal(err)
+			}
+			urgent := diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, "4")
+			urgent.Metadata["condition"] = "sector_issues"
+			urgent.Metadata[counter] = "1"
+			urgent.Fingerprint = diskKey + "|sectors"
+			if result, err := svc.Emit(ctx, urgent); err != nil || result.Suppressed {
+				t.Fatalf("urgent issue suppressed: result=%+v err=%v", result, err)
+			}
+			for _, count := range []string{"4", "5"} {
+				if _, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, count)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var stored models.Notification
+			if err := svc.DB.Where("fingerprint = ?", urgent.Fingerprint).First(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if stored.Metadata[counter] != "1" || stored.Severity != models.NotificationSeverityWarning || stored.Metadata["acknowledgement"] != "" {
+				t.Fatalf("historical counter replaced active fault: %+v", stored)
+			}
+			cleared := diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterReallocated, "4")
+			cleared.Metadata["condition"] = "sector_issues_cleared"
+			cleared.Metadata[counter] = "0"
+			cleared.Severity = "info"
+			cleared.Fingerprint = urgent.Fingerprint
+			if result, err := svc.Emit(ctx, cleared); err != nil || result.Suppressed {
+				t.Fatalf("recovery suppressed: result=%+v err=%v", result, err)
+			}
+			stored = models.Notification{}
+			if err := svc.DB.Where("fingerprint = ?", urgent.Fingerprint).First(&stored).Error; err != nil {
+				t.Fatal(err)
+			}
+			if stored.Metadata["condition"] != "sector_issues_cleared" || stored.Severity != models.NotificationSeverityInfo ||
+				stored.Metadata[counter] != "0" || stored.Metadata["acknowledgement"] != "" {
+				t.Fatalf("recovery=%+v", stored)
+			}
+		})
+	}
+}
+
+func TestHistoricalCounterAcknowledgementSuppressesTransportRetries(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	createTestTransports(t, svc, TransportInput{
+		Name: "ntfy", Type: TransportTypeNtfy, Enabled: true,
+		Ntfy: &NtfyTransportConfigUpdate{BaseURL: "https://ntfy.sh", Topic: "ops"},
+	})
+	calls := 0
+	svc.SetNtfySender(func(context.Context, models.NotificationTransportConfig, notifier.EventInput, string) error {
+		calls++
+		return errors.New("transport unavailable")
+	})
+	input := diskSmartCounterWarning("d782e080-43c1-5abc-9def-123456789abc", notifier.DiskSmartCounterReallocated, "4")
+	first, err := svc.Emit(ctx, input)
+	if err == nil || first.NotificationID == 0 || calls != 1 {
+		t.Fatalf("first=%+v calls=%d err=%v", first, calls, err)
+	}
+	if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		result, err := svc.Emit(ctx, input)
+		if err != nil || !result.Suppressed || calls != 1 {
+			t.Fatalf("retry reopened acknowledgement: result=%+v calls=%d err=%v", result, calls, err)
+		}
+	}
+	active, err := svc.CountActive(ctx)
+	if err != nil || active != 0 {
+		t.Fatalf("active=%d err=%v", active, err)
+	}
+}
+
+func TestDismissAllAcknowledgesEachHistoricalCounter(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	inputs := []notifier.EventInput{
+		diskSmartCounterWarning("d782e080-43c1-5abc-9def-123456789abc", notifier.DiskSmartCounterReallocated, "4"),
+		diskSmartCounterWarning("d782e080-43c1-5abc-9def-123456789abc", notifier.DiskSmartCounterNvmeMediaErrors, "7"),
+	}
+	urgent := diskSmartCounterWarning("another-disk", notifier.DiskSmartCounterReallocated, "4")
+	urgent.Metadata["condition"] = "sector_issues"
+	urgent.Metadata["pending"] = "1"
+	for _, input := range append(inputs, urgent) {
+		if _, err := svc.Emit(ctx, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dismissed, err := svc.DismissAll(ctx)
+	if err != nil || dismissed != 3 {
+		t.Fatalf("dismissed=%d err=%v", dismissed, err)
+	}
+	var count int64
+	if err := svc.DB.Model(&models.DiskSmartCounterAcknowledgement{}).Count(&count).Error; err != nil || count != 2 {
+		t.Fatalf("acknowledgements=%d err=%v", count, err)
+	}
+	svc = NewService(svc.DB)
+	for _, input := range inputs {
+		result, err := svc.Emit(ctx, input)
+		if err != nil || !result.Suppressed {
+			t.Fatalf("bulk acknowledgement lost: result=%+v err=%v", result, err)
+		}
+	}
+	result, err := svc.Emit(ctx, urgent)
+	if err != nil || result.Suppressed {
+		t.Fatalf("bulk dismissal silenced pending sectors: result=%+v err=%v", result, err)
+	}
+}
+
+func TestHistoricalCountersAreAcknowledgedIndependently(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+	read := diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterScsiReadErrors, "4")
+	write := diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterScsiWriteErrors, "7")
+	first, err := svc.Emit(ctx, read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Emit(ctx, write)
+	if err != nil || second.Suppressed || second.NotificationID == first.NotificationID {
+		t.Fatalf("other counter suppressed: result=%+v err=%v", second, err)
+	}
+	if err := svc.Dismiss(ctx, second.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []notifier.EventInput{read, write} {
+		if result, err := svc.Emit(ctx, input); err != nil || !result.Suppressed {
+			t.Fatalf("counter baseline lost: result=%+v err=%v", result, err)
+		}
+	}
+	write.Metadata["counter_value"] = "6"
+	read.Metadata["counter_value"] = "5"
+	if result, err := svc.Emit(ctx, write); err != nil || !result.Suppressed {
+		t.Fatalf("decrease alerted: result=%+v err=%v", result, err)
+	}
+	if result, err := svc.Emit(ctx, read); err != nil || result.Suppressed || result.NotificationID != first.NotificationID {
+		t.Fatalf("growth masked by another counter: result=%+v err=%v", result, err)
+	}
+}
+
+func TestHistoricalCounterBaselinePreserves128BitGrowth(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestService(t)
+	const diskKey = "d782e080-43c1-5abc-9def-123456789abc"
+	const before = "340282366920938463463374607431768211454"
+	const after = "340282366920938463463374607431768211455"
+	first, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterNvmeMediaErrors, before))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	svc = NewService(svc.DB)
+	result, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterNvmeMediaErrors, after))
+	if err != nil || result.Suppressed {
+		t.Fatalf("128-bit growth suppressed: result=%+v err=%v", result, err)
+	}
+	var stored models.Notification
+	if err := svc.DB.First(&stored, result.NotificationID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Metadata["counter_value"] != after || stored.Metadata["previous_counter_value"] != before || stored.Metadata["counter_delta"] != "1" {
+		t.Fatalf("128-bit counter lost precision: %+v", stored)
+	}
+	if err := svc.Dismiss(ctx, result.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := svc.Emit(ctx, diskSmartCounterWarning(diskKey, notifier.DiskSmartCounterNvmeMediaErrors, after)); err != nil || !result.Suppressed {
+		t.Fatalf("new 128-bit baseline lost: result=%+v err=%v", result, err)
+	}
+}
+
+func TestCounterMigrationDoesNotRetargetAnEstablishedIdentity(t *testing.T) {
+	ctx := context.Background()
+	const oldKey = "d782e080-43c1-5abc-9def-123456789abc"
+	const newKey = "b681cd55-cb97-56a2-8d7b-410f56738945"
+	svc := newTestService(t)
+	first, err := svc.Emit(ctx, diskSmartCounterWarning(oldKey, notifier.DiskSmartCounterScsiReadErrors, "4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Dismiss(ctx, first.NotificationID); err != nil {
+		t.Fatal(err)
+	}
+	svc.SetDiskService(&mockDiskService{disks: []diskServiceInterfaces.Disk{
+		{Device: "da5", UUID: newKey, IdentityStable: true},
+	}})
+	if err := svc.MigrateLegacyDiskSmartRecords(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var stored models.Notification
+	if err := svc.DB.First(&stored, first.NotificationID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Metadata["disk_key"] != oldKey || stored.Fingerprint != oldKey+"|counter:"+notifier.DiskSmartCounterScsiReadErrors {
+		t.Fatalf("old disk history was assigned to its replacement: %+v", stored)
+	}
+	replacement, err := svc.Emit(ctx, diskSmartCounterWarning(newKey, notifier.DiskSmartCounterScsiReadErrors, "4"))
+	if err != nil || replacement.Suppressed || replacement.NotificationID == first.NotificationID {
+		t.Fatalf("replacement inherited acknowledgement: result=%+v err=%v", replacement, err)
+	}
 }
 
 func TestEmitCreatesAndIncrementsByFingerprint(t *testing.T) {

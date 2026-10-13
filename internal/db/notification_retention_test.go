@@ -19,7 +19,7 @@ import (
 )
 
 func TestEnforceNotificationRetentionPrunesOldDismissedNotifications(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &models.Notification{})
+	db := testutil.NewSQLiteTestDB(t, &models.Notification{}, &models.DiskSmartCounterAcknowledgement{})
 
 	now := time.Date(2026, time.April, 24, 12, 0, 0, 0, time.UTC)
 	oldDismissedAt := now.Add(-(NotificationDismissedRetentionDays*24*time.Hour + time.Hour))
@@ -75,6 +75,15 @@ func TestEnforceNotificationRetentionPrunesOldDismissedNotifications(t *testing.
 	if err := db.Create(&[]models.Notification{oldDismissed, freshDismissed, active}).Error; err != nil {
 		t.Fatalf("failed_to_seed_notifications: %v", err)
 	}
+	acknowledged := models.DiskSmartCounterAcknowledgement{
+		DiskKey:        "d782e080-43c1-5abc-9def-123456789abc",
+		CounterKey:     notifier.DiskSmartCounterNvmeMediaErrors,
+		Value:          "340282366920938463463374607431768211455",
+		AcknowledgedAt: now.Add(-365 * 24 * time.Hour),
+	}
+	if err := db.Create(&acknowledged).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	if err := EnforceNotificationRetention(db, now); err != nil {
 		t.Fatalf("enforce_notification_retention_failed: %v", err)
@@ -90,6 +99,13 @@ func TestEnforceNotificationRetentionPrunesOldDismissedNotifications(t *testing.
 	}
 	if kept[0].Fingerprint != "active" || kept[1].Fingerprint != "fresh-dismissed" {
 		t.Fatalf("unexpected_remaining_notifications: %s, %s", kept[0].Fingerprint, kept[1].Fingerprint)
+	}
+	var retained models.DiskSmartCounterAcknowledgement
+	if err := db.Where("disk_key = ?", acknowledged.DiskKey).First(&retained).Error; err != nil {
+		t.Fatal(err)
+	}
+	if retained != acknowledged {
+		t.Fatalf("retention changed accepted historical count: %+v", retained)
 	}
 }
 

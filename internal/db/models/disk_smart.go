@@ -10,6 +10,13 @@ package models
 
 import "time"
 
+type DiskSmartCounterAcknowledgement struct {
+	DiskKey        string    `json:"diskKey" gorm:"primaryKey"`
+	CounterKey     string    `json:"counterKey" gorm:"primaryKey"`
+	Value          string    `json:"value" gorm:"not null"`
+	AcknowledgedAt time.Time `json:"acknowledgedAt" gorm:"not null"`
+}
+
 type DiskSmartSelfTestSchedule struct {
 	ID                     uint       `json:"id" gorm:"primaryKey"`
 	DiskKey                string     `json:"diskKey" gorm:"not null;uniqueIndex:idx_disk_smart_self_test_schedule"`
