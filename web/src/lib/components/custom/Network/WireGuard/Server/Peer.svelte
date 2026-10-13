@@ -45,7 +45,7 @@
 		preSharedKey: '',
 		clientIPs: '',
 		routableIPs: '',
-		routeIPs: false
+		routeIPs: true
 	});
 
 	watch(
@@ -61,7 +61,7 @@
 					preSharedKey: peer?.preSharedKey ?? '',
 					clientIPs: (peer?.clientIPs ?? []).join('\n'),
 					routableIPs: (peer?.routableIPs ?? []).join('\n'),
-					routeIPs: peer?.routeIPs ?? false
+					routeIPs: peer?.routeIPs ?? true
 				};
 			}
 		}
@@ -77,7 +77,7 @@
 			preSharedKey: peer?.preSharedKey ?? '',
 			clientIPs: (peer?.clientIPs ?? []).join('\n'),
 			routableIPs: (peer?.routableIPs ?? []).join('\n'),
-			routeIPs: peer?.routeIPs ?? false
+			routeIPs: peer?.routeIPs ?? true
 		};
 	}
 
@@ -185,7 +185,7 @@
 			</Dialog.Description>
 		</Dialog.Header>
 
-		<Tabs.Root value="basic" class="mt-4 flex h-80 flex-col">
+		<Tabs.Root value="basic" class="mt-4 flex h-88 flex-col">
 			<Tabs.List class="mb-1 w-full justify-start bg-accent/50">
 				<Tabs.Trigger value="basic" class="flex-1 gap-2">
 					<span class="icon icon-[ic--outline-shield] size-3.5"></span>
