@@ -83,10 +83,14 @@ jobs:
               const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
                 owner, repo, run_id: run.id, filter: "latest", per_page: 100,
               });
-              const result = jobs.find((job) => job.name === "Test")?.conclusion;
-              if (result === "skipped" && run.conclusion === "success") continue;
-              const required = result !== "success";
-              core.info(`Previous Test result: ${result || "not completed"}; running Test: ${required}.`);
+              const testJobs = jobs.filter((job) => job.name === "Test" || job.name.startsWith("Test ("));
+              if (testJobs.length && testJobs.every((job) => job.conclusion === "skipped") && run.conclusion === "success") continue;
+              const names = testJobs.some((job) => job.name === "Test")
+                ? ["Test"]
+                : ["Test (unit)", "Test (integration)", "Test (acceptance)"];
+              const results = names.map((name) => testJobs.find((job) => job.name === name)?.conclusion);
+              const required = results.some((result) => result !== "success");
+              core.info(`Previous Test results: ${results.map((result) => result || "not completed").join(", ")}; running Test: ${required}.`);
               core.setOutput("required", required);
               return;
             }
@@ -120,7 +124,7 @@ jobs:
         run: make quality
 
   test:
-    name: Test
+    name: Test (${{ matrix.lane }})
     needs:
       - changes
       - quality
@@ -128,9 +132,21 @@ jobs:
     if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: unit
+            target: test
+          - lane: integration
+            target: test-integration
+          - lane: acceptance
+            target: test-acceptance-all
     env:
       GOCACHE: ${{ github.workspace }}/.cache/freebsd-go/build
       GOMODCACHE: ${{ github.workspace }}/.cache/freebsd-go/mod
+      TEST_LANE: ${{ matrix.lane }}
+      TEST_TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -152,18 +168,21 @@ jobs:
           path: |
             .cache/freebsd-go/build
             .cache/freebsd-go/mod
-          key: freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}
+          key: freebsd-15-go-${{ matrix.lane }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            freebsd-15-go-${{ matrix.lane }}-${{ hashFiles('go.mod', 'go.sum') }}-
+            freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}
 
-      - name: Run FreeBSD checks and test suites
+      - name: Run FreeBSD test suite
         env:
-          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-hit == 'true' }}
+          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-hit != '' }}
         uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
         with:
           release: "15"
           usesh: true
           copyback: true
           cache-after-prepare: true
-          envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED
+          envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED TEST_LANE TEST_TARGET
           prepare: |
             pkg update
             pkg install -y go git libvirt bhyve-firmware qemu-tools jq
@@ -187,39 +206,41 @@ jobs:
               mkdir -p "$GOCACHE" "$GOMODCACHE"
               go build -buildvcs=false -o /tmp/sylve-testreport ./cmd/testreport
 
-              for module in zfs pf vmm nlsysevent if_bridge if_epair ctl iscsi nvmft nvmf; do
-                kldstat -q -m "$module" || kldload "$module"
-              done
-              kldstat -q -m nvmf/tcp || kldload nvmf_tcp
+              if [ "$TEST_LANE" != unit ]; then
+                for module in zfs pf vmm nlsysevent if_bridge if_epair ctl iscsi nvmft nvmf; do
+                  kldstat -q -m "$module" || kldload "$module"
+                done
+                kldstat -q -m nvmf/tcp || kldload nvmf_tcp
 
-              [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] && [ -c /dev/nvmf ] || {
-                echo "CTL, iSCSI, and NVMe/TCP kernel devices are required for integration tests"
-                exit 1
-              }
+                [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] && [ -c /dev/nvmf ] || {
+                  echo "CTL, iSCSI, and NVMe/TCP kernel devices are required for integration tests"
+                  exit 1
+                }
 
-              command -v nvmecontrol >/dev/null
-              command -v qemu-img >/dev/null
-              ctladm nvlist -x | grep -q '<ctlnvmflist>'
+                command -v nvmecontrol >/dev/null
+                command -v qemu-img >/dev/null
+                ctladm nvlist -x | grep -q '<ctlnvmflist>'
 
-              service libvirtd onestart || service libvirtd onerestart
-              service sshd onestart 2>/dev/null || service sshd onerestart
-              ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
-              ssh_ready=false
-              for i in $(seq 1 60); do
-                if ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null; then
-                  ssh_ready=true
-                  break
-                fi
-                sleep 0.5
-              done
-              [ "$ssh_ready" = true ] || { echo "ssh root@localhost not ready"; exit 1; }
+                service libvirtd onestart || service libvirtd onerestart
+                service sshd onestart 2>/dev/null || service sshd onerestart
+                ssh-keyscan -H localhost >> /root/.ssh/known_hosts 2>/dev/null || true
+                ssh_ready=false
+                for i in $(seq 1 60); do
+                  if ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=2 root@localhost true 2>/dev/null; then
+                    ssh_ready=true
+                    break
+                  fi
+                  sleep 0.5
+                done
+                [ "$ssh_ready" = true ] || { echo "ssh root@localhost not ready"; exit 1; }
 
-              virsh -c bhyve:///system version
-              available_kib="$(df -Pk /tmp | awk 'NR == 2 { print $4 }')"
-              [ -n "$available_kib" ] && [ "$available_kib" -ge 9437184 ] || {
-                echo "/tmp needs at least 9 GiB available; found ${available_kib:-unknown} KiB"
-                exit 1
-              }
+                virsh -c bhyve:///system version
+                available_kib="$(df -Pk /tmp | awk 'NR == 2 { print $4 }')"
+                [ -n "$available_kib" ] && [ "$available_kib" -ge 9437184 ] || {
+                  echo "/tmp needs at least 9 GiB available; found ${available_kib:-unknown} KiB"
+                  exit 1
+                }
+              fi
             )
             setup_rc="$?"
             setup_finished="$(date +%s)"
@@ -229,46 +250,24 @@ jobs:
               exit 0
             fi
 
-            go vet ./... ./internal/assets/csmwrap > test-results/vet.log 2>&1
-            vet_rc="$?"
-            cat test-results/vet.log
-            printf '%s\n' "$vet_rc" > test-results/vet.rc
-            if [ "$vet_rc" -ne 0 ]; then
-              exit 0
+            if [ "$TEST_LANE" = unit ]; then
+              go vet ./... ./internal/assets/csmwrap > test-results/vet.log 2>&1
+              vet_rc="$?"
+              cat test-results/vet.log
+              printf '%s\n' "$vet_rc" > test-results/vet.rc
+              if [ "$vet_rc" -ne 0 ]; then
+                exit 0
+              fi
             fi
 
             /tmp/sylve-testreport \
-              -lane unit \
+              -lane "$TEST_LANE" \
               -out test-results \
               -setup-duration "${setup_seconds}s" \
               -cache-restored="$GO_CACHE_RESTORED" \
-              -- make -s GO_TEST_FLAGS=-json test
-            unit_rc="$?"
-            printf '%s\n' "$unit_rc" > test-results/unit.rc
-            if [ "$unit_rc" -ne 0 ]; then
-              exit 0
-            fi
-
-            /tmp/sylve-testreport \
-              -lane integration \
-              -out test-results \
-              -setup-duration "0s" \
-              -cache-restored="$GO_CACHE_RESTORED" \
-              -- make -s GO_TEST_FLAGS=-json test-integration
-            integration_rc="$?"
-            printf '%s\n' "$integration_rc" > test-results/integration.rc
-            if [ "$integration_rc" -ne 0 ]; then
-              exit 0
-            fi
-
-            /tmp/sylve-testreport \
-              -lane acceptance \
-              -out test-results \
-              -setup-duration "0s" \
-              -cache-restored="$GO_CACHE_RESTORED" \
-              -- make -s GO_TEST_FLAGS=-json test-acceptance-all
-            acceptance_rc="$?"
-            printf '%s\n' "$acceptance_rc" > test-results/acceptance.rc
+              -- make -s GO_TEST_FLAGS=-json "$TEST_TARGET"
+            test_rc="$?"
+            printf '%s\n' "$test_rc" > "test-results/$TEST_LANE.rc"
             exit 0
 
       - name: Check FreeBSD host setup
@@ -282,7 +281,7 @@ jobs:
           exit "$(cat test-results/setup.rc)"
 
       - name: Upload vet report
-        if: always() && steps.setup_result.outcome == 'success'
+        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: vet-report
@@ -294,7 +293,7 @@ jobs:
 
       - name: Check vet result
         id: vet_result
-        if: always() && steps.setup_result.outcome == 'success'
+        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success'
         run: |
           if [ ! -f test-results/vet.rc ]; then
             echo "Vet result was not produced"
@@ -302,94 +301,34 @@ jobs:
           fi
           exit "$(cat test-results/vet.rc)"
 
-      - name: Publish unit test summary
-        if: always() && steps.vet_result.outcome == 'success'
+      - name: Publish test summary
+        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
         run: |
-          if [ -f test-results/unit-summary.md ]; then
-            cat test-results/unit-summary.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "test-results/$TEST_LANE-summary.md" ]; then
+            cat "test-results/$TEST_LANE-summary.md" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload unit test report
-        if: always() && steps.vet_result.outcome == 'success'
+      - name: Upload test report
+        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
         uses: actions/upload-artifact@v7
         with:
-          name: unit-test-report
+          name: ${{ matrix.lane }}-test-report
           path: |
-            test-results/unit.json
-            test-results/unit.log
-            test-results/unit-summary.md
-            test-results/unit.rc
+            test-results/${{ matrix.lane }}.json
+            test-results/${{ matrix.lane }}.log
+            test-results/${{ matrix.lane }}-summary.md
+            test-results/${{ matrix.lane }}.rc
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Check unit test result
-        id: unit_result
-        if: always() && steps.vet_result.outcome == 'success'
+      - name: Check test result
+        if: always() && steps.setup_result.outcome == 'success' && (matrix.lane != 'unit' || steps.vet_result.outcome == 'success')
         run: |
-          if [ ! -f test-results/unit.rc ]; then
-            echo "Unit test result was not produced"
+          if [ ! -f "test-results/$TEST_LANE.rc" ]; then
+            echo "$TEST_LANE test result was not produced"
             exit 1
           fi
-          exit "$(cat test-results/unit.rc)"
-
-      - name: Publish integration test summary
-        if: always() && steps.unit_result.outcome == 'success'
-        run: |
-          if [ -f test-results/integration-summary.md ]; then
-            cat test-results/integration-summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload integration test report
-        if: always() && steps.unit_result.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: integration-test-report
-          path: |
-            test-results/integration.json
-            test-results/integration.log
-            test-results/integration-summary.md
-            test-results/integration.rc
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Check integration test result
-        id: integration_result
-        if: always() && steps.unit_result.outcome == 'success'
-        run: |
-          if [ ! -f test-results/integration.rc ]; then
-            echo "Integration test result was not produced"
-            exit 1
-          fi
-          exit "$(cat test-results/integration.rc)"
-
-      - name: Publish acceptance test summary
-        if: always() && steps.integration_result.outcome == 'success'
-        run: |
-          if [ -f test-results/acceptance-summary.md ]; then
-            cat test-results/acceptance-summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload acceptance test report
-        if: always() && steps.integration_result.outcome == 'success'
-        uses: actions/upload-artifact@v7
-        with:
-          name: acceptance-test-report
-          path: |
-            test-results/acceptance.json
-            test-results/acceptance.log
-            test-results/acceptance-summary.md
-            test-results/acceptance.rc
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Check acceptance test result
-        if: always() && steps.integration_result.outcome == 'success'
-        run: |
-          if [ ! -f test-results/acceptance.rc ]; then
-            echo "Acceptance test result was not produced"
-            exit 1
-          fi
-          exit "$(cat test-results/acceptance.rc)"
+          exit "$(cat "test-results/$TEST_LANE.rc")"
 
   build-csmwrap:
     name: Build CSMWrap
