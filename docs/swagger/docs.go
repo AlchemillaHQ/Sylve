@@ -35650,6 +35650,12 @@ const docTemplate = `{
                 "addressObj": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
                 },
+                "addresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddress"
+                    }
+                },
                 "bridgeMacMode": {
                     "type": "string"
                 },
@@ -35757,6 +35763,43 @@ const docTemplate = `{
                 },
                 "vlanFiltering": {
                     "type": "boolean"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddress": {
+            "type": "object",
+            "properties": {
+                "cidr": {
+                    "type": "string"
+                },
+                "family": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "object": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object"
+                },
+                "objectId": {
+                    "type": "integer"
+                },
+                "ordering": {
+                    "type": "integer"
+                },
+                "switchId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource": {
+            "type": "object",
+            "properties": {
+                "cidr": {
+                    "type": "string"
+                },
+                "objectId": {
+                    "type": "integer"
                 }
             }
         },
@@ -45199,6 +45242,20 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "addresses4": {
+                    "description": "Ordered IPv4 sources. All CIDRs in each selected Network object are assigned; replaces network4/network4Manual when supplied.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource"
+                    }
+                },
+                "addresses6": {
+                    "description": "Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual when supplied.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource"
+                    }
+                },
                 "bridgeMac": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
                 },
@@ -45344,6 +45401,20 @@ const docTemplate = `{
                 "private"
             ],
             "properties": {
+                "addresses4": {
+                    "description": "Ordered IPv4 sources. All CIDRs in each selected Network object are assigned; replaces network4/network4Manual when supplied.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource"
+                    }
+                },
+                "addresses6": {
+                    "description": "Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual when supplied.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource"
+                    }
+                },
                 "bridgeMac": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource"
                 },

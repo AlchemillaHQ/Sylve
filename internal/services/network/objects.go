@@ -983,6 +983,8 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			if err := s.DB.
 				Preload("NetworkObj.Entries").
 				Preload("Network6Obj.Entries").
+				Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
+				Preload("Addresses.Object.Entries").
 				Preload("GatewayAddressObj.Entries").
 				Preload("Gateway6AddressObj.Entries").
 				Where("gateway_address_object_id = ? OR gateway6_address_object_id = ?", id, id).
@@ -1094,9 +1096,12 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			if err := s.DB.
 				Preload("NetworkObj.Entries").
 				Preload("Network6Obj.Entries").
+				Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
+				Preload("Addresses.Object.Entries").
 				Preload("GatewayAddressObj.Entries").
 				Preload("Gateway6AddressObj.Entries").
-				Where("network_object_id = ? OR network6_object_id = ?", id, id).
+				Where("network_object_id = ? OR network6_object_id = ? OR id IN (?)", id, id,
+					s.DB.Model(&networkModels.StandardSwitchAddress{}).Select("switch_id").Where("object_id = ?", id)).
 				Find(&switches).Error; err != nil {
 				return fmt.Errorf("failed to find standard switches using object %d: %w", id, err)
 			}
@@ -1106,8 +1111,28 @@ func (s *Service) EditObject(id uint, name string, oType string, values []string
 			}
 
 			if len(switches) > 0 && oType == "Network" {
-				if len(values) != 1 {
-					return networkObjectConflict("network_object_switch_requires_one_network", nil)
+				candidate := networkModels.Object{ID: id, Type: "Network"}
+				for _, value := range values {
+					candidate.Entries = append(candidate.Entries, networkModels.ObjectEntry{Value: value})
+				}
+				for _, sw := range switches {
+					if sw.NetworkID != nil && *sw.NetworkID == id {
+						sw.NetworkObj = &candidate
+					}
+					if sw.Network6ID != nil && *sw.Network6ID == id {
+						sw.Network6Obj = &candidate
+					}
+					sw.Addresses = slices.Clone(sw.Addresses)
+					for i := range sw.Addresses {
+						if sw.Addresses[i].ObjectID != nil && *sw.Addresses[i].ObjectID == id {
+							sw.Addresses[i].Object = &candidate
+						}
+					}
+					for _, family := range []int{4, 6} {
+						if _, err := normalizeStandardSwitchCIDRs(sw.Networks(family), family); err != nil {
+							return networkObjectConflict("network_object_switch_invalid_addresses", err)
+						}
+					}
 				}
 
 				object.Name = name

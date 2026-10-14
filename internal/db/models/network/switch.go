@@ -9,6 +9,7 @@
 package networkModels
 
 import (
+	"net/netip"
 	"time"
 
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
@@ -80,10 +81,11 @@ type StandardSwitch struct {
 	BridgeMACObjectID   *uint   `json:"bridgeMacObjectId" gorm:"column:bridge_mac_object_id;index"`
 	BridgeMACObject     *Object `json:"bridgeMacObject" gorm:"foreignKey:BridgeMACObjectID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
-	NetworkManual  string `json:"networkManual" gorm:"column:network_manual"`
-	Network6Manual string `json:"network6Manual" gorm:"column:network6_manual"`
-	GatewayManual  string `json:"gatewayManual" gorm:"column:gateway_manual"`
-	Gateway6Manual string `json:"gateway6Manual" gorm:"column:gateway6_manual"`
+	NetworkManual  string                  `json:"networkManual" gorm:"column:network_manual"`
+	Network6Manual string                  `json:"network6Manual" gorm:"column:network6_manual"`
+	GatewayManual  string                  `json:"gatewayManual" gorm:"column:gateway_manual"`
+	Gateway6Manual string                  `json:"gateway6Manual" gorm:"column:gateway6_manual"`
+	Addresses      []StandardSwitchAddress `json:"addresses" gorm:"foreignKey:SwitchID;constraint:OnDelete:CASCADE"`
 
 	DisableIPv6 bool `json:"disableIPv6" gorm:"default:false"`
 	Private     bool `json:"private" gorm:"default:false"`
@@ -126,22 +128,115 @@ type StandardSwitchManualAddresses struct {
 	Gateway6 string
 }
 
+// StandardSwitchAddressSource selects one Network object or a manually entered
+// host CIDR. Exactly one of ObjectID and CIDR must be supplied.
+type StandardSwitchAddressSource struct {
+	ObjectID uint   `json:"objectId,omitempty"`
+	CIDR     string `json:"cidr,omitempty"`
+}
+
+type StandardSwitchAddress struct {
+	ID       uint    `json:"id" gorm:"primaryKey;autoIncrement"`
+	SwitchID uint    `json:"switchId" gorm:"not null;index"`
+	Family   int     `json:"family" gorm:"not null"`
+	Ordering int     `json:"ordering"`
+	ObjectID *uint   `json:"objectId" gorm:"index"`
+	Object   *Object `json:"object" gorm:"foreignKey:ObjectID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	CIDR     string  `json:"cidr" gorm:"column:cidr"`
+}
+
+func (sw *StandardSwitch) AddressSources(v int) []StandardSwitchAddressSource {
+	sources := make([]StandardSwitchAddressSource, 0)
+	for _, address := range sw.Addresses {
+		if address.Family != v {
+			continue
+		}
+		source := StandardSwitchAddressSource{CIDR: address.CIDR}
+		if address.ObjectID != nil {
+			source.ObjectID = *address.ObjectID
+		}
+		sources = append(sources, source)
+	}
+	if len(sources) > 0 {
+		return sources
+	}
+	var id *uint
+	var manual string
+	switch v {
+	case 4:
+		id, manual = sw.NetworkID, sw.NetworkManual
+	case 6:
+		id, manual = sw.Network6ID, sw.Network6Manual
+	default:
+		return sources
+	}
+	if id != nil && *id != 0 {
+		return []StandardSwitchAddressSource{{ObjectID: *id}}
+	}
+	if manual != "" {
+		sources = append(sources, StandardSwitchAddressSource{CIDR: manual})
+	}
+	return sources
+}
+
+// Network returns the primary CIDR used by the existing route configuration.
 func (sw *StandardSwitch) Network(v int) string {
-	if v == 4 {
-		if sw.NetworkObj != nil && len(sw.NetworkObj.Entries) > 0 {
-			return sw.NetworkObj.Entries[0].Value
-		}
-		return sw.NetworkManual
+	if addresses := sw.Networks(v); len(addresses) > 0 {
+		return addresses[0]
 	}
-
-	if v == 6 {
-		if sw.Network6Obj != nil && len(sw.Network6Obj.Entries) > 0 {
-			return sw.Network6Obj.Entries[0].Value
-		}
-		return sw.Network6Manual
-	}
-
 	return ""
+}
+
+// Networks resolves all static host CIDRs, preserving the primary address and
+// removing duplicates between selected objects and manually configured addresses.
+func (sw *StandardSwitch) Networks(v int) []string {
+	var object *Object
+	var manual string
+	switch v {
+	case 4:
+		object, manual = sw.NetworkObj, sw.NetworkManual
+	case 6:
+		object, manual = sw.Network6Obj, sw.Network6Manual
+	default:
+		return nil
+	}
+
+	values := make([]string, 0)
+	configured := false
+	for _, address := range sw.Addresses {
+		if address.Family != v {
+			continue
+		}
+		configured = true
+		if address.ObjectID != nil {
+			if address.Object != nil {
+				for _, entry := range address.Object.Entries {
+					values = append(values, entry.Value)
+				}
+			}
+		} else {
+			values = append(values, address.CIDR)
+		}
+	}
+	if !configured && object != nil && len(object.Entries) > 0 {
+		for _, entry := range object.Entries {
+			values = append(values, entry.Value)
+		}
+	} else if !configured && manual != "" {
+		values = append(values, manual)
+	}
+	addresses := values[:0]
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if prefix, err := netip.ParsePrefix(value); err == nil {
+			value = prefix.String()
+		}
+		if !seen[value] {
+			seen[value] = true
+			addresses = append(addresses, value)
+		}
+	}
+	return addresses
 }
 
 func (sw *StandardSwitch) Gateway(v int) string {

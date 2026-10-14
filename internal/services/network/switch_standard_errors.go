@@ -15,6 +15,7 @@ const (
 	MaxStandardSwitchPorts              = 256
 	MaxStandardSwitchPortNameBytes      = 64
 	MaxStandardSwitchManualAddressBytes = 256
+	MaxStandardSwitchAddresses          = 64
 )
 
 var (

@@ -193,6 +193,7 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&networkModels.ManualSwitch{},
 		&networkModels.StandardSwitch{},
+		&networkModels.StandardSwitchAddress{},
 		&networkModels.NetworkPort{},
 
 		&networkModels.HostInterfaceL3{},

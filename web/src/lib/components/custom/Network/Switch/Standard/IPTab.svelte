@@ -50,14 +50,16 @@ under sponsorship from the FreeBSD Foundation.
 		<div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
 			<CustomComboBox
 				bind:open={comboBoxes.ipv4.open}
-				label="IPv4 Network"
+				label="IPv4 Addresses"
+				hint="Select network objects or type CIDRs and press Enter. Every CIDR in each selected object is assigned to the switch."
 				bind:value={comboBoxes.ipv4.value}
 				data={networkOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Select object or type CIDR (192.168.1.1/24)"
 				width="w-full"
+				buttonClass="h-auto min-h-9 py-2"
 				disabled={form.dhcp}
-				multiple={false}
+				multiple={true}
 				allowCustom={true}
 			/>
 
@@ -95,14 +97,16 @@ under sponsorship from the FreeBSD Foundation.
 		<div class="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
 			<CustomComboBox
 				bind:open={comboBoxes.ipv6.open}
-				label="IPv6 Network"
+				label="IPv6 Addresses"
+				hint="Select network objects or type CIDRs and press Enter. Every CIDR in each selected object is assigned to the switch."
 				bind:value={comboBoxes.ipv6.value}
 				data={networkOptions}
 				classes="flex-1 space-y-1"
 				placeholder="Select object or type CIDR (2001:db8::1/64)"
 				width="w-full"
+				buttonClass="h-auto min-h-9 py-2"
 				disabled={form.disableIPv6 || form.slaac}
-				multiple={false}
+				multiple={true}
 				allowCustom={true}
 			/>
 

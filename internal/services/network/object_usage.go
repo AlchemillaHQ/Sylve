@@ -106,6 +106,11 @@ func (s *Service) populateObjectUsage(objects []networkModels.Object) error {
 			},
 		},
 		{
+			table: "standard_switch_addresses", usageType: "switch", nameColumn: "name",
+			guestTable: "standard_switches", guestIDColumn: "switch_id",
+			columns: []objectUsageColumn{{"object_id", ""}},
+		},
+		{
 			table: "static_routes", usageType: "route", nameColumn: "name",
 			columns: []objectUsageColumn{
 				{"destination_obj_id", "route"},

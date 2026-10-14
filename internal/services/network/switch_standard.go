@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +105,8 @@ func (s *Service) GetStandardSwitches() ([]networkModels.StandardSwitch, error) 
 		Preload("Ports").
 		Preload("NetworkObj.Entries").
 		Preload("Network6Obj.Entries").
+		Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
+		Preload("Addresses.Object.Entries").
 		Preload("GatewayAddressObj.Entries").
 		Preload("Gateway6AddressObj.Entries").
 		Preload("BridgeMACObject.Entries").
@@ -277,6 +280,8 @@ func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchIn
 		vlan:                  config.VLAN,
 		network4ID:            config.Network4ID,
 		network6ID:            config.Network6ID,
+		addresses4:            config.Addresses4,
+		addresses6:            config.Addresses6,
 		gateway4ID:            config.Gateway4ID,
 		gateway6ID:            config.Gateway6ID,
 		ports:                 config.Ports,
@@ -306,7 +311,7 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, 
 	bridgeName := utils.ShortHash("vm-" + normalizedName)
 
 	var existing networkModels.StandardSwitch
-	err = s.DB.Preload("Ports").Where("name = ?", normalizedName).First(&existing).Error
+	err = s.DB.Preload("Ports").Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).Where("name = ?", normalizedName).First(&existing).Error
 	if err == nil {
 		return s.upsertExistingStandardSwitch(existing, request)
 	}
@@ -509,6 +514,9 @@ func (s *Service) DeleteStandardSwitch(id uint) (retErr error) {
 	if err := tx.Where("switch_id = ?", id).Delete(&networkModels.NetworkPort{}).Error; err != nil {
 		return restoreAfterFailure("delete_ports", fmt.Errorf("delete standard switch ports: %w", err))
 	}
+	if err := tx.Where("switch_id = ?", id).Delete(&networkModels.StandardSwitchAddress{}).Error; err != nil {
+		return restoreAfterFailure("delete_addresses", fmt.Errorf("delete standard switch addresses: %w", err))
+	}
 	if err := tx.Delete(&sw).Error; err != nil {
 		return restoreAfterFailure("delete_switch", fmt.Errorf("delete standard switch: %w", err))
 	}
@@ -681,13 +689,13 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 		"vlan_filtering":             input.vlanConfig.Filtering,
 		"default_access_vlan":        input.vlanConfig.DefaultAccessVLAN,
 		"host_vlan":                  input.vlanConfig.HostVLAN,
-		"network_object_id":          nullableID(input.network4ID),
+		"network_object_id":          nil,
 		"gateway_address_object_id":  nullableID(input.gateway4ID),
-		"network6_object_id":         nullableID(input.network6ID),
+		"network6_object_id":         nil,
 		"gateway6_address_object_id": nullableID(input.gateway6ID),
-		"network_manual":             input.manual.Network4,
+		"network_manual":             "",
 		"gateway_manual":             input.manual.Gateway4,
-		"network6_manual":            input.manual.Network6,
+		"network6_manual":            "",
 		"gateway6_manual":            input.manual.Gateway6,
 		"bridge_mac_mode":            input.macSource.Mode,
 		"bridge_mac_source_port":     input.macSource.Port,
@@ -695,6 +703,15 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 	}
 	if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", request.ID).Updates(updates).Error; err != nil {
 		return fmt.Errorf("update standard switch: %w", err)
+	}
+	if err := tx.Where("switch_id = ?", request.ID).Delete(&networkModels.StandardSwitchAddress{}).Error; err != nil {
+		return fmt.Errorf("replace standard switch addresses: %w", err)
+	}
+	addressRows := standardSwitchAddresses(request.ID, input.addresses4, input.addresses6)
+	if len(addressRows) > 0 {
+		if err := tx.Create(&addressRows).Error; err != nil {
+			return fmt.Errorf("create updated standard switch addresses: %w", err)
+		}
 	}
 	if modeChanged {
 		if err := requireNoStandardSwitchWorkloadAttachments(tx, request.ID); err != nil {
@@ -787,6 +804,8 @@ func (s *Service) SyncStandardSwitches() error {
 	if err := s.DB.Preload("Ports").
 		Preload("NetworkObj.Entries").
 		Preload("Network6Obj.Entries").
+		Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
+		Preload("Addresses.Object.Entries").
 		Preload("GatewayAddressObj.Entries").
 		Preload("Gateway6AddressObj.Entries").
 		Preload("BridgeMACObject.Entries").
@@ -1063,8 +1082,8 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 
 	network4, gateway4 := sw.Network(4), sw.Gateway(4)
 	assignableNetwork4 := utils.IsAssignableIPv4CIDR(network4)
-	if assignableNetwork4 && !sw.VLANFiltering {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet", network4); err != nil {
+	if !sw.DHCP && !sw.VLANFiltering {
+		if err := reconcileStandardSwitchStaticAddresses(sw.BridgeName, 4, &iface.Interface{}, nil, sw.Networks(4), false); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_network: %v", err)
 		}
 	}
@@ -1093,8 +1112,8 @@ func createStandardBridge(sw networkModels.StandardSwitch) (retErr error) {
 		}
 	}
 	assignableNetwork6 := utils.IsAssignableIPv6CIDR(network6)
-	if assignableNetwork6 && !sw.DisableIPv6 && !sw.VLANFiltering {
-		if _, err := syncRunCommand("/sbin/ifconfig", sw.BridgeName, "inet6", network6, "-no_dad"); err != nil {
+	if !sw.SLAAC && !sw.DisableIPv6 && !sw.VLANFiltering {
+		if err := reconcileStandardSwitchStaticAddresses(sw.BridgeName, 6, &iface.Interface{}, nil, sw.Networks(6), false, "-no_dad"); err != nil {
 			return fmt.Errorf("create_standard_bridge: failed_to_set_bridge_address6: %v", err)
 		}
 	}
@@ -1342,9 +1361,10 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 	}
 
 	old4Network, new4Network := oldSw.Network(4), newSw.Network(4)
+	old4Networks, new4Networks := oldSw.Networks(4), newSw.Networks(4)
 	old4Gateway, new4Gateway := oldSw.Gateway(4), newSw.Gateway(4)
-	ipv4AddressChanged := oldSw.DHCP != newSw.DHCP || old4Network != new4Network
-	ipv4NetworkRouteChanged := ipv4AddressChanged || old4Gateway != new4Gateway
+	ipv4AddressChanged := oldSw.DHCP != newSw.DHCP || !slices.Equal(old4Networks, new4Networks)
+	ipv4NetworkRouteChanged := oldSw.DHCP != newSw.DHCP || old4Network != new4Network || old4Gateway != new4Gateway
 	ipv4DefaultRouteChanged := oldSw.DHCP != newSw.DHCP ||
 		oldSw.DefaultRoute != newSw.DefaultRoute || old4Gateway != new4Gateway
 
@@ -1367,32 +1387,21 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 				}
 			}
 		default:
-			if old4Network != "" && old4Network != new4Network &&
-				interfaceHasIPv4Prefix(ifaceObj, old4Network) {
-				if _, err := syncRunCommand("/sbin/ifconfig", br, "inet", old4Network, "delete"); err != nil {
-					logger.L.Warn().Msgf("edit_standard_bridge: del old inet %s: %v", old4Network, err)
-				}
-			}
-			if new4Network == "" {
-				if err := deleteStandardSwitchHostIPv4(br, ifaceObj, ""); err != nil {
-					return fmt.Errorf("edit_standard_bridge: reconcile IPv4 addresses: %v", err)
-				}
-			}
-			if utils.IsAssignableIPv4CIDR(new4Network) && !interfaceHasIPv4Prefix(ifaceObj, new4Network) {
-				if _, err := syncRunCommand("/sbin/ifconfig", br, "inet", new4Network); err != nil {
-					return fmt.Errorf("edit_standard_bridge: set inet %s: %v", new4Network, err)
-				}
+			if err := reconcileStandardSwitchStaticAddresses(br, 4, ifaceObj, old4Networks, new4Networks, len(new4Networks) == 0); err != nil {
+				return fmt.Errorf("edit_standard_bridge: reconcile IPv4 addresses: %w", err)
 			}
 		}
 	}
 
 	old6Network, new6Network := oldSw.Network(6), newSw.Network(6)
+	old6Networks, new6Networks := oldSw.Networks(6), newSw.Networks(6)
 	old6Gateway, new6Gateway := oldSw.Gateway(6), newSw.Gateway(6)
 	ipv6ModeChanged := oldSw.DisableIPv6 != newSw.DisableIPv6 ||
 		oldSw.SLAAC != newSw.SLAAC || oldSw.DefaultRoute6 != newSw.DefaultRoute6
 	ipv6AddressChanged := oldSw.DisableIPv6 != newSw.DisableIPv6 ||
-		oldSw.SLAAC != newSw.SLAAC || old6Network != new6Network
-	ipv6NetworkRouteChanged := ipv6AddressChanged || old6Gateway != new6Gateway
+		oldSw.SLAAC != newSw.SLAAC || !slices.Equal(old6Networks, new6Networks)
+	ipv6NetworkRouteChanged := oldSw.DisableIPv6 != newSw.DisableIPv6 ||
+		oldSw.SLAAC != newSw.SLAAC || old6Network != new6Network || old6Gateway != new6Gateway
 	ipv6DefaultRouteChanged := ipv6ModeChanged || old6Gateway != new6Gateway
 
 	if ipv6NetworkRouteChanged && old6Gateway != "" && old6Network != "" {
@@ -1443,10 +1452,9 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 				return fmt.Errorf("edit_standard_bridge: remove disabled IPv6 addresses: %v", err)
 			}
 		default:
-			if old6Network != "" && old6Network != new6Network &&
-				interfaceHasIPv6Prefix(ifaceObj, old6Network) {
-				if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", old6Network, "delete"); err != nil {
-					logger.L.Warn().Msgf("edit_standard_bridge: del old inet6 %s: %v", old6Network, err)
+			if newSw.SLAAC {
+				if err := reconcileStandardSwitchStaticAddresses(br, 6, ifaceObj, old6Networks, nil, false); err != nil {
+					return fmt.Errorf("edit_standard_bridge: remove static IPv6 addresses: %w", err)
 				}
 			}
 			if !newSw.SLAAC && (fullReconcile || oldSw.SLAAC != newSw.SLAAC) {
@@ -1464,10 +1472,9 @@ func editStandardBridge(oldSw, newSw networkModels.StandardSwitch) error {
 					}
 				}
 			}
-			if !newSw.SLAAC && utils.IsAssignableIPv6CIDR(new6Network) &&
-				!interfaceHasIPv6Prefix(ifaceObj, new6Network) {
-				if _, err := syncRunCommand("/sbin/ifconfig", br, "inet6", new6Network); err != nil {
-					return fmt.Errorf("edit_standard_bridge: set inet6 %s: %v", new6Network, err)
+			if !newSw.SLAAC {
+				if err := reconcileStandardSwitchStaticAddresses(br, 6, ifaceObj, old6Networks, new6Networks, false); err != nil {
+					return fmt.Errorf("edit_standard_bridge: reconcile IPv6 addresses: %w", err)
 				}
 			}
 		}

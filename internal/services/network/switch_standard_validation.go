@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
@@ -44,6 +45,8 @@ type standardSwitchInput struct {
 	vlan                  int
 	network4ID            uint
 	network6ID            uint
+	addresses4            []networkModels.StandardSwitchAddressSource
+	addresses6            []networkModels.StandardSwitchAddressSource
 	gateway4ID            uint
 	gateway6ID            uint
 	ports                 []string
@@ -134,6 +137,7 @@ func standardSwitchHasHostL3(input standardSwitchInput) bool {
 		input.gateway4ID != 0 || input.gateway6ID != 0 ||
 		strings.TrimSpace(input.manual.Network4) != "" ||
 		strings.TrimSpace(input.manual.Network6) != "" ||
+		len(input.addresses4) != 0 || len(input.addresses6) != 0 ||
 		strings.TrimSpace(input.manual.Gateway4) != "" ||
 		strings.TrimSpace(input.manual.Gateway6) != "" ||
 		input.dhcp || input.slaac || input.defaultRoute || input.defaultRoute6
@@ -144,6 +148,7 @@ func standardSwitchHasPersistedHostL3(sw networkModels.StandardSwitch) bool {
 		sw.GatewayAddressID != nil || sw.Gateway6AddressID != nil ||
 		strings.TrimSpace(sw.NetworkManual) != "" ||
 		strings.TrimSpace(sw.Network6Manual) != "" ||
+		len(sw.Addresses) != 0 ||
 		strings.TrimSpace(sw.GatewayManual) != "" ||
 		strings.TrimSpace(sw.Gateway6Manual) != "" ||
 		sw.DHCP || sw.SLAAC || sw.DefaultRoute || sw.DefaultRoute6
@@ -278,39 +283,46 @@ func (s *Service) validateStandardSwitchMACSource(
 	}
 }
 
-func (s *Service) validateStandardSwitchObject(id uint, objectType string, family int, field string) (string, error) {
+func (s *Service) validateStandardSwitchObject(id uint, objectType string, family int, field string) ([]string, error) {
 	if id == 0 {
-		return "", nil
+		return nil, nil
 	}
 
 	var object networkModels.Object
 	if err := s.DB.Preload("Entries").First(&object, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", invalidStandardSwitch("invalid_standard_switch_"+field+"_object", err)
+			return nil, invalidStandardSwitch("invalid_standard_switch_"+field+"_object", err)
 		}
-		return "", fmt.Errorf("load standard switch %s object: %w", field, err)
+		return nil, fmt.Errorf("load standard switch %s object: %w", field, err)
 	}
-	if object.Type != objectType || len(object.Entries) != 1 {
-		return "", invalidStandardSwitch("invalid_standard_switch_"+field+"_object", nil)
+	if object.Type != objectType || len(object.Entries) == 0 || (objectType != "Network" && len(object.Entries) != 1) {
+		return nil, invalidStandardSwitch("invalid_standard_switch_"+field+"_object", nil)
+	}
+	if objectType == "Network" {
+		values := make([]string, 0, len(object.Entries))
+		for _, entry := range object.Entries {
+			values = append(values, entry.Value)
+		}
+		values, err := normalizeStandardSwitchCIDRs(values, family)
+		if err != nil {
+			return nil, invalidStandardSwitch("invalid_standard_switch_"+field+"_object", err)
+		}
+		return values, nil
 	}
 
 	value := strings.TrimSpace(object.Entries[0].Value)
 	valid := false
 	switch {
-	case objectType == "Network" && family == 4:
-		valid = utils.IsAssignableIPv4CIDR(value)
-	case objectType == "Network" && family == 6:
-		valid = utils.IsAssignableIPv6CIDR(value)
 	case objectType == "Host" && family == 4:
 		valid = utils.IsValidIPv4(value)
 	case objectType == "Host" && family == 6:
 		valid = utils.IsValidIPv6(value)
 	}
 	if !valid {
-		return "", invalidStandardSwitch("invalid_standard_switch_"+field+"_object", nil)
+		return nil, invalidStandardSwitch("invalid_standard_switch_"+field+"_object", nil)
 	}
 
-	return value, nil
+	return []string{value}, nil
 }
 
 func normalizeStandardSwitchInput(input standardSwitchInput) (standardSwitchInput, error) {
@@ -332,6 +344,18 @@ func normalizeStandardSwitchInput(input standardSwitchInput) (standardSwitchInpu
 	input.vlanConfig, err = normalizeStandardSwitchVLANConfig(input.vlanConfig, input.ports)
 	if err != nil {
 		return input, err
+	}
+	if input.dhcp {
+		input.addresses4 = []networkModels.StandardSwitchAddressSource{}
+	}
+	if input.disableIPv6 || input.slaac {
+		input.addresses6 = []networkModels.StandardSwitchAddressSource{}
+	}
+	if input.addresses4 != nil {
+		input.network4ID, input.manual.Network4 = 0, ""
+	}
+	if input.addresses6 != nil {
+		input.network6ID, input.manual.Network6 = 0, ""
 	}
 	modes := normalizeStandardSwitchAddressModes(standardSwitchAddressModes{
 		network4ID:  input.network4ID,
@@ -373,6 +397,20 @@ func normalizeStandardSwitchInput(input standardSwitchInput) (standardSwitchInpu
 		return input, err
 	}
 	input.manual = manual
+	if input.addresses4 == nil {
+		input.addresses4 = legacyStandardSwitchAddressSources(input.network4ID, manual.Network4)
+	}
+	if input.addresses6 == nil {
+		input.addresses6 = legacyStandardSwitchAddressSources(input.network6ID, manual.Network6)
+	}
+	if input.addresses4, err = normalizeStandardSwitchAddressSources(input.addresses4, 4); err != nil {
+		return input, err
+	}
+	if input.addresses6, err = normalizeStandardSwitchAddressSources(input.addresses6, 6); err != nil {
+		return input, err
+	}
+	input.network4ID, input.network6ID = 0, 0
+	input.manual.Network4, input.manual.Network6 = "", ""
 	input.macSource.Mode = strings.ToLower(strings.TrimSpace(input.macSource.Mode))
 	input.macSource.Port = strings.TrimSpace(input.macSource.Port)
 
@@ -390,7 +428,7 @@ func (s *Service) validateStandardSwitchInput(
 		return input, err
 	}
 
-	network4, err := s.validateStandardSwitchObject(input.network4ID, "Network", 4, "network4")
+	network4, err := s.validateStandardSwitchAddressSources(input.addresses4, 4)
 	if err != nil {
 		return input, err
 	}
@@ -398,7 +436,7 @@ func (s *Service) validateStandardSwitchInput(
 	if err != nil {
 		return input, err
 	}
-	network6, err := s.validateStandardSwitchObject(input.network6ID, "Network", 6, "network6")
+	network6, err := s.validateStandardSwitchAddressSources(input.addresses6, 6)
 	if err != nil {
 		return input, err
 	}
@@ -407,32 +445,23 @@ func (s *Service) validateStandardSwitchInput(
 		return input, err
 	}
 
-	if network4 == "" {
-		network4 = input.manual.Network4
-	}
-	if gateway4 == "" {
-		gateway4 = input.manual.Gateway4
-	}
-	if network6 == "" {
-		network6 = input.manual.Network6
-	}
-	if gateway6 == "" {
-		gateway6 = input.manual.Gateway6
-	}
-
-	if gateway4 != "" && network4 == "" {
+	hasNetwork4 := len(network4) > 0
+	hasNetwork6 := len(network6) > 0
+	hasGateway4 := len(gateway4) > 0 || input.manual.Gateway4 != ""
+	hasGateway6 := len(gateway6) > 0 || input.manual.Gateway6 != ""
+	if hasGateway4 && !hasNetwork4 {
 		return input, invalidStandardSwitch("standard_switch_ipv4_gateway_requires_network", nil)
 	}
-	if gateway6 != "" && network6 == "" {
+	if hasGateway6 && !hasNetwork6 {
 		return input, invalidStandardSwitch("standard_switch_ipv6_gateway_requires_network", nil)
 	}
-	if input.defaultRoute && !input.dhcp && (network4 == "" || gateway4 == "") {
+	if input.defaultRoute && !input.dhcp && (!hasNetwork4 || !hasGateway4) {
 		return input, invalidStandardSwitch("standard_switch_default_route_requires_ipv4_gateway", nil)
 	}
 	if input.defaultRoute6 && input.disableIPv6 {
 		return input, invalidStandardSwitch("standard_switch_ipv6_default_route_requires_ipv6", nil)
 	}
-	if input.defaultRoute6 && !input.slaac && (network6 == "" || gateway6 == "") {
+	if input.defaultRoute6 && !input.slaac && (!hasNetwork6 || !hasGateway6) {
 		return input, invalidStandardSwitch("standard_switch_default_route6_requires_ipv6_gateway", nil)
 	}
 
@@ -938,8 +967,8 @@ type standardSwitchAdoptionAddressPolicy struct {
 	layer2Only  bool
 	dhcp        bool
 	dhcpLeases  []standardSwitchDHCPLease
-	static4     string
-	static6     string
+	static4     []string
+	static6     []string
 	disableIPv6 bool
 	slaac       bool
 }
@@ -956,8 +985,8 @@ func validateStandardSwitchAdoptionLayer3(sw networkModels.StandardSwitch, targe
 	return validateStandardSwitchAdoptionAddresses(standardSwitchAdoptionAddressPolicy{
 		dhcp:        sw.DHCP,
 		dhcpLeases:  dhcpLeases,
-		static4:     sw.Network(4),
-		static6:     sw.Network(6),
+		static4:     sw.Networks(4),
+		static6:     sw.Networks(6),
 		disableIPv6: sw.DisableIPv6,
 		slaac:       sw.SLAAC,
 	}, target, targetName)
@@ -981,7 +1010,9 @@ func validateStandardSwitchAdoptionAddresses(policy standardSwitchAdoptionAddres
 			}
 			continue
 		}
-		if policy.static4 == "" || !interfaceIPv4AddressMatchesPrefix(address, policy.static4) {
+		if !slices.ContainsFunc(policy.static4, func(value string) bool {
+			return interfaceIPv4AddressMatchesPrefix(address, value)
+		}) {
 			problems = append(problems, fmt.Sprintf("%s has unexpected IPv4 address %s", targetName, ip))
 		}
 	}
@@ -1004,7 +1035,9 @@ func validateStandardSwitchAdoptionAddresses(policy standardSwitchAdoptionAddres
 			}
 			continue
 		}
-		if policy.static6 == "" || !interfaceIPv6AddressMatchesPrefix(address, policy.static6) {
+		if !slices.ContainsFunc(policy.static6, func(value string) bool {
+			return interfaceIPv6AddressMatchesPrefix(address, value)
+		}) {
 			problems = append(problems, fmt.Sprintf("%s has unexpected IPv6 address %s", targetName, ip))
 		}
 	}

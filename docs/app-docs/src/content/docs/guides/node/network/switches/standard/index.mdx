@@ -42,6 +42,12 @@ For a dual-stack LAN with a portless bridge, create these one-entry objects befo
 
 Use a **Network** object for the address _on the bridge_, expressed in CIDR notation; not the bare subnet base such as `10.20.30.0/24`. Use a **Host** object for each gateway. The switch form also accepts a typed CIDR for Network and a typed IP address for Gateway, but objects are preferred: they provide one reusable, inspectable source of truth for addresses used elsewhere in Sylve.
 
+Network objects may contain multiple host CIDRs, provided every entry belongs to the selected IP family. Sylve assigns all entries. For example, an IPv6 Network object can contain both `fd12:6767::10/64` (ULA) and `2001:db8:6767::10/64` (documentation GUA prefix; replace it with your routed prefix).
+
+Use **IPv4 Addresses** and **IPv6 Addresses** to select multiple Network objects, enter manual CIDRs, or mix both in the same field. Type each CIDR and press Enter; select an existing entry again to remove it. Object selections remain references: editing an object updates the switches that use it, and an object cannot be deleted while it is used. Sylve saves and reapplies the complete address list at startup, including on a configured Host VLAN interface. Each family supports up to 64 distinct addresses. DHCP and SLAAC remain alternatives to static addressing for their respective families.
+
+Each family still has one gateway and default-route setting; additional addresses do not need separate gateways. The first CIDR remains the primary address for the existing route configuration. Duplicate addresses with the same prefix length are assigned only once; assigning the same address with different prefix lengths is rejected.
+
 A Standard Switch also requires an explicit bridge MAC source. A bridge with physical ports can inherit the MAC of one selected port. A portless bridge must use a single-entry **MAC** object. The address must be a valid non-zero unicast MAC. A locally administered address whose first octet is `02`, such as the example above, is appropriate when it is unique on your network.
 
 ## Create the switch
@@ -60,7 +66,7 @@ Open **Network → Switches → Standard** and select **New**. The modal creates
 | **Name**                | A unique Sylve switch name. Sylve derives a bridge name from it; do not rely on that generated bridge name as a user-facing identifier.                                               |
 | **MTU**                 | The bridge MTU. Leave the default unless every link in the path is configured for a different value.                                                                                  |
 | **VLAN**                | Optional VLAN tag applied when Sylve creates member interfaces for the selected ports.                                                                                                |
-| **IPv4 / IPv6 Network** | The bridge's address in CIDR notation, selected from a one-entry Network object or typed directly.                                                                                    |
+| **IPv4 / IPv6 Addresses** | Select multiple Network objects or enter CIDRs directly. All same-family entries from each selected object are assigned.                                                            |
 | **IPv4 / IPv6 Gateway** | The next-hop router, selected from a Host object or typed directly. A gateway requires the corresponding network/address.                                                             |
 | **Ports**               | Interfaces that Sylve will attach to the bridge. **Sylve clears all IPv4 and IPv6 addresses from each selected port before attachment.** Configure the address on the bridge instead. |
 | **Bridge MAC source**   | Select **Use port MAC** and one of the switch ports, or select **Use MAC object** and a single-entry MAC object. The form displays the effective MAC before saving.                   |

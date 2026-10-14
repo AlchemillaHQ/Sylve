@@ -10,6 +10,7 @@ package repl
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
@@ -209,6 +210,31 @@ func TestApplyStandardSwitchEditRequestPreservesAndNormalizesState(t *testing.T)
 	}
 	if config.MTU != 1500 || config.VLAN != 10 || len(config.Ports) != 1 {
 		t.Fatalf("expected untouched fields to be preserved: %#v", config)
+	}
+}
+
+func TestStandardSwitchEditPreservesAddressSources(t *testing.T) {
+	objectID := uint(7)
+	sw := networkModels.StandardSwitch{
+		Addresses: []networkModels.StandardSwitchAddress{
+			{Family: 4, CIDR: "192.0.2.11/24"}, {Family: 4, ObjectID: &objectID}, {Family: 6, CIDR: "2001:db8::10/64"},
+		},
+	}
+	config := standardSwitchEditConfigFromModel(sw)
+	mtu := 9000
+	if err := applyStandardSwitchEditRequest(&config, consoleprotocol.StandardSwitchEditRequest{MTU: &mtu}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(config.Addresses4, sw.AddressSources(4)) || !slices.Equal(config.Addresses6, sw.AddressSources(6)) {
+		t.Fatalf("unrelated console edit lost address sources: %#v", config)
+	}
+	manual := "192.0.2.12/24"
+	if err := applyStandardSwitchEditRequest(&config, consoleprotocol.StandardSwitchEditRequest{Network4Manual: &manual}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(config.Addresses4, []networkModels.StandardSwitchAddressSource{{CIDR: manual}, {ObjectID: objectID}}) ||
+		!slices.Equal(config.Addresses6, sw.AddressSources(6)) {
+		t.Fatalf("console address edit lost other address sources: %#v", config)
 	}
 }
 

@@ -96,6 +96,8 @@ type StandardSwitchConfig struct {
 	VLAN                  int
 	Network4ID            uint
 	Network6ID            uint
+	Addresses4            []networkModels.StandardSwitchAddressSource
+	Addresses6            []networkModels.StandardSwitchAddressSource
 	Gateway4ID            uint
 	Gateway6ID            uint
 	Ports                 []string

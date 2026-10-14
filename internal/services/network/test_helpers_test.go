@@ -43,6 +43,7 @@ func newNetworkServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&networkServiceTestJail{},
 		&jailModels.Network{},
 		&networkModels.StandardSwitch{},
+		&networkModels.StandardSwitchAddress{},
 		&networkModels.HostInterfaceL3{},
 		&networkModels.HostInterfaceL3Address{},
 		&networkModels.PendingApply{},

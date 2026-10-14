@@ -3908,6 +3908,10 @@ definitions:
         type: integer
       addressObj:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      addresses:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddress'
+        type: array
       bridgeMacMode:
         type: string
       bridgeMacObject:
@@ -3985,6 +3989,30 @@ definitions:
         type: integer
       vlanFiltering:
         type: boolean
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddress:
+    properties:
+      cidr:
+        type: string
+      family:
+        type: integer
+      id:
+        type: integer
+      object:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.Object'
+      objectId:
+        type: integer
+      ordering:
+        type: integer
+      switchId:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource:
+    properties:
+      cidr:
+        type: string
+      objectId:
+        type: integer
     type: object
   github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource:
     properties:
@@ -10295,6 +10323,18 @@ definitions:
     type: object
   internal_handlers_network.CreateStandardSwitchRequest:
     properties:
+      addresses4:
+        description: Ordered IPv4 sources. All CIDRs in each selected Network object
+          are assigned; replaces network4/network4Manual when supplied.
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource'
+        type: array
+      addresses6:
+        description: Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual
+          when supplied.
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource'
+        type: array
       bridgeMac:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
       confirmRCConflicts:
@@ -10392,6 +10432,18 @@ definitions:
     type: object
   internal_handlers_network.UpdateStandardSwitchRequest:
     properties:
+      addresses4:
+        description: Ordered IPv4 sources. All CIDRs in each selected Network object
+          are assigned; replaces network4/network4Manual when supplied.
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource'
+        type: array
+      addresses6:
+        description: Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual
+          when supplied.
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchAddressSource'
+        type: array
       bridgeMac:
         $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_network.StandardSwitchMACSource'
       confirmHostLayer3Removal:

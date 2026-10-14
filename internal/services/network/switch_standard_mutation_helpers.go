@@ -29,6 +29,8 @@ func loadStandardSwitch(db *gorm.DB, id uint) (networkModels.StandardSwitch, err
 		Preload("Ports").
 		Preload("NetworkObj.Entries").
 		Preload("Network6Obj.Entries").
+		Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
+		Preload("Addresses.Object.Entries").
 		Preload("GatewayAddressObj.Entries").
 		Preload("Gateway6AddressObj.Entries").
 		Preload("BridgeMACObject.Entries").
@@ -57,27 +59,18 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 		VLANFiltering:         input.vlanConfig.Filtering,
 		DefaultAccessVLAN:     input.vlanConfig.DefaultAccessVLAN,
 		HostVLAN:              input.vlanConfig.HostVLAN,
-		NetworkManual:         input.manual.Network4,
 		GatewayManual:         input.manual.Gateway4,
-		Network6Manual:        input.manual.Network6,
 		Gateway6Manual:        input.manual.Gateway6,
+		Addresses:             standardSwitchAddresses(0, input.addresses4, input.addresses6),
 		BridgeMACMode:         input.macSource.Mode,
 		BridgeMACSourcePort:   input.macSource.Port,
 	}
 	if input.macSource.MACObjectID != 0 {
 		sw.BridgeMACObjectID = &input.macSource.MACObjectID
 	}
-	if input.network4ID != 0 {
-		sw.NetworkID = &input.network4ID
-		sw.NetworkManual = ""
-	}
 	if input.gateway4ID != 0 {
 		sw.GatewayAddressID = &input.gateway4ID
 		sw.GatewayManual = ""
-	}
-	if input.network6ID != 0 {
-		sw.Network6ID = &input.network6ID
-		sw.Network6Manual = ""
 	}
 	if input.gateway6ID != 0 {
 		sw.Gateway6AddressID = &input.gateway6ID
@@ -141,14 +134,13 @@ func standardSwitchMatchesInput(sw networkModels.StandardSwitch, input standardS
 		sw.DisableIPv6 != input.disableIPv6 || sw.SLAAC != input.slaac ||
 		sw.DefaultRoute != input.defaultRoute || sw.DefaultRoute6 != input.defaultRoute6 ||
 		sw.DisableBridgeOffloads != input.disableBridgeOffloads ||
-		sw.NetworkManual != input.manual.Network4 || sw.GatewayManual != input.manual.Gateway4 ||
-		sw.Network6Manual != input.manual.Network6 || sw.Gateway6Manual != input.manual.Gateway6 ||
+		sw.GatewayManual != input.manual.Gateway4 || sw.Gateway6Manual != input.manual.Gateway6 ||
+		!slices.Equal(sw.AddressSources(4), input.addresses4) ||
+		!slices.Equal(sw.AddressSources(6), input.addresses6) ||
 		sw.BridgeMACMode != input.macSource.Mode || sw.BridgeMACSourcePort != input.macSource.Port ||
 		sw.VLANFiltering != input.vlanConfig.Filtering ||
 		!optionalVLANEqual(sw.DefaultAccessVLAN, input.vlanConfig.DefaultAccessVLAN) ||
 		!optionalVLANEqual(sw.HostVLAN, input.vlanConfig.HostVLAN) ||
-		!standardSwitchOptionalIDMatches(sw.NetworkID, input.network4ID) ||
-		!standardSwitchOptionalIDMatches(sw.Network6ID, input.network6ID) ||
 		!standardSwitchOptionalIDMatches(sw.GatewayAddressID, input.gateway4ID) ||
 		!standardSwitchOptionalIDMatches(sw.Gateway6AddressID, input.gateway6ID) ||
 		!standardSwitchOptionalIDMatches(sw.BridgeMACObjectID, input.macSource.MACObjectID) ||
@@ -178,13 +170,13 @@ func standardSwitchModelsMatch(left, right networkModels.StandardSwitch) bool {
 	}
 
 	return left.Name == right.Name && left.BridgeName == right.BridgeName &&
-		left.Network(4) == right.Network(4) && left.Gateway(4) == right.Gateway(4) &&
-		left.Network(6) == right.Network(6) && left.Gateway(6) == right.Gateway(6) &&
+		slices.Equal(left.Networks(4), right.Networks(4)) && left.Gateway(4) == right.Gateway(4) &&
+		slices.Equal(left.Networks(6), right.Networks(6)) && left.Gateway(6) == right.Gateway(6) &&
 		standardSwitchMatchesInput(left, standardSwitchInput{
 			mtu:                   right.MTU,
 			vlan:                  right.VLAN,
-			network4ID:            standardSwitchOptionalIDValue(right.NetworkID),
-			network6ID:            standardSwitchOptionalIDValue(right.Network6ID),
+			addresses4:            right.AddressSources(4),
+			addresses6:            right.AddressSources(6),
 			gateway4ID:            standardSwitchOptionalIDValue(right.GatewayAddressID),
 			gateway6ID:            standardSwitchOptionalIDValue(right.Gateway6AddressID),
 			ports:                 ports,
@@ -196,9 +188,7 @@ func standardSwitchModelsMatch(left, right networkModels.StandardSwitch) bool {
 			defaultRoute6:         right.DefaultRoute6,
 			disableBridgeOffloads: right.DisableBridgeOffloads,
 			manual: networkModels.StandardSwitchManualAddresses{
-				Network4: right.NetworkManual,
 				Gateway4: right.GatewayManual,
-				Network6: right.Network6Manual,
 				Gateway6: right.Gateway6Manual,
 			},
 			macSource: networkModels.StandardSwitchMACSource{
@@ -557,6 +547,12 @@ func hydrateStandardSwitchObjects(db *gorm.DB, sw *networkModels.StandardSwitch)
 		{sw.Gateway6AddressID, &sw.Gateway6AddressObj},
 		{sw.BridgeMACObjectID, &sw.BridgeMACObject},
 	}
+	for i := range sw.Addresses {
+		refs = append(refs, struct {
+			id     *uint
+			target **networkModels.Object
+		}{sw.Addresses[i].ObjectID, &sw.Addresses[i].Object})
+	}
 	for _, ref := range refs {
 		if ref.id == nil || *ref.id == 0 {
 			continue
@@ -588,6 +584,12 @@ func (s *Service) adoptStandardSwitchBridge(name, bridgeName string, input stand
 				return standardSwitchConflict("standard_switch_name_or_bridge_conflict", err)
 			}
 			return fmt.Errorf("create adopted standard switch: %w", err)
+		}
+		addressRows := standardSwitchAddresses(sw.ID, input.addresses4, input.addresses6)
+		if len(addressRows) > 0 {
+			if err := tx.Create(&addressRows).Error; err != nil {
+				return fmt.Errorf("create adopted standard switch addresses: %w", err)
+			}
 		}
 		portRows := standardSwitchPorts(sw.ID, input.ports, input.vlanConfig.PortPolicies)
 		if len(portRows) > 0 {

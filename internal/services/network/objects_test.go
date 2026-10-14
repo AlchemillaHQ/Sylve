@@ -881,7 +881,7 @@ func TestEditObjectSwitchSyncFailureRestoresObjectAndRuntime(t *testing.T) {
 	object := networkModels.Object{
 		Name:    "switch-network",
 		Type:    "Network",
-		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.0/24"}},
+		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.10/24"}},
 	}
 	if err := db.Create(&object).Error; err != nil {
 		t.Fatalf("seed object: %v", err)
@@ -918,7 +918,7 @@ func TestEditObjectSwitchSyncFailureRestoresObjectAndRuntime(t *testing.T) {
 		},
 	})
 
-	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.0/24"})
+	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.10/24"})
 	if !errors.Is(err, syncFailure) {
 		t.Fatalf("edit error=%v want sync failure", err)
 	}
@@ -927,12 +927,12 @@ func TestEditObjectSwitchSyncFailureRestoresObjectAndRuntime(t *testing.T) {
 	if err := db.Preload("Entries").First(&restored, object.ID).Error; err != nil {
 		t.Fatalf("reload object: %v", err)
 	}
-	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.0/24" {
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.10/24" {
 		t.Fatalf("object was not restored: %#v", restored.Entries)
 	}
 	wantTransitions := []string{
-		"192.0.2.0/24 -> 198.51.100.0/24",
-		"198.51.100.0/24 -> 192.0.2.0/24",
+		"192.0.2.10/24 -> 198.51.100.10/24",
+		"198.51.100.10/24 -> 192.0.2.10/24",
 	}
 	if !slices.Equal(runtimeTransitions, wantTransitions) {
 		t.Fatalf("runtime reconciliation sequence=%v", runtimeTransitions)
@@ -950,7 +950,7 @@ func TestEditObjectLaterFailureRestoresSwitchRuntime(t *testing.T) {
 	object := networkModels.Object{
 		Name:    "switch-network-late-failure",
 		Type:    "Network",
-		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.0/24"}},
+		Entries: []networkModels.ObjectEntry{{Value: "192.0.2.10/24"}},
 	}
 	if err := db.Create(&object).Error; err != nil {
 		t.Fatalf("seed object: %v", err)
@@ -994,13 +994,13 @@ func TestEditObjectLaterFailureRestoresSwitchRuntime(t *testing.T) {
 	}
 	t.Cleanup(func() { firewallRunCommand = previousRunCommand })
 
-	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.0/24"})
+	err := svc.EditObject(object.ID, object.Name, object.Type, []string{"198.51.100.10/24"})
 	if err == nil {
 		t.Fatal("expected firewall apply failure")
 	}
 	wantTransitions := []string{
-		"192.0.2.0/24 -> 198.51.100.0/24",
-		"198.51.100.0/24 -> 192.0.2.0/24",
+		"192.0.2.10/24 -> 198.51.100.10/24",
+		"198.51.100.10/24 -> 192.0.2.10/24",
 	}
 	if !slices.Equal(runtimeTransitions, wantTransitions) {
 		t.Fatalf("runtime reconciliation sequence=%v", runtimeTransitions)
@@ -1010,7 +1010,7 @@ func TestEditObjectLaterFailureRestoresSwitchRuntime(t *testing.T) {
 	if err := db.Preload("Entries").First(&restored, object.ID).Error; err != nil {
 		t.Fatalf("reload object: %v", err)
 	}
-	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.0/24" {
+	if len(restored.Entries) != 1 || restored.Entries[0].Value != "192.0.2.10/24" {
 		t.Fatalf("object was not restored: %#v", restored.Entries)
 	}
 }

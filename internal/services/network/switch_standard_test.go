@@ -2514,7 +2514,7 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 	}
 
 	var got networkModels.StandardSwitch
-	if err := db.Where("name = ?", "manual-store").First(&got).Error; err != nil {
+	if err := db.Preload("Addresses").Where("name = ?", "manual-store").First(&got).Error; err != nil {
 		t.Fatalf("failed to load created switch: %v", err)
 	}
 
@@ -2524,9 +2524,10 @@ func TestNewStandardSwitchStoresManualAddresses(t *testing.T) {
 	if got.BridgeMACMode != networkModels.StandardSwitchMACModeObject || got.BridgeMACObjectID == nil || *got.BridgeMACObjectID != macSource.MACObjectID {
 		t.Fatalf("bridge MAC object source not persisted: %+v", got)
 	}
-	if got.NetworkManual != "10.81.0.254/24" || got.GatewayManual != "10.81.0.1" ||
-		got.Network6Manual != "2001:db8:81::1/64" || got.Gateway6Manual != "fe80::1" {
-		t.Fatalf("manual columns not persisted: %+v", got)
+	if !slices.Equal(got.AddressSources(4), []networkModels.StandardSwitchAddressSource{{CIDR: "10.81.0.254/24"}}) ||
+		!slices.Equal(got.AddressSources(6), []networkModels.StandardSwitchAddressSource{{CIDR: "2001:db8:81::1/64"}}) ||
+		got.GatewayManual != "10.81.0.1" || got.Gateway6Manual != "fe80::1" {
+		t.Fatalf("manual address sources not persisted: %+v", got)
 	}
 	if got.Network(4) != "10.81.0.254/24" || got.Gateway(6) != "fe80::1" {
 		t.Fatalf("helpers did not resolve manual values: net4=%q gw6=%q", got.Network(4), got.Gateway(6))
@@ -2619,14 +2620,14 @@ func TestEditStandardSwitchObjectToManualClearsFK(t *testing.T) {
 	}
 
 	var got networkModels.StandardSwitch
-	if err := db.First(&got, sw.ID).Error; err != nil {
+	if err := db.Preload("Addresses").First(&got, sw.ID).Error; err != nil {
 		t.Fatalf("failed to reload switch: %v", err)
 	}
 	if got.NetworkID != nil {
 		t.Fatalf("expected NetworkID cleared, got %v", *got.NetworkID)
 	}
-	if got.NetworkManual != "10.9.0.1/24" {
-		t.Fatalf("expected NetworkManual set, got %q", got.NetworkManual)
+	if !slices.Equal(got.AddressSources(4), []networkModels.StandardSwitchAddressSource{{CIDR: "10.9.0.1/24"}}) {
+		t.Fatalf("expected manual address source, got %v", got.AddressSources(4))
 	}
 	if !got.DisableBridgeOffloads {
 		t.Fatal("expected bridge offload policy to be updated")
@@ -2793,14 +2794,14 @@ func TestEditStandardSwitchManualToObjectClearsManual(t *testing.T) {
 	}
 
 	var got networkModels.StandardSwitch
-	if err := db.First(&got, sw.ID).Error; err != nil {
+	if err := db.Preload("Addresses").First(&got, sw.ID).Error; err != nil {
 		t.Fatalf("failed to reload switch: %v", err)
 	}
 	if got.NetworkManual != "" {
 		t.Fatalf("expected NetworkManual cleared when switching to object, got %q", got.NetworkManual)
 	}
-	if got.NetworkID == nil || *got.NetworkID != obj.ID {
-		t.Fatalf("expected NetworkID set to object, got %v", got.NetworkID)
+	if !slices.Equal(got.AddressSources(4), []networkModels.StandardSwitchAddressSource{{ObjectID: obj.ID}}) {
+		t.Fatalf("expected referenced address object, got %v", got.AddressSources(4))
 	}
 }
 

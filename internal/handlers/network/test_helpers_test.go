@@ -19,7 +19,7 @@ import (
 )
 
 func newNetworkHandlerTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
-	migrateModels = append(migrateModels, &networkModels.StandardSwitch{})
+	migrateModels = append(migrateModels, &networkModels.StandardSwitch{}, &networkModels.StandardSwitchAddress{})
 	return testutil.NewSQLiteTestDB(t, migrateModels...)
 }
 

@@ -88,6 +88,12 @@ func TestGetObjectsUsedByIncludesEveryReferenceColumn(t *testing.T) {
 			},
 		},
 		{
+			table:   "standard_switch_addresses",
+			usage:   networkModels.ObjectUsage{Type: "switch", ID: 6, Name: "lan"},
+			row:     map[string]any{"id": 1, "switch_id": 6, "family": 4},
+			columns: []string{"object_id"},
+		},
+		{
 			table: "static_routes",
 			usage: networkModels.ObjectUsage{Type: "route", ID: 7, Name: "remote"},
 			row: map[string]any{

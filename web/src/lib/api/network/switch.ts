@@ -33,12 +33,7 @@ export async function deleteManualSwitch(id: number): Promise<APIResponse> {
 	return await apiRequest(`/network/switch/manual/${id}`, APIResponseSchema, 'DELETE');
 }
 
-export type SwitchManualAddresses = {
-	network4: string;
-	gateway4: string;
-	network6: string;
-	gateway6: string;
-};
+export type StandardSwitchAddressSource = { objectId: number } | { cidr: string };
 
 export type StandardSwitchMACSource =
 	| { mode: 'port'; port: string }
@@ -54,10 +49,12 @@ export type StandardSwitchVLANConfig = {
 export type StandardSwitchConfig = {
 	mtu: number;
 	vlan: number;
-	network4: number;
+	addresses4: StandardSwitchAddressSource[];
+	addresses6: StandardSwitchAddressSource[];
 	gateway4: number;
-	network6: number;
+	gateway4Manual: string;
 	gateway6: number;
+	gateway6Manual: string;
 	private: boolean;
 	ports: string[];
 	bridgeMac: StandardSwitchMACSource;
@@ -68,24 +65,15 @@ export type StandardSwitchConfig = {
 	defaultRoute6: boolean;
 	disableBridgeOffloads: boolean;
 	vlanConfig: StandardSwitchVLANConfig;
-	manual?: SwitchManualAddresses;
 	confirmRCConflicts?: boolean;
 	confirmHostLayer3Removal?: boolean;
 };
 
 export type CreateStandardSwitchRequest = StandardSwitchConfig & { name: string };
 
-const emptyManualAddresses: SwitchManualAddresses = {
-	network4: '',
-	gateway4: '',
-	network6: '',
-	gateway6: ''
-};
-
 function standardSwitchRequestBody<T extends StandardSwitchConfig>(request: T) {
 	const {
 		vlanConfig,
-		manual = emptyManualAddresses,
 		confirmRCConflicts = false,
 		confirmHostLayer3Removal = false,
 		...config
@@ -97,11 +85,7 @@ function standardSwitchRequestBody<T extends StandardSwitchConfig>(request: T) {
 		hostVlan: vlanConfig.hostVlan,
 		portPolicies: vlanConfig.portPolicies,
 		confirmRCConflicts,
-		confirmHostLayer3Removal,
-		network4Manual: manual.network4,
-		gateway4Manual: manual.gateway4,
-		network6Manual: manual.network6,
-		gateway6Manual: manual.gateway6
+		confirmHostLayer3Removal
 	};
 }
 

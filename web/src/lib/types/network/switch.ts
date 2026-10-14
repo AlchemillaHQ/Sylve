@@ -52,6 +52,16 @@ export const StandardSwitchRCConflictSchema = z.object({
 
 export const StandardSwitchRCConflictsSchema = z.array(StandardSwitchRCConflictSchema);
 
+export const StandardSwitchAddressSchema = z.object({
+	id: z.number().int().nonnegative(),
+	switchId: z.number().int().nonnegative(),
+	family: z.union([z.literal(4), z.literal(6)]),
+	ordering: z.number().int(),
+	objectId: z.number().int().positive().nullable(),
+	object: NetworkObjectSchema.nullable(),
+	cidr: z.string()
+});
+
 export const StandardSwitchSchema = z.object({
 	id: z.number().int().positive(),
 	name: z.string(),
@@ -69,6 +79,10 @@ export const StandardSwitchSchema = z.object({
 	gateway6AddressObj: NetworkObjectSchema.nullable(),
 	networkManual: nullableString,
 	network6Manual: nullableString,
+	addresses: z
+		.array(StandardSwitchAddressSchema)
+		.nullish()
+		.transform((value) => value ?? []),
 	gatewayManual: nullableString,
 	gateway6Manual: nullableString,
 	ports: z.array(NetworkPortSchema),
@@ -107,6 +121,7 @@ export const SwitchListSchema = z.object({
 export type StandardSwitchRCConflict = z.infer<typeof StandardSwitchRCConflictSchema>;
 export type VLANPortPolicy = z.infer<typeof VLANPortPolicySchema>;
 export type StandardSwitch = z.infer<typeof StandardSwitchSchema>;
+export type StandardSwitchAddress = z.infer<typeof StandardSwitchAddressSchema>;
 export type ManualSwitch = z.infer<typeof ManualSwitchSchema>;
 export type NetworkSwitch = StandardSwitch | ManualSwitch;
 export type SwitchList = z.infer<typeof SwitchListSchema>;
@@ -138,6 +153,7 @@ export interface SwitchRow extends Row {
 	networkManual?: string;
 	network6Obj?: NetworkObject;
 	network6Manual?: string;
+	addresses?: StandardSwitchAddress[];
 	gatewayAddressObj?: NetworkObject;
 	gatewayManual?: string;
 	gateway6AddressObj?: NetworkObject;

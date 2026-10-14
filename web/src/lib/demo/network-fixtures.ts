@@ -616,6 +616,7 @@ function createState(hostname: string): DemoNetworkState {
 			gateway6AddressObj: null,
 			networkManual: '',
 			network6Manual: 'fd42:30::/64',
+			addresses: [],
 			gatewayManual: '',
 			gateway6Manual: 'fd42:30::1',
 			ports: [{ id: 1, name: 'igb0', switchId: 1, vlanPolicy: { mode: '', taggedVlans: [] } }],
@@ -650,6 +651,7 @@ function createState(hostname: string): DemoNetworkState {
 			gateway6AddressObj: null,
 			networkManual: '',
 			network6Manual: '',
+			addresses: [],
 			gatewayManual: '',
 			gateway6Manual: '',
 			ports: [{ id: 2, name: 'ix0', switchId: 2, vlanPolicy: { mode: '', taggedVlans: [] } }],
@@ -684,6 +686,7 @@ function createState(hostname: string): DemoNetworkState {
 			gateway6AddressObj: null,
 			networkManual: '192.168.130.2/24',
 			network6Manual: '2001:db8:130::2/64',
+			addresses: [],
 			gatewayManual: '',
 			gateway6Manual: '',
 			ports: [
@@ -1300,6 +1303,9 @@ function refreshObjectUsage(state: DemoNetworkState) {
 		mark(sw.address6Obj?.id, 'Standard switch', consumer);
 		mark(sw.networkObj?.id, 'Standard switch', consumer);
 		mark(sw.network6Obj?.id, 'Standard switch', consumer);
+		for (const address of sw.addresses) {
+			mark(address.objectId, 'Standard switch', consumer);
+		}
 		mark(sw.gatewayAddressObj?.id, 'Standard switch', consumer);
 		mark(sw.gateway6AddressObj?.id, 'Standard switch', consumer);
 		mark(sw.bridgeMacObjectId, 'Standard switch', consumer);
@@ -1364,13 +1370,17 @@ function buildStandardSwitch(
 	const gateway6ID = nullableNumber(body, 'gateway6');
 	const objectByID = (objectID: number | null) =>
 		objectID ? (state.objects.find((object) => object.id === objectID) ?? null) : null;
-	const networkObj = objectByID(network4ID);
+	const networkObj = Array.isArray(body.addresses4) ? null : objectByID(network4ID);
 	const gatewayObj = objectByID(gateway4ID);
-	const network6Obj = objectByID(network6ID);
+	const network6Obj = Array.isArray(body.addresses6) ? null : objectByID(network6ID);
 	const gateway6Obj = objectByID(gateway6ID);
-	const networkManual = stringValue(body, 'network4Manual', existing?.networkManual ?? '');
+	const networkManual = Array.isArray(body.addresses4)
+		? ''
+		: stringValue(body, 'network4Manual', existing?.networkManual ?? '');
 	const gatewayManual = stringValue(body, 'gateway4Manual', existing?.gatewayManual ?? '');
-	const network6Manual = stringValue(body, 'network6Manual', existing?.network6Manual ?? '');
+	const network6Manual = Array.isArray(body.addresses6)
+		? ''
+		: stringValue(body, 'network6Manual', existing?.network6Manual ?? '');
 	const gateway6Manual = stringValue(body, 'gateway6Manual', existing?.gateway6Manual ?? '');
 	const name = stringValue(body, 'name', existing?.name ?? `switch-${id}`).trim();
 	const ports = stringArray(body, 'ports');
@@ -1383,6 +1393,23 @@ function buildStandardSwitch(
 	const hostVlan = Object.prototype.hasOwnProperty.call(body, 'hostVlan')
 		? nullableNumber(body, 'hostVlan')
 		: (existing?.hostVlan ?? null);
+	const addresses = ([4, 6] as const).flatMap((family) => {
+		const sources = body[`addresses${family}`];
+		if (!Array.isArray(sources))
+			return existing?.addresses.filter((address) => address.family === family) ?? [];
+		return sources.map((source, ordering) => {
+			const objectId = nullableNumber(source, 'objectId');
+			return {
+				id: id * 1000 + family * 100 + ordering,
+				switchId: id,
+				family,
+				ordering,
+				objectId,
+				object: objectByID(objectId),
+				cidr: stringValue(source, 'cidr', '')
+			};
+		});
+	});
 
 	return {
 		id,
@@ -1401,6 +1428,7 @@ function buildStandardSwitch(
 		gateway6AddressObj: gateway6Obj,
 		networkManual,
 		network6Manual,
+		addresses,
 		gatewayManual,
 		gateway6Manual,
 		ports: ports.map((port, index) => ({
@@ -1975,6 +2003,14 @@ export function handleDemoNetworkRequest<T = unknown>(
 	}
 	if (path === '/network/object' && method === 'DELETE') {
 		const ids = numberArray(body, 'ids');
+		refreshObjectUsage(state);
+		if (state.objects.some((object) => ids.includes(object.id) && object.isUsed)) {
+			return failure(
+				'network_object_in_use',
+				'network_object_in_use',
+				409
+			) as DemoNetworkResponse<T>;
+		}
 		for (const id of ids) deleteByID(state.objects, id);
 		return mutationSuccess('network_objects_deleted') as DemoNetworkResponse<T>;
 	}
@@ -1993,7 +2029,16 @@ export function handleDemoNetworkRequest<T = unknown>(
 		return mutationSuccess('network_object_updated') as DemoNetworkResponse<T>;
 	}
 	if (match && method === 'DELETE') {
-		if (!deleteByID(state.objects, Number(match[1]))) {
+		const id = Number(match[1]);
+		refreshObjectUsage(state);
+		if (state.objects.find((object) => object.id === id)?.isUsed) {
+			return failure(
+				'network_object_in_use',
+				'network_object_in_use',
+				409
+			) as DemoNetworkResponse<T>;
+		}
+		if (!deleteByID(state.objects, id)) {
 			return failure(
 				'network_object_not_found',
 				'network_object_not_found'

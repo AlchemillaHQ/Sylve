@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -389,6 +390,27 @@ func TestUpdateStandardSwitchDoesNotPreserveOmittedIPv6RouteOwnership(t *testing
 	request := updateStandardSwitchServiceRequest(7, UpdateStandardSwitchRequest{})
 	if request.ID != 7 || request.DefaultRoute6 {
 		t.Fatalf("omitted defaultRoute6 produced request %#v", request)
+	}
+}
+
+func TestStandardSwitchRequestsForwardAddressSources(t *testing.T) {
+	body := []byte(`{"addresses4":[{"cidr":"192.0.2.10/24"},{"objectId":7}],"addresses6":[{"objectId":8},{"cidr":"2001:db8::10/64"}]}`)
+	var create CreateStandardSwitchRequest
+	var update UpdateStandardSwitchRequest
+	if err := json.Unmarshal(body, &create); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(body, &update); err != nil {
+		t.Fatal(err)
+	}
+	for _, config := range []network.StandardSwitchConfig{
+		createStandardSwitchServiceRequest(create).StandardSwitchConfig,
+		updateStandardSwitchServiceRequest(7, update).StandardSwitchConfig,
+	} {
+		if !slices.Equal(config.Addresses4, []networkModels.StandardSwitchAddressSource{{CIDR: "192.0.2.10/24"}, {ObjectID: 7}}) ||
+			!slices.Equal(config.Addresses6, []networkModels.StandardSwitchAddressSource{{ObjectID: 8}, {CIDR: "2001:db8::10/64"}}) {
+			t.Fatalf("request addresses = %#v", config)
+		}
 	}
 }
 

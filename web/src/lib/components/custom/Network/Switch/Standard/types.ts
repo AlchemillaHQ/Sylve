@@ -38,9 +38,9 @@ export interface ComboBoxState<T extends string | string[]> {
 }
 
 export interface StandardSwitchFormComboBoxes {
-	ipv4: ComboBoxState<string>;
+	ipv4: ComboBoxState<string[]>;
 	ipv4Gw: ComboBoxState<string>;
-	ipv6: ComboBoxState<string>;
+	ipv6: ComboBoxState<string[]>;
 	ipv6Gw: ComboBoxState<string>;
 	ports: ComboBoxState<string[]>;
 	bridgeMacPort: ComboBoxState<string>;

@@ -48,14 +48,14 @@ under sponsorship from the FreeBSD Foundation.
 	} from '$lib/types/network/switch';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateComboboxOptions } from '$lib/utils/input';
-	import {
-		generateIPOptions,
-		generateMACOptions,
-		generateNetworkOptions
-	} from '$lib/utils/network/object';
+	import { generateIPOptions, generateMACOptions } from '$lib/utils/network/object';
 	import {
 		buildVLANConfig,
 		generateTableData,
+		generateStandardSwitchNetworkOptions,
+		buildStandardSwitchAddressSources,
+		standardSwitchAddressSelections,
+		standardSwitchAddressValues,
 		type VLANPolicyDraft
 	} from '$lib/utils/network/switch/standard';
 	import { isValidMTU, isValidVLAN } from '$lib/utils/numbers';
@@ -254,7 +254,7 @@ under sponsorship from the FreeBSD Foundation.
 	let comboBoxes = $state({
 		ipv4: {
 			open: false,
-			value: ''
+			value: [] as string[]
 		},
 		ipv4Gw: {
 			open: false,
@@ -262,7 +262,7 @@ under sponsorship from the FreeBSD Foundation.
 		},
 		ipv6: {
 			open: false,
-			value: ''
+			value: [] as string[]
 		},
 		ipv6Gw: {
 			open: false,
@@ -281,12 +281,13 @@ under sponsorship from the FreeBSD Foundation.
 			value: ''
 		}
 	});
-	const singleEntryNetworkObjects = $derived(
-		networkObjects.current.filter((object) => object.entries?.length === 1)
+	const ipv4NetworkOptions = $derived(
+		generateStandardSwitchNetworkOptions(networkObjects.current, 4)
 	);
-	const ipv4NetworkOptions = $derived(generateNetworkOptions(singleEntryNetworkObjects, 'IPv4'));
 	const ipv4GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv4'));
-	const ipv6NetworkOptions = $derived(generateNetworkOptions(singleEntryNetworkObjects, 'IPv6'));
+	const ipv6NetworkOptions = $derived(
+		generateStandardSwitchNetworkOptions(networkObjects.current, 6)
+	);
 	const ipv6GatewayOptions = $derived(generateIPOptions(networkObjects.current, 'IPv6'));
 
 	const bridgeMACObjects = $derived(
@@ -472,15 +473,15 @@ under sponsorship from the FreeBSD Foundation.
 		if (!row) return [];
 		const settings: string[] = [];
 		if (row.dhcp) settings.push('IPv4 DHCP');
-		if (row.networkObj?.id) settings.push(`IPv4 network object “${row.networkObj.name}”`);
-		else if (row.networkManual) settings.push(`IPv4 network ${row.networkManual}`);
+		const addresses4 = standardSwitchAddressValues(row, 4);
+		if (addresses4.length) settings.push(`IPv4 addresses ${addresses4.join(', ')}`);
 		if (row.gatewayAddressObj?.id)
 			settings.push(`IPv4 gateway object “${row.gatewayAddressObj.name}”`);
 		else if (row.gatewayManual) settings.push(`IPv4 gateway ${row.gatewayManual}`);
 		if (row.defaultRoute) settings.push('IPv4 default route');
 		if (row.slaac) settings.push('IPv6 SLAAC');
-		if (row.network6Obj?.id) settings.push(`IPv6 network object “${row.network6Obj.name}”`);
-		else if (row.network6Manual) settings.push(`IPv6 network ${row.network6Manual}`);
+		const addresses6 = standardSwitchAddressValues(row, 6);
+		if (addresses6.length) settings.push(`IPv6 addresses ${addresses6.join(', ')}`);
 		if (row.gateway6AddressObj?.id)
 			settings.push(`IPv6 gateway object “${row.gateway6AddressObj.name}”`);
 		else if (row.gateway6Manual) settings.push(`IPv6 gateway ${row.gateway6Manual}`);
@@ -636,39 +637,35 @@ under sponsorship from the FreeBSD Foundation.
 				}
 			}
 
-			const net4 = !hostLayer3Enabled
-				? { id: 0, manual: '' }
-				: splitObjectOrManual(comboBoxes.ipv4.value, ipv4NetworkOptions);
+			const addresses4 =
+				hostLayer3Enabled && !activeModal.dhcp
+					? buildStandardSwitchAddressSources(comboBoxes.ipv4.value, ipv4NetworkOptions)
+					: [];
 			const gw4 = !hostLayer3Enabled
 				? { id: 0, manual: '' }
 				: splitObjectOrManual(comboBoxes.ipv4Gw.value, ipv4GatewayOptions);
-			const net6 = !hostLayer3Enabled
-				? { id: 0, manual: '' }
-				: splitObjectOrManual(comboBoxes.ipv6.value, ipv6NetworkOptions);
+			const addresses6 =
+				hostLayer3Enabled && !activeModal.disableIPv6 && !activeModal.slaac
+					? buildStandardSwitchAddressSources(comboBoxes.ipv6.value, ipv6NetworkOptions)
+					: [];
 			const gw6 = !hostLayer3Enabled
 				? { id: 0, manual: '' }
 				: splitObjectOrManual(comboBoxes.ipv6Gw.value, ipv6GatewayOptions);
 
-			const manual = {
-				network4: net4.manual,
-				gateway4: gw4.manual,
-				network6: net6.manual,
-				gateway6: gw6.manual
-			};
-
-			if (manual.network4 && !isValidIPv4(manual.network4, true)) {
-				showError('ipv4', 'Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24');
+			if (addresses4.some((source) => 'cidr' in source && !isValidIPv4(source.cidr, true))) {
+				showError('ipv4', 'Invalid IPv4 address — expected CIDR');
 				return;
 			}
-			if (manual.gateway4 && !isValidIPv4(manual.gateway4)) {
+			if (addresses6.some((source) => 'cidr' in source && !isValidIPv6(source.cidr, true))) {
+				showError('ipv6', 'Invalid IPv6 address — expected CIDR');
+				return;
+			}
+
+			if (gw4.manual && !isValidIPv4(gw4.manual)) {
 				showError('ipv4', 'Invalid IPv4 gateway address');
 				return;
 			}
-			if (manual.network6 && !isValidIPv6(manual.network6, true)) {
-				showError('ipv6', 'Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64');
-				return;
-			}
-			if (manual.gateway6 && !isValidIPv6(manual.gateway6)) {
+			if (gw6.manual && !isValidIPv6(gw6.manual)) {
 				showError('ipv6', 'Invalid IPv6 gateway address');
 				return;
 			}
@@ -716,10 +713,12 @@ under sponsorship from the FreeBSD Foundation.
 				const switchConfig = {
 					mtu,
 					vlan,
-					network4: net4.id,
+					addresses4,
+					addresses6,
 					gateway4: gw4.id,
-					network6: net6.id,
+					gateway4Manual: gw4.manual,
 					gateway6: gw6.id,
+					gateway6Manual: gw6.manual,
 					private: activeModal.private,
 					ports: comboBoxes.ports.value,
 					bridgeMac,
@@ -730,7 +729,6 @@ under sponsorship from the FreeBSD Foundation.
 					defaultRoute6: effectiveDefaultRoute6,
 					disableBridgeOffloads: activeModal.disableBridgeOffloads,
 					vlanConfig,
-					manual,
 					confirmHostLayer3Removal: confirmations.hostLayer3Removal,
 					confirmRCConflicts: confirmations.rcConflicts
 				};
@@ -852,23 +850,10 @@ under sponsorship from the FreeBSD Foundation.
 			confirmModals.editSwitch.mtu = String(activeRow.mtu ?? '');
 			confirmModals.editSwitch.vlan = activeRow.vlan === '-' ? '' : String(activeRow.vlan ?? '');
 
-			comboBoxes.ipv4.value = '';
+			comboBoxes.ipv4.value = standardSwitchAddressSelections(activeRow, 4);
 			comboBoxes.ipv4Gw.value = '';
-			comboBoxes.ipv6.value = '';
+			comboBoxes.ipv6.value = standardSwitchAddressSelections(activeRow, 6);
 			comboBoxes.ipv6Gw.value = '';
-
-			if (activeRow.networkObj && activeRow.networkObj.id) {
-				comboBoxes.ipv4.value = activeRow.networkObj.id.toString();
-			} else if (activeRow.networkManual) {
-				comboBoxes.ipv4.value = activeRow.networkManual as string;
-			}
-
-			if (activeRow.network6Obj && activeRow.network6Obj.id) {
-				comboBoxes.ipv6.value = activeRow.network6Obj.id.toString();
-			} else if (activeRow.network6Manual) {
-				comboBoxes.ipv6.value = activeRow.network6Manual as string;
-			}
-
 			if (activeRow.gatewayAddressObj && activeRow.gatewayAddressObj.id) {
 				comboBoxes.ipv4Gw.value = activeRow.gatewayAddressObj.id.toString();
 			} else if (activeRow.gatewayManual) {
@@ -965,9 +950,9 @@ under sponsorship from the FreeBSD Foundation.
 		confirmModals.editSwitch.portPolicies = {};
 		activeTab = 'general';
 
-		comboBoxes.ipv4.value = '';
+		comboBoxes.ipv4.value = [];
 		comboBoxes.ipv4Gw.value = '';
-		comboBoxes.ipv6.value = '';
+		comboBoxes.ipv6.value = [];
 		comboBoxes.ipv6Gw.value = '';
 		comboBoxes.ports.value = [];
 		comboBoxes.bridgeMacPort.value = '';
@@ -1010,7 +995,7 @@ under sponsorship from the FreeBSD Foundation.
 		[() => confirmModals.newSwitch.dhcp, () => confirmModals.editSwitch.dhcp],
 		([nwDHCP, editDHCP]) => {
 			if (nwDHCP || editDHCP) {
-				comboBoxes.ipv4.value = '';
+				comboBoxes.ipv4.value = [];
 				comboBoxes.ipv4Gw.value = '';
 			}
 		}
@@ -1020,7 +1005,7 @@ under sponsorship from the FreeBSD Foundation.
 		[() => confirmModals.newSwitch.slaac, () => confirmModals.editSwitch.slaac],
 		([nwSLAAC, editSLAAC]) => {
 			if (nwSLAAC || editSLAAC) {
-				comboBoxes.ipv6.value = '';
+				comboBoxes.ipv6.value = [];
 				comboBoxes.ipv6Gw.value = '';
 			}
 		}

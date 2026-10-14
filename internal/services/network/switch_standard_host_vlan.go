@@ -357,13 +357,8 @@ func reconcileFilteredStandardSwitchHost(oldSw, newSw networkModels.StandardSwit
 		if err := stopDhclient(newName); err != nil {
 			return fmt.Errorf("stop DHCP on host VLAN %s: %w", newName, err)
 		}
-		if err := deleteStandardSwitchHostIPv4(newName, interfaceObj, newNetwork4); err != nil {
+		if err := reconcileStandardSwitchStaticAddresses(newName, 4, interfaceObj, oldSw.Networks(4), newSw.Networks(4), true); err != nil {
 			return err
-		}
-		if newNetwork4 != "" && !interfaceHasIPv4Prefix(interfaceObj, newNetwork4) {
-			if _, err := syncRunCommand("/sbin/ifconfig", newName, "inet", newNetwork4); err != nil {
-				return fmt.Errorf("set host VLAN IPv4 address %s: %w", newNetwork4, err)
-			}
 		}
 	}
 
@@ -394,13 +389,8 @@ func reconcileFilteredStandardSwitchHost(oldSw, newSw networkModels.StandardSwit
 		if _, err := syncRunCommand("/sbin/ifconfig", newName, "inet6", "auto_linklocal", "-ifdisabled", "no_radr", "-accept_rtadv"); err != nil {
 			return fmt.Errorf("configure IPv6 flags on host VLAN %s: %w", newName, err)
 		}
-		if err := deleteStandardSwitchHostIPv6(newName, interfaceObj, newNetwork6, false, true); err != nil {
+		if err := reconcileStandardSwitchStaticAddresses(newName, 6, interfaceObj, oldSw.Networks(6), newSw.Networks(6), true, "-no_dad"); err != nil {
 			return err
-		}
-		if newNetwork6 != "" && !interfaceHasIPv6Prefix(interfaceObj, newNetwork6) {
-			if _, err := syncRunCommand("/sbin/ifconfig", newName, "inet6", newNetwork6, "-no_dad"); err != nil {
-				return fmt.Errorf("set host VLAN IPv6 address %s: %w", newNetwork6, err)
-			}
 		}
 	}
 

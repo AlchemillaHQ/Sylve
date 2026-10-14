@@ -4141,7 +4141,6 @@ msgid "Inherit"
 msgstr "Übernehmen"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv4 Network"
 msgstr "IPv4-Netzwerk"
 
@@ -4160,7 +4159,6 @@ msgstr "IPv4-Netzwerk"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "IPv4"
 msgstr "IPv4"
@@ -4172,7 +4170,6 @@ msgid "IPv4 Gateway"
 msgstr "IPv4-Gateway"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
-#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Network"
 msgstr "IPv6-Netzwerk"
 
@@ -4191,7 +4188,6 @@ msgstr "IPv6-Netzwerk"
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/routes/+page.svelte
-#: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/network/switches/standard/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "IPv6"
@@ -11651,15 +11647,7 @@ msgid "Optional — required for fe80:: link-local gateways"
 msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Invalid IPv4 network — expected CIDR, e.g. 192.168.1.1/24"
-msgstr ""
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "Invalid IPv4 gateway address"
-msgstr ""
-
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "Invalid IPv6 network — expected CIDR, e.g. 2001:db8::1/64"
 msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
@@ -18305,16 +18293,6 @@ msgstr ""
 msgid "IPv4 DHCP"
 msgstr ""
 
-#. 0: row.networkObj.name
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "IPv4 network object “{0}”"
-msgstr ""
-
-#. 0: row.networkManual
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "IPv4 network {0}"
-msgstr ""
-
 #. 0: row.gatewayAddressObj.name
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv4 gateway object “{0}”"
@@ -18331,16 +18309,6 @@ msgstr ""
 
 #: src/routes/[node]/network/switches/standard/+page.svelte
 msgid "IPv6 SLAAC"
-msgstr ""
-
-#. 0: row.network6Obj.name
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "IPv6 network object “{0}”"
-msgstr ""
-
-#. 0: row.network6Manual
-#: src/routes/[node]/network/switches/standard/+page.svelte
-msgid "IPv6 network {0}"
 msgstr ""
 
 #. 0: row.gateway6AddressObj.name
@@ -20928,4 +20896,35 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 msgid "No network interfaces reported."
+msgstr ""
+
+#. 0: addresses4.join(', ')
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv4 addresses {0}"
+msgstr ""
+
+#. 0: addresses6.join(', ')
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "IPv6 addresses {0}"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv4 address — expected CIDR"
+msgstr ""
+
+#: src/routes/[node]/network/switches/standard/+page.svelte
+msgid "Invalid IPv6 address — expected CIDR"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "IPv4 Addresses"
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "Select network objects or type CIDRs and press Enter. Every CIDR in each selected object is assigned to the switch."
+msgstr ""
+
+#: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
+msgid "IPv6 Addresses"
 msgstr ""

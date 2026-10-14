@@ -10,8 +10,11 @@
 
 import type { Column, Row } from '$lib/types/components/tree-table';
 import type { NetworkObject } from '$lib/types/network/object';
-import type { StandardSwitchVLANConfig } from '$lib/api/network/switch';
-import type { SwitchList, VLANPortPolicy } from '$lib/types/network/switch';
+import type {
+	StandardSwitchVLANConfig,
+	StandardSwitchAddressSource
+} from '$lib/api/network/switch';
+import type { StandardSwitchAddress, SwitchList, VLANPortPolicy } from '$lib/types/network/switch';
 import {
 	defaultAccessVlanBadge,
 	formatPortsCell,
@@ -20,7 +23,7 @@ import {
 	type VLANPolicySourcePort
 } from '$lib/utils/network/vlan-format';
 import { parseOptionalVLAN, parseTaggedVLANs } from '$lib/utils/network/vlan';
-import { escapeHTML } from '$lib/utils/string';
+import { escapeHTML, isValidIPv4, isValidIPv6 } from '$lib/utils/string';
 import type { CellComponent } from 'tabulator-tables';
 import { renderWithIcon } from '../../table';
 
@@ -33,6 +36,79 @@ export interface VLANPolicyDraft {
 export type VLANConfigResult =
 	| { ok: true; value: StandardSwitchVLANConfig }
 	| { ok: false; error: string };
+
+export function generateStandardSwitchNetworkOptions(objects: NetworkObject[], family: 4 | 6) {
+	const validator = family === 4 ? isValidIPv4 : isValidIPv6;
+	return objects.flatMap((object) => {
+		if (
+			object.type !== 'Network' ||
+			!object.entries?.length ||
+			!object.entries.every((entry) => validator(entry.value, true))
+		)
+			return [];
+		return [
+			{
+				value: object.id.toString(),
+				label: `${object.name} (${object.entries.map((entry) => entry.value).join(', ')})`
+			}
+		];
+	});
+}
+
+type AddressConfiguration = {
+	addresses?: StandardSwitchAddress[];
+	networkObj?: NetworkObject | null;
+	network6Obj?: NetworkObject | null;
+	networkManual?: string;
+	network6Manual?: string;
+};
+
+export function buildStandardSwitchAddressSources(
+	values: string[],
+	options: { value: string }[]
+): StandardSwitchAddressSource[] {
+	return values.map((value) =>
+		options.some((option) => option.value === value)
+			? { objectId: Number(value) }
+			: { cidr: value.trim() }
+	);
+}
+
+export function standardSwitchAddressSelections(
+	row: AddressConfiguration,
+	family: 4 | 6
+): string[] {
+	const addresses = (row.addresses ?? []).filter((address) => address.family === family);
+	if (addresses.length > 0) {
+		return addresses
+			.toSorted((a, b) => a.ordering - b.ordering)
+			.map((address) => (address.objectId !== null ? address.objectId.toString() : address.cidr));
+	}
+	const object = family === 4 ? row.networkObj : row.network6Obj;
+	const manual = family === 4 ? row.networkManual : row.network6Manual;
+	return object?.id ? [object.id.toString()] : manual ? [manual] : [];
+}
+
+export function standardSwitchAddressValues(row: AddressConfiguration, family: 4 | 6): string[] {
+	const addresses = (row.addresses ?? []).filter((address) => address.family === family);
+	if (addresses.length > 0) {
+		const values = addresses
+			.toSorted((a, b) => a.ordering - b.ordering)
+			.flatMap((address) =>
+				address.objectId !== null
+					? (address.object?.entries?.map((entry) => entry.value) ?? [])
+					: [address.cidr]
+			);
+		return [...new Set(values)];
+	}
+	const object = family === 4 ? row.networkObj : row.network6Obj;
+	const manual = family === 4 ? row.networkManual : row.network6Manual;
+	return object?.entries?.length
+		? object.entries.map((entry) => entry.value)
+		: manual
+			? [manual]
+			: [];
+}
 
 export function buildVLANConfig(
 	filtering: boolean,
@@ -195,17 +271,8 @@ export function generateTableData(switches: SwitchList | undefined): {
 					return 'DHCP';
 				}
 
-				let v4 = '';
+				const v4 = standardSwitchAddressValues(data, 4);
 				let gw4 = '';
-
-				const networkObj = data.networkObj as NetworkObject;
-				if (networkObj && networkObj.entries && networkObj.entries.length > 0) {
-					v4 = networkObj.entries[0].value || '-';
-				} else if (data.networkManual) {
-					v4 = data.networkManual as string;
-				} else {
-					v4 = '-';
-				}
 
 				const gatewayObj = data.gatewayAddressObj as NetworkObject;
 				if (gatewayObj && gatewayObj.entries && gatewayObj.entries.length > 0) {
@@ -217,9 +284,9 @@ export function generateTableData(switches: SwitchList | undefined): {
 				}
 
 				return (
-					[v4, gw4]
+					[...new Set(v4), gw4]
 						.filter((address) => address !== '-')
-						.map((address) => `<span>${address}</span>`)
+						.map((address) => `<span>${escapeHTML(address)}</span>`)
 						.join('<br/>') || '-'
 				);
 			}
@@ -236,17 +303,8 @@ export function generateTableData(switches: SwitchList | undefined): {
 					return 'SLAAC';
 				}
 
-				let v6 = '';
+				const v6 = standardSwitchAddressValues(data, 6);
 				let gw6 = '';
-
-				const networkObj = data.network6Obj as NetworkObject;
-				if (networkObj && networkObj.entries && networkObj.entries.length > 0) {
-					v6 = networkObj.entries[0].value || '-';
-				} else if (data.network6Manual) {
-					v6 = data.network6Manual as string;
-				} else {
-					v6 = '-';
-				}
 
 				const gatewayObj = data.gateway6AddressObj as NetworkObject;
 				if (gatewayObj && gatewayObj.entries && gatewayObj.entries.length > 0) {
@@ -258,9 +316,9 @@ export function generateTableData(switches: SwitchList | undefined): {
 				}
 
 				return (
-					[v6, gw6]
+					[...new Set(v6), gw6]
 						.filter((address) => address !== '-')
-						.map((address) => `<span>${address}</span>`)
+						.map((address) => `<span>${escapeHTML(address)}</span>`)
 						.join('<br/>') || '-'
 				);
 			}
@@ -348,6 +406,7 @@ export function generateTableData(switches: SwitchList | undefined): {
 				networkManual: sw.networkManual || '',
 				gatewayManual: sw.gatewayManual || '',
 				network6Manual: sw.network6Manual || '',
+				addresses: sw.addresses,
 				gateway6Manual: sw.gateway6Manual || '',
 				ports: sw.ports,
 				bridgeMacMode: sw.bridgeMacMode,

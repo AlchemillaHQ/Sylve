@@ -702,6 +702,8 @@ type standardSwitchEditConfig struct {
 	Gateway4Manual        string
 	Network6Manual        string
 	Gateway6Manual        string
+	Addresses4            []networkModels.StandardSwitchAddressSource
+	Addresses6            []networkModels.StandardSwitchAddressSource
 	DisableIPv6           bool
 	SLAAC                 bool
 	Private               bool
@@ -738,9 +740,7 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 		}
 
 		manual := networkModels.StandardSwitchManualAddresses{
-			Network4: config.Network4Manual,
 			Gateway4: config.Gateway4Manual,
-			Network6: config.Network6Manual,
 			Gateway6: config.Gateway6Manual,
 		}
 		if err := ctx.Network.EditStandardSwitch(networkServiceInterfaces.UpdateStandardSwitchRequest{
@@ -749,8 +749,8 @@ func editSwitch(ctx *Context, request consoleprotocol.SwitchEditPayload) (switch
 			StandardSwitchConfig: networkServiceInterfaces.StandardSwitchConfig{
 				MTU:                   config.MTU,
 				VLAN:                  config.VLAN,
-				Network4ID:            config.Network4,
-				Network6ID:            config.Network6,
+				Addresses4:            config.Addresses4,
+				Addresses6:            config.Addresses6,
 				Gateway4ID:            config.Gateway4,
 				Gateway6ID:            config.Gateway6,
 				Ports:                 config.Ports,
@@ -831,10 +831,10 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 	config := standardSwitchEditConfig{
 		MTU:                   switchModel.MTU,
 		VLAN:                  switchModel.VLAN,
-		Network4Manual:        switchModel.NetworkManual,
 		Gateway4Manual:        switchModel.GatewayManual,
-		Network6Manual:        switchModel.Network6Manual,
 		Gateway6Manual:        switchModel.Gateway6Manual,
+		Addresses4:            switchModel.AddressSources(4),
+		Addresses6:            switchModel.AddressSources(6),
 		DisableIPv6:           switchModel.DisableIPv6,
 		SLAAC:                 switchModel.SLAAC,
 		Private:               switchModel.Private,
@@ -857,14 +857,8 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 	if switchModel.BridgeMACObjectID != nil {
 		config.MACSource.MACObjectID = *switchModel.BridgeMACObjectID
 	}
-	if switchModel.NetworkID != nil {
-		config.Network4 = *switchModel.NetworkID
-	}
 	if switchModel.GatewayAddressID != nil {
 		config.Gateway4 = *switchModel.GatewayAddressID
-	}
-	if switchModel.Network6ID != nil {
-		config.Network6 = *switchModel.Network6ID
 	}
 	if switchModel.Gateway6AddressID != nil {
 		config.Gateway6 = *switchModel.Gateway6AddressID
@@ -874,6 +868,12 @@ func standardSwitchEditConfigFromModel(switchModel networkModels.StandardSwitch)
 		if switchModel.VLANFiltering {
 			config.VLANConfig.PortPolicies[port.Name] = port.VLANPolicy
 		}
+	}
+	if len(config.Addresses4) > 0 {
+		config.Network4, config.Network4Manual = config.Addresses4[0].ObjectID, config.Addresses4[0].CIDR
+	}
+	if len(config.Addresses6) > 0 {
+		config.Network6, config.Network6Manual = config.Addresses6[0].ObjectID, config.Addresses6[0].CIDR
 	}
 	return config
 }
@@ -892,6 +892,12 @@ func applyStandardSwitchEditRequest(config *standardSwitchEditConfig, request co
 	applySwitchObjectEdit(&config.Gateway4, &config.Gateway4Manual, request.Gateway4, request.Gateway4Manual)
 	applySwitchObjectEdit(&config.Network6, &config.Network6Manual, request.Network6, request.Network6Manual)
 	applySwitchObjectEdit(&config.Gateway6, &config.Gateway6Manual, request.Gateway6, request.Gateway6Manual)
+	if request.Network4 != nil || request.Network4Manual != nil {
+		config.Addresses4 = replaceStandardSwitchPrimaryAddress(config.Addresses4, config.Network4, config.Network4Manual)
+	}
+	if request.Network6 != nil || request.Network6Manual != nil {
+		config.Addresses6 = replaceStandardSwitchPrimaryAddress(config.Addresses6, config.Network6, config.Network6Manual)
+	}
 	if request.Ports != nil {
 		config.Ports = append([]string(nil), (*request.Ports)...)
 		if request.PortPolicies == nil {
@@ -987,6 +993,16 @@ func applySwitchObjectEdit(objectID *uint, manual *string, objectPatch *uint, ma
 			*objectID = 0
 		}
 	}
+}
+
+func replaceStandardSwitchPrimaryAddress(sources []networkModels.StandardSwitchAddressSource, objectID uint, cidr string) []networkModels.StandardSwitchAddressSource {
+	if len(sources) > 0 {
+		sources = sources[1:]
+	}
+	if objectID == 0 && cidr == "" {
+		return sources
+	}
+	return append([]networkModels.StandardSwitchAddressSource{{ObjectID: objectID, CIDR: cidr}}, sources...)
 }
 
 func switchEditIPv4AddressProvided(request consoleprotocol.StandardSwitchEditRequest) bool {

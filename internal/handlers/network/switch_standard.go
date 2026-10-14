@@ -48,6 +48,11 @@ type CreateStandardSwitchRequest struct {
 	DefaultAccessVLAN     *int                                  `json:"defaultAccessVlan"`
 	HostVLAN              *int                                  `json:"hostVlan"`
 	PortPolicies          map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
+
+	// Ordered IPv4 sources. All CIDRs in each selected Network object are assigned; replaces network4/network4Manual when supplied.
+	Addresses4 []networkModels.StandardSwitchAddressSource `json:"addresses4"`
+	// Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual when supplied.
+	Addresses6 []networkModels.StandardSwitchAddressSource `json:"addresses6"`
 }
 
 type UpdateStandardSwitchRequest struct {
@@ -76,6 +81,11 @@ type UpdateStandardSwitchRequest struct {
 	DefaultAccessVLAN        *int                                  `json:"defaultAccessVlan"`
 	HostVLAN                 *int                                  `json:"hostVlan"`
 	PortPolicies             map[string]bridgevlan.PortPolicy      `json:"portPolicies"`
+
+	// Ordered IPv4 sources. All CIDRs in each selected Network object are assigned; replaces network4/network4Manual when supplied.
+	Addresses4 []networkModels.StandardSwitchAddressSource `json:"addresses4"`
+	// Ordered IPv6 sources, including ULA and GUA. Replaces network6/network6Manual when supplied.
+	Addresses6 []networkModels.StandardSwitchAddressSource `json:"addresses6"`
 }
 
 func bindStandardSwitchJSON(c *gin.Context, destination any) bool {
@@ -197,6 +207,8 @@ func createStandardSwitchServiceRequest(request CreateStandardSwitchRequest) net
 			VLAN:                  optionalInt(request.VLAN),
 			Network4ID:            optionalUint(request.Network4),
 			Network6ID:            optionalUint(request.Network6),
+			Addresses4:            request.Addresses4,
+			Addresses6:            request.Addresses6,
 			Gateway4ID:            optionalUint(request.Gateway4),
 			Gateway6ID:            optionalUint(request.Gateway6),
 			Ports:                 request.Ports,
@@ -237,6 +249,8 @@ func updateStandardSwitchServiceRequest(
 			VLAN:                  optionalInt(request.VLAN),
 			Network4ID:            optionalUint(request.Network4),
 			Network6ID:            optionalUint(request.Network6),
+			Addresses4:            request.Addresses4,
+			Addresses6:            request.Addresses6,
 			Gateway4ID:            optionalUint(request.Gateway4),
 			Gateway6ID:            optionalUint(request.Gateway6),
 			Ports:                 request.Ports,

@@ -744,6 +744,105 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 	}
 }
 
+func TestIntegrationStandardSwitchMultipleStaticAddresses(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping standard switch address integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("standard switch address integration test requires root")
+	}
+	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
+		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	}
+	for _, filtered := range []bool{false, true} {
+		t.Run(fmt.Sprintf("filtered=%t", filtered), func(t *testing.T) {
+			bridgeName := fmt.Sprintf("sma%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
+			hostVLAN := 77
+			subnet := os.Getpid() % 250
+			sw := withTestStandardSwitchMAC(networkModels.StandardSwitch{
+				Name: "integration-multiple-static-addresses", BridgeName: bridgeName, MTU: 1500,
+				Addresses: standardSwitchAddresses(0,
+					[]networkModels.StandardSwitchAddressSource{{CIDR: fmt.Sprintf("198.19.%d.10/24", subnet)}, {CIDR: fmt.Sprintf("198.19.%d.11/24", subnet)}, {CIDR: fmt.Sprintf("198.18.%d.10/24", subnet)}},
+					[]networkModels.StandardSwitchAddressSource{{CIDR: fmt.Sprintf("fd00:%x::10/64", subnet)}, {CIDR: fmt.Sprintf("2001:db8:%x::10/64", subnet)}}),
+				VLANFiltering: filtered,
+			})
+			if filtered {
+				sw.HostVLAN = &hostVLAN
+			}
+			hostName := standardSwitchHostInterfaceName(sw)
+			for _, name := range []string{bridgeName, hostName} {
+				if _, err := iface.Get(name); err == nil || !isInterfaceMissingError(err) {
+					t.Fatalf("integration interface name %s is unavailable: %v", name, err)
+				}
+			}
+			t.Cleanup(func() {
+				if err := destroyStandardSwitchRuntimeInterfaces(sw); err != nil {
+					t.Errorf("clean integration switch interfaces: %v", err)
+				}
+			})
+			assertAddresses := func(expected networkModels.StandardSwitch) {
+				t.Helper()
+				live, err := iface.Get(hostName)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(live.IPv4) != len(expected.Networks(4)) {
+					t.Fatalf("IPv4 addresses = %#v, want %v", live.IPv4, expected.Networks(4))
+				}
+				for _, cidr := range expected.Networks(4) {
+					if !interfaceHasIPv4Prefix(live, cidr) {
+						t.Fatalf("missing IPv4 CIDR %s: %#v", cidr, live.IPv4)
+					}
+				}
+				static6 := 0
+				for _, address := range live.IPv6 {
+					if !address.IP.IsLinkLocalUnicast() {
+						static6++
+					}
+				}
+				if static6 != len(expected.Networks(6)) {
+					t.Fatalf("IPv6 addresses = %#v, want %v", live.IPv6, expected.Networks(6))
+				}
+				for _, cidr := range expected.Networks(6) {
+					if !interfaceHasIPv6Prefix(live, cidr) {
+						t.Fatalf("missing IPv6 CIDR %s: %#v", cidr, live.IPv6)
+					}
+				}
+				if filtered {
+					base, err := iface.Get(bridgeName)
+					if err != nil || len(base.IPv4) != 0 || len(base.IPv6) != 0 {
+						t.Fatalf("filtered bridge base has host addresses: %#v, %v", base, err)
+					}
+				}
+			}
+			if err := createStandardBridge(sw); err != nil {
+				t.Fatalf("create multi-address switch: %v", err)
+			}
+			assertAddresses(sw)
+			if err := editStandardBridge(sw, sw); err != nil {
+				t.Fatalf("reconcile existing multi-address switch: %v", err)
+			}
+			assertAddresses(sw)
+
+			updated := sw
+			updated.Addresses = standardSwitchAddresses(0,
+				[]networkModels.StandardSwitchAddressSource{{CIDR: fmt.Sprintf("198.19.%d.20/24", subnet)}, {CIDR: fmt.Sprintf("198.19.%d.11/24", subnet)}},
+				[]networkModels.StandardSwitchAddressSource{{CIDR: fmt.Sprintf("fd00:%x::10/64", subnet)}, {CIDR: fmt.Sprintf("2001:db8:%x::20/64", subnet)}})
+			if err := editStandardBridge(sw, updated); err != nil {
+				t.Fatalf("edit multi-address switch: %v", err)
+			}
+			assertAddresses(updated)
+			if err := deleteStandardBridge(updated); err != nil {
+				t.Fatalf("remove switch runtime before recreation: %v", err)
+			}
+			if err := createStandardBridge(updated); err != nil {
+				t.Fatalf("recreate multi-address switch: %v", err)
+			}
+			assertAddresses(updated)
+		})
+	}
+}
+
 func waitForIntegrationDHClientPID(t *testing.T, bridgeName string, timeout time.Duration) int {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
