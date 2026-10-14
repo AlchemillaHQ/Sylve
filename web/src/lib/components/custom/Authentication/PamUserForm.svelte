@@ -895,7 +895,7 @@
 										</div>
 									{/each}
 									<div class="text-muted-foreground text-xs pt-1">
-										{computedPerms} (octal)
+										{computedPerms.toString(8).padStart(3, '0')} (Octal)
 									</div>
 								</div>
 							</div>
