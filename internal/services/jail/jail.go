@@ -87,6 +87,7 @@ type Service struct {
 	creationCommand         *gzfs.Cmd
 	creationMountCheck      func(context.Context, string, string) error
 	creationRunningPaths    func(context.Context) ([]string, error)
+	guestInfoRunFn          func(context.Context, string, ...string) ([]byte, error)
 }
 
 func (s *Service) SetMutationAdmission(gate interface {

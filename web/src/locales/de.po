@@ -48,6 +48,7 @@ msgstr "Hardware"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -2184,6 +2185,7 @@ msgstr "Beschreibung"
 
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Create/Network.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
@@ -5321,6 +5323,7 @@ msgstr "Wenn diese Option auf <0>ein</0> gesetzt wird, wird Wake on LAN für die
 msgid "WoL"
 msgstr "WoL"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "Guest Information"
 msgstr "Gastinformationen"
@@ -5333,6 +5336,7 @@ msgstr "Veralteter Cache"
 msgid "OS Info"
 msgstr "OS-Info"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "OS Name"
 msgstr "OS-Name"
@@ -5349,6 +5353,7 @@ msgstr "Architektur"
 msgid "Version ID"
 msgstr "Versions-ID"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
@@ -5359,15 +5364,18 @@ msgstr "Versions-ID"
 msgid "Interface"
 msgstr "Schnittstelle"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "IP Addresses"
 msgstr "IP-Adressen"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 msgid "RX / TX"
 msgstr "RX / TX"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/VM/Summary/GuestAgent.svelte
 msgid "N/A"
 msgstr "N/A"
@@ -8628,6 +8636,7 @@ msgstr "{0} der Verkehrsregel fehlgeschlagen"
 msgid "Edit Rule — {0}"
 msgstr "Regel bearbeiten — {0}"
 
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 msgid "Basic Info"
 msgstr "Grundlegende Informationen"
@@ -11272,11 +11281,6 @@ msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Exec"
-msgstr ""
-
-#. 0: computedPerms
-#: src/lib/components/custom/Authentication/PamUserForm.svelte
-msgid "{0} (octal)"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
@@ -20890,4 +20894,38 @@ msgstr ""
 #: src/lib/components/custom/VM/Options/BootRom.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 msgid "UEFI + CSMWrap (Experimental)"
+msgstr ""
+
+#. 0: computedPerms.toString(8).padStart(3, '0')
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "{0} (Octal)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Refresh guest information"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Userland Release"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Host Kernel (Shared)"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Host Architecture"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Networking is disabled for this jail."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "Shared host network. Interfaces are inherited; traffic counters are not jail-specific."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Summary/GuestInformation.svelte
+msgid "No network interfaces reported."
 msgstr ""

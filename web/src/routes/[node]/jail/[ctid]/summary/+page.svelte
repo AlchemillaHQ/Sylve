@@ -26,6 +26,7 @@
 	import type { GFSStep } from '$lib/types/common';
 	import LineBrush from '$lib/components/custom/Charts/LineBrush/Single.svelte';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
+	import GuestInformation from '$lib/components/custom/Jail/Summary/GuestInformation.svelte';
 
 	interface SummaryBarExtras {
 		logsLength: number;
@@ -693,6 +694,15 @@
 			</Card.Content>
 		</Card.Root>
 	</div>
+
+	{#if jail.current.type === 'freebsd'}
+		<GuestInformation
+			node={data.node}
+			{ctId}
+			jailRunning={jState.current?.state === 'ACTIVE'}
+			startedAt={jail.current.startedAt}
+		/>
+	{/if}
 
 	{#key `${statsIdentity}:${displayedStatsStep ?? 'none'}`}
 		<div class="space-y-4 px-4 pb-4">

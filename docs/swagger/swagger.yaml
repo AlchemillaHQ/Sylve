@@ -1330,6 +1330,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_GuestInfo:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestInfo'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   ? github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_JailHardwareResult
   : properties:
       data:
@@ -4552,11 +4563,13 @@ definitions:
   github_com_alchemillahq_sylve_internal_db_models_vm.VMBootROM:
     enum:
     - uefi
+    - uefi_csmwrap
     - uboot
     - none
     type: string
     x-enum-varnames:
     - VMBootROMUEFI
+    - VMBootROMUEFICSMWrap
     - VMBootROMUBoot
     - VMBootROMNone
   github_com_alchemillahq_sylve_internal_db_models_vm.VMCPUPinning:
@@ -5658,6 +5671,59 @@ definitions:
         type: string
       vlanPolicy:
         $ref: '#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy'
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestIPAddress:
+    properties:
+      address:
+        type: string
+      prefix:
+        type: integer
+      type:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestInfo:
+    properties:
+      available:
+        type: boolean
+      interfaces:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkInterface'
+        type: array
+      networkMode:
+        type: string
+      osInfo:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestOSInfo'
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkInterface:
+    properties:
+      hardwareAddress:
+        type: string
+      ipAddresses:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestIPAddress'
+        type: array
+      name:
+        type: string
+      statistics:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkStatistics'
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkStatistics:
+    properties:
+      rxBytes:
+        type: integer
+      txBytes:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestOSInfo:
+    properties:
+      architecture:
+        type: string
+      kernelRelease:
+        type: string
+      name:
+        type: string
+      version:
+        type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.HookPhase:
     properties:
@@ -17877,6 +17943,45 @@ paths:
       security:
       - BearerAuth: []
       summary: Edit a Jail's description
+      tags:
+      - Jail
+  /jail/{ctid}/guest-info:
+    get:
+      description: Best-effort OS and live network information for running FreeBSD
+        jails. Available is false when inspection is unsupported or tools are unavailable.
+      parameters:
+      - description: Jail CTID
+        in: path
+        minimum: 1
+        name: ctid
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_GuestInfo'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "404":
+          description: Jail Not Found
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get jail guest information
       tags:
       - Jail
   /jail/{ctid}/hardware/cpu:

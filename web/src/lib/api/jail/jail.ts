@@ -17,6 +17,7 @@ import {
 import {
 	JailActionResponseSchema,
 	JailLogsSchema,
+	JailGuestInfoSchema,
 	JailRootMountPointSchema,
 	JailSchema,
 	JailStateSchema,
@@ -30,6 +31,7 @@ import {
 	type JailActionResponse,
 	type JailLifecycleAction,
 	type JailLogs,
+	type JailGuestInfo,
 	type JailRootMountPoint,
 	type JailStat,
 	type JailStatsBootstrap,
@@ -340,6 +342,19 @@ export async function getJailLogs(
 	options?: NodeAPIDataRequestOptions
 ): Promise<JailLogs | APIResponse> {
 	return await apiRequestResult(`/jail/${ctId}/logs`, JailLogsSchema, 'GET', undefined, options);
+}
+
+export async function getJailGuestInfo(
+	ctId: number,
+	options?: NodeAPIDataRequestOptions
+): Promise<JailGuestInfo | APIResponse> {
+	return await apiRequestResult(
+		`/jail/${ctId}/guest-info`,
+		JailGuestInfoSchema,
+		'GET',
+		undefined,
+		options
+	);
 }
 
 export async function getStats(

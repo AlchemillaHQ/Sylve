@@ -142,6 +142,38 @@ type State struct {
 	OverrideRequested bool    `json:"overrideRequested"`
 }
 
+type GuestInfo struct {
+	Available   bool                    `json:"available"`
+	OSInfo      *GuestOSInfo            `json:"osInfo"`
+	NetworkMode string                  `json:"networkMode"`
+	Interfaces  []GuestNetworkInterface `json:"interfaces"`
+}
+
+type GuestOSInfo struct {
+	Name          string `json:"name"`
+	Version       string `json:"version"`
+	KernelRelease string `json:"kernelRelease"`
+	Architecture  string `json:"architecture"`
+}
+
+type GuestNetworkInterface struct {
+	Name            string                  `json:"name"`
+	HardwareAddress string                  `json:"hardwareAddress"`
+	IPAddresses     []GuestIPAddress        `json:"ipAddresses"`
+	Statistics      *GuestNetworkStatistics `json:"statistics"`
+}
+
+type GuestIPAddress struct {
+	Type    string `json:"type"`
+	Address string `json:"address"`
+	Prefix  int    `json:"prefix"`
+}
+
+type GuestNetworkStatistics struct {
+	RXBytes uint64 `json:"rxBytes"`
+	TXBytes uint64 `json:"txBytes"`
+}
+
 type AddJailNetworkRequest struct {
 	Name           string                 `json:"name" binding:"required"`
 	SwitchName     string                 `json:"switchName" binding:"required"`

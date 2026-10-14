@@ -3031,6 +3031,39 @@ export async function handleDemoRequest<T = unknown>(
 				: missing(path)
 		) as DemoClientResponse<T>;
 	}
+	match = path.match(/^\/jail\/(\d+)\/guest-info$/);
+	if (match && method === 'GET') {
+		const found = findJail(Number(match[1]));
+		if (!found) return missing(path) as DemoClientResponse<T>;
+		const jail = fullJail(found.jail);
+		if (jail.type !== 'freebsd' || jail.state !== 'ACTIVE') {
+			return success({
+				available: false,
+				osInfo: null,
+				networkMode: '',
+				interfaces: []
+			}) as DemoClientResponse<T>;
+		}
+		const shared = jail.inheritIPv4 || jail.inheritIPv6;
+		return success({
+			available: true,
+			osInfo: {
+				name: 'FreeBSD',
+				version: '15.0-RELEASE',
+				kernelRelease: '15.0-RELEASE',
+				architecture: 'amd64'
+			},
+			networkMode: shared ? 'shared' : jail.networks.length > 0 ? 'vnet' : 'disabled',
+			interfaces: jail.networks.map((network, index) => ({
+				name: network.name,
+				hardwareAddress: `02:00:00:00:00:${(index + 1).toString(16).padStart(2, '0')}`,
+				ipAddresses: [
+					{ type: 'ipv4', address: `192.168.40.${(jail.ctId % 200) + 10 + index}`, prefix: 24 }
+				],
+				statistics: shared ? null : { rxBytes: 12 * 1024 ** 2, txBytes: 4 * 1024 ** 2 }
+			}))
+		}) as DemoClientResponse<T>;
+	}
 	match = path.match(/^\/jail\/(\d+)\/stats(?:\/[^/]+)?$/);
 	if (match) {
 		const ctId = Number(match[1]);

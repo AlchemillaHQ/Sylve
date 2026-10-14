@@ -250,6 +250,38 @@ export const JailLogsSchema = z.object({
 	logs: z.string()
 });
 
+export const JailGuestInfoSchema = z.object({
+	available: z.boolean(),
+	osInfo: z
+		.object({
+			name: z.string(),
+			version: z.string(),
+			kernelRelease: z.string(),
+			architecture: z.string()
+		})
+		.nullable(),
+	networkMode: z.enum(['', 'vnet', 'shared', 'disabled']),
+	interfaces: z.array(
+		z.object({
+			name: z.string(),
+			hardwareAddress: z.string(),
+			ipAddresses: z.array(
+				z.object({
+					type: z.enum(['ipv4', 'ipv6']),
+					address: z.string(),
+					prefix: z.number().int().min(0).max(128)
+				})
+			),
+			statistics: z
+				.object({
+					rxBytes: z.number().int().nonnegative(),
+					txBytes: z.number().int().nonnegative()
+				})
+				.nullable()
+		})
+	)
+});
+
 export const JailStatSchema = z.object({
 	id: z.number().int(),
 	jid: z.number().int(),
@@ -320,6 +352,7 @@ export type JailTemplateInstantiationTaskResponse = z.infer<
 export type JailState = z.infer<typeof JailStateSchema>;
 export type JailActionResponse = z.infer<typeof JailActionResponseSchema>;
 export type JailLogs = z.infer<typeof JailLogsSchema>;
+export type JailGuestInfo = z.infer<typeof JailGuestInfoSchema>;
 export type JailStat = z.infer<typeof JailStatSchema>;
 export type JailStatsBootstrap = z.infer<typeof JailStatsBootstrapSchema>;
 

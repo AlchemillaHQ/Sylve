@@ -767,6 +767,7 @@ func RegisterRoutes(r *gin.Engine,
 		jail.PATCH("/:ctid/description", jailHandlers.UpdateJailDescription(jailService))
 		jail.PATCH("/:ctid/name", jailHandlers.UpdateJailName(jailService, clusterService))
 		jail.GET("/:ctid/state", jailHandlers.GetJailState(jailService, lifecycleService))
+		jail.GET("/:ctid/guest-info", jailHandlers.GetJailGuestInfo(jailService))
 		jail.GET("/:ctid/logs", jailHandlers.GetJailLogs(jailService))
 		jail.GET("/:ctid/stats", jailHandlers.GetJailStatsBootstrap(jailService))
 		jail.GET("/:ctid/stats/:step", jailHandlers.GetJailStats(jailService))

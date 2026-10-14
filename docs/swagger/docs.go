@@ -11259,6 +11259,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/jail/{ctid}/guest-info": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Best-effort OS and live network information for running FreeBSD jails. Available is false when inspection is unsupported or tools are unavailable.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Jail"
+                ],
+                "summary": "Get jail guest information",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "description": "Jail CTID",
+                        "name": "ctid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Success",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_GuestInfo"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "404": {
+                        "description": "Jail Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            }
+        },
         "/jail/{ctid}/hardware/cpu": {
             "put": {
                 "security": [
@@ -31697,6 +31756,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_GuestInfo": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestInfo"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_interfaces_services_jail_JailHardwareResult": {
             "type": "object",
             "properties": {
@@ -36542,11 +36618,13 @@ const docTemplate = `{
             "type": "string",
             "enum": [
                 "uefi",
+                "uefi_csmwrap",
                 "uboot",
                 "none"
             ],
             "x-enum-varnames": [
                 "VMBootROMUEFI",
+                "VMBootROMUEFICSMWrap",
                 "VMBootROMUBoot",
                 "VMBootROMNone"
             ]
@@ -38191,6 +38269,88 @@ const docTemplate = `{
                 },
                 "vlanPolicy": {
                     "$ref": "#/definitions/github_com_alchemillahq_sylve_pkg_network_bridgevlan.PortPolicy"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestIPAddress": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "prefix": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestInfo": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "interfaces": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkInterface"
+                    }
+                },
+                "networkMode": {
+                    "type": "string"
+                },
+                "osInfo": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestOSInfo"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkInterface": {
+            "type": "object",
+            "properties": {
+                "hardwareAddress": {
+                    "type": "string"
+                },
+                "ipAddresses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestIPAddress"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "statistics": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkStatistics"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestNetworkStatistics": {
+            "type": "object",
+            "properties": {
+                "rxBytes": {
+                    "type": "integer"
+                },
+                "txBytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_interfaces_services_jail.GuestOSInfo": {
+            "type": "object",
+            "properties": {
+                "architecture": {
+                    "type": "string"
+                },
+                "kernelRelease": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },
