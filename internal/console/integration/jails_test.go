@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -474,11 +475,14 @@ func TestFullAcceptanceJailObjectReferenceWorkflow(t *testing.T) {
 		t.Fatalf("CLI object-reference switch create result = %#v", createdSwitch)
 	}
 	var standard networkModels.StandardSwitch
-	if err := suite.database.First(&standard, createdSwitch.ID).Error; err != nil {
+	if err := suite.database.Preload("Addresses.Object.Entries").First(&standard, createdSwitch.ID).Error; err != nil {
 		t.Fatalf("load object-reference switch: %v", err)
 	}
 	bridge := consoleBridge(t, standard.BridgeName)
-	if standard.NetworkID == nil || *standard.NetworkID != networkObject.ID || !hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
+	if len(standard.Addresses) != 1 || standard.Addresses[0].Family != 4 || standard.Addresses[0].Ordering != 0 ||
+		standard.Addresses[0].ObjectID == nil || *standard.Addresses[0].ObjectID != networkObject.ID ||
+		!slices.Equal(standard.Networks(4), []string{addresses.bridgeIPv4CIDR}) ||
+		!hasInterfaceGroup(bridge.Groups, "bridge") || len(bridge.BridgeMembers) != 0 {
 		t.Fatalf("object-reference switch = %#v, bridge = %#v", standard, bridge)
 	}
 

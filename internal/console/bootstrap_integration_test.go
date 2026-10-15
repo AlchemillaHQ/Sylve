@@ -64,22 +64,7 @@ func newBootstrapIntegrationFixture(t *testing.T, withSwitch bool) *bootstrapInt
 		t.Skip("requires an isolated real ZFS pool and FreeBSD interfaces")
 	}
 	pool, client := zfstest.DedicatedPool(t)
-	db := testutil.NewSQLiteTestDB(t,
-		&models.BasicSettings{}, &models.ZFSCacheInvalidation{},
-		&utilitiesModels.Downloads{}, &utilitiesModels.Upload{},
-		&networkModels.StandardSwitch{}, &networkModels.NetworkPort{},
-		&networkModels.ManualSwitch{}, &networkModels.Object{},
-		&networkModels.ObjectEntry{}, &networkModels.HostInterfaceL3{},
-		&networkModels.HostInterfaceL3Address{}, &networkModels.PendingApply{},
-		&networkModels.DHCPConfig{}, &networkModels.DHCPRange{},
-		&bootstrapIntegrationVM{}, &vmModels.Network{},
-		&bootstrapIntegrationJail{}, &jailModels.Network{},
-	)
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = sqlDB.Close() })
+	db := newBootstrapIntegrationDB(t)
 
 	system := systemService.NewSystemService(db, client).(*systemService.Service)
 	network := &networkService.Service{DB: db, TelemetryDB: db}
@@ -112,6 +97,34 @@ func newBootstrapIntegrationFixture(t *testing.T, withSwitch bool) *bootstrapInt
 		}
 	})
 	return f
+}
+
+func newBootstrapIntegrationDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := testutil.NewSQLiteTestDB(t,
+		&models.BasicSettings{}, &models.ZFSCacheInvalidation{},
+		&utilitiesModels.Downloads{}, &utilitiesModels.Upload{},
+		&networkModels.StandardSwitch{}, &networkModels.StandardSwitchAddress{}, &networkModels.NetworkPort{},
+		&networkModels.ManualSwitch{}, &networkModels.Object{},
+		&networkModels.ObjectEntry{}, &networkModels.HostInterfaceL3{},
+		&networkModels.HostInterfaceL3Address{}, &networkModels.PendingApply{},
+		&networkModels.DHCPConfig{}, &networkModels.DHCPRange{},
+		&bootstrapIntegrationVM{}, &vmModels.Network{},
+		&bootstrapIntegrationJail{}, &jailModels.Network{},
+	)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	return db
+}
+
+func TestBootstrapIntegrationFixtureSchema(t *testing.T) {
+	db := newBootstrapIntegrationDB(t)
+	if !db.Migrator().HasTable(&networkModels.StandardSwitchAddress{}) {
+		t.Fatal("bootstrap integration fixture is missing standard switch address rows")
+	}
 }
 
 func (f *bootstrapIntegrationFixture) document(initialized bool, badSwitch bool) map[string]any {

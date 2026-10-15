@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -93,13 +94,16 @@ func TestAcceptanceSwitchesCLIAndREPL(t *testing.T) {
 	}
 
 	var standard networkModels.StandardSwitch
-	if err := suite.database.Preload("Ports").Preload("BridgeMACObject.Entries").First(&standard, createdStandard.ID).Error; err != nil {
+	if err := suite.database.Preload("Ports").Preload("BridgeMACObject.Entries").
+		Preload("Addresses.Object.Entries").First(&standard, createdStandard.ID).Error; err != nil {
 		t.Fatalf("load created standard switch: %v", err)
 	}
 	if standard.Name != standardName || !standard.Private || !standard.DisableIPv6 || len(standard.Ports) != 0 ||
 		standard.BridgeMACMode != networkModels.StandardSwitchMACModeObject ||
 		standard.BridgeMACObjectID == nil || *standard.BridgeMACObjectID != bridgeMACObject.ID ||
-		standard.NetworkID == nil || *standard.NetworkID != networkObject.ID ||
+		len(standard.Addresses) != 1 || standard.Addresses[0].Family != 4 || standard.Addresses[0].Ordering != 0 ||
+		standard.Addresses[0].ObjectID == nil || *standard.Addresses[0].ObjectID != networkObject.ID ||
+		!slices.Equal(standard.Networks(4), []string{network4}) ||
 		standard.GatewayAddressID == nil || *standard.GatewayAddressID != gatewayObject.ID {
 		t.Fatalf("created standard switch = %#v", standard)
 	}
