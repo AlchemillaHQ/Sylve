@@ -225,7 +225,7 @@ func requireConsoleIntegrationHost() error {
 		return fmt.Errorf("must run on a FreeBSD kernel, got %q", strings.TrimSpace(string(output)))
 	}
 
-	for _, command := range []string{"zpool", "zfs", "jail", "ifconfig", "route", "bhyve", "virsh", "kldstat", "service"} {
+	for _, command := range []string{"zpool", "zfs", "jail", "ifconfig", "route", "bhyve", "bhyvectl", "virsh", "kldstat", "service"} {
 		if _, err := exec.LookPath(command); err != nil {
 			return fmt.Errorf("required command %q is unavailable: %w", command, err)
 		}
@@ -237,6 +237,18 @@ func requireConsoleIntegrationHost() error {
 	}
 	if output, err := exec.Command("kldstat", "-n", "vmm").CombinedOutput(); err != nil {
 		return fmt.Errorf("bhyve vmm kernel module is not ready: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	probeName := "sylve-probe-" + rand.Text()[:12]
+	if _, err := os.Lstat("/dev/vmm/" + probeName); err == nil {
+		return fmt.Errorf("refusing to use existing bhyve probe %s", probeName)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("check bhyve probe %s: %w", probeName, err)
+	}
+	if output, err := runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "bhyvectl", "--vm="+probeName, "--create"); err != nil {
+		return fmt.Errorf("bhyve cannot create a VM; check host or nested virtualization support: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if output, err := runConsoleVMCommand(consoleIntegrationVMCleanupTimeout, "bhyvectl", "--vm="+probeName, "--destroy"); err != nil {
+		return fmt.Errorf("destroy owned bhyve probe %s: %w: %s", probeName, err, strings.TrimSpace(string(output)))
 	}
 	if output, err := exec.Command("service", "libvirtd", "onestatus").CombinedOutput(); err != nil {
 		return fmt.Errorf("libvirtd is not running: %w: %s", err, strings.TrimSpace(string(output)))

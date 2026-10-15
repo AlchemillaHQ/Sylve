@@ -811,9 +811,15 @@ func waitForConsoleVMTask(t *testing.T, suite *consoleIntegrationSuite, taskID u
 		case taskModels.LifecycleTaskStatusSuccess:
 			return
 		case taskModels.LifecycleTaskStatusFailed:
+			if task.GuestType == taskModels.GuestTypeVM {
+				logConsoleVMDiagnostics(t, task.GuestID)
+			}
 			t.Fatalf("VM lifecycle task %d failed: %s", taskID, task.Error)
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	if last.GuestType == taskModels.GuestTypeVM {
+		logConsoleVMDiagnostics(t, last.GuestID)
 	}
 	t.Fatalf("VM lifecycle task %d did not complete: %#v", taskID, last)
 }
@@ -833,7 +839,17 @@ func waitForConsoleVMState(t *testing.T, rid uint, want string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	logConsoleVMDiagnostics(t, rid)
 	t.Fatalf("VM %d state did not become %q: %v\n%s", rid, want, lastErr, lastOutput)
+}
+
+func logConsoleVMDiagnostics(t *testing.T, rid uint) {
+	t.Helper()
+	path := fmt.Sprintf("/var/log/libvirt/bhyve/%d.log", rid)
+	output, err := runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "tail", "-n", "80", path)
+	t.Logf("VM %d bhyve log (%s): %v\n%s", rid, path, err, output)
+	output, err = runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "sysctl", "hw.model", "kern.vm_guest", "hw.vmm")
+	t.Logf("bhyve host capabilities: %v\n%s", err, output)
 }
 
 func assertConsoleVMDomain(t *testing.T, rid uint, want bool) {
