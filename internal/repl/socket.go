@@ -227,6 +227,7 @@ func typedSocketOperationRequiresMutation(operation string) bool {
 		consoleprotocol.OperationVMTemplateGet,
 		consoleprotocol.OperationVMQGAInfo,
 		consoleprotocol.OperationSwitchList,
+		consoleprotocol.OperationSwitchStatus,
 		consoleprotocol.OperationObjectList,
 		consoleprotocol.OperationDownloadList,
 		consoleprotocol.OperationNoteList,
@@ -375,6 +376,10 @@ func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketRespons
 			return processVMQGAInfoSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationSwitchList:
 			return processSwitchListSocketRequest(ctx, req.Payload)
+		case consoleprotocol.OperationSwitchSync:
+			return processSwitchSyncSocketRequest(ctx, req.Payload, true)
+		case consoleprotocol.OperationSwitchStatus:
+			return processSwitchSyncSocketRequest(ctx, req.Payload, false)
 		case consoleprotocol.OperationSwitchCreate:
 			return processSwitchCreateSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationSwitchDelete:

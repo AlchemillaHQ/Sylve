@@ -19,6 +19,7 @@ import (
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/network/interfaceref"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 
 	"gorm.io/gorm"
@@ -76,6 +77,10 @@ type Service struct {
 	TelemetryDB                  *gorm.DB
 	interfaceReferenceMutex      sync.RWMutex
 	syncMutex                    sync.Mutex
+	switchReconcileMutex         sync.Mutex
+	switchStatusMutex            sync.RWMutex
+	switchStatus                 reconcile.Status
+	switchRetryDelays            []time.Duration
 	epairMutex                   sync.Mutex
 	firewallMutex                sync.Mutex
 	firewallTrafficMutationMutex sync.Mutex

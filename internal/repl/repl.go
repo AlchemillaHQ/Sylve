@@ -16,6 +16,7 @@ import (
 	bootstrap "github.com/alchemillahq/sylve/internal/bootstrap"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	utilitiesServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/utilities"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/info"
@@ -27,6 +28,7 @@ import (
 
 type BootstrapApplier interface {
 	Apply(ctx context.Context, path string) bootstrap.Report
+	SwitchStatus() reconcile.Status
 }
 
 type Context struct {

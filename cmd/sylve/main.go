@@ -430,6 +430,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		zS.(*zfs.Service),
 		dS.(*disk.Service),
 		nS.(*networkService.Service),
+		serviceRegistry.BootstrapService,
 		notificationService,
 		uS.(*utilities.Service),
 		sysS.(*system.Service),

@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/assets"
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	authHandlers "github.com/alchemillahq/sylve/internal/handlers/auth"
@@ -111,6 +112,7 @@ func RegisterRoutes(r *gin.Engine,
 	zfsService *zfsService.Service,
 	diskService *diskServicePkg.Service,
 	networkService *networkServicePkg.Service,
+	bootstrapService *bootstrap.Service,
 	notificationService *notificationsService.Service,
 	utilitiesService *utilitiesServicePkg.Service,
 	systemService *systemServicePkg.Service,
@@ -567,6 +569,8 @@ func RegisterRoutes(r *gin.Engine,
 		}
 
 		network.GET("/switch", networkHandlers.ListSwitches(networkService))
+		network.GET("/switch/sync", networkHandlers.GetSwitchSyncStatus(networkService, bootstrapService))
+		network.POST("/switch/sync", middleware.RequireLocalAdmin(authService), networkHandlers.SyncSwitches(networkService, bootstrapService))
 
 		standardSwitches := network.Group("/switch/standard")
 		standardSwitches.Use(middleware.RequireLocalAdmin(authService))

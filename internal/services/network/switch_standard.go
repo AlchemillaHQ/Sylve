@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -299,10 +300,22 @@ func standardSwitchInputFromConfig(config StandardSwitchConfig) standardSwitchIn
 }
 
 func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, error) {
+	return s.NewStandardSwitchWithContext(context.Background(), request)
+}
+
+func (s *Service) NewStandardSwitchWithContext(ctx context.Context, request CreateStandardSwitchRequest) (uint, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	unlockInterfaceReferences := s.lockInterfaceReferencesWrite()
 	defer unlockInterfaceReferences()
-	s.syncMutex.Lock()
+	if err := reconcile.Lock(ctx, &s.syncMutex); err != nil {
+		return 0, err
+	}
 	defer s.syncMutex.Unlock()
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 
 	normalizedName, err := normalizeStandardSwitchName(request.Name)
 	if err != nil {
@@ -311,7 +324,7 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, 
 	bridgeName := utils.ShortHash("vm-" + normalizedName)
 
 	var existing networkModels.StandardSwitch
-	err = s.DB.Preload("Ports").Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).Where("name = ?", normalizedName).First(&existing).Error
+	err = s.DB.WithContext(ctx).Preload("Ports").Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).Where("name = ?", normalizedName).First(&existing).Error
 	if err == nil {
 		return s.upsertExistingStandardSwitch(existing, request)
 	}
@@ -328,6 +341,9 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, 
 		return 0, err
 	}
 	if err := s.checkStandardSwitchPortsForHostInterfaceL3(input.ports); err != nil {
+		return 0, err
+	}
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 
@@ -797,11 +813,21 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 }
 
 func (s *Service) SyncStandardSwitches() error {
-	s.syncMutex.Lock()
+	_, err := s.syncStandardSwitches(context.Background())
+	return err
+}
+
+func (s *Service) syncStandardSwitches(ctx context.Context) ([]reconcile.Failure, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := reconcile.Lock(ctx, &s.syncMutex); err != nil {
+		return nil, err
+	}
 	defer s.syncMutex.Unlock()
 
 	var switches []networkModels.StandardSwitch
-	if err := s.DB.Preload("Ports").
+	if err := s.DB.WithContext(ctx).Preload("Ports").
 		Preload("NetworkObj.Entries").
 		Preload("Network6Obj.Entries").
 		Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).
@@ -810,25 +836,38 @@ func (s *Service) SyncStandardSwitches() error {
 		Preload("Gateway6AddressObj.Entries").
 		Preload("BridgeMACObject.Entries").
 		Find(&switches).Error; err != nil {
-		return fmt.Errorf("db_error_checking_switches: %v", err)
+		err = fmt.Errorf("db_error_checking_switches: %w", err)
+		return []reconcile.Failure{{Phase: "load_switches", Error: err.Error()}}, err
 	}
 
 	var syncErrors []error
+	var failures []reconcile.Failure
+	recordFailure := func(sw networkModels.StandardSwitch, err error) {
+		failures = append(failures, reconcile.Failure{
+			SwitchID: sw.ID, Name: sw.Name, Bridge: sw.BridgeName,
+			Phase: "standard_switch", Error: err.Error(),
+		})
+		syncErrors = append(syncErrors, fmt.Errorf("switch %d (%s, %s): %w", sw.ID, sw.Name, sw.BridgeName, err))
+	}
 	for _, current := range switches {
+		if err := ctx.Err(); err != nil {
+			return failures, errors.Join(append(syncErrors, err)...)
+		}
 		warnStandardSwitchMemberRCConflicts(current)
 		knownJailMembers, err := s.knownStandardSwitchJailMembers(current.ID)
 		if err != nil {
-			syncErrors = append(syncErrors, err)
+			recordFailure(current, err)
 			continue
 		}
 		if err := syncStandardSwitchRuntime(current, knownJailMembers); err != nil {
-			syncErrors = append(syncErrors, err)
+			recordFailure(current, err)
 		}
 	}
-	if err := reconcileStandardSwitchAutomaticRouteOwners(s.DB, true, true); err != nil {
+	if err := reconcileStandardSwitchAutomaticRouteOwners(s.DB.WithContext(ctx), true, true); err != nil {
 		syncErrors = append(syncErrors, err)
+		failures = append(failures, reconcile.Failure{Phase: "automatic_route_owners", Error: err.Error()})
 	}
-	return errors.Join(syncErrors...)
+	return failures, errors.Join(syncErrors...)
 }
 
 func syncStandardSwitchRuntime(sw networkModels.StandardSwitch, knownDynamic ...map[string]struct{}) error {

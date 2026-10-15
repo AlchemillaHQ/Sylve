@@ -17,6 +17,7 @@ import (
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
@@ -51,6 +52,8 @@ func handleSwitches(ctx *Context, args []string) {
 	if len(cleanArgs) == 0 {
 		printSubHelp(ctx, "switches", []cmdHelp{
 			{"list", "List all standard and manual switches"},
+			{"sync", "Re-apply stored standard switches and Host IP configuration"},
+			{"status", "Show runtime and bootstrap switch reconciliation status"},
 			{"create standard <name> [options]", "Create a standard switch; --ports is optional"},
 			{"create manual <name> <bridge>", "Register an existing bridge as a manual switch"},
 			{"delete <standard|manual> <id>", "Delete a switch"},
@@ -61,6 +64,19 @@ func handleSwitches(ctx *Context, args []string) {
 	}
 
 	switch cleanArgs[0] {
+	case "sync", "status":
+		if len(cleanArgs) != 1 {
+			println(ctx, styledErrorf("Usage: switches %s", cleanArgs[0]))
+			return
+		}
+		response := switchSyncResponse(ctx, jsonMode, cleanArgs[0] == "sync")
+		if response.Output != "" {
+			printf(ctx, "%s", response.Output)
+		}
+		if response.Error != "" && !jsonMode {
+			println(ctx, styledErrorf("%s", response.Error))
+		}
+
 	case "list":
 		if len(cleanArgs) != 1 {
 			println(ctx, styledErrorf("Usage: switches list"))
@@ -1200,6 +1216,54 @@ func processSwitchListSocketRequest(ctx *Context, payload json.RawMessage) socke
 		return socketResponse{Error: err.Error()}
 	}
 	return operationSuccess(request.JSON, result, formatSwitches(result))
+}
+
+func switchSyncStatus(ctx *Context) reconcile.SwitchStatus {
+	status := reconcile.SwitchStatus{
+		Runtime: ctx.Network.SwitchSyncStatus(), Bootstrap: reconcile.Status{}.Clone(),
+	}
+	if ctx.Bootstrap != nil {
+		status.Bootstrap = ctx.Bootstrap.SwitchStatus()
+	}
+	return status
+}
+
+func formatSwitchSyncStatus(status reconcile.SwitchStatus) string {
+	var builder strings.Builder
+	for _, entry := range []struct {
+		name   string
+		status reconcile.Status
+	}{{"Runtime", status.Runtime}, {"Bootstrap", status.Bootstrap}} {
+		fmt.Fprintf(&builder, "%s: %s (attempts=%d)\n", entry.name, entry.status.State, entry.status.Attempts)
+		if entry.status.Error != "" {
+			fmt.Fprintf(&builder, "  %s\n", entry.status.Error)
+		}
+	}
+	return builder.String()
+}
+
+func processSwitchSyncSocketRequest(ctx *Context, payload json.RawMessage, apply bool) socketResponse {
+	var request consoleprotocol.SwitchSyncPayload
+	if err := decodeOperationPayload(payload, &request); err != nil {
+		return socketResponse{Error: "invalid_switch_sync_request: " + err.Error()}
+	}
+	return switchSyncResponse(ctx, request.JSON, apply)
+}
+
+func switchSyncResponse(ctx *Context, jsonMode, apply bool) socketResponse {
+	if ctx == nil || ctx.Network == nil {
+		return socketResponse{Error: "network_service_unavailable"}
+	}
+	var err error
+	if apply {
+		err = ctx.Network.SyncSwitchNetwork(operationContext(ctx))
+	}
+	status := switchSyncStatus(ctx)
+	response := operationSuccess(jsonMode, status, strings.TrimSuffix(formatSwitchSyncStatus(status), "\n"))
+	if err != nil {
+		response.Error = err.Error()
+	}
+	return response
 }
 
 func processSwitchCreateSocketRequest(ctx *Context, payload json.RawMessage) socketResponse {

@@ -29,6 +29,26 @@ func newSwitchesCommand() *cli.Command {
 		Usage: "Manage network switches",
 		Commands: []*cli.Command{
 			{
+				Name:  "sync",
+				Usage: "Re-apply stored standard switches and Host IP configuration",
+				Flags: []cli.Flag{jsonFlag},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchSync, consoleprotocol.SwitchSyncPayload{
+						JSON: command.Bool("json"),
+					}, command.Bool("json"))
+				},
+			},
+			{
+				Name:  "status",
+				Usage: "Show the last runtime and bootstrap switch reconciliation results",
+				Flags: []cli.Flag{jsonFlag},
+				Action: func(ctx context.Context, command *cli.Command) error {
+					return executeConsoleOperation(ctx, command, consoleprotocol.OperationSwitchStatus, consoleprotocol.SwitchSyncPayload{
+						JSON: command.Bool("json"),
+					}, command.Bool("json"))
+				},
+			},
+			{
 				Name:  "list",
 				Usage: "List standard and manual switches",
 				Flags: []cli.Flag{jsonFlag},

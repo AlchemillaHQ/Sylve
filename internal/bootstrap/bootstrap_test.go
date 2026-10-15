@@ -76,7 +76,7 @@ func (f *fakeNetwork) ApplyBootstrapDNS(ctx context.Context, servers []string) e
 	return nil
 }
 
-func (f *fakeNetwork) NewStandardSwitch(request networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error) {
+func (f *fakeNetwork) NewStandardSwitchWithContext(_ context.Context, request networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error) {
 	f.mu.Lock()
 	f.standardCalls = append(f.standardCalls, request)
 	standardFn := f.standardFn
@@ -87,7 +87,7 @@ func (f *fakeNetwork) NewStandardSwitch(request networkServiceInterfaces.CreateS
 	return 1, nil
 }
 
-func (f *fakeNetwork) CreateManualSwitch(name, bridge string) (*networkModels.ManualSwitch, error) {
+func (f *fakeNetwork) CreateManualSwitchWithContext(_ context.Context, name, bridge string) (*networkModels.ManualSwitch, error) {
 	f.mu.Lock()
 	f.manualCalls = append(f.manualCalls, manualCall{name: name, bridge: bridge})
 	manualFn := f.manualFn
@@ -116,6 +116,7 @@ func newTestEngine(t *testing.T, settings *fakeSettings, network *fakeNetwork) (
 	source := filepath.Join(directory, "bootstrap.json")
 	resolver := filepath.Join(directory, "resolv.conf")
 	service := NewService(settings, network)
+	service.switchRetryDelays = []time.Duration{0, 0, 0}
 	service.startupPath = source
 	return service, source, resolver
 }

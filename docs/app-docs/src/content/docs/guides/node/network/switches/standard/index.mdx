@@ -121,3 +121,24 @@ After creation the switch appears in the table with its ports, MTU, VLAN, and as
 :::caution
 Do not use a Standard Switch to adopt an existing bridge managed by `rc.conf` or custom scripts. Use a [Manual Switch](/guides/node/network/switches/manual/) for that case; two systems must not manage the same bridge or physical port.
 :::
+
+## Startup recovery and explicit re-apply
+
+Sylve makes an initial startup reconciliation and retries failed Standard Switch or Host IP reconciliation up to three more times, waiting 1, 2, and 4 seconds between attempts. Follow-up startup attempts run in the background. Each attempt reads the latest saved switch configuration and reconciles existing bridges in place; it does not recreate a healthy bridge or detach unchanged members.
+
+Bootstrap switch creation uses the same bounded backoff, retrying only failed switch items. Settings, successful switches, and DNS are not replayed during these retries. A failed creation rolls back its database record, so retrying creation is separate from syncing saved switches. If bootstrap still fails, its source document is retained.
+
+Use the running daemon's CLI to inspect or re-apply configuration without a restart:
+
+```sh
+sylve switches status --json
+sylve switches sync --json
+```
+
+The API equivalents are `GET /api/network/switch/sync` for status and `POST /api/network/switch/sync` to re-apply saved Standard Switch and Host IP configuration. Re-apply requires local-administrator access; a second trigger during an active run returns a conflict instead of starting another retry loop. Pending Host IP edits are respected, not rolled back.
+
+Status reports runtime and bootstrap switch reconciliation separately. Each contains the state (`not_attempted`, `running`, `retrying`, `converged`, or `degraded`), attempt count, timestamps, and failure details. `degraded` remains queryable after automatic retries stop. A successful re-apply clears the corresponding failures. Status describes the last run, not continuous network health, and resets when the daemon restarts.
+
+`switches sync` does not replay the bootstrap document. If a failed bootstrap switch has no saved database record, fix the reported problem and run `sylve bootstrap apply` to retry its creation.
+
+Retry admission and backoff stop after 15 seconds or daemon cancellation. Existing in-flight OS operations are allowed to finish rather than abandoned while they may still mutate networking; their execution time is not a hard 15-second timeout.

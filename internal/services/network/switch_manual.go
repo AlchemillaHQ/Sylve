@@ -9,6 +9,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -18,6 +19,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/network/iface"
 	"gorm.io/gorm"
@@ -40,7 +42,13 @@ func (s *Service) GetManualSwitches() ([]networkModels.ManualSwitch, error) {
 }
 
 func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.ManualSwitch, error) {
-	s.syncMutex.Lock()
+	return s.CreateManualSwitchWithContext(context.Background(), name, bridge)
+}
+
+func (s *Service) CreateManualSwitchWithContext(ctx context.Context, name, bridge string) (*networkModels.ManualSwitch, error) {
+	if err := reconcile.Lock(ctx, &s.syncMutex); err != nil {
+		return nil, err
+	}
 	defer s.syncMutex.Unlock()
 
 	name, bridge, err := normalizeManualSwitch(name, bridge)
@@ -49,7 +57,7 @@ func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.Manual
 	}
 
 	var existing networkModels.ManualSwitch
-	err = s.DB.Where("name = ?", name).First(&existing).Error
+	err = s.DB.WithContext(ctx).Where("name = ?", name).First(&existing).Error
 	switch {
 	case err == nil:
 		if existing.Bridge == bridge {
@@ -80,7 +88,7 @@ func (s *Service) CreateManualSwitch(name, bridge string) (*networkModels.Manual
 	}
 	observeManualSwitchVLANState(sw)
 
-	if err := s.DB.Create(sw).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Create(sw).Error; err != nil {
 		if isManualSwitchDuplicateError(err) {
 			if conflictErr := s.checkManualSwitchConflicts(0, name, bridge); conflictErr != nil {
 				return nil, conflictErr

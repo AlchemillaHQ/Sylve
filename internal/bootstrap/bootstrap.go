@@ -38,6 +38,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -47,6 +48,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 )
 
 const (
@@ -97,8 +99,8 @@ func failedItem(kind string, index int, name, message string) systemServiceInter
 }
 
 type NetworkApplier interface {
-	NewStandardSwitch(networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error)
-	CreateManualSwitch(name, bridge string) (*networkModels.ManualSwitch, error)
+	NewStandardSwitchWithContext(context.Context, networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error)
+	CreateManualSwitchWithContext(ctx context.Context, name, bridge string) (*networkModels.ManualSwitch, error)
 	ApplyBootstrapDNS(context.Context, []string) error
 }
 
@@ -112,8 +114,11 @@ type Service struct {
 	settings systemServiceInterfaces.BootstrapSettingsApplier
 	network  NetworkApplier
 
-	mutex            sync.Mutex
-	startupAttempted bool
+	mutex             sync.Mutex
+	startupAttempted  bool
+	switchStatusMutex sync.RWMutex
+	switchStatus      reconcile.Status
+	switchRetryDelays []time.Duration
 
 	startupPath string
 
@@ -198,7 +203,7 @@ func (s *Service) applyLocked(ctx context.Context, path string) Report {
 	report.Items = append(report.Items, settingsItems...)
 	report.RestartRequired = restartRequired
 
-	report.Items = append(report.Items, s.applySwitches(ctx, doc)...)
+	report.Items = append(report.Items, s.applySwitches(ctx, doc, path, data, info)...)
 
 	if settingsErr != nil {
 		report.GeneralError = settingsErr.Error()
@@ -319,32 +324,100 @@ func (s *Service) applySettings(ctx context.Context, doc *parsedDocument) ([]sys
 	return items, result.RestartRequired, callErr
 }
 
-func (s *Service) applySwitches(ctx context.Context, doc *parsedDocument) []systemServiceInterfaces.BootstrapItemResult {
-	items := make([]systemServiceInterfaces.BootstrapItemResult, 0, len(doc.switches))
-	for _, spec := range doc.switches {
-		if ctx.Err() != nil {
-			items = append(items, failedItem("switch", spec.index, spec.name, "context_canceled"))
-			continue
-		}
-		if s.network == nil {
-			items = append(items, failedItem("switch", spec.index, spec.name, "network_service_unavailable"))
-			continue
-		}
+func (s *Service) SwitchStatus() reconcile.Status {
+	s.switchStatusMutex.RLock()
+	defer s.switchStatusMutex.RUnlock()
+	return s.switchStatus.Clone()
+}
 
-		var err error
-		switch spec.kind {
-		case "standard":
-			_, err = s.network.NewStandardSwitch(consoleprotocol.StandardSwitchServiceRequest(spec.standard))
-		case "manual":
-			_, err = s.network.CreateManualSwitch(spec.manual.Name, spec.manual.Bridge)
-		}
+func (s *Service) setSwitchStatus(status reconcile.Status) {
+	s.switchStatusMutex.Lock()
+	defer s.switchStatusMutex.Unlock()
+	s.switchStatus = status
+}
 
-		if err != nil {
-			items = append(items, failedItem("switch", spec.index, spec.name, err.Error()))
-			continue
-		}
-		items = append(items, itemResult("switch", spec.index, spec.name, systemServiceInterfaces.BootstrapApplied, ""))
+func (s *Service) applySwitches(ctx context.Context, doc *parsedDocument, path string, data []byte, info os.FileInfo) []systemServiceInterfaces.BootstrapItemResult {
+	items := make([]systemServiceInterfaces.BootstrapItemResult, len(doc.switches))
+	if len(items) == 0 {
+		return items
 	}
+	for index, spec := range doc.switches {
+		items[index] = failedItem("switch", spec.index, spec.name, "context_canceled")
+	}
+	var status reconcile.Status
+	delays := s.switchRetryDelays
+	if delays == nil {
+		delays = reconcile.Backoff()
+	}
+	err := reconcile.Retry(ctx, delays, func(ctx context.Context, attempt int) error {
+		now := time.Now().UTC()
+		status.State = "running"
+		status.Attempts = attempt
+		status.LastAttemptAt = &now
+		s.setSwitchStatus(status)
+		// A retained document may be edited while we wait. Never retry old
+		// desired state against a replacement source.
+		var sourceErr error
+		if attempt > 1 {
+			sourceErr = s.verifySource(path, data, info)
+		}
+		var failures []reconcile.Failure
+		var applyErrors []error
+		for index, spec := range doc.switches {
+			if items[index].Status == systemServiceInterfaces.BootstrapApplied {
+				continue
+			}
+			var err error
+			switch {
+			case ctx.Err() != nil:
+				err = ctx.Err()
+			case sourceErr != nil:
+				err = sourceErr
+			case s.network == nil:
+				err = errors.New("network_service_unavailable")
+			case spec.kind == "standard":
+				_, err = s.network.NewStandardSwitchWithContext(ctx, consoleprotocol.StandardSwitchServiceRequest(spec.standard))
+			case spec.kind == "manual":
+				_, err = s.network.CreateManualSwitchWithContext(ctx, spec.manual.Name, spec.manual.Bridge)
+			}
+			if err == nil {
+				items[index] = itemResult("switch", spec.index, spec.name, systemServiceInterfaces.BootstrapApplied, "")
+				continue
+			}
+			items[index] = failedItem("switch", spec.index, spec.name, err.Error())
+			failures = append(failures, reconcile.Failure{Name: spec.name, Phase: "bootstrap_create", Error: err.Error()})
+			applyErrors = append(applyErrors, fmt.Errorf("switch %s: %w", spec.name, err))
+		}
+		status.Failures = failures
+		status.Error = ""
+		err := errors.Join(applyErrors...)
+		if err != nil {
+			status.State = "retrying"
+			status.Error = err.Error()
+		}
+		s.setSwitchStatus(status)
+		return err
+	})
+	now := time.Now().UTC()
+	status.CompletedAt = &now
+	status.State = "converged"
+	if err != nil {
+		status.State = "degraded"
+		status.Error = err.Error()
+		// Include cancellation in the item report, not just in the status.
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			message := err.Error()
+			if errors.Is(err, context.Canceled) {
+				message = "context_canceled"
+			}
+			for index := range items {
+				if items[index].Status == systemServiceInterfaces.BootstrapFailed {
+					items[index].Message = message
+				}
+			}
+		}
+	}
+	s.setSwitchStatus(status)
 	return items
 }
 

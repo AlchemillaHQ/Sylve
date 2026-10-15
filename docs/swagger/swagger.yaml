@@ -1605,6 +1605,17 @@ definitions:
       status:
         type: string
     type: object
+  github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus:
+    properties:
+      data:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.SwitchStatus'
+      error:
+        type: string
+      message:
+        type: string
+      status:
+        type: string
+    type: object
   github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_PasskeyCredentialInfo:
     properties:
       data:
@@ -7721,6 +7732,43 @@ definitions:
     x-enum-varnames:
     - KindVM
     - KindJail
+  github_com_alchemillahq_sylve_internal_network_reconcile.Failure:
+    properties:
+      bridge:
+        type: string
+      error:
+        type: string
+      name:
+        type: string
+      phase:
+        type: string
+      switchId:
+        type: integer
+    type: object
+  github_com_alchemillahq_sylve_internal_network_reconcile.Status:
+    properties:
+      attempts:
+        type: integer
+      completedAt:
+        type: string
+      error:
+        type: string
+      failures:
+        items:
+          $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Failure'
+        type: array
+      lastAttemptAt:
+        type: string
+      state:
+        type: string
+    type: object
+  github_com_alchemillahq_sylve_internal_network_reconcile.SwitchStatus:
+    properties:
+      bootstrap:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Status'
+      runtime:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Status'
+    type: object
   github_com_alchemillahq_sylve_internal_services_auth.ImportableUnixUser:
     properties:
       fullName:
@@ -22653,6 +22701,57 @@ paths:
       security:
       - BearerAuth: []
       summary: Update a standard switch
+      tags:
+      - Network
+  /network/switch/sync:
+    get:
+      description: Get the last runtime and bootstrap switch results, including exhausted
+        failures. This is not continuous live-state health.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+      security:
+      - BearerAuth: []
+      summary: Get switch reconciliation status
+      tags:
+      - Network
+    post:
+      description: Reconcile standard switches and Host IP configuration with bounded
+        retries. Does not replay bootstrap settings or roll back pending Host IP edits.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus'
+      security:
+      - BearerAuth: []
+      summary: Re-apply stored switch network configuration
       tags:
       - Network
   /network/wireguard/clients:

@@ -10,12 +10,16 @@ package repl
 
 import (
 	"bytes"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
+	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 )
 
@@ -286,5 +290,70 @@ func TestApplyStandardSwitchEditRequestPrunesPoliciesForRemovedPorts(t *testing.
 	}
 	if _, exists := config.VLANConfig.PortPolicies["igb1"]; exists {
 		t.Fatal("removed port policy was retained")
+	}
+}
+
+func TestSwitchStatusSocketIncludesBootstrapFailures(t *testing.T) {
+	ctx := &Context{
+		Network: &network.Service{},
+		Bootstrap: &fakeBootstrapApplier{switchStatus: reconcile.Status{
+			State: "degraded", Attempts: 4, Failures: []reconcile.Failure{{Name: "first-boot", Error: "port not found"}},
+		}},
+	}
+	response := processSocketRequest(ctx, socketRequest{
+		Operation: consoleprotocol.OperationSwitchStatus, Payload: json.RawMessage(`{"json":true}`),
+	})
+	var status reconcile.SwitchStatus
+	if err := json.Unmarshal([]byte(response.Output), &status); err != nil {
+		t.Fatal(err)
+	}
+	if response.Error != "" || status.Runtime.State != "not_attempted" || status.Bootstrap.State != "degraded" ||
+		status.Bootstrap.Failures[0].Name != "first-boot" {
+		t.Fatalf("response=%+v status=%+v", response, status)
+	}
+	if typedSocketOperationRequiresMutation(consoleprotocol.OperationSwitchStatus) ||
+		!typedSocketOperationRequiresMutation(consoleprotocol.OperationSwitchSync) {
+		t.Fatal("sync/status mutation admission is incorrect")
+	}
+	if rawCommandRequiresMutation([]string{"switches", "status", "--json"}) ||
+		!rawCommandRequiresMutation([]string{"switches", "sync", "--json"}) {
+		t.Fatal("REPL sync/status mutation admission is incorrect")
+	}
+}
+
+func TestSwitchSyncSocketReappliesStoredConfiguration(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &networkModels.StandardSwitch{}, &networkModels.HostInterfaceL3{})
+	ctx := &Context{Network: &network.Service{DB: db}}
+	response := processSocketRequest(ctx, socketRequest{
+		Operation: consoleprotocol.OperationSwitchSync, Payload: json.RawMessage(`{"json":true}`),
+	})
+	var status reconcile.SwitchStatus
+	if err := json.Unmarshal([]byte(response.Output), &status); err != nil {
+		t.Fatal(err)
+	}
+	if response.Error != "" || status.Runtime.State != "converged" || status.Runtime.Attempts != 1 {
+		t.Fatalf("response=%+v status=%+v", response, status)
+	}
+}
+
+func TestSwitchSyncAndStatusValidatePayload(t *testing.T) {
+	for _, operation := range []string{consoleprotocol.OperationSwitchSync, consoleprotocol.OperationSwitchStatus} {
+		response := processSocketRequest(&Context{}, socketRequest{Operation: operation, Payload: json.RawMessage(`{"unexpected":true}`)})
+		if !strings.Contains(response.Error, "invalid_switch_sync_request") {
+			t.Fatalf("%s accepted unknown fields: %+v", operation, response)
+		}
+		response = processSocketRequest(&Context{}, socketRequest{Operation: operation, Payload: json.RawMessage(`{"json":true}`)})
+		if response.Error != "network_service_unavailable" {
+			t.Fatalf("%s missing service response: %+v", operation, response)
+		}
+	}
+}
+
+func TestSwitchStatusREPLUsesContextOutput(t *testing.T) {
+	var output bytes.Buffer
+	ctx := &Context{Network: &network.Service{}, Out: &output}
+	handleSwitches(ctx, []string{"status", "--json"})
+	if !strings.Contains(output.String(), `"not_attempted"`) {
+		t.Fatalf("missing REPL status output: %s", output.String())
 	}
 }

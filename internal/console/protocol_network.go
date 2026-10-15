@@ -16,6 +16,8 @@ import (
 
 const (
 	OperationSwitchList   = "switches.list"
+	OperationSwitchSync   = "switches.sync"
+	OperationSwitchStatus = "switches.status"
 	OperationSwitchCreate = "switches.create"
 	OperationSwitchDelete = "switches.delete"
 	OperationSwitchEdit   = "switches.edit"
@@ -26,6 +28,10 @@ const (
 )
 
 type SwitchListPayload struct {
+	JSON bool `json:"json"`
+}
+
+type SwitchSyncPayload struct {
 	JSON bool `json:"json"`
 }
 

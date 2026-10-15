@@ -174,7 +174,9 @@ func rawCommandRequiresMutation(parts []string) bool {
 		}
 	case "tasks":
 		return sub != "active" && sub != "recent" && sub != "get"
-	case "switches", "objects", "downloads":
+	case "switches":
+		return sub != "list" && sub != "status"
+	case "objects", "downloads":
 		return sub != "list"
 	}
 	return true

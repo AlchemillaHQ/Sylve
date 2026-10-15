@@ -17635,6 +17635,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/network/switch/sync": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get the last runtime and bootstrap switch results, including exhausted failures. This is not continuous live-state health.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Get switch reconciliation status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Reconcile standard switches and Host IP configuration with bounded retries. Does not replay bootstrap settings or roll back pending Host IP edits.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Network"
+                ],
+                "summary": "Re-apply stored switch network configuration",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-any"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/network/wireguard/clients": {
             "get": {
                 "security": [
@@ -32181,6 +32259,23 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_network_reconcile_SwitchStatus": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.SwitchStatus"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_alchemillahq_sylve_internal.APIResponse-github_com_alchemillahq_sylve_internal_services_auth_PasskeyCredentialInfo": {
             "type": "object",
             "properties": {
@@ -41317,6 +41412,63 @@ const docTemplate = `{
                 "KindVM",
                 "KindJail"
             ]
+        },
+        "github_com_alchemillahq_sylve_internal_network_reconcile.Failure": {
+            "type": "object",
+            "properties": {
+                "bridge": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phase": {
+                    "type": "string"
+                },
+                "switchId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_network_reconcile.Status": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "integer"
+                },
+                "completedAt": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "failures": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Failure"
+                    }
+                },
+                "lastAttemptAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_alchemillahq_sylve_internal_network_reconcile.SwitchStatus": {
+            "type": "object",
+            "properties": {
+                "bootstrap": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Status"
+                },
+                "runtime": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_network_reconcile.Status"
+                }
+            }
         },
         "github_com_alchemillahq_sylve_internal_services_auth.ImportableUnixUser": {
             "type": "object",

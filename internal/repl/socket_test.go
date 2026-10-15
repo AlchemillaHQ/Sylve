@@ -22,13 +22,15 @@ import (
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 )
 
 type fakeBootstrapApplier struct {
-	applyReport bootstrap.Report
-	appliedPath string
-	onApply     func()
+	applyReport  bootstrap.Report
+	switchStatus reconcile.Status
+	appliedPath  string
+	onApply      func()
 }
 
 func (f *fakeBootstrapApplier) Apply(_ context.Context, path string) bootstrap.Report {
@@ -37,6 +39,10 @@ func (f *fakeBootstrapApplier) Apply(_ context.Context, path string) bootstrap.R
 		f.onApply()
 	}
 	return f.applyReport
+}
+
+func (f *fakeBootstrapApplier) SwitchStatus() reconcile.Status {
+	return f.switchStatus.Clone()
 }
 
 func bootstrapApplyPayload(t *testing.T, file string, jsonMode bool) json.RawMessage {

@@ -10,6 +10,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
@@ -18,7 +23,7 @@ import (
 
 func TestNewSwitchesCommandIncludesExpectedWorkflows(t *testing.T) {
 	command := newSwitchesCommand()
-	want := map[string]bool{"list": false, "create": false, "delete": false, "edit": false}
+	want := map[string]bool{"list": false, "create": false, "delete": false, "edit": false, "sync": false, "status": false}
 
 	for _, subcommand := range command.Commands {
 		if _, ok := want[subcommand.Name]; ok {
@@ -178,5 +183,71 @@ func TestSwitchEditCommandBuildsPartialStandardPayload(t *testing.T) {
 	}
 	if got.Standard.VLAN != nil || got.Standard.Private != nil {
 		t.Fatalf("expected unset fields to remain absent: %#v", got.Standard)
+	}
+}
+
+func TestSwitchSyncCLI(t *testing.T) {
+	for _, testCase := range []struct {
+		command   string
+		operation string
+		failure   string
+	}{
+		{"sync", consoleprotocol.OperationSwitchSync, ""},
+		{"sync", consoleprotocol.OperationSwitchSync, "switch_sync_failed"},
+		{"status", consoleprotocol.OperationSwitchStatus, ""},
+	} {
+		t.Run(testCase.command+testCase.failure, func(t *testing.T) {
+			t.Setenv("SYLVE_DATA_PATH", "")
+			dir := t.TempDir()
+			dataPath := filepath.Join(dir, "data")
+			configPath := filepath.Join(dir, "config.json")
+			if err := os.WriteFile(configPath, []byte(`{"dataPath":"`+dataPath+`"}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			socketPath := consoleprotocol.SocketPath(dataPath)
+			if err := os.MkdirAll(filepath.Dir(socketPath), 0700); err != nil {
+				t.Fatal(err)
+			}
+			listener, err := net.Listen("unix", socketPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer listener.Close()
+			requests := make(chan consoleprotocol.Request, 1)
+			serverErrors := make(chan error, 1)
+			const statusJSON = `{"runtime":{"state":"degraded","attempts":4},"bootstrap":{"state":"not_attempted","attempts":0}}`
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					serverErrors <- err
+					return
+				}
+				defer conn.Close()
+				var request consoleprotocol.Request
+				if err := json.NewDecoder(conn).Decode(&request); err != nil {
+					serverErrors <- err
+					return
+				}
+				requests <- request
+				serverErrors <- json.NewEncoder(conn).Encode(consoleprotocol.Response{Output: statusJSON + "\n", Error: testCase.failure})
+			}()
+			root := newRootCommand(nil, func() bool { return true })
+			var runErr error
+			output := captureStdout(t, func() {
+				runErr = root.Run(context.Background(), []string{"sylve", "--config", configPath, "switches", testCase.command, "--json"})
+			})
+			if err := <-serverErrors; err != nil {
+				t.Fatal(err)
+			}
+			request := <-requests
+			var payload consoleprotocol.SwitchSyncPayload
+			if err := json.Unmarshal(request.Payload, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if request.Operation != testCase.operation || !payload.JSON || strings.TrimSpace(output) != statusJSON ||
+				(runErr != nil) != (testCase.failure != "") {
+				t.Fatalf("operation=%s payload=%+v output=%q error=%v", request.Operation, payload, output, runErr)
+			}
+		})
 	}
 }

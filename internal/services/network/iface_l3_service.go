@@ -20,6 +20,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"gorm.io/gorm"
 )
 
@@ -868,16 +869,25 @@ func (s *Service) RecoverHostInterfaceL3() error {
 }
 
 func (s *Service) ReconcileHostInterfaceL3() error {
-	s.syncMutex.Lock()
+	return s.reconcileHostInterfaceL3(context.Background())
+}
+
+func (s *Service) reconcileHostInterfaceL3(ctx context.Context) error {
+	if err := reconcile.Lock(ctx, &s.syncMutex); err != nil {
+		return err
+	}
 	defer s.syncMutex.Unlock()
 
 	var rows []networkModels.HostInterfaceL3
-	if err := s.DB.Order("interface asc").Find(&rows).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Order("interface asc").Find(&rows).Error; err != nil {
 		return fmt.Errorf("load host interface l3 rows: %w", err)
 	}
 
 	var reconcileErrors []error
 	for _, row := range rows {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(reconcileErrors, err)...)
+		}
 		if pending, err := s.activeHostInterfaceL3Pending(row.Interface); err != nil {
 			reconcileErrors = append(reconcileErrors, err)
 			continue
