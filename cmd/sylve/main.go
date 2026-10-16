@@ -19,12 +19,14 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	_ "net/http/pprof"
 
+	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/cmd"
 	"github.com/alchemillahq/sylve/internal/config"
 	consolepath "github.com/alchemillahq/sylve/internal/console"
@@ -503,18 +505,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		go repl.Start(replCtx)
 	}
 
-	publicTLSConfig := certS.TLSConfig()
-
-	httpsServer := &http.Server{
-		Addr:      fmt.Sprintf("%s:%d", cfg.IP, cfg.Port),
-		Handler:   r,
-		TLSConfig: publicTLSConfig,
-	}
-
-	httpServer := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", cfg.IP, cfg.HTTPPort),
-		Handler: r,
-	}
+	httpsServer, httpServer := newManagementHTTPServers(cfg, r, certS.TLSConfig())
 
 	var wg sync.WaitGroup
 	type namedServer struct {
@@ -535,7 +526,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			logger.L.Info().Msgf("HTTPS server started on %s:%d", cfg.IP, cfg.Port)
+			logger.L.Info().Msgf("HTTPS server started on %s", httpsServer.Addr)
 			if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				logger.L.Fatal().Err(err).Msg("Failed to start HTTPS server")
 			}
@@ -550,7 +541,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			logger.L.Info().Msgf("HTTP server started on %s:%d", cfg.IP, cfg.HTTPPort)
+			logger.L.Info().Msgf("HTTP server started on %s", httpServer.Addr)
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				logger.L.Fatal().Err(err).Msg("Failed to start HTTP server")
 			}
@@ -657,4 +648,19 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		return errSelfRestartRequested
 	}
 	return nil
+}
+
+func newManagementHTTPServers(cfg *internal.SylveConfig, handler http.Handler, tlsConfig *tls.Config) (*http.Server, *http.Server) {
+	httpsServer := &http.Server{
+		Addr:      net.JoinHostPort(cfg.IP, strconv.Itoa(cfg.Port)),
+		Handler:   handler,
+		TLSConfig: tlsConfig,
+	}
+
+	httpServer := &http.Server{
+		Addr:    net.JoinHostPort(cfg.IP, strconv.Itoa(cfg.HTTPPort)),
+		Handler: handler,
+	}
+
+	return httpsServer, httpServer
 }

@@ -79,3 +79,19 @@ func TestTryBindToPort(t *testing.T) {
 		}
 	})
 }
+
+func TestTryBindToPortIPv6(t *testing.T) {
+	ln, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	defer ln.Close()
+
+	for _, proto := range []string{"tcp", "tcp6"} {
+		t.Run(proto, func(t *testing.T) {
+			if err := TryBindToPort("::1", 0, proto); err != nil {
+				t.Fatalf("expected IPv6 loopback bind to succeed, got %v", err)
+			}
+		})
+	}
+}

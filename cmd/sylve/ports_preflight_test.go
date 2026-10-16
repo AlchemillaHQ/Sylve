@@ -9,7 +9,9 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -139,5 +141,47 @@ func TestPreflightRequiredPortsChecksAllExpectedRoles(t *testing.T) {
 		if _, ok := called[expectedPort]; !ok {
 			t.Fatalf("missing bind check for port %d", expectedPort)
 		}
+	}
+}
+
+func TestManagementHTTPServerAddresses(t *testing.T) {
+	cases := []struct {
+		name      string
+		ip        string
+		httpsAddr string
+		httpAddr  string
+	}{
+		{name: "IPv4 loopback", ip: "127.0.0.1", httpsAddr: "127.0.0.1:8181", httpAddr: "127.0.0.1:8182"},
+		{name: "IPv4 wildcard", ip: "0.0.0.0", httpsAddr: "0.0.0.0:8181", httpAddr: "0.0.0.0:8182"},
+		{name: "empty host", ip: "", httpsAddr: ":8181", httpAddr: ":8182"},
+		{name: "IPv6 loopback", ip: "::1", httpsAddr: "[::1]:8181", httpAddr: "[::1]:8182"},
+		{name: "IPv6 wildcard", ip: "::", httpsAddr: "[::]:8181", httpAddr: "[::]:8182"},
+		{name: "IPv6 address", ip: "2001:db8::10", httpsAddr: "[2001:db8::10]:8181", httpAddr: "[2001:db8::10]:8182"},
+		{name: "scoped IPv6", ip: "fe80::1%em0", httpsAddr: "[fe80::1%em0]:8181", httpAddr: "[fe80::1%em0]:8182"},
+		{name: "IPv4-mapped IPv6", ip: "::ffff:127.0.0.1", httpsAddr: "[::ffff:127.0.0.1]:8181", httpAddr: "[::ffff:127.0.0.1]:8182"},
+	}
+	handler := http.NewServeMux()
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &internal.SylveConfig{IP: tc.ip, Port: 8181, HTTPPort: 8182}
+			httpsServer, httpServer := newManagementHTTPServers(cfg, handler, tlsConfig)
+			if httpsServer.Addr != tc.httpsAddr {
+				t.Errorf("HTTPS address = %q, want %q", httpsServer.Addr, tc.httpsAddr)
+			}
+			if httpServer.Addr != tc.httpAddr {
+				t.Errorf("HTTP address = %q, want %q", httpServer.Addr, tc.httpAddr)
+			}
+			if httpsServer.Handler != handler || httpServer.Handler != handler {
+				t.Error("expected both servers to use the supplied handler")
+			}
+			if httpsServer.TLSConfig != tlsConfig {
+				t.Error("expected HTTPS server to use the supplied TLS configuration")
+			}
+			if httpServer.TLSConfig != nil {
+				t.Error("expected HTTP server to have no TLS configuration")
+			}
+		})
 	}
 }

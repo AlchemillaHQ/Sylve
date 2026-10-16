@@ -7,7 +7,7 @@
         <tr><th><span class="child">environment</span></th><td><code>"production"</code></td><td>Runtime mode: <code>production</code>, <code>development</code>, or <code>debug</code>.</td></tr>
         <tr><th><span class="child">proxyToVite</span></th><td><code>false</code></td><td>Proxies frontend requests to Vite. Keep disabled in production.</td></tr>
         <tr><th><span class="child">profile</span></th><td><code>false</code></td><td>Enables Go block and mutex profiling for diagnostics.</td></tr>
-        <tr><th><span class="child">ip</span></th><td><code>"0.0.0.0"</code></td><td>Bind address for the HTTP and HTTPS listeners.</td></tr>
+        <tr><th><span class="child">ip</span></th><td><code>"0.0.0.0"</code></td><td>Bind address for the HTTP and HTTPS listeners. Use unbracketed IPv6 addresses, such as <code>"::1"</code> for loopback or <code>"::"</code> for wildcard binding. An empty string listens on all interfaces; dual-stack behavior depends on the host.</td></tr>
         <tr><th><span class="child">port</span></th><td><code>8181</code></td><td>HTTPS API and web-interface port. Set to <code>0</code> to disable.</td></tr>
         <tr><th><span class="child">httpPort</span></th><td><code>8182</code></td><td>Plain HTTP port. Set to <code>0</code> to disable.</td></tr>
         <tr><th><span class="child">logLevel</span></th><td><code>3</code></td><td><code>0</code> debug, <code>1</code> info, <code>2</code> warning, <code>3</code> error, <code>4</code> fatal, <code>5</code> panic.</td></tr>
