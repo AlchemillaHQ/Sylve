@@ -257,7 +257,8 @@ export async function cachedFetch<T>(
 	fetchFunction: () => Promise<T>,
 	duration: number,
 	onlyCache?: boolean,
-	hostname?: string
+	hostname?: string,
+	schema?: z.ZodType<T>
 ): Promise<T> {
 	if (isDemoMode) {
 		return await fetchFunction();
@@ -274,7 +275,10 @@ export async function cachedFetch<T>(
 		const looksLikeError = isAPIErrorResponse(data);
 
 		if (isFresh && !looksLikeError) {
-			return data;
+			if (!schema) return data;
+			const parsed = schema.safeParse(data);
+			if (parsed.success) return parsed.data;
+			await kvStorage.removeItem(scopedKey);
 		}
 	}
 

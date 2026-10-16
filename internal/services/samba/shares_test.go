@@ -92,6 +92,91 @@ func TestShareConfigOmitsDisabledShareWithoutLookingUpDataset(t *testing.T) {
 	}
 }
 
+func TestShareConfigSkipsUnmountedDataset(t *testing.T) {
+	svc, runner := newSambaServiceWithMockRunner(t)
+	shares := []sambaModels.SambaShare{
+		{Name: "mounted", Dataset: "mounted", Enabled: true, GuestOk: true, CreateMask: "0664", DirectoryMask: "2775"},
+		{Name: "unmounted", Dataset: "unmounted", Enabled: true, GuestOk: true, CreateMask: "0664", DirectoryMask: "2775"},
+	}
+	if err := svc.DB.Create(&shares).Error; err != nil {
+		t.Fatal(err)
+	}
+	addDatasetLookupMocks(t, runner, []mockDataset{
+		{Name: "tank/mounted", GUID: "mounted", Mountpoint: "/mnt/mounted"},
+		{Name: "tank/unmounted", GUID: "unmounted", Mountpoint: "/mnt/unmounted", Mounted: "no"},
+	})
+	runner.AddCommand("zfs set acltype=nfsv4 aclmode=restricted aclinherit=passthrough tank/mounted", "", "", nil)
+	originalRun := sambaRunCommand
+	sambaRunCommand = func(command string, args ...string) (string, error) {
+		if command != "/bin/setfacl" || args[len(args)-1] != "/mnt/mounted" {
+			t.Fatalf("unexpected command for unavailable share: %s %v", command, args)
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { sambaRunCommand = originalRun })
+
+	config, err := svc.ShareConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(config, "[mounted]") || strings.Contains(config, "[unmounted]") {
+		t.Fatalf("unexpected share configuration: %s", config)
+	}
+	for _, call := range runner.CallHistory {
+		if strings.Contains(call.Cmd, "zfs set ") && strings.HasSuffix(call.Cmd, " tank/unmounted") {
+			t.Fatalf("changed properties on unmounted dataset: %s", call.Cmd)
+		}
+	}
+	var stored sambaModels.SambaShare
+	if err := svc.DB.First(&stored, shares[1].ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.Enabled {
+		t.Fatal("unmounted share's saved configuration was disabled")
+	}
+}
+
+func TestShareMutationsRejectUnmountedDataset(t *testing.T) {
+	for _, operation := range []string{"create", "update", "enable"} {
+		t.Run(operation, func(t *testing.T) {
+			svc, runner := newSambaServiceWithMockRunner(t)
+			share := sambaModels.SambaShare{Name: "share", Dataset: "guid", Enabled: true, GuestOk: true, CreateMask: "0664", DirectoryMask: "2775"}
+			if operation != "create" {
+				if err := svc.DB.Create(&share).Error; err != nil {
+					t.Fatal(err)
+				}
+				if operation == "enable" {
+					if err := svc.DB.Model(&share).Update("enabled", false).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			addDatasetLookupMocks(t, runner, []mockDataset{{Name: "tank/share", GUID: "guid", Mountpoint: "/mnt/share", Mounted: "no"}})
+			commands := stubExtraShareCommands(t, func(string) error { return nil })
+			var err error
+			switch operation {
+			case "create":
+				err = svc.CreateShare(context.Background(), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, true, "", nil)
+			case "update":
+				err = svc.UpdateShare(context.Background(), uint(share.ID), share.Name, share.Dataset, nil, nil, nil, nil, true, false, "0664", "2775", false, 0, false, 70, nil, nil, nil, nil)
+			case "enable":
+				err = svc.SetShareEnabled(context.Background(), uint(share.ID), true)
+			}
+			if err == nil || err.Error() != "dataset_not_mounted" {
+				t.Fatalf("expected dataset_not_mounted, got %v", err)
+			}
+			if len(*commands) != 0 {
+				t.Fatalf("unmounted dataset ran filesystem commands: %v", *commands)
+			}
+			for _, call := range runner.CallHistory {
+				if strings.Contains(call.Cmd, "zfs set ") {
+					t.Fatalf("unmounted dataset properties were changed: %s", call.Cmd)
+				}
+			}
+		})
+	}
+}
+
 func TestUpdateShareCanDisableShareWithMissingDataset(t *testing.T) {
 	svc, runner := newSambaServiceWithMockRunner(t)
 	share := sambaModels.SambaShare{

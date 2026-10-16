@@ -287,6 +287,12 @@ func (s *Service) hasGuestOnlyShares() (bool, error) {
 	return count > 0, nil
 }
 
+func isSambaDatasetMounted(dataset *gzfs.Dataset) bool {
+	return dataset != nil && dataset.Type == gzfs.DatasetTypeFilesystem &&
+		dataset.Mountpoint != "" && dataset.Mountpoint != "-" &&
+		dataset.Properties["mounted"].Value == "yes"
+}
+
 func (s *Service) ensureSambaDatasetACLProperties(
 	ctx context.Context,
 	dataset *gzfs.Dataset,
@@ -677,6 +683,9 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 			if err != nil {
 				return "", fmt.Errorf("failed to fetch dataset for share %s: %v", share.Name, err)
 			}
+			if !isSambaDatasetMounted(ds) {
+				continue
+			}
 		}
 
 		if ds == nil {
@@ -699,6 +708,9 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 	var config strings.Builder
 	for _, share := range shares {
 		dataset := datasets[share.Dataset]
+		if dataset == nil {
+			continue
+		}
 
 		config.WriteString(fmt.Sprintf("[%s]\n", share.Name))
 		config.WriteString(fmt.Sprintf("\tpath = %s\n", dataset.Mountpoint))

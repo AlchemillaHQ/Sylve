@@ -377,7 +377,7 @@ func (s *Service) SetShareEnabled(ctx context.Context, id uint, enabled bool) er
 		if dataset == nil {
 			return fmt.Errorf("dataset_not_found")
 		}
-		if dataset.Mountpoint == "" || dataset.Mountpoint == "-" {
+		if !isSambaDatasetMounted(dataset) {
 			return fmt.Errorf("dataset_not_mounted")
 		}
 		if share.ExtraShareConfig != "" || len(share.DirectoryPermissions.Read)+len(share.DirectoryPermissions.Write) > 0 {
@@ -494,7 +494,7 @@ func (s *Service) CreateShare(
 		return fmt.Errorf("dataset_not_found")
 	}
 
-	if fDataset.Mountpoint == "" || fDataset.Mountpoint == "-" {
+	if !isSambaDatasetMounted(fDataset) {
 		return fmt.Errorf("dataset_not_mounted")
 	}
 
@@ -713,7 +713,7 @@ func (s *Service) UpdateShare(
 	if fDataset == nil && !allowUnavailableDataset {
 		return fmt.Errorf("dataset_not_found")
 	}
-	if fDataset != nil && (fDataset.Mountpoint == "" || fDataset.Mountpoint == "-") {
+	if fDataset != nil && !isSambaDatasetMounted(fDataset) {
 		if !allowUnavailableDataset {
 			return fmt.Errorf("dataset_not_mounted")
 		}
@@ -781,7 +781,7 @@ func (s *Service) UpdateShare(
 				return fmt.Errorf("failed_to_fetch_previous_dataset: %v", oldDatasetErr)
 			}
 
-			if oldDataset != nil && oldDataset.Mountpoint != "" && oldDataset.Mountpoint != "-" {
+			if isSambaDatasetMounted(oldDataset) {
 				if err := s.syncSambaDatasetPrincipalACLs(
 					oldDataset.Mountpoint,
 					previousPrincipals,
@@ -915,7 +915,7 @@ func (s *Service) DeleteShare(ctx context.Context, id uint) error {
 	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, share.Dataset, false)
 	if err != nil {
 		logger.L.Warn().Err(err).Int("share_id", share.ID).Msg("failed to fetch dataset while cleaning samba ACL principals")
-	} else if dataset != nil && dataset.Mountpoint != "" && dataset.Mountpoint != "-" {
+	} else if isSambaDatasetMounted(dataset) {
 		_ = s.syncSambaDatasetPrincipalACLs(dataset.Mountpoint, previousPrincipals, sambaPrincipalNames{}, false)
 		_ = s.syncSambaDatasetGuestACL(dataset.Mountpoint, false, false, false)
 	}

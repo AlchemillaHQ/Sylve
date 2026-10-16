@@ -4,6 +4,7 @@ import { getSambaConfig } from '$lib/api/samba/config';
 import { getSambaShares } from '$lib/api/samba/share';
 import { getDatasets } from '$lib/api/zfs/datasets';
 import type { APIResponse } from '$lib/types/common';
+import { SambaShareSchema } from '$lib/types/samba/shares';
 import { GZFSDatasetTypeSchema } from '$lib/types/zfs/dataset';
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch, isAPIResponse } from '$lib/utils/http';
@@ -24,7 +25,8 @@ export async function load({ params }) {
 			async () => await getSambaShares({ hostname: node }),
 			cacheDuration,
 			false,
-			node
+			node,
+			SambaShareSchema.array()
 		),
 		cachedFetch(
 			'groups',

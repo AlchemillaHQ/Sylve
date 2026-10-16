@@ -28,6 +28,7 @@ type mockDataset struct {
 	Name       string
 	GUID       string
 	Mountpoint string
+	Mounted    string
 }
 
 func newSambaServiceWithMockRunner(t *testing.T) (*Service, *gzfstest.MockRunner) {
@@ -77,6 +78,10 @@ func addDatasetLookupMocks(t *testing.T, runner *gzfstest.MockRunner, datasets [
 
 		dsMap := resp["datasets"].(map[string]any)
 		for _, ds := range datasets {
+			mounted := ds.Mounted
+			if mounted == "" {
+				mounted = "yes"
+			}
 			pool := ds.Name
 			if idx := strings.Index(ds.Name, "/"); idx > 0 {
 				pool = ds.Name[:idx]
@@ -87,6 +92,7 @@ func addDatasetLookupMocks(t *testing.T, runner *gzfstest.MockRunner, datasets [
 				"type": string(gzfs.DatasetTypeFilesystem),
 				"pool": pool,
 				"properties": map[string]any{
+					"mounted": map[string]any{"value": mounted},
 					"guid": map[string]any{
 						"value": ds.GUID,
 						"source": map[string]any{

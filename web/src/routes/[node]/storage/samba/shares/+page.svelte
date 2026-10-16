@@ -263,14 +263,14 @@
 			const readAccess = [
 				...share.permissions.read.users.map((user) => user.username),
 				...share.permissions.read.groups.map((group) => `@${group.name}`),
-				...share.permissions.read.directory.map(
+				...(share.permissions.read.directory ?? []).map(
 					(principal) => `${principal.kind === 'group' ? '@' : ''}${principal.name}`
 				)
 			];
 			const writeAccess = [
 				...share.permissions.write.users.map((user) => user.username),
 				...share.permissions.write.groups.map((group) => `@${group.name}`),
-				...share.permissions.write.directory.map(
+				...(share.permissions.write.directory ?? []).map(
 					(principal) => `${principal.kind === 'group' ? '@' : ''}${principal.name}`
 				)
 			];
