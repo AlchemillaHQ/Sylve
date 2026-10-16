@@ -37,11 +37,11 @@ ACCEPTANCE_PACKAGE := ./internal/console/integration
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
 .PHONY: test test-external-preflight test-integration test-vlan-integration test-acceptance test-acceptance-full test-acceptance-all
-.PHONY: test-smart-integration test-jail-packages-integration clean csmwrap csmwrap-assets
+.PHONY: test-smart-integration test-jail-packages-integration clean csmwrap csmwrap-assets csmwrap-download
 
 all: build
 
-build: frontend backend
+build: csmwrap-assets frontend backend
 
 backend: csmwrap-assets
 	mkdir -p $(BIN_DIR)
@@ -91,8 +91,15 @@ cross-build-arm64:
 csmwrap:
 	./scripts/build-csmwrap.sh --stage
 
+csmwrap-download:
+	./scripts/download-csmwrap.sh
+
 csmwrap-assets:
-	@if [ "$(ARCH)" = "amd64" ]; then ./scripts/build-csmwrap.sh --stage; fi
+	@if [ "$(ARCH)" = "amd64" ] && \
+		{ [ ! -f internal/assets/csmwrap/CSMWrap.iso.gz ] || \
+		  [ ! -f internal/assets/csmwrap/CSMWrap-build-manifest.json ]; }; then \
+		./scripts/download-csmwrap.sh; \
+	fi
 
 frontend:
 	npm ci --prefix web

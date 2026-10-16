@@ -48,6 +48,23 @@ Open `https://<host>:8181` in your browser. A fresh package installation uses `a
 
 For installation details, dependencies, configuration, and first-workload guides, see [Getting Started](https://sylve.io/getting-started/).
 
+## Building from source
+
+On FreeBSD, with Git, Go, Node.js, and npm installed:
+
+```sh
+git clone https://github.com/AlchemillaHQ/Sylve.git
+cd Sylve
+make build
+```
+
+On amd64, build and test targets download the CSMWrap helper from `tip` when
+missing, without jq, submodules, or ISO packaging tools. Staged helpers are reused
+offline; `make csmwrap-download` refreshes them. The helper may differ from your checkout.
+
+`make csmwrap` builds the pinned helper from source instead. See the
+[CSMWrap instructions](third-party/csmwrap/README.md) for prerequisites and CI behavior.
+
 ## Sponsors
 
 We're proud to be sponsored by:

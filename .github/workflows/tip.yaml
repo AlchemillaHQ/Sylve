@@ -313,7 +313,8 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/build-csmwrap.sh --verify
-          cp .cache/csmwrap/CSMWrap.iso tip-assets/
+          cp .cache/csmwrap/CSMWrap.iso .cache/csmwrap/CSMWrap.iso.gz \
+            .cache/csmwrap/CSMWrap-build-manifest.json tip-assets/
 
       - name: Publish tip assets and metadata
         env:
@@ -356,7 +357,8 @@ jobs:
           gh release upload tip --clobber \
             tip-assets/sylve-amd64 tip-assets/sylve-arm64 \
             tip-assets/sylve-web-assets.tar.gz tip-assets/sylve-web-demo-assets.tar.gz \
-            tip-assets/CSMWrap.iso
+            tip-assets/CSMWrap.iso tip-assets/CSMWrap.iso.gz \
+            tip-assets/CSMWrap-build-manifest.json
 
           # Hash the actual published assets, not just the local build outputs.
           gh release download tip --dir published-assets

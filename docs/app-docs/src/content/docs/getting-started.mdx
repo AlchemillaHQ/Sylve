@@ -142,6 +142,12 @@ cd Sylve
 make
 ```
 
+On amd64, the first build downloads the CSMWrap helper from `tip` without jq,
+submodules, or ISO packaging tools. Later builds reuse it offline;
+`make csmwrap-download` refreshes it. To build the checkout's pinned helper instead,
+run `make csmwrap` with the
+[source-build prerequisites](https://github.com/AlchemillaHQ/Sylve/blob/master/third-party/csmwrap/README.md).
+
 That should build both the backend and frontend, and place the `sylve` binary in the `bin/` directory. You can then move it to a location in your `PATH`:
 
 ```bash

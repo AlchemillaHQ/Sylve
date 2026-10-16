@@ -113,7 +113,7 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
-	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "missing web assets", "missing helper", "changed helper", "wrong helper digest"} {
+	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "missing web assets", "missing helper", "missing compressed helper", "missing helper manifest", "changed helper", "wrong helper digest"} {
 		t.Run(name, func(t *testing.T) {
 			dir := fixtureRelease(t)
 			recordPath := filepath.Join(dir, "build-arm64.json")
@@ -151,6 +151,10 @@ func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
 				err = os.Remove(filepath.Join(dir, "sylve-web-assets.tar.gz"))
 			case "missing helper":
 				err = os.Remove(filepath.Join(dir, "CSMWrap.iso"))
+			case "missing compressed helper":
+				err = os.Remove(filepath.Join(dir, "CSMWrap.iso.gz"))
+			case "missing helper manifest":
+				err = os.Remove(filepath.Join(dir, "CSMWrap-build-manifest.json"))
 			case "changed helper":
 				err = os.WriteFile(filepath.Join(dir, "CSMWrap.iso"), []byte("stale helper"), 0o644)
 			case "wrong helper digest":

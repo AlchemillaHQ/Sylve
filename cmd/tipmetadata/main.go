@@ -29,7 +29,7 @@ var (
 	commitPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	versionPattern = regexp.MustCompile(`(?m)^const Version = "([^"]+)"`)
 	payloadNames   = []string{"sylve-amd64", "sylve-arm64", "sylve-web-assets.tar.gz", "sylve-web-demo-assets.tar.gz",
-		"CSMWrap.iso"}
+		"CSMWrap.iso", "CSMWrap.iso.gz", "CSMWrap-build-manifest.json"}
 )
 
 type versionInfo struct {

@@ -1,9 +1,31 @@
 # CSMWrap sources
 
 `source/` is a pinned Git submodule; upstream pins its seven dependencies.
-No upstream release binaries are used.
+All published helpers are built by Sylve CI from these pinned sources; no upstream
+release binaries are used.
 
-## Build
+## Local builds: prebuilt helper
+
+On amd64, build and test targets reuse the embed inputs under
+`internal/assets/csmwrap/` when present. Otherwise, `scripts/download-csmwrap.sh`
+downloads `CSMWrap.iso.gz` and `CSMWrap-build-manifest.json` from Sylve's `tip`
+release using FreeBSD's `fetch` or `curl`. No jq, submodules, or ISO packaging tools
+are required. ARM64 builds do not need the helper.
+
+Refresh explicitly with:
+
+```sh
+make csmwrap-download
+```
+
+Staged inputs are reused offline without validation or freshness checks. The
+downloaded helper may differ from your checkout's pinned revision; use
+`make csmwrap` to rebuild that revision instead.
+
+Downloads are refused whenever `CI` is set. CI verifies and stages its source-built
+bundle, including checking the manifest's input hash against the pinned sources.
+
+## Maintainer builds: pinned sources
 
 Install the tools below, then initialize the sources and build:
 
@@ -15,7 +37,7 @@ make csmwrap
 After checkout, builds are offline and leave the submodules unchanged. Only
 tracked source files are copied into a temporary build tree; SeaBIOS `.version`
 metadata is generated there. Git metadata and existing build outputs are excluded.
-Build orchestration, bundle verification, and staging use shell and `jq`.
+Source-build orchestration, bundle verification, and staging use shell and `jq`.
 Python 3 is needed only by upstream SeaBIOS, not for verification or staging.
 GitHub source archives do not include submodules.
 
@@ -28,7 +50,7 @@ FreeBSD: `pkg install git gcc14 gmake binutils nasm xxd mtools xorriso jq python
 
 `.cache/csmwrap` contains the ISO, gzip embed input, manifest, and checksums.
 `./scripts/build-csmwrap.sh --verify --stage` stages an existing bundle.
-AMD64 build/test targets stage automatically; ARM64 does not need the helper.
+Normal build/test targets reuse staged inputs without invoking this source verifier.
 CI caches one Ubuntu 24.04 build by inputs and runner image for embedding/releases.
 Toolchain and FAT/ISO timestamps can change bytes; reproducibility is not promised.
 

@@ -22,6 +22,12 @@ packages the helper ISO, and stages the amd64 embed inputs. See the
 
 `./scripts/test-csmwrap.sh` checks bundle integrity and source pins using shell.
 
+## download-csmwrap.sh
+
+`make csmwrap-download` fetches the compressed ISO and build manifest from `tip`
+using FreeBSD's `fetch` or `curl`. Build/test targets call this only when embed
+inputs are missing. Downloads are disabled in CI.
+
 ### License
 
 Please see the [LICENSE](../LICENSE) file for more information.

@@ -36,6 +36,20 @@ git clone https://github.com/AlchemillaHQ/Sylve
 cd Sylve
 ```
 
+On amd64, stage the boot helper before using direct Go commands or live reload:
+
+```sh
+make csmwrap-assets
+```
+
+`make build`, backend targets, and `make test` stage the helper automatically when
+missing. Staged inputs are reused offline; `make csmwrap-download` refreshes them.
+ARM64 builds do not need the helper.
+
+To build the checkout's pinned helper instead, follow the
+[CSMWrap source-build instructions](https://github.com/AlchemillaHQ/Sylve/blob/master/third-party/csmwrap/README.md)
+and run `make csmwrap`.
+
 ## Install Live-Reload Tooling
 
 Install `air`:
@@ -208,7 +222,8 @@ On a FreeBSD development host, build the complete application with:
 make build
 ```
 
-This builds the frontend assets first and then produces the FreeBSD `sylve` binary in `bin/`.
+This ensures the CSMWrap embed inputs on amd64, builds the frontend assets, and
+then produces the FreeBSD `sylve` binary in `bin/`.
 
 ### What runs on a pull request
 

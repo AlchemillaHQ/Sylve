@@ -182,7 +182,7 @@ jobs:
           usesh: true
           copyback: true
           cache-after-prepare: true
-          envs: GOCACHE GOMODCACHE GO_CACHE_RESTORED TEST_LANE TEST_TARGET
+          envs: CI GOCACHE GOMODCACHE GO_CACHE_RESTORED TEST_LANE TEST_TARGET
           prepare: |
             pkg update
             pkg install -y go git libvirt bhyve-firmware qemu-tools jq

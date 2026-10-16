@@ -199,14 +199,16 @@ jobs:
       - uses: ./.github/actions/csmwrap
         with:
           artifact-name: release-csmwrap-assets
-      - name: Upload helper ISO to draft
+      - name: Upload helper bundle to draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
         run: |
           set -euo pipefail
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
-          gh release upload "$TAG_NAME" --clobber .cache/csmwrap/CSMWrap.iso
+          gh release upload "$TAG_NAME" --clobber \
+            .cache/csmwrap/CSMWrap.iso .cache/csmwrap/CSMWrap.iso.gz \
+            .cache/csmwrap/CSMWrap-build-manifest.json
 
   build-web:
     needs:
