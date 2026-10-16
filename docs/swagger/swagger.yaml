@@ -3211,6 +3211,10 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network'
         type: array
+      packageAuditIntervalHours:
+        type: integer
+      packageMonitoringEnabled:
+        type: boolean
       resolvConf:
         type: string
       resourceLimits:
@@ -5830,6 +5834,8 @@ definitions:
         type: boolean
       state:
         type: string
+      type:
+        $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType'
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_jail.SimpleTemplateList:
     properties:

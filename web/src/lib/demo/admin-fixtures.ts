@@ -240,7 +240,30 @@ function createRuleTemplates(hostname: string): NotificationRuleTemplate[] {
 			targetType: 'node',
 			targets: [{ key: hostname, label: hostname }],
 			defaultConfig: '{}'
-		}
+		},
+		...['vulnerabilities', 'health'].map((kind) => ({
+			key: `jail.packages.${kind}`,
+			label:
+				kind === 'vulnerabilities' ? 'Jail Package Vulnerabilities' : 'Jail Package Audit Health',
+			description: 'FreeBSD jail package audit notifications.',
+			targetType: 'jail',
+			defaultConfig: '{}',
+			targets:
+				hostname === 'leto'
+					? [
+							{ key: '4-demo-jail-200', label: 'Gitea (200)' },
+							{ key: '5-demo-jail-201', label: 'Forgejo (201)' }
+						]
+					: hostname === 'paul'
+						? [
+								{ key: '6-demo-jail-210', label: 'Nextcloud (210)' },
+								{ key: '7-demo-jail-211', label: 'Grafana (211)' }
+							]
+						: [
+								{ key: '8-demo-jail-220', label: 'Caddy (220)' },
+								{ key: '9-demo-jail-221', label: 'Postgres (221)' }
+							]
+		}))
 	];
 }
 

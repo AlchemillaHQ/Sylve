@@ -30,6 +30,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	hub "github.com/alchemillahq/sylve/internal/events"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -69,6 +70,9 @@ const (
 	RuleTemplateDiskSmartNvme        = "system.disk.smart.nvme"
 	RuleTemplateDiskSmartSelfTest    = "system.disk.smart.selftest"
 	ruleTemplateTargetTypeDisk       = "disk"
+
+	RuleTemplateJailPackageVulnerabilities = "jail.packages.vulnerabilities"
+	RuleTemplateJailPackageHealth          = "jail.packages.health"
 
 	diskSmartConfigTemperatureWarningCelsius  = "warningCelsius"
 	diskSmartConfigTemperatureCriticalCelsius = "criticalCelsius"
@@ -1193,6 +1197,8 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 			Fingerprint: fmt.Sprintf("test-%s-%s-%d", targetKey, condition, now.UnixNano()),
 			Metadata:    map[string]string{"pool_guid": targetKey, "condition": condition, "test": "true"},
 		}
+	case "vulnerabilities_changed", "audit_unavailable":
+		return notifier.EventInput{Kind: kind, Title: "[TEST] Jail package audit", Body: "Demonstration package-audit notification; no scan was run and no findings were changed.", Severity: "warning", Source: "settings.notifications.test", Fingerprint: fmt.Sprintf("test-packages-%s-%d", targetKey, now.UnixNano()), Metadata: map[string]string{"test": "true", "condition": condition}}
 	case "pool_degraded":
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("ZFS pool %s vdev pool is DEGRADED", targetKey),
@@ -1222,6 +1228,10 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 
 func defaultTestConditionForTemplate(templateKey string) string {
 	switch templateKey {
+	case RuleTemplateJailPackageVulnerabilities:
+		return "vulnerabilities_changed"
+	case RuleTemplateJailPackageHealth:
+		return "audit_unavailable"
 	case RuleTemplateDiskSmartTemperature:
 		return "temperature_warning"
 	case RuleTemplateDiskSmartWearout:
@@ -1933,6 +1943,20 @@ func (s *Service) ensureKindRule(tx *gorm.DB, kind string, defaultConfig string)
 		return models.NotificationKindRule{}, err
 	}
 
+	if _, target, ok := notifier.JailPackageKind(kind); ok {
+		jailID, guid, _ := strings.Cut(target, "-")
+		var active int64
+		if err := tx.Model(&jailModels.Jail{}).
+			Joins("JOIN jail_storages AS root ON root.jid = jails.id AND root.is_base = ?", true).
+			Where("jails.id = ? AND jails.type = ? AND jails.creation_pending = ? AND lower(trim(root.guid)) = ?", jailID, jailModels.JailTypeFreeBSD, false, guid).
+			Count(&active).Error; err != nil {
+			return models.NotificationKindRule{}, err
+		}
+		if active == 0 {
+			return models.NotificationKindRule{Kind: kind, UserDisabled: true}, nil
+		}
+	}
+
 	rule = models.NotificationKindRule{
 		Kind:            kind,
 		UIEnabled:       true,
@@ -1993,6 +2017,11 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, storageDefinitions []
 	}
 
 	definitions = append(definitions, storageDefinitions...)
+	packageDefinitions, err := packageTemplateDefinitions(tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	definitions = append(definitions, packageDefinitions...)
 
 	definitionsByKey := make(map[string]*ruleTemplateDefinition, len(definitions))
 	for _, definition := range definitions {
@@ -2000,6 +2029,31 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, storageDefinitions []
 	}
 
 	return definitions, definitionsByKey, nil
+}
+
+func packageTemplateDefinitions(tx *gorm.DB) ([]*ruleTemplateDefinition, error) {
+	targets := []RuleTemplateTargetView{}
+	active := map[string]struct{}{}
+	if tx.Migrator().HasTable(&jailModels.Jail{}) && tx.Migrator().HasTable(&jailModels.Storage{}) {
+		var jails []jailModels.Jail
+		if err := tx.Preload("Storages").Where("type = ? AND creation_pending = ?", jailModels.JailTypeFreeBSD, false).Order("ct_id ASC").Find(&jails).Error; err != nil {
+			return nil, err
+		}
+		for _, jail := range jails {
+			for _, storage := range jail.Storages {
+				if storage.IsBase && storage.GUID != "" {
+					key := notifier.JailPackageTarget(jail.ID, storage.GUID)
+					targets = append(targets, RuleTemplateTargetView{Key: key, Label: fmt.Sprintf("%s (%d)", jail.Name, jail.CTID)})
+					active[key] = struct{}{}
+					break
+				}
+			}
+		}
+	}
+	return []*ruleTemplateDefinition{
+		{View: RuleTemplateView{Key: RuleTemplateJailPackageVulnerabilities, Label: "Jail Package Vulnerabilities", Description: "New, changed and no-longer-reported package findings in FreeBSD jails.", TargetType: "jail", Targets: targets}, AutoCreateRules: true, ActiveTargets: active},
+		{View: RuleTemplateView{Key: RuleTemplateJailPackageHealth, Label: "Jail Package Audit Health", Description: "Persistent FreeBSD jail audit failures and recovery.", TargetType: "jail", Targets: targets}, AutoCreateRules: true, ActiveTargets: active},
+	}, nil
 }
 
 func (s *Service) buildStorageTemplateDefinitions(ctx context.Context) []*ruleTemplateDefinition {
@@ -2199,14 +2253,21 @@ func (s *Service) syncAutoManagedRules(tx *gorm.DB, definitions []*ruleTemplateD
 			expectedKinds[kind] = definition.DefaultConfig
 		}
 	}
-	if len(expectedKinds) == 0 {
-		return nil
-	}
 	kinds := make([]string, 0, len(expectedKinds))
 	for kind := range expectedKinds {
 		kinds = append(kinds, kind)
 	}
 	sort.Strings(kinds)
+	obsolete := tx.Where("(kind LIKE ? OR kind LIKE ?)", notifier.JailPackageVulnerabilitiesKindPrefix+"%", notifier.JailPackageHealthKindPrefix+"%")
+	if len(kinds) > 0 {
+		obsolete = obsolete.Where("kind NOT IN ?", kinds)
+	}
+	if err := obsolete.Delete(&models.NotificationKindRule{}).Error; err != nil {
+		return err
+	}
+	if len(kinds) == 0 {
+		return nil
+	}
 	var existing []models.NotificationKindRule
 	if err := tx.Where("kind IN ?", kinds).Find(&existing).Error; err != nil {
 		return err
@@ -3534,6 +3595,9 @@ func normalizeRuleTargetKey(value string) string {
 }
 
 func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
+	if template, target, ok := notifier.JailPackageKind(kind); ok {
+		return template, target, true
+	}
 	if guid, ok := notifier.PoolGUIDFromZFSScrubKind(kind); ok {
 		return RuleTemplateZFSScrub, guid, true
 	}
@@ -3573,6 +3637,10 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 	switch templateKey {
 	case RuleTemplateZFSScrub:
 		return notifier.KindForZFSScrub(targetKey), nil
+	case RuleTemplateJailPackageVulnerabilities:
+		return notifier.JailPackageVulnerabilitiesKindPrefix + targetKey, nil
+	case RuleTemplateJailPackageHealth:
+		return notifier.JailPackageHealthKindPrefix + targetKey, nil
 	case RuleTemplateZFSPoolState:
 		return notifier.KindForZFSPoolState(targetKey), nil
 	case RuleTemplateDiskSmartTemperature:

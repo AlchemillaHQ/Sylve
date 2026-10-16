@@ -30,13 +30,14 @@ INTEGRATION_PACKAGES := \
 	./internal/services/zfs \
 	./internal/zfsutil \
 	./pkg/network/bridgevlan \
+	./pkg/pkgmanager \
 	./pkg/network/mdns
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
 .PHONY: test test-external-preflight test-integration test-vlan-integration test-acceptance test-acceptance-full test-acceptance-all
-.PHONY: test-smart-integration clean csmwrap csmwrap-assets
+.PHONY: test-smart-integration test-jail-packages-integration clean csmwrap csmwrap-assets
 
 all: build
 
@@ -163,6 +164,10 @@ test-vlan-integration:
 		-run '^TestIntegrationVLANBridge' ./pkg/network/bridgevlan
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \
 		-run '^TestIntegrationStandardSwitch(VLANFilteringModeTransitions|FilteredHostVLANLifecycle)$$' ./internal/services/network
+
+test-jail-packages-integration: test-external-preflight
+	@[ "$$('/usr/local/sbin/pkg-static' -v)" = "2.8.4" ] || { echo "transaction approval is tested with pkg-static 2.8.4"; exit 1; }
+	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -timeout=5m -v -run '^TestIntegrationJailPackages' ./pkg/pkgmanager ./internal/services/jail
 
 test-acceptance: test-external-preflight csmwrap-assets
 	go test -tags=nosqlite $(GO_TEST_FLAGS) -count=1 -p=1 -timeout="$(INTEGRATION_TEST_TIMEOUT)" -v \

@@ -107,6 +107,11 @@ func (s *Service) mutateJailOption(
 	if s == nil {
 		return fmt.Errorf("jail_service_not_initialized")
 	}
+	releasePackage, err := s.ReserveSystemOperation(context.Background(), ctID)
+	if err != nil {
+		return err
+	}
+	defer releasePackage()
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 

@@ -118,13 +118,14 @@ func (r CreateJailRequest) SourceCount() int {
 }
 
 type SimpleList struct {
-	ID             uint   `json:"id"`
-	Name           string `json:"name"`
-	CTID           uint   `json:"ctId"`
-	State          string `json:"state"`
-	ResourceLimits *bool  `json:"resourceLimits"`
-	Cores          int    `json:"cores"`
-	Memory         int    `json:"memory"`
+	ID             uint                `json:"id"`
+	Name           string              `json:"name"`
+	CTID           uint                `json:"ctId"`
+	Type           jailModels.JailType `json:"type"`
+	State          string              `json:"state"`
+	ResourceLimits *bool               `json:"resourceLimits"`
+	Cores          int                 `json:"cores"`
+	Memory         int                 `json:"memory"`
 }
 
 type SimpleTemplateList struct {

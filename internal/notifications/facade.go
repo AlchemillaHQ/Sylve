@@ -11,6 +11,7 @@ package notifications
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -19,6 +20,22 @@ var ErrEmitterNotConfigured = errors.New("notifications_emitter_not_configured")
 
 const ZFSPoolStateKindPrefix = "system.zfs.pool_state."
 const ZFSScrubKindPrefix = "system.zfs.scrub."
+
+const JailPackageVulnerabilitiesKindPrefix = "jail.packages.vulnerabilities."
+const JailPackageHealthKindPrefix = "jail.packages.health."
+
+func JailPackageTarget(id uint, guid string) string {
+	return fmt.Sprintf("%d-%s", id, strings.ToLower(strings.TrimSpace(guid)))
+}
+
+func JailPackageKind(kind string) (template, target string, ok bool) {
+	for _, prefix := range []string{JailPackageVulnerabilitiesKindPrefix, JailPackageHealthKindPrefix} {
+		if target, ok := strings.CutPrefix(kind, prefix); ok {
+			return strings.TrimSuffix(prefix, "."), target, target != ""
+		}
+	}
+	return "", "", false
+}
 
 const (
 	DiskSmartTemperatureKindPrefix = "system.disk.smart.temperature."

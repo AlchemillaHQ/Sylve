@@ -96,6 +96,7 @@ export const SimpleJailSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	ctId: z.number().int(),
+	type: z.enum(['freebsd', 'linux']).optional().catch(undefined),
 	state: z.enum(['ACTIVE', 'INACTIVE', 'UNKNOWN', '']).optional()
 });
 

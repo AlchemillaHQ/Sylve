@@ -501,6 +501,11 @@ func (s *Service) PreflightConvertJailToTemplate(ctx context.Context, ctID uint,
 }
 
 func (s *Service) ConvertJailToTemplate(ctx context.Context, ctID uint, req ConvertToTemplateRequest) (retErr error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(ctx, ctID)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer releasePackage()
 	if ctID == 0 {
 		return fmt.Errorf("invalid_ct_id")
 	}

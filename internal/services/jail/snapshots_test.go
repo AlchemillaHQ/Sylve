@@ -42,6 +42,7 @@ type jailSnapshotRunner struct {
 	sawCanceled     bool
 	snapshotStarted chan<- struct{}
 	releaseSnapshot <-chan struct{}
+	rollback        func() error
 }
 
 func (r *jailSnapshotRunner) Run(
@@ -88,7 +89,12 @@ func (r *jailSnapshotRunner) Run(
 		dataset.datasetType = gzfs.DatasetTypeSnapshot
 		r.datasets[fullName] = dataset
 		return nil
-	case "destroy", "mount", "rollback":
+	case "rollback":
+		if r.rollback != nil {
+			return r.rollback()
+		}
+		return nil
+	case "destroy", "mount":
 		return nil
 	default:
 		return fmt.Errorf("unsupported zfs args: %v", args)

@@ -96,6 +96,9 @@ type Service struct {
 	jailCreatePrepareFn   func(context.Context, uint, jailServiceInterfaces.CreateJailRequest) error
 	jailCreateFn          func(context.Context, uint) error
 	jailCreateCancelFn    func(context.Context, uint, error) error
+	packageExecuteFn      func(context.Context, uint) error
+	packagePrepareFn      func(context.Context, uint, uint, string, string) error
+	packageCancelFn       func(context.Context, uint, error) error
 
 	vmTemplateConvertFn func(ctx context.Context, rid uint, req libvirtServiceInterfaces.ConvertToTemplateRequest) error
 	vmTemplateCreateFn  func(ctx context.Context, templateID uint, req libvirtServiceInterfaces.CreateFromTemplateRequest) error
@@ -144,6 +147,9 @@ func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.S
 		s.jailCreatePrepareFn = jailService.PrepareCreateJail
 		s.jailCreateFn = jailService.ExecuteCreateJail
 		s.jailCreateCancelFn = jailService.CancelCreateJail
+		s.packageExecuteFn = jailService.ExecutePackageTask
+		s.packagePrepareFn = jailService.PreparePackageTask
+		s.packageCancelFn = jailService.CancelUnpublishedPackageTask
 	}
 
 	return s
@@ -175,6 +181,9 @@ func validateAction(guestType, action string) error {
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
 		}
 	case taskModels.GuestTypeJail:
+		if jail.IsPackageAction(action) {
+			return nil
+		}
 		switch action {
 		case "start", "stop", "restart", "migrate", "create":
 			return nil
@@ -352,7 +361,7 @@ func (s *Service) EnqueueStartupAutostart(ctx context.Context) error {
 func (s *Service) PrepareStartup(ctx context.Context) error {
 	var jailErr error
 	if s.Jail != nil {
-		jailErr = errors.Join(s.Jail.RecoverCreations(ctx), s.Jail.ReconcileLifecycleConfigs())
+		jailErr = errors.Join(s.Jail.RecoverPackageTasks(ctx), s.Jail.RecoverCreations(ctx), s.Jail.ReconcileLifecycleConfigs())
 	}
 	return errors.Join(jailErr, s.RecoverInterruptedTasks(ctx))
 }
@@ -401,6 +410,9 @@ func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
 	var recoveredCount int64
 	for i := range interruptedTasks {
 		task := interruptedTasks[i]
+		if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) {
+			continue
+		}
 		if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
 			var count int64
 			if err := s.DB.WithContext(ctx).Model(&jailModels.JailCreation{}).Where("task_id = ? AND phase = ?", task.ID, "ready").Count(&count).Error; err != nil {
@@ -476,6 +488,9 @@ func (s *Service) RequestActionWithPayload(
 }
 
 func (s *Service) cancelUnpublishedCreation(ctx context.Context, task *taskModels.GuestLifecycleTask, cause error) error {
+	if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) && s.packageCancelFn != nil {
+		return s.packageCancelFn(context.WithoutCancel(ctx), task.ID, cause)
+	}
 	if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" && s.jailCreateCancelFn != nil {
 		return errors.Join(cause, s.jailCreateCancelFn(context.WithoutCancel(ctx), task.ID, cause))
 	}
@@ -591,6 +606,17 @@ func (s *Service) createTask(
 
 	if err := s.DB.WithContext(ctx).Create(task).Error; err != nil {
 		return nil, "", err
+	}
+	if guestType == taskModels.GuestTypeJail && jail.IsPackageAction(action) {
+		if s.packagePrepareFn == nil {
+			err = fmt.Errorf("package_executor_not_configured")
+		} else {
+			err = s.packagePrepareFn(ctx, task.ID, guestID, action, payload)
+		}
+		if err != nil {
+			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", err)
+			return nil, "", err
+		}
 	}
 	if guestType == taskModels.GuestTypeJail && action == "create" {
 		var req jailServiceInterfaces.CreateJailRequest
@@ -719,6 +745,9 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 			if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" {
 				updates["message"] = "creation_completion_pending"
 			}
+			if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) {
+				updates["message"] = "package_worker_active"
+			}
 			updates["error"] = runErr.Error()
 		} else if errors.Is(runErr, errGuestAlreadyRunning) {
 			updates["status"] = taskModels.LifecycleTaskStatusSuccess
@@ -769,7 +798,9 @@ func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action
 		claimableStatuses = append(claimableStatuses, taskModels.LifecycleTaskStatusRunning)
 	}
 	query := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID)
-	if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+	if jail.IsPackageAction(action) && s.DB.Migrator().HasTable(&jailModels.JailPackageOperation{}) {
+		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_package_operations WHERE task_id = ? AND phase IN ? AND active_jail_id IS NOT NULL))", "queued", "running", taskID, []string{"applying", "post_upgrade_audit"})
+	} else if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
 		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_creations WHERE task_id = ? AND phase = ?))", "queued", "running", taskID, "ready")
 	} else {
 		query = query.Where("status IN ?", claimableStatuses)
@@ -814,6 +845,12 @@ func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestL
 		return s.vmActionFn(task.GuestID, task.Action)
 
 	case taskModels.GuestTypeJail:
+		if jail.IsPackageAction(task.Action) {
+			if s.packageExecuteFn == nil {
+				return fmt.Errorf("package_executor_not_configured")
+			}
+			return s.packageExecuteFn(ctx, task.ID)
+		}
 		if task.Action == "create" {
 			if s.jailCreateFn == nil {
 				return fmt.Errorf("jail_create_function_not_configured")

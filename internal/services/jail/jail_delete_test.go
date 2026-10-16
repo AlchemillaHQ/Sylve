@@ -20,10 +20,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -44,6 +46,9 @@ func newJailDeleteTestDB(t *testing.T) *gorm.DB {
 		&networkModels.ObjectEntry{},
 		&networkModels.ObjectResolution{},
 		&clusterModels.BackupJob{},
+		&models.NotificationKindRule{},
+		&models.Notification{},
+		&jailModels.JailPackageState{},
 	)
 }
 
@@ -233,6 +238,72 @@ func TestDeleteJailRetainsRootAndDeletesMinimalDatabaseGraph(t *testing.T) {
 	}
 }
 
+func TestDeleteJailRemovesOnlyItsPackageStateAndNotificationRules(t *testing.T) {
+	for _, internalCleanup := range []bool{false, true} {
+		t.Run(fmt.Sprintf("internal_cleanup_%t", internalCleanup), func(t *testing.T) {
+			t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+			db := newJailDeleteTestDB(t)
+			const ctID uint = 641
+			jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+			for _, id := range []uint{jailID, jailID * 10} {
+				if err := db.Create(&jailModels.JailPackageState{JailID: id, CTID: ctID, GUID: "root"}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			target := notifier.JailPackageTarget(jailID, fmt.Sprintf("delete-guid-%d", ctID))
+			oldTarget := notifier.JailPackageTarget(jailID, "previous-root")
+			otherTarget := notifier.JailPackageTarget(jailID*10, "previous-root")
+			rules := []struct {
+				kind     string
+				removed  bool
+				disabled bool
+			}{
+				{notifier.JailPackageVulnerabilitiesKindPrefix + target, true, false},
+				{notifier.JailPackageHealthKindPrefix + target, true, true},
+				{notifier.JailPackageVulnerabilitiesKindPrefix + oldTarget, true, true},
+				{notifier.JailPackageHealthKindPrefix + oldTarget, true, false},
+				{notifier.JailPackageVulnerabilitiesKindPrefix + otherTarget, false, false},
+				{notifier.JailPackageHealthKindPrefix + otherTarget, false, true},
+				{notifier.JailPackageHealthKindPrefix + notifier.JailPackageTarget(ctID, "previous-root"), false, false},
+				{notifier.ZFSPoolStateKindPrefix + "tank", false, false},
+			}
+			for _, rule := range rules {
+				if err := db.Create(&models.NotificationKindRule{Kind: rule.kind, UserDisabled: rule.disabled}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			now := time.Now().UTC()
+			history := models.Notification{Kind: rules[0].kind, Title: "Previous package alert", Fingerprint: "retained-alert", FirstOccurredAt: now, LastOccurredAt: now}
+			if err := db.Create(&history).Error; err != nil {
+				t.Fatal(err)
+			}
+			service := &Service{DB: db}
+			if _, err := service.deleteJailWithRuntimeOptions(t.Context(), ctID, false, false, inactiveJailDeleteRuntime(), internalCleanup); err != nil {
+				t.Fatal(err)
+			}
+			assertJailDeleteGraphAbsent(t, db, jailID, ctID)
+			if got := countJailDeleteRows(t, db, &jailModels.JailPackageState{}, "jail_id = ?", jailID); got != 0 {
+				t.Fatalf("deleted jail retained package state: count=%d", got)
+			}
+			if got := countJailDeleteRows(t, db, &jailModels.JailPackageState{}, "jail_id = ?", jailID*10); got != 1 {
+				t.Fatalf("another jail's package state was removed: count=%d", got)
+			}
+			for _, rule := range rules {
+				want := int64(1)
+				if rule.removed {
+					want = 0
+				}
+				if got := countJailDeleteRows(t, db, &models.NotificationKindRule{}, "kind = ?", rule.kind); got != want {
+					t.Fatalf("rule %q count=%d, want %d", rule.kind, got, want)
+				}
+			}
+			if got := countJailDeleteRows(t, db, &models.Notification{}, "id = ?", history.ID); got != 1 {
+				t.Fatalf("jail deletion removed notification history: count=%d", got)
+			}
+		})
+	}
+}
+
 func TestDeleteJailCleansRecordedEpairsBeforeRemovingNetworks(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	db := newJailDeleteTestDB(t)
@@ -372,6 +443,10 @@ func TestDeleteJailRuntimeFailuresKeepIdentityAndSkipStorageCleanup(t *testing.T
 			db := newJailDeleteTestDB(t)
 			ctID := uint(650 + index)
 			jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+			rule := models.NotificationKindRule{Kind: notifier.JailPackageHealthKindPrefix + notifier.JailPackageTarget(jailID, "root")}
+			if err := db.Create(&rule).Error; err != nil {
+				t.Fatal(err)
+			}
 			runtime := inactiveJailDeleteRuntime()
 			tt.configure(&runtime)
 
@@ -385,6 +460,9 @@ func TestDeleteJailRuntimeFailuresKeepIdentityAndSkipStorageCleanup(t *testing.T
 			}
 			if count := countJailDeleteRows(t, db, &jailModels.Storage{}, "jid = ?", jailID); count != 1 {
 				t.Fatalf("storage metadata count = %d, want 1", count)
+			}
+			if count := countJailDeleteRows(t, db, &models.NotificationKindRule{}, "id = ?", rule.ID); count != 1 {
+				t.Fatalf("runtime failure removed notification rule: count=%d", count)
 			}
 		})
 	}
@@ -444,33 +522,49 @@ func TestDeleteJailStopVerificationCancellationKeepsIdentity(t *testing.T) {
 }
 
 func TestDeleteJailDatabaseFailureRollsBackIdentityAndSkipsZFS(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-	db := newJailDeleteTestDB(t)
-	const ctID uint = 670
-	jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+	for _, model := range []string{"Jail", "NotificationKindRule", "JailPackageState"} {
+		t.Run(model, func(t *testing.T) {
+			t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+			db := newJailDeleteTestDB(t)
+			const ctID uint = 670
+			jailID, _ := seedJailDeleteGraph(t, db, ctID, "tank", false)
+			rule := models.NotificationKindRule{Kind: notifier.JailPackageHealthKindPrefix + notifier.JailPackageTarget(jailID, "root")}
+			if err := db.Create(&rule).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Create(&jailModels.JailPackageState{JailID: jailID, CTID: ctID, GUID: "root"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			injected := errors.New("injected delete failure")
+			if err := db.Callback().Delete().Before("gorm:delete").Register("test:fail_jail_delete", func(tx *gorm.DB) {
+				if tx.Statement.Schema != nil && tx.Statement.Schema.Name == model {
+					tx.AddError(injected)
+				}
+			}); err != nil {
+				t.Fatalf("register delete callback: %v", err)
+			}
 
-	injected := errors.New("injected jail delete failure")
-	if err := db.Callback().Delete().Before("gorm:delete").Register("test:fail_jail_delete", func(tx *gorm.DB) {
-		if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "Jail" {
-			tx.AddError(injected)
-		}
-	}); err != nil {
-		t.Fatalf("register delete callback: %v", err)
-	}
-
-	service := &Service{DB: db}
-	_, err := service.deleteJailWithRuntime(t.Context(), ctID, false, true, inactiveJailDeleteRuntime())
-	if err == nil || !strings.Contains(err.Error(), injected.Error()) {
-		t.Fatalf("delete error = %v, want injected DB failure", err)
-	}
-	if count := countJailDeleteRows(t, db, &jailModels.Jail{}, "id = ?", jailID); count != 1 {
-		t.Fatalf("jail identity count = %d, want 1", count)
-	}
-	if count := countJailDeleteRows(t, db, &jailModels.Network{}, "jid = ?", jailID); count != 1 {
-		t.Fatalf("network count = %d, want transaction rollback", count)
-	}
-	if count := countJailDeleteRows(t, db, &jailModels.Storage{}, "jid = ?", jailID); count != 1 {
-		t.Fatalf("storage count = %d, want transaction rollback", count)
+			service := &Service{DB: db}
+			_, err := service.deleteJailWithRuntime(t.Context(), ctID, false, true, inactiveJailDeleteRuntime())
+			if !errors.Is(err, injected) {
+				t.Fatalf("delete error = %v, want injected DB failure", err)
+			}
+			if count := countJailDeleteRows(t, db, &jailModels.Jail{}, "id = ?", jailID); count != 1 {
+				t.Fatalf("jail identity count = %d, want 1", count)
+			}
+			if count := countJailDeleteRows(t, db, &jailModels.Network{}, "jid = ?", jailID); count != 1 {
+				t.Fatalf("network count = %d, want transaction rollback", count)
+			}
+			if count := countJailDeleteRows(t, db, &jailModels.Storage{}, "jid = ?", jailID); count != 1 {
+				t.Fatalf("storage count = %d, want transaction rollback", count)
+			}
+			if count := countJailDeleteRows(t, db, &models.NotificationKindRule{}, "id = ?", rule.ID); count != 1 {
+				t.Fatalf("notification rule count = %d, want transaction rollback", count)
+			}
+			if count := countJailDeleteRows(t, db, &jailModels.JailPackageState{}, "jail_id = ?", jailID); count != 1 {
+				t.Fatalf("package state count = %d, want transaction rollback", count)
+			}
+		})
 	}
 }
 

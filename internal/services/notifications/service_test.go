@@ -1494,8 +1494,8 @@ func TestGetRuleConfigAutoSyncsPools(t *testing.T) {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
 
-	if len(view.Templates) != 1 {
-		t.Fatalf("expected_1_template got: %d", len(view.Templates))
+	if len(view.Templates) != 3 {
+		t.Fatalf("expected_zfs_and_package_templates got: %d", len(view.Templates))
 	}
 	if view.Templates[0].Key != RuleTemplateZFSPoolState {
 		t.Fatalf("unexpected_template_key: %s", view.Templates[0].Key)
@@ -2904,8 +2904,8 @@ func TestGetRuleConfigWithoutDiskServiceShowsOnlyZFS(t *testing.T) {
 		t.Fatalf("get_rule_config_failed: %v", err)
 	}
 
-	if len(view.Templates) != 1 {
-		t.Fatalf("expected_1_template_without_disk_service got: %d", len(view.Templates))
+	if len(view.Templates) != 3 {
+		t.Fatalf("expected_zfs_and_package_templates_without_disk_service got: %d", len(view.Templates))
 	}
 	if view.Templates[0].Key != RuleTemplateZFSPoolState {
 		t.Fatalf("expected_only_zfs_template got: %s", view.Templates[0].Key)

@@ -1026,6 +1026,13 @@ func (s *Service) ExecuteMigration(ctx context.Context, taskID uint) (retErr err
 	if task.Status == taskModels.LifecycleTaskStatusSuccess {
 		return nil
 	}
+	if task.GuestType == taskModels.GuestTypeJail && s.Jail != nil {
+		releasePackage, err := s.Jail.ReserveSystemOperation(ctx, task.GuestID)
+		if err != nil {
+			return err
+		}
+		defer releasePackage()
+	}
 
 	var mp migrationPayload
 	if strings.TrimSpace(task.Payload) != "" {

@@ -14,6 +14,7 @@ import { handleDemoNetworkRequest } from './network-fixtures';
 import { handleDemoStorageRequest } from './storage-fixtures';
 import { handleDemoDirectoryRequest } from './directory-fixtures';
 import type { VMBootRom } from '$lib/types/vm/vm';
+import { demoPackages } from './package-fixtures';
 
 type DemoRequestConfig = {
 	url: string;
@@ -310,6 +311,22 @@ const jails: Record<string, DemoJail[]> = {
 			ctId: 201,
 			state: 'ACTIVE',
 			description: 'Self-hosted software forge'
+		},
+		{
+			id: 10,
+			name: 'Linux service',
+			ctId: 202,
+			state: 'ACTIVE',
+			type: 'linux',
+			description: 'Linux jail; package management is unavailable'
+		},
+		{
+			id: 11,
+			name: 'Stopped FreeBSD service',
+			ctId: 203,
+			state: 'INACTIVE',
+			type: 'freebsd',
+			description: 'Offline package inventory, audits, and previews'
 		}
 	],
 	paul: [
@@ -2995,7 +3012,27 @@ export async function handleDemoRequest<T = unknown>(
 		return success({ warnings: [], retainedDatasets: [] }) as DemoClientResponse<T>;
 	}
 
-	if (path === '/jail/simple') return success(jails[hostname]) as DemoClientResponse<T>;
+	match = path.match(/^\/jail\/(\d+)\/packages(?:\/(.*))?$/);
+	if (match) {
+		const found = findJail(Number(match[1]));
+		if (!found || found.hostname !== hostname) return missing(path) as DemoClientResponse<T>;
+		if (found.jail.type === 'linux')
+			return failure('package_management_unsupported_jail_type', '', 422) as DemoClientResponse<T>;
+		return demoPackages(
+			hostname,
+			found.jail.ctId,
+			found.jail.id,
+			found.jail.state === 'ACTIVE',
+			match[2] || '',
+			method,
+			requestPayload(config),
+			parsed.searchParams
+		) as DemoClientResponse<T>;
+	}
+	if (path === '/jail/simple')
+		return success(
+			jails[hostname].map((jail) => ({ ...jail, type: jail.type ?? 'freebsd' }))
+		) as DemoClientResponse<T>;
 	if (path === '/jail/templates') return success([]) as DemoClientResponse<T>;
 	if (path === '/jail' && method === 'POST') {
 		return createDemoJail(config, hostname) as DemoClientResponse<T>;
@@ -3006,7 +3043,9 @@ export async function handleDemoRequest<T = unknown>(
 	match = path.match(/^\/jail\/simple\/(\d+)$/);
 	if (match) {
 		const found = findJail(Number(match[1]));
-		return (found ? success(found.jail) : missing(path)) as DemoClientResponse<T>;
+		return (
+			found ? success({ ...found.jail, type: found.jail.type ?? 'freebsd' }) : missing(path)
+		) as DemoClientResponse<T>;
 	}
 	match = path.match(/^\/jail\/(\d+)\/state$/);
 	if (match) {

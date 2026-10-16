@@ -13,7 +13,7 @@ export async function load({ params }) {
 	if (!Number.isSafeInteger(ctId) || ctId <= 0) error(404, 'Invalid jail CTID');
 	if (!node) error(400, 'Invalid node hostname');
 
-	const [jailResult, stateResult] = await Promise.all([
+	const [cachedJailResult, stateResult] = await Promise.all([
 		cachedFetch(
 			`simple-jail-${ctId}`,
 			async () => getSimpleJailByCTID(ctId, { hostname: node }),
@@ -29,6 +29,10 @@ export async function load({ params }) {
 			node
 		)
 	]);
+	let jailResult = cachedJailResult;
+	if (!isAPIResponse(jailResult) && !jailResult.type) {
+		jailResult = await getSimpleJailByCTID(ctId, { hostname: node });
+	}
 	if (isAPIResponse(jailResult)) {
 		error(
 			jailResult.message === 'jail_not_found' ? 404 : 502,

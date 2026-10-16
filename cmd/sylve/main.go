@@ -53,6 +53,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
+	"github.com/alchemillahq/sylve/pkg/pkgmanager"
 
 	portnetwork "github.com/alchemillahq/sylve/pkg/network"
 	"github.com/gin-contrib/gzip"
@@ -61,6 +62,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--internal-package-worker" {
+		signal.Ignore(os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
+		if err := pkgmanager.RunWorker(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	rootCmd := cmd.NewRootCommand(daemonAction)
 
 	err := rootCmd.Run(context.Background(), os.Args)
@@ -229,6 +238,15 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
 	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
+	if err := jailSvc.InitializePackages(telemetryDB, func(ctx context.Context, ctID uint, action, payload, source, actor string) (uint, error) {
+		task, _, err := lifecycleSvc.RequestActionWithPayload(ctx, "jail", ctID, action, source, actor, payload)
+		if err != nil {
+			return 0, err
+		}
+		return task.ID, nil
+	}); err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_initialize_jail_packages")
+	}
 	jailSvc.SetMutationAdmission(clusterSvc)
 	libvirtSvc.SetMutationAdmission(clusterSvc)
 	lifecycleSvc.SetMutationAdmission(clusterSvc)
@@ -401,6 +419,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		}
 
 		go migrationSvc.StartRecoveryTicker(qCtx)
+		go jailSvc.StartPackageMonitor(qCtx)
 		go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
 		go aS.ClearExpiredJWTTokens(qCtx)
 	} else {

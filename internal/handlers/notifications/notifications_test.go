@@ -444,8 +444,8 @@ func TestGetRulesHandlerReturnsRules(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected_templates_array")
 	}
-	if len(templates) != 1 {
-		t.Fatalf("expected_1_template got: %d", len(templates))
+	if len(templates) != 3 {
+		t.Fatalf("expected_zfs_and_package_templates got: %d", len(templates))
 	}
 }
 

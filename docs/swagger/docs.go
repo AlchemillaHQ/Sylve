@@ -34685,6 +34685,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network"
                     }
                 },
+                "packageAuditIntervalHours": {
+                    "type": "integer"
+                },
+                "packageMonitoringEnabled": {
+                    "type": "boolean"
+                },
                 "resolvConf": {
                     "type": "string"
                 },
@@ -38592,6 +38598,9 @@ const docTemplate = `{
                 },
                 "state": {
                     "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.JailType"
                 }
             }
         },

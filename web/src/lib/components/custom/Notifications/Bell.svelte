@@ -19,6 +19,8 @@
 	import type { CellComponent, ColumnDefinition } from 'tabulator-tables';
 	import CustomCheckbox from '$lib/components/ui/custom-input/checkbox.svelte';
 	import SpanWithIcon from '../SpanWithIcon.svelte';
+	import { resolve } from '$app/paths';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	type NotificationRow = Record<string, unknown> & {
 		notification: Notification;
@@ -223,6 +225,36 @@
 					? 'Real counts unchanged.'
 					: '× Acknowledges this count; increases still alert.';
 			container.append(note);
+		}
+		if (notification.kind.startsWith('jail.packages.') && notification.metadata.test !== 'true') {
+			const ctId = Number(notification.metadata.ctId),
+				jailId = Number(notification.metadata.jailId);
+			const node = notification.metadata.node;
+			if (
+				Number.isSafeInteger(ctId) &&
+				ctId > 0 &&
+				Number.isSafeInteger(jailId) &&
+				jailId > 0 &&
+				node &&
+				notification.metadata.guid &&
+				/^[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(node)
+			) {
+				const link = document.createElement('a');
+				link.className = 'text-xs underline';
+				link.textContent = 'View Audit';
+				const taskId = Number(notification.metadata.taskId);
+				const query = new SvelteURLSearchParams({
+					jailId: String(jailId),
+					guid: notification.metadata.guid
+				});
+				if (Number.isSafeInteger(taskId) && taskId > 0) query.set('job', String(taskId));
+				link.href =
+					resolve('/[node]/jail/[ctid]/packages', { node, ctid: String(ctId) }) + `?${query}`;
+				link.addEventListener('click', () => {
+					open = false;
+				});
+				container.append(link);
+			}
 		}
 
 		return container;

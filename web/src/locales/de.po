@@ -120,6 +120,7 @@ msgstr "Switches"
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
+#: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
 #: src/routes/[node]/+layout.svelte
@@ -543,6 +544,7 @@ msgid "User"
 msgstr "Benutzer"
 
 #: src/lib/components/custom/Authentication/Passkeys.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -558,19 +560,21 @@ msgstr "Aktion"
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
 #: src/lib/components/custom/Dialog/ErrorDetailModal.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
-#: src/routes/[node]/system/notifications/rules/+page.svelte
-#: src/routes/[node]/system/notifications/rules/+page.svelte
-#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -798,6 +802,7 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/lib/components/custom/Disk/CreatePartition.svelte
 #: src/lib/components/custom/FileExplorer/ListView.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Jail/Template/Create.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -831,6 +836,7 @@ msgstr "Erstellen der Notiz fehlgeschlagen"
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/jail/[ctid]/network/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/network/firewall/nat/+page.svelte
@@ -1095,6 +1101,7 @@ msgstr "Dies ist eine Notiz"
 #: src/lib/components/custom/Jail/Options/StartOrder.svelte
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/WoL.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1739,6 +1746,7 @@ msgstr "Partitionen erstellen"
 #: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Size"
 msgstr "Größe"
@@ -2871,6 +2879,7 @@ msgid "Success"
 msgstr "Erfolg"
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
@@ -2944,6 +2953,7 @@ msgstr "Wiederherstellen"
 msgid "Backup"
 msgstr "Backup"
 
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -3466,6 +3476,8 @@ msgid "Manual move back"
 msgstr "Manuell zurückwechseln"
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
@@ -3473,6 +3485,7 @@ msgstr "Manuell zurückwechseln"
 #: src/routes/[node]/authentication/users/local/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/authentication/users/pam/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
@@ -3694,6 +3707,7 @@ msgstr "Quellmodus"
 msgid "Failback"
 msgstr "Failback"
 
+#: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -3709,6 +3723,8 @@ msgstr "Failback"
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -3721,6 +3737,7 @@ msgstr "Failback"
 msgid "Yes"
 msgstr "Ja"
 
+#: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
@@ -3736,6 +3753,8 @@ msgstr "Ja"
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
 #: src/routes/[node]/jail/[ctid]/options/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/mdns/records/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
@@ -5824,6 +5843,7 @@ msgstr "Protokolle anzeigen"
 msgid "Hourly"
 msgstr "Stündlich"
 
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Daily"
@@ -8374,6 +8394,7 @@ msgid "This VM is owned by another node right now"
 msgstr "Diese VM gehört derzeit einem anderen Node"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -8925,6 +8946,7 @@ msgstr "Regel"
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/stores/error-details.svelte.ts
 #: src/routes/+error.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 msgid "Details"
@@ -8943,6 +8965,7 @@ msgstr "Aktualisieren der NAT-Zähler fehlgeschlagen"
 msgid "No log entries captured yet"
 msgstr "Noch keine Protokolleinträge erfasst"
 
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 msgid "Filter"
@@ -10743,6 +10766,7 @@ msgid "Select Users"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 msgid "Installed"
 msgstr ""
 
@@ -11284,6 +11308,8 @@ msgid "Select shell"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 msgid "Locked"
 msgstr ""
 
@@ -12538,6 +12564,7 @@ msgid "Next Run (Browser Local)"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Not scheduled"
 msgstr ""
@@ -12842,6 +12869,7 @@ msgid "Every hour"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 msgid "Every 6 hours"
 msgstr ""
 
@@ -13468,6 +13496,7 @@ msgstr ""
 msgid "Dynamic DNS entry deleted"
 msgstr ""
 
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 msgid "Up to date"
 msgstr ""
@@ -13819,6 +13848,7 @@ msgstr ""
 msgid "Certificates"
 msgstr ""
 
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
 msgid "Available"
 msgstr ""
@@ -20182,6 +20212,7 @@ msgstr ""
 
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 msgid "Automatic"
 msgstr ""
 
@@ -20927,4 +20958,542 @@ msgstr ""
 
 #: src/lib/components/custom/Network/Switch/Standard/IPTab.svelte
 msgid "IPv6 Addresses"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.ts
+msgid "Packages are available only for FreeBSD jails"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.ts
+msgid "Audit belongs to a different jail incarnation"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "Packages"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Packages - Audit"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Packages - Check Updates"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Packages - Upgrade Preview"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Jail Packages - Upgrade"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "View Audit"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/+layout.svelte
+msgid "View package operation"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Package details are unavailable."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Installed version"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Available version"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Installed size"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Dependency"
+msgstr ""
+
+#. 0: pkg.name
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Package Details — {0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Use Updates → Jail system to preview updates for this jail’s base packages."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Locked and protected packages cannot be upgraded here."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Vulnerabilities"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Recorded findings may be out of date. Run an audit to refresh them."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "No known vulnerabilities found."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Dependencies"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Version"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Origin"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "No dependencies."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Dependencies are unavailable for this jail."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Loading dependencies..."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Details.svelte
+msgid "Preview Upgrade"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Monitoring settings could not be saved."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Package monitoring saved"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Package Monitoring"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Frequency"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Every 12 hours"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Audits can run while the jail is stopped if its filesystem is mounted. Packages are never upgraded automatically."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Recent activity"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Last successful audit"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Last attempt"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Next audit"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Consecutive failures"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+msgid "Last skipped"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Checking jail availability..."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Jail System Upgrade Preview"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade Preview"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Jail System Upgrade"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Package Upgrade"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Check Updates"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Package Audit"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Waiting to start"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Reading packages"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Checking vulnerabilities"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Updating repository catalogs"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Resolving dependencies"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Downloading and verifying packages"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Creating snapshot"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrading packages"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "In progress"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Loading operation..."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "No eligible packages to upgrade"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Operation failed"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Preview ready"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "No system updates available"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "No updates available"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade complete"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Update check complete"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Audit complete"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "No known vulnerabilities found"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Operation complete"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "This package operation is unavailable."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Jail availability could not be checked."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Start the jail before applying these changes. This preview has not changed any packages."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Command output is unavailable."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Package"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Proposed"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Repository"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Advisory"
+msgstr ""
+
+#. 0: node; 1: ctId; 2: currentTask
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "{0} · Jail {1} · Task {2}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Application upgrades exclude locked and system packages. Use Updates → Jail system for pkgbase userland updates."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Available versions are shown in the package list. No packages were changed."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Review .pkgnew and .pkgsave configuration files, then restart the jail and validate its services. Sylve does not restart it automatically."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Review the command output for package messages. Restart affected services or the jail if needed; Sylve does not restart them automatically."
+msgstr ""
+
+#. 0: job.plan.system?.release
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "FreeBSD {0} userland and its base dependencies only. Kernel, boot, package-manager, and application changes are excluded."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Includes all dependency changes, removals, and downgrades."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Some packages may have changed. Review the output and installed state before retrying."
+msgstr ""
+
+#. 0: job.snapshotId
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Pre-upgrade snapshot: #{0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "The upgrade completed, but the follow-up audit is unavailable. See the command output for details."
+msgstr ""
+
+#. 0: convertDbTime(job.plan.expiresAt)
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Expires {0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "This preview has expired. Create a new preview to continue."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Create a snapshot"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "I acknowledge the jail system changes and manual restart requirements"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "I acknowledge the listed removals and downgrades"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Snapshot coverage is unavailable for this jail’s storage layout."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Vulnerability findings"
+msgstr ""
+
+#. 0: convertDbTime( job.audit.databaseAt )
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid ", using advisories from {0}"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Registered packages only<0/>; not a full base/kernel assessment."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Command output"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Queuing..."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade Jail System"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Package inventory is unavailable."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Vulnerable only"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Updates available"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Base packages must be updated separately under Updates → Jail system"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Locked/protected or missing packages cannot be upgraded"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Selection includes filtered-out packages"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Update available"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Protected package"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Not audited / stale"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "No known vulnerabilities"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Advisories"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Not checked"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Package update actions"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Updates"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Applications"
+msgstr ""
+
+#. 0: timestamp(view?.checkedAt)
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Check availability without downloading package archives. Last successful check: {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "<0/> Check for updates"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Preview all eligible application packages, including those hidden by filters. May download archives; installs nothing."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "<0/> Preview all upgrades"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Preview selected application packages. May download archives; installs nothing."
+msgstr ""
+
+#. 0: selected.length
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "<0/> Preview selected ({0})"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Jail system"
+msgstr ""
+
+#. 0: timestamp(view.systemCheckedAt)
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Download and verify a same-release FreeBSD base preview without installing packages. Last check: {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "<0/> Preview system upgrade"
+msgstr ""
+
+#. 0: timestamp(view?.auditAt)
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Last successful audit: {0}"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Audit"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Filtered"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Package monitoring"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Refresh inventory"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "No installed packages"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "New or changed findings"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Audit unavailable"
 msgstr ""

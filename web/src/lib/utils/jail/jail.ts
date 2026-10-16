@@ -335,7 +335,18 @@ const jailLifecycleBadgeStyles: Record<JailLifecycleAction, JailLifecycleBadgeSt
 	}
 };
 
+const jailPackageActionLabels: Record<string, string> = {
+	'pkg-audit': 'Audit',
+	'pkg-check-updates': 'Check Updates',
+	'pkg-preview': 'Upgrade Preview',
+	'pkg-upgrade': 'Upgrade'
+};
+
 export function getJailLifecycleBadgeStyle(action: string): JailLifecycleBadgeStyle {
+	const packageLabel = jailPackageActionLabels[action];
+	if (packageLabel) {
+		return { ...jailLifecycleBadgeStyles.restart, label: packageLabel };
+	}
 	if (action in jailLifecycleBadgeStyles) {
 		return jailLifecycleBadgeStyles[action as JailLifecycleAction];
 	}

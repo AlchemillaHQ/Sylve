@@ -283,6 +283,7 @@
 		return (
 			action
 				.replace(/[_-]+/g, ' ')
+				.replace(/\bpkg\b/gi, 'package')
 				.trim()
 				.split(/\s+/)
 				.map((word) => word.charAt(0).toUpperCase() + word.slice(1))

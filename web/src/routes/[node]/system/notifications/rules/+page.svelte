@@ -712,6 +712,10 @@ under sponsorship from the FreeBSD Foundation.
 
 	let testConditionOptions = $derived.by(() => {
 		switch (modals.test.templateKey) {
+			case 'jail.packages.vulnerabilities':
+				return [{ key: 'vulnerabilities_changed', label: 'New or changed findings' }];
+			case 'jail.packages.health':
+				return [{ key: 'audit_unavailable', label: 'Audit unavailable' }];
 			case 'system.disk.smart.temperature':
 				return [
 					{ key: 'temperature_warning', label: 'Warning (60 °C)' },

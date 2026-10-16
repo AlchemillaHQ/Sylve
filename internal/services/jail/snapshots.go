@@ -88,6 +88,11 @@ func (s *Service) CreateJailSnapshot(
 	name string,
 	description string,
 ) (*jailModels.JailSnapshot, error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(ctx, ctID)
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
+	defer releasePackage()
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 	s.actionMutex.Lock()
@@ -199,6 +204,11 @@ func (s *Service) RollbackJailSnapshot(
 	ctID uint,
 	snapshotID uint,
 ) (result JailSnapshotRollbackResult, retErr error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(ctx, ctID)
+	if admissionErr != nil {
+		return result, admissionErr
+	}
+	defer releasePackage()
 	result.Warnings = []string{}
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
@@ -302,23 +312,8 @@ func (s *Service) RollbackJailSnapshot(
 
 	mutationCtx, cancelMutation := detachedJailSnapshotContext(ctx, jailSnapshotMutationTimeout)
 	defer cancelMutation()
-	for _, fullSnapshot := range plan.Targets {
-		snapshotDataset, err := s.GZFS.ZFS.Get(mutationCtx, fullSnapshot, false)
-		if err != nil {
-			if isDatasetNotFoundError(err) {
-				return result, fmt.Errorf("jail_snapshot_dataset_missing: %s: %w", fullSnapshot, err)
-			}
-			return result, fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
-		}
-		if snapshotDataset == nil {
-			return result, fmt.Errorf("jail_snapshot_dataset_missing: %s", fullSnapshot)
-		}
-		if err := snapshotDataset.Rollback(mutationCtx, true); err != nil {
-			if isDatasetNotFoundError(err) {
-				return result, fmt.Errorf("jail_snapshot_dataset_missing: %s: %w", fullSnapshot, err)
-			}
-			return result, fmt.Errorf("failed_to_rollback_snapshot: %w", err)
-		}
+	if err := s.rollbackJailSnapshotTargets(mutationCtx, current.ID, plan.Targets); err != nil {
+		return result, err
 	}
 
 	if err := s.restoreHostConfigFromDataset(ctID, plan.MountPoint, plan.HostConfigAvailable); err != nil {
@@ -352,6 +347,33 @@ func (s *Service) RollbackJailSnapshot(
 	return result, nil
 }
 
+func (s *Service) rollbackJailSnapshotTargets(ctx context.Context, jailID uint, targets []string) error {
+	if s.packages != nil {
+		if err := invalidatePackageFreshness(s.DB.WithContext(ctx), jailID); err != nil {
+			return fmt.Errorf("failed_to_invalidate_package_state: %w", err)
+		}
+	}
+	for _, fullSnapshot := range targets {
+		snapshotDataset, err := s.GZFS.ZFS.Get(ctx, fullSnapshot, false)
+		if err != nil {
+			if isDatasetNotFoundError(err) {
+				return fmt.Errorf("jail_snapshot_dataset_missing: %s: %w", fullSnapshot, err)
+			}
+			return fmt.Errorf("failed_to_get_snapshot_dataset: %w", err)
+		}
+		if snapshotDataset == nil {
+			return fmt.Errorf("jail_snapshot_dataset_missing: %s", fullSnapshot)
+		}
+		if err := snapshotDataset.Rollback(ctx, true); err != nil {
+			if isDatasetNotFoundError(err) {
+				return fmt.Errorf("jail_snapshot_dataset_missing: %s: %w", fullSnapshot, err)
+			}
+			return fmt.Errorf("failed_to_rollback_snapshot: %w", err)
+		}
+	}
+	return nil
+}
+
 func (s *Service) waitForJailActiveState(ctID uint, shouldBeActive bool, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
@@ -376,6 +398,11 @@ func (s *Service) waitForJailActiveState(ctID uint, shouldBeActive bool, timeout
 }
 
 func (s *Service) DeleteJailSnapshot(ctx context.Context, ctID uint, snapshotID uint) error {
+	releasePackage, err := s.ReserveSystemOperation(ctx, ctID)
+	if err != nil {
+		return err
+	}
+	defer releasePackage()
 	s.crudMutex.Lock()
 	defer s.crudMutex.Unlock()
 
@@ -896,33 +923,37 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 	}
 
 	jailUpdate := jailModels.Jail{
-		Name:              restored.Name,
-		Hostname:          restored.Hostname,
-		Description:       restored.Description,
-		Type:              restored.Type,
-		StartAtBoot:       restored.StartAtBoot,
-		StartOrder:        restored.StartOrder,
-		WoL:               restored.WoL,
-		InheritIPv4:       restored.InheritIPv4,
-		InheritIPv6:       restored.InheritIPv6,
-		ResourceLimits:    restored.ResourceLimits,
-		Cores:             restored.Cores,
-		CPUSet:            restored.CPUSet,
-		Memory:            restored.Memory,
-		DevFSRuleset:      restored.DevFSRuleset,
-		Fstab:             restored.Fstab,
-		ResolvConf:        restored.ResolvConf,
-		CleanEnvironment:  restored.CleanEnvironment,
-		ExecTimeout:       restored.ExecTimeout,
-		AdditionalOptions: restored.AdditionalOptions,
-		AllowedOptions:    restored.AllowedOptions,
-		MetadataMeta:      restored.MetadataMeta,
-		MetadataEnv:       restored.MetadataEnv,
+		PackageMonitoringEnabled:  restored.PackageMonitoringEnabled,
+		PackageAuditIntervalHours: restored.PackageAuditIntervalHours,
+		Name:                      restored.Name,
+		Hostname:                  restored.Hostname,
+		Description:               restored.Description,
+		Type:                      restored.Type,
+		StartAtBoot:               restored.StartAtBoot,
+		StartOrder:                restored.StartOrder,
+		WoL:                       restored.WoL,
+		InheritIPv4:               restored.InheritIPv4,
+		InheritIPv6:               restored.InheritIPv6,
+		ResourceLimits:            restored.ResourceLimits,
+		Cores:                     restored.Cores,
+		CPUSet:                    restored.CPUSet,
+		Memory:                    restored.Memory,
+		DevFSRuleset:              restored.DevFSRuleset,
+		Fstab:                     restored.Fstab,
+		ResolvConf:                restored.ResolvConf,
+		CleanEnvironment:          restored.CleanEnvironment,
+		ExecTimeout:               restored.ExecTimeout,
+		AdditionalOptions:         restored.AdditionalOptions,
+		AllowedOptions:            restored.AllowedOptions,
+		MetadataMeta:              restored.MetadataMeta,
+		MetadataEnv:               restored.MetadataEnv,
 	}
 
 	if err := tx.Model(&jailModels.Jail{}).
 		Where("id = ?", current.ID).
 		Select(
+			"PackageMonitoringEnabled",
+			"PackageAuditIntervalHours",
 			"Name",
 			"Hostname",
 			"Description",
@@ -1005,6 +1036,12 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 		}
 	}
 
+	if s.packages != nil {
+		if err := invalidatePackageFreshness(tx, current.ID); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
 	if err := tx.Commit().Error; err != nil {
 		return fmt.Errorf("failed_to_commit_snapshot_reconciliation: %w", err)
 	}

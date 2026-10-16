@@ -79,6 +79,10 @@
 
 		if (page.url.pathname.startsWith(`/${node}/jail`)) {
 			const jailName = page.url.pathname.split('/')[3];
+			const freeBSD =
+				page.data.node === node &&
+				page.data.ctId === Number(jailName) &&
+				page.data.jail?.type === 'freebsd';
 			return [
 				{
 					label: 'Summary',
@@ -92,6 +96,15 @@
 					href: `/${node}/jail/${jailName}/hardware`
 				},
 				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` },
+				...(freeBSD
+					? [
+							{
+								label: 'Packages',
+								icon: 'mdi--package-variant',
+								href: `/${node}/jail/${jailName}/packages`
+							}
+						]
+					: []),
 				{
 					label: 'Snapshots',
 					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',

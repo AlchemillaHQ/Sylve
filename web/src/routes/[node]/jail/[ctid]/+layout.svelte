@@ -116,8 +116,11 @@
 	};
 
 	setContext('jailState', jState);
+	const packageOperation: { open?: () => boolean } = {};
+	setContext('jailPackageOperation', packageOperation);
 
 	let hasActiveLifecycleTask = $derived(!!jState.current?.pendingAction);
+	let hasActivePackageTask = $derived(jState.current?.pendingAction?.startsWith('pkg-') ?? false);
 	let isMigrationActive = $derived(jState.current?.pendingAction === 'migrate');
 	let lifecycleActionBadge = $derived(
 		getJailLifecycleBadgeStyle(jState.current?.pendingAction || '')
@@ -209,7 +212,7 @@
 	);
 
 	function openDeleteModal() {
-		if (!jail.current) return;
+		if (!jail.current || hasActiveLifecycleTask) return;
 		modalState.deleteMacs = false;
 		modalState.deleteRootFS = false;
 		modalState.title = `${jail.current.name} (${jail.current.ctId})`;
@@ -289,7 +292,7 @@
 	}
 
 	async function handleAction(action: JailLifecycleAction) {
-		if (!jail.current || actionRequestInFlight) return;
+		if (!jail.current || actionRequestInFlight || hasActiveLifecycleTask) return;
 		const target = jail.current;
 		const targetCTID = target.ctId;
 		const hostname = node;
@@ -400,19 +403,35 @@
 
 					<Button
 						onclick={openDeleteModal}
+						disabled={actionRequestInFlight}
 						size="sm"
 						class="ml-2 bg-muted-foreground/40 dark:bg-muted disabled:pointer-events-auto! h-6 text-black hover:bg-red-600 disabled:hover:bg-neutral-600 dark:text-white"
 					>
 						<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-1" title="Delete" />
 					</Button>
 				{/if}
-
 				{#if hasActiveLifecycleTask && !isMigrationActive}
 					<Badge
 						variant={lifecycleActionBadge.variant}
 						class={`px-1.5 text-xs ${lifecycleActionBadge.className}`}
+						href={hasActivePackageTask
+							? resolve('/[node]/jail/[ctid]/packages', { node, ctid: String(ctId) }) +
+								'?job=active'
+							: undefined}
+						title={hasActivePackageTask ? 'View package operation' : undefined}
+						onclick={(event) => {
+							if (
+								hasActivePackageTask &&
+								!event.ctrlKey &&
+								!event.metaKey &&
+								!event.shiftKey &&
+								!event.altKey &&
+								packageOperation.open?.()
+							)
+								event.preventDefault();
+						}}
 					>
-						<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin"></span>
+						<span class="icon-[mdi--loading] mr-1 h-3 w-3 animate-spin" aria-hidden="true"></span>
 						{lifecycleActionBadge.label}
 					</Badge>
 				{/if}

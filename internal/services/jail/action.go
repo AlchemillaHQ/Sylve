@@ -55,6 +55,11 @@ func (s *Service) JailActionForReplicationContext(
 }
 
 func (s *Service) jailActionContext(ctx context.Context, ctId int, action, transitionRunID string) error {
+	releasePackage, err := s.ReserveSystemOperation(ctx, uint(ctId))
+	if err != nil {
+		return err
+	}
+	defer releasePackage()
 	if s.mutationGate != nil {
 		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
 		if err != nil {

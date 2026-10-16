@@ -6,6 +6,7 @@
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import AuditDetailModal from '$lib/components/custom/Dialog/AuditDetailModal.svelte';
+	import PackageOperation from '$lib/components/custom/Jail/Packages/Operation.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -359,6 +360,10 @@
 			'/api/vm': 'VM - Create',
 			'/api/jail': 'Jail - Create',
 			'/api/jail/:id/networks': 'Jail Network - Create',
+			'/api/jail/:id/packages/audit': 'Jail Packages - Audit',
+			'/api/jail/:id/packages/check-updates': 'Jail Packages - Check Updates',
+			'/api/jail/:id/packages/upgrade/preview': 'Jail Packages - Upgrade Preview',
+			'/api/jail/:id/packages/upgrade': 'Jail Packages - Upgrade',
 			'/api/vm/:id/storage/from-image': 'VM Storage - Create From Image',
 			'/api/vm/:id/storage': 'VM Storage - Attach',
 			'/api/vm/:id/networks': 'VM Network - Attach',
@@ -1998,10 +2003,21 @@
 	});
 
 	function openAuditDetails(record: ResolvedAuditRecord, section: AuditDetailSection) {
+		const packageTarget = record.action.path.match(/^\/api\/jail\/(\d+)\/packages\//);
+		if (packageTarget && record.asyncJobId && record.asyncJobType?.startsWith('jail_pkg-')) {
+			packageOperation = {
+				open: true,
+				node: record.node,
+				ctId: Number(packageTarget[1]),
+				taskId: record.asyncJobId
+			};
+			return;
+		}
 		auditDetailModal.record = $state.snapshot(record);
 		auditDetailModal.section = section;
 		auditDetailModal.open = true;
 	}
+	let packageOperation = $state({ open: false, node: '', ctId: 0, taskId: 0 });
 
 	export function formatStatus(status: string): string {
 		switch (status) {
@@ -2123,6 +2139,15 @@
 	record={auditDetailModal.record}
 	initialSection={auditDetailModal.section}
 />
+
+{#if packageOperation.open}
+	<PackageOperation
+		bind:open={packageOperation.open}
+		node={packageOperation.node}
+		ctId={packageOperation.ctId}
+		taskId={packageOperation.taskId}
+	/>
+{/if}
 
 <style>
 	:global([data-slot='table-container']) {

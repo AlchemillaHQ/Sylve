@@ -652,6 +652,11 @@ func (s *Service) cleanupJailNetworkRuntime(ctID uint, network jailModels.Networ
 }
 
 func (s *Service) SetInheritance(ctID uint, ipv4 bool, ipv6 bool) (jailServiceInterfaces.JailNetworkInheritanceResult, error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(context.Background(), ctID)
+	if admissionErr != nil {
+		return jailServiceInterfaces.JailNetworkInheritanceResult{}, admissionErr
+	}
+	defer releasePackage()
 	result := jailServiceInterfaces.JailNetworkInheritanceResult{
 		CTID:              ctID,
 		InheritIPv4:       ipv4,
@@ -742,6 +747,11 @@ func (s *Service) SetInheritance(ctID uint, ipv4 bool, ipv6 bool) (jailServiceIn
 }
 
 func (s *Service) AddNetwork(ctID uint, req jailServiceInterfaces.AddJailNetworkRequest) (*jailModels.Network, error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(context.Background(), ctID)
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
+	defer releasePackage()
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
@@ -871,6 +881,11 @@ func (s *Service) AddNetwork(ctID uint, req jailServiceInterfaces.AddJailNetwork
 }
 
 func (s *Service) DeleteNetwork(ctID uint, networkID uint) error {
+	releasePackage, admissionErr := s.ReserveSystemOperation(context.Background(), ctID)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer releasePackage()
 	if networkID == 0 {
 		return fmt.Errorf("invalid_network_id")
 	}
@@ -915,6 +930,11 @@ func (s *Service) DeleteNetwork(ctID uint, networkID uint) error {
 }
 
 func (s *Service) EditNetwork(ctID uint, networkID uint, req jailServiceInterfaces.EditJailNetworkRequest) (*jailModels.Network, error) {
+	releasePackage, admissionErr := s.ReserveSystemOperation(context.Background(), ctID)
+	if admissionErr != nil {
+		return nil, admissionErr
+	}
+	defer releasePackage()
 	if networkID == 0 {
 		return nil, fmt.Errorf("invalid_network_id")
 	}

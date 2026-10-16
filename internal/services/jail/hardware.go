@@ -554,6 +554,11 @@ func (s *Service) updateJailHardware(
 	if s == nil {
 		return jailServiceInterfaces.JailHardwareResult{}, fmt.Errorf("jail_service_not_initialized")
 	}
+	releasePackage, admissionErr := s.ReserveSystemOperation(context.Background(), ctID)
+	if admissionErr != nil {
+		return jailServiceInterfaces.JailHardwareResult{}, admissionErr
+	}
+	defer releasePackage()
 	s.actionMutex.Lock()
 	defer s.actionMutex.Unlock()
 
