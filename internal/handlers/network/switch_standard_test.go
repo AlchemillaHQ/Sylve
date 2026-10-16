@@ -485,10 +485,10 @@ func TestStandardSwitchHandlersReturnNotFoundForMissingSwitch(t *testing.T) {
 	}
 }
 
-func TestCreateStandardSwitchRequiresExplicitBridgeMACSource(t *testing.T) {
+func TestCreateStandardSwitchRejectsIncompleteBridgeMACSource(t *testing.T) {
 	r, _ := setupStandardSwitchCreateRouter(t)
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte("{\"name\":\"sw-missing-mac\",\"private\":true,\"disableIPv6\":true,\"ports\":[]}"))
+	rr := performNetworkJSONRequest(t, r, http.MethodPost, "/network/switch/standard", []byte(`{"name":"sw-missing-mac","private":true,"disableIPv6":true,"ports":[],"bridgeMac":{"port":"em0"}}`))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -497,14 +497,33 @@ func TestCreateStandardSwitchRequiresExplicitBridgeMACSource(t *testing.T) {
 	}
 }
 
-func TestUpdateStandardSwitchRequiresExplicitBridgeMACSource(t *testing.T) {
+func TestUpdateStandardSwitchRejectsIncompleteBridgeMACSource(t *testing.T) {
 	r, _ := setupStandardSwitchUpdateRouter(t)
 
-	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte("{\"mtu\":1500,\"private\":true,\"disableIPv6\":true,\"ports\":[]}"))
+	rr := performNetworkJSONRequest(t, r, http.MethodPut, "/network/switch/standard/1", []byte(`{"mtu":1500,"private":true,"disableIPv6":true,"ports":[],"bridgeMac":{"macObjectId":1}}`))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d body=%s", rr.Code, rr.Body.String())
 	}
 	if code := standardSwitchResponseError(t, rr); code != "standard_switch_mac_source_required" {
 		t.Fatalf("expected explicit MAC-source error, got %q", code)
+	}
+}
+
+func TestStandardSwitchHandlersCannotEnablePortPruning(t *testing.T) {
+	router, db := setupStandardSwitchUpdateRouter(t)
+	router.POST("/network/switch/standard", CreateStandardSwitch(&network.Service{DB: db}))
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/network/switch/standard"},
+		{http.MethodPut, "/network/switch/standard/1"},
+	} {
+		t.Run(test.method, func(t *testing.T) {
+			rr := performNetworkJSONRequest(t, router, test.method, test.path, []byte(`{"name":"strict-handler","private":false,"ports":["svmissing99"],"bridgeMac":{"mode":"port","port":"svmissing99"},"confirmRCConflicts":true,"pruneMissingPorts":true}`))
+			if rr.Code != http.StatusBadRequest || standardSwitchResponseError(t, rr) != "standard_switch_port_not_found" {
+				t.Fatalf("interactive request pruned missing port: status=%d body=%s", rr.Code, rr.Body.String())
+			}
+		})
 	}
 }

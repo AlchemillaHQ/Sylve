@@ -114,6 +114,46 @@ func TestSwitchCreateCommandBuildsManualPayload(t *testing.T) {
 	}
 }
 
+func TestSwitchCreateCommandMACSource(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		options   []string
+		wantError bool
+	}{
+		{name: "portless"},
+		{name: "with ports", options: []string{"--ports", "igb0,igb1"}},
+		{name: "port without mode", options: []string{"--mac-source-port", "igb0"}, wantError: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			command := newSwitchesCommand()
+			var got consoleprotocol.SwitchCreatePayload
+			for _, subcommand := range command.Commands {
+				if subcommand.Name == "create" {
+					subcommand.Action = func(_ context.Context, command *cli.Command) error {
+						var err error
+						got, err = buildSwitchCreatePayload(command)
+						return err
+					}
+				}
+			}
+			args := append([]string{"switches", "create", "--type", "standard", "--name", "automatic-mac"}, test.options...)
+			err := command.Run(t.Context(), args)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("MAC source details accepted without a mode")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Standard == nil || got.Standard.BridgeMAC != (consoleprotocol.StandardSwitchMACSourceRequest{}) {
+				t.Fatalf("omitted source not forwarded: %+v", got.Standard)
+			}
+		})
+	}
+}
+
 func TestSwitchCreateCommandRejectsStandardOptionsForManualSwitch(t *testing.T) {
 	command := newSwitchesCommand()
 	for _, subcommand := range command.Commands {

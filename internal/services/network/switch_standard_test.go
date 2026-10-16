@@ -2934,6 +2934,7 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 		&networkModels.ManualSwitch{},
 		&networkModels.StandardSwitch{},
 		&networkModels.NetworkPort{},
+		&networkModels.ObjectEntry{},
 	)
 
 	stubSyncFunctions(t, syncStubSet{
@@ -2950,7 +2951,6 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 		StandardSwitchConfig: StandardSwitchConfig{
 			MTU:                   1500,
 			Ports:                 []string{},
-			MACSource:             createTestStandardSwitchMACSource(t, svc),
 			DisableBridgeOffloads: true,
 		},
 	})
@@ -2958,15 +2958,11 @@ func TestNewStandardSwitchRollsBackDatabaseWhenRuntimeCreateFails(t *testing.T) 
 		t.Fatalf("expected runtime create failure, got %v", err)
 	}
 
-	var switchCount, portCount int64
-	if err := db.Model(&networkModels.StandardSwitch{}).Count(&switchCount).Error; err != nil {
-		t.Fatalf("count switches: %v", err)
-	}
-	if err := db.Model(&networkModels.NetworkPort{}).Count(&portCount).Error; err != nil {
-		t.Fatalf("count ports: %v", err)
-	}
-	if switchCount != 0 || portCount != 0 {
-		t.Fatalf("runtime failure left database rows: switches=%d ports=%d", switchCount, portCount)
+	for _, model := range []any{&networkModels.StandardSwitch{}, &networkModels.NetworkPort{}, &networkModels.Object{}, &networkModels.ObjectEntry{}} {
+		var count int64
+		if err := db.Model(model).Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("runtime failure left %T rows: count=%d err=%v", model, count, err)
+		}
 	}
 }
 
@@ -3973,7 +3969,10 @@ func TestValidateStandardSwitchMACSourceContract(t *testing.T) {
 		ports  []string
 		code   string
 	}{
-		{name: "missing mode", code: "standard_switch_mac_source_required"},
+		{name: "omitted source supports a portless switch"},
+		{name: "omitted source selects first port", ports: []string{"em0"}},
+		{name: "port without mode", source: networkModels.StandardSwitchMACSource{Port: "em0"}, code: "standard_switch_mac_source_required"},
+		{name: "object without mode", source: networkModels.StandardSwitchMACSource{MACObjectID: validObject.ID}, code: "standard_switch_mac_source_required"},
 		{name: "auto is not a mode", source: networkModels.StandardSwitchMACSource{Mode: "auto"}, code: "invalid_standard_switch_mac_mode"},
 		{name: "port required", source: networkModels.StandardSwitchMACSource{Mode: "port"}, ports: []string{"em0"}, code: "standard_switch_mac_port_required"},
 		{name: "port and object conflict", source: networkModels.StandardSwitchMACSource{Mode: "port", Port: "em0", MACObjectID: validObject.ID}, ports: []string{"em0"}, code: "standard_switch_mac_source_conflict"},

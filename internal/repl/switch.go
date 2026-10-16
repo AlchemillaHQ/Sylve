@@ -241,11 +241,11 @@ func buildStandardSwitchCreateRequest(
 	} else if ports != nil {
 		request.Ports = append(request.Ports, (*ports)...)
 	}
-	bridgeMAC, err := standardSwitchMACSourceOption(options, true)
-	if err != nil {
+	if bridgeMAC, err := standardSwitchMACSourceOption(options); err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
+	} else if bridgeMAC != nil {
+		request.BridgeMAC = *bridgeMAC
 	}
-	request.BridgeMAC = *bridgeMAC
 	if request.Private, err = switchCreateBoolOption(options, "--private"); err != nil {
 		return consoleprotocol.StandardSwitchCreateRequest{}, err
 	}
@@ -455,7 +455,7 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 	if request.Ports, err = switchEditPortsOption(options); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
-	if request.BridgeMAC, err = standardSwitchMACSourceOption(options, false); err != nil {
+	if request.BridgeMAC, err = standardSwitchMACSourceOption(options); err != nil {
 		return consoleprotocol.StandardSwitchEditRequest{}, err
 	}
 	if request.Private, err = switchEditBoolOption(options, "--private"); err != nil {
@@ -501,17 +501,11 @@ func buildStandardSwitchEditRequest(id uint, options map[string]string) (console
 	return request, nil
 }
 
-func standardSwitchMACSourceOption(
-	options map[string]string,
-	required bool,
-) (*consoleprotocol.StandardSwitchMACSourceRequest, error) {
+func standardSwitchMACSourceOption(options map[string]string) (*consoleprotocol.StandardSwitchMACSourceRequest, error) {
 	modeValue, modeSet := options["--mac-source"]
 	portValue, portSet := options["--mac-source-port"]
 	objectValue, objectSet := options["--mac-object"]
 	if !modeSet && !portSet && !objectSet {
-		if required {
-			return nil, fmt.Errorf("--mac-source is required for standard switches")
-		}
 		return nil, nil
 	}
 	if !modeSet {

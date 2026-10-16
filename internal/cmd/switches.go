@@ -77,7 +77,7 @@ func newSwitchesCommand() *cli.Command {
 					&cli.StringFlag{Name: "network6-manual", Usage: "Manual IPv6 CIDR"},
 					&cli.StringFlag{Name: "gateway6-manual", Usage: "Manual IPv6 gateway"},
 					&cli.StringFlag{Name: "ports", Usage: "Comma-separated physical ports"},
-					&cli.StringFlag{Name: "mac-source", Usage: "Bridge MAC source: port or object"},
+					&cli.StringFlag{Name: "mac-source", Usage: "Bridge MAC source: port or object (default: first port or generated MAC)"},
 					&cli.StringFlag{Name: "mac-source-port", Usage: "Selected port whose MAC the bridge uses"},
 					&cli.IntFlag{Name: "mac-object", Usage: "Single-entry MAC object ID used by the bridge"},
 					&cli.BoolFlag{Name: "private", Usage: "Create a private standard switch"},
@@ -358,7 +358,10 @@ func switchCreateMACSource(command *cli.Command) (consoleprotocol.StandardSwitch
 		}
 		return consoleprotocol.StandardSwitchMACSourceRequest{Mode: mode, MACObjectID: uint(objectValue)}, nil
 	case "":
-		return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source is required for standard switches")
+		if command.IsSet("mac-source") || command.IsSet("mac-source-port") || command.IsSet("mac-object") {
+			return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source must be port or object when specifying a MAC source")
+		}
+		return consoleprotocol.StandardSwitchMACSourceRequest{}, nil
 	default:
 		return consoleprotocol.StandardSwitchMACSourceRequest{}, fmt.Errorf("--mac-source must be port or object")
 	}

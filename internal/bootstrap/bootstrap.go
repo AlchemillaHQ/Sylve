@@ -376,7 +376,9 @@ func (s *Service) applySwitches(ctx context.Context, doc *parsedDocument, path s
 			case s.network == nil:
 				err = errors.New("network_service_unavailable")
 			case spec.kind == "standard":
-				_, err = s.network.NewStandardSwitchWithContext(ctx, consoleprotocol.StandardSwitchServiceRequest(spec.standard))
+				request := consoleprotocol.StandardSwitchServiceRequest(spec.standard)
+				request.PruneMissingPorts = true
+				_, err = s.network.NewStandardSwitchWithContext(ctx, request)
 			case spec.kind == "manual":
 				_, err = s.network.CreateManualSwitchWithContext(ctx, spec.manual.Name, spec.manual.Bridge)
 			}

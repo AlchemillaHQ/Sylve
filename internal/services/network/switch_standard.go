@@ -303,7 +303,7 @@ func (s *Service) NewStandardSwitch(request CreateStandardSwitchRequest) (uint, 
 	return s.NewStandardSwitchWithContext(context.Background(), request)
 }
 
-func (s *Service) NewStandardSwitchWithContext(ctx context.Context, request CreateStandardSwitchRequest) (uint, error) {
+func (s *Service) NewStandardSwitchWithContext(ctx context.Context, request CreateStandardSwitchRequest) (switchID uint, retErr error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -322,6 +322,20 @@ func (s *Service) NewStandardSwitchWithContext(ctx context.Context, request Crea
 		return 0, err
 	}
 	bridgeName := utils.ShortHash("vm-" + normalizedName)
+	if request.PruneMissingPorts {
+		var pruned []string
+		request.StandardSwitchConfig, pruned, err = pruneStandardSwitchMissingPorts(request.StandardSwitchConfig)
+		if err != nil {
+			return 0, err
+		}
+		defer func() {
+			if retErr == nil && len(pruned) > 0 {
+				logger.L.Warn().Uint("switchID", switchID).Str("switch", normalizedName).
+					Strs("prunedPorts", pruned).Strs("ports", request.Ports).
+					Msg("bootstrap_standard_switch_ports_pruned")
+			}
+		}()
+	}
 
 	var existing networkModels.StandardSwitch
 	err = s.DB.WithContext(ctx).Preload("Ports").Preload("Addresses", func(db *gorm.DB) *gorm.DB { return db.Order("family, ordering, id") }).Where("name = ?", normalizedName).First(&existing).Error
@@ -369,6 +383,7 @@ func (s *Service) upsertExistingStandardSwitch(
 	if err != nil {
 		return 0, err
 	}
+	input = preserveStandardSwitchMACSource(input, existing)
 	if standardSwitchMatchesInput(existing, input) {
 		return existing.ID, nil
 	}
@@ -431,6 +446,9 @@ func (s *Service) createStandardSwitchRuntime(
 	}()
 
 	sw := standardSwitchFromInput(normalizedName, bridgeName, input)
+	if err := ensureStandardSwitchMACSource(tx, &sw); err != nil {
+		return 0, err
+	}
 	if err := tx.Create(&sw).Error; err != nil {
 		if isStandardSwitchDuplicateError(err) {
 			return 0, standardSwitchConflict("standard_switch_name_or_bridge_conflict", err)
@@ -571,6 +589,7 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 	if err != nil {
 		return err
 	}
+	normalizedInput = preserveStandardSwitchMACSource(normalizedInput, before)
 	if standardSwitchMatchesInput(before, normalizedInput) {
 		return nil
 	}
@@ -692,6 +711,10 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 		}
 	}()
 
+	macIdentity := standardSwitchFromInput(before.Name, before.BridgeName, input)
+	if err := ensureStandardSwitchMACSource(tx, &macIdentity); err != nil {
+		return err
+	}
 	updates := map[string]any{
 		"mtu":                        input.mtu,
 		"vlan":                       input.vlan,
@@ -713,9 +736,9 @@ func (s *Service) editStandardSwitchLocked(request UpdateStandardSwitchRequest) 
 		"gateway_manual":             input.manual.Gateway4,
 		"network6_manual":            "",
 		"gateway6_manual":            input.manual.Gateway6,
-		"bridge_mac_mode":            input.macSource.Mode,
-		"bridge_mac_source_port":     input.macSource.Port,
-		"bridge_mac_object_id":       nullableID(input.macSource.MACObjectID),
+		"bridge_mac_mode":            macIdentity.BridgeMACMode,
+		"bridge_mac_source_port":     macIdentity.BridgeMACSourcePort,
+		"bridge_mac_object_id":       macIdentity.BridgeMACObjectID,
 	}
 	if err := tx.Model(&networkModels.StandardSwitch{}).Where("id = ?", request.ID).Updates(updates).Error; err != nil {
 		return fmt.Errorf("update standard switch: %w", err)

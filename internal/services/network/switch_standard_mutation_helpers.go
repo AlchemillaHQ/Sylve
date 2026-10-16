@@ -79,6 +79,43 @@ func standardSwitchFromInput(name, bridgeName string, input standardSwitchInput)
 	return sw
 }
 
+func preserveStandardSwitchMACSource(input standardSwitchInput, sw networkModels.StandardSwitch) standardSwitchInput {
+	if input.macSource != (networkModels.StandardSwitchMACSource{}) {
+		return input
+	}
+	if sw.BridgeMACMode == networkModels.StandardSwitchMACModeObject ||
+		(sw.BridgeMACMode == networkModels.StandardSwitchMACModePort && slices.Contains(input.ports, sw.BridgeMACSourcePort)) {
+		input.macSource = networkModels.StandardSwitchMACSource{
+			Mode:        sw.BridgeMACMode,
+			Port:        sw.BridgeMACSourcePort,
+			MACObjectID: standardSwitchOptionalIDValue(sw.BridgeMACObjectID),
+		}
+	}
+	return input
+}
+
+func ensureStandardSwitchMACSource(tx *gorm.DB, sw *networkModels.StandardSwitch) error {
+	if sw.BridgeMACMode != "" {
+		return nil
+	}
+	mac, err := normalizeStandardSwitchMAC(utils.GenerateRandomMAC())
+	if err != nil {
+		return fmt.Errorf("generate standard switch bridge MAC: %w", err)
+	}
+	object := networkModels.Object{
+		Name:    fmt.Sprintf("standard-switch-%s-bridge-mac-%s", sw.BridgeName, strings.ReplaceAll(mac, ":", "")),
+		Type:    "Mac",
+		Entries: []networkModels.ObjectEntry{{Value: mac}},
+	}
+	if err := tx.Create(&object).Error; err != nil {
+		return fmt.Errorf("create standard switch bridge MAC object: %w", err)
+	}
+	sw.BridgeMACMode = networkModels.StandardSwitchMACModeObject
+	sw.BridgeMACObjectID = &object.ID
+	sw.BridgeMACObject = &object
+	return nil
+}
+
 func standardSwitchPorts(
 	switchID uint,
 	names []string,
@@ -575,10 +612,13 @@ func (s *Service) adoptStandardSwitchBridge(name, bridgeName string, input stand
 	if err := s.validateAdoptableStandardSwitchBridge(sw, bridge); err != nil {
 		return 0, err
 	}
-	if err := reconcileAdoptedStandardSwitch(sw); err != nil {
-		return 0, err
-	}
 	if err := s.DB.Transaction(func(tx *gorm.DB) error {
+		if err := ensureStandardSwitchMACSource(tx, &sw); err != nil {
+			return err
+		}
+		if err := reconcileAdoptedStandardSwitch(sw); err != nil {
+			return err
+		}
 		if err := tx.Omit(clause.Associations).Create(&sw).Error; err != nil {
 			if isStandardSwitchDuplicateError(err) {
 				return standardSwitchConflict("standard_switch_name_or_bridge_conflict", err)

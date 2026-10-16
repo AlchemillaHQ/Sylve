@@ -115,6 +115,38 @@ func TestBuildConsoleSwitchCreateRequestAllowsPortlessStandardSwitch(t *testing.
 	}
 }
 
+func TestBuildConsoleSwitchCreateRequestAllowsOmittedMACSource(t *testing.T) {
+	for _, options := range [][]string{nil, {"--ports", "igb0,igb1"}} {
+		request, err := buildConsoleSwitchCreateRequest(append([]string{"standard", "automatic-mac"}, options...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if request.Standard == nil || request.Standard.BridgeMAC != (consoleprotocol.StandardSwitchMACSourceRequest{}) {
+			t.Fatalf("omitted MAC source not forwarded: %+v", request.Standard)
+		}
+	}
+}
+
+func TestPortsOnlySwitchEditPreservesPortlessMACAndAddresses(t *testing.T) {
+	objectID := uint(7)
+	sw := networkModels.StandardSwitch{
+		ID: 1, MTU: 1500, DHCP: true, DefaultRoute: true,
+		BridgeMACMode: "object", BridgeMACObjectID: &objectID,
+	}
+	config := standardSwitchEditConfigFromModel(sw)
+	request, err := buildConsoleSwitchEditRequest([]string{"standard", "1", "--ports", "igb0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := applyStandardSwitchEditRequest(&config, *request.Standard); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(config.Ports, []string{"igb0"}) || config.MACSource.Mode != "object" ||
+		config.MACSource.MACObjectID != objectID || !config.DHCP || !config.DefaultRoute {
+		t.Fatalf("ports-only edit changed unrelated configuration: %+v", config)
+	}
+}
+
 func TestBuildConsoleSwitchEditRequestManual(t *testing.T) {
 	request, err := buildConsoleSwitchEditRequest([]string{"manual", "7", "--name", "WAN", "--bridge", "bridge0"})
 	if err != nil {

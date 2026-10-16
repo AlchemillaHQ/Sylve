@@ -48,7 +48,9 @@ Use **IPv4 Addresses** and **IPv6 Addresses** to select multiple Network objects
 
 Each family still has one gateway and default-route setting; additional addresses do not need separate gateways. The first CIDR remains the primary address for the existing route configuration. Duplicate addresses with the same prefix length are assigned only once; assigning the same address with different prefix lengths is rejected.
 
-A Standard Switch also requires an explicit bridge MAC source. A bridge with physical ports can inherit the MAC of one selected port. A portless bridge must use a single-entry **MAC** object. The address must be a valid non-zero unicast MAC. A locally administered address whose first octet is `02`, such as the example above, is appropriate when it is unique on your network.
+The UI requires an explicit bridge MAC source. A bridge with physical ports can inherit the MAC of one selected port. A portless bridge uses a single-entry **MAC** object. The address must be a valid non-zero unicast MAC. A locally administered address whose first octet is `02`, such as the example above, is appropriate when it is unique on your network.
+
+A portless switch created by bootstrap already has a persisted MAC object selected. Keep that object when attaching a NIC to preserve the switch's identity.
 
 ## Create the switch
 

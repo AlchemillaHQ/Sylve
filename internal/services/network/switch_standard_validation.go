@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/netip"
 	"os"
@@ -207,12 +208,45 @@ func normalizeStandardSwitchPorts(ports []string) ([]string, error) {
 	return normalized, nil
 }
 
+func pruneStandardSwitchMissingPorts(config StandardSwitchConfig) (StandardSwitchConfig, []string, error) {
+	ports, err := normalizeStandardSwitchPorts(config.Ports)
+	if err != nil {
+		return config, nil, err
+	}
+	config.Ports = make([]string, 0, len(ports))
+	config.VLANConfig.PortPolicies = maps.Clone(config.VLANConfig.PortPolicies)
+	config.MACSource.Mode = strings.ToLower(strings.TrimSpace(config.MACSource.Mode))
+	config.MACSource.Port = strings.TrimSpace(config.MACSource.Port)
+	pruned := make([]string, 0)
+	for _, port := range ports {
+		_, err := syncIfaceGet(port)
+		if err == nil {
+			config.Ports = append(config.Ports, port)
+			continue
+		}
+		if !isInterfaceMissingError(err) {
+			return config, nil, fmt.Errorf("inspect standard switch port %q: %w", port, err)
+		}
+		pruned = append(pruned, port)
+		delete(config.VLANConfig.PortPolicies, port)
+		if config.MACSource.Mode == networkModels.StandardSwitchMACModePort &&
+			config.MACSource.Port == port && config.MACSource.MACObjectID == 0 {
+			config.MACSource = networkModels.StandardSwitchMACSource{}
+		}
+	}
+	return config, pruned, nil
+}
+
 func (s *Service) validateStandardSwitchMACSource(
 	source networkModels.StandardSwitchMACSource,
 	ports []string,
 ) (networkModels.StandardSwitchMACSource, error) {
 	source.Mode = strings.ToLower(strings.TrimSpace(source.Mode))
 	source.Port = strings.TrimSpace(source.Port)
+	if source == (networkModels.StandardSwitchMACSource{}) && len(ports) > 0 {
+		source.Mode = networkModels.StandardSwitchMACModePort
+		source.Port = ports[0]
+	}
 
 	switch source.Mode {
 	case networkModels.StandardSwitchMACModePort:
@@ -277,7 +311,10 @@ func (s *Service) validateStandardSwitchMACSource(
 		return source, nil
 
 	case "":
-		return source, invalidStandardSwitch("standard_switch_mac_source_required", nil)
+		if source.Port != "" || source.MACObjectID != 0 {
+			return source, invalidStandardSwitch("standard_switch_mac_source_required", nil)
+		}
+		return source, nil
 	default:
 		return source, invalidStandardSwitch("invalid_standard_switch_mac_mode", nil)
 	}
@@ -479,11 +516,6 @@ func (s *Service) validateStandardSwitchInput(
 		return input, standardSwitchConflict("standard_switch_port_conflict", nil)
 	}
 
-	input.macSource, err = s.validateStandardSwitchMACSource(input.macSource, input.ports)
-	if err != nil {
-		return input, err
-	}
-
 	for _, port := range input.ports {
 		if port == bridgeName {
 			return input, invalidStandardSwitch("standard_switch_cannot_use_own_bridge", nil)
@@ -512,6 +544,11 @@ func (s *Service) validateStandardSwitchInput(
 				return input, standardSwitchConflict("standard_switch_vlan_interface_conflict", nil)
 			}
 		}
+	}
+
+	input.macSource, err = s.validateStandardSwitchMACSource(input.macSource, input.ports)
+	if err != nil {
+		return input, err
 	}
 
 	if input.defaultRoute {

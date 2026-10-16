@@ -20,7 +20,7 @@ const (
 	StandardSwitchMACModeObject = "object"
 )
 
-// StandardSwitchMACSource is the explicit source of a managed bridge's host
+// StandardSwitchMACSource is the source of a managed bridge's host
 // MAC address. Exactly one of Port or MACObjectID is populated according to
 // Mode. It is also used as the service-layer mutation input.
 type StandardSwitchMACSource struct {

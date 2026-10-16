@@ -68,7 +68,19 @@ Service identifiers are case-sensitive: `virtualization`, `jails`, `dhcp-server`
 
 ### Switches
 
-Switch entries mirror the console `switches.create` payload: a `type` and exactly one matching `standard` or `manual` object, without the display-only `json` option. Standard switches use `network4Manual` / `gateway4Manual` and `network6Manual` / `gateway6Manual` for static addresses and gateways, and independent `dhcp` and `slaac` toggles (no DHCPv6). The bridge MAC source is required for standard switches. Switches are upserted by normalized name: standard and manual switch names must be unique across both types, and an existing switch of the other type with the same name is a conflict. An unchanged desired state is a no-op that leaves switch and port IDs stable. Changed desired state goes through the same edit safety checks as the UI and CLI, not a bypass. Bootstrap itself does not create network objects.
+Switch entries mirror the console `switches.create` payload: a `type` and exactly one matching `standard` or `manual` object, without the display-only `json` option. Standard switches use `network4Manual` / `gateway4Manual` and `network6Manual` / `gateway6Manual` for static addresses and gateways, and independent `dhcp` and `slaac` toggles (no DHCPv6). When `bridgeMac` is omitted, a new switch uses the first surviving port's MAC or stores a generated locally administered unicast MAC object if no ports remain. Reapplying the document preserves an existing valid source.
+
+Bootstrap drops missing ports, their VLAN policies, and any MAC-source reference to a dropped port. The switch is still created, including with `ports: []`. A `bootstrap_standard_switch_ports_pruned` backend warning identifies the switch and its dropped and remaining ports. Other validation and interface-inspection errors still fail normally. Interactive UI/CLI create and edit never prune unknown ports.
+
+Find the switch with `sylve switches list`, then attach the real NIC:
+
+```sh
+sylve switches edit --type standard --id 1 --ports igb0
+```
+
+This preserves a generated MAC and the saved addressing configuration. DHCP/SLAAC can obtain addresses once connectivity is available; static addresses can already be configured on the disconnected bridge. A VLAN-filtered switch still requires an explicit VLAN policy for a newly attached port.
+
+Switches are upserted by normalized name: standard and manual switch names must be unique across both types, and an existing switch of the other type with the same name is a conflict. An unchanged desired state is a no-op that leaves switch and port IDs stable. Changed desired state goes through the same edit safety checks as the UI and CLI, not a bypass. Bootstrap cannot define network objects in the document.
 
 A manual switch never creates, persists, or deletes a host bridge. If the named host bridge does not exist, the item fails.
 

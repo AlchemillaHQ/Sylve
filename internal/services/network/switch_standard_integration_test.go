@@ -16,11 +16,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/sylve/internal/bootstrap"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
@@ -839,6 +841,127 @@ func TestIntegrationStandardSwitchMultipleStaticAddresses(t *testing.T) {
 				t.Fatalf("recreate multi-address switch: %v", err)
 			}
 			assertAddresses(updated)
+		})
+	}
+}
+
+func TestIntegrationStandardSwitchBootstrapMissingPort(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping bootstrap switch integration test in short mode")
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("bootstrap switch integration test requires root")
+	}
+	for _, command := range []string{"/sbin/ifconfig", "/sbin/dhclient", "/bin/pgrep", "/bin/pkill"} {
+		if _, err := exec.LookPath(command); err != nil {
+			t.Skipf("required command %s is unavailable: %v", command, err)
+		}
+	}
+	for _, dhcp := range []bool{false, true} {
+		t.Run(fmt.Sprintf("dhcp=%t", dhcp), func(t *testing.T) {
+			useTestDhclientRuntimeDir(t)
+			name := fmt.Sprintf("bootstrap-%04x-%08x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffffffff)
+			bridgeName := adoptionBridgeName(name)
+			missingPort := fmt.Sprintf("sbm%08x", time.Now().UnixNano()&0xffffffff)
+			for _, target := range []string{bridgeName, missingPort} {
+				if live, err := iface.Get(target); live != nil || err == nil || !isInterfaceMissingError(err) {
+					t.Fatalf("integration interface name %s is unavailable: %v", target, err)
+				}
+			}
+			leasePath := "/var/db/dhclient.leases." + bridgeName
+			if _, err := os.Stat(leasePath); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("integration lease path %s is unavailable: %v", leasePath, err)
+			}
+			t.Cleanup(func() {
+				if dhcp {
+					if err := stopDhclient(bridgeName); err != nil {
+						t.Errorf("stop integration dhclient: %v", err)
+					}
+					_ = os.Remove(leasePath)
+				}
+				_, _ = utils.RunCommand("/sbin/ifconfig", bridgeName, "destroy")
+			})
+
+			svc, db := newNetworkServiceForTest(t, &networkModels.ManualSwitch{}, &networkModels.NetworkPort{}, &networkModels.ObjectEntry{})
+			source := filepath.Join(t.TempDir(), "bootstrap.json")
+			cidr := fmt.Sprintf("198.19.%d.254/32", os.Getpid()%250+1)
+			document := fmt.Sprintf(`{"version":1,"switches":[{"type":"standard","standard":{
+				"name":%q,"ports":[%q],"disableIPv6":true,"dhcp":%t,"network4Manual":%q,
+				"bridgeMac":{"mode":"port","port":%q}}}]}`, name, missingPort, dhcp, cidr, missingPort)
+			if err := os.WriteFile(source, []byte(document), 0600); err != nil {
+				t.Fatal(err)
+			}
+			report := bootstrap.NewService(nil, svc).Apply(t.Context(), source)
+			if report.Failed() || !report.Archived {
+				t.Fatalf("bootstrap with a missing port failed: %+v", report)
+			}
+			switches, err := svc.GetStandardSwitches()
+			if err != nil || len(switches) != 1 || len(switches[0].Ports) != 0 {
+				t.Fatalf("missing port prevented a listed portless switch: %+v, err=%v", switches, err)
+			}
+			sw := switches[0]
+			mac, err := desiredStandardSwitchMAC(sw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertRuntime := func(port string) {
+				t.Helper()
+				bridge, err := iface.Get(bridgeName)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got, err := currentInterfaceMAC(bridge); err != nil || got != mac {
+					t.Fatalf("bridge MAC=%q err=%v, want %q", got, err, mac)
+				}
+				if port == "" && len(bridge.BridgeMembers) != 0 {
+					t.Fatalf("portless bridge has members: %+v", bridge.BridgeMembers)
+				}
+				if port != "" && !slices.ContainsFunc(bridge.BridgeMembers, func(member iface.BridgeMember) bool {
+					return member.Name == port
+				}) {
+					t.Fatalf("replacement port %s not attached: %+v", port, bridge.BridgeMembers)
+				}
+				if dhcp {
+					waitForIntegrationDHClientPID(t, bridgeName, 2*time.Second)
+				} else if len(bridge.IPv4) != 1 || bridge.IPv4[0].IP.String() != strings.Split(cidr, "/")[0] {
+					t.Fatalf("static address not retained: %+v", bridge.IPv4)
+				}
+			}
+			assertRuntime("")
+			if dhcp {
+				if err := stopDhclient(bridgeName); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := utils.RunCommand("/sbin/ifconfig", bridgeName, "destroy"); err != nil {
+				t.Fatal(err)
+			}
+			svc = &Service{DB: db}
+			if err := svc.SyncStandardSwitches(); err != nil {
+				t.Fatalf("reconcile portless switch after restart: %v", err)
+			}
+			assertRuntime("")
+
+			output, err := utils.RunCommand("/sbin/ifconfig", "epair", "create")
+			if err != nil {
+				t.Fatal(err)
+			}
+			port := strings.TrimSpace(output)
+			if port == "" {
+				t.Fatal("epair creation returned no interface name")
+			}
+			t.Cleanup(func() { _, _ = utils.RunCommand("/sbin/ifconfig", port, "destroy") })
+			config := StandardSwitchConfig{Ports: []string{port}, DHCP: dhcp, DisableIPv6: true}
+			if !dhcp {
+				config.Manual.Network4 = cidr
+			}
+			if err := svc.EditStandardSwitch(UpdateStandardSwitchRequest{ID: sw.ID, StandardSwitchConfig: config}); err != nil {
+				t.Fatalf("attach replacement port without supplying a MAC source: %v", err)
+			}
+			if err := svc.SyncStandardSwitches(); err != nil {
+				t.Fatalf("reconcile replacement port: %v", err)
+			}
+			assertRuntime(port)
 		})
 	}
 }

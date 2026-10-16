@@ -114,7 +114,8 @@ type StandardSwitchConfig struct {
 }
 
 type CreateStandardSwitchRequest struct {
-	Name string
+	Name              string
+	PruneMissingPorts bool `json:"-"`
 	StandardSwitchConfig
 }
 

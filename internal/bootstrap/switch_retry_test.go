@@ -32,6 +32,9 @@ func TestBootstrapRetriesOnlyFailedSwitchItems(t *testing.T) {
 	writeSource(t, source, retrySwitchDocument)
 	calls := map[string]int{}
 	network.standardFn = func(request networkServiceInterfaces.CreateStandardSwitchRequest) (uint, error) {
+		if !request.PruneMissingPorts {
+			t.Fatal("bootstrap did not enable missing-port pruning")
+		}
 		calls[request.Name]++
 		if request.Name == "settling" && calls[request.Name] == 1 {
 			return 0, errors.New("bridge port not visible yet")
