@@ -245,7 +245,9 @@ func requireConsoleIntegrationHost() error {
 		return fmt.Errorf("check bhyve probe %s: %w", probeName, err)
 	}
 	if output, err := runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "bhyvectl", "--vm="+probeName, "--create"); err != nil {
-		return fmt.Errorf("bhyve cannot create a VM; check host or nested virtualization support: %w: %s", err, strings.TrimSpace(string(output)))
+		capabilities, _ := runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "sysctl", "hw.model", "kern.vm_guest", "hw.vmm")
+		kernel, _ := runConsoleVMCommand(consoleIntegrationVMProbeTimeout, "dmesg")
+		return fmt.Errorf("bhyve cannot create a VM; check host or nested virtualization support: %w: %s\nbhyve host capabilities:\n%s\nkernel messages:\n%s", err, strings.TrimSpace(string(output)), capabilities, kernel)
 	}
 	if output, err := runConsoleVMCommand(consoleIntegrationVMCleanupTimeout, "bhyvectl", "--vm="+probeName, "--destroy"); err != nil {
 		return fmt.Errorf("destroy owned bhyve probe %s: %w: %s", probeName, err, strings.TrimSpace(string(output)))

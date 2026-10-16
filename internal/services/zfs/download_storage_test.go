@@ -162,7 +162,7 @@ func TestIntegrationDownloadStorageFlashVolumeRealZFS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	contents := bytes.Repeat([]byte("disk payload\n"), 512)
+	contents := bytes.Repeat([]byte("disk image data\n"), 1<<16)
 	path := filepath.Join(layout.Dir("path"), "image.img")
 	if err := os.WriteFile(path, contents, 0644); err != nil {
 		t.Fatal(err)

@@ -561,9 +561,7 @@ func TestIntegrationJailPackages(t *testing.T) {
 			}
 			createBase("FreeBSD-runtime", release+"p2", "base-repo")
 			run(DefaultBinary, "-C", config, "repo", filepath.Join(root, "base-repo"))
-			if err := systemClient.Refresh(ctx, systemRepos); err != nil {
-				t.Fatal(err)
-			}
+			run(DefaultBinary, "-j", name, "update", "-f", "-r", "FreeBSD-base")
 			preview, err := systemClient.Preview(ctx, systemRepos, baseNames)
 			if err != nil || len(preview.Changes) != 1 || preview.Changes[0].Name != "FreeBSD-runtime" {
 				t.Fatalf("dry-run changed beyond the base transaction: %+v %v", preview, err)
