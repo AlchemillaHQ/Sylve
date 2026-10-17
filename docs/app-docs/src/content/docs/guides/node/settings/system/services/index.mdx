@@ -56,6 +56,21 @@ After enabling or disabling any service, perform a complete node restart as soon
 | **iSCSI** | iSCSI initiators and targets. | Enabling writes the configuration, starts the initiator and target services, and connects configured initiator sessions. Restart after disabling if you need a clean runtime stop. |
 | **mDNS Discovery** | Bonjour and mDNS service discovery, including managed Samba Apple and Time Machine advertisements. | Immediately publishes configured records when enabled, or unpublishes them when disabled. |
 
+### Existing configuration and backups
+
+Enabling a service can replace existing host configuration with files generated from Sylve's saved settings. This may happen immediately, at startup, or when you apply service settings. Do not assume that manual configuration will be imported or merged. Sylve may also change related service settings in `/etc/rc.conf`.
+
+| Service | Configuration file | Automatic preservation |
+| --- | --- | --- |
+| **Firewall** | `/etc/pf.conf` | Attempts a one-time copy to `/etc/pf.conf.pre-sylve` before applying the managed PF configuration. |
+| **Samba Server** | `/usr/local/etc/smb4.conf` | Copies an existing unmanaged file to `/usr/local/etc/smb4.conf.pre-sylve` during Samba initialization at startup. |
+| **iSCSI** | `/etc/iscsi.conf` and `/etc/ctl.conf` | Copies existing unmanaged files to `/etc/iscsi.conf.pre-sylve` and `/etc/ctl.conf.pre-sylve` at startup. Enabling iSCSI from this page writes configuration immediately and does not create these backups. |
+| **DHCP Server** | `/usr/local/etc/dnsmasq.conf` | Regenerates the file when DHCP and DNS settings are applied. There is no retained `.pre-sylve` backup. |
+
+:::caution
+Automatic copies are a **best-effort safety net**, not a complete backup. Back up the affected files yourself before enabling or reconfiguring a service, and verify that any `.pre-sylve` copies contain what you need. Existing backup copies are not overwritten on subsequent changes, and disabling a service does not restore the original files. Manual edits to generated files can be lost on the next apply.
+:::
+
 ### Enable or disable a service
 
 1. Select the service row.
