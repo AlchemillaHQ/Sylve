@@ -23,6 +23,7 @@ export default defineConfig({
         '/guides/deployments/technitium-dns-jail': '/guides/one-shot-guides/technitium-dns-jail',
         '/guides/deployments/jellyfin-jail': '/guides/one-shot-guides/jellyfin-jail',
         '/guides/deployments/rocky-linux-jail': '/guides/one-shot-guides/rocky-linux-jail',
+        '/guides/node/cli-console/jails/networking-shell': '/guides/node/cli-console/jails/networking',
     },
     integrations: [
         sitemap(),
@@ -368,7 +369,8 @@ export default defineConfig({
                                             items: [
                                                 'guides/node/cli-console/jails/creation',
                                                 'guides/node/cli-console/jails/lifecycle',
-                                                'guides/node/cli-console/jails/networking-shell',
+                                                'guides/node/cli-console/jails/networking',
+                                                'guides/node/cli-console/jails/shell-commands',
                                             ],
                                         },
                                         {

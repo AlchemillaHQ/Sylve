@@ -10,9 +10,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
@@ -102,6 +106,100 @@ func TestJailCommandsRejectInvalidIDs(t *testing.T) {
 				t.Fatalf("command error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestJailExecCommandPreservesArguments(t *testing.T) {
+	original := execJailProcess
+	t.Cleanup(func() { execJailProcess = original })
+	t.Setenv("SYLVE_JAIL_EXEC_TEST", "inherited-by-jexec")
+
+	for _, tc := range []struct {
+		name      string
+		args      []string
+		separator bool
+	}{
+		{"command", []string{"uname", "-a"}, true},
+		{"explicit shell", []string{"/bin/sh", "-c", "id && uname -a"}, true},
+		{"literal arguments", []string{"/usr/local/bin/tool", "two words", "", "$(id)", ";", "*", "a'b\"c", "--", "--help", "--json", "--ctid", "9999", "--config", "/missing/config", "--version", "--console"}, true},
+		{"without separator", []string{"uname", "-a", "--help"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			called := false
+			execJailProcess = func(path string, argv, env []string) error {
+				called = true
+				if path != "/usr/sbin/jexec" {
+					t.Fatalf("executable = %q, want /usr/sbin/jexec", path)
+				}
+				want := append([]string{"/usr/sbin/jexec", "-l", "-U", "root", "aaaex"}, tc.args...)
+				if !slices.Equal(argv, want) {
+					t.Fatalf("argv = %#v, want %#v", argv, want)
+				}
+				if !slices.Equal(env, os.Environ()) {
+					t.Fatalf("jexec environment does not match the caller's environment")
+				}
+				return nil
+			}
+			root := newRootCommand(func(context.Context, *cli.Command) error {
+				t.Fatal("exec must not start the daemon")
+				return nil
+			}, func() bool { return true })
+			args := []string{"sylve", "--config", "/missing/config", "jails", "exec", "--ctid", "127"}
+			if tc.separator {
+				args = append(args, "--")
+			}
+			if err := root.Run(context.Background(), append(args, tc.args...)); err != nil {
+				t.Fatalf("run exec: %v", err)
+			}
+			if !called {
+				t.Fatal("expected process replacement")
+			}
+		})
+	}
+}
+
+func TestJailExecCommandRejectsInvalidInput(t *testing.T) {
+	original := execJailProcess
+	t.Cleanup(func() { execJailProcess = original })
+	execJailProcess = func(string, []string, []string) error {
+		t.Fatal("invalid input must not execute jexec")
+		return nil
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"missing CTID", []string{"--", "uname"}, "Required flag \"ctid\" not set"},
+		{"zero CTID", []string{"--ctid", "0", "--", "uname"}, "--ctid must be greater than zero"},
+		{"negative CTID", []string{"--ctid=-1", "--", "uname"}, "--ctid must be greater than zero"},
+		{"out of range CTID", []string{"--ctid", "10000", "--", "uname"}, "--ctid must be between 1 and 9999"},
+		{"missing command", []string{"--ctid", "127"}, "specify a command after --"},
+		{"empty command list", []string{"--ctid", "127", "--"}, "specify a command after --"},
+		{"empty executable", []string{"--ctid", "127", "--", ""}, "specify a command after --"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCommand(nil, func() bool { return true })
+			root.Writer = io.Discard
+			root.ErrWriter = io.Discard
+			err := root.Run(context.Background(), append([]string{"sylve", "jails", "exec"}, tc.args...))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("command error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestJailExecCommandReportsProcessReplacementFailure(t *testing.T) {
+	original := execJailProcess
+	t.Cleanup(func() { execJailProcess = original })
+	execJailProcess = func(string, []string, []string) error { return syscall.ENOENT }
+
+	root := newRootCommand(nil, func() bool { return true })
+	err := root.Run(context.Background(), []string{"sylve", "jails", "exec", "--ctid", "127", "--", "uname"})
+	if !errors.Is(err, syscall.ENOENT) || !strings.Contains(err.Error(), "CTID 127") {
+		t.Fatalf("command error = %v, want process replacement failure with CTID", err)
 	}
 }
 

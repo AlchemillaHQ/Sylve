@@ -308,6 +308,7 @@ func TestNewRootCommandRequiresRootForActions(t *testing.T) {
 		{"sylve", "--console"},
 		{"sylve", "notes", "list"},
 		{"sylve", "jails", "console"},
+		{"sylve", "jails", "exec", "--ctid", "127", "--", "uname", "-a"},
 	}
 
 	for _, args := range testCases {

@@ -1,0 +1,52 @@
+---
+title: Shell & Commands
+description: Open an interactive Jail shell or run commands non-interactively with the Sylve CLI.
+---
+
+import AsciinemaPlayer from '../../../../../../../components/AsciinemaPlayer.astro';
+
+Use `jails console` for an interactive root login shell, or `jails exec` to run a command directly and return to your host shell.
+
+Both commands must run as root on the Sylve node, with the target Jail already running. They do not require a Sylve configuration file or a running Sylve daemon, and are unavailable inside `sylve --console`.
+
+## Open a Jail shell
+
+Open a local interactive shell:
+
+```bash
+doas sylve jails console --ctid 101
+```
+
+This command resolves the running Jail with `jls`, then opens root's login shell through `jexec` and `su -l root`.
+
+<AsciinemaPlayer
+  src="/demos/cli-console-jails-networking-shell.cast"
+  title="A real Sylve 0.3.0 session inspecting a Jail network, opening its local shell, verifying the static address and route, and reaching the gateway."
+/>
+
+Leave the Jail shell with:
+
+```text
+exit
+```
+
+Exiting the shell does not stop the Jail.
+
+## Run a command without opening a shell
+
+Use `jails exec` to run a command:
+
+```bash
+doas sylve jails exec --ctid 101 -- uname -a
+```
+
+The command runs as root inside the Jail with a clean environment. It does not start a login shell, read shell startup files, or allocate a pseudo-terminal. Standard input, standard output, and standard error are inherited, and the command's exit status and signals are preserved.
+
+Everything after `--` is passed directly as command arguments, including flags such as `--help`. Sylve does not interpret shell syntax; explicitly invoke a shell for pipelines, redirections, or multiple commands inside the Jail:
+
+```bash
+doas sylve jails exec --ctid 101 -- /bin/sh -c 'id && uname -a'
+cat script.sh | doas sylve jails exec --ctid 101 -- /bin/sh
+```
+
+Quote shell expressions so your host shell does not expand them first. Supplying no command is an error, not a request for an interactive shell. To use a program outside the clean environment's search path, supply its full path inside the Jail.

@@ -11,6 +11,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -127,12 +128,24 @@ func TestFullAcceptanceJailWithoutNetworkFromBootstrap(t *testing.T) {
 	assertJailAction(t, output, ctid, "start")
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
 	waitForConsoleJailRunning(t, suite, ctid, true)
+	testConsoleJailExec(t, suite, ctid)
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"jails", "stop", "--ctid", strconv.FormatUint(uint64(ctid), 10), "--json")
 	assertJailAction(t, output, ctid, "stop")
 	waitForConsoleJailLifecycleIdle(t, suite, ctid)
 	waitForConsoleJailRunning(t, suite, ctid, false)
+	t.Run("exec stopped jail", func(t *testing.T) {
+		command := newConsoleJailExecCommand(t, suite, ctid, "/bin/echo", "must-not-run")
+		var stdout, stderr bytes.Buffer
+		command.Stdout = &stdout
+		command.Stderr = &stderr
+		err := command.Run()
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || stdout.Len() != 0 || !strings.Contains(stderr.String(), utils.HashIntToNLetters(int(ctid), 5)) {
+			t.Fatalf("exec error = %v, want stopped jail failure\nstdout: %s\nstderr: %s", err, &stdout, &stderr)
+		}
+	})
 
 	output = runREPLCommand(t, suite.socketPath,
 		"jails delete "+strconv.FormatUint(uint64(ctid), 10)+" --purge --json")

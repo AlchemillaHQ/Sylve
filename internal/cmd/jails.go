@@ -16,12 +16,15 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 
 	consoleprotocol "github.com/alchemillahq/sylve/internal/console"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/urfave/cli/v3"
 )
+
+var execJailProcess = syscall.Exec
 
 type jailCreateInput struct {
 	File      string
@@ -265,6 +268,34 @@ func newJailsCommand() *cli.Command {
 		},
 	}
 
+	stopOnCommand := 1
+	execCmd := &cli.Command{
+		Name:         "exec",
+		Usage:        "Run a command in a local jail (not available in the REPL)",
+		ArgsUsage:    "-- <command> [args...]",
+		Description:  "Run as root with a clean environment, without an automatic shell or pseudo-terminal. Input, output, exit status, and signals are preserved. Use /bin/sh -c explicitly for shell syntax.",
+		StopOnNthArg: &stopOnCommand,
+		Flags:        []cli.Flag{ctidFlag},
+		Action: func(_ context.Context, command *cli.Command) error {
+			ctid, err := commandJailCTID(command, "ctid")
+			if err != nil {
+				return err
+			}
+			args := command.Args().Slice()
+			if len(args) == 0 || args[0] == "" {
+				return fmt.Errorf("specify a command after --")
+			}
+
+			argv := []string{"/usr/sbin/jexec", "-l", "-U", "root", utils.HashIntToNLetters(int(ctid), 5)}
+			argv = append(argv, args...)
+			// Replacing Sylve preserves the command's stdio, exit status, and signals.
+			if err := execJailProcess(argv[0], argv, os.Environ()); err != nil {
+				return fmt.Errorf("could not execute command in jail with CTID %d: %w", ctid, err)
+			}
+			return nil
+		},
+	}
+
 	consoleCmd := &cli.Command{
 		Name:  "console",
 		Usage: "Open a local interactive shell into a jail (not available in the REPL)",
@@ -429,6 +460,7 @@ func newJailsCommand() *cli.Command {
 					}, cmd.Bool("json"))
 				},
 			},
+			execCmd,
 			consoleCmd,
 		},
 	}

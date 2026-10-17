@@ -62,6 +62,8 @@ doas sylve --config /path/to/config.json jails list
 
 If none of these files exists, the command reports which paths it tried. If the configuration is valid but the socket is unavailable, direct commands report that the daemon is not running.
 
+Local [Jail shell commands](/guides/node/cli-console/jails/shell-commands/) (`jails console` and `jails exec`) run directly on the node rather than through the socket. They do not require a configuration file or a running Sylve daemon, but the target Jail must be running.
+
 :::note
 The console socket and its parent directory are restricted to the owner. Commands do not send credentials over the network or require a web login; local access is controlled through root privileges and filesystem permissions.
 :::
