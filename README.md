@@ -30,18 +30,25 @@ The backend is written in **Go**, while the frontend is built with **SvelteKit**
 
 ## Quick start
 
-Install the package, enable the service, and start it:
+Install Sylve form the package: 
 
 ```bash
 pkg install sylve
-service sylve enable
-service sylve start
 ```
 
-Alternatively, install it from the FreeBSD Ports Collection:
+> [!tip]
+>
+> Alternatively, install Sylve from the FreeBSD Ports Collection:
+> 
+> ```bash
+> cd /usr/ports/sysutils/sylve && make install clean
+> ```
 
-```bash
-cd /usr/ports/sysutils/sylve && make install clean
+Enable the service, and start Sylve:
+
+```
+service sylve enable
+service sylve start
 ```
 
 Open `https://<host>:8181` in your browser. A fresh package installation uses `admin` as both the username and password; change these credentials before exposing the node to an untrusted network.
