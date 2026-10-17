@@ -17,6 +17,7 @@
 	import { getBasicSettings, setServiceEnabled, updateUsablePools } from '$lib/api/system/settings';
 	import AlertDialog from '$lib/components/custom/Dialog/Alert.svelte';
 	import { setEnabledServicesForHostname } from '$lib/utils/enabled-services';
+	import { onDestroy, onMount } from 'svelte';
 
 	interface Data {
 		pools: Zpool[];
@@ -30,34 +31,47 @@
 	// svelte-ignore state_referenced_locally
 	const pools = resource(
 		() => 'zfs-pools-full',
-		async (key): Promise<Zpool[]> => {
+		async (key, _previousKey, { signal }): Promise<Zpool[]> => {
 			const results = await getPools(true);
+			if (signal.aborted) {
+				throw new DOMException('Obsolete ZFS pools request', 'AbortError');
+			}
+
 			updateCache(key, results);
 			return results;
 		},
 		{
-			initialValue: data.pools
+			initialValue: data.pools,
+			lazy: true
 		}
 	);
 
 	// svelte-ignore state_referenced_locally
-	const basicSettings = resource(
-		() => 'system-basic-settings',
-		async (key, _previousKey, { data: previousSettings }): Promise<BasicSettings> => {
-			const results = await getBasicSettings();
-			if (isAPIResponse(results)) {
-				handleAPIError(results);
-				return previousSettings ?? data.basicSettings;
-			}
+	let basicSettings = $state(data.basicSettings);
+	let settingsGeneration = 0;
 
-			setEnabledServicesForHostname(storage.hostname, results.services);
-			updateCache(key, results);
-			return results;
-		},
-		{
-			initialValue: data.basicSettings
+	async function refetchBasicSettings() {
+		const generation = ++settingsGeneration;
+		const results = await getBasicSettings();
+		if (generation !== settingsGeneration) return;
+
+		if (isAPIResponse(results)) {
+			handleAPIError(results);
+			return;
 		}
-	);
+
+		basicSettings = results;
+		setEnabledServicesForHostname(storage.hostname, results.services);
+		updateCache('system-basic-settings', results);
+	}
+
+	onMount(() => {
+		void refetch();
+	});
+
+	onDestroy(() => {
+		settingsGeneration++;
+	});
 
 	let poolOptions = $derived.by(() => {
 		return pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
@@ -89,54 +103,54 @@
 
 		const rows: Row[] = [
 			{
-				id: generateNanoId(basicSettings.current.pools.join('-')),
+				id: generateNanoId('zfs-pools'),
 				property: 'ZFS Pools',
-				value: basicSettings.current.pools
+				value: basicSettings.pools
 			},
 			{
 				id: generateNanoId('dhcp-server'),
 				property: 'DHCP Server',
-				value: basicSettings.current.services.includes('dhcp-server') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('dhcp-server') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('wol-server'),
 				property: 'WoL Server',
-				value: basicSettings.current.services.includes('wol-server') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('wol-server') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('samba-server'),
 				property: 'Samba Server',
-				value: basicSettings.current.services.includes('samba-server') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('samba-server') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('virtualization'),
 				property: 'Virtualization',
-				value: basicSettings.current.services.includes('virtualization') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('virtualization') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('jails'),
 				property: 'Jails',
-				value: basicSettings.current.services.includes('jails') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('jails') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('firewall'),
 				property: 'Firewall',
-				value: basicSettings.current.services.includes('firewall') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('firewall') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('wireguard'),
 				property: 'WireGuard',
-				value: basicSettings.current.services.includes('wireguard') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('wireguard') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('iscsi'),
 				property: 'iSCSI',
-				value: basicSettings.current.services.includes('iscsi') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('iscsi') ? 'Enabled' : 'Disabled'
 			},
 			{
 				id: generateNanoId('mdns'),
 				property: 'mDNS Discovery',
-				value: basicSettings.current.services.includes('mdns') ? 'Enabled' : 'Disabled'
+				value: basicSettings.services.includes('mdns') ? 'Enabled' : 'Disabled'
 			}
 		];
 
@@ -149,7 +163,7 @@
 	let modals = $state({
 		zfsPools: {
 			open: false,
-			values: basicSettings.current.pools.join(',')
+			values: ''
 		},
 		'dhcp-server': {
 			open: false
@@ -185,11 +199,17 @@
 		position: 'bottom-center' as const
 	};
 
-	async function refetch() {
-		await Promise.all([pools.refetch(), basicSettings.refetch()]);
+	let refreshing = false;
 
-		poolOptions = pools.current.map((pool) => ({ label: pool.name, value: pool.name }));
-		modals.zfsPools.values = basicSettings.current.pools.join(',');
+	async function refetch() {
+		if (refreshing) return;
+
+		refreshing = true;
+		try {
+			await Promise.all([pools.refetch(), refetchBasicSettings()]);
+		} finally {
+			refreshing = false;
+		}
 	}
 
 	const anyModalOpen = $derived(
@@ -207,8 +227,8 @@
 
 	useInterval(3000, {
 		callback: async () => {
-			if (visible.current && !storage.idle && !anyModalOpen) {
-				refetch();
+			if (visible.current && !storage.idle && !anyModalOpen && !loading) {
+				await refetch();
 			}
 		}
 	});
@@ -231,7 +251,7 @@
 				return;
 			}
 
-			if (sameElements(newPools, basicSettings.current.pools)) {
+			if (sameElements(newPools, basicSettings.pools)) {
 				toast.info('No changes made to ZFS Pools', toastOpts);
 				return;
 			}
@@ -245,11 +265,11 @@
 					return;
 				}
 
-				const updatedSettings = { ...basicSettings.current, pools: newPools };
-				basicSettings.mutate(updatedSettings);
+				const updatedSettings = { ...basicSettings, pools: newPools };
+				settingsGeneration++;
+				basicSettings = updatedSettings;
 				await updateCache('system-basic-settings', updatedSettings);
-				await basicSettings.refetch();
-				modals.zfsPools.values = basicSettings.current.pools.join(',');
+				await refetchBasicSettings();
 				toast.success('ZFS Pools updated', toastOpts);
 				modals.zfsPools.open = false;
 			} finally {
@@ -272,7 +292,7 @@
 			class="h-6.5"
 			onclick={() => {
 				if (activeRow?.property === 'ZFS Pools') {
-					modals.zfsPools.values = basicSettings.current.pools
+					modals.zfsPools.values = basicSettings.pools
 						.filter((p) => pools.current.some((live) => live.name === p))
 						.join(',');
 					modals.zfsPools.open = true;
@@ -324,7 +344,7 @@
 		| 'iscsi'
 		| 'mdns'
 )}
-	{@const enabled = basicSettings.current.services.includes(serviceKey)}
+	{@const enabled = basicSettings.services.includes(serviceKey)}
 	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
 	{@const hasNetworkWarning = serviceName === 'DHCP Server' || serviceName === 'Firewall'}
 	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
@@ -350,15 +370,15 @@
 				const response = await setServiceEnabled(serviceKey as AvailableService, desiredEnabled);
 
 				if (response.status === 'success') {
-					const services = enabled
-						? basicSettings.current.services.filter((service) => service !== serviceKey)
-						: [...new Set([...basicSettings.current.services, serviceKey])];
-					const updatedSettings = { ...basicSettings.current, services };
-					basicSettings.mutate(updatedSettings);
+					const services = desiredEnabled
+						? [...new Set([...basicSettings.services, serviceKey])]
+						: basicSettings.services.filter((service) => service !== serviceKey);
+					const updatedSettings = { ...basicSettings, services };
+					settingsGeneration++;
+					basicSettings = updatedSettings;
 					setEnabledServicesForHostname(storage.hostname, services);
 					await updateCache('system-basic-settings', updatedSettings);
-					await basicSettings.refetch();
-					setEnabledServicesForHostname(storage.hostname, basicSettings.current.services);
+					await refetchBasicSettings();
 					if (response.message === 'iscsi_configuration_saved_apply_pending') {
 						toast.warning('iSCSI state saved; runtime checks are pending', toastOpts);
 					} else {
