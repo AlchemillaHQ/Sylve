@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -88,6 +89,46 @@ func TestServiceWaitDefaultFailsFast(t *testing.T) {
 	_, err := ExecuteOperationResponseContext(ctx, filepath.Join(t.TempDir(), "s.sock"), OperationSwitchList, SwitchListPayload{})
 	if err == nil || !strings.Contains(err.Error(), "sylve daemon is not running") {
 		t.Fatalf("error = %v, want immediate unavailable-daemon error", err)
+	}
+}
+
+func TestServiceWaitDialDeadlineBeforeContextCancellation(t *testing.T) {
+	original := dialServiceSocket
+	t.Cleanup(func() { dialServiceSocket = original })
+
+	for _, tc := range []struct {
+		name          string
+		parentTimeout time.Duration
+		wait          time.Duration
+		dialErr       error
+		want          string
+	}{
+		{"service deadline", 2 * time.Second, time.Second, context.DeadlineExceeded, "did not become available within 1s"},
+		{"socket deadline", 2 * time.Second, time.Second, os.ErrDeadlineExceeded, "did not become available within 1s"},
+		{"parent deadline", time.Second, 2 * time.Second, context.DeadlineExceeded, "connect to daemon: context deadline exceeded"},
+		{"parent deadline without wait", time.Second, 0, os.ErrDeadlineExceeded, "connect to daemon: context deadline exceeded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), tc.parentTimeout)
+				defer cancel()
+				dialServiceSocket = func(dialCtx context.Context, network, address string) (net.Conn, error) {
+					if err := dialCtx.Err(); err != nil {
+						t.Fatalf("dial context already canceled: %v", err)
+					}
+					return nil, &net.OpError{Op: "dial", Net: network, Err: tc.dialErr}
+				}
+
+				start := time.Now()
+				_, err := dialService(ctx, "unused.sock", tc.wait)
+				if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("error = %v, want %q wrapping context.DeadlineExceeded", err, tc.want)
+				}
+				if elapsed := time.Since(start); elapsed != time.Second {
+					t.Fatalf("elapsed = %s, want 1s", elapsed)
+				}
+			})
+		})
 	}
 }
 

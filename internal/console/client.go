@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+var dialServiceSocket = (&net.Dialer{}).DialContext
+
 func ExecuteOperation(socketPath, operation string, payload any) (string, error) {
 	return ExecuteOperationContext(context.Background(), socketPath, operation, payload)
 }
@@ -116,11 +118,13 @@ func dialService(ctx context.Context, socketPath string, wait time.Duration) (ne
 		defer cancel()
 	}
 
-	dialer := &net.Dialer{}
 	for {
-		conn, err := dialer.DialContext(waitCtx, "unix", socketPath)
+		conn, err := dialServiceSocket(waitCtx, "unix", socketPath)
 		if err == nil {
 			return conn, nil
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+			<-waitCtx.Done()
 		}
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("connect to daemon: %w", ctx.Err())
