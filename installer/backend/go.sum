@@ -1,0 +1,6 @@
+github.com/alchemillahq/gzfs v0.0.0-20261015151502-148dfaa161ac h1:oA1zKHOkYa7O4No+Tj6LpbhpVHcV1baDeqroA9R27q4=
+github.com/alchemillahq/gzfs v0.0.0-20261015151502-148dfaa161ac/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
+github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1vwZ3Je0FKVCfqOLp5zO6trqMLYs0=
+github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=

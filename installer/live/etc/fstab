@@ -1,0 +1,3 @@
+tmpfs	/tmp	tmpfs	rw,mode=1777,size=268435456	0	0
+tmpfs	/mnt	tmpfs	rw,mode=0755,size=16777216	0	0
+tmpfs	/var/log	tmpfs	rw,mode=755,size=67108864	0	0

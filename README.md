@@ -48,6 +48,9 @@ Open `https://<host>:8181` in your browser. A fresh package installation uses `a
 
 For installation details, dependencies, configuration, and first-workload guides, see [Getting Started](https://sylve.io/getting-started/).
 
+For a guided installation of FreeBSD and Sylve onto a target system, see the
+[live-media installer](installer/README.md).
+
 ## Building from source
 
 On FreeBSD, with Git, Go, Node.js, and npm installed:

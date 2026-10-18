@@ -1,0 +1,63 @@
+#!/bin/sh
+
+: "${SYLVE_KIOSK_URL:?Run kiosk-launch first}" "${SYLVE_KIOSK_LOG:?Run kiosk-launch first}"
+export DISPLAY=:0 MOZ_ENABLE_WAYLAND=0
+SELFDIR=/usr/local/share/freebsd-sylve
+
+# Own the complete X session. A Firefox exit must not orphan Xorg on its VT.
+xorg_pid=""
+browser_pid=""
+cleanup() {
+	[ -z "$browser_pid" ] || kill "$browser_pid" 2>/dev/null || true
+	[ -z "$xorg_pid" ] || kill "$xorg_pid" 2>/dev/null || true
+	[ -z "$xorg_pid" ] || wait "$xorg_pid" 2>/dev/null || true
+	browser_pid=""
+	xorg_pid=""
+	unset DISPLAY
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM HUP
+
+if [ "$(sysctl -n machdep.bootmethod 2>/dev/null)" = "BIOS" ] && [ ! -e /dev/fb0 ]; then
+	CONF="$SELFDIR/xorg-vesa.conf"
+else
+	CONF="$SELFDIR/xorg-scfb.conf"
+fi
+
+/usr/local/bin/Xorg :0 -config "$CONF" -nolisten tcp >/var/log/xorg.log 2>&1 &
+xorg_pid=$!
+
+i=0
+while [ "$i" -lt 30 ] && kill -0 "$xorg_pid" 2>/dev/null; do
+	[ -e /tmp/.X11-unix/X0 ] && break
+	i=$((i + 1))
+	sleep 0.5
+done
+
+if [ ! -e /tmp/.X11-unix/X0 ] || ! kill -0 "$xorg_pid" 2>/dev/null; then
+	cleanup
+	echo "Xorg did not start; using the text console and remote web installer" >>/var/log/xorg.log
+	exec /usr/local/bin/kiosk-launch --headless
+fi
+
+/usr/local/bin/firefox --no-remote --profile "$XDG_RUNTIME_DIR/firefox" --kiosk "$SYLVE_KIOSK_URL" >>"$SYLVE_KIOSK_LOG" 2>&1 &
+browser_pid=$!
+
+# Without a window manager, Firefox needs an explicit fullscreen resize.
+if [ -x /usr/local/bin/xdotool ]; then
+	i=0
+	while [ "$i" -lt 30 ] && kill -0 "$browser_pid" 2>/dev/null; do
+		window=$(/usr/local/bin/xdotool search --onlyvisible --pid "$browser_pid" --class firefox 2>/dev/null | head -n 1)
+		if [ -n "$window" ]; then
+			/usr/local/bin/xdotool windowsize "$window" 100% 100% windowmove "$window" 0 0 >>"$SYLVE_KIOSK_LOG" 2>&1
+			break
+		fi
+		i=$((i + 1))
+		sleep 0.5
+	done
+fi
+/sbin/sysctl kern.consmute=0 >/dev/null 2>&1 || true
+wait "$browser_pid"
+browser_pid=""
+cleanup
+exec /usr/local/bin/kiosk-launch --headless

@@ -1,0 +1,268 @@
+name: Installer CI
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "Makefile"
+      - "installer/**"
+      - ".github/workflows/installer.yaml"
+      - ".github/workflows/tip.yaml"
+      - ".github/workflows/release.yaml"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - "Makefile"
+      - "installer/**"
+      - ".github/workflows/installer.yaml"
+      - ".github/workflows/tip.yaml"
+      - ".github/workflows/release.yaml"
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: true
+      release_tag:
+        type: string
+        required: true
+      binary_artifact:
+        type: string
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: installer-${{ inputs.release_tag != '' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ inputs.release_tag == '' }}
+
+jobs:
+  backend:
+    name: Installer Daemon
+    if: inputs.release_tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: installer/backend/go.sum
+
+      - name: Build, vet and test
+        working-directory: installer/backend
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Cross-build the daemon (freebsd/amd64)
+        run: make installer-backend
+
+  ui:
+    name: Installer UI
+    if: inputs.release_tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: installer/ui
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: installer/ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check and build
+        run: |
+          npm run check
+          npm run build
+
+  prepare:
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      package_epoch: ${{ steps.config.outputs.package_epoch }}
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Read package cache epoch
+        id: config
+        run: |
+          set -euo pipefail
+          echo "package_epoch=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache compiled installer UI
+        id: ui-cache
+        uses: actions/cache@v6
+        with:
+          path: installer/ui/build
+          key: installer-ui-v1-${{ hashFiles('installer/ui/src/**', 'installer/ui/static/**', 'installer/ui/package*.json', 'installer/ui/*config*', 'Makefile') }}
+
+      - uses: actions/setup-node@v7
+        if: steps.ui-cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: installer/ui/package-lock.json
+
+      - name: Check and build installer UI
+        if: steps.ui-cache.outputs.cache-hit != 'true'
+        run: |
+          npm ci --prefix installer/ui
+          npm run check --prefix installer/ui
+          npm run build --prefix installer/ui
+
+      - name: Embed installer UI
+        run: |
+          test -s installer/ui/build/index.html
+          rm -rf installer/backend/internal/assets/web-files/*
+          cp -R installer/ui/build/. installer/backend/internal/assets/web-files/
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache-dependency-path: installer/backend/go.sum
+
+      - name: Check and build release-pinned installer daemon
+        run: |
+          set -euo pipefail
+          make installer-test installer-vet
+          version="$RELEASE_TAG"
+          if [ "$RELEASE_TAG" = tip ]; then version="tip-${SOURCE_SHA:0:12}"; fi
+          make installer-backend INSTALLER_VERSION="$version" INSTALLER_SYLVE_COMMIT="$SOURCE_SHA"
+
+      - name: Reuse this release's Sylve binary
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.binary_artifact }}
+          path: installer/out/sylve-build
+
+      - name: Verify and prepare bundled Sylve payload
+        run: |
+          set -euo pipefail
+          binary=installer/out/sylve-build/sylve-amd64
+          record=installer/out/sylve-build/build-amd64.json
+          digest="$(sha256sum "$binary" | awk '{print $1}')"
+          jq -e --arg commit "$SOURCE_SHA" --arg digest "$digest" '
+            .arch == "amd64" and .commit == $commit and .sha256 == $digest and
+            (.version | type == "string" and length > 0)
+          ' "$record" >/dev/null
+          mkdir -p installer/out/payload
+          cp "$binary" installer/out/payload/sylve-amd64
+          cp "$record" installer/out/payload/sylve-version.json
+          printf '%s  sylve-amd64\n' "$digest" > installer/out/payload/SHA256SUMS
+
+      - name: Pass prepared inputs to the image builder
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-build-inputs
+          path: |
+            installer/out/sylve-installerd
+            installer/out/payload/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  image:
+    if: inputs.release_tag != ''
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release: 15-STABLE
+            major: 15
+            branch: stable/15
+          - release: 16-CURRENT
+            major: 16
+            branch: main
+    env:
+      FBSD_MAJOR: ${{ matrix.major }}
+      FBSD_BRANCH: ${{ matrix.branch }}
+      FBSD_ABI: FreeBSD:${{ matrix.major }}:amd64
+      STAGE_DIR: /opt/sylve-installer-stage
+      SYLVE_PAYLOAD_DIR: ${{ github.workspace }}/installer/out/payload
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installer-build-inputs
+          path: installer/out
+
+      - name: Assemble installer using the cached FreeBSD package stage
+        uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
+        with:
+          release: "15"
+          arch: x86_64
+          mem: 8192
+          cpu: 4
+          usesh: true
+          copyback: true
+          cache-after-prepare: true
+          envs: STAGE_DIR SYLVE_PAYLOAD_DIR FBSD_MAJOR FBSD_BRANCH FBSD_ABI
+          prepare: |
+            set -eu
+            echo "Package cache: ${{ matrix.release }}-${{ needs.prepare.outputs.package_epoch }}-${{ hashFiles('installer/build/pkgbase.conf', 'installer/build/stage-live.sh', 'installer/build/fetch-payload.sh', 'installer/live/**') }}"
+            pkg update
+            sh installer/build/stage-live.sh "$STAGE_DIR"
+          run: |
+            set -eu
+            test -s installer/out/sylve-installerd
+            STAGE_PACKAGES=0 PAYLOAD_PACKAGES=0 sh installer/build/stage-live.sh "$STAGE_DIR"
+            strings "$STAGE_DIR/sbin/init" | grep -qx init_rc
+            test -x "$STAGE_DIR/usr/local/sbin/sylve-installerd"
+            cmp -s installer/out/sylve-installerd "$STAGE_DIR/usr/local/sbin/sylve-installerd"
+            test ! -e "$STAGE_DIR/root/.ssh/authorized_keys"
+            grep -qx 'sshd_enable="NO"' "$STAGE_DIR/etc/rc.conf"
+            sh installer/build/build-image.sh "$STAGE_DIR" "$PWD/installer/out/release"
+
+      - name: Verify image transfer using internal checksums
+        run: |
+          set -euo pipefail
+          cd installer/out/release
+          for image in *.iso; do
+            test "$(stat -c %s "$image")" -lt 2147483648
+            digest="$(cat "$image.sha256")"
+            printf '%s  %s\n' "$digest" "$image" > "$image.sha256"
+            sha256sum -c "$image.sha256"
+          done
+
+      - name: Stage installer and CI verification data
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-release-assets-${{ matrix.major }}
+          path: |
+            installer/out/release/*.iso
+            installer/out/release/*.iso.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1

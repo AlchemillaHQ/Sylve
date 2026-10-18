@@ -18,6 +18,8 @@ package.json
 !web/package-lock.json
 !new-web/package-lock.json
 !new-web/package.json
+!installer/ui/package.json
+!installer/ui/package-lock.json
 cmd/dont-move/
 .DS_Store
 .AppleDouble
@@ -49,3 +51,9 @@ Temporary Items
 /sylve-ddns/
 /test-results/
 /libvirt/
+/installer/out/
+/installer/backend/sylve-installerd
+/installer/ui/build/
+/installer/ui/.svelte-kit/
+/installer/**/*.log
+!/installer/live/usr/local/bin/

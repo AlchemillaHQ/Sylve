@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   verify-ci:
-    if: github.ref_name != 'tip'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -79,7 +78,6 @@ jobs:
             core.info(`Trusted CI run: ${matches[0].html_url}`);
 
   select-runner:
-    if: github.ref_name != 'tip'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -142,7 +140,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.verify-ci.outputs.tag_name }}
+          ref: ${{ needs.verify-ci.outputs.target_sha }}
 
       - name: Capture release metadata
         id: vars
@@ -219,7 +217,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
+          ref: ${{ needs.prepare-release.outputs.target_sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v7
@@ -287,7 +285,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare-release.outputs.tag_name }}
+          ref: ${{ needs.prepare-release.outputs.target_sha }}
           submodules: recursive
 
       - name: Setup Go
@@ -381,8 +379,36 @@ jobs:
           cp bin/sylve "${ASSET_NAME}"
           gh release upload "${TAG_NAME}" "${ASSET_NAME}" --clobber
 
+      - name: Stage amd64 binary for the installer
+        if: matrix.arch == 'amd64'
+        run: |
+          mkdir -p installer-sylve-build
+          cp bin/sylve installer-sylve-build/sylve-amd64
+          cp bin/build-amd64.json installer-sylve-build/build-amd64.json
+
+      - name: Reuse amd64 build in the installer
+        if: matrix.arch == 'amd64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-installer-sylve
+          path: installer-sylve-build/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  build-installer:
+    needs: [prepare-release, build-freebsd]
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/installer.yaml
+    with:
+      source_sha: ${{ needs.prepare-release.outputs.target_sha }}
+      release_tag: ${{ needs.prepare-release.outputs.tag_name }}
+      binary_artifact: release-installer-sylve
+
   checksums:
-    needs: [select-runner, prepare-release, build-web, build-csmwrap, build-freebsd]
+    needs: [select-runner, prepare-release, build-web, build-csmwrap, build-freebsd, build-installer]
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 10
     steps:
@@ -397,7 +423,13 @@ jobs:
           pattern: release-build-*
           merge-multiple: true
           path: published-assets
-      - name: Verify published draft assets and consolidate checksums
+      - name: Download release installer
+        uses: actions/download-artifact@v8
+        with:
+          pattern: installer-release-assets-*
+          merge-multiple: true
+          path: installer-assets
+      - name: Verify draft assets and publish version metadata
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ needs.prepare-release.outputs.tag_name }}
@@ -405,7 +437,15 @@ jobs:
         run: |
           set -euo pipefail
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
-          gh release download "$TAG_NAME" --dir published-assets --clobber
+          (cd installer-assets && sha256sum -c ./*.sha256)
+          ASSET_NAMES="$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')"
+          printf '%s\n' "$ASSET_NAMES" | while IFS= read -r NAME; do
+            case "$NAME" in
+              SHA256SUMS|*.sha256|freebsd-*-sylve-installer-*.img|freebsd-*-sylve-installer-*.img.gz) gh release delete-asset "$TAG_NAME" "$NAME" --yes ;;
+            esac
+          done
+          gh release upload "$TAG_NAME" --clobber installer-assets/*.iso
+          gh release download "$TAG_NAME" --dir published-assets --clobber --pattern 'sylve-*' --pattern 'CSMWrap*'
           go run ./cmd/tipmetadata generate -dir published-assets -commit "$SOURCE_SHA"
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
-          gh release upload "$TAG_NAME" --clobber published-assets/sylve-version.json published-assets/SHA256SUMS
+          gh release upload "$TAG_NAME" --clobber published-assets/sylve-version.json

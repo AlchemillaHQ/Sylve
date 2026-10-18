@@ -20,6 +20,9 @@ concurrency:
 
 jobs:
   select-runner:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -72,9 +75,6 @@ jobs:
 
   prepare-release:
     needs: select-runner
-    if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 10
     outputs:
@@ -269,6 +269,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-installer:
+    needs: [prepare-release, build-freebsd]
+    if: needs.prepare-release.outputs.should_publish == 'true'
+    permissions:
+      actions: read
+      contents: read
+    uses: ./.github/workflows/installer.yaml
+    with:
+      source_sha: ${{ needs.prepare-release.outputs.head_sha }}
+      release_tag: tip
+      binary_artifact: tip-build-amd64
+
   publish-release:
     needs:
       - select-runner
@@ -276,6 +288,7 @@ jobs:
       - build-web
       - build-freebsd
       - build-csmwrap
+      - build-installer
     if: needs.prepare-release.outputs.should_publish == 'true'
     runs-on: ${{ fromJSON(needs.select-runner.outputs.linux_runner) }}
     timeout-minutes: 15
@@ -316,6 +329,16 @@ jobs:
           cp .cache/csmwrap/CSMWrap.iso .cache/csmwrap/CSMWrap.iso.gz \
             .cache/csmwrap/CSMWrap-build-manifest.json tip-assets/
 
+      - name: Download release installer
+        uses: actions/download-artifact@v8
+        with:
+          pattern: installer-release-assets-*
+          merge-multiple: true
+          path: installer-assets
+
+      - name: Verify release installer checksums
+        run: cd installer-assets && sha256sum -c ./*.sha256
+
       - name: Publish tip assets and metadata
         env:
           GH_TOKEN: ${{ github.token }}
@@ -343,10 +366,10 @@ jobs:
           gh release edit tip --notes-file tip-notes.md
 
           ASSET_NAMES="$(jq -r '.assets[].name' tip-release.json)"
-          for NAME in SHA256SUMS sylve-version.json; do
-            if printf '%s\n' "${ASSET_NAMES}" | grep -Fxq "${NAME}"; then
-              gh release delete-asset tip "${NAME}" --yes
-            fi
+          printf '%s\n' "${ASSET_NAMES}" | while IFS= read -r NAME; do
+            case "$NAME" in
+              SHA256SUMS|*.sha256|sylve-version.json|freebsd-*-sylve-installer-*.img|freebsd-*-sylve-installer-*.img.gz) gh release delete-asset tip "$NAME" --yes ;;
+            esac
           done
 
           git config user.name "github-actions[bot]"
@@ -358,10 +381,11 @@ jobs:
             tip-assets/sylve-amd64 tip-assets/sylve-arm64 \
             tip-assets/sylve-web-assets.tar.gz tip-assets/sylve-web-demo-assets.tar.gz \
             tip-assets/CSMWrap.iso tip-assets/CSMWrap.iso.gz \
-            tip-assets/CSMWrap-build-manifest.json
+            tip-assets/CSMWrap-build-manifest.json \
+            installer-assets/*.iso
 
           # Hash the actual published assets, not just the local build outputs.
-          gh release download tip --dir published-assets
+          gh release download tip --dir published-assets --pattern 'sylve-*' --pattern 'CSMWrap*'
           cp tip-assets/build-amd64.json tip-assets/build-arm64.json published-assets/
           go run ./cmd/tipmetadata generate -dir published-assets -commit "${SOURCE_SHA}"
 
@@ -372,4 +396,3 @@ jobs:
           fi
 
           gh release upload tip published-assets/sylve-version.json
-          gh release upload tip published-assets/SHA256SUMS

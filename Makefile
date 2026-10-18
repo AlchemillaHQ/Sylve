@@ -221,3 +221,65 @@ test-smart-integration:
 clean:
 	rm -rf $(BIN_DIR)
 	rm -rf internal/assets/web-files/*
+
+# --- FreeBSD + Sylve installer (installer/) ---------------------------------
+
+GO ?= go
+INSTALLER_BIN_DIR ?= installer/out
+INSTALLER_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+INSTALLER_SYLVE_COMMIT ?=
+
+.PHONY: installer-help installer-backend installer-backend-linux installer-ui installer-boot-art
+.PHONY: installer-stage-live installer-image installer-test installer-vet installer-fmt installer-clean
+
+installer-help: ## List installer targets
+	@grep -E '^installer-[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-26s %s\n", $$1, $$2}'
+
+installer-backend: ## Cross-compile the installer daemon (freebsd/amd64)
+	@if [ ! -f installer/backend/internal/assets/web-files/index.html ]; then \
+		echo "warning: the UI is not embedded yet; run 'make installer-ui' first for a complete binary" >&2; \
+	fi
+	mkdir -p "$(INSTALLER_BIN_DIR)"
+	cd installer/backend && CGO_ENABLED=0 GOOS=freebsd GOARCH=$(ARCH) \
+		$(GO) build -trimpath \
+		-ldflags="-s -w -X main.version=$(INSTALLER_VERSION) \
+		-X github.com/alchemillahq/sylve/installer/backend/internal/engine.releaseCommit=$(INSTALLER_SYLVE_COMMIT)" \
+		-o "$(abspath $(INSTALLER_BIN_DIR))/sylve-installerd" ./cmd/sylve-installerd
+
+installer-backend-linux: ## Build the daemon for local Linux development
+	mkdir -p "$(INSTALLER_BIN_DIR)"
+	cd installer/backend && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) \
+		$(GO) build -trimpath \
+		-ldflags="-s -w -X main.version=$(INSTALLER_VERSION) \
+		-X github.com/alchemillahq/sylve/installer/backend/internal/engine.releaseCommit=$(INSTALLER_SYLVE_COMMIT)" \
+		-o "$(abspath $(INSTALLER_BIN_DIR))/sylve-installerd-linux" ./cmd/sylve-installerd
+
+installer-ui: ## Build and embed the installer kiosk UI
+	npm ci --prefix installer/ui
+	npm run build --prefix installer/ui
+	rm -rf installer/backend/internal/assets/web-files/*
+	cp -R installer/ui/build/. installer/backend/internal/assets/web-files/
+
+installer-boot-art: ## Regenerate boot artwork
+	node installer/build/generate-boot-art.mjs
+
+installer-stage-live: ## Stage the live root on FreeBSD
+	@test "$$(uname -s)" = "FreeBSD" || { echo "installer-stage-live must run on FreeBSD" >&2; exit 1; }
+	sudo sh installer/build/stage-live.sh
+
+installer-image: ## Assemble a hybrid BIOS/UEFI ISO on FreeBSD
+	@test "$$(uname -s)" = "FreeBSD" || { echo "installer-image must run on FreeBSD" >&2; exit 1; }
+	sudo sh installer/build/build-image.sh
+
+installer-test: ## Run installer backend tests
+	cd installer/backend && $(GO) test $(GO_TEST_FLAGS) ./...
+
+installer-vet: ## Vet installer backend code
+	cd installer/backend && $(GO) vet ./...
+
+installer-fmt: ## Format installer backend Go code
+	cd installer/backend && gofmt -l -w .
+
+installer-clean: ## Remove installer binaries and generated embedded UI
+	rm -rf "$(INSTALLER_BIN_DIR)"
+	rm -rf installer/backend/internal/assets/web-files/*

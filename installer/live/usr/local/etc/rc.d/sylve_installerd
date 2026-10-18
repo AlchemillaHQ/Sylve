@@ -1,0 +1,34 @@
+#!/bin/sh
+# PROVIDE: sylve_installerd
+# REQUIRE: NETWORKING
+# BEFORE: LOGIN
+
+. /etc/rc.subr
+
+name="sylve_installerd"
+rcvar="${name}_enable"
+command="/usr/local/sbin/sylve-installerd"
+pidfile="/var/run/${name}.pid"
+required_files="$command"
+
+start_cmd="${name}_start"
+stop_postcmd="rm -f $pidfile"
+
+sylve_installerd_start()
+{
+	check_startmsgs && echo "Starting ${name}."
+	set -- -listen 0.0.0.0:8080
+	consoles=$(/sbin/sysctl -n kern.console 2>/dev/null)
+	if [ "${consoles%%/*}" = ttyv0, ] &&
+	    [ "$(/sbin/sysctl -n kern.consmute 2>/dev/null)" = 1 ]; then
+		set -- "$@" -console-access=false
+	else
+		/sbin/sysctl kern.consmute=0 >/dev/null 2>&1 || true
+	fi
+	"$command" "$@" </dev/null >>/var/log/sylve_installerd.log 2>&1 &
+	echo $! >"$pidfile"
+}
+
+load_rc_config "$name"
+: "${sylve_installerd_enable:=NO}"
+run_rc_command "$1"

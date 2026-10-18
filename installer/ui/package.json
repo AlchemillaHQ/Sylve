@@ -1,0 +1,47 @@
+{
+	"name": "freebsd-sylve-installer-ui",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+	},
+	"devDependencies": {
+		"@fontsource/noto-sans": "^5.2.7",
+		"@lucide/svelte": "^0.561.0",
+		"@sveltejs/adapter-static": "^3.0.8",
+		"@sveltejs/kit": "^2.49.5",
+		"@sveltejs/vite-plugin-svelte": "^5.1.0",
+		"@tailwindcss/vite": "^4.0.0",
+		"@types/d3-geo": "^3.1.1",
+		"@types/d3-selection": "^3.0.12",
+		"@types/d3-zoom": "^3.0.9",
+		"@types/topojson-client": "^3.1.5",
+		"@types/tz-lookup": "^6.1.2",
+		"clsx": "^2.1.1",
+		"svelte": "^5.0.0",
+		"svelte-check": "^4.1.0",
+		"tailwind-merge": "^3.3.1",
+		"tailwind-variants": "^3.1.1",
+		"tailwindcss": "^4.0.0",
+		"tw-animate-css": "^1.3.4",
+		"typescript": "^5.7.0",
+		"vite": "^6.3.0"
+	},
+	"dependencies": {
+		"@iconify-icons/ant-design": "^2.0.1",
+		"@iconify/svelte": "^5.2.2",
+		"bits-ui": "^2.16.3",
+		"d3-geo": "^3.1.1",
+		"d3-geo-projection": "^4.0.0",
+		"d3-selection": "^3.0.0",
+		"d3-zoom": "^3.0.0",
+		"runed": "^0.37.1",
+		"topojson-client": "^3.1.0",
+		"tz-lookup": "^6.1.25",
+		"world-atlas": "^2.0.2"
+	}
+}

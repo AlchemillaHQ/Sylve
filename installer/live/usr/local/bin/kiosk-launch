@@ -1,0 +1,63 @@
+#!/bin/sh
+
+mkdir -p /var/run/freebsd-sylve
+export XDG_RUNTIME_DIR=/tmp/kiosk
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+export MOZ_ENABLE_WAYLAND=1
+export MOZ_DISABLE_CONTENT_SANDBOX=1
+# The live kiosk has no accessibility bus.
+export NO_AT_BRIDGE=1
+
+SYLVE_KIOSK_URL=
+i=0
+while [ "$i" -lt 30 ]; do
+	if /usr/bin/fetch -qo /dev/null http://127.0.0.1:8080/api/health 2>/dev/null; then
+		if url=$(/usr/local/sbin/sylve-installerd -kiosk-url); then
+			SYLVE_KIOSK_URL=$url
+			break
+		fi
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+export SYLVE_KIOSK_URL
+export SYLVE_KIOSK_LOG=/var/log/sylve-kiosk.log
+
+if [ "${1:-}" != "--headless" ] &&
+    [ -n "$SYLVE_KIOSK_URL" ] &&
+    (umask 077; : >>"$SYLVE_KIOSK_LOG" && chmod 600 "$SYLVE_KIOSK_LOG"); then
+	# Use a kiosk-only profile and discard remembered window geometry, not user data.
+	profile="$XDG_RUNTIME_DIR/firefox"
+	mkdir -p "$profile"
+	rm -f "$profile/xulstore.json"
+	# No password manager in the kiosk: no save prompts, no generation suggestions.
+	cat >"$profile/user.js" <<'EOF'
+user_pref("signon.rememberSignons", false);
+user_pref("signon.generation.enabled", false);
+user_pref("signon.autofillForms", false);
+user_pref("browser.formfill.enable", false);
+EOF
+
+	if [ -e /dev/dri/card0 ]; then
+		echo drm >/var/run/freebsd-sylve/kiosk-mode
+		/usr/local/bin/cage -- /usr/local/bin/kiosk-session >>"$SYLVE_KIOSK_LOG" 2>&1
+		exec /usr/local/bin/kiosk-launch --headless
+	fi
+
+	if [ -c /dev/ttyv0 ]; then
+		echo x11 >/var/run/freebsd-sylve/kiosk-mode
+		exec /usr/local/bin/x11-kiosk-session
+	fi
+fi
+
+echo headless >/var/run/freebsd-sylve/kiosk-mode
+/sbin/sysctl kern.consmute=0 >/dev/null 2>&1 || true
+if [ -z "$SYLVE_KIOSK_URL" ]; then
+	printf '\nInstaller service did not become ready; see /var/log/sylve_installerd.log.\n\n'
+else
+	printf '\nGraphical kiosk is unavailable; use the remote web installer.\n\n'
+fi
+/usr/local/sbin/sylve-installerd -show-access || true
+printf '\nRun sylve-installerd -show-access again after changing networking.\n'
+exec /bin/sh

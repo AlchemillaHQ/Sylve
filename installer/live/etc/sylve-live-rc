@@ -1,0 +1,64 @@
+#!/bin/sh
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+
+unmute_console()
+{
+	/sbin/sysctl kern.consmute=0 >/dev/null 2>&1 || true
+}
+
+root_from=$(/bin/kenv -q vfs.root.mountfrom 2>/dev/null)
+case "$root_from" in
+cd9660:/dev/*)
+	if [ ! -f /etc/sylve-live-ram ]; then
+		if ! device=$(/sbin/mdconfig -a -t vnode -o readonly -f /usr.ufs.uzip) ||
+		    ! /sbin/mount -t ufs -o ro "/dev/$device.uzip" /usr; then
+			unmute_console
+			printf '\nCannot mount the compressed installer filesystem.\n' >/dev/console
+			exit 1
+		fi
+		for entry in etc:32m var:512m root:256m; do
+			directory=${entry%:*}
+			if ! /sbin/mount -t tmpfs -o "size=${entry#*:}" tmpfs "/$directory" ||
+			    ! cp -Rp "/conf/base/$directory/." "/$directory"; then
+				unmute_console
+				printf '\nCannot initialize writable installer directory /%s.\n' "$directory" >/dev/console
+				exit 1
+			fi
+		done
+		touch /etc/sylve-live-ram || exit 1
+	fi
+	;;
+zfs:sylvelive)
+	if ! mount_error=$(/sbin/mount -u -w / 2>&1); then
+		unmute_console
+		printf '\nCannot make the live root writable: %s\n' "$mount_error" >/dev/console
+		exec /bin/sh /etc/rc "$@"
+	fi
+	;;
+*) unmute_console; exec /bin/sh /etc/rc "$@" ;;
+esac
+if [ "$(/sbin/sysctl -n kern.consmute 2>/dev/null)" != 1 ]; then
+	exec /bin/sh /etc/rc "$@"
+fi
+
+boot_log=/var/installer-boot.log
+if ! (umask 077; : >>"$boot_log" && chmod 600 "$boot_log"); then
+	unmute_console
+	exec /bin/sh /etc/rc "$@"
+fi
+
+trap : 2
+trap 'unmute_console; printf "\nStartup interrupted; see /var/installer-boot.log\n" >/dev/console; exit 1' 3 15
+
+/bin/sh /etc/rc "$@" >>"$boot_log" 2>&1
+status=$?
+if [ ! -e /var/log/installer-boot.log ] && [ ! -L /var/log/installer-boot.log ]; then
+	ln -s ../installer-boot.log /var/log/installer-boot.log 2>>"$boot_log" || true
+fi
+if [ "$status" -ne 0 ]; then
+	unmute_console
+	printf '\nInstaller startup failed (%s); see %s\n' "$status" "$boot_log" >/dev/console
+fi
+exit "$status"

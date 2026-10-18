@@ -1,0 +1,7 @@
+#!/bin/sh
+
+: "${SYLVE_KIOSK_URL:?Run kiosk-launch first}"
+
+/sbin/sysctl kern.consmute=0 >/dev/null 2>&1 || true
+
+exec /usr/local/bin/firefox --no-remote --profile "$XDG_RUNTIME_DIR/firefox" --kiosk "$SYLVE_KIOSK_URL"
