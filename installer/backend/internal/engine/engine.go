@@ -1395,16 +1395,24 @@ func (e *Engine) cmdStdin(stdin string, name string, args ...string) error {
 }
 
 func (e *Engine) runCommand(cmd *exec.Cmd) error {
-	out, err := cmd.CombinedOutput()
-	e.logCommandOutput(string(out))
-	if err != nil {
+	output := commandOutput{e}
+	cmd.Stdout = output
+	cmd.Stderr = output
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s: %w", cmd.Args[0], err)
 	}
 	return nil
 }
 
+type commandOutput struct{ e *Engine }
+
+func (w commandOutput) Write(p []byte) (int, error) {
+	w.e.logCommandOutput(string(p))
+	return len(p), nil
+}
+
 func (e *Engine) logCommandOutput(output string) {
-	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
+	for _, line := range strings.FieldsFunc(output, func(r rune) bool { return r == '\n' || r == '\r' }) {
 		if strings.TrimSpace(line) != "" {
 			e.logf("  %s", line)
 		}
