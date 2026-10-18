@@ -271,7 +271,8 @@ installer-image: ## Assemble a hybrid BIOS/UEFI ISO on FreeBSD
 	@test "$$(uname -s)" = "FreeBSD" || { echo "installer-image must run on FreeBSD" >&2; exit 1; }
 	sudo sh installer/build/build-image.sh
 
-installer-test: ## Run installer backend tests
+installer-test: ## Run installer backend and package staging tests
+	sh installer/build/test-pkgbase.sh
 	cd installer/backend && $(GO) test $(GO_TEST_FLAGS) ./...
 
 installer-vet: ## Vet installer backend code

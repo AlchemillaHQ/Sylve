@@ -63,6 +63,7 @@ jobs:
           go build ./...
           go vet ./...
           go test ./...
+          sh ../build/test-pkgbase.sh
 
       - name: Cross-build the daemon (freebsd/amd64)
         run: make installer-backend
@@ -191,6 +192,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    continue-on-error: ${{ inputs.release_tag == 'tip' && matrix.release == '16-CURRENT' }}
     strategy:
       fail-fast: false
       matrix:
@@ -231,7 +233,7 @@ jobs:
           envs: STAGE_DIR SYLVE_PAYLOAD_DIR FBSD_MAJOR FBSD_BRANCH FBSD_ABI
           prepare: |
             set -eu
-            echo "Package cache: ${{ matrix.release }}-${{ needs.prepare.outputs.package_epoch }}-${{ hashFiles('installer/build/pkgbase.conf', 'installer/build/stage-live.sh', 'installer/build/fetch-payload.sh', 'installer/live/**') }}"
+            echo "Package cache: ${{ matrix.release }}-${{ needs.prepare.outputs.package_epoch }}-${{ hashFiles('installer/build/pkgbase.conf', 'installer/build/pkgbase.sh', 'installer/build/stage-live.sh', 'installer/build/fetch-payload.sh', 'installer/live/**') }}"
             pkg update
             sh installer/build/stage-live.sh "$STAGE_DIR"
           run: |

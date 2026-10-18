@@ -5,6 +5,7 @@ HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$HERE/.." && pwd)
 # shellcheck source=pkgbase.conf
 . "$HERE/pkgbase.conf"
+. "$HERE/pkgbase.sh"
 
 STAGE=${1:-${STAGE_DIR:-/home/freebsd-ic/stage-live}}
 STAGE_PACKAGES=${STAGE_PACKAGES:-1}
@@ -19,15 +20,19 @@ if [ "$STAGE_PACKAGES" = 0 ]; then
 		grep -Fqx "branch=$FBSD_BRANCH" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
 		grep -Fqx "abi=${FBSD_ABI:-native}" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
 		grep -Fqx "pkgbase-repo=$PKGBASE_REPO" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
-		grep -Fqx "ports-repo=$PORTS_REPO" "$STAGE/var/db/freebsd-sylve/stage.conf" || {
+		grep -Fqx "ports-repo=$PORTS_REPO" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
+		grep -Fqx "kmods-repo=$KMODS_REPO" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
+		grep -Fqx "pkgbase-packages=$PKGBASE_PACKAGES" "$STAGE/var/db/freebsd-sylve/stage.conf" &&
+		grep -Fqx "live-packages=$LIVE_PACKAGES" "$STAGE/var/db/freebsd-sylve/stage.conf" || {
 		echo "cached stage is missing or uses a different FreeBSD/package configuration: $STAGE" >&2
 		exit 1
 	}
 fi
 
-set -- -r "$STAGE" -o "REPOS_DIR=$STAGE/etc/pkg,$STAGE/usr/local/etc/pkg/repos"
-if [ -n "$FBSD_ABI" ]; then
-	set -- "$@" -o "ABI=$FBSD_ABI"
+# Bootstrap pkgbase before the target's version header exists.
+STAGE_OSVERSION=$((FBSD_MAJOR * 100000))
+if [ -f "$STAGE/usr/include/sys/param.h" ]; then
+	STAGE_OSVERSION=$(stage_osversion)
 fi
 export ASSUME_ALWAYS_YES=yes
 
@@ -39,58 +44,38 @@ echo "==> keyring"
 mkdir -p "$STAGE/usr/share/keys"
 [ -d "$STAGE/usr/share/keys/pkg" ] || cp -R /usr/share/keys/pkg "$STAGE/usr/share/keys/"
 
-write_repos()
-{
-	cat >"$STAGE/usr/local/etc/pkg/repos/FreeBSD-base.conf" <<EOF
-FreeBSD-base {
-  url: "pkg+https://pkg.freebsd.org/\${ABI}/${PKGBASE_REPO}",
-  mirror_type: "srv",
-  signature_type: "fingerprints",
-  fingerprints: "/usr/share/keys/pkg",
-  enabled: yes
-}
-EOF
-	cat >"$STAGE/etc/pkg/FreeBSD.conf" <<EOF
-FreeBSD-ports {
-  url: "pkg+https://pkg.FreeBSD.org/\${ABI}/${PORTS_REPO}",
-  mirror_type: "srv",
-  signature_type: "fingerprints",
-  fingerprints: "/usr/share/keys/pkg",
-  enabled: yes
-}
-EOF
-}
-
 echo "==> package repository config"
 mkdir -p "$STAGE/usr/local/etc/pkg/repos" "$STAGE/etc/pkg"
 write_repos
 
 if [ "$STAGE_PACKAGES" = 1 ]; then
 	echo "==> updating package catalogues"
-	pkg "$@" update
+	stage_pkg update
 
 	echo "==> installing pkgbase sets"
 	# shellcheck disable=SC2086
-	pkg "$@" install -y $PKGBASE_PACKAGES
+	stage_pkg install -y $PKGBASE_PACKAGES
+	STAGE_OSVERSION=$(stage_osversion)
+	echo "==> target FreeBSD OSVERSION: $STAGE_OSVERSION"
 	write_repos
 
 	if [ -n "${LIVE_PACKAGES:-}" ]; then
 		echo "==> installing kiosk packages"
 		# shellcheck disable=SC2086
-		pkg "$@" install -y $LIVE_PACKAGES
+		stage_pkg install -y $LIVE_PACKAGES
 	fi
 
 	echo "==> removing retired kiosk remote-console packages"
 	for package in wayvnc x11vnc grim; do
-		if pkg "$@" info -e "$package" >/dev/null 2>&1; then
-			pkg "$@" -o RUN_SCRIPTS=false delete -y "$package"
+		if stage_pkg info -e "$package" >/dev/null 2>&1; then
+			stage_pkg -o RUN_SCRIPTS=false delete -y "$package"
 		fi
 	done
-	pkg "$@" -o RUN_SCRIPTS=false autoremove -y
+	stage_pkg -o RUN_SCRIPTS=false autoremove -y
 
 	# /usr/sbin/pkg is a network bootstrap shim, unusable for offline installs.
 	echo "==> installing pkg into the live root"
-	pkg "$@" install -y pkg
+	stage_pkg install -y pkg
 fi
 
 echo "==> applying live overlay"
@@ -164,13 +149,16 @@ fi
 
 echo "==> recording package state"
 mkdir -p "$STAGE/var/db/freebsd-sylve"
-pkg "$@" info >"$STAGE/var/db/freebsd-sylve/pkg-versions.txt"
+stage_pkg info >"$STAGE/var/db/freebsd-sylve/pkg-versions.txt"
 {
 	echo "staged-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	echo "branch=$FBSD_BRANCH"
 	echo "abi=${FBSD_ABI:-native}"
 	echo "pkgbase-repo=${PKGBASE_REPO}"
 	echo "ports-repo=${PORTS_REPO}"
+	echo "kmods-repo=$KMODS_REPO"
+	echo "pkgbase-packages=$PKGBASE_PACKAGES"
+	echo "live-packages=$LIVE_PACKAGES"
 } >"$STAGE/var/db/freebsd-sylve/stage.conf"
 
 if [ "${OFFLINE_PAYLOAD:-1}" = "1" ]; then
@@ -180,4 +168,4 @@ else
 	echo "==> offline install payload skipped (OFFLINE_PAYLOAD=$OFFLINE_PAYLOAD)"
 fi
 
-echo "==> staged $(pkg "$@" info | wc -l | tr -d ' ') packages, $(du -sh "$STAGE" | awk '{print $1}')"
+echo "==> staged $(stage_pkg info | wc -l | tr -d ' ') packages, $(du -sh "$STAGE" | awk '{print $1}')"

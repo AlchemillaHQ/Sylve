@@ -437,6 +437,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(gh release view "$TAG_NAME" --json isDraft --jq '.isDraft')" = true
+          test -s installer-assets/freebsd-15-STABLE-sylve-installer-amd64.iso
+          test -s installer-assets/freebsd-16-CURRENT-sylve-installer-amd64.iso
           (cd installer-assets && sha256sum -c ./*.sha256)
           ASSET_NAMES="$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name')"
           printf '%s\n' "$ASSET_NAMES" | while IFS= read -r NAME; do

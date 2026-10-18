@@ -329,15 +329,42 @@ jobs:
           cp .cache/csmwrap/CSMWrap.iso .cache/csmwrap/CSMWrap.iso.gz \
             .cache/csmwrap/CSMWrap-build-manifest.json tip-assets/
 
-      - name: Download release installer
+      - name: Download required 15-STABLE installer
         uses: actions/download-artifact@v8
         with:
-          pattern: installer-release-assets-*
-          merge-multiple: true
+          name: installer-release-assets-15
           path: installer-assets
 
-      - name: Verify release installer checksums
-        run: cd installer-assets && sha256sum -c ./*.sha256
+      - name: Verify required 15-STABLE installer
+        run: |
+          set -euo pipefail
+          cd installer-assets
+          test -s freebsd-15-STABLE-sylve-installer-amd64.iso
+          sha256sum -c freebsd-15-STABLE-sylve-installer-amd64.iso.sha256
+
+      - name: Download best-effort 16-CURRENT installer
+        id: current-installer
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: installer-release-assets-16
+          path: installer-current
+
+      - name: Include 16-CURRENT only when verified
+        env:
+          CURRENT_DOWNLOAD: ${{ steps.current-installer.outcome }}
+        run: |
+          set -euo pipefail
+          image=freebsd-16-CURRENT-sylve-installer-amd64.iso
+          if [ "$CURRENT_DOWNLOAD" = success ] &&
+              [ -s "installer-current/$image" ] &&
+              (cd installer-current && sha256sum -c "$image.sha256"); then
+            cp "installer-current/$image" "installer-current/$image.sha256" installer-assets/
+            echo '16-CURRENT installer: built and verified.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '::warning::16-CURRENT installer unavailable; publishing tip with the required 15-STABLE installer.'
+            echo '16-CURRENT installer: unavailable for this tip build. 15-STABLE is included.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Publish tip assets and metadata
         env:
@@ -363,12 +390,18 @@ jobs:
           # Save counts before any assets are replaced; asset IDs make retries safe.
           gh api "repos/${GITHUB_REPOSITORY}/releases/tags/tip" > tip-release.json
           go run ./cmd/tipmetadata downloads -release tip-release.json -out tip-notes.md
+          if [ ! -s installer-assets/freebsd-16-CURRENT-sylve-installer-amd64.iso ]; then
+            printf '\n16-CURRENT installer unavailable for this tip build; the 15-STABLE installer is included.\n' >> tip-notes.md
+          fi
           gh release edit tip --notes-file tip-notes.md
 
           ASSET_NAMES="$(jq -r '.assets[].name' tip-release.json)"
           printf '%s\n' "${ASSET_NAMES}" | while IFS= read -r NAME; do
             case "$NAME" in
               SHA256SUMS|*.sha256|sylve-version.json|freebsd-*-sylve-installer-*.img|freebsd-*-sylve-installer-*.img.gz) gh release delete-asset tip "$NAME" --yes ;;
+              freebsd-16-CURRENT-sylve-installer-amd64.iso)
+                if [ ! -s "installer-assets/$NAME" ]; then gh release delete-asset tip "$NAME" --yes; fi
+                ;;
             esac
           done
 

@@ -4,14 +4,11 @@ set -eu
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=pkgbase.conf
 . "$HERE/pkgbase.conf"
+. "$HERE/pkgbase.sh"
 
 STAGE=${1:-${STAGE_DIR:-/home/freebsd-ic/stage-live}}
 PAYLOAD_PACKAGES=${PAYLOAD_PACKAGES:-1}
 case "$PAYLOAD_PACKAGES" in 0|1) ;; *) echo "PAYLOAD_PACKAGES must be 0 or 1" >&2; exit 1 ;; esac
-set -- -r "$STAGE" -o "REPOS_DIR=$STAGE/etc/pkg,$STAGE/usr/local/etc/pkg/repos"
-if [ -n "$FBSD_ABI" ]; then
-	set -- "$@" -o "ABI=$FBSD_ABI"
-fi
 PAYLOAD="$STAGE/var/db/freebsd-sylve/offline"
 REPO="$PAYLOAD/repo"
 TIP="$PAYLOAD/tip"
@@ -24,6 +21,7 @@ if [ ! -d "$STAGE/usr/local/etc/pkg/repos" ]; then
 	echo "stage is missing pkg repo config (run stage-live.sh first): $STAGE" >&2
 	exit 1
 fi
+STAGE_OSVERSION=$(stage_osversion)
 if [ -z "${SYLVE_PAYLOAD_DIR:-}" ] && ! command -v jq >/dev/null 2>&1; then
 	echo "jq is required to read GitHub release asset digests (pkg install jq)" >&2
 	exit 1
@@ -48,7 +46,7 @@ if [ "$PAYLOAD_PACKAGES" = 1 ]; then
 	repo_input="$payload_tmp/repo"
 	mkdir "$repo_input"
 	echo "==> resolving newest samba4 package"
-	samba=$(pkg "$@" search '^samba4' | awk '
+	samba=$(stage_pkg search '^samba4' | awk '
 	/^samba4[0-9]+-/ {
 		name=$1; sub(/-.*/, "", name)
 		version=substr(name, 7)+0
@@ -64,7 +62,7 @@ if [ "$PAYLOAD_PACKAGES" = 1 ]; then
 	deps="FreeBSD-set-base FreeBSD-kernel-generic pkg bhyve-firmware dnsmasq libvirt qemu-tools swtpm $samba"
 	echo "==> fetching packages and dependencies"
 	# shellcheck disable=SC2086
-	pkg "$@" fetch -y -d -o "$repo_input" $deps
+	stage_pkg fetch -y -d -o "$repo_input" $deps
 
 	echo "==> building local repository metadata"
 	pkg repo "$repo_input"

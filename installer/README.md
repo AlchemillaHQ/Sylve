@@ -43,7 +43,12 @@ SHA-256 sidecar. For 16-CURRENT, use separate stage/output directories and pass
 both scripts. Its output is `freebsd-16-CURRENT-sylve-installer-amd64.iso`.
 The target branch and repositories are configured in
 [`build/pkgbase.conf`](build/pkgbase.conf), with environment overrides for
-`FBSD_MAJOR`, `FBSD_BRANCH`, `FBSD_ABI`, `PKGBASE_REPO` and `PORTS_REPO`.
+`FBSD_MAJOR`, `FBSD_BRANCH`, `FBSD_ABI`, `PKGBASE_REPO`, `PORTS_REPO` and
+`KMODS_REPO`. Kernel modules come from `kmods_latest` by default;
+the live root includes `drm-612-kmod` and GPU firmware rather than depending on
+the `drm-kmod` metapackage, which is unavailable for 16-CURRENT. After bootstrapping
+pkgbase, staging and payload fetching use the target headers' OSVERSION, not the
+builder kernel's.
 Staging includes the offline payload unless `OFFLINE_PAYLOAD=0` is set.
 
 The daemon/UI can be built on Linux or FreeBSD. Image assembly requires FreeBSD's
@@ -67,6 +72,8 @@ must use the defaults. `SYLVE_PAYLOAD_DIR` supplies a prebuilt `sylve-amd64`,
 `sylve-version.json` and `SHA256SUMS` instead of downloading the rolling release.
 Downloading the rolling payload requires `jq` on the FreeBSD builder to read
 GitHub's asset digest. CI supplies its own verified payload and does not need it.
+Cached stages must also match the configured kernel-module repository and
+package lists; stages prepared with an older package policy must be refreshed.
 
 The optional [artwork generator](docs/boot.md#artwork)
 uses Node.js, not Python, and is not required for image assembly.
@@ -74,10 +81,12 @@ uses Node.js, not Python, and is not required for image assembly.
 ## Release images
 
 The `installer.yaml` workflow runs lightweight checks on PRs/pushes and is called
-by the tip and `v*` release pipelines to build images. Each release gets both
-15-STABLE and 16-CURRENT amd64 hybrid BIOS/UEFI `.iso` assets. GitHub exposes each
-asset's SHA-256 digest, so no separate
-checksum files are uploaded. CI and the offline bundle retain internal
+by the tip and `v*` release pipelines to build images. Tagged releases require
+both 15-STABLE and 16-CURRENT amd64 hybrid BIOS/UEFI `.iso` assets. For rolling
+`tip` releases, 15-STABLE is required and 16-CURRENT is best-effort; a failed
+CURRENT build is noted in the release and any older CURRENT installer is removed.
+GitHub exposes each asset's SHA-256 digest, so no separate checksum files are
+uploaded. CI and the offline bundle retain internal
 verification data. Tagged-release images are attached to
 the existing draft; publish it only after the release workflow succeeds.
 Attach the ISO as virtual optical media, burn it to a DVD, or write it directly
