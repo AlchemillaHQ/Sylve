@@ -90,6 +90,18 @@ func sysctl(names ...string) map[string]string {
 	return out
 }
 
+func VirtualBoxUEFI() bool {
+	product, err := exec.Command("/bin/kenv", "-q", "smbios.system.product").Output()
+	if err != nil {
+		return false
+	}
+	return virtualBoxUEFI(string(product), sysctl("machdep.bootmethod")["machdep.bootmethod"])
+}
+
+func virtualBoxUEFI(product, bootMethod string) bool {
+	return strings.TrimSpace(product) == "VirtualBox" && strings.TrimSpace(bootMethod) == "UEFI"
+}
+
 func interfaces() []Interface {
 	ifaces, err := net.Interfaces()
 	if err != nil {

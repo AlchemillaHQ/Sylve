@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -66,6 +67,11 @@ func main() {
 		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	}
 	slog.SetDefault(slog.New(handler))
+	if sysinfo.VirtualBoxUEFI() {
+		if err := exec.Command("/sbin/sysctl", "hw.efi.poweroff=0").Run(); err != nil {
+			slog.Warn("cannot apply VirtualBox UEFI poweroff workaround", "err", err)
+		}
+	}
 	access, err := api.NewAccess()
 	if err != nil {
 		slog.Error("cannot generate installer access password", "err", err)

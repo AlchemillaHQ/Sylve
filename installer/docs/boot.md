@@ -15,6 +15,12 @@ are read-only; `/etc`, `/var`, `/root`, temporary files and logs are writable in
 Changes to the live session do not persist after reboot. The offline payload is
 kept outside those writable overlays.
 
+For VirtualBox UEFI guests, the installer sets `hw.efi.poweroff=0` to use ACPI
+rather than EFI runtime shutdown. It persists the setting in the installed
+system's `/etc/sysctl.conf.local`, leaving `/etc/sysctl.conf` untouched. Detection
+uses the SMBIOS product. If you're reading this.. please don't use VirtualBox
+be kind to yourself, use Bhyve or proper KVM with Libvirt.
+
 The recovery shell has the static tools in `/rescue` even before `/usr` is
 mounted. If additional tools are needed there, attach `/usr.ufs.uzip` read-only
 with `mdconfig -a -t vnode -o readonly -f /usr.ufs.uzip`, then mount the returned

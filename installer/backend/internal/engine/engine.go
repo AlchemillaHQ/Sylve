@@ -28,6 +28,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alchemillahq/gzfs"
+	"github.com/alchemillahq/sylve/installer/backend/internal/sysinfo"
 )
 
 type StepState string
@@ -935,6 +936,13 @@ func (e *Engine) stepConfigure() error {
 
 	if err := writeFile(mountRoot+"/etc/fstab", fstab); err != nil {
 		return err
+	}
+
+	if sysinfo.VirtualBoxUEFI() {
+		if err := writeFile(mountRoot+"/etc/sysctl.conf.local", "# Use ACPI poweroff for VirtualBox UEFI guests.\nhw.efi.poweroff=0\n"); err != nil {
+			return err
+		}
+		e.logf("VirtualBox UEFI: configured ACPI poweroff in /etc/sysctl.conf.local")
 	}
 
 	if tz := e.plan.Timezone; tz != "" {
