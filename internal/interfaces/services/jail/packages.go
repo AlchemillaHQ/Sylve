@@ -20,6 +20,7 @@ type PackageRequest struct {
 type PackageMonitoring struct {
 	Enabled       bool       `json:"enabled"`
 	IntervalHours int        `json:"intervalHours"`
+	CronExpr      string     `json:"cronExpr"`
 	NextAuditAt   *time.Time `json:"nextAuditAt"`
 	LastAttemptAt *time.Time `json:"lastAttemptAt"`
 	LastSuccessAt *time.Time `json:"lastSuccessAt"`

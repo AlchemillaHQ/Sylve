@@ -98,33 +98,51 @@ service sylve enable && service sylve start
 The releases are built using GitHub actions and does **NOT** involve any manual intervention, so you can be assured that the binaries are built from the source code in the repository.
 :::
 
-We recommend first getting your system up and running with a `pkg` installation, and then replacing the binary with the latest release from GitHub if you want to stay on the bleeding edge. This is because the `pkg` version may lag behind the latest nightly release, and you may want to take advantage of new features or bug fixes (which we do support and recommend).
+Choose one owner for the Sylve executable: **pkg/ports** or a **standalone GitHub binary**. A registered Sylve package, including a locked package, is updated only through the package manager. Do not replace a package-owned binary with a GitHub release.
 
-Before replacing the packaged binary, lock the Sylve package:
+For new hosts, the [FreeBSD + Sylve ISO installer](https://github.com/AlchemillaHQ/Sylve/releases) sets up the standalone binary, RC script and dependencies for you. Installing an operating system can erase existing disks; back up existing hosts before reinstalling.
+
+#### Switching an existing pkg installation to standalone
+
+Back up your configuration and the configured `dataPath` first. The package defaults are `/usr/local/etc/sylve/config.json` and `/var/db/sylve`. Save a copy of `/usr/local/etc/rc.d/sylve` **before** removing the package, since the package owns that script.
+
+Stop Sylve, unlock the package if it was locked, then remove it with `pkg delete sylve` (`pkg remove sylve` is equivalent). Removing the package does not remove Sylve's runtime configuration or database, but does remove its packaged executable and RC script. Restore the saved RC script afterward. Do not run `pkg autoremove` while you still need the packages that provided Sylve's dependencies.
+
+:::caution[Service restart impact]
+Stopping or restarting Sylve fences its replication leases. Replication-protected VMs and jails can stop or become eligible for failover. Finish active maintenance tasks and review cluster quorum before stopping the service.
+:::
 
 ```bash
-pkg lock -y sylve
+cp -p /usr/local/etc/rc.d/sylve /root/sylve.rc.backup
+service sylve stop
+# Only if you previously locked the package:
+# pkg unlock sylve
+pkg remove sylve
+install -o root -g wheel -m 0555 /root/sylve.rc.backup /usr/local/etc/rc.d/sylve
 ```
 
-The package database still considers `/usr/local/sbin/sylve` part of the installed Sylve package. Locking it prevents a later `pkg upgrade` from silently replacing your GitHub release with the repository version. Other system packages can continue to update normally.
+For a manual installation, place the executable at `/usr/local/sbin/sylve`. Install a root-owned, executable RC script at `/usr/local/etc/rc.d/sylve`; the [installer's RC script](https://github.com/AlchemillaHQ/Sylve/blob/master/installer/backend/internal/assets/rcd/sylve) is a template if you did not save an existing one. Install the dependencies listed above and retain or create your configuration before starting the service.
 
-You can visit the [releases page](https://github.com/AlchemillaHQ/Sylve/releases) and download the latest release for your architecture. Once downloaded, you can move the `sylve` binary to a location in your `PATH`, such as `/usr/local/bin`. The below commands will do this for you:
+Download the release for your architecture while Sylve is stopped:
 
 ```bash
 # Replace amd64 with arm64 if you're on an ARM64 system
-fetch https://github.com/AlchemillaHQ/Sylve/releases/download/tip/sylve-amd64 -o sylve
-chmod +x sylve
-mv sylve /usr/local/sbin/
+fetch https://github.com/AlchemillaHQ/Sylve/releases/download/tip/sylve-amd64 -o sylve-new
+sha256 sylve-new
+# Compare with the asset's SHA-256 digest in the official GitHub release API.
+install -o root -g wheel -m 0555 sylve-new /usr/local/sbin/sylve
 ```
 
-Should get you the absolute latest release, but if you want to get a specific version, just replace `tip` with the version tag you want to install for instance `v0.3.0`.
+`tip` is the recommended rolling channel. To select a tagged build manually, replace `tip` with its version tag. Do not install an older version over a newer one.
 
-Keep the package locked while managing the binary from GitHub Releases. To return to the FreeBSD package version, unlock and reinstall it explicitly:
+Once the binary, RC script and configuration are in place:
 
 ```bash
-pkg unlock -y sylve
-pkg install -f sylve
+service sylve enable
+service sylve start
 ```
+
+Future standalone updates are available under **Node → System → Updates → Sylve**, with **Rolling Releases - Recommended** and **Tagged Releases - Not recommended**. The UI verifies the selected artifact, rejects lower versions and same-version rolling-to-tagged transitions, and restarts Sylve after approval. See [Host Updates](/guides/node/settings/system/updates/) for package requirements, audit coverage and maintenance precautions.
 
 ### Building from Source
 

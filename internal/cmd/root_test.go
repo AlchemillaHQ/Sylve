@@ -174,7 +174,8 @@ func TestNewRootCommand_Name(t *testing.T) {
 
 func TestNewRootCommand_Version(t *testing.T) {
 	originalCommit := Commit
-	t.Cleanup(func() { Commit = originalCommit })
+	originalBuiltAt := BuiltAt
+	t.Cleanup(func() { Commit, BuiltAt = originalCommit, originalBuiltAt })
 
 	testCases := []struct {
 		name string
@@ -191,10 +192,13 @@ func TestNewRootCommand_Version(t *testing.T) {
 		{name: "ignores service wait", args: []string{"--version", "--json", "--wait-service", "60"}, json: true},
 	}
 
-	for _, commit := range []string{"abc1234", "unknown"} {
+	for _, build := range []struct{ commit, builtAt, label string }{
+		{"abc1234", "2026-10-24T12:00:00Z", "2026-10-24T12:00:00Z"},
+		{"unknown", "", "unknown"},
+	} {
 		for _, testCase := range testCases {
-			t.Run(commit+"/"+testCase.name, func(t *testing.T) {
-				Commit = commit
+			t.Run(build.commit+"/"+testCase.name, func(t *testing.T) {
+				Commit, BuiltAt = build.commit, build.builtAt
 				var output bytes.Buffer
 				called := false
 				root := newRootCommand(func(ctx context.Context, c *cli.Command) error {
@@ -207,9 +211,9 @@ func TestNewRootCommand_Version(t *testing.T) {
 				if err := root.Run(context.Background(), args); err != nil {
 					t.Fatalf("run version: %v", err)
 				}
-				want := fmt.Sprintf("sylve version %s (commit: %s)\n", Version, commit)
+				want := fmt.Sprintf("sylve version %s (commit: %s, built: %s)\n", Version, build.commit, build.label)
 				if testCase.json {
-					want = fmt.Sprintf("{\"version\":%q,\"commit\":%q}\n", Version, commit)
+					want = fmt.Sprintf("{\"version\":%q,\"commit\":%q,\"builtAt\":%q}\n", Version, build.commit, build.builtAt)
 				}
 				if output.String() != want {
 					t.Fatalf("version output = %q, want %q", output.String(), want)

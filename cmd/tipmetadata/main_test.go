@@ -17,25 +17,29 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 )
 
 const testCommit = "0123456789abcdef0123456789abcdef01234567"
+const testBuiltAt = "2026-10-06T10:30:00Z"
 
 func TestMetadataForBuild(t *testing.T) {
 	info := fixtureBuildInfo()
-	builtAt := time.Date(2026, 10, 6, 10, 30, 0, 0, time.FixedZone("offset", 3600))
-	metadata, err := metadataForBuild(info, "0.3.1", "amd64", "15.1-RELEASE", testCommit, builtAt)
+	metadata, err := metadataForBuild(info, "0.3.1", "amd64", "15.1-RELEASE", testCommit)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metadata.Commit != testCommit || metadata.Version != "0.3.1" || metadata.Go != "go1.26.8" || metadata.FreeBSD != "15.1-RELEASE" || metadata.BuiltAt != "2026-10-06T09:30:00Z" {
+	if metadata.Commit != testCommit || metadata.Version != "0.3.1" || metadata.Go != "go1.26.8" || metadata.FreeBSD != "15.1-RELEASE" || metadata.BuiltAt != testBuiltAt {
 		t.Fatalf("unexpected metadata: %+v", metadata)
+	}
+	info.Settings[3].Value = strings.ReplaceAll(info.Settings[3].Value, testBuiltAt, "2026-10-06T12:30:00+02:00")
+	metadata, err = metadataForBuild(info, "0.3.1", "amd64", "15.1-RELEASE", testCommit)
+	if err != nil || metadata.BuiltAt != testBuiltAt {
+		t.Fatalf("embedded build timestamp was not normalized: %+v %v", metadata, err)
 	}
 }
 
 func TestMetadataRejectsWrongBuild(t *testing.T) {
-	for _, name := range []string{"not sylve", "wrong OS", "wrong arch", "wrong source", "short commit", "overridden commit"} {
+	for _, name := range []string{"not sylve", "wrong OS", "wrong arch", "wrong source", "short commit", "overridden commit", "missing time", "invalid time", "zero time", "overridden time"} {
 		t.Run(name, func(t *testing.T) {
 			info := fixtureBuildInfo()
 			switch name {
@@ -51,8 +55,16 @@ func TestMetadataRejectsWrongBuild(t *testing.T) {
 				info.Settings[3].Value = strings.ReplaceAll(info.Settings[3].Value, testCommit, testCommit[:7])
 			case "overridden commit":
 				info.Settings[3].Value += " -X github.com/alchemillahq/sylve/internal/cmd.Commit=wrong"
+			case "missing time":
+				info.Settings[3].Value = strings.Split(info.Settings[3].Value, " -X github.com/alchemillahq/sylve/internal/cmd.BuiltAt=")[0]
+			case "invalid time":
+				info.Settings[3].Value = strings.ReplaceAll(info.Settings[3].Value, testBuiltAt, "unknown")
+			case "zero time":
+				info.Settings[3].Value = strings.ReplaceAll(info.Settings[3].Value, testBuiltAt, "0001-01-01T00:00:00Z")
+			case "overridden time":
+				info.Settings[3].Value += " -X github.com/alchemillahq/sylve/internal/cmd.BuiltAt=unknown"
 			}
-			if _, err := metadataForBuild(info, "0.3.1", "amd64", "15.1-RELEASE", testCommit, time.Now()); err == nil {
+			if _, err := metadataForBuild(info, "0.3.1", "amd64", "15.1-RELEASE", testCommit); err == nil {
 				t.Fatal("accepted mismatched binary build information")
 			}
 		})
@@ -75,7 +87,7 @@ func TestGenerate(t *testing.T) {
 	if err := json.Unmarshal(data, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if len(metadata) != 5 || metadata["version"] != "0.3.1" || metadata["commit"] != testCommit || metadata["builtAt"] != "2026-10-06T10:31:00Z" || metadata["go"] != "go1.26.8" || metadata["freebsd"] != "15.1-RELEASE" {
+	if len(metadata) != 5 || metadata["version"] != "0.3.1" || metadata["commit"] != testCommit || metadata["builtAt"] != testBuiltAt || metadata["go"] != "go1.26.8" || metadata["freebsd"] != "15.1-RELEASE" {
 		t.Fatalf("unexpected flat manifest: %s", data)
 	}
 	sums, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
@@ -112,8 +124,28 @@ func TestGenerate(t *testing.T) {
 	}
 }
 
+func TestGenerateAcceptsEquivalentArchitectureTimestamps(t *testing.T) {
+	dir := fixtureRelease(t)
+	path := filepath.Join(dir, "build-arm64.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record buildRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatal(err)
+	}
+	record.BuiltAt = "2026-10-06T12:30:00+02:00"
+	if err := writeJSON(path, record); err != nil {
+		t.Fatal(err)
+	}
+	if err := generate(dir, testCommit); err != nil {
+		t.Fatalf("equivalent timestamps disagreed: %v", err)
+	}
+}
+
 func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
-	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "missing web assets", "missing helper", "missing compressed helper", "missing helper manifest", "changed helper", "wrong helper digest"} {
+	for _, name := range []string{"missing binary", "changed binary", "missing record", "wrong commit", "wrong arch", "wrong version", "wrong Go", "wrong FreeBSD", "invalid time", "zero time", "different time", "missing web assets", "missing helper", "missing compressed helper", "missing helper manifest", "changed helper", "wrong helper digest"} {
 		t.Run(name, func(t *testing.T) {
 			dir := fixtureRelease(t)
 			recordPath := filepath.Join(dir, "build-arm64.json")
@@ -147,6 +179,10 @@ func TestGenerateRejectsMixedOrIncompleteAssets(t *testing.T) {
 				record.FreeBSD = "15.0-RELEASE"
 			case "invalid time":
 				record.BuiltAt = "not-a-timestamp"
+			case "zero time":
+				record.BuiltAt = "0001-01-01T00:00:00Z"
+			case "different time":
+				record.BuiltAt = "2026-10-06T10:31:00Z"
 			case "missing web assets":
 				err = os.Remove(filepath.Join(dir, "sylve-web-assets.tar.gz"))
 			case "missing helper":
@@ -193,7 +229,7 @@ func fixtureBuildInfo() *debug.BuildInfo {
 			{Key: "GOOS", Value: "freebsd"},
 			{Key: "GOARCH", Value: "amd64"},
 			{Key: "vcs.revision", Value: testCommit},
-			{Key: "-ldflags", Value: "-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=" + testCommit},
+			{Key: "-ldflags", Value: "-s -w -X github.com/alchemillahq/sylve/internal/cmd.Commit=" + testCommit + " -X github.com/alchemillahq/sylve/internal/cmd.BuiltAt=" + testBuiltAt},
 		},
 	}
 }
@@ -210,7 +246,7 @@ func fixtureRelease(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, arch := range []string{"amd64", "arm64"} {
+	for _, arch := range []string{"amd64", "arm64"} {
 		asset, err := os.ReadFile(filepath.Join(dir, "sylve-"+arch))
 		if err != nil {
 			t.Fatal(err)
@@ -218,7 +254,7 @@ func fixtureRelease(t *testing.T) string {
 		digest := sha256.Sum256(asset)
 		record := buildRecord{
 			versionInfo: versionInfo{
-				Version: "0.3.1", Commit: testCommit, BuiltAt: time.Date(2026, 10, 6, 10, 30+i, 0, 0, time.UTC).Format(time.RFC3339),
+				Version: "0.3.1", Commit: testCommit, BuiltAt: testBuiltAt,
 				Go: "go1.26.8", FreeBSD: "15.1-RELEASE",
 			},
 			Arch: arch, SHA256: hex.EncodeToString(digest[:]),

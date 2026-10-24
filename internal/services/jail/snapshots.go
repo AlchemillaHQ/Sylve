@@ -925,6 +925,7 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 	jailUpdate := jailModels.Jail{
 		PackageMonitoringEnabled:  restored.PackageMonitoringEnabled,
 		PackageAuditIntervalHours: restored.PackageAuditIntervalHours,
+		PackageAuditCronExpr:      restored.PackageAuditCronExpr,
 		Name:                      restored.Name,
 		Hostname:                  restored.Hostname,
 		Description:               restored.Description,
@@ -954,6 +955,7 @@ func (s *Service) restoreJailDatabaseFromSnapshot(ctID uint, restored jailModels
 		Select(
 			"PackageMonitoringEnabled",
 			"PackageAuditIntervalHours",
+			"PackageAuditCronExpr",
 			"Name",
 			"Hostname",
 			"Description",

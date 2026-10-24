@@ -80,6 +80,7 @@ jobs:
     outputs:
       head_sha: ${{ steps.vars.outputs.head_sha }}
       should_publish: ${{ steps.vars.outputs.should_publish }}
+      built_at: ${{ steps.vars.outputs.built_at }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -102,6 +103,7 @@ jobs:
           fi
 
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
   build-csmwrap:
     needs: prepare-release
@@ -235,8 +237,9 @@ jobs:
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
         env:
           FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
+          BUILD_TIMESTAMP: ${{ needs.prepare-release.outputs.built_at }}
         run: |
-          make "cross-build-${ARCH}" GIT_COMMIT="${SOURCE_SHA}"
+          make "cross-build-${ARCH}" GIT_COMMIT="${SOURCE_SHA}" BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
 
       - name: Verify binary format
         run: |

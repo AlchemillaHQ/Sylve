@@ -86,6 +86,8 @@ air .
 npm run dev
 ```
 
+Air builds embed the current commit and a UTC build timestamp. **Node → System → Updates → Sylve** loads real published-build metadata automatically while running from `tmp/main`; **Update & restart** remains disabled. **Check For Updates** refreshes the metadata through a read-only GET request. No compatible update target is needed to inspect this page. Actual self-update testing requires a standalone instance at `/usr/local/sbin/sylve`, outside Air, with the Vite proxy disabled.
+
 ## Code Style
 
 Prefer simple, direct code over clever abstractions. A solution should be easy to read, trace, and change without requiring the reader to decode tricks or reconstruct hidden control flow.

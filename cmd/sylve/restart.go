@@ -27,8 +27,13 @@ func requestSelfRestart(requests chan<- struct{}) {
 	}
 }
 
-func reexecCurrentProcess() error {
-	return reexecProcess(os.Executable, syscall.Exec, os.Args, os.Environ())
+func pinExecutable(resolve executableResolver) executableResolver {
+	executable, err := resolve()
+	return func() (string, error) { return executable, err }
+}
+
+func reexecCurrentProcess(resolve executableResolver) error {
+	return reexecProcess(resolve, syscall.Exec, os.Args, os.Environ())
 }
 
 func reexecProcess(

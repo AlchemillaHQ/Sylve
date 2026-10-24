@@ -6,7 +6,6 @@
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import AuditDetailModal from '$lib/components/custom/Dialog/AuditDetailModal.svelte';
-	import PackageOperation from '$lib/components/custom/Jail/Packages/Operation.svelte';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
@@ -186,6 +185,8 @@
 		'/api/system/ppt-devices/import': 'PCI Passthrough - Import',
 		'/api/system/ppt-devices': 'PCI Passthrough',
 		'/api/system/tunables': 'System Tunable',
+		'/api/system/updates/monitoring': 'Host Update Monitoring',
+		'/api/system/updates/sylve/channel': 'Sylve Release Channel',
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
 		'/api/samba/shares': 'Samba Share',
@@ -364,6 +365,13 @@
 			'/api/jail/:id/packages/check-updates': 'Jail Packages - Check Updates',
 			'/api/jail/:id/packages/upgrade/preview': 'Jail Packages - Upgrade Preview',
 			'/api/jail/:id/packages/upgrade': 'Jail Packages - Upgrade',
+			'/api/system/updates/actions/check': 'Host Updates - Check',
+			'/api/system/updates/actions/audit': 'Host Updates - Audit',
+			'/api/system/updates/actions/packages-preview': 'Host Updates - Package Preview',
+			'/api/system/updates/actions/packages-apply': 'Host Updates - Install Packages',
+			'/api/system/updates/actions/sylve-check': 'Host Updates - Check Sylve',
+			'/api/system/updates/actions/sylve-preview': 'Host Updates - Sylve Preview',
+			'/api/system/updates/actions/sylve-apply': 'Host Updates - Install Sylve',
 			'/api/vm/:id/storage/from-image': 'VM Storage - Create From Image',
 			'/api/vm/:id/storage': 'VM Storage - Attach',
 			'/api/vm/:id/networks': 'VM Network - Attach',
@@ -2003,21 +2011,10 @@
 	});
 
 	function openAuditDetails(record: ResolvedAuditRecord, section: AuditDetailSection) {
-		const packageTarget = record.action.path.match(/^\/api\/jail\/(\d+)\/packages\//);
-		if (packageTarget && record.asyncJobId && record.asyncJobType?.startsWith('jail_pkg-')) {
-			packageOperation = {
-				open: true,
-				node: record.node,
-				ctId: Number(packageTarget[1]),
-				taskId: record.asyncJobId
-			};
-			return;
-		}
 		auditDetailModal.record = $state.snapshot(record);
 		auditDetailModal.section = section;
 		auditDetailModal.open = true;
 	}
-	let packageOperation = $state({ open: false, node: '', ctId: 0, taskId: 0 });
 
 	export function formatStatus(status: string): string {
 		switch (status) {
@@ -2139,15 +2136,6 @@
 	record={auditDetailModal.record}
 	initialSection={auditDetailModal.section}
 />
-
-{#if packageOperation.open}
-	<PackageOperation
-		bind:open={packageOperation.open}
-		node={packageOperation.node}
-		ctId={packageOperation.ctId}
-		taskId={packageOperation.taskId}
-	/>
-{/if}
 
 <style>
 	:global([data-slot='table-container']) {

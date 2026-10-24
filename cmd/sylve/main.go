@@ -41,6 +41,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/services/disk"
+	"github.com/alchemillahq/sylve/internal/services/hostupdates"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/iscsi"
 	"github.com/alchemillahq/sylve/internal/services/jail"
@@ -55,7 +56,6 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/utilities"
 	"github.com/alchemillahq/sylve/internal/services/zelta"
 	"github.com/alchemillahq/sylve/internal/services/zfs"
-	"github.com/alchemillahq/sylve/pkg/pkgmanager"
 
 	portnetwork "github.com/alchemillahq/sylve/pkg/network"
 	"github.com/gin-contrib/gzip"
@@ -64,19 +64,12 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 3 && os.Args[1] == "--internal-package-worker" {
-		signal.Ignore(os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
-		if err := pkgmanager.RunWorker(os.Args[2]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		return
-	}
 	rootCmd := cmd.NewRootCommand(daemonAction)
+	resolveRestartExecutable := pinExecutable(os.Executable)
 
 	err := rootCmd.Run(context.Background(), os.Args)
 	if errors.Is(err, errSelfRestartRequested) {
-		err = reexecCurrentProcess()
+		err = reexecCurrentProcess(resolveRestartExecutable)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
@@ -197,9 +190,18 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	systemSvc := sysS.(*system.Service)
 	systemSvc.SetDiskService(dS)
 	selfRestartRequests := make(chan struct{}, 1)
-	systemSvc.SetRestartRequester(func() {
+	requestRestart := func() {
 		requestSelfRestart(selfRestartRequests)
-	})
+	}
+	systemSvc.SetRestartRequester(requestRestart)
+	hostUpdateSvc, err := hostupdates.NewService(qCtx, d, telemetryDB, cfg.DataPath, cmd.Version, cmd.Commit, cmd.BuiltAt, requestRestart)
+	if err != nil {
+		logger.L.Fatal().Err(err).Msg("failed_to_initialize_host_updates")
+	}
+	systemSvc.HostUpdates = hostUpdateSvc
+	if err := hostUpdateSvc.Recover(); err != nil {
+		logger.L.Error().Err(err).Msg("host_update_recovery_failed")
+	}
 
 	clusterSvc := cS.(*cluster.Service)
 	authSvc := aS.(*auth.Service)
@@ -422,6 +424,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 		go migrationSvc.StartRecoveryTicker(qCtx)
 		go jailSvc.StartPackageMonitor(qCtx)
+		go hostUpdateSvc.StartMonitor()
 		go clusterSvc.StartBackupJobRunnerRebindReconciler(qCtx)
 		go aS.ClearExpiredJWTTokens(qCtx)
 	} else {

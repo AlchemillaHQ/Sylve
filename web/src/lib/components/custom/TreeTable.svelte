@@ -9,6 +9,7 @@
 	import {
 		TabulatorFull as Tabulator,
 		type ColumnDefinition,
+		type Options,
 		type RowComponent
 	} from 'tabulator-tables';
 	import { PersistedState } from 'runed';
@@ -33,6 +34,7 @@
 		onRowMoved?: (rows: Row[]) => void;
 		persistSort?: boolean;
 		dataTree?: boolean;
+		layout?: Options['layout'];
 		rowFormatter?: (row: RowComponent) => void;
 		selectableRowCheck?: (row: RowComponent) => boolean;
 	}
@@ -50,6 +52,7 @@
 		onRowMoved,
 		persistSort = true,
 		dataTree = true,
+		layout = 'fitDataStretch',
 		rowFormatter,
 		selectableRowCheck
 	}: Props = $props();
@@ -188,20 +191,21 @@
 	}
 
 	watch(
-		() => data.rows,
-		(newRows, oldRows) => {
+		[() => data.rows, () => tableInitialized],
+		([newRows, initialized], [oldRows, wasInitialized]) => {
+			if (!initialized) return;
 			if (newRows.length === 0) {
 				table?.clearData();
 				return;
 			}
 
-			if (deepEqual(newRows, oldRows)) {
+			if (wasInitialized && deepEqual(newRows, oldRows)) {
 				return;
 			}
 
 			selectedIds = new Set(table?.getSelectedRows().map((r) => r.getData().id) ?? []);
 
-			if (hasRowsChanged(table, newRows) && tableInitialized) {
+			if (hasRowsChanged(table, newRows)) {
 				replaceDataPreservingScroll(pruneEmptyChildren(newRows)).then(async () => {
 					restoringSelection = true;
 
@@ -233,7 +237,7 @@
 				data: pruneEmptyChildren(data.rows),
 				reactiveData: false,
 				columns: data.columns as ColumnDefinition[],
-				layout: 'fitDataStretch',
+				layout,
 				selectableRows: multipleSelect ? true : 1,
 				...(selectableRowCheck ? { selectableRow: selectableRowCheck } : {}),
 				dataTreeChildIndent: dataTree ? 16 : 0,

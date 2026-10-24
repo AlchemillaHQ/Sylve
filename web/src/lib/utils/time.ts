@@ -62,11 +62,11 @@ export function getLastUsage(time: string): string {
 	return formatted;
 }
 
-export function convertDbTime(time: string): string {
+export function convertDbTime(time: string, pattern = 'yyyy-MM-dd hh:mm a'): string {
 	try {
 		const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		const date = new Date(time);
-		const zonedDate = formatInTimeZone(date, userTimeZone, 'yyyy-MM-dd hh:mm a');
+		const zonedDate = formatInTimeZone(date, userTimeZone, pattern);
 
 		return zonedDate;
 	} catch (_e) {

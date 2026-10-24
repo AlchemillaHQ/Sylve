@@ -12,7 +12,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import type { PackageJob, PackageView } from '$lib/types/jail/packages';
 	import { packageReason, safeAdvisoryURL } from '$lib/types/jail/packages';
-	import { isAPIResponse } from '$lib/utils/http';
+	import { isAPIResponse, isRequestCancellation } from '$lib/utils/http';
 	import { capitalizeFirstLetter, escapeHTML } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { onMount, untrack } from 'svelte';
@@ -36,6 +36,7 @@
 	let currentTask = $state(untrack(() => taskId));
 	let job = $state<PackageJob | null>(null);
 	let logs = $state('');
+	let logsOpen = $state(false);
 	let offset = 0;
 	let logsComplete = false;
 	let loading = $state(false);
@@ -186,6 +187,8 @@
 			logsComplete = finished && chunk.next === offset;
 			offset = chunk.next;
 			logError = '';
+		} catch (cause) {
+			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
 			loading = false;
 		}
@@ -246,6 +249,8 @@
 			logError = '';
 			acknowledge = false;
 			void afterChange?.();
+		} catch (cause) {
+			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
 			applying = false;
 		}
@@ -318,7 +323,10 @@
 <svelte:document onvisibilitychange={checkAvailability} />
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+	<Dialog.Content
+		class="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
+		controlsClass="top-5"
+	>
 		<Dialog.Header class="border-b px-6 py-5 pr-12 text-left">
 			<Dialog.Title>
 				<SpanWithIcon {icon} size="h-5 w-5" gap="gap-2" {title} />
@@ -362,8 +370,8 @@
 					{:else if job?.status === 'success' && job.action === 'pkg-upgrade'}
 						<p class="text-muted-foreground text-xs">
 							{systemUpgrade
-								? 'Review .pkgnew and .pkgsave configuration files, then restart the jail and validate its services. Sylve does not restart it automatically.'
-								: 'Review the command output for package messages. Restart affected services or the jail if needed; Sylve does not restart them automatically.'}
+								? 'Upgrade complete. Review configuration changes and restart the jail.'
+								: 'Upgrade complete. Review package messages; restart services as needed.'}
 						</p>
 					{:else if !failed && job?.plan && job.plan.transaction.changes.length > 0}
 						<p class="text-muted-foreground text-xs">
@@ -398,17 +406,17 @@
 				{/if}
 				{#if job.plan}
 					{#if job.plan.transaction.changes.length > 0}
-						<section class="space-y-3">
+						<section class="space-y-2">
 							<div class="h-64">
 								<ModalTable rows={job.plan.transaction.changes} columns={transactionColumns} />
 							</div>
-							<div class="text-muted-foreground flex flex-wrap gap-x-6 gap-y-1 text-xs">
-								{#if job.plan.transaction.download}<span>{job.plan.transaction.download}</span>{/if}
-								{#if job.plan.transaction.space}<span>{job.plan.transaction.space}</span>{/if}
-								{#if job.action === 'pkg-preview'}<span
-										>Expires {convertDbTime(job.plan.expiresAt)}</span
-									>{/if}
-							</div>
+							{#if job.plan.transaction.download || job.plan.transaction.space}<p
+									class="text-muted-foreground text-xs"
+								>
+									{[job.plan.transaction.download, job.plan.transaction.space]
+										.filter(Boolean)
+										.join(' ')}
+								</p>{/if}
 						</section>
 					{:else if job.status === 'success' && job.action === 'pkg-preview' && checkedRows.length > 0}
 						<div class="h-48"><ModalTable rows={checkedRows} columns={checkedColumns} /></div>
@@ -420,19 +428,19 @@
 								</p>{:else if upgradeReason}<p class="text-muted-foreground">
 									{upgradeReason}
 								</p>{/if}
-							<div class="grid items-center gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-6">
+							<div class="grid items-center gap-3 sm:grid-cols-2 sm:gap-x-6">
 								<CustomCheckbox
 									bind:checked={snapshot}
 									disabled={!snapshotSupported || applying}
-									label="Create a snapshot"
+									label="Create snapshot"
 								/>
 								{#if needsAcknowledgement}
 									<CustomCheckbox
 										bind:checked={acknowledge}
 										disabled={applying}
 										label={systemUpgrade
-											? 'I acknowledge the jail system changes and manual restart requirements'
-											: 'I acknowledge the listed removals and downgrades'}
+											? 'I acknowledge the upgrade impact'
+											: 'I acknowledge removals/downgrades'}
 									/>
 								{/if}
 							</div>
@@ -461,7 +469,7 @@
 				{/if}
 			{/if}
 			{#if logs || logError}
-				<details class="border-t pt-4">
+				<details bind:open={logsOpen} class="border-t pt-4">
 					<summary class="text-muted-foreground cursor-pointer text-xs font-medium select-none"
 						>Command output</summary
 					>

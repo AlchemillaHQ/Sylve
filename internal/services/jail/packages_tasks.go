@@ -4,13 +4,11 @@ package jail
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/alchemillahq/sylve/internal/db"
@@ -21,11 +19,6 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
-
-type packagePending struct{ cause error }
-
-func (e *packagePending) Error() string               { return e.cause.Error() }
-func (e *packagePending) LifecycleRetryPending() bool { return true }
 
 func (s *Service) packagePhase(op *jailModels.JailPackageOperation, phase string) error {
 	op.Phase = phase
@@ -44,7 +37,9 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		return nil
 	}
 	if op.Phase == "applying" || op.Phase == "post_upgrade_audit" {
-		return s.awaitPackageWorker(ctx, op)
+		err := fmt.Errorf("package_operation_interrupted: inspect installed packages and logs before requesting a fresh preview; no automatic retry")
+		s.finishPackageOperation(op, err)
+		return err
 	}
 	select {
 	case s.packages.slots <- struct{}{}:
@@ -53,28 +48,26 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		s.finishPackageOperation(op, ctx.Err())
 		return ctx.Err()
 	}
-	committed := false
 	defer func() {
-		if !committed {
-			if runErr != nil && (op.Action == "pkg-check-updates" || op.Action == "pkg-preview") {
-				column := "check_error"
-				if op.Scope == pkgmanager.ScopeSystem {
-					column = "system_check_error"
-				}
-				_ = s.DB.Model(&jailModels.JailPackageState{}).Where("jail_id = ? AND guid = ?", op.JailID, op.GUID).Update(column, pkgmanager.Redact(runErr.Error())).Error
+		if runErr != nil && (op.Action == "pkg-check-updates" || op.Action == "pkg-preview") {
+			column := "check_error"
+			if op.Scope == pkgmanager.ScopeSystem {
+				column = "system_check_error"
 			}
-			if runErr != nil && op.Action == "pkg-audit" && !expectedPackageSkip(runErr) {
-				if jail, guid, err := s.packageJail(context.Background(), op.CTID); err == nil && jail.ID == op.JailID && guid == op.GUID {
-					state, err := s.packageState(jail, guid)
-					if err == nil {
-						_ = s.savePackageInventory(state)
-						_ = s.recordPackageAuditFailure(jail, guid, runErr)
-					}
-				}
-			}
-			s.finishPackageOperation(op, runErr)
+			_ = s.DB.Model(&jailModels.JailPackageState{}).Where("jail_id = ? AND guid = ?", op.JailID, op.GUID).Update(column, pkgmanager.Redact(runErr.Error())).Error
 		}
+		if runErr != nil && op.Action == "pkg-audit" && !expectedPackageSkip(runErr) {
+			if jail, guid, err := s.packageJail(context.Background(), op.CTID); err == nil && jail.ID == op.JailID && guid == op.GUID {
+				state, err := s.packageState(jail, guid)
+				if err == nil {
+					_ = s.savePackageInventory(state)
+					_ = s.recordPackageAuditFailure(jail, guid, runErr)
+				}
+			}
+		}
+		s.finishPackageOperation(op, runErr)
 	}()
+	applyCtx := ctx
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
 	jail, guid, err := s.packageJail(ctx, op.CTID)
@@ -236,23 +229,35 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 		if fresh != target {
 			return fmt.Errorf("jail_runtime_identity_changed")
 		}
-		work := pkgmanager.Work{
-			Binary:          client.Binary,
-			Target:          target,
-			Arguments:       pkgmanager.UpgradeArgs(repos, plan.Selection, false),
-			Plan:            plan.Plan,
-			InventoryDigest: plan.InventoryHash,
-			RepositoryHash:  plan.RepositoryHash,
-			CatalogHash:     plan.CatalogHash,
-			ManagedPaths:    client.ManagedPaths,
-			Scope:           scope,
-			System:          plan.System,
-		}
-		if err = s.launchPackageWorker(&op, work); err != nil {
+		inventory, err = client.Inventory(ctx)
+		if err != nil {
 			return err
 		}
-		committed = true
-		return s.awaitPackageWorker(context.WithoutCancel(ctx), op)
+		repos, repoHash, err = client.Repositories(ctx)
+		if err != nil {
+			return err
+		}
+		catalogHash, err = client.CatalogDigest(ctx, repos)
+		if err != nil {
+			return err
+		}
+		if pkgmanager.InventoryDigest(inventory) != plan.InventoryHash || repoHash != plan.RepositoryHash || catalogHash != plan.CatalogHash {
+			return fmt.Errorf("package_plan_stale")
+		}
+		if err = s.packagePhase(&op, "applying"); err != nil {
+			return err
+		}
+		if err = client.Apply(applyCtx, pkgmanager.UpgradeArgs(repos, plan.Selection, false), plan.Plan); err != nil {
+			return err
+		}
+		if err = s.packagePhase(&op, "post_upgrade_audit"); err != nil {
+			return err
+		}
+		message := "Packages upgraded. Review package/configuration messages; restart affected services or the jail as needed."
+		if err = s.postPackageUpgrade(applyCtx, op, log); err != nil {
+			message += " Follow-up audit unavailable: " + pkgmanager.Redact(err.Error())
+		}
+		return s.DB.Model(&op).Update("result", message).Error
 	}
 	refreshedAt, refreshedHash := state.RepositoriesRefreshedAt, state.RepositoryHash
 	refreshColumn, hashColumn := "repositories_refreshed_at", "repository_hash"
@@ -288,23 +293,14 @@ func (s *Service) ExecutePackageTask(ctx context.Context, taskID uint) (runErr e
 	if err != nil {
 		return err
 	}
+	if err = client.ValidateInstalled(plan, inventory); err != nil {
+		return err
+	}
 	if op.Action == "pkg-check-updates" {
-		if err = client.ValidateInstalled(plan, inventory); err != nil {
-			return err
-		}
 		if err = s.storeUpdateCheck(state, inventory, plan, scope); err != nil {
 			return err
 		}
 		return s.DB.Model(&op).Update("result", fmt.Sprintf("%d transaction actions available", len(plan.Changes))).Error
-	}
-	if err = s.packagePhase(&op, "verifying"); err != nil {
-		return err
-	}
-	if err = client.VerifyInstalled(ctx, plan, inventory); err != nil {
-		return err
-	}
-	if err = client.VerifyCandidates(ctx, plan, repos); err != nil {
-		return err
 	}
 	if op.All {
 		if err = s.storeUpdateCheck(state, inventory, plan, scope); err != nil {
@@ -388,136 +384,9 @@ func auditSummary(report pkgmanager.Audit) string {
 	return fmt.Sprintf("%d affected packages, %d advisories", len(report.Packages), count)
 }
 
-func (s *Service) launchPackageWorker(op *jailModels.JailPackageOperation, work pkgmanager.Work) error {
-	dir, err := s.packageDirectory(*op)
-	if err != nil {
-		return err
-	}
-	guard, err := os.OpenFile(filepath.Join(dir, "worker.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return err
-	}
-	defer guard.Close()
-	if err = syscall.Flock(int(guard.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return fmt.Errorf("package_worker_already_running")
-	}
-	data, err := json.Marshal(work)
-	if err != nil {
-		return err
-	}
-	manifest := filepath.Join(dir, "work.json")
-	if err = os.WriteFile(manifest, data, 0600); err != nil {
-		return err
-	}
-	if err = s.packagePhase(op, "applying"); err != nil {
-		return err
-	}
-	binary, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	command := exec.Command(binary, "--internal-package-worker", manifest)
-	command.Env = pkgmanager.Environment()
-	command.ExtraFiles = []*os.File{guard}
-	command.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err = command.Start(); err != nil {
-		return err
-	}
-	go func() { _ = command.Wait() }()
-	return nil
-}
-
-func packageWorkerResult(dir string) (*pkgmanager.WorkResult, bool, error) {
-	guard, err := os.OpenFile(filepath.Join(dir, "worker.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return nil, false, err
-	}
-	defer guard.Close()
-	err = syscall.Flock(int(guard.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return nil, true, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	defer syscall.Flock(int(guard.Fd()), syscall.LOCK_UN)
-	data, err := os.ReadFile(filepath.Join(dir, "result.json"))
-	if os.IsNotExist(err) {
-		return &pkgmanager.WorkResult{Error: "package_upgrade_interrupted: inspect inventory and pkg database before a new preview; no automatic retry"}, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	var stored struct {
-		Error *string `json:"error"`
-	}
-	if err = json.Unmarshal(data, &stored); err != nil || stored.Error == nil {
-		return &pkgmanager.WorkResult{Error: "package_worker_result_invalid: inspect inventory and pkg database before a fresh preview"}, false, nil
-	}
-	return &pkgmanager.WorkResult{Error: *stored.Error}, false, nil
-}
-
-func (s *Service) awaitPackageWorker(ctx context.Context, op jailModels.JailPackageOperation) error {
-	s.packages.mu.Lock()
-	if s.packages.observers[op.ID] {
-		s.packages.mu.Unlock()
-		return &packagePending{fmt.Errorf("package_worker_already_observed")}
-	}
-	s.packages.observers[op.ID] = true
-	s.packages.mu.Unlock()
-	defer func() { s.packages.mu.Lock(); delete(s.packages.observers, op.ID); s.packages.mu.Unlock() }()
-	dir, err := s.packageDirectory(op)
-	if err != nil {
-		return &packagePending{err}
-	}
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		result, live, err := packageWorkerResult(dir)
-		if err != nil {
-			return &packagePending{err}
-		}
-		if !live {
-			var runErr error
-			if result.Error != "" {
-				runErr = errors.New(result.Error)
-				_ = s.DB.Model(&jailModels.JailPackageState{}).Where("jail_id = ? AND guid = ?", op.JailID, op.GUID).Updates(map[string]any{"audit_inventory_hash": "", "check_inventory_hash": "", "system_check_inventory_hash": "", "audit_error": "package_upgrade_failed: refresh inventory and audit before trusting recorded results"}).Error
-			}
-			if runErr == nil {
-				if err = s.packagePhase(&op, "post_upgrade_audit"); err != nil {
-					return &packagePending{err}
-				}
-				message := "Packages upgraded. Review package/configuration messages; restart affected services or the jail as needed."
-				if err = s.postPackageUpgrade(op); err != nil {
-					message += " Follow-up audit unavailable: " + pkgmanager.Redact(err.Error())
-				}
-				_ = s.DB.Model(&op).Update("result", message).Error
-			}
-			s.finishPackageOperation(op, runErr)
-			return runErr
-		}
-		select {
-		case <-ctx.Done():
-			return &packagePending{ctx.Err()}
-		case <-ticker.C:
-		}
-	}
-}
-
-func (s *Service) postPackageUpgrade(op jailModels.JailPackageOperation) (runErr error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+func (s *Service) postPackageUpgrade(ctx context.Context, op jailModels.JailPackageOperation, log io.Writer) (runErr error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	dir, err := s.packageDirectory(op)
-	if err != nil {
-		return err
-	}
-	file, err := os.OpenFile(filepath.Join(dir, "output.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	log := pkgmanager.NewLogWriter(file)
-	defer log.Flush()
 	defer func() {
 		if runErr != nil {
 			_, _ = fmt.Fprintf(log, "Follow-up audit unavailable: %s\n", pkgmanager.Redact(runErr.Error()))
@@ -577,7 +446,7 @@ func (s *Service) RecoverPackageTasks(ctx context.Context) error {
 		return nil
 	}
 	var operations []jailModels.JailPackageOperation
-	if err := s.DB.Where("active_jail_id IS NOT NULL OR task_id IN (SELECT id FROM guest_lifecycle_tasks WHERE status IN ?)", []string{"queued", "running"}).Find(&operations).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("active_jail_id IS NOT NULL OR task_id IN (SELECT id FROM guest_lifecycle_tasks WHERE status IN ?)", []string{"queued", "running"}).Find(&operations).Error; err != nil {
 		return err
 	}
 	for _, op := range operations {
@@ -589,26 +458,7 @@ func (s *Service) RecoverPackageTasks(ctx context.Context) error {
 			s.finalizeRecoveredPackageTask(op, err)
 			continue
 		}
-		if op.Phase == "applying" || op.Phase == "post_upgrade_audit" {
-			select {
-			case s.packages.slots <- struct{}{}:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			s.packages.mu.Lock()
-			s.packages.admission[op.CTID] = &packageAdmission{operation: op.ID}
-			s.packages.mu.Unlock()
-			go func() {
-				defer func() { <-s.packages.slots }()
-				err := s.awaitPackageWorker(ctx, op)
-				var pending *packagePending
-				if !errors.As(err, &pending) {
-					s.finalizeRecoveredPackageTask(op, err)
-				}
-			}()
-			continue
-		}
-		err := fmt.Errorf("package_operation_interrupted: request a fresh audit or preview")
+		err := fmt.Errorf("package_operation_interrupted: inspect installed packages and logs before requesting a fresh audit or preview; no automatic retry")
 		s.finishPackageOperation(op, err)
 		s.finalizeRecoveredPackageTask(op, err)
 	}

@@ -627,6 +627,9 @@ func RegisterRoutes(r *gin.Engine,
 		systemJSON.PATCH("/basic-settings/services/:service", systemHandlers.SetServiceState(systemService, networkService, iscsiService))
 		systemJSON.GET("/tunables/remote", systemHandlers.TunablesRemote(systemService))
 		systemJSON.PUT("/tunables", systemHandlers.SetTunable(systemService))
+		hostUpdates := systemJSON.Group("/updates")
+		hostUpdates.Use(middleware.RequireLocalAdmin(authService))
+		systemHandlers.RegisterHostUpdateRoutes(hostUpdates, systemService.HostUpdates)
 	}
 
 	fileExplorer := system.Group("/file-explorer")

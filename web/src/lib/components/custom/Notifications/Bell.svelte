@@ -257,6 +257,34 @@
 			}
 		}
 
+		if (notification.kind.startsWith('system.updates.') && notification.metadata.test !== 'true') {
+			const node = notification.metadata.node;
+			if (node && /^[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(node)) {
+				const link = document.createElement('a');
+				link.className = 'text-xs underline';
+				link.textContent = 'View Host Updates';
+				const query = new SvelteURLSearchParams();
+				const operationId = Number(notification.metadata.operationId);
+				if (Number.isSafeInteger(operationId) && operationId > 0)
+					query.set('job', String(operationId));
+				let destination = resolve('/[node]/system/updates/packages', { node });
+				if (notification.metadata.path === `/${node}/system/updates/sylve`) {
+					destination = resolve('/[node]/system/updates/sylve', { node });
+				} else if (notification.kind.includes('.vulnerabilities.')) {
+					destination = resolve('/[node]/system/updates/audit', { node });
+				} else if (
+					notification.kind.includes('.operation.') ||
+					notification.kind.includes('.health.')
+				) {
+					destination = resolve('/[node]/system/updates/history', { node });
+				}
+				link.href = destination + (query.size ? `?${query}` : '');
+				link.addEventListener('click', () => {
+					open = false;
+				});
+				container.append(link);
+			}
+		}
 		return container;
 	}
 

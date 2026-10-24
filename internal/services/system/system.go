@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/services/hostupdates"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 
@@ -28,6 +29,7 @@ import (
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
 type Service struct {
+	HostUpdates             *hostupdates.Service
 	DownloadStorage         *downloadstorage.Resolver
 	DB                      *gorm.DB
 	initMutex               sync.Mutex

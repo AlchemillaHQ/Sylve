@@ -48,6 +48,13 @@ export const PackageAuditSchema = z.object({
 		})
 	)
 });
+export const PackageChangeSchema = z.object({
+	action: z.string(),
+	name: z.string(),
+	from: z.string(),
+	to: z.string(),
+	repository: z.string()
+});
 export const PackagePlanSchema = z.object({
 	id: z.string(),
 	expiresAt: z.string(),
@@ -55,15 +62,7 @@ export const PackagePlanSchema = z.object({
 	scope: PackageScopeSchema,
 	system: PackageSystemSchema.nullable().default(null),
 	transaction: z.object({
-		changes: z.array(
-			z.object({
-				action: z.string(),
-				name: z.string(),
-				from: z.string(),
-				to: z.string(),
-				repository: z.string()
-			})
-		),
+		changes: z.array(PackageChangeSchema),
 		download: z.string(),
 		space: z.string(),
 		digest: z.string()
@@ -72,6 +71,7 @@ export const PackagePlanSchema = z.object({
 export const PackageMonitoringSchema = z.object({
 	enabled: z.boolean(),
 	intervalHours: z.number(),
+	cronExpr: z.string().default(''),
 	nextAuditAt: z.string().nullable(),
 	lastAttemptAt: z.string().nullable(),
 	lastSuccessAt: z.string().nullable(),
@@ -200,6 +200,8 @@ export function packageReason(
 		package_catalog_unavailable: 'A repository catalog is unavailable. Check for updates again.',
 		package_archive_path_unavailable:
 			'The package archive’s repository path could not be verified. Check the command output for details.',
+		package_archive_checksum_mismatch:
+			'A package archive failed checksum verification. Nothing was installed. Check the repository and retry.',
 		application_repositories_unavailable: 'No application package repositories are available',
 		package_command_unavailable: 'The package command could not be started',
 		package_command_failed: 'The package command failed. Check the command output for details.',
@@ -253,7 +255,9 @@ export function packageReason(
 		package_selection_required:
 			'Select packages to preview, or use Updates → Applications → Preview all upgrades',
 		invalid_package_name: 'The selected package name is invalid',
-		invalid_package_audit_interval: 'Choose Never, every 6 hours, every 12 hours, or Daily',
+		invalid_package_audit_interval: 'Choose a preset frequency or enter a valid cron expression.',
+		invalid_package_audit_cron:
+			'Enter a valid five-field cron expression: minute hour day month weekday.',
 		invalid_package_inventory: 'The installed package list could not be read',
 		invalid_package_dependencies: 'Package dependencies could not be read',
 		package_monitor_metadata_write_failed:

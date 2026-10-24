@@ -308,7 +308,7 @@
 						onSelect={() => void run('upgrade/preview', { all: true })}
 						disabled={!enabled}
 						class="cursor-pointer"
-						title="Preview all eligible application packages, including those hidden by filters. May download archives; installs nothing."
+						title="Preview all eligible application packages, including those hidden by filters. Downloads and installs no packages."
 					>
 						<span class="icon-[mdi--package-up] h-4 w-4" aria-hidden="true"></span>
 						Preview all upgrades
@@ -319,7 +319,7 @@
 							disabled={!enabled || !selectionEligible}
 							class="cursor-pointer"
 							title={selectionError ||
-								'Preview selected application packages. May download archives; installs nothing.'}
+								'Preview selected application packages. Downloads and installs no packages.'}
 							aria-describedby={selectionError ? 'package-selection-reason' : undefined}
 						>
 							<span class="icon-[mdi--package-up] h-4 w-4" aria-hidden="true"></span>
@@ -343,7 +343,7 @@
 							onSelect={() => void run('upgrade/preview', { all: true, scope: 'system' })}
 							disabled={!enabled}
 							class="cursor-pointer"
-							title={`Download and verify a same-release FreeBSD base preview without installing packages. Last check: ${timestamp(view.systemCheckedAt)}`}
+							title={`Preview same-release FreeBSD base changes without downloading or installing packages. Last check: ${timestamp(view.systemCheckedAt)}`}
 						>
 							<span class="icon-[mdi--layers-outline] h-4 w-4" aria-hidden="true"></span>
 							Preview system upgrade
@@ -397,7 +397,7 @@
 				class="h-6"
 				title="Package monitoring"
 				aria-label="Package monitoring"
-				disabled={!view}><span class="icon-[mdi--cog] h-4 w-4"></span></Button
+				disabled={!view}><span class="icon-[mdi--clock-outline] h-4 w-4"></span></Button
 			>
 			<Button
 				onclick={() => inventory.refetch()}

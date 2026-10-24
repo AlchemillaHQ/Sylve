@@ -92,7 +92,7 @@ func record(binary, arch, freebsd, commit string) error {
 	if len(match) != 2 {
 		return fmt.Errorf("cannot read Sylve version from internal/cmd/root.go")
 	}
-	metadata, err := metadataForBuild(info, string(match[1]), arch, freebsd, commit, time.Now())
+	metadata, err := metadataForBuild(info, string(match[1]), arch, freebsd, commit)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func record(binary, arch, freebsd, commit string) error {
 	return writeJSON(filepath.Join(filepath.Dir(binary), "build-"+arch+".json"), record)
 }
 
-func metadataForBuild(info *debug.BuildInfo, version, arch, freebsd, commit string, builtAt time.Time) (versionInfo, error) {
+func metadataForBuild(info *debug.BuildInfo, version, arch, freebsd, commit string) (versionInfo, error) {
 	if info.Path != "github.com/alchemillahq/sylve/cmd/sylve" {
 		return versionInfo{}, fmt.Errorf("binary is not Sylve")
 	}
@@ -156,22 +156,31 @@ func metadataForBuild(info *debug.BuildInfo, version, arch, freebsd, commit stri
 	}
 	flags := strings.Fields(settings["-ldflags"])
 	commitFlag := "github.com/alchemillahq/sylve/internal/cmd.Commit="
-	var bakedCommit string
+	builtAtFlag := "github.com/alchemillahq/sylve/internal/cmd.BuiltAt="
+	var bakedCommit, bakedBuiltAt string
 	for i, value := range flags {
 		if strings.HasPrefix(value, commitFlag) && i > 0 && flags[i-1] == "-X" {
 			bakedCommit = strings.TrimPrefix(value, commitFlag)
 		} else if strings.HasPrefix(value, "-X="+commitFlag) {
 			bakedCommit = strings.TrimPrefix(value, "-X="+commitFlag)
+		} else if strings.HasPrefix(value, builtAtFlag) && i > 0 && flags[i-1] == "-X" {
+			bakedBuiltAt = strings.TrimPrefix(value, builtAtFlag)
+		} else if strings.HasPrefix(value, "-X="+builtAtFlag) {
+			bakedBuiltAt = strings.TrimPrefix(value, "-X="+builtAtFlag)
 		}
 	}
 	if bakedCommit != commit {
 		return versionInfo{}, fmt.Errorf("binary does not embed the full commit %s", commit)
 	}
+	builtAt, err := time.Parse(time.RFC3339, bakedBuiltAt)
+	if err != nil || builtAt.IsZero() {
+		return versionInfo{}, fmt.Errorf("binary does not embed a valid build timestamp")
+	}
 	if version == "" || info.GoVersion == "" || freebsd == "" {
 		return versionInfo{}, fmt.Errorf("missing build version, Go version, or FreeBSD release")
 	}
 	return versionInfo{
-		Version: version, Commit: commit, BuiltAt: builtAt.UTC().Format(time.RFC3339),
+		Version: version, Commit: commit, BuiltAt: builtAt.UTC().Format(time.RFC3339Nano),
 		Go: info.GoVersion, FreeBSD: freebsd,
 	}, nil
 }
@@ -182,7 +191,6 @@ func generate(dir, commit string) error {
 		return err
 	}
 	var metadata versionInfo
-	var latest time.Time
 	for _, arch := range []string{"amd64", "arm64"} {
 		data, err := os.ReadFile(filepath.Join(dir, "build-"+arch+".json"))
 		if err != nil {
@@ -196,9 +204,10 @@ func generate(dir, commit string) error {
 			return fmt.Errorf("invalid or stale build record for %s", arch)
 		}
 		builtAt, err := time.Parse(time.RFC3339, record.BuiltAt)
-		if err != nil {
-			return fmt.Errorf("invalid build time for %s: %w", arch, err)
+		if err != nil || builtAt.IsZero() {
+			return fmt.Errorf("invalid build time for %s", arch)
 		}
+		record.BuiltAt = builtAt.UTC().Format(time.RFC3339Nano)
 		digest, err := checksum(filepath.Join(dir, "sylve-"+arch))
 		if err != nil {
 			return err
@@ -211,14 +220,10 @@ func generate(dir, commit string) error {
 				return fmt.Errorf("amd64 embedded CSMWrap differs from release bundle")
 			}
 			metadata = record.versionInfo
-		} else if metadata.Version != record.Version || metadata.Go != record.Go || metadata.FreeBSD != record.FreeBSD {
-			return fmt.Errorf("architecture builds disagree on version, Go version, or FreeBSD release")
-		}
-		if builtAt.After(latest) {
-			latest = builtAt
+		} else if metadata.Version != record.Version || metadata.Go != record.Go || metadata.FreeBSD != record.FreeBSD || metadata.BuiltAt != record.BuiltAt {
+			return fmt.Errorf("architecture builds disagree on version, Go version, FreeBSD release, or build timestamp")
 		}
 	}
-	metadata.BuiltAt = latest.UTC().Format(time.RFC3339)
 	if err := writeJSON(filepath.Join(dir, "sylve-version.json"), metadata); err != nil {
 		return err
 	}

@@ -8,12 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/creack/pty"
 )
@@ -42,11 +40,8 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(c.Binary, argv...)
+	cmd := exec.CommandContext(ctx, c.Binary, argv...)
 	cmd.Env = Environment()
-	if c.Guard != nil {
-		cmd.ExtraFiles = []*os.File{c.Guard}
-	}
 	terminal, err := pty.Start(cmd)
 	if err != nil {
 		return err
@@ -114,6 +109,9 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 		}
 	}
 	err = cmd.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if approvalError != nil {
 		return approvalError
 	}
@@ -126,126 +124,12 @@ func (c *Client) Apply(ctx context.Context, args []string, approved Plan) error 
 	return nil
 }
 
-type Work struct {
-	Binary          string      `json:"binary"`
-	Target          Target      `json:"target"`
-	Arguments       []string    `json:"arguments"`
-	Plan            Plan        `json:"plan"`
-	InventoryDigest string      `json:"inventoryDigest"`
-	RepositoryHash  string      `json:"repositoryHash"`
-	CatalogHash     string      `json:"catalogHash"`
-	ManagedPaths    []string    `json:"managedPaths"`
-	Scope           Scope       `json:"scope"`
-	System          *SystemInfo `json:"system,omitempty"`
-}
-
-type WorkResult struct {
-	Error string `json:"error"`
-}
-
-func RunWorker(manifest string) error {
-	if os.Geteuid() != 0 {
-		return fmt.Errorf("root_privileges_required")
-	}
-	info, err := os.Lstat(manifest)
-	if err != nil {
-		return err
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || st.Uid != 0 || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return fmt.Errorf("untrusted_package_worker_manifest")
-	}
-	directory := filepath.Dir(manifest)
-	parent, err := os.Lstat(directory)
-	if err != nil {
-		return err
-	}
-	pst, ok := parent.Sys().(*syscall.Stat_t)
-	if !ok || pst.Uid != 0 || !parent.IsDir() || parent.Mode().Perm() != 0700 {
-		return fmt.Errorf("untrusted_package_worker_directory")
-	}
-	data, err := os.ReadFile(manifest)
-	if err != nil {
-		return err
-	}
-	var work Work
-	if err = json.Unmarshal(data, &work); err != nil {
-		return err
-	}
-	log, err := os.OpenFile(filepath.Join(directory, "output.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	defer log.Close()
-	guard := os.NewFile(3, "package-worker-guard")
-	if guard == nil {
-		return fmt.Errorf("package_worker_guard_unavailable")
-	}
-	defer guard.Close()
-	writer := NewLogWriter(log)
-	defer writer.Flush()
-	client := Client{Binary: work.Binary, Target: work.Target, Log: writer, Guard: guard, ManagedPaths: work.ManagedPaths, Scope: work.Scope, System: work.System}
-	runErr := func() error {
-		if work.Target.Offline {
-			return fmt.Errorf("jail_not_running")
-		}
-		preflight, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		if err := Probe(work.Binary); err != nil {
-			return err
-		}
-		if err := ValidateTarget(preflight, work.Target); err != nil {
-			return err
-		}
-		if _, err := ValidatePrivateRoot(preflight, work.Target); err != nil {
-			return err
-		}
-		inventory, err := client.Inventory(preflight)
-		if err != nil {
-			return err
-		}
-		if InventoryDigest(inventory) != work.InventoryDigest {
-			return fmt.Errorf("package_plan_stale")
-		}
-		repos, hash, err := client.Repositories(preflight)
-		if err != nil {
-			return err
-		}
-		if hash != work.RepositoryHash {
-			return fmt.Errorf("package_plan_stale")
-		}
-		catalog, err := client.CatalogDigest(preflight, repos)
-		if err != nil {
-			return err
-		}
-		if catalog != work.CatalogHash {
-			return fmt.Errorf("package_plan_stale")
-		}
-		return client.Apply(context.Background(), work.Arguments, work.Plan)
-	}()
-	result := WorkResult{}
-	if runErr != nil {
-		result.Error = runErr.Error()
-	}
-	data, err = json.Marshal(result)
-	if err != nil {
-		return err
-	}
-	temporary := filepath.Join(directory, "result.tmp")
-	if err = os.WriteFile(temporary, data, 0600); err != nil {
-		return err
-	}
-	writer.Flush()
-	_ = log.Sync()
-	if err = os.Rename(temporary, filepath.Join(directory, "result.json")); err != nil {
-		return err
-	}
-	return runErr
-}
-
 func ValidateTarget(ctx context.Context, target Target) error {
 	if err := target.validate(); err != nil {
 		return err
+	}
+	if target.Host {
+		return validateHostTarget()
 	}
 	targets, err := ListTargets(ctx)
 	if err != nil {

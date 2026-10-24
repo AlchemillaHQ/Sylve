@@ -80,6 +80,7 @@ function initial(ctId: number, jailId: number, running: boolean): PackageView {
 		monitoring: {
 			enabled: false,
 			intervalHours: 24,
+			cronExpr: '',
 			nextAuditAt: null,
 			lastAttemptAt: null,
 			lastSuccessAt: null,
@@ -171,7 +172,8 @@ export function demoPackages(
 	if (path === 'monitoring') {
 		if (method === 'PUT') {
 			view.monitoring.enabled = body.enabled === true;
-			view.monitoring.intervalHours = Number(body.intervalHours);
+			view.monitoring.cronExpr = typeof body.cronExpr === 'string' ? body.cronExpr.trim() : '';
+			if (!view.monitoring.cronExpr) view.monitoring.intervalHours = Number(body.intervalHours);
 			view.monitoring.nextAuditAt = body.enabled ? currentTime() : null;
 		}
 		return success(view.monitoring);

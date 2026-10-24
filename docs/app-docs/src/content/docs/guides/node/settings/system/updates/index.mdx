@@ -1,0 +1,123 @@
+---
+title: Updates
+description: Review and install pkgbase host packages or standalone Sylve releases, audit registered packages, and configure update notifications.
+---
+
+Open **Node → System → Updates**. These operations are node-local and require an administrator. Use the sidebar to open **Packages**, **Sylve**, **Audit** or **History**. The clock button opens monitoring settings.
+
+## Supported hosts
+
+**UI host package management requires a registered FreeBSD 15-or-newer pkgbase installation.** Having a repository configuration file is not enough: the base system must actually be registered in the package database.
+
+Non-pkgbase installations must be maintained outside Sylve. The UI does not convert installations, run `freebsd-update`, repair mixed base installations or provide a non-pkgbase package-upgrade fallback. Standalone Sylve release updates are independent of this requirement.
+
+The updater follows the **currently configured release/branch**. It supports release patch updates and STABLE/CURRENT snapshot packages, including `15.snap…` and `16.snap…`. It does not switch repositories or perform release/branch migrations. Upgrades such as RELEASE → STABLE or 15.x → 16.x require a separate manual procedure.
+
+Host transactions use `pkg-static`. Host support requires pkg **2.8.4 or newer in the 2.x series**. The transaction parser and final confirmation reject unsupported or changed output before approving an installation; the separate Jail updater retains its own version requirements.
+
+The existing Jail package updater is pinned to pkg **2.8.4**. Updating the host's package manager beyond that version can disable Jail package operations and scheduled Jail audits until that version is supported. The pkg-first preview calls out this impact; Sylve does not silently relax the Jail updater's safety checks.
+
+## Before installing
+
+- Read FreeBSD and package update messages, and back up configuration and application data.
+- Finish migrations, backup/restore work and replication operations.
+- For clusters, follow the [cluster upgrade guidance](/guides/data-center/cluster/). Preserve quorum and use a release with a documented compatible upgrade path. This UI does not orchestrate cluster-wide upgrades.
+- Review all dependency changes, removals and any regular-package downgrades in the preview. Sylve and base-system downgrades are rejected.
+- Keep console or SSH access available in case network or service configuration needs repair.
+
+:::caution[Updating Sylve can affect protected guests]
+Updating Sylve restarts its management service using the existing graceful restart path. That path fences replication leases, so replication-protected VMs and jails can stop or become eligible for failover. Approval explicitly acknowledges this impact.
+:::
+
+## Host packages
+
+Under **Updates**, **Check for updates** refreshes availability and audits registered packages. It does not install updates. **Preview all upgrades** resolves the complete host transaction, including installed base/kernel packages, regular packages and enabled third-party kernel-module repositories. Locked packages are respected.
+
+Selected regular packages can also be previewed. Base and kernel changes require a complete host preview so their accompanying updates are not intentionally omitted. Locked base/kernel-module packages block base-system changes rather than silently creating a partial system update; resolve those locks manually. If pkg itself needs an update, Sylve presents a package-manager-first transaction; after installing it, request another preview for the remaining host updates.
+
+Previews use installed-package information and repository catalogs to show the proposed transaction without downloading package archives. Catalog metadata may still be refreshed. The preview does not guarantee that the mirror currently has every archive; missing downloads, corrupt bytes or unsafe package contents are rejected during upgrade preparation, before installation.
+
+An installation uses a short-lived, single-use preview. After you approve **Upgrade**, Sylve rechecks installed inventory, repository configuration and catalog contents, then downloads and verifies the package archives before creating the requested boot environment and installing packages. It also verifies the actual confirmation transaction. Changed or expired previews must be recreated. No unattended installation or automatic `pkg autoremove` is performed.
+
+Upgrade preparation reuses pkg’s normal `/var/cache/pkg` archive cache, including downloads from earlier attempts or package commands. Cache hits are checked against the full repository checksum locally, without contacting the mirror. Only missing, incomplete or corrupt archives need downloading; installation reuses these same files. Normal `pkg clean` maintenance can reclaim the cache.
+
+Repeated previews reuse repository catalogs for up to five minutes when installed packages, locks and repository configuration are unchanged. **Check for updates** always refreshes the catalogs. Each preview still resolves and validates the transaction and creates a fresh, single-use approval; cached downloads never bypass the installation-time checks.
+
+### Boot environments and reboots
+
+On a compatible ZFS root, **Create boot environment** is selected by default. If creation fails, the transaction does not proceed. On UFS or systems without usable boot environments, arrange another suitable backup and acknowledge the maintenance impact explicitly.
+
+A boot environment is not a backup of separate data datasets or EFI partitions, and Sylve does not activate it or automatically roll back to it.
+
+Base, kernel or kernel-module changes produce a persistent **reboot recommended** warning until the host has rebooted. This deliberately does not rely only on `freebsd-version` text: a newer CURRENT/STABLE kernel can retain the same release string. **Sylve never reboots the host automatically.** Use the existing host reboot control after completing maintenance.
+
+Pkgbase updates are not the `freebsd-update` kernel-install/reboot/userland-install procedure. For supported in-branch pkgbase updates, pkg performs the approved package transaction, followed by an explicit administrator-managed reboot when needed.
+
+### Configuration and boot-loader work
+
+Package scripts, triggers and pkg's configuration merging remain enabled. Review all package messages and any `.pkgnew`/`.pkgsave` files. Failed configuration merges need manual resolution; do not run `etcupdate` as an additional pkgbase configuration-merge step.
+
+Review the applicable FreeBSD boot-loader instructions before rebooting. Updating a package containing `/boot/loader.efi` does **not** copy the loader into an EFI System Partition. Sylve does not mount ESPs, write bootcode, upgrade ZFS pool features or make those disk-specific choices automatically.
+
+## Sylve installation ownership
+
+### Package-managed Sylve
+
+If the executable belongs to the Sylve pkg/ports installation, use **Packages**. Locking the package does not make it standalone. The release updater will not overwrite it. A modified packaged Sylve installation must be repaired or explicitly converted to standalone first.
+
+The [standalone installation guide](/getting-started/#switching-an-existing-pkg-installation-to-standalone) explains removing the package while retaining configuration/data and reinstalling the binary and RC script. The ISO installer configures this arrangement for new installations.
+
+### Standalone Sylve
+
+The running standalone executable must be root-owned at `/usr/local/sbin/sylve`. An unreadable or broken package database is an unknown ownership state, not permission to overwrite the executable.
+
+Instances running from another path must update Sylve manually. The page shows real published-build metadata, but **Update & restart** remains disabled. These read-only previews do not announce an installable update. Scheduled host package checks and audits are unchanged.
+
+- **Rolling Releases - Recommended:** the latest official `tip` build. Same-version updates require a different verified checksum and a strictly newer build timestamp.
+- **Tagged Releases - Not recommended:** the latest published tagged release. These are updated less frequently.
+
+Choose the **Release channel** on the **Sylve** page. It is saved immediately and used for both manual and scheduled checks. Changing the channel clears the previous channel's check result without changing the monitoring schedule.
+
+The **Sylve** page displays a browser-cached release snapshot immediately, retained for up to seven days and scoped to the node and release channel. After the page renders, it makes a fresh GET on every visit and replaces the displayed snapshot and browser cache when the read succeeds. **Check For Updates** also forces a fresh GET. Cached metadata alone never enables installation; the refresh must finish successfully, and update approval verifies the release again. These reads run independently of host package updates and audits and do not create update operations or user activity audit entries. An eligible release appears under **Latest eligible build**, with **Update & restart** to open its confirmation dialog. Already-installed builds are not offered as updates; unavailable or incompatible checks are shown separately. No executable is downloaded or installed by a release read.
+
+Lower Sylve versions are rejected through both update paths. A rolling `0.3.1` cannot switch to tagged `0.3.1`; it can switch to a higher tagged version. For standalone updates, version numbers take priority; build timestamps order eligible rolling builds of the same version. Older same-version builds are blocked, and different checksums with equal timestamps are rejected as ambiguous. Package-managed Sylve continues to follow pkg version ordering.
+
+**Built at** is shown for the current build, available build and update confirmation. Official builds embed one UTC timestamp shared by both architectures and `sylve-version.json`; the UI displays it in local time. `sylve --version --json` includes `builtAt`, and Makefile builds accept `BUILD_TIMESTAMP` to reuse a specific timestamp. Timestamps describe when a release was built, not Git ancestry; the official publisher must still keep `tip` forward-moving.
+
+Older binaries without a timestamp show **Unknown** unless saved, verified release metadata matches their exact checksum. Without that evidence, same-version updates are blocked because their order cannot be established. Install a timestamped official build manually once, or update to a higher eligible version. File modification times, Git commit dates and GitHub release-edit dates are never substituted for a build timestamp.
+
+The preview pins the release identity, build timestamp and checksum. Downloaded bytes and the embedded commit and build timestamp are verified before atomic replacement. If `tip` moves during the operation and the downloaded bytes no longer match, installation fails rather than substituting a different build. The UI reconnects after restart, and completion is recorded only after the new process version, commit and timestamp are checked. There is no automatic executable downgrade or database rollback.
+
+Releases must publish the verified `sylve-version.json` build metadata, and downloaded binaries must embed its timestamp. Older releases without the metadata or embedded timestamp cannot be installed through the UI; the updater does not guess their build identity.
+
+## Auditing and notifications
+
+**Audit** shows known vulnerability findings for registered packages. This is **not** a complete FreeBSD base/kernel security assessment, and it does not audit an unregistered standalone Sylve binary.
+
+Failed checks retain last-successful results, marked stale/unavailable. Empty stale results are not a clean audit. Findings are associated with the package version actually audited.
+
+Open **Monitoring** using the **clock** button. **Frequency** accepts **Never**, the 6-/12-hour and daily presets, or a custom five-field cron expression. For example, `0 3 * * 0` runs on Sundays at 03:00 in the node's local time. Cron weekdays use `0–6`, with `0` for Sunday. Missed or overlapping cron occurrences are skipped, not queued for later.
+
+The same schedule checks for updates and known package vulnerabilities, using the release channel saved on the **Sylve** page for standalone updates. Monitoring is enabled daily by default. Scheduled operations never install updates or reboot.
+
+Scheduled checks appear in update **History**, not the user activity audit log. Manual package checks, audits, channel changes, update approvals and installations remain in the activity audit log; read-only Sylve release GET requests do not.
+
+Configure delivery under **System → Notifications**. Host rules cover:
+
+- newly available package or Sylve updates;
+- newly observed/no-longer-reported package vulnerabilities;
+- persistent monitoring failures and recovery;
+- installation completion or failure.
+
+Repeated unchanged checks do not generate fresh availability/finding events. Delivery uses persistent per-transport retries. **History** and operation logs are retained for 30 days. If an installation is interrupted, inspect its logs and installed state before requesting another preview; committed mutations are not automatically retried.
+
+## FreeBSD references
+
+The host workflow was checked against these upstream references before implementation:
+
+- [FreeBSD Handbook: Updating FreeBSD with packages](https://docs.freebsd.org/en/books/handbook/cutting-edge/#pkgbase)
+- [freebsd-base(7)](https://man.freebsd.org/cgi/man.cgi?query=freebsd-base&sektion=7)
+- [FreeBSD 15.1 pkgbase upgrade instructions](https://www.freebsd.org/releases/15.1R/upgrading/#upgrade-pkg), including kernel modules, configuration merges and boot-loader maintenance
+- [pkg-upgrade(8), pkg 2.8.4](https://github.com/freebsd/pkg/blob/2.8.4/docs/pkg-upgrade.8)
+- [pkg's self-upgrade solving behavior](https://github.com/freebsd/pkg/blob/2.8.4/libpkg/pkg_jobs.c), which differs between real upgrades and dry runs
+- [FreeBSD/pkg issue 2561](https://github.com/freebsd/pkg/issues/2561), illustrating why RELEASE/STABLE transitions must not be inferred from package version ordering alone

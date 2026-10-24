@@ -174,11 +174,12 @@
 			</Label>
 			{#if hint}
 				<Tooltip.Root>
-					<Tooltip.Trigger
-						aria-label="Help Information"
-						class="inline-flex items-center justify-center"
-					>
-						<span class="icon icon-[mdi--help-circle-outline] size-4"></span>
+					<Tooltip.Trigger aria-label={hint} class="inline-flex items-center justify-center">
+						{#snippet child({ props })}
+							<button {...props} onfocus={undefined}>
+								<span class="icon icon-[mdi--help-circle-outline] size-4" aria-hidden="true"></span>
+							</button>
+						{/snippet}
 					</Tooltip.Trigger>
 					<Tooltip.Content class="text-pretty break-words" style="max-width: 250px">
 						{hint}

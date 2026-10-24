@@ -137,6 +137,7 @@ jobs:
     outputs:
       tag_name: ${{ steps.vars.outputs.tag_name }}
       target_sha: ${{ steps.vars.outputs.target_sha }}
+      built_at: ${{ steps.vars.outputs.built_at }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -153,6 +154,7 @@ jobs:
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
           echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           echo "changelog_path=${CHANGELOG_PATH}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Create or update draft release
         env:
@@ -331,8 +333,9 @@ jobs:
       - name: Build FreeBSD binary on Linux (${{ matrix.arch }})
         env:
           FREEBSD_VERSION: ${{ steps.freebsd.outputs.version }}
+          BUILD_TIMESTAMP: ${{ needs.prepare-release.outputs.built_at }}
         run: |
-          make cross-build-${{ matrix.arch }} GIT_COMMIT="${SOURCE_SHA}"
+          make cross-build-${{ matrix.arch }} GIT_COMMIT="${SOURCE_SHA}" BUILD_TIMESTAMP="${BUILD_TIMESTAMP}"
 
       - name: Verify binary format
         run: |

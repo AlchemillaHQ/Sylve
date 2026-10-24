@@ -4,7 +4,6 @@
 package pkgmanager
 
 import (
-	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -16,9 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
@@ -98,9 +95,6 @@ func TestIntegrationJailPackages(t *testing.T) {
 		file := "/usr/local/share/sylve-pkg-test/value"
 		write(filepath.Join(stage, file), []byte(version))
 		manifest := map[string]any{"name": "sylve-pkg-test", "version": version, "origin": "misc/sylve-pkg-test", "comment": "Isolated Sylve test", "desc": "Isolated test", "maintainer": "test@example.invalid", "www": "https://example.invalid", "prefix": "/usr/local", "files": map[string]string{file: "-"}}
-		if version == "2.0" {
-			manifest["scripts"] = map[string]string{"pre-install": "echo ready > /var/db/pkg/sylve-test-ready; /bin/sleep 3"}
-		}
 		data, _ := json.Marshal(manifest)
 		manifestPath := filepath.Join(dir, "manifest-"+version+".json")
 		write(manifestPath, data)
@@ -291,49 +285,9 @@ func TestIntegrationJailPackages(t *testing.T) {
 			}
 		}
 	})
-	t.Run("installer retains guard and ignores request cancellation", func(t *testing.T) {
-		lockPath := filepath.Join(dir, "installer.lock")
-		guard, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0600)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer guard.Close()
-		if err = syscall.Flock(int(guard.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			t.Fatal(err)
-		}
-		applyCtx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		result := make(chan error, 1)
-		client := c
-		client.Guard = guard
-		go func() { result <- client.Apply(applyCtx, UpgradeArgs(repos, []string{"sylve-pkg-test"}, false), plan) }()
-		deadline := time.Now().Add(10 * time.Second)
-		for {
-			if data, err := os.ReadFile(filepath.Join(root, "var/db/pkg/sylve-test-ready")); err == nil && bytes.Contains(data, []byte("ready")) {
-				break
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("fixture pre-upgrade script did not start")
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		cancel()
-		_ = guard.Close()
-		observer, err := os.OpenFile(lockPath, os.O_RDWR, 0600)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer observer.Close()
-		if err = syscall.Flock(int(observer.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != syscall.EWOULDBLOCK {
-			t.Fatalf("installer lost inherited guard: %v", err)
-		}
-		if err = <-result; err != nil {
-			t.Fatal(err)
-		}
-		if err = syscall.Flock(int(observer.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			t.Fatal("guard retained after installer exit", err)
-		}
-	})
+	if err = c.Apply(ctx, UpgradeArgs(repos, []string{"sylve-pkg-test"}, false), plan); err != nil {
+		t.Fatal(err)
+	}
 	inventory, err = c.Inventory(ctx)
 	if err != nil || inventory[0].Version != "2.0" {
 		t.Fatalf("inventory %+v %v", inventory, err)
@@ -342,7 +296,7 @@ func TestIntegrationJailPackages(t *testing.T) {
 	if err != nil || len(audit.Packages) != 0 {
 		t.Fatalf("audit %+v %v", audit, err)
 	}
-	t.Run("pkgbase system scope and detached worker", func(t *testing.T) {
+	t.Run("pkgbase system scope", func(t *testing.T) {
 		osVersion, err := hostOSVersion()
 		if err != nil {
 			t.Fatal(err)
@@ -407,7 +361,7 @@ func TestIntegrationJailPackages(t *testing.T) {
 			t.Fatal(err)
 		}
 		systemClient.System = &info
-		systemRepos, configHash, err := systemClient.Repositories(ctx)
+		systemRepos, _, err := systemClient.Repositories(ctx)
 		if err != nil || len(systemRepos) != 1 || systemRepos[0].Name != "FreeBSD-base" {
 			t.Fatalf("system repositories %+v: %v", systemRepos, err)
 		}
@@ -471,67 +425,31 @@ func TestIntegrationJailPackages(t *testing.T) {
 			}
 			c.Target.JID = systemClient.Target.JID
 		})
-		catalogHash, err := systemClient.CatalogDigest(ctx, systemRepos)
-		if err != nil {
-			t.Fatal(err)
-		}
-		work := Work{Binary: systemClient.Binary, Target: systemClient.Target, Arguments: UpgradeArgs(systemRepos, baseNames, false), Plan: systemPlan, InventoryDigest: InventoryDigest(current), RepositoryHash: configHash, CatalogHash: catalogHash, ManagedPaths: systemClient.ManagedPaths, Scope: ScopeSystem, System: &info}
-		runWorker := func(label string, work Work, wantError string) {
-			t.Helper()
-			workerDir := filepath.Join(dir, "system-worker-"+label)
-			if err := os.Mkdir(workerDir, 0700); err != nil {
-				t.Fatal(err)
-			}
-			manifest, _ := json.Marshal(work)
-			manifestPath := filepath.Join(workerDir, "work.json")
-			if err := os.WriteFile(manifestPath, manifest, 0600); err != nil {
-				t.Fatal(err)
-			}
-			guard, err := os.OpenFile(filepath.Join(workerDir, "worker.lock"), os.O_CREATE|os.O_RDWR, 0600)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer guard.Close()
-			if err = syscall.Flock(int(guard.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-				t.Fatal(err)
-			}
-			worker := exec.Command(os.Args[0], "-test.run=^TestIntegrationJailPackagesWorker$")
-			worker.Env = append(Environment(), "SYLVE_PKG_WORKER_MANIFEST="+manifestPath)
-			worker.ExtraFiles = []*os.File{guard}
-			output, commandErr := worker.CombinedOutput()
-			data, err := os.ReadFile(filepath.Join(workerDir, "result.json"))
-			var result WorkResult
-			if err != nil || json.Unmarshal(data, &result) != nil {
-				t.Fatalf("missing worker result: %v %s", err, output)
-			}
-			if wantError == "" && (commandErr != nil || result.Error != "") || wantError != "" && (commandErr == nil || !strings.Contains(result.Error, wantError)) {
-				logs, _ := os.ReadFile(filepath.Join(workerDir, "output.log"))
-				t.Fatalf("worker expected %q, got %q: %v\n%s\n%s", wantError, result.Error, commandErr, output, logs)
-			}
-		}
 		changedHost := info
 		changedHost.HostOSVersion++
-		invalidWork := work
-		invalidWork.System = &changedHost
-		runWorker("changed-host", invalidWork, "package_plan_stale")
-		invalidWork = work
-		invalidWork.Scope, invalidWork.System = "", nil
-		invalidWork.CatalogHash, err = c.CatalogDigest(ctx, applicationRepos)
-		if err != nil {
+		invalidClient := systemClient
+		invalidClient.System = &changedHost
+		arguments := UpgradeArgs(systemRepos, baseNames, false)
+		if err = invalidClient.Apply(ctx, arguments, systemPlan); err == nil || !strings.Contains(err.Error(), "package_plan_stale") {
+			t.Fatalf("accepted changed host: %v", err)
+		}
+		invalidClient.Scope, invalidClient.System = "", nil
+		if err = invalidClient.Apply(ctx, arguments, systemPlan); err == nil || !strings.Contains(err.Error(), "protected_package_change") {
+			t.Fatalf("application scope accepted system packages: %v", err)
+		}
+		if _, err = os.Stat(filepath.Join(root, scriptMarker)); !os.IsNotExist(err) {
+			t.Fatal("rejected transactions ran an installation script")
+		}
+		if err = systemClient.Apply(ctx, arguments, systemPlan); err != nil {
 			t.Fatal(err)
 		}
-		runWorker("default-application-scope", invalidWork, "protected_package_change")
-		if _, err = os.Stat(filepath.Join(root, scriptMarker)); !os.IsNotExist(err) {
-			t.Fatal("rejected workers ran an installation script")
-		}
-		runWorker("approved", work, "")
 		updatedInventory, err := systemClient.Inventory(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, pkg := range updatedInventory {
 			if pkg.Kind == KindBase && pkg.Version != updated || pkg.Name == "sylve-pkg-test" && pkg.Version != "2.0" {
-				t.Fatalf("system worker changed the wrong package/version: %+v", pkg)
+				t.Fatalf("system upgrade changed the wrong package/version: %+v", pkg)
 			}
 		}
 		if value, err := os.ReadFile(filepath.Join(root, configFile)); err != nil || string(value) != "vendor=local\n" {
@@ -544,7 +462,7 @@ func TestIntegrationJailPackages(t *testing.T) {
 			t.Fatalf("online system script did not execute: %v", err)
 		}
 		if _, err = os.Stat(configFile); !os.IsNotExist(err) {
-			t.Fatal("system worker wrote a host configuration file")
+			t.Fatal("system upgrade wrote a host configuration file")
 		}
 		t.Run("pkg self upgrade is rejected before any installation", func(t *testing.T) {
 			manifest := map[string]any{"name": "pkg", "version": "1", "origin": "ports-mgmt/pkg", "abi": abi, "comment": "Isolated package manager fixture", "desc": "Isolated fixture", "maintainer": "test@example.invalid", "www": "https://example.invalid", "prefix": "/usr/local"}
@@ -582,15 +500,5 @@ func TestIntegrationJailPackages(t *testing.T) {
 	})
 	if _, err = os.Stat("/usr/local/share/sylve-pkg-test/value"); !os.IsNotExist(err) {
 		t.Fatal(fmt.Errorf("fixture unexpectedly wrote outside jail: %v", err))
-	}
-}
-
-func TestIntegrationJailPackagesWorker(t *testing.T) {
-	manifest := os.Getenv("SYLVE_PKG_WORKER_MANIFEST")
-	if manifest == "" {
-		t.Skip("internal subprocess fixture")
-	}
-	if err := RunWorker(manifest); err != nil {
-		t.Fatal(err)
 	}
 }

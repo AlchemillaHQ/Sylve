@@ -10,6 +10,7 @@
 		portalProps,
 		children,
 		overlayClass,
+		controlsClass,
 		showCloseButton = true,
 		showResetButton = false,
 		onClose,
@@ -24,6 +25,7 @@
 		onClose?: () => void;
 		onReset?: () => void;
 		overlayClass?: string;
+		controlsClass?: string;
 	} = $props();
 </script>
 
@@ -41,11 +43,11 @@
 	>
 		{@render children?.()}
 		{#if showCloseButton || showResetButton}
-			<div class="absolute top-6 right-6 flex items-center gap-2">
+			<div class={cn('absolute top-6 right-6 flex items-center gap-2', controlsClass)}>
 				{#if showResetButton}
 					<button
 						onclick={onReset}
-						class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+						class="inline-flex size-5 items-center justify-center opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
 					>
 						<span class="icon-[radix-icons--reset] h-5 w-5"></span>
 						<span class="sr-only">Reset</span>
@@ -54,7 +56,7 @@
 				{#if showCloseButton}
 					<DialogPrimitive.Close
 						onclick={onClose}
-						class="opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
+						class="inline-flex size-5 items-center justify-center opacity-50 transition-opacity hover:opacity-100 focus:outline-none disabled:pointer-events-none"
 						data-slot="dialog-close"
 					>
 						<span class="icon-[lucide--x] h-5 w-5"></span>

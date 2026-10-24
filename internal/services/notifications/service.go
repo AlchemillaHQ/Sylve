@@ -1094,6 +1094,21 @@ func (s *Service) TestRule(ctx context.Context, input TestRuleInput) error {
 }
 
 func buildTestEventInput(templateKey, targetKey, kind, condition string, now time.Time) notifier.EventInput {
+	if _, _, ok := notifier.HostUpdateKind(kind); ok {
+		severity := "info"
+		if templateKey == "system.updates.vulnerabilities" || templateKey == "system.updates.health" {
+			severity = "warning"
+		}
+		return notifier.EventInput{
+			Kind:        kind,
+			Title:       "[TEST] Host updates",
+			Body:        "Demonstration host-update notification. No packages were changed and no audit or update was run.",
+			Severity:    severity,
+			Source:      "settings.notifications.test",
+			Fingerprint: fmt.Sprintf("test-host-updates-%s-%d", condition, now.UnixNano()),
+			Metadata:    map[string]string{"test": "true", "condition": condition},
+		}
+	}
 	if counter, ok := notifier.DiskSmartCounterByKey(condition); ok && kind == notifier.KindForDiskSmart(counter.KindPrefix, targetKey) {
 		return notifier.EventInput{
 			Kind: kind, Title: fmt.Sprintf("[TEST] Disk %s has %s", targetKey, strings.ToLower(counter.Label)),
@@ -1228,6 +1243,14 @@ func buildTestEventInput(templateKey, targetKey, kind, condition string, now tim
 
 func defaultTestConditionForTemplate(templateKey string) string {
 	switch templateKey {
+	case "system.updates.available":
+		return "host_update_available"
+	case "system.updates.vulnerabilities":
+		return "host_vulnerabilities_changed"
+	case "system.updates.health":
+		return "host_check_unavailable"
+	case "system.updates.operation":
+		return "host_update_completed"
 	case RuleTemplateJailPackageVulnerabilities:
 		return "vulnerabilities_changed"
 	case RuleTemplateJailPackageHealth:
@@ -2017,6 +2040,34 @@ func (s *Service) loadRuleTemplateDefinitions(tx *gorm.DB, storageDefinitions []
 	}
 
 	definitions = append(definitions, storageDefinitions...)
+	hostUpdatesEnabled := false
+	if tx.Migrator().HasTable(&models.HostUpdateState{}) {
+		var count int64
+		if err := tx.Model(&models.HostUpdateState{}).Where("id = 1").Count(&count).Error; err != nil {
+			return nil, nil, err
+		}
+		hostUpdatesEnabled = count != 0
+	}
+	if hostUpdatesEnabled {
+		for _, category := range []struct{ key, label, description string }{
+			{"available", "Host Updates Available", "New host package and standalone Sylve updates."},
+			{"vulnerabilities", "Host Package Vulnerabilities", "New and no-longer-reported registered-package findings."},
+			{"health", "Host Update Monitoring Health", "Persistent host check failures and recovery."},
+			{"operation", "Host Update Results", "Host package and Sylve update completion or failure."},
+		} {
+			definitions = append(definitions, &ruleTemplateDefinition{
+				View: RuleTemplateView{
+					Key:         "system.updates." + category.key,
+					Label:       category.label,
+					Description: category.description,
+					TargetType:  "host",
+					Targets:     []RuleTemplateTargetView{{Key: "host", Label: "This host"}},
+				},
+				AutoCreateRules: true,
+				ActiveTargets:   map[string]struct{}{"host": {}},
+			})
+		}
+	}
 	packageDefinitions, err := packageTemplateDefinitions(tx)
 	if err != nil {
 		return nil, nil, err
@@ -3595,6 +3646,9 @@ func normalizeRuleTargetKey(value string) string {
 }
 
 func resolveTemplateTargetFromKind(kind string) (string, string, bool) {
+	if template, target, ok := notifier.HostUpdateKind(kind); ok {
+		return template, target, true
+	}
 	if template, target, ok := notifier.JailPackageKind(kind); ok {
 		return template, target, true
 	}
@@ -3635,6 +3689,11 @@ func ruleKindForTemplateTarget(templateKey, targetKey string) (string, error) {
 	}
 
 	switch templateKey {
+	case "system.updates.available", "system.updates.vulnerabilities", "system.updates.health", "system.updates.operation":
+		if targetKey != "host" {
+			return "", fmt.Errorf("notification_rule_target_required")
+		}
+		return templateKey + ".host", nil
 	case RuleTemplateZFSScrub:
 		return notifier.KindForZFSScrub(targetKey), nil
 	case RuleTemplateJailPackageVulnerabilities:

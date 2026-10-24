@@ -5,11 +5,13 @@ package pkgmanager
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPackageCommandsRequireJailAndCannotInjectFlags(t *testing.T) {
@@ -49,6 +51,19 @@ func TestPackageCommandOutputIsBounded(t *testing.T) {
 	}
 	if buffer.String() != "abcd" || !buffer.truncated {
 		t.Fatalf("output=%q truncated=%v", buffer.String(), buffer.truncated)
+	}
+}
+
+func TestApplyStopsWithDaemonContext(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "pkg-fixture")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nexec /bin/sleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	client := Client{Binary: binary, Target: Target{JID: 4, Name: "fixture", Root: "/fixture"}}
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	if err := client.Apply(ctx, []string{"upgrade"}, Plan{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("installer ignored cancellation: %v", err)
 	}
 }
 
@@ -137,19 +152,21 @@ func TestPackageFileChecksCoverInstalledAndCandidateArchives(t *testing.T) {
 			{name: "normalized boot", files: "/usr/local/../../boot/loader\n", reject: true},
 		} {
 			t.Run(source+"/"+test.name, func(t *testing.T) {
-				client := Client{Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()}, RunCommand: func(_ context.Context, args []string) (Result, error) {
+				root := t.TempDir()
+				client := Client{Target: Target{JID: 1, Name: "fixture", Root: root}, RunCommand: func(_ context.Context, args []string) (Result, error) {
 					if slices.Contains(args, "search") {
-						return Result{Stdout: `[{"name":"app","version":"2","repopath":"All/app-2.pkg"}]`}, nil
+						return Result{Stdout: archiveTestMetadata("app", "2", "All/app-2.pkg")}, nil
 					}
 					switch args[len(args)-1] {
 					case "app-2":
+						writeTestArchive(t, root, "app", "2")
 						return Result{}, nil
 					case "%n\t%v\t%o":
 						return Result{Stdout: "app\t2\tmisc/app\n"}, nil
 					case "%Fp", "app":
 						expected := []string{"query", "%Fp", "app"}
 						if source == "candidate" {
-							expected = []string{"query", "-F", "/var/cache/pkg/sylve-inspect/All/app-2.pkg", "%Fp"}
+							expected = []string{"query", "-F", "/var/cache/pkg/app-2~f8b1f712f0.pkg", "%Fp"}
 						}
 						if !slices.Equal(args[slices.Index(args, "query"):], expected) {
 							t.Fatalf("unexpected file-list query: %v", args)

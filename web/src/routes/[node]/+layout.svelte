@@ -429,6 +429,32 @@
 						]
 					},
 					{
+						label: 'Updates',
+						icon: 'mdi--update',
+						children: [
+							{
+								label: 'Packages',
+								icon: 'mdi--package-variant',
+								href: `/${node}/system/updates/packages`
+							},
+							{
+								label: 'Sylve',
+								icon: 'sylve',
+								href: `/${node}/system/updates/sylve`
+							},
+							{
+								label: 'Audit',
+								icon: 'mdi--shield-search',
+								href: `/${node}/system/updates/audit`
+							},
+							{
+								label: 'History',
+								icon: 'mdi--history',
+								href: `/${node}/system/updates/history`
+							}
+						]
+					},
+					{
 						label: 'Services',
 						icon: 'material-symbols--design-services-outline-rounded',
 						href: `/${node}/system/services`

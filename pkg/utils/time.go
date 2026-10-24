@@ -9,10 +9,29 @@
 package utils
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
+
+func NextCronTime(expression string, after time.Time) (time.Time, error) {
+	if len(expression) > 256 || len(strings.Fields(expression)) != 5 {
+		return time.Time{}, fmt.Errorf("invalid_cron_expression")
+	}
+	schedule, err := cron.ParseStandard(expression)
+	if err != nil {
+		return time.Time{}, err
+	}
+	next := schedule.Next(after.In(time.Local)).UTC()
+	if next.IsZero() {
+		return time.Time{}, fmt.Errorf("invalid_cron_expression")
+	}
+	return next, nil
+}
 
 func ParseZfsTimeUnit(value string) int64 {
 	if value == "-" {

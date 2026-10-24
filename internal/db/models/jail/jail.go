@@ -283,8 +283,9 @@ type Jail struct {
 	MetadataMeta string `json:"metadataMeta"`
 	MetadataEnv  string `json:"metadataEnv"`
 
-	PackageMonitoringEnabled  bool `json:"packageMonitoringEnabled"`
-	PackageAuditIntervalHours int  `json:"packageAuditIntervalHours"`
+	PackageMonitoringEnabled  bool   `json:"packageMonitoringEnabled"`
+	PackageAuditIntervalHours int    `json:"packageAuditIntervalHours"`
+	PackageAuditCronExpr      string `json:"packageAuditCronExpr"`
 
 	CreatedAt time.Time `json:"createdAt" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updatedAt" gorm:"autoUpdateTime"`

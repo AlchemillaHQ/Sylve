@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +26,7 @@ import (
 )
 
 type Target struct {
+	Host    bool   `json:"host,omitempty"`
 	JID     int    `json:"jid"`
 	Name    string `json:"name"`
 	Root    string `json:"root"`
@@ -36,6 +36,12 @@ type Target struct {
 }
 
 func (t Target) validate() error {
+	if t.Host {
+		if t.Name != "host" || t.Root != "/" || t.JID != 0 || t.Offline || t.Dataset != "" || t.GUID != "" {
+			return fmt.Errorf("invalid_package_target")
+		}
+		return nil
+	}
 	if t.Name == "" || !filepath.IsAbs(t.Root) || filepath.Clean(t.Root) == "/" {
 		return fmt.Errorf("invalid_package_target")
 	}
@@ -58,15 +64,19 @@ type Result struct {
 type Runner func(context.Context, []string) (Result, error)
 
 type Client struct {
-	Binary        string
-	Target        Target
-	Log           io.Writer
-	RunCommand    Runner
-	Scope         Scope
-	System        *SystemInfo
-	HostOSVersion func() (uint32, error)
-	Guard         *os.File
-	ManagedPaths  []string
+	Binary             string
+	Target             Target
+	Log                io.Writer
+	RunCommand         Runner
+	Scope              Scope
+	System             *SystemInfo
+	HostOSVersion      func() (uint32, error)
+	ManagedPaths       []string
+	HostSystem         *HostInfo
+	SylveVersion       string
+	PreserveExecutable string
+	HostSelection      []string
+	HostRebootRequired bool
 }
 
 type Repository struct {
@@ -83,6 +93,9 @@ func (c *Client) args(args ...string) ([]string, error) {
 	if err := c.Target.validate(); err != nil {
 		return nil, err
 	}
+	if c.Target.Host != (c.Scope == ScopeHost) {
+		return nil, fmt.Errorf("invalid_package_scope")
+	}
 	selector, target := "-j", strconv.Itoa(c.Target.JID)
 	if c.Target.Offline {
 		if !offlineCommand(args) {
@@ -90,15 +103,21 @@ func (c *Client) args(args ...string) ([]string, error) {
 		}
 		selector, target = "-c", c.Target.Root
 	}
-	base := []string{
-		selector, target,
+	base := []string{}
+	if !c.Target.Host {
+		base = []string{selector, target}
+	}
+	base = append(base,
 		"-o", "PKG_DBDIR=/var/db/pkg", "-o", "PKG_CACHEDIR=/var/cache/pkg",
-		"-o", "IGNORE_OSVERSION=false", "-o", "IGNORE_OSMAJOR=false",
+		"-o", "IGNORE_OSVERSION="+strconv.FormatBool(c.Target.Host), "-o", "IGNORE_OSMAJOR=false",
 		"-o", "PKG_ENABLE_PLUGINS=false", "-o", "ASSUME_ALWAYS_YES=false",
 		"-o", "DEFAULT_ALWAYS_YES=false", "-o", "REPO_AUTOUPDATE=false",
 		"-o", "WARN_SIZE_LIMIT=0", "-o", "AUDIT_IGNORE_GLOB=[]", "-o", "AUDIT_IGNORE_REGEX=[]",
 		"-o", "ALIAS={}", "-o", "PKG_ENV={}", "-o", "SAT_SOLVER=", "-o", "CUDF_SOLVER=",
 		"-o", "HANDLE_RC_SCRIPTS=false",
+	)
+	if c.Target.Host {
+		base = append(base, "-o", "AUTOREMOVE=false", "-o", "AUTOMERGE=true", "-o", "MERGETOOL=", "-o", "RUN_SCRIPTS=true", "-o", "PKG_TRIGGERS_ENABLE=true")
 	}
 	if c.Target.Offline && !(len(args) == 1 && args[0] == "-vv") {
 		base = append(base, "-o", "RUN_SCRIPTS=false", "-o", "PKG_TRIGGERS_ENABLE=false",
@@ -144,8 +163,9 @@ func (c *Client) Run(ctx context.Context, args ...string) (result Result, err er
 	if err != nil {
 		return Result{}, err
 	}
+	streaming := false
 	defer func() {
-		if c.Log == nil {
+		if c.Log == nil || streaming {
 			return
 		}
 		output := result.Stderr
@@ -180,6 +200,13 @@ func (c *Client) Run(ctx context.Context, args ...string) (result Result, err er
 	stderr := &boundedBuffer{limit: 64 << 10}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
+	if len(args) > 0 && args[0] == "fetch" && c.Log != nil {
+		log := NewLogWriter(c.Log)
+		defer log.Flush()
+		cmd.Stdout = io.MultiWriter(stdout, log)
+		cmd.Stderr = io.MultiWriter(stderr, log)
+		streaming = true
+	}
 	err = cmd.Run()
 	result = Result{Stdout: stdout.String(), Stderr: stderr.String()}
 	if cmd.ProcessState != nil {
@@ -214,24 +241,34 @@ func Redact(text string) string {
 }
 
 func Probe(binary string) error {
+	version, err := probeVersion(binary)
+	if err != nil {
+		return err
+	}
+	if version != SupportedVersion {
+		return fmt.Errorf("pkg_version_unsupported: tested version is %s", SupportedVersion)
+	}
+	return nil
+}
+
+func probeVersion(binary string) (string, error) {
 	if binary == "" {
 		binary = DefaultBinary
 	}
 	info, err := os.Stat(binary)
 	if err != nil || !info.Mode().IsRegular() {
-		return fmt.Errorf("pkg_static_not_found")
+		return "", fmt.Errorf("pkg_static_not_found")
 	}
 	if st, ok := info.Sys().(*syscall.Stat_t); !ok || st.Uid != 0 || info.Mode().Perm()&0022 != 0 {
-		return fmt.Errorf("pkg_static_not_trusted")
+		return "", fmt.Errorf("pkg_static_not_trusted")
 	}
 	cmd := exec.Command(binary, "-v")
 	cmd.Env = Environment()
 	out, err := cmd.Output()
-	version := strings.TrimSpace(string(out))
-	if err != nil || version != SupportedVersion {
-		return fmt.Errorf("pkg_version_unsupported: tested version is %s", SupportedVersion)
+	if err != nil {
+		return "", fmt.Errorf("pkg_version_unsupported: tested version is %s", SupportedVersion)
 	}
-	return nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 func (c *Client) Inventory(ctx context.Context) ([]Package, error) {
@@ -403,56 +440,6 @@ func (c *Client) openJailDirectory(parts ...string) (*os.File, error) {
 	return os.NewFile(uintptr(fd), "package-db-directory"), nil
 }
 
-func validInspectionPath(relative string) bool {
-	return relative != "" && relative != "." && relative != ".." && !path.IsAbs(relative) &&
-		path.Clean(relative) == relative && !strings.HasPrefix(relative, "../") && !strings.ContainsAny(relative, "\\\x00\r\n\t")
-}
-
-func (c *Client) validateInspectionArchive(relative string) error {
-	if !validInspectionPath(relative) {
-		return fmt.Errorf("package_archive_path_unavailable")
-	}
-	parts := append([]string{"var", "cache", "pkg", "sylve-inspect"}, strings.Split(relative, "/")...)
-	parent, err := c.openJailDirectory(parts[:len(parts)-1]...)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("package_archive_path_unavailable: %w", err)
-	}
-	defer parent.Close()
-	var info unix.Stat_t
-	err = unix.Fstatat(int(parent.Fd()), parts[len(parts)-1], &info, unix.AT_SYMLINK_NOFOLLOW)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil || info.Mode&unix.S_IFMT != unix.S_IFREG {
-		return fmt.Errorf("package_archive_path_unavailable: %s", relative)
-	}
-	return nil
-}
-
-func (c *Client) removeInspectionArchive(relative string) {
-	if !validInspectionPath(relative) {
-		return
-	}
-	parts := append([]string{"var", "cache", "pkg", "sylve-inspect"}, strings.Split(relative, "/")...)
-	flags := 0
-	for len(parts) > 3 {
-		parent, err := c.openJailDirectory(parts[:len(parts)-1]...)
-		if err != nil {
-			return
-		}
-		err = unix.Unlinkat(int(parent.Fd()), parts[len(parts)-1], flags)
-		_ = parent.Close()
-		if err != nil {
-			return
-		}
-		parts = parts[:len(parts)-1]
-		flags = unix.AT_REMOVEDIR
-	}
-}
-
 var repoStart = regexp.MustCompile(`^\s*([A-Za-z0-9_.-]+):\s*\{`)
 
 func (c *Client) Repositories(ctx context.Context) ([]Repository, string, error) {
@@ -503,7 +490,9 @@ func (c *Client) Repositories(ctx context.Context) ([]Repository, string, error)
 		if !repo.Enabled {
 			continue
 		}
-		if scope == ScopeSystem {
+		if scope == ScopeHost {
+			selected = append(selected, repo)
+		} else if scope == ScopeSystem {
 			if c.System != nil && repo.Name == c.System.Repository {
 				selected = append(selected, repo)
 			}
@@ -574,7 +563,7 @@ func UpgradeArgs(repos []Repository, names []string, dry bool) []string {
 }
 
 func (c *Client) Preview(ctx context.Context, repos []Repository, names []string) (Plan, error) {
-	if len(names) == 0 {
+	if len(names) == 0 && c.Scope != ScopeHost {
 		return Plan{}, fmt.Errorf("no_eligible_packages")
 	}
 	for _, name := range names {
@@ -597,85 +586,16 @@ func (c *Client) Preview(ctx context.Context, repos []Repository, names []string
 	return ParsePlan(result.Stdout)
 }
 
-func (c *Client) candidateArchivePath(ctx context.Context, change Change, repository string) (string, error) {
-	result, err := c.Run(ctx, "search", "-U", "-r", repository, "-e", "-S", "pkg-name", "-R", "--raw-format", "json", change.Name+"-"+change.To)
-	if err != nil {
-		return "", err
-	}
-	if result.ExitCode != 0 {
-		return "", commandError(result)
-	}
-	var candidates []struct {
-		Name     string `json:"name"`
-		Version  string `json:"version"`
-		Path     string `json:"path"`
-		RepoPath string `json:"repopath"`
-	}
-	if err = json.Unmarshal([]byte(result.Stdout), &candidates); err != nil {
-		return "", fmt.Errorf("package_archive_path_unavailable: %s: invalid catalog JSON: %w", change.Name, err)
-	}
-	if len(candidates) != 1 {
-		return "", fmt.Errorf("package_archive_path_unavailable: %s: expected one candidate, got %d", change.Name, len(candidates))
-	}
-	candidate := candidates[0]
-	if candidate.RepoPath == "" {
-		candidate.RepoPath = candidate.Path
-	}
-	if candidate.Name != change.Name || candidate.Version != change.To {
-		return "", fmt.Errorf("package_archive_path_unavailable: %s: candidate name/version mismatch", change.Name)
-	}
-	if candidate.Path != "" && candidate.Path != candidate.RepoPath {
-		return "", fmt.Errorf("package_archive_path_unavailable: %s: conflicting path/repopath", change.Name)
-	}
-	relative := strings.TrimPrefix(candidate.RepoPath, "./")
-	if !validInspectionPath(relative) {
-		return "", fmt.Errorf("package_archive_path_unavailable: %s: unsafe repository path %.512q", change.Name, candidate.RepoPath)
-	}
-	return relative, nil
-}
-
 func (c *Client) VerifyCandidates(ctx context.Context, plan Plan, repos []Repository) error {
+	if c.Scope == ScopeHost {
+		return c.verifyHostCandidates(ctx, plan, repos)
+	}
 	if err := c.validateScopedChanges(plan); err != nil {
 		return err
 	}
 	scope, _ := NormalizeScope(c.Scope)
 	var files []string
-	for _, change := range plan.Changes {
-		if change.Action == "remove" {
-			continue
-		}
-		repository := change.Repository
-		if repository == "" && len(repos) == 1 {
-			repository = repos[0].Name
-		}
-		if !slices.ContainsFunc(repos, func(repo Repository) bool { return repo.Name == repository }) {
-			return fmt.Errorf("package_repository_ambiguous: %s", change.Name)
-		}
-		if scope == ScopeSystem && repository != c.System.Repository {
-			return fmt.Errorf("package_system_repository_mixed")
-		}
-		if change.To == "" || strings.ContainsAny(change.To, "/\\\x00\r\n\t ") {
-			return fmt.Errorf("invalid_package_version")
-		}
-		relative, err := c.candidateArchivePath(ctx, change, repository)
-		if err == nil {
-			err = c.validateInspectionArchive(relative)
-		}
-		if err != nil {
-			if c.Log != nil {
-				_, _ = fmt.Fprintf(c.Log, "Archive path verification failed for %s: %s\n", change.Name, Redact(err.Error()))
-			}
-			return err
-		}
-		archive := path.Join("/var/cache/pkg/sylve-inspect", relative)
-		defer c.removeInspectionArchive(relative)
-		result, err := c.Run(ctx, "fetch", "-U", "-y", "-r", repository, "-o", "/var/cache/pkg/sylve-inspect", change.Name+"-"+change.To)
-		if err != nil {
-			return err
-		}
-		if result.ExitCode != 0 {
-			return commandError(result)
-		}
+	err := c.inspectCandidates(ctx, plan, repos, func(change Change, archive string) error {
 		if scope == ScopeSystem {
 			metadata, err := c.systemPackage(ctx, change.Name, archive)
 			if err != nil {
@@ -688,7 +608,7 @@ func (c *Client) VerifyCandidates(ctx context.Context, plan Plan, repos []Reposi
 				return err
 			}
 		} else {
-			result, err = c.Run(ctx, "query", "-F", archive, "%n\t%v\t%o")
+			result, err := c.Run(ctx, "query", "-F", archive, "%n\t%v\t%o")
 			if err != nil {
 				return err
 			}
@@ -702,6 +622,10 @@ func (c *Client) VerifyCandidates(ctx context.Context, plan Plan, repos []Reposi
 			return err
 		}
 		files = append(files, paths...)
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return c.verifyPackagePaths(ctx, files)
 }
@@ -715,6 +639,23 @@ func (c *Client) ValidateInstalled(plan Plan, inventory []Package) error {
 	for _, pkg := range inventory {
 		installed[pkg.Name] = pkg
 	}
+	if scope == ScopeHost && len(c.HostSelection) > 0 {
+		for _, change := range plan.Changes {
+			origin := installed[change.Name].Origin
+			if strings.HasPrefix(change.Name, "FreeBSD-") || strings.HasPrefix(origin, "base/") || Classify(change.Name, origin) == KindKernel {
+				return fmt.Errorf("host_base_selection_requires_all")
+			}
+		}
+	}
+	if scope == ScopeHost && slices.ContainsFunc(plan.Changes, func(change Change) bool {
+		return strings.HasPrefix(change.Name, "FreeBSD-") || strings.HasPrefix(installed[change.Name].Origin, "base/")
+	}) {
+		for _, pkg := range inventory {
+			if pkg.Locked && (strings.HasPrefix(pkg.Origin, "base/") || pkg.Kind == KindKernel) {
+				return fmt.Errorf("host_base_package_locked: %s", pkg.Name)
+			}
+		}
+	}
 	for _, change := range plan.Changes {
 		pkg, ok := installed[change.Name]
 		if !ok {
@@ -725,6 +666,12 @@ func (c *Client) ValidateInstalled(plan Plan, inventory []Package) error {
 		}
 		if pkg.Locked || (scope == ScopeApplications && pkg.Protected) {
 			return fmt.Errorf("protected_or_locked_package_change: %s", pkg.Name)
+		}
+		if scope == ScopeHost && change.From != "" && pkg.Version != change.From {
+			return fmt.Errorf("package_inventory_changed")
+		}
+		if scope == ScopeHost && (pkg.Origin == "sysutils/sylve" || strings.HasPrefix(pkg.Origin, "base/")) && (change.Action == "remove" || change.Action == "downgrade") {
+			return fmt.Errorf("host_protected_package_change: %s", pkg.Name)
 		}
 		if scope == ScopeSystem && (Classify(pkg.Name, pkg.Origin) != KindBase || pkg.Version != change.From) {
 			return fmt.Errorf("package_system_transaction_unsupported: %s", pkg.Name)
@@ -784,7 +731,13 @@ func (c *Client) packageFiles(ctx context.Context, name, archive string) ([]stri
 	files := strings.Split(result.Stdout, "\n")
 	for _, file := range files {
 		clean := path.Clean("/" + strings.TrimSpace(file))
-		if clean == "/boot" || strings.HasPrefix(clean, "/boot/") {
+		if c.Target.Host && (clean == "/boot" || strings.HasPrefix(clean, "/boot/") || strings.HasSuffix(clean, ".ko")) {
+			c.HostRebootRequired = true
+		}
+		if c.Target.Host && c.PreserveExecutable != "" && (clean == c.PreserveExecutable || clean == "/usr/local/sbin/sylve") {
+			return nil, fmt.Errorf("standalone_sylve_package_conflict")
+		}
+		if !c.Target.Host && (clean == "/boot" || strings.HasPrefix(clean, "/boot/")) {
 			return nil, fmt.Errorf("kernel_package_change_unsupported: %s", name)
 		}
 	}

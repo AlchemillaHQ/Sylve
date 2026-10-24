@@ -123,8 +123,10 @@ msgstr "Přepínače"
 #: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
 msgid "Manual"
 msgstr "Ruční"
 
@@ -492,6 +494,7 @@ msgstr "Přihlášení – vytvořit"
 #: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -547,6 +550,7 @@ msgstr "Uživatel"
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Notifications/Bell.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
@@ -554,6 +558,7 @@ msgstr "Uživatel"
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/network/firewall/traffic/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
 msgid "Action"
 msgstr "Akce"
 
@@ -575,6 +580,8 @@ msgstr "Akce"
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
@@ -637,6 +644,7 @@ msgstr "Logo Sylve"
 #: src/lib/components/custom/About.svelte
 #: src/lib/components/custom/Login.svelte
 #: src/lib/components/custom/Login.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Sylve"
 msgstr "Sylve"
 
@@ -854,6 +862,7 @@ msgstr "Poznámku se nepodařilo vytvořit"
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/utilities/downloader/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
@@ -1117,6 +1126,7 @@ msgstr "Toto je poznámka"
 #: src/lib/components/custom/Samba/Config.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/Hardware/RAM.svelte
@@ -1297,6 +1307,10 @@ msgstr "Dočasné úložiště"
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
 #: src/routes/[node]/vm/[rid]/network/+page.svelte
 #: src/routes/datacenter/cluster/+page.svelte
 msgid "Unknown"
@@ -1747,6 +1761,7 @@ msgstr "Vytvořit oddíly"
 #: src/lib/components/custom/VM/Hardware/Storage/EditStorageDialog.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Create.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/storage/+page.svelte
 msgid "Size"
 msgstr "Velikost"
@@ -1919,6 +1934,7 @@ msgstr "Nejdříve změněno"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Type"
 msgstr "Typ"
@@ -2880,10 +2896,12 @@ msgstr ""
 
 #: src/lib/components/custom/DataCenter/Backups/Jobs/Page.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/lib/components/custom/Task/Activity.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/lib/components/skeleton/BottomPanel.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/targets/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -2954,6 +2972,8 @@ msgid "Backup"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/backups/events/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
@@ -3194,6 +3214,7 @@ msgid "Message"
 msgstr ""
 
 #: src/lib/components/custom/Task/Activity.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 msgid "Finished"
 msgstr ""
@@ -3479,6 +3500,8 @@ msgstr ""
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/PeerList.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/ZFS/datasets/snapshots/Jobs.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/routes/[node]/authentication/users/local/+page.svelte
@@ -3489,6 +3512,7 @@ msgstr ""
 #: src/routes/[node]/network/dhcp/leases/+page.svelte
 #: src/routes/[node]/network/dhcp/ranges/+page.svelte
 #: src/routes/[node]/network/vpn/wireguard/clients/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Never"
 msgstr "Nikdy"
 
@@ -3712,6 +3736,7 @@ msgstr ""
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3731,6 +3756,8 @@ msgstr ""
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -3742,6 +3769,7 @@ msgstr "Ano"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
 #: src/lib/components/custom/ZFS/pools/Create.svelte
@@ -3761,6 +3789,8 @@ msgstr "Ano"
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -5846,6 +5876,7 @@ msgid "Hourly"
 msgstr "Hodinově"
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/routes/[node]/jail/[ctid]/+layout.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Daily"
@@ -8408,6 +8439,7 @@ msgstr ""
 #: src/lib/components/custom/Samba/Share.svelte
 #: src/lib/components/custom/Services/Certificates/Form.svelte
 #: src/lib/components/custom/Services/DynamicDNS/Form.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/VM/Hardware/Network.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 msgid "Saving..."
@@ -8952,6 +8984,8 @@ msgstr ""
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/system/updates/history/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Details"
 msgstr "Podrobnosti"
 
@@ -8971,6 +9005,7 @@ msgstr ""
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/network/firewall/logs/+page.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Filter"
 msgstr ""
 
@@ -9367,7 +9402,6 @@ msgstr ""
 msgid "Generate new keypair"
 msgstr ""
 
-#: src/lib/components/ui/custom-input/combobox.svelte
 #: src/lib/components/ui/custom-input/value.svelte
 msgid "Help Information"
 msgstr ""
@@ -10770,6 +10804,7 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/Bootstrap.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Installed"
 msgstr ""
 
@@ -11313,6 +11348,8 @@ msgstr ""
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Locked"
 msgstr ""
 
@@ -11593,6 +11630,7 @@ msgstr ""
 msgid "The VM will be <0>stopped</0> on the source node, its datasets transferred over the network, and then <1>started</1> on the target node. There will be a brief downtime during the transfer."
 msgstr ""
 
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 msgid "Starting…"
 msgstr ""
@@ -12568,6 +12606,7 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Not scheduled"
 msgstr ""
@@ -12873,6 +12912,7 @@ msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Every 6 hours"
 msgstr ""
 
@@ -12881,6 +12921,8 @@ msgid "Daily at 03:00"
 msgstr ""
 
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 msgid "Select or enter a cron expression"
 msgstr ""
@@ -13853,6 +13895,7 @@ msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/services/certificates/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Available"
 msgstr ""
 
@@ -20216,6 +20259,7 @@ msgstr ""
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Automatic"
 msgstr ""
 
@@ -20972,6 +21016,7 @@ msgid "Audit belongs to a different jail incarnation"
 msgstr ""
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Packages"
 msgstr ""
 
@@ -21004,23 +21049,29 @@ msgid "Package details are unavailable."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Installed version"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Available version"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Installed size"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Dependency"
 msgstr ""
 
 #. 0: pkg.name
+#. 0: pkg.name
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Package Details — {0}"
 msgstr ""
 
@@ -21033,15 +21084,18 @@ msgid "Locked and protected packages cannot be upgraded here."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Vulnerabilities"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Recorded findings may be out of date. Run an audit to refresh them."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "No known vulnerabilities found."
 msgstr ""
 
@@ -21052,11 +21106,15 @@ msgstr ""
 #: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/audit/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
 msgid "Version"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Origin"
 msgstr ""
 
@@ -21073,6 +21131,7 @@ msgid "Loading dependencies..."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Details.svelte
+#: src/lib/components/custom/System/Updates/Details.svelte
 msgid "Preview Upgrade"
 msgstr ""
 
@@ -21089,10 +21148,12 @@ msgid "Package Monitoring"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Frequency"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Every 12 hours"
 msgstr ""
 
@@ -21101,6 +21162,7 @@ msgid "Audits can run while the jail is stopped if its filesystem is mounted. Pa
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Recent activity"
 msgstr ""
 
@@ -21109,6 +21171,7 @@ msgid "Last successful audit"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Last attempt"
 msgstr ""
 
@@ -21117,6 +21180,7 @@ msgid "Next audit"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
 msgid "Consecutive failures"
 msgstr ""
 
@@ -21153,10 +21217,12 @@ msgid "Package Audit"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Waiting to start"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Reading packages"
 msgstr ""
 
@@ -21174,6 +21240,7 @@ msgid "Resolving dependencies"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Downloading and verifying packages"
 msgstr ""
 
@@ -21187,6 +21254,7 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Controls.svelte
 msgid "In progress"
 msgstr ""
 
@@ -21203,6 +21271,7 @@ msgid "Operation failed"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Preview ready"
 msgstr ""
 
@@ -21227,6 +21296,7 @@ msgid "Audit complete"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/routes/[node]/system/updates/audit/+page.svelte
 msgid "No known vulnerabilities found"
 msgstr ""
 
@@ -21253,19 +21323,25 @@ msgstr ""
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/audit/+page.svelte
 msgid "Package"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Proposed"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Repository"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/routes/[node]/system/updates/audit/+page.svelte
 msgid "Advisory"
 msgstr ""
 
@@ -21280,14 +21356,6 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 msgid "Available versions are shown in the package list. No packages were changed."
-msgstr ""
-
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "Review .pkgnew and .pkgsave configuration files, then restart the jail and validate its services. Sylve does not restart it automatically."
-msgstr ""
-
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "Review the command output for package messages. Restart affected services or the jail if needed; Sylve does not restart them automatically."
 msgstr ""
 
 #. 0: job.plan.system?.release
@@ -21312,25 +21380,8 @@ msgstr ""
 msgid "The upgrade completed, but the follow-up audit is unavailable. See the command output for details."
 msgstr ""
 
-#. 0: convertDbTime(job.plan.expiresAt)
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "Expires {0}"
-msgstr ""
-
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
 msgid "This preview has expired. Create a new preview to continue."
-msgstr ""
-
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "Create a snapshot"
-msgstr ""
-
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "I acknowledge the jail system changes and manual restart requirements"
-msgstr ""
-
-#: src/lib/components/custom/Jail/Packages/Operation.svelte
-msgid "I acknowledge the listed removals and downgrades"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
@@ -21351,6 +21402,7 @@ msgid "Registered packages only<0/>; not a full base/kernel assessment."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Command output"
 msgstr ""
 
@@ -21363,6 +21415,7 @@ msgid "Upgrade Jail System"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
 msgid "Upgrade"
 msgstr ""
 
@@ -21371,10 +21424,13 @@ msgid "Package inventory is unavailable."
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Vulnerable only"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Updates available"
 msgstr ""
 
@@ -21387,10 +21443,13 @@ msgid "Locked/protected or missing packages cannot be upgraded"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Selection includes filtered-out packages"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
 msgid "Update available"
 msgstr ""
 
@@ -21399,27 +21458,34 @@ msgid "Protected package"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Not audited / stale"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "No known vulnerabilities"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Advisories"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Not checked"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Package update actions"
 msgstr ""
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Updates"
 msgstr ""
 
@@ -21437,15 +21503,7 @@ msgid "<0/> Check for updates"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
-msgid "Preview all eligible application packages, including those hidden by filters. May download archives; installs nothing."
-msgstr ""
-
-#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 msgid "<0/> Preview all upgrades"
-msgstr ""
-
-#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
-msgid "Preview selected application packages. May download archives; installs nothing."
 msgstr ""
 
 #. 0: selected.length
@@ -21457,11 +21515,6 @@ msgstr ""
 msgid "Jail system"
 msgstr ""
 
-#. 0: timestamp(view.systemCheckedAt)
-#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
-msgid "Download and verify a same-release FreeBSD base preview without installing packages. Last check: {0}"
-msgstr ""
-
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 msgid "<0/> Preview system upgrade"
 msgstr ""
@@ -21471,11 +21524,14 @@ msgstr ""
 msgid "Last successful audit: {0}"
 msgstr ""
 
+#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/audit/+page.svelte
 msgid "Audit"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Filtered"
 msgstr ""
 
@@ -21484,12 +21540,15 @@ msgstr ""
 msgid "Package monitoring"
 msgstr ""
 
+#: src/lib/components/custom/System/Updates/Controls.svelte
+#: src/lib/components/custom/System/Updates/Controls.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
 msgid "Refresh inventory"
 msgstr ""
 
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "No installed packages"
 msgstr ""
 
@@ -21499,4 +21558,450 @@ msgstr ""
 
 #: src/routes/[node]/system/notifications/rules/+page.svelte
 msgid "Audit unavailable"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Update Monitoring"
+msgstr ""
+
+#: src/lib/components/custom/Notifications/Bell.svelte
+msgid "View Host Updates"
+msgstr ""
+
+#: src/routes/[node]/+layout.svelte
+msgid "History"
+msgstr ""
+
+#: src/routes/[node]/system/updates/history/+page.svelte
+msgid "Operation"
+msgstr ""
+
+#: src/routes/[node]/system/updates/history/+page.svelte
+msgid "Requested by"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Commit"
+msgstr ""
+
+#: src/routes/[node]/system/updates/history/+page.svelte
+msgid "View selected operation"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Auditing packages"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Refreshing repositories"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Resolving updates"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Checking release"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Restarting Sylve — waiting to reconnect"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Waiting for Sylve to reconnect…"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Host Update"
+msgstr ""
+
+#. 0: node; 1: currentId
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "{0} · Operation {1}"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Loading operation…"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Release"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Rolling"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Tagged"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "SHA-256"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Built for"
+msgstr ""
+
+#. 0: job.plan.release.freebsd
+#. 0: published.release.freebsd
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "FreeBSD {0}"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "This preview expired. Request a fresh preview."
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Vulnerability findings changed"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Monitoring unavailable"
+msgstr ""
+
+#: src/routes/[node]/system/notifications/rules/+page.svelte
+msgid "Update completed"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Controls.svelte
+msgid "View active operation"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Details.svelte
+msgid "Use Updates → Preview all upgrades for base and kernel packages."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Details.svelte
+msgid "Locked packages cannot be upgraded here."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Last package check"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Last audit"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Next check"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Some packages may have changed. Review command output and installed state before retrying. No automatic retry or downgrade is performed."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Available versions are shown in Packages. Nothing was installed."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Update pkg first, then preview the remaining packages again. Jail package management and monitoring require pkg 2.8.4 and may become unavailable after this upgrade."
+msgstr ""
+
+#. 0: job?.plan ? convertDbTime(job.plan.expiresAt) \\: ''
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Expires {0}. Nothing has been installed."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Package-managed"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Standalone"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Unverified"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Release channel"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Update Sylve through Packages. Locked packages remain package-managed."
+msgstr ""
+
+#: src/routes/[node]/system/updates/audit/+page.svelte
+msgid "Advisory ID"
+msgstr ""
+
+#: src/routes/[node]/system/updates/audit/+page.svelte
+msgid "No current audit results"
+msgstr ""
+
+#: src/routes/[node]/system/updates/history/+page.svelte
+msgid "No recent operations"
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "Base and kernel packages require Preview all upgrades"
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "Selection includes locked, protected or missing packages"
+msgstr ""
+
+#. 0: view?.checkedAt ? convertDbTime(view.checkedAt) \\: 'Never'
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "Last successful check: {0}"
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "<0/>Check for updates"
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "<0/>Preview all upgrades"
+msgstr ""
+
+#. 0: selected.length
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "<0/>Preview selected ({0})"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Sylve Release Channel"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Custom cron uses the node's local time: minute hour day month weekday (0–6, Sunday = 0)."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Enter a valid five-field cron expression."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade complete. Review configuration changes and restart the jail."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Upgrade complete. Review package messages; restart services as needed."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "Create snapshot"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "I acknowledge the upgrade impact"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Packages/Operation.svelte
+msgid "I acknowledge removals/downgrades"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Controls.svelte
+#: src/lib/components/custom/System/Updates/Controls.svelte
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Monitoring"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Monitoring saved"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Checks for updates and known package vulnerabilities."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Monitoring.svelte
+msgid "Updates are never installed automatically. Delivery is configured under System → Notifications."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Preparing and applying update"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Ready to update"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "The executable may have changed. Review the operation log before retrying. No automatic rollback is performed."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Sylve will restart to apply this update. Replication-protected guests may stop or fail over. Back up configuration and data first; no automatic rollback is performed."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Create boot environment"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "Boot environment unavailable."
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+msgid "I acknowledge the restart and maintenance impact"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Update & restart"
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Preview all eligible application packages, including those hidden by filters. Downloads and installs no packages."
+msgstr ""
+
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Preview selected application packages. Downloads and installs no packages."
+msgstr ""
+
+#. 0: timestamp(view.systemCheckedAt)
+#: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+msgid "Preview same-release FreeBSD base changes without downloading or installing packages. Last check: {0}"
+msgstr ""
+
+#: src/routes/[node]/system/updates/audit/+page.svelte
+msgid "Open selected advisory in a new tab"
+msgstr ""
+
+#: src/routes/[node]/system/updates/audit/+page.svelte
+msgid "Open Advisory"
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "Preview all host packages, including base, kernel and kernel modules. Downloads and installs no packages."
+msgstr ""
+
+#: src/routes/[node]/system/updates/packages/+page.svelte
+msgid "Preview selected packages. Downloads and installs no packages."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Release channel saved"
+msgstr ""
+
+#. 0: updates.node
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Sylve Updates · {0}"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Checking..."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "This channel is also used by scheduled monitoring."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Update incompatible"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Check unavailable"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Latest eligible build"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Sylve is up to date."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "No newer eligible release."
+msgstr ""
+
+#. 0: convertDbTime(published.releaseCheckedAt)
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Last checked {0}."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Saving release channel..."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "View Packages"
+msgstr ""
+
+#: src/lib/components/custom/System/Updates/Operation.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Built at"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "<0/>Current Build"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Sylve Updates"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Check For Updates"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Rolling Releases - Recommended"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Tagged Releases - Not recommended"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Published build"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Preview only"
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Loading latest release..."
+msgstr ""
+
+#: src/routes/[node]/system/updates/sylve/+page.svelte
+msgid "Release information is unavailable."
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Check"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Audit"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Package Preview"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Install Packages"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Check Sylve"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Sylve Preview"
+msgstr ""
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "Host Updates - Install Sylve"
 msgstr ""

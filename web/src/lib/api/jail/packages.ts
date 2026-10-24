@@ -55,12 +55,13 @@ export const setPackageMonitoring = (
 	ctId: number,
 	enabled: boolean,
 	intervalHours: number,
+	cronExpr = '',
 	options: NodeAPIRequestOptions = {}
 ) =>
 	apiRequestResult(
 		`/jail/${ctId}/packages/monitoring`,
 		PackageMonitoringSchema,
 		'PUT',
-		{ enabled, intervalHours },
+		{ enabled, intervalHours, cronExpr },
 		options
 	);

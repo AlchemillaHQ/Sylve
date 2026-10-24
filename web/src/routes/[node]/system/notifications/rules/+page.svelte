@@ -712,6 +712,14 @@ under sponsorship from the FreeBSD Foundation.
 
 	let testConditionOptions = $derived.by(() => {
 		switch (modals.test.templateKey) {
+			case 'system.updates.available':
+				return [{ key: 'host_update_available', label: 'Updates available' }];
+			case 'system.updates.vulnerabilities':
+				return [{ key: 'host_vulnerabilities_changed', label: 'Vulnerability findings changed' }];
+			case 'system.updates.health':
+				return [{ key: 'host_check_unavailable', label: 'Monitoring unavailable' }];
+			case 'system.updates.operation':
+				return [{ key: 'host_update_completed', label: 'Update completed' }];
 			case 'jail.packages.vulnerabilities':
 				return [{ key: 'vulnerabilities_changed', label: 'New or changed findings' }];
 			case 'jail.packages.health':

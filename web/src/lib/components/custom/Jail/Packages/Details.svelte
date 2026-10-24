@@ -56,6 +56,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+		controlsClass="top-5"
 		aria-describedby={undefined}
 	>
 		<Dialog.Header class="border-b px-6 py-5 pr-12 text-left">

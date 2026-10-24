@@ -15,6 +15,7 @@ import { handleDemoStorageRequest } from './storage-fixtures';
 import { handleDemoDirectoryRequest } from './directory-fixtures';
 import type { VMBootRom } from '$lib/types/vm/vm';
 import { demoPackages } from './package-fixtures';
+import { demoHostUpdates } from './host-update-fixtures';
 
 type DemoRequestConfig = {
 	url: string;
@@ -2142,6 +2143,15 @@ export async function handleDemoRequest<T = unknown>(
 	const storageResponse = handleDemoStorageRequest<T>(config, parsed, path, method, hostname);
 	if (storageResponse) return storageResponse;
 	const adminResponse = handleDemoAdminRequest<T>(config, parsed, path, method, hostname);
+	if (path === '/system/updates' || path.startsWith('/system/updates/')) {
+		return demoHostUpdates(
+			hostname,
+			path.slice('/system/updates'.length).replace(/^\//, ''),
+			method,
+			requestPayload(config),
+			parsed.searchParams
+		) as DemoClientResponse<T>;
+	}
 	if (adminResponse) return adminResponse;
 
 	if (path === '/cluster') return success(clusterDetails) as DemoClientResponse<T>;

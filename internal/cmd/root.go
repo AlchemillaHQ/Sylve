@@ -29,6 +29,7 @@ const (
 const Version = "0.3.1"
 
 var Commit = "unknown"
+var BuiltAt = ""
 
 func AsciiArt(w io.Writer) {
 	fmt.Fprintln(w, "  ____        _           ")
@@ -87,13 +88,18 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 		_ = json.NewEncoder(command.Root().Writer).Encode(struct {
 			Version string `json:"version"`
 			Commit  string `json:"commit"`
-		}{Version: Version, Commit: Commit})
+			BuiltAt string `json:"builtAt"`
+		}{Version: Version, Commit: Commit, BuiltAt: BuiltAt})
 	}
 
+	builtAt := BuiltAt
+	if builtAt == "" {
+		builtAt = "unknown"
+	}
 	cmd := &cli.Command{
 		Name:    "sylve",
 		Usage:   "FreeBSD management platform",
-		Version: fmt.Sprintf("%s (commit: %s)", Version, Commit),
+		Version: fmt.Sprintf("%s (commit: %s, built: %s)", Version, Commit, builtAt),
 		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			if !isRoot() {
 				return ctx, fmt.Errorf("root privileges required")

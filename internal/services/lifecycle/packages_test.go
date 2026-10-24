@@ -68,12 +68,9 @@ func TestPackageActionsAreJailOnly(t *testing.T) {
 	}
 }
 
-func TestPackageTaskClaimsResumeOnlyCommittedWorkerPhases(t *testing.T) {
-	for _, test := range []struct {
-		phase     string
-		claimable bool
-	}{{"applying", true}, {"post_upgrade_audit", true}, {"verifying", false}} {
-		t.Run(test.phase, func(t *testing.T) {
+func TestPackageTasksDoNotReclaimRunningInstallations(t *testing.T) {
+	for _, phase := range []string{"applying", "post_upgrade_audit", "verifying"} {
+		t.Run(phase, func(t *testing.T) {
 			s, database := newLifecycleTestService(t)
 			if err := database.AutoMigrate(&jailModels.JailPackageOperation{}); err != nil {
 				t.Fatal(err)
@@ -83,13 +80,13 @@ func TestPackageTaskClaimsResumeOnlyCommittedWorkerPhases(t *testing.T) {
 				t.Fatal(err)
 			}
 			jailID := uint(1)
-			op := jailModels.JailPackageOperation{ID: test.phase, TaskID: &task.ID, JailID: jailID, ActiveJailID: &jailID, CTID: task.GuestID, GUID: "fixture", Action: task.Action, Phase: test.phase}
+			op := jailModels.JailPackageOperation{ID: phase, TaskID: &task.ID, JailID: jailID, ActiveJailID: &jailID, CTID: task.GuestID, GUID: "fixture", Action: task.Action, Phase: phase}
 			if err := database.Create(&op).Error; err != nil {
 				t.Fatal(err)
 			}
 			claimed, err := s.claimTaskForExecution(t.Context(), task.ID, task.Action, time.Now().UTC())
-			if err != nil || claimed != test.claimable {
-				t.Fatalf("phase=%s claimed=%v: %v", test.phase, claimed, err)
+			if err != nil || claimed {
+				t.Fatalf("phase=%s claimed=%v: %v", phase, claimed, err)
 			}
 		})
 	}

@@ -41,7 +41,6 @@ type packageOwnerKey struct{}
 type packageRuntime struct {
 	mu        sync.Mutex
 	admission map[uint]*packageAdmission
-	observers map[string]bool
 	telemetry *gorm.DB
 	request   PackageTaskRequester
 	dataPath  string
@@ -68,7 +67,6 @@ func (s *Service) InitializePackages(telemetry *gorm.DB, request PackageTaskRequ
 		request:   request,
 		dataPath:  filepath.Join(dataPath, "package-operations"),
 		admission: make(map[uint]*packageAdmission),
-		observers: make(map[string]bool),
 		slots:     make(chan struct{}, 2),
 	}
 	s.packages.resolve = s.resolvePackageTarget
@@ -189,6 +187,7 @@ func monitorView(jail *jailModels.Jail, state jailModels.JailPackageState) jailT
 	return jailTypes.PackageMonitoring{
 		Enabled:       jail.PackageMonitoringEnabled,
 		IntervalHours: interval,
+		CronExpr:      jail.PackageAuditCronExpr,
 		NextAuditAt:   next,
 		LastAttemptAt: state.LastAttemptAt,
 		LastSuccessAt: state.AuditAt,
@@ -278,12 +277,8 @@ func (s *Service) readPackages(ctx context.Context, jail *jailModels.Jail, guid 
 	view.UpdatesChecked = state.CheckedAt != nil && state.CheckInventoryHash == hash && state.CheckError == ""
 	view.Pkgbase = pkgmanager.HasPkgbase(view.Packages)
 	view.SystemUpdatesChecked = state.SystemCheckedAt != nil && state.SystemCheckInventoryHash == hash && state.SystemCheckError == ""
-	freshHours := 24
-	if view.Monitoring.Enabled {
-		freshHours = view.Monitoring.IntervalHours
-	}
 	verified := view.Ready || (query.RowsAffected != 0 && active.Action != "pkg-upgrade")
-	view.AuditStale = !verified || state.AuditAt == nil || state.AuditInventoryHash != pkgmanager.AuditInventoryDigest(view.Packages) || state.AuditError != "" || time.Since(*state.AuditAt) > time.Duration(freshHours+1)*time.Hour
+	view.AuditStale = !verified || state.AuditInventoryHash != pkgmanager.AuditInventoryDigest(view.Packages) || state.AuditError != "" || !packageAuditResultFresh(view.Monitoring, state.AuditAt, time.Now().UTC())
 	findings := make(map[string]pkgmanager.AuditPackage, len(state.Audit.Packages))
 	for _, finding := range state.Audit.Packages {
 		findings[finding.Name] = finding
@@ -404,6 +399,9 @@ func (s *Service) StartPackageOperation(ctx context.Context, ctID uint, action s
 	scope, err := pkgmanager.NormalizeScope(req.Scope)
 	if err != nil {
 		return jailTypes.PackageJob{}, err
+	}
+	if scope == pkgmanager.ScopeHost {
+		return jailTypes.PackageJob{}, fmt.Errorf("invalid_package_scope")
 	}
 	if action == "pkg-audit" && scope != pkgmanager.ScopeApplications {
 		return jailTypes.PackageJob{}, fmt.Errorf("invalid_package_scope")
@@ -561,6 +559,14 @@ func (s *Service) finishPackageOperation(op jailModels.JailPackageOperation, err
 	if err != nil {
 		phase = "failed"
 		failure = pkgmanager.Redact(err.Error())
+		if op.Action == "pkg-upgrade" && (op.Phase == "applying" || op.Phase == "post_upgrade_audit") {
+			if err := s.DB.Model(&jailModels.JailPackageState{}).Where("jail_id = ? AND guid = ?", op.JailID, op.GUID).Updates(map[string]any{
+				"audit_inventory_hash": "", "check_inventory_hash": "", "system_check_inventory_hash": "",
+				"audit_error": "package_upgrade_failed: refresh inventory and audit before trusting recorded results",
+			}).Error; err != nil {
+				logger.L.Error().Err(err).Msg("package_result_invalidation_failed")
+			}
+		}
 	}
 	if err := s.DB.Model(&jailModels.JailPackageOperation{}).Where("id = ?", op.ID).Updates(map[string]any{"active_jail_id": nil, "phase": phase, "error": failure, "finished_at": now}).Error; err != nil {
 		logger.L.Error().Err(err).Str("operation_id", op.ID).Msg("package_completion_persistence_failed")

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import SidebarElement from './NodeTreeView.svelte';
+	import SylveIcon from './SylveIcon.svelte';
 	import { watch } from 'runed';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
 
@@ -75,7 +76,9 @@
 		onclick={toggle}
 	>
 		<div class="flex items-center space-x-1 text-sm">
-			{#if item.icon === 'material-symbols:monitor-outline' || item.icon === 'hugeicons:prison'}
+			{#if item.icon === 'sylve'}
+				<SylveIcon class="h-[18px] w-[18px]" />
+			{:else if item.icon === 'material-symbols:monitor-outline' || item.icon === 'hugeicons:prison'}
 				<div class="flex items-center space-x-1 text-sm">
 					<div class="relative">
 						<span class={`icon-[${item.icon}]`} style="width: 18px; height: 18px;"></span>

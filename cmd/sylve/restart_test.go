@@ -111,3 +111,23 @@ func TestReexecProcessReportsFailures(t *testing.T) {
 		t.Fatalf("exec error = %v, want wrapped %v", err, execErr)
 	}
 }
+
+func TestRestartExecutableIsPinnedBeforeReplacement(t *testing.T) {
+	calls := 0
+	resolve := pinExecutable(func() (string, error) {
+		calls++
+		if calls > 1 {
+			return "", errors.New("old executable vnode was unlinked")
+		}
+		return "/usr/local/sbin/sylve", nil
+	})
+	err := reexecProcess(resolve, func(executable string, _, _ []string) error {
+		if executable != "/usr/local/sbin/sylve" {
+			t.Fatalf("wrong restart target: %s", executable)
+		}
+		return nil
+	}, nil, nil)
+	if err != nil || calls != 1 {
+		t.Fatalf("restart resolved replaced vnode: calls=%d err=%v", calls, err)
+	}
+}

@@ -2,12 +2,12 @@
 	import { setPackageMonitoring } from '$lib/api/jail/packages';
 	import SpanWithIcon from '$lib/components/custom/SpanWithIcon.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import Combobox from '$lib/components/ui/custom-input/combobox.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import SimpleSelect from '$lib/components/custom/SimpleSelect.svelte';
 	import type { PackageMonitoring } from '$lib/types/jail/packages';
 	import { packageReason } from '$lib/types/jail/packages';
-	import { isAPIResponse } from '$lib/utils/http';
-	import { convertDbTime } from '$lib/utils/time';
+	import { isAPIResponse, isRequestCancellation } from '$lib/utils/http';
+	import { convertDbTime, cronToHuman } from '$lib/utils/time';
 	import { onDestroy, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	let {
@@ -23,21 +23,37 @@
 		monitoring: PackageMonitoring;
 		afterChange: () => void;
 	} = $props();
-	let interval = $state(
-		untrack(() => (monitoring.enabled ? String(monitoring.intervalHours) : 'never'))
+	let frequency = $state(
+		untrack(() =>
+			monitoring.enabled ? monitoring.cronExpr || String(monitoring.intervalHours) : 'never'
+		)
+	);
+	let frequencyOpen = $state(false);
+	const presets = [
+		{ label: 'Never', value: 'never' },
+		{ label: 'Every 6 hours', value: '6' },
+		{ label: 'Every 12 hours', value: '12' },
+		{ label: 'Daily', value: '24' }
+	];
+	const customCron = $derived(!presets.some((preset) => preset.value === frequency));
+	const cronDescription = $derived(customCron ? cronToHuman(frequency.trim()) : '');
+	const invalidFrequency = $derived(
+		customCron &&
+			(frequency.length > 256 || frequency.trim().split(/\s+/).length !== 5 || !cronDescription)
 	);
 	let saving = $state(false);
 	const controller = new AbortController();
 	onDestroy(() => controller.abort());
 	const date = (value: string | null) => (value ? convertDbTime(value) : 'Never');
 	async function save() {
-		if (saving) return;
+		if (saving || invalidFrequency) return;
 		saving = true;
 		try {
 			const result = await setPackageMonitoring(
 				ctId,
-				interval !== 'never',
-				interval === 'never' ? monitoring.intervalHours : Number(interval),
+				frequency !== 'never',
+				frequency === 'never' || customCron ? monitoring.intervalHours : Number(frequency),
+				frequency === 'never' ? monitoring.cronExpr : customCron ? frequency.trim() : '',
 				{
 					hostname: node,
 					signal: controller.signal
@@ -53,6 +69,8 @@
 			toast.success('Package monitoring saved', { position: 'bottom-center' });
 			afterChange();
 			open = false;
+		} catch (cause) {
+			if (!isRequestCancellation(cause)) throw cause;
 		} finally {
 			saving = false;
 		}
@@ -62,6 +80,7 @@
 <Dialog.Root bind:open>
 	<Dialog.Content
 		class="flex max-h-[85vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+		controlsClass="top-5"
 		aria-describedby={undefined}
 	>
 		<Dialog.Header class="border-b px-6 py-5 pr-12 text-left">
@@ -76,18 +95,27 @@
 		</Dialog.Header>
 		<div class="min-h-0 space-y-5 overflow-y-auto px-6 py-5 text-sm">
 			<div class="space-y-4">
-				<SimpleSelect
+				<Combobox
 					label="Frequency"
-					value={interval}
-					onChange={(value) => (interval = value)}
+					bind:open={frequencyOpen}
+					bind:value={frequency}
+					data={presets}
+					placeholder="Select or enter a cron expression"
+					hint="Custom cron uses the node's local time: minute hour day month weekday (0–6, Sunday = 0)."
+					allowCustom={true}
+					disallowEmpty={true}
+					width="w-full"
 					disabled={saving}
-					options={[
-						{ label: 'Never', value: 'never' },
-						{ label: 'Every 6 hours', value: '6' },
-						{ label: 'Every 12 hours', value: '12' },
-						{ label: 'Daily', value: '24' }
-					]}
 				/>
+				{#if customCron}<p
+						class="text-xs"
+						class:text-destructive={invalidFrequency}
+						role={invalidFrequency ? 'alert' : 'status'}
+					>
+						{invalidFrequency
+							? 'Enter a valid five-field cron expression.'
+							: `${cronDescription} (node local time)`}
+					</p>{/if}
 				<p class="text-muted-foreground text-xs leading-relaxed">
 					Audits can run while the jail is stopped if its filesystem is mounted. Packages are never
 					upgraded automatically.
@@ -116,7 +144,9 @@
 			</section>
 		</div>
 		<Dialog.Footer class="border-t px-6 py-4">
-			<Button onclick={save} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
+			<Button onclick={save} disabled={saving || invalidFrequency}
+				>{saving ? 'Saving...' : 'Save'}</Button
+			>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

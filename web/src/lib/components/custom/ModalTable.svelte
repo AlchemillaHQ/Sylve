@@ -160,13 +160,15 @@ under sponsorship from the FreeBSD Foundation.
 	}
 
 	:global(.s-modal-table-container.tabulator .tabulator-footer .tabulator-footer-contents) {
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		min-height: 3rem;
-		gap: 1rem;
+		align-items: center;
+		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
 	}
 
 	:global(.s-modal-table-container.tabulator .tabulator-footer .tabulator-page-counter) {
+		flex-shrink: 0;
 		color: var(--muted-foreground);
 		font-size: 0.8125rem;
 		font-weight: 500;
@@ -175,12 +177,20 @@ under sponsorship from the FreeBSD Foundation.
 
 	:global(.s-modal-table-container.tabulator .tabulator-footer .tabulator-paginator) {
 		display: flex;
-		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
+		flex: 0 1 auto;
+		flex-wrap: nowrap;
 		align-items: center;
-		justify-content: flex-end;
-		gap: 0.375rem;
+		gap: 0.25rem;
+		margin-left: auto;
+		overflow-x: auto;
 		color: var(--foreground);
 		font-size: 0.8125rem;
+	}
+
+	:global(.s-modal-table-container.tabulator .tabulator-footer .tabulator-paginator > *) {
+		flex-shrink: 0;
 	}
 
 	:global(
@@ -263,7 +273,7 @@ under sponsorship from the FreeBSD Foundation.
 		height: 2rem;
 		min-width: 2rem;
 		margin: 0;
-		padding: 0 0.625rem;
+		padding: 0 0.5rem;
 		border: 1px solid var(--border);
 		border-radius: var(--radius);
 		background: transparent;

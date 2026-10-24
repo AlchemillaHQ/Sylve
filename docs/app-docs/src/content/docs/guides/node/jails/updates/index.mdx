@@ -27,6 +27,14 @@ Existing jails are not modified by that cleanup, but a jail copied from an older
 
 A snapshot is the quickest local rollback point, but it is not an independent backup. If you need to roll back, stop the jail first and use the snapshot's **Rollback** action.
 
+On the jail's **Packages** page, upgrade previews use installed-package information and repository catalogs without downloading package archives. After you approve **Upgrade**, Sylve rechecks the approved transaction and downloads and verifies the archives before creating the requested snapshot and installing packages. Missing downloads or unsafe package contents stop preparation before installation. Completed downloads remain in the jail's native `/var/cache/pkg` cache for reuse on a later attempt.
+
+### Scheduled vulnerability audits
+
+On a FreeBSD jail's **Packages** page, open **Package Monitoring** using the **clock** button. **Frequency** accepts **Never**, **Every 6 hours**, **Every 12 hours**, **Daily**, or a custom five-field cron expression. For example, `0 3 * * 0` runs on Sundays at 03:00 in the node's local time. Cron weekdays use `0–6`, with `0` for Sunday.
+
+Each jail keeps its own schedule. Cron occurrences that overlap another operation are skipped, not postponed; missed occurrences are not replayed individually. Audits can run while the jail is stopped if its filesystem is mounted. Scheduled audits only check registered packages for known vulnerabilities; they never install upgrades.
+
 ## Identify the jail type
 
 The source selected on the **Storage** step during [jail creation](/guides/node/jails/creation/) determines the update method.

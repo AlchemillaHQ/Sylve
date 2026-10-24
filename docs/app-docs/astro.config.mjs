@@ -308,6 +308,7 @@ export default defineConfig({
                                                     ],
                                                 },
                                                 'guides/node/settings/system/services',
+                                                'guides/node/settings/system/updates',
                                                 'guides/node/settings/system/tunables',
                                                 'guides/node/settings/pci-passthrough',
                                             ],

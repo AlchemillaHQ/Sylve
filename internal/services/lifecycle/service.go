@@ -410,9 +410,6 @@ func (s *Service) RecoverInterruptedTasks(ctx context.Context) error {
 	var recoveredCount int64
 	for i := range interruptedTasks {
 		task := interruptedTasks[i]
-		if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) {
-			continue
-		}
 		if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
 			var count int64
 			if err := s.DB.WithContext(ctx).Model(&jailModels.JailCreation{}).Where("task_id = ? AND phase = ?", task.ID, "ready").Count(&count).Error; err != nil {
@@ -745,9 +742,6 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 			if task.GuestType == taskModels.GuestTypeJail && task.Action == "create" {
 				updates["message"] = "creation_completion_pending"
 			}
-			if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) {
-				updates["message"] = "package_worker_active"
-			}
 			updates["error"] = runErr.Error()
 		} else if errors.Is(runErr, errGuestAlreadyRunning) {
 			updates["status"] = taskModels.LifecycleTaskStatusSuccess
@@ -798,9 +792,7 @@ func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action
 		claimableStatuses = append(claimableStatuses, taskModels.LifecycleTaskStatusRunning)
 	}
 	query := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID)
-	if jail.IsPackageAction(action) && s.DB.Migrator().HasTable(&jailModels.JailPackageOperation{}) {
-		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_package_operations WHERE task_id = ? AND phase IN ? AND active_jail_id IS NOT NULL))", "queued", "running", taskID, []string{"applying", "post_upgrade_audit"})
-	} else if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
+	if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
 		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_creations WHERE task_id = ? AND phase = ?))", "queued", "running", taskID, "ready")
 	} else {
 		query = query.Where("status IN ?", claimableStatuses)

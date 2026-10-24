@@ -241,6 +241,14 @@ function createRuleTemplates(hostname: string): NotificationRuleTemplate[] {
 			targets: [{ key: hostname, label: hostname }],
 			defaultConfig: '{}'
 		},
+		...['available', 'vulnerabilities', 'health', 'operation'].map((kind) => ({
+			key: `system.updates.${kind}`,
+			label: `Host Updates — ${kind}`,
+			description: 'Node-local host update notifications.',
+			targetType: 'host',
+			defaultConfig: '{}',
+			targets: [{ key: 'host', label: 'This host' }]
+		})),
 		...['vulnerabilities', 'health'].map((kind) => ({
 			key: `jail.packages.${kind}`,
 			label:

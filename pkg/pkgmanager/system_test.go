@@ -181,7 +181,7 @@ func TestSystemTransactionsRejectOtherScopesAndReleaseChanges(t *testing.T) {
 }
 
 func TestSystemCandidateArchivesVerifyMetadataAndBootPaths(t *testing.T) {
-	const archive = "/var/cache/pkg/sylve-inspect/Hashed/FreeBSD-runtime-15.1p2~d2b6c4f365.pkg"
+	const archive = "/var/cache/pkg/FreeBSD-runtime-15.1p2~f8b1f712f0.pkg"
 	for _, test := range []struct {
 		name, files string
 		metadata    func(string) string
@@ -209,12 +209,14 @@ func TestSystemCandidateArchivesVerifyMetadataAndBootPaths(t *testing.T) {
 			if test.metadata != nil {
 				metadata = test.metadata(metadata)
 			}
-			client := Client{Scope: ScopeSystem, System: info, Target: Target{JID: 1, Name: "fixture", Root: t.TempDir()},
+			root := t.TempDir()
+			client := Client{Scope: ScopeSystem, System: info, Target: Target{JID: 1, Name: "fixture", Root: root},
 				RunCommand: func(_ context.Context, args []string) (Result, error) {
 					switch {
 					case slices.Contains(args, "search"):
-						return Result{Stdout: `[{"name":"FreeBSD-runtime","version":"15.1p2","path":"./Hashed/FreeBSD-runtime-15.1p2~d2b6c4f365.pkg","repopath":"./Hashed/FreeBSD-runtime-15.1p2~d2b6c4f365.pkg"}]`}, nil
+						return Result{Stdout: archiveTestMetadata("FreeBSD-runtime", "15.1p2", "./Hashed/FreeBSD-runtime-15.1p2~d2b6c4f365.pkg")}, nil
 					case slices.Contains(args, "fetch"):
+						writeTestArchive(t, root, "FreeBSD-runtime", "15.1p2")
 						return Result{}, nil
 					case slices.Contains(args, "query"):
 						command := args[slices.Index(args, "query"):]

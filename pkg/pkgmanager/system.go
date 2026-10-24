@@ -15,6 +15,7 @@ type Scope string
 const (
 	ScopeApplications Scope = "applications"
 	ScopeSystem       Scope = "system"
+	ScopeHost         Scope = "host"
 )
 
 func NormalizeScope(scope Scope) (Scope, error) {
@@ -23,6 +24,8 @@ func NormalizeScope(scope Scope) (Scope, error) {
 		return ScopeApplications, nil
 	case ScopeSystem:
 		return ScopeSystem, nil
+	case ScopeHost:
+		return ScopeHost, nil
 	default:
 		return "", fmt.Errorf("invalid_package_scope")
 	}
@@ -277,6 +280,9 @@ func (c *Client) validateSystemPackage(metadata systemPackage) error {
 }
 
 func (c *Client) validateScopedChanges(plan Plan) error {
+	if c.Scope == ScopeHost {
+		return c.validateHostChanges(plan)
+	}
 	scope, err := NormalizeScope(c.Scope)
 	if err != nil {
 		return err

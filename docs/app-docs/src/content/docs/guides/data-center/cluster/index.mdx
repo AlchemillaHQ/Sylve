@@ -182,6 +182,8 @@ Never take more voters offline at once than the cluster can tolerate. In a three
 
 On each selected node, use either the FreeBSD package or a GitHub release binary.
 
+On registered pkgbase hosts, **Node → System → Updates** provides approved package transactions. Standalone installations can also preview GitHub release updates there. These are node-local operations, not cluster-wide orchestration; the workload and quorum precautions above still apply.
+
 To upgrade with `pkg`, run:
 
 ```sh
@@ -192,6 +194,8 @@ service sylve start
 ```
 
 Alternatively, download the binary from the [Sylve releases page](https://github.com/AlchemillaHQ/Sylve/releases). Replace `v0.3.1` with the exact target release, and replace `amd64` with `arm64` on ARM64 systems:
+
+Only use this method for a standalone installation. If Sylve is still registered with pkg, first follow the [standalone cutover procedure](/getting-started/#switching-an-existing-pkg-installation-to-standalone), including preserving/restoring its RC script. A locked package is still package-managed.
 
 ```sh
 service sylve stop

@@ -3,6 +3,7 @@
 package jail
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,10 +12,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
+	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	jailTypes "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
@@ -47,7 +48,6 @@ func newPackageTestService(t *testing.T) (*Service, jailModels.Jail) {
 		DB: database,
 		packages: &packageRuntime{
 			admission: map[uint]*packageAdmission{},
-			observers: map[string]bool{},
 			dataPath:  t.TempDir(),
 			slots:     make(chan struct{}, 2),
 		},
@@ -397,6 +397,50 @@ func TestPackageSchedulerAuditsOfflineAndSkipsUnmountedWithoutStarting(t *testin
 	}
 }
 
+func TestScheduledPackageAuditsDoNotCreateRequestAuditRecords(t *testing.T) {
+	for _, state := range []string{"queued", "busy", "queue failure"} {
+		t.Run(state, func(t *testing.T) {
+			s, jail := newPackageTestService(t)
+			s.packages.telemetry = s.DB
+			if err := s.packages.telemetry.AutoMigrate(&infoModels.AuditRecord{}); err != nil {
+				t.Fatal(err)
+			}
+			if state == "busy" {
+				release, err := s.ReserveSystemOperation(t.Context(), jail.CTID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer release()
+			}
+			if state == "queue failure" {
+				s.packages.request = func(context.Context, uint, string, string, string, string) (uint, error) {
+					return 0, errors.New("fixture_queue_unavailable")
+				}
+			}
+			if _, err := s.SetPackageMonitoring(t.Context(), jail.CTID, jailTypes.PackageMonitoring{Enabled: true, IntervalHours: 24}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.runPackageSchedules(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			monitor, err := s.GetPackageMonitoring(t.Context(), jail.CTID)
+			if err != nil || (monitor.SkipReason != "") != (state != "queued") {
+				t.Fatalf("unexpected scheduling result: %+v %v", monitor, err)
+			}
+			var count int64
+			if err := s.packages.telemetry.Model(&infoModels.AuditRecord{}).Count(&count).Error; err != nil || count != 0 {
+				t.Fatalf("scheduled monitoring created request audit rows: %d %v", count, err)
+			}
+			if state == "queued" {
+				var task taskModels.GuestLifecycleTask
+				if err := s.DB.First(&task).Error; err != nil || task.Action != "pkg-audit" || task.Source != "scheduled" || task.RequestedBy != "package-monitor" {
+					t.Fatalf("scheduled audit task was not retained: %+v %v", task, err)
+				}
+			}
+		})
+	}
+}
+
 func TestOfflinePackageInventoryAuditChecksAndPreviews(t *testing.T) {
 	for _, action := range []string{"pkg-audit", "pkg-check-updates", "pkg-preview"} {
 		t.Run(action, func(t *testing.T) {
@@ -516,33 +560,6 @@ func TestPackageUpgradeRequiresRunningJailAtAdmissionAndExecution(t *testing.T) 
 	}
 }
 
-func TestPackageRecoveryUsesLockNotReusedPID(t *testing.T) {
-	dir := t.TempDir()
-	file, err := os.OpenFile(filepath.Join(dir, "worker.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
-	if result, live, err := packageWorkerResult(dir); err != nil || !live || result != nil {
-		t.Fatalf("locked result %+v %v %v", result, live, err)
-	}
-	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_UN); err != nil {
-		t.Fatal(err)
-	}
-	if result, live, err := packageWorkerResult(dir); err != nil || live || result == nil || !strings.Contains(result.Error, "interrupted") {
-		t.Fatalf("unknown result %+v %v %v", result, live, err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "result.json"), []byte(`{"error":""}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if result, live, err := packageWorkerResult(dir); err != nil || live || result.Error != "" {
-		t.Fatalf("completed %+v %v %v", result, live, err)
-	}
-}
-
 func TestPackageStartupReconcilesTerminalOperationWithoutReplay(t *testing.T) {
 	s, jail := newPackageTestService(t)
 	job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-audit", jailTypes.PackageRequest{}, "user", "tester")
@@ -647,7 +664,23 @@ type packageReadFixture struct {
 	solves       int
 	fileQueries  int
 	fetches      int
+	fetchError   string
 	root         string
+}
+
+func packageTestArchiveMetadata(name, version string) string {
+	return fmt.Sprintf(`[{"name":%q,"version":%q,"repopath":%q,"sum":"f8b1f712f078009f786ea23ebe0a2b14498c80f454453ed6e8384ad54041acfc","pkgsize":15}]`, name, version, "All/"+name+"-"+version+".pkg")
+}
+
+func writePackageTestArchive(t *testing.T, root, name, version string) {
+	t.Helper()
+	file := filepath.Join(root, "var/cache/pkg", name+"-"+version+"~f8b1f712f0.pkg")
+	if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("fixture archive"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newPackageReadTestService(t *testing.T) (*Service, jailModels.Jail, *packageReadFixture) {
@@ -697,9 +730,13 @@ func newPackageReadTestService(t *testing.T) (*Service, jailModels.Jail, *packag
 				fixture.solves++
 				return pkgmanager.Result{Stdout: "The following 1 package(s) will be affected (of 1 checked):\nInstalled packages to be UPGRADED:\n\tapp: 1 -> 2 [ports]\nNumber of packages to be upgraded: 1\n"}, nil
 			case slices.Contains(args, "search"):
-				return pkgmanager.Result{Stdout: `[{"name":"app","version":"2","repopath":"All/app-2.pkg"}]`}, nil
+				return pkgmanager.Result{Stdout: packageTestArchiveMetadata("app", "2")}, nil
 			case slices.Contains(args, "fetch"):
 				fixture.fetches++
+				if fixture.fetchError != "" {
+					return pkgmanager.Result{ExitCode: 1, Stderr: fixture.fetchError}, nil
+				}
+				writePackageTestArchive(t, target.Root, "app", "2")
 				return pkgmanager.Result{}, nil
 			case slices.Contains(args, "audit"):
 				return pkgmanager.Result{Stdout: `{"pkg_count":0,"packages":null}`}, nil
@@ -857,12 +894,143 @@ func TestPackagePreviewsReuseOnlyRecentMatchingCatalogsAndNeverPlans(t *testing.
 			}
 			first := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{All: true})
 			second := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{All: true})
-			if fixture.refreshes != wantRefreshes || fixture.solves != wantSolves || fixture.fetches != 2 || first.Plan == nil || second.Plan == nil || first.Plan.ID == second.Plan.ID {
-				t.Fatalf("catalog or plan reuse: refreshes=%d solves=%d fetches=%d first=%+v second=%+v", fixture.refreshes, fixture.solves, fixture.fetches, first.Plan, second.Plan)
+			if fixture.refreshes != wantRefreshes || fixture.solves != wantSolves || fixture.fetches != 0 || fixture.fileQueries != 0 || first.Plan == nil || second.Plan == nil || first.Plan.ID == second.Plan.ID {
+				t.Fatalf("catalog or plan reuse: refreshes=%d solves=%d fetches=%d fileQueries=%d first=%+v second=%+v", fixture.refreshes, fixture.solves, fixture.fetches, fixture.fileQueries, first.Plan, second.Plan)
 			}
 			runPackageTestTask(t, s, jail.CTID, "pkg-check-updates", jailTypes.PackageRequest{})
 			if fixture.refreshes != wantRefreshes+1 {
 				t.Fatal("explicit update check reused catalogs")
+			}
+		})
+	}
+}
+
+func TestPackagePreviewsNeverDownloadOrInspectArchives(t *testing.T) {
+	for _, offline := range []bool{false, true} {
+		for _, all := range []bool{false, true} {
+			t.Run(fmt.Sprintf("offline=%v/all=%v", offline, all), func(t *testing.T) {
+				s, jail, fixture := newPackageReadTestService(t)
+				fixture.offline = offline
+				fixture.fetchError = "pkg-static: https://example.invalid/app-2.pkg: Not Found"
+				request := jailTypes.PackageRequest{All: all}
+				if !all {
+					request.Packages = []string{"app"}
+				}
+				job := runPackageTestTask(t, s, jail.CTID, "pkg-preview", request)
+				if job.Plan == nil || len(job.Plan.Transaction.Changes) != 1 || fixture.fetches != 0 || fixture.fileQueries != 0 {
+					t.Fatalf("preview performed archive preflight: job=%+v fixture=%+v", job, fixture)
+				}
+				var plan jailModels.JailPackagePlan
+				if err := s.DB.First(&plan, "id = ?", job.Plan.ID).Error; err != nil || plan.InventoryHash == "" || plan.RepositoryHash == "" || plan.CatalogHash == "" || !plan.ExpiresAt.After(time.Now()) || plan.AppliedOperationID != "" {
+					t.Fatalf("catalog-only preview lost its approval checks: %+v %v", plan, err)
+				}
+				if _, err := os.Stat(filepath.Join(fixture.root, "var/cache/pkg")); !os.IsNotExist(err) {
+					t.Fatalf("preview created or inspected the archive cache: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestPackageUpgradeVerifiesDeferredArchivesBeforeSnapshotOrInstall(t *testing.T) {
+	for _, failure := range []string{"missing", "checksum", "protected origin", "kernel payload"} {
+		t.Run(failure, func(t *testing.T) {
+			s, jail, fixture := newPackageReadTestService(t)
+			preview := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{All: true})
+			if fixture.fetches != 0 || fixture.fileQueries != 0 {
+				t.Fatal("archive verification ran before approval")
+			}
+			resolve := s.packages.resolve
+			s.packages.resolve = func(ctx context.Context, jail *jailModels.Jail) (pkgmanager.Target, bool, error) {
+				target, _, err := resolve(ctx, jail)
+				return target, false, err
+			}
+			if failure == "missing" {
+				fixture.fetchError = "pkg-static: https://example.invalid/app-2.pkg: Not Found"
+			}
+			makeClient := s.packages.client
+			s.packages.client = func(target pkgmanager.Target, log io.Writer) *pkgmanager.Client {
+				client := makeClient(target, log)
+				run := client.RunCommand
+				client.RunCommand = func(ctx context.Context, args []string) (pkgmanager.Result, error) {
+					result, err := run(ctx, args)
+					if err != nil {
+						return result, err
+					}
+					if failure == "checksum" && slices.Contains(args, "fetch") {
+						path := filepath.Join(fixture.root, "var/cache/pkg/app-2~f8b1f712f0.pkg")
+						if err := os.WriteFile(path, []byte("corrupt archive"), 0644); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if q := slices.Index(args, "query"); q >= 0 && args[q+1] == "-F" {
+						if failure == "protected origin" && args[len(args)-1] != "%Fp" {
+							result.Stdout = "app\t2\tbase/app\n"
+						}
+						if failure == "kernel payload" && args[len(args)-1] == "%Fp" {
+							result.Stdout = "/boot/kernel/kernel\n"
+						}
+					}
+					return result, nil
+				}
+				return client
+			}
+			job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-upgrade", jailTypes.PackageRequest{PlanID: preview.Plan.ID, Snapshot: true}, "user", "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]string{"missing": "package_command_failed", "checksum": "package_archive_checksum_mismatch", "protected origin": "protected_or_invalid_package_archive", "kernel payload": "kernel_package_change_unsupported"}[failure]
+			if err = s.ExecutePackageTask(t.Context(), job.TaskID); err == nil || !strings.HasPrefix(err.Error(), want) || fixture.fetches != 1 {
+				t.Fatalf("deferred archive verification was skipped: fetches=%d err=%v", fixture.fetches, err)
+			}
+			var operation jailModels.JailPackageOperation
+			if err := s.DB.First(&operation, "id = ?", job.OperationID).Error; err != nil || operation.Phase != "failed" || operation.SnapshotID != nil {
+				t.Fatalf("failed preparation reached installation: %+v %v", operation, err)
+			}
+		})
+	}
+}
+
+func TestPackageUpgradeRejectsChangedCatalogApprovalsBeforeDownloading(t *testing.T) {
+	for _, change := range []string{"expired", "inventory", "repositories", "catalog", "transaction"} {
+		t.Run(change, func(t *testing.T) {
+			s, jail, fixture := newPackageReadTestService(t)
+			preview := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{All: true})
+			fixture.fetchError = "unexpected download after approval changed"
+			job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-upgrade", jailTypes.PackageRequest{PlanID: preview.Plan.ID}, "user", "test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "expired":
+				if err := s.DB.Model(&jailModels.JailPackagePlan{}).Where("id = ?", preview.Plan.ID).Update("expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
+					t.Fatal(err)
+				}
+			case "inventory":
+				fixture.inventory = strings.ReplaceAll(fixture.inventory, "app\t1\t", "app\t2\t")
+			case "repositories":
+				fixture.repositories = strings.ReplaceAll(fixture.repositories, "example.invalid", "other.invalid")
+			case "catalog":
+				if err := os.WriteFile(filepath.Join(fixture.root, "var/db/pkg/repos/ports/db"), []byte("new catalog"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "transaction":
+				makeClient := s.packages.client
+				s.packages.client = func(target pkgmanager.Target, log io.Writer) *pkgmanager.Client {
+					client := makeClient(target, log)
+					run := client.RunCommand
+					client.RunCommand = func(ctx context.Context, args []string) (pkgmanager.Result, error) {
+						result, err := run(ctx, args)
+						if slices.Contains(args, "upgrade") {
+							result.Stdout = strings.ReplaceAll(result.Stdout, "app: 1 -> 2", "app: 1 -> 3")
+						}
+						return result, err
+					}
+					return client
+				}
+			}
+			if err := s.ExecutePackageTask(t.Context(), job.TaskID); err == nil || !strings.HasPrefix(err.Error(), "package_plan_stale") || fixture.fetches != 0 || fixture.fileQueries != 0 {
+				t.Fatalf("changed approval reached package preparation: fixture=%+v err=%v", fixture, err)
 			}
 		})
 	}
@@ -952,34 +1120,12 @@ func TestPackageSchedulerMalformedRootsDoNotStarveEligibleJails(t *testing.T) {
 	}
 }
 
-func TestPackageCompletedInstallerKeepsFollowUpAuditWithoutReplaying(t *testing.T) {
-	for _, test := range []struct {
-		phase      string
-		auditFails bool
-	}{{"applying", false}, {"post_upgrade_audit", false}, {"post_upgrade_audit", true}} {
-		t.Run(fmt.Sprintf("%s/failure=%v", test.phase, test.auditFails), func(t *testing.T) {
+func TestPackageUpgradeFollowUpAudit(t *testing.T) {
+	for _, auditFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("failure=%v", auditFails), func(t *testing.T) {
 			s, jail, fixture := newPackageReadTestService(t)
-			now := time.Now().UTC()
-			plan := jailModels.JailPackagePlan{ID: uuid.NewString(), JailID: jail.ID, GUID: jail.Storages[0].GUID, ExpiresAt: now.Add(time.Minute), Plan: pkgmanager.Plan{Changes: []pkgmanager.Change{{Action: "upgrade", Name: "app", From: "1", To: "2"}}}}
-			if err := s.DB.Create(&plan).Error; err != nil {
-				t.Fatal(err)
-			}
-			job, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-upgrade", jailTypes.PackageRequest{PlanID: plan.ID}, "user", "test")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var operation jailModels.JailPackageOperation
-			if err = s.DB.First(&operation, "id = ?", job.OperationID).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err = s.packagePhase(&operation, test.phase); err != nil {
-				t.Fatal(err)
-			}
-			dir, err := s.packageDirectory(operation)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err = os.WriteFile(filepath.Join(dir, "result.json"), []byte(`{"error":""}`), 0600); err != nil {
+			operation := jailModels.JailPackageOperation{ID: uuid.NewString(), JailID: jail.ID, ActiveJailID: &jail.ID, CTID: jail.CTID, GUID: jail.Storages[0].GUID, Action: "pkg-upgrade", Phase: "post_upgrade_audit"}
+			if err := s.DB.Create(&operation).Error; err != nil {
 				t.Fatal(err)
 			}
 			fixture.inventory = "app\t2\tmisc/app\tports\t1\t0\t0\n"
@@ -995,7 +1141,7 @@ func TestPackageCompletedInstallerKeepsFollowUpAuditWithoutReplaying(t *testing.
 							t.Fatalf("follow-up phase=%s: %v", current.Phase, err)
 						}
 						audited = true
-						if test.auditFails {
+						if auditFails {
 							return pkgmanager.Result{Stderr: "feed fetch failed", ExitCode: 1}, nil
 						}
 					}
@@ -1003,23 +1149,21 @@ func TestPackageCompletedInstallerKeepsFollowUpAuditWithoutReplaying(t *testing.
 				}
 				return client
 			}
-			if err = s.ExecutePackageTask(t.Context(), job.TaskID); err != nil {
-				t.Fatal(err)
+			var log bytes.Buffer
+			if err := s.postPackageUpgrade(t.Context(), operation, &log); (err != nil) != auditFails {
+				t.Fatalf("follow-up audit: %v", err)
 			}
-			if err = s.DB.First(&operation, "id = ?", operation.ID).Error; err != nil || !audited || operation.Phase != "completed" || operation.ActiveJailID != nil || (operation.Audit == nil) != test.auditFails || fixture.solves != 0 || fixture.fetches != 0 {
-				t.Fatalf("completed installer was replayed or not audited: %+v: %v", operation, err)
+			if err := s.DB.First(&operation, "id = ?", operation.ID).Error; err != nil || !audited || (operation.Audit == nil) != auditFails || fixture.solves != 0 || fixture.fetches != 0 {
+				t.Fatalf("follow-up audit repeated installation or lost results: %+v: %v", operation, err)
 			}
-			if test.auditFails {
-				log, err := os.ReadFile(filepath.Join(dir, "output.log"))
-				if err != nil || !strings.Contains(string(log), "Follow-up audit unavailable") || !strings.Contains(string(log), "feed fetch failed") {
-					t.Fatalf("follow-up audit failure lost its diagnostic: %q: %v", log, err)
-				}
+			if auditFails && (!strings.Contains(log.String(), "Follow-up audit unavailable") || !strings.Contains(log.String(), "feed fetch failed")) {
+				t.Fatalf("follow-up audit failure lost its diagnostic: %q", log.String())
 			}
 		})
 	}
 }
 
-func TestPackageFailedInstallerInvalidatesRecordedResults(t *testing.T) {
+func TestPackageInterruptedUpgradeInvalidatesRecordedResults(t *testing.T) {
 	s, jail, fixture := newPackageReadTestService(t)
 	inventory, err := pkgmanager.ParseInventory(fixture.inventory)
 	if err != nil {
@@ -1038,15 +1182,14 @@ func TestPackageFailedInstallerInvalidatesRecordedResults(t *testing.T) {
 	if err = s.DB.Create(&operation).Error; err != nil {
 		t.Fatal(err)
 	}
-	dir, err := s.packageDirectory(operation)
-	if err != nil {
+	if err = s.RecoverPackageTasks(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(dir, "result.json"), []byte(`{"error":"package_upgrade_failed"}`), 0600); err != nil {
-		t.Fatal(err)
+	if err = s.DB.First(&task, task.ID).Error; err != nil || task.Status != "failed" || !strings.Contains(task.Error, "package_operation_interrupted") {
+		t.Fatalf("interrupted task was not failed: %+v: %v", task, err)
 	}
-	if err = s.ExecutePackageTask(t.Context(), task.ID); err == nil {
-		t.Fatal("failed installer reported success")
+	if err = s.ExecutePackageTask(t.Context(), task.ID); err == nil || !strings.Contains(err.Error(), "package_operation_interrupted") || fixture.solves != 0 || fixture.fetches != 0 {
+		t.Fatalf("interrupted installation was replayed: %v", err)
 	}
 	view, err := s.GetPackages(t.Context(), jail.CTID)
 	if err != nil || !view.Ready || !view.AuditStale || view.AuditError == "" || view.UpdatesChecked || view.SystemUpdatesChecked {

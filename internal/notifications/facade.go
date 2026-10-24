@@ -24,6 +24,16 @@ const ZFSScrubKindPrefix = "system.zfs.scrub."
 const JailPackageVulnerabilitiesKindPrefix = "jail.packages.vulnerabilities."
 const JailPackageHealthKindPrefix = "jail.packages.health."
 
+func HostUpdateKind(kind string) (string, string, bool) {
+	for _, category := range []string{"available", "vulnerabilities", "health", "operation"} {
+		template := "system.updates." + category
+		if kind == template+".host" {
+			return template, "host", true
+		}
+	}
+	return "", "", false
+}
+
 func JailPackageTarget(id uint, guid string) string {
 	return fmt.Sprintf("%d-%s", id, strings.ToLower(strings.TrimSpace(guid)))
 }

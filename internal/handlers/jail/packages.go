@@ -135,14 +135,15 @@ func JailPackageMonitoring(service jailPackageService, write bool) gin.HandlerFu
 		}
 		if write {
 			var input struct {
-				Enabled       bool `json:"enabled"`
-				IntervalHours int  `json:"intervalHours"`
+				Enabled       bool   `json:"enabled"`
+				IntervalHours int    `json:"intervalHours"`
+				CronExpr      string `json:"cronExpr"`
 			}
 			if err = c.ShouldBindJSON(&input); err != nil {
 				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{Status: "error", Message: "invalid_package_request"})
 				return
 			}
-			value, err := service.SetPackageMonitoring(c.Request.Context(), ctID, jailTypes.PackageMonitoring{Enabled: input.Enabled, IntervalHours: input.IntervalHours})
+			value, err := service.SetPackageMonitoring(c.Request.Context(), ctID, jailTypes.PackageMonitoring{Enabled: input.Enabled, IntervalHours: input.IntervalHours, CronExpr: input.CronExpr})
 			packageResponse(c, value, err, http.StatusOK)
 			return
 		}

@@ -20,10 +20,12 @@ import (
 )
 
 type systemPackageFixture struct {
-	inventory string
-	host      uint32
-	offline   bool
-	refreshes int
+	inventory   string
+	host        uint32
+	offline     bool
+	refreshes   int
+	fetches     int
+	fileQueries int
 }
 
 func newSystemPackageTestService(t *testing.T) (*Service, jailModels.Jail, *systemPackageFixture) {
@@ -64,6 +66,7 @@ func newSystemPackageTestService(t *testing.T) (*Service, jailModels.Jail, *syst
 					return pkgmanager.Result{Stdout: fixture.inventory}, nil
 				}
 				if args[q+1] == "%Fp" || args[len(args)-1] == "%Fp" {
+					fixture.fileQueries++
 					return pkgmanager.Result{}, nil
 				}
 				const metadata = "%n\t%v\t%o\t%q\t%p\t%At\t%Av"
@@ -92,10 +95,12 @@ func newSystemPackageTestService(t *testing.T) (*Service, jailModels.Jail, *syst
 				return pkgmanager.Result{Stdout: "The following 1 package(s) will be affected (of 2 checked):\nInstalled packages to be UPGRADED:\n\tFreeBSD-runtime: 15.1 -> 15.1p1 [FreeBSD-base]\nNumber of packages to be upgraded: 1\n"}, nil
 			}
 			if slices.Contains(args, "fetch") {
+				fixture.fetches++
+				writePackageTestArchive(t, target.Root, "FreeBSD-runtime", "15.1p1")
 				return pkgmanager.Result{}, nil
 			}
 			if slices.Contains(args, "search") {
-				return pkgmanager.Result{Stdout: `[{"name":"FreeBSD-runtime","version":"15.1p1","repopath":"All/FreeBSD-runtime-15.1p1.pkg"}]`}, nil
+				return pkgmanager.Result{Stdout: packageTestArchiveMetadata("FreeBSD-runtime", "15.1p1")}, nil
 			}
 			t.Fatalf("unexpected command: %v", args)
 			return pkgmanager.Result{}, nil
@@ -108,7 +113,7 @@ func newSystemPackageTestService(t *testing.T) (*Service, jailModels.Jail, *syst
 func TestPackageSystemPreviewPersistsIdentityAndDerivesApplyScope(t *testing.T) {
 	s, jail, fixture := newSystemPackageTestService(t)
 	job := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{Scope: pkgmanager.ScopeSystem, All: true})
-	if job.Scope != pkgmanager.ScopeSystem || job.Plan == nil || job.Plan.Scope != pkgmanager.ScopeSystem || job.Plan.System == nil || job.Plan.System.Release != "15.1" || job.Plan.System.Repository != "FreeBSD-base" {
+	if job.Scope != pkgmanager.ScopeSystem || job.Plan == nil || job.Plan.Scope != pkgmanager.ScopeSystem || job.Plan.System == nil || job.Plan.System.Release != "15.1" || job.Plan.System.Repository != "FreeBSD-base" || fixture.fetches != 0 || fixture.fileQueries != 0 {
 		t.Fatalf("system preview %+v", job)
 	}
 	var upgrades int64
@@ -145,7 +150,7 @@ func TestPackageSystemOfflinePreviewCannotConsumeOrRunAnUpgrade(t *testing.T) {
 	s, jail, fixture := newSystemPackageTestService(t)
 	fixture.offline = true
 	job := runPackageTestTask(t, s, jail.CTID, "pkg-preview", jailTypes.PackageRequest{Scope: pkgmanager.ScopeSystem, All: true})
-	if job.Plan == nil {
+	if job.Plan == nil || fixture.fetches != 0 || fixture.fileQueries != 0 {
 		t.Fatalf("offline system preview: %+v", job)
 	}
 	if _, err := s.StartPackageOperation(t.Context(), jail.CTID, "pkg-upgrade", jailTypes.PackageRequest{PlanID: job.Plan.ID, Acknowledge: true}, "user", "test"); err == nil || err.Error() != "jail_not_running" {
