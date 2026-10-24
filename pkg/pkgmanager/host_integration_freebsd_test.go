@@ -269,6 +269,7 @@ func TestIntegrationHostPkgbaseApproval(t *testing.T) {
 			http.Error(w, "fixture mirror offline", http.StatusServiceUnavailable)
 			return
 		}
+		r.Header.Del("If-Modified-Since")
 		files.ServeHTTP(w, r)
 	}))
 	t.Cleanup(server.Close)
