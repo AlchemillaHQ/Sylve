@@ -87,7 +87,7 @@ jobs:
               if (testJobs.length && testJobs.every((job) => job.conclusion === "skipped") && run.conclusion === "success") continue;
               const names = testJobs.some((job) => job.name === "Test")
                 ? ["Test"]
-                : ["Test (unit)", "Test (integration)", "Test (acceptance)"];
+                : ["Test (Unit)", "Test (Integration)", "Test (Acceptance)"];
               const results = names.map((name) => testJobs.find((job) => job.name === name)?.conclusion);
               const required = results.some((result) => result !== "success");
               core.info(`Previous Test results: ${results.map((result) => result || "not completed").join(", ")}; running Test: ${required}.`);
@@ -124,7 +124,7 @@ jobs:
         run: make quality
 
   test:
-    name: Test (${{ matrix.lane }})
+    name: Test (${{ matrix.label }})
     needs:
       - changes
       - quality
@@ -137,10 +137,13 @@ jobs:
       matrix:
         include:
           - lane: unit
+            label: Unit
             target: test
           - lane: integration
+            label: Integration
             target: test-integration
           - lane: acceptance
+            label: Acceptance
             target: test-acceptance-all
     env:
       GOCACHE: ${{ github.workspace }}/.cache/freebsd-go/build
