@@ -89,7 +89,7 @@ under sponsorship from the FreeBSD Foundation.
 			base: '',
 			bootstrapName: '',
 			source: 'base' as 'base' | 'zfs',
-			zfsSource: { dataset: '', guid: '' },
+			zfsSource: { dataset: '', guid: '', rename: true },
 			fstab: ''
 		},
 		network: {
@@ -401,7 +401,7 @@ under sponsorship from the FreeBSD Foundation.
 			modal.storage.pool = '';
 			modal.storage.base = '';
 			modal.storage.bootstrapName = '';
-			modal.storage.zfsSource = { dataset: '', guid: '' };
+			modal.storage.zfsSource = { dataset: '', guid: '', rename: true };
 			submitError = '';
 			modal.storage.fstab = '';
 			modal.network.switch = 'None';

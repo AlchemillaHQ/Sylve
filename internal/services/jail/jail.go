@@ -408,7 +408,7 @@ func (s *Service) validateCreate(ctx context.Context, data jailServiceInterfaces
 			return err
 		}
 	} else if data.ZFSSource != nil {
-		if _, err := s.inspectZFSSource(ctx, *data.ZFSSource, data.Pool); err != nil {
+		if _, err := s.inspectZFSSource(ctx, *data.ZFSSource, data.Pool, operationID); err != nil {
 			return err
 		}
 	} else {

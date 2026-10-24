@@ -109,6 +109,8 @@ var jailCreateConflictCodes = map[string]struct{}{
 var jailCreateBadRequestCodes = map[string]struct{}{
 	"jail_source_mutually_exclusive":                 {},
 	"invalid_zfs_source":                             {},
+	"invalid_zfs_source_mode":                        {},
+	"zfs_source_rename_requires_same_pool":           {},
 	"zfs_source_not_found":                           {},
 	"zfs_source_layout_unsupported":                  {},
 	"zfs_source_encryption_unsupported":              {},
@@ -645,6 +647,7 @@ func GetSimpleJailByCTID(jailService jailSimpleDetailService) gin.HandlerFunc {
 
 // @Summary Create a new Jail
 // @Description Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.
+// @Description For existing ZFS roots, zfsSource.mode accepts copy (the API default) or rename. Both include child datasets. Rename requires the source pool and preserves existing snapshots; copy retains the source and does not import snapshot history.
 // @Tags Jail
 // @Accept json
 // @Produce json
@@ -731,7 +734,7 @@ func CreateJail(jailService jailCreateService, lifecycleService jailCreationLife
 }
 
 // @Summary Validate a jail creation request
-// @Description Check common settings and root-source compatibility without creating a jail
+// @Description Check common settings and root-source compatibility without creating a jail, including copy/rename mode and the same-pool requirement for renaming existing ZFS roots.
 // @Tags Jail
 // @Accept json
 // @Produce json
@@ -759,7 +762,7 @@ func ValidateCreateJail(service jailCreationValidator) gin.HandlerFunc {
 }
 
 // @Summary List existing jail root datasets
-// @Description List mounted, self-contained external ZFS roots without modifying their contents
+// @Description List eligible mounted, self-contained ZFS jail roots without modifying their contents. Copy and rename restrictions are checked during creation validation.
 // @Tags Jail
 // @Produce json
 // @Security BearerAuth

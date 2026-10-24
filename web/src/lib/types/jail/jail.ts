@@ -27,6 +27,7 @@ export interface CreateData {
 		zfsSource: {
 			dataset: string;
 			guid: string;
+			rename: boolean;
 		};
 		fstab: string;
 	};

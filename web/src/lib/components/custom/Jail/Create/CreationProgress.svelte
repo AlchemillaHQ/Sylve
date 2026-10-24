@@ -17,7 +17,7 @@ under sponsorship from the FreeBSD Foundation.
 	const phases = [
 		'Queued',
 		'Preparing',
-		'Provisioning / Copying',
+		'Provisioning / Importing',
 		'Verifying',
 		'Configuring',
 		'Finalizing'
@@ -29,6 +29,7 @@ under sponsorship from the FreeBSD Foundation.
 		snapshotting: 2,
 		provisioning: 2,
 		copying: 2,
+		renaming: 2,
 		verifying: 3,
 		publishing: 3,
 		configuring: 4,
@@ -77,7 +78,7 @@ under sponsorship from the FreeBSD Foundation.
 	{:else if task.status === 'success'}
 		<Alert
 			><AlertTitle>Jail created</AlertTitle><AlertDescription
-				>The filesystem copy and configuration are complete. The jail was created stopped.</AlertDescription
+				>The filesystem and configuration are ready. The jail was created stopped.</AlertDescription
 			></Alert
 		>
 	{:else if task.status === 'failed'}

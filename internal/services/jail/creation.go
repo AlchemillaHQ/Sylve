@@ -48,6 +48,7 @@ type creationState struct {
 	AutoObjectIDs []uint                                             `json:"autoObjectIds,omitempty"`
 	DevFSRules    bool                                               `json:"devfsRules,omitempty"`
 	StagingDir    string                                             `json:"stagingDir,omitempty"`
+	Rename        *creationRename                                    `json:"rename,omitempty"`
 }
 
 type creationCompletionPendingError struct{ cause error }
@@ -244,6 +245,12 @@ func (s *Service) commitCreation(ctx context.Context, op *jailModels.JailCreatio
 	if err := s.verifyReadyCreation(ctx, op, state); err != nil {
 		return err
 	}
+	if state.Rename != nil {
+		snapshots := renameSnapshotResources(state.Rename, state.Rename.Destination)
+		if err := s.cleanupCreationSnapshots(ctx, op, &snapshots); err != nil {
+			return err
+		}
+	}
 	if state.Reservation != nil {
 		coordinator := s.guestIdentityCoordinator.(clusterServiceInterfaces.GuestIdentityCreationCoordinator)
 		if err := coordinator.RestoreGuestIdentityReservation(ctx, *state.Reservation); err != nil {
@@ -289,7 +296,13 @@ func (s *Service) verifyReadyCreation(ctx context.Context, op *jailModels.JailCr
 	}
 	root := fmt.Sprintf("%s/sylve/jails/%d", req.Pool, op.CTID)
 	known := map[string]creationDataset{}
-	for _, resource := range state.Datasets {
+	resources := state.Datasets
+	if state.Rename != nil {
+		for _, member := range state.Rename.Tree.Members {
+			resources = append(resources, creationDataset{Name: root + strings.TrimPrefix(member.Dataset, state.Rename.Source), GUID: member.GUID})
+		}
+	}
+	for _, resource := range resources {
 		if resource.Name == root || strings.HasPrefix(resource.Name, root+"/") {
 			if resource.GUID == "" {
 				return fmt.Errorf("jail_creation_ready_identity_missing")
@@ -318,7 +331,7 @@ func (s *Service) verifyReadyCreation(ctx context.Context, op *jailModels.JailCr
 		if _, owned := known[dataset.Name]; !owned {
 			return fmt.Errorf("jail_creation_ready_unknown_dataset: %s", dataset.Name)
 		}
-		if origin := dataset.Properties["origin"].Value; origin != "" && origin != "-" {
+		if origin := dataset.Properties["origin"].Value; state.Rename == nil && origin != "" && origin != "-" {
 			return fmt.Errorf("jail_copy_has_clone_dependency")
 		}
 	}
@@ -370,37 +383,41 @@ func (s *Service) failCreation(ctx context.Context, op *jailModels.JailCreation,
 		return &creationCompletionPendingError{cause: fmt.Errorf("durable_result_requires_finalization: %s", op.ID)}
 	}
 	var cleanupErr error
-	for i := len(state.Datasets) - 1; i >= 0; i-- {
-		resource := state.Datasets[i]
-		ds, err := s.ownedCreationDataset(cleanupCtx, op.ID, resource)
-		if err == nil && ds != nil {
-			children, listErr := s.GZFS.ZFS.List(cleanupCtx, true, ds.Name)
-			if listErr != nil {
-				err = listErr
-			} else {
-				for _, child := range children {
-					if child.Name != ds.Name && child.Type != gzfs.DatasetTypeSnapshot {
-						err = fmt.Errorf("jail_creation_cleanup_unknown_child: %s", child.Name)
-						break
+	if state.Rename != nil {
+		cleanupErr = s.restoreRenamedSource(cleanupCtx, op, state)
+	} else {
+		for i := len(state.Datasets) - 1; i >= 0; i-- {
+			resource := state.Datasets[i]
+			ds, err := s.ownedCreationDataset(cleanupCtx, op.ID, resource)
+			if err == nil && ds != nil {
+				children, listErr := s.GZFS.ZFS.List(cleanupCtx, true, ds.Name)
+				if listErr != nil {
+					err = listErr
+				} else {
+					for _, child := range children {
+						if child.Name != ds.Name && child.Type != gzfs.DatasetTypeSnapshot {
+							err = fmt.Errorf("jail_creation_cleanup_unknown_child: %s", child.Name)
+							break
+						}
+					}
+					if err == nil {
+						err = s.removeCreationReceivedSnapshot(cleanupCtx, ds, resource)
+					}
+					if err == nil {
+						err = ds.Destroy(cleanupCtx, false, false)
 					}
 				}
-				if err == nil {
-					err = s.removeCreationReceivedSnapshot(cleanupCtx, ds, resource)
-				}
-				if err == nil {
-					err = ds.Destroy(cleanupCtx, false, false)
+				if isZFSDatasetMissingError(err) {
+					err = nil
 				}
 			}
-			if isZFSDatasetMissingError(err) {
-				err = nil
-			}
+			cleanupErr = errors.Join(cleanupErr, err)
 		}
-		cleanupErr = errors.Join(cleanupErr, err)
 	}
 	if state.StagingDir != "" {
 		cleanupErr = errors.Join(cleanupErr, removeCreationStagingDir(op.ID, state.StagingDir))
 	}
-	cleanupErr = errors.Join(cleanupErr, s.cleanupCreationSnapshots(cleanupCtx, op, state))
+	cleanupErr = errors.Join(cleanupErr, s.cleanupCreationSnapshots(cleanupCtx, op, &state.Snapshots))
 	if state.ConfigDir != "" {
 		marker, err := os.ReadFile(filepath.Join(state.ConfigDir, ".creation-operation"))
 		if err == nil && string(marker) == op.ID {
@@ -569,6 +586,9 @@ func (s *Service) prepareCreationConfigDir(ctx context.Context, op *jailModels.J
 
 func (s *Service) provisionJailRoot(ctx context.Context, req jailServiceInterfaces.CreateJailRequest, op *jailModels.JailCreation, state *creationState) (*gzfs.Dataset, string, error) {
 	if req.ZFSSource != nil {
+		if req.ZFSSource.Mode == "rename" {
+			return s.renameZFSSource(ctx, req, op, state)
+		}
 		return s.copyZFSSource(ctx, req, op, state)
 	}
 	name := fmt.Sprintf("%s/sylve/jails/%d", req.Pool, *req.CTID)

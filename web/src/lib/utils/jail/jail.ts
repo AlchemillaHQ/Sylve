@@ -96,6 +96,16 @@ export async function isValidCreateData(modal: CreateData): Promise<boolean> {
 			toast.error('Select a ZFS source dataset', toastConfig);
 			return false;
 		}
+		if (
+			modal.storage.zfsSource.rename &&
+			modal.storage.zfsSource.dataset.split('/')[0] !== modal.storage.pool
+		) {
+			toast.error(
+				'Rename requires the source pool. Uncheck Rename to copy across pools.',
+				toastConfig
+			);
+			return false;
+		}
 	} else if (modal.storage.base.length < 1 && modal.storage.bootstrapName.length < 1) {
 		toast.error('No base selected', toastConfig);
 		return false;
@@ -184,11 +194,14 @@ function toJailCreateErrorText(error: APIResponse['error']): string {
 
 const jailCreateErrorMessageByCode: Record<string, string> = {
 	jail_creation_in_progress:
-		'Creation is already active for this ID. Open its task or choose another ID.',
+		'Creation is already active for this ID or source dataset. Wait for the active task to finish.',
 	zfs_source_identity_changed: 'The ZFS source changed. Select it again and retry.',
-	zfs_source_jail_running: 'Stop the source jail before copying its current contents.',
+	zfs_source_jail_running: 'Stop the source jail before importing it.',
+	zfs_source_rename_requires_same_pool:
+		'Rename requires the source pool. Uncheck Rename to copy across pools.',
+	invalid_zfs_source_mode: 'Select whether to rename or copy the source dataset.',
 	zfs_source_protected:
-		'The source is read-only, replication-protected, or has another active operation. Choose another dataset.',
+		'The source is read-only, replication-protected, referenced by another service, or has an active operation. Choose another dataset.',
 	zfs_source_layout_unsupported:
 		'Select a self-contained jail root filesystem. Thin jails and external base mounts are not supported.',
 	zfs_source_encryption_unsupported:
@@ -196,7 +209,7 @@ const jailCreateErrorMessageByCode: Record<string, string> = {
 	zfs_source_insufficient_space:
 		'The destination has less available space than the estimated source size.',
 	zfs_source_unsafe_configuration_path:
-		'The copied root contains symlinked configuration paths that cannot be safely rewritten.',
+		'The source root contains symlinked configuration paths that cannot be safely rewritten.',
 	zfs_source_destination_overlap:
 		'The source must not contain the destination or staging datasets.',
 	bootstrap_mountpoint_not_usable:

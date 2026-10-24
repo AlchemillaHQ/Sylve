@@ -70,7 +70,7 @@
 		if (value === 'zfs') {
 			base = '';
 		} else {
-			zfsSource = { dataset: '', guid: '' };
+			zfsSource = { dataset: '', guid: '', rename: true };
 		}
 	}
 
@@ -78,7 +78,8 @@
 		const dataset = sourceDatasets.find((dataset) => dataset.name === value);
 		zfsSource = {
 			dataset: dataset?.name || '',
-			guid: dataset?.guid || ''
+			guid: dataset?.guid || '',
+			rename: zfsSource.rename
 		};
 	}
 
@@ -224,6 +225,9 @@
 				<CustomComboBox
 					bind:open={datasetOpen}
 					label="Source Dataset"
+					hint={!zfsSource.rename && sourceMembers.length > 0
+						? `Referenced data estimate: ${formatBytesBinary(sourceSize)}. Actual copy size may differ.`
+						: ''}
 					value={zfsSource.dataset}
 					data={datasetOptions}
 					onValueChange={selectDataset}
@@ -236,18 +240,25 @@
 		{/if}
 	</div>
 	{#if source === 'zfs'}
+		{#if zfsSource.rename && zfsSource.dataset && pool && zfsSource.dataset.split('/')[0] !== pool}
+			<p class="text-destructive text-xs" role="alert">
+				Rename requires the source pool. Select that pool or uncheck Rename to copy instead.
+			</p>
+		{/if}
 		{#if sourcesError}
 			<p class="text-destructive text-xs" role="alert">{sourcesError}</p>
 		{/if}
-		{#if sourceMembers.length > 0}<p class="text-muted-foreground text-xs">
-				Referenced data estimate: {formatBytesBinary(sourceSize)}. Actual copy size may differ.
-			</p>{/if}
 	{/if}
-	<CustomCheckbox
-		label="FStab Additions"
-		bind:checked={enableFstabInput}
-		classes="flex items-center gap-2"
-	></CustomCheckbox>
+	<div class="grid grid-cols-2 gap-4">
+		{#if source === 'zfs'}
+			<CustomCheckbox label="Rename source dataset" bind:checked={zfsSource.rename} />
+		{/if}
+		<CustomCheckbox
+			label="FStab Additions"
+			bind:checked={enableFstabInput}
+			classes="flex items-center gap-2"
+		></CustomCheckbox>
+	</div>
 
 	{#if enableFstabInput}
 		<div>

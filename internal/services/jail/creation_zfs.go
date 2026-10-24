@@ -60,6 +60,9 @@ func validateZFSSourceIdentity(source jailServiceInterfaces.ZFSSource) error {
 			return fmt.Errorf("invalid_zfs_source")
 		}
 	}
+	if source.Mode != "" && source.Mode != "copy" && source.Mode != "rename" {
+		return fmt.Errorf("invalid_zfs_source_mode")
+	}
 	return nil
 }
 
@@ -142,16 +145,16 @@ func filterZFSSources(datasets []*gzfs.Dataset, mounts string) []*gzfs.Dataset {
 func (s *Service) filterAvailableZFSSources(ctx context.Context, candidates, datasets []*gzfs.Dataset) ([]*gzfs.Dataset, error) {
 	sources := make([]*gzfs.Dataset, 0, len(candidates))
 	for _, candidate := range candidates {
-		if _, jailRoot := canonicalJailSourceCTID(candidate.Name); !jailRoot {
-			sources = append(sources, candidate)
-			continue
-		}
 		source := jailServiceInterfaces.ZFSSource{Dataset: candidate.Name, GUID: candidate.GUID}
-		blocked, err := s.sourceOperationBlocker(ctx, source)
+		blocked, err := s.sourceOperationBlocker(ctx, source, "")
 		if err != nil {
 			return nil, err
 		}
 		if blocked != "" {
+			continue
+		}
+		if _, jailRoot := canonicalJailSourceCTID(candidate.Name); !jailRoot {
+			sources = append(sources, candidate)
 			continue
 		}
 		var members []*gzfs.Dataset
@@ -203,17 +206,20 @@ func (s *Service) sourceTreeRegistered(ctx context.Context, datasets []*gzfs.Dat
 	return count != 0, err
 }
 
-func (s *Service) inspectZFSSource(ctx context.Context, source jailServiceInterfaces.ZFSSource, pool string) (sourceTree, error) {
+func (s *Service) inspectZFSSource(ctx context.Context, source jailServiceInterfaces.ZFSSource, pool, operationID string) (sourceTree, error) {
 	var tree sourceTree
 	if err := validateZFSSourceIdentity(source); err != nil {
 		return tree, err
 	}
-	_, relative, _ := strings.Cut(source.Dataset, "/")
+	sourcePool, relative, _ := strings.Cut(source.Dataset, "/")
+	if source.Mode == "rename" && sourcePool != pool {
+		return tree, fmt.Errorf("zfs_source_rename_requires_same_pool")
+	}
 	_, jailRoot := canonicalJailSourceCTID(source.Dataset)
 	if (relative == "sylve" || strings.HasPrefix(relative, "sylve/")) && !jailRoot {
 		return tree, fmt.Errorf("zfs_source_protected: internal_dataset")
 	}
-	if err := s.requireSourceOperationAllowed(ctx, source); err != nil {
+	if err := s.requireSourceOperationAllowed(ctx, source, operationID); err != nil {
 		return tree, err
 	}
 	root, err := s.GZFS.ZFS.Get(ctx, source.Dataset, false)
@@ -249,13 +255,18 @@ func (s *Service) inspectZFSSource(ctx context.Context, source jailServiceInterf
 	if err != nil {
 		return tree, err
 	}
-	if jailRoot {
+	if jailRoot || source.Mode == "rename" {
 		registered, err := s.sourceTreeRegistered(ctx, datasets)
 		if err != nil {
 			return tree, err
 		}
 		if registered {
 			return tree, fmt.Errorf("zfs_source_protected: registered_jail_storage")
+		}
+	}
+	if source.Mode == "rename" {
+		if err := s.requireRenameSourceUnreferenced(ctx, tree); err != nil {
+			return tree, err
 		}
 	}
 	var referenced uint64
@@ -287,14 +298,14 @@ func (s *Service) inspectZFSSource(ctx context.Context, source jailServiceInterf
 	if err := requireSourceRootMounts(ctx, rootMount, tree); err != nil {
 		return tree, err
 	}
-	if referenced > parent.Available {
+	if source.Mode != "rename" && referenced > parent.Available {
 		return tree, fmt.Errorf("zfs_source_insufficient_space")
 	}
 	return tree, nil
 }
 
-func (s *Service) requireSourceOperationAllowed(ctx context.Context, source jailServiceInterfaces.ZFSSource) error {
-	blocked, err := s.sourceOperationBlocker(ctx, source)
+func (s *Service) requireSourceOperationAllowed(ctx context.Context, source jailServiceInterfaces.ZFSSource, operationID string) error {
+	blocked, err := s.sourceOperationBlocker(ctx, source, operationID)
 	if err != nil {
 		return err
 	}
@@ -304,11 +315,11 @@ func (s *Service) requireSourceOperationAllowed(ctx context.Context, source jail
 	return nil
 }
 
-func (s *Service) sourceOperationBlocker(ctx context.Context, source jailServiceInterfaces.ZFSSource) (string, error) {
+func (s *Service) sourceOperationBlocker(ctx context.Context, source jailServiceInterfaces.ZFSSource, operationID string) (string, error) {
 	ctID, jailRoot := canonicalJailSourceCTID(source.Dataset)
 	if s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
 		var operations []jailModels.JailCreation
-		if err := s.DB.WithContext(ctx).Where("active_ct_id IS NOT NULL").Find(&operations).Error; err != nil {
+		if err := s.DB.WithContext(ctx).Where("active_ct_id IS NOT NULL AND id <> ?", operationID).Find(&operations).Error; err != nil {
 			return "", err
 		}
 		for _, operation := range operations {
@@ -319,6 +330,12 @@ func (s *Service) sourceOperationBlocker(ctx context.Context, source jailService
 			root := fmt.Sprintf("%s/sylve/jails/%d", request.Pool, operation.CTID)
 			if jailRoot && operation.CTID == ctID || source.Dataset == root || strings.HasPrefix(source.Dataset, root+"/") || strings.HasPrefix(root, source.Dataset+"/") {
 				return "jail_creation_in_progress: source_is_not_ready", nil
+			}
+			if request.ZFSSource != nil {
+				other := request.ZFSSource.Dataset
+				if source.Dataset == other || strings.HasPrefix(source.Dataset, other+"/") || strings.HasPrefix(other, source.Dataset+"/") {
+					return "jail_creation_in_progress: source_is_in_use", nil
+				}
 			}
 		}
 	}
@@ -558,7 +575,7 @@ func validateCopiedRoot(root, jailType string) error {
 
 func (s *Service) copyZFSSource(ctx context.Context, req jailServiceInterfaces.CreateJailRequest, op *jailModels.JailCreation, state *creationState) (*gzfs.Dataset, string, error) {
 	source := *req.ZFSSource
-	tree, err := s.inspectZFSSource(ctx, source, req.Pool)
+	tree, err := s.inspectZFSSource(ctx, source, req.Pool, op.ID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -746,7 +763,7 @@ func (s *Service) copyZFSSource(ctx context.Context, req jailServiceInterfaces.C
 			return nil, "", err
 		}
 	}
-	if err := s.cleanupCreationSnapshots(ctx, op, state); err != nil {
+	if err := s.cleanupCreationSnapshots(ctx, op, &state.Snapshots); err != nil {
 		return nil, "", err
 	}
 	ds, err := s.GZFS.ZFS.Get(ctx, finalName, false)
@@ -818,10 +835,10 @@ func (s *Service) mountCreationTree(ctx context.Context, destination, rootMount,
 			if err != nil {
 				return err
 			}
-			path, pathErr := confined.Stat(member.MountRel)
+			pathErr := prepareCreationChildMountpoint(confined, member.MountRel)
 			confined.Close()
-			if pathErr != nil || !path.IsDir() {
-				return fmt.Errorf("zfs_source_layout_unsupported: missing_child_mount_directory")
+			if pathErr != nil {
+				return pathErr
 			}
 			resolved, err := filepath.EvalSymlinks(mountpoint)
 			if err != nil || resolved != mountpoint {
@@ -833,6 +850,22 @@ func (s *Service) mountCreationTree(ctx context.Context, destination, rootMount,
 		}
 		if err := s.checkCreationMount(ctx, name, mountpoint); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func prepareCreationChildMountpoint(root *os.Root, relative string) error {
+	parts := strings.Split(relative, string(filepath.Separator))
+	for i := range parts {
+		path := filepath.Join(parts[:i+1]...)
+		info, err := root.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := root.Mkdir(path, 0755); err != nil {
+				return err
+			}
+		} else if err != nil || !info.IsDir() {
+			return fmt.Errorf("zfs_source_layout_unsupported: unsafe_child_mount_directory")
 		}
 	}
 	return nil
@@ -873,10 +906,10 @@ func (s *Service) unmountCreationTree(ctx context.Context, destination, source s
 	return nil
 }
 
-func (s *Service) cleanupCreationSnapshots(ctx context.Context, op *jailModels.JailCreation, state *creationState) error {
+func (s *Service) cleanupCreationSnapshots(ctx context.Context, op *jailModels.JailCreation, resources *[]creationDataset) error {
 	var result error
-	if len(state.Snapshots) > 0 {
-		rootSnapshot := state.Snapshots[0].Name
+	if len(*resources) > 0 {
+		rootSnapshot := (*resources)[0].Name
 		root, name, ok := strings.Cut(rootSnapshot, "@")
 		if !ok {
 			return fmt.Errorf("jail_creation_snapshot_journal_invalid")
@@ -888,7 +921,7 @@ func (s *Service) cleanupCreationSnapshots(ctx context.Context, op *jailModels.J
 			result = errors.Join(result, err)
 		}
 		known := map[string]bool{}
-		for _, snapshot := range state.Snapshots {
+		for _, snapshot := range *resources {
 			known[snapshot.Name] = true
 		}
 		for _, snapshot := range snapshots {
@@ -901,11 +934,11 @@ func (s *Service) cleanupCreationSnapshots(ctx context.Context, op *jailModels.J
 				continue
 			}
 			if owner.Value == op.ID && strings.EqualFold(owner.Source.Type, "local") {
-				state.Snapshots = append(state.Snapshots, creationDataset{Name: snapshot.Name, GUID: snapshot.GUID})
+				*resources = append(*resources, creationDataset{Name: snapshot.Name, GUID: snapshot.GUID})
 			}
 		}
 	}
-	for _, resource := range state.Snapshots {
+	for _, resource := range *resources {
 		snapshot, err := s.GZFS.ZFS.Get(ctx, resource.Name, false)
 		if isZFSDatasetMissingError(err) || err == nil && snapshot == nil {
 			continue

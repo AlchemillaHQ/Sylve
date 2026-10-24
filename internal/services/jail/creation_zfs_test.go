@@ -214,13 +214,20 @@ func TestIntegrationZFSCreationSnapshotCleanupRequiresOwnershipRealZFS(t *testin
 	pool, client := zfstest.DedicatedPool(t)
 	svc := newRealZFSCreationService(t, pool, client)
 	op := &jailModels.JailCreation{ID: "snapshot-cleanup"}
-	for _, scenario := range []string{"owned", "foreign-owner", "inherited-owner", "changed-guid"} {
+	for _, scenario := range []string{"owned", "owned-child", "foreign-owner", "inherited-owner", "changed-guid"} {
 		t.Run(scenario, func(t *testing.T) {
 			source, err := client.ZFS.CreateFilesystem(t.Context(), pool+"/"+scenario, map[string]string{creationOwnerProperty: op.ID})
 			if err != nil {
 				t.Fatal(err)
 			}
-			snapshot, err := source.Snapshot(t.Context(), "sylve_create_cleanup", false)
+			var child *gzfs.Dataset
+			if scenario == "owned-child" {
+				child, err = client.ZFS.CreateFilesystem(t.Context(), source.Name+"/child", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			snapshot, err := source.Snapshot(t.Context(), "sylve_create_cleanup", child != nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -230,6 +237,15 @@ func TestIntegrationZFSCreationSnapshotCleanupRequiresOwnershipRealZFS(t *testin
 					owner = "another-operation"
 				}
 				if err := snapshot.SetProperties(t.Context(), creationOwnerProperty, owner); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if child != nil {
+				childSnapshot, err := client.ZFS.Get(t.Context(), child.Name+"@sylve_create_cleanup", false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := childSnapshot.SetProperties(t.Context(), creationOwnerProperty, op.ID); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -245,15 +261,23 @@ func TestIntegrationZFSCreationSnapshotCleanupRequiresOwnershipRealZFS(t *testin
 			if _, _, err := svc.creationZFS().RunBytes(t.Context(), nil, "hold", hold, snapshot.Name); err != nil {
 				t.Fatal(err)
 			}
-			err = svc.cleanupCreationSnapshots(t.Context(), op, &state)
-			if scenario == "owned" {
+			err = svc.cleanupCreationSnapshots(t.Context(), op, &state.Snapshots)
+			if scenario == "owned" || scenario == "owned-child" {
 				if err != nil {
 					t.Fatal(err)
 				}
 				if actual, err := client.ZFS.Get(t.Context(), snapshot.Name, false); actual != nil || !isZFSDatasetMissingError(err) {
 					t.Fatalf("owned snapshot retained: %+v, %v", actual, err)
 				}
-				if err := svc.cleanupCreationSnapshots(t.Context(), op, &state); err != nil {
+				if child != nil {
+					if len(state.Snapshots) != 2 || state.Snapshots[1].GUID == "" {
+						t.Fatalf("discovered snapshot identity not retained: %+v", state.Snapshots)
+					}
+					if actual, err := client.ZFS.Get(t.Context(), child.Name+"@sylve_create_cleanup", false); actual != nil || !isZFSDatasetMissingError(err) {
+						t.Fatalf("owned child snapshot retained: %+v, %v", actual, err)
+					}
+				}
+				if err := svc.cleanupCreationSnapshots(t.Context(), op, &state.Snapshots); err != nil {
 					t.Fatalf("repeated cleanup: %v", err)
 				}
 				return

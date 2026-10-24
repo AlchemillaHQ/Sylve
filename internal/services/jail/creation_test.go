@@ -276,7 +276,7 @@ func TestJailCreationRejectsIncompleteAndProtectedSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := jailServiceInterfaces.ZFSSource{Dataset: "testpool/sylve/jails/860", GUID: "1"}
-	if err := svc.requireSourceOperationAllowed(t.Context(), source); err == nil || !strings.Contains(err.Error(), "jail_creation_in_progress") {
+	if err := svc.requireSourceOperationAllowed(t.Context(), source, ""); err == nil || !strings.Contains(err.Error(), "jail_creation_in_progress") {
 		t.Fatalf("unfinished source = %v", err)
 	}
 	if err := svc.DB.Model(&op).Update("active_ct_id", nil).Error; err != nil {
@@ -285,7 +285,7 @@ func TestJailCreationRejectsIncompleteAndProtectedSources(t *testing.T) {
 	if err := svc.DB.Create(&clusterModels.ReplicationPolicy{GuestType: "jail", GuestID: ctID, Enabled: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.requireSourceOperationAllowed(t.Context(), source); err == nil || !strings.Contains(err.Error(), "zfs_source_protected") {
+	if err := svc.requireSourceOperationAllowed(t.Context(), source, ""); err == nil || !strings.Contains(err.Error(), "zfs_source_protected") {
 		t.Fatalf("protected source = %v", err)
 	}
 }
@@ -619,7 +619,7 @@ func TestZFSSourceAuthoritativeInspectionRejectsOtherInternalDatasets(t *testing
 		"testpool/sylve/jails/create-operation/root", "testpool/sylve/bootstraps/freebsd-base", "testpool/sylve/virtual-machines/123",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := svc.inspectZFSSource(t.Context(), jailServiceInterfaces.ZFSSource{Dataset: name, GUID: "fixture-guid"}, "testpool")
+			_, err := svc.inspectZFSSource(t.Context(), jailServiceInterfaces.ZFSSource{Dataset: name, GUID: "fixture-guid"}, "testpool", "")
 			if err == nil || !strings.Contains(err.Error(), "zfs_source_protected: internal_dataset") {
 				t.Fatalf("internal source passed inspection: %v", err)
 			}
@@ -655,7 +655,7 @@ func TestOrphanZFSSourceRechecksRegistrationAfterDiscovery(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			_, err = svc.inspectZFSSource(t.Context(), jailServiceInterfaces.ZFSSource{Dataset: datasets[0].Name, GUID: datasets[0].GUID}, "testpool")
+			_, err = svc.inspectZFSSource(t.Context(), jailServiceInterfaces.ZFSSource{Dataset: datasets[0].Name, GUID: datasets[0].GUID}, "testpool", "")
 			if err == nil || !strings.Contains(err.Error(), "zfs_source_protected: registered_jail") {
 				t.Fatalf("registered source passed authoritative inspection: %v", err)
 			}

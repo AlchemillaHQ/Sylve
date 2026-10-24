@@ -35,13 +35,13 @@ type Hooks struct {
 type ZFSSource struct {
 	Dataset string `json:"dataset"`
 	GUID    string `json:"guid"`
+	Mode    string `json:"mode,omitempty" enums:"copy,rename" default:"copy" example:"rename"`
 }
 
 func (s *ZFSSource) UnmarshalJSON(data []byte) error {
 	type source ZFSSource
 	var decoded source
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	// A retired snapshot field must not silently become a current-state copy.
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&decoded); err != nil {
 		return err

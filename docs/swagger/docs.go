@@ -10030,7 +10030,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.",
+                "description": "Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.\nFor existing ZFS roots, zfsSource.mode accepts copy (the API default) or rename. Both include child datasets. Rename requires the source pool and preserves existing snapshots; copy retains the source and does not import snapshot history.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10756,7 +10756,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Check common settings and root-source compatibility without creating a jail",
+                "description": "Check common settings and root-source compatibility without creating a jail, including copy/rename mode and the same-pool requirement for renaming existing ZFS roots.",
                 "consumes": [
                     "application/json"
                 ],
@@ -10819,7 +10819,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "List mounted, self-contained external ZFS roots without modifying their contents",
+                "description": "List eligible mounted, self-contained ZFS jail roots without modifying their contents. Copy and rename restrictions are checked during creation validation.",
                 "produces": [
                     "application/json"
                 ],
@@ -34685,6 +34685,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network"
                     }
                 },
+                "packageAuditCronExpr": {
+                    "type": "string"
+                },
                 "packageAuditIntervalHours": {
                     "type": "integer"
                 },
@@ -38649,6 +38652,15 @@ const docTemplate = `{
                 },
                 "guid": {
                     "type": "string"
+                },
+                "mode": {
+                    "type": "string",
+                    "default": "copy",
+                    "enum": [
+                        "copy",
+                        "rename"
+                    ],
+                    "example": "rename"
                 }
             }
         },

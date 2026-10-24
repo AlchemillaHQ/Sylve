@@ -19290,10 +19290,6 @@ msgid "Preparing"
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-msgid "Provisioning / Copying"
-msgstr ""
-
-#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 msgid "Verifying"
 msgstr ""
 
@@ -19312,10 +19308,6 @@ msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
 msgid "Jail created"
-msgstr ""
-
-#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
-msgid "The filesystem copy and configuration are complete. The jail was created stopped."
 msgstr ""
 
 #: src/lib/components/custom/Jail/Create/CreationProgress.svelte
@@ -22001,4 +21993,20 @@ msgstr ""
 
 #: src/lib/components/skeleton/BottomPanel.svelte
 msgid "Host Updates - Install Sylve"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "Provisioning / Importing"
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/CreationProgress.svelte
+msgid "The filesystem and configuration are ready. The jail was created stopped."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Rename requires the source pool. Select that pool or uncheck Rename to copy instead."
+msgstr ""
+
+#: src/lib/components/custom/Jail/Create/Storage.svelte
+msgid "Rename source dataset"
 msgstr ""

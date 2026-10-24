@@ -45,7 +45,7 @@ func TestAsyncCreateJailReturnsAcceptedTaskWithoutSynchronousExecution(t *testin
 	router.Use(func(c *gin.Context) { c.Set("Username", "tester"); c.Next(); auditJob, _ = c.Get("AuditAsyncJobID") })
 	router.POST("/jail", CreateJail(service, queue))
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest("POST", "/jail?async=true", strings.NewReader(`{"name":"copied-jail","ctId":904,"pool":"zroot","type":"freebsd","zfsSource":{"dataset":"zroot/foreign/root","guid":"123"}}`))
+	request := httptest.NewRequest("POST", "/jail?async=true", strings.NewReader(`{"name":"imported-jail","ctId":904,"pool":"zroot","type":"freebsd","zfsSource":{"dataset":"zroot/foreign/root","guid":"123","mode":"rename"}}`))
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusAccepted {
@@ -61,7 +61,7 @@ func TestAsyncCreateJailReturnsAcceptedTaskWithoutSynchronousExecution(t *testin
 	if err := json.Unmarshal([]byte(queue.payload), &req); err != nil {
 		t.Fatal(err)
 	}
-	if req.ZFSSource == nil || req.ZFSSource.GUID != "123" {
+	if req.ZFSSource == nil || req.ZFSSource.GUID != "123" || req.ZFSSource.Mode != "rename" {
 		t.Fatalf("source lost: %+v", req)
 	}
 	if recorder.Header().Get("Location") != "/api/tasks/lifecycle/23" || auditJob != uint(23) {
@@ -108,6 +108,8 @@ func TestZFSSourceCreationErrorDetailsKeepAuthoritativeStatus(t *testing.T) {
 		{"zfs_source_layout_unsupported", "external_mount_supplies_bin/sh", 400},
 		{"zfs_source_protected", "read_only_or_replication_protected", 409},
 		{"jail_creation_in_progress", "source_is_not_ready", 409},
+		{"zfs_source_rename_requires_same_pool", "", 400},
+		{"invalid_zfs_source_mode", "", 400},
 	} {
 		status, code := classifyCreateJailError(errors.New(tc.code + ": " + tc.detail))
 		if status != tc.status || code != tc.code {

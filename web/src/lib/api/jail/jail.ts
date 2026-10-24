@@ -71,7 +71,14 @@ function jailCreationRequest(data: CreateData) {
 		pool: data.storage.pool,
 		base: data.storage.base,
 		bootstrapName: data.storage.bootstrapName,
-		zfsSource: data.storage.source === 'zfs' ? data.storage.zfsSource : undefined,
+		zfsSource:
+			data.storage.source === 'zfs'
+				? {
+						dataset: data.storage.zfsSource.dataset,
+						guid: data.storage.zfsSource.guid,
+						mode: data.storage.zfsSource.rename ? 'rename' : 'copy'
+					}
+				: undefined,
 		fstab: data.storage.fstab,
 		resolvConf: data.network.resolvConf,
 		switchName: data.network.switch,

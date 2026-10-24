@@ -3211,6 +3211,8 @@ definitions:
         items:
           $ref: '#/definitions/github_com_alchemillahq_sylve_internal_db_models_jail.Network'
         type: array
+      packageAuditCronExpr:
+        type: string
       packageAuditIntervalHours:
         type: integer
       packageMonitoringEnabled:
@@ -5866,6 +5868,13 @@ definitions:
       dataset:
         type: string
       guid:
+        type: string
+      mode:
+        default: copy
+        enum:
+        - copy
+        - rename
+        example: rename
         type: string
     type: object
   github_com_alchemillahq_sylve_internal_interfaces_services_libvirt.CPUPinning:
@@ -17722,8 +17731,9 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new jail with the provided configuration. A network attached
-        to a filtered switch requires an explicit access or trunk VLAN policy.
+      description: |-
+        Create a new jail with the provided configuration. A network attached to a filtered switch requires an explicit access or trunk VLAN policy.
+        For existing ZFS roots, zfsSource.mode accepts copy (the API default) or rename. Both include child datasets. Rename requires the source pool and preserves existing snapshots; copy retains the source and does not import snapshot history.
       parameters:
       - description: Create Jail Request
         in: body
@@ -20171,7 +20181,8 @@ paths:
       consumes:
       - application/json
       description: Check common settings and root-source compatibility without creating
-        a jail
+        a jail, including copy/rename mode and the same-pool requirement for renaming
+        existing ZFS roots.
       parameters:
       - description: Create Jail Request
         in: body
@@ -20209,8 +20220,8 @@ paths:
       - Jail
   /jail/zfs-sources:
     get:
-      description: List mounted, self-contained external ZFS roots without modifying
-        their contents
+      description: List eligible mounted, self-contained ZFS jail roots without modifying
+        their contents. Copy and rename restrictions are checked during creation validation.
       produces:
       - application/json
       responses:
