@@ -11,9 +11,11 @@ package migration
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,6 +26,7 @@ import (
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
+	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -177,6 +180,90 @@ func TestClusterRemoteCommandArgsRejectInvalidBoundaryValues(t *testing.T) {
 				test.identity, "", false, "zfs.list", test.dataset, "zfs", "list", test.dataset,
 			); err == nil {
 				t.Fatal("invalid remote boundary was accepted")
+			}
+		})
+	}
+}
+
+func TestRemoteDatasetExists(t *testing.T) {
+	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+	identity := &clusterModels.ClusterSSHIdentity{
+		PublicKey: testutil.SSHHostKey(t),
+		NodeUUID:  "node-target",
+		SSHUser:   "root",
+		SSHHost:   "target.example",
+		SSHPort:   22,
+	}
+
+	for _, dataset := range []string{
+		"zroot/sylve/jails/141",
+		"zroot/sylve/virtual-machines/141",
+	} {
+		t.Run(dataset, func(t *testing.T) {
+			missing := "cannot open '" + dataset + "': dataset does not exist\n"
+			permissionDenied := "cannot open '" + dataset + "': permission denied\n"
+			for _, test := range []struct {
+				name       string
+				stdout     string
+				stderr     string
+				exitCode   int
+				wantExists bool
+				wantError  string
+			}{
+				{
+					name: "existing dataset", stdout: dataset + "\t0\t0\t0\t/mnt/jail\n", wantExists: true,
+				},
+				{
+					name: "missing dataset on stderr", stderr: missing, exitCode: 1,
+				},
+				{
+					name: "missing dataset on stdout", stdout: missing, exitCode: 1,
+				},
+				{
+					name: "permission denied on stderr", stderr: permissionDenied, exitCode: 1, wantError: "permission denied",
+				},
+				{
+					name: "permission denied on stdout", stdout: permissionDenied, exitCode: 1, wantError: "command execution failed",
+				},
+				{
+					name: "dataset I/O failure", stderr: "cannot open '" + dataset + "': I/O error\n", exitCode: 1, wantError: "I/O error",
+				},
+				{
+					name: "missing pool", stderr: "cannot open 'zroot': no such pool\n", exitCode: 1, wantError: "no such pool",
+				},
+				{
+					name: "SSH authentication failure", stderr: "root@target.example: Permission denied (publickey).\n", exitCode: 255, wantError: "Permission denied",
+				},
+				{
+					name: "SSH host key failure", stderr: "Host key verification failed.\n", exitCode: 255, wantError: "cluster_ssh_host_key_mismatch",
+				},
+				{
+					name: "failure without diagnostics", exitCode: 1, wantError: "command execution failed",
+				},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					t.Cleanup(utils.SetCommandWithContextForTest(func(command string, _ ...string) *exec.Cmd {
+						if command != "ssh" {
+							t.Fatalf("unexpected command: %s", command)
+						}
+						return exec.Command("/bin/sh", "-c",
+							`printf '%s' "$1"; printf '%s' "$2" >&2; exit "$3"`,
+							"ssh-fixture", test.stdout, test.stderr, strconv.Itoa(test.exitCode),
+						)
+					}))
+
+					exists, err := (&Service{}).remoteDatasetExists(t.Context(), identity, "", dataset)
+					if exists != test.wantExists {
+						t.Errorf("exists = %t, want %t", exists, test.wantExists)
+					}
+					if test.wantError == "" {
+						if err != nil {
+							t.Fatalf("unexpected error: %v", err)
+						}
+					} else if err == nil || !strings.Contains(err.Error(), test.wantError) {
+						t.Fatalf("error = %v, want %q", err, test.wantError)
+					}
+				})
 			}
 		})
 	}

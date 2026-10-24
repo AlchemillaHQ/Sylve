@@ -1930,8 +1930,8 @@ func (s *Service) remoteDatasetExists(ctx context.Context, identity *clusterMode
 		"zfs", "list", "-H", dataset,
 	)
 	if err != nil {
-		if strings.Contains(strings.ToLower(output), "dataset does not exist") ||
-			strings.Contains(strings.ToLower(output), "cannot open") {
+		combined := strings.ToLower(strings.TrimSpace(output + " " + err.Error()))
+		if strings.Contains(combined, "dataset does not exist") {
 			return false, nil
 		}
 		return false, err
