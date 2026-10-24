@@ -136,11 +136,11 @@ func TestAuditFindingsRetainedOnFailureAndNotificationsDeduplicated(t *testing.T
 }
 
 func TestSystemChecksKeepAuditAndSelfUpdateEligibilityIndependent(t *testing.T) {
-	for _, auditFailure := range []bool{true, false} {
-		t.Run(fmt.Sprintf("audit failure=%v", auditFailure), func(t *testing.T) {
+	for _, packaged := range []bool{true, false} {
+		t.Run(fmt.Sprintf("package managed=%v", packaged), func(t *testing.T) {
 			s := testService(t)
 			s.probe = func() error { return nil }
-			if !auditFailure {
+			if !packaged {
 				s.ownership = func(context.Context, *pkgmanager.Client, string) (bool, string, error) {
 					return false, "", nil
 				}
@@ -167,10 +167,7 @@ func TestSystemChecksKeepAuditAndSelfUpdateEligibilityIndependent(t *testing.T) 
 						return pkgmanager.Result{Stdout: "Repositories:\n  base: {\n    url: \"pkg+https://pkg.freebsd.org/base_latest\",\n    enabled: yes\n  }\n"}, nil
 					case slices.Contains(args, "audit"):
 						audited = true
-						if auditFailure {
-							return pkgmanager.Result{ExitCode: 1, Stderr: "fixture feed unavailable"}, nil
-						}
-						return pkgmanager.Result{Stdout: `{"pkg_count":0,"packages":null}`}, nil
+						return pkgmanager.Result{ExitCode: 1, Stderr: "fixture feed unavailable"}, nil
 					case slices.Contains(args, "update"):
 						refreshed = true
 						return pkgmanager.Result{}, nil
@@ -188,11 +185,11 @@ func TestSystemChecksKeepAuditAndSelfUpdateEligibilityIndependent(t *testing.T) 
 				t.Fatal(err)
 			}
 			err := s.readOperation(t.Context(), &op, nil, io.Discard)
-			if (auditFailure && (err == nil || code(err) != "package_audit_failed")) || (!auditFailure && err != nil) || !audited || !refreshed || !solved {
+			if err == nil || code(err) != "package_audit_failed" || !audited || !refreshed || !solved {
 				t.Fatalf("system checks were blocked: audit=%v refresh=%v solve=%v err=%v", audited, refreshed, solved, err)
 			}
 			state, err := s.state()
-			if err != nil || state.CheckedAt == nil || state.CheckInventoryHash == "" || state.CheckError != "" || auditFailure != strings.Contains(state.AuditError, "fixture feed unavailable") {
+			if err != nil || state.CheckedAt == nil || state.CheckInventoryHash == "" || state.CheckError != "" || !strings.Contains(state.AuditError, "fixture feed unavailable") {
 				t.Fatalf("partial check results lost: %+v %v", state, err)
 			}
 		})
