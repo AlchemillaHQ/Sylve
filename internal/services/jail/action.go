@@ -362,7 +362,15 @@ func (o hostEmergencyJailRuntimeOps) List(ctx context.Context) (map[string]int, 
 	if o.service == nil {
 		return nil, fmt.Errorf("jail_service_unavailable")
 	}
-	return o.service.readJIDsByNameContext(ctx)
+	runtimeByName, err := o.service.readJailRuntimesContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	jidByName := make(map[string]int, len(runtimeByName))
+	for name, runtime := range runtimeByName {
+		jidByName[name] = runtime.JID
+	}
+	return jidByName, nil
 }
 
 func (o hostEmergencyJailRuntimeOps) Stop(ctx context.Context, jailName string) error {

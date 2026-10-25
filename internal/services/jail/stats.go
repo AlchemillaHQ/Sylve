@@ -35,9 +35,14 @@ const (
 )
 
 var (
-	jailStatsReadJIDsByName   = (*Service).readJIDsByName
+	jailStatsReadRuntimes     = (*Service).readJailRuntimes
 	jailStatsReadPSUsageByJID = (*Service).readPSUsageByJID
 )
+
+type jailRuntime struct {
+	JID    int
+	Parent int
+}
 
 type psUsage struct {
 	TotalCPU float64
@@ -246,19 +251,20 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 		return nil, fmt.Errorf("failed to load jails: %w", err)
 	}
 
-	var jidByName map[string]int
+	var runtimeByName map[string]jailRuntime
 	var stateByJID map[int]psUsage
 	if len(jails) > 0 {
 		var err error
-		jidByName, err = jailStatsReadJIDsByName(s)
+		runtimeByName, err = jailStatsReadRuntimes(s)
 		if err != nil {
 			return nil, err
 		}
-		if len(jidByName) > 0 {
+		if len(runtimeByName) > 0 {
 			stateByJID, err = jailStatsReadPSUsageByJID(s)
 			if err != nil {
 				return nil, err
 			}
+			stateByJID = aggregateJailUsage(runtimeByName, stateByJID)
 		}
 	}
 
@@ -274,12 +280,8 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 		}
 
 		ctidHash := s.GetCTIDHash(jail.CTID)
-		jid, found := jidByName[ctidHash]
-		if !found {
-			jid = -1
-		}
-		if jid >= 0 {
-			usage, ok := stateByJID[jid]
+		if runtime, found := runtimeByName[ctidHash]; found && runtime.JID >= 0 {
+			usage, ok := stateByJID[runtime.JID]
 			if ok {
 				allowedCores := float64(0)
 				if jail.ResourceLimits != nil && *jail.ResourceLimits {
@@ -326,12 +328,49 @@ func (s *Service) refreshLiveStatesLocked() ([]jailServiceInterfaces.State, erro
 	return states, nil
 }
 
-func parseJIDsByNameJSON(out []byte) (map[string]int, error) {
+func aggregateJailUsage(runtimeByName map[string]jailRuntime, usageByJID map[int]psUsage) map[int]psUsage {
+	parentByJID := make(map[int]int, len(runtimeByName))
+	for _, runtime := range runtimeByName {
+		parentByJID[runtime.JID] = runtime.Parent
+	}
+
+	totals := make(map[int]psUsage, len(runtimeByName))
+	for jid, usage := range usageByJID {
+		// ps attributes each process to its immediate jail, not its ancestors.
+		for jid > 0 {
+			parent, ok := parentByJID[jid]
+			if !ok {
+				break
+			}
+			total := totals[jid]
+			total.TotalCPU += usage.TotalCPU
+			total.TotalRSS += usage.TotalRSS
+			totals[jid] = total
+			jid = parent
+		}
+	}
+	return totals
+}
+
+func parseJailID(value any) (int, bool) {
+	switch value := value.(type) {
+	case float64:
+		return int(value), true
+	case string:
+		jid, err := strconv.Atoi(strings.TrimSpace(value))
+		return jid, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func parseJailRuntimesJSON(out []byte) (map[string]jailRuntime, error) {
 	var jlsData struct {
 		JailInformation struct {
 			Jail []struct {
-				JID  any    `json:"jid"`
-				Name string `json:"name"`
+				JID    any    `json:"jid"`
+				Parent any    `json:"parent"`
+				Name   string `json:"name"`
 			} `json:"jail"`
 		} `json:"jail-information"`
 	}
@@ -340,56 +379,48 @@ func parseJIDsByNameJSON(out []byte) (map[string]int, error) {
 		return nil, fmt.Errorf("failed to parse jls json: %w", err)
 	}
 
-	jidByName := make(map[string]int, len(jlsData.JailInformation.Jail))
+	runtimeByName := make(map[string]jailRuntime, len(jlsData.JailInformation.Jail))
 	for _, j := range jlsData.JailInformation.Jail {
 		name := strings.TrimSpace(j.Name)
 		if name == "" {
 			continue
 		}
 
-		var jid int
-		switch v := j.JID.(type) {
-		case float64:
-			jid = int(v)
-		case string:
-			parsed, err := strconv.Atoi(strings.TrimSpace(v))
-			if err != nil {
-				continue
-			}
-			jid = parsed
-		default:
+		jid, ok := parseJailID(j.JID)
+		if !ok {
 			continue
 		}
 
-		jidByName[name] = jid
+		parent, _ := parseJailID(j.Parent)
+		runtimeByName[name] = jailRuntime{JID: jid, Parent: parent}
 	}
 
-	return jidByName, nil
+	return runtimeByName, nil
 }
 
-func (s *Service) readJIDsByNameContext(ctx context.Context) (map[string]int, error) {
+func (s *Service) readJailRuntimesContext(ctx context.Context) (map[string]jailRuntime, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cmd := exec.CommandContext(ctx, "/usr/sbin/jls", "--libxo", "json", "jid", "name")
+	cmd := exec.CommandContext(ctx, "/usr/sbin/jls", "--libxo", "json", "jid", "parent", "name")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to run jls: %w", err)
 	}
-	return parseJIDsByNameJSON(out)
+	return parseJailRuntimesJSON(out)
 }
 
-func (s *Service) readJIDsByName() (map[string]int, error) {
-	return s.readJIDsByNameContext(context.Background())
+func (s *Service) readJailRuntimes() (map[string]jailRuntime, error) {
+	return s.readJailRuntimesContext(context.Background())
 }
 
 func (s *Service) IsJailRunning(ctid uint) (bool, error) {
-	jidByName, err := s.readJIDsByName()
+	runtimeByName, err := s.readJailRuntimes()
 	if err != nil {
 		return false, err
 	}
 	jailName := s.GetCTIDHash(ctid)
-	_, ok := jidByName[jailName]
+	_, ok := runtimeByName[jailName]
 	return ok, nil
 }
 

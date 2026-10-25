@@ -71,20 +71,25 @@ func TestManagedJailRuntimeCTID(t *testing.T) {
 	}
 }
 
-func TestParseJIDsByNameJSON(t *testing.T) {
+func TestParseJailRuntimesJSON(t *testing.T) {
 	output := []byte(`{"jail-information":{"jail":[` +
-		`{"jid":1,"name":"one"},` +
-		`{"jid":"2","name":"two"},` +
+		`{"jid":1,"parent":"0","name":"one"},` +
+		`{"jid":"2","parent":1,"name":"two"},` +
+		`{"jid":" 3 ","parent":" 2 ","name":" three "},` +
+		`{"jid":4,"name":"four"},` +
 		`{"jid":"bad","name":"bad"},` +
-		`{"jid":3,"name":" "}]}}`)
-	got, err := parseJIDsByNameJSON(output)
+		`{"jid":5,"name":" "}]}}`)
+	got, err := parseJailRuntimesJSON(output)
 	if err != nil {
 		t.Fatalf("parse jls output: %v", err)
 	}
-	if len(got) != 2 || got["one"] != 1 || got["two"] != 2 {
+	if len(got) != 4 || got["one"] != (jailRuntime{JID: 1}) ||
+		got["two"] != (jailRuntime{JID: 2, Parent: 1}) ||
+		got["three"] != (jailRuntime{JID: 3, Parent: 2}) ||
+		got["four"] != (jailRuntime{JID: 4}) {
 		t.Fatalf("parsed jails = %#v", got)
 	}
-	if _, err := parseJIDsByNameJSON([]byte("{")); err == nil {
+	if _, err := parseJailRuntimesJSON([]byte("{")); err == nil {
 		t.Fatal("corrupt jls JSON unexpectedly succeeded")
 	}
 }
