@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	vmWSReadLimit          = 64 << 10
+	vmWSReadLimit          = 10 << 20 // 10 MiB
 	vmWSWriteTimeout       = 10 * time.Second
 	vmWSPongWait           = 60 * time.Second
 	vmWSPingPeriod         = (vmWSPongWait * 9) / 10

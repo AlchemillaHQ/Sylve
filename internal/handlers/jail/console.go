@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	wsReadLimit         = 64 << 10 // 64 KiB
+	wsReadLimit         = 10 << 20 // 10 MiB
 	wsWriteTimeout      = 10 * time.Second
 	wsPongWait          = 60 * time.Second
 	wsPingPeriod        = (wsPongWait * 9) / 10

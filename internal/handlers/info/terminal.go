@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	hostWSReadLimit         = 10 << 20 // 1 MiB
+	hostWSReadLimit         = 10 << 20 // 10 MiB
 	hostWSWriteTimeout      = 10 * time.Second
 	hostWSPongWait          = 60 * time.Second
 	hostWSPingPeriod        = (hostWSPongWait * 9) / 10
