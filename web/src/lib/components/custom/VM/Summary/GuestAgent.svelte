@@ -155,16 +155,15 @@
 								{ label: 'Network', value: 'network' }
 							]}
 							bind:value={activeGaView}
-							classes={{ trigger: 'h-6! text-white min-w-[100px]' }}
+							classes={{ trigger: 'h-6! min-w-[100px] py-0 text-foreground' }}
 							onChange={(v: string) => {
 								activeGaView = v;
 							}}
 						/>
 
 						<Button
-							variant="secondary"
 							size="icon"
-							class="h-5 w-5"
+							class="bg-muted-foreground/40 dark:bg-muted h-6 w-6 text-black hover:bg-blue-600 dark:text-white"
 							onclick={async () => {
 								if (!qgaEnabled) {
 									return;
