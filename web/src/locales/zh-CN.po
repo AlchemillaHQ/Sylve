@@ -14,12 +14,10 @@ msgstr "未找到"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "概览"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "控制台"
@@ -38,7 +36,6 @@ msgstr "存储"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "硬件"
@@ -64,18 +61,15 @@ msgstr "硬件"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "网络"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "快照"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "选项"
@@ -262,7 +256,6 @@ msgstr "Difuse-sidebar"
 msgid "Cluster"
 msgstr "集群"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -22429,11 +22422,6 @@ msgstr ""
 msgid "Unable to load NFS shares."
 msgstr ""
 
-#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
-#: src/routes/[node]/storage/nfs/shares/+page.svelte
-msgid "NFS apply pending{0}"
-msgstr ""
-
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Loading NFS shares..."
 msgstr ""
@@ -22476,4 +22464,9 @@ msgstr ""
 
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read / Write"
+msgstr ""
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS needs attention{0}"
 msgstr ""

@@ -15,6 +15,7 @@
 	let openCategories: { [key: string]: boolean } = $state({});
 	import { watch } from 'runed';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import { getGuestSections, type GuestSection } from '$lib/guest-navigation';
 
 	const toggleCategory = (label: string) => {
 		openCategories[label] = !openCategories[label];
@@ -52,72 +53,28 @@
 		const hasNfs = enabledServices.includes('nfs');
 		const hasMdns = enabledServices.includes('mdns');
 
-		if (page.url.pathname.startsWith(`/${node}/vm`)) {
-			const vmName = page.url.pathname.split('/')[3];
-			return [
-				{
-					label: 'Summary',
-					icon: 'basil--document-outline',
-					href: `/${node}/vm/${vmName}/summary`
-				},
-				{ label: 'Console', icon: 'mdi--monitor', href: `/${node}/vm/${vmName}/console` },
-				{ label: 'Storage', icon: 'mdi--storage', href: `/${node}/vm/${vmName}/storage` },
-				{ label: 'Hardware', icon: 'ix--hardware-cabinet', href: `/${node}/vm/${vmName}/hardware` },
-				{ label: 'Network', icon: 'mdi--network', href: `/${node}/vm/${vmName}/network` },
-				{
-					label: 'Snapshots',
-					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
-					href: `/${node}/vm/${vmName}/snapshots`
-				},
-				{
-					label: 'Backups',
-					icon: 'mdi--backup-restore',
-					href: `/${node}/vm/${vmName}/backups`
-				},
-				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/vm/${vmName}/options` }
-			];
-		}
-
-		if (page.url.pathname.startsWith(`/${node}/jail`)) {
-			const jailName = page.url.pathname.split('/')[3];
-			const freeBSD =
-				page.data.node === node &&
-				page.data.ctId === Number(jailName) &&
-				page.data.jail?.type === 'freebsd';
-			return [
-				{
-					label: 'Summary',
-					icon: 'basil--document-outline',
-					href: `/${node}/jail/${jailName}/summary`
-				},
-				{ label: 'Console', icon: 'mdi--monitor', href: `/${node}/jail/${jailName}/console` },
-				{
-					label: 'Hardware',
-					icon: 'ix--hardware-cabinet',
-					href: `/${node}/jail/${jailName}/hardware`
-				},
-				{ label: 'Network', icon: 'mdi--network', href: `/${node}/jail/${jailName}/network` },
-				...(freeBSD
-					? [
-							{
-								label: 'Packages',
-								icon: 'mdi--package-variant',
-								href: `/${node}/jail/${jailName}/packages`
-							}
-						]
-					: []),
-				{
-					label: 'Snapshots',
-					icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots',
-					href: `/${node}/jail/${jailName}/snapshots`
-				},
-				{
-					label: 'Backups',
-					icon: 'mdi--backup-restore',
-					href: `/${node}/jail/${jailName}/backups`
-				},
-				{ label: 'Options', icon: 'mdi--settings', href: `/${node}/jail/${jailName}/options` }
-			];
+		const guestType = page.params.rid ? 'vm' : page.params.ctid ? 'jail' : null;
+		if (guestType) {
+			const guestId = guestType === 'vm' ? page.params.rid : page.params.ctid;
+			const jailType =
+				guestType === 'jail' && page.data.node === node && page.data.ctId === Number(guestId)
+					? page.data.jail?.type
+					: undefined;
+			const sections: Record<GuestSection, Pick<NodeItem, 'label' | 'icon'>> = {
+				summary: { label: 'Summary', icon: 'basil--document-outline' },
+				console: { label: 'Console', icon: 'mdi--monitor' },
+				storage: { label: 'Storage', icon: 'mdi--storage' },
+				hardware: { label: 'Hardware', icon: 'ix--hardware-cabinet' },
+				network: { label: 'Network', icon: 'mdi--network' },
+				packages: { label: 'Packages', icon: 'mdi--package-variant' },
+				snapshots: { label: 'Snapshots', icon: 'carbon--ibm-cloud-vpc-block-storage-snapshots' },
+				backups: { label: 'Backups', icon: 'mdi--backup-restore' },
+				options: { label: 'Options', icon: 'mdi--settings' }
+			};
+			return getGuestSections(guestType, jailType).map((section) => ({
+				...sections[section],
+				href: `/${node}/${guestType}/${guestId}/${section}`
+			}));
 		}
 
 		return [

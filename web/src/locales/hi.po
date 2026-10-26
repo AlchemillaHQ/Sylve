@@ -14,12 +14,10 @@ msgstr "नहीं मिला"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "सारांश"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "कंसोल"
@@ -38,7 +36,6 @@ msgstr "स्टोरेज"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "हार्डवेयर"
@@ -64,18 +61,15 @@ msgstr "हार्डवेयर"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "नेटवर्क"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "स्नैपशॉट"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "विकल्प"
@@ -262,7 +256,6 @@ msgstr "Difuse-sidebar"
 msgid "Cluster"
 msgstr "क्लस्टर"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -22432,11 +22425,6 @@ msgstr ""
 msgid "Unable to load NFS shares."
 msgstr ""
 
-#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
-#: src/routes/[node]/storage/nfs/shares/+page.svelte
-msgid "NFS apply pending{0}"
-msgstr ""
-
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Loading NFS shares..."
 msgstr ""
@@ -22479,4 +22467,9 @@ msgstr ""
 
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read / Write"
+msgstr ""
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS needs attention{0}"
 msgstr ""

@@ -14,12 +14,10 @@ msgstr "Not Found"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "Summary"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "Console"
@@ -38,7 +36,6 @@ msgstr "Storage"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "Hardware"
@@ -64,18 +61,15 @@ msgstr "Hardware"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "Network"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "Snapshots"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "Options"
@@ -262,7 +256,6 @@ msgstr "Difuse-sidebar"
 msgid "Cluster"
 msgstr "Cluster"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -22432,11 +22425,6 @@ msgstr "Root squash"
 msgid "Unable to load NFS shares."
 msgstr "Unable to load NFS shares."
 
-#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
-#: src/routes/[node]/storage/nfs/shares/+page.svelte
-msgid "NFS apply pending{0}"
-msgstr "NFS apply pending{0}"
-
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Loading NFS shares..."
 msgstr "Loading NFS shares..."
@@ -22480,3 +22468,8 @@ msgstr "Re-applying NFS settings may interrupt connected clients."
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read / Write"
 msgstr "Read / Write"
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS needs attention{0}"
+msgstr "NFS needs attention{0}"

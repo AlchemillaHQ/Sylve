@@ -14,12 +14,10 @@ msgstr "കണ്ടെത്തിയില്ല"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "സംഗ്രഹം"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "കൺസോൾ"
@@ -38,7 +36,6 @@ msgstr "സ്റ്റോറേജ്"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "ഹാർഡ്‌വെയർ"
@@ -64,18 +61,15 @@ msgstr "ഹാർഡ്‌വെയർ"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "നെറ്റ്‌വർക്ക്"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "സ്നാപ്പ്ഷോട്ടുകൾ"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "ഓപ്ഷനുകൾ"
@@ -262,7 +256,6 @@ msgstr "Difuse-sidebar"
 msgid "Cluster"
 msgstr "ക്ലസ്റ്റർ"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -22432,11 +22425,6 @@ msgstr ""
 msgid "Unable to load NFS shares."
 msgstr ""
 
-#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
-#: src/routes/[node]/storage/nfs/shares/+page.svelte
-msgid "NFS apply pending{0}"
-msgstr ""
-
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Loading NFS shares..."
 msgstr ""
@@ -22479,4 +22467,9 @@ msgstr ""
 
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read / Write"
+msgstr ""
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS needs attention{0}"
 msgstr ""

@@ -14,12 +14,10 @@ msgstr "Nenalezeno"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/datacenter/+layout.svelte
 msgid "Summary"
 msgstr "Souhrn"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Console"
 msgstr "Konzole"
@@ -38,7 +36,6 @@ msgstr "Úložiště"
 
 #: src/lib/components/custom/Jail/Create/CreateJail.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Hardware"
 msgstr "Hardware"
@@ -64,18 +61,15 @@ msgstr "Hardware"
 #: src/lib/components/custom/VM/Template/View.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
-#: src/routes/[node]/+layout.svelte
 msgid "Network"
 msgstr "Síť"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Snapshots"
 msgstr "Zachycené stavy"
 
 #: src/lib/components/custom/ZFS/pools/Create.svelte
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 msgid "Options"
 msgstr "Předvolby"
@@ -262,7 +256,6 @@ msgstr "Rozmazání bočního panelu"
 msgid "Cluster"
 msgstr "Klastr"
 
-#: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/storage/zfs/datasets/snapshots/+page.svelte
 #: src/routes/datacenter/+layout.svelte
@@ -22435,11 +22428,6 @@ msgstr ""
 msgid "Unable to load NFS shares."
 msgstr ""
 
-#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
-#: src/routes/[node]/storage/nfs/shares/+page.svelte
-msgid "NFS apply pending{0}"
-msgstr ""
-
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Loading NFS shares..."
 msgstr ""
@@ -22482,4 +22470,9 @@ msgstr ""
 
 #: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read / Write"
+msgstr ""
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS needs attention{0}"
 msgstr ""

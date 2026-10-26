@@ -196,6 +196,7 @@
 				sortName: jail.name,
 				resourceId: jail.ctId,
 				resourceType: 'jail' as const,
+				jailType: jail.type,
 				nodeHostname: node,
 				label: `${jail.name} (${jail.ctId})`,
 				icon: 'hugeicons--prison',

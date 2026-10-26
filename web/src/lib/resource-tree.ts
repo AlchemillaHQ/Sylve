@@ -8,6 +8,8 @@
  * under sponsorship from the FreeBSD Foundation.
  */
 
+import type { SimpleJail } from '$lib/types/jail/jail';
+
 export type ResourceTreeView = 'server' | 'folder';
 export type ResourceTreeSortKey = 'id' | 'name';
 export type ResourceTreeState = 'active' | 'inactive' | 'orphan';
@@ -38,6 +40,7 @@ export interface ResourceTreeItem {
 	state?: ResourceTreeState;
 	resourceId?: number;
 	resourceType?: ResourceTreeResourceType;
+	jailType?: SimpleJail['type'];
 	nodeHostname?: string;
 	nextGuestId?: number;
 	meta?: string;

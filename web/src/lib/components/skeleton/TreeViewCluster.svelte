@@ -23,6 +23,7 @@
 	import CustomValueInput from '$lib/components/ui/custom-input/value.svelte';
 	import { handleAPIError, isAPIResponse } from '$lib/utils/http';
 	import { useSafeGoto } from '$lib/hooks/navigation.svelte';
+	import { getGuestNavigationHref } from '$lib/guest-navigation';
 	import {
 		isResourceTreeGroup,
 		type ResourceTreeDensity,
@@ -75,9 +76,12 @@
 
 	const handleLabelClick = (e: Event) => {
 		e.preventDefault();
-		if (item.href) {
-			useSafeGoto(item.href, { replaceState: false, noScroll: false });
-		}
+		if (!item.href) return;
+		const href =
+			item.resourceType === 'vm' || item.resourceType === 'jail'
+				? getGuestNavigationHref(page.url.pathname, item.href, item.resourceType, item.jailType)
+				: item.href;
+		useSafeGoto(href, { replaceState: false, noScroll: false });
 	};
 
 	const handleIconClick = (e: Event) => {
