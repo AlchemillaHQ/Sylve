@@ -214,7 +214,7 @@
 				/>
 
 				<div class="space-y-1">
-					<Label class="w-24 whitespace-nowrap text-sm">Quota</Label>
+					<Label class="flex h-7 items-center whitespace-nowrap text-sm">Quota</Label>
 					<Input
 						type="text"
 						class="w-full text-left"
@@ -271,7 +271,7 @@
 					allowCustom={true}
 				/>
 
-				<div class="space-y-1">
+				<div class="col-span-full space-y-1">
 					<Label for="mountpoint" class="flex h-7 items-center whitespace-nowrap text-sm"
 						>Custom Mount Point</Label
 					>
