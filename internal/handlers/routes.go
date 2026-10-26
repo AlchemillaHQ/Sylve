@@ -37,6 +37,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	migrationHandlers "github.com/alchemillahq/sylve/internal/handlers/migration"
 	networkHandlers "github.com/alchemillahq/sylve/internal/handlers/network"
+	nfsHandlers "github.com/alchemillahq/sylve/internal/handlers/nfs"
 	notificationsHandlers "github.com/alchemillahq/sylve/internal/handlers/notifications"
 	sambaHandlers "github.com/alchemillahq/sylve/internal/handlers/samba"
 	systemHandlers "github.com/alchemillahq/sylve/internal/handlers/system"
@@ -59,6 +60,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/migration"
 	networkServicePkg "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	notificationsService "github.com/alchemillahq/sylve/internal/services/notifications"
 	sambaServicePkg "github.com/alchemillahq/sylve/internal/services/samba"
 	systemServicePkg "github.com/alchemillahq/sylve/internal/services/system"
@@ -122,6 +124,7 @@ func RegisterRoutes(r *gin.Engine,
 	dynamicDNSService *dynamicdns.Service,
 	certificateService *certificates.Service,
 	iscsiService *iscsi.Service,
+	nfsService *nfs.Service,
 	jailService *jailServicePkg.Service,
 	lifecycleService *lifecycle.Service,
 	clusterService *cluster.Service,
@@ -236,11 +239,9 @@ func RegisterRoutes(r *gin.Engine,
 
 			datasets.POST("/snapshot", zfsHandlers.CreateSnapshot(zfsService))
 			datasets.POST("/snapshot/:guid/rollback",
-				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardRollbackSnapshot),
 				zfsHandlers.RollbackSnapshot(zfsService),
 			)
 			datasets.DELETE("/snapshot/:guid",
-				zfsHandlers.ReplicationDatasetMutationGuard(zfsService, zfsHandlers.ReplicationGuardDatasetGUID),
 				zfsHandlers.DeleteSnapshot(zfsService),
 			)
 
@@ -391,6 +392,30 @@ func RegisterRoutes(r *gin.Engine,
 		certificateGroup.POST("/:id/renew", certificateHandlers.Renew(certificateService))
 		certificateGroup.POST("/:id/retry", certificateHandlers.Retry(certificateService))
 		certificateGroup.GET("/:id/archive", middleware.RequireLocalAdmin(authService), certificateHandlers.Download(certificateService))
+	}
+
+	nfsGroup := api.Group("/nfs")
+	nfsGroup.Use(middleware.EnsureAuthenticated(authService))
+	nfsGroup.Use(middleware.RequireLocalAdminForWrites(authService))
+	nfsGroup.Use(EnsureCorrectHost(db, authService))
+	nfsGroup.Use(middleware.LimitRequestBody(nfs.MaxRequestBodyBytes))
+	nfsGroup.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+	nfsGroup.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	})
+	{
+		nfsGroup.GET("/config", nfsHandlers.GetConfig(nfsService))
+		nfsGroup.PUT("/config", nfsHandlers.SetConfig(nfsService))
+		nfsGroup.GET("/shares", nfsHandlers.GetShares(nfsService))
+		nfsGroup.POST("/shares", nfsHandlers.SaveShare(nfsService, true))
+		nfsGroup.PUT("/shares/:id", nfsHandlers.SaveShare(nfsService, false))
+		nfsGroup.PUT("/shares/:id/enabled", nfsHandlers.SetShareEnabled(nfsService))
+		nfsGroup.DELETE("/shares/:id", nfsHandlers.DeleteShare(nfsService))
+		nfsGroup.GET("/datasets", nfsHandlers.GetDatasets(nfsService))
+		nfsGroup.GET("/status", nfsHandlers.GetStatus(nfsService))
+		nfsGroup.GET("/preview", nfsHandlers.PreviewExports(nfsService))
+		nfsGroup.POST("/apply", nfsHandlers.Apply(nfsService))
 	}
 
 	iscsiGroup := api.Group("/iscsi")

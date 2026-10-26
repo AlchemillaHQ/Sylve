@@ -45,7 +45,7 @@ func TestParseOptionalBoolQuery(t *testing.T) {
 func TestDatasetDeletionTargetsQuery(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	got, err := datasetDeletionTargetsQuery(requestContext(
-		"/?name=tank%2Fone&guid=guid-one&name=%2Ftank%2Ftwo%2F&guid=guid-two&name=tank%2Fone&guid=guid-one",
+		"/?name=tank%2Fone&guid=guid-one&name=%2Ftank%2Ftwo%2F&guid=guid-two&name=tank%2Fone&guid=guid-one&name=tank%2Fone%40snap&guid=snapshot-guid&name=backup%2Fone%40snap&guid=snapshot-guid",
 	))
 	if err != nil {
 		t.Fatalf("datasetDeletionTargetsQuery returned an error: %v", err)
@@ -53,6 +53,8 @@ func TestDatasetDeletionTargetsQuery(t *testing.T) {
 	want := []zfsServiceInterfaces.DatasetDeletionTarget{
 		{Name: "tank/one", GUID: "guid-one"},
 		{Name: "tank/two", GUID: "guid-two"},
+		{Name: "tank/one@snap", GUID: "snapshot-guid"},
+		{Name: "backup/one@snap", GUID: "snapshot-guid"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("datasetDeletionTargetsQuery = %#v, want %#v", got, want)
@@ -65,7 +67,6 @@ func TestDatasetDeletionTargetsQuery(t *testing.T) {
 		"/?name=tank%2Fone&guid=",
 		"/?name=tank%2Fone&guid=guid-one&name=tank%2Ftwo",
 		"/?name=tank%2Fone&guid=guid-one&name=tank%2Fone&guid=guid-two",
-		"/?name=tank%2Fone&guid=guid-one&name=tank%2Ftwo&guid=guid-one",
 	} {
 		if _, err := datasetDeletionTargetsQuery(requestContext(target)); err == nil {
 			t.Fatalf("datasetDeletionTargetsQuery(%q) unexpectedly succeeded", target)
@@ -90,6 +91,23 @@ func TestPositiveUintPath(t *testing.T) {
 		got, err := positiveUintPath(c, "id")
 		if (err != nil) != test.wantErr || got != test.want {
 			t.Fatalf("id %q: got (%d, %v), want (%d, error=%v)", test.raw, got, err, test.want, test.wantErr)
+		}
+	}
+}
+
+func TestSnapshotNameQuery(t *testing.T) {
+	for _, test := range []struct {
+		target, want string
+		wantErr      bool
+	}{
+		{target: "/"},
+		{target: "/?name=backup%2Freplica%40selected", want: "backup/replica@selected"},
+		{target: "/?name=", wantErr: true},
+		{target: "/?name=source%40selected&name=replica%40selected", wantErr: true},
+	} {
+		got, err := snapshotNameQuery(requestContext(test.target))
+		if got != test.want || (err != nil) != test.wantErr {
+			t.Fatalf("target %q: got %q, %v", test.target, got, err)
 		}
 	}
 }

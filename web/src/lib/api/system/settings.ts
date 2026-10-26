@@ -25,15 +25,20 @@ export function basicSettingsOrFallback(
 	return fallback ?? { pools: [], services: [], initialized: false };
 }
 
-export async function updateUsablePools(pools: string[]): Promise<APIResponse> {
-	return apiRequest('/system/basic-settings/pools', APIResponseSchema, 'PUT', pools);
+export async function updateUsablePools(pools: string[], hostname?: string): Promise<APIResponse> {
+	return apiRequest('/system/basic-settings/pools', APIResponseSchema, 'PUT', pools, { hostname });
 }
 
 export async function setServiceEnabled(
 	service: AvailableService,
-	enabled: boolean
+	enabled: boolean,
+	hostname?: string
 ): Promise<APIResponse> {
-	return apiRequest(`/system/basic-settings/services/${service}`, APIResponseSchema, 'PATCH', {
-		enabled
-	});
+	return apiRequest(
+		`/system/basic-settings/services/${service}`,
+		APIResponseSchema,
+		'PATCH',
+		{ enabled },
+		{ hostname }
+	);
 }

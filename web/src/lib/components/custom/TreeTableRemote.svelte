@@ -26,6 +26,7 @@
 		};
 		ajaxURL?: string;
 		name: string;
+		index?: string;
 		parentActiveRow?: Row[] | null;
 		query?: string;
 		multipleSelect?: boolean;
@@ -38,6 +39,7 @@
 	let {
 		data,
 		name,
+		index = 'id',
 		parentActiveRow = $bindable([]),
 		query = $bindable(),
 		multipleSelect = true,
@@ -141,19 +143,19 @@
 					return;
 				}
 
-				const selectedIds = table?.getSelectedRows().map((row) => row.getData().id) || [];
+				const selectedIds = table?.getSelectedRows().map((row) => row.getData()[index]) || [];
 				const treeExpands = getAllRows(table?.getRows() || []).map((row) => ({
-					id: row.getData().id,
+					id: row.getData()[index],
 					expanded: row.isTreeExpanded()
 				}));
 
 				selectedIds.forEach((id) => {
-					const row = findRow(table?.getRows() || [], id);
+					const row = findRow(table?.getRows() || [], id, index);
 					if (row) row.select();
 				});
 
 				treeExpands.forEach((treeExpand) => {
-					const row = findRow(table?.getRows() || [], treeExpand.id);
+					const row = findRow(table?.getRows() || [], treeExpand.id, index);
 					if (row) {
 						if (treeExpand.expanded) {
 							row.treeExpand();
@@ -211,6 +213,7 @@
 	onMount(() => {
 		if (tableComponent) {
 			table = new Tabulator(tableComponent, {
+				index,
 				ajaxURL: ajaxURL ? ajaxURL : undefined,
 				ajaxRequestFunc:
 					isDemoMode && ajaxURL

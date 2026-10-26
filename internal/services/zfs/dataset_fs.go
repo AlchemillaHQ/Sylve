@@ -43,6 +43,11 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, parent stri
 	}
 
 	name = fmt.Sprintf("%s/%s", parent, name)
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 	dataset, err := s.GZFS.ZFS.CreateFilesystem(ctx, name, cleanProps)
 
 	if err != nil {
@@ -78,6 +83,16 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	}
 	if _, editsMountpoint := props["mountpoint"]; editsMountpoint && isSylveManagedDataset(dataset.Name) {
 		return classifyError(ErrConflict, "managed_dataset_mountpoint_edit_not_supported")
+	}
+	for _, property := range []string{"mountpoint", "canmount", "readonly", "sharenfs"} {
+		if _, changes := props[property]; changes {
+			releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+			if err != nil {
+				return err
+			}
+			defer releaseTopology()
+			break
+		}
 	}
 	for _, property := range []string{"mountpoint", "canmount", "readonly", "keylocation"} {
 		if _, changes := props[property]; changes {
@@ -156,6 +171,11 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	if count > 0 {
 		return classifyError(ErrConflict, "dataset_in_use_by_vm")
 	}
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err

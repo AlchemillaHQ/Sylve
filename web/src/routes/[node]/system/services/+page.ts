@@ -3,14 +3,15 @@ import { basicSettingsOrFallback, getBasicSettings } from '$lib/api/system/setti
 import { SEVEN_DAYS } from '$lib/utils';
 import { cachedFetch } from '$lib/utils/http';
 
-export async function load() {
-	const cacheDuration = SEVEN_DAYS;
+export async function load({ params }) {
+	const node = params.node;
 	const [pools, basicSettings] = await Promise.all([
-		cachedFetch('zfs-pools-full', async () => await getPools(true), cacheDuration),
-		cachedFetch('system-basic-settings', async () => await getBasicSettings(), cacheDuration)
+		cachedFetch('zfs-pools-full', () => getPools(true, node), SEVEN_DAYS, false, node),
+		cachedFetch('system-basic-settings', () => getBasicSettings(node), SEVEN_DAYS, false, node)
 	]);
 
 	return {
+		node,
 		pools,
 		basicSettings: basicSettingsOrFallback(basicSettings)
 	};

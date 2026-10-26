@@ -44,9 +44,9 @@ export async function deleteSnapshot(
 	snapshot: Dataset,
 	recursive: boolean = false
 ): Promise<APIResponse> {
-	const param = recursive ? '?recursive=true' : '';
+	const query = new URLSearchParams({ name: snapshot.name, recursive: String(recursive) });
 	return await apiRequestResult(
-		`/zfs/datasets/snapshot/${snapshot.guid}${param}`,
+		`/zfs/datasets/snapshot/${snapshot.guid}?${query.toString()}`,
 		APIResponseSchema,
 		'DELETE'
 	);
@@ -179,12 +179,13 @@ export async function deleteFileSystem(dataset: Dataset): Promise<APIResponse> {
 	);
 }
 
-export async function rollbackSnapshot(guid: string): Promise<APIResponse> {
+export async function rollbackSnapshot(snapshot: Dataset): Promise<APIResponse> {
 	return await apiRequestResult(
-		`/zfs/datasets/snapshot/${guid}/rollback`,
+		`/zfs/datasets/snapshot/${snapshot.guid}/rollback`,
 		APIResponseSchema,
 		'POST',
 		{
+			name: snapshot.name,
 			destroyMoreRecent: true
 		}
 	);

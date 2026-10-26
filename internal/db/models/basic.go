@@ -19,6 +19,7 @@ const (
 	Firewall       AvailableService = "firewall"
 	WireGuard      AvailableService = "wireguard"
 	ISCSI          AvailableService = "iscsi"
+	NFS            AvailableService = "nfs"
 	Mdns           AvailableService = "mdns"
 )
 
@@ -32,6 +33,7 @@ func IsAvailableService(service AvailableService) bool {
 		Firewall,
 		WireGuard,
 		ISCSI,
+		NFS,
 		Mdns:
 		return true
 	default:

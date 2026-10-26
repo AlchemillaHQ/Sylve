@@ -6,7 +6,7 @@ tmp_dir = "tmp"
   bin = "./tmp/main"
   cmd = "go build -tags=nosqlite -ldflags=\"-X github.com/alchemillahq/sylve/internal/cmd.Commit=$(git rev-parse HEAD) -X github.com/alchemillahq/sylve/internal/cmd.BuiltAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)\" -o ./tmp/main ./cmd/sylve"
   delay = 500
-  exclude_dir = ["assets", "tmp", "vendor", "testdata", "views", "node_modules", "data", "web", "scripts", "utils/testdir", ".vscode", ".idea", "new-web", "bin", "docs/app-docs", "difuse", "sylve-ddns", "libbsmart", "libvirt"]
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "views", "node_modules", "data", "web", "scripts", "utils/testdir", ".vscode", ".idea", "new-web", "bin", "docs/app-docs", "difuse", "sylve-ddns", "libbsmart", "libvirt", "installer", "third-party"]
   exclude_unchanged = false
   follow_symlink = false
   full_bin = ""

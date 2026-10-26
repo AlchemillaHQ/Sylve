@@ -9,6 +9,7 @@ export type AvailableService =
 	| 'firewall'
 	| 'wireguard'
 	| 'iscsi'
+	| 'nfs'
 	| 'mdns';
 
 export const BasicSettingsSchema = z.object({
@@ -23,6 +24,7 @@ export const BasicSettingsSchema = z.object({
 			'firewall',
 			'wireguard',
 			'iscsi',
+			'nfs',
 			'mdns'
 		])
 	),

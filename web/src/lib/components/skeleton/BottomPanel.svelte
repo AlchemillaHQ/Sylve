@@ -190,6 +190,9 @@
 		'/api/zfs/datasets/filesystem': 'ZFS Filesystem',
 		'/api/zfs/datasets/volume': 'ZFS Volume',
 		'/api/samba/shares': 'Samba Share',
+		'/api/nfs/shares': 'NFS Share Configuration',
+		'/api/nfs/config': 'NFS Settings - Edit',
+		'/api/nfs/apply': 'NFS - Apply',
 		'/api/auth/groups': 'Auth Group',
 		'/api/auth/users/import': 'Auth User - Import',
 		'/api/auth/users/pam': 'Auth User - PAM',
@@ -486,6 +489,7 @@
 		['firewall', 'Firewall'],
 		['wireguard', 'WireGuard'],
 		['iscsi', 'iSCSI'],
+		['nfs', 'NFS'],
 		['mdns', 'mDNS']
 	]);
 

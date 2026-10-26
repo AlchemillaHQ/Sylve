@@ -195,7 +195,7 @@ func (s *Service) RequireReplicationDatasetMutationAllowed(ctx context.Context, 
 		}
 		for _, root := range roots {
 			if replicationDatasetPathsOverlap(name, root) {
-				return fmt.Errorf("replication_protected_dataset_mutation_blocked:%s", name)
+				return classifyError(ErrConflict, "replication_protected_dataset_mutation_blocked:%s", name)
 			}
 		}
 
@@ -214,7 +214,7 @@ func (s *Service) RequireReplicationDatasetMutationAllowed(ctx context.Context, 
 				continue
 			}
 			if _, protected := protectedPolicyIDs[uint(policyID)]; protected {
-				return fmt.Errorf("replication_protected_dataset_mutation_blocked:%s:policy_%d", name, policyID)
+				return classifyError(ErrConflict, "replication_protected_dataset_mutation_blocked:%s:policy_%d", name, policyID)
 			}
 		}
 	}

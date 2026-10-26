@@ -26,7 +26,7 @@ import (
 )
 
 var sylveServices = []string{
-	"dhcp-server", "jails", "samba-server", "virtualization",
+	"dhcp-server", "jails", "samba-server", "nfs", "virtualization",
 	"wol-server", "firewall", "wireguard", "iscsi", "mdns",
 }
 

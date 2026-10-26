@@ -27,10 +27,10 @@ func TestIntegrationJailPackages(t *testing.T) {
 	if err := Probe(""); err != nil {
 		t.Skip(err)
 	}
-	if err := os.MkdirAll("/tmp/opencode", 0700); err != nil {
+	if err := os.MkdirAll("/tmp/pkg-tmp", 0700); err != nil {
 		t.Fatal(err)
 	}
-	dir, err := os.MkdirTemp("/tmp/opencode", "sylve-pkg-test-")
+	dir, err := os.MkdirTemp("/tmp/pkg-tmp", "sylve-pkg-test-")
 	if err != nil {
 		t.Fatal(err)
 	}

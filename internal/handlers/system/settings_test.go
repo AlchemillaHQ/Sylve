@@ -20,8 +20,10 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	iscsiModels "github.com/alchemillahq/sylve/internal/db/models/iscsi"
+	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -61,6 +63,26 @@ func TestSetServiceStateAcceptsExplicitFalse(t *testing.T) {
 	}
 	if len(current.Services) != 0 {
 		t.Fatalf("services = %v; want none", current.Services)
+	}
+}
+
+func TestNFSServiceDisablePreservesManualRuntime(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &nfsModels.NFSRuntime{}, &nfsModels.NFSShare{}, &nfsModels.NFSSettings{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.NFS}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PATCH("/services/:service", SetServiceState(&system.Service{DB: db, NFS: nfs.NewService(db)}, nil, nil))
+	for _, changed := range []bool{true, false} {
+		response := testutil.PerformJSONRequest(t, router, http.MethodPatch, "/services/nfs", []byte(`{"enabled":false}`))
+		if response.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", response.Code, response.Body)
+		}
+		result := testutil.DecodeJSONResponse[internal.APIResponse[ServiceStateResponse]](t, response)
+		if result.Data.Applied == nil || !*result.Data.Applied || result.Data.Enabled || result.Data.Changed != changed {
+			t.Fatalf("completed NFS disable was reported as pending: %#v", result)
+		}
 	}
 }
 

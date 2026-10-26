@@ -42,6 +42,7 @@ func TestNormalizeInitializeRequestAcceptsAllServices(t *testing.T) {
 		models.Firewall,
 		models.WireGuard,
 		models.ISCSI,
+		models.NFS,
 		models.Mdns,
 	}
 

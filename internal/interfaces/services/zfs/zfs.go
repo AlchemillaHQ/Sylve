@@ -62,14 +62,14 @@ type ZfsServiceInterface interface {
 	GetDashboardHistoryDelta(ctx context.Context, query DashboardDeltaQuery) (DashboardHistory, error)
 
 	CreateSnapshot(ctx context.Context, guid string, name string, recursive bool) error
-	DeleteSnapshot(ctx context.Context, guid string, recursive bool) error
+	DeleteSnapshot(ctx context.Context, guid, name string, recursive bool) error
 	GetPeriodicSnapshots() ([]zfsModels.PeriodicSnapshot, error)
 	AddPeriodicSnapshot(ctx context.Context, req CreatePeriodicSnapshotJobRequest) error
 	ModifyPeriodicSnapshotRetention(ctx context.Context, id uint, req ModifyPeriodicSnapshotRetentionRequest) error
 	DeletePeriodicSnapshot(ctx context.Context, id uint) error
 	BulkDeletePeriodicSnapshots(ctx context.Context, ids []uint) error
 	StartSnapshotScheduler(ctx context.Context)
-	RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error
+	RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool) error
 	RollbackSnapshotByName(ctx context.Context, snapshotName string, destroyMoreRecent bool) error
 
 	PoolFromDataset(ctx context.Context, name string) (string, error)

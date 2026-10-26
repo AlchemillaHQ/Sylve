@@ -352,6 +352,7 @@
 
 	<TreeTableRemote
 		name="snapshots-datasets-tt"
+		index="name"
 		data={table}
 		bind:query
 		bind:reload

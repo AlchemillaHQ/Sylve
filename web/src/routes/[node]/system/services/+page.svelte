@@ -9,7 +9,7 @@
 	import type { Zpool } from '$lib/types/zfs/pool';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
-	import { IsDocumentVisible, resource, useInterval } from 'runed';
+	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
 	import SingleValueDialog from '$lib/components/custom/Dialog/SingleValue.svelte';
 	import { sameElements } from '$lib/utils/arr';
@@ -20,6 +20,7 @@
 	import { onDestroy, onMount } from 'svelte';
 
 	interface Data {
+		node: string;
 		pools: Zpool[];
 		basicSettings: BasicSettings;
 	}
@@ -30,14 +31,14 @@
 
 	// svelte-ignore state_referenced_locally
 	const pools = resource(
-		() => 'zfs-pools-full',
-		async (key, _previousKey, { signal }): Promise<Zpool[]> => {
-			const results = await getPools(true);
+		() => data.node,
+		async (node, _previousNode, { signal }): Promise<Zpool[]> => {
+			const results = await getPools(true, node);
 			if (signal.aborted) {
 				throw new DOMException('Obsolete ZFS pools request', 'AbortError');
 			}
 
-			updateCache(key, results);
+			updateCache('zfs-pools-full', results, node);
 			return results;
 		},
 		{
@@ -49,11 +50,13 @@
 	// svelte-ignore state_referenced_locally
 	let basicSettings = $state(data.basicSettings);
 	let settingsGeneration = 0;
+	let pageGeneration = 0;
 
 	async function refetchBasicSettings() {
+		const node = data.node;
 		const generation = ++settingsGeneration;
-		const results = await getBasicSettings();
-		if (generation !== settingsGeneration) return;
+		const results = await getBasicSettings(node);
+		if (generation !== settingsGeneration || node !== data.node) return;
 
 		if (isAPIResponse(results)) {
 			handleAPIError(results);
@@ -61,8 +64,8 @@
 		}
 
 		basicSettings = results;
-		setEnabledServicesForHostname(storage.hostname, results.services);
-		updateCache('system-basic-settings', results);
+		setEnabledServicesForHostname(node, results.services);
+		updateCache('system-basic-settings', results, node);
 	}
 
 	onMount(() => {
@@ -71,6 +74,7 @@
 
 	onDestroy(() => {
 		settingsGeneration++;
+		pageGeneration++;
 	});
 
 	let poolOptions = $derived.by(() => {
@@ -148,6 +152,11 @@
 				value: basicSettings.services.includes('iscsi') ? 'Enabled' : 'Disabled'
 			},
 			{
+				id: generateNanoId('nfs'),
+				property: 'NFS',
+				value: basicSettings.services.includes('nfs') ? 'Enabled' : 'Disabled'
+			},
+			{
 				id: generateNanoId('mdns'),
 				property: 'mDNS Discovery',
 				value: basicSettings.services.includes('mdns') ? 'Enabled' : 'Disabled'
@@ -189,6 +198,9 @@
 		iscsi: {
 			open: false
 		},
+		nfs: {
+			open: false
+		},
 		mdns: {
 			open: false
 		}
@@ -222,6 +234,7 @@
 			modals.firewall.open ||
 			modals.wireguard.open ||
 			modals.iscsi.open ||
+			modals.nfs.open ||
 			modals.mdns.open
 	);
 
@@ -234,9 +247,23 @@
 	});
 
 	let loading = $state(false);
+	watch.pre(
+		() => data,
+		(next) => {
+			pageGeneration++;
+			settingsGeneration++;
+			basicSettings = next.basicSettings;
+			activeRows = null;
+			for (const modal of Object.values(modals)) modal.open = false;
+			loading = false;
+			query = '';
+		}
+	);
 
 	async function saveZFSPools() {
 		if (modals.zfsPools.open) {
+			const node = data.node;
+			const generation = pageGeneration;
 			const newPools = Array.from(
 				new Set(
 					modals.zfsPools.values
@@ -258,7 +285,8 @@
 
 			loading = true;
 			try {
-				const response = await updateUsablePools(newPools);
+				const response = await updateUsablePools(newPools, node);
+				if (generation !== pageGeneration) return;
 				if (response.status !== 'success') {
 					handleAPIError(response);
 					toast.error('Failed to update ZFS Pools', toastOpts);
@@ -268,12 +296,14 @@
 				const updatedSettings = { ...basicSettings, pools: newPools };
 				settingsGeneration++;
 				basicSettings = updatedSettings;
-				await updateCache('system-basic-settings', updatedSettings);
+				await updateCache('system-basic-settings', updatedSettings, node);
+				if (generation !== pageGeneration) return;
 				await refetchBasicSettings();
+				if (generation !== pageGeneration) return;
 				toast.success('ZFS Pools updated', toastOpts);
 				modals.zfsPools.open = false;
 			} finally {
-				loading = false;
+				if (generation === pageGeneration) loading = false;
 			}
 		}
 	}
@@ -312,6 +342,8 @@
 					modals['wireguard'].open = true;
 				} else if (activeRow?.property === 'iSCSI') {
 					modals['iscsi'].open = true;
+				} else if (activeRow?.property === 'NFS') {
+					modals.nfs.open = true;
 				} else if (activeRow?.property === 'mDNS Discovery') {
 					modals.mdns.open = true;
 				}
@@ -328,6 +360,11 @@
 				{/if}
 			</div>
 		</Button>
+		{#if activeRow?.property === 'NFS'}
+			<Button size="sm" variant="outline" class="h-6.5" href={`/${data.node}/storage/nfs/settings`}>
+				<span class="icon-[mdi--cog] mr-1 h-4 w-4"></span>NFS Settings
+			</Button>
+		{/if}
 	{/if}
 {/snippet}
 
@@ -342,6 +379,7 @@
 		| 'firewall'
 		| 'wireguard'
 		| 'iscsi'
+		| 'nfs'
 		| 'mdns'
 )}
 	{@const enabled = basicSettings.services.includes(serviceKey)}
@@ -360,14 +398,23 @@
 			? mdnsTitle
 			: serviceKey === 'iscsi'
 				? `You are about to ${enabled ? 'disable' : 'enable'} iSCSI targets.${enabled ? ' Initiator connections will stay active.' : ''}`
-				: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
+				: serviceKey === 'nfs'
+					? `You are about to ${enabled ? 'disable' : 'enable'} NFS.`
+					: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
 		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
 		loadingLabel={enabled ? 'Disabling...' : 'Enabling...'}
 		keepOpenOnConfirm
 		actions={{
 			onConfirm: async () => {
+				const node = data.node;
+				const generation = pageGeneration;
 				const desiredEnabled = !enabled;
-				const response = await setServiceEnabled(serviceKey as AvailableService, desiredEnabled);
+				const response = await setServiceEnabled(
+					serviceKey as AvailableService,
+					desiredEnabled,
+					node
+				);
+				if (generation !== pageGeneration) return;
 
 				if (response.status === 'success') {
 					const services = desiredEnabled
@@ -376,11 +423,15 @@
 					const updatedSettings = { ...basicSettings, services };
 					settingsGeneration++;
 					basicSettings = updatedSettings;
-					setEnabledServicesForHostname(storage.hostname, services);
-					await updateCache('system-basic-settings', updatedSettings);
+					setEnabledServicesForHostname(node, services);
+					await updateCache('system-basic-settings', updatedSettings, node);
+					if (generation !== pageGeneration) return;
 					await refetchBasicSettings();
+					if (generation !== pageGeneration) return;
 					if (response.message === 'iscsi_configuration_saved_apply_pending') {
 						toast.warning('iSCSI state saved; runtime checks are pending', toastOpts);
+					} else if (response.message === 'nfs_configuration_saved_apply_pending') {
+						toast.warning('NFS state saved; apply pending.', toastOpts);
 					} else {
 						toast.success(`${serviceName} ${desiredEnabled ? 'enabled' : 'disabled'}`, toastOpts);
 					}
@@ -433,4 +484,5 @@
 {@render serviceToggleDialog('Firewall', 'firewall')}
 {@render serviceToggleDialog('WireGuard', 'wireguard')}
 {@render serviceToggleDialog('iSCSI', 'iscsi')}
+{@render serviceToggleDialog('NFS', 'nfs')}
 {@render serviceToggleDialog('mDNS Discovery', 'mdns')}

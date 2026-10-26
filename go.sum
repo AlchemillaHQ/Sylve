@@ -19,8 +19,8 @@ github.com/RoaringBitmap/roaring v1.2.3/go.mod h1:plvDsJQpxOC5bw8LRteu/MLWHsHez/
 github.com/Sereal/Sereal/Go/sereal v0.0.0-20231009093132-b9187f1a92c6/go.mod h1:JwrycNnC8+sZPDyzM3MQ86LvaGzSpfxg885KOOwFRW4=
 github.com/Shopify/sarama v1.19.0/go.mod h1:FVkBWblsNy7DGZRfXLU0O9RCGt5g3g3yEuWXgklEdEo=
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=
-github.com/alchemillahq/gzfs v0.0.0-20260817151231-5b9cad3526ff h1:uay3J5fXkr15rGyX8gPvIFLjcjgjFZWxqScZxjEs6yY=
-github.com/alchemillahq/gzfs v0.0.0-20260817151231-5b9cad3526ff/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
+github.com/alchemillahq/gzfs v0.0.0-20261025152323-c0bf3add0a07 h1:B4jjYukBUCFnVj3rJFrZkTnWmByNZNOYZVIShThuD+k=
+github.com/alchemillahq/gzfs v0.0.0-20261025152323-c0bf3add0a07/go.mod h1:uml1U7jMNb/dV6NS3nl4QqW6Nv/CBUDdEdzhl0S/p4Y=
 github.com/alecthomas/assert/v2 v2.0.0-alpha3 h1:pcHeMvQ3OMstAWgaeaXIAL8uzB9xMm2zlxt+/4ml8lk=
 github.com/alecthomas/assert/v2 v2.0.0-alpha3/go.mod h1:+zD0lmDXTeQj7TgDgCt0ePWxb0hMC1G+PGTsTCv1B9o=
 github.com/alecthomas/atomic v0.1.0-alpha2 h1:dqwXmax66gXvHhsOS4pGPZKqYOlTkapELkLb3MNdlH8=

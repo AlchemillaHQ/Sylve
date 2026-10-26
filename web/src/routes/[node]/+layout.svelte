@@ -49,6 +49,7 @@
 		const hasFirewall = enabledServices.includes('firewall');
 		const hasWireGuard = enabledServices.includes('wireguard');
 		const hasIscsi = enabledServices.includes('iscsi');
+		const hasNfs = enabledServices.includes('nfs');
 		const hasMdns = enabledServices.includes('mdns');
 
 		if (page.url.pathname.startsWith(`/${node}/vm`)) {
@@ -296,6 +297,22 @@
 								label: 'Audit Logs',
 								icon: 'tabler--logs',
 								href: `/${node}/storage/samba/audit-logs`
+							}
+						]
+					},
+					hasNfs && {
+						label: 'NFS',
+						icon: 'mdi--folder-network',
+						children: [
+							{
+								label: 'Shares',
+								icon: 'mdi--folder-network',
+								href: `/${node}/storage/nfs/shares`
+							},
+							{
+								label: 'Settings',
+								icon: 'mdi--folder-settings-variant',
+								href: `/${node}/storage/nfs/settings`
 							}
 						]
 					},

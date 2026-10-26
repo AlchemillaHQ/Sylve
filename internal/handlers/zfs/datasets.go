@@ -44,7 +44,8 @@ type CreateVolumeRequest struct {
 }
 
 type RollbackSnapshotRequest struct {
-	DestroyMoreRecent bool `json:"destroyMoreRecent"`
+	Name              string `json:"name"`
+	DestroyMoreRecent bool   `json:"destroyMoreRecent"`
 }
 
 type FlashVolumeRequest struct {
@@ -136,6 +137,7 @@ func GetDatasets(zfsService *zfs.Service) gin.HandlerFunc {
 // @Produce json
 // @Security BearerAuth
 // @Param guid path string true "Snapshot GUID"
+// @Param name query string false "Full snapshot name; required when the GUID has multiple copies"
 // @Param recursive query bool false "Recursively delete descendant snapshots" default(false)
 // @Success 200 {object} internal.APIResponse[any] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -151,9 +153,14 @@ func DeleteSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 			writeZFSServiceError(c, err, "invalid_request")
 			return
 		}
+		name, err := snapshotNameQuery(c)
+		if err != nil {
+			writeZFSServiceError(c, err, "invalid_request")
+			return
+		}
 
 		ctx := c.Request.Context()
-		err = zfsService.DeleteSnapshot(ctx, guid, recursive)
+		err = zfsService.DeleteSnapshot(ctx, guid, name, recursive)
 
 		if err != nil {
 			writeZFSServiceError(c, err, "snapshot_delete_failed")
@@ -248,7 +255,7 @@ func RollbackSnapshot(zfsService *zfs.Service) gin.HandlerFunc {
 		}
 
 		ctx := c.Request.Context()
-		err := zfsService.RollbackSnapshot(ctx, guid, request.DestroyMoreRecent)
+		err := zfsService.RollbackSnapshot(ctx, guid, request.Name, request.DestroyMoreRecent)
 		if err != nil {
 			writeZFSServiceError(c, err, "snapshot_rollback_failed")
 			return

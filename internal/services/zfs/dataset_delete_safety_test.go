@@ -95,6 +95,7 @@ func TestNormalizeDatasetDeletionTargets(t *testing.T) {
 		{Name: " /tank/one/ ", GUID: " guid-one "},
 		{Name: "tank/one", GUID: "guid-one"},
 		{Name: "tank/two@snapshot", GUID: "guid-two"},
+		{Name: "backup/two@snapshot", GUID: "guid-two"},
 	})
 	if err != nil {
 		t.Fatalf("normalizeDatasetDeletionTargets returned an error: %v", err)
@@ -102,6 +103,7 @@ func TestNormalizeDatasetDeletionTargets(t *testing.T) {
 	want := []zfsServiceInterfaces.DatasetDeletionTarget{
 		{Name: "tank/one", GUID: "guid-one"},
 		{Name: "tank/two@snapshot", GUID: "guid-two"},
+		{Name: "backup/two@snapshot", GUID: "guid-two"},
 	}
 	if len(targets) != len(want) {
 		t.Fatalf("normalized target count = %d, want %d", len(targets), len(want))
@@ -117,7 +119,6 @@ func TestNormalizeDatasetDeletionTargets(t *testing.T) {
 		{{Name: "tank/one"}},
 		{{GUID: "guid-one"}},
 		{{Name: "tank/one", GUID: "guid-one"}, {Name: "tank/one", GUID: "guid-two"}},
-		{{Name: "tank/one", GUID: "guid-one"}, {Name: "tank/two", GUID: "guid-one"}},
 	}
 	for _, test := range invalid {
 		if _, err := normalizeDatasetDeletionTargets(test); !errors.Is(err, ErrInvalidRequest) {

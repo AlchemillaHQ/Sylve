@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
@@ -286,14 +287,57 @@ func (s *Service) CreateSnapshot(ctx context.Context, guid string, name string, 
 	return nil
 }
 
-func (s *Service) DeleteSnapshot(ctx context.Context, guid string, recursive bool) error {
+func (s *Service) snapshotForMutation(ctx context.Context, guid, name string) (*gzfs.Dataset, error) {
+	guid = strings.TrimSpace(guid)
+	if guid == "" {
+		return nil, classifyError(ErrInvalidRequest, "snapshot_guid_required")
+	}
+	if name == "" {
+		snapshots, err := s.GZFS.ZFS.ListByType(ctx, gzfs.DatasetTypeSnapshot, true)
+		if err != nil {
+			return nil, err
+		}
+		for _, snapshot := range snapshots {
+			if snapshot.Name == "" || snapshot.GUID == "" || snapshot.Type != gzfs.DatasetTypeSnapshot {
+				return nil, fmt.Errorf("incomplete_snapshot_identity_in_zfs_list")
+			}
+			if snapshot.GUID != guid {
+				continue
+			}
+			if name != "" {
+				return nil, classifyError(ErrConflict, "snapshot_guid_%s_is_ambiguous: full_snapshot_name_required", guid)
+			}
+			name = snapshot.Name
+		}
+		if name == "" {
+			return nil, datasetLookupError(nil, "snapshot_with_guid_%s_not_found", guid)
+		}
+	}
+	datasetName, snapshotName, hasSnapshot := strings.Cut(name, "@")
+	if !hasSnapshot || datasetName == "" || snapshotName == "" || strings.Contains(snapshotName, "@") ||
+		strings.HasPrefix(name, "-") || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return nil, classifyError(ErrInvalidRequest, "invalid_snapshot_name")
+	}
+	dataset, err := s.GZFS.ZFS.Get(ctx, name, false)
+	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
+		return nil, datasetLookupError(err, "snapshot_%s_not_found", name)
+	}
+	if dataset.Name != name || dataset.GUID != guid {
+		return nil, classifyError(ErrConflict, "dataset_identity_changed_for_%s", name)
+	}
+	return dataset, nil
+}
+
+func (s *Service) DeleteSnapshot(ctx context.Context, guid, name string, recursive bool) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
-
-	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
-		return datasetLookupError(err, "snapshot_with_guid_%s_not_found", guid)
+	dataset, err := s.snapshotForMutation(ctx, guid, name)
+	if err != nil {
+		return err
+	}
+	if err := s.RequireReplicationDatasetMutationAllowed(ctx, dataset.Name); err != nil {
+		return err
 	}
 
 	err = dataset.Destroy(ctx, recursive, false)
@@ -985,13 +1029,13 @@ func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 	}()
 }
 
-func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMoreRecent bool) error {
+func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destroyMoreRecent bool) error {
 	s.syncMutex.Lock()
 	defer s.syncMutex.Unlock()
 
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, guid, false)
-	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
-		return datasetLookupError(err, "snapshot_with_guid_%s_not_found", guid)
+	dataset, err := s.snapshotForMutation(ctx, guid, name)
+	if err != nil {
+		return err
 	}
 	release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
 	if err != nil {
@@ -999,6 +1043,15 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid string, destroyMore
 	}
 	defer release()
 
+	if err := s.RequireReplicationDatasetMutationAllowed(ctx, dataset.Name); err != nil {
+		return err
+	}
+
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 	err = dataset.Rollback(ctx, destroyMoreRecent)
 	if err != nil {
 		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
@@ -1026,6 +1079,11 @@ func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName strin
 	}
 	defer release()
 
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 	err = dataset.Rollback(ctx, destroyMoreRecent)
 	if err != nil {
 		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)

@@ -10,6 +10,7 @@ package engine
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -214,6 +215,15 @@ func TestZFSVdevArgs(t *testing.T) {
 		}
 		if strings.Join(got, " ") != strings.Join(c.want, " ") {
 			t.Errorf("%q/%d = %v, want %v", c.vdev, c.n, got, c.want)
+		}
+	}
+}
+
+func TestSylveBootstrapSharingServices(t *testing.T) {
+	doc := New(Plan{}).sylveBootstrapDoc()
+	for _, service := range []string{"samba-server", "nfs"} {
+		if !slices.Contains(doc.Services, service) {
+			t.Errorf("bootstrap services = %v; missing %s", doc.Services, service)
 		}
 	}
 }

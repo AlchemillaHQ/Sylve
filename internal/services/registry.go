@@ -9,6 +9,9 @@
 package services
 
 import (
+	"context"
+	"errors"
+
 	bootstrap "github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	serviceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services"
@@ -38,6 +41,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/services/mdns"
 	"github.com/alchemillahq/sylve/internal/services/migration"
 	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/services/samba"
 	"github.com/alchemillahq/sylve/internal/services/startup"
 	"github.com/alchemillahq/sylve/internal/services/system"
@@ -61,6 +65,7 @@ type ServiceRegistry struct {
 	SystemService      systemServiceInterfaces.SystemServiceInterface
 	SambaService       sambaServiceInterfaces.SambaServiceInterface
 	ISCSIService       iscsiServiceInterfaces.ISCSIServiceInterface
+	NFSService         *nfs.Service
 	JailService        jailServiceInterfaces.JailServiceInterface
 	ClusterService     clusterServiceInterfaces.ClusterServiceInterface
 	MdnsService        mdnsServiceInterfaces.MdnsServiceInterface
@@ -190,6 +195,8 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	directoryService := directoryservices.NewService(db)
 	certificateService := certificates.NewService(db)
 	iscsiService := NewService[iscsi.Service](db)
+	nfsService := nfs.NewService(db)
+	nfsService.KerberosState = directoryService.NFSKeytabState
 	clusterService := NewService[cluster.Service](db, authService, jailService)
 	libvirtService.(*libvirt.Service).SetGuestIdentityCoordinator(
 		clusterService.(*cluster.Service),
@@ -215,6 +222,8 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	zfsSvc := zfsService.(*zfs.Service)
 	mdnsSvc := mdnsService.(*mdns.Service)
 	sysSvc := systemService.(*system.Service)
+	sysSvc.NFS = nfsService
+	zfsSvc.StorageTopologyGuard = nfsService.GuardStorageMutation
 
 	interfaceReferenceCoordinator := interfaceref.NewCoordinator()
 	networkService.(*network.Service).SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
@@ -222,7 +231,9 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	mdnsSvc.SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
 	sambaSvc.SetInterfaceReferenceCoordinator(interfaceReferenceCoordinator)
 
-	zfsSvc.OnDatasetsDeleted = sambaSvc.DisableSharesForDatasets
+	zfsSvc.OnDatasetsDeleted = func(ctx context.Context, guids []string) error {
+		return errors.Join(sambaSvc.DisableSharesForDatasets(ctx, guids), nfsService.DisableSharesForDatasets(ctx, guids))
+	}
 	sysSvc.OnUsablePoolsChanged = zfsSvc.ReconcileManagedPoolTelemetry
 	sysSvc.WithUsablePoolsChange = zfsSvc.WithUsablePoolsChange
 	sambaSvc.OnConfigChange = mdnsSvc.Rebuild
@@ -258,6 +269,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 	).(*startup.Service)
 	startupService.Bootstrap = bootstrapService
 	startupService.Directory = directoryService
+	startupService.NFS = nfsService
 
 	return &ServiceRegistry{
 		AuthService:        authService.(serviceInterfaces.AuthServiceInterface),
@@ -271,6 +283,7 @@ func NewServiceRegistry(db *gorm.DB, telemetryDB *gorm.DB) *ServiceRegistry {
 		SystemService:      systemService.(systemServiceInterfaces.SystemServiceInterface),
 		SambaService:       sambaService.(sambaServiceInterfaces.SambaServiceInterface),
 		ISCSIService:       iscsiService.(iscsiServiceInterfaces.ISCSIServiceInterface),
+		NFSService:         nfsService,
 		JailService:        jailService.(jailServiceInterfaces.JailServiceInterface),
 		ClusterService:     clusterService.(clusterServiceInterfaces.ClusterServiceInterface),
 		MdnsService:        mdnsSvc,

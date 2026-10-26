@@ -23,6 +23,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	"github.com/alchemillahq/sylve/internal/logger"
 	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/pkg/pkg"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
@@ -123,6 +124,13 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		return newSettingsError(SettingsErrorConflict, downloadstorage.ErrInUse.Error(), "", err)
 	}
 	defer release()
+	if s.NFS != nil {
+		releaseNFS, err := s.NFS.GuardStorageMutation(ctx)
+		if err != nil {
+			return newSettingsError(SettingsErrorConflict, "nfs_storage_topology_in_use", "", err)
+		}
+		defer releaseNFS()
+	}
 
 	zpools, err := s.GZFS.Zpool.GetPoolNames(ctx)
 	if err != nil {
@@ -306,6 +314,9 @@ func (s *Service) SetServiceEnabled(
 	enabled bool,
 	externalApply ServiceRuntimeStateApplier,
 ) (bool, error) {
+	if service == models.NFS {
+		return s.setNFSEnabled(ctx, enabled)
+	}
 	s.serviceSettingsMutex.Lock()
 	defer s.serviceSettingsMutex.Unlock()
 	if !models.IsAvailableService(service) {
@@ -356,4 +367,36 @@ func (s *Service) SetServiceEnabled(
 	}
 
 	return true, nil
+}
+
+func (s *Service) setNFSEnabled(ctx context.Context, enabled bool) (bool, error) {
+	if s.NFS == nil {
+		return false, newSettingsError(SettingsErrorInternal, "nfs_service_runtime_unavailable", "", nil)
+	}
+	changed := false
+	// Serialize the shared Services JSON update, not native NFS operations.
+	err := s.WithServiceSettingsLock(func() error {
+		var basic models.BasicSettings
+		if err := s.DB.WithContext(ctx).First(&basic).Error; err != nil {
+			return err
+		}
+		changed = serviceIsEnabled(basic.Services, models.NFS) != enabled
+		if !changed {
+			return nil
+		}
+		services := servicesWithState(basic.Services, models.NFS, enabled)
+		return s.DB.WithContext(ctx).Model(&basic).Select("Services").Updates(&models.BasicSettings{Services: services}).Error
+	})
+	if err != nil {
+		return false, newSettingsError(SettingsErrorInternal, "service_state_persist_failed", string(models.NFS), err)
+	}
+	// Concurrent toggles converge on the latest persisted intent. A failed
+	// restriction is never rolled back over another service's settings update.
+	if err := s.NFS.Reconcile(ctx); err != nil {
+		if errors.Is(err, nfs.ErrApplyFailed) {
+			return changed, err
+		}
+		return changed, newSettingsError(SettingsErrorInternal, "service_runtime_update_failed", string(models.NFS), err)
+	}
+	return changed, nil
 }

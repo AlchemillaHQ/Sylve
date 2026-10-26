@@ -33,6 +33,7 @@ import (
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/logger"
 	"github.com/alchemillahq/sylve/internal/services/directoryservices"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"gorm.io/gorm"
@@ -57,6 +58,7 @@ type Service struct {
 	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
 	Bootstrap BootstrapStartupApplier
 	Directory *directoryservices.Service
+	NFS       *nfs.Service
 }
 
 type BootstrapStartupApplier interface {
@@ -276,6 +278,12 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 		}
 	}
 	s.startSamba(ctx, dCtx, slices.Contains(basicSettings.Services, models.SambaServer))
+	if s.NFS != nil {
+		if err := s.NFS.Apply(ctx); err != nil {
+			logger.L.Error().Err(err).Msg("nfs_startup_apply_pending")
+		}
+		go s.NFS.Monitor(dCtx)
+	}
 	if s.Directory != nil {
 		go s.Directory.Monitor(dCtx)
 		go s.Directory.MonitorPrincipalCache(dCtx)

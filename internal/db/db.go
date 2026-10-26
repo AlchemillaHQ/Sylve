@@ -27,6 +27,7 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
+	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
 	sambaModels "github.com/alchemillahq/sylve/internal/db/models/samba"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
@@ -216,6 +217,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 		&sambaModels.SambaSettings{},
 		&sambaModels.SambaShare{},
+		&nfsModels.NFSSettings{},
+		&nfsModels.NFSShare{},
+		&nfsModels.NFSRuntime{},
 		&directoryModels.ActiveDirectory{},
 		&directoryModels.KerberosRealm{},
 		&directoryModels.KerberosKeytab{},

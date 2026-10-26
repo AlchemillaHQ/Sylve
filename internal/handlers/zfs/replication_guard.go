@@ -28,7 +28,6 @@ const (
 	ReplicationGuardCreateVolume     ReplicationMutationGuardOperation = "create_volume"
 	ReplicationGuardEditVolume       ReplicationMutationGuardOperation = "edit_volume"
 	ReplicationGuardFlashVolume      ReplicationMutationGuardOperation = "flash_volume"
-	ReplicationGuardRollbackSnapshot ReplicationMutationGuardOperation = "rollback_snapshot"
 )
 
 func decodeAndRestoreMutationBody(c *gin.Context, target any) error {
@@ -124,8 +123,6 @@ func ReplicationDatasetMutationGuard(
 		case ReplicationGuardEditVolume:
 			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		case ReplicationGuardFlashVolume:
-			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
-		case ReplicationGuardRollbackSnapshot:
 			err = zfsService.RequireReplicationDatasetGUIDMutationAllowed(ctx, c.Param("guid"))
 		default:
 			err = fmt.Errorf("replication_dataset_guard_operation_invalid")

@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/logger"
 	iscsiService "github.com/alchemillahq/sylve/internal/services/iscsi"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/services/system"
 	"github.com/gin-gonic/gin"
 )
@@ -30,6 +31,7 @@ type ServiceStateResponse struct {
 	Service models.AvailableService `json:"service"`
 	Enabled bool                    `json:"enabled"`
 	Changed bool                    `json:"changed"`
+	Applied *bool                   `json:"applied,omitempty"`
 }
 
 func bindBasicSettingsJSON(c *gin.Context, destination any) bool {
@@ -252,6 +254,14 @@ func SetServiceState(systemService *system.Service, networkSvc *networkService.S
 			},
 		)
 		if err != nil {
+			if service == models.NFS && errors.Is(err, nfs.ErrApplyFailed) {
+				applied := false
+				c.JSON(http.StatusAccepted, internal.APIResponse[ServiceStateResponse]{
+					Status: "success", Message: "nfs_configuration_saved_apply_pending", Error: err.Error(),
+					Data: ServiceStateResponse{Service: service, Enabled: *req.Enabled, Changed: changed, Applied: &applied},
+				})
+				return
+			}
 			if service == models.ISCSI && errors.Is(err, iscsiService.ErrApplyFailed) {
 				c.JSON(http.StatusAccepted, internal.APIResponse[ServiceStateResponse]{
 					Status: "success", Message: "iscsi_configuration_saved_apply_pending", Error: err.Error(),
@@ -267,6 +277,12 @@ func SetServiceState(systemService *system.Service, networkSvc *networkService.S
 		if !changed {
 			message = "service_state_unchanged"
 		}
+		var applied *bool
+		if service == models.NFS {
+			state, err := systemService.NFS.GetStatus(c.Request.Context())
+			value := err == nil && ((!state.Enabled && state.ApplyStatus == "stopped") || (state.Managed && (state.ApplyStatus == "applied" || state.ApplyStatus == "idle")))
+			applied = &value
+		}
 		c.JSON(http.StatusOK, internal.APIResponse[ServiceStateResponse]{
 			Status:  "success",
 			Message: message,
@@ -275,6 +291,7 @@ func SetServiceState(systemService *system.Service, networkSvc *networkService.S
 				Service: service,
 				Enabled: *req.Enabled,
 				Changed: changed,
+				Applied: applied,
 			},
 		})
 	}

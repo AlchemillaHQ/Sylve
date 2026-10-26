@@ -19,6 +19,7 @@ import (
 	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/services/hostupdates"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	sysctl "github.com/alchemillahq/sylve/pkg/utils/sysctl"
 
@@ -28,10 +29,17 @@ import (
 
 var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 
+type NFSRuntime interface {
+	Reconcile(context.Context) error
+	GetStatus(context.Context) (nfs.Status, error)
+	GuardStorageMutation(context.Context) (func(), error)
+}
+
 type Service struct {
 	HostUpdates             *hostupdates.Service
 	DownloadStorage         *downloadstorage.Resolver
 	DB                      *gorm.DB
+	NFS                     NFSRuntime
 	initMutex               sync.Mutex
 	syncMutex               sync.Mutex
 	achMutex                sync.Mutex

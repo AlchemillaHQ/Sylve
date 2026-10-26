@@ -17,12 +17,15 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+	"github.com/alchemillahq/sylve/internal/services/nfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
@@ -168,6 +171,81 @@ func TestSetServiceEnabledNoOpDoesNotApplyRuntimeState(t *testing.T) {
 	}
 	if changed || runtimeCalls != 0 {
 		t.Fatalf("changed=%v runtime calls=%d; want unchanged with no runtime call", changed, runtimeCalls)
+	}
+}
+
+func TestNFSDisableLeavesManualRuntimeAlone(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{}, &nfsModels.NFSRuntime{})
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Jails, models.NFS}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, NFS: nfs.NewService(db)}
+	apply := func(context.Context, models.AvailableService, bool) error {
+		t.Fatal("NFS must use its own serialized runtime applier")
+		return nil
+	}
+	for _, wantChanged := range []bool{true, false} {
+		if changed, err := service.SetServiceEnabled(t.Context(), models.NFS, false, apply); err != nil || changed != wantChanged {
+			t.Fatalf("toggle changed=%t error=%v", changed, err)
+		}
+		var settings models.BasicSettings
+		if err := db.First(&settings).Error; err != nil {
+			t.Fatal(err)
+		}
+		if hasService(settings.Services, models.NFS) || !hasService(settings.Services, models.Jails) {
+			t.Fatalf("incorrect service state: %v", settings.Services)
+		}
+	}
+}
+
+type delayedNFSRuntime struct {
+	*nfs.Service
+	reconcile func(context.Context) error
+}
+
+func (s delayedNFSRuntime) Reconcile(ctx context.Context) error { return s.reconcile(ctx) }
+
+func TestNativeNFSApplyDoesNotHoldSharedSettingsLockOrRollBackOtherServices(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+			if err := db.Create(&models.BasicSettings{}).Error; err != nil {
+				t.Fatal(err)
+			}
+			entered, release := make(chan struct{}), make(chan struct{})
+			service := &Service{DB: db, NFS: delayedNFSRuntime{Service: nfs.NewService(db), reconcile: func(context.Context) error {
+				close(entered)
+				<-release
+				if fail {
+					return nfs.ErrApplyFailed
+				}
+				return nil
+			}}}
+			nfsDone := make(chan error, 1)
+			go func() { _, err := service.SetServiceEnabled(t.Context(), models.NFS, true, nil); nfsDone <- err }()
+			<-entered
+			otherDone := make(chan error, 1)
+			go func() { _, err := service.SetServiceEnabled(t.Context(), models.Jails, true, nil); otherDone <- err }()
+			select {
+			case err := <-otherDone:
+				if err != nil {
+					t.Error(err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Error("native NFS apply blocked unrelated service settings")
+			}
+			close(release)
+			if err := <-nfsDone; (err != nil) != fail {
+				t.Fatalf("NFS reconcile error=%v, want failure=%t", err, fail)
+			}
+			var settings models.BasicSettings
+			if err := db.First(&settings).Error; err != nil {
+				t.Fatal(err)
+			}
+			if !hasService(settings.Services, models.NFS) || !hasService(settings.Services, models.Jails) {
+				t.Fatalf("NFS reconciliation overwrote another service's intent: %v", settings.Services)
+			}
+		})
 	}
 }
 

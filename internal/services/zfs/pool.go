@@ -158,6 +158,11 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	}
 	defer release()
 
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 	err = s.GZFS.Zpool.CreateWithOptions(ctx, req.Name, gzfs.ZPoolCreateOptions{
 		Force:      req.CreateForce,
 		Mountpoint: mountpoint,
@@ -382,6 +387,11 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 		}
 	}
 
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 	err = pool.Destroy(ctx)
 
 	if err != nil {

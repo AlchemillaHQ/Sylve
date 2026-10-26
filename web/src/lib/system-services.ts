@@ -33,7 +33,8 @@ export const INITIALIZATION_SERVICE_GROUPS = [
 		label: 'Storage & Sharing',
 		services: [
 			{ id: 'iscsi', label: 'iSCSI', defaultEnabled: true },
-			{ id: 'samba-server', label: 'Samba Server', defaultEnabled: false }
+			{ id: 'samba-server', label: 'Samba Server', defaultEnabled: false },
+			{ id: 'nfs', label: 'NFS', defaultEnabled: false }
 		]
 	},
 	{

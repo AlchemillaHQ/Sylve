@@ -126,7 +126,7 @@ func TestIntegrationDownloadStorageDestructiveEntryPointsRealZFS(t *testing.T) {
 		{"readonly edit", func() error {
 			return service.EditFilesystem(t.Context(), dataset.GUID, map[string]string{"readonly": "on"})
 		}},
-		{"snapshot rollback", func() error { return service.RollbackSnapshot(t.Context(), snapshot.GUID, false) }},
+		{"snapshot rollback", func() error { return service.RollbackSnapshot(t.Context(), snapshot.GUID, snapshot.Name, false) }},
 		{"named rollback", func() error { return service.RollbackSnapshotByName(t.Context(), snapshot.Name, false) }},
 	} {
 		t.Run(operation.name, func(t *testing.T) {

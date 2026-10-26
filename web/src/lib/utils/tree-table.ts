@@ -44,12 +44,16 @@ export function pruneEmptyChildren(rows: Row[]): Row[] {
 	});
 }
 
-export function findRow(rows: RowComponent[], id: number): RowComponent | undefined {
+export function findRow(
+	rows: RowComponent[],
+	id: number | string,
+	index = 'id'
+): RowComponent | undefined {
 	for (const row of rows) {
-		if (row.getData().id === id) return row;
+		if (row.getData()[index] === id) return row;
 		const children = row.getTreeChildren();
 		if (children.length > 0) {
-			const found = findRow(children, id);
+			const found = findRow(children, id, index);
 			if (found) return found;
 		}
 	}

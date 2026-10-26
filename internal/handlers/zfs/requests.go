@@ -44,7 +44,6 @@ func datasetDeletionTargetsQuery(c *gin.Context) ([]zfsServiceInterfaces.Dataset
 
 	targets := make([]zfsServiceInterfaces.DatasetDeletionTarget, 0, len(names))
 	seenNames := make(map[string]string, len(names))
-	seenGUIDs := make(map[string]string, len(guids))
 	for i := range names {
 		name := strings.Trim(strings.TrimSpace(names[i]), "/")
 		guid := strings.TrimSpace(guids[i])
@@ -57,16 +56,22 @@ func datasetDeletionTargetsQuery(c *gin.Context) ([]zfsServiceInterfaces.Dataset
 			}
 			continue
 		}
-		if existingName, exists := seenGUIDs[guid]; exists {
-			return nil, invalidZFSRequest("dataset guid %q is paired with multiple names: %q and %q", guid, existingName, name)
-		}
-
 		seenNames[name] = guid
-		seenGUIDs[guid] = name
 		targets = append(targets, zfsServiceInterfaces.DatasetDeletionTarget{Name: name, GUID: guid})
 	}
 
 	return targets, nil
+}
+
+func snapshotNameQuery(c *gin.Context) (string, error) {
+	names, exists := c.Request.URL.Query()["name"]
+	if !exists {
+		return "", nil
+	}
+	if len(names) != 1 || strings.TrimSpace(names[0]) == "" {
+		return "", invalidZFSRequest("name must be one full snapshot name")
+	}
+	return names[0], nil
 }
 
 func positiveUintPath(c *gin.Context, name string) (uint, error) {

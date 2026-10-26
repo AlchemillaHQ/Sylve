@@ -464,6 +464,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		ddnsS,
 		certS,
 		iscsiSvc,
+		serviceRegistry.NFSService,
 		jailSvc,
 		lifecycleSvc,
 		clusterSvc,

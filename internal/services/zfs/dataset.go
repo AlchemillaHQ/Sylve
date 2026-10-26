@@ -26,6 +26,17 @@ import (
 
 var ErrCannotDeletePoolRootDataset = errors.New("cannot_delete_pool_root_dataset")
 
+func (s *Service) guardStorageTopologyMutation(ctx context.Context) (func(), error) {
+	if s.StorageTopologyGuard == nil {
+		return func() {}, nil
+	}
+	release, err := s.StorageTopologyGuard(ctx)
+	if err != nil {
+		return nil, classifyError(ErrConflict, "storage_topology_change_blocked: %v", err)
+	}
+	return release, nil
+}
+
 func (s *Service) guardDownloadStorageMutation(ctx context.Context, names ...string) (func(), error) {
 	release, err := s.DownloadStorage.TryMutation(names...)
 	if err != nil {
@@ -109,7 +120,6 @@ func normalizeDatasetDeletionTargets(
 
 	normalized := make([]zfsServiceInterfaces.DatasetDeletionTarget, 0, len(targets))
 	seenNames := make(map[string]string, len(targets))
-	seenGUIDs := make(map[string]string, len(targets))
 	for _, target := range targets {
 		name := strings.Trim(strings.TrimSpace(target.Name), "/")
 		guid := strings.TrimSpace(target.GUID)
@@ -122,18 +132,7 @@ func normalizeDatasetDeletionTargets(
 			}
 			continue
 		}
-		if existingName, exists := seenGUIDs[guid]; exists {
-			return nil, classifyError(
-				ErrInvalidRequest,
-				"dataset_guid_%s_has_multiple_names_%s_and_%s",
-				guid,
-				existingName,
-				name,
-			)
-		}
-
 		seenNames[name] = guid
-		seenGUIDs[guid] = name
 		normalized = append(normalized, zfsServiceInterfaces.DatasetDeletionTarget{
 			Name: name,
 			GUID: guid,
@@ -165,15 +164,15 @@ func (s *Service) datasetsAffectedByDeletion(
 	roots []*gzfs.Dataset,
 ) ([]*gzfs.Dataset, error) {
 	affected := make([]*gzfs.Dataset, 0, len(roots))
-	seenGUIDs := make(map[string]struct{}, len(roots))
+	seenNames := make(map[string]struct{}, len(roots))
 	appendUnique := func(dataset *gzfs.Dataset) {
 		if dataset == nil || dataset.GUID == "" {
 			return
 		}
-		if _, exists := seenGUIDs[dataset.GUID]; exists {
+		if _, exists := seenNames[dataset.Name]; exists {
 			return
 		}
-		seenGUIDs[dataset.GUID] = struct{}{}
+		seenNames[dataset.Name] = struct{}{}
 		affected = append(affected, dataset)
 	}
 
@@ -244,6 +243,13 @@ func (s *Service) BulkDeleteDataset(
 		if dataset.Type != gzfs.DatasetTypeSnapshot {
 			names = append(names, dataset.Name)
 		}
+	}
+	if len(names) > 0 {
+		releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+		if err != nil {
+			return err
+		}
+		defer releaseTopology()
 	}
 	release, err := s.guardDownloadStorageMutation(ctx, names...)
 	if err != nil {

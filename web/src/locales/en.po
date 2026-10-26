@@ -176,12 +176,15 @@ msgid "Samba"
 msgstr "Samba"
 
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
 msgid "Shares"
 msgstr "Shares"
 
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
 #: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/+layout.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Settings"
 msgstr "Settings"
 
@@ -575,6 +578,8 @@ msgstr "Action"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/storage/zfs/pools/+page.svelte
 #: src/routes/[node]/system/notifications/rules/+page.svelte
@@ -1111,6 +1116,7 @@ msgstr "This is a note"
 #: src/lib/components/custom/Jail/Options/TextEdit.svelte
 #: src/lib/components/custom/Jail/Options/WoL.svelte
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Lease/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
@@ -1306,6 +1312,14 @@ msgstr "Staging"
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/storage/iscsi/initiators/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/storage/samba/audit-logs/+page.svelte
 #: src/routes/[node]/system/updates/sylve/+page.svelte
 #: src/routes/[node]/system/updates/sylve/+page.svelte
@@ -1584,6 +1598,7 @@ msgstr "Cluster Information"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/vm/[rid]/hardware/+page.svelte
@@ -1601,6 +1616,7 @@ msgstr "Property"
 #: src/routes/[node]/network/interfaces/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
 #: src/routes/[node]/storage/disks/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/tunables/+page.svelte
@@ -2078,6 +2094,8 @@ msgstr "Directory Mask"
 
 #: src/lib/components/custom/ZFS/datasets/fs/Edit.svelte
 #: src/lib/components/custom/ZFS/datasets/volumes/Edit.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Read Only"
 msgstr "Read Only"
 
@@ -2190,6 +2208,7 @@ msgstr "Model"
 
 #: src/lib/components/custom/DataCenter/Backups/Targets/Form.svelte
 #: src/lib/components/custom/Jail/Create/Basic.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Routes/Form.svelte
@@ -2198,6 +2217,7 @@ msgstr "Model"
 #: src/routes/[node]/jail/[ctid]/snapshots/+page.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/snapshots/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -2407,6 +2427,7 @@ msgstr "ZFS Pools"
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
 #: src/lib/components/custom/Jail/Template/View.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
@@ -2426,8 +2447,15 @@ msgstr "ZFS Pools"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
@@ -2472,8 +2500,13 @@ msgstr "Enabled"
 #: src/routes/[node]/network/vpn/wireguard/server/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 #: src/routes/[node]/system/notifications/transports/+page.svelte
+#: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
 #: src/routes/[node]/system/services/+page.svelte
@@ -2811,6 +2844,7 @@ msgstr "Force Delete"
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/lib/components/custom/VM/MigrateModal.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
@@ -3440,6 +3474,8 @@ msgstr "Review"
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
 #: src/lib/components/custom/Jail/Create/Network.svelte
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/Advanced.svelte
 #: src/lib/components/custom/VM/Create/CreateVM.svelte
@@ -3464,6 +3500,9 @@ msgstr "Review"
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/options/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -4502,6 +4541,8 @@ msgstr "Default Gateway"
 #: src/lib/components/custom/DirectoryServices/Keytab.svelte
 #: src/lib/components/custom/DirectoryServices/Realm.svelte
 #: src/lib/components/custom/Jail/Network/Form.svelte
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/WireGuard/Client/Form.svelte
 #: src/lib/components/custom/Network/WireGuard/Server/Peer.svelte
 #: src/lib/components/custom/Samba/Share.svelte
@@ -4952,6 +4993,7 @@ msgid "Cores"
 msgstr "Cores"
 
 #: src/lib/components/custom/VM/Hardware/CPU.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Threads"
 msgstr "Threads"
 
@@ -5204,6 +5246,7 @@ msgstr "Save & Back to Sockets"
 #: src/routes/[node]/network/dhcp/config/+page.svelte
 #: src/routes/[node]/network/global-config/+page.svelte
 #: src/routes/[node]/network/mdns/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/storage/samba/settings/+page.svelte
 msgid "Update"
 msgstr "Update"
@@ -5897,6 +5940,8 @@ msgstr "Yearly"
 
 #: src/lib/components/custom/VM/Hardware/PCIDevices.svelte
 #: src/routes/[node]/jail/[ctid]/summary/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/vm/[rid]/summary/+page.svelte
 msgid "Stopped"
 msgstr "Stopped"
@@ -6175,10 +6220,12 @@ msgstr "Failed to update Samba configuration"
 msgid "Samba configuration updated"
 msgstr "Samba configuration updated"
 
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Edit Share"
 msgstr "Edit Share"
 
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 #: src/routes/[node]/storage/samba/shares/+page.svelte
 msgid "Delete Share"
 msgstr "Delete Share"
@@ -8156,6 +8203,7 @@ msgstr "Template data unavailable"
 #: src/lib/components/custom/DirectoryServices/Membership.svelte
 #: src/lib/components/custom/DirectoryServices/Realm.svelte
 #: src/lib/components/custom/DirectoryServices/Realm.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/GlobalConfig/Config.svelte
 #: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
 #: src/lib/components/custom/Network/Switch/Standard/PortsTab.svelte
@@ -8164,6 +8212,7 @@ msgstr "Template data unavailable"
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/VM/Template/Create.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Optional"
 msgstr "Optional"
 
@@ -8426,6 +8475,8 @@ msgstr "This VM is owned by another node right now"
 
 #: src/lib/components/custom/Jail/Network/Inherit.svelte
 #: src/lib/components/custom/Jail/Packages/Monitoring.svelte
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/DHCP/Config.svelte
 #: src/lib/components/custom/Network/DHCP/Range/CreateOrEdit.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
@@ -8629,6 +8680,7 @@ msgstr "Error: {0}"
 #: src/lib/components/custom/iSCSI/Config.svelte
 #: src/routes/[node]/network/objects/+page.svelte
 #: src/routes/[node]/services/dynamic-dns/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/datacenter/replication/events/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
 #: src/routes/datacenter/replication/policies/+page.svelte
@@ -8651,8 +8703,10 @@ msgstr "Object #{0}"
 msgid "NAT rule {0}"
 msgstr "NAT rule {0}"
 
+#: src/lib/components/custom/NFS/Config.svelte
 #: src/lib/components/custom/Network/Firewall/NAT/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Protocol"
 msgstr "Protocol"
 
@@ -8975,6 +9029,7 @@ msgstr "Rule"
 
 #: src/lib/components/custom/Dialog/DetailBlock.svelte
 #: src/lib/components/custom/Disk/SmartSelfTest.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
 #: src/lib/stores/error-details.svelte.ts
 #: src/routes/+error.svelte
@@ -11318,6 +11373,8 @@ msgid "Identity"
 msgstr "Identity"
 
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Security"
 msgstr "Security"
 
@@ -11608,6 +11665,7 @@ msgid "⚠ Warnings"
 msgstr "⚠ Warnings"
 
 #: src/lib/components/custom/VM/MigrateModal.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Validating..."
 msgstr "Validating..."
 
@@ -12295,6 +12353,7 @@ msgid "Connected ({0})"
 msgstr "Connected ({0})"
 
 #: src/routes/[node]/storage/iscsi/targets/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Idle"
 msgstr "Idle"
 
@@ -13823,7 +13882,9 @@ msgstr "For example, 2775 preserves the shared group on new directories."
 msgid "Share summary"
 msgstr "Share summary"
 
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "Access"
 msgstr "Access"
 
@@ -13831,6 +13892,7 @@ msgstr "Access"
 msgid "Standard Samba share"
 msgstr "Standard Samba share"
 
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Samba/Share.svelte
 msgid "Create Share"
 msgstr "Create Share"
@@ -17471,6 +17533,9 @@ msgstr "Application API Token"
 
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
 #: src/lib/components/custom/Notifications/CreateOrEdit.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Required"
 msgstr "Required"
 
@@ -17918,6 +17983,7 @@ msgstr "Choose a ZFS volume"
 msgid "Enter a host path"
 msgstr "Enter a host path"
 
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/VM/Hardware/Storage/AddStorageDialog.svelte
 msgid "Read-only"
 msgstr "Read-only"
@@ -18771,6 +18837,8 @@ msgid "Current: {0}"
 msgstr "Current: {0}"
 
 #: src/lib/components/custom/Network/IfaceL3/Form.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Not managed"
 msgstr "Not managed"
 
@@ -19017,6 +19085,9 @@ msgstr "Target Handling"
 msgid "Standard Rule"
 msgstr "Standard Rule"
 
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/lib/components/custom/NFS/Share.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Network/Firewall/Traffic/Form.svelte
 #: src/lib/components/custom/Utilities/Downloader/StorageSelect.svelte
@@ -20245,9 +20316,15 @@ msgstr "Domain Controller"
 msgid "Not Checked"
 msgstr "Not Checked"
 
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/lib/components/custom/NFS/Config.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/directory-services/active-directory/+page.svelte
 #: src/routes/[node]/jail/[ctid]/packages/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 #: src/routes/[node]/system/updates/packages/+page.svelte
 msgid "Automatic"
 msgstr "Automatic"
@@ -20456,6 +20533,7 @@ msgstr "AD Machine Account"
 
 #: src/routes/[node]/directory-services/kerberos/keytabs/+page.svelte
 #: src/routes/[node]/directory-services/kerberos/realms/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
 msgid "<0/>New"
 msgstr "<0/>New"
 
@@ -20739,6 +20817,7 @@ msgid "Start scrub on {0}?"
 msgstr "Start scrub on {0}?"
 
 #: src/lib/components/custom/ZFS/pools/Scrub.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
 msgid "Starting"
 msgstr "Starting"
 
@@ -22010,3 +22089,394 @@ msgstr "Rename requires the source pool. Select that pool or uncheck Rename to c
 #: src/lib/components/custom/Jail/Create/Storage.svelte
 msgid "Rename source dataset"
 msgstr "Rename source dataset"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "NFS Share Configuration"
+msgstr "NFS Share Configuration"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFS Settings"
+msgstr "NFS Settings"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFSv3"
+msgstr "NFSv3"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFSv4"
+msgstr "NFSv4"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFSv3 and NFSv4"
+msgstr "NFSv3 and NFSv4"
+
+#: src/lib/components/custom/NFS/Preview.svelte
+msgid "NFS Export Preview"
+msgstr "NFS Export Preview"
+
+#: src/lib/components/custom/NFS/Preview.svelte
+msgid "Candidate NFS exports"
+msgstr "Candidate NFS exports"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "The saved filesystem is unavailable."
+msgstr "The saved filesystem is unavailable."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select a filesystem."
+msgstr "Select a filesystem."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select an available filesystem, or disable this saved share."
+msgstr "Select an available filesystem, or disable this saved share."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Description must be at most 256 bytes."
+msgstr "Description must be at most 256 bytes."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Specify at least one client, or explicitly select Everyone."
+msgstr "Specify at least one client, or explicitly select Everyone."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "A share supports at most 64 client addresses or networks."
+msgstr "A share supports at most 64 client addresses or networks."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Edit NFS Share"
+msgstr "Edit NFS Share"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Create NFS Share"
+msgstr "Create NFS Share"
+
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Filesystem"
+msgstr "Filesystem"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select a ZFS filesystem"
+msgstr "Select a ZFS filesystem"
+
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Authorized Clients"
+msgstr "Authorized Clients"
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Mountpoint"
+msgstr "Mountpoint"
+
+#. 0: share.id
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Share {0}"
+msgstr "Share {0}"
+
+#: src/lib/components/custom/NFS/Share.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Everyone"
+msgstr "Everyone"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Apply Status"
+msgstr "Apply Status"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Preview Exports"
+msgstr "Preview Exports"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "NFS Settings - Edit"
+msgstr "NFS Settings - Edit"
+
+#: src/lib/components/skeleton/BottomPanel.svelte
+msgid "NFS - Apply"
+msgstr "NFS - Apply"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFS settings applied"
+msgstr "NFS settings applied"
+
+#: src/routes/[node]/system/services/+page.svelte
+msgid "<0/>NFS Settings"
+msgstr "<0/>NFS Settings"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Last Apply Error"
+msgstr "Last Apply Error"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Unable to load filesystems."
+msgstr "Unable to load filesystems."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select a security flavor."
+msgstr "Select a security flavor."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Loading filesystems..."
+msgstr "Loading filesystems..."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select a Maproot user."
+msgstr "Select a Maproot user."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select a Mapall user."
+msgstr "Select a Mapall user."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Maproot and Mapall cannot be combined."
+msgstr "Maproot and Mapall cannot be combined."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "NFS share saved"
+msgstr "NFS share saved"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "NFS share applied"
+msgstr "NFS share applied"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "NFS share saved; apply pending."
+msgstr "NFS share saved; apply pending."
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Select security flavors"
+msgstr "Select security flavors"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "IP address or CIDR"
+msgstr "IP address or CIDR"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Maproot User"
+msgstr "Maproot User"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Maproot Group"
+msgstr "Maproot Group"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Mapall User"
+msgstr "Mapall User"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Mapall Group"
+msgstr "Mapall Group"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "All Directories"
+msgstr "All Directories"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Allow remote root-level access to this share?"
+msgstr "Allow remote root-level access to this share?"
+
+#: src/lib/components/custom/NFS/Share.svelte
+msgid "Allow everyone to read and write this share?"
+msgstr "Allow everyone to read and write this share?"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Unable to load Directory Services keytabs."
+msgstr "Unable to load Directory Services keytabs."
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFS settings saved"
+msgstr "NFS settings saved"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFS settings saved; apply pending."
+msgstr "NFS settings saved; apply pending."
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Numeric IDs (NFSv4)"
+msgstr "Numeric IDs (NFSv4)"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Maximum NFSv4 Version"
+msgstr "Maximum NFSv4 Version"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFSv4.0"
+msgstr "NFSv4.0"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFSv4.1"
+msgstr "NFSv4.1"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "NFSv4.2"
+msgstr "NFSv4.2"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "UDP (NFSv3)"
+msgstr "UDP (NFSv3)"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Allow Unprivileged Ports"
+msgstr "Allow Unprivileged Ports"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Kerberos Principal"
+msgstr "Kerberos Principal"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Bind Addresses"
+msgstr "Bind Addresses"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "All Interfaces"
+msgstr "All Interfaces"
+
+#: src/lib/components/custom/NFS/Config.svelte
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Mountd Port"
+msgstr "Mountd Port"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Minimum Threads"
+msgstr "Minimum Threads"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Maximum Threads"
+msgstr "Maximum Threads"
+
+#. 0: enabled ? 'disable' \\: 'enable'
+#: src/routes/[node]/system/services/+page.svelte
+msgid "You are about to {0} NFS."
+msgstr "You are about to {0} NFS."
+
+#: src/routes/[node]/system/services/+page.svelte
+msgid "NFS state saved; apply pending."
+msgstr "NFS state saved; apply pending."
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFS disabled"
+msgstr "NFS disabled"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFS apply pending"
+msgstr "NFS apply pending"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Enabled Shares"
+msgstr "Enabled Shares"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Last Check"
+msgstr "Last Check"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Exported Filesystems"
+msgstr "Exported Filesystems"
+
+#. 0: config.v4MaxVersion
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "NFSv{0}"
+msgstr "NFSv{0}"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Privileged Ports"
+msgstr "Privileged Ports"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Unable to load NFS settings."
+msgstr "Unable to load NFS settings."
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Unable to check NFS status."
+msgstr "Unable to check NFS status."
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS share deleted"
+msgstr "NFS share deleted"
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS share deleted; apply pending."
+msgstr "NFS share deleted; apply pending."
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Mapping"
+msgstr "Mapping"
+
+#. 0: share.mapallUser
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "All → {0}"
+msgstr "All → {0}"
+
+#. 0: share.maprootUser
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Root → {0}"
+msgstr "Root → {0}"
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Root squash"
+msgstr "Root squash"
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Unable to load NFS shares."
+msgstr "Unable to load NFS shares."
+
+#. 0: status.lastError ? `\\: ${status.lastError}` \\: '.'
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS apply pending{0}"
+msgstr "NFS apply pending{0}"
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Loading NFS shares..."
+msgstr "Loading NFS shares..."
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "No NFS shares."
+msgstr "No NFS shares."
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "NFS share"
+msgstr "NFS share"
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Unable to load interface addresses."
+msgstr "Unable to load interface addresses."
+
+#: src/lib/components/custom/NFS/Config.svelte
+msgid "Select interface addresses or enter a local IPv4/IPv6 address. Empty means all interfaces."
+msgstr "Select interface addresses or enter a local IPv4/IPv6 address. Empty means all interfaces."
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Applying"
+msgstr "Applying"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Applied"
+msgstr "Applied"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Re-Apply / Retry"
+msgstr "Re-Apply / Retry"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Re-apply NFS?"
+msgstr "Re-apply NFS?"
+
+#: src/routes/[node]/storage/nfs/settings/+page.svelte
+msgid "Re-applying NFS settings may interrupt connected clients."
+msgstr "Re-applying NFS settings may interrupt connected clients."
+
+#: src/routes/[node]/storage/nfs/shares/+page.svelte
+msgid "Read / Write"
+msgstr "Read / Write"
