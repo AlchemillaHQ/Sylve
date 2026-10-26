@@ -409,6 +409,33 @@ func TestNativeIPv6AutomaticMountdPortUsesDirectProbe(t *testing.T) {
 	}
 }
 
+func TestNativeCommandPreservesContextFailure(t *testing.T) {
+	commandErr := errors.New("signal: killed")
+	for _, cause := range []error{context.Canceled, context.DeadlineExceeded} {
+		for _, runErr := range []error{nil, commandErr} {
+			t.Run(fmt.Sprintf("%v/%v", cause, runErr), func(t *testing.T) {
+				var ctx context.Context
+				var cancel context.CancelFunc
+				if cause == context.DeadlineExceeded {
+					ctx, cancel = context.WithTimeout(t.Context(), 0)
+				} else {
+					ctx, cancel = context.WithCancel(t.Context())
+				}
+				cancel()
+				driver := &nativeRuntime{
+					run: func(context.Context, []string, string, ...string) (utils.CommandResult, error) {
+						return utils.CommandResult{Output: "probe stalled", ExitCode: -1}, runErr
+					},
+				}
+				result, err := driver.command(ctx, "/usr/bin/rpcinfo")
+				if !errors.Is(err, cause) || runErr != nil && !errors.Is(err, runErr) || result.Output != "probe stalled" {
+					t.Fatalf("command lost its output or cancellation cause: %+v, %v", result, err)
+				}
+			})
+		}
+	}
+}
+
 func TestNativeReadinessClearsTransientProbeFailureAfterRecovery(t *testing.T) {
 	f := newNativeFixture(t)
 	exports := exportsMarker + "\n/mnt/data -sec=sys\n"

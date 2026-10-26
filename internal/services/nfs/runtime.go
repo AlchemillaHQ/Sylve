@@ -253,7 +253,8 @@ func (s *Service) failClosed(ctx context.Context, state *nfsModels.NFSRuntime, c
 			state.Managed, state.ApplyStatus = false, "stopped"
 		}
 	}
-	state.LastError = errors.Join(cause, stopErr, writeErr).Error()
+	cause = errors.Join(cause, stopErr, writeErr)
+	state.LastError = cause.Error()
 	persistErr := s.DB.WithContext(ctx).Save(state).Error
 	var running *bool
 	if stopErr == nil {
@@ -263,7 +264,7 @@ func (s *Service) failClosed(ctx context.Context, state *nfsModels.NFSRuntime, c
 		running = &active
 	}
 	s.observe(*state, running)
-	return fmt.Errorf("%w: %w", ErrApplyFailed, errors.Join(errors.New(state.LastError), persistErr))
+	return fmt.Errorf("%w: %w", ErrApplyFailed, errors.Join(cause, persistErr))
 }
 
 // GuardStorageMutation fences topology changes against apply. Initial runtime
@@ -315,8 +316,8 @@ func (s *Service) Monitor(ctx context.Context) {
 }
 
 func (s *Service) checkRuntime(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
+	readCtx, readCancel := context.WithTimeout(ctx, 8*time.Second)
+	defer readCancel()
 	if !s.topologyMu.TryLock() {
 		return nil
 	}
@@ -331,32 +332,41 @@ func (s *Service) checkRuntime(ctx context.Context) error {
 			s.topologyMu.Unlock()
 		}
 	}()
-	state, err := s.runtimeState(ctx)
-	if err != nil || !state.Managed {
-		return err
-	}
-	enabled, err := s.enabled(ctx)
+	state, err := s.runtimeState(readCtx)
 	if err != nil {
-		return s.failClosed(ctx, &state, err)
+		return fmt.Errorf("read NFS monitor state: %w", err)
+	}
+	if !state.Managed {
+		return nil
+	}
+	fail := func(cause error) error {
+		return s.failClosed(ctx, &state, fmt.Errorf("NFS health check failed: %w", cause))
+	}
+	enabled, err := s.enabled(readCtx)
+	if err != nil {
+		return fail(fmt.Errorf("read NFS enabled state: %w", err))
 	}
 	if !enabled {
 		return s.apply(ctx)
 	}
 	if state.ApplyStatus == "pending" && (state.NFSd.PID != 0 || state.Mountd.PID != 0 || len(state.Filesystems) > 0) {
-		return s.failClosed(ctx, &state, errors.New("NFS export withdrawal remains pending"))
+		return fail(errors.New("NFS export withdrawal remains pending"))
 	}
 	if state.ApplyStatus != "applied" && state.ApplyStatus != "idle" {
 		return nil
 	}
-	policy, err := s.readPolicy(ctx)
+	policy, err := s.readPolicy(readCtx)
 	if err != nil {
-		return s.failClosed(ctx, &state, err)
+		return fail(fmt.Errorf("read saved NFS policy: %w", err))
 	}
+	readCancel()
 	revision := s.revision
 	s.mutationMu.Unlock()
 	s.topologyMu.Unlock()
 	locked = false
-	checkErr := s.verifyApplied(ctx, policy, state)
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, 20*time.Second)
+	checkErr := s.verifyApplied(verifyCtx, policy, state)
+	verifyCancel()
 	// Host reads run outside the mutation fence. A concurrent save/apply wins;
 	// only a result for the unchanged runtime may update health or withdraw it.
 	if !s.topologyMu.TryLock() {
@@ -370,20 +380,24 @@ func (s *Service) checkRuntime(ctx context.Context) error {
 	if s.revision != revision {
 		return nil
 	}
-	current, err := s.runtimeState(ctx)
+	// Verification may have exhausted its deadline. Compare current ownership
+	// with a fresh budget before deciding whether this result may withdraw it.
+	checkCtx, checkCancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
+	defer checkCancel()
+	current, err := s.runtimeState(checkCtx)
 	if err != nil {
-		return s.failClosed(ctx, &state, err)
+		return fail(errors.Join(checkErr, fmt.Errorf("read current NFS runtime: %w", err)))
 	}
 	if runtimeIdentity(current) != runtimeIdentity(state) {
 		return nil
 	}
-	if enabled, err := s.enabled(ctx); err != nil {
-		return s.failClosed(ctx, &state, err)
+	if enabled, err := s.enabled(checkCtx); err != nil {
+		return fail(errors.Join(checkErr, fmt.Errorf("read current NFS enabled state: %w", err)))
 	} else if enabled != policy.enabled {
 		return nil
 	}
 	if checkErr != nil {
-		return s.failClosed(ctx, &state, checkErr)
+		return fail(checkErr)
 	}
 	running := len(state.Filesystems) > 0
 	s.observe(state, &running)
@@ -391,25 +405,34 @@ func (s *Service) checkRuntime(ctx context.Context) error {
 }
 
 func (s *Service) verifyApplied(ctx context.Context, policy savedPolicy, state nfsModels.NFSRuntime) error {
+	checked := func(stage string, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil && !errors.Is(err, ctxErr) {
+			err = errors.Join(err, ctxErr)
+		}
+		if err != nil {
+			return fmt.Errorf("verify NFS %s: %w", stage, err)
+		}
+		return nil
+	}
 	if state.PolicyHash != policy.hash() || state.ConfigHash != configurationHash(policy.config) {
 		return errors.New("saved NFS policy no longer matches the applied configuration")
 	}
-	if err := s.checkFilesystems(ctx, state.Filesystems, policy.pools); err != nil {
+	if err := checked("filesystems", s.checkFilesystems(ctx, state.Filesystems, policy.pools)); err != nil {
 		return err
 	}
 	_, mappings, err := s.resolveMappings(ctx, policy.shares)
-	if err != nil {
+	if err := checked("mapping credentials", err); err != nil {
 		return err
 	}
 	if !slices.Equal(mappings, state.Mappings) {
 		return errors.New("NFS mapping credentials no longer match the applied configuration")
 	}
 	kerberosHash, err := s.kerberosState(ctx, policy.config, policy.shares)
-	if err != nil {
+	if err := checked("Kerberos credentials", err); err != nil {
 		return err
 	}
 	if kerberosHash != state.KerberosHash {
 		return errors.New("NFS Kerberos credentials no longer match the applied configuration")
 	}
-	return s.driver.Check(ctx, policy.config, &state)
+	return checked("runtime", s.driver.Check(ctx, policy.config, &state))
 }

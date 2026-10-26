@@ -21,6 +21,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
+	"gorm.io/gorm"
 )
 
 type fakeRuntime struct {
@@ -211,6 +212,184 @@ func TestMonitorRetriesFailedWithdrawalWithoutStartingServing(t *testing.T) {
 	driver.fail, driver.events = "", nil
 	if err := service.checkRuntime(t.Context()); err != nil || driver.running || slices.Contains(driver.events, "start") {
 		t.Fatalf("pending withdrawal was not retried safely: %v, %v", driver.events, err)
+	}
+}
+
+func TestMonitorVerificationHasIndependentBudget(t *testing.T) {
+	service, _, _ := configuredRuntime(t)
+	var readDeadline time.Time
+	if err := service.DB.Callback().Query().Before("gorm:query").Register("capture_monitor_read_deadline", func(tx *gorm.DB) {
+		if readDeadline.IsZero() {
+			readDeadline, _ = tx.Statement.Context.Deadline()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service.inspectDatasets = func(ctx context.Context, _ []string) ([]*gzfs.Dataset, error) {
+		deadline, ok := ctx.Deadline()
+		if !ok || readDeadline.IsZero() || !deadline.After(readDeadline) {
+			t.Errorf("verification reused the database read budget: read=%v, verify=%v", readDeadline, deadline)
+		}
+		return []*gzfs.Dataset{testDataset("1", "tank/data", "/mnt/data")}, nil
+	}
+	if err := service.checkRuntime(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMonitorTimeoutPreservesStageAndWithdraws(t *testing.T) {
+	service, driver, _ := configuredRuntime(t)
+	cause := errors.New("filesystem inspection stalled")
+	service.inspectDatasets = func(ctx context.Context, _ []string) ([]*gzfs.Dataset, error) {
+		<-ctx.Done()
+		return nil, cause
+	}
+	driver.onStop = func(ctx context.Context) error { return ctx.Err() }
+	driver.events = nil
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	err := service.checkRuntime(ctx)
+	if !errors.Is(err, ErrApplyFailed) || !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, cause) {
+		t.Fatalf("monitor lost its verification failure: %v", err)
+	}
+	status, err := service.GetStatus(t.Context())
+	if err != nil || status.ApplyStatus != "pending" || !status.Enabled || status.Running == nil || *status.Running || status.AppliedExports != 0 {
+		t.Fatalf("timeout did not withdraw serving: %#v, %v", status, err)
+	}
+	for _, detail := range []string{"NFS health check failed", "verify NFS filesystems", cause.Error(), context.DeadlineExceeded.Error()} {
+		if !strings.Contains(status.LastError, detail) {
+			t.Errorf("pending error %q lost %q", status.LastError, detail)
+		}
+	}
+	if driver.running || driver.exports != exportsMarker+"\n" || !reflect.DeepEqual(driver.events, []string{"stop", "publish"}) {
+		t.Fatalf("timeout cleanup = %v, running=%t, exports=%q", driver.events, driver.running, driver.exports)
+	}
+	if err := service.checkRuntime(t.Context()); err != nil || !reflect.DeepEqual(driver.events, []string{"stop", "publish"}) {
+		t.Fatalf("monitor automatically retried a timed-out policy: %v, %v", driver.events, err)
+	}
+}
+
+func TestMonitorExpiredVerificationDoesNotRevokeChangedRuntime(t *testing.T) {
+	for _, change := range []string{"apply revision", "persisted identity"} {
+		t.Run(change, func(t *testing.T) {
+			service, driver, _ := configuredRuntime(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			service.inspectDatasets = func(context.Context, []string) ([]*gzfs.Dataset, error) {
+				if change == "apply revision" {
+					if err := service.Apply(t.Context()); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					state, err := service.runtimeState(t.Context())
+					if err != nil {
+						t.Fatal(err)
+					}
+					state.NFSd.Birth = "new daemon birth"
+					if err := service.DB.Save(&state).Error; err != nil {
+						t.Fatal(err)
+					}
+				}
+				driver.events = nil
+				cancel()
+				return nil, errors.New("obsolete filesystem inspection failed")
+			}
+			if err := service.checkRuntime(ctx); err != nil {
+				t.Fatal(err)
+			}
+			state, err := service.runtimeState(t.Context())
+			if err != nil || !driver.running || len(driver.events) != 0 || state.ApplyStatus != "applied" || state.LastError != "" {
+				t.Fatalf("obsolete timeout withdrew a newer runtime: %#v, %v, %v", state, driver.events, err)
+			}
+		})
+	}
+}
+
+func TestMonitorExpiredVerificationCannotBecomeHealthy(t *testing.T) {
+	service, driver, _ := configuredRuntime(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	service.inspectDatasets = func(context.Context, []string) ([]*gzfs.Dataset, error) {
+		cancel()
+		return []*gzfs.Dataset{testDataset("1", "tank/data", "/mnt/data")}, nil
+	}
+	driver.events = nil
+	if err := service.checkRuntime(ctx); !errors.Is(err, ErrApplyFailed) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled verification was accepted: %v", err)
+	}
+	state, err := service.runtimeState(t.Context())
+	if err != nil || state.ApplyStatus != "pending" || !strings.Contains(state.LastError, "verify NFS filesystems") || driver.running {
+		t.Fatalf("expired verification was observed as healthy: %#v, %v", state, err)
+	}
+	if !reflect.DeepEqual(driver.events, []string{"stop", "publish"}) {
+		t.Fatalf("verification continued after cancellation: %v", driver.events)
+	}
+}
+
+func TestMonitorStateReadFailureRetainsVerificationError(t *testing.T) {
+	for _, table := range []string{"nfs_runtimes", "basic_settings"} {
+		t.Run(table, func(t *testing.T) {
+			service, _, _ := configuredRuntime(t)
+			cause := errors.New("filesystem inspection failed")
+			readErr := errors.New("current state lookup failed")
+			failRead := false
+			if err := service.DB.Callback().Query().Before("gorm:query").Register("fail_monitor_state_read", func(tx *gorm.DB) {
+				if failRead && tx.Statement.Schema.Table == table {
+					failRead = false
+					tx.AddError(readErr)
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			service.inspectDatasets = func(context.Context, []string) ([]*gzfs.Dataset, error) {
+				failRead = true
+				return nil, cause
+			}
+			if err := service.checkRuntime(t.Context()); !errors.Is(err, ErrApplyFailed) || !errors.Is(err, cause) || !errors.Is(err, readErr) {
+				t.Fatalf("state lookup replaced the verification failure: %v", err)
+			}
+			state, err := service.runtimeState(t.Context())
+			if err != nil || !strings.Contains(state.LastError, cause.Error()) || !strings.Contains(state.LastError, readErr.Error()) {
+				t.Fatalf("pending state lost failure details: %#v, %v", state, err)
+			}
+		})
+	}
+}
+
+func TestMonitorReportsCredentialAndRuntimeFailureStages(t *testing.T) {
+	for _, stage := range []string{"mapping credentials", "Kerberos credentials", "runtime"} {
+		t.Run(stage, func(t *testing.T) {
+			service, driver, share := configuredRuntime(t)
+			detail := "check failed"
+			switch stage {
+			case "mapping credentials":
+				service.resolveMapping = func(context.Context, string, string) (string, error) { return "1001:1002", nil }
+				share.MapallUser = "DOMAIN\\user"
+				if _, err := service.SaveShare(t.Context(), share.ID, share.NFSShareConfig); err != nil {
+					t.Fatal(err)
+				}
+				service.resolveMapping = func(context.Context, string, string) (string, error) { return "", errors.New(detail) }
+			case "Kerberos credentials":
+				service.KerberosState = func(context.Context, string) (string, error) { return "key", nil }
+				if err := service.SetConfig(t.Context(), nfsModels.NFSConfig{Protocol: "v3", KerberosPrincipal: "nfs/server@REALM"}); err != nil {
+					t.Fatal(err)
+				}
+				share.Security = []string{"krb5p"}
+				if _, err := service.SaveShare(t.Context(), share.ID, share.NFSShareConfig); err != nil {
+					t.Fatal(err)
+				}
+				service.KerberosState = func(context.Context, string) (string, error) { return "", errors.New(detail) }
+			case "runtime":
+				driver.fail = "check"
+			}
+			if err := service.checkRuntime(t.Context()); !errors.Is(err, ErrApplyFailed) {
+				t.Fatal(err)
+			}
+			state, err := service.runtimeState(t.Context())
+			if err != nil || !strings.Contains(state.LastError, "NFS health check failed: verify NFS "+stage) || !strings.Contains(state.LastError, detail) || driver.running {
+				t.Fatalf("monitor lost its failure stage: %#v, %v", state, err)
+			}
+		})
 	}
 }
 

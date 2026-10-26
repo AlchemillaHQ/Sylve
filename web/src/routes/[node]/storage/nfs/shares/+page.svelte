@@ -318,7 +318,7 @@
 		<div class="flex items-center gap-2 px-3 py-2 text-xs text-amber-500" role="alert">
 			<span class="icon-[mdi--alert-circle-outline] h-4 w-4 shrink-0"></span>
 			<p class="min-w-0 flex-1 truncate" title={status.lastError}>
-				NFS apply pending{status.lastError ? `: ${status.lastError}` : '.'}
+				NFS needs attention{status.lastError ? `: ${status.lastError}` : '.'}
 			</p>
 			<a class="shrink-0 underline" href={`/${data.node}/storage/nfs/settings`}>Settings</a>
 		</div>

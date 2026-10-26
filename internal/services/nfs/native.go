@@ -59,7 +59,8 @@ func (d *nativeRuntime) Available() bool { return d.available() }
 func (d *nativeRuntime) command(ctx context.Context, command string, args ...string) (utils.CommandResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	return d.run(ctx, []string{"PATH=/sbin:/bin:/usr/sbin:/usr/bin", "LC_ALL=C", "TZ=UTC", "HOME=/root"}, command, args...)
+	result, err := d.run(ctx, []string{"PATH=/sbin:/bin:/usr/sbin:/usr/bin", "LC_ALL=C", "TZ=UTC", "HOME=/root"}, command, args...)
+	return result, errors.Join(err, ctx.Err())
 }
 
 func (d *nativeRuntime) execute(ctx context.Context, command string, args ...string) error {
