@@ -625,6 +625,12 @@ func globalConfig(settings sambaModels.SambaSettings, hasGuestShares bool, direc
 		config += "ea support = yes\n"
 	}
 	config += "inherit acls = yes\n"
+	// quick hack -- add my local config
+	config += "unix extensions = no\n"
+	config += "store dos attributes = yes\n"
+	config += "dos filemode = yes\n"
+	config += "map archive = no\n"
+	config += "map acl inherit = yes\n"
 
 	if settings.ExtraGlobalConfig != "" {
 		// This is an administrator escape hatch. Keep the text opaque here and
@@ -797,6 +803,7 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 			vfsObjects = append(vfsObjects, "full_audit")
 		}
 		vfsObjects = append(vfsObjects, "zfsacl")
+		vfsObjects = append(vfsObjects, "recycle") // quick hack -- add my local config
 		config.WriteString(fmt.Sprintf("\tvfs objects = %s\n", strings.Join(vfsObjects, " ")))
 
 		// Per-share fruit config
@@ -817,6 +824,14 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 				config.WriteString(fmt.Sprintf("\tfruit:time machine max size = %dG\n", share.TimeMachineMaxSize))
 			}
 		}
+		// Quick Hack -- Per-share recycle config
+		config.WriteString("\trecycle:repository = @Recycle\n")
+		config.WriteString("\trecycle:directory_mode = 777\n")
+		config.WriteString("\trecycle:keeptree = yes\n")
+		config.WriteString("\trecycle:versions = yes\n")
+		config.WriteString("\trecycle:touch = yes\n")
+		config.WriteString("\trecycle:touch_mtime = yes\n")
+		config.WriteString("\trecycle:exclude = :*DATA,*.tmp,*.temp,*.o,*.obj,~$*,*.~??,*.part,*.partial,*.swp,*.swo,*.log\n")
 
 		// Per-share audit config
 		if share.AuditEnabled && len(share.AuditedOperations) > 0 {
@@ -833,6 +848,30 @@ func (s *Service) shareConfig(ctx context.Context, shares []sambaModels.SambaSha
 		config.WriteString(share.ExtraShareConfig)
 		config.WriteString("\n\n")
 	}
+	// Quick Hack -- Add my local config, home share
+	config.WriteString("[homes]\n")
+	config.WriteString("\tcomment = Home Directories\n")
+	config.WriteString("\tbrowseable = no\n")
+	config.WriteString("\tresdonly = no\n")
+	config.WriteString("\tcreate mask = 0660\n")
+	config.WriteString("\tdirectory mask = 2774\n")
+	config.WriteString("\tvalid users = %S\n")
+	config.WriteString("\tfull_audit:prefix = sylve-smb-homes-al|%u|%I|%m|%S|%P\n")
+	config.WriteString("\tfull_audit:success = openat close read write renameat unlinkat mkdirat create_file connect disconnect\n")
+	config.WriteString("\tfull_audit:failure = all !getwd !get_real_filename !fgetxattr !fget_dos_attributes\n")
+	config.WriteString("\tfull_audit:facility = LOCAL7\n")
+	config.WriteString("\tfull_audit:priority = ALERT\n")
+	config.WriteString("\tfull_audit:syslog = true\n")
+	config.WriteString("\tfull_audit:log_secdesc = true\n")
+	config.WriteString("\tfruit:metadata = stream\n")
+	config.WriteString("\tfruit:model = MacSamba\n")
+	config.WriteString("\tfruit:veto_appledouble = yes\n")
+	config.WriteString("\tfruit:convert_adouble = no\n")
+	config.WriteString("\tfruit:nfs_aces = no\n")
+	config.WriteString("\tfruit:wipe_intentionally_left_blank_rfork = yes\n")
+	config.WriteString("\tfruit:delete_empty_adfiles = yes\n")
+	config.WriteString("\tfruit:posix_rename = yes\n")
+	config.WriteString("\tfruit:encoding = native\n")
 
 	return config.String(), nil
 }
