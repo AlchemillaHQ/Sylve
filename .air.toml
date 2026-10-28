@@ -17,7 +17,7 @@ tmp_dir = "tmp"
   poll = false
   poll_interval = 0
   post_cmd = []
-  pre_cmd = []
+  pre_cmd = ["ARCH=$(go env GOARCH) && make csmwrap-assets ARCH=\"$ARCH\""]
   rerun = false
   rerun_delay = 50
   send_interrupt = true

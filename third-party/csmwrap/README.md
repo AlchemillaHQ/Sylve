@@ -6,11 +6,12 @@ release binaries are used.
 
 ## Local builds: prebuilt helper
 
-On amd64, build and test targets reuse the embed inputs under
+On amd64, build and test targets and `air` reuse the embed inputs under
 `internal/assets/csmwrap/` when present. Otherwise, `scripts/download-csmwrap.sh`
 downloads `CSMWrap.iso.gz` and `CSMWrap-build-manifest.json` from Sylve's `tip`
 release using FreeBSD's `fetch` or `curl`. No jq, submodules, or ISO packaging tools
-are required. ARM64 builds do not need the helper.
+are required. ARM64 builds do not need the helper. For direct `go build` or
+`go test` invocations, run `make csmwrap-assets` first on amd64.
 
 Refresh explicitly with:
 

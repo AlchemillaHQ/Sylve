@@ -36,15 +36,18 @@ git clone https://github.com/AlchemillaHQ/Sylve
 cd Sylve
 ```
 
-On amd64, stage the boot helper before using direct Go commands or live reload:
+On amd64, `air .`, `make build`, backend targets, and `make test` automatically
+download `CSMWrap.iso.gz` and its build manifest from Sylve's
+[`tip` release](https://github.com/AlchemillaHQ/Sylve/releases/tag/tip) when either
+is missing. Staged files are reused offline; `make csmwrap-download` refreshes them.
+The `tip` helper may differ from the checkout's pinned revision. Downloads are
+disabled when `CI` is set, and ARM64 builds do not need the helper.
+
+For direct `go build` or `go test` commands on amd64, stage the helper first:
 
 ```sh
 make csmwrap-assets
 ```
-
-`make build`, backend targets, and `make test` stage the helper automatically when
-missing. Staged inputs are reused offline; `make csmwrap-download` refreshes them.
-ARM64 builds do not need the helper.
 
 To build the checkout's pinned helper instead, follow the
 [CSMWrap source-build instructions](https://github.com/AlchemillaHQ/Sylve/blob/master/third-party/csmwrap/README.md)
@@ -79,6 +82,8 @@ Use `tmux`, `zellij`, or `screen` and split into two panes:
 ```bash
 air .
 ```
+
+On amd64, Air prepares missing CSMWrap assets before building, as described above.
 
 2. In the `web/` directory:
 

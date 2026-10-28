@@ -61,9 +61,10 @@ cd Sylve
 make build
 ```
 
-On amd64, build and test targets download the CSMWrap helper from `tip` when
+On amd64, build and test targets and `air` download the CSMWrap helper from `tip` when
 missing, without jq, submodules, or ISO packaging tools. Staged helpers are reused
-offline; `make csmwrap-download` refreshes them. The helper may differ from your checkout.
+offline; `make csmwrap-download` refreshes them. For direct `go build` or `go test`
+invocations, run `make csmwrap-assets` first. The helper may differ from your checkout.
 
 `make csmwrap` builds the pinned helper from source instead. See the
 [CSMWrap instructions](third-party/csmwrap/README.md) for prerequisites and CI behavior.
