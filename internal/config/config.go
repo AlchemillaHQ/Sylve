@@ -94,6 +94,16 @@ func IsPAMEnabled() bool {
 	return ParsedConfig.Auth.EnablePAM
 }
 
+func GetPAMService() string {
+	if ParsedConfig != nil {
+		if service := strings.TrimSpace(ParsedConfig.Auth.PAMService); service != "" {
+			return service
+		}
+	}
+
+	return "login"
+}
+
 func IsRunningInJail() bool {
 	val, err := sysctl.GetInt64("security.jail.jailed")
 	if err != nil {

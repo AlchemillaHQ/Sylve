@@ -8,7 +8,8 @@
     "logLevel": 3,
     "dataPath": "/var/db/sylve",
     "auth": {
-        "enablePAM": false
+        "enablePAM": false,
+        "pamService": "login"
     },
     "admin": {
         "email": "admin@sylve.local",

@@ -33,7 +33,8 @@ type BTT struct {
 }
 
 type AuthConfig struct {
-	EnablePAM bool `json:"enablePAM"`
+	EnablePAM  bool   `json:"enablePAM"`
+	PAMService string `json:"pamService"`
 }
 
 type Environment string
