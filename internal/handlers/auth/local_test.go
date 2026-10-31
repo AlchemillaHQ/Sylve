@@ -731,6 +731,110 @@ func TestGetNextUIDHandlerReportsDiscoveryFailure(t *testing.T) {
 	}
 }
 
+func TestImportExternalUserHandlerWithoutEnumeration(t *testing.T) {
+	service := newTestAuthService(t)
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		switch command {
+		case "/usr/bin/id":
+			if len(args) == 2 && args[0] == "-Gn" {
+				return "directory-users", nil
+			}
+			return "uid=344200007(mhahl-a) gid=344200007(directory-users)", nil
+		case "/usr/bin/getent":
+			return "directory-users:*:344200007:", nil
+		case "/usr/sbin/pw":
+			if len(args) == 5 && args[0] == "-V" {
+				return "no such user or group", errors.New("exit status 67")
+			}
+			if len(args) == 2 && args[0] == "usershow" && args[1] == "-a" {
+				return "", nil
+			}
+			if len(args) == 3 && args[0] == "usershow" && args[1] == "-n" {
+				return "mhahl-a:*:344200007:344200007::0:0:Mark Hahl:/nonexistent:/usr/local/bin/bash", nil
+			}
+		}
+		t.Fatalf("unexpected Unix mutation: %s %v", command, args)
+		return "", nil
+	}))
+	router := setupRouter(service)
+	w := performJSON(t, router, http.MethodGet, "/auth/users/importable", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("discovery failed: %s", w.Body.String())
+	}
+	var candidates internal.APIResponse[[]authService.ImportableUnixUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &candidates); err != nil || len(candidates.Data) != 0 {
+		t.Fatalf("enumeration should be empty: %s", w.Body.String())
+	}
+	w = performJSON(t, router, http.MethodPost, "/auth/users/import", map[string]any{
+		"username": "mhahl-a", "admin": true,
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import failed: %s", w.Body.String())
+	}
+	user, err := service.GetUserByUsername("mhahl-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w = performJSON(t, router, http.MethodGet, "/auth/users?source=pam", nil)
+	var users internal.APIResponse[[]PublicUser]
+	if err := json.Unmarshal(w.Body.Bytes(), &users); err != nil || len(users.Data) != 1 ||
+		!users.Data[0].ExternallyManaged || !users.Data[0].Groups[0].ExternallyManaged {
+		t.Fatalf("ownership missing from public DTO: %s", w.Body.String())
+	}
+	path := fmt.Sprintf("/auth/users/%d", user.ID)
+	payload := map[string]any{
+		"username": user.Username, "admin": true, "uid": user.UID,
+		"shell": user.Shell, "homeDirectory": user.HomeDirectory, "homeDirPerms": user.HomeDirPerms,
+		"primaryGroupId": user.PrimaryGroupID, "email": "admin@example.com",
+	}
+	w = performJSON(t, router, http.MethodPut, path, payload)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Sylve metadata edit failed: %s", w.Body.String())
+	}
+	payload["uid"] = 1001
+	w = performJSON(t, router, http.MethodPut, path, payload)
+	if w.Code != http.StatusConflict || decodeResponse(t, w).Error != "external_user_read_only" {
+		t.Fatalf("Unix mutation was not rejected: %s", w.Body.String())
+	}
+	w = performJSON(t, router, http.MethodDelete, path+"?removehome=true", nil)
+	if w.Code != http.StatusConflict || decodeResponse(t, w).Error != "external_user_read_only" {
+		t.Fatalf("home removal was not rejected: %s", w.Body.String())
+	}
+	w = performJSON(t, router, http.MethodDelete, path, nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("unregister failed: %s", w.Body.String())
+	}
+}
+
+func TestImportUserHandlerDistinguishesInvalidAndProtectedUIDs(t *testing.T) {
+	for _, test := range []struct {
+		uid    int
+		status int
+		code   string
+	}{
+		{0, http.StatusConflict, "protected_system_user"},
+		{65534, http.StatusConflict, "protected_system_user"},
+		{-1, http.StatusBadRequest, "invalid_uid"},
+		{4294967295, http.StatusBadRequest, "invalid_uid"},
+	} {
+		t.Run(fmt.Sprint(test.uid), func(t *testing.T) {
+			service := newTestAuthService(t)
+			t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+				if command == "/usr/bin/id" {
+					return "found", nil
+				}
+				return fmt.Sprintf("alias:*:%d:1001::0:0:Alias:/nonexistent:/bin/sh", test.uid), nil
+			}))
+			w := performJSON(t, setupRouter(service), http.MethodPost, "/auth/users/import", map[string]any{
+				"username": "alias", "admin": true,
+			})
+			if w.Code != test.status || decodeResponse(t, w).Error != test.code {
+				t.Fatalf("unexpected UID error: status=%d body=%s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestUserHandlersPersistGuestActionSetting(t *testing.T) {
 	for _, source := range []string{"local", "pam"} {
 		for _, enabled := range []bool{false, true} {

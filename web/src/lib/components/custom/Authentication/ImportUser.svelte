@@ -99,7 +99,7 @@
 	);
 
 	function validate(): string {
-		if (!selectedUsername.value) return 'Please select a user';
+		if (!selectedUsername.value) return 'Please select or enter a user';
 		if (password && password.length < 8) return 'Password must be at least 8 characters';
 		if (new TextEncoder().encode(password).length > 72) return 'Password must be 72 bytes or fewer';
 		return '';
@@ -166,26 +166,21 @@
 			<div class="text-muted-foreground flex h-32 items-center justify-center text-sm">
 				Loading available users…
 			</div>
-		{:else if importableUsers.length === 0}
-			<div
-				class="text-muted-foreground flex h-32 flex-col items-center justify-center gap-2 text-sm"
-			>
-				<span class="icon-[mdi--account-off] h-8 w-8"></span>
-				<p>No importable Unix users found</p>
-				<p class="text-xs">
-					All Unix users are either already registered in Sylve or reserved by the system.
-				</p>
-			</div>
 		{:else}
 			<div class="space-y-4">
 				<CustomComboBox
 					label=""
-					placeholder="Select a Unix user to import…"
+					placeholder="Select or enter a Unix username…"
 					bind:open={selectedUsername.open}
 					bind:value={selectedUsername.value}
 					data={userOptions}
+					allowCustom={true}
 					width="w-full"
 				/>
+				<p class="text-muted-foreground text-xs">
+					Directory users may not appear in this list. Enter their username and press Enter to
+					import them by name.
+				</p>
 
 				{#if selectedUsername.value}
 					{@const info = importableUsers.find((user) => user.username === selectedUsername.value)}
@@ -246,8 +241,9 @@
 
 						<p class="text-muted-foreground text-xs text-justify">
 							Importing registers the existing Unix user in Sylve. The Unix password, groups, and
-							home directory are left untouched. If you set a password, it is used only for Sylve
-							authentication; otherwise the user must use System Auth (PAM).
+							home directory are left untouched. Directory accounts remain externally managed. If
+							you set a password, it is used only for Sylve authentication; otherwise the user must
+							use System Auth (PAM).
 						</p>
 					</div>
 				{/if}
@@ -255,12 +251,8 @@
 		{/if}
 
 		<div class="flex justify-end pt-1">
-			<Button
-				disabled={!selectedUsername.value ||
-					submitting ||
-					loadingUsers ||
-					importableUsers.length === 0}
-				onclick={submit}>{submitting ? 'Importing…' : 'Import'}</Button
+			<Button disabled={!selectedUsername.value || submitting || loadingUsers} onclick={submit}
+				>{submitting ? 'Importing…' : 'Import'}</Button
 			>
 		</div>
 	</Dialog.Content>

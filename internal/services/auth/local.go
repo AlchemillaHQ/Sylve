@@ -106,6 +106,7 @@ func (s *Service) CreateUser(user *models.User, opts CreateUserOpts) error {
 	user.Password = hashed
 
 	user.Source = "local"
+	user.ExternallyManaged = false
 	user.UID = 0
 	user.Shell = ""
 	user.HomeDirectory = ""
@@ -183,11 +184,14 @@ func (s *Service) DeleteUser(userID uint, removeHome bool) error {
 		return userConflictError("cannot_delete_root_user")
 	}
 
-	if user.Source == "pam" {
-		if err := s.deletePamUser(user, removeHome); err != nil {
+	if user.Source == "pam" && !user.ExternallyManaged {
+		if err := s.deleteManagedPamUser(user, removeHome); err != nil {
 			return err
 		}
 	} else {
+		if user.Source == "pam" && removeHome {
+			return userConflictError("external_user_read_only")
+		}
 		if err := s.deleteUserDatabaseState(user.ID); err != nil {
 			return userInternalError("user_delete_failed", err)
 		}
@@ -220,7 +224,10 @@ func (s *Service) EditUser(userID uint, opts EditUserOpts) error {
 	}
 
 	if user.Source == "pam" {
-		return s.editPamUser(user, opts)
+		if user.ExternallyManaged {
+			return s.editExternalPamUser(user, opts)
+		}
+		return s.editManagedPamUser(user, opts)
 	}
 
 	if opts.Username != user.Username {

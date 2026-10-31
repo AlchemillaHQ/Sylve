@@ -13,9 +13,10 @@ import (
 
 // PublicGroupSummary is the non-recursive group representation embedded in a user.
 type PublicGroupSummary struct {
-	ID    uint   `json:"id"`
-	Name  string `json:"name"`
-	Notes string `json:"notes"`
+	ID                uint   `json:"id"`
+	Name              string `json:"name"`
+	Notes             string `json:"notes"`
+	ExternallyManaged bool   `json:"externallyManaged"`
 }
 
 // PublicUser is the API representation of a user. Database-only authentication
@@ -38,6 +39,7 @@ type PublicUser struct {
 	DoasEnabled         bool                 `json:"doasEnabled"`
 	PrimaryGroupID      *uint                `json:"primaryGroupId"`
 	Source              string               `json:"source"`
+	ExternallyManaged   bool                 `json:"externallyManaged"`
 	PasskeyEligible     bool                 `json:"passkeyEligible"`
 	CreatedAt           time.Time            `json:"createdAt"`
 	UpdatedAt           time.Time            `json:"updatedAt"`
@@ -48,12 +50,13 @@ type PublicUser struct {
 // PublicGroup is the public group representation used when group responses
 // include their users.
 type PublicGroup struct {
-	ID        uint         `json:"id"`
-	Name      string       `json:"name"`
-	Notes     string       `json:"notes"`
-	CreatedAt time.Time    `json:"createdAt"`
-	UpdatedAt time.Time    `json:"updatedAt"`
-	Users     []PublicUser `json:"users,omitempty"`
+	ID                uint         `json:"id"`
+	Name              string       `json:"name"`
+	Notes             string       `json:"notes"`
+	ExternallyManaged bool         `json:"externallyManaged"`
+	CreatedAt         time.Time    `json:"createdAt"`
+	UpdatedAt         time.Time    `json:"updatedAt"`
+	Users             []PublicUser `json:"users,omitempty"`
 }
 
 // UserMutationResult gives callers and audit presentation a safe, stable
@@ -67,9 +70,10 @@ func publicUserFromModel(user models.User) PublicUser {
 	groups := make([]PublicGroupSummary, 0, len(user.Groups))
 	for _, group := range user.Groups {
 		groups = append(groups, PublicGroupSummary{
-			ID:    group.ID,
-			Name:  group.Name,
-			Notes: group.Notes,
+			ID:                group.ID,
+			Name:              group.Name,
+			Notes:             group.Notes,
+			ExternallyManaged: group.ExternallyManaged,
 		})
 	}
 
@@ -91,6 +95,7 @@ func publicUserFromModel(user models.User) PublicUser {
 		DoasEnabled:         user.DoasEnabled,
 		PrimaryGroupID:      user.PrimaryGroupID,
 		Source:              user.Source,
+		ExternallyManaged:   user.ExternallyManaged,
 		PasskeyEligible:     auth.IsPasskeyRegistrationEligible(user),
 		CreatedAt:           user.CreatedAt,
 		UpdatedAt:           user.UpdatedAt,
@@ -111,12 +116,13 @@ func publicGroupsFromModels(groups []models.Group) []PublicGroup {
 	result := make([]PublicGroup, 0, len(groups))
 	for _, group := range groups {
 		result = append(result, PublicGroup{
-			ID:        group.ID,
-			Name:      group.Name,
-			Notes:     group.Notes,
-			CreatedAt: group.CreatedAt,
-			UpdatedAt: group.UpdatedAt,
-			Users:     publicUsersFromModels(group.Users),
+			ID:                group.ID,
+			Name:              group.Name,
+			Notes:             group.Notes,
+			ExternallyManaged: group.ExternallyManaged,
+			CreatedAt:         group.CreatedAt,
+			UpdatedAt:         group.UpdatedAt,
+			Users:             publicUsersFromModels(group.Users),
 		})
 	}
 	return result

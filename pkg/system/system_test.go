@@ -2,6 +2,7 @@ package system
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -1538,4 +1539,45 @@ func TestListAllUnixUsers(t *testing.T) {
 			t.Fatalf("expected alice, got: %s", users[0].Username)
 		}
 	})
+}
+
+func TestLocalUnixIdentityLookup(t *testing.T) {
+	for _, identity := range []struct {
+		operation     string
+		lookup        func(string) (bool, error)
+		missingOutput string
+		missingError  error
+	}{
+		{"usershow", IsLocalUnixUser, "pw: no such user `alice'", errors.New("exit status 67")},
+		{"groupshow", IsLocalUnixGroup, "pw: unknown group `alice'", errors.New("exit status 65")},
+	} {
+		for _, test := range []struct {
+			name   string
+			output string
+			err    error
+			want   bool
+			failed bool
+		}{
+			{name: "local", output: "alice:*:344200007:344200007:", want: true},
+			{name: "missing", output: identity.missingOutput, err: identity.missingError},
+			{name: "missing diagnostic in error", err: fmt.Errorf("%s: %w", identity.missingOutput, identity.missingError)},
+			{name: "empty", output: "\n"},
+			{name: "failure", err: errors.New("permission denied"), failed: true},
+			{name: "unrelated data error", err: errors.New("exit status 65"), failed: true},
+		} {
+			t.Run(identity.operation+"/"+test.name, func(t *testing.T) {
+				t.Cleanup(SetRunCommand(func(command string, args ...string) (string, error) {
+					want := []string{"-V", "/etc", identity.operation, "-n", "alice"}
+					if command != "/usr/sbin/pw" || !reflect.DeepEqual(args, want) {
+						t.Fatalf("local lookup consulted the wrong database: %s %v", command, args)
+					}
+					return test.output, test.err
+				}))
+				found, err := identity.lookup("alice")
+				if found != test.want || (err != nil) != test.failed {
+					t.Fatalf("found=%t error=%v, want found=%t failed=%t", found, err, test.want, test.failed)
+				}
+			})
+		}
+	}
 }

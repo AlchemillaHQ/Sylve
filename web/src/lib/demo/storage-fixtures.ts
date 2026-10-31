@@ -246,7 +246,7 @@ function syncAuthRelationships(state: DemoStorageState): void {
 	for (const user of state.users) {
 		user.groups = state.groups
 			.filter((group) => group.users?.some((member) => member.id === user.id))
-			.map(({ id, name, notes }) => ({ id, name, notes }));
+			.map(({ id, name, notes, externallyManaged }) => ({ id, name, notes, externallyManaged }));
 	}
 	for (const group of state.groups) {
 		const memberIDs = new Set(group.users?.map((user) => user.id) ?? []);
@@ -286,6 +286,7 @@ function userFromPayload(
 				? null
 				: Math.trunc(numberValue(body, 'primaryGroupId', previous?.primaryGroupId ?? 0)) || null,
 		source,
+		externallyManaged: previous?.externallyManaged ?? false,
 		passkeyEligible: source === 'local' && booleanValue(body, 'admin', previous?.admin ?? false),
 		createdAt: previous?.createdAt ?? now,
 		updatedAt: now,
@@ -748,8 +749,13 @@ function createDatasets(hostname: string): DemoDataset[] {
 }
 
 function createUsersAndGroups(): { users: User[]; groups: Group[] } {
-	const operators = { id: 10, name: 'operators', notes: 'Infrastructure operators' };
-	const media = { id: 11, name: 'media', notes: 'Media library users' };
+	const operators = {
+		id: 10,
+		name: 'operators',
+		notes: 'Infrastructure operators',
+		externallyManaged: false
+	};
+	const media = { id: 11, name: 'media', notes: 'Media library users', externallyManaged: false };
 	const users: User[] = [
 		{
 			id: 1,
@@ -769,6 +775,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			doasEnabled: true,
 			primaryGroupId: 10,
 			source: 'local',
+			externallyManaged: false,
 			passkeyEligible: true,
 			createdAt,
 			updatedAt,
@@ -793,6 +800,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			doasEnabled: false,
 			primaryGroupId: 10,
 			source: 'local',
+			externallyManaged: false,
 			passkeyEligible: false,
 			createdAt,
 			updatedAt,
@@ -817,6 +825,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			doasEnabled: false,
 			primaryGroupId: 11,
 			source: 'local',
+			externallyManaged: false,
 			passkeyEligible: false,
 			createdAt,
 			updatedAt,
@@ -841,6 +850,7 @@ function createUsersAndGroups(): { users: User[]; groups: Group[] } {
 			doasEnabled: true,
 			primaryGroupId: 10,
 			source: 'pam',
+			externallyManaged: false,
 			passkeyEligible: false,
 			createdAt,
 			updatedAt,
@@ -2227,6 +2237,7 @@ export function handleDemoStorageRequest<T = unknown>(
 			id,
 			name,
 			notes: '',
+			externallyManaged: false,
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 			users: state.users.filter((user) => members.has(user.username))

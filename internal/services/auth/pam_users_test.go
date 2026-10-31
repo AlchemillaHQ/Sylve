@@ -509,6 +509,9 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 				case "/usr/bin/getent":
 					return fmt.Sprintf("%s:*:1001:", username), nil
 				case "/usr/sbin/pw":
+					if len(args) == 5 && args[0] == "-V" {
+						return args[4] + ":*:1001:1001::0:0:Example:/nonexistent:/bin/sh", nil
+					}
 					if len(args) >= 3 && args[0] == "usershow" && args[1] == "-n" {
 						return fmt.Sprintf("%s:*:1001:1001::0:0:Example User:%s:%s", args[2], home, shell), nil
 					}
@@ -535,7 +538,7 @@ func TestImportPamUserMirrorsIdentityWithoutUnixMutation(t *testing.T) {
 			if mutatingCommand || passwordInputUsed {
 				t.Fatal("import mutated the existing Unix identity or password")
 			}
-			if user.Username != username || user.UID != 1001 || user.Source != "pam" || !user.Admin || !user.ConfirmGuestActions ||
+			if user.Username != username || user.UID != 1001 || user.Source != "pam" || user.ExternallyManaged || !user.Admin || !user.ConfirmGuestActions ||
 				user.HomeDirectory != home || user.Shell != shell ||
 				!service.passwordHasher.Verify(sylvePassword, user.Password) {
 				t.Fatalf("unexpected imported identity: %+v", user)

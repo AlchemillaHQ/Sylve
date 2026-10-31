@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
@@ -74,9 +74,20 @@ func validatePAMUsername(username string) error {
 	return nil
 }
 
-func validatePAMUID(uid int) error {
+func validateManagedPAMUID(uid int) error {
 	if uid < 1000 || uid > 65533 {
 		return userValidationError("invalid_uid")
+	}
+	return nil
+}
+
+func validateImportedPAMUID(uid int) error {
+	// FreeBSD uid_t is unsigned 32-bit; -1 is reserved as an invalid ID.
+	if uid < 0 || int64(uid) >= 1<<32-1 {
+		return userValidationError("invalid_uid")
+	}
+	if uid < 1000 || uid == 65534 {
+		return userConflictError("protected_system_user")
 	}
 	return nil
 }
@@ -195,6 +206,9 @@ func (s *Service) loadManagedGroupByID(id uint) (models.Group, error) {
 		}
 		return models.Group{}, userInternalError("group_lookup_failed", err)
 	}
+	if group.ExternallyManaged {
+		return models.Group{}, userConflictError("external_group_read_only")
+	}
 	exists, err := system.UnixGroupExistsWithError(group.Name)
 	if err != nil {
 		return models.Group{}, userDependencyError("unix_group_lookup_failed", err)
@@ -212,6 +226,9 @@ func (s *Service) loadManagedGroupByName(name string) (models.Group, error) {
 			return models.Group{}, userNotFoundError("group_not_found")
 		}
 		return models.Group{}, userInternalError("group_lookup_failed", err)
+	}
+	if group.ExternallyManaged {
+		return models.Group{}, userConflictError("external_group_read_only")
 	}
 	exists, err := system.UnixGroupExistsWithError(group.Name)
 	if err != nil {
@@ -232,7 +249,7 @@ func primaryGroupError(err error) error {
 	return err
 }
 
-func (s *Service) loadAuxiliaryGroups(ids []uint, primaryID *uint) ([]models.Group, error) {
+func (s *Service) loadAuxiliaryGroups(ids []uint, primaryID *uint, currentGroups map[uint]models.Group) ([]models.Group, error) {
 	groups := make([]models.Group, 0, len(ids))
 	seen := make(map[uint]struct{}, len(ids))
 	for _, id := range ids {
@@ -246,13 +263,42 @@ func (s *Service) loadAuxiliaryGroups(ids []uint, primaryID *uint) ([]models.Gro
 			continue
 		}
 		seen[id] = struct{}{}
-		group, err := s.loadManagedGroupByID(id)
-		if err != nil {
-			return nil, err
+		group := currentGroups[id]
+		if !group.ExternallyManaged {
+			var err error
+			group, err = s.loadManagedGroupByID(id)
+			if err != nil {
+				return nil, err
+			}
 		}
 		groups = append(groups, group)
 	}
 	return groups, nil
+}
+
+func (s *Service) validatePrivatePAMGroup(name string) error {
+	var group models.Group
+	if err := s.DB.Where("name = ?", name).First(&group).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return userInternalError("group_lookup_failed", err)
+	}
+	if group.ExternallyManaged {
+		return userConflictError("external_group_read_only")
+	}
+	exists, err := system.UnixGroupExistsWithError(name)
+	if err != nil {
+		return userDependencyError("unix_group_lookup_failed", err)
+	}
+	if !exists {
+		return nil
+	}
+	local, err := system.IsLocalUnixGroup(name)
+	if err != nil {
+		return userDependencyError("unix_group_lookup_failed", err)
+	}
+	if !local {
+		return userConflictError("external_group_read_only")
+	}
+	return nil
 }
 
 func (s *Service) validateNewPAMIdentity(user *models.User) error {
@@ -262,7 +308,7 @@ func (s *Service) validateNewPAMIdentity(user *models.User) error {
 	if user.Email != "" && !utils.IsValidEmail(user.Email) {
 		return userValidationError("invalid_email_format")
 	}
-	if err := validatePAMUID(user.UID); err != nil {
+	if err := validateManagedPAMUID(user.UID); err != nil {
 		return err
 	}
 	if err := validatePAMShell(user.Shell); err != nil {
@@ -401,7 +447,10 @@ func (s *Service) createPamUser(user *models.User, opts CreateUserOpts) error {
 
 	var auxGroups []models.Group
 	if opts.NewPrimaryGroup {
-		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, nil)
+		if err := s.validatePrivatePAMGroup(user.Username); err != nil {
+			return err
+		}
+		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -436,14 +485,14 @@ func (s *Service) createPamUser(user *models.User, opts CreateUserOpts) error {
 		}
 		primaryGroupName = primaryGroup.Name
 		primaryGroupID = &primaryGroup.ID
-		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, primaryGroupID)
+		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, primaryGroupID, nil)
 		if err != nil {
 			return err
 		}
 	} else {
 		primaryGroup = sylveGroup
 		primaryGroupName = primaryGroup.Name
-		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, nil)
+		auxGroups, err = s.loadAuxiliaryGroups(opts.AuxGroupIDs, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -525,6 +574,7 @@ func (s *Service) createPamUser(user *models.User, opts CreateUserOpts) error {
 	}
 
 	user.Source = "pam"
+	user.ExternallyManaged = false
 	user.Password = hashedPassword
 	user.PrimaryGroupID = primaryGroupID
 	groups := []models.Group{primaryGroup}
@@ -576,8 +626,8 @@ func (s *Service) importPamUser(username, sylvePassword string, admin, confirmGu
 	if err != nil {
 		return nil, userDependencyError("unix_user_lookup_failed", err)
 	}
-	if err := validatePAMUID(info.UID); err != nil {
-		return nil, userConflictError("protected_system_user")
+	if err := validateImportedPAMUID(info.UID); err != nil {
+		return nil, err
 	}
 	if info.Username != username {
 		return nil, userConflictError("unix_identity_mismatch")
@@ -594,6 +644,10 @@ func (s *Service) importPamUser(username, sylvePassword string, admin, confirmGu
 	}
 	if uidCount > 0 {
 		return nil, userConflictError("uid_already_in_use")
+	}
+	localUser, err := system.IsLocalUnixUser(username)
+	if err != nil {
+		return nil, userDependencyError("unix_user_lookup_failed", err)
 	}
 
 	hashedPassword := ""
@@ -616,7 +670,16 @@ func (s *Service) importPamUser(username, sylvePassword string, admin, confirmGu
 		return nil, userDependencyError("unix_group_membership_lookup_failed", err)
 	}
 	groupNames := append(unixGroups, primaryGroupName)
-	sort.Strings(groupNames)
+	slices.Sort(groupNames)
+	groupNames = slices.Compact(groupNames)
+	externalGroups := make(map[string]bool, len(groupNames))
+	for _, name := range groupNames {
+		localGroup, err := system.IsLocalUnixGroup(name)
+		if err != nil {
+			return nil, userDependencyError("unix_group_lookup_failed", err)
+		}
+		externalGroups[name] = !localGroup
+	}
 
 	homePerms := uint(0o755)
 	if info.HomeDir != "/nonexistent" {
@@ -638,29 +701,24 @@ func (s *Service) importPamUser(username, sylvePassword string, admin, confirmGu
 		HomeDirectory:       info.HomeDir,
 		HomeDirPerms:        homePerms,
 		Source:              "pam",
+		ExternallyManaged:   !localUser,
 	}
 
 	err = s.DB.Transaction(func(tx *gorm.DB) error {
 		groups := make([]models.Group, 0, len(groupNames))
-		seen := make(map[string]struct{}, len(groupNames))
 		var primaryGroup models.Group
 		for _, name := range groupNames {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			if _, exists := seen[name]; exists {
-				continue
-			}
-			seen[name] = struct{}{}
-
 			var group models.Group
 			if err := tx.Where("name = ?", name).First(&group).Error; err != nil {
 				if !errors.Is(err, gorm.ErrRecordNotFound) {
 					return err
 				}
-				group = models.Group{Name: name}
+				group = models.Group{Name: name, ExternallyManaged: externalGroups[name]}
 				if err := tx.Create(&group).Error; err != nil {
+					return err
+				}
+			} else if externalGroups[name] && !group.ExternallyManaged {
+				if err := tx.Model(&group).Update("externally_managed", true).Error; err != nil {
 					return err
 				}
 			}
@@ -713,7 +771,7 @@ func (s *Service) listImportablePamUsers() ([]ImportableUnixUser, error) {
 	result := make([]ImportableUnixUser, 0)
 	for _, user := range allUnix {
 		if validatePAMUsername(user.Username) != nil ||
-			validatePAMUID(user.UID) != nil ||
+			validateImportedPAMUID(user.UID) != nil ||
 			validatePAMShell(user.Shell) != nil ||
 			validatePAMHomeFormat(user.HomeDir) != nil {
 			continue
@@ -736,7 +794,7 @@ func (s *Service) listImportablePamUsers() ([]ImportableUnixUser, error) {
 	return result, nil
 }
 
-func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
+func (s *Service) editManagedPamUser(user *models.User, opts EditUserOpts) error {
 	if opts.Username != user.Username {
 		return userConflictError("cannot_change_pam_username")
 	}
@@ -750,7 +808,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		return userValidationError("password_required_to_enable")
 	}
 	if user.Username != "root" {
-		if err := validatePAMUID(opts.UID); err != nil {
+		if err := validateImportedPAMUID(opts.UID); err != nil {
 			return err
 		}
 		if err := validatePAMShell(opts.Shell); err != nil {
@@ -787,7 +845,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		if user.Username == "root" {
 			return userConflictError("cannot_change_root_uid")
 		}
-		if err := validatePAMUID(opts.UID); err != nil {
+		if err := validateManagedPAMUID(opts.UID); err != nil {
 			return err
 		}
 		var count int64
@@ -836,12 +894,18 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		primaryGroupID   *uint
 		primaryGroupName string
 	)
+	currentAuxGroups := groupIDs(user.Groups)
 	if opts.NewPrimaryGroup {
 		primaryGroupName = user.Username
 	} else if opts.PrimaryGroupID != nil {
-		primaryGroup, err = s.loadManagedGroupByID(*opts.PrimaryGroupID)
-		if err != nil {
-			return primaryGroupError(err)
+		if current := currentAuxGroups[*opts.PrimaryGroupID]; current.ExternallyManaged &&
+			user.PrimaryGroupID != nil && current.ID == *user.PrimaryGroupID {
+			primaryGroup = current
+		} else {
+			primaryGroup, err = s.loadManagedGroupByID(*opts.PrimaryGroupID)
+			if err != nil {
+				return primaryGroupError(err)
+			}
 		}
 		primaryGroupName = primaryGroup.Name
 		primaryGroupID = &primaryGroup.ID
@@ -856,6 +920,18 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	if user.PrimaryGroupID != nil && primaryGroupID != nil && *user.PrimaryGroupID != *primaryGroupID {
 		primaryChanged = true
 	}
+	if user.PrimaryGroupID != nil {
+		if currentAuxGroups[*user.PrimaryGroupID].ExternallyManaged && primaryChanged {
+			return userConflictError("external_group_read_only")
+		}
+		delete(currentAuxGroups, *user.PrimaryGroupID)
+	} else {
+		for id, group := range currentAuxGroups {
+			if group.Name == "sylve_g" {
+				delete(currentAuxGroups, id)
+			}
+		}
+	}
 	homeOwnershipChanged := uidChanged || homeChanged || permsChanged || opts.SSHPublicKey != user.SSHPublicKey
 	if homeOwnershipChanged || primaryChanged || opts.NewPrimaryGroup {
 		if err := validatePAMHomePath(opts.HomeDirectory); err != nil {
@@ -867,7 +943,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 			return err
 		}
 	}
-	auxGroups, err := s.loadAuxiliaryGroups(opts.AuxGroupIDs, primaryGroupID)
+	auxGroups, err := s.loadAuxiliaryGroups(opts.AuxGroupIDs, primaryGroupID, currentAuxGroups)
 	if err != nil {
 		return err
 	}
@@ -878,6 +954,14 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 		}
 	}
 	auxGroups = filteredAuxGroups
+
+	desiredGroupIDs := groupIDs(auxGroups)
+	desiredGroupIDs[primaryGroup.ID] = primaryGroup
+	for _, current := range user.Groups {
+		if _, keep := desiredGroupIDs[current.ID]; current.ExternallyManaged && !keep {
+			return userConflictError("external_group_read_only")
+		}
+	}
 
 	if user.Username == "root" {
 		for _, current := range user.Groups {
@@ -894,6 +978,12 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 			if !keepWheel && (primaryGroupID == nil || *primaryGroupID != current.ID) {
 				return userConflictError("cannot_remove_root_from_wheel")
 			}
+		}
+	}
+
+	if opts.NewPrimaryGroup {
+		if err := s.validatePrivatePAMGroup(user.Username); err != nil {
+			return err
 		}
 	}
 
@@ -996,16 +1086,6 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	desiredGroups := []models.Group{primaryGroup}
 	for _, group := range auxGroups {
 		desiredGroups = appendUniqueGroup(desiredGroups, group)
-	}
-	currentAuxGroups := groupIDs(user.Groups)
-	if user.PrimaryGroupID != nil {
-		delete(currentAuxGroups, *user.PrimaryGroupID)
-	} else {
-		for id, group := range currentAuxGroups {
-			if group.Name == "sylve_g" {
-				delete(currentAuxGroups, id)
-			}
-		}
 	}
 	desiredAuxGroups := groupIDs(auxGroups)
 	for id, group := range currentAuxGroups {
@@ -1125,7 +1205,7 @@ func (s *Service) editPamUser(user *models.User, opts EditUserOpts) error {
 	return nil
 }
 
-func (s *Service) deletePamUser(user *models.User, removeHome bool) error {
+func (s *Service) deleteManagedPamUser(user *models.User, removeHome bool) error {
 	if user.Username == "root" {
 		return userConflictError("cannot_delete_root_user")
 	}
@@ -1144,8 +1224,11 @@ func (s *Service) deletePamUser(user *models.User, removeHome bool) error {
 		if err != nil {
 			return failIntegration("unix_user_lookup_failed", err)
 		}
-		if info.Username != user.Username || info.UID < 1000 || info.UID > 65533 {
-			return userConflictError("protected_system_user")
+		if info.Username != user.Username || info.UID != user.UID {
+			return userConflictError("unix_identity_mismatch")
+		}
+		if err := validateImportedPAMUID(info.UID); err != nil {
+			return err
 		}
 		if removeHome {
 			if err := validatePAMHomePath(info.HomeDir); err != nil {

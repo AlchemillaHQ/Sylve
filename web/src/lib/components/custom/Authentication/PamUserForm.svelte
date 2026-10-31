@@ -61,7 +61,12 @@
 		{ value: 'remove', label: 'Remove Samba user' }
 	];
 
-	let groupOptions = $derived(groups.map((g) => ({ value: String(g.id), label: g.name })));
+	let externallyManaged = $derived(edit && Boolean(user?.externallyManaged));
+	let groupOptions = $derived(
+		groups
+			.filter((g) => externallyManaged || !g.externallyManaged)
+			.map((g) => ({ value: String(g.id), label: g.name }))
+	);
 
 	function decomposePerms(perms: number) {
 		const u = Math.floor(perms / 64);
@@ -116,6 +121,7 @@
 	let properties = $state(makeDefaults());
 	let activeTab = $state('identity');
 	let sambaEnabled = $derived(getEnabledServicesForHostname(hostname).includes('samba-server'));
+	let showSambaAction = $derived(edit && sambaEnabled && !externallyManaged);
 	let doasAvailable = $state(false);
 	let loading = $state(false);
 	let capabilitiesLoading = $state(false);
@@ -195,7 +201,7 @@
 		if (!isOpen) return;
 		doasAvailable = false;
 		properties = makeDefaults();
-		loadCapabilities();
+		if (!externallyManaged) loadCapabilities();
 		if (!edit) loadNextUID();
 	});
 
@@ -358,7 +364,11 @@
 			return 'Password must be 72 bytes or fewer';
 		if (properties.password && properties.confirmPassword !== properties.password)
 			return 'Passwords do not match';
-		if (user?.username !== 'root') {
+		if (
+			!externallyManaged &&
+			user?.username !== 'root' &&
+			(!edit || properties.uid !== user?.uid)
+		) {
 			if (properties.uid < 1000) return 'UID must be 1000 or higher';
 			if (properties.uid > 65533) return 'UID must be 65533 or lower';
 		}
@@ -714,12 +724,14 @@
 								bind:value={properties.email}
 							/>
 							<div
-								class="grid grid-cols-1 gap-3 md:grid-cols-2 {edit && sambaEnabled
+								class="grid grid-cols-1 gap-3 md:grid-cols-2 {showSambaAction
 									? 'lg:grid-cols-3'
 									: ''}"
 							>
 								<CustomValueInput
-									label="Unix/PAM + Sylve Password"
+									label={externallyManaged
+										? 'Sylve Password (optional)'
+										: 'Unix/PAM + Sylve Password'}
 									placeholder={edit ? 'Leave blank to keep current' : '••••••••'}
 									type="password"
 									revealOnFocus={true}
@@ -732,7 +744,7 @@
 									revealOnFocus={true}
 									bind:value={properties.confirmPassword}
 								/>
-								{#if edit && sambaEnabled}
+								{#if showSambaAction}
 									<CustomComboBox
 										label="Samba action"
 										placeholder="Keep current Samba state"
@@ -777,11 +789,17 @@
 									</div>
 								{/if}
 							</div>
+							{#if externallyManaged}
+								<p class="text-muted-foreground text-xs">
+									This identity is externally managed. Changes here affect Sylve access only; Unix
+									credentials, groups, and home settings are read-only.
+								</p>
+							{/if}
 						</div>
 					</Tabs.Content>
 
 					<Tabs.Content value="groups">
-						<div class="space-y-3 pt-2 pb-1">
+						<fieldset disabled={externallyManaged} class="space-y-3 pt-2 pb-1">
 							{#if !properties.newPrimaryGroup}
 								<CustomComboBox
 									label="Primary Group"
@@ -812,16 +830,16 @@
 									Create new primary group
 								</Label>
 							</div>
-						</div>
+						</fieldset>
 					</Tabs.Content>
 
 					<Tabs.Content value="environment">
-						<div class="space-y-3 pt-2 pb-1">
+						<fieldset disabled={externallyManaged} class="space-y-3 pt-2 pb-1">
 							<div class="grid grid-cols-1 gap-3 md:grid-cols-3">
 								<CustomValueInput
 									label="UID"
 									placeholder={uidLoading ? 'Loading…' : '1000'}
-									disabled={uidLoading}
+									disabled={uidLoading || externallyManaged}
 									value={properties.uid}
 									onChange={(v) => {
 										properties.uid = typeof v === 'string' ? parseInt(v) || 0 : v;
@@ -831,14 +849,16 @@
 									label="Home Directory"
 									placeholder="/home/john"
 									bind:value={properties.homeDirectory}
-									topRightButton={{
-										icon: 'icon-[mdi--folder-open]',
-										tooltip: 'Browse',
-										function: async () => {
-											openDirPicker();
-											return '';
-										}
-									}}
+									topRightButton={externallyManaged
+										? undefined
+										: {
+												icon: 'icon-[mdi--folder-open]',
+												tooltip: 'Browse',
+												function: async () => {
+													openDirPicker();
+													return '';
+												}
+											}}
 								/>
 								<CustomComboBox
 									label="Shell"
@@ -899,7 +919,7 @@
 									</div>
 								</div>
 							</div>
-						</div>
+						</fieldset>
 					</Tabs.Content>
 
 					<Tabs.Content value="security">
@@ -908,20 +928,23 @@
 								label="SSH Public Key"
 								placeholder="ssh-rsa AAAAB3..."
 								bind:value={properties.sshPublicKey}
+								disabled={externallyManaged}
 							/>
 
 							<div class="flex flex-wrap items-center gap-4 pt-2">
 								<div class="flex items-center gap-2">
 									<Checkbox id="disable-password" bind:checked={properties.disablePassword} />
 									<Label for="disable-password" class="cursor-pointer text-sm"
-										>Disable Password</Label
+										>{externallyManaged ? 'Disable Sylve Password' : 'Disable Password'}</Label
 									>
 								</div>
 								<div class="flex items-center gap-2">
 									<Checkbox id="locked" bind:checked={properties.locked} />
-									<Label for="locked" class="cursor-pointer text-sm">Locked</Label>
+									<Label for="locked" class="cursor-pointer text-sm"
+										>{externallyManaged ? 'Lock Sylve Access' : 'Locked'}</Label
+									>
 								</div>
-								{#if doasAvailable}
+								{#if doasAvailable && !externallyManaged}
 									<div class="flex items-center gap-2">
 										<Checkbox id="doas" bind:checked={properties.doasEnabled} />
 										<Label for="doas" class="cursor-pointer text-sm">Doas Enabled</Label>

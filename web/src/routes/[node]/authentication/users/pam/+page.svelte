@@ -61,6 +61,10 @@
 				}
 			},
 			{
+				field: 'management',
+				title: 'Management'
+			},
+			{
 				field: 'lastUsage',
 				title: 'Last Usage',
 				formatter: (cell: CellComponent) => {
@@ -83,6 +87,7 @@
 			name: user.username,
 			email: user.email,
 			uid: user.uid,
+			management: user.externallyManaged ? 'External' : 'Managed',
 			lastUsage: user.lastLoginTime ? convertDbTime(user.lastLoginTime) : 'Never',
 			createdAt: user.createdAt ? convertDbTime(user.createdAt) : 'Never'
 		}));
@@ -199,7 +204,12 @@
 				disabled={deleting || !activeRow || activeRow.name === 'root'}
 				title={activeRow && activeRow.name === 'root' ? 'Cannot delete this user' : ''}
 			>
-				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
+				<SpanWithIcon
+					icon="icon-[mdi--delete]"
+					size="h-4 w-4"
+					gap="gap-2"
+					title={activeUser?.externallyManaged ? 'Unregister' : 'Delete'}
+				/>
 			</Button>
 		{/if}
 
@@ -306,11 +316,13 @@
 	loading={deleting}
 	loadingLabel="Deleting..."
 	keepOpenOnConfirm={true}
-	customTitle={`This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.${
-		activeUser && activeUser.homeDirectory !== '/nonexistent'
-			? ` Home directory: <b class="break-all">${escapeHTML(activeUser.homeDirectory)}</b>`
-			: ''
-	}`}
+	customTitle={activeUser?.externallyManaged
+		? 'This removes the Sylve registration and revokes its sessions. The externally managed account, groups, and home directory are left untouched.'
+		: `This action cannot be undone. It permanently removes the managed Unix account and associated integrations, along with the Sylve user record.${
+				activeUser && activeUser.homeDirectory !== '/nonexistent'
+					? ` Home directory: <b class="break-all">${escapeHTML(activeUser.homeDirectory)}</b>`
+					: ''
+			}`}
 	actions={{
 		onConfirm: async () => {
 			if (deleting || !activeRow) return;
@@ -339,7 +351,7 @@
 		}
 	}}
 >
-	{#if activeUser && activeUser.homeDirectory !== '/nonexistent'}
+	{#if activeUser && !activeUser.externallyManaged && activeUser.homeDirectory !== '/nonexistent'}
 		<div class="text-sm">
 			<CustomCheckbox
 				label="Delete Home Directory"

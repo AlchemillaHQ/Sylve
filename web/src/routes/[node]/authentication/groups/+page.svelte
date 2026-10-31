@@ -92,7 +92,8 @@
 			.filter((user) => user.source === 'pam')
 			.map((user) => ({
 				label: user.username,
-				value: user.username
+				value: user.username,
+				disabled: user.externallyManaged
 			}));
 	});
 
@@ -242,6 +243,10 @@
 				}
 			},
 			{
+				field: 'management',
+				title: 'Management'
+			},
+			{
 				field: 'createdAt',
 				title: 'Created At',
 				formatter: (cell: CellComponent) => {
@@ -257,6 +262,7 @@
 			rows.push({
 				id: group.id,
 				name: group.name,
+				management: group.externallyManaged ? 'External' : 'Managed',
 				createdAt: group.createdAt,
 				user: false,
 				children: group.users?.map((user) => ({
@@ -282,13 +288,22 @@
 		if (!row) return null;
 		return groups.current.find((group) => group.id === Number(row.id)) ?? null;
 	});
+	let deleteDisabledReason = $derived.by(() => {
+		if (activeGroup?.externallyManaged) return 'Externally managed group is read-only';
+		if (activeGroup?.users?.some((user) => user.externallyManaged))
+			return 'Contains externally managed users';
+		if (activeGroup?.name === 'sylve_g') return 'Default system group, cannot be deleted';
+		if (activeGroup?.name === 'wheel') return 'System group, cannot be deleted';
+		return '';
+	});
 
 	function requiredMembers(group: Group): string[] {
 		const members = (group.users ?? [])
 			.filter(
 				(user) =>
 					user.source === 'pam' &&
-					((group.name === 'wheel' && user.username === 'root') ||
+					(user.externallyManaged ||
+						(group.name === 'wheel' && user.username === 'root') ||
 						user.primaryGroupId === group.id ||
 						(group.name === 'sylve_g' && user.primaryGroupId == null))
 			)
@@ -327,15 +342,8 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5 pointer-events-auto!"
-				disabled={deleting ||
-					!activeGroup ||
-					activeGroup.name === 'sylve_g' ||
-					activeGroup.name === 'wheel'}
-				title={activeGroup?.name === 'sylve_g'
-					? 'Default system group, cannot be deleted'
-					: activeGroup?.name === 'wheel'
-						? 'System group, cannot be deleted'
-						: 'Delete'}
+				disabled={deleting || !activeGroup || Boolean(deleteDisabledReason)}
+				title={deleteDisabledReason || 'Delete'}
 			>
 				<SpanWithIcon icon="icon-[mdi--delete]" size="h-4 w-4" gap="gap-2" title="Delete" />
 			</Button>
@@ -352,7 +360,7 @@
 				size="sm"
 				variant="outline"
 				class="h-6.5"
-				disabled={updating}
+				disabled={updating || activeGroup?.externallyManaged}
 			>
 				<SpanWithIcon
 					icon="icon-[material-symbols--edit]"
@@ -501,8 +509,8 @@
 
 			{#if activeRequiredMembers.length > 0}
 				<p class="text-muted-foreground text-xs text-justify">
-					Primary group members{activeGroup?.name === 'wheel' ? ', including root,' : ''} cannot be removed
-					here. This restriction is enforced by the system.
+					Primary group members{activeGroup?.name === 'wheel' ? ', including root,' : ''} and externally
+					managed users cannot be removed here. This restriction is enforced by the system.
 				</p>
 			{/if}
 

@@ -38,6 +38,7 @@ export const UserSchema = z.object({
 	doasEnabled: z.boolean().optional().default(false),
 	primaryGroupId: z.number().nullable().optional(),
 	source: z.enum(['local', 'pam']).default('local'),
+	externallyManaged: z.boolean().default(false),
 	passkeyEligible: z.boolean(),
 	createdAt: z.string(),
 	updatedAt: z.string(),
@@ -47,6 +48,7 @@ export const UserSchema = z.object({
 			z.object({
 				id: z.number().int(),
 				name: z.string(),
+				externallyManaged: z.boolean().default(false),
 				notes: z.string().optional().default('')
 			})
 		)
@@ -57,6 +59,7 @@ export const GroupSchema = z.object({
 	id: z.number().int(),
 	name: z.string(),
 	notes: z.string(),
+	externallyManaged: z.boolean().default(false),
 	createdAt: z.string(),
 	updatedAt: z.string(),
 	users: z.array(UserSchema).optional()

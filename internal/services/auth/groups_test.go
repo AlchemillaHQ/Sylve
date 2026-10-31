@@ -9,6 +9,7 @@
 package auth
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -152,5 +153,219 @@ func TestSyncGroupMembersWheelRootProtected(t *testing.T) {
 	_, err := svc.SyncGroupMembers(g.ID, []string{})
 	if err == nil || !strings.Contains(err.Error(), "cannot_remove_root_from_wheel") {
 		t.Fatalf("expected root protection error, got: %v", err)
+	}
+}
+
+func TestExternalGroupsAreReadOnly(t *testing.T) {
+	service := newLocalTestService(t)
+	group := models.Group{Name: "directory-users", ExternallyManaged: true}
+	if err := service.DB.Create(&group).Error; err != nil {
+		t.Fatal(err)
+	}
+	forbidExternalPAMSideEffects(t)
+	if _, err := service.DeleteGroup(group.ID); err == nil || err.Error() != "external_group_read_only" {
+		t.Fatalf("expected external group deletion rejection, got %v", err)
+	}
+	if _, err := service.SyncGroupMembers(group.ID, nil); err == nil || err.Error() != "external_group_read_only" {
+		t.Fatalf("expected external group edit rejection, got %v", err)
+	}
+	if _, err := service.loadManagedGroupByID(group.ID); err == nil || err.Error() != "external_group_read_only" {
+		t.Fatalf("expected managed primary group rejection, got %v", err)
+	}
+}
+
+func TestManagedGroupsCannotChangeExternalUserMemberships(t *testing.T) {
+	for _, member := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existing-member=%t", member), func(t *testing.T) {
+			service := newLocalTestService(t)
+			user := seedUser(t, service, models.User{Username: "directory-user", Source: "pam", ExternallyManaged: true})
+			group := seedGroup(t, service, "staff")
+			if member {
+				if err := service.DB.Model(&group).Association("Users").Append(&user); err != nil {
+					t.Fatal(err)
+				}
+			}
+			forbidExternalPAMSideEffects(t)
+			members := []string{user.Username}
+			if member {
+				members = nil
+			}
+			if _, err := service.SyncGroupMembers(group.ID, members); err == nil || err.Error() != "external_user_read_only" {
+				t.Fatalf("expected external membership rejection, got %v", err)
+			}
+			if member {
+				if _, err := service.DeleteGroup(group.ID); err == nil || err.Error() != "external_user_read_only" {
+					t.Fatalf("expected external membership deletion rejection, got %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestManagedGroupCanPreserveExternalUserMembership(t *testing.T) {
+	service := newLocalTestService(t)
+	user := seedUser(t, service, models.User{Username: "directory-user", Source: "pam", ExternallyManaged: true})
+	group := seedGroup(t, service, "staff")
+	if err := service.DB.Model(&group).Association("Users").Append(&user); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+		if command == "/usr/bin/getent" {
+			return "staff:*:1001:", nil
+		}
+		t.Fatalf("preserving external membership must not run Unix commands: %s %v", command, args)
+		return "", nil
+	}))
+	updated, err := service.SyncGroupMembers(group.ID, []string{user.Username})
+	if err != nil || len(updated.Users) != 1 || updated.Users[0].ID != user.ID {
+		t.Fatalf("unchanged external membership was not preserved: group=%+v error=%v", updated, err)
+	}
+}
+
+func TestPrivatePAMGroupCannotAdoptExternalGroup(t *testing.T) {
+	for _, recorded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("recorded=%t", recorded), func(t *testing.T) {
+			service := newLocalTestService(t)
+			if recorded {
+				if err := service.DB.Create(&models.Group{Name: "alice", ExternallyManaged: true}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+				if !recorded && command == "/usr/bin/getent" {
+					return "alice:*:344200007:", nil
+				}
+				if !recorded && command == "/usr/sbin/pw" && len(args) == 5 && args[0] == "-V" {
+					return "", nil
+				}
+				t.Fatalf("unexpected group mutation: %s %v", command, args)
+				return "", nil
+			}))
+			if err := service.validatePrivatePAMGroup("alice"); err == nil || err.Error() != "external_group_read_only" {
+				t.Fatalf("expected external group adoption rejection, got %v", err)
+			}
+		})
+	}
+}
+
+func TestEditManagedPamUserWithExternalGroups(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		primaryExternal bool
+		auxExternal     bool
+		change          func(*EditUserOpts, []models.Group)
+	}{
+		{name: "preserve managed groups"},
+		{name: "preserve external auxiliary group", auxExternal: true},
+		{name: "preserve external primary group", primaryExternal: true},
+		{name: "preserve both external groups", primaryExternal: true, auxExternal: true},
+		{
+			name: "remove external auxiliary group", auxExternal: true,
+			change: func(opts *EditUserOpts, _ []models.Group) { opts.AuxGroupIDs = nil },
+		},
+		{
+			name: "add external auxiliary group",
+			change: func(opts *EditUserOpts, groups []models.Group) {
+				opts.AuxGroupIDs = append(opts.AuxGroupIDs, groups[2].ID)
+			},
+		},
+		{
+			name:   "assign external primary group",
+			change: func(opts *EditUserOpts, groups []models.Group) { opts.PrimaryGroupID = &groups[2].ID },
+		},
+		{
+			name: "promote external auxiliary group", auxExternal: true,
+			change: func(opts *EditUserOpts, groups []models.Group) {
+				opts.PrimaryGroupID = &groups[1].ID
+				opts.AuxGroupIDs = []uint{groups[0].ID}
+			},
+		},
+		{
+			name: "demote external primary group", primaryExternal: true,
+			change: func(opts *EditUserOpts, groups []models.Group) {
+				opts.PrimaryGroupID = &groups[1].ID
+				opts.AuxGroupIDs = []uint{groups[0].ID}
+			},
+		},
+		{
+			name: "replace external primary with private group", primaryExternal: true,
+			change: func(opts *EditUserOpts, _ []models.Group) {
+				opts.PrimaryGroupID = nil
+				opts.NewPrimaryGroup = true
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := newLocalTestService(t)
+			groups := []models.Group{
+				{Name: "primary", ExternallyManaged: test.primaryExternal},
+				{Name: "auxiliary", ExternallyManaged: test.auxExternal},
+				{Name: "other-directory-group", ExternallyManaged: true},
+			}
+			if err := service.DB.Create(&groups).Error; err != nil {
+				t.Fatal(err)
+			}
+			user := seedUser(t, service, models.User{
+				Username: "alice", Source: "pam", UID: 1001, Shell: "/bin/sh",
+				HomeDirectory: "/nonexistent", PrimaryGroupID: &groups[0].ID,
+			})
+			if err := service.DB.Model(&user).Association("Groups").Replace(groups[:2]); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := service.GetUserByID(user.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedUserToken(t, service, user.ID, "existing-session")
+			forbidExternalPAMSideEffects(t)
+			t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
+				if command == "/usr/bin/id" {
+					return "uid=1001(alice)", nil
+				}
+				if command == "/usr/bin/getent" && len(args) == 2 && args[0] == "group" {
+					for _, group := range groups {
+						if group.Name == args[1] && !group.ExternallyManaged {
+							return fmt.Sprintf("%s:*:1001:", group.Name), nil
+						}
+					}
+				}
+				t.Fatalf("unexpected Unix operation: %s %v", command, args)
+				return "", nil
+			}))
+			opts := externalPAMEditOpts(loaded)
+			opts.Email = "updated@example.com"
+			if test.change != nil {
+				test.change(&opts, groups)
+			} else {
+				opts.AuxGroupIDs = append(opts.AuxGroupIDs, groups[1].ID)
+			}
+			err = service.EditUser(user.ID, opts)
+			if test.change != nil {
+				if err == nil || err.Error() != "external_group_read_only" {
+					t.Fatalf("expected external membership protection, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("metadata edit rejected unchanged memberships: %v", err)
+			}
+			reloaded, err := service.GetUserByID(user.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (reloaded.Email == opts.Email) != (test.change == nil) {
+				t.Fatalf("unexpected metadata update: %+v", reloaded)
+			}
+			if reloaded.ExternallyManaged || len(reloaded.Groups) != 2 ||
+				reloaded.PrimaryGroupID == nil || *reloaded.PrimaryGroupID != groups[0].ID ||
+				userTokenCount(t, service, user.ID) != 1 {
+				t.Fatalf("edit changed ownership, memberships, or sessions: %+v", reloaded)
+			}
+			reloadedGroups := groupIDs(reloaded.Groups)
+			for _, expected := range groups[:2] {
+				actual, exists := reloadedGroups[expected.ID]
+				if !exists || actual.ExternallyManaged != expected.ExternallyManaged {
+					t.Fatalf("group membership or ownership changed: %+v", reloaded.Groups)
+				}
+			}
+		})
 	}
 }

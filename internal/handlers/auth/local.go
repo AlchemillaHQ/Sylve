@@ -354,7 +354,7 @@ func CreatePamUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete user
-// @Description Delete a user by its positive database ID; PAM-backed users also lose their managed Unix account and associated integrations, but retain their home unless removal is explicitly requested
+// @Description Delete a user by its positive database ID; managed PAM users also lose their Unix account and integrations, retaining their home unless removal is requested; externally managed PAM users are only unregistered from Sylve and cannot request home removal
 // @Tags Users
 // @Produce json
 // @Security BearerAuth
@@ -411,7 +411,7 @@ func DeleteUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Update user
-// @Description Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; a PAM password change synchronizes Unix and Sylve credentials and Samba intent is explicit
+// @Description Replace the editable representation of a user identified by its positive database ID; new passwords are limited to 72 UTF-8 bytes; managed PAM password changes synchronize Unix and Sylve credentials; externally managed PAM identities require unchanged Unix fields and only update Sylve settings and credentials
 // @Tags Users
 // @Accept json
 // @Produce json
@@ -578,7 +578,7 @@ type CreatePamUserRequest struct {
 }
 
 // @Summary Import Unix user
-// @Description Adopt an existing Unix account as a managed PAM-backed Sylve user without changing its Unix password or group membership; the optional Sylve password is limited to 72 UTF-8 bytes
+// @Description Register an existing NSS-resolvable Unix identity without changing its password or groups; directory identities remain externally managed, while local accounts are adopted as managed PAM users; the optional Sylve password is limited to 72 UTF-8 bytes; lookup by name does not require enumeration
 // @Tags Users
 // @Accept json
 // @Produce json
@@ -627,7 +627,7 @@ func ImportUserHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary List importable Unix users
-// @Description List eligible Unix accounts that do not yet have a Sylve user record
+// @Description List eligible enumerated Unix accounts that do not yet have a Sylve user record; directory users may be importable by name even when enumeration is disabled
 // @Tags Users
 // @Produce json
 // @Security BearerAuth

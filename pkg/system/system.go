@@ -46,6 +46,31 @@ func UnixUserExists(name string) (bool, error) {
 	return true, nil
 }
 
+// IsLocalUnixUser checks the local password database without consulting NSS.
+func IsLocalUnixUser(name string) (bool, error) {
+	return localUnixIdentityExists("usershow", name)
+}
+
+// IsLocalUnixGroup checks the local group file without consulting NSS.
+func IsLocalUnixGroup(name string) (bool, error) {
+	return localUnixIdentityExists("groupshow", name)
+}
+
+func localUnixIdentityExists(operation, name string) (bool, error) {
+	output, err := runCommand("/usr/sbin/pw", "-V", "/etc", operation, "-n", name)
+	if err == nil {
+		return strings.TrimSpace(output) != "", nil
+	}
+	lowerOutput := strings.ToLower(output + " " + err.Error())
+	if strings.Contains(lowerOutput, "no such user") ||
+		strings.Contains(lowerOutput, "no such group") ||
+		strings.Contains(lowerOutput, "unknown group") ||
+		strings.Contains(lowerOutput, "exit status 67") {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check local Unix identity %s: %w", name, err)
+}
+
 // UnixUIDExists reports whether a Unix account already owns uid.
 func UnixUIDExists(uid int) (bool, error) {
 	output, err := runCommand("/usr/sbin/pw", "usershow", "-u", strconv.Itoa(uid))

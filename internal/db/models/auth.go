@@ -32,6 +32,7 @@ type User struct {
 	DoasEnabled         bool      `json:"doasEnabled"`
 	PrimaryGroupID      *uint     `json:"primaryGroupId" gorm:"index"`
 	Source              string    `json:"source" gorm:"default:'local';index"`
+	ExternallyManaged   bool      `json:"externallyManaged" gorm:"not null;default:false"`
 	CreatedAt           time.Time `gorm:"autoCreateTime" json:"createdAt"`
 	UpdatedAt           time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 	LastLoginTime       time.Time `json:"lastLoginTime"`
@@ -41,12 +42,13 @@ type User struct {
 }
 
 type Group struct {
-	ID        uint      `gorm:"primarykey" json:"id"`
-	Name      string    `gorm:"unique" json:"name"`
-	Notes     string    `json:"notes"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
-	Users     []User    `gorm:"many2many:user_groups;constraint:OnDelete:CASCADE" json:"users,omitempty"`
+	ID                uint      `gorm:"primarykey" json:"id"`
+	Name              string    `gorm:"unique" json:"name"`
+	Notes             string    `json:"notes"`
+	ExternallyManaged bool      `json:"externallyManaged" gorm:"not null;default:false"`
+	CreatedAt         time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt         time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	Users             []User    `gorm:"many2many:user_groups;constraint:OnDelete:CASCADE" json:"users,omitempty"`
 }
 
 type PAMIdentity struct {

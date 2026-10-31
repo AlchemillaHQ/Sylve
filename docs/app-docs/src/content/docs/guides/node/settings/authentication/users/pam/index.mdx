@@ -3,9 +3,9 @@ title: PAM Users
 description: Manage Unix accounts that are registered with Sylve.
 ---
 
-PAM users connect a managed Unix account on the node with a Sylve user record. Use them for people or service accounts that need operating-system access, ownership of files, SSH keys, Unix groups, Samba integration, or system authentication.
+PAM users connect a Unix identity on the node with a Sylve user record. Managed local accounts support operating-system access, ownership of files, SSH keys, Unix groups, and Samba integration. Externally managed identities, such as SSSD/FreeIPA users, can also be registered for system authentication without giving Sylve control of their Unix account.
 
-Creating a PAM user creates and configures the corresponding Unix account. Editing it can change that account’s groups, home directory settings, login shell, SSH public key, doas access, and Samba state. This is different from a [Local User](/guides/node/settings/authentication/users/local/), which exists only inside Sylve.
+Creating a PAM user creates and configures the corresponding Unix account. Editing a managed account can change its groups, home directory settings, login shell, SSH public key, doas access, and Samba state. These Unix settings are read-only for externally managed accounts. This is different from a [Local User](/guides/node/settings/authentication/users/local/), which exists only inside Sylve.
 
 ## Sign-in and permissions
 
@@ -63,7 +63,7 @@ Guest shares do not use individual user or group permissions. Use a non-guest sh
 
 | Field | Description |
 | --- | --- |
-| UID | The numeric Unix user ID. New users default to the next available ID. Sylve accepts values from 1000 through 65533. |
+| UID | The numeric Unix user ID. Newly created accounts and UID changes use Sylve’s managed range of 1000 through 65533. Imported identities may have larger valid FreeBSD UIDs. |
 | Home Directory | The account’s Unix home path. The default `/nonexistent` intentionally avoids creating a usable home directory. Choose a real path only when the account needs one. |
 | Home Permissions | Owner, group, and other read, write, and execute permissions applied when Sylve creates the home directory. |
 | Shell | The shell started for interactive login. Available choices include sh, csh, tcsh, Bash, Zsh, and `nologin`. Use `nologin` for accounts that must not open an interactive shell. |
@@ -87,12 +87,20 @@ Selecting a real home directory can create and manage that directory as part of 
 
 Use **Import** when the Unix account already exists but was not created by Sylve. Importing registers the account in Sylve without changing its existing Unix password, groups, or home directory.
 
+Select a discovered user or enter a username and press Enter. Directory services often disable user enumeration, so an account can be importable by name even when it does not appear in the list. The username must resolve through the node’s configured name services. High UIDs, such as FreeIPA’s `344200007`, are supported; protected system identities are still excluded.
+
+Sylve checks the local account database to determine ownership, independently of the UID range. Local accounts are adopted as managed PAM users. Directory accounts and groups are marked **External** and remain externally managed. Existing registrations retain their managed behavior after upgrading.
+
 You may optionally set a **Sylve Password** during import. That password is stored for Sylve authentication only. If you leave it empty, the account uses System Auth (PAM) when PAM authentication is enabled. Choose the Admin setting carefully because only administrators can sign in to the web interface.
+
+For externally managed users, subsequent password changes also affect only the optional Sylve password. **Lock Sylve Access** revokes Sylve sessions and blocks Sylve sign-in without locking the directory account. **Disable Sylve Password** disables only Sylve password authentication, not PAM. Directory passwords and Unix identity settings must be maintained through the directory service. Directory groups are read-only in Sylve, and externally managed users’ mirrored group memberships cannot be changed here.
 
 ![Import User dialog for registering an existing Unix account with optional Sylve credentials and administrator access](./authentication-pam-user-import.png)
 
 ## Delete a PAM user
 
-Deleting a PAM user is destructive. Sylve removes the managed Unix account, its home directory, related Samba user, doas configuration, and Sylve user record. Confirm that no service, scheduled job, share, dataset ownership rule, or person still depends on that account before deleting it.
+Deleting a managed PAM user is destructive. Sylve removes the Unix account, related Samba user, doas configuration, and Sylve user record. The home directory is retained unless you explicitly select **Delete Home Directory**. Confirm that no service, scheduled job, share, dataset ownership rule, or person still depends on that account before deleting it.
+
+For an externally managed user, **Unregister** removes only the Sylve registration and revokes its sessions. The Unix account, directory groups, and home directory are left untouched. Home removal is not permitted for external registrations.
 
 The `root` account is protected from deletion.

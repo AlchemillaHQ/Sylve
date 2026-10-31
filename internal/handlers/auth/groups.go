@@ -102,7 +102,7 @@ func writeGroupServiceError(c *gin.Context, operation string, err error) {
 }
 
 // @Summary List groups
-// @Description List all managed groups and their public user records
+// @Description List registered groups and their public user records, including read-only externally managed groups
 // @Tags Groups
 // @Produce json
 // @Security BearerAuth
@@ -129,7 +129,7 @@ func ListGroupsHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Create group
-// @Description Create a managed Unix group with PAM-backed members
+// @Description Create a managed Unix group with locally managed PAM-backed members; externally managed users cannot be added
 // @Tags Groups
 // @Accept json
 // @Produce json
@@ -169,7 +169,7 @@ func CreateGroupHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Delete group
-// @Description Delete a managed group that is not protected or referenced
+// @Description Delete a managed group that is not protected or referenced and has no externally managed members; directory groups are read-only
 // @Tags Groups
 // @Produce json
 // @Security BearerAuth
@@ -206,7 +206,7 @@ func DeleteGroupHandler(authService *auth.Service) gin.HandlerFunc {
 }
 
 // @Summary Replace group members
-// @Description Replace all editable members of a managed group; an empty list removes all supplementary members
+// @Description Replace all editable members of a managed group; externally managed memberships and required primary members must remain unchanged; directory groups are read-only
 // @Tags Groups
 // @Accept json
 // @Produce json

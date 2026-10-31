@@ -133,6 +133,11 @@ func (s *Service) CreateGroup(name string, members []string) (models.Group, erro
 	if err != nil {
 		return models.Group{}, err
 	}
+	for _, user := range users {
+		if user.ExternallyManaged {
+			return models.Group{}, groupConflictError("external_user_read_only")
+		}
+	}
 	if err := ensureUnixUsersExist(users); err != nil {
 		return models.Group{}, err
 	}
@@ -215,6 +220,14 @@ func (s *Service) DeleteGroup(id uint) (models.Group, error) {
 
 	if group.Name == wheelGroupName || group.Name == sylveGroupName {
 		return models.Group{}, groupConflictError("protected_group_cannot_be_deleted")
+	}
+	if group.ExternallyManaged {
+		return models.Group{}, groupConflictError("external_group_read_only")
+	}
+	for _, user := range group.Users {
+		if user.ExternallyManaged {
+			return models.Group{}, groupConflictError("external_user_read_only")
+		}
 	}
 
 	var primaryUsers int64
@@ -304,6 +317,9 @@ func (s *Service) SyncGroupMembers(id uint, usernames []string) (models.Group, e
 		}
 		return models.Group{}, groupInternalError("group_lookup_failed", err)
 	}
+	if group.ExternallyManaged {
+		return models.Group{}, groupConflictError("external_group_read_only")
+	}
 
 	targetUsers, err := s.loadRequestedPAMUsers(usernames)
 	if err != nil {
@@ -311,9 +327,19 @@ func (s *Service) SyncGroupMembers(id uint, usernames []string) (models.Group, e
 	}
 
 	desired := make(map[string]struct{}, len(targetUsers))
+	current := make(map[string]struct{}, len(group.Users))
+	for _, user := range group.Users {
+		current[user.Username] = struct{}{}
+	}
 	unixUsers := make(map[string]models.User, len(group.Users)+len(targetUsers))
 	for _, user := range targetUsers {
 		desired[user.Username] = struct{}{}
+		if user.ExternallyManaged {
+			if _, exists := current[user.Username]; !exists {
+				return models.Group{}, groupConflictError("external_user_read_only")
+			}
+			continue
+		}
 		unixUsers[user.Username] = user
 	}
 	if group.Name == wheelGroupName {
@@ -322,6 +348,12 @@ func (s *Service) SyncGroupMembers(id uint, usernames []string) (models.Group, e
 		}
 	}
 	for _, user := range group.Users {
+		if user.ExternallyManaged {
+			if _, keep := desired[user.Username]; !keep {
+				return models.Group{}, groupConflictError("external_user_read_only")
+			}
+			continue
+		}
 		if _, keep := desired[user.Username]; !keep && requiredGroupMember(group, user) {
 			if group.Name == wheelGroupName && user.Username == "root" {
 				return models.Group{}, groupConflictError("cannot_remove_root_from_wheel")
