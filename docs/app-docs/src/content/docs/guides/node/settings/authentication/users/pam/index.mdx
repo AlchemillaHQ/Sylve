@@ -15,6 +15,25 @@ Non-admin PAM users are still useful for host-level work such as Unix ownership,
 
 ![PAM Users table showing managed Unix accounts, UIDs, account details, and available actions](./authentication-pam-users-overview.png)
 
+### Configure the PAM service
+
+System Auth uses the `login` PAM service by default. To use a dedicated service, configure `auth.pamService` in `/usr/local/etc/sylve/config.json`:
+
+```json
+{
+  "auth": {
+    "enablePAM": true,
+    "pamService": "sylve"
+  }
+}
+```
+
+Use a service name, not a file path. Configure `/etc/pam.d/sylve` on the host before using it, then restart Sylve to apply the setting. An omitted or blank value uses `login`. Sylve does not retry a failed custom service using `login`.
+
+To allow both host-local and directory users to sign in, the selected service's authentication stack must accept local Unix passwords and the directory backend, such as `pam_sss`. A directory-only stack can reject users created in Sylve even though local account management still works. Apply shared authentication restrictions to both backends.
+
+Selecting a service does not change user management or add PAM account/session handling or interactive MFA support.
+
 ## Create a PAM user
 
 Select **New User**. The form is organized into Identity, Groups, Environment, and Security sections so you can configure the Unix account deliberately.

@@ -105,6 +105,81 @@ func TestIsPAMEnabledRequiresExplicitOptIn(t *testing.T) {
 	}
 }
 
+func TestGetPAMServiceDefaultsWithoutConfig(t *testing.T) {
+	previous := ParsedConfig
+	t.Cleanup(func() {
+		ParsedConfig = previous
+	})
+	ParsedConfig = nil
+
+	if got := GetPAMService(); got != "login" {
+		t.Fatalf("PAM service = %q, want login", got)
+	}
+}
+
+func TestReadConfigPAMService(t *testing.T) {
+	previous := ParsedConfig
+	t.Cleanup(func() {
+		ParsedConfig = previous
+	})
+
+	tests := []struct {
+		name    string
+		config  string
+		service string
+		enabled bool
+	}{
+		{name: "auth omitted", config: `{}`, service: "login"},
+		{name: "service omitted", config: `{"auth":{"enablePAM":true}}`, service: "login", enabled: true},
+		{name: "empty service", config: `{"auth":{"enablePAM":true,"pamService":""}}`, service: "login", enabled: true},
+		{name: "blank service", config: `{"auth":{"enablePAM":true,"pamService":" \t "}}`, service: "login", enabled: true},
+		{name: "custom service", config: `{"auth":{"enablePAM":true,"pamService":"sylve"}}`, service: "sylve", enabled: true},
+		{name: "trimmed service", config: `{"auth":{"enablePAM":true,"pamService":" sylve "}}`, service: "sylve", enabled: true},
+		{name: "service does not enable PAM", config: `{"auth":{"pamService":"sylve"}}`, service: "sylve"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(configPath, []byte(test.config), 0o600); err != nil {
+				t.Fatalf("write config: %v", err)
+			}
+			cfg, err := ReadConfig(configPath)
+			if err != nil {
+				t.Fatalf("read config: %v", err)
+			}
+			ParsedConfig = cfg
+			if got := GetPAMService(); got != test.service {
+				t.Fatalf("PAM service = %q, want %q", got, test.service)
+			}
+			if got := IsPAMEnabled(); got != test.enabled {
+				t.Fatalf("PAM enabled = %t, want %t", got, test.enabled)
+			}
+		})
+	}
+}
+
+func TestWriteConfigPreservesPAMService(t *testing.T) {
+	previousConfig, previousPath := ParsedConfig, ConfigPath
+	t.Cleanup(func() {
+		ParsedConfig, ConfigPath = previousConfig, previousPath
+	})
+	ParsedConfig = &internal.SylveConfig{
+		Auth: internal.AuthConfig{EnablePAM: true, PAMService: "sylve"},
+	}
+	ConfigPath = filepath.Join(t.TempDir(), "config.json")
+
+	if err := writeConfig(); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := ReadConfig(ConfigPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	if cfg.Auth != ParsedConfig.Auth {
+		t.Fatalf("auth config = %+v, want %+v", cfg.Auth, ParsedConfig.Auth)
+	}
+}
+
 func TestGetUploadsConfigUsesDefaults(t *testing.T) {
 	previous := ParsedConfig
 	ParsedConfig = nil

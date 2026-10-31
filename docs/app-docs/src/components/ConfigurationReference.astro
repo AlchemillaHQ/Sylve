@@ -16,6 +16,7 @@
 
         <tr class="group"><th colspan="3"><code>auth</code><span>System authentication</span></th></tr>
         <tr><th><span class="child">enablePAM</span></th><td><code>false</code></td><td>Allows authentication with FreeBSD system accounts when explicitly enabled. Disabled by default.</td></tr>
+        <tr><th><span class="child">pamService</span></th><td><code>"login"</code></td><td>PAM service for System Auth sign-in. Defaults to <code>login</code> when omitted or blank. Configure the selected service's PAM stack on the host.</td></tr>
 
         <tr class="group"><th colspan="3"><code>admin</code><span>Built-in administrator</span></th></tr>
         <tr><th><span class="child">email</span></th><td><code>"admin@sylve.local"</code></td><td>Email address assigned to the built-in administrator.</td></tr>
