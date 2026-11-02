@@ -55,12 +55,12 @@ Sylve is designed to run using only **base FreeBSD dependencies** if you prefer.
 | **Bhyve virtualization** | `libvirt`, `bhyve-firmware`, `swtpm`, `qemu-tools` | Virtual-machine creation and management, firmware support, virtual TPMs, and disk-image tooling. | Required to use the virtualization subsystem. |
 | **SMB file sharing** | `samba4XX` | SMB shares for guests and Jails, including basic share management and audit logging. | Optional; required for SMB features. |
 | **DHCP and DNS** | `dnsmasq` | Managed DHCP ranges, leases, and DNS services from within Sylve. | Optional; required for managed DHCP and DNS. |
-| **Containers** | `podman` | OCI containers and catalog apps, run as jails through `ocijail`. | Optional; required for containers, which also need the Firewall service. |
+| **Containers** | `podman`, `cni-dnsname` | OCI containers and catalog apps, run as jails through `ocijail`, with name resolution between a stack's containers. | Optional; required for containers, which also need the Firewall service. |
 
 Install all recommended dependencies at once:
 
 ```bash
-pkg install -y libvirt bhyve-firmware swtpm qemu-tools samba423 dnsmasq podman
+pkg install -y libvirt bhyve-firmware swtpm qemu-tools samba423 dnsmasq podman cni-dnsname
 ```
 
 If you install Sylve with `pkg install sylve`, these dependencies are pulled in **automatically**; the command above is only needed when installing Sylve manually or building it from source.

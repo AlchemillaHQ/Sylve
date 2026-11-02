@@ -188,7 +188,7 @@ jobs:
           envs: CI GOCACHE GOMODCACHE GO_CACHE_RESTORED TEST_LANE TEST_TARGET
           prepare: |
             pkg update
-            pkg install -y go git libvirt bhyve-firmware qemu-tools jq podman
+            pkg install -y go git libvirt bhyve-firmware qemu-tools jq podman cni-dnsname
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             mkdir -p /root/.ssh && chmod 700 /root/.ssh

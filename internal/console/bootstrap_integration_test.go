@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
@@ -111,6 +112,7 @@ func newBootstrapIntegrationDB(t *testing.T) *gorm.DB {
 		&networkModels.DHCPConfig{}, &networkModels.DHCPRange{},
 		&bootstrapIntegrationVM{}, &vmModels.Network{},
 		&bootstrapIntegrationJail{}, &jailModels.Network{},
+		&containerModels.Network{},
 	)
 	sqlDB, err := db.DB()
 	if err != nil {

@@ -30,7 +30,7 @@ var sylveServices = []string{
 	"wol-server", "firewall", "wireguard", "iscsi", "mdns", "containers",
 }
 
-var sylveBaseDeps = []string{"bhyve-firmware", "dnsmasq", "libvirt", "podman", "qemu-tools", "swtpm"}
+var sylveBaseDeps = []string{"bhyve-firmware", "cni-dnsname", "dnsmasq", "libvirt", "podman", "qemu-tools", "swtpm"}
 
 const (
 	sylveSambaFallback = "samba424"

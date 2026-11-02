@@ -111,8 +111,10 @@ func (s *Service) CheckDHCPServer() error {
 }
 
 func (s *Service) CheckContainers() error {
-	if !pkg.IsPackageInstalled("podman") {
-		return fmt.Errorf("containers_required_package_podman_not_installed")
+	for _, p := range []string{"podman", "cni-dnsname"} {
+		if !pkg.IsPackageInstalled(p) {
+			return fmt.Errorf("containers_required_package_%s_not_installed", p)
+		}
 	}
 
 	return nil

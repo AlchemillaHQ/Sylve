@@ -77,9 +77,9 @@ func (s *Service) enabled(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) Reconcile(ctx context.Context) error {
-	for _, binary := range []string{podmanBinary, "/usr/local/bin/ocijail", "/usr/local/bin/conmon", cniPlugins + "/bridge"} {
+	for _, binary := range []string{podmanBinary, "/usr/local/bin/ocijail", "/usr/local/bin/conmon", cniPlugins + "/bridge", cniPlugins + "/dnsname"} {
 		if _, err := os.Stat(binary); err != nil {
-			return fmt.Errorf("podman_not_installed: missing %s (pkg install podman)", binary)
+			return fmt.Errorf("podman_not_installed: missing %s (pkg install podman cni-dnsname)", binary)
 		}
 	}
 	if s.PrepareHost != nil {

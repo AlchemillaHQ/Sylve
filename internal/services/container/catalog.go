@@ -794,7 +794,7 @@ func (r catalogRender) spec(service composeService) (containerServiceInterfaces.
 		case source == "":
 			mount.Source, mount.Owner = volumeName(target, variable), cmp.Or(r.owners[variable][0], r.appOwner)
 		case strings.HasPrefix(source, "/"):
-			if info, err := os.Stat(source); variable == parts[0] && err == nil && !info.IsDir() {
+			if info, err := os.Stat(source); variable == parts[0] && (err != nil || !info.IsDir()) {
 				continue
 			}
 			mount.Type = containerModels.MountPath
