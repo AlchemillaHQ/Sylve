@@ -427,33 +427,65 @@ func GetUnixUserInfo(username string) (uid int, shell string, err error) {
 	return info.UID, info.Shell, nil
 }
 
+// parseUnixUserLine parses a pw(8) passwd record:
+// name:password:uid:gid:class:change:expire:gecos:home_dir:shell.
+// GECOS may contain colons, so read shell and home_dir from the right;
+// neither field can contain ':'.
+func parseUnixUserLine(line string) (UnixUserInfo, error) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return UnixUserInfo{}, fmt.Errorf("empty_line")
+	}
+
+	shellIdx := strings.LastIndex(line, ":")
+	if shellIdx < 0 {
+		return UnixUserInfo{}, fmt.Errorf("missing_shell")
+	}
+	homeIdx := strings.LastIndex(line[:shellIdx], ":")
+	if homeIdx < 0 {
+		return UnixUserInfo{}, fmt.Errorf("missing_home")
+	}
+	prefix := line[:homeIdx]
+	fields := strings.SplitN(prefix, ":", 8)
+	if len(fields) < 8 || fields[0] == "" {
+		return UnixUserInfo{}, fmt.Errorf("too_few_fields")
+	}
+	uid, err := strconv.Atoi(fields[2])
+	if err != nil {
+		return UnixUserInfo{}, fmt.Errorf("invalid_uid: %w", err)
+	}
+	gid, err := strconv.Atoi(fields[3])
+	if err != nil {
+		return UnixUserInfo{}, fmt.Errorf("invalid_gid: %w", err)
+	}
+	return UnixUserInfo{
+		Username: fields[0],
+		UID:      uid,
+		GID:      gid,
+		Shell:    line[shellIdx+1:],
+		HomeDir:  line[homeIdx+1 : shellIdx],
+		FullName: fields[7],
+	}, nil
+}
+
 // GetUnixUserInfoFull returns all available metadata for a Unix user by name.
-// Output format (pw usershow): name:password:uid:gid:class:change:expire:gecos:home_dir:shell
 func GetUnixUserInfoFull(username string) (UnixUserInfo, error) {
 	output, cmdErr := runCommand("/usr/sbin/pw", "usershow", "-n", username)
 	if cmdErr != nil {
 		return UnixUserInfo{}, fmt.Errorf("failed to get user info for %s: %w", username, cmdErr)
 	}
-	parts := strings.Split(strings.TrimSpace(output), ":")
-	if len(parts) < 10 {
+	info, err := parseUnixUserLine(output)
+	if err != nil {
+		code := err.Error()
+		if strings.HasPrefix(code, "invalid_uid:") {
+			return UnixUserInfo{}, fmt.Errorf("failed to parse UID for %s: %w", username, err)
+		}
+		if strings.HasPrefix(code, "invalid_gid:") {
+			return UnixUserInfo{}, fmt.Errorf("failed to parse GID for %s: %w", username, err)
+		}
 		return UnixUserInfo{}, fmt.Errorf("unexpected pw usershow output for %s", username)
 	}
-	uid, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return UnixUserInfo{}, fmt.Errorf("failed to parse UID for %s: %w", username, err)
-	}
-	gid, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return UnixUserInfo{}, fmt.Errorf("failed to parse GID for %s: %w", username, err)
-	}
-	return UnixUserInfo{
-		Username: parts[0],
-		UID:      uid,
-		GID:      gid,
-		Shell:    parts[9],
-		HomeDir:  parts[8],
-		FullName: parts[7],
-	}, nil
+	return info, nil
 }
 
 // GetUnixUserGroups returns the Unix group names the user belongs to.
@@ -478,30 +510,9 @@ func ListAllUnixUsers() ([]UnixUserInfo, error) {
 	}
 	var users []UnixUserInfo
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+		if info, err := parseUnixUserLine(line); err == nil {
+			users = append(users, info)
 		}
-		parts := strings.Split(line, ":")
-		if len(parts) < 10 {
-			continue
-		}
-		uid, err := strconv.Atoi(parts[2])
-		if err != nil {
-			continue
-		}
-		gid, err := strconv.Atoi(parts[3])
-		if err != nil {
-			continue
-		}
-		users = append(users, UnixUserInfo{
-			Username: parts[0],
-			UID:      uid,
-			GID:      gid,
-			Shell:    parts[9],
-			HomeDir:  parts[8],
-			FullName: parts[7],
-		})
 	}
 	return users, nil
 }
