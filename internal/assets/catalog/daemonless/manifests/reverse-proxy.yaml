@@ -1,0 +1,175 @@
+name: reverse-proxy
+services:
+  reverse-proxy:
+    image: ghcr.io/daemonless/reverse-proxy:latest
+    container_name: reverse-proxy
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # - RP_ADMIN_URL=https://192.168.1.5:8443
+      # Set by an app that installs the proxy (fjord); empty otherwise.
+      - RP_PAIRING_KEY=${RP_PAIRING_KEY}
+      - RP_PAIRING_NAME=${RP_PAIRING_NAME}
+      - RP_PAIRING_ID=${RP_PAIRING_ID}
+      - RP_SETUP_TOKEN=${RP_SETUP_TOKEN}
+      - RP_PAIRING_URL=${RP_PAIRING_URL}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${PORT_80}:80"
+      - "${PORT_443}:443"
+      - "${WEB_PORT}:8443"
+x-fjord:
+  version: "0.1"
+  info:
+    id: reverse-proxy
+    name: Daemonless Reverse Proxy
+    description: 'Give every app on your network a real name with HTTPS: radarr.home.lan instead of 192.168.1.20:7878. Set up in a browser, no config files.'
+    category: Network
+    class: service
+    icon: icons/reverse-proxy.svg
+    web_port: ${WEB_PORT}
+    web_https: true
+    upstream_url: https://github.com/daemonless/reverse-proxy
+    web_url: https://daemonless.io/images/reverse-proxy/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: PORT_80
+      label: 'HTTP: trust page and redirects to HTTPS'
+      type: port
+      default: "80"
+    - name: PORT_443
+      label: 'HTTPS: your hosts'
+      type: port
+      default: "443"
+    - name: WEB_PORT
+      label: Admin UI (HTTPS)
+      type: port
+      default: "8443"
+    - name: CONFIG_DATA
+      label: Admin state and secrets
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DATA_PATH
+      label: Certificates, ACME account and the internal CA
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the admin process (Caddy stays root to bind 80 and 443)
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the admin process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: RP_PAIRING_KEY
+      label: Admin only. A key (32+ random characters) an app that installed the proxy, such as fjord, uses to manage hosts; registered once as a connected app
+      type: secret
+      default: ""
+    - name: RP_PAIRING_NAME
+      label: 'Admin only. The connected app''s name for RP_PAIRING_KEY. Default: Paired app'
+      type: string
+      default: fjord
+    - name: RP_PAIRING_ID
+      label: Admin only. The installing app's permanent id, so several of them are told apart. Optional.
+      type: string
+      default: ""
+    - name: RP_SETUP_TOKEN
+      label: 'Admin only. First-run setup token chosen by the installing app, so it can open setup for you. Default: a new one in the log'
+      type: secret
+      default: ""
+    - name: RP_PAIRING_URL
+      label: Admin only. Where the installing app is opened, shown as a way back to it. Optional.
+      type: string
+      default: ""
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        reverse-proxy:
+          name: reverse_proxy
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+            - expose: '443:443 proto:tcp'
+            - expose: '8443:8443 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - RP_PAIRING_KEY: !ENV '${RP_PAIRING_KEY}'
+              - RP_PAIRING_NAME: !ENV '${RP_PAIRING_NAME}'
+              - RP_PAIRING_ID: !ENV '${RP_PAIRING_ID}'
+              - RP_SETUP_TOKEN: !ENV '${RP_SETUP_TOKEN}'
+              - RP_PAIRING_URL: !ENV '${RP_PAIRING_URL}'
+          volumes:
+            - REVERSE_PROXY_CONFIG_PATH: /config
+            - REVERSE_PROXY_DATA_PATH: /data
+      volumes:
+        REVERSE_PROXY_CONFIG_PATH:
+          device: !ENV '${REVERSE_PROXY_CONFIG_PATH}'
+        REVERSE_PROXY_DATA_PATH:
+          device: !ENV '${REVERSE_PROXY_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/reverse-proxy:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=reverse-proxy
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      RP_PAIRING_KEY=<RP_PAIRING_KEY>
+      RP_PAIRING_NAME=fjord
+      RP_PAIRING_ID=
+      RP_SETUP_TOKEN=<RP_SETUP_TOKEN>
+      RP_PAIRING_URL=
+      WEB_PORT=80
+      REVERSE_PROXY_CONFIG_PATH=/reverse-proxy
+      REVERSE_PROXY_DATA_PATH=/reverse-proxy/data
+  provides:
+    names:
+      client_id: ${RP_PAIRING_ID}
+      client_name: ${RP_PAIRING_NAME}
+      client_url: ${RP_PAIRING_URL}
+      key: ${RP_PAIRING_KEY}
+      port: 8443
+      setup_token: ${RP_SETUP_TOKEN}

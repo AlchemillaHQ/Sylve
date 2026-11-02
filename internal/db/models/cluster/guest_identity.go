@@ -23,6 +23,7 @@ import (
 const (
 	GuestIdentityRegistryID      uint = 1
 	GuestIdentityRegistryVersion uint = 1
+	GuestIdentityKindContainer        = "container"
 	GuestIdentityMaxID           uint = 9999
 
 	GuestIdentityRegistryPhaseCollecting = "collecting"
@@ -117,7 +118,7 @@ func normalizeGuestIdentityKind(value string) string {
 
 func ValidGuestIdentityKind(value string) bool {
 	value = normalizeGuestIdentityKind(value)
-	return value == ReplicationGuestTypeVM || value == ReplicationGuestTypeJail
+	return value == ReplicationGuestTypeVM || value == ReplicationGuestTypeJail || value == GuestIdentityKindContainer
 }
 
 func normalizeGuestIdentityNodeID(value string) (string, error) {
@@ -586,7 +587,7 @@ func MoveGuestIdentityClaimTxn(tx *gorm.DB, payload *GuestIdentityMoveOwner) err
 		return err
 	}
 	guestKind := normalizeGuestIdentityKind(payload.GuestKind)
-	if !ValidGuestIdentityKind(guestKind) {
+	if !ValidReplicationGuestType(guestKind) {
 		return fmt.Errorf("invalid_guest_type")
 	}
 	if payload.GuestID == 0 || payload.GuestID > GuestIdentityMaxID {

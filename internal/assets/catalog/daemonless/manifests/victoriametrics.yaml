@@ -1,0 +1,119 @@
+name: victoriametrics
+services:
+  victoriametrics:
+    image: ghcr.io/daemonless/victoriametrics:latest
+    container_name: victoriametrics
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - RETENTION_PERIOD=${RETENTION_PERIOD}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:8428"
+x-fjord:
+  version: "0.1"
+  info:
+    id: victoriametrics
+    name: VictoriaMetrics
+    description: VictoriaMetrics is a fast, cost-effective, and scalable time-series database and monitoring solution. It is a drop-in replacement for Prometheus storage with low memory usage.
+    category: Monitoring
+    class: service
+    icon: icons/victoriametrics.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/VictoriaMetrics/VictoriaMetrics
+    web_url: https://victoriametrics.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI (vmui), PromQL API and metrics ingestion
+      type: port
+      default: "8428"
+    - name: CONFIG_DATA
+      label: Time-series data (data/) and optional scrape config (prometheus.yml)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: RETENTION_PERIOD
+      label: How long to keep metrics (e.g. 30d, 6m, 1y)
+      type: string
+      default: 1y
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        victoriametrics:
+          name: victoriametrics
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8428 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - RETENTION_PERIOD: !ENV '${RETENTION_PERIOD}'
+          volumes:
+            - VICTORIAMETRICS_CONFIG_PATH: /config
+      volumes:
+        VICTORIAMETRICS_CONFIG_PATH:
+          device: !ENV '${VICTORIAMETRICS_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/victoriametrics:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=victoriametrics
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      RETENTION_PERIOD=1y
+      WEB_PORT=8428
+      VICTORIAMETRICS_CONFIG_PATH=/victoriametrics

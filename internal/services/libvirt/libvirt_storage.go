@@ -24,8 +24,8 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
 	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 
 	"github.com/beevik/etree"
@@ -251,7 +251,7 @@ func (s *Service) resolveFilesystemDatasetMountpoint(ctx context.Context, datase
 			dataset.Name,
 		)
 	}
-	mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
+	mountpoint, err := storagezfs.FilesystemMountpoint(dataset)
 	if err != nil {
 		return "", fmt.Errorf("%w: %s", err, datasetName)
 	}
@@ -470,7 +470,7 @@ func (s *Service) createVMDiskWithDB(
 			!strings.Contains(strings.ToLower(err.Error()), "already mounted") {
 			return cleanupCreatedDataset(fmt.Errorf("failed_to_mount_raw_child_dataset: %w", err))
 		}
-		mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
+		mountpoint, err := storagezfs.FilesystemMountpoint(dataset)
 		if err != nil {
 			return cleanupCreatedDataset(err)
 		}
@@ -1363,28 +1363,7 @@ func (s *Service) StorageImport(
 	return err
 }
 
-func (s *Service) storageImportTx(
-	req libvirtServiceInterfaces.StorageAttachRequest,
-	vm vmModels.VM,
-	ctx context.Context,
-	tx *gorm.DB,
-	hooks storageRuntimeHooks,
-) error {
-	state := &storageAttachMutationState{}
-	hooks = s.normalizeStorageRuntimeHooks(hooks)
-	err := s.storageImportTxWithState(req, vm, ctx, tx, hooks, state)
-	if err == nil {
-		err = hooks.syncVMDisks(ctx, tx, vm.RID)
-	}
-	if err != nil {
-		if cleanupErr := s.cleanupStorageAttachFailure(ctx, vm, state); cleanupErr != nil {
-			return errors.Join(err, fmt.Errorf("storage_cleanup_failed: %w", cleanupErr))
-		}
-	}
-	return err
-}
-
-func (s *Service) storageImportTxWithState(
+func (s *Service) storageImport(
 	req libvirtServiceInterfaces.StorageAttachRequest,
 	vm vmModels.VM,
 	ctx context.Context,
@@ -1587,28 +1566,7 @@ func (s *Service) StorageNew(
 	return err
 }
 
-func (s *Service) storageNewTx(
-	req libvirtServiceInterfaces.StorageAttachRequest,
-	vm vmModels.VM,
-	ctx context.Context,
-	tx *gorm.DB,
-	hooks storageRuntimeHooks,
-) error {
-	state := &storageAttachMutationState{}
-	hooks = s.normalizeStorageRuntimeHooks(hooks)
-	err := s.storageNewTxWithState(req, vm, ctx, tx, hooks, state)
-	if err == nil {
-		err = hooks.syncVMDisks(ctx, tx, vm.RID)
-	}
-	if err != nil {
-		if cleanupErr := s.cleanupStorageAttachFailure(ctx, vm, state); cleanupErr != nil {
-			return errors.Join(err, fmt.Errorf("storage_cleanup_failed: %w", cleanupErr))
-		}
-	}
-	return err
-}
-
-func (s *Service) storageNewTxWithState(
+func (s *Service) storageNew(
 	req libvirtServiceInterfaces.StorageAttachRequest,
 	vm vmModels.VM,
 	ctx context.Context,
@@ -1694,7 +1652,7 @@ func (s *Service) storageNewTxWithState(
 		if err != nil {
 			return fmt.Errorf("failed_to_find_filesystem_dataset: %w", err)
 		}
-		if _, err := zfsutil.FilesystemMountpoint(dataset); err != nil {
+		if _, err := storagezfs.FilesystemMountpoint(dataset); err != nil {
 			return fmt.Errorf("failed_to_validate_filesystem_mountpoint: %w", err)
 		}
 
@@ -1755,9 +1713,9 @@ func (s *Service) storageAttachApply(
 	var err error
 	switch req.AttachType {
 	case libvirtServiceInterfaces.StorageAttachTypeImport:
-		err = s.storageImportTxWithState(req, vm, ctx, db, hooks, state)
+		err = s.storageImport(req, vm, ctx, db, hooks, state)
 	case libvirtServiceInterfaces.StorageAttachTypeNew:
-		err = s.storageNewTxWithState(req, vm, ctx, db, hooks, state)
+		err = s.storageNew(req, vm, ctx, db, hooks, state)
 	default:
 		err = fmt.Errorf("invalid_storage_attach_type: %s", req.AttachType)
 	}

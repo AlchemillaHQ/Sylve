@@ -241,7 +241,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 
 	jailSvc := jS.(*jail.Service)
 	libvirtSvc := lvS.(*libvirt.Service)
-	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc)
+	lifecycleSvc := lifecycle.NewService(d, telemetryDB, libvirtSvc, jailSvc, serviceRegistry.ContainerService)
 	if err := jailSvc.InitializePackages(telemetryDB, func(ctx context.Context, ctID uint, action, payload, source, actor string) (uint, error) {
 		task, _, err := lifecycleSvc.RequestActionWithPayload(ctx, "jail", ctID, action, source, actor, payload)
 		if err != nil {
@@ -265,6 +265,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 	}
 	jailSvc.SetLeftPanelRefreshEmitter(refreshEmitter)
 	libvirtSvc.SetLeftPanelRefreshEmitter(refreshEmitter)
+	serviceRegistry.ContainerService.SetLeftPanelRefreshEmitter(refreshEmitter)
 
 	uS.RegisterJobs()
 	zeltaS.RegisterJobs()
@@ -484,6 +485,7 @@ func daemonAction(ctx context.Context, c *cli.Command) error {
 		Jail:           jailSvc,
 		VirtualMachine: libvirtSvc,
 		Lifecycle:      lifecycleSvc,
+		Container:      serviceRegistry.ContainerService,
 		Network:        nS.(*networkService.Service),
 		Utilities:      uS,
 		Status:         repl.NewStatusProvider(zS.(*zfs.Service), libvirtSvc, jailSvc, lifecycleSvc),

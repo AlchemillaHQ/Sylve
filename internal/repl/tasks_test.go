@@ -24,7 +24,7 @@ import (
 func newTasksTestContext(t *testing.T) (*Context, *gorm.DB) {
 	t.Helper()
 	dbConn := testutil.NewSQLiteTestDB(t, &taskModels.GuestLifecycleTask{})
-	return &Context{Lifecycle: lifecycle.NewService(dbConn, nil, nil, nil)}, dbConn
+	return &Context{Lifecycle: lifecycle.NewService(dbConn, nil, nil, nil, nil)}, dbConn
 }
 
 func TestTaskSocketOperations(t *testing.T) {

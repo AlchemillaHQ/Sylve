@@ -32,9 +32,9 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/internal/mountutil"
 	"github.com/alchemillahq/sylve/internal/remoteexec"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
+	"github.com/alchemillahq/sylve/pkg/storage/mount"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	goLibvirt "github.com/digitalocean/go-libvirt"
 )
@@ -1165,7 +1165,7 @@ func (s *Service) phaseCleanupSource(ctx context.Context, mp *migrationPayload, 
 
 		entry := cleanupDataset{name: dataset, dataset: ds}
 		if task.GuestType == taskModels.GuestTypeJail {
-			mountpoint, mountErr := zfsutil.FilesystemMountpoint(ds)
+			mountpoint, mountErr := storagezfs.FilesystemMountpoint(ds)
 			if mountErr != nil {
 				return fmt.Errorf("migration_cleanup_dataset_%s_mountpoint_invalid: %w", dataset, mountErr)
 			}
@@ -1176,7 +1176,7 @@ func (s *Service) phaseCleanupSource(ctx context.Context, mp *migrationPayload, 
 
 	if task.GuestType == taskModels.GuestTypeJail {
 		for _, entry := range resolved {
-			if unmountErr := mountutil.UnmountDescendants(
+			if unmountErr := mount.UnmountDescendants(
 				ctx,
 				entry.name,
 				entry.mountpoint,

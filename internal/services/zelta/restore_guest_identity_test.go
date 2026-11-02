@@ -17,12 +17,11 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
-	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func newStandaloneRestoreIdentityService(t *testing.T) *Service {
 	t.Helper()
-	database := testutil.NewSQLiteTestDB(
+	database := newZeltaServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&vmModels.VM{},

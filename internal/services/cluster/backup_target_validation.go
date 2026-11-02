@@ -405,7 +405,7 @@ func (s *Service) CheckGuestBackupTargetsForMigration(
 	}
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
 	targetNodeID = strings.TrimSpace(targetNodeID)
-	if !clusterModels.ValidGuestIdentityKind(guestType) || guestID == 0 ||
+	if !clusterModels.ValidReplicationGuestType(guestType) || guestID == 0 ||
 		guestID > clusterModels.GuestIdentityMaxID || targetNodeID == "" {
 		return fmt.Errorf("migration_backup_target_preflight_invalid")
 	}

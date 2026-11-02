@@ -23,12 +23,21 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	migrationIface "github.com/alchemillahq/sylve/internal/interfaces/services/migration"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
+
+func TestValidateMigrationRejectsContainerBeforeDependencies(t *testing.T) {
+	service := &Service{}
+	result, err := service.ValidateMigration(t.Context(), migrationIface.MigrateRequest{GuestType: clusterModels.GuestIdentityKindContainer, GuestID: 701})
+	if err != nil || result.Allowed || !slices.Contains(result.Reasons, "unsupported_guest_type") {
+		t.Fatalf("container reached VM/jail migration machinery: %+v %v", result, err)
+	}
+}
 
 func TestCanonicalMigrationGuestDatasetUsesExactGuestIDBoundary(t *testing.T) {
 	tests := []struct {

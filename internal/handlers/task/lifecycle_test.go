@@ -26,7 +26,7 @@ import (
 func newLifecycleHandlerTestService(t *testing.T) *lifecycle.Service {
 	t.Helper()
 	database := testutil.NewSQLiteTestDB(t, &taskModels.GuestLifecycleTask{})
-	return lifecycle.NewService(database, nil, nil, nil)
+	return lifecycle.NewService(database, nil, nil, nil, nil)
 }
 
 func performLifecycleRequest(t *testing.T, route, target string, handler gin.HandlerFunc) *httptest.ResponseRecorder {
@@ -55,7 +55,7 @@ func TestLifecycleHandlersRejectInvalidFilters(t *testing.T) {
 		name, route, target, message string
 		handler                      gin.HandlerFunc
 	}{
-		{"unsupported collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=container", "invalid_guest_type", ActiveLifecycleTasks(nil)},
+		{"unsupported collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=unknown", "invalid_guest_type", ActiveLifecycleTasks(nil)},
 		{"empty collection guest type", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=", "invalid_guest_type", ActiveLifecycleTasks(nil)},
 		{"zero collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=0", "invalid_guest_id", ActiveLifecycleTasks(nil)},
 		{"malformed collection guest ID", "/tasks/lifecycle/active", "/tasks/lifecycle/active?guestId=abc", "invalid_guest_id", ActiveLifecycleTasks(nil)},
@@ -63,7 +63,7 @@ func TestLifecycleHandlersRejectInvalidFilters(t *testing.T) {
 		{"negative recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=-1", "invalid_limit", RecentLifecycleTasks(nil)},
 		{"oversized recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=201", "invalid_limit", RecentLifecycleTasks(nil)},
 		{"malformed recent limit", "/tasks/lifecycle/recent", "/tasks/lifecycle/recent?limit=many", "invalid_limit", RecentLifecycleTasks(nil)},
-		{"unsupported member guest type", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/container/1", "invalid_guest_type", ActiveLifecycleTaskForGuest(nil)},
+		{"unsupported member guest type", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/unknown/1", "invalid_guest_type", ActiveLifecycleTaskForGuest(nil)},
 		{"zero member guest ID", "/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/vm/0", "invalid_guest_id", ActiveLifecycleTaskForGuest(nil)},
 	}
 
@@ -98,6 +98,22 @@ func TestActiveLifecycleTaskForGuestReturnsNullableSuccess(t *testing.T) {
 	}
 	if response.Status != "success" || response.Data != nil {
 		t.Fatalf("response = %+v, want successful null data", response)
+	}
+}
+
+func TestLifecycleTaskFiltersIncludeContainers(t *testing.T) {
+	service := newLifecycleHandlerTestService(t)
+	for _, tc := range []struct {
+		route, target string
+		handler       gin.HandlerFunc
+	}{
+		{"/tasks/lifecycle/active", "/tasks/lifecycle/active?guestType=container", ActiveLifecycleTasks(service)},
+		{"/tasks/lifecycle/recent", "/tasks/lifecycle/recent?guestType=container", RecentLifecycleTasks(service)},
+		{"/tasks/lifecycle/active/:guestType/:guestId", "/tasks/lifecycle/active/container/42", ActiveLifecycleTaskForGuest(service)},
+	} {
+		if w := performLifecycleRequest(t, tc.route, tc.target, tc.handler); w.Code != 200 {
+			t.Fatalf("container filter: %s", w.Body.String())
+		}
 	}
 }
 

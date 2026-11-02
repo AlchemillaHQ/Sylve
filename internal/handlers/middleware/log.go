@@ -71,7 +71,8 @@ func shouldRedactAuditPayload(path string) bool {
 		return false
 	}
 
-	return isMetadataOnlyUploadAuditPath(path) ||
+	return auditPathMatches(path, "/api/container") ||
+		isMetadataOnlyUploadAuditPath(path) ||
 		path == "/api/iscsi/config" ||
 		auditPathMatches(path, "/api/auth/login") ||
 		auditPathMatches(path, "/api/auth/passkeys/login") ||
@@ -99,6 +100,7 @@ func isImportantAuditGetPath(path string) bool {
 	if utils.Contains(importantGetPaths, path) ||
 		isVMConsoleWebSocketPath(path) ||
 		isJailConsoleWebSocketPath(path) ||
+		isContainerConsoleWebSocketPath(path) ||
 		strings.Contains(path, "vnc") {
 		return true
 	}

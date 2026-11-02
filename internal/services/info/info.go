@@ -108,7 +108,7 @@ func (s *Service) GetNodeInfo() (infoServiceInterfaces.NodeInfo, error) {
 
 	var resourceIds []uint
 
-	err = s.DB.Raw(`SELECT ct_id AS id FROM jails UNION ALL SELECT rid AS id FROM vms`).Scan(&resourceIds).Error
+	err = s.DB.Raw(`SELECT ct_id AS id FROM jails UNION ALL SELECT rid AS id FROM vms UNION ALL SELECT oc_id AS id FROM containers`).Scan(&resourceIds).Error
 	if err != nil {
 		nodeInfo.Guests = []uint{}
 	} else {

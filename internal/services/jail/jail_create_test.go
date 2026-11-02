@@ -25,6 +25,7 @@ import (
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/config"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
@@ -798,6 +799,9 @@ func TestCreateJail_LinuxPersistsResolvConf(t *testing.T) {
 		&vmModels.VM{},
 		&utilitiesModels.Downloads{},
 	)
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
 
 	tmp := t.TempDir()
 	const pool = "testpool-linux-resolv"
@@ -1251,6 +1255,9 @@ func TestCreateJail_PostCommitFailureCleansResidualArtifacts(t *testing.T) {
 		&vmModels.Network{},
 		&utilitiesModels.Downloads{},
 	)
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
 
 	tmp := t.TempDir()
 	const pool = "testpool-post-commit-failure"

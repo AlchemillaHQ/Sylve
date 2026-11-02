@@ -1,0 +1,149 @@
+name: mariadb
+services:
+  mariadb:
+    image: ghcr.io/daemonless/mariadb:latest
+    container_name: mariadb
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3306"
+    restart: unless-stopped
+volumes:
+  mariadb-config:
+x-fjord:
+  version: "0.1"
+  info:
+    id: mariadb
+    name: MariaDB
+    description: Drop-in replacement for MySQL built by the original authors — extends core MySQL functionality with alternate storage engines, server optimizations, and patches.
+    category: Databases
+    class: service
+    icon: icons/mariadb.svg
+    upstream_url: https://github.com/MariaDB/server
+    web_url: https://mariadb.org/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: MariaDB port
+      type: port
+      default: "3306"
+    - name: CONFIG_DATA
+      label: MariaDB configuration and data
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      type: string
+      default: "1000"
+    - name: PGID
+      type: string
+      default: "1000"
+    - name: TZ
+      type: string
+      default: Etc/UTC
+    - name: MYSQL_ROOT_PASSWORD
+      label: Root password (required on first run)
+      type: secret
+      default: ""
+    - name: MYSQL_DATABASE
+      label: Database to create on first run
+      type: string
+      default: mydb
+    - name: MYSQL_USER
+      label: User to create on first run
+      type: string
+      default: myuser
+    - name: MYSQL_PASSWORD
+      label: Password for MYSQL_USER
+      type: secret
+      default: ""
+  variants:
+    - id: 10.11-pkg-latest
+      label: 10.11-pkg-latest
+      aliases:
+        - "10.11"
+    - id: 11.4-pkg-latest
+      label: 11.4-pkg-latest
+      aliases:
+        - "11.4"
+    - id: 11.8-pkg-latest
+      label: 11.8-pkg-latest
+      aliases:
+        - "11.8"
+    - id: 12.3-pkg-latest
+      label: 12.3-pkg-latest
+      default: true
+      aliases:
+        - "12.3"
+        - latest
+        - pkg-latest
+        - pkg
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        mariadb:
+          name: mariadb
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3306 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - MYSQL_ROOT_PASSWORD: !ENV '${MYSQL_ROOT_PASSWORD}'
+              - MYSQL_DATABASE: !ENV '${MYSQL_DATABASE}'
+              - MYSQL_USER: !ENV '${MYSQL_USER}'
+              - MYSQL_PASSWORD: !ENV '${MYSQL_PASSWORD}'
+          volumes:
+            - MARIADB_CONFIG_PATH: /config
+      volumes:
+        MARIADB_CONFIG_PATH:
+          device: !ENV '${MARIADB_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/mariadb:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=mariadb
+      PUID=1000
+      PGID=1000
+      TZ=Etc/UTC
+      MYSQL_ROOT_PASSWORD=changeme
+      MYSQL_DATABASE=mydb
+      MYSQL_USER=myuser
+      MYSQL_PASSWORD=mypassword
+      WEB_PORT=3306
+      MARIADB_CONFIG_PATH=/mariadb

@@ -20,6 +20,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
@@ -33,11 +34,15 @@ import (
 
 func newCreationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	return testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &jailModels.Jail{},
+	db := testutil.NewSQLiteTestDB(t, &clusterModels.Cluster{}, &jailModels.Jail{},
 		&clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationGuestOperation{}, &clusterModels.ReplicationRunOperation{},
 		&jailModels.JailCreation{}, &jailModels.Storage{}, &jailModels.Network{}, &jailModels.JailHooks{},
 		&jailModels.JailStats{}, &jailModels.JailSnapshot{}, &vmModels.VM{}, &networkModels.Object{},
 		&networkModels.ObjectEntry{}, &networkModels.ObjectResolution{}, &utilitiesModels.Downloads{}, &taskModels.GuestLifecycleTask{})
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
 func newCreationTestService(t *testing.T) (*Service, *jailCreateTestZFSRunner, jailServiceInterfaces.CreateJailRequest, uint) {

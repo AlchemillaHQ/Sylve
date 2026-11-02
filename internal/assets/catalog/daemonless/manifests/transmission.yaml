@@ -1,0 +1,158 @@
+name: transmission
+services:
+  transmission:
+    image: ghcr.io/daemonless/transmission:latest
+    container_name: transmission
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - USER=${USER}
+      - PASS=${PASS}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DOWNLOADS_PATH}:/downloads"
+      - "${WATCH_PATH}:/watch"
+    ports:
+      - "${WEB_PORT}:9091"
+      - "${PORT_51413}:51413"
+      - "${PORT_51413_UDP}:51413/udp"
+x-fjord:
+  version: "0.1"
+  info:
+    id: transmission
+    name: Transmission
+    description: Lightweight BitTorrent client with a web UI for managing torrent downloads.
+    category: Downloaders
+    class: service
+    icon: icons/transmission.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/transmission/transmission
+    web_url: https://transmissionbt.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "9091"
+    - name: PORT_51413
+      label: Torrent peer port
+      type: port
+      default: "51413"
+    - name: PORT_51413_UDP
+      label: Torrent peer port
+      type: port
+      default: "51413"
+    - name: CONFIG_DATA
+      label: Configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DOWNLOADS_PATH
+      label: Download directory
+      type: path
+      default: ""
+    - name: WATCH_PATH
+      label: Watch directory for .torrent files
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: USER
+      label: Web UI Username
+      type: string
+      default: ""
+      optional: true
+      level: primary
+    - name: PASS
+      label: Web UI Password
+      type: string
+      default: ""
+      optional: true
+      level: primary
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        transmission:
+          name: transmission
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9091 proto:tcp'
+            - expose: '51413:51413 proto:tcp'
+            - expose: '51413:51413 proto:udp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - USER: !ENV '${USER}'
+              - PASS: !ENV '${PASS}'
+          volumes:
+            - TRANSMISSION_CONFIG_PATH: /config
+            - DOWNLOADS_PATH: /downloads
+            - TRANSMISSION_WATCH_PATH: /watch
+      volumes:
+        TRANSMISSION_CONFIG_PATH:
+          device: !ENV '${TRANSMISSION_CONFIG_PATH}'
+        DOWNLOADS_PATH:
+          device: !ENV '${DOWNLOADS_PATH}'
+        TRANSMISSION_WATCH_PATH:
+          device: !ENV '${TRANSMISSION_WATCH_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/transmission:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=transmission
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      USER=
+      PASS=<PASS>
+      WEB_PORT=9091
+      TRANSMISSION_CONFIG_PATH=/transmission
+      DOWNLOADS_PATH=downloads
+      TRANSMISSION_WATCH_PATH=/transmission/watch

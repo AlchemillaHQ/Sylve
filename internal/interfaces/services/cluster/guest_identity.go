@@ -4,7 +4,7 @@ package clusterServiceInterfaces
 
 import "context"
 
-// GuestIdentityAvailabilityChecker verifies that a numeric VM/jail identifier
+// GuestIdentityAvailabilityChecker verifies that a numeric VM/jail/container identifier
 // is unused before a guest creation path starts provisioning resources.
 type GuestIdentityAvailabilityChecker interface {
 	RequireGuestIDAvailable(ctx context.Context, guestID uint) error

@@ -15,6 +15,7 @@ under sponsorship from the FreeBSD Foundation.
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails, getJailZFSSources, newJail, validateNewJail } from '$lib/api/jail/jail';
+	import { getContainers } from '$lib/api/container/container';
 	import { getLifecycleTask } from '$lib/api/task/lifecycle';
 	import { getBootstraps } from '$lib/api/jail/bootstrap';
 	import { getNetworkObjects } from '$lib/api/network/object';
@@ -278,6 +279,12 @@ under sponsorship from the FreeBSD Foundation.
 		}
 	);
 
+	let containers = resource(
+		() => `container-list-${modal.node || '__default__'}`,
+		async () => await getContainers(modal.node || undefined),
+		{ initialValue: [] }
+	);
+
 	let nodes = resource(
 		() => 'cluster-nodes',
 		async (key) => {
@@ -386,6 +393,7 @@ under sponsorship from the FreeBSD Foundation.
 			networkObjects.refetch();
 			vms.refetch();
 			jails.refetch();
+			containers.refetch();
 			nodes.refetch();
 			pools.refetch();
 			filesystemData.refetch();
@@ -425,7 +433,7 @@ under sponsorship from the FreeBSD Foundation.
 				return getNextGuestId(nodes.current);
 			}
 
-			return getNextId(vms.current || [], jails.current || []);
+			return getNextId(vms.current || [], jails.current || [], containers.current);
 		}
 	});
 

@@ -39,6 +39,7 @@ func setupManualSwitchHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine,
 	for _, statement := range []string{
 		`CREATE TABLE vm_networks (id integer primary key, switch_id integer, switch_type text)`,
 		`CREATE TABLE jail_networks (id integer primary key, switch_id integer, switch_type text)`,
+		`CREATE TABLE container_networks (id integer primary key, switch_id integer, switch_type text)`,
 		`CREATE TABLE dhcp_manual_switches (dhcp_config_id integer, manual_switch_id integer)`,
 		`CREATE TABLE dhcp_ranges (id integer primary key, manual_switch_id integer)`,
 	} {

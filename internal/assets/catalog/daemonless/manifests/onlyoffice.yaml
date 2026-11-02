@@ -1,0 +1,176 @@
+name: onlyoffice
+services:
+  onlyoffice:
+    image: ghcr.io/daemonless/onlyoffice:pkg
+    container_name: onlyoffice-documentserver
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - onlyoffice-postgresql
+    environment:
+      - DB_HOST=${DB_HOST:-127.0.0.1}
+      - DB_PORT=5432
+      - DB_NAME=onlyoffice
+      - DB_USER=onlyoffice
+      - DB_PWD=${DB_PASSWORD}
+      - HTTP_PORT=8080
+      - EXAMPLE_SERVER_URL=${EXAMPLE_SERVER_URL}
+      #- JWT_ENABLED=true
+      #- JWT_SECRET=your-secret-here
+      #- JWT_HEADER=Authorization
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+  onlyoffice-postgresql:
+    image: ghcr.io/daemonless/postgres:latest
+    container_name: onlyoffice-postgresql
+    network_mode: host
+    restart: unless-stopped
+    annotations:
+      org.freebsd.jail.allow.sysvipc: "true"
+    environment:
+      - POSTGRES_DB=onlyoffice
+      - POSTGRES_USER=onlyoffice
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - ${DB_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: onlyoffice
+    name: ONLYOFFICE Document Server
+    description: Online office suite providing collaborative editors for documents, spreadsheets, and presentations. Fully compatible with Office Open XML formats (.docx, .xlsx, .pptx). Requires PostgreSQL — see the onlyoffice-postgresql service below.
+    category: Productivity
+    class: stack
+    icon: icons/onlyoffice.svg
+    upstream_url: https://github.com/ONLYOFFICE/DocumentServer
+    web_url: https://www.onlyoffice.com/
+  variables:
+    - name: DB_HOST
+      label: Where the document server finds PostgreSQL (fjord sets this; 127.0.0.1 on host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+      level: advanced
+    - name: DB_PASSWORD
+      label: PostgreSQL password
+      type: secret
+      default: onlyoffice
+    - name: EXAMPLE_SERVER_URL
+      label: Public hostname:port the browser uses to reach the document server (e.g. myhost:8080)
+      type: string
+      default: your-hostname:8080
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+      optional: true
+    - name: CONFIG_LOCATION
+      label: Path to store document server data, logs, and configuration
+      type: path
+      default: /containers/onlyoffice/config
+    - name: DB_DATA_LOCATION
+      label: Path to store PostgreSQL data files
+      type: path
+      default: /containers/onlyoffice/postgres
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        onlyoffice:
+          name: onlyoffice
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - DB_HOST: !ENV '${DB_HOST}'
+              - DB_PORT: !ENV '${DB_PORT}'
+              - DB_NAME: !ENV '${DB_NAME}'
+              - DB_USER: !ENV '${DB_USER}'
+              - DB_PWD: !ENV '${DB_PWD}'
+              - HTTP_PORT: !ENV '${HTTP_PORT}'
+              - EXAMPLE_SERVER_URL: !ENV '${EXAMPLE_SERVER_URL}'
+              - TZ: !ENV '${TZ}'
+              - CONFIG_LOCATION: !ENV '${CONFIG_LOCATION}'
+              - DB_DATA_LOCATION: !ENV '${DB_DATA_LOCATION}'
+              - DB_PASSWORD: !ENV '${DB_PASSWORD}'
+          volumes:
+            - ONLYOFFICE_CONFIG_PATH: /config
+        onlyoffice-postgresql:
+          name: onlyoffice_postgresql
+          options:
+            - from: ghcr.io/daemonless/postgres:latest
+            - template: !ENV '${PWD}/postgres-template.conf'
+          oci:
+            environment:
+              - POSTGRES_DB: "onlyoffice"
+              - POSTGRES_USER: "onlyoffice"
+              - POSTGRES_PASSWORD: !ENV '${DB_PASSWORD}'
+              - POSTGRES_HOST_AUTH_METHOD: "trust"
+          volumes:
+            - db_data: /config
+      volumes:
+        ONLYOFFICE_CONFIG_PATH:
+          device: !ENV '${ONLYOFFICE_CONFIG_PATH}'
+        db_data:
+          device: !ENV '${DB_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/onlyoffice:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=onlyoffice
+      DB_HOST=127.0.0.1
+      DB_PORT=5432
+      DB_NAME=onlyoffice
+      DB_USER=onlyoffice
+      DB_PWD=${DB_PASSWORD}
+      HTTP_PORT=8080
+      EXAMPLE_SERVER_URL=your-hostname:8080
+      TZ=UTC
+      CONFIG_LOCATION=/containers/onlyoffice/config
+      DB_DATA_LOCATION=/containers/onlyoffice/postgres
+      DB_PASSWORD=onlyoffice
+      ONLYOFFICE_CONFIG_PATH=/onlyoffice
+    extras:
+      postgres-template.conf: |
+        # postgres-template.conf -- jail template for the PostgreSQL sidecar (AppJail)
+        #
+        # PostgreSQL needs System V shared memory. allow.sysvipc is a no-op on
+        # FreeBSD 15; the jail gets its own SysV IPC namespace instead.
+        exec.start: "/bin/sh /etc/rc"
+        exec.stop: "/bin/sh /etc/rc.shutdown jail"
+        mount.devfs
+        persist
+        # host networking (ip4_inherit is a no-op in AppJail 5.5.0; the parameters are not)
+        ip4: inherit
+        ip6: inherit
+        sysvmsg: new
+        sysvsem: new
+        sysvshm: new
+  networking:
+    '*': private
+    onlyoffice: default
+  hostnames:
+    onlyoffice-postgresql: DB_HOST

@@ -48,6 +48,9 @@ func canonicalSubmittedGuestIdentityInventory(
 	if nodeID == "" {
 		return GuestIdentityInventoryReport{}, fmt.Errorf("joining_node_id_required")
 	}
+	if len(submitted.InFlightGuestIDs) != 0 {
+		return GuestIdentityInventoryReport{}, fmt.Errorf("guest_identity_mutation_in_progress")
+	}
 	for _, entry := range submitted.Entries {
 		if strings.TrimSpace(entry.NodeID) != nodeID {
 			return GuestIdentityInventoryReport{}, fmt.Errorf(

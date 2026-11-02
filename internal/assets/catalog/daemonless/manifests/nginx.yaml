@@ -1,0 +1,108 @@
+name: nginx
+services:
+  nginx:
+    image: ghcr.io/daemonless/nginx:latest
+    container_name: nginx
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${HTML_PATH}:/usr/local/www/html:ro"
+    ports:
+      - "${WEB_PORT}:80"
+x-fjord:
+  version: "0.1"
+  info:
+    id: nginx
+    name: Nginx
+    description: 'Nginx web server on base-exec: serves a site, or fronts another container in a stack. Logs go to the container''s output.'
+    category: Infrastructure
+    class: service
+    icon: icons/nginx.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/nginx/nginx
+    web_url: https://nginx.org/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: HTTP
+      type: port
+      default: "80"
+    - name: HTML_PATH
+      label: Site files
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID the worker processes run as
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID the worker processes run as
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        nginx:
+          name: nginx
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - NGINX_HTML_PATH: /usr/local/www/html
+      volumes:
+        NGINX_HTML_PATH:
+          device: !ENV '${NGINX_HTML_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/nginx:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=nginx
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=80
+      NGINX_HTML_PATH=/nginx/html

@@ -1,0 +1,104 @@
+name: thelounge
+services:
+  thelounge:
+    image: ghcr.io/daemonless/thelounge:latest
+    container_name: thelounge
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${THELOUNGE_PATH}:/var/opt/thelounge"
+    ports:
+      - "${WEB_PORT}:9000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: thelounge
+    name: Thelounge
+    description: The self-hosted web IRC client on FreeBSD.
+    category: Utilities
+    class: service
+    icon: icons/thelounge.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/thelounge/thelounge
+    web_url: https://thelounge.chat/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Thelounge port
+      type: port
+      default: "9000"
+    - name: THELOUNGE_PATH
+      label: Data and configuration directory
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        thelounge:
+          name: thelounge
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - THELOUNGE_THELOUNGE_PATH: /var/opt/thelounge
+      volumes:
+        THELOUNGE_THELOUNGE_PATH:
+          device: !ENV '${THELOUNGE_THELOUNGE_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/thelounge:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=thelounge
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=9000
+      THELOUNGE_THELOUNGE_PATH=/thelounge/thelounge

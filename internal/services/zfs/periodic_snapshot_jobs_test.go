@@ -5,9 +5,12 @@ package zfs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/alchemillahq/gzfs"
+	gzfstest "github.com/alchemillahq/gzfs/testutil"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
@@ -26,6 +29,25 @@ func periodicSnapshotJobs(t *testing.T) (*Service, zfsModels.PeriodicSnapshot, z
 		t.Fatalf("create second periodic snapshot job: %v", err)
 	}
 	return &Service{DB: database}, first, second
+}
+
+func TestPeriodicSnapshotRetainsUnavailableDatasetJob(t *testing.T) {
+	for _, lookupErr := range []error{nil, errors.New("storage temporarily unavailable"), context.Canceled} {
+		t.Run(fmt.Sprint(lookupErr), func(t *testing.T) {
+			service, job, _ := periodicSnapshotJobs(t)
+			runner := gzfstest.NewMockRunner()
+			runner.AddCommand("zfs get", `{"datasets":{}}`, "", lookupErr)
+			service.GZFS = gzfs.NewClient(gzfs.Options{Runner: runner})
+			service.runPeriodicSnapshot(t.Context(), job, time.Now())
+			var current zfsModels.PeriodicSnapshot
+			if err := service.DB.First(&current, job.ID).Error; err != nil {
+				t.Fatal("unavailable dataset discarded its durable snapshot job", err)
+			}
+			if !current.LastRunAt.IsZero() || current.LastExecutedAt != nil {
+				t.Fatal("unavailable dataset advanced the snapshot schedule", current)
+			}
+		})
+	}
 }
 
 func TestDeletePeriodicSnapshotTargetsJobID(t *testing.T) {

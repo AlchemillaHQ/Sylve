@@ -7,7 +7,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import { type AvailableService, type BasicSettings } from '$lib/types/system/settings';
 	import type { Zpool } from '$lib/types/zfs/pool';
-	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
+	import { getAPIErrorText, handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
 	import { generateNanoId } from '$lib/utils/string';
 	import { IsDocumentVisible, resource, useInterval, watch } from 'runed';
 	import type { CellComponent } from 'tabulator-tables';
@@ -137,6 +137,11 @@
 				value: basicSettings.services.includes('jails') ? 'Enabled' : 'Disabled'
 			},
 			{
+				id: generateNanoId('containers'),
+				property: 'Containers',
+				value: basicSettings.services.includes('containers') ? 'Enabled' : 'Disabled'
+			},
+			{
 				id: generateNanoId('firewall'),
 				property: 'Firewall',
 				value: basicSettings.services.includes('firewall') ? 'Enabled' : 'Disabled'
@@ -189,6 +194,9 @@
 		jails: {
 			open: false
 		},
+		containers: {
+			open: false
+		},
 		firewall: {
 			open: false
 		},
@@ -231,6 +239,7 @@
 			modals['samba-server'].open ||
 			modals.virtualization.open ||
 			modals.jails.open ||
+			modals.containers.open ||
 			modals.firewall.open ||
 			modals.wireguard.open ||
 			modals.iscsi.open ||
@@ -336,6 +345,8 @@
 					modals['virtualization'].open = true;
 				} else if (activeRow?.property === 'Jails') {
 					modals['jails'].open = true;
+				} else if (activeRow?.property === 'Containers') {
+					modals.containers.open = true;
 				} else if (activeRow?.property === 'Firewall') {
 					modals['firewall'].open = true;
 				} else if (activeRow?.property === 'WireGuard') {
@@ -376,6 +387,7 @@
 		| 'samba-server'
 		| 'virtualization'
 		| 'jails'
+		| 'containers'
 		| 'firewall'
 		| 'wireguard'
 		| 'iscsi'
@@ -383,7 +395,7 @@
 		| 'mdns'
 )}
 	{@const enabled = basicSettings.services.includes(serviceKey)}
-	{@const needsArticle = !['Virtualization', 'Jails'].includes(serviceName)}
+	{@const needsArticle = !['Virtualization', 'Jails', 'Containers'].includes(serviceName)}
 	{@const hasNetworkWarning = serviceName === 'DHCP Server' || serviceName === 'Firewall'}
 	{@const displayName = needsArticle ? `the ${serviceName}` : serviceName}
 	{@const networkWarning = hasNetworkWarning ? ' This may affect network configuration.' : ''}
@@ -400,7 +412,9 @@
 				? `You are about to ${enabled ? 'disable' : 'enable'} iSCSI targets.${enabled ? ' Initiator connections will stay active.' : ''}`
 				: serviceKey === 'nfs'
 					? `You are about to ${enabled ? 'disable' : 'enable'} NFS.`
-					: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
+					: serviceKey === 'containers'
+						? `You are about to ${enabled ? 'disable' : 'enable'} Containers.${enabled ? ' All containers must be deleted first.' : ' The Firewall service must be enabled.'}`
+						: `You are about to ${enabled ? 'disable' : 'enable'} ${displayName}.${networkWarning} You will have to restart Sylve and/or the host system for changes to take effect.`}
 		confirmLabel={serviceKey === 'mdns' && enabled ? 'Disable anyway' : 'Continue'}
 		loadingLabel={enabled ? 'Disabling...' : 'Enabling...'}
 		keepOpenOnConfirm
@@ -438,7 +452,15 @@
 					modals[serviceKey].open = false;
 				} else {
 					handleAPIError(response);
-					toast.error(`Failed to update ${serviceName}`, toastOpts);
+					const error = getAPIErrorText(response);
+					toast.error(
+						error.includes('container_firewall_required')
+							? 'Containers require the Firewall service'
+							: error.includes('containers_exist')
+								? 'Delete all containers before disabling Containers'
+								: `Failed to update ${serviceName}`,
+						toastOpts
+					);
 				}
 			},
 			onCancel: () => {
@@ -481,6 +503,7 @@
 {@render serviceToggleDialog('Samba Server', 'samba-server')}
 {@render serviceToggleDialog('Virtualization', 'virtualization')}
 {@render serviceToggleDialog('Jails', 'jails')}
+{@render serviceToggleDialog('Containers', 'containers')}
 {@render serviceToggleDialog('Firewall', 'firewall')}
 {@render serviceToggleDialog('WireGuard', 'wireguard')}
 {@render serviceToggleDialog('iSCSI', 'iscsi')}

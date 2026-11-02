@@ -21,6 +21,7 @@ const (
 	ISCSI          AvailableService = "iscsi"
 	NFS            AvailableService = "nfs"
 	Mdns           AvailableService = "mdns"
+	Containers     AvailableService = "containers"
 )
 
 func IsAvailableService(service AvailableService) bool {
@@ -34,7 +35,8 @@ func IsAvailableService(service AvailableService) bool {
 		WireGuard,
 		ISCSI,
 		NFS,
-		Mdns:
+		Mdns,
+		Containers:
 		return true
 	default:
 		return false

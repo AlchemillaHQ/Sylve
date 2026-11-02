@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
+	import { getContainers } from '$lib/api/container/container';
 	import { getAuditRecords } from '$lib/api/info/audit';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
@@ -10,6 +11,7 @@
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { reload } from '$lib/stores/api.svelte';
 	import type { ClusterNode } from '$lib/types/cluster/cluster';
+	import type { ContainerListItem } from '$lib/types/container/container';
 	import type { AuditRecord } from '$lib/types/info/audit';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { SimpleVmTemplate } from '$lib/types/vm/vm';
@@ -93,6 +95,18 @@
 		},
 		{
 			initialValue: [] as SimpleJail[]
+		}
+	);
+
+	const containerList = resource(
+		() => `container-list-${effectiveHostname || 'default'}`,
+		async (key) => {
+			const results = await getContainers(effectiveHostname || undefined);
+			updateCache(key, results);
+			return results;
+		},
+		{
+			initialValue: [] as ContainerListItem[]
 		}
 	);
 
@@ -261,6 +275,11 @@
 		'/api/zfs/pools/:id/replace-device': 'ZFS Pool - Replace Device',
 		'/api/jail/bootstraps': 'Jail Bootstrap',
 		'/api/jail': 'Jail',
+		'/api/container/networks': 'Container Network',
+		'/api/container/images': 'Container Image',
+		'/api/container/registry-credentials': 'Container Registry',
+		'/api/container/catalog': 'Container Catalog',
+		'/api/container': 'Container',
 		'/api/utilities/cloud-init/templates': 'Cloud Init Template',
 		'/api/system/basic-settings/pools': 'Basic Settings - ZFS Pools',
 		'/api/network/firewall/traffic/counters': 'Firewall Traffic Counters',
@@ -328,6 +347,8 @@
 			'/api/vm/:id': 'VM - Delete',
 			'/api/jail/:id': 'Jail - Delete',
 			'/api/jail/:id/networks/:id': 'Jail Network - Delete',
+			'/api/container/networks/:id': 'Container Network - Delete',
+			'/api/container/registry-credentials/:id': 'Container Registry - Delete',
 			'/api/info/notes': 'Notes - Bulk Delete',
 			'/api/system/file-explorer/upload': 'File Explorer - Upload Revert',
 			'/api/system/ppt-devices/:id': 'PCI Passthrough - Disable',
@@ -393,6 +414,7 @@
 			'/api/jail/:id/actions/stop': 'Jail - Stop',
 			'/api/jail/:id/actions/restart': 'Jail - Restart',
 			'/api/jail/:id/migrations': 'Jail - Migrate',
+			'/api/container/networks': 'Container Network - Create',
 			'/api/system/ppt-devices': 'PCI Passthrough - Enable',
 			'/api/zfs/datasets/snapshot/:id/rollback': 'ZFS Snapshot - Rollback',
 			'/api/zfs/datasets/volume/:id/flash': 'ZFS Volume - Flash',
@@ -430,6 +452,7 @@
 			'/api/jail/:id/hardware/cpu': 'Jail Hardware - CPU',
 			'/api/jail/:id/hardware/resource-limits': 'Jail Hardware - Resource Limits',
 			'/api/jail/:id/options/wol': 'Jail Options - Wake-on-LAN',
+			'/api/container/registry-credentials': 'Container Registry - Save',
 			'/api/jail/:id/options/boot-order': 'Jail Options - Boot Order',
 			'/api/jail/:id/options/execution-timeout': 'Jail Options - Execution Timeout',
 			'/api/jail/:id/options/fstab': 'Jail Options - FSTab',
@@ -490,7 +513,8 @@
 		['wireguard', 'WireGuard'],
 		['iscsi', 'iSCSI'],
 		['nfs', 'NFS'],
-		['mdns', 'mDNS']
+		['mdns', 'mDNS'],
+		['containers', 'Containers']
 	]);
 
 	const sortedPathToActionEntries = $derived.by(() =>
@@ -778,6 +802,49 @@
 		const bodyName = typeof requestName === 'string' ? requestName.trim() : '';
 		const name = bodyName || jailNameByCtId.get(ctId) || '';
 		return name ? `${name} (CTID ${ctId})` : `CTID ${ctId}`;
+	}
+
+	let containerByOcId = $derived(
+		new Map((containerList.current ?? []).map((container) => [container.ocId, container]))
+	);
+
+	function containerIdentityLabel(ocId: number): string {
+		const name = containerByOcId.get(ocId)?.name;
+		return name ? `${name} (OCID ${ocId})` : `OCID ${ocId}`;
+	}
+
+	function containerActionLabel(path: string, method: string, response: unknown): string | null {
+		const verb = method.toUpperCase();
+		let match = path.match(/^\/api\/container\/(\d+)(?:\/(options|console)|\/actions\/(\w+))?$/);
+		if (match) {
+			const identity = containerIdentityLabel(Number(match[1]));
+			if (match[3]) return `Container - ${toTitleCase(match[3])} - ${identity}`;
+			if (match[2] === 'console') return `Container Console - Session - ${identity}`;
+			if (match[2] === 'options') return `Container - Update Options - ${identity}`;
+			if (verb === 'PUT') return `Container - Update - ${identity}`;
+			if (verb === 'DELETE') return `Container - Delete - ${identity}`;
+			return null;
+		}
+		if (verb === 'POST' && (path === '/api/container' || path === '/api/container/stack')) {
+			const result = auditObject(response);
+			const ocId = Number(result?.guestId ?? auditObject(result?.data)?.ocId);
+			if (path === '/api/container') {
+				return ocId > 0
+					? `Container - Create - ${containerIdentityLabel(ocId)}`
+					: 'Container - Create';
+			}
+			const stack = containerByOcId.get(ocId)?.stack;
+			return `Container Stack - Create${stack ? ` - ${stack}` : ocId > 0 ? ` - OCID ${ocId}` : ''}`;
+		}
+		match = path.match(/^\/api\/container\/images\/([^/]+)\/(pull|prune|[^/]+)$/);
+		if (match) {
+			if (verb === 'POST' && match[2] === 'pull') return `Container Image - Pull - ${match[1]}`;
+			if (verb === 'POST' && match[2] === 'prune') return `Container Image - Prune - ${match[1]}`;
+			if (verb === 'DELETE') return `Container Image - Delete - ${match[1]}`;
+			return null;
+		}
+		match = path.match(/^\/api\/container\/catalog\/([^/]+)\/([^/]+)\/render$/);
+		return match ? `Container Catalog - Configure App - ${match[1]}/${match[2]}` : null;
 	}
 
 	type JailOptionAuditTarget = {
@@ -1510,6 +1577,10 @@
 			);
 			if (cloudInitTarget) {
 				resolvedAction = cloudInitTemplateActionLabel(cloudInitTarget);
+			}
+			const containerAction = containerActionLabel(path, method, recordCopy.action.response);
+			if (containerAction) {
+				resolvedAction = containerAction;
 			}
 
 			if (

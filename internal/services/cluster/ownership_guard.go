@@ -86,7 +86,7 @@ func CanMutateProtectedGuestStorageTopology(db *gorm.DB, guestType string, guest
 		return false, fmt.Errorf("replication_topology_guard_input_invalid")
 	}
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
-	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidReplicationGuestType(guestType) {
 		return false, fmt.Errorf("invalid_guest_type")
 	}
 	if err := requireJailCreationMutationAllowed(db, guestType, guestID, ""); err != nil {

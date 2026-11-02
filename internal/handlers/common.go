@@ -163,6 +163,7 @@ func isForwardedConsolePath(path string) bool {
 		{prefix: "/api/vnc/"},
 		{prefix: "/api/vm/", suffix: "/console"},
 		{prefix: "/api/jail/", suffix: "/console"},
+		{prefix: "/api/container/", suffix: "/console"},
 	} {
 		value := strings.TrimPrefix(strings.TrimSuffix(path, pattern.suffix), pattern.prefix)
 		if strings.HasPrefix(path, pattern.prefix) && strings.HasSuffix(path, pattern.suffix) &&

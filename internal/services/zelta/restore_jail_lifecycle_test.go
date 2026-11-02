@@ -436,7 +436,7 @@ func TestVMRestoreFenceHoldsThroughFinalPlacementCheckAndBlocksMutations(t *test
 		shutOffStates: []bool{false, true},
 		actionErr:     make(map[string]error),
 	}
-	database := testutil.NewSQLiteTestDB(
+	database := newZeltaServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&clusterModels.ReplicationGuestOperation{},

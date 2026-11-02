@@ -1,0 +1,119 @@
+name: calibre-web
+services:
+  calibre-web:
+    image: ghcr.io/daemonless/calibre-web:latest
+    container_name: calibre-web
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${BOOKS_PATH}:/books"
+    ports:
+      - "${WEB_PORT}:8083"
+x-fjord:
+  version: "0.1"
+  info:
+    id: calibre-web
+    name: Calibre-Web
+    description: Calibre-Web is a web app providing a clean interface for browsing, reading, and downloading eBooks using an existing or new Calibre database.
+    category: Media Servers
+    class: service
+    icon: icons/calibre-web.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/janeczku/calibre-web
+    web_url: https://github.com/janeczku/calibre-web
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "8083"
+    - name: CONFIG_DATA
+      label: Where Calibre-Web stores its internal database (app.db), cache, and settings
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: BOOKS_PATH
+      label: Where your Calibre library (metadata.db and book folders) is located
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      default: true
+      aliases:
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        calibre-web:
+          name: calibre_web
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8083 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - CALIBRE_WEB_CONFIG_PATH: /config
+            - BOOKS_PATH: /books
+      volumes:
+        CALIBRE_WEB_CONFIG_PATH:
+          device: !ENV '${CALIBRE_WEB_CONFIG_PATH}'
+        BOOKS_PATH:
+          device: !ENV '${BOOKS_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/calibre-web:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=calibre-web
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=8083
+      CALIBRE_WEB_CONFIG_PATH=/calibre-web
+      BOOKS_PATH=books

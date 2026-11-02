@@ -581,7 +581,7 @@ func TestStorageImportRawRollsBackWhenDiskCreationFails(t *testing.T) {
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
 	}
-	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+	_, err := service.storageAttachApply(req, vm, context.Background(), storageRuntimeHooks{
 		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
 			return storage, false, fmt.Errorf("boom_create_disk")
 		},
@@ -627,7 +627,7 @@ func TestStorageImportRawRollsBackWhenCopyFails(t *testing.T) {
 		BootOrder:   &bootOrder,
 	}
 	var tempImportPath string
-	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+	_, err := service.storageAttachApply(req, vm, context.Background(), storageRuntimeHooks{
 		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, db *gorm.DB) (vmModels.Storage, bool, error) {
 			dataset := vmModels.VMStorageDataset{Pool: "tank", Name: datasetName, GUID: "raw-import-guid"}
 			if err := db.Create(&dataset).Error; err != nil {
@@ -689,7 +689,7 @@ func TestStorageImportZVOLFindsSourceAcrossPoolsAndRollsBackCreateFailure(t *tes
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
 	}
-	err := service.storageImportTx(req, vm, context.Background(), db, storageRuntimeHooks{
+	_, err := service.storageAttachApply(req, vm, context.Background(), storageRuntimeHooks{
 		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
 			return storage, false, fmt.Errorf("boom_create_disk")
 		},
@@ -737,7 +737,7 @@ func TestStorageImportZVOLRejectsDatasetAlreadyReferencedByAnotherVM(t *testing.
 	})
 	bootOrder, pool := 1, "target"
 	createCalled := false
-	err := service.storageImportTx(libvirtServiceInterfaces.StorageAttachRequest{
+	_, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
 		AttachType:  libvirtServiceInterfaces.StorageAttachTypeImport,
 		StorageType: libvirtServiceInterfaces.StorageTypeZVOL,
 		Emulation:   libvirtServiceInterfaces.NVMEStorageEmulation,
@@ -746,7 +746,7 @@ func TestStorageImportZVOLRejectsDatasetAlreadyReferencedByAnotherVM(t *testing.
 		Dataset:     datasetRecord.GUID,
 		Pool:        &pool,
 		BootOrder:   &bootOrder,
-	}, targetVM, context.Background(), db, storageRuntimeHooks{
+	}, targetVM, context.Background(), storageRuntimeHooks{
 		createVMDisk: func(_ uint, storage vmModels.Storage, _ context.Context, _ *gorm.DB) (vmModels.Storage, bool, error) {
 			createCalled = true
 			return storage, false, nil
@@ -789,7 +789,7 @@ func TestStorageNewFilesystemRejectsDuplicateTargetEvenWhenExistingShareDisabled
 			mountpoint: "/mnt/shared-data",
 		},
 	})
-	err := service.storageNewTx(libvirtServiceInterfaces.StorageAttachRequest{
+	_, err := service.storageAttachApply(libvirtServiceInterfaces.StorageAttachRequest{
 		AttachType:       libvirtServiceInterfaces.StorageAttachTypeNew,
 		StorageType:      libvirtServiceInterfaces.StorageTypeFilesystem,
 		Emulation:        libvirtServiceInterfaces.VirtIO9PStorageEmulation,
@@ -797,7 +797,7 @@ func TestStorageNewFilesystemRejectsDuplicateTargetEvenWhenExistingShareDisabled
 		RID:              vm.RID,
 		Dataset:          "share-guid",
 		FilesystemTarget: "shared_data",
-	}, vm, context.Background(), db, storageRuntimeHooks{})
+	}, vm, context.Background(), storageRuntimeHooks{})
 	if err == nil || !strings.Contains(err.Error(), "filesystem_target_already_in_use") {
 		t.Fatalf("expected duplicate target rejection, got %v", err)
 	}

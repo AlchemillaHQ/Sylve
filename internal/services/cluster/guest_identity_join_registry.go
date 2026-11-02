@@ -150,6 +150,8 @@ func (s *Service) admitStagedJoinGuestIdentities(
 		return nil
 	}
 	claimSet := guestIdentityClaimSet(reservation)
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
 	if err := s.applyGuestIdentityRaftAction("reserve_ids", claimSet); err != nil {
 		return fmt.Errorf("joining_guest_identity_reservation_failed: %w", err)
 	}

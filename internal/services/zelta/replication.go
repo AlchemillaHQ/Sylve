@@ -35,12 +35,12 @@ import (
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/internal/mountutil"
 	networkAttachment "github.com/alchemillahq/sylve/internal/network/attachment"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	jailService "github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
+	"github.com/alchemillahq/sylve/pkg/storage/mount"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/google/uuid"
 	"github.com/hashicorp/raft"
@@ -9333,7 +9333,7 @@ func (s *Service) cleanupStoppedReplicationJailMounts(ctx context.Context, ctID 
 		if dataset == nil {
 			continue
 		}
-		mountpoint, err := zfsutil.FilesystemMountpoint(dataset)
+		mountpoint, err := storagezfs.FilesystemMountpoint(dataset)
 		if err != nil {
 			return fmt.Errorf("replication_jail_mount_cleanup_dataset_%s_mountpoint_invalid: %w", root, err)
 		}
@@ -9341,7 +9341,7 @@ func (s *Service) cleanupStoppedReplicationJailMounts(ctx context.Context, ctID 
 	}
 
 	for _, anchor := range anchors {
-		if err := mountutil.UnmountDescendants(
+		if err := mount.UnmountDescendants(
 			ctx,
 			anchor.dataset,
 			anchor.mountpoint,
@@ -9604,7 +9604,9 @@ func (s *Service) prepareReplicatedDatasetForActivation(ctx context.Context, roo
 			return
 		}
 		if len(activated) > 0 {
-			s.rollbackReplicationDatasetActivation(context.Background(), activated)
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			s.rollbackReplicationDatasetActivation(cleanup, activated)
 		}
 	}()
 

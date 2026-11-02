@@ -1,0 +1,121 @@
+name: traefik
+services:
+  traefik:
+    image: ghcr.io/daemonless/traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${PORT_80}:80"
+      - "${PORT_443}:443"
+      - "${WEB_PORT}:8080"
+x-fjord:
+  version: "0.1"
+  info:
+    id: traefik
+    name: Traefik
+    description: Modern HTTP reverse proxy and load balancer on FreeBSD.
+    category: Infrastructure
+    class: service
+    icon: icons/traefik.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/traefik/traefik
+    web_url: https://traefik.io/
+  variables:
+    - name: PORT_80
+      label: HTTP
+      type: port
+      default: "80"
+    - name: PORT_443
+      label: HTTPS
+      type: port
+      default: "443"
+    - name: WEB_PORT
+      label: Dashboard/API
+      type: port
+      default: "8080"
+    - name: CONFIG_DATA
+      label: Configuration directory (traefik.yml, dynamic/, letsencrypt/)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+      aliases:
+        - k8s
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        traefik:
+          name: traefik
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+            - expose: '443:443 proto:tcp'
+            - expose: '8080:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - TRAEFIK_CONFIG_PATH: /config
+      volumes:
+        TRAEFIK_CONFIG_PATH:
+          device: !ENV '${TRAEFIK_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/traefik:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=traefik
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=80
+      TRAEFIK_CONFIG_PATH=/traefik

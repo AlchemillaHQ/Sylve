@@ -12,11 +12,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
@@ -29,8 +31,8 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *Service) checkPoolUsage(poolName string) error {
-	if err := downloadstorage.RequireDatasetUnused(context.Background(), s.DB, poolName); err != nil {
+func (s *Service) checkPoolUsage(ctx context.Context, poolName string) error {
+	if err := downloadstorage.RequireDatasetUnused(ctx, s.DB, poolName); err != nil {
 		if errors.Is(err, downloadstorage.ErrInUse) {
 			return newSettingsError(SettingsErrorConflict, downloadstorage.ErrInUse.Error(), poolName, err)
 		}
@@ -38,7 +40,7 @@ func (s *Service) checkPoolUsage(poolName string) error {
 	}
 	var count int64
 
-	if err := s.DB.Model(&vmModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Model(&vmModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
 		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
 			fmt.Errorf("failed to query vm_storages: %w", err))
 	}
@@ -46,7 +48,7 @@ func (s *Service) checkPoolUsage(poolName string) error {
 		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_vm_storage", poolName, nil)
 	}
 
-	if err := s.DB.Model(&vmModels.VMStorageDataset{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Model(&vmModels.VMStorageDataset{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
 		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
 			fmt.Errorf("failed to query vm_storage_datasets: %w", err))
 	}
@@ -54,7 +56,7 @@ func (s *Service) checkPoolUsage(poolName string) error {
 		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_vm_dataset", poolName, nil)
 	}
 
-	if err := s.DB.Model(&jailModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Model(&jailModels.Storage{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
 		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
 			fmt.Errorf("failed to query jail_storages: %w", err))
 	}
@@ -62,7 +64,15 @@ func (s *Service) checkPoolUsage(poolName string) error {
 		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_jail_storage", poolName, nil)
 	}
 
-	if err := s.DB.Model(&zfsModels.PeriodicSnapshot{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Model(&containerModels.Container{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
+		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
+			fmt.Errorf("failed to query containers: %w", err))
+	}
+	if count > 0 {
+		return newSettingsError(SettingsErrorConflict, "pool_in_use_by_container", poolName, nil)
+	}
+
+	if err := s.DB.WithContext(ctx).Model(&zfsModels.PeriodicSnapshot{}).Where("pool = ?", poolName).Count(&count).Error; err != nil {
 		return newSettingsError(SettingsErrorInternal, "pool_usage_check_failed", poolName,
 			fmt.Errorf("failed to query periodic_snapshots: %w", err))
 	}
@@ -93,26 +103,13 @@ func normalizeUsablePools(pools []string) []string {
 	return normalized
 }
 
-func cleanupCreatedDatasets(ctx context.Context, datasets []*gzfs.Dataset) error {
-	var cleanupErr error
-	for i := len(datasets) - 1; i >= 0; i-- {
-		if datasets[i] == nil {
-			continue
-		}
-		if err := datasets[i].Destroy(ctx, true, false); err != nil {
-			cleanupErr = errors.Join(cleanupErr, err)
-		}
-	}
-	return cleanupErr
-}
-
 func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 	s.serviceSettingsMutex.Lock()
 	defer s.serviceSettingsMutex.Unlock()
 	pools = normalizeUsablePools(pools)
 
 	var basicSettings models.BasicSettings
-	if err := s.DB.First(&basicSettings).Error; err != nil {
+	if err := s.DB.WithContext(ctx).First(&basicSettings).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrBasicSettingsNotFound
 		}
@@ -124,8 +121,14 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		return newSettingsError(SettingsErrorConflict, downloadstorage.ErrInUse.Error(), "", err)
 	}
 	defer release()
+	var removedPools []string
+	for _, pool := range basicSettings.Pools {
+		if !slices.Contains(pools, pool) {
+			removedPools = append(removedPools, pool)
+		}
+	}
 	if s.NFS != nil {
-		releaseNFS, err := s.NFS.GuardStorageMutation(ctx)
+		releaseNFS, err := s.NFS.GuardStorageMutation(ctx, removedPools...)
 		if err != nil {
 			return newSettingsError(SettingsErrorConflict, "nfs_storage_topology_in_use", "", err)
 		}
@@ -142,30 +145,15 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		zfsSet[p] = struct{}{}
 	}
 
-	existingSet := make(map[string]struct{}, len(basicSettings.Pools))
-	for _, p := range basicSettings.Pools {
-		existingSet[p] = struct{}{}
-	}
-
 	for _, p := range pools {
 		if _, ok := zfsSet[p]; !ok {
 			return newSettingsError(SettingsErrorNotFound, "zfs_pool_not_found", p, nil)
 		}
 	}
 
-	for p := range existingSet {
-		found := false
-		for _, incoming := range pools {
-			if incoming == p {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			if err := s.checkPoolUsage(p); err != nil {
-				return err
-			}
+	for _, pool := range removedPools {
+		if err := s.checkPoolUsage(ctx, pool); err != nil {
+			return err
 		}
 	}
 
@@ -175,7 +163,7 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		created, err := s.ensureSylveDatasetsOnPool(ctx, poolName)
 		newSets = append(newSets, created...)
 		if err != nil {
-			cleanupErr := cleanupCreatedDatasets(ctx, newSets)
+			cleanupErr := cleanupCreatedDatasets(ctx, s.GZFS, newSets)
 			return newSettingsError(SettingsErrorInternal, "pool_bootstrap_failed", poolName,
 				errors.Join(err, cleanupErr))
 		}
@@ -194,7 +182,7 @@ func (s *Service) AddUsablePools(ctx context.Context, pools []string) error {
 		err = s.DB.WithContext(ctx).Transaction(update)
 	}
 	if err != nil {
-		cleanupErr := cleanupCreatedDatasets(ctx, newSets)
+		cleanupErr := cleanupCreatedDatasets(ctx, s.GZFS, newSets)
 		if errors.Is(err, db.ErrPoolScrubActive) || errors.Is(err, db.ErrPoolScrubBusy) {
 			return newSettingsError(SettingsErrorConflict, "pool_scrub_operation_conflict", "", errors.Join(err, cleanupErr))
 		}
@@ -314,6 +302,9 @@ func (s *Service) SetServiceEnabled(
 	enabled bool,
 	externalApply ServiceRuntimeStateApplier,
 ) (bool, error) {
+	if service == models.Containers {
+		return s.setContainersEnabled(ctx, enabled, externalApply)
+	}
 	if service == models.NFS {
 		return s.setNFSEnabled(ctx, enabled)
 	}
@@ -331,6 +322,9 @@ func (s *Service) SetServiceEnabled(
 		return false, newSettingsError(SettingsErrorInternal, "basic_settings_retrieval_failed", "", err)
 	}
 	currentlyEnabled := serviceIsEnabled(basicSettings.Services, service)
+	if service == models.Firewall && !enabled && serviceIsEnabled(basicSettings.Services, models.Containers) {
+		return false, newSettingsError(SettingsErrorConflict, "container_firewall_required", "firewall", nil)
+	}
 	if service == models.ISCSI {
 		if externalApply == nil {
 			return false, newSettingsError(SettingsErrorInternal, "iscsi_service_runtime_unavailable", "", nil)

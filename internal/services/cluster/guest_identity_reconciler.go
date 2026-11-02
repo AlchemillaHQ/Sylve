@@ -63,6 +63,8 @@ func (s *Service) registerGuestIdentityInventoryReport(
 	nodeID string,
 	report GuestIdentityInventoryReport,
 ) error {
+	s.clusterJoinMu.Lock()
+	defer s.clusterJoinMu.Unlock()
 	payload, err := guestIdentityRegistrationFromReport(nodeID, report)
 	if err != nil {
 		return err

@@ -22,8 +22,8 @@ import (
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	zfsModels "github.com/alchemillahq/sylve/internal/db/models/zfs"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
 	"github.com/alchemillahq/sylve/pkg/disk"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -158,7 +158,11 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 	}
 	defer release()
 
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	effectiveMountpoint := mountpoint
+	if effectiveMountpoint == "" {
+		effectiveMountpoint = "/" + req.Name
+	}
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, &gzfs.Dataset{Name: req.Name, Mountpoint: effectiveMountpoint})
 	if err != nil {
 		return err
 	}
@@ -172,7 +176,7 @@ func (s *Service) CreatePool(ctx context.Context, req zfsServiceInterfaces.Creat
 		return fmt.Errorf("zpool_create_failed: %v", err)
 	}
 
-	_, err = zfsutil.EnsureSylveNamespace(ctx, s.GZFS, req.Name)
+	_, err = storagezfs.EnsureSylveNamespace(ctx, s.GZFS, req.Name)
 	if err != nil {
 		return fmt.Errorf("failed_to_prepare_sylve_datasets: %w", err)
 	}
@@ -213,7 +217,7 @@ func normalizePoolMountpoint(raw string, properties map[string]string) (string, 
 		return "", nil
 	}
 
-	mountpoint, err := zfsutil.NormalizeMountpoint(raw)
+	mountpoint, err := storagezfs.NormalizeMountpoint(raw)
 	if err != nil {
 		return "", classifyError(ErrInvalidRequest, "invalid_pool_mountpoint")
 	}
@@ -236,6 +240,22 @@ func (s *Service) EditPool(ctx context.Context, guid string, props map[string]st
 	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
 		return s.editPool(ctx, guid, props, spares)
 	})
+}
+
+func (s *Service) guardPoolStorageMutation(ctx context.Context, pool *gzfs.ZPool) (func(), error) {
+	releaseDownload, err := s.guardDownloadStorageMutation(ctx, pool.Name)
+	if err != nil {
+		return nil, err
+	}
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, &gzfs.Dataset{Name: pool.Name})
+	if err != nil {
+		releaseDownload()
+		return nil, err
+	}
+	return func() {
+		releaseTopology()
+		releaseDownload()
+	}, nil
 }
 
 func (s *Service) editPool(ctx context.Context, guid string, props map[string]string, spares *[]string) error {
@@ -268,6 +288,16 @@ func (s *Service) editPool(ctx context.Context, guid string, props map[string]st
 	pool, err := s.GZFS.Zpool.GetByGUID(ctx, guid)
 	if err != nil || pool == nil {
 		return poolLookupError(err, "pool_not_found")
+	}
+	if pool.PoolGUID != guid {
+		return classifyError(ErrConflict, "pool_identity_changed")
+	}
+	if len(props) > 0 {
+		release, err := s.guardPoolStorageMutation(ctx, pool)
+		if err != nil {
+			return err
+		}
+		defer release()
 	}
 
 	if len(requestedSpares) > 0 {
@@ -366,7 +396,10 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 	if err != nil || pool == nil {
 		return poolLookupError(err, "pool_not_found")
 	}
-	release, err := s.guardDownloadStorageMutation(ctx, pool.Name)
+	if pool.PoolGUID != guid {
+		return classifyError(ErrConflict, "pool_identity_changed")
+	}
+	release, err := s.guardPoolStorageMutation(ctx, pool)
 	if err != nil {
 		return err
 	}
@@ -387,11 +420,6 @@ func (s *Service) deletePool(ctx context.Context, guid string) error {
 		}
 	}
 
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
-	if err != nil {
-		return err
-	}
-	defer releaseTopology()
 	err = pool.Destroy(ctx)
 
 	if err != nil {

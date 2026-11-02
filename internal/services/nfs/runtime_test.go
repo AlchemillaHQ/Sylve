@@ -451,13 +451,13 @@ func TestSavedListenerSettingsDriftCannotRemainApplied(t *testing.T) {
 
 func TestStorageFenceRequiresRevocationAndSerializesEnable(t *testing.T) {
 	service, _, _ := configuredRuntime(t)
-	if release, err := service.GuardStorageMutation(t.Context()); !errors.Is(err, ErrConflict) || release != nil {
+	if release, err := service.GuardStorageMutation(t.Context(), "tank/data"); !errors.Is(err, ErrConflict) || release != nil {
 		t.Fatalf("allowed mutation with active exports: %v", err)
 	}
 	if err := setEnabled(t, service, false); err != nil {
 		t.Fatal(err)
 	}
-	release, err := service.GuardStorageMutation(t.Context())
+	release, err := service.GuardStorageMutation(t.Context(), "tank/data")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,6 +480,80 @@ func TestStorageFenceRequiresRevocationAndSerializesEnable(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestStorageFenceOnlyBlocksAffectedExports(t *testing.T) {
+	service, driver, _ := configuredRuntime(t)
+	driver.events = nil
+	service.listDatasets = func(context.Context) ([]*gzfs.Dataset, error) {
+		t.Fatal("storage protection should use saved/applied exports, not scan the host")
+		return nil, nil
+	}
+	for _, test := range []struct {
+		name    string
+		targets []string
+		blocked bool
+	}{
+		{"same", []string{"tank/data"}, true},
+		{"ancestor", []string{"tank"}, true},
+		{"descendant", []string{"tank/data/child"}, true},
+		{"snapshot", []string{"tank/data@before"}, true},
+		{"mountpoint", []string{"/mnt/data"}, true},
+		{"mountpoint-ancestor", []string{"/mnt"}, true},
+		{"mountpoint-child", []string{"/mnt/data/child"}, true},
+		{"mountpoint-root", []string{"/"}, true},
+		{"mountpoint-normalized", []string{"/mnt/other/../data"}, true},
+		{"sibling", []string{"tank/other"}, false},
+		{"sibling-prefix", []string{"tank/database"}, false},
+		{"other-mountpoint", []string{"/mnt/database"}, false},
+		{"settings-only", nil, false},
+		{"multiple", []string{"tank/other", "tank/data"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			release, err := service.GuardStorageMutation(t.Context(), test.targets...)
+			if release != nil {
+				release()
+			}
+			if test.blocked {
+				if !errors.Is(err, ErrConflict) || release != nil {
+					t.Fatalf("export protection = %v", err)
+				}
+			} else if err != nil || release == nil {
+				t.Fatalf("unrelated storage was blocked: %v", err)
+			}
+		})
+	}
+	if !driver.running || len(driver.events) != 0 {
+		t.Fatalf("storage guard disrupted NFS: running=%t events=%v", driver.running, driver.events)
+	}
+}
+
+func TestStorageFenceProtectsSavedAndStillAppliedExports(t *testing.T) {
+	service, _, share := configuredRuntime(t)
+	if err := service.DB.Model(&share).Updates(map[string]any{"dataset": "2", "dataset_name": "tank/pending", "mountpoint": "/mnt/pending"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"tank/data", "tank/pending", "/mnt/data", "/mnt/pending"} {
+		if release, err := service.GuardStorageMutation(t.Context(), target); !errors.Is(err, ErrConflict) || release != nil {
+			t.Fatalf("lost saved or applied export %s: %v", target, err)
+		}
+	}
+}
+
+func TestStorageFenceProtectsExportsAfterFailedWithdrawal(t *testing.T) {
+	service, driver, _ := configuredRuntime(t)
+	driver.fail = "stop"
+	if err := setEnabled(t, service, false); !errors.Is(err, ErrApplyFailed) {
+		t.Fatalf("withdrawal = %v", err)
+	}
+	if release, err := service.GuardStorageMutation(t.Context(), "tank/data"); !errors.Is(err, ErrConflict) || release != nil {
+		t.Fatalf("failed withdrawal lost export protection: %v", err)
+	}
+	release, err := service.GuardStorageMutation(t.Context(), "tank/other")
+	if err != nil {
+		t.Fatalf("failed withdrawal blocked unrelated storage: %v", err)
+	}
+	release()
 }
 
 func TestStartupReconcilesEnabledRuntime(t *testing.T) {

@@ -1,0 +1,178 @@
+name: affine
+services:
+  affine:
+    image: ghcr.io/daemonless/affine:latest
+    container_name: affine
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://affine:${DB_PASSWORD}@${POSTGRES_HOSTNAME:-localhost}:5432/affine
+      REDIS_SERVER_HOST: ${REDIS_SERVER_HOST:-localhost}
+      AFFINE_INDEXER_ENABLED: "false"
+      TZ: ${TZ:-UTC}
+    env_file:
+      - .env
+    volumes:
+      - ${AFFINE_DATA_LOCATION}:/config
+    depends_on:
+      - redis
+      - postgres
+  redis:
+    image: ghcr.io/daemonless/redis:latest
+    container_name: affine_redis
+    network_mode: host
+    restart: unless-stopped
+  postgres:
+    image: ghcr.io/daemonless/postgres:latest
+    container_name: affine_postgres
+    network_mode: host
+    restart: unless-stopped
+    annotations:
+      org.freebsd.jail.allow.sysvipc: "true"
+    environment:
+      POSTGRES_USER: affine
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: affine
+      POSTGRES_EXTENSIONS: pgvector
+    volumes:
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+x-fjord:
+  version: "0.1"
+  info:
+    id: affine
+    name: AFFiNE
+    description: AFFiNE is an open-source, privacy-first, local-first knowledge management and collaboration tool.
+    category: Productivity
+    class: stack
+    icon: icons/affine.svg
+    web_port: "3010"
+    upstream_url: https://github.com/toeverything/AFFiNE
+    web_url: https://affine.pro/
+  variables:
+    - name: DB_PASSWORD
+      label: PostgreSQL password
+      type: secret
+      default: affine
+    - name: POSTGRES_HOSTNAME
+      label: Where affine finds postgres (fjord sets this; localhost on host networking)
+      type: string
+      default: localhost
+      optional: true
+      level: advanced
+    - name: REDIS_SERVER_HOST
+      label: Where affine finds redis (fjord sets this; localhost on host networking)
+      type: string
+      default: localhost
+      optional: true
+      level: advanced
+    - name: TZ
+      label: Timezone
+      type: string
+      default: UTC
+      optional: true
+    - name: AFFINE_DATA_LOCATION
+      label: Path to store AFFiNE config and uploads
+      type: path
+      default: /containers/affine/config
+    - name: DB_DATA_LOCATION
+      label: Path to store PostgreSQL data files
+      type: path
+      default: /containers/affine/postgres
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        affine:
+          name: affine
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - DATABASE_URL: !ENV '${DATABASE_URL}'
+              - REDIS_SERVER_HOST: !ENV '${REDIS_SERVER_HOST}'
+              - AFFINE_INDEXER_ENABLED: !ENV '${AFFINE_INDEXER_ENABLED}'
+              - TZ: !ENV '${TZ}'
+              - DB_DATA_LOCATION: !ENV '${DB_DATA_LOCATION}'
+              - AFFINE_DATA_LOCATION: !ENV '${AFFINE_DATA_LOCATION}'
+              - DB_PASSWORD: !ENV '${DB_PASSWORD}'
+          volumes:
+            - AFFINE_CONFIG_PATH: /config
+        redis:
+          name: redis
+          options:
+            - from: ghcr.io/daemonless/redis:latest
+            - template: !ENV '${PWD}/template.conf'
+        postgres:
+          name: postgres
+          options:
+            - from: ghcr.io/daemonless/postgres:latest
+            - template: !ENV '${PWD}/postgres-template.conf'
+          oci:
+            environment:
+              - POSTGRES_USER: "affine"
+              - POSTGRES_PASSWORD: !ENV '${DB_PASSWORD}'
+              - POSTGRES_DB: "affine"
+              - POSTGRES_EXTENSIONS: "pgvector"
+          volumes:
+            - db_data: /var/lib/postgresql/data
+      volumes:
+        AFFINE_CONFIG_PATH:
+          device: !ENV '${AFFINE_CONFIG_PATH}'
+        db_data:
+          device: !ENV '${DB_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/affine:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=affine
+      DATABASE_URL=postgresql://affine:${DB_PASSWORD}@${POSTGRES_HOSTNAME:-localhost}:5432/affine
+      REDIS_SERVER_HOST=localhost
+      AFFINE_INDEXER_ENABLED=false
+      TZ=UTC
+      DB_DATA_LOCATION=/containers/affine/postgres
+      AFFINE_DATA_LOCATION=/containers/affine/config
+      DB_PASSWORD=affine
+      AFFINE_CONFIG_PATH=/affine
+    extras:
+      postgres-template.conf: |
+        # postgres-template.conf -- jail template for the PostgreSQL sidecar (AppJail)
+        #
+        # PostgreSQL needs System V shared memory. allow.sysvipc is a no-op on
+        # FreeBSD 15; the jail gets its own SysV IPC namespace instead.
+        exec.start: "/bin/sh /etc/rc"
+        exec.stop: "/bin/sh /etc/rc.shutdown jail"
+        mount.devfs
+        persist
+        # host networking (ip4_inherit is a no-op in AppJail 5.5.0; the parameters are not)
+        ip4: inherit
+        ip6: inherit
+        sysvmsg: new
+        sysvsem: new
+        sysvshm: new
+  networking:
+    '*': private
+    affine: default
+  hostnames:
+    postgres: POSTGRES_HOSTNAME
+    redis: REDIS_SERVER_HOST

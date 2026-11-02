@@ -1,0 +1,127 @@
+name: bazarr
+services:
+  bazarr:
+    image: ghcr.io/daemonless/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${MOVIES_PATH}:/movies"
+      - "${TV_PATH}:/tv"
+    ports:
+      - "${WEB_PORT}:6767"
+x-fjord:
+  version: "0.1"
+  info:
+    id: bazarr
+    name: Bazarr
+    description: Bazarr is a companion application to Sonarr and Radarr. It manages and downloads subtitles based on your requirements. You define your preferences by TV show or movie and Bazarr takes care of everything for you.
+    category: Media Management
+    class: service
+    icon: icons/bazarr.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/morpheus65535/bazarr
+    web_url: https://www.bazarr.media/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "6767"
+    - name: CONFIG_DATA
+      label: Configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: MOVIES_PATH
+      label: Movie library (should match Radarr)
+      type: path
+      default: ""
+      optional: true
+    - name: TV_PATH
+      label: TV library (should match Sonarr)
+      type: path
+      default: ""
+      optional: true
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        bazarr:
+          name: bazarr
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:6767 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - BAZARR_CONFIG_PATH: /config
+            - MOVIES_PATH: /movies
+            - TV_PATH: /tv
+      volumes:
+        BAZARR_CONFIG_PATH:
+          device: !ENV '${BAZARR_CONFIG_PATH}'
+        MOVIES_PATH:
+          device: !ENV '${MOVIES_PATH}'
+        TV_PATH:
+          device: !ENV '${TV_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/bazarr:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=bazarr
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=6767
+      BAZARR_CONFIG_PATH=/bazarr
+      MOVIES_PATH=movies
+      TV_PATH=tv

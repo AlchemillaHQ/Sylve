@@ -1,0 +1,108 @@
+name: home-assistant
+services:
+  home-assistant:
+    image: ghcr.io/daemonless/home-assistant:latest
+    container_name: home-assistant
+    restart: unless-stopped
+    network_mode: host # required for mDNS/Zeroconf device discovery
+    # HA's own shutdown waits for its integrations: a cast device it found
+    # but cannot reach holds it ~100s. Podman's 10s default killed it
+    # mid-shutdown, before it saved its state.
+    stop_grace_period: 2m
+    annotations:
+      org.freebsd.jail.allow.raw_sockets: "true" # required for DHCP device discovery
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+x-fjord:
+  version: "0.1"
+  info:
+    id: home-assistant
+    name: Home Assistant
+    description: Open source home automation that puts local control and privacy first.
+    category: Utilities
+    class: service
+    icon: icons/home-assistant.svg
+    web_port: "8123"
+    upstream_url: https://github.com/daemonless/home-assistant
+    web_url: https://www.home-assistant.io/
+    name_env:
+      TRUSTED_PROXIES: '{proxy}'
+  variables:
+    - name: CONFIG_DATA
+      label: Configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        home-assistant:
+          name: home_assistant
+          options:
+            - container: 'args:--pull'
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - HOME_ASSISTANT_CONFIG_PATH: /config
+      volumes:
+        HOME_ASSISTANT_CONFIG_PATH:
+          device: !ENV '${HOME_ASSISTANT_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/home-assistant:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+      allow.raw_sockets
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=home-assistant
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      HOME_ASSISTANT_CONFIG_PATH=/home-assistant

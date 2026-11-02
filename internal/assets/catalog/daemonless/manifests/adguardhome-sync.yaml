@@ -1,0 +1,154 @@
+name: adguardhome-sync
+services:
+  adguardhome-sync:
+    image: ghcr.io/daemonless/adguardhome-sync:latest
+    container_name: adguardhome-sync
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - ORIGIN_URL=${ORIGIN_URL}
+      - ORIGIN_USERNAME=${ORIGIN_USERNAME}
+      - ORIGIN_PASSWORD=${ORIGIN_PASSWORD}
+      - REPLICA1_URL=${REPLICA1_URL}
+      - REPLICA1_USERNAME=${REPLICA1_USERNAME}
+      - REPLICA1_PASSWORD=${REPLICA1_PASSWORD}
+      - CRON=${CRON}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:8080"
+x-fjord:
+  version: "0.1"
+  info:
+    id: adguardhome-sync
+    name: AdGuardHome Sync
+    description: Sync AdGuardHome configuration to replica instances.
+    category: Network
+    class: service
+    icon: icons/adguardhome-sync.svg
+    upstream_url: https://github.com/bakito/adguardhome-sync
+    web_url: https://github.com/bakito/adguardhome-sync
+  variables:
+    - name: WEB_PORT
+      label: Metrics/API
+      type: port
+      default: "8080"
+    - name: CONFIG_DATA
+      label: Configuration directory; an adguardhome-sync.yaml here works instead of the variables
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: ORIGIN_URL
+      label: The AdGuard Home to copy from (e.g. http://192.168.1.2:3000)
+      type: string
+      default: ""
+    - name: ORIGIN_USERNAME
+      label: Its admin user
+      type: string
+      default: ""
+    - name: ORIGIN_PASSWORD
+      label: Its admin password
+      type: secret
+      default: ""
+      generate: false
+    - name: REPLICA1_URL
+      label: 'The AdGuard Home to copy to (more: REPLICA2_URL, ...)'
+      type: string
+      default: ""
+    - name: REPLICA1_USERNAME
+      label: Its admin user
+      type: string
+      default: ""
+    - name: REPLICA1_PASSWORD
+      label: Its admin password
+      type: secret
+      default: ""
+      generate: false
+    - name: CRON
+      label: 'When to sync, cron syntax (empty: only at start)'
+      type: string
+      default: '*/10 * * * *'
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        adguardhome-sync:
+          name: adguardhome_sync
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - ORIGIN_URL: !ENV '${ORIGIN_URL}'
+              - ORIGIN_USERNAME: !ENV '${ORIGIN_USERNAME}'
+              - ORIGIN_PASSWORD: !ENV '${ORIGIN_PASSWORD}'
+              - REPLICA1_URL: !ENV '${REPLICA1_URL}'
+              - REPLICA1_USERNAME: !ENV '${REPLICA1_USERNAME}'
+              - REPLICA1_PASSWORD: !ENV '${REPLICA1_PASSWORD}'
+              - CRON: !ENV '${CRON}'
+          volumes:
+            - ADGUARDHOME_SYNC_CONFIG_PATH: /config
+      volumes:
+        ADGUARDHOME_SYNC_CONFIG_PATH:
+          device: !ENV '${ADGUARDHOME_SYNC_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/adguardhome-sync:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=adguardhome-sync
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      ORIGIN_URL=
+      ORIGIN_USERNAME=
+      ORIGIN_PASSWORD=<ORIGIN_PASSWORD>
+      REPLICA1_URL=
+      REPLICA1_USERNAME=
+      REPLICA1_PASSWORD=<REPLICA1_PASSWORD>
+      CRON=*/10 * * * *
+      WEB_PORT=8080
+      ADGUARDHOME_SYNC_CONFIG_PATH=/adguardhome-sync

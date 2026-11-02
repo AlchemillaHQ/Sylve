@@ -1,0 +1,124 @@
+name: actual
+services:
+  actual:
+    image: ghcr.io/daemonless/actual:latest
+    container_name: actual
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - NODE_ENV=${NODE_ENV}
+      - ACTUAL_PORT=${ACTUAL_PORT}
+      - ACTUAL_HOSTNAME=${ACTUAL_HOSTNAME}
+      - ACTUAL_DATA_DIR=${ACTUAL_DATA_DIR}
+    volumes:
+      - "${DATA_DATA}:/data"
+x-fjord:
+  version: "0.1"
+  info:
+    id: actual
+    name: Actual Budget
+    description: Self-hosted personal finance sync server (Actual Budget) on FreeBSD.
+    category: Productivity
+    class: service
+    icon: icons/actual.svg
+    web_port: "5006"
+    upstream_url: https://github.com/actualbudget/actual
+    web_url: https://actualbudget.org/
+  variables:
+    - name: DATA_DATA
+      label: Application data — account database, budget files and server config
+      type: zfs_dataset
+      default: data
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: Etc/UTC
+    - name: NODE_ENV
+      label: Node runtime mode; leave as 'production'
+      type: string
+      default: production
+    - name: ACTUAL_PORT
+      label: Internal port the sync server listens on; leave as 5006
+      type: string
+      default: "5006"
+    - name: ACTUAL_HOSTNAME
+      label: Bind address for the sync server; leave as 0.0.0.0 (the app's own default, '::', is IPv6-any and breaks single-stack containers)
+      type: string
+      default: 0.0.0.0
+    - name: ACTUAL_DATA_DIR
+      label: Directory where Actual stores its account database, budget files and server config (under the /data volume)
+      type: string
+      default: /data
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        actual:
+          name: actual
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - NODE_ENV: !ENV '${NODE_ENV}'
+              - ACTUAL_PORT: !ENV '${ACTUAL_PORT}'
+              - ACTUAL_HOSTNAME: !ENV '${ACTUAL_HOSTNAME}'
+              - ACTUAL_DATA_DIR: !ENV '${ACTUAL_DATA_DIR}'
+          volumes:
+            - ACTUAL_DATA_PATH: /data
+      volumes:
+        ACTUAL_DATA_PATH:
+          device: !ENV '${ACTUAL_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/actual:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=actual
+      PUID=1000
+      PGID=1000
+      TZ=Etc/UTC
+      NODE_ENV=production
+      ACTUAL_PORT=5006
+      ACTUAL_HOSTNAME=0.0.0.0
+      ACTUAL_DATA_DIR=/data
+      ACTUAL_DATA_PATH=/actual/data

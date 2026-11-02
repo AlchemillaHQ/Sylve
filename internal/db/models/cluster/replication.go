@@ -424,13 +424,13 @@ type ReplicationPolicyTransitionBegin struct {
 	ProtectionState    string                      `json:"protectionState,omitempty"`
 }
 
-func validReplicationGuestType(v string) bool {
+func ValidReplicationGuestType(v string) bool {
 	return v == ReplicationGuestTypeVM || v == ReplicationGuestTypeJail
 }
 
 func normalizeReplicationGuestOperationIdentity(guestType string, guestID uint) (string, error) {
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	if !validReplicationGuestType(guestType) {
+	if !ValidReplicationGuestType(guestType) {
 		return "", fmt.Errorf("invalid_replication_guest_type")
 	}
 	if guestID == 0 {
@@ -930,7 +930,7 @@ func validateReplicationPolicy(policy *ReplicationPolicy) error {
 	if len(policy.Description) > 1024 {
 		return fmt.Errorf("replication_policy_description_too_long")
 	}
-	if !validReplicationGuestType(policy.GuestType) {
+	if !ValidReplicationGuestType(policy.GuestType) {
 		return fmt.Errorf("invalid_replication_guest_type")
 	}
 	if !validReplicationSourceMode(policy.SourceMode) {
@@ -1298,7 +1298,7 @@ func upsertReplicationLease(db *gorm.DB, lease *ReplicationLease) error {
 	lease.LastReason = strings.TrimSpace(lease.LastReason)
 	lease.LastActor = strings.TrimSpace(lease.LastActor)
 
-	if !validReplicationGuestType(lease.GuestType) {
+	if !ValidReplicationGuestType(lease.GuestType) {
 		return fmt.Errorf("invalid_replication_lease_guest_type")
 	}
 	if lease.OwnerNodeID == "" {

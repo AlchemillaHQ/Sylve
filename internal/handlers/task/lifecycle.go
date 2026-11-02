@@ -30,6 +30,7 @@ func parseLifecycleGuestType(raw string) (string, bool) {
 	switch guestType {
 	case taskModels.GuestTypeVM,
 		taskModels.GuestTypeJail,
+		taskModels.GuestTypeContainer,
 		taskModels.GuestTypeJailTemplate,
 		taskModels.GuestTypeVMTemplate:
 		return guestType, true
@@ -49,7 +50,7 @@ func lifecycleGuestTypeQuery(c *gin.Context) (string, bool) {
 		c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 			Status:  "error",
 			Message: "invalid_guest_type",
-			Error:   "guestType must be one of vm, jail, jail-template, or vm-template",
+			Error:   "guestType must be one of vm, jail, container, jail-template, or vm-template",
 			Data:    nil,
 		})
 		return "", false
@@ -91,7 +92,7 @@ func writeLifecycleServiceError(c *gin.Context, message string, err error) {
 // @Tags Tasks
 // @Produce json
 // @Security BearerAuth
-// @Param guestType query string false "Guest type" Enums(vm,jail,jail-template,vm-template)
+// @Param guestType query string false "Guest type" Enums(vm,jail,container,jail-template,vm-template)
 // @Param guestId query int false "Positive guest ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[[]taskModels.GuestLifecycleTask] "Success"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -130,7 +131,7 @@ func ActiveLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 // @Tags Tasks
 // @Produce json
 // @Security BearerAuth
-// @Param guestType query string false "Guest type" Enums(vm,jail,jail-template,vm-template)
+// @Param guestType query string false "Guest type" Enums(vm,jail,container,jail-template,vm-template)
 // @Param guestId query int false "Positive guest ID" minimum(1)
 // @Param limit query int false "Maximum tasks to return" minimum(1) maximum(200) default(50)
 // @Success 200 {object} internal.APIResponse[[]taskModels.GuestLifecycleTask] "Success"
@@ -185,7 +186,7 @@ func RecentLifecycleTasks(lifecycleService *lifecycle.Service) gin.HandlerFunc {
 // @Tags Tasks
 // @Produce json
 // @Security BearerAuth
-// @Param guestType path string true "Guest type" Enums(vm,jail,jail-template,vm-template)
+// @Param guestType path string true "Guest type" Enums(vm,jail,container,jail-template,vm-template)
 // @Param guestId path int true "Positive guest ID" minimum(1)
 // @Success 200 {object} internal.APIResponse[taskModels.GuestLifecycleTask] "Success; data may be null"
 // @Failure 400 {object} internal.APIResponse[any] "Bad Request"
@@ -200,7 +201,7 @@ func ActiveLifecycleTaskForGuest(lifecycleService *lifecycle.Service) gin.Handle
 			c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 				Status:  "error",
 				Message: "invalid_guest_type",
-				Error:   "guestType must be one of vm, jail, jail-template, or vm-template",
+				Error:   "guestType must be one of vm, jail, container, jail-template, or vm-template",
 				Data:    nil,
 			})
 			return

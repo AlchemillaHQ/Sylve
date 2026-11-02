@@ -1,0 +1,90 @@
+name: openspeedtest
+services:
+  openspeedtest:
+    image: ghcr.io/daemonless/openspeedtest:latest
+    container_name: openspeedtest
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${WEB_PORT}:3000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: openspeedtest
+    name: OpenSpeedTest
+    description: Self-hosted HTML5 Network Speed Test on FreeBSD.
+    category: Utilities
+    class: service
+    icon: icons/openspeedtest.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/openspeedtest/Speed-Test
+    web_url: https://openspeedtest.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3000"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        openspeedtest:
+          name: openspeedtest
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/openspeedtest:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=openspeedtest
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=3000

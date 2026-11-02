@@ -1,0 +1,164 @@
+name: plex
+services:
+  plex:
+    image: ghcr.io/daemonless/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT}:32400"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VERSION=${VERSION}
+      - PLEX_CLAIM=${PLEX_CLAIM}
+      - ADVERTISE_IP=${ADVERTISE_IP}
+      - ALLOWED_NETWORKS=${ALLOWED_NETWORKS}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${TRANSCODE_PATH}:/transcode" # optional
+      - "${MOVIES_PATH}:/movies"
+      - "${TV_PATH}:/tv"
+x-fjord:
+  version: "0.1"
+  info:
+    id: plex
+    name: Plex Media Server
+    description: Personal media server that organizes and streams your movie, TV, and music collections to all your devices.
+    category: Media Servers
+    class: service
+    icon: icons/plex.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/daemonless/plex
+    web_url: https://plex.tv/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "32400"
+    - name: CONFIG_DATA
+      label: Configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TRANSCODE_PATH
+      label: Transcode directory
+      type: path
+      default: ""
+      optional: true
+    - name: MOVIES_PATH
+      label: Movie library
+      type: path
+      default: ""
+    - name: TV_PATH
+      label: TV series library
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: VERSION
+      label: Plex update channel (container, public, plexpass)
+      type: string
+      default: container
+    - name: PLEX_CLAIM
+      label: Claim token — get one at https://plex.tv/claim
+      type: string
+      default: ""
+      optional: true
+      level: primary
+    - name: ADVERTISE_IP
+      label: URLs clients should use to reach the server, comma-separated, e.g. http://192.168.1.10:32400 (bridge networking)
+      type: string
+      default: ""
+      optional: true
+    - name: ALLOWED_NETWORKS
+      label: Networks allowed in without signing in, comma-separated, e.g. 192.168.1.0/24
+      type: string
+      default: ""
+      optional: true
+      level: primary
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        plex:
+          name: plex
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:32400 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - VERSION: !ENV '${VERSION}'
+              - PLEX_CLAIM: !ENV '${PLEX_CLAIM}'
+              - ADVERTISE_IP: !ENV '${ADVERTISE_IP}'
+              - ALLOWED_NETWORKS: !ENV '${ALLOWED_NETWORKS}'
+          volumes:
+            - PLEX_CONFIG_PATH: /config
+            - PLEX_TRANSCODE_PATH: /transcode
+            - MOVIES_PATH: /movies
+            - TV_PATH: /tv
+      volumes:
+        PLEX_CONFIG_PATH:
+          device: !ENV '${PLEX_CONFIG_PATH}'
+        PLEX_TRANSCODE_PATH:
+          device: !ENV '${PLEX_TRANSCODE_PATH}'
+        MOVIES_PATH:
+          device: !ENV '${MOVIES_PATH}'
+        TV_PATH:
+          device: !ENV '${TV_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/plex:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=plex
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      VERSION=container
+      PLEX_CLAIM=
+      ADVERTISE_IP=
+      ALLOWED_NETWORKS=
+      WEB_PORT=32400
+      PLEX_CONFIG_PATH=/plex
+      PLEX_TRANSCODE_PATH=/plex/transcode
+      MOVIES_PATH=movies
+      TV_PATH=tv

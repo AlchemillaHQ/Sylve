@@ -129,7 +129,7 @@ func (s *Service) PrepareReplicationStartup(ctx context.Context) error {
 
 func (s *Service) CanAutostartReplicationGuest(guestType string, guestID uint) (bool, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
-	if guestID == 0 || (guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail) {
+	if guestID == 0 || !clusterModels.ValidReplicationGuestType(guestType) {
 		return false, fmt.Errorf("invalid_replication_guest")
 	}
 

@@ -109,7 +109,7 @@ func TestPrepareLocalLeaveRejectsInFlightGuestIdentity(t *testing.T) {
 	}
 	service := &Service{
 		DB: db, NodeID: "node-1", mutationGate: newOpenTestMutationGate(t),
-		guestIdentityLocalReservations: map[uint]string{100: "in-flight"},
+		guestIdentityLocalReservations: map[uint]localGuestIdentityReservation{100: {token: "in-flight", kind: clusterModels.ReplicationGuestTypeVM}},
 	}
 	_, err := service.prepareLocalLeaveWithGuests(context.Background(), uuid.NewString(), "", true, true, true)
 	var leaveErr *ClusterLeaveError

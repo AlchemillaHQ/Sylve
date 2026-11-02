@@ -1,0 +1,171 @@
+name: stalwart
+services:
+  stalwart:
+    image: ghcr.io/daemonless/stalwart:latest
+    container_name: stalwart
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - ADMIN_SECRET=${ADMIN_SECRET}
+      - ENABLE_V4PROXY=${ENABLE_V4PROXY}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    # First run: retrieve the temporary admin password from the logs, then open
+    # http://<host>:8080/admin to complete the setup wizard.
+    ports:
+      - "${PORT_25}:25"
+      - "${PORT_465}:465"
+      - "${PORT_587}:587"
+      - "${PORT_143}:143"
+      - "${PORT_993}:993"
+      - "${PORT_110}:110"
+      - "${PORT_995}:995"
+      - "${PORT_4190}:4190"
+      - "${PORT_443}:443"
+      - "${WEB_PORT}:8080"
+x-fjord:
+  version: "0.1"
+  info:
+    id: stalwart
+    name: Stalwart
+    description: Stalwart Mail Server is an open-source mail server solution with JMAP, IMAP4, POP3, and SMTP support and a wide range of modern features. It is written in Rust and designed to be secure, fast, robust and scalable.
+    category: Network
+    class: service
+    icon: icons/stalwart.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://stalw.art/
+    web_url: https://stalw.art/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: PORT_25
+      label: SMTP
+      type: port
+      default: "25"
+    - name: PORT_465
+      label: SMTP submission (implicit TLS)
+      type: port
+      default: "465"
+    - name: PORT_587
+      label: SMTP submission (STARTTLS)
+      type: port
+      default: "587"
+    - name: PORT_143
+      label: IMAP4
+      type: port
+      default: "143"
+    - name: PORT_993
+      label: IMAP4 (implicit TLS)
+      type: port
+      default: "993"
+    - name: PORT_110
+      label: POP3
+      type: port
+      default: "110"
+    - name: PORT_995
+      label: POP3 (implicit TLS)
+      type: port
+      default: "995"
+    - name: PORT_4190
+      label: ManageSieve
+      type: port
+      default: "4190"
+    - name: PORT_443
+      label: HTTPS / JMAP / web admin
+      type: port
+      default: "443"
+    - name: WEB_PORT
+      label: HTTP / JMAP / web admin
+      type: port
+      default: "8080"
+    - name: CONFIG_DATA
+      label: Config (config.toml) + rocksdb data store
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: ADMIN_SECRET
+      label: Password for the fallback 'admin' web-admin account
+      type: secret
+      default: ""
+    - name: ENABLE_V4PROXY
+      label: Enable internal socat IPv4->IPv6 proxy on port 8080 for initial setup UI and healthchecks on FreeBSD (default true). Set false to disable.
+      type: string
+      default: "true"
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        stalwart:
+          name: stalwart
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:25 proto:tcp'
+            - expose: '465:465 proto:tcp'
+            - expose: '587:587 proto:tcp'
+            - expose: '143:143 proto:tcp'
+            - expose: '993:993 proto:tcp'
+            - expose: '110:110 proto:tcp'
+            - expose: '995:995 proto:tcp'
+            - expose: '4190:4190 proto:tcp'
+            - expose: '443:443 proto:tcp'
+            - expose: '8080:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+              - ADMIN_SECRET: !ENV '${ADMIN_SECRET}'
+              - ENABLE_V4PROXY: !ENV '${ENABLE_V4PROXY}'
+              - SKIP_CHOWN: !ENV '${SKIP_CHOWN}'
+          volumes:
+            - STALWART_CONFIG_PATH: /config
+      volumes:
+        STALWART_CONFIG_PATH:
+          device: !ENV '${STALWART_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/stalwart:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=stalwart
+      TZ=UTC
+      ADMIN_SECRET=changeme
+      ENABLE_V4PROXY=true
+      SKIP_CHOWN=true
+      WEB_PORT=25
+      STALWART_CONFIG_PATH=/stalwart
+  login:
+    user: admin
+    password: ${ADMIN_SECRET}

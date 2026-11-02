@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/alchemillahq/sylve/internal/bootstrap"
 	"github.com/alchemillahq/sylve/internal/config"
@@ -313,13 +314,38 @@ func (s *Service) CheckPackageDependencies(basicSettings models.BasicSettings) e
 	return nil
 }
 
-func (s *Service) EnableLinux() error {
+func (s *Service) PrepareContainerHost(ctx context.Context) error {
+	if err := loadKernelModule("fdescfs"); err != nil {
+		return err
+	}
+	mounts, err := utils.RunCommandWithContext(ctx, "/sbin/mount", "-p")
+	if err != nil {
+		return fmt.Errorf("failed to list mounts: %w", err)
+	}
+	mounted := false
+	for _, line := range strings.Split(mounts, "\n") {
+		if fields := strings.Fields(line); len(fields) >= 3 && fields[1] == "/dev/fd" && fields[2] == "fdescfs" {
+			mounted = true
+		}
+	}
+	if !mounted {
+		if _, err := utils.RunCommandWithContext(ctx, "/sbin/mount", "-t", "fdescfs", "fdescfs", "/dev/fd"); err != nil {
+			return fmt.Errorf("failed to mount fdescfs on /dev/fd: %w", err)
+		}
+	}
+	return s.EnableLinux(ctx)
+}
+
+func (s *Service) EnableLinux(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	loadKLD := func(module string) error {
 		// already loaded? -n matches by filename and works inside a jail
-		if _, err := utils.RunCommand("/sbin/kldstat", "-q", "-n", module); err == nil {
+		if _, err := utils.RunCommandWithContext(ctx, "/sbin/kldstat", "-q", "-n", module); err == nil {
 			return nil
 		}
-		if _, err := utils.RunCommand("/sbin/kldload", "-n", module); err != nil {
+		if _, err := utils.RunCommandWithContext(ctx, "/sbin/kldload", "-n", module); err != nil {
 			return fmt.Errorf("failed to load kernel module %s: %w", module, err)
 		}
 		return nil
@@ -340,7 +366,7 @@ func (s *Service) EnableLinux() error {
 	}
 
 	linuxMount := func(fs, mountPoint, opts string) error {
-		mountOut, err := utils.RunCommand("/sbin/mount")
+		mountOut, err := utils.RunCommandWithContext(ctx, "/sbin/mount")
 		if err != nil {
 			return fmt.Errorf("failed to list mounts: %w", err)
 		}
@@ -362,7 +388,7 @@ func (s *Service) EnableLinux() error {
 
 		args = append(args, "-t", fs, fs, mountPoint)
 
-		if _, err := utils.RunCommand("/sbin/mount", args...); err != nil {
+		if _, err := utils.RunCommandWithContext(ctx, "/sbin/mount", args...); err != nil {
 			return fmt.Errorf("failed to mount %s on %s: %w", fs, mountPoint, err)
 		}
 		return nil
@@ -469,7 +495,9 @@ func (s *Service) CheckKernelModules(basicSettings models.BasicSettings) error {
 	}
 
 	if slices.Contains(basicSettings.Services, models.Jails) {
-		err := s.EnableLinux()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		err := s.EnableLinux(ctx)
+		cancel()
 		if err != nil {
 			return fmt.Errorf("Failed to enable Linux ABI: %w", err)
 		}

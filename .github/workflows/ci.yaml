@@ -188,7 +188,7 @@ jobs:
           envs: CI GOCACHE GOMODCACHE GO_CACHE_RESTORED TEST_LANE TEST_TARGET
           prepare: |
             pkg update
-            pkg install -y go git libvirt bhyve-firmware qemu-tools jq
+            pkg install -y go git libvirt bhyve-firmware qemu-tools jq podman
             sed -i '' 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
             sysrc sshd_enable=YES
             mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -214,6 +214,13 @@ jobs:
                   kldstat -q -m "$module" || kldload "$module"
                 done
                 kldstat -q -m nvmf/tcp || kldload nvmf_tcp
+
+                egress="$(route -n get default | awk '/interface:/ { print $2 }')"
+                printf 'table <cni-nat> persist\nnat on %s inet from <cni-nat> to any -> (%s)\nnat-anchor "cni-rdr/*"\nrdr-anchor "cni-rdr/*"\n' \
+                  "$egress" "$egress" | pfctl -f -
+                sysctl net.pf.filter_local=1
+                pfctl -d 2>/dev/null || true
+                pfctl -e
 
                 [ -c /dev/cam/ctl ] && [ -c /dev/iscsi ] && [ -c /dev/nvmf ] || {
                   echo "CTL, iSCSI, and NVMe/TCP kernel devices are required for integration tests"

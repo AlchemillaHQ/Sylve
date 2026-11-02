@@ -1,0 +1,113 @@
+name: samba
+services:
+  samba:
+    image: ghcr.io/daemonless/samba:latest
+    container_name: samba
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${SHARES_PATH}:/shares"
+    ports:
+      - "${WEB_PORT}:445"
+      - "${PORT_139}:139"
+x-fjord:
+  version: "0.1"
+  info:
+    id: samba
+    name: Samba
+    description: SMB/CIFS file sharing and Active Directory compatible Domain Controller for FreeBSD.
+    category: Network
+    class: service
+    icon: icons/samba.svg
+    upstream_url: https://www.samba.org/
+    web_url: https://www.samba.org/
+  variables:
+    - name: WEB_PORT
+      label: SMB
+      type: port
+      default: "445"
+    - name: PORT_139
+      label: NetBIOS session
+      type: port
+      default: "139"
+    - name: CONFIG_DATA
+      label: smb.conf and persistent state
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: SHARES_PATH
+      label: Shared data directories
+      type: path
+      default: ""
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: 422-pkg
+      label: 422-pkg
+    - id: 422-pkg-latest
+      label: 422-pkg-latest
+    - id: 423-pkg
+      label: 423-pkg
+      default: true
+      aliases:
+        - latest
+    - id: 423-pkg-latest
+      label: 423-pkg-latest
+    - id: 423-pkg-krb
+      label: MIT Kerberos
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        samba:
+          name: samba
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:445 proto:tcp'
+            - expose: '139:139 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - SAMBA_CONFIG_PATH: /config
+            - /shares: /shares
+      volumes:
+        SAMBA_CONFIG_PATH:
+          device: !ENV '${SAMBA_CONFIG_PATH}'
+        /shares:
+          device: !ENV '${/shares}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/samba:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=samba
+      TZ=UTC
+      WEB_PORT=445
+      SAMBA_CONFIG_PATH=/samba
+      /shares=/shares

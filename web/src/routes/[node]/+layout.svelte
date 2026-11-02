@@ -52,10 +52,17 @@
 		const hasIscsi = enabledServices.includes('iscsi');
 		const hasNfs = enabledServices.includes('nfs');
 		const hasMdns = enabledServices.includes('mdns');
+		const hasContainers = enabledServices.includes('containers');
 
-		const guestType = page.params.rid ? 'vm' : page.params.ctid ? 'jail' : null;
+		const guestType = page.params.rid
+			? 'vm'
+			: page.params.ctid
+				? 'jail'
+				: page.params.ocid
+					? 'container'
+					: null;
 		if (guestType) {
-			const guestId = guestType === 'vm' ? page.params.rid : page.params.ctid;
+			const guestId = page.params.rid ?? page.params.ctid ?? page.params.ocid;
 			const jailType =
 				guestType === 'jail' && page.data.node === node && page.data.ctId === Number(guestId)
 					? page.data.jail?.type
@@ -291,6 +298,23 @@
 					}
 				].filter(Boolean) as NodeItem[]
 			},
+			hasContainers && {
+				label: 'Containers',
+				icon: 'lucide--container',
+				children: [
+					{ label: 'Networks', icon: 'mdi--lan', href: `/${node}/containers/networks` },
+					{
+						label: 'Images',
+						icon: 'mdi--layers-triple-outline',
+						href: `/${node}/containers/images`
+					},
+					{
+						label: 'Registries',
+						icon: 'mdi--key-chain-variant',
+						href: `/${node}/containers/registries`
+					}
+				]
+			},
 			{
 				label: 'Utilities',
 				icon: 'mdi--tools',
@@ -445,7 +469,7 @@
 					}
 				]
 			}
-		];
+		].filter(Boolean) as NodeItem[];
 	});
 
 	interface Props {
@@ -470,6 +494,11 @@
 			const ctId = pathName.split('/')[3];
 			if (pathName === `/${node}/jail/${ctId}`) {
 				useSafeGoto(`/${node}/jail/${ctId}/summary`, { replaceState: true });
+			}
+		} else if (pathName.startsWith(`/${node}/container/`)) {
+			const ocId = pathName.split('/')[3];
+			if (pathName === `/${node}/container/${ocId}`) {
+				useSafeGoto(`/${node}/container/${ocId}/summary`, { replaceState: true });
 			}
 		}
 	});

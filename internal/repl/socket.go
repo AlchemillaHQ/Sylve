@@ -214,6 +214,7 @@ func formatBootstrapReport(report bootstrap.Report, jsonMode bool) string {
 func typedSocketOperationRequiresMutation(operation string) bool {
 	switch operation {
 	case consoleprotocol.OperationStatus,
+		consoleprotocol.OperationContainerRead,
 		consoleprotocol.OperationJailList,
 		consoleprotocol.OperationJailGet,
 		consoleprotocol.OperationJailNetworks,
@@ -250,6 +251,10 @@ func typedSocketOperationRequiresMutation(operation string) bool {
 func processSocketRequestAdmitted(ctx *Context, req socketRequest) socketResponse {
 	if req.Operation != "" {
 		switch req.Operation {
+		case consoleprotocol.OperationContainerRead:
+			return processContainerSocketRequest(ctx, req.Payload, false)
+		case consoleprotocol.OperationContainerWrite:
+			return processContainerSocketRequest(ctx, req.Payload, true)
 		case consoleprotocol.OperationStatus:
 			return processStatusSocketRequest(ctx, req.Payload)
 		case consoleprotocol.OperationJailList:

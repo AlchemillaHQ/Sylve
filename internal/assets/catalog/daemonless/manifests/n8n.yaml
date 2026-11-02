@@ -1,0 +1,265 @@
+name: n8n
+services:
+  n8n:
+    image: ghcr.io/daemonless/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      # Set to false if accessing over HTTP without TLS
+      #- N8N_SECURE_COOKIE=true
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - DB_TYPE=${DB_TYPE}
+      - DB_POSTGRESDB_HOST=${DB_POSTGRESDB_HOST}
+      - DB_POSTGRESDB_PORT=${DB_POSTGRESDB_PORT}
+      - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
+      - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:5678"
+x-fjord:
+  version: "0.1"
+  info:
+    id: n8n
+    name: n8n
+    description: Fair-code workflow automation platform with native AI capabilities — combine visual building with custom code and 400+ integrations.
+    category: Utilities
+    class: service
+    icon: icons/n8n.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/n8n-io/n8n
+    web_url: https://n8n.io/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "5678"
+    - name: CONFIG_DATA
+      label: Configuration directory (database, workflows)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: N8N_ENCRYPTION_KEY
+      label: Encryption key for credentials (keep safe!)
+      type: secret
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: DB_TYPE
+      label: sqlite or postgresdb; set by the Database choice
+      type: string
+      default: sqlite
+      optional: true
+    - name: DB_POSTGRESDB_HOST
+      label: PostgreSQL host (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: DB_POSTGRESDB_PORT
+      label: PostgreSQL port (Database choice)
+      type: string
+      default: "5432"
+      optional: true
+    - name: DB_POSTGRESDB_USER
+      label: PostgreSQL user (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: DB_POSTGRESDB_PASSWORD
+      label: PostgreSQL password (Database choice)
+      type: secret
+      default: ""
+      optional: true
+    - name: DB_POSTGRESDB_DATABASE
+      label: PostgreSQL database name (Database choice)
+      type: string
+      default: ""
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        n8n:
+          name: n8n
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:5678 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - N8N_ENCRYPTION_KEY: !ENV '${N8N_ENCRYPTION_KEY}'
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - DB_TYPE: !ENV '${DB_TYPE}'
+              - DB_POSTGRESDB_HOST: !ENV '${DB_POSTGRESDB_HOST}'
+              - DB_POSTGRESDB_PORT: !ENV '${DB_POSTGRESDB_PORT}'
+              - DB_POSTGRESDB_USER: !ENV '${DB_POSTGRESDB_USER}'
+              - DB_POSTGRESDB_PASSWORD: !ENV '${DB_POSTGRESDB_PASSWORD}'
+              - DB_POSTGRESDB_DATABASE: !ENV '${DB_POSTGRESDB_DATABASE}'
+          volumes:
+            - N8N_CONFIG_PATH: /config
+      volumes:
+        N8N_CONFIG_PATH:
+          device: !ENV '${N8N_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/n8n:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=n8n
+      N8N_ENCRYPTION_KEY=your-encryption-key-here
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      DB_TYPE=sqlite
+      DB_POSTGRESDB_HOST=
+      DB_POSTGRESDB_PORT=5432
+      DB_POSTGRESDB_USER=
+      DB_POSTGRESDB_PASSWORD=<DB_POSTGRESDB_PASSWORD>
+      DB_POSTGRESDB_DATABASE=
+      WEB_PORT=5678
+      N8N_CONFIG_PATH=/n8n
+  networking:
+    '*': private
+    n8n: default
+  choices:
+    - id: database
+      kind: database
+      label: Database
+      doc: Where the app keeps its data. The default needs nothing else running.
+      default: sqlite
+      options:
+        - id: sqlite
+          label: SQLite
+          doc: A file in the app's config folder. Right for one person, nothing extra to run.
+          env:
+            DB_TYPE: sqlite
+        - id: postgres
+          label: PostgreSQL
+          doc: One more container, its data in its own folder. For a household, or an app that wants it.
+          env:
+            DB_POSTGRESDB_HOST: postgres
+            DB_POSTGRESDB_PORT: "5432"
+            DB_TYPE: postgresdb
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/postgres'
+            DB_POSTGRESDB_DATABASE: n8n
+            DB_POSTGRESDB_USER: n8n
+          secrets:
+            - DB_POSTGRESDB_PASSWORD
+          services: |
+            postgres:
+              image: ghcr.io/daemonless/postgres:17
+              restart: always
+              annotations:
+                org.freebsd.jail.allow.sysvipc: "true"
+              environment:
+                - POSTGRES_USER=${DB_POSTGRESDB_USER}
+                - POSTGRES_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+                - POSTGRES_DB=${DB_POSTGRESDB_DATABASE}
+              volumes:
+                - "${DATABASE_LOCATION}:/var/lib/postgresql/data"
+          depends_on:
+            n8n:
+              - postgres
+          hostnames:
+            postgres: DB_POSTGRESDB_HOST
+          appjail:
+            director: |
+              services:
+                postgres:
+                  name: n8n_postgres
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/postgres:17
+                  - template: !ENV '${PWD}/postgres-template.conf'
+                  oci:
+                    environment:
+                    - POSTGRES_USER: !ENV '${DB_POSTGRESDB_USER}'
+                    - POSTGRES_PASSWORD: !ENV '${DB_POSTGRESDB_PASSWORD}'
+                    - POSTGRES_DB: !ENV '${DB_POSTGRESDB_DATABASE}'
+                  volumes:
+                  - database: /var/lib/postgresql/data
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            files:
+              postgres-template.conf: |
+                # The jail PostgreSQL runs in: SysV shared memory, which a jail does not
+                # get by default. ip4/ip6 are set here because the director's ip4_inherit
+                # option is a no-op in AppJail 5.5.0.
+
+                exec.start: "/bin/sh /etc/rc"
+                exec.stop: "/bin/sh /etc/rc.shutdown jail"
+                sysvmsg: new
+                sysvsem: new
+                sysvshm: new
+                mount.devfs
+                persist
+                ip4: inherit
+                ip6: inherit
+            hostnames:
+              postgres: DB_POSTGRESDB_HOST
+        - id: external
+          label: Your own
+          doc: A database you already run, here or on another machine. Nothing extra runs; you give the address and the account.
+          ask:
+            - name: DB_TYPE
+              label: Kind
+              type: string
+              values:
+                postgresdb: PostgreSQL
+            - name: DB_POSTGRESDB_HOST
+              label: Host
+              type: string
+            - name: DB_POSTGRESDB_PORT
+              label: Port
+              type: string
+            - name: DB_POSTGRESDB_USER
+              label: User
+              type: string
+            - name: DB_POSTGRESDB_PASSWORD
+              label: Password
+              type: secret
+            - name: DB_POSTGRESDB_DATABASE
+              label: Database
+              type: string

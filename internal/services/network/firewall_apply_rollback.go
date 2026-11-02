@@ -69,7 +69,7 @@ func captureFirewallApplyState(tables map[uint]firewallObjectTable) (*firewallAp
 			paths[filepath.Join(pfObjectTableEntriesDir, entry.Name())] = true
 		}
 	}
-	for _, table := range tables {
+	for _, table := range orderedFirewallObjectTables(tables) {
 		for _, name := range []string{table.InetName, table.Inet6Name} {
 			if name != "" {
 				paths[filepath.Join(pfObjectTableEntriesDir, name)] = true

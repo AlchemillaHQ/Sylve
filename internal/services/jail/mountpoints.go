@@ -15,7 +15,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 )
 
 func jailRootDatasetIdentity(jail *jailModels.Jail) (string, jailModels.Storage, error) {
@@ -99,7 +99,7 @@ func validateFilesystemDatasetMountpoint(
 		)
 	}
 
-	mountPoint, err := zfsutil.FilesystemMountpoint(dataset)
+	mountPoint, err := storagezfs.FilesystemMountpoint(dataset)
 	if err != nil {
 		return "", fmt.Errorf("filesystem_dataset_mountpoint_not_usable: %s: %w", expectedName, err)
 	}

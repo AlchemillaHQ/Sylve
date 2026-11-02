@@ -26,6 +26,7 @@ import (
 	basicHandlers "github.com/alchemillahq/sylve/internal/handlers/basic"
 	certificateHandlers "github.com/alchemillahq/sylve/internal/handlers/certificates"
 	clusterHandlers "github.com/alchemillahq/sylve/internal/handlers/cluster"
+	containerHandlers "github.com/alchemillahq/sylve/internal/handlers/container"
 	directoryHandlers "github.com/alchemillahq/sylve/internal/handlers/directoryservices"
 	diskHandlers "github.com/alchemillahq/sylve/internal/handlers/disk"
 	dynamicDNSHandlers "github.com/alchemillahq/sylve/internal/handlers/dynamicdns"
@@ -200,6 +201,45 @@ func RegisterRoutes(r *gin.Engine,
 	hostTerminal.Use(EnsureCorrectHost(db, authService))
 	hostTerminal.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
 	hostTerminal.GET("/terminal", infoHandlers.HandleHostTerminal)
+
+	if containerService := lifecycleService.Container; containerService != nil {
+		containers := api.Group("/container")
+		containers.Use(middleware.EnsureAuthenticated(authService))
+		containers.Use(middleware.RequireLocalAdminForWrites(authService))
+		containers.Use(EnsureCorrectHost(db, authService))
+		containers.Use(middleware.RequestLoggerMiddleware(telemetryDB, authService))
+		{
+			containers.GET("", containerHandlers.ListContainers(containerService))
+			containers.POST("", containerHandlers.CreateContainer(lifecycleService))
+			containers.POST("/stack", containerHandlers.CreateStack(lifecycleService))
+			containers.GET("/ports", containerHandlers.ListUsedPorts(containerService))
+			containers.GET("/networks", containerHandlers.ListNetworks(containerService))
+			containers.POST("/networks", containerHandlers.CreateNetwork(containerService))
+			containers.DELETE("/networks/:id", containerHandlers.DeleteNetwork(containerService))
+			containers.GET("/images/:pool", containerHandlers.ListImages(containerService))
+			containers.POST("/images/:pool/pull", containerHandlers.PullImage(containerService))
+			containers.POST("/images/:pool/prune", containerHandlers.PruneImages(containerService))
+			containers.DELETE("/images/:pool/:id", containerHandlers.RemoveImage(containerService))
+			containers.GET("/catalog", containerHandlers.ListCatalog(containerService))
+			containers.GET("/catalog/:source/icon", containerHandlers.GetCatalogIcon(containerService))
+			containers.GET("/catalog/:source/:id", containerHandlers.GetCatalogApp(containerService))
+			containers.GET("/catalog/:source/:id/icon", containerHandlers.GetCatalogIcon(containerService))
+			containers.POST("/catalog/:source/:id/render", containerHandlers.RenderCatalogApp(containerService))
+			containers.GET("/registry-credentials", containerHandlers.ListRegistryCredentials(containerService))
+			containers.PUT("/registry-credentials", containerHandlers.SaveRegistryCredential(containerService))
+			containers.DELETE("/registry-credentials/:id", containerHandlers.DeleteRegistryCredential(containerService))
+			containers.GET("/:ocid", containerHandlers.GetContainer(containerService))
+			containers.PUT("/:ocid", containerHandlers.UpdateContainer(lifecycleService))
+			containers.DELETE("/:ocid", containerHandlers.DeleteContainer(lifecycleService))
+			containers.PATCH("/:ocid/options", containerHandlers.UpdateContainerOptions(containerService))
+			containers.POST("/:ocid/actions/:action", containerHandlers.ContainerAction(lifecycleService))
+			containers.GET("/:ocid/logs", containerHandlers.GetContainerLogs(containerService))
+			containers.GET("/:ocid/image", containerHandlers.GetContainerImage(containerService))
+			containers.GET("/:ocid/stats", containerHandlers.GetContainerStatsBootstrap(containerService))
+			containers.GET("/:ocid/stats/:step", containerHandlers.GetContainerStats(containerService))
+			containers.GET("/:ocid/console", middleware.RequireLocalAdmin(authService), containerHandlers.HandleContainerConsole(containerService))
+		}
+	}
 
 	zfs := api.Group("/zfs")
 	zfs.Use(middleware.EnsureAuthenticated(authService))

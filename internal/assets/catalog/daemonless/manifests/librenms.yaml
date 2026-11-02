@@ -1,0 +1,175 @@
+name: librenms
+services:
+  librenms:
+    image: ghcr.io/daemonless/librenms:latest
+    container_name: librenms
+    network_mode: host
+    restart: always
+    depends_on:
+      - librenms-mariadb
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      # 127.0.0.1 on host networking; fjord sets the database's name when it
+      # puts the stack on a network (x-daemonless.hostnames).
+      - DB_HOST=${DB_HOST:-127.0.0.1}
+      - DB_PORT=3306
+      - DB_DATABASE=librenms
+      - DB_USERNAME=librenms
+      - DB_PASSWORD=${DB_PASSWORD}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      # Optional: the address LibreNMS puts in the links it sends (alerts).
+      - APP_URL=${APP_URL:-}
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+    # Ignored on host networking; used when fjord puts the stack on a bridge.
+    ports:
+      - 8080:8080
+  librenms-mariadb:
+    image: ghcr.io/daemonless/mariadb:latest
+    container_name: librenms-mariadb
+    network_mode: host
+    restart: always
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-${DB_PASSWORD}}
+      - MYSQL_DATABASE=librenms
+      - MYSQL_USER=librenms
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - ${DB_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: librenms
+    name: LibreNMS
+    description: LibreNMS is an autodiscovering PHP/MySQL/SNMP based network monitoring which includes support for a wide range of network hardware and operating systems including Cisco, Linux, FreeBSD, Juniper, Brocade, Foundry, HP and many more.
+    category: Monitoring
+    class: stack
+    icon: icons/librenms.svg
+    web_port: "8080"
+    upstream_url: https://www.librenms.org
+    web_url: https://www.librenms.org
+  variables:
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+      optional: true
+    - name: DB_HOST
+      label: Where LibreNMS finds MariaDB (fjord sets this; 127.0.0.1 on host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+      level: advanced
+    - name: DB_PASSWORD
+      label: Password for the librenms database user
+      type: secret
+      default: ""
+    - name: ADMIN_USER
+      label: LibreNMS admin account, created on first start
+      type: string
+      default: admin
+    - name: ADMIN_PASSWORD
+      label: Password for that admin account, used as given (LibreNMS's own rules apply to passwords changed later in its UI)
+      type: secret
+      default: ""
+    - name: APP_URL
+      label: Address you open LibreNMS at, e.g. http://192.168.1.10:8080 (used in links it sends)
+      type: string
+      default: ""
+      optional: true
+    - name: CONFIG_LOCATION
+      label: 'Host folder for LibreNMS data: settings, RRD files, logs'
+      type: path
+      default: /containers/librenms/config
+    - name: MYSQL_ROOT_PASSWORD
+      label: MariaDB root password (the database password unless set)
+      type: secret
+      default: ""
+      optional: true
+      level: advanced
+    - name: DB_DATA_LOCATION
+      label: Host folder for the MariaDB data
+      type: path
+      default: /containers/librenms/mariadb
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        librenms:
+          name: librenms
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - DB_HOST: !ENV '${DB_HOST}'
+              - DB_PORT: !ENV '${DB_PORT}'
+              - DB_DATABASE: !ENV '${DB_DATABASE}'
+              - DB_USERNAME: !ENV '${DB_USERNAME}'
+              - DB_PASSWORD: !ENV '${DB_PASSWORD}'
+              - ADMIN_USER: !ENV '${ADMIN_USER}'
+              - ADMIN_PASSWORD: !ENV '${ADMIN_PASSWORD}'
+              - APP_URL: !ENV '${APP_URL}'
+              - CONFIG_LOCATION: !ENV '${CONFIG_LOCATION}'
+              - DB_DATA_LOCATION: !ENV '${DB_DATA_LOCATION}'
+          volumes:
+            - LIBRENMS_CONFIG_PATH: /config
+      volumes:
+        LIBRENMS_CONFIG_PATH:
+          device: !ENV '${LIBRENMS_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=pkg
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/librenms:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=librenms
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      DB_HOST=127.0.0.1
+      DB_PORT=3306
+      DB_DATABASE=librenms
+      DB_USERNAME=librenms
+      DB_PASSWORD=<DB_PASSWORD>
+      ADMIN_USER=admin
+      ADMIN_PASSWORD=<ADMIN_PASSWORD>
+      APP_URL=
+      CONFIG_LOCATION=/containers/librenms/config
+      DB_DATA_LOCATION=/containers/librenms/mariadb
+      WEB_PORT=8080
+      LIBRENMS_CONFIG_PATH=/librenms
+  networking:
+    '*': private
+    librenms: default
+  hostnames:
+    librenms-mariadb: DB_HOST
+  login:
+    user: ${ADMIN_USER}
+    password: ${ADMIN_PASSWORD}

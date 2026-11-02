@@ -24,6 +24,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -34,9 +35,9 @@ import (
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
 	"github.com/alchemillahq/sylve/internal/logger"
-	"github.com/alchemillahq/sylve/internal/mountutil"
 	notifier "github.com/alchemillahq/sylve/internal/notifications"
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/pkg/storage/mount"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"gorm.io/gorm"
 )
@@ -411,6 +412,9 @@ func (s *Service) validateCreate(ctx context.Context, data jailServiceInterfaces
 		if _, err := s.inspectZFSSource(ctx, *data.ZFSSource, data.Pool, operationID); err != nil {
 			return err
 		}
+		if inUse, err := containerModels.DatasetsInUse(s.DB, []string{data.ZFSSource.GUID}); err != nil || inUse {
+			return errors.Join(fmt.Errorf("zfs_source_in_use_by_container"), err)
+		}
 	} else {
 		return fmt.Errorf("download_uuid_or_bootstrap_name_required")
 	}
@@ -714,7 +718,7 @@ func (s *Service) destroyStorageDatasetForDelete(ctx context.Context, datasetNam
 		if mountpointErr != nil {
 			return fmt.Errorf("failed_to_validate_storage_dataset_mountpoint: %w", mountpointErr)
 		}
-		if unmountErr := mountutil.UnmountDescendants(
+		if unmountErr := mount.UnmountDescendants(
 			ctx,
 			datasetName,
 			mountpoint,

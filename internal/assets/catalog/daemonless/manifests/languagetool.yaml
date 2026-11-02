@@ -1,0 +1,116 @@
+name: languagetool
+services:
+  languagetool:
+    image: ghcr.io/daemonless/languagetool:latest
+    container_name: languagetool
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - JAVA_OPTS=${JAVA_OPTS}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:8010"
+x-fjord:
+  version: "0.1"
+  info:
+    id: languagetool
+    name: LanguageTool
+    description: LanguageTool is an open-source proofreading tool for English, French, German, Spanish, Portuguese, Dutch, and many other languages. It detects grammar, style, and spelling errors that a simple spell checker cannot find, such as subject-verb agreement problems, incorrect articles, and commonly confused words.
+    category: Utilities
+    class: service
+    icon: icons/languagetool.svg
+    upstream_url: https://github.com/languagetool-org/languagetool
+    web_url: https://languagetool.org
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: HTTP API
+      type: port
+      default: "8010"
+    - name: CONFIG_DATA
+      label: Configuration and data directory (server.properties, dictionaries, ngrams)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: JAVA_OPTS
+      label: 'JVM memory and runtime options (default: -Xmx512m)'
+      type: string
+      default: -Xmx512m
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      default: true
+      aliases:
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        languagetool:
+          name: languagetool
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8010 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - JAVA_OPTS: !ENV '${JAVA_OPTS}'
+          volumes:
+            - LANGUAGETOOL_CONFIG_PATH: /config
+      volumes:
+        LANGUAGETOOL_CONFIG_PATH:
+          device: !ENV '${LANGUAGETOOL_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/languagetool:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=languagetool
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      JAVA_OPTS=-Xmx512m
+      WEB_PORT=8010
+      LANGUAGETOOL_CONFIG_PATH=/languagetool

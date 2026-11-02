@@ -1,0 +1,140 @@
+name: immich-ml
+services:
+  immich-ml:
+    image: ghcr.io/daemonless/immich-ml:latest
+    container_name: immich-ml
+    restart: unless-stopped
+    environment:
+      - MACHINE_LEARNING_HOST=${MACHINE_LEARNING_HOST}
+      - MACHINE_LEARNING_PORT=${MACHINE_LEARNING_PORT}
+      - MACHINE_LEARNING_CACHE_FOLDER=${MACHINE_LEARNING_CACHE_FOLDER}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CACHE_PATH}:/cache"
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3003"
+x-fjord:
+  version: "0.1"
+  info:
+    id: immich-ml
+    name: Immich Machine Learning
+    description: Machine learning service for Immich — handles facial recognition, image classification, and semantic search using ONNX models.
+    category: Photos & Media
+    class: service
+    icon: icons/immich-ml.svg
+    upstream_url: https://github.com/immich-app/immich
+    web_url: https://immich.app/
+  variables:
+    - name: WEB_PORT
+      label: ML API
+      type: port
+      default: "3003"
+    - name: CACHE_PATH
+      label: Model cache (HuggingFace ONNX models). Use a persistent volume to avoid re-downloading models.
+      type: path
+      default: ""
+    - name: CONFIG_DATA
+      label: Gunicorn HOME and the .chown_done ownership marker. Must be a persistent volume (the chown-skip relies on it).
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: MACHINE_LEARNING_HOST
+      label: Host to bind to (0.0.0.0)
+      type: string
+      default: 0.0.0.0
+    - name: MACHINE_LEARNING_PORT
+      label: Port to bind to (3003)
+      type: string
+      default: "3003"
+    - name: MACHINE_LEARNING_CACHE_FOLDER
+      label: Path to cache folder (/cache)
+      type: string
+      default: /cache
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+      aliases:
+        - beta
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        immich-ml:
+          name: immich_ml
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3003 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - MACHINE_LEARNING_HOST: !ENV '${MACHINE_LEARNING_HOST}'
+              - MACHINE_LEARNING_PORT: !ENV '${MACHINE_LEARNING_PORT}'
+              - MACHINE_LEARNING_CACHE_FOLDER: !ENV '${MACHINE_LEARNING_CACHE_FOLDER}'
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - MACHINE_LEARNING_WORKERS: !ENV '${MACHINE_LEARNING_WORKERS}'
+              - MACHINE_LEARNING_WORKER_TIMEOUT: !ENV '${MACHINE_LEARNING_WORKER_TIMEOUT}'
+              - SKIP_CHOWN: !ENV '${SKIP_CHOWN}'
+          volumes:
+            - IMMICH_ML_CACHE_PATH: /cache
+            - IMMICH_ML_CONFIG_PATH: /config
+      volumes:
+        IMMICH_ML_CACHE_PATH:
+          device: !ENV '${IMMICH_ML_CACHE_PATH}'
+        IMMICH_ML_CONFIG_PATH:
+          device: !ENV '${IMMICH_ML_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/immich-ml:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=immich-ml
+      MACHINE_LEARNING_HOST=0.0.0.0
+      MACHINE_LEARNING_PORT=3003
+      MACHINE_LEARNING_CACHE_FOLDER=/cache
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      MACHINE_LEARNING_WORKERS=1
+      MACHINE_LEARNING_WORKER_TIMEOUT=300
+      SKIP_CHOWN=true
+      WEB_PORT=3003
+      IMMICH_ML_CACHE_PATH=/immich-ml/cache
+      IMMICH_ML_CONFIG_PATH=/immich-ml

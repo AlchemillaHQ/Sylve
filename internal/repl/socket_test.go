@@ -334,6 +334,10 @@ func TestProcessSocketRequestFenceIsExactAndFailsClosed(t *testing.T) {
 	if mutationResponse.Error != clusterService.ErrNodeLeaveFenced.Error() {
 		t.Fatalf("mutation error = %q", mutationResponse.Error)
 	}
+	containerResponse := processSocketRequest(ctx, socketRequest{Operation: consoleprotocol.OperationContainerWrite})
+	if containerResponse.Error != clusterService.ErrNodeLeaveFenced.Error() {
+		t.Fatalf("container mutation error = %q", containerResponse.Error)
+	}
 
 	unknownResponse := processSocketRequest(ctx, socketRequest{Operation: "unknown"})
 	if unknownResponse.Error != clusterService.ErrNodeLeaveFenced.Error() {

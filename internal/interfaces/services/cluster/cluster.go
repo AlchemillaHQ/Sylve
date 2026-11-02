@@ -12,6 +12,7 @@ import (
 	"context"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/hashicorp/raft"
@@ -47,6 +48,7 @@ type NodeResources struct {
 	JailTemplates []jailServiceInterfaces.SimpleTemplateList    `json:"jailTemplates"`
 	VMs           []libvirtServiceInterfaces.SimpleList         `json:"vms"`
 	VMTemplates   []libvirtServiceInterfaces.SimpleTemplateList `json:"vmTemplates"`
+	Containers    []containerServiceInterfaces.ListItem         `json:"containers"`
 }
 
 type ClusterServiceInterface interface {

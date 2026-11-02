@@ -82,6 +82,10 @@ func TestNewServiceRegistryReusesNetworkServiceInstance(t *testing.T) {
 	if startupSvc.NFS != registry.NFSService || registry.SystemService.(*systemService.Service).NFS != registry.NFSService || registry.ZfsService.(*zfsService.Service).StorageTopologyGuard == nil {
 		t.Fatal("NFS startup, service settings and ZFS mutations must share one runtime coordinator")
 	}
+	containers := registry.ContainerService
+	if containers == nil || startupSvc.Containers != containers || registry.SystemService.(*systemService.Service).Containers != containers || containers.PrepareHost == nil {
+		t.Fatal("container startup and service settings must share one container service")
+	}
 
 	startupNetwork, ok := startupSvc.Network.(*networkService.Service)
 	if !ok {

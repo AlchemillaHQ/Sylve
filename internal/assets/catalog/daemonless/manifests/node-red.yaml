@@ -1,0 +1,109 @@
+name: node-red
+services:
+  node-red:
+    image: ghcr.io/daemonless/node-red:latest
+    container_name: node-red
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:1880"
+x-fjord:
+  version: "0.1"
+  info:
+    id: node-red
+    name: Node-RED
+    description: Low-code programming for event-driven applications on FreeBSD.
+    category: Utilities
+    class: service
+    icon: icons/node-red.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/node-red/node-red
+    web_url: https://nodered.org/
+  variables:
+    - name: WEB_PORT
+      label: Node-RED port
+      type: port
+      default: "1880"
+    - name: CONFIG_DATA
+      label: Data and configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        node-red:
+          name: node_red
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:1880 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - NODE_RED_CONFIG_PATH: /config
+      volumes:
+        NODE_RED_CONFIG_PATH:
+          device: !ENV '${NODE_RED_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/node-red:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=node-red
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=1880
+      NODE_RED_CONFIG_PATH=/node-red

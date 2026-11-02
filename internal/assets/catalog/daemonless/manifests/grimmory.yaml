@@ -1,0 +1,238 @@
+name: grimmory
+services:
+  grimmory:
+    image: ghcr.io/daemonless/grimmory:latest
+    container_name: grimmory
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Etc/UTC}
+      - DATABASE_URL=jdbc:mariadb://${MARIADB_HOSTNAME:-127.0.0.1}:${MARIADB_PORT:-3306}/${MARIADB_DATABASE:-grimmory}
+      - DATABASE_USERNAME=${MARIADB_USER:-grimmory}
+      - DATABASE_PASSWORD=${DB_PASSWORD}
+      - SWAGGER_ENABLED=false
+      - FORCE_DISABLE_OIDC=false
+    volumes:
+      - ${DATA_LOCATION}:/app/data
+      - ${EBOOKS_PATH}:/books
+      - ${BOOKDROP_PATH}:/bookdrop
+    depends_on:
+      - mariadb
+    restart: unless-stopped
+  mariadb:
+    image: ghcr.io/daemonless/mariadb:latest
+    container_name: grimmory-mariadb
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-Etc/UTC}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=grimmory
+      - MYSQL_USER=grimmory
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - ${DB_DATA_LOCATION}:/config
+    restart: unless-stopped
+x-fjord:
+  version: "0.1"
+  info:
+    id: grimmory
+    name: Grimmory
+    description: Self-hosted digital library — successor to BookLore, with smart shelves, metadata, Kobo/KOReader sync, OPDS support, and a built-in reader.
+    category: Media Management
+    class: stack
+    icon: icons/grimmory.svg
+    web_port: "6060"
+    upstream_url: https://github.com/grimmory-tools/grimmory
+    web_url: https://grimmory.org/
+  variables:
+    - name: TZ
+      label: Timezone
+      type: string
+      default: Etc/UTC
+      optional: true
+    - name: MARIADB_HOSTNAME
+      label: Where Grimmory finds MariaDB (fjord sets this for the built-in one; 127.0.0.1 on host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+      level: advanced
+    - name: MARIADB_PORT
+      label: MariaDB port (your own MariaDB)
+      type: string
+      default: "3306"
+      optional: true
+      level: advanced
+    - name: MARIADB_DATABASE
+      label: Database name (your own MariaDB)
+      type: string
+      default: grimmory
+      optional: true
+      level: advanced
+    - name: MARIADB_USER
+      label: Database user (your own MariaDB)
+      type: string
+      default: grimmory
+      optional: true
+      level: advanced
+    - name: DB_PASSWORD
+      label: Database password (grimmory user)
+      type: secret
+      default: grimmory
+    - name: DATA_LOCATION
+      label: Path to store Grimmory configuration and application data
+      type: path
+      default: /containers/grimmory/data
+    - name: EBOOKS_PATH
+      label: Path to your ebook library
+      type: path
+      default: /containers/grimmory/books
+    - name: BOOKDROP_PATH
+      label: Drop folder watched for automatic imports
+      type: path
+      default: /containers/grimmory/bookdrop
+    - name: DB_ROOT_PASSWORD
+      label: MariaDB root password (built-in MariaDB only)
+      type: secret
+      default: grimmory-root
+    - name: DB_DATA_LOCATION
+      label: Path to store MariaDB data files
+      type: path
+      default: /containers/grimmory/mariadb
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        grimmory:
+          name: grimmory
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - DATABASE_URL: !ENV '${DATABASE_URL}'
+              - DATABASE_USERNAME: !ENV '${DATABASE_USERNAME}'
+              - DATABASE_PASSWORD: !ENV '${DATABASE_PASSWORD}'
+              - SWAGGER_ENABLED: !ENV '${SWAGGER_ENABLED}'
+              - FORCE_DISABLE_OIDC: !ENV '${FORCE_DISABLE_OIDC}'
+              - DATA_LOCATION: !ENV '${DATA_LOCATION}'
+              - EBOOKS_PATH: !ENV '${EBOOKS_PATH}'
+              - BOOKDROP_PATH: !ENV '${BOOKDROP_PATH}'
+              - DB_DATA_LOCATION: !ENV '${DB_DATA_LOCATION}'
+              - DB_PASSWORD: !ENV '${DB_PASSWORD}'
+              - DB_ROOT_PASSWORD: !ENV '${DB_ROOT_PASSWORD}'
+          volumes:
+            - GRIMMORY_DATA_PATH: /app/data
+            - BOOKS_PATH: /books
+            - GRIMMORY_BOOKDROP_PATH: /bookdrop
+        mariadb:
+          name: mariadb
+          options:
+            - from: ghcr.io/daemonless/mariadb:latest
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            environment:
+              - PUID: "1000"
+              - PGID: "1000"
+              - TZ: !ENV '${TZ}'
+              - MYSQL_ROOT_PASSWORD: !ENV '${DB_ROOT_PASSWORD}'
+              - MYSQL_DATABASE: "grimmory"
+              - MYSQL_USER: "grimmory"
+              - MYSQL_PASSWORD: !ENV '${DB_PASSWORD}'
+          volumes:
+            - db_data: /config
+      volumes:
+        GRIMMORY_DATA_PATH:
+          device: !ENV '${GRIMMORY_DATA_PATH}'
+        BOOKS_PATH:
+          device: !ENV '${BOOKS_PATH}'
+        GRIMMORY_BOOKDROP_PATH:
+          device: !ENV '${GRIMMORY_BOOKDROP_PATH}'
+        db_data:
+          device: !ENV '${DB_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/grimmory:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=grimmory
+      PUID=1000
+      PGID=1000
+      TZ=Etc/UTC
+      DATABASE_URL=jdbc:mariadb://${MARIADB_HOSTNAME:-127.0.0.1}:${MARIADB_PORT:-3306}/${MARIADB_DATABASE:-grimmory}
+      DATABASE_USERNAME=grimmory
+      DATABASE_PASSWORD=${DB_PASSWORD}
+      SWAGGER_ENABLED=false
+      FORCE_DISABLE_OIDC=false
+      DATA_LOCATION=/containers/grimmory/data
+      EBOOKS_PATH=/containers/grimmory/books
+      BOOKDROP_PATH=/containers/grimmory/bookdrop
+      DB_DATA_LOCATION=/containers/grimmory/mariadb
+      DB_PASSWORD=grimmory
+      DB_ROOT_PASSWORD=grimmory-root
+      GRIMMORY_DATA_PATH=/grimmory/data
+      BOOKS_PATH=books
+      GRIMMORY_BOOKDROP_PATH=/grimmory/bookdrop
+  networking:
+    '*': private
+    grimmory: default
+  hostnames:
+    mariadb: MARIADB_HOSTNAME
+  choices:
+    - id: database
+      kind: part
+      label: Database
+      doc: Where Grimmory keeps its library. The default runs its own MariaDB.
+      default: builtin
+      options:
+        - id: builtin
+          label: Built-in MariaDB
+          doc: A MariaDB of its own, on the stack's private network.
+        - id: external
+          label: Your own MariaDB
+          doc: A MariaDB you already run. Create the database and a user with all privileges on it first.
+          drop:
+            - mariadb
+          ask:
+            - name: MARIADB_HOSTNAME
+              label: Host
+              type: string
+            - name: MARIADB_PORT
+              label: Port
+              default: "3306"
+              type: string
+            - name: MARIADB_DATABASE
+              label: Database name
+              default: grimmory
+              type: string
+            - name: MARIADB_USER
+              label: User
+              default: grimmory
+              type: string
+            - name: DB_PASSWORD
+              label: Password
+              type: secret

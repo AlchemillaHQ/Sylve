@@ -1,0 +1,321 @@
+name: gitea
+services:
+  gitea:
+    image: ghcr.io/daemonless/gitea:latest
+    container_name: gitea
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - SSH_PORT=${SSH_PORT}
+      - SSH_LISTEN_PORT=${SSH_LISTEN_PORT}
+      - GITEA__database__DB_TYPE=${GITEA__database__DB_TYPE}
+      - GITEA__database__HOST=${GITEA__database__HOST}
+      - GITEA__database__USER=${GITEA__database__USER}
+      - GITEA__database__PASSWD=${GITEA__database__PASSWD}
+      - GITEA__database__NAME=${GITEA__database__NAME}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3000"
+      - "${PORT_22}:22"
+x-fjord:
+  version: "0.1"
+  info:
+    id: gitea
+    name: Gitea
+    description: Lightweight self-hosted Git service — a community managed fork of Gogs written in Go.
+    category: Infrastructure
+    class: service
+    icon: icons/gitea.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/go-gitea/gitea
+    web_url: https://about.gitea.com/
+    only_for_archs:
+      - amd64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3000"
+    - name: PORT_22
+      label: SSH port
+      type: port
+      default: "2222"
+    - name: CONFIG_DATA
+      label: Configuration, repositories, and data directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: SSH_PORT
+      label: Published port for sshd (used in clone URLs)
+      type: string
+      default: "2222"
+    - name: SSH_LISTEN_PORT
+      label: Port on which sshd listens inside the container
+      type: string
+      default: "22"
+    - name: GITEA__database__DB_TYPE
+      label: sqlite3, postgres or mysql; set by the Database choice. Any non-empty GITEA__<section>__<KEY> goes into app.ini on start
+      type: string
+      default: ""
+      optional: true
+    - name: GITEA__database__HOST
+      label: Database host, optionally host:port (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: GITEA__database__USER
+      label: Database user (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: GITEA__database__PASSWD
+      label: Database password (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: GITEA__database__NAME
+      label: Database name (Database choice)
+      type: string
+      default: ""
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        gitea:
+          name: gitea
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3000 proto:tcp'
+            - expose: '2222:22 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - SSH_PORT: !ENV '${SSH_PORT}'
+              - SSH_LISTEN_PORT: !ENV '${SSH_LISTEN_PORT}'
+              - GITEA__database__DB_TYPE: !ENV '${GITEA__database__DB_TYPE}'
+              - GITEA__database__HOST: !ENV '${GITEA__database__HOST}'
+              - GITEA__database__USER: !ENV '${GITEA__database__USER}'
+              - GITEA__database__PASSWD: !ENV '${GITEA__database__PASSWD}'
+              - GITEA__database__NAME: !ENV '${GITEA__database__NAME}'
+          volumes:
+            - GITEA_CONFIG_PATH: /config
+      volumes:
+        GITEA_CONFIG_PATH:
+          device: !ENV '${GITEA_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/gitea:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=gitea
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      SSH_PORT=2222
+      SSH_LISTEN_PORT=22
+      GITEA__database__DB_TYPE=
+      GITEA__database__HOST=
+      GITEA__database__USER=
+      GITEA__database__PASSWD=<GITEA__DATABASE__PASSWD>
+      GITEA__database__NAME=
+      WEB_PORT=3000
+      GITEA_CONFIG_PATH=/gitea
+  networking:
+    '*': private
+    gitea: default
+  choices:
+    - id: database
+      kind: database
+      label: Database
+      doc: Where the app keeps its data. The default needs nothing else running.
+      default: sqlite
+      options:
+        - id: sqlite
+          label: SQLite
+          doc: A file in the app's config folder. Right for one person, nothing extra to run.
+          env:
+            GITEA__database__DB_TYPE: sqlite3
+        - id: postgres
+          label: PostgreSQL
+          doc: One more container, its data in its own folder. For a household, or an app that wants it.
+          env:
+            GITEA__database__DB_TYPE: postgres
+            GITEA__database__HOST: postgres
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/postgres'
+            GITEA__database__NAME: gitea
+            GITEA__database__USER: gitea
+          secrets:
+            - GITEA__database__PASSWD
+          services: |
+            postgres:
+              image: ghcr.io/daemonless/postgres:17
+              restart: always
+              annotations:
+                org.freebsd.jail.allow.sysvipc: "true"
+              environment:
+                - POSTGRES_USER=${GITEA__database__USER}
+                - POSTGRES_PASSWORD=${GITEA__database__PASSWD}
+                - POSTGRES_DB=${GITEA__database__NAME}
+              volumes:
+                - "${DATABASE_LOCATION}:/var/lib/postgresql/data"
+          depends_on:
+            gitea:
+              - postgres
+          hostnames:
+            postgres: GITEA__database__HOST
+          appjail:
+            director: |
+              services:
+                postgres:
+                  name: gitea_postgres
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/postgres:17
+                  - template: !ENV '${PWD}/postgres-template.conf'
+                  oci:
+                    environment:
+                    - POSTGRES_USER: !ENV '${GITEA__database__USER}'
+                    - POSTGRES_PASSWORD: !ENV '${GITEA__database__PASSWD}'
+                    - POSTGRES_DB: !ENV '${GITEA__database__NAME}'
+                  volumes:
+                  - database: /var/lib/postgresql/data
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            files:
+              postgres-template.conf: |
+                # The jail PostgreSQL runs in: SysV shared memory, which a jail does not
+                # get by default. ip4/ip6 are set here because the director's ip4_inherit
+                # option is a no-op in AppJail 5.5.0.
+
+                exec.start: "/bin/sh /etc/rc"
+                exec.stop: "/bin/sh /etc/rc.shutdown jail"
+                sysvmsg: new
+                sysvsem: new
+                sysvshm: new
+                mount.devfs
+                persist
+                ip4: inherit
+                ip6: inherit
+            hostnames:
+              postgres: GITEA__database__HOST
+        - id: mariadb
+          label: MariaDB
+          doc: One more container, its data in its own folder. If you already know MariaDB, or the app prefers it.
+          env:
+            GITEA__database__DB_TYPE: mysql
+            GITEA__database__HOST: mariadb
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/mariadb'
+            GITEA__database__NAME: gitea
+            GITEA__database__USER: gitea
+          secrets:
+            - GITEA__database__PASSWD
+          services: |
+            mariadb:
+              image: ghcr.io/daemonless/mariadb:11.4
+              restart: always
+              environment:
+                - MYSQL_USER=${GITEA__database__USER}
+                - MYSQL_PASSWORD=${GITEA__database__PASSWD}
+                - MYSQL_DATABASE=${GITEA__database__NAME}
+                - MYSQL_ROOT_PASSWORD=${GITEA__database__PASSWD}
+              volumes:
+                - "${DATABASE_LOCATION}:/config"
+          depends_on:
+            gitea:
+              - mariadb
+          hostnames:
+            mariadb: GITEA__database__HOST
+          appjail:
+            director: |
+              services:
+                mariadb:
+                  name: gitea_mariadb
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/mariadb:11.4
+                  - template: !ENV '${PWD}/template.conf'
+                  oci:
+                    environment:
+                    - MYSQL_USER: !ENV '${GITEA__database__USER}'
+                    - MYSQL_PASSWORD: !ENV '${GITEA__database__PASSWD}'
+                    - MYSQL_DATABASE: !ENV '${GITEA__database__NAME}'
+                    - MYSQL_ROOT_PASSWORD: !ENV '${GITEA__database__PASSWD}'
+                  volumes:
+                  - database: /config
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            hostnames:
+              mariadb: GITEA__database__HOST
+        - id: external
+          label: Your own
+          doc: A database you already run, here or on another machine. Nothing extra runs; you give the address and the account.
+          ask:
+            - name: GITEA__database__DB_TYPE
+              label: Kind
+              type: string
+              values:
+                mysql: MariaDB
+                postgres: PostgreSQL
+            - name: GITEA__database__HOST
+              label: Host
+              type: string
+            - name: GITEA__database__USER
+              label: User
+              type: string
+            - name: GITEA__database__PASSWD
+              label: Password
+              type: secret
+            - name: GITEA__database__NAME
+              label: Database
+              type: string

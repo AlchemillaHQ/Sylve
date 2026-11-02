@@ -26,6 +26,7 @@
 	import Storage from './Storage.svelte';
 	import { getNodes } from '$lib/api/cluster/cluster';
 	import { getSimpleJails } from '$lib/api/jail/jail';
+	import { getContainers } from '$lib/api/container/container';
 	import { getNetworkObjects } from '$lib/api/network/object';
 	import { reload as reloadStore } from '$lib/stores/api.svelte';
 	import { getBasicSettings } from '$lib/api/system/settings';
@@ -215,6 +216,12 @@
 		{ initialValue: [] }
 	);
 
+	const containers = resource(
+		() => `container-list-${modal.node || '__default__'}`,
+		async () => await getContainers(modal.node || undefined),
+		{ initialValue: [] }
+	);
+
 	const clusterNodes = resource(
 		() => 'cluster-nodes',
 		async (key) => {
@@ -305,6 +312,7 @@
 			downloadsByUtype.refetch();
 			vms.refetch();
 			jails.refetch();
+			containers.refetch();
 			clusterNodes.refetch();
 			basicSettings.refetch();
 			nodeCPUInfo.refetch();
@@ -346,7 +354,7 @@
 			return getNextGuestId(clusterNodes.current);
 		}
 
-		return getNextId(vms.current || [], jails.current || []);
+		return getNextId(vms.current || [], jails.current || [], containers.current);
 	});
 
 	let loading = $state(false);

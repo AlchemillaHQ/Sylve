@@ -1,0 +1,88 @@
+name: immich-public-proxy
+services:
+  immich-public-proxy:
+    image: ghcr.io/daemonless/immich-public-proxy:latest
+    container_name: immich-public-proxy
+    restart: unless-stopped
+    environment:
+      - IMMICH_URL=${IMMICH_URL}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - TZ=${TZ}
+    ports:
+      - "${WEB_PORT}:3000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: immich-public-proxy
+    name: Immich Public Proxy
+    description: Share Immich photos and albums publicly without exposing the Immich instance itself.
+    category: Photos & Media
+    class: service
+    icon: icons/immich-public-proxy.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/alangrainger/immich-public-proxy
+    web_url: https://github.com/alangrainger/immich-public-proxy
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3000"
+    - name: IMMICH_URL
+      label: URL of your (private) Immich instance, e.g. http://immich-server:2283
+      type: string
+      default: http://your-internal-immich-server:2283
+    - name: PUBLIC_BASE_URL
+      label: Public base URL this proxy is served from, no trailing slash (optional - derived from the request hostname if unset)
+      type: string
+      default: https://your-proxy-url.com
+      optional: true
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        immich-public-proxy:
+          name: immich_public_proxy
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - IMMICH_URL: !ENV '${IMMICH_URL}'
+              - PUBLIC_BASE_URL: !ENV '${PUBLIC_BASE_URL}'
+              - TZ: !ENV '${TZ}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/immich-public-proxy:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=immich-public-proxy
+      IMMICH_URL=http://your-internal-immich-server:2283
+      PUBLIC_BASE_URL=https://your-proxy-url.com
+      TZ=UTC
+      WEB_PORT=3000

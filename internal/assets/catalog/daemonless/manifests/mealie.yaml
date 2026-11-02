@@ -1,0 +1,264 @@
+name: mealie
+services:
+  mealie:
+    image: ghcr.io/daemonless/mealie:latest
+    container_name: mealie
+    restart: unless-stopped
+    environment:
+      - BASE_URL=${BASE_URL}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # The database, from the Database choice; sqlite needs nothing else.
+      - DB_ENGINE=${DB_ENGINE}
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:9000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: mealie
+    name: Mealie
+    description: Intuitive self-hosted recipe management app designed to be the best recipe management experience on the web.
+    category: Utilities
+    class: service
+    icon: icons/mealie.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/mealie-recipes/mealie
+    web_url: https://mealie.io/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "9000"
+    - name: CONFIG_DATA
+      label: Data directory (database, images)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: BASE_URL
+      label: The base URL for the application (e.g. https://mealie.example.com)
+      type: string
+      default: http://localhost:9000
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: DB_ENGINE
+      label: sqlite or postgres -- set by the Database choice
+      type: string
+      default: sqlite
+      optional: true
+    - name: POSTGRES_SERVER
+      label: PostgreSQL host (the PostgreSQL choice fills this in)
+      type: string
+      default: ""
+      optional: true
+    - name: POSTGRES_PORT
+      label: PostgreSQL port
+      type: string
+      default: "5432"
+      optional: true
+    - name: POSTGRES_USER
+      label: PostgreSQL user
+      type: string
+      default: ""
+      optional: true
+    - name: POSTGRES_PASSWORD
+      label: PostgreSQL password
+      type: secret
+      default: ""
+      optional: true
+    - name: POSTGRES_DB
+      label: PostgreSQL database name
+      type: string
+      default: ""
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        mealie:
+          name: mealie
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - BASE_URL: !ENV '${BASE_URL}'
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - DB_ENGINE: !ENV '${DB_ENGINE}'
+              - POSTGRES_SERVER: !ENV '${POSTGRES_SERVER}'
+              - POSTGRES_PORT: !ENV '${POSTGRES_PORT}'
+              - POSTGRES_USER: !ENV '${POSTGRES_USER}'
+              - POSTGRES_PASSWORD: !ENV '${POSTGRES_PASSWORD}'
+              - POSTGRES_DB: !ENV '${POSTGRES_DB}'
+          volumes:
+            - MEALIE_CONFIG_PATH: /config
+      volumes:
+        MEALIE_CONFIG_PATH:
+          device: !ENV '${MEALIE_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/mealie:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=mealie
+      BASE_URL=http://localhost:9000
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      DB_ENGINE=sqlite
+      POSTGRES_SERVER=
+      POSTGRES_PORT=5432
+      POSTGRES_USER=
+      POSTGRES_PASSWORD=<POSTGRES_PASSWORD>
+      POSTGRES_DB=
+      WEB_PORT=9000
+      MEALIE_CONFIG_PATH=/mealie
+  networking:
+    '*': private
+    mealie: default
+  choices:
+    - id: database
+      kind: database
+      label: Database
+      doc: Where the app keeps its data. The default needs nothing else running.
+      default: sqlite
+      options:
+        - id: sqlite
+          label: SQLite
+          doc: A file in the app's config folder. Right for one person, nothing extra to run.
+          env:
+            DB_ENGINE: sqlite
+        - id: postgres
+          label: PostgreSQL
+          doc: One more container, its data in its own folder. For a household, or an app that wants it.
+          env:
+            DB_ENGINE: postgres
+            POSTGRES_PORT: "5432"
+            POSTGRES_SERVER: postgres
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/postgres'
+            POSTGRES_DB: mealie
+            POSTGRES_USER: mealie
+          secrets:
+            - POSTGRES_PASSWORD
+          services: |
+            postgres:
+              image: ghcr.io/daemonless/postgres:17
+              restart: always
+              annotations:
+                org.freebsd.jail.allow.sysvipc: "true"
+              environment:
+                - POSTGRES_USER=${POSTGRES_USER}
+                - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+                - POSTGRES_DB=${POSTGRES_DB}
+              volumes:
+                - "${DATABASE_LOCATION}:/var/lib/postgresql/data"
+          depends_on:
+            mealie:
+              - postgres
+          hostnames:
+            postgres: POSTGRES_SERVER
+          appjail:
+            director: |
+              services:
+                postgres:
+                  name: mealie_postgres
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/postgres:17
+                  - template: !ENV '${PWD}/postgres-template.conf'
+                  oci:
+                    environment:
+                    - POSTGRES_USER: !ENV '${POSTGRES_USER}'
+                    - POSTGRES_PASSWORD: !ENV '${POSTGRES_PASSWORD}'
+                    - POSTGRES_DB: !ENV '${POSTGRES_DB}'
+                  volumes:
+                  - database: /var/lib/postgresql/data
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            files:
+              postgres-template.conf: |
+                # The jail PostgreSQL runs in: SysV shared memory, which a jail does not
+                # get by default. ip4/ip6 are set here because the director's ip4_inherit
+                # option is a no-op in AppJail 5.5.0.
+
+                exec.start: "/bin/sh /etc/rc"
+                exec.stop: "/bin/sh /etc/rc.shutdown jail"
+                sysvmsg: new
+                sysvsem: new
+                sysvshm: new
+                mount.devfs
+                persist
+                ip4: inherit
+                ip6: inherit
+            hostnames:
+              postgres: POSTGRES_SERVER
+        - id: external
+          label: Your own
+          doc: A database you already run, here or on another machine. Nothing extra runs; you give the address and the account.
+          ask:
+            - name: DB_ENGINE
+              label: Kind
+              type: string
+              values:
+                postgres: PostgreSQL
+            - name: POSTGRES_SERVER
+              label: Host
+              type: string
+            - name: POSTGRES_PORT
+              label: Port
+              type: string
+            - name: POSTGRES_USER
+              label: User
+              type: string
+            - name: POSTGRES_PASSWORD
+              label: Password
+              type: secret
+            - name: POSTGRES_DB
+              label: Database
+              type: string

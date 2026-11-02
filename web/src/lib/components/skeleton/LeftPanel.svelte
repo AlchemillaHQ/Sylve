@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { SvelteSet } from 'svelte/reactivity';
 	import { page } from '$app/state';
+	import { getContainers } from '$lib/api/container/container';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
 	import { ScrollArea } from '$lib/components/ui/scroll-area/index.js';
 	import { storage } from '$lib';
 	import { hasSavedOpenIds, loadOpenIds, saveOpenIds } from '$lib/left-panel';
 	import { reload } from '$lib/stores/api.svelte';
+	import type { ContainerListItem } from '$lib/types/container/container';
 	import type { SimpleJail, SimpleJailTemplate } from '$lib/types/jail/jail';
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { DomainState, type SimpleVm, type SimpleVmTemplate } from '$lib/types/vm/vm';
@@ -160,10 +162,31 @@
 		}
 	);
 
+	const containers = resource(
+		() => `container-list-${node}`,
+		async (key) => {
+			if (!enabledServices.includes('containers')) {
+				return [];
+			}
+
+			const result = await getContainers(node);
+			if (Array.isArray(result)) {
+				updateCache(key, result);
+				return result;
+			}
+
+			return [];
+		},
+		{
+			initialValue: [] as ContainerListItem[]
+		}
+	);
+
 	let guestResourceIds = $derived.by(() => {
 		const jailCTIDs = simpleJails.current.map((jail) => jail.ctId);
 		const vmCTIDs = simpleVMs.current.map((vm) => vm.rid);
-		return [...jailCTIDs, ...vmCTIDs].sort((a, b) => a - b);
+		const containerIDs = containers.current.map((container) => container.ocId);
+		return [...jailCTIDs, ...vmCTIDs, ...containerIDs].sort((a, b) => a - b);
 	});
 
 	let nextGuestId = $derived.by(() => {
@@ -202,6 +225,18 @@
 				icon: 'hugeicons--prison',
 				href: `/${node}/jail/${jail.ctId}/summary`,
 				state: (jail.state === 'ACTIVE' ? 'active' : 'inactive') as 'active' | 'inactive'
+			})),
+			...containers.current.map((container) => ({
+				id: `container-${container.ocId}`,
+				sortId: container.ocId,
+				sortName: container.name,
+				resourceId: container.ocId,
+				resourceType: 'container' as const,
+				nodeHostname: node,
+				label: `${container.name} (${container.ocId})`,
+				icon: 'lucide--container',
+				href: `/${node}/container/${container.ocId}/summary`,
+				state: (container.state === 'running' ? 'active' : 'inactive') as 'active' | 'inactive'
 			})),
 			...simpleJailTemplates.current.map((template) => ({
 				id: `jail-template-${template.id}`,
@@ -259,7 +294,8 @@
 		!simpleVMs.loading &&
 			!simpleJails.loading &&
 			!simpleJailTemplates.loading &&
-			!simpleVMTemplates.loading
+			!simpleVMTemplates.loading &&
+			!containers.loading
 	);
 
 	let trailingRefetchTimer = $state<ReturnType<typeof setTimeout> | null>(null);
@@ -268,7 +304,8 @@
 			simpleVMs.refetch(),
 			simpleJails.refetch(),
 			simpleJailTemplates.refetch(),
-			simpleVMTemplates.refetch()
+			simpleVMTemplates.refetch(),
+			containers.refetch()
 		]);
 	}
 

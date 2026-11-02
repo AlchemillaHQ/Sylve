@@ -9,7 +9,23 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 )
+
+func TestGuestIdentityStandaloneAcquireRequiresOperationToken(t *testing.T) {
+	database := newClusterServiceTestDB(t, &clusterModels.Cluster{}, &vmModels.VM{}, &jailModels.Jail{})
+	service := &Service{DB: database, NodeID: "standalone-node"}
+	reservation := clusterServiceInterfaces.GuestIdentityReservation{
+		OwnerNodeID: service.NodeID,
+		Entries:     []clusterServiceInterfaces.GuestIdentityReference{{GuestKind: clusterModels.ReplicationGuestTypeVM, GuestID: 902}},
+	}
+	if err := service.AcquireGuestIdentityReservation(t.Context(), reservation); err == nil {
+		t.Fatal("creation acquired an unowned, unreleasable local reservation")
+	}
+	if len(service.guestIdentityLocalReservations) != 0 {
+		t.Fatal("rejected acquisition left a local reservation")
+	}
+}
 
 func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testing.T) {
 	database := newClusterServiceTestDB(
@@ -40,7 +56,7 @@ func TestGuestIdentityStandaloneClaimGuardsDeletionAndClusterFormation(t *testin
 		t.Fatalf("validate standalone deletion guard: %v", err)
 	}
 	service.guestIdentityRuntimeMu.Lock()
-	guardToken := service.guestIdentityLocalReservations[902]
+	guardToken := service.guestIdentityLocalReservations[902].token
 	service.guestIdentityRuntimeMu.Unlock()
 	if guardToken != claim.Token {
 		t.Fatalf("local deletion guard token = %q, want %q", guardToken, claim.Token)

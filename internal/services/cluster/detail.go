@@ -18,6 +18,7 @@ import (
 	"github.com/alchemillahq/sylve/internal"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
+	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/pkg/utils"
@@ -103,6 +104,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			jailTemplatesURL := fmt.Sprintf("%s/api/jail/templates", base)
 			vmsURL := fmt.Sprintf("%s/api/vm/simple", base)
 			vmTemplatesURL := fmt.Sprintf("%s/api/vm/templates", base)
+			containersURL := fmt.Sprintf("%s/api/container", base)
 
 			headers := map[string]string{
 				"Accept":          "application/json",
@@ -113,8 +115,19 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 			var vms []libvirtServiceInterfaces.SimpleList
 			var jailTemplates []jailServiceInterfaces.SimpleTemplateList
 			var vmTemplates []libvirtServiceInterfaces.SimpleTemplateList
+			var containers []containerServiceInterfaces.ListItem
 
 			var eg errgroup.Group
+
+			eg.Go(func() error {
+				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, containersURL, headers); err == nil {
+					var resp internal.APIResponse[[]containerServiceInterfaces.ListItem]
+					if err := json.Unmarshal(body, &resp); err == nil && resp.Status == "success" {
+						containers = resp.Data
+					}
+				}
+				return nil
+			})
 
 			eg.Go(func() error {
 				if body, _, err := utils.HTTPGetJSONReadContext(nodeCtx, jailsURL, headers); err == nil {
@@ -165,6 +178,7 @@ func (s *Service) ResourcesContext(ctx context.Context) ([]clusterServiceInterfa
 				JailTemplates: jailTemplates,
 				VMs:           vms,
 				VMTemplates:   vmTemplates,
+				Containers:    containers,
 			}
 			return nil
 		})

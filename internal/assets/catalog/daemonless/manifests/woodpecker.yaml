@@ -1,0 +1,166 @@
+name: woodpecker
+services:
+  woodpecker:
+    image: ghcr.io/daemonless/woodpecker:latest
+    container_name: woodpecker-server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - WOODPECKER_SERVER_ENABLE=true
+      - WOODPECKER_HOST=${WOODPECKER_HOST}
+      - WOODPECKER_DATABASE_DRIVER=sqlite3
+      - WOODPECKER_DATABASE_DATASOURCE=/config/woodpecker.sqlite
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+    env_file:
+      - .env
+    volumes:
+      - ${SERVER_DATA_LOCATION}:/config
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+  woodpecker-agent:
+    image: ghcr.io/daemonless/woodpecker:latest
+    container_name: woodpecker-agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - woodpecker
+    environment:
+      - WOODPECKER_AGENT_ENABLE=true
+      - WOODPECKER_SERVER=${WOODPECKER_SERVER_HOSTNAME:-localhost}:9000
+      - WOODPECKER_AGENT_SECRET=${WOODPECKER_AGENT_SECRET}
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${AGENT_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: woodpecker
+    name: Woodpecker CI
+    description: Lightweight CI/CD pipeline server with a built-in agent — integrates with Gitea, GitHub, and GitLab for automated builds and deployments.
+    category: Infrastructure
+    class: stack
+    icon: icons/woodpecker.svg
+    web_port: "8000"
+    upstream_url: https://github.com/woodpecker-ci/woodpecker
+    web_url: https://woodpecker-ci.org/
+  variables:
+    - name: WOODPECKER_HOST
+      label: The external URL of this server, e.g. https://ci.example.com
+      type: public_url
+      default: http://localhost:8000
+    - name: WOODPECKER_AGENT_SECRET
+      label: Shared secret for server-agent communication
+      type: secret
+      default: change-me-to-a-long-random-string
+    - name: TZ
+      label: Timezone for the containers
+      type: string
+      default: UTC
+      optional: true
+    - name: SERVER_DATA_LOCATION
+      label: Path to store the server's data (database, logs)
+      type: path
+      default: /containers/woodpecker/server
+    - name: WOODPECKER_SERVER_HOSTNAME
+      label: Where the agent finds the server (fjord sets this; localhost on host networking)
+      type: string
+      default: localhost
+      optional: true
+      level: advanced
+    - name: AGENT_DATA_LOCATION
+      label: Path to store the agent's data
+      type: path
+      default: /containers/woodpecker/agent
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        woodpecker:
+          name: woodpecker
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8000 proto:tcp'
+            - expose: '9000:9000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - WOODPECKER_SERVER_ENABLE: !ENV '${WOODPECKER_SERVER_ENABLE}'
+              - WOODPECKER_HOST: !ENV '${WOODPECKER_HOST}'
+              - WOODPECKER_DATABASE_DRIVER: !ENV '${WOODPECKER_DATABASE_DRIVER}'
+              - WOODPECKER_DATABASE_DATASOURCE: !ENV '${WOODPECKER_DATABASE_DATASOURCE}'
+              - WOODPECKER_AGENT_SECRET: !ENV '${WOODPECKER_AGENT_SECRET}'
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - SERVER_DATA_LOCATION: !ENV '${SERVER_DATA_LOCATION}'
+              - AGENT_DATA_LOCATION: !ENV '${AGENT_DATA_LOCATION}'
+          volumes:
+            - WOODPECKER_CONFIG_PATH: /config
+        woodpecker-agent:
+          name: woodpecker_agent
+          options:
+            - from: ghcr.io/daemonless/woodpecker:latest
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            environment:
+              - WOODPECKER_AGENT_ENABLE: "true"
+              - WOODPECKER_SERVER: !ENV '${WOODPECKER_SERVER_HOSTNAME:localhost}:9000'
+              - WOODPECKER_AGENT_SECRET: !ENV '${WOODPECKER_AGENT_SECRET}'
+              - PUID: "1000"
+              - PGID: "1000"
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - agent_data: /config
+      volumes:
+        WOODPECKER_CONFIG_PATH:
+          device: !ENV '${WOODPECKER_CONFIG_PATH}'
+        agent_data:
+          device: !ENV '${AGENT_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/woodpecker:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=woodpecker
+      WOODPECKER_SERVER_ENABLE=true
+      WOODPECKER_HOST=http://localhost:8000
+      WOODPECKER_DATABASE_DRIVER=sqlite3
+      WOODPECKER_DATABASE_DATASOURCE=/config/woodpecker.sqlite
+      WOODPECKER_AGENT_SECRET=change-me-to-a-long-random-string
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      SERVER_DATA_LOCATION=/containers/woodpecker/server
+      AGENT_DATA_LOCATION=/containers/woodpecker/agent
+      WEB_PORT=8000
+      WOODPECKER_CONFIG_PATH=/woodpecker
+  networking:
+    '*': private
+    woodpecker: default
+  hostnames:
+    woodpecker: WOODPECKER_SERVER_HOSTNAME

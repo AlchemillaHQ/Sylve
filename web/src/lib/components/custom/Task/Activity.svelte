@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { storage } from '$lib';
 	import { getNodes } from '$lib/api/cluster/cluster';
+	import { getContainers } from '$lib/api/container/container';
 	import { getSimpleJails, getSimpleJailTemplates } from '$lib/api/jail/jail';
 	import { getActiveLifecycleTasks, getRecentLifecycleTasks } from '$lib/api/task/lifecycle';
 	import { getSimpleVMs, getSimpleVMTemplates } from '$lib/api/vm/vm';
@@ -92,11 +93,12 @@
 		() => (open ? effectiveHostname : ''),
 		async (node, _previous, { signal }) => {
 			if (!node) return { hostname: node, names: {} as LifecycleGuestNames };
-			const [vms, jails, jailTemplates, vmTemplates] = await Promise.all([
+			const [vms, jails, jailTemplates, vmTemplates, containers] = await Promise.all([
 				getSimpleVMs(node, signal).catch(() => []),
 				getSimpleJails(node, signal).catch(() => []),
 				getSimpleJailTemplates(node).catch(() => []),
-				getSimpleVMTemplates(node).catch(() => [])
+				getSimpleVMTemplates(node).catch(() => []),
+				getContainers(node, signal).catch(() => [])
 			]);
 			if (signal.aborted) throw new DOMException('Request aborted', 'AbortError');
 			return {
@@ -104,6 +106,7 @@
 				names: {
 					vm: new Map(vms.map((vm) => [vm.rid, vm.name])),
 					jail: new Map(jails.map((jail) => [jail.ctId, jail.name])),
+					container: new Map(containers.map((container) => [container.ocId, container.name])),
 					'jail-template': new Map(jailTemplates.map((template) => [template.id, template.name])),
 					'vm-template': new Map(vmTemplates.map((template) => [template.id, template.name]))
 				}
@@ -336,6 +339,7 @@
 			case 'start':
 				return 'icon-[mdi--play]';
 			case 'stop':
+			case 'kill':
 				return 'icon-[mdi--stop]';
 			case 'shutdown':
 				return 'icon-[mdi--power]';
@@ -343,6 +347,7 @@
 			case 'restart':
 				return 'icon-[mdi--restart]';
 			case 'create':
+			case 'create-stack':
 				return 'icon-[mdi--plus-circle-outline]';
 			case 'convert':
 				return 'icon-[mdi--content-copy]';
@@ -359,6 +364,8 @@
 				return 'VM';
 			case 'jail':
 				return 'Jail';
+			case 'container':
+				return 'Container';
 			case 'vm-template':
 				return 'VM Template';
 			case 'jail-template':
@@ -374,10 +381,14 @@
 					: 'jail'
 				: task.guestType;
 		let name = names[guestType]?.get(task.guestId) || '';
-		if (task.guestType === 'jail' && task.action === 'create') {
+		if (
+			(task.guestType === 'jail' || task.guestType === 'container') &&
+			(task.action === 'create' || task.action === 'create-stack')
+		) {
 			try {
 				const request = JSON.parse(task.payload || '{}');
-				if (typeof request?.name === 'string') name = request.name;
+				const label = task.action === 'create-stack' ? request?.stack : request?.name;
+				if (typeof label === 'string') name = label;
 			} catch {
 				// Older task payloads may not include creation settings.
 			}
@@ -461,7 +472,9 @@
 						class={`h-3.5 w-3.5 shrink-0 ${
 							task.guestType.startsWith('vm')
 								? 'icon-[material-symbols--monitor-outline]'
-								: 'icon-[hugeicons--prison]'
+								: task.guestType === 'container'
+									? 'icon-[lucide--container]'
+									: 'icon-[hugeicons--prison]'
 						}`}
 						aria-hidden="true"
 					></span>

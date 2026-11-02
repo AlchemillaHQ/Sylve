@@ -553,7 +553,7 @@ func requireExactMigrationTargetCutover(
 		return fmt.Errorf("migration_target_node_id_unavailable")
 	}
 	if guestID == 0 || operationToken == "" ||
-		(guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail) {
+		!clusterModels.ValidReplicationGuestType(guestType) {
 		return fmt.Errorf("migration_target_guard_input_invalid")
 	}
 

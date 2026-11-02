@@ -12,11 +12,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
@@ -26,11 +28,20 @@ import (
 
 var ErrCannotDeletePoolRootDataset = errors.New("cannot_delete_pool_root_dataset")
 
-func (s *Service) guardStorageTopologyMutation(ctx context.Context) (func(), error) {
+func (s *Service) guardStorageTopologyMutation(ctx context.Context, datasets ...*gzfs.Dataset) (func(), error) {
 	if s.StorageTopologyGuard == nil {
 		return func() {}, nil
 	}
-	release, err := s.StorageTopologyGuard(ctx)
+	var targets []string
+	for _, dataset := range datasets {
+		if dataset.Name != "" {
+			targets = append(targets, dataset.Name)
+		}
+		if filepath.IsAbs(dataset.Mountpoint) {
+			targets = append(targets, dataset.Mountpoint)
+		}
+	}
+	release, err := s.StorageTopologyGuard(ctx, targets...)
 	if err != nil {
 		return nil, classifyError(ErrConflict, "storage_topology_change_blocked: %v", err)
 	}
@@ -211,7 +222,7 @@ func (s *Service) BulkDeleteDataset(
 		return err
 	}
 
-	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads"}
+	cantDelete := []string{"sylve", "sylve/virtual-machines", "sylve/jails", "sylve/downloads", "sylve/containers", containerModels.ImagesDataset}
 	selected := make([]*gzfs.Dataset, 0, len(targets))
 	for _, target := range targets {
 		dataset, lookupErr := s.GZFS.ZFS.Get(ctx, target.Name, false)
@@ -236,26 +247,31 @@ func (s *Service) BulkDeleteDataset(
 				return classifyError(ErrConflict, "cannot_delete_critical_filesystem")
 			}
 		}
+		if strings.HasPrefix(relativeName, containerModels.ImagesDataset+"/") {
+			return classifyError(ErrConflict, "cannot_delete_container_image_layer")
+		}
 		selected = append(selected, dataset)
 	}
 	var names []string
+	var topologyTargets []*gzfs.Dataset
 	for _, dataset := range selected {
 		if dataset.Type != gzfs.DatasetTypeSnapshot {
 			names = append(names, dataset.Name)
+			topologyTargets = append(topologyTargets, dataset)
 		}
-	}
-	if len(names) > 0 {
-		releaseTopology, err := s.guardStorageTopologyMutation(ctx)
-		if err != nil {
-			return err
-		}
-		defer releaseTopology()
 	}
 	release, err := s.guardDownloadStorageMutation(ctx, names...)
 	if err != nil {
 		return err
 	}
 	defer release()
+	if len(names) > 0 {
+		releaseTopology, err := s.guardStorageTopologyMutation(ctx, topologyTargets...)
+		if err != nil {
+			return err
+		}
+		defer releaseTopology()
+	}
 
 	// A recursive parent deletion already covers selected descendants and
 	// snapshots. Keeping only independent roots avoids a second destroy call on
@@ -278,6 +294,13 @@ func (s *Service) BulkDeleteDataset(
 	}
 	if count > 0 {
 		return classifyError(ErrConflict, "datasets_in_use_by_vm")
+	}
+	inUse, err := containerModels.DatasetsInUse(s.DB, affectedGUIDs)
+	if err != nil {
+		return fmt.Errorf("failed to check if datasets are in use: %w", err)
+	}
+	if inUse {
+		return classifyError(ErrConflict, "datasets_in_use_by_container")
 	}
 
 	for _, dataset := range roots {
@@ -311,6 +334,9 @@ func (s *Service) BulkDeleteDataset(
 
 func (s *Service) IsDatasetInUse(guid string, failEarly bool) bool {
 	if err := downloadstorage.RequireDatasetGUIDUnused(context.Background(), s.DB, guid); err != nil {
+		return true
+	}
+	if inUse, err := containerModels.DatasetsInUse(s.DB, []string{guid}); err != nil || inUse {
 		return true
 	}
 	var count int64

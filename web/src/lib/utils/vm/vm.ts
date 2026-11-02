@@ -297,8 +297,16 @@ export function getVMCreateErrorMessage(response: Pick<APIResponse, 'message' | 
 	return vmCreateErrorMessageByCode[code] || 'Failed to create VM, check backend logs for details';
 }
 
-export function getNextId(vms: VM[] | SimpleVm[], jails: Jail[] | SimpleJail[]): number {
-	const usedIds = [...vms.map((vm) => vm.rid), ...jails.map((jail) => jail.ctId)];
+export function getNextId(
+	vms: VM[] | SimpleVm[],
+	jails: Jail[] | SimpleJail[],
+	containers: { ocId: number }[] = []
+): number {
+	const usedIds = [
+		...vms.map((vm) => vm.rid),
+		...jails.map((jail) => jail.ctId),
+		...containers.map((container) => container.ocId)
+	];
 	if (usedIds.length === 0) return 100;
 	return Math.max(...usedIds) + 1;
 }

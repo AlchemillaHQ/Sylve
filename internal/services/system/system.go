@@ -32,7 +32,7 @@ var _ systemServiceInterfaces.SystemServiceInterface = (*Service)(nil)
 type NFSRuntime interface {
 	Reconcile(context.Context) error
 	GetStatus(context.Context) (nfs.Status, error)
-	GuardStorageMutation(context.Context) (func(), error)
+	GuardStorageMutation(context.Context, ...string) (func(), error)
 }
 
 type Service struct {
@@ -40,6 +40,7 @@ type Service struct {
 	DownloadStorage         *downloadstorage.Resolver
 	DB                      *gorm.DB
 	NFS                     NFSRuntime
+	Containers              ContainerRuntime
 	initMutex               sync.Mutex
 	syncMutex               sync.Mutex
 	achMutex                sync.Mutex

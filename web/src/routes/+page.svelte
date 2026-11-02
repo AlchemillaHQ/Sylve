@@ -353,4 +353,8 @@
 <span class="icon-[mdi--layers-outline]"></span>
 <span class="icon-[mdi--file-tree-outline]"></span>
 <span class="icon-[icon-park-outline--prison]"></span>
+<span class="icon-[lucide--container]"></span>
+<span class="icon-[mdi--lan]"></span>
+<span class="icon-[mdi--layers-triple-outline]"></span>
+<span class="icon-[mdi--key-chain-variant]"></span>
 -->

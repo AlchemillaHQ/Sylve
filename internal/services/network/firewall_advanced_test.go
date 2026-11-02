@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"gorm.io/gorm"
@@ -23,6 +24,7 @@ import (
 func setupFirewallAdvancedService(t *testing.T) (*Service, *gorm.DB, networkModels.FirewallAdvancedSettings) {
 	t.Helper()
 	svc, db := newNetworkServiceForTest(t,
+		&models.BasicSettings{},
 		&networkModels.FirewallAdvancedSettings{},
 		&networkModels.FirewallTrafficRule{},
 		&networkModels.FirewallNATRule{},

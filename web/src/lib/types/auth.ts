@@ -107,25 +107,6 @@ export const ImportableUnixUserSchema = z.object({
 	homeDirectory: z.string()
 });
 
-export const BasicSettingsSchema = z.object({
-	pools: z.array(z.string()).nullable().default([]),
-	services: z
-		.array(
-			z.enum([
-				'dhcp-server',
-				'samba-server',
-				'virtualization',
-				'jails',
-				'wol-server',
-				'firewall',
-				'wireguard'
-			])
-		)
-		.nullable()
-		.default([]),
-	initialized: z.boolean()
-});
-
 export type JWTClaims = z.infer<typeof JWTClaimsSchema>;
 export type User = z.infer<typeof UserSchema>;
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;

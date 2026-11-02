@@ -454,7 +454,7 @@ func TestOOBRestorePreflightUsesSharedLiveGuestIDNamespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			database := testutil.NewSQLiteTestDB(
+			database := newZeltaServiceTestDB(
 				t,
 				&clusterModels.Cluster{},
 				&vmModels.VM{},
@@ -493,7 +493,7 @@ func TestIntegrationOOBRestoreExistingCanonicalDestinationIsNeverReplacedRealZFS
 	zfstest.EnsureDataset(t, client, restorePath+"/candidate-only")
 	zfstest.EnsureDataset(t, client, destination+"/existing-only")
 
-	database := testutil.NewSQLiteTestDB(
+	database := newZeltaServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&vmModels.VM{},

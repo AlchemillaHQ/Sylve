@@ -23,6 +23,7 @@ import (
 	"time"
 
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -71,6 +72,7 @@ func resetZeltaTestGlobals(t *testing.T) {
 }
 
 func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
+	t.Helper()
 	if len(migrateModels) == 0 {
 		migrateModels = []any{
 			&clusterModels.BackupTarget{},
@@ -92,7 +94,11 @@ func newZeltaServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&utilitiesModels.Upload{},
 	)
 
-	return testutil.NewSQLiteTestDB(t, migrateModels...)
+	db := testutil.NewSQLiteTestDB(t, migrateModels...)
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
 func newTestZeltaService(db *gorm.DB) *Service {

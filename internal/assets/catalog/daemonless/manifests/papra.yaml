@@ -1,0 +1,185 @@
+name: papra
+services:
+  papra:
+    image: ghcr.io/daemonless/papra:latest
+    container_name: papra
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - NODE_ENV=${NODE_ENV}
+      # nginx fronts on 1221; node backend listens on 127.0.0.1:1222.
+      - PORT=${PORT}
+      - SERVER_HOSTNAME=${SERVER_HOSTNAME}
+      - SERVER_SERVE_PUBLIC_DIR=${SERVER_SERVE_PUBLIC_DIR}
+      - DATABASE_URL=${DATABASE_URL}
+      - DOCUMENT_STORAGE_FILESYSTEM_ROOT=${DOCUMENT_STORAGE_FILESYSTEM_ROOT}
+      - PAPRA_CONFIG_DIR=${PAPRA_CONFIG_DIR}
+      - INGESTION_FOLDER_ROOT=${INGESTION_FOLDER_ROOT}
+      - EMAILS_DRY_RUN=${EMAILS_DRY_RUN}
+      - BETTER_AUTH_TELEMETRY=${BETTER_AUTH_TELEMETRY}
+      # Optional: a secret you control (>=32 chars). If omitted, the container
+      # generates one on first boot and persists it under /app_data (secure-by-default).
+      - AUTH_SECRET=${AUTH_SECRET}
+      # Lock down registration after you create the first (admin) account.
+      - AUTH_IS_REGISTRATION_ENABLED=${AUTH_IS_REGISTRATION_ENABLED}
+    volumes:
+      - "${APP_DATA_DATA}:/app_data"
+x-fjord:
+  version: "0.1"
+  info:
+    id: papra
+    name: Papra
+    description: Minimalist self-hosted document management platform (Paperless alternative) on FreeBSD.
+    category: Productivity
+    class: service
+    icon: icons/papra.svg
+    web_port: "1221"
+    upstream_url: https://github.com/papra-hq/papra
+    web_url: https://papra.app
+  variables:
+    - name: APP_DATA_DATA
+      label: Application data — SQLite database, stored documents, and config
+      type: zfs_dataset
+      default: app_data
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: Etc/UTC
+    - name: NODE_ENV
+      label: Node runtime mode; leave as 'production'
+      type: string
+      default: production
+    - name: PORT
+      label: Internal node backend port (nginx proxies to it); leave as 1222
+      type: string
+      default: "1222"
+    - name: SERVER_HOSTNAME
+      label: Internal bind address for the node backend; leave as 127.0.0.1
+      type: string
+      default: 127.0.0.1
+    - name: SERVER_SERVE_PUBLIC_DIR
+      label: Whether the node backend serves the SPA itself; 'false' (nginx serves it)
+      type: string
+      default: "false"
+    - name: DATABASE_URL
+      label: SQLite database URL (file:/app_data/db/db.sqlite)
+      type: string
+      default: file:/app_data/db/db.sqlite
+    - name: DOCUMENT_STORAGE_FILESYSTEM_ROOT
+      label: Filesystem path where uploaded documents are stored (under the /app_data volume)
+      type: string
+      default: /app_data/documents
+    - name: PAPRA_CONFIG_DIR
+      label: Directory Papra reads its config from (under the /app_data volume)
+      type: string
+      default: /app_data
+    - name: INGESTION_FOLDER_ROOT
+      label: Watched folder for drop-in document ingestion
+      type: string
+      default: /ingestion
+    - name: EMAILS_DRY_RUN
+      label: If 'true', emails are logged instead of sent (no SMTP configured by default)
+      type: string
+      default: "true"
+    - name: BETTER_AUTH_TELEMETRY
+      label: better-auth telemetry; '0' disables it
+      type: string
+      default: "0"
+    - name: AUTH_SECRET
+      label: 'better-auth session signing secret, >=32 chars. Optional: if unset, the container generates a strong secret on first boot and persists it under /app_data. Set one you control with `openssl rand -hex 48` to manage it yourself.'
+      type: secret
+      default: ""
+      optional: true
+    - name: AUTH_IS_REGISTRATION_ENABLED
+      label: Set to false after creating your account to lock down signups
+      type: string
+      default: "true"
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        papra:
+          name: papra
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - NODE_ENV: !ENV '${NODE_ENV}'
+              - PORT: !ENV '${PORT}'
+              - SERVER_HOSTNAME: !ENV '${SERVER_HOSTNAME}'
+              - SERVER_SERVE_PUBLIC_DIR: !ENV '${SERVER_SERVE_PUBLIC_DIR}'
+              - DATABASE_URL: !ENV '${DATABASE_URL}'
+              - DOCUMENT_STORAGE_FILESYSTEM_ROOT: !ENV '${DOCUMENT_STORAGE_FILESYSTEM_ROOT}'
+              - PAPRA_CONFIG_DIR: !ENV '${PAPRA_CONFIG_DIR}'
+              - INGESTION_FOLDER_ROOT: !ENV '${INGESTION_FOLDER_ROOT}'
+              - EMAILS_DRY_RUN: !ENV '${EMAILS_DRY_RUN}'
+              - BETTER_AUTH_TELEMETRY: !ENV '${BETTER_AUTH_TELEMETRY}'
+              - AUTH_SECRET: !ENV '${AUTH_SECRET}'
+              - AUTH_IS_REGISTRATION_ENABLED: !ENV '${AUTH_IS_REGISTRATION_ENABLED}'
+          volumes:
+            - PAPRA_APP_DATA_PATH: /app_data
+      volumes:
+        PAPRA_APP_DATA_PATH:
+          device: !ENV '${PAPRA_APP_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/papra:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=papra
+      PUID=1000
+      PGID=1000
+      TZ=Etc/UTC
+      NODE_ENV=production
+      PORT=1222
+      SERVER_HOSTNAME=127.0.0.1
+      SERVER_SERVE_PUBLIC_DIR=false
+      DATABASE_URL=file:/app_data/db/db.sqlite
+      DOCUMENT_STORAGE_FILESYSTEM_ROOT=/app_data/documents
+      PAPRA_CONFIG_DIR=/app_data
+      INGESTION_FOLDER_ROOT=/ingestion
+      EMAILS_DRY_RUN=true
+      BETTER_AUTH_TELEMETRY=0
+      AUTH_SECRET=${PAPRA_AUTH_SECRET}
+      AUTH_IS_REGISTRATION_ENABLED=true
+      PAPRA_APP_DATA_PATH=/papra/app_data

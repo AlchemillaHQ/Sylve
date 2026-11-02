@@ -24,28 +24,27 @@ import (
 
 const SSEExpiresAtContextKey = "SSEExpiresAt"
 
-func isVMConsoleWebSocketPath(path string) bool {
-	const prefix = "/api/vm/"
+func isGuestConsoleWebSocketPath(path, prefix string) bool {
 	const suffix = "/console"
 
 	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
 		return false
 	}
 
-	rid := strings.TrimPrefix(strings.TrimSuffix(path, suffix), prefix)
-	return rid != "" && !strings.Contains(rid, "/")
+	id := strings.TrimPrefix(strings.TrimSuffix(path, suffix), prefix)
+	return id != "" && !strings.Contains(id, "/")
+}
+
+func isVMConsoleWebSocketPath(path string) bool {
+	return isGuestConsoleWebSocketPath(path, "/api/vm/")
 }
 
 func isJailConsoleWebSocketPath(path string) bool {
-	const prefix = "/api/jail/"
-	const suffix = "/console"
+	return isGuestConsoleWebSocketPath(path, "/api/jail/")
+}
 
-	if !strings.HasPrefix(path, prefix) || !strings.HasSuffix(path, suffix) {
-		return false
-	}
-
-	ctID := strings.TrimPrefix(strings.TrimSuffix(path, suffix), prefix)
-	return ctID != "" && !strings.Contains(ctID, "/")
+func isContainerConsoleWebSocketPath(path string) bool {
+	return isGuestConsoleWebSocketPath(path, "/api/container/")
 }
 
 func isVNCWebSocketPath(path string) bool {
@@ -56,7 +55,8 @@ func isVNCWebSocketPath(path string) bool {
 
 func isConsoleWebSocketPath(path string) bool {
 	return path == "/api/info/terminal" || isVNCWebSocketPath(path) ||
-		isVMConsoleWebSocketPath(path) || isJailConsoleWebSocketPath(path)
+		isVMConsoleWebSocketPath(path) || isJailConsoleWebSocketPath(path) ||
+		isContainerConsoleWebSocketPath(path)
 }
 
 func abortAuthentication(c *gin.Context, status int, code string) {

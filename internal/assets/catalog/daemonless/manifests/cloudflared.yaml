@@ -1,0 +1,88 @@
+name: cloudflared
+services:
+  cloudflared:
+    image: ghcr.io/daemonless/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+      - TUNNEL_METRICS=${TUNNEL_METRICS}
+    ports:
+      - "${WEB_PORT}:2000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: cloudflared
+    name: Cloudflared
+    description: Tunneling daemon that proxies any local webserver through the Cloudflare network without DNS records or firewall changes.
+    category: Infrastructure
+    class: service
+    icon: icons/cloudflared.svg
+    upstream_url: https://github.com/cloudflare/cloudflared
+    web_url: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Port
+      type: port
+      default: "2000"
+    - name: TUNNEL_TOKEN
+      label: Cloudflare Tunnel token — create a tunnel at https://dash.cloudflare.com/one/ and copy the token from its install command
+      type: secret
+      default: ""
+      generate: false
+    - name: TUNNEL_METRICS
+      label: 'Address to bind metrics server (default: 0.0.0.0:2000)'
+      type: string
+      default: 0.0.0.0:2000
+      optional: true
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        cloudflared:
+          name: cloudflared
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:2000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - TUNNEL_TOKEN: !ENV '${TUNNEL_TOKEN}'
+              - TUNNEL_METRICS: !ENV '${TUNNEL_METRICS}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/cloudflared:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=cloudflared
+      TUNNEL_TOKEN=YOUR_CLOUDFLARE_TOKEN_HERE
+      TUNNEL_METRICS=0.0.0.0:2000
+      WEB_PORT=2000

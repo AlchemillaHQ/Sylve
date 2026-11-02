@@ -288,7 +288,7 @@ func BackupJobs(cS *cluster.Service) gin.HandlerFunc {
 		if guestType != "" {
 			guestID64, parseErr := strconv.ParseUint(guestIDQuery, 10, 64)
 			if parseErr != nil || guestID64 == 0 ||
-				(guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail) {
+				!clusterModels.ValidReplicationGuestType(guestType) {
 				c.JSON(http.StatusBadRequest, internal.APIResponse[any]{
 					Status:  "error",
 					Message: "invalid_guest_filter",

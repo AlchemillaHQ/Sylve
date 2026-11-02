@@ -174,7 +174,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "start", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
 	started := assertConsoleVMAction(t, output, rid, "start")
-	waitForConsoleVMTask(t, suite, started.TaskID)
+	waitForConsoleLifecycleTask(t, suite, started.TaskID)
 	waitForConsoleVMState(t, rid, "running")
 
 	storageFailure := runSylveFailure(t, suite.binaryPath, suite.configPath,
@@ -195,7 +195,7 @@ func TestAcceptanceVMStorageAndDeletion(t *testing.T) {
 
 	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(rid), 10)+" --json")
 	stopped := assertConsoleVMAction(t, output, rid, "stop")
-	waitForConsoleVMTask(t, suite, stopped.TaskID)
+	waitForConsoleLifecycleTask(t, suite, stopped.TaskID)
 	waitForConsoleVMState(t, rid, "shut off")
 
 	output = runSylve(t, suite.binaryPath, suite.configPath,
@@ -615,7 +615,7 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 	if len(recentTasks) != 1 || recentTasks[0].ID != started.TaskID {
 		t.Fatalf("CLI recent lifecycle tasks = %#v", recentTasks)
 	}
-	waitForConsoleVMTask(t, suite, started.TaskID)
+	waitForConsoleLifecycleTask(t, suite, started.TaskID)
 	waitForConsoleVMState(t, rid, "running")
 	bridge := consoleBridge(t, standard.BridgeName)
 	if len(bridge.BridgeMembers) != 1 {
@@ -630,7 +630,7 @@ func TestAcceptanceVMCoreWorkflow(t *testing.T) {
 
 	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(rid), 10)+" --json")
 	stopped := assertConsoleVMAction(t, output, rid, "stop")
-	waitForConsoleVMTask(t, suite, stopped.TaskID)
+	waitForConsoleLifecycleTask(t, suite, stopped.TaskID)
 	waitForConsoleVMState(t, rid, "shut off")
 	bridge = consoleBridge(t, standard.BridgeName)
 	if len(bridge.BridgeMembers) != 0 {
@@ -797,14 +797,14 @@ func assertConsoleVMAction(t *testing.T, output string, rid uint, action string)
 	return result
 }
 
-func waitForConsoleVMTask(t *testing.T, suite *consoleIntegrationSuite, taskID uint) {
+func waitForConsoleLifecycleTask(t *testing.T, suite *consoleIntegrationSuite, taskID uint) {
 	t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
 	var last taskModels.GuestLifecycleTask
 	for time.Now().Before(deadline) {
 		var task taskModels.GuestLifecycleTask
 		if err := suite.database.First(&task, taskID).Error; err != nil {
-			t.Fatalf("load VM lifecycle task %d: %v", taskID, err)
+			t.Fatalf("load lifecycle task %d: %v", taskID, err)
 		}
 		last = task
 		switch task.Status {
@@ -814,14 +814,14 @@ func waitForConsoleVMTask(t *testing.T, suite *consoleIntegrationSuite, taskID u
 			if task.GuestType == taskModels.GuestTypeVM {
 				logConsoleVMDiagnostics(t, task.GuestID)
 			}
-			t.Fatalf("VM lifecycle task %d failed: %s", taskID, task.Error)
+			t.Fatalf("lifecycle task %d failed: %s", taskID, task.Error)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if last.GuestType == taskModels.GuestTypeVM {
 		logConsoleVMDiagnostics(t, last.GuestID)
 	}
-	t.Fatalf("VM lifecycle task %d did not complete: %#v", taskID, last)
+	t.Fatalf("lifecycle task %d did not complete: %#v", taskID, last)
 }
 
 func waitForConsoleVMState(t *testing.T, rid uint, want string) {
@@ -1032,7 +1032,7 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "start", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
 	started := assertConsoleVMAction(t, output, rid, "start")
-	waitForConsoleVMTask(t, suite, started.TaskID)
+	waitForConsoleLifecycleTask(t, suite, started.TaskID)
 	waitForConsoleVMState(t, rid, "running")
 	output = runSylve(t, suite.binaryPath, suite.configPath,
 		"vms", "qga", "info", "--rid", strconv.FormatUint(uint64(rid), 10), "--json")
@@ -1072,7 +1072,7 @@ func TestAcceptanceVMCoreLifecycle(t *testing.T) {
 
 	output = runREPLCommand(t, suite.socketPath, "vms stop "+strconv.FormatUint(uint64(rid), 10)+" --json")
 	stopped := assertConsoleVMAction(t, output, rid, "stop")
-	waitForConsoleVMTask(t, suite, stopped.TaskID)
+	waitForConsoleLifecycleTask(t, suite, stopped.TaskID)
 	waitForConsoleVMState(t, rid, "shut off")
 	output = runREPLCommand(t, suite.socketPath,
 		"vms config tpm "+strconv.FormatUint(uint64(rid), 10)+" --enabled=true --json")
@@ -1366,7 +1366,7 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 		captureTask.Action != "capture" {
 		t.Fatalf("queue template capture = %#v err=%v output=%s", captureTask, err, output)
 	}
-	waitForConsoleVMTask(t, suite, captureTask.TaskID)
+	waitForConsoleLifecycleTask(t, suite, captureTask.TaskID)
 	if retained := consoleVMByRID(t, suite, sourceRID); retained.Name != sourceName {
 		t.Fatalf("template capture did not retain source VM: %#v", retained)
 	}
@@ -1413,7 +1413,7 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &singleTask); err != nil || singleTask.TaskID == 0 {
 		t.Fatalf("queue single template VM = %#v err=%v output=%s", singleTask, err, output)
 	}
-	waitForConsoleVMTask(t, suite, singleTask.TaskID)
+	waitForConsoleLifecycleTask(t, suite, singleTask.TaskID)
 	if vm := consoleVMByRID(t, suite, singleRID); len(vm.Storages) != 1 {
 		t.Fatalf("single template VM = %#v", vm)
 	}
@@ -1437,7 +1437,7 @@ func TestAcceptanceVMSnapshotsTemplatesAndSerial(t *testing.T) {
 	if err := json.Unmarshal([]byte(output), &multipleTask); err != nil || multipleTask.TaskID == 0 {
 		t.Fatalf("queue multiple template VMs = %#v err=%v output=%s", multipleTask, err, output)
 	}
-	waitForConsoleVMTask(t, suite, multipleTask.TaskID)
+	waitForConsoleLifecycleTask(t, suite, multipleTask.TaskID)
 	for _, rid := range []uint{multipleStartRID, multipleSecondRID} {
 		if vm := consoleVMByRID(t, suite, rid); len(vm.Storages) != 1 {
 			t.Fatalf("multiple template VM %d = %#v", rid, vm)

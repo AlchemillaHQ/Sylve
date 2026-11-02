@@ -126,6 +126,9 @@ func (s *Service) SaveJoinIntent(
 	if s.guestIdentityClusterFormation || len(s.guestIdentityLocalReservations) != 0 {
 		return fmt.Errorf("guest_identity_mutation_in_progress")
 	}
+	if err := s.requireNoDurableGuestIdentityOperations(context.Background()); err != nil {
+		return err
+	}
 	latest, err := ScanLocalGuestIdentityInventory(s.DB, request.NodeID)
 	if err != nil {
 		return fmt.Errorf("guest_identity_inventory_scan_failed: %w", err)

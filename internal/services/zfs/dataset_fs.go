@@ -11,6 +11,7 @@ package zfs
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/alchemillahq/gzfs"
@@ -43,7 +44,16 @@ func (s *Service) CreateFilesystem(ctx context.Context, name string, parent stri
 	}
 
 	name = fmt.Sprintf("%s/%s", parent, name)
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	releaseDownload, err := s.guardDownloadStorageMutation(ctx, name)
+	if err != nil {
+		return err
+	}
+	defer releaseDownload()
+	mountpoint := cleanProps["mountpoint"]
+	if _, explicit := cleanProps["mountpoint"]; !explicit && filepath.IsAbs(parentDataset.Mountpoint) {
+		mountpoint = filepath.Join(parentDataset.Mountpoint, strings.TrimPrefix(name, parent+"/"))
+	}
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, &gzfs.Dataset{Name: name, Mountpoint: mountpoint})
 	if err != nil {
 		return err
 	}
@@ -84,15 +94,8 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 	if _, editsMountpoint := props["mountpoint"]; editsMountpoint && isSylveManagedDataset(dataset.Name) {
 		return classifyError(ErrConflict, "managed_dataset_mountpoint_edit_not_supported")
 	}
-	for _, property := range []string{"mountpoint", "canmount", "readonly", "sharenfs"} {
-		if _, changes := props[property]; changes {
-			releaseTopology, err := s.guardStorageTopologyMutation(ctx)
-			if err != nil {
-				return err
-			}
-			defer releaseTopology()
-			break
-		}
+	if mp, ok := props["mountpoint"]; ok && mp == "" {
+		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
 	}
 	for _, property := range []string{"mountpoint", "canmount", "readonly", "keylocation"} {
 		if _, changes := props[property]; changes {
@@ -104,9 +107,15 @@ func (s *Service) EditFilesystem(ctx context.Context, guid string, props map[str
 			break
 		}
 	}
-
-	if mp, ok := props["mountpoint"]; ok && mp == "" {
-		props["mountpoint"] = fmt.Sprintf("/%s", dataset.Name)
+	for _, property := range []string{"mountpoint", "canmount", "readonly", "sharenfs"} {
+		if _, changes := props[property]; changes {
+			releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset, &gzfs.Dataset{Mountpoint: props["mountpoint"]})
+			if err != nil {
+				return err
+			}
+			defer releaseTopology()
+			break
+		}
 	}
 
 	if q, ok := props["quota"]; ok && q != "" {
@@ -152,6 +161,11 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 		return err
 	}
 	defer release()
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, foundFS)
+	if err != nil {
+		return err
+	}
+	defer releaseTopology()
 
 	allDatasets, err := s.GZFS.ZFS.List(ctx, true, "")
 	if err != nil {
@@ -171,12 +185,6 @@ func (s *Service) DeleteFilesystem(ctx context.Context, guid string) error {
 	if count > 0 {
 		return classifyError(ErrConflict, "dataset_in_use_by_vm")
 	}
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
-	if err != nil {
-		return err
-	}
-	defer releaseTopology()
-
 	if err := foundFS.Destroy(ctx, true, false); err != nil {
 		return err
 	}

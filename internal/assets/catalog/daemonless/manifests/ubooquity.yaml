@@ -1,0 +1,150 @@
+name: ubooquity
+services:
+  ubooquity:
+    image: ghcr.io/daemonless/ubooquity:latest
+    container_name: ubooquity
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - MAXMEM=${MAXMEM}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${BOOKS_PATH}:/books"
+      - "${COMICS_PATH}:/comics"
+      - "${FILES_PATH}:/files"
+    ports:
+      - "${WEB_PORT}:2202"
+      - "${PORT_2203}:2203"
+x-fjord:
+  version: "0.1"
+  info:
+    id: ubooquity
+    name: Ubooquity
+    description: Free, lightweight home server for your comics and ebooks (EPUB, MOBI, PDF, CBZ, CBR) with OPDS support and a web reader.
+    category: Media Servers
+    class: service
+    icon: icons/ubooquity.png
+    web_port: ${WEB_PORT}
+    upstream_url: https://vaemendis.net/ubooquity/
+    web_url: https://vaemendis.net/ubooquity/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Library Web UI & OPDS server
+      type: port
+      default: "2202"
+    - name: PORT_2203
+      label: Administration Web UI (set the admin password on first visit)
+      type: port
+      default: "2203"
+    - name: CONFIG_DATA
+      label: Configuration directory, database, and settings
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: BOOKS_PATH
+      label: Book library directory (EPUB, MOBI, PDF)
+      type: path
+      default: ""
+      optional: true
+    - name: COMICS_PATH
+      label: Comic library directory (CBZ, CBR, CBT)
+      type: path
+      default: ""
+      optional: true
+    - name: FILES_PATH
+      label: Raw documents and files directory
+      type: path
+      default: ""
+      optional: true
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: MAXMEM
+      label: 'Maximum Java memory allocation pool in MB (default: 512)'
+      type: string
+      default: "512"
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        ubooquity:
+          name: ubooquity
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:2202 proto:tcp'
+            - expose: '2203:2203 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - MAXMEM: !ENV '${MAXMEM}'
+          volumes:
+            - UBOOQUITY_CONFIG_PATH: /config
+            - BOOKS_PATH: /books
+            - UBOOQUITY_COMICS_PATH: /comics
+            - UBOOQUITY_FILES_PATH: /files
+      volumes:
+        UBOOQUITY_CONFIG_PATH:
+          device: !ENV '${UBOOQUITY_CONFIG_PATH}'
+        BOOKS_PATH:
+          device: !ENV '${BOOKS_PATH}'
+        UBOOQUITY_COMICS_PATH:
+          device: !ENV '${UBOOQUITY_COMICS_PATH}'
+        UBOOQUITY_FILES_PATH:
+          device: !ENV '${UBOOQUITY_FILES_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/ubooquity:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=ubooquity
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      MAXMEM=512
+      WEB_PORT=2202
+      UBOOQUITY_CONFIG_PATH=/ubooquity
+      BOOKS_PATH=books
+      UBOOQUITY_COMICS_PATH=/ubooquity/comics
+      UBOOQUITY_FILES_PATH=/ubooquity/files

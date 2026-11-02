@@ -549,7 +549,7 @@ func (s *Service) AddPeriodicSnapshot(ctx context.Context, req zfsServiceInterfa
 
 		if exists == nil || len(exists) == 0 {
 			isnap, err := ds.Snapshot(ctx, name, recursive)
-			if err != nil {
+			if err != nil || isnap == nil || isnap.Name != full {
 				logger.L.Warn().Err(err).Msgf("Failed to create initial snapshot %s", full)
 				return nil
 			}
@@ -794,12 +794,6 @@ func (s *Service) pruneSnapshots(
 	ctx context.Context,
 	job zfsModels.PeriodicSnapshot,
 ) {
-	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
-	if err != nil {
-		logger.L.Debug().Err(err).Msgf("Failed to get dataset for pruning %s", job.GUID)
-		return
-	}
-
 	if job.KeepLast == 0 &&
 		job.MaxAgeDays == 0 &&
 		job.KeepHourly == 0 &&
@@ -807,6 +801,11 @@ func (s *Service) pruneSnapshots(
 		job.KeepWeekly == 0 &&
 		job.KeepMonthly == 0 &&
 		job.KeepYearly == 0 {
+		return
+	}
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
+	if err != nil || dataset == nil {
+		logger.L.Debug().Err(err).Msgf("Dataset unavailable for pruning %s", job.GUID)
 		return
 	}
 
@@ -916,7 +915,13 @@ func (s *Service) pruneSnapshots(
 			continue
 		}
 
-		if err := sn.Dataset.Destroy(ctx, job.Recursive, false); err != nil {
+		snapshot, err := s.snapshotForMutation(ctx, sn.Dataset.GUID, sn.Name)
+		if err != nil {
+			logger.L.Debug().Err(err).Msgf("Failed to recheck snapshot %s", sn.Name)
+			continue
+		}
+		err = snapshot.Destroy(ctx, job.Recursive, false)
+		if err != nil {
 			logger.L.Debug().Err(err).Msgf("Failed to prune snapshot %s", sn.Name)
 			continue
 		}
@@ -929,100 +934,84 @@ func (s *Service) pruneSnapshots(
 	}
 }
 
+func (s *Service) runPeriodicSnapshot(ctx context.Context, job zfsModels.PeriodicSnapshot, nowLocal time.Time) bool {
+	schedule, err := periodicSnapshotScheduleAt(job, nowLocal)
+	if err != nil {
+		logger.L.Debug().Err(err).Msgf("Skipping job %s with invalid schedule", job.GUID)
+		return false
+	}
+	if !schedule.shouldRun {
+		return false
+	}
+	runAtLocal := schedule.runAtLocal
+	if err := validatePeriodicSnapshotPrefix(job.Prefix); err != nil {
+		logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s with reserved prefix", job.GUID)
+		return false
+	}
+
+	persistTime := runAtLocal.UTC()
+	if job.CronExpr != "" {
+		persistTime = runAtLocal
+	}
+
+	name := job.Prefix + "-" + runAtLocal.Format("2006-01-02-15-04")
+	dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
+	if err != nil || dataset == nil {
+		logger.L.Debug().Err(err).Msgf("Dataset unavailable for snapshot job %s", job.GUID)
+		return false
+	}
+	if err := s.requireUserSnapshotCreationAllowed(ctx, dataset.Name, job.Recursive); err != nil {
+		logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s", job.GUID)
+		return false
+	}
+
+	full := dataset.Name + "@" + name
+	exists, err := s.GZFS.ZFS.Get(ctx, full, false)
+	if err != nil && !gzfsCommandReportsMissingResource(err) {
+		logger.L.Debug().Err(err).Msgf("Failed to inspect snapshot %s", full)
+		return false
+	}
+	if exists == nil {
+		snap, err := dataset.Snapshot(ctx, name, job.Recursive)
+		if err != nil || snap == nil || snap.Name != full {
+			logger.L.Debug().Err(err).Msgf("Failed to create snapshot for %s", job.GUID)
+			return false
+		}
+		s.SignalDSChange(snap.Pool, snap.Name, "snapshot", "create")
+		logger.L.Debug().Msgf("Snapshot %s created", full)
+	} else {
+		logger.L.Debug().Msgf("Snapshot %s already exists", name)
+	}
+
+	executedAt := time.Now().UTC()
+	if err := s.DB.WithContext(ctx).Model(&job).Updates(map[string]interface{}{
+		"LastRunAt":      persistTime,
+		"LastExecutedAt": executedAt,
+	}).Error; err != nil {
+		logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
+	}
+	return exists == nil
+}
+
 func (s *Service) StartSnapshotScheduler(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
-
 	go func() {
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
 				var snapshotJobs []zfsModels.PeriodicSnapshot
-				if err := s.DB.Find(&snapshotJobs).Error; err != nil {
+				if err := s.DB.WithContext(ctx).Find(&snapshotJobs).Error; err != nil {
 					logger.L.Debug().Err(err).Msg("Failed to load snapshotJobs")
 					continue
 				}
-
 				nowLocal := time.Now()
-
 				for _, job := range snapshotJobs {
-					schedule, err := periodicSnapshotScheduleAt(job, nowLocal)
-					if err != nil {
-						logger.L.Debug().Err(err).Msgf("Skipping job %s with invalid schedule", job.GUID)
-						continue
+					if s.runPeriodicSnapshot(ctx, job, nowLocal) {
+						go s.pruneSnapshots(ctx, job)
 					}
-
-					if !schedule.shouldRun {
-						continue
-					}
-					runAtLocal := schedule.runAtLocal
-					if err := validatePeriodicSnapshotPrefix(job.Prefix); err != nil {
-						logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s with reserved prefix", job.GUID)
-						continue
-					}
-
-					boundaryLocal := runAtLocal
-					persistTime := runAtLocal.UTC()
-
-					if job.CronExpr != "" {
-						boundaryLocal = runAtLocal
-						persistTime = runAtLocal
-					} else {
-						boundaryLocal = runAtLocal
-						persistTime = runAtLocal.UTC()
-					}
-
-					name := job.Prefix + "-" + boundaryLocal.Format("2006-01-02-15-04")
-					dataset, err := s.GZFS.ZFS.GetByGUID(ctx, job.GUID, false)
-					if err != nil {
-						logger.L.Debug().Err(err).Msgf("Failed to get dataset for %s", job.GUID)
-						if err := s.DB.Delete(&job).Error; err != nil {
-							logger.L.Debug().Err(err).Msgf("Failed to delete job %s", job.GUID)
-						}
-						logger.L.Debug().Msgf("Deleted job %s due to missing dataset", job.GUID)
-						continue
-					}
-					if err := s.requireUserSnapshotCreationAllowed(ctx, dataset.Name, job.Recursive); err != nil {
-						logger.L.Debug().Err(err).Msgf("Skipping snapshot job %s", job.GUID)
-						continue
-					}
-
-					full := dataset.Name + "@" + name
-
-					exists, _ := s.GZFS.ZFS.Get(ctx, full, false)
-					if exists != nil {
-						logger.L.Debug().Msgf("Snapshot %s already exists", name)
-						executedAt := time.Now().UTC()
-						if err := s.DB.Model(&job).Updates(map[string]interface{}{
-							"LastRunAt":      persistTime,
-							"LastExecutedAt": executedAt,
-						}).Error; err != nil {
-							logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
-						}
-						continue
-					}
-
-					if snap, err := dataset.Snapshot(ctx, name, job.Recursive); err != nil {
-						logger.L.Debug().Err(err).Msgf("Failed to create snapshot for %s", job.GUID)
-						continue
-					} else {
-						s.SignalDSChange(snap.Pool, snap.Name, "snapshot", "create")
-					}
-
-					executedAt := time.Now().UTC()
-					if err := s.DB.Model(&job).Updates(map[string]interface{}{
-						"LastRunAt":      persistTime,
-						"LastExecutedAt": executedAt,
-					}).Error; err != nil {
-						logger.L.Debug().Err(err).Msgf("Failed to update LastRunAt for %d", job.ID)
-					}
-
-					logger.L.Debug().Msgf("Snapshot %s created", full)
-
-					go s.pruneSnapshots(ctx, job)
 				}
-
 			case <-ctx.Done():
-				ticker.Stop()
 				return
 			}
 		}
@@ -1047,7 +1036,7 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destr
 		return err
 	}
 
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset)
 	if err != nil {
 		return err
 	}
@@ -1079,7 +1068,7 @@ func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName strin
 	}
 	defer release()
 
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx)
+	releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset)
 	if err != nil {
 		return err
 	}

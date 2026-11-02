@@ -18,6 +18,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/cmd"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/raft"
@@ -25,6 +26,7 @@ import (
 )
 
 func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
+	t.Helper()
 	migrateModels = append(
 		migrateModels,
 		&clusterModels.BackupJobOperation{},
@@ -37,7 +39,11 @@ func newClusterServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&clusterModels.BackupTargetSSHHostTrust{},
 		&clusterModels.ClusterOption{},
 	)
-	return testutil.NewSQLiteTestDB(t, migrateModels...)
+	db := testutil.NewSQLiteTestDB(t, migrateModels...)
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
 func seedBackupTargetHostTrust(t *testing.T, database *gorm.DB, target *clusterModels.BackupTarget, keys ...string) {

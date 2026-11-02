@@ -1,0 +1,148 @@
+name: forgejo
+services:
+  forgejo:
+    image: ghcr.io/daemonless/forgejo:15
+    container_name: forgejo
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - SSH_PORT=${SSH_PORT}
+      - SSH_LISTEN_PORT=${SSH_LISTEN_PORT}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3000"
+      - "${PORT_22}:22"
+x-fjord:
+  version: "0.1"
+  info:
+    id: forgejo
+    name: Forgejo
+    description: Forgejo is a self-hosted lightweight software forge
+    category: Infrastructure
+    class: service
+    icon: icons/forgejo.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://codeberg.org/forgejo/forgejo
+    web_url: https://forgejo.org/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3000"
+    - name: PORT_22
+      label: SSH port
+      type: port
+      default: "2222"
+    - name: CONFIG_DATA
+      label: Configuration, repositories, and data directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: SSH_PORT
+      label: Published port for sshd (used in clone URLs)
+      type: string
+      default: "2222"
+    - name: SSH_LISTEN_PORT
+      label: Port on which sshd listens inside the container
+      type: string
+      default: "22"
+  variants:
+    - id: "15"
+      label: Built from latest upstream source release of the v15 branch.
+      aliases:
+        - lts
+    - id: 15-latest
+      label: Built from latest upstream source release of the v15 branch with latest FreeBSD packages.
+      default: true
+      aliases:
+        - lts-latest
+    - id: 15-pkg-latest
+      label: 15-pkg-latest
+      aliases:
+        - lts-pkg-latest
+    - id: "16"
+      label: Built from latest upstream source release of the v16 branch.
+    - id: 16-latest
+      label: Built from latest upstream source release of the v16 branch with latest FreeBSD packages.
+    - id: 16-pkg
+      label: 16-pkg
+    - id: 16-pkg-latest
+      label: 16-pkg-latest
+    - id: "17"
+      label: Built from latest upstream source release of the v17 branch.
+    - id: 17-latest
+      label: Built from latest upstream source release of the v17 branch with latest FreeBSD packages.
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        forgejo:
+          name: forgejo
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3000 proto:tcp'
+            - expose: '2222:22 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - SSH_PORT: !ENV '${SSH_PORT}'
+              - SSH_LISTEN_PORT: !ENV '${SSH_LISTEN_PORT}'
+          volumes:
+            - FORGEJO_CONFIG_PATH: /config
+      volumes:
+        FORGEJO_CONFIG_PATH:
+          device: !ENV '${FORGEJO_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=15
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/forgejo:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=forgejo
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      SSH_PORT=2222
+      SSH_LISTEN_PORT=22
+      WEB_PORT=3000
+      FORGEJO_CONFIG_PATH=/forgejo

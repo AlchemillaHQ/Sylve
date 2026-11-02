@@ -22,7 +22,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"gorm.io/gorm"
 )
 
@@ -320,7 +320,7 @@ func (r *Resolver) filesystem(ctx context.Context, name string, write bool) (*gz
 	if err != nil || dataset == nil {
 		return nil, Layout{}, ErrUnavailable
 	}
-	root, err := zfsutil.FilesystemMountpoint(dataset)
+	root, err := storagezfs.FilesystemMountpoint(dataset)
 	if err != nil || dataset.Name != name || dataset.GUID == "" {
 		return nil, Layout{}, ErrMismatch
 	}
@@ -389,7 +389,7 @@ func (r *Resolver) Reserve(ctx context.Context, poolName string) (utilitiesModel
 	name := poolName + "/sylve/downloads"
 	existing, lookupErr := r.GZFS.ZFS.Get(ctx, name, false)
 	if existing == nil {
-		if lookupErr != nil && !zfsutil.DatasetDoesNotExist(lookupErr) {
+		if lookupErr != nil && !storagezfs.DatasetDoesNotExist(lookupErr) {
 			return ref, Layout{}, ErrUnavailable
 		}
 		if usageErr := RequireDatasetUnused(ctx, r.DB, name); usageErr != nil {
@@ -398,7 +398,7 @@ func (r *Resolver) Reserve(ctx context.Context, poolName string) (utilitiesModel
 		if _, _, err := r.filesystem(ctx, poolName, true); err != nil {
 			return ref, Layout{}, err
 		}
-		if _, ensureErr := zfsutil.EnsureDownloadNamespace(ctx, r.GZFS, poolName); ensureErr != nil {
+		if _, ensureErr := storagezfs.EnsureDownloadNamespace(ctx, r.GZFS, poolName); ensureErr != nil {
 			return ref, Layout{}, fmt.Errorf("%w: provision download storage: %v", ErrUnavailable, ensureErr)
 		}
 	}
@@ -521,7 +521,7 @@ func (r *Resolver) Choices(ctx context.Context) Choices {
 			// Older managed pools can be provisioned on explicit reservation.
 			if errors.Is(err, ErrUnavailable) {
 				ds, lookupErr := r.GZFS.ZFS.Get(ctx, name+"/sylve/downloads", false)
-				if ds == nil && (lookupErr == nil || zfsutil.DatasetDoesNotExist(lookupErr)) {
+				if ds == nil && (lookupErr == nil || storagezfs.DatasetDoesNotExist(lookupErr)) {
 					if err = RequireDatasetUnused(ctx, r.DB, name+"/sylve/downloads"); err == nil {
 						_, _, err = r.filesystem(ctx, name, true)
 					}

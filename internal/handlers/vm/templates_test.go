@@ -127,7 +127,7 @@ func setupVMTemplateLifecycle(t *testing.T) *lifecycle.Service {
 		t.Fatalf("failed to setup queue: %v", err)
 	}
 
-	return lifecycle.NewService(dbConn, nil, nil, nil)
+	return lifecycle.NewService(dbConn, nil, nil, nil, nil)
 }
 
 func assertStatus(t *testing.T, actual, expected int, body string) {

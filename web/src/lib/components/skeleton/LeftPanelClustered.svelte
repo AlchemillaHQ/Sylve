@@ -175,7 +175,8 @@
 	let globalNextGuestId = $derived.by(() => {
 		const guestIds = cluster.flatMap((resource) => [
 			...(resource.jails ?? []).map((jail) => jail.ctId),
-			...(resource.vms ?? []).map((vm) => vm.rid)
+			...(resource.vms ?? []).map((vm) => vm.rid),
+			...(resource.containers ?? []).map((container) => container.ocId)
 		]);
 
 		if (guestIds.length === 0) {
@@ -217,6 +218,18 @@
 						: vm.state === DomainState.DomainNostate
 							? 'orphan'
 							: 'inactive') as 'active' | 'inactive' | 'orphan'
+				})),
+				...(n.containers ?? []).map((container) => ({
+					id: `container-${container.ocId}`,
+					sortId: container.ocId,
+					sortName: container.name,
+					resourceId: container.ocId,
+					resourceType: 'container' as const,
+					nodeHostname: n.hostname,
+					label: `${container.name} (${container.ocId})`,
+					icon: 'lucide--container',
+					href: `/${nodeLabel}/container/${container.ocId}/summary`,
+					state: (container.state === 'running' ? 'active' : 'inactive') as 'active' | 'inactive'
 				})),
 				...(n.jailTemplates ?? []).map((template) => ({
 					id: `jail-template-${n.nodeUUID}-${template.id}`,

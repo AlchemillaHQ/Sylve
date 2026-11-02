@@ -76,6 +76,7 @@ type TerminalSession struct {
 	Cmd       *exec.Cmd
 	Pty       *os.File
 	Observers map[*Observer]struct{}
+	OnClose   func()
 
 	Mu           sync.Mutex
 	closeOnce    sync.Once
@@ -108,6 +109,15 @@ type WindowSize struct {
 }
 
 func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*TerminalSession, error) {
+	return sm.GetOrCreateCommandSession(sessionID, func() *exec.Cmd {
+		ctidHash := utils.HashIntToNLetters(ctidInt, 5)
+		cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
+		cmd.Env = append(os.Environ(), "TERM=xterm")
+		return cmd
+	}, nil)
+}
+
+func (sm *SessionManager) GetOrCreateCommandSession(sessionID string, newCmd func() *exec.Cmd, onClose func()) (*TerminalSession, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -115,11 +125,7 @@ func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*Te
 		return session, nil
 	}
 
-	ctidHash := utils.HashIntToNLetters(ctidInt, 5)
-
-	cmd := exec.Command("jexec", "-l", ctidHash, "su", "-l", "root")
-	cmd.Env = append(os.Environ(), "TERM=xterm")
-
+	cmd := newCmd()
 	ptymx, err := pty.Start(cmd)
 	if err != nil {
 		return nil, err
@@ -138,6 +144,7 @@ func (sm *SessionManager) GetOrCreateSession(sessionID string, ctidInt int) (*Te
 	session := &TerminalSession{
 		ID:           sessionID,
 		Cmd:          cmd,
+		OnClose:      onClose,
 		Pty:          ptymx,
 		Observers:    make(map[*Observer]struct{}),
 		History:      make([]byte, 0, wsHistoryLimit),
@@ -193,6 +200,9 @@ func (ts *TerminalSession) Close(sm *SessionManager) {
 		}
 		if ts.Cmd != nil {
 			_ = ts.Cmd.Wait()
+		}
+		if ts.OnClose != nil {
+			ts.OnClose()
 		}
 
 		sm.removeSession(ts.ID, ts)
@@ -381,127 +391,132 @@ func HandleJailTerminalWebsocket(jailService jailConsoleService, lifecycleServic
 			return
 		}
 
-		if !websocket.IsWebSocketUpgrade(c.Request) {
-			writeJailConsoleError(c, http.StatusBadRequest, "websocket_upgrade_required", nil)
-			return
-		}
-
-		conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
-		if err != nil {
-			logger.L.Warn().Err(err).Uint("ctid", ctID).Msg("failed to upgrade jail console websocket")
-			return
-		}
-
-		conn.SetReadLimit(wsReadLimit)
-		_ = conn.SetReadDeadline(time.Now().Add(wsPongWait))
-		conn.SetPongHandler(func(string) error {
-			return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+		ServeTerminal(c, "jail-"+ctIDText, func(sm *SessionManager, sessionID string) (*TerminalSession, error) {
+			return sm.GetOrCreateSession(sessionID, int(ctID))
 		})
+	}
+}
 
-		sessionID := "jail-" + ctIDText
-		session, err := GlobalSessionManager.GetOrCreateSession(sessionID, int(ctID))
-		if err != nil {
-			logger.L.Error().Err(err).Uint("ctid", ctID).Msg("failed to start jail console session")
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("Jail console unavailable"))
-			_ = conn.Close()
-			return
-		}
+func ServeTerminal(c *gin.Context, sessionID string, open func(*SessionManager, string) (*TerminalSession, error)) {
+	if !websocket.IsWebSocketUpgrade(c.Request) {
+		writeJailConsoleError(c, http.StatusBadRequest, "websocket_upgrade_required", nil)
+		return
+	}
 
-		observer := &Observer{Conn: conn}
-		if err := session.AddObserverAndReplay(observer); err != nil {
-			logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to join jail console session")
-			session.RemoveObserver(observer, GlobalSessionManager)
-			return
-		}
+	conn, err := WSUpgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to upgrade console websocket")
+		return
+	}
 
-		defer session.RemoveObserver(observer, GlobalSessionManager)
+	conn.SetReadLimit(wsReadLimit)
+	_ = conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	conn.SetPongHandler(func(string) error {
+		return conn.SetReadDeadline(time.Now().Add(wsPongWait))
+	})
 
-		done := make(chan struct{})
-		defer close(done)
+	session, err := open(GlobalSessionManager, sessionID)
+	if err != nil {
+		logger.L.Error().Err(err).Str("session", sessionID).Msg("failed to start console session")
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("Console unavailable"))
+		_ = conn.Close()
+		return
+	}
 
-		go func() {
-			ticker := time.NewTicker(wsPingPeriod)
-			defer ticker.Stop()
+	observer := &Observer{Conn: conn}
+	if err := session.AddObserverAndReplay(observer); err != nil {
+		logger.L.Warn().Err(err).Str("session", sessionID).Msg("failed to join console session")
+		session.RemoveObserver(observer, GlobalSessionManager)
+		return
+	}
 
-			for {
-				select {
-				case <-done:
-					return
-				case <-ticker.C:
-					if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteTimeout)); err != nil {
-						_ = observer.Close()
-						return
-					}
-				}
-			}
-		}()
+	defer session.RemoveObserver(observer, GlobalSessionManager)
+
+	done := make(chan struct{})
+	defer close(done)
+
+	go func() {
+		ticker := time.NewTicker(wsPingPeriod)
+		defer ticker.Stop()
 
 		for {
-			messageType, reader, err := conn.NextReader()
-			if err != nil {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if err := observer.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteTimeout)); err != nil {
+					_ = observer.Close()
+					return
+				}
+			}
+		}
+	}()
+
+	for {
+		messageType, reader, err := conn.NextReader()
+		if err != nil {
+			return
+		}
+
+		if messageType != websocket.BinaryMessage {
+			logger.L.Warn().
+				Int("message_type", messageType).
+				Str("session", sessionID).
+				Msg("Rejected non-binary websocket frame")
+			return
+		}
+
+		data, err := io.ReadAll(reader)
+		if err != nil {
+			logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to read websocket frame")
+			return
+		}
+
+		if len(data) == 0 {
+			continue
+		}
+
+		switch data[0] {
+		case controlInput:
+			if len(data) == 1 {
+				continue
+			}
+			if _, err := session.Pty.Write(data[1:]); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to write terminal input to PTY")
 				return
 			}
 
-			if messageType != websocket.BinaryMessage {
-				logger.L.Warn().
-					Int("message_type", messageType).
-					Str("session", sessionID).
-					Msg("Rejected non-binary websocket frame")
-				return
-			}
-
-			data, err := io.ReadAll(reader)
-			if err != nil {
-				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to read websocket frame")
-				return
-			}
-
-			if len(data) == 0 {
+		case controlResize:
+			if len(data) == 1 {
 				continue
 			}
 
-			switch data[0] {
-			case controlInput:
-				if len(data) == 1 {
-					continue
-				}
-				if _, err := session.Pty.Write(data[1:]); err != nil {
-					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to write terminal input to PTY")
-					return
-				}
-
-			case controlResize:
-				if len(data) == 1 {
-					continue
-				}
-
-				var ws WindowSize
-				if err := json.Unmarshal(data[1:], &ws); err != nil {
-					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Invalid resize payload")
-					continue
-				}
-
-				if ws.Rows == 0 || ws.Cols == 0 {
-					logger.L.Warn().Str("session", sessionID).Msg("Ignored zero-sized resize payload")
-					continue
-				}
-
-				if err := pty.Setsize(session.Pty, &pty.Winsize{
-					Rows: ws.Rows,
-					Cols: ws.Cols,
-					X:    ws.X,
-					Y:    ws.Y,
-				}); err != nil {
-					logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize PTY")
-				}
-
-			default:
-				logger.L.Warn().
-					Uint8("control", data[0]).
-					Str("session", sessionID).
-					Msg("Rejected unknown websocket control byte")
-				return
+			var ws WindowSize
+			if err := json.Unmarshal(data[1:], &ws); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Invalid resize payload")
+				continue
 			}
+
+			if ws.Rows == 0 || ws.Cols == 0 {
+				logger.L.Warn().Str("session", sessionID).Msg("Ignored zero-sized resize payload")
+				continue
+			}
+
+			if err := pty.Setsize(session.Pty, &pty.Winsize{
+				Rows: ws.Rows,
+				Cols: ws.Cols,
+				X:    ws.X,
+				Y:    ws.Y,
+			}); err != nil {
+				logger.L.Warn().Err(err).Str("session", sessionID).Msg("Failed to resize PTY")
+			}
+
+		default:
+			logger.L.Warn().
+				Uint8("control", data[0]).
+				Str("session", sessionID).
+				Msg("Rejected unknown websocket control byte")
+			return
 		}
 	}
 }

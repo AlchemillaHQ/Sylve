@@ -12,6 +12,7 @@ import "time"
 
 const (
 	GuestTypeVM           = "vm"
+	GuestTypeContainer    = "container"
 	GuestTypeJail         = "jail"
 	GuestTypeJailTemplate = "jail-template"
 	GuestTypeVMTemplate   = "vm-template"

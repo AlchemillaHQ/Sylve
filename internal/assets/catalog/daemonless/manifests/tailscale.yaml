@@ -1,0 +1,94 @@
+name: tailscale
+services:
+  tailscale:
+    image: ghcr.io/daemonless/tailscale:latest
+    container_name: tailscale
+    restart: unless-stopped
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_EXTRA_ARGS=${TS_EXTRA_ARGS}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+x-fjord:
+  version: "0.1"
+  info:
+    id: tailscale
+    name: Tailscale
+    description: Zero-config mesh VPN built on WireGuard — securely connect your devices without port forwarding or firewall changes.
+    category: Infrastructure
+    class: service
+    icon: icons/tailscale.svg
+    upstream_url: https://github.com/tailscale/tailscale
+    web_url: https://tailscale.com/
+  variables:
+    - name: CONFIG_DATA
+      label: State directory (tailscaled.state)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TS_AUTHKEY
+      label: Tailscale Auth Key for automatic login — create one at https://login.tailscale.com/admin/settings/keys
+      type: string
+      default: tskey-auth-xxxx
+      optional: true
+      level: primary
+    - name: TS_EXTRA_ARGS
+      label: Additional arguments for tailscale up
+      type: string
+      default: --advertise-exit-node
+      optional: true
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        tailscale:
+          name: tailscale
+          options:
+            - container: 'args:--pull'
+          oci:
+            user: root
+            environment:
+              - TS_AUTHKEY: !ENV '${TS_AUTHKEY}'
+              - TS_EXTRA_ARGS: !ENV '${TS_EXTRA_ARGS}'
+          volumes:
+            - TAILSCALE_CONFIG_PATH: /config
+      volumes:
+        TAILSCALE_CONFIG_PATH:
+          device: !ENV '${TAILSCALE_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/tailscale:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=tailscale
+      TS_AUTHKEY=tskey-auth-xxxx
+      TS_EXTRA_ARGS=--advertise-exit-node
+      TAILSCALE_CONFIG_PATH=/tailscale

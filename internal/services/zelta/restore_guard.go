@@ -15,13 +15,14 @@ import (
 	"strconv"
 	"strings"
 
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
 )
 
 // requireNoManagedGuestsWithinRestore prevents a generic dataset-mode restore
-// from replacing a registered jail, VM, or download payload tree or its ancestors.
+// from replacing a registered jail, VM, container, or download payload tree or its ancestors.
 // Guest-mode restores have their own quiescence and reconciliation paths; a
 // generic parent restore does not. Rejecting even stopped guests also closes the
 // start-during-receive race without relying on an advisory in-process lock.
@@ -78,6 +79,18 @@ func (s *Service) requireNoManagedGuestsWithinRestore(
 		}
 	}
 
+	if s.DB.Migrator().HasTable(&containerModels.Container{}) {
+		var containers []containerModels.Container
+		if err := s.DB.Find(&containers).Error; err != nil {
+			return fmt.Errorf("restore_container_inventory_failed: %w", err)
+		}
+		for _, container := range containers {
+			if restoreDestinationContainsAnyDataset(destination, container.DatasetRoots()) {
+				blocking = append(blocking, "container:"+strconv.FormatUint(uint64(container.OCID), 10))
+			}
+		}
+	}
+
 	if len(blocking) == 0 {
 		return nil
 	}
@@ -115,6 +128,9 @@ func jailRestoreDatasetRoots(jail jailModels.Jail) []string {
 func vmRestoreDatasetRoots(vm vmModels.VM) []string {
 	roots := make([]string, 0, len(vm.Storages)*2)
 	for _, storage := range vm.Storages {
+		if storage.Type == vmModels.VMStorageTypeDiskImage {
+			continue
+		}
 		if name := normalizeDatasetPath(storage.Dataset.Name); strings.Contains(name, "/") {
 			roots = append(roots, name)
 		}

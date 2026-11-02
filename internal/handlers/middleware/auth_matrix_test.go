@@ -121,6 +121,10 @@ func TestEnsureAuthenticatedTrustBoundary(t *testing.T) {
 			path: "/api/jail/1/console?auth=" + consoleAuthHex, want: http.StatusOK,
 		},
 		{
+			name: "container console hash", method: http.MethodGet,
+			path: "/api/container/1/console?auth=" + consoleAuthHex, want: http.StatusOK,
+		},
+		{
 			name: "malformed cluster header overrides local bearer", method: http.MethodGet, path: "/api/vm",
 			headers: map[string]string{
 				authSvc.ClusterTokenHeader: "not-bearer", "Authorization": "Bearer " + localToken,

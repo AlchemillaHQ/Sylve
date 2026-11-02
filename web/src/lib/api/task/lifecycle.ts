@@ -16,7 +16,7 @@ export async function getLifecycleTask(
 }
 
 export async function getActiveLifecycleTasks(
-	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
+	guestType?: LifecycleTask['guestType'],
 	guestId?: number,
 	hostname?: string,
 	signal?: AbortSignal
@@ -41,7 +41,7 @@ export async function getActiveLifecycleTasks(
 }
 
 export async function getActiveLifecycleTaskForGuest(
-	guestType: 'vm' | 'jail' | 'jail-template' | 'vm-template',
+	guestType: LifecycleTask['guestType'],
 	guestId: number,
 	hostname?: string
 ): Promise<LifecycleTask | null | APIResponse> {
@@ -67,7 +67,7 @@ export async function getActiveLifecycleTaskForGuest(
 
 export async function getRecentLifecycleTasks(
 	limit: number = 50,
-	guestType?: 'vm' | 'jail' | 'jail-template' | 'vm-template',
+	guestType?: LifecycleTask['guestType'],
 	guestId?: number,
 	hostname?: string,
 	signal?: AbortSignal

@@ -1,0 +1,119 @@
+name: caddy
+services:
+  caddy:
+    image: ghcr.io/daemonless/caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${WEB_PORT}:80"
+      - "${PORT_443}:443"
+      - "${PORT_443_UDP}:443/udp"
+x-fjord:
+  version: "0.1"
+  info:
+    id: caddy
+    name: Caddy
+    description: Fast, multi-platform web server and reverse proxy with automatic HTTPS, written in Go.
+    category: Network
+    class: service
+    icon: icons/caddy.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/caddyserver/caddy
+    web_url: https://caddyserver.com
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: HTTP
+      type: port
+      default: "80"
+    - name: PORT_443
+      label: HTTPS (TCP + UDP/HTTP-3)
+      type: port
+      default: "443"
+    - name: PORT_443_UDP
+      label: HTTPS (TCP + UDP/HTTP-3)
+      type: port
+      default: "443"
+    - name: CONFIG_DATA
+      label: Configuration directory (Caddyfile)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DATA_PATH
+      label: Persistent data (ACME certificates, OCSP staples)
+      type: path
+      default: ""
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: latest-rfc2136
+      label: Official upstream Caddy FreeBSD binary (auto-tracks latest release)
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        caddy:
+          name: caddy
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+            - expose: '443:443 proto:tcp'
+            - expose: '443:443 proto:udp'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - CADDY_CONFIG_PATH: /config
+            - CADDY_DATA_PATH: /data
+      volumes:
+        CADDY_CONFIG_PATH:
+          device: !ENV '${CADDY_CONFIG_PATH}'
+        CADDY_DATA_PATH:
+          device: !ENV '${CADDY_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/caddy:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=caddy
+      TZ=UTC
+      WEB_PORT=80
+      CADDY_CONFIG_PATH=/caddy
+      CADDY_DATA_PATH=/caddy/data

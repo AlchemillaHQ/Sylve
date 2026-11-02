@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
@@ -462,6 +463,9 @@ func TestCreateVMFailureReleasesStandaloneGuestIdentityAfterRollback(t *testing.
 		&networkModels.StandardSwitch{},
 		&networkModels.ManualSwitch{},
 	)
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
 	svc := newVMCreatePrecheckTestService(db, nil, nil)
 	identity := &clusterService.Service{DB: db, NodeID: "standalone-node"}
 	svc.SetGuestIdentityCoordinator(identity)

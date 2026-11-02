@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	defaultDHCPConfigPath = "/usr/local/etc/dnsmasq.conf"
-	defaultDHCPLeasePath  = "/var/db/dnsmasq.leases"
+	defaultDHCPConfigPath        = "/usr/local/etc/dnsmasq.conf"
+	defaultDHCPLeasePath         = "/var/db/dnsmasq.leases"
+	managedContainerBridgePrefix = "sylc"
 )
 
 var dhcpDomainRegex = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$`)
@@ -135,6 +136,16 @@ func (s *Service) SaveConfig(req *networkServiceInterfaces.ModifyDHCPConfigReque
 	manualSwitches, err := loadDHCPManualSwitches(tx, normalized.manualSwitches)
 	if err != nil {
 		return err
+	}
+	for _, sw := range standardSwitches {
+		if dhcpContainerBridge(sw.BridgeName) || dhcpContainerBridge(standardSwitchHostInterfaceName(sw)) {
+			return conflictingDHCPConfig("dhcp_container_bridge_reserved", nil)
+		}
+	}
+	for _, sw := range manualSwitches {
+		if dhcpContainerBridge(sw.Bridge) {
+			return conflictingDHCPConfig("dhcp_container_bridge_reserved", nil)
+		}
 	}
 	if err := validateDHCPRangeSwitchRetention(tx, normalized.standardSwitches, normalized.manualSwitches); err != nil {
 		return err
@@ -391,6 +402,12 @@ func (s *Service) WriteDHCPConfig() error {
 	return nil
 }
 
+var dhcpInterfaceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$`)
+
+func dhcpContainerBridge(name string) bool {
+	return strings.HasPrefix(name, managedContainerBridgePrefix)
+}
+
 func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 	var current networkModels.DHCPConfig
 	if err := db.
@@ -405,6 +422,9 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 
 	interfaces := make([]string, 0, len(current.StandardSwitches)+len(current.ManualSwitches))
 	for _, sw := range current.StandardSwitches {
+		if dhcpContainerBridge(sw.BridgeName) {
+			return nil, conflictingDHCPConfig("dhcp_container_bridge_reserved", nil)
+		}
 		if interfaceName := standardSwitchHostInterfaceName(sw); interfaceName != "" {
 			interfaces = append(interfaces, interfaceName)
 		}
@@ -413,11 +433,24 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 		interfaces = append(interfaces, sw.Bridge)
 	}
 	for _, iface := range interfaces {
+		if dhcpContainerBridge(iface) {
+			return nil, conflictingDHCPConfig("dhcp_container_bridge_reserved", nil)
+		}
+		if !dhcpInterfaceNameRegex.MatchString(iface) {
+			return nil, invalidDHCPConfig("invalid_dhcp_interface_name", nil)
+		}
+	}
+	slices.Sort(interfaces)
+	interfaces = slices.Compact(interfaces)
+	if len(interfaces) == 0 {
+		interfaces = []string{"lo0"}
+	}
+	for _, iface := range interfaces {
 		fmt.Fprintf(&config, "interface=%s\n", iface)
 	}
-	if len(interfaces) > 0 {
-		config.WriteString("bind-interfaces\n\n")
-	}
+	config.WriteString("bind-interfaces\n")
+	fmt.Fprintf(&config, "except-interface=%s*\n", managedContainerBridgePrefix)
+	config.WriteString("\n")
 
 	for _, dns := range current.DNSServers {
 		fmt.Fprintf(&config, "server=%s\n", dns)
@@ -444,6 +477,9 @@ func renderDHCPConfig(db *gorm.DB) ([]byte, error) {
 			rangeInterface = r.ManualSwitch.Bridge
 		} else {
 			continue
+		}
+		if dhcpContainerBridge(rangeInterface) {
+			return nil, conflictingDHCPConfig("dhcp_container_bridge_reserved", nil)
 		}
 
 		expiry := "infinite"

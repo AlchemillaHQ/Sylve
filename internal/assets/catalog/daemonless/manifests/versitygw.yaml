@@ -1,0 +1,132 @@
+name: versitygw
+services:
+  versitygw:
+    image: ghcr.io/daemonless/versitygw:latest
+    container_name: versitygw
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - ROOT_ACCESS_KEY_ID=${ROOT_ACCESS_KEY_ID}
+      - ROOT_SECRET_ACCESS_KEY=${ROOT_SECRET_ACCESS_KEY}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${PORT_7070}:7070"
+      - "${WEB_PORT}:7071"
+x-fjord:
+  version: "0.1"
+  info:
+    id: versitygw
+    name: Versitygw
+    description: Versitygw on FreeBSD.
+    category: Utilities
+    class: service
+    icon: icons/versitygw.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/versity/versitygw
+    web_url: https://versitygw.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: PORT_7070
+      label: Web API
+      type: port
+      default: "7070"
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "7071"
+    - name: CONFIG_DATA
+      label: Configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: ROOT_ACCESS_KEY_ID
+      label: Access key for the root filesystem
+      type: string
+      default: access
+    - name: ROOT_SECRET_ACCESS_KEY
+      label: Secret access key for the root filesystem
+      type: secret
+      default: ""
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        versitygw:
+          name: versitygw
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:7070 proto:tcp'
+            - expose: '7071:7071 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - ROOT_ACCESS_KEY_ID: !ENV '${ROOT_ACCESS_KEY_ID}'
+              - ROOT_SECRET_ACCESS_KEY: !ENV '${ROOT_SECRET_ACCESS_KEY}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - VERSITYGW_CONFIG_PATH: /config
+      volumes:
+        VERSITYGW_CONFIG_PATH:
+          device: !ENV '${VERSITYGW_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/versitygw:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=versitygw
+      PUID=1000
+      PGID=1000
+      ROOT_ACCESS_KEY_ID=access
+      ROOT_SECRET_ACCESS_KEY=secret
+      TZ=UTC
+      WEB_PORT=7070
+      VERSITYGW_CONFIG_PATH=/versitygw

@@ -182,6 +182,11 @@ func applyServiceRuntimeState(
 			return err
 		}
 		networkSvc.SetFirewallServiceEnabledForTelemetry(enabled)
+	case models.Containers:
+		if networkSvc == nil {
+			return errors.New("network_service_runtime_unavailable")
+		}
+		return networkSvc.ApplyFirewallIfEnabled()
 	case models.WireGuard:
 		if networkSvc == nil {
 			return errors.New("network_service_runtime_unavailable")

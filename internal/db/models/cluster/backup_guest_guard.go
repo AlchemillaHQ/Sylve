@@ -50,7 +50,7 @@ func RequireGuestDeletionDetachedTxn(db *gorm.DB, guestType string, guestID uint
 		return fmt.Errorf("guest_deletion_database_unavailable")
 	}
 	guestType = strings.ToLower(strings.TrimSpace(guestType))
-	if (guestType != ReplicationGuestTypeVM && guestType != ReplicationGuestTypeJail) || guestID == 0 {
+	if !ValidReplicationGuestType(guestType) || guestID == 0 {
 		return fmt.Errorf("guest_deletion_identity_invalid")
 	}
 

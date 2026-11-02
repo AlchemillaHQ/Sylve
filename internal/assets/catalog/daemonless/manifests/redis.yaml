@@ -1,0 +1,140 @@
+name: redis
+services:
+  redis:
+    image: ghcr.io/daemonless/redis:latest
+    container_name: redis
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:6379"
+x-fjord:
+  version: "0.1"
+  info:
+    id: redis
+    name: Redis
+    description: Redis key-value store on FreeBSD.
+    category: Databases
+    class: service
+    icon: icons/redis.svg
+    upstream_url: https://github.com/redis/redis
+    web_url: https://redis.io/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Redis port
+      type: port
+      default: "6379"
+    - name: CONFIG_DATA
+      label: Data and configuration directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: 8.8-pkg-latest
+      label: 8.8-pkg-latest
+      default: true
+      aliases:
+        - "8.8"
+        - latest
+        - pkg
+        - pkg-latest
+    - id: 6.2-pkg-latest
+      label: 6.2-pkg-latest
+      aliases:
+        - "6.2"
+    - id: 7.2-pkg-latest
+      label: 7.2-pkg-latest
+      aliases:
+        - "7.2"
+    - id: 7.4-pkg-latest
+      label: 7.4-pkg-latest
+      aliases:
+        - "7.4"
+    - id: 8.0-pkg-latest
+      label: 8.0-pkg-latest
+      aliases:
+        - "8.0"
+    - id: 8.2-pkg-latest
+      label: 8.2-pkg-latest
+      aliases:
+        - "8.2"
+    - id: 8.4-pkg-latest
+      label: 8.4-pkg-latest
+      aliases:
+        - "8.4"
+    - id: 8.6-pkg-latest
+      label: 8.6-pkg-latest
+      aliases:
+        - "8.6"
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        redis:
+          name: redis
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:6379 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - REDIS_CONFIG_PATH: /config
+      volumes:
+        REDIS_CONFIG_PATH:
+          device: !ENV '${REDIS_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/redis:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=redis
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=6379
+      REDIS_CONFIG_PATH=/redis

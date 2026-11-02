@@ -285,14 +285,15 @@ func TestNewRootCommand_Flags_Console(t *testing.T) {
 func TestNewRootCommand_Subcommands(t *testing.T) {
 	root := NewRootCommand(nil)
 	want := map[string]bool{
-		"notes":     false,
-		"jails":     false,
-		"vms":       false,
-		"tasks":     false,
-		"switches":  false,
-		"objects":   false,
-		"downloads": false,
-		"bootstrap": false,
+		"notes":      false,
+		"jails":      false,
+		"containers": false,
+		"vms":        false,
+		"tasks":      false,
+		"switches":   false,
+		"objects":    false,
+		"downloads":  false,
+		"bootstrap":  false,
 	}
 	for _, sub := range root.Commands {
 		if _, ok := want[sub.Name]; ok {
@@ -311,6 +312,7 @@ func TestNewRootCommandRequiresRootForActions(t *testing.T) {
 		{"sylve"},
 		{"sylve", "--console"},
 		{"sylve", "notes", "list"},
+		{"sylve", "containers", "list"},
 		{"sylve", "jails", "console"},
 		{"sylve", "jails", "exec", "--ctid", "127", "--", "uname", "-a"},
 	}

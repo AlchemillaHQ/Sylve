@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
@@ -297,6 +298,11 @@ func (s *Service) checkManualSwitchUsage(id uint) error {
 			query: s.DB.Model(&jailModels.Network{}).Where("switch_id = ? AND switch_type = ?", id, "manual"),
 			code:  "manual_switch_in_use_by_jail",
 			label: "jail",
+		},
+		{
+			query: s.DB.Model(&containerModels.Network{}).Where("switch_id = ? AND switch_type = ?", id, "manual"),
+			code:  "manual_switch_in_use_by_container_network",
+			label: "container network",
 		},
 		{
 			query: s.DB.Table("dhcp_manual_switches").Where("manual_switch_id = ?", id),

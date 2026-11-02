@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	directoryModels "github.com/alchemillahq/sylve/internal/db/models/directoryservices"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
@@ -273,6 +274,9 @@ func SetupDatabase(cfg *internal.SylveConfig, isTest bool) *gorm.DB {
 
 	if err != nil {
 		logger.L.Fatal().Msgf("Error migrating database: %v", err)
+	}
+	if err := containerModels.Migrate(db); err != nil {
+		logger.L.Fatal().Msgf("Error migrating container database: %v", err)
 	}
 	replicationguard.MarkPolicySchemaReady(db)
 	replicationguard.MarkGuestOperationSchemaReady(db)

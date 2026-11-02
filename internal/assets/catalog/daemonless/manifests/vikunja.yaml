@@ -1,0 +1,315 @@
+name: vikunja
+services:
+  vikunja:
+    image: ghcr.io/daemonless/vikunja:latest
+    container_name: vikunja
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Optional: the address Vikunja puts in the links it sends.
+      - VIKUNJA_SERVICE_PUBLICURL=${VIKUNJA_SERVICE_PUBLICURL}
+      # The database, from the Database choice; sqlite needs nothing else.
+      - VIKUNJA_DATABASE_TYPE=${VIKUNJA_DATABASE_TYPE}
+      - VIKUNJA_DATABASE_HOST=${VIKUNJA_DATABASE_HOST}
+      - VIKUNJA_DATABASE_USER=${VIKUNJA_DATABASE_USER}
+      - VIKUNJA_DATABASE_PASSWORD=${VIKUNJA_DATABASE_PASSWORD}
+      - VIKUNJA_DATABASE_DATABASE=${VIKUNJA_DATABASE_DATABASE}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3456"
+x-fjord:
+  version: "0.1"
+  info:
+    id: vikunja
+    name: Vikunja
+    description: Vikunja is an open-source, self-hostable to-do app. It helps you organize your tasks and projects with features like list, kanban, gantt, and table views - all while keeping your data under your control.
+    category: Productivity
+    class: service
+    icon: icons/vikunja.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://vikunja.io
+    web_url: https://vikunja.io
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3456"
+    - name: CONFIG_DATA
+      label: Database (vikunja.db), uploaded files and the login secret
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: VIKUNJA_SERVICE_PUBLICURL
+      label: Address you open Vikunja at, e.g. http://192.168.1.10:3456/ (used in links and emails it sends)
+      type: public_url
+      default: ""
+      optional: true
+      level: advanced
+    - name: VIKUNJA_DATABASE_TYPE
+      label: sqlite, postgres or mysql -- set by the Database choice
+      type: string
+      default: sqlite
+      optional: true
+    - name: VIKUNJA_DATABASE_HOST
+      label: Database host (the PostgreSQL and MariaDB choices fill this in)
+      type: string
+      default: ""
+      optional: true
+    - name: VIKUNJA_DATABASE_USER
+      label: Database user
+      type: string
+      default: ""
+      optional: true
+    - name: VIKUNJA_DATABASE_PASSWORD
+      label: Database password
+      type: secret
+      default: ""
+      optional: true
+    - name: VIKUNJA_DATABASE_DATABASE
+      label: Database name
+      type: string
+      default: ""
+      optional: true
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      aliases:
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        vikunja:
+          name: vikunja
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3456 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - VIKUNJA_SERVICE_PUBLICURL: !ENV '${VIKUNJA_SERVICE_PUBLICURL}'
+              - VIKUNJA_DATABASE_TYPE: !ENV '${VIKUNJA_DATABASE_TYPE}'
+              - VIKUNJA_DATABASE_HOST: !ENV '${VIKUNJA_DATABASE_HOST}'
+              - VIKUNJA_DATABASE_USER: !ENV '${VIKUNJA_DATABASE_USER}'
+              - VIKUNJA_DATABASE_PASSWORD: !ENV '${VIKUNJA_DATABASE_PASSWORD}'
+              - VIKUNJA_DATABASE_DATABASE: !ENV '${VIKUNJA_DATABASE_DATABASE}'
+          volumes:
+            - VIKUNJA_CONFIG_PATH: /config
+      volumes:
+        VIKUNJA_CONFIG_PATH:
+          device: !ENV '${VIKUNJA_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=pkg
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/vikunja:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=vikunja
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      VIKUNJA_SERVICE_PUBLICURL=
+      VIKUNJA_DATABASE_TYPE=sqlite
+      VIKUNJA_DATABASE_HOST=
+      VIKUNJA_DATABASE_USER=
+      VIKUNJA_DATABASE_PASSWORD=<VIKUNJA_DATABASE_PASSWORD>
+      VIKUNJA_DATABASE_DATABASE=
+      WEB_PORT=3456
+      VIKUNJA_CONFIG_PATH=/vikunja
+  networking:
+    '*': private
+    vikunja: default
+  choices:
+    - id: database
+      kind: database
+      label: Database
+      doc: Where the app keeps its data. The default needs nothing else running.
+      default: sqlite
+      options:
+        - id: sqlite
+          label: SQLite
+          doc: A file in the app's config folder. Right for one person, nothing extra to run.
+          env:
+            VIKUNJA_DATABASE_TYPE: sqlite
+        - id: postgres
+          label: PostgreSQL
+          doc: One more container, its data in its own folder. For a household, or an app that wants it.
+          env:
+            VIKUNJA_DATABASE_HOST: postgres
+            VIKUNJA_DATABASE_TYPE: postgres
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/postgres'
+            VIKUNJA_DATABASE_DATABASE: vikunja
+            VIKUNJA_DATABASE_USER: vikunja
+          secrets:
+            - VIKUNJA_DATABASE_PASSWORD
+          services: |
+            postgres:
+              image: ghcr.io/daemonless/postgres:17
+              restart: always
+              annotations:
+                org.freebsd.jail.allow.sysvipc: "true"
+              environment:
+                - POSTGRES_USER=${VIKUNJA_DATABASE_USER}
+                - POSTGRES_PASSWORD=${VIKUNJA_DATABASE_PASSWORD}
+                - POSTGRES_DB=${VIKUNJA_DATABASE_DATABASE}
+              volumes:
+                - "${DATABASE_LOCATION}:/var/lib/postgresql/data"
+          depends_on:
+            vikunja:
+              - postgres
+          hostnames:
+            postgres: VIKUNJA_DATABASE_HOST
+          appjail:
+            director: |
+              services:
+                postgres:
+                  name: vikunja_postgres
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/postgres:17
+                  - template: !ENV '${PWD}/postgres-template.conf'
+                  oci:
+                    environment:
+                    - POSTGRES_USER: !ENV '${VIKUNJA_DATABASE_USER}'
+                    - POSTGRES_PASSWORD: !ENV '${VIKUNJA_DATABASE_PASSWORD}'
+                    - POSTGRES_DB: !ENV '${VIKUNJA_DATABASE_DATABASE}'
+                  volumes:
+                  - database: /var/lib/postgresql/data
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            files:
+              postgres-template.conf: |
+                # The jail PostgreSQL runs in: SysV shared memory, which a jail does not
+                # get by default. ip4/ip6 are set here because the director's ip4_inherit
+                # option is a no-op in AppJail 5.5.0.
+
+                exec.start: "/bin/sh /etc/rc"
+                exec.stop: "/bin/sh /etc/rc.shutdown jail"
+                sysvmsg: new
+                sysvsem: new
+                sysvshm: new
+                mount.devfs
+                persist
+                ip4: inherit
+                ip6: inherit
+            hostnames:
+              postgres: VIKUNJA_DATABASE_HOST
+        - id: mariadb
+          label: MariaDB
+          doc: One more container, its data in its own folder. If you already know MariaDB, or the app prefers it.
+          env:
+            VIKUNJA_DATABASE_HOST: mariadb
+            VIKUNJA_DATABASE_TYPE: mysql
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/mariadb'
+            VIKUNJA_DATABASE_DATABASE: vikunja
+            VIKUNJA_DATABASE_USER: vikunja
+          secrets:
+            - VIKUNJA_DATABASE_PASSWORD
+          services: |
+            mariadb:
+              image: ghcr.io/daemonless/mariadb:11.4
+              restart: always
+              environment:
+                - MYSQL_USER=${VIKUNJA_DATABASE_USER}
+                - MYSQL_PASSWORD=${VIKUNJA_DATABASE_PASSWORD}
+                - MYSQL_DATABASE=${VIKUNJA_DATABASE_DATABASE}
+                - MYSQL_ROOT_PASSWORD=${VIKUNJA_DATABASE_PASSWORD}
+              volumes:
+                - "${DATABASE_LOCATION}:/config"
+          depends_on:
+            vikunja:
+              - mariadb
+          hostnames:
+            mariadb: VIKUNJA_DATABASE_HOST
+          appjail:
+            director: |
+              services:
+                mariadb:
+                  name: vikunja_mariadb
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/mariadb:11.4
+                  - template: !ENV '${PWD}/template.conf'
+                  oci:
+                    environment:
+                    - MYSQL_USER: !ENV '${VIKUNJA_DATABASE_USER}'
+                    - MYSQL_PASSWORD: !ENV '${VIKUNJA_DATABASE_PASSWORD}'
+                    - MYSQL_DATABASE: !ENV '${VIKUNJA_DATABASE_DATABASE}'
+                    - MYSQL_ROOT_PASSWORD: !ENV '${VIKUNJA_DATABASE_PASSWORD}'
+                  volumes:
+                  - database: /config
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            hostnames:
+              mariadb: VIKUNJA_DATABASE_HOST
+        - id: external
+          label: Your own
+          doc: A database you already run, here or on another machine. Nothing extra runs; you give the address and the account.
+          ask:
+            - name: VIKUNJA_DATABASE_TYPE
+              label: Kind
+              type: string
+              values:
+                mysql: MariaDB
+                postgres: PostgreSQL
+            - name: VIKUNJA_DATABASE_HOST
+              label: Host
+              type: string
+            - name: VIKUNJA_DATABASE_USER
+              label: User
+              type: string
+            - name: VIKUNJA_DATABASE_PASSWORD
+              label: Password
+              type: secret
+            - name: VIKUNJA_DATABASE_DATABASE
+              label: Database
+              type: string

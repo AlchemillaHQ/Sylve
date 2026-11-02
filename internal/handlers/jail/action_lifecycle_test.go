@@ -104,7 +104,7 @@ func setupJailActionHandlerTest(
 		t.Fatalf("failed to setup test queue: %v", err)
 	}
 
-	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil, nil)
+	lifecycleSvc := lifecycle.NewService(dbConn, nil, nil, nil, nil)
 	preflightService := &stubJailActionPreflightService{
 		jail:    &jailModels.Jail{CTID: 42},
 		allowed: allowed,

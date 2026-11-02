@@ -1,0 +1,149 @@
+name: paperless-ngx
+services:
+  paperless-ngx:
+    image: ghcr.io/daemonless/paperless-ngx:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      - PAPERLESS_REDIS=redis://${REDIS_HOSTNAME:-localhost}:6379
+      - PAPERLESS_ADMIN_USER=${PAPERLESS_ADMIN_USER}
+      - PAPERLESS_ADMIN_PASSWORD=${PAPERLESS_ADMIN_PASSWORD}
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+    ports:
+      - 8000:8000
+      - 5555:5555
+  redis:
+    image: ghcr.io/daemonless/redis:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${REDIS_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: paperless-ngx
+    name: Paperless-ngx
+    description: A community-supported open-source document management system that transforms your physical documents into a searchable online archive so you can keep, well, less paper.
+    category: Utilities
+    class: stack
+    icon: icons/paperless-ngx.svg
+    web_port: "8000"
+    upstream_url: https://github.com/paperless-ngx/paperless-ngx
+    web_url: https://paperless-ngx.org/
+  variables:
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+      optional: true
+    - name: REDIS_HOSTNAME
+      label: Where paperless finds redis (fjord sets this; localhost on host networking)
+      type: string
+      default: localhost
+      optional: true
+      level: advanced
+    - name: PAPERLESS_ADMIN_USER
+      label: Set name of the admin user on first start
+      type: string
+      default: admin
+      level: primary
+    - name: PAPERLESS_ADMIN_PASSWORD
+      label: Set password of the admin user on first start
+      type: secret
+      default: ""
+      level: primary
+    - name: CONFIG_LOCATION
+      label: Path to store configuration, database and (by default) documents
+      type: path
+      default: /containers/paperless-ngx/config
+    - name: REDIS_DATA_LOCATION
+      label: Path to store the redis data
+      type: path
+      default: /containers/paperless-ngx/redis
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        paperless-ngx:
+          name: paperless_ngx
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8000 proto:tcp'
+            - expose: '5555:5555 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - PAPERLESS_REDIS: !ENV '${PAPERLESS_REDIS}'
+              - PAPERLESS_ADMIN_USER: !ENV '${PAPERLESS_ADMIN_USER}'
+              - PAPERLESS_ADMIN_PASSWORD: !ENV '${PAPERLESS_ADMIN_PASSWORD}'
+              - CONFIG_LOCATION: !ENV '${CONFIG_LOCATION}'
+              - REDIS_DATA_LOCATION: !ENV '${REDIS_DATA_LOCATION}'
+          volumes:
+            - PAPERLESS_NGX_CONFIG_PATH: /config
+        redis:
+          name: redis
+          options:
+            - from: ghcr.io/daemonless/redis:latest
+            - template: !ENV '${PWD}/template.conf'
+          volumes:
+            - redis_data: /config
+      volumes:
+        PAPERLESS_NGX_CONFIG_PATH:
+          device: !ENV '${PAPERLESS_NGX_CONFIG_PATH}'
+        redis_data:
+          device: !ENV '${REDIS_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/paperless-ngx:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=paperless-ngx
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      PAPERLESS_REDIS=redis://${REDIS_HOSTNAME:-localhost}:6379
+      PAPERLESS_ADMIN_USER=admin
+      PAPERLESS_ADMIN_PASSWORD=<PAPERLESS_ADMIN_PASSWORD>
+      CONFIG_LOCATION=/containers/paperless-ngx/config
+      REDIS_DATA_LOCATION=/containers/paperless-ngx/redis
+      WEB_PORT=8000
+      PAPERLESS_NGX_CONFIG_PATH=/paperless-ngx
+  networking:
+    '*': private
+    paperless-ngx: default
+  hostnames:
+    redis: REDIS_HOSTNAME
+  login:
+    user: ${PAPERLESS_ADMIN_USER}
+    password: ${PAPERLESS_ADMIN_PASSWORD}

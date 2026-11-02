@@ -1,0 +1,117 @@
+name: stump
+services:
+  stump:
+    image: ghcr.io/daemonless/stump:latest
+    container_name: stump
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Uncomment when behind a reverse proxy so Stump builds correct
+      # absolute URLs (thumbnails, images) from X-Forwarded-* headers.
+      # Leave off if the port is exposed directly (avoids header spoofing).
+      # - STUMP_TRUST_PROXY_HEADERS=true
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${WEB_PORT}:10801"
+x-fjord:
+  version: "0.1"
+  info:
+    id: stump
+    name: Stump
+    description: A free and open source comics, manga and digital book server with OPDS support.
+    category: Media Servers
+    class: service
+    icon: icons/stump.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/stumpapp/stump
+    web_url: https://stumpapp.dev
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "10801"
+    - name: CONFIG_DATA
+      label: Configuration and database directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DATA_PATH
+      label: Media library (comics, manga, books)
+      type: path
+      default: ""
+      optional: true
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container (e.g. America/New_York)
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        stump:
+          name: stump
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:10801 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - STUMP_CONFIG_PATH: /config
+            - STUMP_DATA_PATH: /data
+      volumes:
+        STUMP_CONFIG_PATH:
+          device: !ENV '${STUMP_CONFIG_PATH}'
+        STUMP_DATA_PATH:
+          device: !ENV '${STUMP_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/stump:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=stump
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=10801
+      STUMP_CONFIG_PATH=/stump
+      STUMP_DATA_PATH=/stump/data

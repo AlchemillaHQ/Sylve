@@ -4,11 +4,11 @@ import { isAPIResponse } from '$lib/utils/http';
 import { toast } from 'svelte-sonner';
 
 export interface GuestActionConfirmation {
-	guestType: 'vm' | 'jail';
+	guestType: 'vm' | 'jail' | 'container';
 	guestId: number;
 	name: string;
 	hostname: string;
-	action: 'start' | 'stop' | 'force-stop' | 'shutdown' | 'reboot' | 'restart';
+	action: 'start' | 'stop' | 'force-stop' | 'shutdown' | 'reboot' | 'restart' | 'kill';
 }
 
 export const guestActionConfirmation = $state({

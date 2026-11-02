@@ -1,0 +1,113 @@
+name: filebrowser-quantum
+services:
+  filebrowser-quantum:
+    image: ghcr.io/daemonless/filebrowser-quantum:latest
+    container_name: filebrowser-quantum
+    # always (not unless-stopped) so FreeBSD's podman rc.d auto-starts it at boot
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${SRV_PATH}:/srv"
+    ports:
+      - "${WEB_PORT}:8080"
+x-fjord:
+  version: "0.1"
+  info:
+    id: filebrowser-quantum
+    name: FileBrowser Quantum
+    description: Self-hosted web file manager with fast indexed search, granular share controls, and modern authentication (OIDC, LDAP, 2FA).
+    category: Utilities
+    class: service
+    icon: icons/filebrowser-quantum.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/gtsteffaniak/filebrowser
+    web_url: https://filebrowserquantum.com
+  variables:
+    - name: WEB_PORT
+      label: Port
+      type: port
+      default: "8080"
+    - name: CONFIG_DATA
+      label: Configuration (config.yaml) and the database
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: SRV_PATH
+      label: Default mount point for the files you want to browse. Mount one or more sources here and declare them under `server.sources` in config.yaml.
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        filebrowser-quantum:
+          name: filebrowser_quantum
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - FILEBROWSER_QUANTUM_CONFIG_PATH: /config
+            - FILEBROWSER_QUANTUM_SRV_PATH: /srv
+      volumes:
+        FILEBROWSER_QUANTUM_CONFIG_PATH:
+          device: !ENV '${FILEBROWSER_QUANTUM_CONFIG_PATH}'
+        FILEBROWSER_QUANTUM_SRV_PATH:
+          device: !ENV '${FILEBROWSER_QUANTUM_SRV_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/filebrowser-quantum:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=filebrowser-quantum
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=8080
+      FILEBROWSER_QUANTUM_CONFIG_PATH=/filebrowser-quantum
+      FILEBROWSER_QUANTUM_SRV_PATH=/filebrowser-quantum/srv

@@ -1,0 +1,110 @@
+name: bulwark-webmail
+services:
+  bulwark-webmail:
+    image: ghcr.io/daemonless/bulwark-webmail:latest
+    container_name: bulwark-webmail
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - JMAP_SERVER_URL=${JMAP_SERVER_URL}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:3000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: bulwark-webmail
+    name: Bulwark Webmail
+    description: Modern self-hosted webmail client for Stalwart Mail Server, powered by JMAP.
+    category: Productivity
+    class: service
+    icon: icons/bulwark-webmail.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/bulwarkmail/webmail
+    web_url: https://bulwarkmail.org/
+    only_for_archs:
+      - amd64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "3000"
+    - name: CONFIG_DATA
+      label: Admin config, settings sync, and telemetry state
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      type: string
+      default: "1000"
+    - name: PGID
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: JMAP_SERVER_URL
+      label: URL of your Stalwart JMAP server (e.g. https://mail.example.com)
+      type: string
+      default: https://mail.example.com
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        bulwark-webmail:
+          name: bulwark_webmail
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:3000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - JMAP_SERVER_URL: !ENV '${JMAP_SERVER_URL}'
+          volumes:
+            - BULWARK_WEBMAIL_CONFIG_PATH: /config
+      volumes:
+        BULWARK_WEBMAIL_CONFIG_PATH:
+          device: !ENV '${BULWARK_WEBMAIL_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/bulwark-webmail:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=bulwark-webmail
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      JMAP_SERVER_URL=https://mail.example.com
+      WEB_PORT=3000
+      BULWARK_WEBMAIL_CONFIG_PATH=/bulwark-webmail

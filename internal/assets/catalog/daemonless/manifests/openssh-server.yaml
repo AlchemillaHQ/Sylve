@@ -1,0 +1,143 @@
+name: openssh-server
+services:
+  openssh-server:
+    image: ghcr.io/daemonless/openssh-server:latest
+    container_name: openssh-server
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - USER_NAME=${USER_NAME}
+      - PUBLIC_KEY=${PUBLIC_KEY}
+      - PASSWORD_ACCESS=${PASSWORD_ACCESS}
+      - SUDO_ACCESS=${SUDO_ACCESS}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:2222"
+x-fjord:
+  version: "0.1"
+  info:
+    id: openssh-server
+    name: OpenSSH Server
+    description: 'SSH and SFTP into a container: one user, key or password login, optional sudo.'
+    category: Infrastructure
+    class: service
+    icon: https://api.iconify.design/mdi:console-network.svg?color=%23cbd5e1
+    upstream_url: https://github.com/openssh/openssh-portable
+    web_url: https://www.openssh.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: SSH
+      type: port
+      default: "2222"
+    - name: CONFIG_DATA
+      label: Home directory, authorized_keys, host keys and sshd_config
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID of the login user
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID of the login user
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: USER_NAME
+      label: 'Login user name (default: bsd)'
+      type: string
+      default: bsd
+    - name: PUBLIC_KEY
+      label: A public key added to authorized_keys
+      type: secret
+      default: ""
+    - name: PASSWORD_ACCESS
+      label: 'true allows password login (default: false, keys only)'
+      type: secret
+      default: ""
+    - name: SUDO_ACCESS
+      label: true gives the user sudo (with password if one is set)
+      type: string
+      default: "false"
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+    - id: pkg-hpn
+      label: HPN-SSH, quarterly
+    - id: pkg-latest-hpn
+      label: HPN-SSH, latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        openssh-server:
+          name: openssh_server
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:2222 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - USER_NAME: !ENV '${USER_NAME}'
+              - PUBLIC_KEY: !ENV '${PUBLIC_KEY}'
+              - PASSWORD_ACCESS: !ENV '${PASSWORD_ACCESS}'
+              - SUDO_ACCESS: !ENV '${SUDO_ACCESS}'
+          volumes:
+            - OPENSSH_SERVER_CONFIG_PATH: /config
+      volumes:
+        OPENSSH_SERVER_CONFIG_PATH:
+          device: !ENV '${OPENSSH_SERVER_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/openssh-server:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=openssh-server
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      USER_NAME=bsd
+      PUBLIC_KEY=ssh-ed25519 AAAA... you@example
+      PASSWORD_ACCESS=false
+      SUDO_ACCESS=false
+      WEB_PORT=2222
+      OPENSSH_SERVER_CONFIG_PATH=/openssh-server

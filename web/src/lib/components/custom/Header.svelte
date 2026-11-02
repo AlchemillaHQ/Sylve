@@ -9,6 +9,7 @@
 	import { mode, toggleMode } from 'mode-watcher';
 	import CreateJail from './Jail/Create/CreateJail.svelte';
 	import CreateVM from './VM/Create/CreateVM.svelte';
+	import CreateContainer from './Container/Create.svelte';
 	import { storage, languageArr } from '$lib';
 	import { getEnabledServicesForHostname, resolveNodeHostname } from '$lib/utils/enabled-services';
 	import { loadLocale } from 'wuchale/load-utils';
@@ -49,6 +50,8 @@
 	);
 	let virtualizationEnabled = $derived(activeServices.includes('virtualization'));
 	let jailEnabled = $derived(activeServices.includes('jails'));
+	let containersEnabled = $derived(activeServices.includes('containers'));
+	let createContainerOpen = $state(false);
 
 	let basicInfo = resource(
 		() => 'basic-info',
@@ -151,7 +154,21 @@
 							</Button>
 						{/if}
 
-						{#if !virtualizationEnabled && !jailEnabled}
+						{#if containersEnabled}
+							<Button
+								variant="outline"
+								class="h-10 w-full justify-start gap-2"
+								onclick={() => {
+									createContainerOpen = true;
+									mobileMenuOpen = false;
+								}}
+							>
+								<span class="icon-[lucide--container] h-4 w-4"></span>
+								<span>Create Container</span>
+							</Button>
+						{/if}
+
+						{#if !virtualizationEnabled && !jailEnabled && !containersEnabled}
 							<p class="text-muted-foreground rounded-md border border-dashed px-3 py-2 text-sm">
 								No create actions are available.
 							</p>
@@ -224,6 +241,15 @@
 					{/if}
 				</Button>
 			{/if}
+
+			{#if containersEnabled}
+				<Button class="h-6" size="sm" onclick={() => (createContainerOpen = true)}>
+					<div class="flex items-center gap-2">
+						<span class="icon-[lucide--container] h-4 w-4"></span>
+						<span>Create Container</span>
+					</div>
+				</Button>
+			{/if}
 		</div>
 
 		{#if properties.createVM.open || properties.createVM.minimize}
@@ -238,6 +264,10 @@
 				bind:taskHostname={properties.createJail.taskHostname}
 				{devFSDisabled}
 			/>
+		{/if}
+
+		{#if containersEnabled}
+			<CreateContainer bind:open={createContainerOpen} />
 		{/if}
 
 		<div class="flex items-center">

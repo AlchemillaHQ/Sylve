@@ -11,7 +11,6 @@ import (
 	clusterModels "github.com/alchemillahq/sylve/internal/db/models/cluster"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
-	"github.com/alchemillahq/sylve/internal/testutil"
 )
 
 func inventoryReportJSON(t *testing.T, report GuestIdentityInventoryReport) string {
@@ -62,7 +61,7 @@ func TestBuildGuestIdentityInventoryDigestIgnoresInformationalMetadata(t *testin
 }
 
 func TestScanLocalGuestIdentityInventoryReportsVMJailSharedID(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	db := newClusterServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&vmModels.VM{RID: 100, Name: "vm-100"}).Error; err != nil {
 		t.Fatalf("create VM: %v", err)
 	}
@@ -101,7 +100,7 @@ func TestBuildGuestIdentityInventoryReportReportsCrossNodeConflict(t *testing.T)
 }
 
 func TestScanLocalGuestIdentityInventoryClean(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
+	db := newClusterServiceTestDB(t, &vmModels.VM{}, &jailModels.Jail{})
 	if err := db.Create(&vmModels.VM{RID: 11, Name: "vm-11"}).Error; err != nil {
 		t.Fatalf("create VM: %v", err)
 	}
@@ -131,7 +130,7 @@ func TestScanLocalGuestIdentityInventoryClean(t *testing.T) {
 
 func TestBuildGuestIdentityInventoryReportReportsInvalidFields(t *testing.T) {
 	report := BuildGuestIdentityInventoryReport([]GuestIdentityInventoryEntry{
-		{NodeID: " ", GuestType: "container", GuestID: 0, RecordID: 9, Name: "bad"},
+		{NodeID: " ", GuestType: "pod", GuestID: 0, RecordID: 9, Name: "bad"},
 	})
 	wantReasons := []string{
 		GuestIdentityInventoryConflictInvalidGuestID,
@@ -169,7 +168,7 @@ func TestBuildGuestIdentityInventoryReportRejectsOutOfRangeIDAndOversizedNode(t 
 }
 
 func TestRequireGuestIDAvailableStandaloneUsesSharedLocalNamespace(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
+	db := newClusterServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&vmModels.VM{},
@@ -200,7 +199,7 @@ func TestRequireGuestIDAvailableStandaloneUsesSharedLocalNamespace(t *testing.T)
 }
 
 func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
+	db := newClusterServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&vmModels.VM{},
@@ -218,7 +217,7 @@ func TestRequireGuestIDAvailableClusteredWithoutRaftFailsClosed(t *testing.T) {
 }
 
 func TestRequireGuestRestorePlacementIgnoresStaleHealthRows(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
+	db := newClusterServiceTestDB(
 		t,
 		&clusterModels.Cluster{},
 		&clusterModels.ClusterNode{},
@@ -265,7 +264,7 @@ func TestRequireGuestRestorePlacementRequiresOneExpectedRegistration(t *testing.
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			db := testutil.NewSQLiteTestDB(
+			db := newClusterServiceTestDB(
 				t,
 				&clusterModels.Cluster{},
 				&vmModels.VM{},

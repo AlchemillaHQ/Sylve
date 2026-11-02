@@ -1,0 +1,183 @@
+name: pkg-cache
+services:
+  pkg-cache:
+    image: ghcr.io/daemonless/pkg-cache:latest
+    container_name: pkg-cache
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - PKG_UPSTREAM=${PKG_UPSTREAM}
+      - PKG_CACHE_SIZE=${PKG_CACHE_SIZE}
+      - SKIP_CHOWN=${SKIP_CHOWN}
+      - PKG_LOG_MAX_SIZE=${PKG_LOG_MAX_SIZE}
+      - PKG_CACHE_APT=${PKG_CACHE_APT}
+      - PKG_CACHE_DNF=${PKG_CACHE_DNF}
+      - PKG_CACHE_APK=${PKG_CACHE_APK}
+      - PKG_CACHE_PACMAN=${PKG_CACHE_PACMAN}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${CACHE_DATA}:/cache"
+    ports:
+      - "${WEB_PORT}:80"
+x-fjord:
+  version: "0.1"
+  info:
+    id: pkg-cache
+    name: Daemonless pkg cache
+    description: Managed FreeBSD pkg caching appliance — proxies pkg.FreeBSD.org to speed up package fetches across image builds and insulate them from upstream rate limits/outages.
+    category: Infrastructure
+    class: service
+    icon: icons/pkg-cache.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/daemonless/pkg-cache
+    web_url: https://daemonless.io/images/pkg-cache/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: HTTP — pkg clients point their FreeBSD.conf url here; browsers get the stats page
+      type: port
+      default: "80"
+    - name: CONFIG_DATA
+      label: Logs (log/), stats totals (stats/) and the startup ownership marker (.chown_done). Mount as a persistent volume so the chown is skipped on later starts.
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: CACHE_DATA
+      label: Package cache storage (proxy_cache). Size to match max_size in nginx.conf (default 50G).
+      type: zfs_dataset
+      default: cache
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: PKG_UPSTREAM
+      label: FreeBSD pkg mirror to proxy, e.g. pkg1.us.freebsd.org or pkg0.eu.freebsd.org. Defaults to the primary pkg.FreeBSD.org.
+      type: string
+      default: pkg.FreeBSD.org
+    - name: PKG_CACHE_SIZE
+      label: Max on-disk cache size (nginx max_size), e.g. 10g, 100g, 500g. Keep the /cache volume at least this big.
+      type: string
+      default: 50g
+    - name: SKIP_CHOWN
+      label: Skip the startup recursive chown of /config and /cache once ownership is recorded in /config/.chown_done (default true). Set false to force a chown on every start. The marker lives in /config, so /config must be a persistent volume for the skip to take effect across restarts.
+      type: string
+      default: "true"
+    - name: PKG_LOG_MAX_SIZE
+      label: Size cap for each on-disk log in /config/log (access.log, error.log), e.g. 10m, 50m, 1g. A log past this is rotated away so /config can't fill; the stats totals are kept separately and survive rotation.
+      type: string
+      default: 50m
+    - name: PKG_CACHE_APT
+      label: 'Cache apt repositories (Debian and Ubuntu) under /debian/, /debian-security/, /ubuntu/, /ubuntu-security/ and /ubuntu-ports/: true or false.'
+      type: string
+      default: "false"
+      optional: true
+    - name: PKG_CACHE_DNF
+      label: 'Cache dnf repositories (Fedora and EPEL) under /fedora/ and /epel/: true or false.'
+      type: string
+      default: "false"
+      optional: true
+    - name: PKG_CACHE_APK
+      label: 'Cache Alpine''s apk repositories under /alpine/: true or false.'
+      type: string
+      default: "false"
+      optional: true
+    - name: PKG_CACHE_PACMAN
+      label: 'Cache Arch Linux''s pacman repositories under /archlinux/: true or false.'
+      type: string
+      default: "false"
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        pkg-cache:
+          name: pkg_cache
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+              - PKG_UPSTREAM: !ENV '${PKG_UPSTREAM}'
+              - PKG_CACHE_SIZE: !ENV '${PKG_CACHE_SIZE}'
+              - SKIP_CHOWN: !ENV '${SKIP_CHOWN}'
+              - PKG_LOG_MAX_SIZE: !ENV '${PKG_LOG_MAX_SIZE}'
+              - PKG_CACHE_APT: !ENV '${PKG_CACHE_APT}'
+              - PKG_CACHE_DNF: !ENV '${PKG_CACHE_DNF}'
+              - PKG_CACHE_APK: !ENV '${PKG_CACHE_APK}'
+              - PKG_CACHE_PACMAN: !ENV '${PKG_CACHE_PACMAN}'
+              - PKG_DEBIAN_UPSTREAM: !ENV '${PKG_DEBIAN_UPSTREAM}'
+              - PKG_DEBIAN_SECURITY_UPSTREAM: !ENV '${PKG_DEBIAN_SECURITY_UPSTREAM}'
+              - PKG_UBUNTU_UPSTREAM: !ENV '${PKG_UBUNTU_UPSTREAM}'
+              - PKG_UBUNTU_SECURITY_UPSTREAM: !ENV '${PKG_UBUNTU_SECURITY_UPSTREAM}'
+              - PKG_UBUNTU_PORTS_UPSTREAM: !ENV '${PKG_UBUNTU_PORTS_UPSTREAM}'
+              - PKG_FEDORA_UPSTREAM: !ENV '${PKG_FEDORA_UPSTREAM}'
+              - PKG_EPEL_UPSTREAM: !ENV '${PKG_EPEL_UPSTREAM}'
+              - PKG_ALPINE_UPSTREAM: !ENV '${PKG_ALPINE_UPSTREAM}'
+              - PKG_ARCH_UPSTREAM: !ENV '${PKG_ARCH_UPSTREAM}'
+          volumes:
+            - PKG_CACHE_CONFIG_PATH: /config
+            - PKG_CACHE_CACHE_PATH: /cache
+      volumes:
+        PKG_CACHE_CONFIG_PATH:
+          device: !ENV '${PKG_CACHE_CONFIG_PATH}'
+        PKG_CACHE_CACHE_PATH:
+          device: !ENV '${PKG_CACHE_CACHE_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/pkg-cache:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=pkg-cache
+      TZ=UTC
+      PKG_UPSTREAM=pkg.FreeBSD.org
+      PKG_CACHE_SIZE=50g
+      SKIP_CHOWN=true
+      PKG_LOG_MAX_SIZE=50m
+      PKG_CACHE_APT=${PKG_CACHE_APT:-false}
+      PKG_CACHE_DNF=${PKG_CACHE_DNF:-false}
+      PKG_CACHE_APK=${PKG_CACHE_APK:-false}
+      PKG_CACHE_PACMAN=${PKG_CACHE_PACMAN:-false}
+      PKG_DEBIAN_UPSTREAM=https://deb.debian.org/debian
+      PKG_DEBIAN_SECURITY_UPSTREAM=https://deb.debian.org/debian-security
+      PKG_UBUNTU_UPSTREAM=https://archive.ubuntu.com/ubuntu
+      PKG_UBUNTU_SECURITY_UPSTREAM=https://security.ubuntu.com/ubuntu
+      PKG_UBUNTU_PORTS_UPSTREAM=https://ports.ubuntu.com/ubuntu-ports
+      PKG_FEDORA_UPSTREAM=https://dl.fedoraproject.org/pub/fedora/linux
+      PKG_EPEL_UPSTREAM=https://dl.fedoraproject.org/pub/epel
+      PKG_ALPINE_UPSTREAM=https://dl-cdn.alpinelinux.org/alpine
+      PKG_ARCH_UPSTREAM=https://geo.mirror.pkgbuild.com
+      WEB_PORT=80
+      PKG_CACHE_CONFIG_PATH=/pkg-cache
+      PKG_CACHE_CACHE_PATH=/pkg-cache/cache

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,9 +23,11 @@ import (
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	taskModels "github.com/alchemillahq/sylve/internal/db/models/task"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	containerServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/container"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/logger"
+	"github.com/alchemillahq/sylve/internal/services/container"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
 	"gorm.io/gorm"
@@ -80,6 +83,7 @@ type Service struct {
 	TelemetryDB *gorm.DB
 	Libvirt     *libvirt.Service
 	Jail        *jail.Service
+	Container   *container.Service
 
 	createMu sync.Mutex
 
@@ -119,12 +123,13 @@ func (s *Service) SetMutationAdmission(gate mutationAdmission) {
 	s.mutationGate = gate
 }
 
-func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service) *Service {
+func NewService(dbConn *gorm.DB, telemetryDB *gorm.DB, libvirtService *libvirt.Service, jailService *jail.Service, containerService *container.Service) *Service {
 	s := &Service{
 		DB:          dbConn,
 		TelemetryDB: telemetryDB,
 		Libvirt:     libvirtService,
 		Jail:        jailService,
+		Container:   containerService,
 	}
 
 	if libvirtService != nil {
@@ -190,6 +195,11 @@ func validateAction(guestType, action string) error {
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action)
 		}
+	case taskModels.GuestTypeContainer:
+		if slices.Contains(container.Actions, action) {
+			return nil
+		}
+		return fmt.Errorf("%w: %s", ErrInvalidAction, action)
 	case taskModels.GuestTypeJailTemplate:
 		switch action {
 		case "convert", "create":
@@ -216,6 +226,8 @@ func lifecycleAuditJobType(guestType, action string) string {
 		return "vm_" + action
 	case taskModels.GuestTypeJail:
 		return "jail_" + action
+	case taskModels.GuestTypeContainer:
+		return "container_" + action
 	case taskModels.GuestTypeVMTemplate:
 		return "vm_template_" + action
 	case taskModels.GuestTypeJailTemplate:
@@ -330,15 +342,6 @@ func (s *Service) executeQueuedTask(ctx context.Context, taskID uint) error {
 		logger.L.Warn().Msg("guest_lifecycle_exec_invalid_task_id")
 		return nil
 	}
-	if s.mutationGate != nil {
-		admittedCtx, release, err := s.mutationGate.EnterMutation(ctx)
-		if err != nil {
-			return err
-		}
-		defer release()
-		ctx = admittedCtx
-	}
-
 	if err := s.ExecuteTask(ctx, taskID); err != nil {
 		logger.L.Warn().Err(err).Uint("task_id", taskID).Msg("guest_lifecycle_exec_failed")
 		var notStarted *taskNotStartedError
@@ -484,6 +487,29 @@ func (s *Service) RequestActionWithPayload(
 	return s.createTask(ctx, guestType, guestID, action, source, requestedBy, payload, true)
 }
 
+func (s *Service) RequestContainerStack(
+	ctx context.Context,
+	req containerServiceInterfaces.StackRequest,
+	source string,
+	requestedBy string,
+) (containerServiceInterfaces.StackRequest, *taskModels.GuestLifecycleTask, string, error) {
+	if s.Container == nil {
+		return req, nil, "", fmt.Errorf("container_service_not_configured")
+	}
+	prepared, err := s.Container.PrepareStack(ctx, req)
+	if err != nil {
+		return prepared, nil, "", err
+	}
+	payload, _ := json.Marshal(prepared)
+	task, outcome, err := s.RequestActionWithPayload(ctx, taskModels.GuestTypeContainer, prepared.Containers[0].OCID,
+		"create-stack", source, requestedBy, string(payload))
+	if err != nil {
+		_ = s.Container.RemoveEmptyStack(context.WithoutCancel(ctx), prepared.Stack)
+		return prepared, nil, "", err
+	}
+	return prepared, task, outcome, nil
+}
+
 func (s *Service) cancelUnpublishedCreation(ctx context.Context, task *taskModels.GuestLifecycleTask, cause error) error {
 	if task.GuestType == taskModels.GuestTypeJail && jail.IsPackageAction(task.Action) && s.packageCancelFn != nil {
 		return s.packageCancelFn(context.WithoutCancel(ctx), task.ID, cause)
@@ -609,6 +635,17 @@ func (s *Service) createTask(
 			err = fmt.Errorf("package_executor_not_configured")
 		} else {
 			err = s.packagePrepareFn(ctx, task.ID, guestID, action, payload)
+		}
+		if err != nil {
+			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", err)
+			return nil, "", err
+		}
+	}
+	if guestType == taskModels.GuestTypeContainer {
+		if s.Container == nil {
+			err = fmt.Errorf("container_service_not_configured")
+		} else {
+			err = s.Container.ValidateTask(ctx, guestID, action, payload)
 		}
 		if err != nil {
 			s.markLifecycleTaskPublishFailed(task.ID, "validation_failed", err)
@@ -787,17 +824,16 @@ func (s *Service) ExecuteTask(ctx context.Context, taskID uint) error {
 }
 
 func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action string, startedAt time.Time) (bool, error) {
-	claimableStatuses := []string{taskModels.LifecycleTaskStatusQueued}
-	if action == "migrate" {
-		claimableStatuses = append(claimableStatuses, taskModels.LifecycleTaskStatusRunning)
-	}
-	query := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).Where("id = ?", taskID)
+	condition := "status = 'queued'"
 	if action == "create" && s.DB.Migrator().HasTable(&jailModels.JailCreation{}) {
-		query = query.Where("status = ? OR (status = ? AND EXISTS (SELECT 1 FROM jail_creations WHERE task_id = ? AND phase = ?))", "queued", "running", taskID, "ready")
-	} else {
-		query = query.Where("status IN ?", claimableStatuses)
+		condition += ` OR (status = 'running' AND guest_type = 'jail' AND EXISTS
+			(SELECT 1 FROM jail_creations WHERE task_id = guest_lifecycle_tasks.id AND phase = 'ready'))`
 	}
-	result := query.Updates(map[string]any{
+	if action == "migrate" {
+		condition += ` OR (status = 'running' AND guest_type IN ('vm','jail'))`
+	}
+	result := s.DB.WithContext(ctx).Model(&taskModels.GuestLifecycleTask{}).
+		Where("id = ?", taskID).Where(condition).Updates(map[string]any{
 		"status":     taskModels.LifecycleTaskStatusRunning,
 		"started_at": startedAt,
 		"message":    "running",
@@ -810,6 +846,18 @@ func (s *Service) claimTaskForExecution(ctx context.Context, taskID uint, action
 
 func (s *Service) executeGuestAction(ctx context.Context, task taskModels.GuestLifecycleTask) error {
 	switch task.GuestType {
+	case taskModels.GuestTypeContainer:
+		if s.Container == nil {
+			return fmt.Errorf("container_service_not_configured")
+		}
+		return s.Container.ExecuteTask(ctx, task.GuestID, task.Action, task.Payload, func(message string) {
+			err := s.DB.Model(&taskModels.GuestLifecycleTask{}).
+				Where("id = ? AND status = ?", task.ID, taskModels.LifecycleTaskStatusRunning).
+				Update("message", message).Error
+			if err != nil {
+				logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("guest_lifecycle_task_progress_update_failed")
+			}
+		})
 	case taskModels.GuestTypeVM:
 		if task.Action == "migrate" {
 			if s.migrateFn == nil {
@@ -1131,6 +1179,35 @@ func (s *Service) runStartupAutostart(ctx context.Context) error {
 		}
 	}
 
+	if s.Container == nil {
+		return nil
+	}
+	containers, err := s.Container.StartAtBootOCIDs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, ocid := range containers {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		task, _, err := s.createTask(ctx, taskModels.GuestTypeContainer, ocid, "start", taskModels.LifecycleTaskSourceStartup, "startup", "", false)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if !errors.Is(err, ErrTaskInProgress) {
+				logger.L.Warn().Err(err).Uint("oc_id", ocid).Msg("failed_to_create_startup_container_task")
+			}
+			continue
+		}
+		if err := s.ExecuteTask(ctx, task.ID); err != nil {
+			s.failUnstartedStartupTask(task.ID, err)
+			logger.L.Warn().Err(err).Uint("task_id", task.ID).Msg("startup_container_task_failed")
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+		}
+	}
 	return nil
 }
 

@@ -1,0 +1,259 @@
+name: seerr
+services:
+  seerr:
+    image: ghcr.io/daemonless/seerr:latest
+    container_name: seerr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - DB_TYPE=${DB_TYPE}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_NAME=${DB_NAME}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:5055"
+x-fjord:
+  version: "0.1"
+  info:
+    id: seerr
+    name: Seerr
+    description: Unified media request management (Plex, Jellyfin, Emby) on FreeBSD.
+    category: Media Management
+    class: service
+    icon: icons/seerr.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/seerr-team/seerr
+    web_url: https://seerr.io/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "5055"
+    - name: CONFIG_DATA
+      label: Configuration and database directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: DB_TYPE
+      label: sqlite or postgres; set by the Database choice
+      type: string
+      default: sqlite
+      optional: true
+    - name: DB_HOST
+      label: PostgreSQL host (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: DB_PORT
+      label: PostgreSQL port (Database choice)
+      type: string
+      default: "5432"
+      optional: true
+    - name: DB_USER
+      label: PostgreSQL user (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: DB_PASS
+      label: PostgreSQL password (Database choice)
+      type: string
+      default: ""
+      optional: true
+    - name: DB_NAME
+      label: PostgreSQL database name (Database choice)
+      type: string
+      default: ""
+      optional: true
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        seerr:
+          name: seerr
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:5055 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - DB_TYPE: !ENV '${DB_TYPE}'
+              - DB_HOST: !ENV '${DB_HOST}'
+              - DB_PORT: !ENV '${DB_PORT}'
+              - DB_USER: !ENV '${DB_USER}'
+              - DB_PASS: !ENV '${DB_PASS}'
+              - DB_NAME: !ENV '${DB_NAME}'
+          volumes:
+            - SEERR_CONFIG_PATH: /config
+      volumes:
+        SEERR_CONFIG_PATH:
+          device: !ENV '${SEERR_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/seerr:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=seerr
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      DB_TYPE=sqlite
+      DB_HOST=
+      DB_PORT=5432
+      DB_USER=
+      DB_PASS=<DB_PASS>
+      DB_NAME=
+      WEB_PORT=5055
+      SEERR_CONFIG_PATH=/seerr
+  networking:
+    '*': private
+    seerr: default
+  choices:
+    - id: database
+      kind: database
+      label: Database
+      doc: Where the app keeps its data. The default needs nothing else running.
+      default: sqlite
+      options:
+        - id: sqlite
+          label: SQLite
+          doc: A file in the app's config folder. Right for one person, nothing extra to run.
+          env:
+            DB_TYPE: sqlite
+        - id: postgres
+          label: PostgreSQL
+          doc: One more container, its data in its own folder. For a household, or an app that wants it.
+          env:
+            DB_HOST: postgres
+            DB_PORT: "5432"
+            DB_TYPE: postgres
+          defaults:
+            DATABASE_LOCATION: '{{base}}/{{stack}}/postgres'
+            DB_NAME: seerr
+            DB_USER: seerr
+          secrets:
+            - DB_PASS
+          services: |
+            postgres:
+              image: ghcr.io/daemonless/postgres:17
+              restart: always
+              annotations:
+                org.freebsd.jail.allow.sysvipc: "true"
+              environment:
+                - POSTGRES_USER=${DB_USER}
+                - POSTGRES_PASSWORD=${DB_PASS}
+                - POSTGRES_DB=${DB_NAME}
+              volumes:
+                - "${DATABASE_LOCATION}:/var/lib/postgresql/data"
+          depends_on:
+            seerr:
+              - postgres
+          hostnames:
+            postgres: DB_HOST
+          appjail:
+            director: |
+              services:
+                postgres:
+                  name: seerr_postgres
+                  priority: 10
+                  options:
+                  - from: ghcr.io/daemonless/postgres:17
+                  - template: !ENV '${PWD}/postgres-template.conf'
+                  oci:
+                    environment:
+                    - POSTGRES_USER: !ENV '${DB_USER}'
+                    - POSTGRES_PASSWORD: !ENV '${DB_PASS}'
+                    - POSTGRES_DB: !ENV '${DB_NAME}'
+                  volumes:
+                  - database: /var/lib/postgresql/data
+              volumes:
+                database:
+                  device: !ENV '${DATABASE_LOCATION}'
+            files:
+              postgres-template.conf: |
+                # The jail PostgreSQL runs in: SysV shared memory, which a jail does not
+                # get by default. ip4/ip6 are set here because the director's ip4_inherit
+                # option is a no-op in AppJail 5.5.0.
+
+                exec.start: "/bin/sh /etc/rc"
+                exec.stop: "/bin/sh /etc/rc.shutdown jail"
+                sysvmsg: new
+                sysvsem: new
+                sysvshm: new
+                mount.devfs
+                persist
+                ip4: inherit
+                ip6: inherit
+            hostnames:
+              postgres: DB_HOST
+        - id: external
+          label: Your own
+          doc: A database you already run, here or on another machine. Nothing extra runs; you give the address and the account.
+          ask:
+            - name: DB_TYPE
+              label: Kind
+              type: string
+              values:
+                postgres: PostgreSQL
+            - name: DB_HOST
+              label: Host
+              type: string
+            - name: DB_PORT
+              label: Port
+              type: string
+            - name: DB_USER
+              label: User
+              type: string
+            - name: DB_PASS
+              label: Password
+              type: secret
+            - name: DB_NAME
+              label: Database
+              type: string

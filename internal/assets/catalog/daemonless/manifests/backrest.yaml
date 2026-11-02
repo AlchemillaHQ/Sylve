@@ -1,0 +1,119 @@
+name: backrest
+services:
+  backrest:
+    image: ghcr.io/daemonless/backrest:latest
+    container_name: backrest
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${WEB_PORT}:9898"
+x-fjord:
+  version: "0.1"
+  info:
+    id: backrest
+    name: Backrest
+    description: Backrest is a web-accessible backup solution built on top of restic. Backrest provides a WebUI which wraps the restic CLI and makes it easy to create repos, browse snapshots, and restore files. Additionally, Backrest can run in the background and take an opinionated approach to scheduling snapshots and orchestrating repo health operations.
+    category: Utilities
+    class: service
+    icon: icons/backrest.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/garethgeorge/backrest
+    web_url: https://garethgeorge.github.io/backrest
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "9898"
+    - name: CONFIG_DATA
+      label: Configuration directory (config.json, cache, and state)
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DATA_PATH
+      label: Files to back up, or a local repository; mounted as-is, never re-owned
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        backrest:
+          name: backrest
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9898 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - BACKREST_CONFIG_PATH: /config
+            - BACKREST_DATA_PATH: /data
+      volumes:
+        BACKREST_CONFIG_PATH:
+          device: !ENV '${BACKREST_CONFIG_PATH}'
+        BACKREST_DATA_PATH:
+          device: !ENV '${BACKREST_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/backrest:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=backrest
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=9898
+      BACKREST_CONFIG_PATH=/backrest
+      BACKREST_DATA_PATH=/backrest/data

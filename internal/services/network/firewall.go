@@ -11,6 +11,7 @@ package network
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,7 +20,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/logger"
@@ -782,26 +785,22 @@ func validateFamilyAgainstRawAddress(value string, family string, allowCIDR bool
 }
 
 func validateRawPortSelector(raw string, field string) error {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
+	selector := strings.TrimSpace(raw)
+	if selector == "" {
 		return nil
 	}
-
-	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
-		trimmed = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "{"), "}"))
+	if strings.HasPrefix(selector, "{") && strings.HasSuffix(selector, "}") {
+		selector = strings.TrimSpace(selector[1 : len(selector)-1])
 	}
-
-	tokens := strings.Split(trimmed, ",")
+	tokens := strings.Split(selector, ",")
+	if len(tokens) > 4096 {
+		return fmt.Errorf("invalid_%s_port_selector: too_many_port_values", field)
+	}
 	for _, token := range tokens {
-		part := strings.TrimSpace(token)
-		if part == "" {
-			return fmt.Errorf("invalid_%s_port_selector: empty_token", field)
-		}
-		if !parsePortValue(part) {
-			return fmt.Errorf("invalid_%s_port_selector: %s", field, part)
+		if !parsePortValue(token) {
+			return fmt.Errorf("invalid_%s_port_selector: invalid_port_value", field)
 		}
 	}
-
 	return nil
 }
 
@@ -2146,6 +2145,11 @@ func (s *Service) renderCurrentConfig(tmpDir, preRules, preNatDecl, postNatDecl,
 	}
 	trafficRendered = natPolicyRoutingRendered + trafficRendered
 
+	podmanNAT, err := s.renderPodmanNAT()
+	if err != nil {
+		return nil, err
+	}
+	natRendered += podmanNAT
 	objectTablesRendered := renderFirewallObjectTables(objectTables, "")
 
 	natPath := filepath.Join(tmpDir, "nat-rules.conf")
@@ -2379,6 +2383,12 @@ func (s *Service) ApplyFirewallConfig() (applyErr error) {
 	}
 	trafficRendered = natPolicyRoutingRendered + trafficRendered
 
+	podmanNAT, err := s.renderPodmanNAT()
+	if err != nil {
+		return err
+	}
+	natRendered += podmanNAT
+
 	tmpDir, err := os.MkdirTemp("", "sylve-pf-*")
 	if err != nil {
 		return err
@@ -2469,7 +2479,16 @@ func (s *Service) ApplyFirewallConfig() (applyErr error) {
 	if _, err := firewallRunCommand("/sbin/pfctl", "-f", pfMainConfPath); err != nil {
 		return err
 	}
-	if !previous.enabled {
+	containers, err := s.containersEnabled()
+	if err != nil {
+		return err
+	}
+	if changed := setPFFilterLocal(containers); !previous.enabled || changed {
+		if previous.enabled {
+			if _, err := firewallRunCommand("/sbin/pfctl", "-d"); err != nil {
+				return err
+			}
+		}
 		if _, err := firewallRunCommand("/sbin/pfctl", "-e"); err != nil {
 			return err
 		}
@@ -2583,6 +2602,75 @@ func formatPFValidationError(err error, candidates map[string]string) error {
 	return newPFValidationError(fmt.Sprintf("pf_validation_failed: %s | hint: %s", detailText, strings.Join(hints, " | ")))
 }
 
+func (s *Service) containersEnabled() (bool, error) {
+	var settings models.BasicSettings
+	if err := s.DB.Limit(1).Find(&settings).Error; err != nil {
+		return false, err
+	}
+	return slices.Contains(settings.Services, models.Containers), nil
+}
+
+func (s *Service) renderPodmanNAT() (string, error) {
+	if enabled, err := s.containersEnabled(); err != nil || !enabled {
+		return "", err
+	}
+	var interfaces []string
+	if config.ParsedConfig != nil {
+		interfaces = uniqueStrings(config.ParsedConfig.WANInterfaces)
+	}
+	if len(interfaces) == 0 {
+		output, err := firewallRunCommand("/sbin/route", "-n", "get", "default")
+		if err != nil {
+			logger.L.Warn().Err(err).Msg("container_nat_egress_unavailable")
+		}
+		for _, line := range strings.Split(output, "\n") {
+			fields := strings.Fields(line)
+			if len(fields) == 2 && fields[0] == "interface:" {
+				interfaces = append(interfaces, fields[1])
+			}
+		}
+	}
+	var rules strings.Builder
+	for _, name := range interfaces {
+		if !firewallInterfaceNamePattern.MatchString(name) || len(name) > 15 {
+			return "", fmt.Errorf("container_nat_egress_invalid: %s", name)
+		}
+		fmt.Fprintf(&rules, "nat on %s inet from <cni-nat> to any -> (%s)\n", name, name)
+	}
+
+	var networks []containerModels.Network
+	if err := s.DB.Where("switch_id IS NULL").Order("id").Find(&networks).Error; err != nil {
+		return "", err
+	}
+	for _, network := range networks {
+		_, subnet, err := net.ParseCIDR(network.Subnet)
+		if err != nil || net.ParseIP(network.Gateway) == nil || !firewallInterfaceNamePattern.MatchString(network.Bridge) {
+			logger.L.Warn().Str("network", network.Name).Msg("container_network_hairpin_skipped")
+			continue
+		}
+		fmt.Fprintf(&rules, "nat on %s inet from %s to %s -> %s\n", network.Bridge, subnet, subnet, network.Gateway)
+	}
+
+	rules.WriteString("pass out quick on lo0 all no state\n")
+	return rules.String(), nil
+}
+
+func setPFFilterLocal(on bool) bool {
+	want := "0"
+	if on {
+		want = "1"
+	}
+	current, err := firewallRunCommand("/sbin/sysctl", "-n", "net.pf.filter_local")
+	if err != nil || strings.TrimSpace(current) == want {
+		return false
+	}
+	if _, err := firewallRunCommand("/sbin/sysctl", "net.pf.filter_local="+want); err != nil {
+		logger.L.Warn().Err(err).Msg("pf_filter_local_not_set")
+		return false
+	}
+	return true
+}
+
 func buildPFMainConfig(preRules string, preNatDecl string, postNatDecl string, preTrafficAnchor string, postTrafficAnchor string, postRules string, objectTablesContent string, natPath string, trafficPath string) string {
 	var b strings.Builder
 	b.WriteString(pfManagedHeader)
@@ -2594,6 +2682,7 @@ func buildPFMainConfig(preRules string, preNatDecl string, postNatDecl string, p
 		b.WriteString("\n\n")
 	}
 
+	b.WriteString("table <cni-nat> persist\n\n")
 	if trimmedTables := strings.TrimSpace(objectTablesContent); trimmedTables != "" {
 		b.WriteString(trimmedTables)
 		b.WriteString("\n\n")
@@ -2608,6 +2697,8 @@ func buildPFMainConfig(preRules string, preNatDecl string, postNatDecl string, p
 	b.WriteString("nat-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("rdr-anchor \"sylve/nat-rules\" all\n")
 	b.WriteString("binat-anchor \"sylve/nat-rules\" all\n")
+	b.WriteString("nat-anchor \"cni-rdr/*\"\n")
+	b.WriteString("rdr-anchor \"cni-rdr/*\"\n")
 
 	if strings.TrimSpace(postNatDecl) != "" {
 		b.WriteString("\n# --- sylve: post nat declarations ---\n")
@@ -2696,9 +2787,6 @@ func (s *Service) buildFirewallObjectTables(trafficRules []networkModels.Firewal
 			return
 		}
 		references = append(references, obj)
-		if _, exists := objects[obj.ID]; exists {
-			return
-		}
 		objects[obj.ID] = obj
 	}
 
@@ -2793,6 +2881,19 @@ func buildFirewallObjectTables(trafficRules []networkModels.FirewallTrafficRule,
 	return tables
 }
 
+func orderedFirewallObjectTables(tables map[uint]firewallObjectTable) []firewallObjectTable {
+	ids := make([]uint, 0, len(tables))
+	for id := range tables {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	ordered := make([]firewallObjectTable, 0, len(tables))
+	for _, id := range ids {
+		ordered = append(ordered, tables[id])
+	}
+	return ordered
+}
+
 func renderFirewallObjectTables(tables map[uint]firewallObjectTable, entriesDir string) string {
 	var b strings.Builder
 
@@ -2802,14 +2903,7 @@ func renderFirewallObjectTables(tables map[uint]firewallObjectTable, entriesDir 
 
 	b.WriteString("# managed by Sylve: object tables\n")
 
-	ids := make([]int, 0, len(tables))
-	for id := range tables {
-		ids = append(ids, int(id))
-	}
-	sort.Ints(ids)
-
-	for _, id := range ids {
-		table := tables[uint(id)]
+	for _, table := range orderedFirewallObjectTables(tables) {
 		objectLabel := fmt.Sprintf("object id=%d", table.ObjectID)
 		if table.ObjectName != "" {
 			objectLabel += fmt.Sprintf(" name=%q", strings.ReplaceAll(table.ObjectName, "\n", " "))
@@ -2840,7 +2934,7 @@ func writeFirewallObjectTableEntries(tables map[uint]firewallObjectTable, entrie
 
 	currentNames := make(map[string]bool, len(tables)*2)
 
-	for _, table := range tables {
+	for _, table := range orderedFirewallObjectTables(tables) {
 		if table.InetName != "" && len(table.InetValues) > 0 {
 			currentNames[table.InetName] = true
 			content := strings.Join(table.InetValues, "\n") + "\n"
@@ -3490,31 +3584,14 @@ func (s *Service) renderNATPolicyRoutingRules(rules []networkModels.FirewallNATR
 }
 
 func parsePortValue(value string) bool {
-	v := strings.TrimSpace(value)
-	if v == "" {
+	startText, endText, ranged := strings.Cut(strings.TrimSpace(value), ":")
+	start, err := strconv.Atoi(startText)
+	if err != nil || !utils.IsValidPort(start) {
 		return false
 	}
-
-	if strings.Contains(v, ":") {
-		parts := strings.Split(v, ":")
-		if len(parts) != 2 {
-			return false
-		}
-		start, err := strconv.Atoi(parts[0])
-		if err != nil || !utils.IsValidPort(start) {
-			return false
-		}
-		end, err := strconv.Atoi(parts[1])
-		if err != nil || !utils.IsValidPort(end) {
-			return false
-		}
-		return start <= end
+	if !ranged {
+		return true
 	}
-
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return false
-	}
-
-	return utils.IsValidPort(n)
+	end, err := strconv.Atoi(endText)
+	return err == nil && utils.IsValidPort(end) && end >= start
 }

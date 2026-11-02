@@ -280,7 +280,7 @@ func TestUpdateBackupJobHandlerReportsStrictRunnerPlacementFailures(t *testing.T
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			database := testutil.NewSQLiteTestDB(
+			database := newClusterHandlerTestDB(
 				t,
 				&clusterModels.BackupTarget{}, &clusterModels.BackupTargetNodeReadiness{},
 				&clusterModels.BackupTargetSSHHostTrust{},

@@ -19,6 +19,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/network/reconcile"
 	"github.com/alchemillahq/sylve/internal/services/auth"
 	"github.com/alchemillahq/sylve/internal/services/cluster"
+	"github.com/alchemillahq/sylve/internal/services/container"
 	"github.com/alchemillahq/sylve/internal/services/info"
 	"github.com/alchemillahq/sylve/internal/services/jail"
 	"github.com/alchemillahq/sylve/internal/services/libvirt"
@@ -38,6 +39,7 @@ type Context struct {
 	Jail           *jail.Service
 	VirtualMachine *libvirt.Service
 	Lifecycle      *lifecycle.Service
+	Container      *container.Service
 	Network        *network.Service
 	Utilities      utilitiesServiceInterfaces.UtilitiesServiceInterface
 	Status         *StatusProvider

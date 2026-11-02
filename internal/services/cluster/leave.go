@@ -136,6 +136,13 @@ func (s *Service) LocalLeavePreflight(ctx context.Context, allowGuests bool) (Gu
 		return report, err
 	}
 	dependencies := make([]PeerRemovalDependency, 0)
+	inFlight, err := durableGuestIdentityInFlightIDs(s.DB.WithContext(ctx))
+	if err != nil {
+		return report, fmt.Errorf("scan_active_guest_operations: %w", err)
+	}
+	for _, id := range inFlight {
+		appendPeerRemovalDependency(&dependencies, PeerRemovalDependencyGuestOperation, id, fmt.Sprintf("guest:%d", id), "admission", "active")
+	}
 	if !allowGuests {
 		for _, entry := range report.Entries {
 			appendPeerRemovalDependency(

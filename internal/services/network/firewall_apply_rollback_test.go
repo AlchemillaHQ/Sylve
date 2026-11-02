@@ -10,12 +10,16 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal"
+	"github.com/alchemillahq/sylve/internal/config"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 )
@@ -32,6 +36,7 @@ type fakeFirewallApplyRuntime struct {
 	enableErr     error
 	rollbackErr   error
 	enablePartial bool
+	filterLocal   string
 }
 
 var testFirewallTableFilePattern = regexp.MustCompile(`(?m)^table <([^>]+)> persist file "([^"]+)"`)
@@ -42,6 +47,15 @@ func (runtime *fakeFirewallApplyRuntime) run(command string, args ...string) (st
 	runtime.commands = append(runtime.commands, command+" "+strings.Join(args, " "))
 	if command == "/sbin/kldstat" && reflect.DeepEqual(args, []string{"-m", "pf"}) {
 		return "pf loaded", nil
+	}
+	if command == "/sbin/sysctl" && runtime.filterLocal != "" {
+		if reflect.DeepEqual(args, []string{"-n", "net.pf.filter_local"}) {
+			return runtime.filterLocal + "\n", nil
+		}
+		if value, ok := strings.CutPrefix(args[0], "net.pf.filter_local="); ok && len(args) == 1 {
+			runtime.filterLocal = value
+			return "", nil
+		}
 	}
 	if command != "/sbin/pfctl" || len(args) == 0 {
 		return "", fmt.Errorf("unexpected command: %s %v", command, args)
@@ -228,6 +242,138 @@ func TestFirewallApplySamplesBeforeReloadAndRefreshesRuleNumbersAfterward(t *tes
 	}
 	if rt.trafficRuleNumbers[0] != rule.ID || len(rt.trafficRuleNumbers) != 1 {
 		t.Fatalf("rule number mapping was not refreshed after reload: %v", rt.trafficRuleNumbers)
+	}
+}
+
+func TestFirewallPodmanHooksPreserveRuntimeOwnedRulesAndTable(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprint(fail), func(t *testing.T) {
+			service, runtime, _ := setupFirewallApplyTest(t, true)
+			previous := config.ParsedConfig
+			config.ParsedConfig = &internal.SylveConfig{WANInterfaces: []string{"em0", "em1"}}
+			t.Cleanup(func() { config.ParsedConfig = previous })
+			if err := service.DB.Model(&models.BasicSettings{}).Where("id = 1").Update("services", `["containers","firewall"]`).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := service.DB.Create(&networkModels.FirewallNATRule{Name: "operator", Enabled: true, NATType: "snat", Family: "inet", Protocol: "any",
+				SourceRaw: "10.89.0.0/24", EgressInterfaces: []string{"em0"}, TranslateMode: "address", TranslateToRaw: "198.51.100.5"}).Error; err != nil {
+				t.Fatal(err)
+			}
+			runtime.tables["cni-nat"] = "10.89.0.2\n10.88.0.2\n"
+			if fail {
+				runtime.loadErr = errors.New("apply failed")
+			}
+			err := service.ApplyFirewallConfig()
+			if (err != nil) != fail {
+				t.Fatal(err)
+			}
+			if len(runtime.loads) == 0 {
+				t.Fatal("no PF candidate")
+			}
+			main := runtime.loads[0]
+			for _, hook := range []string{`table <cni-nat> persist`, `nat-anchor "cni-rdr/*"`, `rdr-anchor "cni-rdr/*"`} {
+				if strings.Count(main, hook) != 1 || strings.Index(main, hook) > strings.Index(main, `anchor "sylve" {`) {
+					t.Fatal("CNI hook missing, duplicated or incorrectly ordered", hook)
+				}
+			}
+			if !fail {
+				nat, err := os.ReadFile(pfNatRulesPath)
+				if err != nil || !strings.Contains(string(nat), "nat on em0 inet from <cni-nat> to any -> (em0)") || !strings.Contains(string(nat), "nat on em1 inet from <cni-nat> to any -> (em1)") {
+					t.Fatal("missing stock CNI outbound NAT integration", string(nat), err)
+				}
+				if index := strings.Index(string(nat), "198.51.100.5"); index < 0 || index > strings.Index(string(nat), "from <cni-nat>") {
+					t.Fatal("container NAT took precedence over the operator rule", string(nat))
+				}
+			}
+			if runtime.tables["cni-nat"] != "10.89.0.2\n10.88.0.2\n" {
+				t.Fatal("Sylve replaced runtime-owned NAT addresses")
+			}
+			for _, command := range runtime.commands {
+				if strings.Contains(command, "-a cni-rdr") || strings.Contains(command, "-t cni-nat") || strings.Contains(command, "-F ") {
+					t.Fatal("Sylve modified runtime-owned rules, addresses or states", command)
+				}
+			}
+		})
+	}
+}
+
+func TestFirewallLetsTheHostReachPublishedPorts(t *testing.T) {
+	service, runtime, _ := setupFirewallApplyTest(t, true)
+	previous := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{WANInterfaces: []string{"em0"}}
+	t.Cleanup(func() { config.ParsedConfig = previous })
+	switchID := uint(1)
+	for _, network := range []containerModels.Network{
+		{Name: "default", Bridge: "sylc1", Subnet: "10.89.0.0/24", Gateway: "10.89.0.1"},
+		{Name: "lan", SwitchID: &switchID, Bridge: "lan0", Subnet: "192.168.1.0/24", Gateway: "192.168.1.1"},
+	} {
+		if err := service.DB.Create(&network).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime.filterLocal = "0"
+	for _, step := range []struct {
+		services, filterLocal string
+		reenabled             bool
+	}{
+		{`["containers","firewall"]`, "1", true},
+		{`["containers","firewall"]`, "1", false},
+		{`["firewall"]`, "0", true},
+	} {
+		if err := service.DB.Model(&models.BasicSettings{}).Where("id = 1").Update("services", step.services).Error; err != nil {
+			t.Fatal(err)
+		}
+		runtime.commands = nil
+		if err := service.ApplyFirewallConfig(); err != nil {
+			t.Fatal(err)
+		}
+		reenabled := slices.Contains(runtime.commands, "/sbin/pfctl -d")
+		if runtime.filterLocal != step.filterLocal || reenabled != step.reenabled || !runtime.enabled {
+			t.Fatal("unexpected filter_local", step, runtime.filterLocal, runtime.commands)
+		}
+		nat, err := os.ReadFile(pfNatRulesPath)
+		hairpin := strings.Contains(string(nat), "nat on sylc1 inet from 10.89.0.0/24 to 10.89.0.0/24 -> 10.89.0.1\n")
+		if err != nil || hairpin != (step.filterLocal == "1") || strings.Contains(string(nat), "lan0") {
+			t.Fatal("containers reach published ports through the host's address on NAT networks only", string(nat), err)
+		}
+		if delivered := strings.HasSuffix(string(nat), "pass out quick on lo0 all no state\n"); delivered != (step.filterLocal == "1") {
+			t.Fatal("deliveries to the host must pass while pf filters them", string(nat))
+		}
+	}
+}
+
+func TestFirewallPodmanNATUsesDefaultRouteWithoutAConfiguredWAN(t *testing.T) {
+	service, runtime, _ := setupFirewallApplyTest(t, true)
+	previous := config.ParsedConfig
+	config.ParsedConfig = nil
+	t.Cleanup(func() { config.ParsedConfig = previous })
+	if err := service.DB.Model(&models.BasicSettings{}).Where("id = 1").Update("services", `["containers","firewall"]`).Error; err != nil {
+		t.Fatal(err)
+	}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		if command == "/sbin/route" && reflect.DeepEqual(args, []string{"-n", "get", "default"}) {
+			return "route to: default\n interface: em2\n", nil
+		}
+		return runtime.run(command, args...)
+	}
+	if nat, err := service.renderPodmanNAT(); err != nil || nat != "nat on em2 inet from <cni-nat> to any -> (em2)\npass out quick on lo0 all no state\n" {
+		t.Fatal(nat, err)
+	}
+}
+
+func TestFirewallPodmanNATWithoutEgressDoesNotFailApply(t *testing.T) {
+	service, _, _ := setupFirewallApplyTest(t, true)
+	previous := config.ParsedConfig
+	config.ParsedConfig = &internal.SylveConfig{WANInterfaces: []string{"", " "}}
+	t.Cleanup(func() { config.ParsedConfig = previous })
+	if err := service.DB.Model(&models.BasicSettings{}).Where("id = 1").Update("services", `["containers","firewall"]`).Error; err != nil {
+		t.Fatal(err)
+	}
+	firewallRunCommand = func(command string, args ...string) (string, error) {
+		return "", errors.New("route: route has not been found")
+	}
+	if nat, err := service.renderPodmanNAT(); err != nil || strings.Contains(nat, "<cni-nat>") {
+		t.Fatal("a missing default route must skip container NAT, not fail the firewall", nat, err)
 	}
 }
 

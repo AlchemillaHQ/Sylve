@@ -95,7 +95,7 @@ export async function apiRequest<T extends z.ZodType>(
 		if (
 			browser &&
 			method !== 'GET' &&
-			/^\/(vm|jail)(\/|$)/.test(endpoint) &&
+			/^\/(vm|jail|container)(\/|$)/.test(endpoint) &&
 			data !== null &&
 			typeof data === 'object' &&
 			'taskId' in data &&

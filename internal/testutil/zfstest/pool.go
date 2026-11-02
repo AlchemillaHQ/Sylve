@@ -29,7 +29,7 @@ const (
 	fixtureStateRoot  = "/tmp"
 	stateDirPrefix    = "sylve-zfstest-"
 	ownerProperty     = "org.alchemilla:sylve-test-owner"
-	vdevSize          = 200 * 1024 * 1024
+	vdevSize          = 1024 * 1024 * 1024
 	commandTimeout    = 30 * time.Second
 	fixtureMetadata   = "fixture.txt"
 	fixtureVdev       = "vdev"

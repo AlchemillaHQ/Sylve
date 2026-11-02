@@ -11,10 +11,47 @@ import (
 	"github.com/alchemillahq/gzfs"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
+	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
 	zfsServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/zfs"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
 )
+
+type datasetVMRuntime struct {
+	libvirtServiceInterfaces.LibvirtServiceInterface
+	status string
+}
+
+func (r datasetVMRuntime) GetLvDomain(uint) (*libvirtServiceInterfaces.LvDomain, error) {
+	return &libvirtServiceInterfaces.LvDomain{Status: r.status}, nil
+}
+
+func TestDatasetUsagePreservesVMRuntimePolicy(t *testing.T) {
+	database := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.Storage{}, &vmModels.VMStorageDataset{}, &utilitiesModels.Downloads{}, &utilitiesModels.Upload{})
+	vm := vmModels.VM{RID: 701, Name: "dataset-user"}
+	if err := database.Create(&vm).Error; err != nil {
+		t.Fatal(err)
+	}
+	storage := vmModels.Storage{VMID: vm.ID, Dataset: vmModels.VMStorageDataset{GUID: "300", Name: "tank/data"}}
+	if err := database.Create(&storage).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: database}
+	for _, status := range []string{"Running", "Paused", "Stopped"} {
+		t.Run(status, func(t *testing.T) {
+			service.Libvirt = datasetVMRuntime{status: status}
+			for _, failEarly := range []bool{false, true} {
+				want := failEarly || status == "Running" || status == "Paused"
+				if service.IsDatasetInUse("300", failEarly) != want {
+					t.Fatal("dataset usage disagrees with VM runtime policy", status, failEarly)
+				}
+				if service.IsDatasetInUse("999", failEarly) {
+					t.Fatal("unreferenced dataset was treated as VM storage")
+				}
+			}
+		})
+	}
+}
 
 func TestValidateDatasetDeletionTargetsRejectsPoolRoot(t *testing.T) {
 	root := &gzfs.Dataset{Name: "zroot", Pool: "zroot"}

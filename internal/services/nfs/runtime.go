@@ -14,7 +14,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/alchemillahq/gzfs"
@@ -267,11 +269,10 @@ func (s *Service) failClosed(ctx context.Context, state *nfsModels.NFSRuntime, c
 	return fmt.Errorf("%w: %w", ErrApplyFailed, errors.Join(cause, persistErr))
 }
 
-// GuardStorageMutation fences topology changes against apply. Initial runtime
-// support requires an explicit service disable before storage topology changes;
-// it does not silently interrupt clients and later republish their old grants.
+// GuardStorageMutation fences dataset names and mountpoints against export
+// changes. An empty target set acquires the fence without checking exports.
 // Lock order: system settings / ZFS sync -> topologyMu -> mutationMu.
-func (s *Service) GuardStorageMutation(ctx context.Context) (func(), error) {
+func (s *Service) GuardStorageMutation(ctx context.Context, targets ...string) (func(), error) {
 	// Storage callers may already hold a pool lease. Never wait for another
 	// storage operation holding this fence and waiting for that same lease.
 	if !s.topologyMu.TryLock() {
@@ -279,23 +280,55 @@ func (s *Service) GuardStorageMutation(ctx context.Context) (func(), error) {
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
-	state, err := s.runtimeState(ctx)
-	if err == nil && state.Managed {
-		var enabled bool
-		enabled, err = s.enabled(ctx)
-		var count int64
-		if err == nil {
-			err = s.DB.WithContext(ctx).Model(&nfsModels.NFSShare{}).Where("enabled = ?", true).Count(&count).Error
-		}
-		if err == nil && (enabled && count > 0 || len(state.Filesystems) > 0 || state.NFSd.PID != 0 || state.Mountd.PID != 0) {
-			err = conflict("dataset", "Disable NFS and successfully withdraw its exports before changing storage topology.")
-		}
-	}
-	if err != nil {
+	if err := s.requireStorageUnused(ctx, targets); err != nil {
 		s.topologyMu.Unlock()
 		return nil, err
 	}
 	return s.topologyMu.Unlock, nil
+}
+
+func (s *Service) requireStorageUnused(ctx context.Context, targets []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	state, err := s.runtimeState(ctx)
+	if err != nil || !state.Managed {
+		return err
+	}
+	enabled, err := s.enabled(ctx)
+	if err != nil {
+		return err
+	}
+	filesystems := state.Filesystems
+	if enabled {
+		var shares []nfsModels.NFSShare
+		if err := s.DB.WithContext(ctx).Where("enabled = ?", true).Find(&shares).Error; err != nil {
+			return err
+		}
+		for _, share := range shares {
+			filesystems = append(filesystems, nfsModels.ExportedFilesystem{Name: share.DatasetName, Mountpoint: share.Mountpoint})
+		}
+	}
+	for _, target := range targets {
+		if filepath.IsAbs(target) {
+			target = filepath.Clean(target)
+		} else {
+			target, _, _ = strings.Cut(target, "@")
+		}
+		for _, filesystem := range filesystems {
+			if storageTargetsOverlap(target, filesystem.Name) || storageTargetsOverlap(target, filesystem.Mountpoint) {
+				return conflict("dataset", "Disable the affected NFS shares and successfully withdraw their exports before changing this storage.")
+			}
+		}
+	}
+	return nil
+}
+
+func storageTargetsOverlap(a, b string) bool {
+	return a != "" && b != "" && (a == b || strings.HasPrefix(a, strings.TrimSuffix(b, "/")+"/") || strings.HasPrefix(b, strings.TrimSuffix(a, "/")+"/"))
 }
 
 // Monitor only withdraws drifted policy. Restart/retry is explicit, preventing an

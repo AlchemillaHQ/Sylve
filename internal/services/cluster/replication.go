@@ -283,7 +283,7 @@ func (s *Service) buildReplicationPolicy(
 	}
 
 	guestType := strings.TrimSpace(strings.ToLower(input.GuestType))
-	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidReplicationGuestType(guestType) {
 		return nil, nil, fmt.Errorf("invalid_guest_type")
 	}
 	if input.GuestID == 0 {
@@ -538,7 +538,7 @@ func (s *Service) ResolveReplicationGuestOwnerNode(guestType string, guestID uin
 	if guestID == 0 {
 		return "", fmt.Errorf("guest_id_required")
 	}
-	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidReplicationGuestType(guestType) {
 		return "", fmt.Errorf("invalid_guest_type")
 	}
 

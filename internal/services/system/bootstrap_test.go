@@ -564,6 +564,9 @@ func TestApplyBootstrapSettingsDefaultEnsureUsesZFS(t *testing.T) {
 			t.Fatalf("expected dataset %s to be created; created=%v", dataset, runner.created)
 		}
 	}
+	if runner.created["tank/sylve/containers"] {
+		t.Fatal("pool bootstrap provisioned container datasets")
+	}
 
 	settings := loadBootstrapSettings(t, db)
 	if !reflect.DeepEqual(settings.Pools, []string{"tank"}) {

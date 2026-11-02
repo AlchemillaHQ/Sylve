@@ -10,7 +10,8 @@ export type AvailableService =
 	| 'wireguard'
 	| 'iscsi'
 	| 'nfs'
-	| 'mdns';
+	| 'mdns'
+	| 'containers';
 
 export const BasicSettingsSchema = z.object({
 	pools: z.array(z.string()),
@@ -25,7 +26,8 @@ export const BasicSettingsSchema = z.object({
 			'wireguard',
 			'iscsi',
 			'nfs',
-			'mdns'
+			'mdns',
+			'containers'
 		])
 	),
 	initialized: z.boolean()

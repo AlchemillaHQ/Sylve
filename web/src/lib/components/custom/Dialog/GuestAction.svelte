@@ -14,7 +14,8 @@
 		'force-stop': 'Force Stop',
 		shutdown: 'Shut Down',
 		reboot: 'Reboot',
-		restart: 'Restart'
+		restart: 'Restart',
+		kill: 'Kill'
 	};
 	let target = $derived(guestActionConfirmation.pending);
 
@@ -25,8 +26,8 @@
 {#if target}
 	<AlertDialog
 		open={true}
-		title={`${labels[target.action]} ${target.guestType === 'vm' ? 'VM' : 'jail'}?`}
-		description={target.action === 'stop' || target.action === 'force-stop'
+		title={`${labels[target.action]} ${target.guestType === 'vm' ? 'VM' : target.guestType}?`}
+		description={['stop', 'force-stop', 'kill'].includes(target.action)
 			? 'Running workloads will be interrupted. Unsaved data may be lost.'
 			: 'This will interrupt the guest’s running workloads.'}
 		confirmLabel={labels[target.action]}

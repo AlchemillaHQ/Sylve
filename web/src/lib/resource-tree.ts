@@ -13,7 +13,12 @@ import type { SimpleJail } from '$lib/types/jail/jail';
 export type ResourceTreeView = 'server' | 'folder';
 export type ResourceTreeSortKey = 'id' | 'name';
 export type ResourceTreeState = 'active' | 'inactive' | 'orphan';
-export type ResourceTreeResourceType = 'vm' | 'jail' | 'jail-template' | 'vm-template';
+export type ResourceTreeResourceType =
+	| 'vm'
+	| 'jail'
+	| 'container'
+	| 'jail-template'
+	| 'vm-template';
 export type ResourceTreeDensity = 'comfortable' | 'compact';
 
 export interface ResourceTreePreferences {
@@ -78,8 +83,9 @@ const nameCollator = new Intl.Collator(undefined, {
 const resourceTypeRank: Record<ResourceTreeResourceType, number> = {
 	vm: 0,
 	jail: 1,
-	'vm-template': 2,
-	'jail-template': 3
+	container: 2,
+	'vm-template': 3,
+	'jail-template': 4
 };
 
 export function normalizeResourceTreePreferences(value: unknown): ResourceTreePreferences {
@@ -156,6 +162,10 @@ function isVMResource(resource: ResourceTreeResource): boolean {
 	return resource.resourceType === 'vm' || resource.resourceType === 'vm-template';
 }
 
+function isContainerResource(resource: ResourceTreeResource): boolean {
+	return resource.resourceType === 'container';
+}
+
 function compareResources(
 	a: ResourceTreeResource,
 	b: ResourceTreeResource,
@@ -210,9 +220,11 @@ function buildServerNodeChildren(
 	const guests = node.resources.filter((resource) => !isTemplate(resource));
 
 	if (preferences.groupGuestTypes) {
-		const vmResources = (preferences.groupTemplates ? guests : node.resources).filter(isVMResource);
-		const jailResources = (preferences.groupTemplates ? guests : node.resources).filter(
-			(resource) => !isVMResource(resource)
+		const resources = preferences.groupTemplates ? guests : node.resources;
+		const vmResources = resources.filter(isVMResource);
+		const containerResources = resources.filter(isContainerResource);
+		const jailResources = resources.filter(
+			(resource) => !isVMResource(resource) && !isContainerResource(resource)
 		);
 
 		return compactGroups([
@@ -227,6 +239,12 @@ function buildServerNodeChildren(
 				'Jails',
 				'hugeicons--prison',
 				sortedResources(jailResources, preferences.sortKey)
+			),
+			group(
+				`server:${node.id}:containers`,
+				'Containers',
+				'lucide--container',
+				sortedResources(containerResources, preferences.sortKey)
 			),
 			preferences.groupTemplates
 				? group(
@@ -307,6 +325,7 @@ function buildFolderView(
 			resource.resourceType === 'jail' ||
 			(!preferences.groupTemplates && resource.resourceType === 'jail-template')
 	);
+	const containerResources = resources.filter(isContainerResource);
 	const templates = resources.filter(isTemplate);
 
 	return compactGroups([
@@ -332,6 +351,12 @@ function buildFolderView(
 			'Jails',
 			'hugeicons--prison',
 			sortedResources(jailResources, preferences.sortKey)
+		),
+		group(
+			'folder:containers',
+			'Containers',
+			'lucide--container',
+			sortedResources(containerResources, preferences.sortKey)
 		),
 		preferences.groupTemplates
 			? group(

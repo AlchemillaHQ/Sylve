@@ -142,6 +142,32 @@ func TestValidateFirewallTrafficRuleRequestAcceptsTCPUDPWithPorts(t *testing.T) 
 	}
 }
 
+func TestFirewallPortSelectorsPreserveRangeAndListBounds(t *testing.T) {
+	for _, test := range []struct {
+		name, raw string
+		valid     bool
+	}{
+		{"absent", "", true},
+		{"single", "53", true},
+		{"complete range", "1:65535", true},
+		{"grouped", "{ 53, 80:443 }", true},
+		{"maximum list", strings.Repeat("1,", 4095) + "1", true},
+		{"too many values", strings.Repeat("1,", 4096) + "1", false},
+		{"zero", "0", false},
+		{"overflow", "65536", false},
+		{"reversed range", "443:80", false},
+		{"extra range bound", "80:90:100", false},
+		{"empty group", "{}", false},
+		{"empty token", "53,,80", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateRawPortSelector(test.raw, "dst_ports_raw"); (err == nil) != test.valid {
+				t.Fatalf("selector validity = %v, want %v: %v", err == nil, test.valid, err)
+			}
+		})
+	}
+}
+
 func TestNormalizeFirewallTrafficRuleIDsRejectsInvalidSets(t *testing.T) {
 	tooMany := make([]uint, MaxFirewallTrafficRuleDeleteItems+1)
 	for i := range tooMany {

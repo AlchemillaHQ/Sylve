@@ -35,7 +35,7 @@ func TestGuestIdentityClusteredReleaseRequiresCanonicalRegistrationGone(t *testi
 			GuestID:   903,
 		}},
 	}
-	if err := service.trackClusterGuestIdentityOperation(reservation); err != nil {
+	if err := service.beginGuestIdentityOperation(reservation, clusterModels.ErrGuestIdentityAlreadyInUse); err != nil {
 		t.Fatalf("track clustered operation: %v", err)
 	}
 

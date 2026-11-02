@@ -44,21 +44,24 @@ var _ serviceInterfaces.StartupServiceInterface = (*Service)(nil)
 const vmUsageSampleDelay = 15 * time.Second
 
 type Service struct {
-	DB        *gorm.DB
-	Info      infoServiceInterfaces.InfoServiceInterface
-	ZFS       zfsServiceInterfaces.ZfsServiceInterface
-	Network   networkServiceInterfaces.StartupNetworkServiceInterface
-	Libvirt   libvirtServiceInterfaces.LibvirtServiceInterface
-	Utilities utilitiesServiceInterfaces.UtilitiesServiceInterface
-	System    systemServiceInterfaces.SystemServiceInterface
-	Samba     sambaServiceInterfaces.SambaServiceInterface
-	Jail      jailServiceInterfaces.JailServiceInterface
-	Cluster   clusterServiceInterfaces.ClusterServiceInterface
-	ISCSI     iscsiServiceInterfaces.ISCSIServiceInterface
-	Mdns      mdnsServiceInterfaces.MdnsServiceInterface
-	Bootstrap BootstrapStartupApplier
-	Directory *directoryservices.Service
-	NFS       *nfs.Service
+	DB         *gorm.DB
+	Info       infoServiceInterfaces.InfoServiceInterface
+	ZFS        zfsServiceInterfaces.ZfsServiceInterface
+	Network    networkServiceInterfaces.StartupNetworkServiceInterface
+	Libvirt    libvirtServiceInterfaces.LibvirtServiceInterface
+	Utilities  utilitiesServiceInterfaces.UtilitiesServiceInterface
+	System     systemServiceInterfaces.SystemServiceInterface
+	Samba      sambaServiceInterfaces.SambaServiceInterface
+	Jail       jailServiceInterfaces.JailServiceInterface
+	Cluster    clusterServiceInterfaces.ClusterServiceInterface
+	ISCSI      iscsiServiceInterfaces.ISCSIServiceInterface
+	Mdns       mdnsServiceInterfaces.MdnsServiceInterface
+	Bootstrap  BootstrapStartupApplier
+	Directory  *directoryservices.Service
+	NFS        *nfs.Service
+	Containers interface {
+		Startup(context.Context) error
+	}
 }
 
 type BootstrapStartupApplier interface {
@@ -353,6 +356,12 @@ func (s *Service) Initialize(authService serviceInterfaces.AuthServiceInterface,
 				logger.L.Error().Err(err).Msg("unable to start dnsmasq")
 			}
 		}()
+	}
+
+	if s.Containers != nil {
+		if err := s.Containers.Startup(dCtx); err != nil {
+			logger.L.Error().Err(err).Msg("container_startup_failed")
+		}
 	}
 
 	return nil

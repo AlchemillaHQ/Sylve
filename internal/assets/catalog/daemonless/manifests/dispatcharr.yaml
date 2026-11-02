@@ -1,0 +1,121 @@
+name: dispatcharr
+services:
+  dispatcharr:
+    image: ghcr.io/daemonless/dispatcharr:latest
+    container_name: dispatcharr
+    restart: unless-stopped
+    annotations:
+      org.freebsd.jail.allow.sysvipc: "true"
+    environment:
+      - TZ=${TZ}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - CELERY_NICE_LEVEL=${CELERY_NICE_LEVEL}
+    volumes:
+      - "${DATA_DATA}:/data"
+    ports:
+      - "${WEB_PORT}:9191"
+x-fjord:
+  version: "0.1"
+  info:
+    id: dispatcharr
+    name: Dispatcharr
+    description: Dispatcharr — stream dispatching and channel management.
+    category: Media Management
+    class: service
+    icon: icons/dispatcharr.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/Dispatcharr/Dispatcharr
+    web_url: https://dispatcharr.io/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "9191"
+    - name: DATA_DATA
+      label: Persistent data — PostgreSQL cluster, media, backups, logos
+      type: zfs_dataset
+      default: data
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TZ
+      label: Timezone (e.g. America/New_York)
+      type: string
+      default: UTC
+    - name: POSTGRES_DB
+      label: 'PostgreSQL database name (default: dispatcharr)'
+      type: string
+      default: dispatcharr
+    - name: POSTGRES_USER
+      label: 'PostgreSQL username (default: dispatcharr)'
+      type: string
+      default: dispatcharr
+    - name: POSTGRES_PASSWORD
+      label: 'PostgreSQL password (default: dispatcharr)'
+      type: secret
+      default: ""
+    - name: CELERY_NICE_LEVEL
+      label: 'niceness for Celery workers (default: 5)'
+      type: string
+      default: "5"
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        dispatcharr:
+          name: dispatcharr
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9191 proto:tcp'
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+              - POSTGRES_DB: !ENV '${POSTGRES_DB}'
+              - POSTGRES_USER: !ENV '${POSTGRES_USER}'
+              - POSTGRES_PASSWORD: !ENV '${POSTGRES_PASSWORD}'
+              - CELERY_NICE_LEVEL: !ENV '${CELERY_NICE_LEVEL}'
+          volumes:
+            - DISPATCHARR_DATA_PATH: /data
+      volumes:
+        DISPATCHARR_DATA_PATH:
+          device: !ENV '${DISPATCHARR_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/dispatcharr:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      allow.sysvipc
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=dispatcharr
+      TZ=UTC
+      POSTGRES_DB=dispatcharr
+      POSTGRES_USER=dispatcharr
+      POSTGRES_PASSWORD=dispatcharr
+      CELERY_NICE_LEVEL=5
+      WEB_PORT=9191
+      DISPATCHARR_DATA_PATH=/dispatcharr

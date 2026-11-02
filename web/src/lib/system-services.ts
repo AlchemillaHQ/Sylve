@@ -26,7 +26,8 @@ export const INITIALIZATION_SERVICE_GROUPS = [
 		label: 'Compute',
 		services: [
 			{ id: 'jails', label: 'Jails', defaultEnabled: true },
-			{ id: 'virtualization', label: 'Virtualization', defaultEnabled: true }
+			{ id: 'virtualization', label: 'Virtualization', defaultEnabled: true },
+			{ id: 'containers', label: 'Containers', defaultEnabled: false }
 		]
 	},
 	{

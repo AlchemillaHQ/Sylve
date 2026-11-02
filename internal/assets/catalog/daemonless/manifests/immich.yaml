@@ -1,0 +1,313 @@
+name: immich
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/daemonless/immich-server:${IMMICH_TAG:-latest}
+    network_mode: host
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      DB_HOSTNAME: ${DB_HOSTNAME:-localhost}
+      REDIS_HOSTNAME: ${REDIS_HOSTNAME:-localhost}
+      IMMICH_MACHINE_LEARNING_URL: http://${IMMICH_ML_HOST:-localhost}:3003
+      IMMICH_MACHINE_LEARNING_ENABLED: ${IMMICH_ML_ENABLED:-true}
+      # Immich binds loopback unless told otherwise, so it answers nothing on
+      # the host's address -- or on a published port, which forwards to the
+      # container's own and not to its loopback.
+      IMMICH_HOST: ${IMMICH_HOST:-0.0.0.0}
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - database
+      - immich-machine-learning
+    restart: always
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/daemonless/immich-ml:${IMMICH_ML_TAG:-latest}
+    network_mode: host
+    environment:
+      HF_HOME: /cache/huggingface
+      MPLCONFIGDIR: /tmp
+    volumes:
+      - model-cache:/cache
+    env_file:
+      - .env
+    restart: always
+  redis:
+    container_name: immich_redis
+    image: ghcr.io/daemonless/redis:latest
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - redis-data:/config
+    restart: always
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/daemonless/immich-postgres:latest
+    network_mode: host
+    # FreeBSD requires sysvipc for PostgreSQL shared memory
+    annotations:
+      org.freebsd.jail.allow.sysvipc: "true"
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    restart: always
+volumes:
+  model-cache:
+  redis-data:
+x-fjord:
+  version: "0.1"
+  info:
+    id: immich
+    name: Immich
+    description: High performance self-hosted photo and video management solution.
+    category: Photos & Media
+    class: stack
+    icon: icons/immich.svg
+    web_port: "2283"
+    upstream_url: https://github.com/immich-app/immich
+    web_url: https://immich.app/
+  variables:
+    - name: IMMICH_TAG
+      type: image_tag
+      default: latest
+      optional: true
+      image: ghcr.io/daemonless/immich-server
+    - name: UPLOAD_LOCATION
+      label: Path to store uploaded media
+      type: path
+      default: /containers/immich/library
+    - name: DB_HOSTNAME
+      type: string
+      default: localhost
+      optional: true
+    - name: REDIS_HOSTNAME
+      type: string
+      default: localhost
+      optional: true
+    - name: IMMICH_ML_HOST
+      type: string
+      default: localhost
+      optional: true
+    - name: IMMICH_ML_ENABLED
+      label: false turns machine learning off (set by the choice)
+      type: string
+      default: "true"
+      optional: true
+    - name: IMMICH_HOST
+      type: string
+      default: 0.0.0.0
+      optional: true
+    - name: IMMICH_ML_TAG
+      label: Machine learning image tag (defaults to 'latest')
+      type: image_tag
+      default: latest
+      optional: true
+      image: ghcr.io/daemonless/immich-ml
+    - name: DB_PASSWORD
+      label: PostgreSQL database password
+      type: secret
+      default: postgres
+    - name: DB_USERNAME
+      label: PostgreSQL username
+      type: string
+      default: postgres
+    - name: DB_DATABASE_NAME
+      label: PostgreSQL database name
+      type: string
+      default: immich
+    - name: DB_DATA_LOCATION
+      label: Path to store database files
+      type: path
+      default: /containers/immich/postgres
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+      - alias:
+      - ip4_inherit:
+      services:
+        immich-server:
+          name: immich_server
+          priority: 100
+          options:
+          - container: boot args:--pull=newer
+          - from: ghcr.io/daemonless/immich-server:latest
+          volumes:
+          - immich-data: /data
+          oci:
+            environment:
+            - DB_HOSTNAME: !ENV '${DB_HOSTNAME:127.0.0.1}'
+            - DB_USERNAME: !ENV '${DB_USERNAME}'
+            - DB_PASSWORD: !ENV '${DB_PASSWORD}'
+            - REDIS_HOSTNAME: !ENV '${REDIS_HOSTNAME:127.0.0.1}'
+            - IMMICH_MACHINE_LEARNING_URL: !ENV 'http://${IMMICH_ML_HOST:127.0.0.1}:3003'
+            - IMMICH_HOST: !ENV '${IMMICH_HOST:0.0.0.0}'
+            - TZ: !ENV '${TZ}'
+        immich-machine-learning:
+          name: immich_machine_learning
+          options:
+          - container: boot args:--pull=newer
+          - from: ghcr.io/daemonless/immich-ml:latest
+          oci:
+            environment:
+            - HF_HOME: /cache/huggingface
+            - MPLCONFIGDIR: /tmp
+            - TZ: !ENV '${TZ}'
+          volumes:
+          - model-cache: /cache
+        redis:
+          name: immich_redis
+          options:
+          - container: boot args:--pull=newer
+          - from: ghcr.io/daemonless/redis:latest
+          oci:
+            environment:
+            - LANG: C.UTF-8
+            - TZ: !ENV '${TZ}'
+          volumes:
+          - redis-data: /config
+        database:
+          name: immich_postgres
+          options:
+          - container: boot args:--pull=newer
+          - from: ghcr.io/daemonless/immich-postgres:latest
+          - template: !ENV '${PWD}/immich-postgres-template.conf'
+          oci:
+            environment:
+            - POSTGRES_PASSWORD: !ENV '${DB_PASSWORD}'
+            - POSTGRES_USER: !ENV '${DB_USERNAME}'
+            - POSTGRES_DB: !ENV '${DB_DATABASE_NAME}'
+          volumes:
+          - db-data: /var/lib/postgresql/data
+      volumes:
+        immich-data:
+          device: !ENV '${UPLOAD_LOCATION}'
+        model-cache:
+          device: !ENV '${CACHE_LOCATION}'
+        redis-data:
+          device: !ENV '${REDIS_DATA_LOCATION}'
+        db-data:
+          device: !ENV '${DB_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/immich:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=immich
+      DB_PASSWORD=postgres
+      DB_USERNAME=postgres
+      DB_DATABASE_NAME=immich
+      TZ=
+      DB_DATA_LOCATION=/containers/immich/postgres
+      UPLOAD_LOCATION=/containers/immich/library
+      CACHE_LOCATION=
+      REDIS_DATA_LOCATION=
+    extras:
+      immich-postgres-template.conf: |
+        # The jail PostgreSQL runs in.
+        #
+        # PostgreSQL wants SysV shared memory, which a jail does not get by default --
+        # without these three it fails to start with a shared memory error that reads
+        # like a configuration problem.
+        #
+        # ip4/ip6 are set here rather than left to the director's ip4_inherit option:
+        # that option is a no-op in AppJail 5.5.0, and a jail with ip4 disabled cannot
+        # bind, so the database comes up answering nothing.
+
+        exec.start: "/bin/sh /etc/rc"
+        exec.stop: "/bin/sh /etc/rc.shutdown jail"
+        sysvmsg: new
+        sysvsem: new
+        sysvshm: new
+        mount.devfs
+        persist
+        ip4: inherit
+        ip6: inherit
+  networking:
+    '*': private
+    immich-public-proxy: default
+    immich-server: default
+  hostnames:
+    database: DB_HOSTNAME
+    immich-machine-learning: IMMICH_ML_HOST
+    immich-server: IMMICH_SERVER_HOST
+    redis: REDIS_HOSTNAME
+  choices:
+    - id: machine_learning
+      kind: part
+      label: Machine learning
+      doc: Faces, objects and smart search. Needs 2 GB of RAM and downloads about 1 GB of models on first run.
+      default: "on"
+      options:
+        - id: "on"
+          label: With machine learning
+        - id: "off"
+          label: Without machine learning
+          doc: The server runs without it; search is by name and date only.
+          env:
+            IMMICH_ML_ENABLED: "false"
+          drop:
+            - immich-machine-learning
+    - id: public_proxy
+      kind: part
+      label: Public sharing
+      doc: Share albums with people who have no account, without exposing Immich itself.
+      default: "off"
+      options:
+        - id: "off"
+          label: No public sharing
+        - id: "on"
+          label: With public sharing
+          doc: immich-public-proxy answers on 3000; put it behind your reverse proxy, set PUBLIC_BASE_URL to the address people use, and set the same address as the External domain in Immich's Server Settings so share links point at the proxy.
+          services: |
+            immich-public-proxy:
+              container_name: immich_public_proxy
+              image: ghcr.io/daemonless/immich-public-proxy:latest
+              network_mode: host
+              environment:
+                IMMICH_URL: http://${IMMICH_SERVER_HOST:-localhost}:2283
+                PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+                IPP_PORT: "3000"
+              env_file:
+                - .env
+              depends_on:
+                - immich-server
+              restart: always
+          appjail:
+            director: |
+              services:
+                immich-public-proxy:
+                  name: immich_public_proxy
+                  priority: 110
+                  options:
+                  - container: boot args:--pull=newer
+                  - from: ghcr.io/daemonless/immich-public-proxy:latest
+                  oci:
+                    environment:
+                    - IMMICH_URL: http://127.0.0.1:2283
+                    - PUBLIC_BASE_URL: !ENV '${PUBLIC_BASE_URL}'
+                    - IPP_PORT: '3000'
+                    - TZ: !ENV '${TZ}'

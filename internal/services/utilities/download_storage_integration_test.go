@@ -34,8 +34,8 @@ import (
 	libvirtService "github.com/alchemillahq/sylve/internal/services/libvirt"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/internal/testutil/zfstest"
-	"github.com/alchemillahq/sylve/internal/zfsutil"
 	qemuimg "github.com/alchemillahq/sylve/pkg/qemu-img"
+	storagezfs "github.com/alchemillahq/sylve/pkg/storage/zfs"
 	"github.com/alchemillahq/sylve/pkg/utils"
 	"github.com/anacrolix/torrent"
 )
@@ -75,7 +75,7 @@ func TestIntegrationDownloadStorageLifecycleRealZFS(t *testing.T) {
 	if len(choices.Choices) != 3 || !choices.Choices[1].Available || !choices.Choices[2].Available {
 		t.Fatalf("choices: %+v", choices)
 	}
-	if before, err := client.ZFS.Get(ctx, other+"/sylve/downloads", false); before != nil || err != nil && !zfsutil.DatasetDoesNotExist(err) {
+	if before, err := client.ZFS.Get(ctx, other+"/sylve/downloads", false); before != nil || err != nil && !storagezfs.DatasetDoesNotExist(err) {
 		t.Fatalf("GET provisioned storage: %+v %v", before, err)
 	}
 

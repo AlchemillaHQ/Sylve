@@ -40,7 +40,7 @@ type Service struct {
 	cacheInvalidationSequence uint64
 	pendingCacheInvalidations map[string]uint64
 	OnDatasetsDeleted         func(context.Context, []string) error
-	StorageTopologyGuard      func(context.Context) (func(), error)
+	StorageTopologyGuard      func(context.Context, ...string) (func(), error)
 	listHostPools             func(context.Context) ([]*gzfs.ZPool, error)
 	scrubDriver               poolScrubBackend
 	scrubJobsReady            atomic.Bool

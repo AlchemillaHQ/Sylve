@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	dynamicDNSModels "github.com/alchemillahq/sylve/internal/db/models/dynamicdns"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	mdnsModels "github.com/alchemillahq/sylve/internal/db/models/mdns"
@@ -851,6 +852,11 @@ func (s *Service) checkStandardSwitchUsage(id uint, bridgeName string) error {
 			query: s.DB.Model(&jailModels.Network{}).Where("switch_id = ? AND switch_type = ?", id, "standard"),
 			code:  "standard_switch_in_use_by_jail",
 			label: "jail",
+		},
+		{
+			query: s.DB.Model(&containerModels.Network{}).Where("switch_id = ? AND switch_type = ?", id, "standard"),
+			code:  "standard_switch_in_use_by_container_network",
+			label: "container network",
 		},
 		{
 			query: s.DB.Table("dhcp_standard_switches").Where("standard_switch_id = ?", id),

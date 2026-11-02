@@ -10,7 +10,7 @@
 
 import type { SimpleJail } from '$lib/types/jail/jail';
 
-type GuestType = 'vm' | 'jail';
+type GuestType = 'vm' | 'jail' | 'container';
 
 const guestSections = [
 	'summary',
@@ -26,10 +26,20 @@ const guestSections = [
 
 export type GuestSection = (typeof guestSections)[number];
 
+const containerSections: GuestSection[] = [
+	'summary',
+	'console',
+	'hardware',
+	'network',
+	'storage',
+	'options'
+];
+
 export function getGuestSections(
 	guestType: GuestType,
 	jailType?: SimpleJail['type']
 ): GuestSection[] {
+	if (guestType === 'container') return containerSections;
 	return guestSections.filter((section) => {
 		if (section === 'storage') return guestType === 'vm';
 		if (section === 'packages') return guestType === 'jail' && jailType === 'freebsd';
@@ -43,7 +53,7 @@ export function getGuestNavigationHref(
 	guestType: GuestType,
 	jailType?: SimpleJail['type']
 ): string {
-	const match = pathname.match(/^\/[^/]+\/(?:jail|vm)\/\d+\/([^/]+)\/?$/);
+	const match = pathname.match(/^\/[^/]+\/(?:jail|vm|container)\/\d+\/([^/]+)\/?$/);
 	const section =
 		getGuestSections(guestType, jailType).find((section) => section === match?.[1]) ?? 'summary';
 	return targetHref.replace(/\/summary$/, `/${section}`);

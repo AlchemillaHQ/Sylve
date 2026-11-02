@@ -1,0 +1,202 @@
+name: erpnext
+services:
+  erpnext:
+    image: ghcr.io/daemonless/erpnext:latest
+    container_name: erpnext
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      - SITE_NAME=${SITE_NAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DB_HOST=${DB_HOST:-127.0.0.1}
+      - DB_PORT=3306
+      # The same variable as the database's root password: the two must match.
+      - DB_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - REDIS_CACHE=redis://${REDIS_HOSTNAME:-127.0.0.1}:6379/0
+      - REDIS_QUEUE=redis://${REDIS_HOSTNAME:-127.0.0.1}:6379/1
+    volumes:
+      - ${SITES_LOCATION}:/app/frappe-bench/sites
+    depends_on:
+      - mariadb
+      - redis
+  mariadb:
+    image: ghcr.io/daemonless/mariadb:11.4
+    container_name: erpnext-mariadb
+    restart: always
+    network_mode: host
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${DB_DATA_LOCATION}:/config
+  redis:
+    image: ghcr.io/daemonless/redis:latest
+    container_name: erpnext-redis
+    restart: always
+    network_mode: host
+    environment:
+      - TZ=${TZ:-UTC}
+    volumes:
+      - ${REDIS_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: erpnext
+    name: ERPNext
+    description: 'Open source ERP: accounting, inventory, manufacturing, CRM, HR and projects, built on the Frappe framework.'
+    category: Productivity
+    class: stack
+    icon: icons/erpnext.svg
+    web_port: "8080"
+    upstream_url: https://github.com/frappe/erpnext
+    web_url: https://erpnext.com/
+  variables:
+    - name: TZ
+      label: Timezone for the containers
+      type: string
+      default: UTC
+      optional: true
+    - name: SITE_NAME
+      label: Frappe site to create and serve. Any hostname reaches it -- nginx sends this name to the backend -- so it need not resolve in DNS.
+      type: string
+      default: erpnext.localhost
+      level: primary
+    - name: ADMIN_PASSWORD
+      label: Password for the 'Administrator' account. Required on first run only, when the site is created.
+      type: secret
+      default: ""
+      level: primary
+    - name: DB_HOST
+      label: MariaDB host (localhost with host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+    - name: DB_ROOT_PASSWORD
+      label: MariaDB root password, used once to create the site's database and user. Must match the database's own root password. Required on first run only.
+      type: secret
+      default: ""
+      level: primary
+    - name: REDIS_HOSTNAME
+      label: Where ERPNext finds Redis (fjord sets this; 127.0.0.1 on host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+      level: advanced
+    - name: SITES_LOCATION
+      label: 'Site data: database config, uploaded files, private files and per-site logs'
+      type: path
+      default: /containers/erpnext/sites
+    - name: DB_DATA_LOCATION
+      label: MariaDB data files
+      type: path
+      default: /containers/erpnext/mariadb
+    - name: REDIS_DATA_LOCATION
+      label: Redis data
+      type: path
+      default: /containers/erpnext/redis
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        erpnext:
+          name: erpnext
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - SITE_NAME: !ENV '${SITE_NAME}'
+              - ADMIN_PASSWORD: !ENV '${ADMIN_PASSWORD}'
+              - DB_HOST: !ENV '${DB_HOST}'
+              - DB_PORT: !ENV '${DB_PORT}'
+              - DB_ROOT_PASSWORD: !ENV '${DB_ROOT_PASSWORD}'
+              - REDIS_CACHE: !ENV '${REDIS_CACHE}'
+              - REDIS_QUEUE: !ENV '${REDIS_QUEUE}'
+              - SITES_LOCATION: !ENV '${SITES_LOCATION}'
+              - DB_DATA_LOCATION: !ENV '${DB_DATA_LOCATION}'
+              - REDIS_DATA_LOCATION: !ENV '${REDIS_DATA_LOCATION}'
+          volumes:
+            - ERPNEXT_SITES_PATH: /app/frappe-bench/sites
+        mariadb:
+          name: mariadb
+          options:
+            - from: ghcr.io/daemonless/mariadb:11.4
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            environment:
+              - MYSQL_ROOT_PASSWORD: !ENV '${DB_ROOT_PASSWORD}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - mariadb_data: /config
+        redis:
+          name: redis
+          options:
+            - from: ghcr.io/daemonless/redis:latest
+            - template: !ENV '${PWD}/template.conf'
+          volumes:
+            - redis_data: /config
+      volumes:
+        ERPNEXT_SITES_PATH:
+          device: !ENV '${ERPNEXT_SITES_PATH}'
+        mariadb_data:
+          device: !ENV '${MARIADB_DATA_LOCATION}'
+        redis_data:
+          device: !ENV '${REDIS_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/erpnext:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=erpnext
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      SITE_NAME=erpnext.localhost
+      ADMIN_PASSWORD=<ADMIN_PASSWORD>
+      DB_HOST=127.0.0.1
+      DB_PORT=3306
+      DB_ROOT_PASSWORD=<DB_ROOT_PASSWORD>
+      REDIS_CACHE=redis://${REDIS_HOSTNAME:-127.0.0.1}:6379/0
+      REDIS_QUEUE=redis://${REDIS_HOSTNAME:-127.0.0.1}:6379/1
+      SITES_LOCATION=/containers/erpnext/sites
+      DB_DATA_LOCATION=/containers/erpnext/mariadb
+      REDIS_DATA_LOCATION=/containers/erpnext/redis
+      WEB_PORT=8080
+      ERPNEXT_SITES_PATH=/erpnext/sites
+  networking:
+    '*': private
+    erpnext: default
+  hostnames:
+    mariadb: DB_HOST
+    redis: REDIS_HOSTNAME
+  login:
+    user: Administrator
+    password: ${ADMIN_PASSWORD}

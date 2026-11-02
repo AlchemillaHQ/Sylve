@@ -1,0 +1,573 @@
+name: crafting-apps
+services:
+  photocraft:
+    container_name: photocraft
+    image: ghcr.io/daemonless/photocraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8080:80"
+    restart: always
+  vectorcraft:
+    container_name: vectorcraft
+    image: ghcr.io/daemonless/vectorcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8081:80"
+    restart: always
+  filmcraft:
+    container_name: filmcraft
+    image: ghcr.io/daemonless/filmcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8082:80"
+    restart: always
+  lightcraft:
+    container_name: lightcraft
+    image: ghcr.io/daemonless/lightcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8083:80"
+    restart: always
+  pdfcraft:
+    container_name: pdfcraft
+    image: ghcr.io/daemonless/pdfcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8084:80"
+    restart: always
+  effectcraft:
+    container_name: effectcraft
+    image: ghcr.io/daemonless/effectcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8085:80"
+    restart: always
+  designcraft:
+    container_name: designcraft
+    image: ghcr.io/daemonless/designcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8086:80"
+    restart: always
+  wordcraft:
+    container_name: wordcraft
+    image: ghcr.io/daemonless/wordcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8087:80"
+    restart: always
+  gridcraft:
+    container_name: gridcraft
+    image: ghcr.io/daemonless/gridcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8088:80"
+    restart: always
+  deckcraft:
+    container_name: deckcraft
+    image: ghcr.io/daemonless/deckcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8089:80"
+    restart: always
+  figcraft:
+    container_name: figcraft
+    image: ghcr.io/daemonless/figcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8090:80"
+    restart: always
+  soundcraft:
+    container_name: soundcraft
+    image: ghcr.io/daemonless/soundcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8091:80"
+    restart: always
+  cadcraft:
+    container_name: cadcraft
+    image: ghcr.io/daemonless/cadcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8092:80"
+    restart: always
+  solidcraft:
+    container_name: solidcraft
+    image: ghcr.io/daemonless/solidcraft:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8093:80"
+    restart: always
+  craft-anything:
+    container_name: craft-anything
+    image: ghcr.io/daemonless/craft-anything:latest
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-UTC}
+    ports:
+      - "8094:80"
+    restart: always
+x-fjord:
+  version: "0.1"
+  info:
+    id: crafting-apps
+    name: Crafting Apps
+    description: ArtCraft's fifteen open-source, clean-room creative and office apps (PhotoCraft, VectorCraft, FilmCraft, LightCraft, PdfCraft, EffectCraft, DesignCraft, WordCraft, GridCraft, DeckCraft, FigCraft, SoundCraft, CADCraft, SolidCraft, Craft Anything) as WebAssembly web apps. Pick the ones you want.
+    category: Photos & Media
+    class: stack
+    icon: icons/crafting-apps.svg
+    web_port: "8080"
+    upstream_url: https://github.com/storytold
+    web_url: https://getartcraft.com/apps
+  variables:
+    - name: PUID
+      label: User ID for the nginx worker processes
+      type: string
+      default: "1000"
+      optional: true
+    - name: PGID
+      label: Group ID for the nginx worker processes
+      type: string
+      default: "1000"
+      optional: true
+    - name: TZ
+      label: Timezone for the containers
+      type: string
+      default: UTC
+      optional: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+      - virtualnet: :<random> default
+      - nat:
+      services:
+        photocraft:
+          name: photocraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8080:80 proto:tcp
+          - from: ghcr.io/daemonless/photocraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        vectorcraft:
+          name: vectorcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8081:80 proto:tcp
+          - from: ghcr.io/daemonless/vectorcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        filmcraft:
+          name: filmcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8082:80 proto:tcp
+          - from: ghcr.io/daemonless/filmcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        lightcraft:
+          name: lightcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8083:80 proto:tcp
+          - from: ghcr.io/daemonless/lightcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        pdfcraft:
+          name: pdfcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8084:80 proto:tcp
+          - from: ghcr.io/daemonless/pdfcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        effectcraft:
+          name: effectcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8085:80 proto:tcp
+          - from: ghcr.io/daemonless/effectcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        designcraft:
+          name: designcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8086:80 proto:tcp
+          - from: ghcr.io/daemonless/designcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        wordcraft:
+          name: wordcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8087:80 proto:tcp
+          - from: ghcr.io/daemonless/wordcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        gridcraft:
+          name: gridcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8088:80 proto:tcp
+          - from: ghcr.io/daemonless/gridcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        deckcraft:
+          name: deckcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8089:80 proto:tcp
+          - from: ghcr.io/daemonless/deckcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        figcraft:
+          name: figcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8090:80 proto:tcp
+          - from: ghcr.io/daemonless/figcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        soundcraft:
+          name: soundcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8091:80 proto:tcp
+          - from: ghcr.io/daemonless/soundcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        cadcraft:
+          name: cadcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8092:80 proto:tcp
+          - from: ghcr.io/daemonless/cadcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        solidcraft:
+          name: solidcraft
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8093:80 proto:tcp
+          - from: ghcr.io/daemonless/solidcraft:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+        craft-anything:
+          name: craft-anything
+          options:
+          - container: boot args:--pull=newer
+          - expose: 8094:80 proto:tcp
+          - from: ghcr.io/daemonless/craft-anything:latest
+          oci:
+            user: root
+            environment:
+            - PUID: !ENV '${PUID}'
+            - PGID: !ENV '${PGID}'
+            - TZ: !ENV '${TZ}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/crafting-apps:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=crafting-apps
+      PUID=1000
+      PGID=1000
+      TZ=Etc/UTC
+  networking:
+    '*': default
+  choices:
+    - id: photocraft
+      kind: part
+      label: PhotoCraft
+      doc: Image editing with layers, masks, adjustment layers and PSD files (Photoshop).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - photocraft
+    - id: vectorcraft
+      kind: part
+      label: VectorCraft
+      doc: Vector illustration (Illustrator).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - vectorcraft
+    - id: filmcraft
+      kind: part
+      label: FilmCraft
+      doc: Video editing (Premiere Pro).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - filmcraft
+    - id: lightcraft
+      kind: part
+      label: LightCraft
+      doc: Photo library and raw developer (Lightroom).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - lightcraft
+    - id: pdfcraft
+      kind: part
+      label: PdfCraft
+      doc: Read, organize, combine, split and secure PDFs (Acrobat).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - pdfcraft
+    - id: effectcraft
+      kind: part
+      label: EffectCraft
+      doc: Motion graphics and visual effects (After Effects).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - effectcraft
+    - id: designcraft
+      kind: part
+      label: DesignCraft
+      doc: Page layout and publishing (InDesign).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - designcraft
+    - id: wordcraft
+      kind: part
+      label: WordCraft
+      doc: Document editor (Word).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - wordcraft
+    - id: gridcraft
+      kind: part
+      label: GridCraft
+      doc: Spreadsheet (Excel).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - gridcraft
+    - id: deckcraft
+      kind: part
+      label: DeckCraft
+      doc: Presentation editor (PowerPoint).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - deckcraft
+    - id: figcraft
+      kind: part
+      label: FigCraft
+      doc: Interface design and prototyping (Figma).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - figcraft
+    - id: soundcraft
+      kind: part
+      label: SoundCraft
+      doc: Audio recording, editing and mixing (Pro Tools).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - soundcraft
+    - id: cadcraft
+      kind: part
+      label: CADCraft
+      doc: Computer-aided design and drafting (AutoCAD).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - cadcraft
+    - id: solidcraft
+      kind: part
+      label: SolidCraft
+      doc: Parametric 3D CAD (SolidWorks).
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - solidcraft
+    - id: craft-anything
+      kind: part
+      label: Craft Anything
+      doc: Software understanding and creation engine.
+      default: "on"
+      options:
+        - id: "on"
+          label: Included
+        - id: "off"
+          label: Left out
+          drop:
+            - craft-anything

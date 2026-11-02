@@ -47,7 +47,7 @@ type Service struct {
 	mutationGate                   *MutationGate
 	addressProvider                *raftAddressProvider
 	guestIdentityRuntimeMu         sync.Mutex
-	guestIdentityLocalReservations map[uint]string
+	guestIdentityLocalReservations map[uint]localGuestIdentityReservation
 	guestIdentityClusterFormation  bool
 
 	joinPromotionMu       sync.Mutex
@@ -353,6 +353,10 @@ func (s *Service) CreateCluster(ip string, fsm raft.FSM) error {
 	if len(s.guestIdentityLocalReservations) != 0 {
 		s.guestIdentityRuntimeMu.Unlock()
 		return errors.New("guest_identity_mutation_in_progress")
+	}
+	if err := s.requireNoDurableGuestIdentityOperations(context.Background()); err != nil {
+		s.guestIdentityRuntimeMu.Unlock()
+		return err
 	}
 	s.guestIdentityClusterFormation = true
 	s.guestIdentityRuntimeMu.Unlock()

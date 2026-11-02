@@ -1,0 +1,151 @@
+name: unifi
+services:
+  unifi:
+    image: ghcr.io/daemonless/unifi:latest
+    container_name: unifi
+    restart: unless-stopped
+    annotations:
+      org.freebsd.jail.allow.mlock: "true"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:8443"
+      - "${PORT_8080}:8080"
+      - "${PORT_8843}:8843"
+      - "${PORT_8880}:8880"
+      - "${PORT_6789}:6789"
+      - "${PORT_3478_UDP}:3478/udp"
+      - "${PORT_10001_UDP}:10001/udp"
+x-fjord:
+  version: "0.1"
+  info:
+    id: unifi
+    name: UniFi Network
+    description: Ubiquiti UniFi Network Application for managing UniFi access points, switches, and gateways.
+    category: Utilities
+    class: service
+    icon: icons/unifi.svg
+    web_port: ${WEB_PORT}
+    web_https: true
+    upstream_url: https://ui.com/
+    web_url: https://ui.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI (HTTPS)
+      type: port
+      default: "8443"
+    - name: PORT_8080
+      label: Device inform
+      type: port
+      default: "8080"
+    - name: PORT_8843
+      label: Guest portal HTTPS
+      type: port
+      default: "8843"
+    - name: PORT_8880
+      label: Guest portal HTTP
+      type: port
+      default: "8880"
+    - name: PORT_6789
+      label: Mobile throughput test
+      type: port
+      default: "6789"
+    - name: PORT_3478_UDP
+      label: STUN (UDP)
+      type: port
+      default: "3478"
+    - name: PORT_10001_UDP
+      label: Device discovery (UDP)
+      type: port
+      default: "10001"
+    - name: CONFIG_DATA
+      label: Configuration and database directory
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      aliases:
+        - pkg
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        unifi:
+          name: unifi
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8443 proto:tcp'
+            - expose: '8080:8080 proto:tcp'
+            - expose: '8843:8843 proto:tcp'
+            - expose: '8880:8880 proto:tcp'
+            - expose: '6789:6789 proto:tcp'
+            - expose: '3478:3478 proto:udp'
+            - expose: '10001:10001 proto:udp'
+            - template: !ENV '${PWD}/template.conf'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - UNIFI_CONFIG_PATH: /config
+      volumes:
+        UNIFI_CONFIG_PATH:
+          device: !ENV '${UNIFI_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/unifi:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      allow.mlock
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=unifi
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=8443
+      UNIFI_CONFIG_PATH=/unifi

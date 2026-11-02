@@ -260,7 +260,7 @@ func (s *Service) ListBackupJobs(targetID uint) ([]clusterModels.BackupJob, erro
 // created before a dedicated guest filter was exposed by the API.
 func (s *Service) ListBackupJobsForGuest(targetID uint, guestType string, guestID uint) ([]clusterModels.BackupJob, error) {
 	guestType = strings.TrimSpace(strings.ToLower(guestType))
-	if guestType != clusterModels.ReplicationGuestTypeVM && guestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidReplicationGuestType(guestType) {
 		return nil, fmt.Errorf("invalid_guest_type")
 	}
 	if guestID == 0 {
@@ -440,7 +440,7 @@ func (s *Service) UpdateBackupJobRuntimeState(update BackupJobRuntimeStateUpdate
 func (s *Service) SyncBackupJobFriendlySourceByGuest(update BackupJobFriendlySourceUpdate, bypassRaft bool) error {
 	update.GuestType = strings.TrimSpace(strings.ToLower(update.GuestType))
 	update.FriendlySrc = strings.TrimSpace(update.FriendlySrc)
-	if update.GuestType != clusterModels.ReplicationGuestTypeVM && update.GuestType != clusterModels.ReplicationGuestTypeJail {
+	if !clusterModels.ValidReplicationGuestType(update.GuestType) {
 		return fmt.Errorf("invalid_guest_type")
 	}
 	if update.GuestID == 0 {

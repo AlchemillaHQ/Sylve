@@ -132,6 +132,7 @@ func newRootCommand(daemonAction func(ctx context.Context, cmd *cli.Command) err
 			newDatacenterCommand(),
 			newNotesCommand(),
 			newJailsCommand(),
+			newContainersCommand(),
 			newVMsCommand(),
 			newTasksCommand(),
 			newSwitchesCommand(),

@@ -317,7 +317,7 @@ func CreateCluster(cS *cluster.Service, fsm raft.FSM) gin.HandlerFunc {
 }
 
 // @Summary Join Cluster
-// @Description Join an existing cluster. A returning node uses the same endpoint, and all of its current VM and jail IDs must be free in the cluster.
+// @Description Join an existing cluster. A returning node uses the same endpoint, and all of its current VM, jail and container IDs must be free in the cluster.
 // @Tags Cluster
 // @Accept json
 // @Produce json

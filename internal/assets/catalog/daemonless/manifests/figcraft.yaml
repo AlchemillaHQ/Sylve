@@ -1,0 +1,92 @@
+name: figcraft
+services:
+  figcraft:
+    image: ghcr.io/daemonless/figcraft:latest
+    container_name: figcraft
+    # "always", not "unless-stopped": FreeBSD's podman rc.d only auto-starts
+    # containers with restart-policy=always at boot (needs podman_enable=YES).
+    restart: always
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - "${WEB_PORT}:80"
+x-fjord:
+  version: "0.1"
+  info:
+    id: figcraft
+    name: FigCraft
+    description: Open-source, clean-room Figma-style interface design and prototyping in Rust, served as a WebAssembly web app on FreeBSD.
+    category: Productivity
+    class: service
+    icon: icons/figcraft.png
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/storytold/figcraft
+    web_url: https://getartcraft.com/apps/figcraft
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: Web UI (the editor runs in the browser; files open and save on the visitor's device)
+      type: port
+      default: "8090"
+    - name: PUID
+      label: User ID for the nginx worker processes
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the nginx worker processes
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        figcraft:
+          name: figcraft
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:80 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/figcraft:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=figcraft
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WEB_PORT=8090

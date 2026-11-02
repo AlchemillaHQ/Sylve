@@ -1,0 +1,84 @@
+name: cnpg-postgres
+services:
+  cnpg-postgres:
+    image: ghcr.io/daemonless/cnpg-postgres:18
+    container_name: cnpg-postgres
+    annotations:
+      org.freebsd.jail.allow.sysvipc: "true"
+    volumes:
+      - "${DATA_PATH}:/var/lib/postgresql/data"
+    ports:
+      - "${WEB_PORT}:5432"
+x-fjord:
+  version: "0.1"
+  info:
+    id: cnpg-postgres
+    name: PostgreSQL (CloudNativePG)
+    description: PostgreSQL on FreeBSD, compatible with the CloudNativePG Kubernetes operator. Includes pgvector, pgaudit, and pg_failover_slots.
+    category: Databases
+    class: service
+    icon: icons/cnpg-postgres.svg
+    upstream_url: https://www.postgresql.org/
+    web_url: https://cloudnative-pg.io/
+  variables:
+    - name: WEB_PORT
+      label: PostgreSQL port
+      type: port
+      default: "5432"
+    - name: DATA_PATH
+      label: Database data directory
+      type: path
+      default: ""
+  variants:
+    - id: "17"
+      label: "17"
+      aliases:
+        - 17-standard
+    - id: "18"
+      label: "18"
+      default: true
+      aliases:
+        - 18-standard
+        - standard
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        cnpg-postgres:
+          name: cnpg_postgres
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:5432 proto:tcp'
+            - template: !ENV '${PWD}/template.conf'
+          volumes:
+            - CNPG_POSTGRES_DATA_PATH: /var/lib/postgresql/data
+      volumes:
+        CNPG_POSTGRES_DATA_PATH:
+          device: !ENV '${CNPG_POSTGRES_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/cnpg-postgres:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      allow.sysvipc
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=cnpg-postgres
+      WEB_PORT=5432
+      CNPG_POSTGRES_DATA_PATH=/cnpg-postgres

@@ -18,8 +18,8 @@ BUILD_TIMESTAMP != date -u +%Y-%m-%dT%H:%M:%SZ
 INTEGRATION_PACKAGES := \
 	./internal/console \
 	./internal/downloadstorage \
-	./internal/mountutil \
 	./internal/services/disk \
+	./internal/services/container \
 	./internal/services/iscsi \
 	./internal/services/jail \
 	./internal/services/libvirt \
@@ -29,16 +29,17 @@ INTEGRATION_PACKAGES := \
 	./internal/services/zelta \
 	./internal/services/utilities \
 	./internal/services/zfs \
-	./internal/zfsutil \
 	./pkg/network/bridgevlan \
 	./pkg/pkgmanager \
-	./pkg/network/mdns
+	./pkg/network/mdns \
+	./pkg/storage/mount \
+	./pkg/storage/zfs
 
 ACCEPTANCE_PACKAGE := ./internal/console/integration
 
 .PHONY: all build backend backend-debug backend-cross cross-build-amd64 cross-build-arm64 frontend quality quality-fix
 .PHONY: test test-external-preflight test-integration test-vlan-integration test-acceptance test-acceptance-full test-acceptance-all
-.PHONY: test-smart-integration test-jail-packages-integration clean csmwrap csmwrap-assets csmwrap-download
+.PHONY: test-smart-integration test-jail-packages-integration clean csmwrap csmwrap-assets csmwrap-download catalog-download
 
 all: build
 
@@ -94,6 +95,9 @@ csmwrap:
 
 csmwrap-download:
 	./scripts/download-csmwrap.sh
+
+catalog-download:
+	./scripts/download-catalog.sh
 
 csmwrap-assets:
 	@if [ "$(ARCH)" = "amd64" ] && \

@@ -45,9 +45,7 @@ under sponsorship from the FreeBSD Foundation.
 		single: _single
 	}: Props = $props();
 
-	let sLabel = $derived(
-		value ? options.find((o) => o.value === value)?.label : placeholder || undefined
-	);
+	let sLabel = $derived(options.find((o) => o.value === value)?.label ?? placeholder);
 </script>
 
 <div class={`${classes.parent} min-w-0`}>

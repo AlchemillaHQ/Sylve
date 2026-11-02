@@ -10,6 +10,7 @@ package zelta
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -125,5 +126,15 @@ func TestGenericRestoreRejectsDownloadStorageAndAncestors(t *testing.T) {
 		if err := service.requireNoManagedGuestsWithinRestore(t.Context(), destination); !errors.Is(err, downloadstorage.ErrInUse) {
 			t.Fatalf("restore %s was not protected: %v", destination, err)
 		}
+	}
+}
+
+func TestVMRestoreDatasetRootsIgnoreLegacyDownloadedMediaTopology(t *testing.T) {
+	vm := vmModels.VM{RID: 701, Storages: []vmModels.Storage{
+		{Type: vmModels.VMStorageTypeDiskImage, Pool: "legacy", Dataset: vmModels.VMStorageDataset{Name: "legacy/private"}},
+		{Type: vmModels.VMStorageTypeFilesystem, Pool: "tank", Dataset: vmModels.VMStorageDataset{Name: "tank/shared"}},
+	}}
+	if roots := vmRestoreDatasetRoots(vm); !slices.Equal(roots, []string{"tank/shared", "tank/sylve/virtual-machines/701"}) {
+		t.Fatal("downloaded media reserved unrelated dataset topology", roots)
 	}
 }

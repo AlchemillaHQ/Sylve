@@ -1,0 +1,120 @@
+name: clickhouse
+services:
+  clickhouse:
+    image: ghcr.io/daemonless/clickhouse:latest
+    container_name: clickhouse
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    volumes:
+      - "${CLICKHOUSE_PATH}:/var/db/clickhouse"
+    ports:
+      - "${WEB_PORT}:8123"
+      - "${PORT_9000}:9000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: clickhouse
+    name: ClickHouse
+    description: ClickHouse is an open-source column-oriented database management system that allows generating analytical data reports in real time.
+    category: Databases
+    class: service
+    icon: icons/clickhouse.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://clickhouse.com/
+    web_url: https://clickhouse.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: WEB_PORT
+      label: HTTP interface and web UI (/play)
+      type: port
+      default: "8123"
+    - name: PORT_9000
+      label: Native TCP client
+      type: port
+      default: "9000"
+    - name: CLICKHOUSE_PATH
+      label: Database data directory
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: CLICKHOUSE_PASSWORD
+      label: 'Password for the `default` user, used to sign in. Always set one: without it anyone who can reach the ports gets in'
+      type: secret
+      default: ""
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      default: true
+      aliases:
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        clickhouse:
+          name: clickhouse
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8123 proto:tcp'
+            - expose: '9000:9000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - CLICKHOUSE_PASSWORD: !ENV '${CLICKHOUSE_PASSWORD}'
+          volumes:
+            - CLICKHOUSE_CLICKHOUSE_PATH: /var/db/clickhouse
+      volumes:
+        CLICKHOUSE_CLICKHOUSE_PATH:
+          device: !ENV '${CLICKHOUSE_CLICKHOUSE_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/clickhouse:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=clickhouse
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      CLICKHOUSE_PASSWORD=changeme
+      WEB_PORT=8123
+      CLICKHOUSE_CLICKHOUSE_PATH=/clickhouse/clickhouse

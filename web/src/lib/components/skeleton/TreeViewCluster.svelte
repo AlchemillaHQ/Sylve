@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { containerAction } from '$lib/api/container/container';
 	import { convertJailToTemplate, deleteJailTemplate, jailAction } from '$lib/api/jail/jail';
 	import CreateJailFromTemplate from '$lib/components/custom/Jail/Template/Create.svelte';
 	import ViewJailTemplate from '$lib/components/custom/Jail/Template/View.svelte';
@@ -32,7 +33,7 @@
 	import type { ActiveLifecycleGuest } from '$lib/types/task/lifecycle';
 	import { removeStaleCacheByRID } from '$lib/utils/vm/vm';
 
-	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop' | 'restart';
+	type GuestAction = 'start' | 'reboot' | 'shutdown' | 'stop' | 'restart' | 'kill';
 
 	interface Props {
 		item: ResourceTreeItem;
@@ -65,7 +66,9 @@
 	let lifecycleActive = $derived(
 		item.resourceId !== undefined &&
 			item.nodeHostname !== undefined &&
-			(item.resourceType === 'vm' || item.resourceType === 'jail') &&
+			(item.resourceType === 'vm' ||
+				item.resourceType === 'jail' ||
+				item.resourceType === 'container') &&
 			activeLifecycleGuests.some(
 				(guest) =>
 					guest.hostname === item.nodeHostname &&
@@ -78,7 +81,9 @@
 		e.preventDefault();
 		if (!item.href) return;
 		const href =
-			item.resourceType === 'vm' || item.resourceType === 'jail'
+			item.resourceType === 'vm' ||
+			item.resourceType === 'jail' ||
+			item.resourceType === 'container'
 				? getGuestNavigationHref(page.url.pathname, item.href, item.resourceType, item.jailType)
 				: item.href;
 		useSafeGoto(href, { replaceState: false, noScroll: false });
@@ -127,6 +132,7 @@
 	let hasContextMenu = $derived(
 		item.resourceType === 'vm' ||
 			item.resourceType === 'jail' ||
+			item.resourceType === 'container' ||
 			item.resourceType === 'jail-template' ||
 			item.resourceType === 'vm-template'
 	);
@@ -170,7 +176,9 @@
 			actionInFlight ||
 			item.resourceId === undefined ||
 			!item.nodeHostname ||
-			(item.resourceType !== 'jail' && item.resourceType !== 'vm')
+			(item.resourceType !== 'jail' &&
+				item.resourceType !== 'vm' &&
+				item.resourceType !== 'container')
 		) {
 			return;
 		}
@@ -191,20 +199,28 @@
 				}))
 			)
 				return;
-			let result: Awaited<ReturnType<typeof actionVm>> | Awaited<ReturnType<typeof jailAction>>;
-			if (resourceType === 'jail') {
+			let result:
+				| Awaited<ReturnType<typeof actionVm>>
+				| Awaited<ReturnType<typeof jailAction>>
+				| Awaited<ReturnType<typeof containerAction>>;
+			if (resourceType === 'container') {
+				if (action !== 'start' && action !== 'stop' && action !== 'restart' && action !== 'kill') {
+					return;
+				}
+				result = await containerAction(resourceId, action, hostname);
+			} else if (resourceType === 'jail') {
 				if (action !== 'start' && action !== 'stop' && action !== 'restart') {
 					return;
 				}
 				result = await jailAction(resourceId, action, hostname);
 			} else {
-				if (action === 'restart') return;
+				if (action === 'restart' || action === 'kill') return;
 				result = await actionVm(resourceId, action, hostname);
 			}
 
 			if (isAPIResponse(result)) {
 				handleAPIError(result);
-				toast.error(`Failed to ${action} ${resourceType === 'vm' ? 'VM' : 'jail'}`, {
+				toast.error(`Failed to ${action} ${resourceType === 'vm' ? 'VM' : resourceType}`, {
 					position: 'bottom-center'
 				});
 				return;
@@ -411,7 +427,7 @@
 				onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 			>
 				<div class="flex min-w-0 items-center space-x-1 text-sm">
-					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
+					{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison' || item.icon === 'lucide--container'}
 						<div class="flex items-center space-x-1 text-sm">
 							<div class="relative">
 								<span
@@ -560,6 +576,42 @@
 							Remove stale entry
 						</ContextMenu.Item>
 					{/if}
+				{:else if item.resourceType === 'container'}
+					{#if item.state === 'active'}
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('restart')}
+						>
+							<span class="icon-[mdi--restart] h-4 w-4"></span>
+							Restart
+						</ContextMenu.Item>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('stop')}
+						>
+							<span class="icon-[mdi--stop] h-4 w-4"></span>
+							Stop
+						</ContextMenu.Item>
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('kill')}
+						>
+							<span class="icon-[mdi--skull-outline] h-4 w-4"></span>
+							Kill
+						</ContextMenu.Item>
+					{:else}
+						<ContextMenu.Item
+							class="gap-2"
+							disabled={actionInFlight || lifecycleActive}
+							onSelect={() => void handleActionClick('start')}
+						>
+							<span class="icon-[mdi--play] h-4 w-4"></span>
+							Start
+						</ContextMenu.Item>
+					{/if}
 				{:else if item.resourceType === 'jail-template'}
 					<ContextMenu.Item class="gap-2" onclick={() => (viewTemplateOpen = true)}>
 						<span class="icon-[mdi--eye-outline] h-4 w-4"></span>
@@ -606,7 +658,7 @@
 			onkeydown={(e) => (e.key === 'Enter' || e.key === ' ' ? handleLabelClick(e) : null)}
 		>
 			<div class="flex min-w-0 items-center space-x-1 text-sm">
-				{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison'}
+				{#if item.icon === 'material-symbols--monitor-outline' || item.icon === 'hugeicons--prison' || item.icon === 'lucide--container'}
 					<div class="flex items-center space-x-1 text-sm">
 						<div class="relative">
 							<span

@@ -11,6 +11,7 @@ package network
 import (
 	"testing"
 
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	infoModels "github.com/alchemillahq/sylve/internal/db/models/info"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
@@ -42,6 +43,7 @@ func newNetworkServiceTestDB(t *testing.T, migrateModels ...any) *gorm.DB {
 		&vmModels.Network{},
 		&networkServiceTestJail{},
 		&jailModels.Network{},
+		&containerModels.Network{},
 		&networkModels.StandardSwitch{},
 		&networkModels.StandardSwitchAddress{},
 		&networkModels.HostInterfaceL3{},

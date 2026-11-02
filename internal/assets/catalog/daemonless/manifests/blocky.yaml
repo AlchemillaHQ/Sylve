@@ -1,0 +1,110 @@
+name: blocky
+services:
+  blocky:
+    image: ghcr.io/daemonless/blocky:latest
+    container_name: blocky
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    # Must be read-write: the base image chowns /config on start, and that
+    # failing on a :ro mount stops the container. (Upstream's docs say :ro is
+    # fine — true of their scratch image, which has no init system.)
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    # 4000 first because it is the port the catalogue declares. Host :53 usually
+    # collides with a local resolver; change the host side if so.
+    ports:
+      - "${WEB_PORT}:4000"
+      - "${PORT_53_UDP}:53/udp"
+      - "${PORT_53}:53/tcp"
+x-fjord:
+  version: "0.1"
+  info:
+    id: blocky
+    name: Blocky
+    description: Fast and lightweight DNS proxy and ad-blocker for the local network, on FreeBSD.
+    category: Network
+    class: service
+    icon: icons/blocky.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/0xERR0R/blocky
+    web_url: https://0xerr0r.github.io/blocky/
+  variables:
+    - name: WEB_PORT
+      label: REST API and Prometheus metrics
+      type: port
+      default: "4000"
+    - name: PORT_53_UDP
+      label: DNS (UDP and TCP)
+      type: port
+      default: "53"
+    - name: PORT_53
+      label: DNS (UDP and TCP)
+      type: port
+      default: "53"
+    - name: CONFIG_DATA
+      label: Your config.yml — optional, the image ships a working default that resolves and blocks ads. Must be writable; a read-only mount stops the container
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: Etc/UTC
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+      aliases:
+        - latest
+    - id: pkg-latest
+      label: FreeBSD latest packages
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        blocky:
+          name: blocky
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:4000 proto:tcp'
+            - expose: '53:53 proto:udp'
+            - expose: '53:53 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - TZ: !ENV '${TZ}'
+          volumes:
+            - BLOCKY_CONFIG_PATH: /config
+      volumes:
+        BLOCKY_CONFIG_PATH:
+          device: !ENV '${BLOCKY_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/blocky:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=blocky
+      TZ=Etc/UTC
+      WEB_PORT=4000
+      BLOCKY_CONFIG_PATH=/blocky

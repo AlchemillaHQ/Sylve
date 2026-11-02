@@ -1,0 +1,92 @@
+name: retroassembly
+services:
+  retroassembly:
+    image: ghcr.io/daemonless/retroassembly:latest
+    container_name: retroassembly
+    restart: unless-stopped
+    environment:
+      - RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY=${RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY}
+      - RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY=${RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY}
+    volumes:
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${WEB_PORT}:8000"
+x-fjord:
+  version: "0.1"
+  info:
+    id: retroassembly
+    name: RetroAssembly
+    description: Personal retro game collection cabinet in your browser. Play NES, SNES, Genesis, GBA, and more.
+    category: Media Servers
+    class: service
+    icon: icons/retroassembly.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/arianrhodsandlot/retroassembly
+    web_url: https://retroassembly.com/
+  variables:
+    - name: WEB_PORT
+      label: Web UI
+      type: port
+      default: "8000"
+    - name: DATA_PATH
+      label: Database and uploaded ROM storage
+      type: path
+      default: ""
+    - name: RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY
+      label: 'Data directory for SQLite database (default: /data)'
+      type: string
+      default: /data
+    - name: RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY
+      label: 'Directory for uploaded ROM files (default: /data/storage)'
+      type: string
+      default: /data/storage
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        retroassembly:
+          name: retroassembly
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8000 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY: !ENV '${RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY}'
+              - RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY: !ENV '${RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY}'
+          volumes:
+            - RETROASSEMBLY_DATA_PATH: /data
+      volumes:
+        RETROASSEMBLY_DATA_PATH:
+          device: !ENV '${RETROASSEMBLY_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/retroassembly:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=retroassembly
+      RETROASSEMBLY_RUN_TIME_DATA_DIRECTORY=/data
+      RETROASSEMBLY_RUN_TIME_STORAGE_DIRECTORY=/data/storage
+      WEB_PORT=8000
+      RETROASSEMBLY_DATA_PATH=/retroassembly

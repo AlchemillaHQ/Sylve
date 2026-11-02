@@ -1,0 +1,135 @@
+name: authelia
+services:
+  authelia-server:
+    image: ghcr.io/daemonless/authelia-server:latest
+    container_name: authelia-server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TZ:-UTC}
+      - PUBLIC_URL=${PUBLIC_URL}
+      - AUTHELIA_SESSION_REDIS_HOST=${AUTHELIA_SESSION_REDIS_HOST:-127.0.0.1}
+    volumes:
+      - ${CONFIG_LOCATION}:/config
+    ports:
+      - 9091:9091
+    depends_on:
+      - redis
+  redis:
+    container_name: authelia_redis
+    image: ghcr.io/daemonless/redis:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${REDIS_DATA_LOCATION}:/config
+x-fjord:
+  version: "0.1"
+  info:
+    id: authelia-server
+    name: Authelia
+    description: Authelia on FreeBSD.
+    category: Infrastructure
+    class: stack
+    icon: icons/authelia-server.svg
+    web_port: "9091"
+    upstream_url: https://github.com/authelia/authelia
+    web_url: https://authelia.com/
+  variables:
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+      optional: true
+    - name: PUBLIC_URL
+      label: The https address you open Authelia at, e.g. https://auth.example.com. First start writes a working config for it; log in as admin, password in the log once and in /config/admin-password.txt
+      type: string
+      default: ""
+    - name: AUTHELIA_SESSION_REDIS_HOST
+      label: Where Authelia finds redis; overrides session.redis.host (fjord sets this; 127.0.0.1 on host networking)
+      type: string
+      default: 127.0.0.1
+      optional: true
+      level: advanced
+    - name: CONFIG_LOCATION
+      label: Path to the Authelia configuration directory (authelia.yml, users_database.yml)
+      type: path
+      default: /containers/authelia-server/config
+    - name: REDIS_DATA_LOCATION
+      label: Path to store the redis session store
+      type: path
+      default: /containers/authelia-server/redis
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - alias:
+        - ip4_inherit:
+      services:
+        authelia-server:
+          name: authelia_server
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:9091 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - PUBLIC_URL: !ENV '${PUBLIC_URL}'
+              - AUTHELIA_SESSION_REDIS_HOST: !ENV '${AUTHELIA_SESSION_REDIS_HOST}'
+              - CONFIG_LOCATION: !ENV '${CONFIG_LOCATION}'
+              - REDIS_DATA_LOCATION: !ENV '${REDIS_DATA_LOCATION}'
+          volumes:
+            - AUTHELIA_SERVER_CONFIG_PATH: /config
+        redis:
+          name: redis
+          options:
+            - from: ghcr.io/daemonless/redis:latest
+            - template: !ENV '${PWD}/template.conf'
+          volumes:
+            - redis_data: /config
+      volumes:
+        AUTHELIA_SERVER_CONFIG_PATH:
+          device: !ENV '${AUTHELIA_SERVER_CONFIG_PATH}'
+        redis_data:
+          device: !ENV '${REDIS_DATA_LOCATION}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/authelia-server:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+      ip4: inherit
+      ip6: inherit
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=authelia-server
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      PUBLIC_URL=
+      AUTHELIA_SESSION_REDIS_HOST=127.0.0.1
+      CONFIG_LOCATION=/containers/authelia-server/config
+      REDIS_DATA_LOCATION=/containers/authelia-server/redis
+      WEB_PORT=9091
+      AUTHELIA_SERVER_CONFIG_PATH=/authelia-server
+  networking:
+    '*': private
+    authelia-server: default
+  hostnames:
+    redis: AUTHELIA_SESSION_REDIS_HOST

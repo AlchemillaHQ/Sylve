@@ -1,0 +1,131 @@
+name: wagtail
+services:
+  wagtail:
+    image: ghcr.io/daemonless/wagtail:latest
+    container_name: wagtail
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # First-run admin login (optional):
+      - WAGTAIL_SUPERUSER_NAME=${WAGTAIL_SUPERUSER_NAME}
+      - WAGTAIL_SUPERUSER_PASSWORD=${WAGTAIL_SUPERUSER_PASSWORD}
+      # Postgres instead of SQLite (optional):
+      # - DATABASE_URL=postgres://wagtail:wagtail@postgres:5432/wagtail
+    volumes:
+      - "${CONFIG_DATA}:/config"
+    ports:
+      - "${WEB_PORT}:8080"
+x-fjord:
+  version: "0.1"
+  info:
+    id: wagtail
+    name: Wagtail
+    description: Wagtail is an open source content management system built on Django, with a strong community and commercial support. It's focused on user experience, and offers precise control for designers and developers.
+    category: Productivity
+    class: service
+    icon: icons/wagtail.png
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/wagtail/wagtail
+    web_url: https://wagtail.org/
+  variables:
+    - name: WEB_PORT
+      label: Web UI / admin (/admin)
+      type: port
+      default: "8080"
+    - name: CONFIG_DATA
+      label: Holds the generated Wagtail project (/config/app), SQLite DB, media, and the secret key. Must be persistent.
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: WAGTAIL_SUPERUSER_NAME
+      label: If set with WAGTAIL_SUPERUSER_PASSWORD, creates an admin superuser on start.
+      type: string
+      default: admin
+    - name: WAGTAIL_SUPERUSER_PASSWORD
+      label: Password for the admin superuser (with WAGTAIL_SUPERUSER_NAME).
+      type: secret
+      default: ""
+  variants:
+    - id: pkg
+      label: FreeBSD quarterly packages
+      default: true
+    - id: pkg-latest
+      label: FreeBSD latest packages
+      aliases:
+        - latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        wagtail:
+          name: wagtail
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8080 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - WAGTAIL_SUPERUSER_NAME: !ENV '${WAGTAIL_SUPERUSER_NAME}'
+              - WAGTAIL_SUPERUSER_PASSWORD: !ENV '${WAGTAIL_SUPERUSER_PASSWORD}'
+              - WAGTAIL_ALLOWED_HOSTS: !ENV '${WAGTAIL_ALLOWED_HOSTS}'
+              - WAGTAIL_WORKERS: !ENV '${WAGTAIL_WORKERS}'
+          volumes:
+            - WAGTAIL_CONFIG_PATH: /config
+      volumes:
+        WAGTAIL_CONFIG_PATH:
+          device: !ENV '${WAGTAIL_CONFIG_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=pkg
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/wagtail:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=wagtail
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      WAGTAIL_SUPERUSER_NAME=admin
+      WAGTAIL_SUPERUSER_PASSWORD=changeme
+      WAGTAIL_ALLOWED_HOSTS=*
+      WAGTAIL_WORKERS=3
+      WEB_PORT=8080
+      WAGTAIL_CONFIG_PATH=/wagtail
+  login:
+    user: ${WAGTAIL_SUPERUSER_NAME}
+    password: ${WAGTAIL_SUPERUSER_PASSWORD}

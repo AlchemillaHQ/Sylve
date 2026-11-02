@@ -21,6 +21,7 @@ import (
 
 	"github.com/alchemillahq/gzfs"
 	"github.com/alchemillahq/sylve/internal/db/models"
+	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	nfsModels "github.com/alchemillahq/sylve/internal/db/models/nfs"
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	"github.com/alchemillahq/sylve/internal/downloadstorage"
@@ -451,6 +452,7 @@ func TestNormalizeUsablePoolsTrimsAndDeduplicates(t *testing.T) {
 type settingsPoolRunner struct {
 	created   map[string]bool
 	destroyed []string
+	guids     map[string]string
 }
 
 func newSettingsPoolRunner() *settingsPoolRunner {
@@ -493,12 +495,16 @@ func (r *settingsPoolRunner) Run(
 		datasetName := args[len(args)-2]
 		datasets := map[string]any{}
 		if datasetName == "tank" || r.created[datasetName] {
+			guid := datasetName + "-guid"
+			if r.guids[datasetName] != "" {
+				guid = r.guids[datasetName]
+			}
 			datasets[datasetName] = map[string]any{
 				"name": datasetName,
 				"type": string(gzfs.DatasetTypeFilesystem),
 				"pool": "tank",
 				"properties": map[string]any{
-					"guid":       map[string]any{"value": datasetName + "-guid"},
+					"guid":       map[string]any{"value": guid},
 					"mountpoint": map[string]any{"value": "/mnt/" + datasetName},
 				},
 			}
@@ -512,12 +518,29 @@ func (r *settingsPoolRunner) Run(
 		r.created[datasetName] = true
 		return nil
 	case "destroy":
+		if len(args) != 2 {
+			return fmt.Errorf("bootstrap must not destroy recursively")
+		}
 		datasetName := args[len(args)-1]
 		r.destroyed = append(r.destroyed, datasetName)
 		delete(r.created, datasetName)
 		return nil
 	default:
 		return fmt.Errorf("unexpected zfs command: %v", args)
+	}
+}
+
+func TestBootstrapRollbackDoesNotDeleteReplacedDataset(t *testing.T) {
+	runner := newSettingsPoolRunner()
+	runner.created["tank/sylve/containers"] = true
+	client := gzfs.NewClient(gzfs.Options{Runner: runner})
+	dataset, err := client.ZFS.Get(t.Context(), "tank/sylve/containers", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner.guids = map[string]string{dataset.Name: "replacement-guid"}
+	if err := cleanupCreatedDatasets(t.Context(), client, []*gzfs.Dataset{dataset}); err == nil || len(runner.destroyed) != 0 {
+		t.Fatal("bootstrap rollback deleted a replacement dataset")
 	}
 }
 
@@ -589,7 +612,7 @@ func TestManagedPoolRemovalRejectsReceivingAndStagedUploads(t *testing.T) {
 	if err := database.Create(&utilitiesModels.Upload{ID: "upload", Scope: utilitiesModels.UploadScopeDownloader, DownloadStorage: utilitiesModels.DownloadStorage{StoragePool: "tank"}}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := service.checkPoolUsage("tank"); !errors.Is(err, downloadstorage.ErrInUse) {
+	if err := service.checkPoolUsage(t.Context(), "tank"); !errors.Is(err, downloadstorage.ErrInUse) {
 		t.Fatalf("staged upload was orphaned: %v", err)
 	}
 }
@@ -649,5 +672,36 @@ func TestInitializeCannotDeregisterDownloadStorage(t *testing.T) {
 	}
 	if err := database.First(&settings).Error; err != nil || len(settings.Pools) != 1 || settings.Pools[0] != "tank" || settings.Initialized {
 		t.Fatalf("blocked initialization changed settings: %+v %v", settings, err)
+	}
+}
+
+type readyContainerRuntime struct{}
+
+func (readyContainerRuntime) Reconcile(context.Context) error { return nil }
+
+func TestContainersToggleReappliesTheFirewall(t *testing.T) {
+	db := testutil.NewSQLiteTestDB(t, &models.BasicSettings{})
+	if err := containerModels.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.BasicSettings{Services: []models.AvailableService{models.Firewall}}).Error; err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DB: db, Containers: readyContainerRuntime{}}
+	var applied []bool
+	apply := func(_ context.Context, changed models.AvailableService, enabled bool) error {
+		if changed != models.Containers {
+			t.Fatal("unexpected service", changed)
+		}
+		applied = append(applied, enabled)
+		return nil
+	}
+	for _, enabled := range []bool{true, true, false} {
+		if _, err := service.SetServiceEnabled(t.Context(), models.Containers, enabled, apply); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(applied, []bool{true, false}) {
+		t.Fatal("the firewall's container rules must follow the service, once per change", applied)
 	}
 }

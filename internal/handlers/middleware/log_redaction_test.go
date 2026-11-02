@@ -111,6 +111,48 @@ func TestClusterLifecycleAuditSanitizesOnlySecrets(t *testing.T) {
 	}
 }
 
+func TestContainerAuditNeverCapturesWriteOnlyOrRuntimePayloads(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const private = "container-ingress-private-canary"
+	for _, path := range []string{"/api/container", "/api/container/701", "/api/container/registry-credentials", "/api/container/networks"} {
+		for _, body := range []string{`{"environment":[{"name":"PRIVATE","value":"` + private + `"}],"username":"` + private + `","password":"` + private + `"}`, `{"value":"` + private} {
+			db := testutil.NewSQLiteTestDB(t, &infoModels.AuditRecord{})
+			router := gin.New()
+			router.Use(func(c *gin.Context) { c.Set("UserID", uint(1)); c.Set("Username", "admin"); c.Set("AuthType", "sylve") })
+			router.Use(RequestLoggerMiddleware(db, nil))
+			reader := &auditTrackingReadCloser{reader: bytes.NewReader([]byte(body))}
+			router.POST(path, func(c *gin.Context) {
+				if reader.reads != 0 {
+					t.Fatal("audit middleware read a sensitive request body")
+				}
+				data, err := io.ReadAll(c.Request.Body)
+				if err != nil || string(data) != body {
+					t.Fatal("audit redaction consumed/rewrote ingress")
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": private, "data": private, "upstream": private})
+			})
+			request := httptest.NewRequest(http.MethodPost, path+"?value="+private, reader)
+			request.ContentLength = int64(len(body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			var row infoModels.AuditRecord
+			if err := db.First(&row).Error; err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(row.Action+row.Error, private) || !strings.Contains(row.Action, "[REDACTED]") {
+				t.Fatal("container secret entered audit body/query/response/error")
+			}
+			if !shouldRedactAuditPayload(path) || !shouldRedactAuditResponse(path) {
+				t.Fatal("container ingress/response was not registered for early redaction")
+			}
+		}
+	}
+	if shouldRedactAuditPayload("/api/container-other") {
+		t.Fatal("container redaction changed unrelated routes")
+	}
+}
+
 func TestPasskeyRegistrationAuditKeepsOnlySafeManagementIdentity(t *testing.T) {
 	if !shouldRedactAuditResponse("/api/auth/passkeys/register/begin") {
 		t.Fatal("registration challenge response must be redacted")

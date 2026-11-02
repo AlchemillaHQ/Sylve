@@ -13,7 +13,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -35,6 +37,11 @@ const (
 
 	guestIdentityControlMaxResponseBytes = int64(1 << 20)
 )
+
+type localGuestIdentityReservation struct {
+	token string
+	kind  string
+}
 
 type GuestIdentityControlRequest struct {
 	Operation           string                                            `json:"operation"`
@@ -565,12 +572,6 @@ func (s *Service) ReclaimGuestIdentity(
 	return err
 }
 
-func (s *Service) trackClusterGuestIdentityOperation(
-	reservation clusterServiceInterfaces.GuestIdentityReservation,
-) error {
-	return s.beginGuestIdentityOperation(reservation, clusterModels.ErrGuestIdentityAlreadyInUse)
-}
-
 func (s *Service) beginGuestIdentityOperation(
 	reservation clusterServiceInterfaces.GuestIdentityReservation,
 	conflict error,
@@ -585,15 +586,16 @@ func (s *Service) beginGuestIdentityOperation(
 		return ErrNodeLeaveFenced
 	}
 	if s.guestIdentityLocalReservations == nil {
-		s.guestIdentityLocalReservations = make(map[uint]string)
+		s.guestIdentityLocalReservations = make(map[uint]localGuestIdentityReservation)
 	}
 	for _, entry := range reservation.Entries {
-		if _, exists := s.guestIdentityLocalReservations[entry.GuestID]; exists {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if existing, exists := s.guestIdentityLocalReservations[entry.GuestID]; exists && existing != expected {
 			return fmt.Errorf("%w: guest_id=%d local_mutation_in_progress", conflict, entry.GuestID)
 		}
 	}
 	for _, entry := range reservation.Entries {
-		s.guestIdentityLocalReservations[entry.GuestID] = token
+		s.guestIdentityLocalReservations[entry.GuestID] = localGuestIdentityReservation{token: token, kind: entry.GuestKind}
 	}
 	return nil
 }
@@ -608,7 +610,8 @@ func (s *Service) clearGuestIdentityOperation(
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
 	for _, entry := range reservation.Entries {
-		if s.guestIdentityLocalReservations[entry.GuestID] == token {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if s.guestIdentityLocalReservations[entry.GuestID] == expected {
 			delete(s.guestIdentityLocalReservations, entry.GuestID)
 		}
 	}
@@ -624,7 +627,8 @@ func (s *Service) requireGuestIdentityOperationOwned(
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
 	for _, entry := range reservation.Entries {
-		if s.guestIdentityLocalReservations[entry.GuestID] != token {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if s.guestIdentityLocalReservations[entry.GuestID] != expected {
 			return fmt.Errorf(
 				"%w: guest_id=%d local_mutation_not_owned",
 				clusterModels.ErrGuestIdentityClaimConflict,
@@ -636,6 +640,9 @@ func (s *Service) requireGuestIdentityOperationOwned(
 }
 
 func (s *Service) requireStandaloneGuestIdentityMutationAllowedLocked(ctx context.Context) error {
+	if s.mutationGate != nil && s.mutationGate.IsFenced() {
+		return ErrNodeLeaveFenced
+	}
 	if s.guestIdentityClusterFormation {
 		return fmt.Errorf("guest_identity_cluster_formation_in_progress")
 	}
@@ -663,7 +670,7 @@ func (s *Service) reserveStandaloneGuestIdentities(
 		return err
 	}
 	if s.guestIdentityLocalReservations == nil {
-		s.guestIdentityLocalReservations = make(map[uint]string)
+		s.guestIdentityLocalReservations = make(map[uint]localGuestIdentityReservation)
 	}
 	report, err := ScanLocalGuestIdentityInventory(s.DB.WithContext(ctx), reservation.OwnerNodeID)
 	if err != nil {
@@ -686,12 +693,13 @@ func (s *Service) reserveStandaloneGuestIdentities(
 				existing.GuestType,
 			)
 		}
-		if _, exists := s.guestIdentityLocalReservations[entry.GuestID]; exists {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if existing, exists := s.guestIdentityLocalReservations[entry.GuestID]; exists && existing != expected {
 			return fmt.Errorf("%w: guest_id=%d", clusterModels.ErrGuestIdentityAlreadyInUse, entry.GuestID)
 		}
 	}
 	for _, entry := range reservation.Entries {
-		s.guestIdentityLocalReservations[entry.GuestID] = token
+		s.guestIdentityLocalReservations[entry.GuestID] = localGuestIdentityReservation{token: token, kind: entry.GuestKind}
 	}
 	return nil
 }
@@ -704,7 +712,8 @@ func (s *Service) finalizeStandaloneGuestIdentities(
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
 	for _, entry := range reservation.Entries {
-		if s.guestIdentityLocalReservations[entry.GuestID] != token {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if s.guestIdentityLocalReservations[entry.GuestID] != expected {
 			return fmt.Errorf("%w: guest_id=%d", clusterModels.ErrGuestIdentityClaimConflict, entry.GuestID)
 		}
 	}
@@ -744,15 +753,13 @@ func (s *Service) releaseStandaloneGuestIdentities(
 	s.guestIdentityRuntimeMu.Lock()
 	defer s.guestIdentityRuntimeMu.Unlock()
 	for _, entry := range reservation.Entries {
-		existingToken, exists := s.guestIdentityLocalReservations[entry.GuestID]
-		if exists && existingToken != token {
+		expected := localGuestIdentityReservation{token: token, kind: entry.GuestKind}
+		if existing, exists := s.guestIdentityLocalReservations[entry.GuestID]; exists && existing != expected {
 			return fmt.Errorf("%w: guest_id=%d", clusterModels.ErrGuestIdentityClaimConflict, entry.GuestID)
 		}
 	}
 	for _, entry := range reservation.Entries {
-		if s.guestIdentityLocalReservations[entry.GuestID] == token {
-			delete(s.guestIdentityLocalReservations, entry.GuestID)
-		}
+		delete(s.guestIdentityLocalReservations, entry.GuestID)
 	}
 	return nil
 }
@@ -801,15 +808,36 @@ func (s *Service) PrepareGuestIdentityReservation(
 }
 
 func (s *Service) AcquireGuestIdentityReservation(ctx context.Context, reservation clusterServiceInterfaces.GuestIdentityReservation) error {
-	guestIDs := make([]uint, 0, len(reservation.Entries))
-	for _, entry := range reservation.Entries {
-		guestIDs = append(guestIDs, entry.GuestID)
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if err := s.requireJailCreationIdentityAvailable(ctx, guestIDs, reservation.Token); err != nil {
+	var err error
+	reservation, err = normalizeGuestIdentityReservation(reservation)
+	if err != nil {
 		return err
 	}
+	clustered, err := s.guestIdentityClustered(ctx)
+	if err != nil {
+		return err
+	}
+	if reservation.Clustered != clustered || reservation.OwnerNodeID != s.localGuestIdentityOwner() {
+		return fmt.Errorf("guest_identity_claim_conflict: creation_owner_changed")
+	}
+	token := guestIdentityLocalOperationToken(reservation)
+	if token == "" {
+		return fmt.Errorf("%w: local_operation_token_required", clusterModels.ErrGuestIdentityAlreadyInUse)
+	}
+	guestIDs := make(map[string][]uint)
+	for _, entry := range reservation.Entries {
+		guestIDs[entry.GuestKind] = append(guestIDs[entry.GuestKind], entry.GuestID)
+	}
+	for _, kind := range slices.Sorted(maps.Keys(guestIDs)) {
+		if err := s.requireGuestCreationIdentityAvailable(ctx, guestIDs[kind], kind, token); err != nil {
+			return err
+		}
+	}
 	if reservation.Clustered {
-		if err := s.trackClusterGuestIdentityOperation(reservation); err != nil {
+		if err := s.beginGuestIdentityOperation(reservation, clusterModels.ErrGuestIdentityAlreadyInUse); err != nil {
 			return err
 		}
 		_, err := s.dispatchGuestIdentityControl(ctx, GuestIdentityControlRequest{
@@ -999,7 +1027,7 @@ func (s *Service) GuestIdentityClaim(
 		return reservation, err
 	}
 	if s.guestIdentityLocalReservations == nil {
-		s.guestIdentityLocalReservations = make(map[uint]string)
+		s.guestIdentityLocalReservations = make(map[uint]localGuestIdentityReservation)
 	}
 	if _, exists := s.guestIdentityLocalReservations[guestID]; exists {
 		return reservation, fmt.Errorf("%w: guest_id=%d local_mutation_in_progress", clusterModels.ErrGuestIdentityClaimConflict, guestID)
@@ -1014,7 +1042,7 @@ func (s *Service) GuestIdentityClaim(
 	for _, entry := range report.Entries {
 		if entry.GuestID == guestID && entry.GuestType == references[0].GuestKind && entry.NodeID == owner {
 			token := uuid.NewString()
-			s.guestIdentityLocalReservations[guestID] = token
+			s.guestIdentityLocalReservations[guestID] = localGuestIdentityReservation{token: token, kind: references[0].GuestKind}
 			return clusterServiceInterfaces.GuestIdentityReservation{
 				OwnerNodeID:         owner,
 				Token:               token,

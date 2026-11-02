@@ -1,0 +1,138 @@
+name: seaweedfs
+services:
+  seaweedfs:
+    image: ghcr.io/daemonless/seaweedfs:latest
+    container_name: seaweedfs
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - SEAWEEDFS_MODE=${SEAWEEDFS_MODE}
+    volumes:
+      - "${CONFIG_DATA}:/config"
+      - "${DATA_PATH}:/data"
+    ports:
+      - "${PORT_8333}:8333"
+      - "${WEB_PORT}:9333"
+      - "${PORT_8888}:8888"
+x-fjord:
+  version: "0.1"
+  info:
+    id: seaweedfs
+    name: SeaweedFS
+    description: SeaweedFS is a fast distributed storage system for blobs, objects, files, and a data lake, scaling to billions of files. It provides an S3 API, POSIX FUSE mount, WebDAV, and a Filer with cross-cluster active-active replication.
+    category: Network
+    class: service
+    icon: icons/seaweedfs.svg
+    web_port: ${WEB_PORT}
+    upstream_url: https://github.com/seaweedfs/seaweedfs
+    web_url: https://seaweedfs.com/
+    only_for_archs:
+      - amd64
+      - aarch64
+  variables:
+    - name: PORT_8333
+      label: S3 API
+      type: port
+      default: "8333"
+    - name: WEB_PORT
+      label: Master UI / API
+      type: port
+      default: "9333"
+    - name: PORT_8888
+      label: Filer UI / API
+      type: port
+      default: "8888"
+    - name: CONFIG_DATA
+      label: TOML config files (filer.toml, security.toml) + s3.json identities
+      type: zfs_dataset
+      default: config
+      host_permissions:
+        uid: 1000
+        gid: 1000
+        mode: "755"
+    - name: DATA_PATH
+      label: Object / volume storage data
+      type: path
+      default: ""
+    - name: PUID
+      label: User ID for the application process
+      type: string
+      default: "1000"
+    - name: PGID
+      label: Group ID for the application process
+      type: string
+      default: "1000"
+    - name: TZ
+      label: Timezone for the container
+      type: string
+      default: UTC
+    - name: SEAWEEDFS_MODE
+      label: 'SeaweedFS role: server (default, all-in-one S3+filer+volume), mini (turnkey + Admin UI), master, volume, filer, or s3'
+      type: string
+      default: server
+  variants:
+    - id: latest
+      label: Latest
+      default: true
+    - id: pkg
+      label: FreeBSD quarterly packages
+      aliases:
+        - pkg-latest
+  appjail:
+    director: |
+      # appjail-director.yml
+
+      options:
+        - virtualnet: ':<random> default'
+        - nat:
+      services:
+        seaweedfs:
+          name: seaweedfs
+          options:
+            - container: 'args:--pull'
+            - expose: !ENV '${WEB_PORT}:8333 proto:tcp'
+            - expose: '9333:9333 proto:tcp'
+            - expose: '8888:8888 proto:tcp'
+          oci:
+            user: root
+            environment:
+              - PUID: !ENV '${PUID}'
+              - PGID: !ENV '${PGID}'
+              - TZ: !ENV '${TZ}'
+              - SEAWEEDFS_MODE: !ENV '${SEAWEEDFS_MODE}'
+          volumes:
+            - SEAWEEDFS_CONFIG_PATH: /config
+            - SEAWEEDFS_DATA_PATH: /data
+      volumes:
+        SEAWEEDFS_CONFIG_PATH:
+          device: !ENV '${SEAWEEDFS_CONFIG_PATH}'
+        SEAWEEDFS_DATA_PATH:
+          device: !ENV '${SEAWEEDFS_DATA_PATH}'
+    makejail: |
+      # Makejail
+
+      ARG tag=latest
+
+      OPTION container=boot
+      OPTION overwrite=force
+      OPTION from=ghcr.io/daemonless/seaweedfs:${tag}
+    template_conf: |
+      # template.conf
+
+      exec.start: "/bin/sh /etc/rc"
+      exec.stop: "/bin/sh /etc/rc.shutdown jail"
+      mount.devfs
+      persist
+    env_defaults: |
+      # .env
+
+      DIRECTOR_PROJECT=seaweedfs
+      PUID=1000
+      PGID=1000
+      TZ=UTC
+      SEAWEEDFS_MODE=server
+      WEB_PORT=8333
+      SEAWEEDFS_CONFIG_PATH=/seaweedfs
+      SEAWEEDFS_DATA_PATH=/seaweedfs/data
