@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"golang.org/x/crypto/ssh"
 )
 
 var runCommand = utils.RunCommand
@@ -543,13 +544,24 @@ func DisableUnixUserPassword(username string) error {
 }
 
 // WriteSSHAuthorizedKey writes a public key to ~/.ssh/authorized_keys.
+// Only a single plain key is allowed: options and extra lines would
+// otherwise become SSH force-commands or injected keys.
 func WriteSSHAuthorizedKey(homeDir, key string) error {
+	trimmed := strings.TrimSpace(key)
+	if _, _, options, rest, err := ssh.ParseAuthorizedKey([]byte(trimmed)); err != nil {
+		return fmt.Errorf("invalid SSH public key: %w", err)
+	} else if len(options) > 0 {
+		return fmt.Errorf("invalid SSH public key: options are not allowed")
+	} else if len(strings.TrimSpace(string(rest))) > 0 {
+		return fmt.Errorf("invalid SSH public key: multiple keys are not allowed")
+	}
+
 	sshDir := homeDir + "/.ssh"
 	if err := os.MkdirAll(sshDir, 0700); err != nil {
 		return fmt.Errorf("failed to create .ssh directory: %w", err)
 	}
 	keyFile := sshDir + "/authorized_keys"
-	if err := os.WriteFile(keyFile, []byte(strings.TrimSpace(key)+"\n"), 0600); err != nil {
+	if err := os.WriteFile(keyFile, []byte(trimmed+"\n"), 0600); err != nil {
 		return fmt.Errorf("failed to write authorized_keys: %w", err)
 	}
 	return nil
