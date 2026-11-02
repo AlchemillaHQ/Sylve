@@ -95,6 +95,10 @@ func Notes(cS *cluster.Service) gin.HandlerFunc {
 			return
 		}
 
+		for i := range notes {
+			notes[i].ContentHTML = utils.RenderMarkdown(notes[i].Content)
+		}
+
 		c.JSON(200, internal.APIResponse[[]clusterModels.ClusterNote]{
 			Status:  "success",
 			Message: "notes_listed",

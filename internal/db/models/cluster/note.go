@@ -16,11 +16,12 @@ import (
 )
 
 type ClusterNote struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Title       string    `json:"title"`
+	Content     string    `json:"content"`
+	ContentHTML string    `gorm:"-" json:"contentHtml,omitempty"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"createdAt"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updatedAt"`
 }
 
 func upsertNote(db *gorm.DB, n *ClusterNote) error {

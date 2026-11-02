@@ -79,6 +79,10 @@ func handleGetNotes(c *gin.Context, infoService *info.Service) {
 		return
 	}
 
+	for i := range notes {
+		notes[i].ContentHTML = utils.RenderMarkdown(notes[i].Content)
+	}
+
 	c.JSON(http.StatusOK, internal.APIResponse[[]infoModels.Note]{
 		Status:  "success",
 		Message: "notes_fetched",
@@ -126,6 +130,7 @@ func handlePostNotes(c *gin.Context, infoService *info.Service) {
 		return
 	}
 
+	note.ContentHTML = utils.RenderMarkdown(note.Content)
 	c.JSON(http.StatusCreated, internal.APIResponse[infoModels.Note]{
 		Status:  "success",
 		Message: "note_created",

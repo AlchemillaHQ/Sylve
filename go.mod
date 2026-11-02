@@ -40,6 +40,7 @@ require (
 	github.com/mackerelio/go-osstat v0.2.6
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/miekg/dns v1.1.61
 	github.com/msteinert/pam v1.2.0
 	github.com/natefinch/lumberjack v2.0.0+incompatible
@@ -49,6 +50,7 @@ require (
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/vishvananda/netlink v1.3.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
+	github.com/yuin/goldmark v1.8.7
 	golang.org/x/crypto v0.53.0
 	golang.org/x/mod v0.36.0
 	golang.org/x/net v0.55.0
@@ -83,6 +85,7 @@ require (
 	github.com/anacrolix/utp v0.1.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/benbjohnson/immutable v0.4.1-0.20221220213129-8932b999621d // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
@@ -125,6 +128,7 @@ require (
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/gorilla/css v1.0.1 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect

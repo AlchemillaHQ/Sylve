@@ -42,7 +42,7 @@ func TestClusterNotesHandlerGetSuccess(t *testing.T) {
 	cS := &cluster.Service{DB: db}
 	r := newClusterNotesRouter(cS)
 
-	if err := db.Create(&clusterModels.ClusterNote{Title: "first", Content: "one"}).Error; err != nil {
+	if err := db.Create(&clusterModels.ClusterNote{Title: "first", Content: "**one**"}).Error; err != nil {
 		t.Fatalf("failed to seed first note: %v", err)
 	}
 	if err := db.Create(&clusterModels.ClusterNote{Title: "second", Content: "two"}).Error; err != nil {
@@ -64,6 +64,9 @@ func TestClusterNotesHandlerGetSuccess(t *testing.T) {
 	}
 	if len(resp.Data) != 2 {
 		t.Fatalf("expected 2 notes in response data, got %d", len(resp.Data))
+	}
+	if resp.Data[0].Content != "**one**" || resp.Data[0].ContentHTML != "<p><strong>one</strong></p>\n" {
+		t.Fatalf("expected raw Markdown and rendered HTML, got %+v", resp.Data[0])
 	}
 }
 

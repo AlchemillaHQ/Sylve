@@ -11,9 +11,10 @@ package infoModels
 import "time"
 
 type Note struct {
-	ID        uint      `json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updatedAt,omitempty"`
+	ID          uint      `json:"id"`
+	Title       string    `json:"title"`
+	Content     string    `json:"content"`
+	ContentHTML string    `gorm:"-" json:"contentHtml,omitempty"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"createdAt,omitempty"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updatedAt,omitempty"`
 }

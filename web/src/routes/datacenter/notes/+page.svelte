@@ -12,7 +12,8 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Note } from '$lib/types/info/notes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
+	import { generateTableData } from '$lib/utils/info/notes';
+	import { escapeHTML, shortenString } from '$lib/utils/string';
 	import { convertDbTime } from '$lib/utils/time';
 	import { resource } from 'runed';
 	import { toast } from 'svelte-sonner';
@@ -45,6 +46,7 @@
 	let modalState = $state({
 		title: '',
 		content: '',
+		contentHtml: '',
 		isOpen: false,
 		isEditMode: false,
 		isDeleteOpen: false,
@@ -69,11 +71,13 @@
 				modalState.isEditMode = false;
 				modalState.title = '';
 				modalState.content = '';
+				modalState.contentHtml = '';
 				if (clearActiveRow) activeRow = null;
 			}, 200);
 		} else {
 			modalState.title = note?.title || '';
 			modalState.content = note?.content || '';
+			modalState.contentHtml = note?.contentHtml || '';
 			selectedId = note?.id || null;
 			modalState.isEditMode = editMode;
 			modalState.isOpen = true;
@@ -114,10 +118,7 @@
 	function viewNote(id: number | string | undefined) {
 		const note = notes.current.find((note) => note.id === id);
 		if (note) {
-			modalState.title = note.title;
-			modalState.content = note.content;
-			modalState.isEditMode = false;
-			modalState.isOpen = true;
+			handleNote(note, false);
 		}
 	}
 
@@ -153,10 +154,7 @@
 		{
 			field: 'content',
 			title: 'Content',
-			formatter: (cell: CellComponent) => {
-				const value = cell.getValue();
-				return value.length > 64 ? value.substring(0, 64) + '...' : value;
-			}
+			formatter: (cell: CellComponent) => escapeHTML(shortenString(cell.getValue(), 64))
 		},
 		{
 			field: 'createdAt',
@@ -319,9 +317,13 @@
 						>
 							Content
 						</p>
-						<article class="prose lg:prose-xl rounded-md border p-3">
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-							{@html markdownToTailwindHTML(modalState.content)}
+						<article class="prose dark:prose-invert lg:prose-xl rounded-md border p-3">
+							{#if modalState.contentHtml}
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+								{@html modalState.contentHtml}
+							{:else}
+								{modalState.content}
+							{/if}
 						</article>
 					</div>
 				{/if}

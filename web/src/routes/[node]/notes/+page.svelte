@@ -12,7 +12,7 @@
 	import type { Column, Row } from '$lib/types/components/tree-table';
 	import type { Note } from '$lib/types/info/notes';
 	import { handleAPIError, isAPIResponse, updateCache } from '$lib/utils/http';
-	import { generateTableData, markdownToTailwindHTML } from '$lib/utils/info/notes';
+	import { generateTableData } from '$lib/utils/info/notes';
 	import { convertDbTime } from '$lib/utils/time';
 	import { toast } from 'svelte-sonner';
 	import type { CellComponent } from 'tabulator-tables';
@@ -51,6 +51,7 @@
 	let modalState = $state({
 		title: '',
 		content: '',
+		contentHtml: '',
 		isOpen: false,
 		isEditMode: false,
 		isDeleteOpen: false,
@@ -63,6 +64,7 @@
 		if (reset) {
 			modalState.title = '';
 			modalState.content = '';
+			modalState.contentHtml = '';
 			selectedId = null;
 			modalState.isEditMode = false;
 			modalState.isOpen = false;
@@ -72,6 +74,7 @@
 		} else {
 			modalState.title = note?.title || '';
 			modalState.content = note?.content || '';
+			modalState.contentHtml = note?.contentHtml || '';
 			selectedId = note?.id || null;
 			modalState.isEditMode = editMode;
 			modalState.isOpen = true;
@@ -113,10 +116,7 @@
 		if (notes.current && Array.isArray(notes.current)) {
 			const note = notes.current.find((note) => note.id === id);
 			if (note) {
-				modalState.title = note.title;
-				modalState.content = note.content;
-				modalState.isEditMode = false;
-				modalState.isOpen = true;
+				handleNote(note, false);
 			}
 		}
 	}
@@ -320,9 +320,13 @@
 						>
 							Content
 						</p>
-						<article class="prose lg:prose-xl rounded-md border p-3">
-							<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-							{@html markdownToTailwindHTML(modalState.content)}
+						<article class="prose dark:prose-invert lg:prose-xl rounded-md border p-3">
+							{#if modalState.contentHtml}
+								<!-- eslint-disable-next-line svelte/no-at-html-tags -->
+								{@html modalState.contentHtml}
+							{:else}
+								{modalState.content}
+							{/if}
 						</article>
 					</div>
 				{/if}

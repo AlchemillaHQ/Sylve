@@ -4,6 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "@iconify/tailwind4";
+@plugin "@tailwindcss/typography";
 
 :root {
 	--radius: 0.3rem;

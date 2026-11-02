@@ -59,7 +59,7 @@ func TestInfoNotesHandlerGet(t *testing.T) {
 		t.Fatalf("expected empty notes, got %d", len(resp.Data))
 	}
 
-	svc.AddNote("T1", "C1")
+	svc.AddNote("T1", "**C1**")
 	svc.AddNote("T2", "C2")
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodGet, "/info/notes", nil)
@@ -71,6 +71,9 @@ func TestInfoNotesHandlerGet(t *testing.T) {
 	}
 	if len(resp.Data) != 2 {
 		t.Fatalf("expected 2 notes, got %d", len(resp.Data))
+	}
+	if resp.Data[0].Content != "**C1**" || resp.Data[0].ContentHTML != "<p><strong>C1</strong></p>\n" {
+		t.Fatalf("expected raw Markdown and rendered HTML, got %+v", resp.Data[0])
 	}
 }
 
@@ -97,6 +100,9 @@ func TestInfoNotesHandlerCreate(t *testing.T) {
 	}
 	if resp.Data.ID == 0 {
 		t.Fatal("expected non-zero ID")
+	}
+	if resp.Data.ContentHTML != "<p>World</p>\n" {
+		t.Fatalf("expected rendered HTML in create response, got %q", resp.Data.ContentHTML)
 	}
 
 	rr = testutil.PerformJSONRequest(t, r, http.MethodPost, "/info/notes",
