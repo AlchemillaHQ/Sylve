@@ -59,7 +59,7 @@ if [ "$PAYLOAD_PACKAGES" = 1 ]; then
 	}
 	echo "    samba: $samba"
 
-	deps="FreeBSD-set-base FreeBSD-kernel-generic pkg bhyve-firmware dnsmasq libvirt qemu-tools swtpm $samba"
+	deps="FreeBSD-set-base FreeBSD-kernel-generic pkg bhyve-firmware dnsmasq libvirt podman qemu-tools swtpm $samba"
 	echo "==> fetching packages and dependencies"
 	# shellcheck disable=SC2086
 	stage_pkg fetch -y -d -o "$repo_input" $deps

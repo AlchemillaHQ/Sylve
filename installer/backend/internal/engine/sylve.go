@@ -27,10 +27,10 @@ import (
 
 var sylveServices = []string{
 	"dhcp-server", "jails", "samba-server", "nfs", "virtualization",
-	"wol-server", "firewall", "wireguard", "iscsi", "mdns",
+	"wol-server", "firewall", "wireguard", "iscsi", "mdns", "containers",
 }
 
-var sylveBaseDeps = []string{"bhyve-firmware", "dnsmasq", "libvirt", "qemu-tools", "swtpm"}
+var sylveBaseDeps = []string{"bhyve-firmware", "dnsmasq", "libvirt", "podman", "qemu-tools", "swtpm"}
 
 const (
 	sylveSambaFallback = "samba424"

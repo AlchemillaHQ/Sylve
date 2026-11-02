@@ -193,6 +193,40 @@ func TestApplyBootstrapSettingsUnknownServiceFails(t *testing.T) {
 	}
 }
 
+func TestApplyBootstrapSettingsContainersRequireFirewall(t *testing.T) {
+	db := newBootstrapTestDB(t)
+	service := &Service{
+		DB:                         db,
+		bootstrapServicePrecheckFn: func(models.AvailableService) error { return nil },
+	}
+
+	result, err := service.ApplyBootstrapSettings(t.Context(), systemServiceInterfaces.BootstrapSettingsRequest{
+		Services: []models.AvailableService{models.Containers},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item := itemAt(t, result, 0); item.Status != systemServiceInterfaces.BootstrapFailed || item.Message != "container_firewall_required" {
+		t.Fatalf("item = %+v; want failed container_firewall_required", item)
+	}
+
+	result, err = service.ApplyBootstrapSettings(t.Context(), systemServiceInterfaces.BootstrapSettingsRequest{
+		Services: []models.AvailableService{models.Containers, models.Firewall},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i := range 2 {
+		if item := itemAt(t, result, i); item.Status != systemServiceInterfaces.BootstrapApplied {
+			t.Fatalf("item %d = %+v; want applied", i, item)
+		}
+	}
+	settings := loadBootstrapSettings(t, db)
+	if !reflect.DeepEqual(settings.Services, []models.AvailableService{models.Containers, models.Firewall}) {
+		t.Fatalf("services = %v; want [containers firewall]", settings.Services)
+	}
+}
+
 func TestApplyBootstrapSettingsPrecheckWarningDropsNewEnable(t *testing.T) {
 	db := newBootstrapTestDB(t)
 	service := &Service{

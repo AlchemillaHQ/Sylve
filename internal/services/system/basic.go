@@ -434,7 +434,7 @@ func (s *Service) applyBootstrapStorageLocked(ctx context.Context, req systemSer
 	}
 
 	for index, service := range req.Services {
-		if !models.IsAvailableService(service) || service == models.Containers {
+		if !models.IsAvailableService(service) {
 			items = append(items, newBootstrapItem("service", index, string(service), systemServiceInterfaces.BootstrapFailed, fmt.Sprintf("unsupported_service_%s", service)))
 			continue
 		}
@@ -446,7 +446,10 @@ func (s *Service) applyBootstrapStorageLocked(ctx context.Context, req systemSer
 
 		_, alreadyEnabled := serviceSet[service]
 		item := newBootstrapItem("service", index, string(service), systemServiceInterfaces.BootstrapApplied, "")
-		if err := s.bootstrapServicePrecheck(service); err != nil {
+		if err := containerServiceSet(append(slices.Clone(finalServices), req.Services...)); err != nil && service == models.Containers {
+			item.result.Status = systemServiceInterfaces.BootstrapFailed
+			item.result.Message = err.Error()
+		} else if err := s.bootstrapServicePrecheck(service); err != nil {
 			item.result.Status = systemServiceInterfaces.BootstrapWarning
 			if alreadyEnabled {
 				item.result.Message = fmt.Sprintf("precheck_failed_existing_service_preserved: %v", err)
@@ -541,6 +544,8 @@ func (s *Service) bootstrapServicePrecheck(service models.AvailableService) erro
 		return s.CheckSambaServer()
 	case models.WireGuard:
 		return s.CheckWireGuard()
+	case models.Containers:
+		return s.CheckContainers()
 	default:
 		return nil
 	}

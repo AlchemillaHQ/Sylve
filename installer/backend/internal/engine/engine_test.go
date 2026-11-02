@@ -221,7 +221,7 @@ func TestZFSVdevArgs(t *testing.T) {
 
 func TestSylveBootstrapSharingServices(t *testing.T) {
 	doc := New(Plan{}).sylveBootstrapDoc()
-	for _, service := range []string{"samba-server", "nfs"} {
+	for _, service := range []string{"samba-server", "nfs", "firewall", "containers"} {
 		if !slices.Contains(doc.Services, service) {
 			t.Errorf("bootstrap services = %v; missing %s", doc.Services, service)
 		}

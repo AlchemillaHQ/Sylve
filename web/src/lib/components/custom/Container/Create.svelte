@@ -399,6 +399,7 @@ under sponsorship from the FreeBSD Foundation.
 										<CustomValueInput
 											label="Name"
 											value={form.name}
+											placeholder=""
 											hint="The stack's other containers reach it by this name"
 											disabled
 										/>

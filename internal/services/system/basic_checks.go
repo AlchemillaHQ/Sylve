@@ -110,6 +110,14 @@ func (s *Service) CheckDHCPServer() error {
 	return nil
 }
 
+func (s *Service) CheckContainers() error {
+	if !pkg.IsPackageInstalled("podman") {
+		return fmt.Errorf("containers_required_package_podman_not_installed")
+	}
+
+	return nil
+}
+
 func (s *Service) CheckSambaServer() error {
 	output, err := utils.RunCommand("/usr/sbin/pkg", "info")
 	if err != nil {
