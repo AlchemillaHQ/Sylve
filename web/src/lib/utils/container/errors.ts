@@ -66,6 +66,8 @@ const titles: Record<string, string> = {
 	invalid_registry_credential: 'Enter a registry, username and password',
 	podman_not_installed: "Podman isn't installed on this node",
 	failed_to_apply_container_limit: "Couldn't apply the CPU or memory limit",
+	container_limits_require_racct:
+		'CPU and memory limits need kern.racct.enable=1 in /boot/loader.conf and a reboot',
 	catalog_unreachable: "Couldn't reach the daemonless catalog",
 	catalog_setting_required: 'A required setting is empty',
 	catalog_stack_exists: "This app's stack already exists on this node",

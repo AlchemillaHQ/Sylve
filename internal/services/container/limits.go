@@ -11,6 +11,7 @@ import (
 
 	containerModels "github.com/alchemillahq/sylve/internal/db/models/container"
 	"github.com/alchemillahq/sylve/pkg/utils"
+	"github.com/alchemillahq/sylve/pkg/utils/sysctl"
 )
 
 func rctlSubject(runtimeID string) string { return "jail:" + runtimeID }
@@ -26,6 +27,11 @@ func validateLimits(cores uint, memory uint64) error {
 		}
 		if memory < 16<<20 || memory > uint64(total) {
 			return fmt.Errorf("invalid_memory: must be between 16 MiB and host memory")
+		}
+	}
+	if cores > 0 || memory > 0 {
+		if enabled, _ := sysctl.GetInt64("kern.racct.enable"); enabled != 1 {
+			return fmt.Errorf("container_limits_require_racct: set kern.racct.enable=1 in /boot/loader.conf and reboot")
 		}
 	}
 	return nil

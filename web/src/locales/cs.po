@@ -11042,10 +11042,6 @@ msgid "Failed to load importable users"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "Please select a user"
-msgstr ""
-
-#: src/lib/components/custom/Authentication/ImportUser.svelte
 #: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Failed to import user"
 msgstr ""
@@ -11064,14 +11060,6 @@ msgid "Loading available users…"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "No importable Unix users found"
-msgstr ""
-
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "Select a Unix user to import…"
-msgstr ""
-
-#: src/lib/components/custom/Authentication/ImportUser.svelte
 msgid "Shell:"
 msgstr ""
 
@@ -11080,6 +11068,7 @@ msgid "Home:"
 msgstr ""
 
 #: src/lib/components/custom/Authentication/ImportUser.svelte
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Sylve Password (optional)"
 msgstr ""
 
@@ -11118,10 +11107,6 @@ msgstr ""
 
 #: src/routes/[node]/authentication/groups/+page.svelte
 msgid "System group, cannot be deleted"
-msgstr ""
-
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "All Unix users are either already registered in Sylve or reserved by the system."
 msgstr ""
 
 #: src/lib/components/custom/Dialog/AuditDetailModal.svelte
@@ -16939,10 +16924,6 @@ msgstr ""
 msgid "UID / GID:"
 msgstr ""
 
-#: src/lib/components/custom/Authentication/ImportUser.svelte
-msgid "Importing registers the existing Unix user in Sylve. The Unix password, groups, and home directory are left untouched. If you set a password, it is used only for Sylve authentication; otherwise the user must use System Auth (PAM)."
-msgstr ""
-
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 #: src/lib/components/custom/Authentication/PamUserForm.svelte
 msgid "Keep current Samba state"
@@ -17035,11 +17016,6 @@ msgstr ""
 
 #: src/lib/components/custom/Utilities/Cloud-Init/Form.svelte
 msgid "Creating Template"
-msgstr ""
-
-#. 0: activeGroup?.name === 'wheel' ? ', including root,' \\: ''
-#: src/routes/[node]/authentication/groups/+page.svelte
-msgid "Primary group members{0} cannot be removed here. This restriction is enforced by the system."
 msgstr ""
 
 #: src/routes/[node]/authentication/users/local/+page.svelte
@@ -18934,6 +18910,8 @@ msgstr ""
 msgid "Interface missing"
 msgstr ""
 
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
 #: src/routes/[node]/network/interfaces/+page.svelte
 msgid "Managed"
 msgstr ""
@@ -23468,4 +23446,63 @@ msgstr ""
 
 #: src/routes/[node]/container/[ocid]/storage/+page.svelte
 msgid "Remove this mount? The container is recreated without it. A volume's data stays on its dataset."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Please select or enter a user"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Select or enter a Unix username…"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Directory users may not appear in this list. Enter their username and press Enter to import them by name."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/ImportUser.svelte
+msgid "Importing registers the existing Unix user in Sylve. The Unix password, groups, and home directory are left untouched. Directory accounts remain externally managed. If you set a password, it is used only for Sylve authentication; otherwise the user must use System Auth (PAM)."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "This identity is externally managed. Changes here affect Sylve access only; Unix credentials, groups, and home settings are read-only."
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Disable Sylve Password"
+msgstr ""
+
+#: src/lib/components/custom/Authentication/PamUserForm.svelte
+msgid "Lock Sylve Access"
+msgstr ""
+
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+msgid "Management"
+msgstr ""
+
+#: src/routes/[node]/authentication/groups/+page.svelte
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+msgid "External"
+msgstr ""
+
+#: src/routes/[node]/authentication/groups/+page.svelte
+msgid "Externally managed group is read-only"
+msgstr ""
+
+#: src/routes/[node]/authentication/groups/+page.svelte
+msgid "Contains externally managed users"
+msgstr ""
+
+#. 0: activeGroup?.name === 'wheel' ? ', including root,' \\: ''
+#: src/routes/[node]/authentication/groups/+page.svelte
+msgid "Primary group members{0} and externally managed users cannot be removed here. This restriction is enforced by the system."
+msgstr ""
+
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+msgid "Unregister"
+msgstr ""
+
+#: src/routes/[node]/authentication/users/pam/+page.svelte
+msgid "This removes the Sylve registration and revokes its sessions. The externally managed account, groups, and home directory are left untouched."
 msgstr ""
