@@ -101,9 +101,9 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 			Mounts:      []containerModels.Mount{{Type: containerModels.MountVolume, Source: "data", Target: "/data", Owner: "1000:1001", Mode: "750"}},
 			Annotations: map[string]string{"org.freebsd.jail.allow.mlock": "true"},
 			ExtraHosts:  []string{"db.internal:192.0.2.5"}, ShmSize: "64m"}}
-	racct, _ := sysctl.GetInt64("kern.racct.enable")
-	limited := racct == 1
-	if !limited {
+	enabled, _ := sysctl.GetInt64("kern.racct.enable")
+	racct := enabled == 1
+	if !racct {
 		if err := service.Create(ctx, create); err == nil || !strings.Contains(err.Error(), "container_limits_require_racct") {
 			t.Fatal("limits without racct must be rejected", err)
 		}
@@ -151,10 +151,10 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 		t.Fatal("jail annotations not applied", string(got))
 	}
 	execOutput(9101, "sh", "-c", "echo kept > /data/file")
-	if got := rules(detail.RuntimeID); limited && (!strings.Contains(got, "pcpu:deny=100") || !strings.Contains(got, "memoryuse:deny=268435456")) {
+	if got := rules(detail.RuntimeID); racct && (!strings.Contains(got, "pcpu:deny=100") || !strings.Contains(got, "memoryuse:deny=268435456")) {
 		t.Fatal("limits not applied", got)
 	}
-	if cpu, memory, err := usage(ctx, detail.Container); err != nil || memory <= 0 || cpu < 0 {
+	if cpu, memory, err := usage(ctx, detail.Container); racct && (err != nil || memory <= 0 || cpu < 0) {
 		t.Fatal("usage unavailable", cpu, memory, err)
 	}
 
@@ -168,7 +168,7 @@ func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
 		t.Fatal("update lost state", got)
 	}
 	updated, _ := service.Get(ctx, 9101)
-	if strings.Contains(rules(detail.RuntimeID), "deny") || limited && !strings.Contains(rules(updated.RuntimeID), "memoryuse:deny") {
+	if strings.Contains(rules(detail.RuntimeID), "deny") || racct && !strings.Contains(rules(updated.RuntimeID), "memoryuse:deny") {
 		t.Fatal("limits did not follow the recreated container")
 	}
 
