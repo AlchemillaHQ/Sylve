@@ -38,6 +38,8 @@ make csmwrap
 After checkout, builds are offline and leave the submodules unchanged. Only
 tracked source files are copied into a temporary build tree; SeaBIOS `.version`
 metadata is generated there. Git metadata and existing build outputs are excluded.
+The headless VGA-ROM guard in `patches/` is applied only to that temporary tree
+and included in the build-cache key.
 Source-build orchestration, bundle verification, and staging use shell and `jq`.
 Python 3 is needed only by upstream SeaBIOS, not for verification or staging.
 GitHub source archives do not include submodules.

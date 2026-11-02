@@ -96,6 +96,8 @@ build() (
 	git -C "$SOURCE" ls-files --recurse-submodules -z > "$WORK/files"
 	tar -cf "$WORK/source.tar" -C "$SOURCE" --null -T "$WORK/files"
 	tar -xf "$WORK/source.tar" -C "$TREE"
+	GIT_CEILING_DIRECTORIES="$WORK" git -C "$TREE" apply --whitespace=error \
+		"$ROOT/third-party/csmwrap/patches/0001-skip-missing-vga-rom.patch"
 	VERSION=$(printf '%s\n' "$SOURCE_INFO" | jq -r '.version')
 	SEABIOS_VERSION=$(printf '%s\n' "$SOURCE_INFO" | jq -r '.submodules.seabios[:8]')
 	printf '%s\n' "$SEABIOS_VERSION" > "$TREE/seabios/.version"
@@ -192,6 +194,7 @@ SOURCE_INFO=$(printf '%s\n' "$STATUS" | jq -RncS --arg prefix third-party/csmwra
 ')
 KEY_INPUTS=$SOURCE_INFO
 for FILE in .gitmodules third-party/csmwrap/csmwrap.ini scripts/build-csmwrap.sh \
+	third-party/csmwrap/patches/0001-skip-missing-vga-rom.patch \
 	.github/actions/csmwrap/action.yaml; do
 	FILE_HASH=$(checksum "$ROOT/$FILE")
 	KEY_INPUTS="$KEY_INPUTS

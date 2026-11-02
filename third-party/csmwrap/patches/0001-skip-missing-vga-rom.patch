@@ -1,0 +1,23 @@
+diff --git a/src/csmwrap.c b/src/csmwrap.c
+index eb6c3f7..3dfd5c5 100644
+--- a/src/csmwrap.c
++++ b/src/csmwrap.c
+@@ -888,11 +888,13 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
+     Regs.X.AX = Legacy16DispatchOprom;
+     Regs.X.ES = EFI_SEGMENT(&priv.low_stub->vga_oprom_table);
+     Regs.X.BX = EFI_OFFSET(&priv.low_stub->vga_oprom_table);
+-    LegacyBiosFarCall86(priv.csm_efi_table->Compatibility16CallSegment,
+-                        priv.csm_efi_table->Compatibility16CallOffset,
+-                        &Regs,
+-                        NULL,
+-                        0);
++    if (vbios_loc != NULL && vbios_size != 0) {
++        LegacyBiosFarCall86(priv.csm_efi_table->Compatibility16CallSegment,
++                            priv.csm_efi_table->Compatibility16CallOffset,
++                            &Regs,
++                            NULL,
++                            0);
++    }
+ 
+     /* Dispatch non-VGA option ROMs (storage, network, etc.) */
+     oprom_dispatch_all(&priv, &oprom_list);
