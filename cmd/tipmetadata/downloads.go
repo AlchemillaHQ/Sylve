@@ -24,6 +24,18 @@ const (
 
 var downloadsStatePattern = regexp.MustCompile(`(?s)<!-- sylve-tip-downloads-state: (.*?) -->`)
 
+// Release assets whose downloads add up across tip republishes, in column order.
+// The installers were recorded later, so older notes may lack their checkpoints.
+var recordedDownloads = []struct {
+	name, label string
+	optional    bool
+}{
+	{"sylve-amd64", "Daemon AMD64", false},
+	{"sylve-arm64", "Daemon ARM64", false},
+	{"FreeBSD+Sylve-15-STABLE-Installer-amd64.iso", "Installer 15-STABLE", true},
+	{"FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso", "Installer 16-CURRENT", true},
+}
+
 type releaseDownloads struct {
 	Body   string          `json:"body"`
 	Assets []downloadAsset `json:"assets"`
@@ -84,11 +96,11 @@ func downloadNotes(release releaseDownloads) (string, error) {
 		}
 	}
 
-	var badges []string
-	for _, arch := range []string{"amd64", "arm64"} {
-		name := "sylve-" + arch
+	var labels, aligns, totals []string
+	for _, recorded := range recordedDownloads {
+		name := recorded.name
 		checkpoint, exists := state[name]
-		if start >= 0 && !exists {
+		if start >= 0 && !exists && !recorded.optional {
 			return "", fmt.Errorf("missing recorded downloads checkpoint for %s", name)
 		}
 		if checkpoint.Total < checkpoint.Count {
@@ -113,13 +125,16 @@ func downloadNotes(release releaseDownloads) (string, error) {
 			checkpoint.Count = asset.Count
 		}
 		state[name] = checkpoint
-		badges = append(badges, fmt.Sprintf("![%s downloads: %d](https://img.shields.io/badge/%s-%d-blue)", arch, checkpoint.Total, arch, checkpoint.Total))
+		labels = append(labels, recorded.label)
+		aligns = append(aligns, "---:")
+		totals = append(totals, fmt.Sprint(checkpoint.Total))
 	}
 	data, err := json.Marshal(state)
 	if err != nil {
 		return "", err
 	}
-	section := downloadsStart + "\n### Recorded downloads\n\n" + strings.Join(badges, " ") +
+	table := tableRow(labels) + "\n" + tableRow(aligns) + "\n" + tableRow(totals)
+	section := downloadsStart + "\n### Recorded downloads\n\n" + table +
 		"\n\n<!-- sylve-tip-downloads-state: " + string(data) + " -->\n" + downloadsEnd
 	if start >= 0 {
 		return release.Body[:start] + section + release.Body[end:], nil
@@ -128,4 +143,8 @@ func downloadNotes(release releaseDownloads) (string, error) {
 		return section + "\n", nil
 	}
 	return strings.TrimRight(release.Body, "\r\n") + "\n\n" + section + "\n", nil
+}
+
+func tableRow(cells []string) string {
+	return "| " + strings.Join(cells, " | ") + " |"
 }

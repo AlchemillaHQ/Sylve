@@ -40,17 +40,14 @@ func TestDownloadNotes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.HasPrefix(notes, "Rolling prerelease for Sylve tip.\n\n") || strings.Count(notes, "### Recorded downloads\n") != 1 || strings.Contains(notes, "updated") || strings.Contains(notes, "| Architecture |") {
+			if !strings.HasPrefix(notes, "Rolling prerelease for Sylve tip.\n\n") || strings.Count(notes, "### Recorded downloads\n") != 1 || strings.Contains(notes, "updated") || strings.Contains(notes, "img.shields.io") {
 				t.Fatalf("unexpected release description: %s", notes)
 			}
-			for arch, total := range map[string]uint64{"amd64": step.amd64, "arm64": step.arm64} {
-				badge := fmt.Sprintf("![%s downloads: %d](https://img.shields.io/badge/%s-%d-blue)", arch, total, arch, total)
-				if !strings.Contains(notes, badge) {
-					t.Fatalf("incorrect recorded downloads for %s: %s", arch, notes)
-				}
+			if !strings.Contains(notes, fmt.Sprintf("\n| %d | %d | 0 | 0 |\n", step.amd64, step.arm64)) {
+				t.Fatalf("incorrect recorded downloads: %s", notes)
 			}
 			state := readDownloadCheckpoint(t, notes)
-			if len(state) != 2 || state["sylve-amd64"].Total != step.amd64 || state["sylve-arm64"].Total != step.arm64 {
+			if len(state) != len(recordedDownloads) || state["sylve-amd64"].Total != step.amd64 || state["sylve-arm64"].Total != step.arm64 {
 				t.Fatalf("unexpected checkpoints: %+v", state)
 			}
 			if strings.Contains(step.name, "retry") && notes != release.Body {
@@ -82,33 +79,35 @@ func TestDownloadNotesPreservesSurroundingNotes(t *testing.T) {
 	}
 }
 
-func TestDownloadNotesBadgesShareLine(t *testing.T) {
+func TestDownloadNotesTable(t *testing.T) {
 	notes, err := downloadNotes(releaseDownloads{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := "![amd64 downloads: 0](https://img.shields.io/badge/amd64-0-blue) " +
-		"![arm64 downloads: 0](https://img.shields.io/badge/arm64-0-blue)"
-	if !strings.Contains(notes, "\n"+row+"\n\n") {
-		t.Fatalf("badges must share one Markdown line: %s", notes)
+	table := "| Daemon AMD64 | Daemon ARM64 | Installer 15-STABLE | Installer 16-CURRENT |\n" +
+		"| ---: | ---: | ---: | ---: |\n" +
+		"| 0 | 0 | 0 | 0 |\n"
+	if !strings.Contains(notes, "\n"+table+"\n") {
+		t.Fatalf("unexpected downloads table: %s", notes)
 	}
 }
 
-func TestDownloadNotesReplacesTableWithBadges(t *testing.T) {
+func TestDownloadNotesReplacesBadgesAndAddsInstallers(t *testing.T) {
 	body := downloadsStart + "\n### Recorded downloads\n\n" +
-		"| Architecture | Downloads |\n| --- | ---: |\n| amd64 | 100 |\n| arm64 | 20 |\n" +
+		"![amd64 downloads: 100](https://img.shields.io/badge/amd64-100-blue) ![arm64 downloads: 20](https://img.shields.io/badge/arm64-20-blue)\n\n" +
 		`<!-- sylve-tip-downloads-state: {"sylve-amd64":{"total":100,"assetId":1,"count":100},"sylve-arm64":{"total":20,"assetId":2,"count":20}} -->` +
 		"\n" + downloadsEnd
-	notes, err := downloadNotes(releaseDownloads{Body: body, Assets: []downloadAsset{{3, "sylve-amd64", 5}, {2, "sylve-arm64", 20}}})
+	stable := "FreeBSD+Sylve-15-STABLE-Installer-amd64.iso"
+	notes, err := downloadNotes(releaseDownloads{Body: body, Assets: []downloadAsset{{3, "sylve-amd64", 5}, {2, "sylve-arm64", 20}, {4, stable, 7}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(notes, "| Architecture |") || !strings.Contains(notes, "https://img.shields.io/badge/amd64-105-blue") || !strings.Contains(notes, "https://img.shields.io/badge/arm64-20-blue") {
-		t.Fatalf("did not replace the table with badges: %s", notes)
+	if strings.Contains(notes, "img.shields.io") || !strings.Contains(notes, "\n| 105 | 20 | 7 | 0 |\n") {
+		t.Fatalf("did not replace the badges with the table: %s", notes)
 	}
 	state := readDownloadCheckpoint(t, notes)
-	if state["sylve-amd64"] != (downloadCheckpoint{Total: 105, AssetID: 3, Count: 5}) || state["sylve-arm64"] != (downloadCheckpoint{Total: 20, AssetID: 2, Count: 20}) {
-		t.Fatalf("lost download history when replacing the table: %+v", state)
+	if state["sylve-amd64"] != (downloadCheckpoint{Total: 105, AssetID: 3, Count: 5}) || state["sylve-arm64"] != (downloadCheckpoint{Total: 20, AssetID: 2, Count: 20}) || state[stable] != (downloadCheckpoint{Total: 7, AssetID: 4, Count: 7}) {
+		t.Fatalf("lost download history when adding installers: %+v", state)
 	}
 }
 
