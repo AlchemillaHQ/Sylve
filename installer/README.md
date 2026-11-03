@@ -84,7 +84,7 @@ The `installer.yaml` workflow runs lightweight checks on PRs/pushes and is calle
 by the tip and `v*` release pipelines to build images. Tagged releases require
 both 15-STABLE and 16-CURRENT amd64 hybrid BIOS/UEFI `.iso` assets. For rolling
 `tip` releases, 15-STABLE is required and 16-CURRENT is best-effort; a failed
-CURRENT build is noted in the release and any older CURRENT installer is removed.
+CURRENT build removes any older CURRENT installer from the release.
 GitHub exposes each asset's SHA-256 digest, so no separate checksum files are
 uploaded. CI and the offline bundle retain internal
 verification data. Tagged-release images are attached to

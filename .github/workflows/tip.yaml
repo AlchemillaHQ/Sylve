@@ -164,9 +164,6 @@ jobs:
           # Save counts before any assets are replaced; asset IDs make retries safe.
           gh api "repos/${GITHUB_REPOSITORY}/releases/tags/tip" > tip-release.json
           go run ./cmd/tipmetadata downloads -release tip-release.json -out tip-notes.md
-          if [ ! -s installer-assets/FreeBSD+Sylve-16-CURRENT-Installer-amd64.iso ]; then
-            printf '\n16-CURRENT installer unavailable for this tip build; the 15-STABLE installer is included.\n' >> tip-notes.md
-          fi
           gh release edit tip --notes-file tip-notes.md
 
           ASSET_NAMES="$(jq -r '.assets[].name' tip-release.json)"
