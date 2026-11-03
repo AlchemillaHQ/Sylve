@@ -109,7 +109,7 @@ func TestWriteTargetConfigValidatesThenReloads(t *testing.T) {
 	if validation < 0 || reload <= validation || slices.Contains(commands, "/usr/sbin/service ctld onestart") {
 		t.Fatalf("invalid reload order: %#v", commands)
 	}
-	if count := strings.Count(strings.Join(commands, "\n"), "ctladm portlist -x"); count != 2 {
+	if count := strings.Count(strings.Join(commands[reload:], "\n"), "ctladm portlist -x"); count != 2 {
 		t.Fatalf("runtime samples=%d want 2", count)
 	}
 	info, err := os.Stat(path)
@@ -1424,12 +1424,13 @@ func TestTargetAuthOnlyChecksDoNotAcknowledgeReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := svc.runtime.run
-	samples := 0
+	reloaded, samples := false, 0
 	svc.runtime.run = func(ctx context.Context, input, command string, args ...string) (string, error) {
 		if command == "/usr/sbin/service" && args[1] == "onereload" {
+			reloaded = true
 			return "", nil
 		}
-		if command == "/usr/sbin/ctladm" && args[0] == "portlist" {
+		if command == "/usr/sbin/ctladm" && args[0] == "portlist" && reloaded {
 			samples++
 		}
 		return run(ctx, input, command, args...)
@@ -1439,6 +1440,25 @@ func TestTargetAuthOnlyChecksDoNotAcknowledgeReload(t *testing.T) {
 	}
 	if samples != 2 {
 		t.Fatalf("samples=%d want 2", samples)
+	}
+}
+
+func TestTargetReloadWaitsOnlyWhenRuntimeCannotShowIt(t *testing.T) {
+	svc := newTargetTestService(t)
+	target := iscsiModels.ISCSITarget{TargetName: "iqn.2026-10.test:settle", AuthMethod: "None"}
+	if err := svc.DB.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.WriteTargetConfig(true); err != nil {
+		t.Fatal(err)
+	}
+	// Any reload that waits out this settle runs past the deadline.
+	svc.runtime.settle, svc.runtime.deadline = time.Hour, time.Second
+	if err := svc.AddPortal(target.ID, "127.0.0.1", 3260); err != nil {
+		t.Fatalf("visible reload: %v", err)
+	}
+	if err := svc.UpdateTarget(target.ID, target.TargetName, "", "CHAP", "user", "secretpassw0rd", "", ""); !errors.Is(err, ErrApplyFailed) || err.Error() != "target_runtime_check_timeout" {
+		t.Fatalf("auth-only reload error=%v", err)
 	}
 }
 

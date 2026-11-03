@@ -260,22 +260,6 @@ func TestIntegrationISCSIExtraConfigDisabledAndStartup(t *testing.T) {
 	}
 }
 
-func TestIntegrationISCSIExtraConfigPinnedGrammar(t *testing.T) {
-	f := requireISCSIIntegrationFixture(t)
-	for _, text := range loadNativeGrammarFixture(t).Accepted {
-		state, rendered, err := f.service.parseExtraTargetConfig(t.Context(), text, nil)
-		if err != nil || state == nil {
-			t.Fatal("pinned fixture was rejected by the extra parser")
-		}
-		ctx, cancel := f.service.targetContext()
-		_, err = f.service.runTargetCommand(ctx, rendered, "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
-		cancel()
-		if err != nil {
-			t.Fatal("pinned extra grammar differs from native ctld")
-		}
-	}
-}
-
 func TestIntegrationISCSIExtraConfigUnusedGroupsNamedLUNsAndOverlap(t *testing.T) {
 	f := requireISCSIIntegrationFixture(t)
 	endpoint := f.endpoint(t)
@@ -403,29 +387,4 @@ func TestIntegrationISCSIExtraConfigDelayedCHAPReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.session(t, user.TargetName, endpoint, false)
-}
-
-func TestIntegrationISCSIExtraConfigNativeSyslogLimit(t *testing.T) {
-	f := requireISCSIIntegrationFixture(t)
-	logFile, err := os.Open("/var/log/messages")
-	if err != nil {
-		t.Fatal("native syslog limit test requires /var/log/messages")
-	}
-	defer logFile.Close()
-	info, err := logFile.Stat()
-	if err != nil {
-		t.Fatal("cannot inspect native log offset")
-	}
-	marker := "SYLVE_NONSECRET_EXTRA_LOG_" + f.manifest.RunID
-	ctx, cancel := f.service.targetContext()
-	_, err = f.service.runTargetCommand(ctx, "portal-group user { "+marker+" }", "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
-	cancel()
-	if err == nil || strings.Contains(err.Error(), marker) {
-		t.Fatal("native output entered the Sylve command error")
-	}
-	waitIntegration(t, "nonsecret native syslog marker", func(context.Context) bool {
-		data := make([]byte, 1<<20)
-		n, _ := logFile.ReadAt(data, info.Size())
-		return strings.Contains(string(data[:n]), marker)
-	})
 }

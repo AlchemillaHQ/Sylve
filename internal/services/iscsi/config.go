@@ -694,8 +694,14 @@ func (s *Service) writePreparedTargets(ctx context.Context, text string, state *
 func (s *Service) applyTargetRuntime(ctx context.Context, state *targetConfiguration, running bool) error {
 	action, reason := "onestart", "failed_to_start_target_service"
 	var before *targetStartBaseline
+	wait := true
 	if running {
 		action, reason = "onereload", "failed_to_reload_target_config"
+		// Only ctld applying the reload can bring a mismatched runtime in line with
+		// the new config. A runtime that already matches, as after a CHAP secret
+		// change, shows nothing, so the reload still needs time to land.
+		_, err := s.checkTargetRuntime(ctx, state)
+		wait = err == nil
 	} else {
 		lock, err := s.lockTargetRecovery()
 		if err != nil {
@@ -718,8 +724,10 @@ func (s *Service) applyTargetRuntime(ctx context.Context, state *targetConfigura
 		return applyFailed(reason, nil)
 	}
 	settle, interval := s.targetTimings()
-	if err := waitTarget(ctx, settle); err != nil {
-		return applyFailed("target_runtime_check_timeout", nil)
+	if wait {
+		if err := waitTarget(ctx, settle); err != nil {
+			return applyFailed("target_runtime_check_timeout", nil)
+		}
 	}
 	lastIdentity, matches := "", 0
 	for {

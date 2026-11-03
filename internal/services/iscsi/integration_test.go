@@ -150,60 +150,53 @@ func mustPort(t *testing.T, endpoint string) int {
 	return number
 }
 
+// Mutual CHAP runs every forward CHAP check too. Plain CHAP logins are covered
+// by TestIntegrationISCSINativeQuotedCredentials and the extra-config CHAP tests.
 func TestIntegrationISCSIAuthentication(t *testing.T) {
-	for _, auth := range []string{"CHAP", "MutualCHAP"} {
-		t.Run(auth, func(t *testing.T) {
-			f := requireISCSIIntegrationFixture(t)
-			endpoint := f.endpoint(t)
-			mutualUser, mutualSecret := "", ""
-			if auth == "MutualCHAP" {
-				mutualUser, mutualSecret = "target-user", "targetpassw0rd"
-			}
-			target := f.target(t, "auth", endpoint, auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret)
-			other := f.target(t, "other-auth", endpoint, auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret)
-			initiator := f.initiator(t, target, endpoint, "auth", auth, "test-user", "wrongpassw0rd", mutualUser, mutualSecret)
-			f.session(t, target.TargetName, endpoint, false)
-			if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			f.io(t, target, endpoint, 'S')
-			otherInitiator := f.initiator(t, other, endpoint, "other-auth", auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret)
-			f.session(t, other.TargetName, endpoint, false)
-			if err := f.service.UpdateInitiator(otherInitiator.ID, "other-auth", endpoint, other.TargetName, f.initiatorName(), auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			f.io(t, other, endpoint, 'O')
-			if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			f.session(t, target.TargetName, endpoint, false)
-			if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			if auth == "MutualCHAP" {
-				if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, "wrongtargetpwd"); err != nil {
-					t.Fatal(err)
-				}
-				f.session(t, target.TargetName, endpoint, false)
-				if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
-					t.Fatal(err)
-				}
-				f.io(t, target, endpoint, 'T')
-			}
-			if err := f.service.UpdateTarget(target.ID, target.TargetName, "", auth, "test-user", "changedpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			if err := f.service.ConnectInitiator(initiator.ID); err != nil {
-				t.Fatal(err)
-			}
-			f.session(t, target.TargetName, endpoint, false)
-			if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "changedpassw0rd", mutualUser, mutualSecret); err != nil {
-				t.Fatal(err)
-			}
-			f.io(t, target, endpoint, 'U')
-			f.io(t, other, endpoint, 'V')
-		})
+	const auth, mutualUser, mutualSecret = "MutualCHAP", "target-user", "targetpassw0rd"
+	f := requireISCSIIntegrationFixture(t)
+	endpoint := f.endpoint(t)
+	target := f.target(t, "auth", endpoint, auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret)
+	other := f.target(t, "other-auth", endpoint, auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret)
+	initiator := f.initiator(t, target, endpoint, "auth", auth, "test-user", "wrongpassw0rd", mutualUser, mutualSecret)
+	f.session(t, target.TargetName, endpoint, false)
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
 	}
+	f.io(t, target, endpoint, 'S')
+	otherInitiator := f.initiator(t, other, endpoint, "other-auth", auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret)
+	f.session(t, other.TargetName, endpoint, false)
+	if err := f.service.UpdateInitiator(otherInitiator.ID, "other-auth", endpoint, other.TargetName, f.initiatorName(), auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	f.io(t, other, endpoint, 'O')
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "other-user", "otherpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	f.session(t, target.TargetName, endpoint, false)
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, "wrongtargetpwd"); err != nil {
+		t.Fatal(err)
+	}
+	f.session(t, target.TargetName, endpoint, false)
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "secretpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	f.io(t, target, endpoint, 'T')
+	if err := f.service.UpdateTarget(target.ID, target.TargetName, "", auth, "test-user", "changedpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.ConnectInitiator(initiator.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.session(t, target.TargetName, endpoint, false)
+	if err := f.service.UpdateInitiator(initiator.ID, "auth", endpoint, target.TargetName, f.initiatorName(), auth, "test-user", "changedpassw0rd", mutualUser, mutualSecret); err != nil {
+		t.Fatal(err)
+	}
+	f.io(t, target, endpoint, 'U')
+	f.io(t, other, endpoint, 'V')
 }
 
 func TestIntegrationISCSITopologyEditsAndRestart(t *testing.T) {
@@ -489,31 +482,69 @@ func TestIntegrationISCSIColdStartFailureAndDisable(t *testing.T) {
 	}
 }
 
-func TestIntegrationISCSINativeValidationErrorIsSafe(t *testing.T) {
+// These only run ctld -t, so they share one fixture.
+func TestIntegrationISCSINativeSyntax(t *testing.T) {
 	f := requireISCSIIntegrationFixture(t)
-	const marker = "SYLVE_NONSECRET_NATIVE_LOG_MARKER"
-	ctx, cancel := f.service.targetContext()
-	defer cancel()
-	_, err := f.service.runTargetCommand(ctx, `portal-group pg-test { listen "127.0.0.1:3260" `+marker+` }`, "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
-	if err == nil || strings.Contains(err.Error(), marker) {
-		t.Fatal("native validation output entered the command error")
-	}
-	if _, err := f.service.targetPID(context.Background()); !errors.Is(err, errTargetStopped) {
-		t.Fatal("native syntax validation started a target daemon")
-	}
-}
-
-func TestIntegrationISCSINativeGoldenSyntax(t *testing.T) {
-	f := requireISCSIIntegrationFixture(t)
-	text, err := os.ReadFile("testdata/shared-portals.conf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := f.service.targetContext()
-	defer cancel()
-	if _, err := f.service.runTargetCommand(ctx, string(text), "/usr/sbin/ctld", "-t", "-f", "/dev/stdin"); err != nil {
-		t.Fatal("native shared-portal golden config syntax was rejected")
-	}
+	t.Run("ValidationErrorIsSafe", func(t *testing.T) {
+		const marker = "SYLVE_NONSECRET_NATIVE_LOG_MARKER"
+		ctx, cancel := f.service.targetContext()
+		defer cancel()
+		_, err := f.service.runTargetCommand(ctx, `portal-group pg-test { listen "127.0.0.1:3260" `+marker+` }`, "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
+		if err == nil || strings.Contains(err.Error(), marker) {
+			t.Fatal("native validation output entered the command error")
+		}
+		if _, err := f.service.targetPID(context.Background()); !errors.Is(err, errTargetStopped) {
+			t.Fatal("native syntax validation started a target daemon")
+		}
+	})
+	t.Run("GoldenSharedPortals", func(t *testing.T) {
+		text, err := os.ReadFile("testdata/shared-portals.conf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := f.service.targetContext()
+		defer cancel()
+		if _, err := f.service.runTargetCommand(ctx, string(text), "/usr/sbin/ctld", "-t", "-f", "/dev/stdin"); err != nil {
+			t.Fatal("native shared-portal golden config syntax was rejected")
+		}
+	})
+	t.Run("PinnedExtraGrammar", func(t *testing.T) {
+		for _, text := range loadNativeGrammarFixture(t).Accepted {
+			state, rendered, err := f.service.parseExtraTargetConfig(t.Context(), text, nil)
+			if err != nil || state == nil {
+				t.Fatal("pinned fixture was rejected by the extra parser")
+			}
+			ctx, cancel := f.service.targetContext()
+			_, err = f.service.runTargetCommand(ctx, rendered, "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
+			cancel()
+			if err != nil {
+				t.Fatal("pinned extra grammar differs from native ctld")
+			}
+		}
+	})
+	t.Run("ExtraSyslogLimit", func(t *testing.T) {
+		logFile, err := os.Open("/var/log/messages")
+		if err != nil {
+			t.Fatal("native syslog limit test requires /var/log/messages")
+		}
+		defer logFile.Close()
+		info, err := logFile.Stat()
+		if err != nil {
+			t.Fatal("cannot inspect native log offset")
+		}
+		marker := "SYLVE_NONSECRET_EXTRA_LOG_" + f.manifest.RunID
+		ctx, cancel := f.service.targetContext()
+		_, err = f.service.runTargetCommand(ctx, "portal-group user { "+marker+" }", "/usr/sbin/ctld", "-t", "-f", "/dev/stdin")
+		cancel()
+		if err == nil || strings.Contains(err.Error(), marker) {
+			t.Fatal("native output entered the Sylve command error")
+		}
+		waitIntegration(t, "nonsecret native syslog marker", func(context.Context) bool {
+			data := make([]byte, 1<<20)
+			n, _ := logFile.ReadAt(data, info.Size())
+			return strings.Contains(string(data[:n]), marker)
+		})
+	})
 }
 
 func TestIntegrationISCSIUnboundMissingBackingAndDisable(t *testing.T) {
