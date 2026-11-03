@@ -6,7 +6,7 @@
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
 
-//go:build (darwin || freebsd || openbsd || netbsd) && !cgo
+//go:build freebsd && !cgo
 
 package sysctl
 

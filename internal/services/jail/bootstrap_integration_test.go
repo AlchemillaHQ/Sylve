@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,9 +36,6 @@ type integrationRoot struct {
 func TestIntegrationBootstrapPkgOwnership(t *testing.T) {
 	if testing.Short() {
 		t.Skip("pkgbase integration test requires network access; skipped in short mode")
-	}
-	if runtime.GOOS != "freebsd" {
-		t.Skip("pkgbase integration test requires FreeBSD")
 	}
 	if os.Geteuid() != 0 {
 		t.Skip("pkgbase integration test requires root")

@@ -22,7 +22,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -210,9 +209,6 @@ func newConsoleIntegrationSuite() (_ *consoleIntegrationSuite, err error) {
 }
 
 func requireConsoleIntegrationHost() error {
-	if runtime.GOOS != "freebsd" {
-		return fmt.Errorf("must run on FreeBSD, got %s", runtime.GOOS)
-	}
 	if os.Geteuid() != 0 {
 		return errors.New("must run as root; use make test-integration on the dedicated FreeBSD host")
 	}

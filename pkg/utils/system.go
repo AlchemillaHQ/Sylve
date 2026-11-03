@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -65,16 +64,11 @@ func GetSystemHostname() (string, error) {
 }
 
 func GetOS() string {
-	switch runtime.GOOS {
-	case "freebsd":
-		v, err := getSysctlString("kern.version")
-		if err != nil {
-			return "FreeBSD"
-		}
-		return v
-	default:
-		return "Linux"
+	v, err := getSysctlString("kern.version")
+	if err != nil {
+		return "FreeBSD"
 	}
+	return v
 }
 
 func GetUptime() (int64, error) {

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -115,9 +114,6 @@ func TestIntegrationPhaseCleanupSourceIsIdempotentWithRealZFS(t *testing.T) {
 }
 
 func TestIntegrationPhaseCleanupSourceUnmountsFstabMountTree(t *testing.T) {
-	if runtime.GOOS != "freebsd" {
-		t.Skip("requires FreeBSD filesystem mounts")
-	}
 	zfstest.SkipIfUnavailable(t)
 
 	pool, client, cleanup := zfstest.SharedPool(t)

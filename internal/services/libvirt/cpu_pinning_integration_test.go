@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -24,7 +23,7 @@ import (
 )
 
 func TestIntegrationCPUPinningNativeXML(t *testing.T) {
-	if testing.Short() || runtime.GOOS != "freebsd" || os.Geteuid() != 0 {
+	if testing.Short() || os.Geteuid() != 0 {
 		t.Skip("requires FreeBSD, root, and a running libvirt bhyve driver")
 	}
 	uri, err := url.Parse("bhyve:///system")

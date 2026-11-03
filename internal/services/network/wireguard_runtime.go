@@ -15,7 +15,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"runtime"
+
 	"sort"
 	"strconv"
 	"strings"
@@ -39,13 +39,11 @@ var (
 	wireGuardLookupIP            = net.LookupIP
 	wireGuardResolveUDP          = net.ResolveUDPAddr
 	wireGuardNewWGClient         = wgctrl.New
-	wireGuardConfigureWithWGCtrl = configureWireGuardDeviceWithWGCtrl
 	wireGuardResolveWGBinaryPath = resolveWireGuardBinaryPath
 	wireGuardListInterfaces      = net.Interfaces
 	wireGuardStat                = os.Stat
 	wireGuardLookPath            = exec.LookPath
 	wireGuardCurrentTime         = wireGuardNow
-	wireGuardRuntimeOS           = runtime.GOOS
 	wireGuardReadDevice          = func(s *Service, iface string) (*wgtypes.Device, error) {
 		return s.readWireGuardDeviceWithClient(iface)
 	}
@@ -327,59 +325,10 @@ func configureWireGuardDevice(interfaceName string, privateKey string, listenPor
 		return fmt.Errorf("invalid_wireguard_private_key: %w", err)
 	}
 
-	cfg := wgtypes.Config{
-		PrivateKey:   &parsedPrivateKey,
-		ReplacePeers: true,
-		Peers:        peers,
+	if err := configureWireGuardDeviceWithSetconf(interfaceName, parsedPrivateKey, listenPort, peers); err != nil {
+		return fmt.Errorf("failed_to_configure_wireguard_device_%s: wg_setconf_error=%v", interfaceName, err)
 	}
-
-	if listenPort > 0 {
-		port := int(listenPort)
-		cfg.ListenPort = &port
-	}
-
-	if wireGuardRuntimeOS == "freebsd" {
-		setconfErr := configureWireGuardDeviceWithSetconf(interfaceName, parsedPrivateKey, listenPort, peers)
-		if setconfErr == nil {
-			return nil
-		}
-		return fmt.Errorf(
-			"failed_to_configure_wireguard_device_%s: wg_setconf_error=%v",
-			interfaceName,
-			setconfErr,
-		)
-	}
-
-	wgctrlErr := wireGuardConfigureWithWGCtrl(interfaceName, cfg)
-	if wgctrlErr == nil {
-		return nil
-	}
-
-	setconfErr := configureWireGuardDeviceWithSetconf(interfaceName, parsedPrivateKey, listenPort, peers)
-	if setconfErr == nil {
-		logger.L.Warn().
-			Err(wgctrlErr).
-			Str("interface", interfaceName).
-			Msg("wgctrl configure failed; wireguard fallback via wg setconf succeeded")
-		return nil
-	}
-
-	return fmt.Errorf(
-		"failed_to_configure_wireguard_device_%s: wgctrl_error=%v; wg_setconf_error=%v",
-		interfaceName,
-		wgctrlErr,
-		setconfErr,
-	)
-}
-
-func configureWireGuardDeviceWithWGCtrl(interfaceName string, cfg wgtypes.Config) error {
-	client, err := wireGuardNewWGClient()
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	return client.ConfigureDevice(interfaceName, cfg)
+	return nil
 }
 
 func resolveWireGuardBinaryPath() (string, error) {

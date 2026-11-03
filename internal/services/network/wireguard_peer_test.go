@@ -15,7 +15,6 @@ import (
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
 
@@ -86,23 +85,16 @@ func newWireGuardPeerServiceTest(t *testing.T, serverEnabled bool) (*Service, *g
 
 func injectNextWireGuardPeerApplyFailure(t *testing.T) {
 	t.Helper()
-	previousConfigure := wireGuardConfigureWithWGCtrl
-	previousResolveBinary := wireGuardResolveWGBinaryPath
-	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigure
-		wireGuardResolveWGBinaryPath = previousResolveBinary
-	})
+	previousRunCommand := wireGuardRunCommand
+	t.Cleanup(func() { wireGuardRunCommand = previousRunCommand })
 
 	failNext := true
-	wireGuardConfigureWithWGCtrl = func(name string, config wgtypes.Config) error {
-		if failNext {
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		if failNext && len(args) > 0 && args[0] == "setconf" {
 			failNext = false
-			return errors.New("injected wireguard peer apply failure")
+			return "", errors.New("injected wireguard peer apply failure")
 		}
-		return previousConfigure(name, config)
-	}
-	wireGuardResolveWGBinaryPath = func() (string, error) {
-		return "", errors.New("wg binary unavailable")
+		return previousRunCommand(command, args...)
 	}
 }
 
@@ -187,12 +179,15 @@ func TestWireGuardServerPeerEnabledStateIsIdempotent(t *testing.T) {
 	peer := seedWireGuardPeerTestPeer(t, db, server.ID, true, "10.210.0.2/32")
 
 	called := false
-	previousConfigure := wireGuardConfigureWithWGCtrl
-	wireGuardConfigureWithWGCtrl = func(string, wgtypes.Config) error {
-		called = true
-		return errors.New("runtime should not be applied")
+	previousRunCommand := wireGuardRunCommand
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		if len(args) > 0 && args[0] == "setconf" {
+			called = true
+			return "", errors.New("runtime should not be applied")
+		}
+		return previousRunCommand(command, args...)
 	}
-	t.Cleanup(func() { wireGuardConfigureWithWGCtrl = previousConfigure })
+	t.Cleanup(func() { wireGuardRunCommand = previousRunCommand })
 
 	if err := svc.SetWireGuardServerPeerEnabled(peer.ID, true); err != nil {
 		t.Fatalf("repeat enabled state: %v", err)

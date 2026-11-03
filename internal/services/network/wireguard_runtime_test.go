@@ -12,7 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
+
 	"strings"
 	"testing"
 	"time"
@@ -21,117 +21,6 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-func TestConfigureWireGuardDeviceWGCtrlFallbackSuccess(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
-	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
-	previousRunCommand := wireGuardRunCommand
-	previousRuntimeOS := wireGuardRuntimeOS
-	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
-		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
-		wireGuardRunCommand = previousRunCommand
-		wireGuardRuntimeOS = previousRuntimeOS
-	})
-	wireGuardRuntimeOS = "linux"
-
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		return errors.New("ioctl: bad address")
-	}
-	wireGuardResolveWGBinaryPath = func() (string, error) {
-		return "/usr/bin/wg", nil
-	}
-
-	privateKey := mustGenerateWireGuardPrivateKey(t)
-	peerKey := mustGenerateWireGuardPrivateKey(t)
-	peerAllowed := mustParseWireGuardCIDR(t, "10.210.0.2/32")
-
-	var capturedConfig string
-	wireGuardRunCommand = func(command string, args ...string) (string, error) {
-		if command != "/usr/bin/wg" {
-			return "", fmt.Errorf("unexpected command: %s", command)
-		}
-		if len(args) != 3 || args[0] != "setconf" || args[1] != wireGuardServerInterfaceName {
-			return "", fmt.Errorf("unexpected wg args: %v", args)
-		}
-
-		content, err := os.ReadFile(args[2])
-		if err != nil {
-			return "", err
-		}
-		capturedConfig = string(content)
-		return "", nil
-	}
-
-	peer := wgtypes.PeerConfig{
-		PublicKey:         peerKey.PublicKey(),
-		AllowedIPs:        []net.IPNet{peerAllowed},
-		ReplaceAllowedIPs: true,
-	}
-
-	if err := configureWireGuardDevice(wireGuardServerInterfaceName, privateKey.String(), 51820, []wgtypes.PeerConfig{peer}); err != nil {
-		t.Fatalf("expected fallback configure success, got error: %v", err)
-	}
-
-	if !strings.Contains(capturedConfig, "[Interface]") {
-		t.Fatalf("expected setconf to include interface block, got: %s", capturedConfig)
-	}
-	if !strings.Contains(capturedConfig, "PrivateKey = "+privateKey.String()) {
-		t.Fatal("expected setconf to include private key")
-	}
-	if !strings.Contains(capturedConfig, "[Peer]") {
-		t.Fatal("expected setconf to include peer block")
-	}
-	if !strings.Contains(capturedConfig, "AllowedIPs = 10.210.0.2/32") {
-		t.Fatal("expected setconf to include allowed ips")
-	}
-}
-
-func TestConfigureWireGuardDeviceWGCtrlFallbackFailureIncludesBothErrors(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
-	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
-	previousRunCommand := wireGuardRunCommand
-	previousRuntimeOS := wireGuardRuntimeOS
-	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
-		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
-		wireGuardRunCommand = previousRunCommand
-		wireGuardRuntimeOS = previousRuntimeOS
-	})
-	wireGuardRuntimeOS = "linux"
-
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		return errors.New("ioctl: bad address")
-	}
-	wireGuardResolveWGBinaryPath = func() (string, error) {
-		return "/usr/bin/wg", nil
-	}
-	wireGuardRunCommand = func(_ string, _ ...string) (string, error) {
-		return "", errors.New("setconf failed")
-	}
-
-	privateKey := mustGenerateWireGuardPrivateKey(t)
-	peerKey := mustGenerateWireGuardPrivateKey(t)
-	peerAllowed := mustParseWireGuardCIDR(t, "10.210.0.2/32")
-	peer := wgtypes.PeerConfig{
-		PublicKey:         peerKey.PublicKey(),
-		AllowedIPs:        []net.IPNet{peerAllowed},
-		ReplaceAllowedIPs: true,
-	}
-
-	err := configureWireGuardDevice(wireGuardServerInterfaceName, privateKey.String(), 51820, []wgtypes.PeerConfig{peer})
-	if err == nil {
-		t.Fatal("expected configure failure when wgctrl and setconf both fail")
-	}
-
-	errorText := err.Error()
-	if !strings.Contains(errorText, "ioctl: bad address") {
-		t.Fatalf("expected error to include wgctrl failure, got: %s", errorText)
-	}
-	if !strings.Contains(errorText, "setconf failed") {
-		t.Fatalf("expected error to include setconf failure, got: %s", errorText)
-	}
-}
 
 func TestBuildWireGuardSetconfConfigIncludesOptionalFields(t *testing.T) {
 	privateKey := mustGenerateWireGuardPrivateKey(t)
@@ -303,27 +192,16 @@ func TestConfigureWireGuardInterfaceAppliesFIB(t *testing.T) {
 	}
 }
 
-func TestConfigureWireGuardDeviceFreeBSDSetconfPreferred(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
+func TestConfigureWireGuardDeviceUsesSetconf(t *testing.T) {
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
-	previousRuntimeOS := wireGuardRuntimeOS
 	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
-		wireGuardRuntimeOS = previousRuntimeOS
 	})
 
-	wireGuardRuntimeOS = "freebsd"
 	wireGuardResolveWGBinaryPath = func() (string, error) {
 		return "/usr/bin/wg", nil
-	}
-
-	wgctrlCalls := 0
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		wgctrlCalls++
-		return nil
 	}
 
 	setconfCalls := 0
@@ -336,30 +214,21 @@ func TestConfigureWireGuardDeviceFreeBSDSetconfPreferred(t *testing.T) {
 
 	privateKey := mustGenerateWireGuardPrivateKey(t)
 	if err := configureWireGuardDevice(wireGuardServerInterfaceName, privateKey.String(), 51820, nil); err != nil {
-		t.Fatalf("expected freebsd configure success, got error: %v", err)
+		t.Fatalf("expected configure success, got error: %v", err)
 	}
-
 	if setconfCalls == 0 {
-		t.Fatal("expected freebsd configure to use wg setconf")
-	}
-	if wgctrlCalls != 0 {
-		t.Fatalf("expected no wgctrl calls when setconf succeeds on freebsd, got %d", wgctrlCalls)
+		t.Fatal("expected configure to use wg setconf")
 	}
 }
 
-func TestConfigureWireGuardDeviceFreeBSDSetconfFailureDoesNotUseWGCtrl(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
+func TestConfigureWireGuardDeviceSetconfFailure(t *testing.T) {
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
-	previousRuntimeOS := wireGuardRuntimeOS
 	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
-		wireGuardRuntimeOS = previousRuntimeOS
 	})
 
-	wireGuardRuntimeOS = "freebsd"
 	wireGuardResolveWGBinaryPath = func() (string, error) {
 		return "/usr/bin/wg", nil
 	}
@@ -370,32 +239,21 @@ func TestConfigureWireGuardDeviceFreeBSDSetconfFailureDoesNotUseWGCtrl(t *testin
 		return "", nil
 	}
 
-	wgctrlCalls := 0
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		wgctrlCalls++
-		return nil
-	}
-
 	privateKey := mustGenerateWireGuardPrivateKey(t)
 	err := configureWireGuardDevice(wireGuardServerInterfaceName, privateKey.String(), 51820, nil)
 	if err == nil {
-		t.Fatal("expected freebsd configure failure when wg setconf fails")
+		t.Fatal("expected configure failure when wg setconf fails")
 	}
 	if !strings.Contains(err.Error(), "wg_setconf_error") {
-		t.Fatalf("expected freebsd error to include wg_setconf_error, got: %v", err)
-	}
-	if wgctrlCalls != 0 {
-		t.Fatalf("expected no wgctrl fallback calls on freebsd, got %d", wgctrlCalls)
+		t.Fatalf("expected error to include wg_setconf_error, got: %v", err)
 	}
 }
 
 func TestApplyWireGuardServerRuntimeFailureRollsBackInterface(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
 	previousListInterfaces := wireGuardListInterfaces
 	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
 		wireGuardListInterfaces = previousListInterfaces
@@ -404,9 +262,6 @@ func TestApplyWireGuardServerRuntimeFailureRollsBackInterface(t *testing.T) {
 	runtime := newFakeWireGuardRuntime()
 	wireGuardRunCommand = runtime.runCommand
 	wireGuardListInterfaces = runtime.listInterfaces
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		return errors.New("ioctl: bad address")
-	}
 	wireGuardResolveWGBinaryPath = func() (string, error) {
 		return "", errors.New("wg binary not available")
 	}
@@ -433,12 +288,10 @@ func TestApplyWireGuardServerRuntimeFailureRollsBackInterface(t *testing.T) {
 }
 
 func TestApplyWireGuardClientRuntimeFailureRollsBackInterface(t *testing.T) {
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
 	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousRunCommand := wireGuardRunCommand
 	previousListInterfaces := wireGuardListInterfaces
 	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
 		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardRunCommand = previousRunCommand
 		wireGuardListInterfaces = previousListInterfaces
@@ -447,9 +300,6 @@ func TestApplyWireGuardClientRuntimeFailureRollsBackInterface(t *testing.T) {
 	runtime := newFakeWireGuardRuntime()
 	wireGuardRunCommand = runtime.runCommand
 	wireGuardListInterfaces = runtime.listInterfaces
-	wireGuardConfigureWithWGCtrl = func(_ string, _ wgtypes.Config) error {
-		return errors.New("ioctl: bad address")
-	}
 	wireGuardResolveWGBinaryPath = func() (string, error) {
 		return "", errors.New("wg binary not available")
 	}

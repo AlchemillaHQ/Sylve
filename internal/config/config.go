@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 
 	"github.com/alchemillahq/sylve/internal"
@@ -190,7 +189,7 @@ func resolveDataPath(configuredPath, configDir string, create bool) (string, err
 	if dataPath == "" {
 		// The port must set this as the default, we will fall back to it if the config file doesn't specify a path.
 		dataPath = filepath.Join(cwd, "data")
-		if runtime.GOOS == "freebsd" && os.Geteuid() == 0 {
+		if os.Geteuid() == 0 {
 			dataPath = "/var/db/sylve"
 		}
 	}

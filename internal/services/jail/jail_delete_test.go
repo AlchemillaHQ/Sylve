@@ -15,7 +15,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -646,9 +645,6 @@ func TestIntegrationDeleteJailRetainedRootIsUntouchedRealZFS(t *testing.T) {
 }
 
 func TestIntegrationDeleteJailRootFSAllowsCTIDReuseRealZFS(t *testing.T) {
-	if runtime.GOOS != "freebsd" {
-		t.Skip("FreeBSD file flags are required for this regression test")
-	}
 	zfstest.SkipIfUnavailable(t)
 
 	pool, client, cleanup := zfstest.SharedPool(t)

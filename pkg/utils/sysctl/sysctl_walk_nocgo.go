@@ -6,7 +6,7 @@
 // of Alchemilla Ventures Pvt. Ltd. <hello@alchemilla.io>,
 // under sponsorship from the FreeBSD Foundation.
 
-//go:build !(freebsd && cgo)
+//go:build freebsd && !cgo
 
 package sysctl
 
@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// List is a best-effort fallback used on non-FreeBSD (or non-cgo) builds. It
+// List is a best-effort fallback used on non-cgo builds. It
 // shells out to the sysctl(8) binary when available. Writability cannot be
 // determined this way, so every entry is reported as read-only.
 func List() ([]Tunable, error) {

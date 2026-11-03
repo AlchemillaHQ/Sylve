@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -365,7 +364,7 @@ func TestParseJailGuestInterfacesRejectsMalformedPrefixes(t *testing.T) {
 }
 
 func TestIntegrationJailGuestInfo(t *testing.T) {
-	if testing.Short() || runtime.GOOS != "freebsd" || os.Geteuid() != 0 {
+	if testing.Short() || os.Geteuid() != 0 {
 		t.Skip("requires FreeBSD root and a non-short test run")
 	}
 	for _, binary := range []string{"/usr/sbin/jail", "/usr/sbin/jls", "/usr/bin/netstat", "/sbin/ifconfig"} {

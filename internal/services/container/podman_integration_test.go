@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -30,7 +29,7 @@ import (
 const integrationImage = "docker.io/library/alpine:3.20"
 
 func TestIntegrationContainerLifecycleRealPodman(t *testing.T) {
-	if testing.Short() || runtime.GOOS != "freebsd" || os.Geteuid() != 0 {
+	if testing.Short() || os.Geteuid() != 0 {
 		t.Skip("requires root on FreeBSD")
 	}
 	if _, err := os.Stat(podmanBinary); err != nil {

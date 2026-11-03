@@ -12,11 +12,12 @@ import (
 	"context"
 	"errors"
 	"net"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
 )
 
@@ -24,29 +25,26 @@ func stubWireGuardServerRuntime(t *testing.T) *fakeWireGuardRuntime {
 	t.Helper()
 
 	previousRunCommand := wireGuardRunCommand
-	previousConfigureWithWGCtrl := wireGuardConfigureWithWGCtrl
+	previousResolveWGBinaryPath := wireGuardResolveWGBinaryPath
 	previousHasAddress := wireGuardInterfaceHasAddress
 	previousListInterfaces := wireGuardListInterfaces
-	previousRuntimeOS := wireGuardRuntimeOS
 	t.Cleanup(func() {
 		wireGuardRunCommand = previousRunCommand
-		wireGuardConfigureWithWGCtrl = previousConfigureWithWGCtrl
+		wireGuardResolveWGBinaryPath = previousResolveWGBinaryPath
 		wireGuardInterfaceHasAddress = previousHasAddress
 		wireGuardListInterfaces = previousListInterfaces
-		wireGuardRuntimeOS = previousRuntimeOS
 	})
 
 	runtime := newFakeWireGuardRuntime()
 	runtime.ifaces["bridge0"] = true
 	wireGuardRunCommand = runtime.runCommand
-	wireGuardConfigureWithWGCtrl = func(string, wgtypes.Config) error {
-		return nil
+	wireGuardResolveWGBinaryPath = func() (string, error) {
+		return "/usr/bin/wg", nil
 	}
 	wireGuardInterfaceHasAddress = func(string, string) (bool, error) {
 		return true, nil
 	}
 	wireGuardListInterfaces = runtime.listInterfaces
-	wireGuardRuntimeOS = "linux"
 	return runtime
 }
 
@@ -266,22 +264,17 @@ func TestWireGuardServerEditRuntimeFailureRestoresPreviousState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	previousConfigure := wireGuardConfigureWithWGCtrl
-	previousResolveBinary := wireGuardResolveWGBinaryPath
-	t.Cleanup(func() {
-		wireGuardConfigureWithWGCtrl = previousConfigure
-		wireGuardResolveWGBinaryPath = previousResolveBinary
-	})
+	previousRunCommand := wireGuardRunCommand
+	t.Cleanup(func() { wireGuardRunCommand = previousRunCommand })
 	failedNewConfig := false
-	wireGuardConfigureWithWGCtrl = func(_ string, cfg wgtypes.Config) error {
-		if cfg.ListenPort != nil && *cfg.ListenPort == 61999 && !failedNewConfig {
-			failedNewConfig = true
-			return errors.New("injected runtime apply failure")
+	wireGuardRunCommand = func(command string, args ...string) (string, error) {
+		if len(args) == 3 && args[0] == "setconf" && !failedNewConfig {
+			if config, err := os.ReadFile(args[2]); err == nil && strings.Contains(string(config), "ListenPort = 61999") {
+				failedNewConfig = true
+				return "", errors.New("injected runtime apply failure")
+			}
 		}
-		return nil
-	}
-	wireGuardResolveWGBinaryPath = func() (string, error) {
-		return "", errors.New("wg binary unavailable")
+		return previousRunCommand(command, args...)
 	}
 
 	err := svc.EditWireGuardServer(InitWireGuardServerRequest{
