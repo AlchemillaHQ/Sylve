@@ -50,83 +50,31 @@ func performAuthzRequest(t *testing.T, service *authSvc.Service, authType string
 	return rec.Code
 }
 
-func TestRequireLocalAdminAllowsSylveAdmin(t *testing.T) {
-	service := newAuthzTestService(t)
-	if err := service.DB.Create(&models.User{
-		ID:       1,
-		Username: "admin",
-		Admin:    true,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
+func TestRequireLocalAdmin(t *testing.T) {
+	tests := []struct {
+		name     string
+		username string
+		admin    bool
+		authType string
+		want     int
+	}{
+		{"sylve admin", "admin", true, "sylve", http.StatusOK},
+		{"passkey admin", "admin", true, authSvc.AuthTypeSylvePasskey, http.StatusOK},
+		{"pam admin", "root", true, "pam", http.StatusOK},
+		{"pam non-admin", "pamuser", false, "pam", http.StatusForbidden},
+		{"sylve non-admin", "user", false, "sylve", http.StatusForbidden},
 	}
 
-	status := performAuthzRequest(t, service, "sylve", 1)
-	if status != http.StatusOK {
-		t.Fatalf("expected_status_200_got: %d", status)
-	}
-}
-
-func TestRequireLocalAdminAllowsPasskeyAdmin(t *testing.T) {
-	service := newAuthzTestService(t)
-	if err := service.DB.Create(&models.User{
-		ID:       1,
-		Username: "admin",
-		Admin:    true,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	status := performAuthzRequest(t, service, authSvc.AuthTypeSylvePasskey, 1)
-	if status != http.StatusOK {
-		t.Fatalf("expected_status_200_got: %d", status)
-	}
-}
-
-func TestRequireLocalAdminAllowsPamAdmin(t *testing.T) {
-	service := newAuthzTestService(t)
-	if err := service.DB.Create(&models.User{
-		ID:       1,
-		Username: "root",
-		Admin:    true,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	status := performAuthzRequest(t, service, "pam", 1)
-	if status != http.StatusOK {
-		t.Fatalf("expected_status_200_got: %d", status)
-	}
-}
-
-func TestRequireLocalAdminRejectsPamNonAdmin(t *testing.T) {
-	service := newAuthzTestService(t)
-	if err := service.DB.Create(&models.User{
-		ID:       1,
-		Username: "pamuser",
-		Admin:    false,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	status := performAuthzRequest(t, service, "pam", 1)
-	if status != http.StatusForbidden {
-		t.Fatalf("expected_status_403_got: %d", status)
-	}
-}
-
-func TestRequireLocalAdminRejectsNonAdmin(t *testing.T) {
-	service := newAuthzTestService(t)
-	if err := service.DB.Create(&models.User{
-		ID:       1,
-		Username: "user",
-		Admin:    false,
-	}).Error; err != nil {
-		t.Fatalf("failed_to_seed_user: %v", err)
-	}
-
-	status := performAuthzRequest(t, service, "sylve", 1)
-	if status != http.StatusForbidden {
-		t.Fatalf("expected_status_403_got: %d", status)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := newAuthzTestService(t)
+			if err := service.DB.Create(&models.User{ID: 1, Username: tt.username, Admin: tt.admin}).Error; err != nil {
+				t.Fatalf("failed_to_seed_user: %v", err)
+			}
+			if status := performAuthzRequest(t, service, tt.authType, 1); status != tt.want {
+				t.Fatalf("status = %d, want %d", status, tt.want)
+			}
+		})
 	}
 }
 

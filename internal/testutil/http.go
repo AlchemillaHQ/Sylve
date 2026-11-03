@@ -56,7 +56,7 @@ func DecodeJSONResponse[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 
 	var out T
 	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
-		t.Fatalf("failed to decode response body: %v", err)
+		t.Fatalf("failed to decode response body %q: %v", rr.Body.String(), err)
 	}
 	return out
 }

@@ -30,7 +30,7 @@ func newRealZFSCreationService(t *testing.T, pool string, client *gzfs.Client) *
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	zfstest.EnsureDataset(t, client, pool+"/sylve/jails")
 	db := newCreationTestDB(t)
-	svc := &Service{DB: db, GZFS: client, System: jailCreateTestSystemService{pools: []*gzfs.ZPool{{Name: pool}}}, ctidHashByCTID: make(map[uint]string)}
+	svc := &Service{DB: db, GZFS: client, System: fakeSystemService{pools: []*gzfs.ZPool{{Name: pool}}}, ctidHashByCTID: make(map[uint]string)}
 	svc.SetGuestIdentityCoordinator(&clusterService.Service{DB: db, NodeID: "creation-node"})
 	return svc
 }

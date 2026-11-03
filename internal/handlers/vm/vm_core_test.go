@@ -19,6 +19,7 @@ import (
 
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -83,15 +84,6 @@ type vmCoreResponse struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-func decodeVMCoreResponse(t *testing.T, recorder *httptest.ResponseRecorder) vmCoreResponse {
-	t.Helper()
-	var response vmCoreResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v; body=%s", err, recorder.Body.String())
-	}
-	return response
-}
-
 func TestGetVMByRIDHandlerUsesRIDPathIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &vmCoreHandlerStub{vm: vmModels.VM{ID: 12, RID: 901, Name: "rid-vm"}}
@@ -107,7 +99,7 @@ func TestGetVMByRIDHandlerUsesRIDPathIdentity(t *testing.T) {
 		t.Fatalf("lookup RID = %d, want 901", stub.lookupRID)
 	}
 
-	response := decodeVMCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder)
 	if response.Status != "success" || response.Message != "vm_retrieved" {
 		t.Fatalf("response = %+v", response)
 	}
@@ -139,7 +131,7 @@ func TestGetVMByRIDHandlerValidatesAndMapsMissingRID(t *testing.T) {
 		if stub.lookupRID != 0 {
 			t.Fatalf("service called with RID %d", stub.lookupRID)
 		}
-		if response := decodeVMCoreResponse(t, recorder); response.Message != "invalid_vm_rid" {
+		if response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder); response.Message != "invalid_vm_rid" {
 			t.Fatalf("message = %q, want invalid_vm_rid", response.Message)
 		}
 	})
@@ -154,7 +146,7 @@ func TestGetVMByRIDHandlerValidatesAndMapsMissingRID(t *testing.T) {
 		if recorder.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404; body=%s", recorder.Code, recorder.Body.String())
 		}
-		if response := decodeVMCoreResponse(t, recorder); response.Message != "vm_not_found" {
+		if response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder); response.Message != "vm_not_found" {
 			t.Fatalf("message = %q, want vm_not_found", response.Message)
 		}
 	})
@@ -180,7 +172,7 @@ func TestGetSimpleVMByRIDHandlerContract(t *testing.T) {
 		t.Fatalf("lookup RID = %d, want 903", stub.lookupRID)
 	}
 
-	response := decodeVMCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder)
 	var data struct {
 		RID        uint            `json:"rid"`
 		CPUPinning json.RawMessage `json:"cpuPinning"`
@@ -229,7 +221,7 @@ func TestCreateVMHandlerReturnsCreatedIdentityAndLocation(t *testing.T) {
 		t.Fatalf("create request = %+v", stub.createReq)
 	}
 
-	response := decodeVMCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder)
 	var data VMCreateResponse
 	if err := json.Unmarshal(response.Data, &data); err != nil {
 		t.Fatalf("decode created identity: %v", err)
@@ -292,7 +284,7 @@ func TestVMUpdateHandlersUsePathRIDAndPreserveEmptyDescription(t *testing.T) {
 		if stub.nameRID != 906 || stub.name != "duplicate" {
 			t.Fatalf("name call = rid:%d value:%q", stub.nameRID, stub.name)
 		}
-		if response := decodeVMCoreResponse(t, recorder); response.Message != "vm_name_already_in_use" {
+		if response := testutil.DecodeJSONResponse[vmCoreResponse](t, recorder); response.Message != "vm_name_already_in_use" {
 			t.Fatalf("message = %q, want vm_name_already_in_use", response.Message)
 		}
 	})

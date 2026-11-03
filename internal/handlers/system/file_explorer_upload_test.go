@@ -91,16 +91,6 @@ func newMultipartUploadRequest(t *testing.T, destination, filename string, conte
 	return request
 }
 
-func decodeUploadResponse(t *testing.T, response *httptest.ResponseRecorder) internal.APIResponse[UploadFileResponse] {
-	t.Helper()
-
-	var payload internal.APIResponse[UploadFileResponse]
-	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("decode upload response: %v; body=%s", err, response.Body.String())
-	}
-	return payload
-}
-
 func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
 	destination := t.TempDir()
 	service := newFileExplorerSystemService(t)
@@ -115,7 +105,7 @@ func TestUploadFileUsesServerIssuedIdentityForRevert(t *testing.T) {
 		t.Fatalf("upload status=%d body=%s", uploadResponse.Code, uploadResponse.Body.String())
 	}
 
-	payload := decodeUploadResponse(t, uploadResponse)
+	payload := testutil.DecodeJSONResponse[internal.APIResponse[UploadFileResponse]](t, uploadResponse)
 	if payload.Data.UploadID == "" {
 		t.Fatal("expected server-issued upload ID")
 	}
@@ -397,7 +387,7 @@ func TestUploadFilePreservesSymlinkedDirectoryNavigation(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
-	payload := decodeUploadResponse(t, response)
+	payload := testutil.DecodeJSONResponse[internal.APIResponse[UploadFileResponse]](t, response)
 	wantPath := filepath.Join(destination, "rootfs.txz")
 	if payload.Data.Path != wantPath {
 		t.Fatalf("uploaded path=%q want resolved path=%q", payload.Data.Path, wantPath)

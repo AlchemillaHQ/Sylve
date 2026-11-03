@@ -18,22 +18,9 @@ import (
 	"github.com/alchemillahq/gzfs"
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+
 	"github.com/alchemillahq/sylve/internal/testutil"
 )
-
-type bootstrapTestSystemService struct {
-	systemServiceInterfaces.SystemServiceInterface
-	pools []*gzfs.ZPool
-	err   error
-}
-
-func (f bootstrapTestSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.pools, nil
-}
 
 func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...string) (*Service, *jailCreateTestZFSRunner) {
 	t.Helper()
@@ -49,7 +36,7 @@ func newBootstrapTestService(t *testing.T, existingDatasets []string, pools ...s
 
 	svc := &Service{
 		DB:     db,
-		System: bootstrapTestSystemService{pools: usablePools},
+		System: fakeSystemService{pools: usablePools},
 		bootstrapHostReleaseFn: func() (string, error) {
 			return "15.1-RELEASE", nil
 		},
@@ -94,7 +81,7 @@ func TestListBootstraps_ReturnsAllSupportedVersionsAndTypes(t *testing.T) {
 
 func TestListBootstraps_PropagatesPoolLookupFailure(t *testing.T) {
 	svc, _ := newBootstrapTestService(t, nil, "tank")
-	svc.System = bootstrapTestSystemService{err: errors.New("database unavailable")}
+	svc.System = fakeSystemService{err: errors.New("database unavailable")}
 
 	_, err := svc.ListBootstraps(context.Background(), "tank")
 	if err == nil || !strings.Contains(err.Error(), "failed_to_get_usable_pools") {
@@ -257,18 +244,6 @@ func TestListBootstraps_DoesNotSynthesizeAbsentMountPointPaths(t *testing.T) {
 	}
 }
 
-func TestCreateBootstrap_RejectsVersionNewerThanHost(t *testing.T) {
-	svc, _ := newBootstrapTestService(t, nil, "tank")
-	svc.bootstrapHostReleaseFn = func() (string, error) { return "15.0-RELEASE", nil }
-
-	_, err := svc.CreateBootstrap(context.Background(), jailServiceInterfaces.BootstrapRequest{
-		Pool: "tank", Major: 15, Minor: 1, Type: "base",
-	})
-	if err == nil || !strings.Contains(err.Error(), "bootstrap_version_newer_than_host") {
-		t.Fatalf("expected host compatibility rejection, got %v", err)
-	}
-}
-
 func TestParseBootstrapHostVersion(t *testing.T) {
 	for _, test := range []struct {
 		release string
@@ -286,36 +261,6 @@ func TestParseBootstrapHostVersion(t *testing.T) {
 		if version.Major != test.major || version.Minor != test.minor {
 			t.Fatalf("parse %q = %d.%d, want %d.%d", test.release, version.Major, version.Minor, test.major, test.minor)
 		}
-	}
-}
-
-func TestCreateBootstrap_FailsForUnknownPool(t *testing.T) {
-	svc, _ := newBootstrapTestService(t, nil, "tank")
-
-	req := jailServiceInterfaces.BootstrapRequest{Pool: "nonexistent", Major: 15, Minor: 0, Type: "base"}
-	_, err := svc.CreateBootstrap(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "pool_not_found") {
-		t.Fatalf("expected pool_not_found, got %v", err)
-	}
-}
-
-func TestCreateBootstrap_FailsForUnsupportedType(t *testing.T) {
-	svc, _ := newBootstrapTestService(t, nil, "tank")
-
-	req := jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 15, Minor: 0, Type: "nonexistent"}
-	_, err := svc.CreateBootstrap(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "unsupported_bootstrap_type") {
-		t.Fatalf("expected unsupported_bootstrap_type, got %v", err)
-	}
-}
-
-func TestCreateBootstrap_FailsForUnsupportedVersion(t *testing.T) {
-	svc, _ := newBootstrapTestService(t, nil, "tank")
-
-	req := jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 99, Minor: 0, Type: "base"}
-	_, err := svc.CreateBootstrap(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "unsupported_bootstrap_version") {
-		t.Fatalf("expected unsupported_bootstrap_version, got %v", err)
 	}
 }
 
@@ -416,18 +361,6 @@ func TestListBootstraps_ReportsCompletedRecordWithMissingDatasetAsFailed(t *test
 		}
 	}
 	t.Fatalf("bootstrap %s not returned", record.Name)
-}
-
-func TestCreateBootstrap_RejectsUnmanagedCanonicalDataset(t *testing.T) {
-	dataset := "tank/sylve/bootstraps/15-0-Base"
-	svc, _ := newBootstrapTestService(t, []string{dataset}, "tank")
-
-	_, err := svc.CreateBootstrap(context.Background(), jailServiceInterfaces.BootstrapRequest{
-		Pool: "tank", Major: 15, Minor: 0, Type: "base",
-	})
-	if err == nil || !strings.Contains(err.Error(), "bootstrap_dataset_unmanaged") {
-		t.Fatalf("expected unmanaged dataset conflict, got %v", err)
-	}
 }
 
 func TestDeleteBootstrap_RejectsNonCanonicalTarget(t *testing.T) {
@@ -710,5 +643,39 @@ func TestRecoverInterruptedBootstraps_RefusesStoredDatasetOutsideCanonicalMember
 	}
 	if updated.Status != "failed" || !strings.Contains(updated.Error, "invalid_bootstrap_record") {
 		t.Fatalf("unexpected recovery state: %+v", updated)
+	}
+}
+
+func TestCreateBootstrapRejects(t *testing.T) {
+	tests := []struct {
+		name        string
+		datasets    []string // datasets that already exist
+		hostRelease string   // overrides the host release when set
+		req         jailServiceInterfaces.BootstrapRequest
+		wantErr     string
+	}{
+		{
+			name: "version newer than host", hostRelease: "15.0-RELEASE",
+			req: jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 15, Minor: 1, Type: "base"}, wantErr: "bootstrap_version_newer_than_host",
+		},
+		{name: "unknown pool", req: jailServiceInterfaces.BootstrapRequest{Pool: "nonexistent", Major: 15, Type: "base"}, wantErr: "pool_not_found"},
+		{name: "unsupported type", req: jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 15, Type: "nonexistent"}, wantErr: "unsupported_bootstrap_type"},
+		{name: "unsupported version", req: jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 99, Type: "base"}, wantErr: "unsupported_bootstrap_version"},
+		{
+			name: "unmanaged canonical dataset", datasets: []string{"tank/sylve/bootstraps/15-0-Base"},
+			req: jailServiceInterfaces.BootstrapRequest{Pool: "tank", Major: 15, Type: "base"}, wantErr: "bootstrap_dataset_unmanaged",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, _ := newBootstrapTestService(t, tt.datasets, "tank")
+			if tt.hostRelease != "" {
+				svc.bootstrapHostReleaseFn = func() (string, error) { return tt.hostRelease, nil }
+			}
+			if _, err := svc.CreateBootstrap(context.Background(), tt.req); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }

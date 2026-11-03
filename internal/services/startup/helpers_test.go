@@ -419,166 +419,51 @@ func TestCheckSambaSyslogConfigReloadsOnlyWhenSylveDropInChanges(t *testing.T) {
 	}
 }
 
-func TestSysctlSyncRaisesNetFIBsWhenBelowMinimum(t *testing.T) {
-	previousGet := startupGetSysctlInt64
-	previousSet := startupSetSysctlInt32
-	t.Cleanup(func() {
-		startupGetSysctlInt64 = previousGet
-		startupSetSysctlInt32 = previousSet
-	})
-
-	getValues := map[string]int64{
-		"net.fibs": 1,
-	}
-	setValues := map[string]int32{}
-
-	startupGetSysctlInt64 = func(name string) (int64, error) {
-		if value, ok := getValues[name]; ok {
-			return value, nil
-		}
-		return 0, nil
+func TestSysctlSync(t *testing.T) {
+	tests := []struct {
+		name      string
+		fibs      int64 // current net.fibs; every other sysctl reads as 0
+		wantSet   map[string]int32
+		wantUnset []string
+	}{
+		{name: "raises net.fibs below the minimum", fibs: 1, wantSet: map[string]int32{"net.fibs": 8}},
+		{name: "keeps net.fibs already high enough", fibs: 12, wantUnset: []string{"net.fibs"}},
+		{name: "sets jail enforce_statfs", fibs: 8, wantSet: map[string]int32{"security.jail.enforce_statfs": 1}},
+		{name: "disables bridge MAC inheritance", fibs: 8, wantSet: map[string]int32{"net.link.bridge.inherit_mac": 0}},
+		// rfc6204w3 is managed only when a SLAAC route owner exists
+		{name: "does not globally enable IPv6 rfc6204w3", fibs: 8, wantUnset: []string{"net.inet6.ip6.rfc6204w3"}},
 	}
 
-	startupSetSysctlInt32 = func(name string, value int32) error {
-		setValues[name] = value
-		return nil
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			previousGet, previousSet := startupGetSysctlInt64, startupSetSysctlInt32
+			t.Cleanup(func() { startupGetSysctlInt64, startupSetSysctlInt32 = previousGet, previousSet })
 
-	svc := &Service{}
-	if err := svc.SysctlSync(); err != nil {
-		t.Fatalf("expected sysctl sync to succeed, got: %v", err)
-	}
+			setValues := map[string]int32{}
+			startupGetSysctlInt64 = func(name string) (int64, error) {
+				if name == "net.fibs" {
+					return tt.fibs, nil
+				}
+				return 0, nil
+			}
+			startupSetSysctlInt32 = func(name string, value int32) error {
+				setValues[name] = value
+				return nil
+			}
 
-	if value, ok := setValues["net.fibs"]; !ok {
-		t.Fatal("expected net.fibs to be set when current value is below minimum")
-	} else if value != 8 {
-		t.Fatalf("expected net.fibs to be set to 8, got %d", value)
-	}
-}
-
-func TestSysctlSyncKeepsNetFIBsWhenAlreadyHighEnough(t *testing.T) {
-	previousGet := startupGetSysctlInt64
-	previousSet := startupSetSysctlInt32
-	t.Cleanup(func() {
-		startupGetSysctlInt64 = previousGet
-		startupSetSysctlInt32 = previousSet
-	})
-
-	getValues := map[string]int64{
-		"net.fibs": 12,
-	}
-	setValues := map[string]int32{}
-
-	startupGetSysctlInt64 = func(name string) (int64, error) {
-		if value, ok := getValues[name]; ok {
-			return value, nil
-		}
-		return 0, nil
-	}
-
-	startupSetSysctlInt32 = func(name string, value int32) error {
-		setValues[name] = value
-		return nil
-	}
-
-	svc := &Service{}
-	if err := svc.SysctlSync(); err != nil {
-		t.Fatalf("expected sysctl sync to succeed, got: %v", err)
-	}
-
-	if _, ok := setValues["net.fibs"]; ok {
-		t.Fatal("expected net.fibs not to be changed when current value is already >= 8")
-	}
-}
-
-func TestSysctlSyncSetsJailEnforceStatfs(t *testing.T) {
-	previousGet := startupGetSysctlInt64
-	previousSet := startupSetSysctlInt32
-	t.Cleanup(func() {
-		startupGetSysctlInt64 = previousGet
-		startupSetSysctlInt32 = previousSet
-	})
-
-	setValues := map[string]int32{}
-
-	startupGetSysctlInt64 = func(name string) (int64, error) {
-		if name == "net.fibs" {
-			return 8, nil
-		}
-		return 0, nil
-	}
-
-	startupSetSysctlInt32 = func(name string, value int32) error {
-		setValues[name] = value
-		return nil
-	}
-
-	svc := &Service{}
-	if err := svc.SysctlSync(); err != nil {
-		t.Fatalf("expected sysctl sync to succeed, got: %v", err)
-	}
-
-	if value, ok := setValues["security.jail.enforce_statfs"]; !ok {
-		t.Fatal("expected security.jail.enforce_statfs to be set")
-	} else if value != 1 {
-		t.Fatalf("expected security.jail.enforce_statfs to be set to 1, got %d", value)
-	}
-}
-
-func TestSysctlSyncDisablesBridgeMACInheritance(t *testing.T) {
-	previousGet := startupGetSysctlInt64
-	previousSet := startupSetSysctlInt32
-	t.Cleanup(func() {
-		startupGetSysctlInt64 = previousGet
-		startupSetSysctlInt32 = previousSet
-	})
-
-	setValues := map[string]int32{}
-	startupGetSysctlInt64 = func(name string) (int64, error) {
-		if name == "net.fibs" {
-			return 8, nil
-		}
-		return 0, nil
-	}
-	startupSetSysctlInt32 = func(name string, value int32) error {
-		setValues[name] = value
-		return nil
-	}
-
-	svc := &Service{}
-	if err := svc.SysctlSync(); err != nil {
-		t.Fatalf("sysctl sync: %v", err)
-	}
-	if value, ok := setValues["net.link.bridge.inherit_mac"]; !ok || value != 0 {
-		t.Fatalf("net.link.bridge.inherit_mac=(%d,%v), want (0,true)", value, ok)
-	}
-}
-
-func TestSysctlSyncDoesNotGloballyEnableIPv6RFC6204W3(t *testing.T) {
-	previousGet := startupGetSysctlInt64
-	previousSet := startupSetSysctlInt32
-	t.Cleanup(func() {
-		startupGetSysctlInt64 = previousGet
-		startupSetSysctlInt32 = previousSet
-	})
-
-	setValues := map[string]int32{}
-	startupGetSysctlInt64 = func(name string) (int64, error) {
-		if name == "net.fibs" {
-			return 8, nil
-		}
-		return 0, nil
-	}
-	startupSetSysctlInt32 = func(name string, value int32) error {
-		setValues[name] = value
-		return nil
-	}
-
-	svc := &Service{}
-	if err := svc.SysctlSync(); err != nil {
-		t.Fatalf("sysctl sync: %v", err)
-	}
-	if value, ok := setValues["net.inet6.ip6.rfc6204w3"]; ok {
-		t.Fatalf("net.inet6.ip6.rfc6204w3=%d should be managed only when a SLAAC route owner exists", value)
+			if err := (&Service{}).SysctlSync(); err != nil {
+				t.Fatalf("sysctl sync: %v", err)
+			}
+			for name, want := range tt.wantSet {
+				if got, ok := setValues[name]; !ok || got != want {
+					t.Fatalf("%s = (%d, %v), want (%d, true)", name, got, ok, want)
+				}
+			}
+			for _, name := range tt.wantUnset {
+				if got, ok := setValues[name]; ok {
+					t.Fatalf("%s was set to %d, want untouched", name, got)
+				}
+			}
+		})
 	}
 }

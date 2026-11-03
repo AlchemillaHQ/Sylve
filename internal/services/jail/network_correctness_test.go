@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -421,131 +422,87 @@ func TestLoadJailNetworkRejectsCrossJailMembership(t *testing.T) {
 	}
 }
 
-func TestJailNetworkRCConfReplacementPreservesUnmanagedConfiguration(t *testing.T) {
-	original := strings.Join([]string{
-		`hostname="jail.example"`,
-		`ifconfig_em0="DHCP"`,
-		jailNetworkRCConfStart,
-		`ifconfig_old="SYNCDHCP"`,
-		jailNetworkRCConfEnd,
-		`sshd_enable="YES"`,
-		"",
-	}, "\n")
-	updated := replaceJailNetworkRCConfBlock(original, "abcde", []string{`ifconfig_new="SYNCDHCP"`})
-	for _, expected := range []string{`hostname="jail.example"`, `ifconfig_em0="DHCP"`, `sshd_enable="YES"`, `ifconfig_new="SYNCDHCP"`} {
-		if !strings.Contains(updated, expected) {
-			t.Fatalf("expected %q to be preserved in %q", expected, updated)
-		}
+func TestReplaceJailNetworkRCConfBlock(t *testing.T) {
+	const (
+		hostname = `hostname="jail.example"`
+		sshd     = `sshd_enable="YES"`
+		em0      = `ifconfig_em0="DHCP"`
+		dhcp2    = `ifconfig_aaaep_net2b="SYNCDHCP"`
+		dhcp7    = `ifconfig_aaaep_net7b="SYNCDHCP"`
+		oldAddr  = `ifconfig_aaaep_net2b="inet 192.0.2.10 netmask 255.255.255.0"`
+		oldGW    = `defaultrouter="192.0.2.1"`
+		newAddr  = `ifconfig_aaaep_net2b="inet 198.51.100.10 netmask 255.255.255.0"`
+		newGW    = `defaultrouter="198.51.100.1"`
+		slaac2   = `ifconfig_aaaep_net2b_ipv6="inet6 accept_rtadv"`
+		slaac7   = `ifconfig_aaaep_net7b_ipv6="inet6 accept_rtadv"`
+		rtsold   = `rtsold_enable="YES"`
+	)
+	block := func(lines ...string) []string {
+		return append(append([]string{jailNetworkRCConfStart}, lines...), jailNetworkRCConfEnd)
 	}
-	if strings.Contains(updated, `ifconfig_old="SYNCDHCP"`) {
-		t.Fatalf("old managed block remained in %q", updated)
+	tests := []struct {
+		name     string
+		original []string
+		lines    []string
+		once     []string // must appear exactly once
+		absent   []string
+	}{
+		{
+			name:     "preserves unmanaged configuration",
+			original: slices.Concat([]string{hostname, em0}, block(`ifconfig_old="SYNCDHCP"`), []string{sshd}),
+			lines:    []string{`ifconfig_new="SYNCDHCP"`},
+			once:     []string{hostname, em0, sshd, `ifconfig_new="SYNCDHCP"`},
+			absent:   []string{`ifconfig_old="SYNCDHCP"`},
+		},
+		{
+			name:     "repairs reported dhcp duplicate",
+			original: slices.Concat([]string{dhcp2}, block(dhcp2)),
+			lines:    []string{dhcp2},
+			once:     []string{dhcp2, jailNetworkRCConfStart},
+		},
+		{
+			name:     "keeps one line per dhcp interface",
+			original: slices.Concat([]string{dhcp2}, block(dhcp2, dhcp7)),
+			lines:    []string{dhcp2, dhcp7},
+			once:     []string{dhcp2, dhcp7, jailNetworkRCConfStart},
+		},
+		{
+			name:     "migrates static configuration",
+			original: slices.Concat([]string{hostname, oldAddr, oldGW}, block(oldAddr, oldGW), []string{sshd}),
+			lines:    []string{newAddr, newGW},
+			once:     []string{hostname, sshd, newAddr, newGW},
+			absent:   []string{oldAddr, oldGW},
+		},
+		{
+			name:  "deduplicates global slaac setting",
+			lines: []string{slaac2, rtsold, slaac7, rtsold},
+			once:  []string{slaac2, slaac7, rtsold},
+		},
+		{
+			name:     "removes markerless sylve interface",
+			original: []string{dhcp2, em0, sshd},
+			once:     []string{em0, sshd},
+			absent:   []string{`ifconfig_aaaep_net2b=`},
+		},
 	}
-}
 
-func TestJailNetworkRCConfReplacementRepairsReportedDHCPDuplicate(t *testing.T) {
-	dhcpLine := `ifconfig_aaaep_net2b="SYNCDHCP"`
-	original := strings.Join([]string{
-		dhcpLine,
-		jailNetworkRCConfStart,
-		dhcpLine,
-		jailNetworkRCConfEnd,
-		"",
-	}, "\n")
-
-	updated := replaceJailNetworkRCConfBlock(original, "aaaep", []string{dhcpLine})
-	if got := strings.Count(updated, dhcpLine); got != 1 {
-		t.Fatalf("expected one DHCP assignment, got %d:\n%s", got, updated)
-	}
-	if got := strings.Count(updated, jailNetworkRCConfStart); got != 1 {
-		t.Fatalf("expected one managed block, got %d:\n%s", got, updated)
-	}
-	if second := replaceJailNetworkRCConfBlock(updated, "aaaep", []string{dhcpLine}); second != updated {
-		t.Fatalf("expected reconciliation to be idempotent:\nfirst:\n%s\nsecond:\n%s", updated, second)
-	}
-}
-
-func TestJailNetworkRCConfReplacementKeepsOneLinePerDHCPInterface(t *testing.T) {
-	first := `ifconfig_aaaep_net2b="SYNCDHCP"`
-	second := `ifconfig_aaaep_net7b="SYNCDHCP"`
-	original := strings.Join([]string{
-		first,
-		jailNetworkRCConfStart,
-		first,
-		second,
-		jailNetworkRCConfEnd,
-		"",
-	}, "\n")
-
-	updated := replaceJailNetworkRCConfBlock(original, "aaaep", []string{first, second})
-	for _, expected := range []string{first, second} {
-		if got := strings.Count(updated, expected); got != 1 {
-			t.Fatalf("expected DHCP assignment %q once, got %d:\n%s", expected, got, updated)
-		}
-	}
-	if got := strings.Count(updated, jailNetworkRCConfStart); got != 1 {
-		t.Fatalf("expected one managed block, got %d:\n%s", got, updated)
-	}
-}
-
-func TestJailNetworkRCConfReplacementMigratesStaticConfiguration(t *testing.T) {
-	oldAddress := `ifconfig_aaaep_net2b="inet 192.0.2.10 netmask 255.255.255.0"`
-	oldGateway := `defaultrouter="192.0.2.1"`
-	newAddress := `ifconfig_aaaep_net2b="inet 198.51.100.10 netmask 255.255.255.0"`
-	newGateway := `defaultrouter="198.51.100.1"`
-	original := strings.Join([]string{
-		`hostname="jail.example"`,
-		oldAddress,
-		oldGateway,
-		jailNetworkRCConfStart,
-		oldAddress,
-		oldGateway,
-		jailNetworkRCConfEnd,
-		`sshd_enable="YES"`,
-		"",
-	}, "\n")
-
-	updated := replaceJailNetworkRCConfBlock(original, "aaaep", []string{newAddress, newGateway})
-	for _, stale := range []string{oldAddress, oldGateway} {
-		if strings.Contains(updated, stale) {
-			t.Fatalf("stale managed line %q remained:\n%s", stale, updated)
-		}
-	}
-	for _, expected := range []string{`hostname="jail.example"`, `sshd_enable="YES"`, newAddress, newGateway} {
-		if got := strings.Count(updated, expected); got != 1 {
-			t.Fatalf("expected %q once, got %d:\n%s", expected, got, updated)
-		}
-	}
-}
-
-func TestJailNetworkRCConfReplacementDeduplicatesGlobalSLAACSetting(t *testing.T) {
-	first := `ifconfig_aaaep_net2b_ipv6="inet6 accept_rtadv"`
-	second := `ifconfig_aaaep_net7b_ipv6="inet6 accept_rtadv"`
-	rtsold := `rtsold_enable="YES"`
-	updated := replaceJailNetworkRCConfBlock("", "aaaep", []string{first, rtsold, second, rtsold})
-
-	for _, expected := range []string{first, second, rtsold} {
-		if got := strings.Count(updated, expected); got != 1 {
-			t.Fatalf("expected %q once, got %d:\n%s", expected, got, updated)
-		}
-	}
-}
-
-func TestJailNetworkRCConfReplacementRemovesMarkerlessSylveInterface(t *testing.T) {
-	original := strings.Join([]string{
-		`ifconfig_aaaep_net2b="SYNCDHCP"`,
-		`ifconfig_em0="DHCP"`,
-		`sshd_enable="YES"`,
-		"",
-	}, "\n")
-	updated := replaceJailNetworkRCConfBlock(original, "aaaep", nil)
-
-	if strings.Contains(updated, `ifconfig_aaaep_net2b=`) {
-		t.Fatalf("markerless Sylve interface assignment remained:\n%s", updated)
-	}
-	for _, expected := range []string{`ifconfig_em0="DHCP"`, `sshd_enable="YES"`} {
-		if !strings.Contains(updated, expected) {
-			t.Fatalf("unmanaged line %q was removed:\n%s", expected, updated)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updated := replaceJailNetworkRCConfBlock(strings.Join(append(tt.original, ""), "\n"), "aaaep", tt.lines)
+			for _, want := range tt.once {
+				if got := strings.Count(updated, want); got != 1 {
+					t.Fatalf("expected %q once, got %d:\n%s", want, got, updated)
+				}
+			}
+			for _, stale := range tt.absent {
+				if strings.Contains(updated, stale) {
+					t.Fatalf("stale line %q remained:\n%s", stale, updated)
+				}
+			}
+			if again := replaceJailNetworkRCConfBlock(updated, "aaaep", tt.lines); again != updated {
+				t.Fatalf("expected reconciliation to be idempotent:\nfirst:\n%s\nsecond:\n%s", updated, again)
+			}
+		})
 	}
 }
 

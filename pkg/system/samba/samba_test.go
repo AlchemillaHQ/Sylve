@@ -104,38 +104,6 @@ func TestSambaUserExists_UnexpectedError(t *testing.T) {
 	}
 }
 
-func TestCreateSambaUser_UnixUserCheckFails(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return false, errors.New("lookup failed")
-	}
-
-	err := CreateSambaUser("alice", "secret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "failed to check if user exists") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCreateSambaUser_UnixUserMissing(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return false, nil
-	}
-
-	err := CreateSambaUser("alice", "secret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "user alice does not exist in the system") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestCreateSambaUser_Success(t *testing.T) {
 	defer resetMocks()
 
@@ -161,58 +129,6 @@ func TestCreateSambaUser_Success(t *testing.T) {
 
 	err := CreateSambaUser("alice", "secret")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestCreateSambaUser_SmbpasswdFails(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return true, nil
-	}
-
-	runCommandWithInput = func(command, input string, args ...string) (string, error) {
-		return "failed to add entry", errors.New("exit status 1")
-	}
-
-	err := CreateSambaUser("alice", "secret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "smbpasswd -a alice failed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestEditSambaUser_UnixUserCheckFails(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return false, errors.New("lookup failed")
-	}
-
-	err := EditSambaUser("alice", "newsecret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "failed to check if user exists") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestEditSambaUser_UnixUserMissing(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return false, nil
-	}
-
-	err := EditSambaUser("alice", "newsecret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "user alice does not exist in the system") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -255,29 +171,6 @@ func TestEditSambaUser_Success(t *testing.T) {
 	}
 }
 
-func TestEditSambaUser_SmbpasswdFails(t *testing.T) {
-	defer resetMocks()
-
-	unixUserExists = func(name string) (bool, error) {
-		return true, nil
-	}
-	runCommand = func(command string, args ...string) (string, error) {
-		return "alice:1000:", nil
-	}
-
-	runCommandWithInput = func(command, input string, args ...string) (string, error) {
-		return "password change failed", errors.New("exit status 1")
-	}
-
-	err := EditSambaUser("alice", "newsecret")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "smbpasswd change alice failed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestDeleteSambaUser_Success(t *testing.T) {
 	defer resetMocks()
 
@@ -297,18 +190,45 @@ func TestDeleteSambaUser_Success(t *testing.T) {
 	}
 }
 
-func TestDeleteSambaUser_Fails(t *testing.T) {
-	defer resetMocks()
-
-	runCommand = func(command string, args ...string) (string, error) {
-		return "delete failed", errors.New("exit status 1")
+func TestSambaUserMutationFailures(t *testing.T) {
+	create := func() error { return CreateSambaUser("alice", "secret") }
+	edit := func() error { return EditSambaUser("alice", "newsecret") }
+	tests := []struct {
+		name       string
+		call       func() error
+		unixExists bool
+		unixErr    error
+		commandOut string // pdbedit/smbpasswd -x output
+		commandErr error
+		inputErr   error // smbpasswd password prompt
+		wantErr    string
+	}{
+		{name: "create unix user check fails", call: create, unixErr: errors.New("lookup failed"), wantErr: "failed to check if user exists"},
+		{name: "create unix user missing", call: create, wantErr: "user alice does not exist in the system"},
+		{name: "create smbpasswd fails", call: create, unixExists: true, inputErr: errors.New("exit status 1"), wantErr: "smbpasswd -a alice failed"},
+		{name: "edit unix user check fails", call: edit, unixErr: errors.New("lookup failed"), wantErr: "failed to check if user exists"},
+		{name: "edit unix user missing", call: edit, wantErr: "user alice does not exist in the system"},
+		{
+			name: "edit smbpasswd fails", call: edit, unixExists: true, commandOut: "alice:1000:",
+			inputErr: errors.New("exit status 1"), wantErr: "smbpasswd change alice failed",
+		},
+		{
+			name: "delete fails", call: func() error { return DeleteSambaUser("alice") },
+			commandOut: "delete failed", commandErr: errors.New("exit status 1"), wantErr: "smbpasswd -x alice failed",
+		},
 	}
 
-	err := DeleteSambaUser("alice")
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-	if !strings.Contains(err.Error(), "smbpasswd -x alice failed") {
-		t.Fatalf("unexpected error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer resetMocks()
+			unixUserExists = func(string) (bool, error) { return tt.unixExists, tt.unixErr }
+			runCommand = func(string, ...string) (string, error) { return tt.commandOut, tt.commandErr }
+			runCommandWithInput = func(string, string, ...string) (string, error) { return "failed", tt.inputErr }
+
+			err := tt.call()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }

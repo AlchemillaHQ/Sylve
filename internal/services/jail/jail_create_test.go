@@ -31,22 +31,11 @@ import (
 	utilitiesModels "github.com/alchemillahq/sylve/internal/db/models/utilities"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
-	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
 )
-
-type jailCreateTestSystemService struct {
-	systemServiceInterfaces.SystemServiceInterface
-	pools []*gzfs.ZPool
-	err   error
-}
-
-type jailCreateGuestIdentityCheckerStub struct {
-	guestIDs []uint
-	err      error
-}
 
 type blockingJailCreateGuestIdentityChecker struct {
 	mu            sync.Mutex
@@ -88,23 +77,6 @@ func (s *blockingJailCreateGuestIdentityChecker) callCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.calls
-}
-
-func (s *jailCreateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
-	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
-}
-
-func (s *jailCreateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
-	s.guestIDs = append(s.guestIDs, guestIDs...)
-	return s.err
-}
-
-func (f jailCreateTestSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-
-	return f.pools, nil
 }
 
 type jailCreateTestZFSDataset struct {
@@ -179,7 +151,7 @@ func (r *jailCreateTestZFSRunner) Run(_ context.Context, _ io.Reader, stdout, _ 
 }
 
 func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error {
-	target := parseJailCreateZFSTargetArg(args)
+	target := zfsTargetArg(args)
 	recursive := slices.Contains(args, "-r")
 
 	r.mu.Lock()
@@ -242,7 +214,7 @@ func (r *jailCreateTestZFSRunner) runList(stdout io.Writer, args []string) error
 }
 
 func (r *jailCreateTestZFSRunner) runCreate(args []string) error {
-	datasetName := parseJailCreateZFSLastNonFlagArg(args[1:])
+	datasetName := zfsTargetArg(args)
 	if datasetName == "" {
 		return fmt.Errorf("dataset name missing in create args: %v", args)
 	}
@@ -274,7 +246,7 @@ func (r *jailCreateTestZFSRunner) runCreate(args []string) error {
 }
 
 func (r *jailCreateTestZFSRunner) runDestroy(args []string) error {
-	datasetName := parseJailCreateZFSLastNonFlagArg(args[1:])
+	datasetName := zfsTargetArg(args)
 	if datasetName == "" {
 		return fmt.Errorf("dataset name missing in destroy args: %v", args)
 	}
@@ -304,7 +276,7 @@ func (r *jailCreateTestZFSRunner) runDestroy(args []string) error {
 	return nil
 }
 
-func parseJailCreateZFSTargetArg(args []string) string {
+func zfsTargetArg(args []string) string {
 	target := ""
 	skip := 0
 
@@ -332,29 +304,6 @@ func parseJailCreateZFSTargetArg(args []string) string {
 	return target
 }
 
-func parseJailCreateZFSLastNonFlagArg(args []string) string {
-	last := ""
-	skip := 0
-
-	for _, arg := range args {
-		if skip > 0 {
-			skip--
-			continue
-		}
-		switch arg {
-		case "-o", "-t":
-			skip = 1
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		last = arg
-	}
-
-	return last
-}
-
 func jailCreateDatasetPoolName(datasetName string) string {
 	trimmed := strings.TrimPrefix(datasetName, "/")
 	if trimmed == "" {
@@ -376,7 +325,7 @@ func newJailCreateTestService(db *gorm.DB, runner *jailCreateTestZFSRunner, pool
 
 	return &Service{
 		DB:     db,
-		System: jailCreateTestSystemService{pools: usablePools},
+		System: fakeSystemService{pools: usablePools},
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner:   runner,
 			ZFSBin:   "zfs",
@@ -597,86 +546,80 @@ func assertModelCount(t *testing.T, db *gorm.DB, model any, want int64, query st
 	}
 }
 
-func TestValidateCreate_FailsWhenCTIDAlreadyExists(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&jailModels.Jail{},
-		&utilitiesModels.Downloads{},
-	)
-
-	runner := newJailCreateTestZFSRunner(t, nil)
-	svc := newJailCreateTestService(db, runner, "tank")
-
-	baseDir := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		t.Fatalf("failed to create base directory: %v", err)
+func TestValidateCreate(t *testing.T) {
+	tests := []struct {
+		name         string
+		ctid         uint
+		existingJail bool // a jail row already uses this CTID
+		staleDataset bool // tank/sylve/jails/<ctid> already exists
+		change       func(*jailServiceInterfaces.CreateJailRequest)
+		wantErr      string // empty means validation passes
+	}{
+		{name: "existing ctid", ctid: 700, existingJail: true, wantErr: "jail_with_ctid_already_exists"},
+		{name: "stale ctid dataset", ctid: 701, staleDataset: true, wantErr: "jail_create_stale_artifacts_detected"},
+		{
+			name: "resource limits without cores and memory", ctid: 703, wantErr: "resource_limits_require_cores_and_memory",
+			change: func(req *jailServiceInterfaces.CreateJailRequest) {
+				enabled := true
+				req.ResourceLimits = &enabled
+			},
+		},
+		{
+			name: "accepts raw ipv4", ctid: 790,
+			change: func(req *jailServiceInterfaces.CreateJailRequest) {
+				req.SwitchName, req.IPv4Raw = "test-switch", "10.0.0.5/24"
+			},
+		},
+		{
+			name: "rejects invalid raw ipv4 cidr", ctid: 791, wantErr: "invalid_ipv4_cidr",
+			change: func(req *jailServiceInterfaces.CreateJailRequest) {
+				req.SwitchName, req.IPv4Raw = "test-switch", "not-a-cidr"
+			},
+		},
 	}
-	seedBaseDownload(t, db, "base-existing-ctid", baseDir)
 
-	const ctid uint = 700
-	if err := db.Create(&jailModels.Jail{
-		Name: "existing-jail-700",
-		CTID: ctid,
-		Type: jailModels.JailTypeFreeBSD,
-	}).Error; err != nil {
-		t.Fatalf("failed to seed existing jail row: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := testutil.NewSQLiteTestDB(
+				t,
+				&jailModels.Jail{},
+				&networkModels.Object{},
+				&networkModels.ObjectEntry{},
+				&networkModels.StandardSwitch{},
+				&networkModels.ManualSwitch{},
+				&utilitiesModels.Downloads{},
+			)
+			seedSwitch(t, db, "test-switch")
 
-	req := jailCreateRequest(ctid, "tank", "base-existing-ctid")
-	err := svc.ValidateCreate(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "jail_with_ctid_already_exists") {
-		t.Fatalf("expected jail_with_ctid_already_exists error, got %v", err)
-	}
-}
+			var datasets []string
+			if tt.staleDataset {
+				datasets = []string{fmt.Sprintf("tank/sylve/jails/%d", tt.ctid)}
+			}
+			svc := newJailCreateTestService(db, newJailCreateTestZFSRunner(t, datasets), "tank")
 
-func TestValidateCreate_FailsWhenStaleCTIDDatasetExists(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&jailModels.Jail{},
-		&utilitiesModels.Downloads{},
-	)
+			baseDir := filepath.Join(t.TempDir(), "base")
+			if err := os.MkdirAll(baseDir, 0755); err != nil {
+				t.Fatalf("failed to create base directory: %v", err)
+			}
+			seedBaseDownload(t, db, "base-validate", baseDir)
+			if tt.existingJail {
+				if err := db.Create(&jailModels.Jail{Name: "existing-jail", CTID: tt.ctid, Type: jailModels.JailTypeFreeBSD}).Error; err != nil {
+					t.Fatalf("failed to seed existing jail row: %v", err)
+				}
+			}
 
-	const ctid uint = 701
-	staleDataset := fmt.Sprintf("tank/sylve/jails/%d", ctid)
-	runner := newJailCreateTestZFSRunner(t, []string{staleDataset})
-	svc := newJailCreateTestService(db, runner, "tank")
-
-	baseDir := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		t.Fatalf("failed to create base directory: %v", err)
-	}
-	seedBaseDownload(t, db, "base-stale-dataset", baseDir)
-
-	req := jailCreateRequest(ctid, "tank", "base-stale-dataset")
-	err := svc.ValidateCreate(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "jail_create_stale_artifacts_detected") {
-		t.Fatalf("expected stale artifact error, got %v", err)
-	}
-}
-
-func TestValidateCreate_RequiresCoresAndMemoryWhenResourceLimitsEnabled(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&jailModels.Jail{},
-		&utilitiesModels.Downloads{},
-	)
-
-	runner := newJailCreateTestZFSRunner(t, nil)
-	svc := newJailCreateTestService(db, runner, "tank")
-
-	baseDir := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		t.Fatalf("failed to create base directory: %v", err)
-	}
-	seedBaseDownload(t, db, "base-resource-limits", baseDir)
-
-	req := jailCreateRequest(703, "tank", "base-resource-limits")
-	enabled := true
-	req.ResourceLimits = &enabled
-
-	err := svc.ValidateCreate(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "resource_limits_require_cores_and_memory") {
-		t.Fatalf("expected resource limits validation error, got %v", err)
+			req := jailCreateRequest(tt.ctid, "tank", "base-validate")
+			if tt.change != nil {
+				tt.change(&req)
+			}
+			err := svc.ValidateCreate(context.Background(), req)
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("expected validation to pass, got %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -723,7 +666,7 @@ func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	)
 	runner := newJailCreateTestZFSRunner(t, nil)
 	svc := newJailCreateTestService(db, runner, "tank")
-	checker := &jailCreateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	checker := &guestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 
 	baseDir := filepath.Join(t.TempDir(), "base")
@@ -737,8 +680,8 @@ func TestCreateJailStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
 		t.Fatalf("guest identity rejection error = %v", err)
 	}
-	if len(checker.guestIDs) != 1 || checker.guestIDs[0] != 702 {
-		t.Fatalf("checked guest IDs = %v, want [702]", checker.guestIDs)
+	if len(checker.batches) != 1 || !slices.Equal(checker.batches[0], []uint{702}) {
+		t.Fatalf("identity batches = %v, want one [702] batch", checker.batches)
 	}
 	runner.mu.Lock()
 	createCalls := runner.createCalls
@@ -1005,82 +948,6 @@ func TestValidateCreate_RejectsBootstrapNewerThanHost(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "bootstrap_version_newer_than_host") {
 		t.Fatalf("expected bootstrap host compatibility rejection, got %v", err)
-	}
-}
-
-func TestValidateCreate_AcceptsRawIPv4(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&jailModels.Jail{},
-		&networkModels.Object{},
-		&networkModels.ObjectEntry{},
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-		&utilitiesModels.Downloads{},
-	)
-
-	runner := newJailCreateTestZFSRunner(t, nil)
-	svc := newJailCreateTestService(db, runner, "tank")
-
-	baseDir := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		t.Fatalf("failed to create base directory: %v", err)
-	}
-	seedBaseDownload(t, db, "base-raw-ipv4", baseDir)
-	seedSwitch(t, db, "test-switch")
-
-	ctid := uint(790)
-	req := jailServiceInterfaces.CreateJailRequest{
-		Name:       fmt.Sprintf("jail-%d", ctid),
-		CTID:       &ctid,
-		Pool:       "tank",
-		Base:       "base-raw-ipv4",
-		SwitchName: "test-switch",
-		Type:       jailModels.JailTypeFreeBSD,
-		IPv4Raw:    "10.0.0.5/24",
-	}
-
-	err := svc.ValidateCreate(context.Background(), req)
-	if err != nil {
-		t.Fatalf("expected validation to pass, got %v", err)
-	}
-}
-
-func TestValidateCreate_RejectsInvalidRawIPv4CIDR(t *testing.T) {
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&jailModels.Jail{},
-		&networkModels.Object{},
-		&networkModels.ObjectEntry{},
-		&networkModels.StandardSwitch{},
-		&networkModels.ManualSwitch{},
-		&utilitiesModels.Downloads{},
-	)
-	seedSwitch(t, db, "test-switch")
-
-	runner := newJailCreateTestZFSRunner(t, nil)
-	svc := newJailCreateTestService(db, runner, "tank")
-
-	baseDir := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(baseDir, 0755); err != nil {
-		t.Fatalf("failed to create base directory: %v", err)
-	}
-	seedBaseDownload(t, db, "base-bad-raw-ipv4", baseDir)
-
-	ctid := uint(791)
-	req := jailServiceInterfaces.CreateJailRequest{
-		Name:       fmt.Sprintf("jail-%d", ctid),
-		CTID:       &ctid,
-		Pool:       "tank",
-		Base:       "base-bad-raw-ipv4",
-		SwitchName: "test-switch",
-		Type:       jailModels.JailTypeFreeBSD,
-		IPv4Raw:    "not-a-cidr",
-	}
-
-	err := svc.ValidateCreate(context.Background(), req)
-	if err == nil || !strings.Contains(err.Error(), "invalid_ipv4_cidr") {
-		t.Fatalf("expected invalid_ipv4_cidr error, got %v", err)
 	}
 }
 

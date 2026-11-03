@@ -11,7 +11,6 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -55,15 +55,6 @@ func setupStaticRouteHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine, 
 	return router, db
 }
 
-func decodeStaticRouteHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) staticRouteHandlerResponse {
-	t.Helper()
-	var response staticRouteHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func validDisabledStaticRouteBody(name string) []byte {
 	body, _ := json.Marshal(map[string]any{
 		"name":             name,
@@ -91,7 +82,7 @@ func TestCreateStaticRouteReturnsCreatedID(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	response := decodeStaticRouteHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, rr)
 	var id uint
 	if response.Status != "success" || json.Unmarshal(response.Data, &id) != nil || id == 0 {
 		t.Fatalf("unexpected create response: %+v", response)
@@ -110,7 +101,7 @@ func TestStaticRouteHandlersMapStableClientErrors(t *testing.T) {
 		for _, id := range []string{"0", "-1", "not-a-number"} {
 			router, _ := setupStaticRouteHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/route/"+id, nil)
-			response := decodeStaticRouteHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_static_route_id" {
 				t.Fatalf("id=%q status=%d response=%+v", id, rr.Code, response)
 			}
@@ -120,7 +111,7 @@ func TestStaticRouteHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("missing route", func(t *testing.T) {
 		router, _ := setupStaticRouteHandlerRouter(t, networkService.MaxRequestBodyBytes)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/route/999999", nil)
-		response := decodeStaticRouteHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "static_route_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -132,7 +123,7 @@ func TestStaticRouteHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("invalid NAT rule ID", func(t *testing.T) {
 		router, _ := setupStaticRouteHandlerRouter(t, networkService.MaxRequestBodyBytes)
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/firewall/nat/0/route-suggestions", nil)
-		response := decodeStaticRouteHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_rule_id" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -148,7 +139,7 @@ func TestStaticRouteHandlersMapStableClientErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/firewall/nat/"+strconv.FormatUint(uint64(rule.ID), 10)+"/route-suggestions", nil)
-		response := decodeStaticRouteHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "static_route_suggestion_unavailable" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -158,7 +149,7 @@ func TestStaticRouteHandlersMapStableClientErrors(t *testing.T) {
 func TestStaticRouteHandlersRejectInvalidAndOversizedJSON(t *testing.T) {
 	router, _ := setupStaticRouteHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	invalid := performNetworkJSONRequest(t, router, http.MethodPost, "/network/route", []byte(`{"name":"missing fields"}`))
-	response := decodeStaticRouteHandlerResponse(t, invalid)
+	response := testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, invalid)
 	if invalid.Code != http.StatusBadRequest || response.Error != "invalid_static_route_request" {
 		t.Fatalf("expected stable 400, status=%d response=%+v", invalid.Code, response)
 	}
@@ -166,7 +157,7 @@ func TestStaticRouteHandlersRejectInvalidAndOversizedJSON(t *testing.T) {
 	const limit = 128
 	limitedRouter, _ := setupStaticRouteHandlerRouter(t, limit)
 	oversized := performNetworkJSONRequest(t, limitedRouter, http.MethodPost, "/network/route", validDisabledStaticRouteBody(strings.Repeat("a", limit)))
-	response = decodeStaticRouteHandlerResponse(t, oversized)
+	response = testutil.DecodeJSONResponse[staticRouteHandlerResponse](t, oversized)
 	if oversized.Code != http.StatusRequestEntityTooLarge || response.Error != "static_route_request_too_large" {
 		t.Fatalf("expected stable 413, status=%d response=%+v", oversized.Code, response)
 	}

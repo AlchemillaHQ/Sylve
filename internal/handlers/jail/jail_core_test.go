@@ -19,6 +19,7 @@ import (
 
 	jailModels "github.com/alchemillahq/sylve/internal/db/models/jail"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -121,15 +122,6 @@ type jailCoreResponse struct {
 	Data    json.RawMessage `json:"data"`
 }
 
-func decodeJailCoreResponse(t *testing.T, recorder *httptest.ResponseRecorder) jailCoreResponse {
-	t.Helper()
-	var response jailCoreResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v; body=%s", err, recorder.Body.String())
-	}
-	return response
-}
-
 func TestGetJailByCTIDHandlerUsesPathIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &jailCoreHandlerStub{jail: &jailModels.Jail{ID: 12, CTID: 901, Name: "ctid-jail"}}
@@ -145,7 +137,7 @@ func TestGetJailByCTIDHandlerUsesPathIdentity(t *testing.T) {
 		t.Fatalf("lookup CTID = %d, want 901", stub.lookupCTID)
 	}
 
-	response := decodeJailCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder)
 	var data struct {
 		ID   uint `json:"id"`
 		CTID uint `json:"ctId"`
@@ -171,7 +163,7 @@ func TestGetJailByCTIDHandlerValidatesAndMapsMissingJail(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest || stub.lookupCTID != 0 {
 			t.Fatalf("invalid lookup: status=%d ctid=%d body=%s", recorder.Code, stub.lookupCTID, recorder.Body.String())
 		}
-		if response := decodeJailCoreResponse(t, recorder); response.Message != "invalid_ctid" {
+		if response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder); response.Message != "invalid_ctid" {
 			t.Fatalf("message = %q, want invalid_ctid", response.Message)
 		}
 	})
@@ -186,7 +178,7 @@ func TestGetJailByCTIDHandlerValidatesAndMapsMissingJail(t *testing.T) {
 		if recorder.Code != http.StatusNotFound {
 			t.Fatalf("status = %d, want 404; body=%s", recorder.Code, recorder.Body.String())
 		}
-		if response := decodeJailCoreResponse(t, recorder); response.Message != "jail_not_found" {
+		if response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder); response.Message != "jail_not_found" {
 			t.Fatalf("message = %q, want jail_not_found", response.Message)
 		}
 	})
@@ -206,7 +198,7 @@ func TestGetSimpleJailByCTIDHandlerContract(t *testing.T) {
 		t.Fatalf("simple lookup: status=%d ctid=%d body=%s", recorder.Code, stub.lookupCTID, recorder.Body.String())
 	}
 
-	response := decodeJailCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder)
 	var data jailServiceInterfaces.SimpleList
 	if err := json.Unmarshal(response.Data, &data); err != nil {
 		t.Fatalf("decode simple jail: %v", err)
@@ -241,7 +233,7 @@ func TestCreateJailHandlerReturnsCreatedIdentityAndLocation(t *testing.T) {
 		t.Fatalf("create request CTID = %v, called=%t", stub.createReq.CTID, stub.createCalled)
 	}
 
-	response := decodeJailCoreResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder)
 	var data JailCreateResponse
 	if err := json.Unmarshal(response.Data, &data); err != nil {
 		t.Fatalf("decode created identity: %v", err)
@@ -314,7 +306,7 @@ func TestDeleteJailHandlerRequiresFlagsAndForwardsFalseValues(t *testing.T) {
 		if stub.deleteCTID != 907 || stub.deleteMacs || stub.deleteRootFS {
 			t.Fatalf("delete call = ctid:%d macs:%t rootfs:%t", stub.deleteCTID, stub.deleteMacs, stub.deleteRootFS)
 		}
-		if response := decodeJailCoreResponse(t, recorder); response.Message != "jail_deleted_with_warnings" {
+		if response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder); response.Message != "jail_deleted_with_warnings" {
 			t.Fatalf("message = %q, want jail_deleted_with_warnings", response.Message)
 		}
 	})
@@ -333,7 +325,7 @@ func TestDeleteJailHandlerRequiresFlagsAndForwardsFalseValues(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest || stub.deleteCalled {
 			t.Fatalf("missing flag: status=%d called=%t body=%s", recorder.Code, stub.deleteCalled, recorder.Body.String())
 		}
-		if response := decodeJailCoreResponse(t, recorder); response.Message != "missing_deleterootfs_param" {
+		if response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder); response.Message != "missing_deleterootfs_param" {
 			t.Fatalf("message = %q, want missing_deleterootfs_param", response.Message)
 		}
 	})

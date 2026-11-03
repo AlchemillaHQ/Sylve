@@ -13,139 +13,49 @@ import (
 	"testing"
 )
 
-func TestParseSwapctlOutput_ValidSingleDevice(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-/dev/ada0p3        2097152   524288  1572864    25%`
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	want := []SwapDevice{
+func TestParseSwapctlOutput(t *testing.T) {
+	const header = "Device          1K-blocks     Used    Avail Capacity\n"
+	ada0 := SwapDevice{Device: "/dev/ada0p3", Blocks1024: 2097152, Used: 524288}
+	ada1 := SwapDevice{Device: "/dev/ada1p2", Blocks1024: 1048576, Used: 262144}
+	tests := []struct {
+		name    string
+		input   string
+		want    []SwapDevice
+		wantErr bool
+	}{
+		{name: "single device", input: header + "/dev/ada0p3        2097152   524288  1572864    25%", want: []SwapDevice{ada0}},
 		{
-			Device:     "/dev/ada0p3",
-			Blocks1024: 2097152,
-			Used:       524288,
+			name:  "multiple devices",
+			input: header + "/dev/ada0p3        2097152   524288  1572864    25%\n/dev/ada1p2        1048576   262144   786432    25%",
+			want:  []SwapDevice{ada0, ada1},
 		},
-	}
-
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestParseSwapctlOutput_ValidMultipleDevices(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-/dev/ada0p3        2097152   524288  1572864    25%
-/dev/ada1p2        1048576   262144   786432    25%`
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	want := []SwapDevice{
+		{name: "empty output", input: ""},
+		{name: "header only", input: header},
 		{
-			Device:     "/dev/ada0p3",
-			Blocks1024: 2097152,
-			Used:       524288,
+			name:  "skips blank lines",
+			input: header + "\n/dev/ada0p3        2097152   524288  1572864    25%\n\n/dev/ada1p2        1048576   262144   786432    25%\n",
+			want:  []SwapDevice{ada0, ada1},
 		},
-		{
-			Device:     "/dev/ada1p2",
-			Blocks1024: 1048576,
-			Used:       262144,
-		},
+		{name: "skips short lines", input: header + "garbage\n/dev/ada0p3        2097152   524288  1572864    25%", want: []SwapDevice{ada0}},
+		{name: "invalid blocks", input: header + "/dev/ada0p3        notanumber   524288  1572864    25%", wantErr: true},
+		{name: "invalid used", input: header + "/dev/ada0p3        2097152   notanumber  1572864    25%", wantErr: true},
 	}
 
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestParseSwapctlOutput_EmptyOutput(t *testing.T) {
-	input := ``
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(got) != 0 {
-		t.Fatalf("expected empty slice, got %#v", got)
-	}
-}
-
-func TestParseSwapctlOutput_HeaderOnly(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity`
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(got) != 0 {
-		t.Fatalf("expected empty slice, got %#v", got)
-	}
-}
-
-func TestParseSwapctlOutput_SkipsBlankLines(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-
-/dev/ada0p3        2097152   524288  1572864    25%
-
-/dev/ada1p2        1048576   262144   786432    25%
-`
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(got) != 2 {
-		t.Fatalf("expected 2 devices, got %#v", got)
-	}
-}
-
-func TestParseSwapctlOutput_SkipsShortLines(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-garbage
-/dev/ada0p3        2097152   524288  1572864    25%`
-
-	got, err := parseSwapctlOutput(input)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	want := []SwapDevice{
-		{
-			Device:     "/dev/ada0p3",
-			Blocks1024: 2097152,
-			Used:       524288,
-		},
-	}
-
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
-func TestParseSwapctlOutput_InvalidBlocks(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-/dev/ada0p3        notanumber   524288  1572864    25%`
-
-	_, err := parseSwapctlOutput(input)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestParseSwapctlOutput_InvalidUsed(t *testing.T) {
-	input := `Device          1K-blocks     Used    Avail Capacity
-/dev/ada0p3        2097152   notanumber  1572864    25%`
-
-	_, err := parseSwapctlOutput(input)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseSwapctlOutput(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tt.want) || (len(tt.want) > 0 && !reflect.DeepEqual(got, tt.want)) {
+				t.Fatalf("got %#v, want %#v", got, tt.want)
+			}
+		})
 	}
 }

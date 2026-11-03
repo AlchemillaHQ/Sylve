@@ -11,7 +11,6 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -54,19 +54,10 @@ func setupDHCPRangeHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine, *g
 	return router, db
 }
 
-func decodeDHCPRangeResponse(t *testing.T, recorder *httptest.ResponseRecorder) dhcpConfigHandlerResponse {
-	t.Helper()
-	var response dhcpConfigHandlerResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
-	}
-	return response
-}
-
 func TestGetDHCPRangesReturnsConcreteCollection(t *testing.T) {
 	router, _ := setupDHCPRangeHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	recorder := performNetworkJSONRequest(t, router, http.MethodGet, "/network/dhcp/range", nil)
-	response := decodeDHCPRangeResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" || response.Message != "dhcp_ranges_retrieved" {
 		t.Fatalf("unexpected GET response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -102,7 +93,7 @@ func TestDHCPRangeHandlersReturnStableValidationAndResourceErrors(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := performNetworkJSONRequest(t, router, test.method, test.path, test.body)
-			response := decodeDHCPRangeResponse(t, recorder)
+			response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 			if recorder.Code != test.wantStatus || response.Error != test.wantCode {
 				t.Fatalf("status=%d response=%+v", recorder.Code, response)
 			}
@@ -139,7 +130,7 @@ func TestModifyDHCPRangeUsesPathIDAndAllowsNoChange(t *testing.T) {
 
 	body := []byte(`{"id":999,"type":"ipv4","startIp":"192.0.2.10","endIp":"192.0.2.20","standardSwitch":` + strconvUint(standard.ID) + `,"expiry":0}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPut, "/network/dhcp/range/"+strconvUint(rangeModel.ID), body)
-	response := decodeDHCPRangeResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" || response.Message != "dhcp_range_modified" {
 		t.Fatalf("unexpected no-change update response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -153,7 +144,7 @@ func TestCreateDHCPRangeRejectsOversizedJSON(t *testing.T) {
 	router, _ := setupDHCPRangeHandlerRouter(t, limit)
 	body := []byte(`{"type":"ipv4","startIp":"` + strings.Repeat("1", limit) + `"}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPost, "/network/dhcp/range", body)
-	response := decodeDHCPRangeResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusRequestEntityTooLarge || response.Error != "dhcp_range_request_too_large" {
 		t.Fatalf("expected stable 413 response: status=%d response=%+v", recorder.Code, response)
 	}

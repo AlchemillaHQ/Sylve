@@ -19,6 +19,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -58,15 +59,6 @@ func setupNetworkObjectHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine
 	return router, db
 }
 
-func decodeNetworkObjectHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) networkObjectHandlerResponse {
-	t.Helper()
-	var response networkObjectHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func TestCreateNetworkObjectReturnsCreatedID(t *testing.T) {
 	router, _ := setupNetworkObjectHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/object", []byte(`{
@@ -78,7 +70,7 @@ func TestCreateNetworkObjectReturnsCreatedID(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	response := decodeNetworkObjectHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 	if response.Status != "success" || response.Message != "object_created" {
 		t.Fatalf("unexpected create response: %+v", response)
 	}
@@ -102,7 +94,7 @@ func TestListNetworkObjectsIncludesNamedUsage(t *testing.T) {
 		t.Fatalf("seed switch: %v", err)
 	}
 	rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/object", nil)
-	response := decodeNetworkObjectHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Status != "success" {
 		t.Fatalf("list status=%d response=%+v", rr.Code, response)
 	}
@@ -133,7 +125,7 @@ func TestNetworkObjectHandlersMapStableClientErrors(t *testing.T) {
 			"type": "Unknown",
 			"values": ["value"]
 		}`))
-		response := decodeNetworkObjectHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_network_object_type" {
 			t.Fatalf("expected stable 400 invalid-type response, status=%d response=%+v", rr.Code, response)
 		}
@@ -146,7 +138,7 @@ func TestNetworkObjectHandlersMapStableClientErrors(t *testing.T) {
 			t.Fatalf("seed create failed: status=%d body=%s", rr.Code, rr.Body.String())
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/object", body)
-		response := decodeNetworkObjectHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "network_object_name_conflict" {
 			t.Fatalf("expected stable 409 duplicate response, status=%d response=%+v", rr.Code, response)
 		}
@@ -155,7 +147,7 @@ func TestNetworkObjectHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("missing object", func(t *testing.T) {
 		router, _ := setupNetworkObjectHandlerRouter(t, networkService.MaxRequestBodyBytes)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/object/999999", nil)
-		response := decodeNetworkObjectHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "network_object_not_found" {
 			t.Fatalf("expected stable 404 response, status=%d response=%+v", rr.Code, response)
 		}
@@ -177,7 +169,7 @@ func TestNetworkObjectHandlersMapStableClientErrors(t *testing.T) {
 			t.Fatalf("marshal request: %v", err)
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/object", body)
-		response := decodeNetworkObjectHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadGateway || response.Error != "network_object_source_unavailable" {
 			t.Fatalf("expected stable 502 response, status=%d response=%+v", rr.Code, response)
 		}
@@ -192,7 +184,7 @@ func TestNetworkObjectHandlersRejectInvalidIDs(t *testing.T) {
 		t.Run(id, func(t *testing.T) {
 			router, _ := setupNetworkObjectHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/object/"+id, nil)
-			response := decodeNetworkObjectHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_network_object_id" {
 				t.Fatalf("expected stable 400 invalid-ID response, status=%d response=%+v", rr.Code, response)
 			}
@@ -205,7 +197,7 @@ func TestNetworkObjectHandlersRejectOversizedJSON(t *testing.T) {
 	router, _ := setupNetworkObjectHandlerRouter(t, limit)
 	body := []byte(`{"name":"` + strings.Repeat("a", limit) + `","type":"Port","values":["443"]}`)
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/object", body)
-	response := decodeNetworkObjectHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 	if rr.Code != http.StatusRequestEntityTooLarge || response.Error != "network_object_request_too_large" {
 		t.Fatalf("expected stable 413 response, status=%d response=%+v", rr.Code, response)
 	}
@@ -226,7 +218,7 @@ func TestBulkDeleteNetworkObjectsUsesCollectionDelete(t *testing.T) {
 	}
 
 	rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/object", body)
-	response := decodeNetworkObjectHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[networkObjectHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Status != "success" || response.Message != "objects_deleted" {
 		t.Fatalf("unexpected bulk-delete response: status=%d response=%+v", rr.Code, response)
 	}

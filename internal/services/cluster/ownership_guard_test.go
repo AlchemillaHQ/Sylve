@@ -55,262 +55,118 @@ func TestStorageTopologyMutationBlocksOnlyRunningReplication(t *testing.T) {
 	}
 }
 
-func TestCanNodeMutateProtectedGuestNoPolicy(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	// no matching policy → allowed
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestCanNodeMutateProtectedGuest(t *testing.T) {
+	// protected is an enabled VM 100 policy actively owned by node-1 at epoch 1; lease is node-1's valid lease for it.
+	protected := func(change func(*clusterModels.ReplicationPolicy)) *clusterModels.ReplicationPolicy {
+		policy := &clusterModels.ReplicationPolicy{
+			ID: 1, Name: "protected", GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
+			Enabled: true, ActiveNodeID: "node-1", SourceNodeID: "node-1",
+			SourceMode:   clusterModels.ReplicationSourceModeFollowActive,
+			FailbackMode: clusterModels.ReplicationFailbackManual,
+			FailoverMode: clusterModels.ReplicationFailoverManual,
+			CronExpr:     "* * * * *", OwnerEpoch: 1,
+		}
+		if change != nil {
+			change(policy)
+		}
+		return policy
 	}
-	if !allowed {
-		t.Fatal("expected allowed when no policy exists")
+	lease := func(change func(*clusterModels.ReplicationLease)) *clusterModels.ReplicationLease {
+		out := &clusterModels.ReplicationLease{
+			PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
+			OwnerNodeID: "node-1", OwnerEpoch: 1, ExpiresAt: time.Now().Add(time.Hour),
+		}
+		if change != nil {
+			change(out)
+		}
+		return out
 	}
-}
-
-func TestCanNodeMutateProtectedGuestEmptyGuestType(t *testing.T) {
-	db := newClusterServiceTestDB(t)
-
-	allowed, err := CanNodeMutateProtectedGuest(db, "", 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	vm := clusterModels.ReplicationGuestTypeVM
+	tests := []struct {
+		name        string
+		policy      *clusterModels.ReplicationPolicy
+		lease       *clusterModels.ReplicationLease
+		guestType   string
+		guestID     uint
+		localNode   string
+		wantAllowed bool
+		wantErr     bool
+	}{
+		{name: "no policy", guestType: vm, guestID: 100, localNode: "node-1", wantAllowed: true},
+		{name: "empty guest type", guestID: 100, localNode: "node-1", wantAllowed: true},
+		{name: "zero guest id", guestType: vm, localNode: "node-1", wantAllowed: true},
+		{name: "empty local node id", policy: protected(nil), guestType: vm, guestID: 100, localNode: "  ", wantErr: true},
+		{
+			name:   "disabled policy without local node id",
+			policy: protected(func(p *clusterModels.ReplicationPolicy) { p.Enabled = false }), guestType: vm, guestID: 100, wantAllowed: true,
+		},
+		{
+			name:   "disabled policy",
+			policy: protected(func(p *clusterModels.ReplicationPolicy) { p.Enabled, p.ActiveNodeID = false, "" }), guestType: vm, guestID: 100,
+			localNode: "node-1", wantAllowed: true,
+		},
+		{
+			name: "active node mismatch",
+			policy: protected(func(p *clusterModels.ReplicationPolicy) {
+				p.ActiveNodeID, p.SourceNodeID = "node-remote", "node-remote"
+			}),
+			guestType: vm, guestID: 100, localNode: "node-local",
+		},
+		{name: "no lease", policy: protected(nil), guestType: vm, guestID: 100, localNode: "node-1"},
+		{
+			name: "expired lease", policy: protected(nil), guestType: vm, guestID: 100, localNode: "node-1",
+			lease: lease(func(l *clusterModels.ReplicationLease) { l.ExpiresAt = time.Now().Add(-time.Hour) }),
+		},
+		{
+			name: "lease owner mismatch", policy: protected(nil), guestType: vm, guestID: 100, localNode: "node-1",
+			lease: lease(func(l *clusterModels.ReplicationLease) { l.OwnerNodeID = "node-other" }),
+		},
+		{
+			name: "epoch mismatch", guestType: vm, guestID: 100, localNode: "node-1",
+			policy: protected(func(p *clusterModels.ReplicationPolicy) { p.OwnerEpoch = 5 }),
+			lease:  lease(func(l *clusterModels.ReplicationLease) { l.OwnerEpoch = 3 }),
+		},
+		{name: "valid lease", policy: protected(nil), lease: lease(nil), guestType: vm, guestID: 100, localNode: "node-1", wantAllowed: true},
+		{
+			name: "falls back to source node when no active node", guestType: clusterModels.ReplicationGuestTypeJail, guestID: 200,
+			localNode: "node-1", wantAllowed: true,
+			policy: protected(func(p *clusterModels.ReplicationPolicy) {
+				p.GuestType, p.GuestID, p.ActiveNodeID = clusterModels.ReplicationGuestTypeJail, 200, ""
+				p.SourceMode, p.FailoverMode, p.CronExpr = clusterModels.ReplicationSourceModePinned, clusterModels.ReplicationFailoverAutoSafe, "0 */6 * * *"
+			}),
+			lease: lease(func(l *clusterModels.ReplicationLease) {
+				l.GuestType, l.GuestID = clusterModels.ReplicationGuestTypeJail, 200
+			}),
+		},
 	}
-	if !allowed {
-		t.Fatal("expected allowed when guest type is empty")
-	}
-}
 
-func TestCanNodeMutateProtectedGuestZeroGuestID(t *testing.T) {
-	db := newClusterServiceTestDB(t)
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 0, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allowed {
-		t.Fatal("expected allowed when guest id is 0")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestEmptyLocalNodeID(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{})
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "protected", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1", OwnerEpoch: 1,
-	})
-
-	_, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "  ")
-	if err == nil {
-		t.Fatal("expected error for empty local node ID")
-	}
-}
-
-func TestCanNodeMutateDisabledGuestWithoutLocalNodeID(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{})
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "disabled", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: false, ActiveNodeID: "node-1", OwnerEpoch: 1,
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "")
-	if err != nil {
-		t.Fatalf("disabled policy is unprotected: %v", err)
-	}
-	if !allowed {
-		t.Fatal("expected disabled policy to be unprotected")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestPolicyDisabled(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "disabled-policy", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: false,
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allowed {
-		t.Fatal("expected allowed when policy is disabled")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestActiveNodeMismatch(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "remote-owned", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-remote",
-		SourceNodeID: "node-remote", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-local")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allowed {
-		t.Fatal("expected denied when active node is a different node")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestNoLease(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "no-lease", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1",
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allowed {
-		t.Fatal("expected denied when no lease exists")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestExpiredLease(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "expired", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1",
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		OwnerNodeID: "node-1", OwnerEpoch: 1,
-		ExpiresAt: time.Now().Add(-time.Hour), // expired
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allowed {
-		t.Fatal("expected denied when lease is expired")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestLeaseOwnerMismatch(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "owner-mismatch", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1",
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		OwnerNodeID: "node-other", OwnerEpoch: 1,
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allowed {
-		t.Fatal("expected denied when lease owner is a different node")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestEpochMismatch(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "epoch-mismatch", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1",
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 5,
-	})
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		OwnerNodeID: "node-1", OwnerEpoch: 3, // different epoch
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allowed {
-		t.Fatal("expected denied when lease epoch does not match policy epoch")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestValidLease(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "valid", GuestType: clusterModels.ReplicationGuestTypeVM,
-		GuestID: 100, Enabled: true, ActiveNodeID: "node-1",
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModeFollowActive,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverManual,
-		CronExpr:     "* * * * *", OwnerEpoch: 1,
-	})
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeVM, GuestID: 100,
-		OwnerNodeID: "node-1", OwnerEpoch: 1,
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeVM, 100, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allowed {
-		t.Fatal("expected allowed when local node holds valid lease at correct epoch")
-	}
-}
-
-func TestCanNodeMutateProtectedGuestSourceNodeFallback(t *testing.T) {
-	db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
-
-	db.Create(&clusterModels.ReplicationPolicy{
-		ID: 1, Name: "source-fallback", GuestType: clusterModels.ReplicationGuestTypeJail,
-		GuestID: 200, Enabled: true, ActiveNodeID: "", // empty active, falls back to source
-		SourceNodeID: "node-1", SourceMode: clusterModels.ReplicationSourceModePinned,
-		FailbackMode: clusterModels.ReplicationFailbackManual,
-		FailoverMode: clusterModels.ReplicationFailoverAutoSafe,
-		CronExpr:     "0 */6 * * *", OwnerEpoch: 1,
-	})
-	db.Create(&clusterModels.ReplicationLease{
-		PolicyID: 1, GuestType: clusterModels.ReplicationGuestTypeJail, GuestID: 200,
-		OwnerNodeID: "node-1", OwnerEpoch: 1,
-		ExpiresAt: time.Now().Add(time.Hour),
-	})
-
-	allowed, err := CanNodeMutateProtectedGuest(db, clusterModels.ReplicationGuestTypeJail, 200, "node-1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allowed {
-		t.Fatal("expected allowed when source node is the owner")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newClusterServiceTestDB(t, &clusterModels.ReplicationPolicy{}, &clusterModels.ReplicationLease{})
+			if tt.policy != nil {
+				if err := db.Create(tt.policy).Error; err != nil {
+					t.Fatalf("seed policy: %v", err)
+				}
+			}
+			if tt.lease != nil {
+				if err := db.Create(tt.lease).Error; err != nil {
+					t.Fatalf("seed lease: %v", err)
+				}
+			}
+			allowed, err := CanNodeMutateProtectedGuest(db, tt.guestType, tt.guestID, tt.localNode)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if allowed != tt.wantAllowed {
+				t.Fatalf("allowed = %v, want %v", allowed, tt.wantAllowed)
+			}
+		})
 	}
 }
 

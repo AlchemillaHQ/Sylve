@@ -11,7 +11,6 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +18,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -60,15 +60,6 @@ func setupManualSwitchHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine,
 	return router, db
 }
 
-func decodeManualSwitchHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) manualSwitchHandlerResponse {
-	t.Helper()
-	var response manualSwitchHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func stubManualSwitchHandlerOperations(
 	t *testing.T,
 	create func(*networkService.Service, string, string) (*networkModels.ManualSwitch, error),
@@ -96,7 +87,7 @@ func TestCreateManualSwitchReturnsCreatedID(t *testing.T) {
 	}, nil)
 
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/switch/manual", []byte(`{"name":"uplink","bridge":"bridge0"}`))
-	response := decodeManualSwitchHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, rr)
 	var id uint
 	if rr.Code != http.StatusCreated || response.Status != "success" || json.Unmarshal(response.Data, &id) != nil || id != 42 {
 		t.Fatalf("status=%d response=%+v id=%d", rr.Code, response, id)
@@ -106,7 +97,7 @@ func TestCreateManualSwitchReturnsCreatedID(t *testing.T) {
 func TestManualSwitchHandlersRejectInvalidAndOversizedRequests(t *testing.T) {
 	router, _ := setupManualSwitchHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	invalid := performNetworkJSONRequest(t, router, http.MethodPost, "/network/switch/manual", []byte(`{"name":"missing-bridge"}`))
-	response := decodeManualSwitchHandlerResponse(t, invalid)
+	response := testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, invalid)
 	if invalid.Code != http.StatusBadRequest || response.Error != "invalid_manual_switch_request" {
 		t.Fatalf("status=%d response=%+v", invalid.Code, response)
 	}
@@ -118,14 +109,14 @@ func TestManualSwitchHandlersRejectInvalidAndOversizedRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	oversized := performNetworkJSONRequest(t, limitedRouter, http.MethodPost, "/network/switch/manual", body)
-	response = decodeManualSwitchHandlerResponse(t, oversized)
+	response = testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, oversized)
 	if oversized.Code != http.StatusRequestEntityTooLarge || response.Error != "manual_switch_request_too_large" {
 		t.Fatalf("status=%d response=%+v", oversized.Code, response)
 	}
 
 	for _, id := range []string{"0", "-1", "not-a-number"} {
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/switch/manual/"+id, nil)
-		response = decodeManualSwitchHandlerResponse(t, rr)
+		response = testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_manual_switch_id" {
 			t.Fatalf("id=%q status=%d response=%+v", id, rr.Code, response)
 		}
@@ -136,7 +127,7 @@ func TestDeleteManualSwitchMapsMissingAndInUseErrors(t *testing.T) {
 	router, db := setupManualSwitchHandlerRouter(t, networkService.MaxRequestBodyBytes)
 
 	missing := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/switch/manual/999999", nil)
-	response := decodeManualSwitchHandlerResponse(t, missing)
+	response := testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, missing)
 	if missing.Code != http.StatusNotFound || response.Error != "manual_switch_not_found" {
 		t.Fatalf("status=%d response=%+v", missing.Code, response)
 	}
@@ -158,7 +149,7 @@ func TestDeleteManualSwitchMapsMissingAndInUseErrors(t *testing.T) {
 		"/network/switch/manual/"+strconv.FormatUint(uint64(switchModel.ID), 10),
 		nil,
 	)
-	response = decodeManualSwitchHandlerResponse(t, inUse)
+	response = testutil.DecodeJSONResponse[manualSwitchHandlerResponse](t, inUse)
 	if inUse.Code != http.StatusConflict || response.Error != "manual_switch_in_use_by_dhcp_range" {
 		t.Fatalf("status=%d response=%+v", inUse.Code, response)
 	}

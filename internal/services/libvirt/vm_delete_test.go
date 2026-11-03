@@ -860,7 +860,7 @@ func TestIntegrationRemoveVMWithWarningsRealZFSStorageOutcomes(t *testing.T) {
 		service := &Service{
 			DB:     db,
 			GZFS:   client,
-			System: fakeVMCreateSystemService{pools: []*gzfs.ZPool{{Name: pool}}},
+			System: storageTestSystemService{pools: []*gzfs.ZPool{{Name: pool}}},
 		}
 		result, err := service.removeVMWithWarnings(
 			vm.RID, false, true, true, t.Context(), func(uint) error { return nil },

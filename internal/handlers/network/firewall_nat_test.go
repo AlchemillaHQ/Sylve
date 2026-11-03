@@ -11,7 +11,6 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -60,15 +60,6 @@ func setupFirewallNATHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engine, 
 	return router, db
 }
 
-func decodeFirewallNATHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) firewallNATHandlerResponse {
-	t.Helper()
-	var response firewallNATHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func validFirewallNATRuleBody(name string) []byte {
 	body, _ := json.Marshal(map[string]any{
 		"name":                 name,
@@ -107,7 +98,7 @@ func TestCreateFirewallNATRuleReturnsCreatedID(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	response := decodeFirewallNATHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 	var id uint
 	if response.Status != "success" || json.Unmarshal(response.Data, &id) != nil || id == 0 {
 		t.Fatalf("unexpected create response: %+v", response)
@@ -128,7 +119,7 @@ func TestCreateFirewallNATRuleAcceptsTCPUDP(t *testing.T) {
 	body, _ := json.Marshal(payload)
 
 	rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/nat", body)
-	response := decodeFirewallNATHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 	if rr.Code != http.StatusCreated || response.Status != "success" {
 		t.Fatalf("status=%d response=%+v", rr.Code, response)
 	}
@@ -151,7 +142,7 @@ func TestBulkDeleteFirewallNATRulesUsesCollectionDelete(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, rules[2].ID}})
 
 	rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-	response := decodeFirewallNATHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Status != "success" || response.Message != "firewall_nat_rules_deleted" {
 		t.Fatalf("unexpected bulk-delete response: status=%d response=%+v", rr.Code, response)
 	}
@@ -166,7 +157,7 @@ func TestBulkDeleteFirewallNATRulesUsesCollectionDelete(t *testing.T) {
 
 	body, _ = json.Marshal(map[string]any{"ids": []uint{rules[1].ID}})
 	rr = performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-	response = decodeFirewallNATHandlerResponse(t, rr)
+	response = testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Message != "firewall_nat_rules_deleted" {
 		t.Fatalf("one-item collection delete failed: status=%d response=%+v", rr.Code, response)
 	}
@@ -200,7 +191,7 @@ func TestBulkDeleteFirewallNATRulesRejectsInvalidIDSets(t *testing.T) {
 			router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			body, _ := json.Marshal(tt.body)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-			response := decodeFirewallNATHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_request" {
 				t.Fatalf("status=%d response=%+v", rr.Code, response)
 			}
@@ -220,7 +211,7 @@ func TestBulkDeleteFirewallNATRulesPreflightsEntireBatch(t *testing.T) {
 		}
 		body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, 999999}})
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-		response := decodeFirewallNATHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "firewall_nat_rule_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -244,7 +235,7 @@ func TestBulkDeleteFirewallNATRulesPreflightsEntireBatch(t *testing.T) {
 		}
 		body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, rules[1].ID}})
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-		response := decodeFirewallNATHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "hidden_firewall_rule_managed_by_wireguard" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -262,7 +253,7 @@ func TestBulkDeleteFirewallNATRulesReturnsStableInternalError(t *testing.T) {
 	}
 	body, _ := json.Marshal(map[string]any{"ids": []uint{1}})
 	rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat", body)
-	response := decodeFirewallNATHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 	if rr.Code != http.StatusInternalServerError || response.Error != "firewall_nat_rules_delete_failed" {
 		t.Fatalf("status=%d response=%+v", rr.Code, response)
 	}
@@ -273,7 +264,7 @@ func TestFirewallNATHandlersMapStableClientErrors(t *testing.T) {
 		for _, id := range []string{"0", "-1", "not-a-number"} {
 			router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat/"+id, nil)
-			response := decodeFirewallNATHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_rule_id" {
 				t.Fatalf("id=%q status=%d response=%+v", id, rr.Code, response)
 			}
@@ -283,7 +274,7 @@ func TestFirewallNATHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("missing rule", func(t *testing.T) {
 		router, _ := setupFirewallNATHandlerRouter(t, networkService.MaxRequestBodyBytes)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat/999999", nil)
-		response := decodeFirewallNATHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "firewall_nat_rule_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -301,7 +292,7 @@ func TestFirewallNATHandlersMapStableClientErrors(t *testing.T) {
 		payload["sourceObjId"] = 1
 		body, _ := json.Marshal(payload)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/nat", body)
-		response := decodeFirewallNATHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_nat_rule" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -320,7 +311,7 @@ func TestFirewallNATHandlersMapStableClientErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/nat/"+strconv.FormatUint(uint64(rule.ID), 10), nil)
-		response := decodeFirewallNATHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "hidden_firewall_rule_managed_by_wireguard" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -344,7 +335,7 @@ func TestFirewallNATHandlersRejectInvalidReorderAndOversizedJSON(t *testing.T) {
 
 	incompleteBody, _ := json.Marshal([]map[string]any{{"id": rules[0].ID, "priority": 1}})
 	incomplete := performNetworkJSONRequest(t, router, http.MethodPut, "/network/firewall/nat/reorder", incompleteBody)
-	response := decodeFirewallNATHandlerResponse(t, incomplete)
+	response := testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, incomplete)
 	if incomplete.Code != http.StatusConflict || response.Error != "firewall_nat_rule_conflict" {
 		t.Fatalf("expected incomplete reorder 409, status=%d response=%+v", incomplete.Code, response)
 	}
@@ -352,7 +343,7 @@ func TestFirewallNATHandlersRejectInvalidReorderAndOversizedJSON(t *testing.T) {
 	const limit = 128
 	limitedRouter, _ := setupFirewallNATHandlerRouter(t, limit)
 	oversized := performNetworkJSONRequest(t, limitedRouter, http.MethodPost, "/network/firewall/nat", validFirewallNATRuleBody(strings.Repeat("a", limit)))
-	response = decodeFirewallNATHandlerResponse(t, oversized)
+	response = testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, oversized)
 	if oversized.Code != http.StatusRequestEntityTooLarge || response.Error != "firewall_nat_request_too_large" {
 		t.Fatalf("expected 413, status=%d response=%+v", oversized.Code, response)
 	}
@@ -364,7 +355,7 @@ func TestFirewallNATHandlersRejectInvalidReorderAndOversizedJSON(t *testing.T) {
 		"/network/firewall/nat",
 		[]byte(`{"ids":[`+strings.Repeat("123456789,", limit)+`1]}`),
 	)
-	response = decodeFirewallNATHandlerResponse(t, bulkOversized)
+	response = testutil.DecodeJSONResponse[firewallNATHandlerResponse](t, bulkOversized)
 	if bulkOversized.Code != http.StatusRequestEntityTooLarge || response.Error != "firewall_nat_request_too_large" {
 		t.Fatalf("expected bulk delete 413, status=%d response=%+v", bulkOversized.Code, response)
 	}

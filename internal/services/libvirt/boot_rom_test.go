@@ -16,95 +16,6 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
 
-func TestParseBootROMValue_EmptyDefaultsToUEFI(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("empty defaults to uboot on arm64")
-	}
-
-	got, err := parseBootROMValue("")
-	if err != nil {
-		t.Fatalf("parseBootROMValue returned error: %v", err)
-	}
-
-	if got != vmModels.VMBootROMUEFI {
-		t.Fatalf("parseBootROMValue empty = %q, want %q", got, vmModels.VMBootROMUEFI)
-	}
-}
-
-func TestParseBootROMValue_InvalidValue(t *testing.T) {
-	_, err := parseBootROMValue("broken")
-	if err == nil {
-		t.Fatal("expected parseBootROMValue to fail for invalid value")
-	}
-
-	if !strings.Contains(err.Error(), "invalid_boot_rom") {
-		t.Fatalf("expected invalid_boot_rom error, got: %v", err)
-	}
-}
-
-func TestParseBootROMValue_RejectsDeprecatedUEFICSM(t *testing.T) {
-	_, err := parseBootROMValue("uefi_csm")
-	if err == nil {
-		t.Fatal("expected parseBootROMValue to fail for deprecated uefi_csm value")
-	}
-
-	if !strings.Contains(err.Error(), "invalid_boot_rom") {
-		t.Fatalf("expected invalid_boot_rom error, got: %v", err)
-	}
-}
-
-func TestParseBootROMValue_UEFIValid(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("uefi not available on arm64")
-	}
-
-	got, err := parseBootROMValue("uefi")
-	if err != nil {
-		t.Fatalf("parseBootROMValue(uefi) unexpected error: %v", err)
-	}
-	if got != vmModels.VMBootROMUEFI {
-		t.Fatalf("parseBootROMValue(uefi) = %q, want %q", got, vmModels.VMBootROMUEFI)
-	}
-}
-
-func TestParseBootROMValue_UBootRejectedOnAmd64(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skip("test is for amd64 only")
-	}
-
-	_, err := parseBootROMValue("uboot")
-	if err == nil {
-		t.Fatal("expected parseBootROMValue(uboot) to fail on amd64")
-	}
-	if !strings.Contains(err.Error(), "uboot_only_available_on_arm64") {
-		t.Fatalf("expected uboot_only_available_on_arm64 error, got: %v", err)
-	}
-}
-
-func TestParseBootROMValue_UEFIRejectedOnArm64(t *testing.T) {
-	if runtime.GOARCH != "arm64" {
-		t.Skip("test is for arm64 only")
-	}
-
-	_, err := parseBootROMValue("uefi")
-	if err == nil {
-		t.Fatal("expected parseBootROMValue(uefi) to fail on arm64")
-	}
-	if !strings.Contains(err.Error(), "uefi_firmware_not_available_on_arm64") {
-		t.Fatalf("expected uefi_firmware_not_available_on_arm64 error, got: %v", err)
-	}
-}
-
-func TestParseBootROMValue_NoneAlwaysValid(t *testing.T) {
-	got, err := parseBootROMValue("none")
-	if err != nil {
-		t.Fatalf("parseBootROMValue(none) unexpected error: %v", err)
-	}
-	if got != vmModels.VMBootROMNone {
-		t.Fatalf("parseBootROMValue(none) = %q, want %q", got, vmModels.VMBootROMNone)
-	}
-}
-
 func TestBuildBootROMLoader_NoneReturnsNil(t *testing.T) {
 	loader := buildBootROMLoader(vmModels.VMBootROMNone, "/tmp/vm", 100)
 	if loader != nil {
@@ -191,5 +102,42 @@ func TestBuildBootROMLoader_DefaultIsArchAware(t *testing.T) {
 		if loader.Path != ubootFirmwarePath {
 			t.Fatalf("arm64: expected uboot firmware path %q, got %q", ubootFirmwarePath, loader.Path)
 		}
+	}
+}
+
+func TestParseBootROMValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		onlyOn  string // run only on this GOARCH
+		skipOn  string // skip on this GOARCH
+		want    vmModels.VMBootROM
+		wantErr string
+	}{
+		{name: "empty defaults to uefi", input: "", skipOn: "arm64", want: vmModels.VMBootROMUEFI},
+		{name: "uefi", input: "uefi", skipOn: "arm64", want: vmModels.VMBootROMUEFI},
+		{name: "none", input: "none", want: vmModels.VMBootROMNone},
+		{name: "invalid value", input: "broken", wantErr: "invalid_boot_rom"},
+		{name: "deprecated uefi_csm", input: "uefi_csm", wantErr: "invalid_boot_rom"},
+		{name: "uboot rejected on amd64", input: "uboot", onlyOn: "amd64", wantErr: "uboot_only_available_on_arm64"},
+		{name: "uefi rejected on arm64", input: "uefi", onlyOn: "arm64", wantErr: "uefi_firmware_not_available_on_arm64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if (tt.onlyOn != "" && runtime.GOARCH != tt.onlyOn) || runtime.GOARCH == tt.skipOn {
+				t.Skipf("not applicable on %s", runtime.GOARCH)
+			}
+			got, err := parseBootROMValue(tt.input)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("parseBootROMValue(%q) error = %v, want %s", tt.input, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Fatalf("parseBootROMValue(%q) = %q, %v; want %q", tt.input, got, err, tt.want)
+			}
+		})
 	}
 }

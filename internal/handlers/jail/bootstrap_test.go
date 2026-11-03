@@ -19,6 +19,7 @@ import (
 
 	"github.com/alchemillahq/sylve/internal"
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
 
@@ -66,15 +67,6 @@ func bootstrapTestRouter(service jailBootstrapService) *gin.Engine {
 	return router
 }
 
-func decodeBootstrapResponse(t *testing.T, recorder *httptest.ResponseRecorder) internal.APIResponse[json.RawMessage] {
-	t.Helper()
-	var response internal.APIResponse[json.RawMessage]
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response: %v body=%s", err, recorder.Body.String())
-	}
-	return response
-}
-
 func TestListBootstrapsRequiresPool(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	bootstrapTestRouter(&bootstrapHandlerStub{}).ServeHTTP(
@@ -85,7 +77,7 @@ func TestListBootstrapsRequiresPool(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if response := decodeBootstrapResponse(t, recorder); response.Message != "pool_required" {
+	if response := testutil.DecodeJSONResponse[internal.APIResponse[json.RawMessage]](t, recorder); response.Message != "pool_required" {
 		t.Fatalf("message = %q", response.Message)
 	}
 }
@@ -117,7 +109,7 @@ func TestCreateBootstrapReturnsDistinctQueuedAndCompletedOutcomes(t *testing.T) 
 			if recorder.Code != test.wantStatus {
 				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 			}
-			if response := decodeBootstrapResponse(t, recorder); response.Message != test.wantCode {
+			if response := testutil.DecodeJSONResponse[internal.APIResponse[json.RawMessage]](t, recorder); response.Message != test.wantCode {
 				t.Fatalf("message = %q", response.Message)
 			}
 			if got := recorder.Header().Get("Location"); got != "/api/jail/bootstraps/15-0-Base?pool=tank" {
@@ -154,7 +146,7 @@ func TestBootstrapErrorsUseStableCodesAndStatuses(t *testing.T) {
 			if recorder.Code != test.wantStatus {
 				t.Fatalf("status = %d body=%s", recorder.Code, recorder.Body.String())
 			}
-			if response := decodeBootstrapResponse(t, recorder); response.Message != test.wantCode {
+			if response := testutil.DecodeJSONResponse[internal.APIResponse[json.RawMessage]](t, recorder); response.Message != test.wantCode {
 				t.Fatalf("message = %q", response.Message)
 			}
 		})
@@ -177,7 +169,7 @@ func TestDeleteBootstrapUsesPathNameAndReportsIdempotentOutcome(t *testing.T) {
 	if stub.deletedPool != "tank" || stub.deletedName != "15-0-Base" {
 		t.Fatalf("delete identity = %q/%q", stub.deletedPool, stub.deletedName)
 	}
-	if response := decodeBootstrapResponse(t, recorder); response.Message != "bootstrap_already_absent" {
+	if response := testutil.DecodeJSONResponse[internal.APIResponse[json.RawMessage]](t, recorder); response.Message != "bootstrap_already_absent" {
 		t.Fatalf("message = %q", response.Message)
 	}
 }

@@ -176,19 +176,6 @@ func TestUserPreferencesMigrationDefaultsOff(t *testing.T) {
 	}
 }
 
-func TestCreateUserInvalidEmail(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	user := &models.User{Username: "john", Password: "password123", Email: "not-an-email"}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for invalid email")
-	}
-	if !strings.Contains(err.Error(), "invalid_email_format") {
-		t.Fatalf("expected invalid_email_format, got: %v", err)
-	}
-}
-
 func TestCreateUserShortUsernames(t *testing.T) {
 	for _, username := range []string{"m", "mk"} {
 		t.Run(username, func(t *testing.T) {
@@ -209,49 +196,6 @@ func TestCreateUserShortUsernames(t *testing.T) {
 	}
 }
 
-func TestCreateUserUsernameEmpty(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	user := &models.User{Username: "", Password: "password123"}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for empty username")
-	}
-	if !strings.Contains(err.Error(), "invalid_username_length") {
-		t.Fatalf("expected invalid_username_length, got: %v", err)
-	}
-}
-
-func TestCreateUserPasswordTooShort(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	const submittedPassword = "short"
-	user := &models.User{Username: "john", Password: submittedPassword}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for short password")
-	}
-	if !strings.Contains(err.Error(), "invalid_password_length") {
-		t.Fatalf("expected invalid_password_length, got: %v", err)
-	}
-	if strings.Contains(err.Error(), submittedPassword) {
-		t.Fatalf("password validation error exposed the submitted password: %v", err)
-	}
-}
-
-func TestCreateUserPasswordEmptyWhenNotDisabled(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	user := &models.User{Username: "john", Password: ""}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for empty password when not disabled")
-	}
-	if !strings.Contains(err.Error(), "invalid_password_length") {
-		t.Fatalf("expected invalid_password_length, got: %v", err)
-	}
-}
-
 func TestCreateUserPasswordSkippedWhenDisabled(t *testing.T) {
 	svc := newLocalTestService(t)
 	seedBasicSettings(t, svc)
@@ -262,19 +206,6 @@ func TestCreateUserPasswordSkippedWhenDisabled(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "invalid_password_length") {
 		t.Fatalf("expected password check to be skipped, but got password error: %v", err)
-	}
-	if !strings.Contains(err.Error(), "invalid_username_format") {
-		t.Fatalf("expected invalid_username_format, got: %v", err)
-	}
-}
-
-func TestCreateUserInvalidUsernameFormat(t *testing.T) {
-	svc := newLocalTestService(t)
-	seedBasicSettings(t, svc)
-	user := &models.User{Username: "Bad User!", Password: "password123"}
-	err := svc.CreateUser(user, CreateUserOpts{})
-	if err == nil {
-		t.Fatalf("expected error for invalid username format")
 	}
 	if !strings.Contains(err.Error(), "invalid_username_format") {
 		t.Fatalf("expected invalid_username_format, got: %v", err)
@@ -311,59 +242,6 @@ func TestCreateUserHashFailureDoesNotPersistUser(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("hash failure persisted %d users", count)
-	}
-}
-
-func TestEditUserNotFound(t *testing.T) {
-	svc := newLocalTestService(t)
-	err := svc.EditUser(999, EditUserOpts{Username: "nobody"})
-	if err == nil {
-		t.Fatalf("expected error for non-existent user")
-	}
-	if !strings.Contains(err.Error(), "user_not_found") {
-		t.Fatalf("expected user_not_found, got: %v", err)
-	}
-}
-
-func TestEditUserCannotChangeAdminUsername(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := models.User{Username: "admin", Password: "hashed"}
-	if err := svc.DB.Create(&u).Error; err != nil {
-		t.Fatalf("failed to seed admin: %v", err)
-	}
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "newadmin"})
-	if err == nil {
-		t.Fatalf("expected error when changing admin username")
-	}
-	if !strings.Contains(err.Error(), "cannot_change_admin_username") {
-		t.Fatalf("expected cannot_change_admin_username, got: %v", err)
-	}
-}
-
-func TestEditUserCannotDemoteAdmin(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"}
-	if err := svc.DB.Create(&u).Error; err != nil {
-		t.Fatalf("failed to seed admin: %v", err)
-	}
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "admin", Admin: false})
-	if err == nil || !strings.Contains(err.Error(), "cannot_demote_admin_user") {
-		t.Fatalf("expected cannot_demote_admin_user, got: %v", err)
-	}
-}
-
-func TestEditUserCannotLockAdmin(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"}
-	if err := svc.DB.Create(&u).Error; err != nil {
-		t.Fatalf("failed to seed admin: %v", err)
-	}
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "admin", Admin: true, Locked: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot_lock_admin_user") {
-		t.Fatalf("expected cannot_lock_admin_user, got: %v", err)
 	}
 }
 
@@ -417,59 +295,6 @@ func TestEditUserUsernameMinimum(t *testing.T) {
 				t.Fatalf("username=%q want=%q", found.Username, wantUsername)
 			}
 		})
-	}
-}
-
-func TestEditUserInvalidUsernameFormat(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "Bad User!"})
-	if err == nil {
-		t.Fatalf("expected error for invalid username format")
-	}
-	if !strings.Contains(err.Error(), "invalid_username_format") {
-		t.Fatalf("expected invalid_username_format, got: %v", err)
-	}
-}
-
-func TestEditUserPasswordTooShort(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Password: "short"})
-	if err == nil {
-		t.Fatalf("expected error for short password")
-	}
-	if !strings.Contains(err.Error(), "invalid_password_length") {
-		t.Fatalf("expected invalid_password_length, got: %v", err)
-	}
-}
-
-func TestEditUserPasswordTooLong(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
-
-	longPw := strings.Repeat("a", 73)
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Password: longPw})
-	if err == nil {
-		t.Fatalf("expected error for too-long password")
-	}
-	if !strings.Contains(err.Error(), "invalid_password_length") {
-		t.Fatalf("expected invalid_password_length, got: %v", err)
-	}
-}
-
-func TestEditUserInvalidEmail(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := seedUser(t, svc, models.User{Username: "testuser", Password: "hashed"})
-
-	err := svc.EditUser(u.ID, EditUserOpts{Username: "testuser", Email: "bad-email"})
-	if err == nil {
-		t.Fatalf("expected error for invalid email")
-	}
-	if !strings.Contains(err.Error(), "invalid_email_format") {
-		t.Fatalf("expected invalid_email_format, got: %v", err)
 	}
 }
 
@@ -874,45 +699,6 @@ func TestEditLocalUserRevokesOnlySecurityChanges(t *testing.T) {
 	}
 }
 
-func TestDeleteUserNotFound(t *testing.T) {
-	svc := newLocalTestService(t)
-	err := svc.DeleteUser(999, false)
-	if err == nil {
-		t.Fatalf("expected error for non-existent user")
-	}
-	if !strings.Contains(err.Error(), "user_not_found") {
-		t.Fatalf("expected user_not_found, got: %v", err)
-	}
-}
-
-func TestDeleteUserCannotDeleteAdmin(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := models.User{Username: "admin", Password: "hashed"}
-	svc.DB.Create(&u)
-
-	err := svc.DeleteUser(u.ID, false)
-	if err == nil {
-		t.Fatalf("expected error when deleting admin")
-	}
-	if !strings.Contains(err.Error(), "cannot_delete_admin_user") {
-		t.Fatalf("expected cannot_delete_admin_user, got: %v", err)
-	}
-}
-
-func TestDeleteUserCannotDeleteRoot(t *testing.T) {
-	svc := newLocalTestService(t)
-	u := models.User{Username: "root", Password: "hashed", Admin: true}
-	svc.DB.Create(&u)
-
-	err := svc.DeleteUser(u.ID, false)
-	if err == nil {
-		t.Fatalf("expected error when deleting root")
-	}
-	if !strings.Contains(err.Error(), "cannot_delete_root_user") {
-		t.Fatalf("expected cannot_delete_root_user, got: %v", err)
-	}
-}
-
 func TestGetUserByUsernamePreloadsGroups(t *testing.T) {
 	svc := newLocalTestService(t)
 	g := seedGroup(t, svc, "devs")
@@ -1119,5 +905,99 @@ func TestCreateUserSetsSourceToLocal(t *testing.T) {
 	}
 	if found.Source != "local" {
 		t.Fatalf("expected Source='local', got: %s", found.Source)
+	}
+}
+
+func TestCreateUserRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		user    models.User
+		wantErr string
+	}{
+		{"invalid email", models.User{Username: "john", Password: "password123", Email: "not-an-email"}, "invalid_email_format"},
+		{"empty username", models.User{Password: "password123"}, "invalid_username_length"},
+		{"invalid username format", models.User{Username: "Bad User!", Password: "password123"}, "invalid_username_format"},
+		{"password too short", models.User{Username: "john", Password: "short"}, "invalid_password_length"},
+		{"empty password when not disabled", models.User{Username: "john"}, "invalid_password_length"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			seedBasicSettings(t, svc)
+			user := tt.user
+			err := svc.CreateUser(&user, CreateUserOpts{})
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got: %v", tt.wantErr, err)
+			}
+			if tt.user.Password != "" && strings.Contains(err.Error(), tt.user.Password) {
+				t.Fatalf("validation error exposed the submitted password: %v", err)
+			}
+		})
+	}
+}
+
+func TestEditUserRejects(t *testing.T) {
+	testUser := &models.User{Username: "testuser", Password: "hashed"}
+	tests := []struct {
+		name    string
+		seed    *models.User // nil edits a missing user
+		opts    EditUserOpts
+		wantErr string
+	}{
+		{name: "missing user", opts: EditUserOpts{Username: "nobody"}, wantErr: "user_not_found"},
+		{name: "admin username change", seed: &models.User{Username: "admin", Password: "hashed"}, opts: EditUserOpts{Username: "newadmin"}, wantErr: "cannot_change_admin_username"},
+		{
+			name: "demote admin", seed: &models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"},
+			opts: EditUserOpts{Username: "admin"}, wantErr: "cannot_demote_admin_user",
+		},
+		{
+			name: "lock admin", seed: &models.User{Username: "admin", Password: "hashed", Admin: true, Source: "local"},
+			opts: EditUserOpts{Username: "admin", Admin: true, Locked: true}, wantErr: "cannot_lock_admin_user",
+		},
+		{name: "invalid username format", seed: testUser, opts: EditUserOpts{Username: "Bad User!"}, wantErr: "invalid_username_format"},
+		{name: "password too short", seed: testUser, opts: EditUserOpts{Username: "testuser", Password: "short"}, wantErr: "invalid_password_length"},
+		{name: "password too long", seed: testUser, opts: EditUserOpts{Username: "testuser", Password: strings.Repeat("a", 73)}, wantErr: "invalid_password_length"},
+		{name: "invalid email", seed: testUser, opts: EditUserOpts{Username: "testuser", Email: "bad-email"}, wantErr: "invalid_email_format"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			id := uint(999)
+			if tt.seed != nil {
+				id = seedUser(t, svc, *tt.seed).ID
+			}
+			err := svc.EditUser(id, tt.opts)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got: %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestDeleteUserRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		seed    *models.User // nil deletes a missing user
+		wantErr string
+	}{
+		{name: "missing user", wantErr: "user_not_found"},
+		{name: "admin user", seed: &models.User{Username: "admin", Password: "hashed"}, wantErr: "cannot_delete_admin_user"},
+		{name: "root user", seed: &models.User{Username: "root", Password: "hashed", Admin: true}, wantErr: "cannot_delete_root_user"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newLocalTestService(t)
+			id := uint(999)
+			if tt.seed != nil {
+				id = seedUser(t, svc, *tt.seed).ID
+			}
+			err := svc.DeleteUser(id, false)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got: %v", tt.wantErr, err)
+			}
+		})
 	}
 }

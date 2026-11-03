@@ -132,16 +132,6 @@ var historicalCounterFixtures = []struct {
 	{notifier.DiskSmartCounterScsiNonMediumErrors, func(value int64) any { return makeSCSI(30, true, attrPage(0x06, 6, value, "")) }},
 }
 
-// --- getTemperature tests ---
-
-func TestGetTemperatureATA(t *testing.T) {
-	svc := &Service{}
-	ata := makeATA(50, true, 100)
-	if got := svc.getTemperature(ata); got != 50 {
-		t.Fatalf("expected 50, got %d", got)
-	}
-}
-
 func TestDiskSmartTargetKeyUsesOnlyStableIdentity(t *testing.T) {
 	stable := diskServiceInterfaces.Disk{UUID: "D782E080-43C1-5ABC-9DEF-123456789ABC", IdentityStable: true, Device: "ada0"}
 	if got := diskSmartTargetKey(stable); got != "d782e080-43c1-5abc-9def-123456789abc" {
@@ -211,69 +201,6 @@ func TestDiskSmartMonitorPowerSkipPreservesAvailabilityState(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("notifications=%d", count)
-	}
-}
-
-func TestGetTemperatureSCSIUsesCanonicalTemperature(t *testing.T) {
-	svc := &Service{}
-	scsi := makeSCSI(46, true,
-		attrPage(0x0D, 0, 46, "Temperature"),
-	)
-	if got := svc.getTemperature(scsi); got != 46 {
-		t.Fatalf("expected canonical SCSI temperature 46, got %d", got)
-	}
-}
-
-func TestGetTemperatureSCSIMissingPage0x0D(t *testing.T) {
-	svc := &Service{}
-	scsi := makeSCSI(0, true,
-		attrPage(0x02, 5, 89832143138920, "Write Total bytes processed"),
-	)
-	if got := svc.getTemperature(scsi); got != 0 {
-		t.Fatalf("expected 0 for SCSI without temperature page, got %d", got)
-	}
-}
-
-func TestGetTemperatureSCSIUnavailableSentinel(t *testing.T) {
-	svc := &Service{}
-	scsi := makeSCSI(0, true,
-		attrPage(0x0D, 0, 0xff, "Temperature"),
-	)
-	if got := svc.getTemperature(scsi); got != 0 {
-		t.Fatalf("expected unavailable SCSI temperature, got %d", got)
-	}
-}
-
-func TestGetTemperatureSCSIUnavailableSentinelUsesFallback(t *testing.T) {
-	svc := &Service{}
-	scsi := makeSCSI(42, true,
-		attrPage(0x0D, 0, 0xff, "Temperature"),
-	)
-	if got := svc.getTemperature(scsi); got != 42 {
-		t.Fatalf("expected canonical fallback temperature 42, got %d", got)
-	}
-}
-
-func TestGetTemperatureNVMe(t *testing.T) {
-	svc := &Service{}
-	nvme := makeNVMe(50, "0x00")
-	if got := svc.getTemperature(nvme); got != 40 {
-		t.Fatalf("expected 40, got %d", got)
-	}
-}
-
-func TestGetTemperatureNil(t *testing.T) {
-	svc := &Service{}
-	if got := svc.getTemperature(nil); got != 0 {
-		t.Fatalf("expected 0 for nil, got %d", got)
-	}
-}
-
-func TestGetTemperatureSCSIFallbackToConvenienceField(t *testing.T) {
-	svc := &Service{}
-	scsi := makeSCSI(42, true)
-	if got := svc.getTemperature(scsi); got != 42 {
-		t.Fatalf("expected 42 from convenience field, got %d", got)
 	}
 }
 
@@ -1507,5 +1434,30 @@ func TestSCSIDiskWearoutEndToEndNoAlert(t *testing.T) {
 	}
 	if st.wearCriticalCount != 0 || st.wearWarningCount != 0 {
 		t.Fatalf("expected all wearout counters at 0, got crit=%d warn=%d", st.wearCriticalCount, st.wearWarningCount)
+	}
+}
+
+func TestGetTemperature(t *testing.T) {
+	tests := []struct {
+		name string
+		data any
+		want int
+	}{
+		{"ata", makeATA(50, true, 100), 50},
+		{"scsi canonical temperature", makeSCSI(46, true, attrPage(0x0D, 0, 46, "Temperature")), 46},
+		{"scsi without temperature page", makeSCSI(0, true, attrPage(0x02, 5, 89832143138920, "Write Total bytes processed")), 0},
+		{"scsi unavailable sentinel", makeSCSI(0, true, attrPage(0x0D, 0, 0xff, "Temperature")), 0},
+		{"scsi unavailable sentinel uses fallback", makeSCSI(42, true, attrPage(0x0D, 0, 0xff, "Temperature")), 42},
+		{"scsi convenience field fallback", makeSCSI(42, true), 42},
+		{"nvme", makeNVMe(50, "0x00"), 40},
+		{"nil", nil, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := (&Service{}).getTemperature(tt.data); got != tt.want {
+				t.Fatalf("getTemperature = %d, want %d", got, tt.want)
+			}
+		})
 	}
 }

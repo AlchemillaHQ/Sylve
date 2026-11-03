@@ -9,42 +9,18 @@
 package authHandlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/alchemillahq/sylve/internal"
 	authService "github.com/alchemillahq/sylve/internal/services/auth"
-	"github.com/alchemillahq/sylve/internal/testutil"
 
 	"github.com/alchemillahq/sylve/internal/db/models"
-	"github.com/alchemillahq/sylve/pkg/system"
+
 	"github.com/gin-gonic/gin"
 )
-
-func newTestAuthServiceForGroups(t *testing.T) *authService.Service {
-	t.Helper()
-	db := testutil.NewSQLiteTestDB(
-		t,
-		&models.User{},
-		&models.Group{},
-		&models.Token{},
-		&models.SystemSecrets{},
-		&models.BasicSettings{},
-		&models.WebAuthnCredential{},
-		&models.WebAuthnChallenge{},
-		&models.PAMIdentity{},
-	)
-
-	t.Cleanup(system.SetRunCommand(func(command string, args ...string) (string, error) {
-		return "", nil
-	}))
-
-	return &authService.Service{DB: db}
-}
 
 func setupGroupRouter(svc *authService.Service) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -56,26 +32,11 @@ func setupGroupRouter(svc *authService.Service) *gin.Engine {
 	return r
 }
 
-func performGroupJSON(t *testing.T, router *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
-	t.Helper()
-	var buf bytes.Buffer
-	if body != nil {
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
-			t.Fatalf("failed to encode body: %v", err)
-		}
-	}
-	req := httptest.NewRequest(method, path, &buf)
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	return w
-}
-
 func TestListGroupsHandlerEmpty(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	router := setupGroupRouter(svc)
 
-	w := performGroupJSON(t, router, "GET", "/auth/groups", nil)
+	w := performJSON(t, router, "GET", "/auth/groups", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -93,12 +54,12 @@ func TestListGroupsHandlerEmpty(t *testing.T) {
 }
 
 func TestListGroupsHandlerWithGroups(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	svc.DB.Create(&models.Group{Name: "devs"})
 	svc.DB.Create(&models.Group{Name: "ops"})
 	router := setupGroupRouter(svc)
 
-	w := performGroupJSON(t, router, "GET", "/auth/groups", nil)
+	w := performJSON(t, router, "GET", "/auth/groups", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
@@ -113,7 +74,7 @@ func TestListGroupsHandlerWithGroups(t *testing.T) {
 }
 
 func TestListGroupsHandlerUsesPublicNestedUsers(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	user := models.User{Username: "alice", Password: "hashed", TOTP: "private-seed", Source: "local"}
 	if err := svc.DB.Create(&user).Error; err != nil {
 		t.Fatalf("seed user: %v", err)
@@ -127,7 +88,7 @@ func TestListGroupsHandlerUsesPublicNestedUsers(t *testing.T) {
 	}
 	router := setupGroupRouter(svc)
 
-	w := performGroupJSON(t, router, "GET", "/auth/groups", nil)
+	w := performJSON(t, router, "GET", "/auth/groups", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -145,36 +106,36 @@ func TestListGroupsHandlerUsesPublicNestedUsers(t *testing.T) {
 }
 
 func TestCreateGroupHandlerMissingName(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	router := setupGroupRouter(svc)
 
 	body := map[string]any{
 		"members": []string{"alice"},
 	}
-	w := performGroupJSON(t, router, "POST", "/auth/groups", body)
+	w := performJSON(t, router, "POST", "/auth/groups", body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
 func TestCreateGroupHandlerMissingMembers(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	router := setupGroupRouter(svc)
 
 	body := map[string]any{
 		"name": "devs",
 	}
-	w := performGroupJSON(t, router, "POST", "/auth/groups", body)
+	w := performJSON(t, router, "POST", "/auth/groups", body)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
 func TestDeleteGroupHandlerInvalidID(t *testing.T) {
-	svc := newTestAuthServiceForGroups(t)
+	svc := newTestAuthService(t)
 	router := setupGroupRouter(svc)
 
-	w := performGroupJSON(t, router, "DELETE", "/auth/groups/abc", nil)
+	w := performJSON(t, router, "DELETE", "/auth/groups/abc", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}

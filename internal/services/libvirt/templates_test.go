@@ -21,37 +21,24 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/alchemillahq/sylve/pkg/network/bridgevlan"
 	"gopkg.in/yaml.v3"
 )
 
-type fakeVMTemplateSystemService struct {
-	systemServiceInterfaces.SystemServiceInterface
-	pools []*gzfs.ZPool
-	err   error
-}
-
-type vmTemplateGuestIdentityCheckerStub struct {
+type guestIdentityCheckerStub struct {
 	batches [][]uint
 	err     error
 }
 
-func (s *vmTemplateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+func (s *guestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
 	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
 }
 
-func (s *vmTemplateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+func (s *guestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
 	s.batches = append(s.batches, append([]uint(nil), guestIDs...))
 	return s.err
-}
-
-func (f fakeVMTemplateSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.pools, nil
 }
 
 func TestRewriteCloudInitMetadataIdentity_RewritesExistingKeys(t *testing.T) {
@@ -291,7 +278,7 @@ func TestPreflightVMTemplateTargets(t *testing.T) {
 		&vmModels.VM{},
 		&jailModels.Jail{},
 	)
-	checker := &vmTemplateGuestIdentityCheckerStub{}
+	checker := &guestIdentityCheckerStub{}
 	svc := &Service{DB: dbConn}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 
@@ -360,7 +347,7 @@ func TestPreflightVMTemplateTargets(t *testing.T) {
 
 func TestResolveVMTemplateStoragePools(t *testing.T) {
 	svc := &Service{
-		System: fakeVMTemplateSystemService{
+		System: storageTestSystemService{
 			pools: []*gzfs.ZPool{{Name: "zroot"}, {Name: "tank"}},
 		},
 	}

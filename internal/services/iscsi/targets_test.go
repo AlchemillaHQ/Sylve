@@ -49,47 +49,6 @@ func newTargetTestService(t *testing.T) *Service {
 	return svc
 }
 
-func TestCreateTargetMissingTargetName(t *testing.T) {
-	svc := newTargetTestService(t)
-	err := svc.CreateTarget("", "", "None", "", "", "", "")
-	if err == nil || !errors.Is(err, ErrInvalidRequest) || err.Error() != "target_name_required" {
-		t.Fatalf("expected target_name_required, got %v", err)
-	}
-}
-
-func TestCreateTargetIQNConflict(t *testing.T) {
-	svc := newTargetTestService(t)
-	svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:target0", AuthMethod: "None"})
-	err := svc.CreateTarget("iqn.2025-01.com.example:target0", "", "None", "", "", "", "")
-	if err == nil || !errors.Is(err, ErrConflict) || err.Error() != "target_with_name_exists" {
-		t.Fatalf("expected target_with_name_exists, got %v", err)
-	}
-}
-
-func TestCreateTargetInvalidAuthMethod(t *testing.T) {
-	svc := newTargetTestService(t)
-	err := svc.CreateTarget("iqn.2025-01.com.example:target0", "", "INVALID", "", "", "", "")
-	if err == nil || !strings.HasPrefix(err.Error(), "invalid_auth_method") {
-		t.Fatalf("expected invalid_auth_method error, got %v", err)
-	}
-}
-
-func TestCreateTargetCHAPRequiresCredentials(t *testing.T) {
-	svc := newTargetTestService(t)
-	err := svc.CreateTarget("iqn.2025-01.com.example:target0", "", "CHAP", "", "", "", "")
-	if err == nil || err.Error() != "chap_name_and_secret_required_for_chap" {
-		t.Fatalf("expected chap_name_and_secret_required_for_chap, got %v", err)
-	}
-}
-
-func TestCreateTargetMutualCHAPRequiresBothSecrets(t *testing.T) {
-	svc := newTargetTestService(t)
-	err := svc.CreateTarget("iqn.2025-01.com.example:target0", "", "MutualCHAP", "user1", "secretpassw0rd", "", "")
-	if err == nil || err.Error() != "mutual_chap_name_and_secret_required_for_mutual_chap" {
-		t.Fatalf("expected mutual_chap_name_and_secret_required_for_mutual_chap, got %v", err)
-	}
-}
-
 func TestAddPortalMissingAddress(t *testing.T) {
 	svc := newTargetTestService(t)
 	svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: "iqn.2025-01.com.example:target0", AuthMethod: "None"})
@@ -646,4 +605,42 @@ func (f *fakeTargetRuntime) inventory() (*ctlPorts, *ctlLUNs) {
 		}
 	}
 	return ports, luns
+}
+
+func TestCreateTargetRejects(t *testing.T) {
+	const target = "iqn.2025-01.com.example:target0"
+	tests := []struct {
+		name                 string
+		existing             bool // target0 already exists
+		targetName, auth     string
+		chapName, chapSecret string
+		wantErr              string
+		prefix               bool  // wantErr is a prefix of the error
+		wantIs               error // optional error class
+	}{
+		{name: "missing target name", auth: "None", wantErr: "target_name_required", wantIs: ErrInvalidRequest},
+		{name: "iqn conflict", existing: true, targetName: target, auth: "None", wantErr: "target_with_name_exists", wantIs: ErrConflict},
+		{name: "invalid auth method", targetName: target, auth: "INVALID", wantErr: "invalid_auth_method", prefix: true},
+		{name: "chap without credentials", targetName: target, auth: "CHAP", wantErr: "chap_name_and_secret_required_for_chap"},
+		{
+			name: "mutual chap without mutual secrets", targetName: target, auth: "MutualCHAP", chapName: "user1", chapSecret: "secretpassw0rd",
+			wantErr: "mutual_chap_name_and_secret_required_for_mutual_chap",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newTargetTestService(t)
+			if tt.existing {
+				svc.DB.Create(&iscsiModels.ISCSITarget{TargetName: target, AuthMethod: "None"})
+			}
+			err := svc.CreateTarget(tt.targetName, "", tt.auth, tt.chapName, tt.chapSecret, "", "")
+			if err == nil || (err.Error() != tt.wantErr && !(tt.prefix && strings.HasPrefix(err.Error(), tt.wantErr))) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+			if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+				t.Fatalf("expected %v to wrap %v", err, tt.wantIs)
+			}
+		})
+	}
 }

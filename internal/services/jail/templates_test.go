@@ -36,16 +36,16 @@ type fakeSystemService struct {
 	err   error
 }
 
-type jailTemplateGuestIdentityCheckerStub struct {
+type guestIdentityCheckerStub struct {
 	batches [][]uint
 	err     error
 }
 
-func (s *jailTemplateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
+func (s *guestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
 	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
 }
 
-func (s *jailTemplateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
+func (s *guestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
 	s.batches = append(s.batches, append([]uint(nil), guestIDs...))
 	return s.err
 }
@@ -85,10 +85,7 @@ func (r *fakeGZFSRunner) runZFS(stdout io.Writer, args []string) error {
 		return fmt.Errorf("unsupported zfs args: %v", args)
 	}
 
-	target := parseTargetArg(args, map[string]int{
-		"-o": 1,
-		"-t": 1,
-	})
+	target := zfsTargetArg(args)
 
 	datasets := map[string]any{}
 	if target == "" {
@@ -116,9 +113,7 @@ func (r *fakeGZFSRunner) runZpool(stdout io.Writer, args []string) error {
 		return fmt.Errorf("unsupported zpool args: %v", args)
 	}
 
-	target := parseTargetArg(args, map[string]int{
-		"-o": 1,
-	})
+	target := zfsTargetArg(args)
 
 	pools := map[string]any{}
 	if target == "" {
@@ -139,31 +134,6 @@ func (r *fakeGZFSRunner) runZpool(stdout io.Writer, args []string) error {
 	}
 
 	return json.NewEncoder(stdout).Encode(resp)
-}
-
-func parseTargetArg(args []string, flagsWithValues map[string]int) string {
-	target := ""
-	skip := 0
-
-	for i, arg := range args {
-		if i == 0 {
-			continue
-		}
-		if skip > 0 {
-			skip--
-			continue
-		}
-		if n, ok := flagsWithValues[arg]; ok {
-			skip = n
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		target = arg
-	}
-
-	return target
 }
 
 func fakeDatasetJSON(name string, ds fakeDatasetInfo) map[string]any {
@@ -438,7 +408,7 @@ func TestPreflightTemplateTargetsUsesLiveGuestIDBatch(t *testing.T) {
 		&jailModels.Jail{},
 		&vmModels.VM{},
 	)
-	checker := &jailTemplateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	checker := &guestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc := &Service{DB: dbConn}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 	err := svc.preflightTemplateTargets(t.Context(), jailModels.JailTemplate{}, []createTarget{
@@ -471,7 +441,7 @@ func TestCreateJailsFromTemplateRechecksGuestIDsBeforeStorageWork(t *testing.T) 
 		t.Fatalf("failed to seed jail template: %v", err)
 	}
 
-	checker := &jailTemplateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	checker := &guestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc := newTemplateTestService(t, dbConn, nil, "zroot")
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 

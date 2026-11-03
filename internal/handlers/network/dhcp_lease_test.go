@@ -16,6 +16,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -102,7 +103,7 @@ func TestUpdateDHCPLeaseUsesPathIDAndAllowsNoChange(t *testing.T) {
 	fixture := setupDHCPLeaseHandlerRouter(t, networkService.MaxRequestBodyBytes)
 	body := []byte(`{"id":999,"hostname":"client-a","comments":"test lease","ipId":` + strconvUint(fixture.ipObject.ID) + `,"macId":` + strconvUint(fixture.macObject.ID) + `,"duidId":null,"dhcpRangeId":` + strconvUint(fixture.dhcpRange.ID) + `}`)
 	recorder := performNetworkJSONRequest(t, fixture.router, http.MethodPut, "/network/dhcp/lease/"+strconvUint(fixture.staticLease.ID), body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" || response.Message != "dhcp_lease_updated" {
 		t.Fatalf("unexpected no-change response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -136,7 +137,7 @@ func TestDHCPLeaseHandlersReturnStableValidationAndResourceErrors(t *testing.T) 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := performNetworkJSONRequest(t, fixture.router, test.method, test.path, test.body)
-			response := decodeDHCPConfigHandlerResponse(t, recorder)
+			response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 			if recorder.Code != test.wantStatus || response.Error != test.wantCode {
 				t.Fatalf("status=%d response=%+v", recorder.Code, response)
 			}
@@ -152,7 +153,7 @@ func TestCreateDHCPLeaseRejectsOversizedJSON(t *testing.T) {
 	fixture := setupDHCPLeaseHandlerRouter(t, limit)
 	body := []byte(`{"hostname":"` + strings.Repeat("a", limit) + `"}`)
 	recorder := performNetworkJSONRequest(t, fixture.router, http.MethodPost, "/network/dhcp/lease", body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusRequestEntityTooLarge || response.Error != "dhcp_lease_request_too_large" {
 		t.Fatalf("expected stable 413 response: status=%d response=%+v", recorder.Code, response)
 	}

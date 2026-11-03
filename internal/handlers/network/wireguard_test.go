@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 	"gorm.io/gorm"
@@ -75,15 +75,6 @@ func setupWireGuardServerHandlerRouter(t *testing.T, bodyLimit int64, serviceEna
 	clients.PATCH("/:clientId", SetWireGuardClientEnabled(svc))
 	clients.DELETE("/:clientId", DeleteWireGuardClient(svc))
 	return router, db
-}
-
-func decodeWireGuardServerHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) wireGuardServerHandlerResponse {
-	t.Helper()
-	var response wireGuardServerHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
 }
 
 func seedWireGuardServerHandler(t *testing.T, db *gorm.DB, enabled bool) networkModels.WireGuardServer {
@@ -170,7 +161,7 @@ func TestWireGuardServerReadStatusAndKeyResponse(t *testing.T) {
 	t.Run("service disabled", func(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, false)
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/wireguard/server", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusServiceUnavailable || response.Error != "wireguard_service_disabled" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -179,7 +170,7 @@ func TestWireGuardServerReadStatusAndKeyResponse(t *testing.T) {
 	t.Run("server not initialized", func(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/wireguard/server", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "wireguard_server_not_initialized" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -202,7 +193,7 @@ func TestWireGuardServerReadStatusAndKeyResponse(t *testing.T) {
 		}
 
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/wireguard/server", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusOK || response.Status != "success" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -230,7 +221,7 @@ func TestWireGuardServerMutationStatusesAndBodyLimits(t *testing.T) {
 		router, db := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		seedWireGuardServerHandler(t, db, true)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/wireguard/server", []byte(`{"port":51820}`))
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "wireguard_server_already_initialized" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -256,7 +247,7 @@ func TestWireGuardServerMutationStatusesAndBodyLimits(t *testing.T) {
 		router, db := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		seedWireGuardServerHandler(t, db, false)
 		rr := performNetworkJSONRequest(t, router, http.MethodPatch, "/network/wireguard/server", []byte(`{}`))
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_wireguard_request" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -265,7 +256,7 @@ func TestWireGuardServerMutationStatusesAndBodyLimits(t *testing.T) {
 	t.Run("missing update target", func(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		rr := performNetworkJSONRequest(t, router, http.MethodPut, "/network/wireguard/server", []byte(`{"port":51820}`))
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "wireguard_server_not_initialized" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -290,7 +281,7 @@ func TestWireGuardServerMutationStatusesAndBodyLimits(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/wireguard/server", body)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusRequestEntityTooLarge || response.Error != "wireguard_request_too_large" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -303,7 +294,7 @@ func TestWireGuardServerPeerMutationStatusesAndValidation(t *testing.T) {
 		seedWireGuardServerHandler(t, db, false)
 		body := []byte(`{"name":"laptop","clientIPs":["10.210.0.2/32"]}`)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/wireguard/server/peer", body)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusCreated || response.Status != "success" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -318,7 +309,7 @@ func TestWireGuardServerPeerMutationStatusesAndValidation(t *testing.T) {
 		seedWireGuardServerHandler(t, db, false)
 		body := []byte(`{"name":"laptop","privateKey":"invalid","clientIPs":["10.210.0.2/32"]}`)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/wireguard/server/peer", body)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "wireguard_invalid_peer_private_key" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -328,7 +319,7 @@ func TestWireGuardServerPeerMutationStatusesAndValidation(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		body := []byte(`{"name":"laptop","clientIPs":["10.210.0.2/32"]}`)
 		rr := performNetworkJSONRequest(t, router, http.MethodPut, "/network/wireguard/server/peer/0", body)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_peer_id" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -379,7 +370,7 @@ func TestWireGuardServerPeerMutationStatusesAndValidation(t *testing.T) {
 		router, db := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		seedWireGuardServerHandler(t, db, false)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/wireguard/server/peer/999", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "wireguard_server_peer_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -390,7 +381,7 @@ func TestWireGuardServerPeerMutationStatusesAndValidation(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, limit, true)
 		body := []byte(`{"name":"` + strings.Repeat("x", limit) + `","clientIPs":["10.210.0.2/32"]}`)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/wireguard/server/peer", body)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusRequestEntityTooLarge || response.Error != "wireguard_request_too_large" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -401,7 +392,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 	t.Run("service disabled list", func(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, false)
 		rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/wireguard/clients", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusServiceUnavailable || response.Error != "wireguard_service_disabled" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -416,7 +407,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 			"/network/wireguard/clients",
 			wireGuardClientHandlerRequest(t, "office", false),
 		)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusCreated || response.Status != "success" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -434,7 +425,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 		}
 
 		rr = performNetworkJSONRequest(t, router, http.MethodGet, "/network/wireguard/clients", nil)
-		response = decodeWireGuardServerHandlerResponse(t, rr)
+		response = testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusOK || !strings.Contains(string(response.Data), stored.PrivateKey) {
 			t.Fatalf("client private key was not preserved in response: status=%d data=%s", rr.Code, response.Data)
 		}
@@ -454,7 +445,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 				t.Fatalf("first create status=%d body=%s", rr.Code, rr.Body.String())
 			}
 			if attempt == 1 {
-				response := decodeWireGuardServerHandlerResponse(t, rr)
+				response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 				if rr.Code != http.StatusConflict || response.Error != "wireguard_client_name_conflict" {
 					t.Fatalf("status=%d response=%+v", rr.Code, response)
 				}
@@ -471,7 +462,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 			"/network/wireguard/clients",
 			wireGuardClientHandlerRequest(t, "disabled", false),
 		)
-		response := decodeWireGuardServerHandlerResponse(t, create)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, create)
 		var clientID uint
 		if err := json.Unmarshal(response.Data, &clientID); err != nil {
 			t.Fatal(err)
@@ -502,13 +493,13 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 	t.Run("invalid id and missing state are rejected", func(t *testing.T) {
 		router, _ := setupWireGuardServerHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/wireguard/clients/0", nil)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_client_id" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
 
 		rr = performNetworkJSONRequest(t, router, http.MethodPatch, "/network/wireguard/clients/1", []byte(`{}`))
-		response = decodeWireGuardServerHandlerResponse(t, rr)
+		response = testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_wireguard_request" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -524,7 +515,7 @@ func TestWireGuardClientStatusesValidationAndKeyResponse(t *testing.T) {
 			"/network/wireguard/clients",
 			[]byte(`{"name":"`+strings.Repeat("x", limit)+`"}`),
 		)
-		response := decodeWireGuardServerHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[wireGuardServerHandlerResponse](t, rr)
 		if rr.Code != http.StatusRequestEntityTooLarge || response.Error != "wireguard_request_too_large" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}

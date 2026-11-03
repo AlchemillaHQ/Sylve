@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,7 +27,7 @@ import (
 	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 	clusterServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/cluster"
 	libvirtServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/libvirt"
-	systemServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/system"
+
 	clusterService "github.com/alchemillahq/sylve/internal/services/cluster"
 	"github.com/alchemillahq/sylve/internal/testutil"
 	"gorm.io/gorm"
@@ -50,34 +51,6 @@ func testCreateRequest(rid uint, vncPort int) libvirtServiceInterfaces.CreateVMR
 		StartOrder:           0,
 		TimeOffset:           libvirtServiceInterfaces.TimeOffsetUTC,
 	}
-}
-
-type fakeVMCreateSystemService struct {
-	systemServiceInterfaces.SystemServiceInterface
-	pools []*gzfs.ZPool
-	err   error
-}
-
-type vmCreateGuestIdentityCheckerStub struct {
-	guestIDs []uint
-	err      error
-}
-
-func (s *vmCreateGuestIdentityCheckerStub) RequireGuestIDAvailable(ctx context.Context, guestID uint) error {
-	return s.RequireGuestIDsAvailable(ctx, []uint{guestID})
-}
-
-func (s *vmCreateGuestIdentityCheckerStub) RequireGuestIDsAvailable(_ context.Context, guestIDs []uint) error {
-	s.guestIDs = append(s.guestIDs, guestIDs...)
-	return s.err
-}
-
-func (f fakeVMCreateSystemService) GetUsablePools(_ context.Context) ([]*gzfs.ZPool, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-
-	return f.pools, nil
 }
 
 type vmCreatePrecheckZFSRunner struct {
@@ -168,7 +141,7 @@ func newVMCreatePrecheckTestService(db *gorm.DB, pools []string, existingDataset
 
 	return &Service{
 		DB:     db,
-		System: fakeVMCreateSystemService{pools: poolList},
+		System: storageTestSystemService{pools: poolList},
 		GZFS: gzfs.NewClient(gzfs.Options{
 			Runner: &vmCreatePrecheckZFSRunner{existing: existing},
 		}),
@@ -230,7 +203,7 @@ func TestCreateVMRejectsVCPULimitBeforeProvisioning(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
 	svc := newVMCreatePrecheckTestService(db, nil, nil)
-	checker := &vmCreateGuestIdentityCheckerStub{}
+	checker := &guestIdentityCheckerStub{}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 	req := testCreateRequest(519, 0)
 	req.CPUCores = 65
@@ -239,8 +212,8 @@ func TestCreateVMRejectsVCPULimitBeforeProvisioning(t *testing.T) {
 	if err == nil || !strings.HasPrefix(err.Error(), "vm_vcpu_limit_exceeded:") {
 		t.Fatalf("create error = %v, want vm_vcpu_limit_exceeded", err)
 	}
-	if len(checker.guestIDs) != 0 {
-		t.Fatalf("guest ID check ran before CPU limit validation: %v", checker.guestIDs)
+	if len(checker.batches) != 0 {
+		t.Fatalf("guest ID check ran before CPU limit validation: %v", checker.batches)
 	}
 	var count int64
 	if err := db.Model(&vmModels.VM{}).Count(&count).Error; err != nil {
@@ -427,7 +400,7 @@ func TestValidateCreate_FailsWhenStaleZFSDatasetsExistWithoutDBRows(t *testing.T
 func TestCreateVMStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	db := testutil.NewSQLiteTestDB(t, &vmModels.VM{}, &vmModels.VMStorageDataset{})
 	svc := newVMCreatePrecheckTestService(db, nil, nil)
-	checker := &vmCreateGuestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
+	checker := &guestIdentityCheckerStub{err: fmt.Errorf("guest_id_already_in_use")}
 	svc.SetGuestIdentityAvailabilityChecker(checker)
 
 	req := testCreateRequest(516, 0)
@@ -441,8 +414,8 @@ func TestCreateVMStopsBeforeProvisioningWhenGuestIDCheckFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "guest_id_already_in_use") {
 		t.Fatalf("guest identity rejection error = %v", err)
 	}
-	if len(checker.guestIDs) != 1 || checker.guestIDs[0] != 516 {
-		t.Fatalf("checked guest IDs = %v, want [516]", checker.guestIDs)
+	if len(checker.batches) != 1 || !slices.Equal(checker.batches[0], []uint{516}) {
+		t.Fatalf("identity batches = %v, want one [516] batch", checker.batches)
 	}
 	var count int64
 	if err := db.Model(&vmModels.VM{}).Count(&count).Error; err != nil {

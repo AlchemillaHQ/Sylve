@@ -128,123 +128,6 @@ func TestUpdateVNC_RemovesVNCWhenDisabled_NativeFormat(t *testing.T) {
 	}
 }
 
-func TestCreateVmXML_OmitsVNCWhenDisabled(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:        "vm-no-vnc",
-		RID:         100,
-		CPUSockets:  1,
-		CPUCores:    1,
-		CPUThreads:  1,
-		RAM:         1024 * 1024 * 512,
-		VNCEnabled:  false,
-		VNCPort:     0,
-		VNCBind:     "127.0.0.1",
-		VNCPassword: "password",
-		// Intentionally invalid to ensure disabled VNC skips resolution parsing.
-		VNCResolution: "invalid-resolution",
-		TimeOffset:    vmModels.TimeOffsetUTC,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, "fbuf,tcp=") {
-		t.Fatalf("expected no VNC framebuffer argument when disabled, got: %s", xml)
-	}
-
-	if strings.Contains(xml, "<graphics") {
-		t.Fatalf("expected no graphics element when VNC disabled, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_ProducesNativeVNCFormat(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:          "vm-vnc-native",
-		RID:           101,
-		CPUSockets:    1,
-		CPUCores:      1,
-		CPUThreads:    1,
-		RAM:           1024 * 1024 * 512,
-		VNCEnabled:    true,
-		VNCPort:       5902,
-		VNCBind:       "198.51.100.20",
-		VNCPassword:   "password",
-		VNCResolution: "640x480",
-		TimeOffset:    vmModels.TimeOffsetUTC,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, "fbuf,tcp") {
-		t.Fatalf("expected no fbuf arg, got native format: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<graphics type="vnc"`) {
-		t.Fatalf("expected native graphics element, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `port="5902"`) {
-		t.Fatalf("expected configured VNC port in graphics element, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `address="198.51.100.20"`) {
-		t.Fatalf("expected configured VNC bind address in listen element, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `passwd="password"`) {
-		t.Fatalf("expected VNC password in graphics element, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<video>`) {
-		t.Fatalf("expected video element, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<resolution x="640" y="480"`) {
-		t.Fatalf("expected video resolution, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_OmitsPasswdAttrWhenPasswordEmpty(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:          "vm-vnc-empty-pass",
-		RID:           110,
-		CPUSockets:    1,
-		CPUCores:      1,
-		CPUThreads:    1,
-		RAM:           1024 * 1024 * 512,
-		VNCEnabled:    true,
-		VNCPort:       5905,
-		VNCBind:       "127.0.0.1",
-		VNCPassword:   "",
-		VNCResolution: "800x600",
-		TimeOffset:    vmModels.TimeOffsetUTC,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, `passwd=`) {
-		t.Fatalf("expected no passwd attribute when password empty, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<graphics type="vnc"`) {
-		t.Fatalf("expected graphics element despite empty password, got: %s", xml)
-	}
-}
-
 func TestUpdateVNC_PreservesNonVNCBhyveArgs(t *testing.T) {
 	xml := `<domain type="bhyve" xmlns:bhyve="http://libvirt.org/schemas/domain/bhyve/1.0"><devices/><bhyve:commandline><bhyve:arg value="-S"/><bhyve:arg value="-u"/><bhyve:arg value="-s 10:0,fbuf,tcp=127.0.0.1:5900,w=640,h=480,password=oldpass"/><bhyve:arg value="-w"/></bhyve:commandline></domain>`
 
@@ -274,98 +157,6 @@ func TestUpdateVNC_PreservesNonVNCBhyveArgs(t *testing.T) {
 	}
 }
 
-func TestCreateVmXML_PrependsExtraBhyveOptionsBeforeGeneratedArgs(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:              "vm-extra-bhyve",
-		RID:               102,
-		CPUSockets:        1,
-		CPUCores:          1,
-		CPUThreads:        1,
-		RAM:               1024 * 1024 * 512,
-		VNCEnabled:        false,
-		TimeOffset:        vmModels.TimeOffsetUTC,
-		IgnoreUMSR:        true,
-		ExtraBhyveOptions: []string{"-S", " -u \n\n -A "},
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	idxS := strings.Index(xml, `value="-S"`)
-	idxU := strings.Index(xml, `value="-u"`)
-	idxA := strings.Index(xml, `value="-A"`)
-
-	if idxS == -1 || idxU == -1 || idxA == -1 {
-		t.Fatalf("expected all extra bhyve arguments in XML, got: %s", xml)
-	}
-
-	if !(idxS < idxU && idxU < idxA) {
-		t.Fatalf("expected custom args in-order before generated args, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<msrs unknown="ignore"`) {
-		t.Fatalf("expected msrs element in features for ignoreUMSR, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_UsesUEFIBootROMByDefault(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:       "vm-bootrom-uefi",
-		RID:        103,
-		CPUSockets: 1,
-		CPUCores:   1,
-		CPUThreads: 1,
-		RAM:        1024 * 1024 * 512,
-		VNCEnabled: false,
-		TimeOffset: vmModels.TimeOffsetUTC,
-		BootROM:    vmModels.VMBootROMUEFI,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if !strings.Contains(xml, uefiFirmwarePath) {
-		t.Fatalf("expected UEFI firmware loader path in XML, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, fmt.Sprintf("%d_vars.fd", vm.RID)) {
-		t.Fatalf("expected UEFI vars path in XML, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_OmitsLoaderWhenBootROMNone(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:       "vm-bootrom-none",
-		RID:        105,
-		CPUSockets: 1,
-		CPUCores:   1,
-		CPUThreads: 1,
-		RAM:        1024 * 1024 * 512,
-		VNCEnabled: false,
-		TimeOffset: vmModels.TimeOffsetUTC,
-		BootROM:    vmModels.VMBootROMNone,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, "<loader") {
-		t.Fatalf("expected no loader element when boot ROM is none, got: %s", xml)
-	}
-}
-
 func TestNormalizeVNCBindAddressForDial_NormalizesUnspecified(t *testing.T) {
 	tests := []struct {
 		name string
@@ -382,6 +173,105 @@ func TestNormalizeVNCBindAddressForDial_NormalizesUnspecified(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := NormalizeVNCBindAddressForDial(tt.in); got != tt.want {
 				t.Fatalf("NormalizeVNCBindAddressForDial(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCreateVmXML(t *testing.T) {
+	tests := []struct {
+		name    string
+		vm      vmModels.VM // only the fields under test; CPU, RAM and time offset come from the base
+		want    []string
+		inOrder []string // must appear in this order
+		notWant []string
+	}{
+		{
+			name: "omits vnc when disabled",
+			// an invalid resolution proves disabled VNC skips resolution parsing
+			vm:      vmModels.VM{RID: 100, VNCBind: "127.0.0.1", VNCPassword: "password", VNCResolution: "invalid-resolution"},
+			notWant: []string{"fbuf,tcp=", "<graphics"},
+		},
+		{
+			name: "native vnc format",
+			vm: vmModels.VM{
+				RID: 101, VNCEnabled: true, VNCPort: 5902, VNCBind: "198.51.100.20", VNCPassword: "password", VNCResolution: "640x480",
+			},
+			want: []string{
+				`<graphics type="vnc"`, `port="5902"`, `address="198.51.100.20"`, `passwd="password"`,
+				`<video>`, `<resolution x="640" y="480"`,
+			},
+			notWant: []string{"fbuf,tcp"},
+		},
+		{
+			name:    "omits passwd attribute when password empty",
+			vm:      vmModels.VM{RID: 110, VNCEnabled: true, VNCPort: 5905, VNCBind: "127.0.0.1", VNCResolution: "800x600"},
+			want:    []string{`<graphics type="vnc"`},
+			notWant: []string{`passwd=`},
+		},
+		{
+			name:    "prepends extra bhyve options before generated args",
+			vm:      vmModels.VM{RID: 102, IgnoreUMSR: true, ExtraBhyveOptions: []string{"-S", " -u \n\n -A "}},
+			inOrder: []string{`value="-S"`, `value="-u"`, `value="-A"`},
+			want:    []string{`<msrs unknown="ignore"`},
+		},
+		{
+			name: "uefi boot rom",
+			vm:   vmModels.VM{RID: 103, BootROM: vmModels.VMBootROMUEFI},
+			want: []string{uefiFirmwarePath, "103_vars.fd"},
+		},
+		{
+			name:    "no loader when boot rom none",
+			vm:      vmModels.VM{RID: 105, BootROM: vmModels.VMBootROMNone},
+			notWant: []string{"<loader"},
+		},
+		{
+			name:    "native ignore umsr format",
+			vm:      vmModels.VM{RID: 201, IgnoreUMSR: true},
+			want:    []string{`<msrs unknown="ignore"`},
+			notWant: []string{`value="-w"`},
+		},
+		{
+			name:    "no msrs when ignore umsr disabled",
+			vm:      vmModels.VM{RID: 202},
+			notWant: []string{`value="-w"`, `<msrs unknown="ignore"`},
+		},
+		{
+			name: "msrs and apic",
+			vm:   vmModels.VM{RID: 203, IgnoreUMSR: true, APIC: true},
+			want: []string{`<msrs unknown="ignore"`, `<apic`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := tt.vm
+			vm.Name = fmt.Sprintf("vm-%d", vm.RID)
+			vm.CPUSockets, vm.CPUCores, vm.CPUThreads = 1, 1, 1
+			vm.RAM = 1024 * 1024 * 512
+			vm.TimeOffset = vmModels.TimeOffsetUTC
+
+			xml, err := (&Service{}).CreateVmXML(vm, t.TempDir())
+			if err != nil {
+				t.Fatalf("CreateVmXML returned error: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(xml, want) {
+					t.Fatalf("expected %q in XML, got: %s", want, xml)
+				}
+			}
+			last := -1
+			for _, want := range tt.inOrder {
+				idx := strings.Index(xml, want)
+				if idx <= last {
+					t.Fatalf("expected %v in order, got: %s", tt.inOrder, xml)
+				}
+				last = idx
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(xml, notWant) {
+					t.Fatalf("did not expect %q in XML, got: %s", notWant, xml)
+				}
 			}
 		})
 	}

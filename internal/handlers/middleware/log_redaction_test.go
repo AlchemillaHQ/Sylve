@@ -314,63 +314,6 @@ func TestCloudInitTemplateAuditKeepsIdentityAndRedactsDocuments(t *testing.T) {
 	}
 }
 
-func TestCertificateArchiveIsAnImportantAuditedGet(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{path: "/api/certificates/2/archive", want: true},
-		{path: "/api/certificates/not-a-number/archive", want: true},
-		{path: "/api/certificates/archive", want: false},
-		{path: "/api/certificates/2/archive/extra", want: false},
-		{path: "/api/certificates/domain-check", want: false},
-	}
-
-	for _, test := range tests {
-		if got := isImportantAuditGetPath(test.path); got != test.want {
-			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
-		}
-	}
-}
-
-func TestVMConsoleIsAnImportantAuditedGet(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{path: "/api/vm/107/console", want: true},
-		{path: "/api/vm/not-a-rid/console", want: true},
-		{path: "/api/vm/console", want: true},
-		{path: "/api/vm/107/console/extra", want: false},
-		{path: "/api/vm/107/logs", want: false},
-	}
-
-	for _, test := range tests {
-		if got := isImportantAuditGetPath(test.path); got != test.want {
-			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
-		}
-	}
-}
-
-func TestJailConsoleIsAnImportantAuditedGet(t *testing.T) {
-	tests := []struct {
-		path string
-		want bool
-	}{
-		{path: "/api/jail/107/console", want: true},
-		{path: "/api/jail/not-a-ctid/console", want: true},
-		{path: "/api/jail/console", want: false},
-		{path: "/api/jail/107/console/extra", want: false},
-		{path: "/api/jail/107/logs", want: false},
-	}
-
-	for _, test := range tests {
-		if got := isImportantAuditGetPath(test.path); got != test.want {
-			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
-		}
-	}
-}
-
 func TestSanitizeAuditQuery(t *testing.T) {
 	query := sanitizeAuditQuery("/api/vm/console", "auth=secret&hash=hidden&rid=7")
 	if strings.Contains(query, "secret") || strings.Contains(query, "hidden") {
@@ -1116,5 +1059,34 @@ func TestSanitizeAuditPayloadNested(t *testing.T) {
 	thirdMap, ok := arr[2].(map[string]interface{})
 	if !ok || thirdMap["value"] != "keep" {
 		t.Fatal("expected_safe_array_value_to_be_preserved")
+	}
+}
+
+func TestIsImportantAuditGetPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/certificates/2/archive", true},
+		{"/api/certificates/not-a-number/archive", true},
+		{"/api/certificates/archive", false},
+		{"/api/certificates/2/archive/extra", false},
+		{"/api/certificates/domain-check", false},
+		{"/api/vm/107/console", true},
+		{"/api/vm/not-a-rid/console", true},
+		{"/api/vm/console", true},
+		{"/api/vm/107/console/extra", false},
+		{"/api/vm/107/logs", false},
+		{"/api/jail/107/console", true},
+		{"/api/jail/not-a-ctid/console", true},
+		{"/api/jail/console", false},
+		{"/api/jail/107/console/extra", false},
+		{"/api/jail/107/logs", false},
+	}
+
+	for _, test := range tests {
+		if got := isImportantAuditGetPath(test.path); got != test.want {
+			t.Fatalf("path=%q important=%v want=%v", test.path, got, test.want)
+		}
 	}
 }

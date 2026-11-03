@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	jailServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/jail"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -52,7 +53,7 @@ func TestGetJailGuestInfoHandlerContract(t *testing.T) {
 		if recorder.Code != http.StatusOK || stub.ctID != 901 || stub.ctx != request.Context() {
 			t.Fatalf("request: status=%d CTID=%d context=%v body=%s", recorder.Code, stub.ctID, stub.ctx, recorder.Body.String())
 		}
-		response := decodeJailCoreResponse(t, recorder)
+		response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder)
 		var info jailServiceInterfaces.GuestInfo
 		if err := json.Unmarshal(response.Data, &info); err != nil {
 			t.Fatal(err)
@@ -85,7 +86,7 @@ func TestGetJailGuestInfoHandlerValidationAndErrors(t *testing.T) {
 			router.GET("/jail/:ctid/guest-info", GetJailGuestInfo(stub))
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/jail/"+test.ctID+"/guest-info", nil))
-			response := decodeJailCoreResponse(t, recorder)
+			response := testutil.DecodeJSONResponse[jailCoreResponse](t, recorder)
 			if recorder.Code != test.status || response.Message != test.message || stub.called != test.called {
 				t.Fatalf("status=%d response=%+v called=%v", recorder.Code, response, stub.called)
 			}

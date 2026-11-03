@@ -11,8 +11,6 @@ package libvirt
 import (
 	"strings"
 	"testing"
-
-	vmModels "github.com/alchemillahq/sylve/internal/db/models/vm"
 )
 
 func TestIgnoreUMSR_MigratesOldFormatToNative(t *testing.T) {
@@ -101,90 +99,5 @@ func TestIgnoreUMSR_HandlesBothFormatsSimultaneously(t *testing.T) {
 
 	if strings.Count(updated, `<msrs unknown="ignore"`) != 1 {
 		t.Fatalf("expected exactly one msrs element, got: %s", updated)
-	}
-}
-
-func TestCreateVmXML_ProducesNativeIgnoreUMSRFormat(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:       "vm-ignore-umsr",
-		RID:        201,
-		CPUSockets: 1,
-		CPUCores:   1,
-		CPUThreads: 1,
-		RAM:        1024 * 1024 * 512,
-		TimeOffset: vmModels.TimeOffsetUTC,
-		IgnoreUMSR: true,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, `value="-w"`) {
-		t.Fatalf("expected no -w bhyve arg, got native format: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<msrs unknown="ignore"`) {
-		t.Fatalf("expected native msrs element in features, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_OmitsMSRsWhenIgnoreUMSRDisabled(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:       "vm-no-ignore-umsr",
-		RID:        202,
-		CPUSockets: 1,
-		CPUCores:   1,
-		CPUThreads: 1,
-		RAM:        1024 * 1024 * 512,
-		TimeOffset: vmModels.TimeOffsetUTC,
-		IgnoreUMSR: false,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if strings.Contains(xml, `value="-w"`) {
-		t.Fatalf("expected no -w bhyve arg, got: %s", xml)
-	}
-
-	if strings.Contains(xml, `<msrs unknown="ignore"`) {
-		t.Fatalf("expected no msrs element when ignoreUMSR is false, got: %s", xml)
-	}
-}
-
-func TestCreateVmXML_IncludesMSRsAndAPIC(t *testing.T) {
-	svc := &Service{}
-
-	vm := vmModels.VM{
-		Name:       "vm-msrs-apic",
-		RID:        203,
-		CPUSockets: 1,
-		CPUCores:   1,
-		CPUThreads: 1,
-		RAM:        1024 * 1024 * 512,
-		TimeOffset: vmModels.TimeOffsetUTC,
-		IgnoreUMSR: true,
-		APIC:       true,
-	}
-
-	xml, err := svc.CreateVmXML(vm, t.TempDir())
-	if err != nil {
-		t.Fatalf("CreateVmXML returned error: %v", err)
-	}
-
-	if !strings.Contains(xml, `<msrs unknown="ignore"`) {
-		t.Fatalf("expected msrs element in features, got: %s", xml)
-	}
-
-	if !strings.Contains(xml, `<apic`) {
-		t.Fatalf("expected apic element in features, got: %s", xml)
 	}
 }

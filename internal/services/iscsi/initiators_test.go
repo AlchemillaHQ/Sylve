@@ -39,71 +39,6 @@ func newInitiatorTestService(t *testing.T) *Service {
 	return &Service{DB: db}
 }
 
-func TestCreateInitiatorMissingNickname(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "None", "", "", "", "")
-	if err == nil || !errors.Is(err, ErrInvalidRequest) || err.Error() != "nickname_required" {
-		t.Fatalf("expected nickname_required, got %v", err)
-	}
-}
-
-func TestCreateInitiatorMissingTargetAddress(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "", "iqn.2025-01.com.example:target0", "", "None", "", "", "", "")
-	if err == nil || err.Error() != "target_address_required" {
-		t.Fatalf("expected target_address_required, got %v", err)
-	}
-}
-
-func TestCreateInitiatorMissingTargetName(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "192.168.1.10", "", "", "None", "", "", "", "")
-	if err == nil || err.Error() != "target_name_required" {
-		t.Fatalf("expected target_name_required, got %v", err)
-	}
-}
-
-func TestCreateInitiatorDuplicateNickname(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	svc.DB.Create(&iscsiModels.ISCSIInitiator{Nickname: "fblock0", TargetAddress: "192.168.1.10", TargetName: "iqn.2025-01.com.example:target0"})
-	err := svc.CreateInitiator("fblock0", "192.168.1.11", "iqn.2025-01.com.example:target1", "", "None", "", "", "", "")
-	if err == nil || !errors.Is(err, ErrConflict) || err.Error() != "initiator_with_nickname_exists" {
-		t.Fatalf("expected initiator_with_nickname_exists, got %v", err)
-	}
-}
-
-func TestCreateInitiatorInvalidAuthMethod(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "INVALID", "", "", "", "")
-	if err == nil || !strings.HasPrefix(err.Error(), "invalid_auth_method") {
-		t.Fatalf("expected invalid_auth_method error, got %v", err)
-	}
-}
-
-func TestCreateInitiatorCHAPRequiresCredentials(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "CHAP", "", "", "", "")
-	if err == nil || err.Error() != "chap_name_and_secret_required_for_chap" {
-		t.Fatalf("expected chap_name_and_secret_required_for_chap, got %v", err)
-	}
-}
-
-func TestCreateInitiatorCHAPSecretTooShort(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "CHAP", "user1", "short", "", "")
-	if err == nil || err.Error() != "chap_secret_must_be_12_to_16_characters" {
-		t.Fatalf("expected chap_secret_must_be_12_to_16_characters, got %v", err)
-	}
-}
-
-func TestCreateInitiatorMutualCHAPRequiresBothCredentials(t *testing.T) {
-	svc := newInitiatorTestService(t)
-	err := svc.CreateInitiator("fblock0", "192.168.1.10", "iqn.2025-01.com.example:target0", "", "MutualCHAP", "user1", "secretpassw0rd", "", "")
-	if err == nil || err.Error() != "tgt_chap_name_and_secret_required_for_mutual_chap" {
-		t.Fatalf("expected tgt_chap_name_and_secret_required_for_mutual_chap, got %v", err)
-	}
-}
-
 func TestCreateInitiatorNormalizesIPv6TargetAddress(t *testing.T) {
 	svc := newInitiatorTestService(t)
 	setInitiatorConfigPathForTest(t, t.TempDir()+"/iscsi.conf")
@@ -580,5 +515,52 @@ func TestUpdateInitiatorClearsUnusedSecrets(t *testing.T) {
 	}
 	if updated.CHAPName != "" || updated.CHAPSecret != "" || updated.TgtCHAPName != "" || updated.TgtCHAPSecret != "" {
 		t.Fatalf("unused credentials were retained: %+v", updated)
+	}
+}
+
+func TestCreateInitiatorRejects(t *testing.T) {
+	const target = "iqn.2025-01.com.example:target0"
+	tests := []struct {
+		name                          string
+		existing                      bool // an initiator named fblock0 already exists
+		nickname, address, targetName string
+		auth, chapName, chapSecret    string
+		wantErr                       string
+		prefix                        bool  // wantErr is a prefix of the error
+		wantIs                        error // optional error class
+	}{
+		{name: "missing nickname", address: "192.168.1.10", targetName: target, auth: "None", wantErr: "nickname_required", wantIs: ErrInvalidRequest},
+		{name: "missing target address", nickname: "fblock0", targetName: target, auth: "None", wantErr: "target_address_required"},
+		{name: "missing target name", nickname: "fblock0", address: "192.168.1.10", auth: "None", wantErr: "target_name_required"},
+		{
+			name: "duplicate nickname", existing: true, nickname: "fblock0", address: "192.168.1.11", targetName: "iqn.2025-01.com.example:target1",
+			auth: "None", wantErr: "initiator_with_nickname_exists", wantIs: ErrConflict,
+		},
+		{name: "invalid auth method", nickname: "fblock0", address: "192.168.1.10", targetName: target, auth: "INVALID", wantErr: "invalid_auth_method", prefix: true},
+		{name: "chap without credentials", nickname: "fblock0", address: "192.168.1.10", targetName: target, auth: "CHAP", wantErr: "chap_name_and_secret_required_for_chap"},
+		{
+			name: "chap secret too short", nickname: "fblock0", address: "192.168.1.10", targetName: target, auth: "CHAP",
+			chapName: "user1", chapSecret: "short", wantErr: "chap_secret_must_be_12_to_16_characters",
+		},
+		{
+			name: "mutual chap without target credentials", nickname: "fblock0", address: "192.168.1.10", targetName: target, auth: "MutualCHAP",
+			chapName: "user1", chapSecret: "secretpassw0rd", wantErr: "tgt_chap_name_and_secret_required_for_mutual_chap",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newInitiatorTestService(t)
+			if tt.existing {
+				svc.DB.Create(&iscsiModels.ISCSIInitiator{Nickname: "fblock0", TargetAddress: "192.168.1.10", TargetName: target})
+			}
+			err := svc.CreateInitiator(tt.nickname, tt.address, tt.targetName, "", tt.auth, tt.chapName, tt.chapSecret, "", "")
+			if err == nil || (err.Error() != tt.wantErr && !(tt.prefix && strings.HasPrefix(err.Error(), tt.wantErr))) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+			if tt.wantIs != nil && !errors.Is(err, tt.wantIs) {
+				t.Fatalf("expected %v to wrap %v", err, tt.wantIs)
+			}
+		})
 	}
 }

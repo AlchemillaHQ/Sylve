@@ -312,245 +312,6 @@ func TestFindISOByUUID_PathType_ResolvesExtractedDirectoryFallback(t *testing.T)
 	}
 }
 
-func TestFlashCloudInitMediaToDisk_ConvertsNonRawMedia(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-
-	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
-
-	const rid uint = 901
-	const diskID uint = 11
-	const mediaUUID = "cloud-media-qcow2"
-	const poolName = "tank"
-
-	mediaPath := filepath.Join(config.GetDownloadsPath("path"), "cloud-image.img")
-	if err := os.MkdirAll(filepath.Dir(mediaPath), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(mediaPath, []byte("qcow2"), 0o644); err != nil {
-		t.Fatalf("failed to create media file: %v", err)
-	}
-
-	download := utilitiesModels.Downloads{
-		UUID:     mediaUUID,
-		Path:     mediaPath,
-		Name:     filepath.Base(mediaPath),
-		Type:     utilitiesModels.DownloadTypePath,
-		URL:      "https://example.invalid/cloud-image.img",
-		Progress: 100,
-		Size:     5,
-		UType:    utilitiesModels.DownloadUTypeCloudInit,
-		Status:   utilitiesModels.DownloadStatusDone,
-	}
-	if err := db.Create(&download).Error; err != nil {
-		t.Fatalf("failed to seed download row: %v", err)
-	}
-
-	datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", poolName, rid, diskID)
-	mountpoint := filepath.Join(t.TempDir(), fmt.Sprintf("raw-%d", diskID))
-	diskPath := filepath.Join(mountpoint, fmt.Sprintf("%d.img", diskID))
-
-	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
-		t.Fatalf("failed to create disk parent dir: %v", err)
-	}
-	if err := os.WriteFile(diskPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("failed to create disk file: %v", err)
-	}
-
-	vm := vmModels.VM{
-		RID:               rid,
-		CloudInitData:     "users: []",
-		CloudInitMetaData: "instance-id: vm-901",
-		Storages: []vmModels.Storage{
-			{
-				ID:      diskID,
-				Type:    vmModels.VMStorageTypeRaw,
-				Enable:  true,
-				Size:    64 * 1024 * 1024,
-				Dataset: vmModels.VMStorageDataset{Pool: poolName, Name: datasetName},
-			},
-			{
-				ID:           diskID + 1,
-				Type:         vmModels.VMStorageTypeDiskImage,
-				Enable:       true,
-				DownloadUUID: mediaUUID,
-			},
-		},
-	}
-	svc := newStorageTestService(db, []string{poolName}, map[string]storageTestDataset{
-		datasetName: {
-			name:       datasetName,
-			pool:       poolName,
-			kind:       gzfs.DatasetTypeFilesystem,
-			mountpoint: mountpoint,
-		},
-	})
-
-	origInspect := inspectDiskImageFormat
-	origFlash := flashImageToDiskCtx
-	origConvert := convertDiskImageToRaw
-	t.Cleanup(func() {
-		inspectDiskImageFormat = origInspect
-		flashImageToDiskCtx = origFlash
-		convertDiskImageToRaw = origConvert
-	})
-
-	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
-		if path != mediaPath {
-			t.Fatalf("unexpected inspect path: got %q, want %q", path, mediaPath)
-		}
-		return &qemuimg.ImageInfo{
-			Format:      "qcow2",
-			VirtualSize: 16 * 1024 * 1024,
-		}, nil
-	}
-
-	flashImageToDiskCtx = func(_ context.Context, _ string, _ string) error {
-		t.Fatalf("flash path should not be used for non-raw media")
-		return nil
-	}
-
-	convertCalled := false
-	convertDiskImageToRaw = func(src, dst string, outFmt qemuimg.DiskFormat) error {
-		convertCalled = true
-		if src != mediaPath {
-			t.Fatalf("unexpected convert src: got %q, want %q", src, mediaPath)
-		}
-		if dst != diskPath {
-			t.Fatalf("unexpected convert dst: got %q, want %q", dst, diskPath)
-		}
-		if outFmt != qemuimg.FormatRaw {
-			t.Fatalf("unexpected convert output format: got %q, want %q", outFmt, qemuimg.FormatRaw)
-		}
-		return nil
-	}
-
-	if err := svc.FlashCloudInitMediaToDisk(vm); err != nil {
-		t.Fatalf("expected non-raw cloud-init media conversion to succeed, got %v", err)
-	}
-
-	if !convertCalled {
-		t.Fatalf("expected qemu-img conversion path to be used for non-raw media")
-	}
-}
-
-func TestFlashCloudInitMediaToDisk_FlashesRawMedia(t *testing.T) {
-	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
-
-	db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
-
-	const rid uint = 902
-	const diskID uint = 12
-	const mediaUUID = "cloud-media-raw"
-	const poolName = "tank"
-
-	mediaPath := filepath.Join(config.GetDownloadsPath("path"), "cloud-image.raw")
-	if err := os.MkdirAll(filepath.Dir(mediaPath), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(mediaPath, []byte("raw"), 0o644); err != nil {
-		t.Fatalf("failed to create media file: %v", err)
-	}
-
-	download := utilitiesModels.Downloads{
-		UUID:     mediaUUID,
-		Path:     mediaPath,
-		Name:     filepath.Base(mediaPath),
-		Type:     utilitiesModels.DownloadTypePath,
-		URL:      "https://example.invalid/cloud-image.raw",
-		Progress: 100,
-		Size:     3,
-		UType:    utilitiesModels.DownloadUTypeCloudInit,
-		Status:   utilitiesModels.DownloadStatusDone,
-	}
-	if err := db.Create(&download).Error; err != nil {
-		t.Fatalf("failed to seed download row: %v", err)
-	}
-
-	datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", poolName, rid, diskID)
-	mountpoint := filepath.Join(t.TempDir(), fmt.Sprintf("raw-%d", diskID))
-	diskPath := filepath.Join(mountpoint, fmt.Sprintf("%d.img", diskID))
-
-	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
-		t.Fatalf("failed to create disk parent dir: %v", err)
-	}
-	if err := os.WriteFile(diskPath, []byte{}, 0o644); err != nil {
-		t.Fatalf("failed to create disk file: %v", err)
-	}
-
-	vm := vmModels.VM{
-		RID:               rid,
-		CloudInitData:     "users: []",
-		CloudInitMetaData: "instance-id: vm-902",
-		Storages: []vmModels.Storage{
-			{
-				ID:      diskID,
-				Type:    vmModels.VMStorageTypeRaw,
-				Enable:  true,
-				Size:    64 * 1024 * 1024,
-				Dataset: vmModels.VMStorageDataset{Pool: poolName, Name: datasetName},
-			},
-			{
-				ID:           diskID + 1,
-				Type:         vmModels.VMStorageTypeDiskImage,
-				Enable:       true,
-				DownloadUUID: mediaUUID,
-			},
-		},
-	}
-	svc := newStorageTestService(db, []string{poolName}, map[string]storageTestDataset{
-		datasetName: {
-			name:       datasetName,
-			pool:       poolName,
-			kind:       gzfs.DatasetTypeFilesystem,
-			mountpoint: mountpoint,
-		},
-	})
-
-	origInspect := inspectDiskImageFormat
-	origFlash := flashImageToDiskCtx
-	origConvert := convertDiskImageToRaw
-	t.Cleanup(func() {
-		inspectDiskImageFormat = origInspect
-		flashImageToDiskCtx = origFlash
-		convertDiskImageToRaw = origConvert
-	})
-
-	inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
-		if path != mediaPath {
-			t.Fatalf("unexpected inspect path: got %q, want %q", path, mediaPath)
-		}
-		return &qemuimg.ImageInfo{
-			Format:      "raw",
-			VirtualSize: 16 * 1024 * 1024,
-		}, nil
-	}
-
-	convertDiskImageToRaw = func(_, _ string, _ qemuimg.DiskFormat) error {
-		t.Fatalf("convert path should not be used for raw media")
-		return nil
-	}
-
-	flashCalled := false
-	flashImageToDiskCtx = func(_ context.Context, src, dst string) error {
-		flashCalled = true
-		if src != mediaPath {
-			t.Fatalf("unexpected flash src: got %q, want %q", src, mediaPath)
-		}
-		if dst != diskPath {
-			t.Fatalf("unexpected flash dst: got %q, want %q", dst, diskPath)
-		}
-		return nil
-	}
-
-	if err := svc.FlashCloudInitMediaToDisk(vm); err != nil {
-		t.Fatalf("expected raw cloud-init media flash to succeed, got %v", err)
-	}
-
-	if !flashCalled {
-		t.Fatalf("expected raw media flash path to be used")
-	}
-}
-
 func TestFindISOByUUID_TorrentSkipsNonImageFilesThatQemuTreatsAsRaw(t *testing.T) {
 	t.Setenv("SYLVE_DATA_PATH", t.TempDir())
 
@@ -625,5 +386,109 @@ func TestFindISOByUUID_TorrentSkipsNonImageFilesThatQemuTreatsAsRaw(t *testing.T
 	}
 	if inspectedReadme {
 		t.Fatal("non-image torrent file was passed to qemu-img")
+	}
+}
+
+func TestFlashCloudInitMediaToDisk(t *testing.T) {
+	tests := []struct {
+		name      string
+		rid       uint
+		diskID    uint
+		mediaUUID string
+		file      string
+		content   string
+		format    string
+		convert   bool // non-raw media goes through qemu-img conversion, raw media is flashed directly
+	}{
+		{name: "converts non-raw media", rid: 901, diskID: 11, mediaUUID: "cloud-media-qcow2", file: "cloud-image.img", content: "qcow2", format: "qcow2", convert: true},
+		{name: "flashes raw media", rid: 902, diskID: 12, mediaUUID: "cloud-media-raw", file: "cloud-image.raw", content: "raw", format: "raw"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SYLVE_DATA_PATH", t.TempDir())
+			db := testutil.NewSQLiteTestDB(t, &utilitiesModels.Downloads{}, &utilitiesModels.DownloadedFile{})
+			const poolName = "tank"
+
+			mediaPath := filepath.Join(config.GetDownloadsPath("path"), tt.file)
+			if err := os.MkdirAll(filepath.Dir(mediaPath), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(mediaPath, []byte(tt.content), 0o644); err != nil {
+				t.Fatalf("failed to create media file: %v", err)
+			}
+			if err := db.Create(&utilitiesModels.Downloads{
+				UUID: tt.mediaUUID, Path: mediaPath, Name: filepath.Base(mediaPath), Type: utilitiesModels.DownloadTypePath,
+				URL: "https://example.invalid/" + tt.file, Progress: 100, Size: int64(len(tt.content)),
+				UType: utilitiesModels.DownloadUTypeCloudInit, Status: utilitiesModels.DownloadStatusDone,
+			}).Error; err != nil {
+				t.Fatalf("failed to seed download row: %v", err)
+			}
+
+			datasetName := fmt.Sprintf("%s/sylve/virtual-machines/%d/raw-%d", poolName, tt.rid, tt.diskID)
+			mountpoint := filepath.Join(t.TempDir(), fmt.Sprintf("raw-%d", tt.diskID))
+			diskPath := filepath.Join(mountpoint, fmt.Sprintf("%d.img", tt.diskID))
+			if err := os.MkdirAll(mountpoint, 0o755); err != nil {
+				t.Fatalf("failed to create disk parent dir: %v", err)
+			}
+			if err := os.WriteFile(diskPath, []byte{}, 0o644); err != nil {
+				t.Fatalf("failed to create disk file: %v", err)
+			}
+
+			vm := vmModels.VM{
+				RID:               tt.rid,
+				CloudInitData:     "users: []",
+				CloudInitMetaData: fmt.Sprintf("instance-id: vm-%d", tt.rid),
+				Storages: []vmModels.Storage{
+					{
+						ID: tt.diskID, Type: vmModels.VMStorageTypeRaw, Enable: true, Size: 64 * 1024 * 1024,
+						Dataset: vmModels.VMStorageDataset{Pool: poolName, Name: datasetName},
+					},
+					{ID: tt.diskID + 1, Type: vmModels.VMStorageTypeDiskImage, Enable: true, DownloadUUID: tt.mediaUUID},
+				},
+			}
+			svc := newStorageTestService(db, []string{poolName}, map[string]storageTestDataset{
+				datasetName: {name: datasetName, pool: poolName, kind: gzfs.DatasetTypeFilesystem, mountpoint: mountpoint},
+			})
+
+			origInspect, origFlash, origConvert := inspectDiskImageFormat, flashImageToDiskCtx, convertDiskImageToRaw
+			t.Cleanup(func() {
+				inspectDiskImageFormat, flashImageToDiskCtx, convertDiskImageToRaw = origInspect, origFlash, origConvert
+			})
+			inspectDiskImageFormat = func(path string) (*qemuimg.ImageInfo, error) {
+				if path != mediaPath {
+					t.Fatalf("unexpected inspect path: got %q, want %q", path, mediaPath)
+				}
+				return &qemuimg.ImageInfo{Format: tt.format, VirtualSize: 16 * 1024 * 1024}, nil
+			}
+			called := false
+			convertDiskImageToRaw = func(src, dst string, outFmt qemuimg.DiskFormat) error {
+				if !tt.convert {
+					t.Fatalf("convert path should not be used for raw media")
+				}
+				if src != mediaPath || dst != diskPath || outFmt != qemuimg.FormatRaw {
+					t.Fatalf("unexpected convert(%q, %q, %q), want (%q, %q, %q)", src, dst, outFmt, mediaPath, diskPath, qemuimg.FormatRaw)
+				}
+				called = true
+				return nil
+			}
+			flashImageToDiskCtx = func(_ context.Context, src, dst string) error {
+				if tt.convert {
+					t.Fatalf("flash path should not be used for non-raw media")
+				}
+				if src != mediaPath || dst != diskPath {
+					t.Fatalf("unexpected flash(%q, %q), want (%q, %q)", src, dst, mediaPath, diskPath)
+				}
+				called = true
+				return nil
+			}
+
+			if err := svc.FlashCloudInitMediaToDisk(vm); err != nil {
+				t.Fatalf("expected cloud-init media to reach the disk, got %v", err)
+			}
+			if !called {
+				t.Fatalf("expected the %s path to be used", map[bool]string{true: "convert", false: "flash"}[tt.convert])
+			}
+		})
 	}
 }

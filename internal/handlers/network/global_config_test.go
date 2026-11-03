@@ -20,6 +20,7 @@ import (
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/network"
 	"github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,7 +53,7 @@ func TestGlobalConfigHandlerGet(t *testing.T) {
 		Hostname:     "zeus", EffectiveDNSServers: []string{"192.0.2.1"}, EffectiveSearchDomains: []string{"lan"}, Warnings: []string{},
 	}}
 	recorder := performNetworkJSONRequest(t, globalConfigHandlerRouter(service), http.MethodGet, "/network/global-config", nil)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" {
 		t.Fatalf("GET = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -89,7 +90,7 @@ func TestGlobalConfigHandlerErrorMapping(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			service := &globalConfigHandlerService{err: test.err}
 			recorder := performNetworkJSONRequest(t, globalConfigHandlerRouter(service), http.MethodPut, "/network/global-config", []byte(`{"expectedRevision":0,"dnsMode":"os"}`))
-			response := decodeDHCPConfigHandlerResponse(t, recorder)
+			response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 			if recorder.Code != test.status || response.Error != test.code {
 				t.Fatalf("error = %d %s", recorder.Code, recorder.Body.String())
 			}

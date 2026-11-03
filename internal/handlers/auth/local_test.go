@@ -86,15 +86,6 @@ type apiResponse struct {
 	Data    any    `json:"data"`
 }
 
-func decodeResponse(t *testing.T, w *httptest.ResponseRecorder) apiResponse {
-	t.Helper()
-	var resp apiResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v (body: %s)", err, w.Body.String())
-	}
-	return resp
-}
-
 func TestListUsersHandlerEmpty(t *testing.T) {
 	svc := newTestAuthService(t)
 	router := setupRouter(svc)
@@ -104,7 +95,7 @@ func TestListUsersHandlerEmpty(t *testing.T) {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	resp := decodeResponse(t, w)
+	resp := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if resp.Status != "success" {
 		t.Fatalf("expected status 'success', got: %s", resp.Status)
 	}
@@ -168,7 +159,7 @@ func TestListUsersHandlerRejectsUnknownSource(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
-	resp := decodeResponse(t, w)
+	resp := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if resp.Error != "invalid_user_source" {
 		t.Fatalf("expected invalid_user_source, got: %s", resp.Error)
 	}
@@ -229,7 +220,7 @@ func TestCreateUserHandlerDoesNotReturnSubmittedPassword(t *testing.T) {
 			"password": submittedPassword,
 			"admin":    false,
 		})
-		if w.Code != http.StatusBadRequest || decodeResponse(t, w).Error != "invalid_password_length" {
+		if w.Code != http.StatusBadRequest || testutil.DecodeJSONResponse[apiResponse](t, w).Error != "invalid_password_length" {
 			t.Fatalf("expected password validation error, got %d: %s", w.Code, w.Body.String())
 		}
 		if strings.Contains(w.Body.String(), submittedPassword) {
@@ -284,7 +275,7 @@ func TestEditUserHandlerChangesAdminPassword(t *testing.T) {
 		"password": strings.Repeat("é", 37),
 		"admin":    true,
 	})
-	if w.Code != http.StatusBadRequest || decodeResponse(t, w).Error != "invalid_password_length" {
+	if w.Code != http.StatusBadRequest || testutil.DecodeJSONResponse[apiResponse](t, w).Error != "invalid_password_length" {
 		t.Fatalf("expected password validation error, got %d: %s", w.Code, w.Body.String())
 	}
 	unchanged, err := svc.GetUserByID(admin.ID)
@@ -324,7 +315,7 @@ func TestEditUserHandlerNonExistentUser(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
 	}
-	resp := decodeResponse(t, w)
+	resp := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if resp.Message != "user_not_found" {
 		t.Fatalf("expected user_not_found, got: %s", resp.Message)
 	}
@@ -443,7 +434,7 @@ func TestCreateUserHandlerDuplicateWithPAM(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
-	resp := decodeResponse(t, w)
+	resp := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if resp.Error != "user_source_conflict" {
 		t.Fatalf("expected user_source_conflict, got: %s", resp.Error)
 	}
@@ -463,7 +454,7 @@ func TestEditUserHandlerSuccess(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	resp := decodeResponse(t, w)
+	resp := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if resp.Status != "success" {
 		t.Fatalf("expected status 'success', got: %s", resp.Status)
 	}
@@ -552,7 +543,7 @@ func TestDeleteUserHandlerHomeRemovalFlag(t *testing.T) {
 	} {
 		t.Run(test.query, func(t *testing.T) {
 			w := performJSON(t, router, http.MethodDelete, "/auth/users/1?removehome="+test.query, nil)
-			if w.Code != test.status || decodeResponse(t, w).Error != test.code {
+			if w.Code != test.status || testutil.DecodeJSONResponse[apiResponse](t, w).Error != test.code {
 				t.Fatalf("status=%d want=%d: %s", w.Code, test.status, w.Body.String())
 			}
 		})
@@ -595,7 +586,7 @@ func TestImportUserHandlerMapsSourceConflict(t *testing.T) {
 	if w.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
 	}
-	response := decodeResponse(t, w)
+	response := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if response.Error != "user_source_conflict" {
 		t.Fatalf("expected user_source_conflict, got %q", response.Error)
 	}
@@ -638,7 +629,7 @@ func TestGetNextUIDHandlerReportsDiscoveryFailure(t *testing.T) {
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d: %s", w.Code, w.Body.String())
 	}
-	response := decodeResponse(t, w)
+	response := testutil.DecodeJSONResponse[apiResponse](t, w)
 	if response.Error != "unix_user_discovery_failed" {
 		t.Fatalf("expected unix_user_discovery_failed, got %q", response.Error)
 	}
@@ -709,11 +700,11 @@ func TestImportExternalUserHandlerWithoutEnumeration(t *testing.T) {
 	}
 	payload["uid"] = 1001
 	w = performJSON(t, router, http.MethodPut, path, payload)
-	if w.Code != http.StatusConflict || decodeResponse(t, w).Error != "external_user_read_only" {
+	if w.Code != http.StatusConflict || testutil.DecodeJSONResponse[apiResponse](t, w).Error != "external_user_read_only" {
 		t.Fatalf("Unix mutation was not rejected: %s", w.Body.String())
 	}
 	w = performJSON(t, router, http.MethodDelete, path+"?removehome=true", nil)
-	if w.Code != http.StatusConflict || decodeResponse(t, w).Error != "external_user_read_only" {
+	if w.Code != http.StatusConflict || testutil.DecodeJSONResponse[apiResponse](t, w).Error != "external_user_read_only" {
 		t.Fatalf("home removal was not rejected: %s", w.Body.String())
 	}
 	w = performJSON(t, router, http.MethodDelete, path, nil)
@@ -744,7 +735,7 @@ func TestImportUserHandlerDistinguishesInvalidAndProtectedUIDs(t *testing.T) {
 			w := performJSON(t, setupRouter(service), http.MethodPost, "/auth/users/import", map[string]any{
 				"username": "alias", "admin": true,
 			})
-			if w.Code != test.status || decodeResponse(t, w).Error != test.code {
+			if w.Code != test.status || testutil.DecodeJSONResponse[apiResponse](t, w).Error != test.code {
 				t.Fatalf("unexpected UID error: status=%d body=%s", w.Code, w.Body.String())
 			}
 		})

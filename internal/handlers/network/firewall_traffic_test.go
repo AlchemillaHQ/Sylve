@@ -11,7 +11,6 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +19,7 @@ import (
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -60,15 +60,6 @@ func setupFirewallTrafficHandlerRouter(t *testing.T, bodyLimit int64) (*gin.Engi
 	return router, db
 }
 
-func decodeFirewallTrafficHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) firewallTrafficHandlerResponse {
-	t.Helper()
-	var response firewallTrafficHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func validFirewallTrafficRuleBody(name string) []byte {
 	body, _ := json.Marshal(map[string]any{
 		"name":              name,
@@ -102,7 +93,7 @@ func TestCreateFirewallTrafficRuleReturnsCreatedID(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d body=%s", rr.Code, rr.Body.String())
 	}
-	response := decodeFirewallTrafficHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 	var id uint
 	if response.Status != "success" || json.Unmarshal(response.Data, &id) != nil || id == 0 {
 		t.Fatalf("unexpected create response: %+v", response)
@@ -170,7 +161,7 @@ func TestBulkDeleteFirewallTrafficRulesUsesCollectionDelete(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, rules[2].ID}})
 
 	rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic", body)
-	response := decodeFirewallTrafficHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Status != "success" || response.Message != "firewall_traffic_rules_deleted" {
 		t.Fatalf("unexpected bulk-delete response: status=%d response=%+v", rr.Code, response)
 	}
@@ -207,7 +198,7 @@ func TestBulkDeleteFirewallTrafficRulesRejectsInvalidIDSets(t *testing.T) {
 			router, _ := setupFirewallTrafficHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			body, _ := json.Marshal(tt.body)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic", body)
-			response := decodeFirewallTrafficHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_traffic_request" {
 				t.Fatalf("status=%d response=%+v", rr.Code, response)
 			}
@@ -227,7 +218,7 @@ func TestBulkDeleteFirewallTrafficRulesPreflightsEntireBatch(t *testing.T) {
 		}
 		body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, 999999}})
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic", body)
-		response := decodeFirewallTrafficHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "firewall_traffic_rule_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -251,7 +242,7 @@ func TestBulkDeleteFirewallTrafficRulesPreflightsEntireBatch(t *testing.T) {
 		}
 		body, _ := json.Marshal(map[string]any{"ids": []uint{rules[0].ID, rules[1].ID}})
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic", body)
-		response := decodeFirewallTrafficHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "hidden_firewall_rule_managed_by_wireguard" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -269,7 +260,7 @@ func TestBulkDeleteFirewallTrafficRulesReturnsStableInternalError(t *testing.T) 
 	}
 	body, _ := json.Marshal(map[string]any{"ids": []uint{1}})
 	rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic", body)
-	response := decodeFirewallTrafficHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 	if rr.Code != http.StatusInternalServerError || response.Error != "firewall_traffic_rules_delete_failed" {
 		t.Fatalf("status=%d response=%+v", rr.Code, response)
 	}
@@ -280,7 +271,7 @@ func TestFirewallTrafficHandlersMapStableClientErrors(t *testing.T) {
 		for _, id := range []string{"0", "-1", "not-a-number"} {
 			router, _ := setupFirewallTrafficHandlerRouter(t, networkService.MaxRequestBodyBytes)
 			rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic/"+id, nil)
-			response := decodeFirewallTrafficHandlerResponse(t, rr)
+			response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 			if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_traffic_rule_id" {
 				t.Fatalf("id=%q status=%d response=%+v", id, rr.Code, response)
 			}
@@ -290,7 +281,7 @@ func TestFirewallTrafficHandlersMapStableClientErrors(t *testing.T) {
 	t.Run("missing rule", func(t *testing.T) {
 		router, _ := setupFirewallTrafficHandlerRouter(t, networkService.MaxRequestBodyBytes)
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic/999999", nil)
-		response := decodeFirewallTrafficHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 		if rr.Code != http.StatusNotFound || response.Error != "firewall_traffic_rule_not_found" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -309,7 +300,7 @@ func TestFirewallTrafficHandlersMapStableClientErrors(t *testing.T) {
 		payload["sourceObjId"] = 1
 		body, _ = json.Marshal(payload)
 		rr := performNetworkJSONRequest(t, router, http.MethodPost, "/network/firewall/traffic", body)
-		response := decodeFirewallTrafficHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 		if rr.Code != http.StatusBadRequest || response.Error != "invalid_firewall_traffic_rule" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -328,7 +319,7 @@ func TestFirewallTrafficHandlersMapStableClientErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := performNetworkJSONRequest(t, router, http.MethodDelete, "/network/firewall/traffic/"+strconv.FormatUint(uint64(rule.ID), 10), nil)
-		response := decodeFirewallTrafficHandlerResponse(t, rr)
+		response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, rr)
 		if rr.Code != http.StatusConflict || response.Error != "hidden_firewall_rule_managed_by_wireguard" {
 			t.Fatalf("status=%d response=%+v", rr.Code, response)
 		}
@@ -352,7 +343,7 @@ func TestFirewallTrafficHandlersRejectInvalidReorderAndOversizedJSON(t *testing.
 
 	incompleteBody, _ := json.Marshal([]map[string]any{{"id": rules[0].ID, "priority": 1}})
 	incomplete := performNetworkJSONRequest(t, router, http.MethodPut, "/network/firewall/traffic/reorder", incompleteBody)
-	response := decodeFirewallTrafficHandlerResponse(t, incomplete)
+	response := testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, incomplete)
 	if incomplete.Code != http.StatusConflict || response.Error != "firewall_traffic_rule_conflict" {
 		t.Fatalf("expected incomplete reorder 409, status=%d response=%+v", incomplete.Code, response)
 	}
@@ -360,7 +351,7 @@ func TestFirewallTrafficHandlersRejectInvalidReorderAndOversizedJSON(t *testing.
 	const limit = 128
 	limitedRouter, _ := setupFirewallTrafficHandlerRouter(t, limit)
 	oversized := performNetworkJSONRequest(t, limitedRouter, http.MethodPost, "/network/firewall/traffic", validFirewallTrafficRuleBody(strings.Repeat("a", limit)))
-	response = decodeFirewallTrafficHandlerResponse(t, oversized)
+	response = testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, oversized)
 	if oversized.Code != http.StatusRequestEntityTooLarge || response.Error != "firewall_traffic_request_too_large" {
 		t.Fatalf("expected 413, status=%d response=%+v", oversized.Code, response)
 	}
@@ -372,7 +363,7 @@ func TestFirewallTrafficHandlersRejectInvalidReorderAndOversizedJSON(t *testing.
 		"/network/firewall/traffic",
 		[]byte(`{"ids":[`+strings.Repeat("123456789,", limit)+`1]}`),
 	)
-	response = decodeFirewallTrafficHandlerResponse(t, bulkOversized)
+	response = testutil.DecodeJSONResponse[firewallTrafficHandlerResponse](t, bulkOversized)
 	if bulkOversized.Code != http.StatusRequestEntityTooLarge || response.Error != "firewall_traffic_request_too_large" {
 		t.Fatalf("expected bulk delete 413, status=%d response=%+v", bulkOversized.Code, response)
 	}

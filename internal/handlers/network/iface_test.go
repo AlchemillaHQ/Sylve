@@ -12,10 +12,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/alchemillahq/sylve/internal/testutil"
 	iface "github.com/alchemillahq/sylve/pkg/network/iface"
 	"github.com/gin-gonic/gin"
 )
@@ -41,22 +41,13 @@ func setupInterfaceListHandlerRouter(t *testing.T, list func() ([]*iface.Interfa
 	return router
 }
 
-func decodeInterfaceListHandlerResponse(t *testing.T, rr *httptest.ResponseRecorder) interfaceListHandlerResponse {
-	t.Helper()
-	var response interfaceListHandlerResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response body %q: %v", rr.Body.String(), err)
-	}
-	return response
-}
-
 func TestListInterfacesReturnsConcreteArrayResponse(t *testing.T) {
 	router := setupInterfaceListHandlerRouter(t, func() ([]*iface.Interface, error) {
 		return []*iface.Interface{{Name: "bridge0", MTU: 1500}}, nil
 	})
 
 	rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/interface", nil)
-	response := decodeInterfaceListHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[interfaceListHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK || response.Status != "success" || response.Message != "interfaces_list" {
 		t.Fatalf("unexpected list response: status=%d response=%+v", rr.Code, response)
 	}
@@ -76,7 +67,7 @@ func TestListInterfacesNormalizesNilResultToEmptyArray(t *testing.T) {
 	})
 
 	rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/interface", nil)
-	response := decodeInterfaceListHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[interfaceListHandlerResponse](t, rr)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
 	}
@@ -92,7 +83,7 @@ func TestListInterfacesReturnsStableRuntimeError(t *testing.T) {
 	})
 
 	rr := performNetworkJSONRequest(t, router, http.MethodGet, "/network/interface", nil)
-	response := decodeInterfaceListHandlerResponse(t, rr)
+	response := testutil.DecodeJSONResponse[interfaceListHandlerResponse](t, rr)
 	if rr.Code != http.StatusInternalServerError || response.Message != "failed_to_list_interfaces" || response.Error != "interface_list_failed" {
 		t.Fatalf("expected stable 500 response, status=%d response=%+v", rr.Code, response)
 	}

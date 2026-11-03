@@ -9,7 +9,6 @@
 package jail
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -25,35 +24,12 @@ import (
 )
 
 type jailNetworkValidationFakeNetworkService struct {
+	networkServiceInterfaces.NetworkServiceInterface
 	entries          map[uint]string
 	ensureEpairCalls []string
 	ensureEpairErr   error
 	deleteEpairCalls []string
 	deleteEpairErr   error
-}
-
-func (f *jailNetworkValidationFakeNetworkService) SyncStandardSwitches() error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) GetStandardSwitches() ([]networkModels.StandardSwitch, error) {
-	return nil, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) NewStandardSwitch(
-	_ networkServiceInterfaces.CreateStandardSwitchRequest,
-) (uint, error) {
-	return 1, nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) EditStandardSwitch(
-	_ networkServiceInterfaces.UpdateStandardSwitchRequest,
-) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) DeleteStandardSwitch(_ uint) error {
-	return nil
 }
 
 func (f *jailNetworkValidationFakeNetworkService) IsObjectUsed(_ uint) (bool, string, error) {
@@ -68,14 +44,6 @@ func (f *jailNetworkValidationFakeNetworkService) GetObjectEntryByID(id uint) (s
 	return entry, nil
 }
 
-func (f *jailNetworkValidationFakeNetworkService) GetBridgeNameByIDType(_ uint, _ string) (string, error) {
-	return "vm-test", nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) CreateEpair(_ string) error {
-	return nil
-}
-
 func (f *jailNetworkValidationFakeNetworkService) EnsureEpair(name string) error {
 	f.ensureEpairCalls = append(f.ensureEpairCalls, name)
 	return f.ensureEpairErr
@@ -84,20 +52,6 @@ func (f *jailNetworkValidationFakeNetworkService) EnsureEpair(name string) error
 func (f *jailNetworkValidationFakeNetworkService) DeleteEpair(name string) error {
 	f.deleteEpairCalls = append(f.deleteEpairCalls, name)
 	return f.deleteEpairErr
-}
-
-func (f *jailNetworkValidationFakeNetworkService) StartFirewallMonitor(_ context.Context) {}
-
-func (f *jailNetworkValidationFakeNetworkService) EnableWireGuardService(_ context.Context) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) DisableWireGuardService(_ context.Context) error {
-	return nil
-}
-
-func (f *jailNetworkValidationFakeNetworkService) ReconcileManagedRoutes() error {
-	return nil
 }
 
 func (f *jailNetworkValidationFakeNetworkService) RegisterOnJailObjectUpdateCallback(_ func(jailIDs []uint)) {

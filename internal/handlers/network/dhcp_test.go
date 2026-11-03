@@ -11,13 +11,13 @@ package networkHandlers
 import (
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
 	networkModels "github.com/alchemillahq/sylve/internal/db/models/network"
 	"github.com/alchemillahq/sylve/internal/handlers/middleware"
 	networkService "github.com/alchemillahq/sylve/internal/services/network"
+	"github.com/alchemillahq/sylve/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -60,19 +60,10 @@ func setupDHCPConfigHandlerRouter(t *testing.T, bodyLimit int64, seedConfig bool
 	return router, db
 }
 
-func decodeDHCPConfigHandlerResponse(t *testing.T, recorder *httptest.ResponseRecorder) dhcpConfigHandlerResponse {
-	t.Helper()
-	var response dhcpConfigHandlerResponse
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode response %q: %v", recorder.Body.String(), err)
-	}
-	return response
-}
-
 func TestGetDHCPConfigReturnsConcreteConfiguration(t *testing.T) {
 	router, _ := setupDHCPConfigHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 	recorder := performNetworkJSONRequest(t, router, http.MethodGet, "/network/dhcp/config", nil)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" {
 		t.Fatalf("unexpected GET response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -90,7 +81,7 @@ func TestModifyDHCPConfigNoChangeIsSuccessful(t *testing.T) {
 	router, _ := setupDHCPConfigHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 	body := []byte(`{"standardSwitches":[],"manualSwitches":[],"dnsServers":[],"domain":"lan","expandHosts":true}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPut, "/network/dhcp/config", body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusOK || response.Status != "success" || response.Message != "dhcp_config_saved" {
 		t.Fatalf("unexpected no-change response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -100,7 +91,7 @@ func TestModifyDHCPConfigReturnsStableValidationError(t *testing.T) {
 	router, _ := setupDHCPConfigHandlerRouter(t, networkService.MaxRequestBodyBytes, true)
 	body := []byte(`{"standardSwitches":[],"manualSwitches":[],"dnsServers":[],"domain":"bad_domain","expandHosts":true}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPut, "/network/dhcp/config", body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusBadRequest || response.Error != "invalid_dhcp_domain" {
 		t.Fatalf("expected stable validation response, status=%d response=%+v", recorder.Code, response)
 	}
@@ -111,7 +102,7 @@ func TestModifyDHCPConfigRejectsOversizedJSON(t *testing.T) {
 	router, _ := setupDHCPConfigHandlerRouter(t, limit, true)
 	body := []byte(`{"domain":"` + strings.Repeat("a", limit) + `"}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPut, "/network/dhcp/config", body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusRequestEntityTooLarge || response.Error != "dhcp_config_request_too_large" {
 		t.Fatalf("expected stable 413 response, status=%d response=%+v", recorder.Code, response)
 	}
@@ -142,7 +133,7 @@ func TestModifyDHCPConfigRejectsRemovingSwitchReferencedByRange(t *testing.T) {
 
 	body := []byte(`{"standardSwitches":[],"manualSwitches":[],"dnsServers":[],"domain":"lan","expandHosts":true}`)
 	recorder := performNetworkJSONRequest(t, router, http.MethodPut, "/network/dhcp/config", body)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusConflict || response.Error != "dhcp_switch_has_ranges" {
 		t.Fatalf("expected stable 409 response: status=%d response=%+v", recorder.Code, response)
 	}
@@ -151,7 +142,7 @@ func TestModifyDHCPConfigRejectsRemovingSwitchReferencedByRange(t *testing.T) {
 func TestGetDHCPConfigDoesNotLeakMissingRecordError(t *testing.T) {
 	router, _ := setupDHCPConfigHandlerRouter(t, networkService.MaxRequestBodyBytes, false)
 	recorder := performNetworkJSONRequest(t, router, http.MethodGet, "/network/dhcp/config", nil)
-	response := decodeDHCPConfigHandlerResponse(t, recorder)
+	response := testutil.DecodeJSONResponse[dhcpConfigHandlerResponse](t, recorder)
 	if recorder.Code != http.StatusInternalServerError || response.Error != "dhcp_config_retrieval_failed" {
 		t.Fatalf("unexpected missing-config response: status=%d response=%+v", recorder.Code, response)
 	}

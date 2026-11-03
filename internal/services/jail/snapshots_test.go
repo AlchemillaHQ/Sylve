@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,8 +64,8 @@ func (r *jailSnapshotRunner) Run(
 
 	switch args[0] {
 	case "list":
-		target := jailSnapshotTargetArg(args)
-		recursive := slicesContainString(args, "-r")
+		target := zfsTargetArg(args)
+		recursive := slices.Contains(args, "-r")
 		datasets := make(map[string]any)
 		for datasetName, dataset := range r.datasets {
 			if target != "" && datasetName != target &&
@@ -99,39 +100,6 @@ func (r *jailSnapshotRunner) Run(
 	default:
 		return fmt.Errorf("unsupported zfs args: %v", args)
 	}
-}
-
-func jailSnapshotTargetArg(args []string) string {
-	target := ""
-	skip := 0
-	for index, arg := range args {
-		if index == 0 {
-			continue
-		}
-		if skip > 0 {
-			skip--
-			continue
-		}
-		switch arg {
-		case "-o", "-t":
-			skip = 1
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		target = arg
-	}
-	return target
-}
-
-func slicesContainString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
 }
 
 func jailSnapshotDatasetJSON(name string, dataset jailSnapshotRunnerDataset) map[string]any {
