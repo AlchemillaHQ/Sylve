@@ -492,176 +492,174 @@ func TestRefreshObjectResolutionsListSkipsParseWhenSourceChecksumMatches(t *test
 	}
 }
 
-func TestRenderTrafficRulesSplitsMixedFamilies(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallTrafficRule{
+func TestRenderTrafficRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		rules   []networkModels.FirewallTrafficRule
+		want    []string
+		notWant []string
+	}{
 		{
-			ID:        11,
-			Enabled:   true,
-			Log:       true,
-			Priority:  1000,
-			Action:    "pass",
-			Direction: "in",
-			Protocol:  "any",
-			Family:    "any",
-			SourceObj: &networkModels.Object{
-				ID:   42,
-				Type: "List",
-				Resolutions: []networkModels.ObjectResolution{
-					{ResolvedValue: "10.0.0.0/24"},
-					{ResolvedValue: "2001:db8::/64"},
+			name: "splits mixed families",
+			rules: []networkModels.FirewallTrafficRule{{
+				ID: 11, Enabled: true, Log: true, Priority: 1000, Action: "pass", Direction: "in", Protocol: "any", Family: "any",
+				SourceObj: &networkModels.Object{ID: 42, Type: "List", Resolutions: []networkModels.ObjectResolution{
+					{ResolvedValue: "10.0.0.0/24"}, {ResolvedValue: "2001:db8::/64"},
+				}},
+			}},
+			want: []string{"pass in log inet from <sylve_obj_42_inet> to any", "pass in log inet6 from <sylve_obj_42_inet6> to any"},
+		},
+		{
+			name: "quick keyword",
+			rules: []networkModels.FirewallTrafficRule{{
+				Enabled: true, Log: true, Quick: true, Priority: 1000, Action: "block", Direction: "in", Protocol: "any", Family: "inet6",
+				SourceRaw: "2001:db8::1", DestRaw: "any",
+			}},
+			want: []string{"block in log quick inet6 from 2001:db8::1 to any"},
+		},
+		{
+			name: "log disabled",
+			rules: []networkModels.FirewallTrafficRule{{
+				Enabled: true, Quick: true, Priority: 1000, Action: "pass", Direction: "in", Protocol: "any", Family: "inet",
+				SourceRaw: "198.51.100.11", DestRaw: "any",
+			}},
+			want:    []string{"pass in quick inet from 198.51.100.11 to any"},
+			notWant: []string{" pass in log "},
+		},
+		{
+			name: "ingress and egress interfaces",
+			rules: []networkModels.FirewallTrafficRule{
+				{
+					Enabled: true, Log: true, Quick: true, Priority: 1000, Action: "pass", Direction: "in", Protocol: "tcp", Family: "inet",
+					IngressInterfaces: []string{"em0"}, SourceRaw: "192.0.2.10", DestRaw: "any", DstPortsRaw: "443",
+				},
+				{
+					Enabled: true, Log: true, Priority: 1010, Action: "pass", Direction: "out", Protocol: "tcp", Family: "inet",
+					EgressInterfaces: []string{"bridge0"}, SourceRaw: "192.0.2.10", DestRaw: "any", DstPortsRaw: "443",
 				},
 			},
+			want: []string{
+				"pass in log quick on em0 inet proto tcp from 192.0.2.10 to any port 443",
+				"pass out log on bridge0 inet proto tcp from 192.0.2.10 to any port 443",
+				`label "sylve_trf_`,
+			},
+		},
+		{
+			name: "tcp_udp protocol list",
+			rules: []networkModels.FirewallTrafficRule{{
+				ID: 88, Name: "DNS over TCP and UDP", Enabled: true, Action: "pass", Direction: "out", Protocol: "tcp_udp", Family: "inet",
+				EgressInterfaces: []string{"em0"}, SourceRaw: "192.0.2.0/24", DestRaw: "any", DstPortsRaw: "53",
+			}},
+			want: []string{`pass out on em0 inet proto { tcp, udp } from 192.0.2.0/24 to any port 53 label "sylve_trf_88"`},
 		},
 	}
 
-	tables := buildFirewallObjectTables(rules, nil)
-	rendered, err := svc.renderTrafficRules(rules, tables)
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "pass in log inet from <sylve_obj_42_inet> to any") {
-		t.Fatalf("expected inet line in rendered rules, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, "pass in log inet6 from <sylve_obj_42_inet6> to any") {
-		t.Fatalf("expected inet6 line in rendered rules, got:\n%s", rendered)
+	svc := &Service{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, err := svc.renderTrafficRules(tt.rules, buildFirewallObjectTables(tt.rules, nil))
+			if err != nil {
+				t.Fatalf("unexpected render error: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(rendered, want) {
+					t.Fatalf("expected %q in rendered rules, got:\n%s", want, rendered)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(rendered, notWant) {
+					t.Fatalf("did not expect %q in rendered rules, got:\n%s", notWant, rendered)
+				}
+			}
+		})
 	}
 }
 
-func TestRenderTrafficRulesIncludesQuickKeyword(t *testing.T) {
+func TestRenderNATRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		rules   []networkModels.FirewallNATRule
+		want    []string
+		notWant []string
+	}{
+		{
+			name: "object tables",
+			rules: []networkModels.FirewallNATRule{{
+				ID: 31, Name: "nat-v4", Enabled: true, Log: true, Priority: 1000, NATType: "snat", EgressInterfaces: []string{"em0"},
+				TranslateMode: "interface", Family: "any", Protocol: "any", DestRaw: "any",
+				SourceObj: &networkModels.Object{ID: 99, Type: "List", Resolutions: []networkModels.ObjectResolution{{ResolvedValue: "10.10.0.0/16"}}},
+			}},
+			want:    []string{"nat log on em0 inet from <sylve_obj_99_inet> to any tag sylve_nat_31 -> (em0)"},
+			notWant: []string{`label "sylve_nat_31"`},
+		},
+		{
+			name: "dnat with port rewrite",
+			rules: []networkModels.FirewallNATRule{{
+				ID: 41, Name: "rdr-https", Enabled: true, Log: true, Priority: 1000, NATType: "dnat", IngressInterfaces: []string{"em0"},
+				Family: "inet", Protocol: "tcp", SourceRaw: "any", DestRaw: "198.51.100.10", DNATTargetRaw: "10.0.0.10",
+				DstPortsRaw: "443", RedirectPortsRaw: "8443",
+			}},
+			want:    []string{"rdr log on em0 inet proto tcp from any to 198.51.100.10 port 443 tag sylve_nat_41 -> 10.0.0.10 port 8443"},
+			notWant: []string{`label "sylve_nat_41"`},
+		},
+		{
+			name: "log disabled",
+			rules: []networkModels.FirewallNATRule{{
+				ID: 42, Name: "snat-no-log", Enabled: true, Priority: 1000, NATType: "snat", EgressInterfaces: []string{"em0"},
+				TranslateMode: "interface", Family: "inet", Protocol: "any", SourceRaw: "10.42.0.0/24", DestRaw: "any",
+			}},
+			want:    []string{"nat on em0 inet from 10.42.0.0/24 to any tag sylve_nat_42 -> (em0)"},
+			notWant: []string{"nat log on"},
+		},
+		{
+			name: "snat address and binat interface",
+			rules: []networkModels.FirewallNATRule{
+				{
+					ID: 51, Name: "snat-address", Enabled: true, Log: true, Priority: 1000, NATType: "snat", EgressInterfaces: []string{"em0"},
+					TranslateMode: "address", TranslateToRaw: "203.0.113.50", Family: "inet", Protocol: "any", SourceRaw: "10.0.0.0/24", DestRaw: "any",
+				},
+				{
+					ID: 52, Name: "binat-interface", Enabled: true, Log: true, Priority: 1010, NATType: "binat", EgressInterfaces: []string{"em0"},
+					TranslateMode: "interface", Family: "inet", Protocol: "any", SourceRaw: "10.0.1.10", DestRaw: "any",
+				},
+			},
+			want: []string{
+				"nat log on em0 inet from 10.0.0.0/24 to any tag sylve_nat_51 -> 203.0.113.50",
+				"binat log on em0 inet from 10.0.1.10 to any tag sylve_nat_52 -> (em0:0)",
+			},
+		},
+		{
+			name: "skips family incompatible with raw translate target",
+			rules: []networkModels.FirewallNATRule{{
+				ID: 61, Name: "snat-mixed-family", Enabled: true, Log: true, Priority: 1000, NATType: "snat", EgressInterfaces: []string{"em0"},
+				TranslateMode: "address", TranslateToRaw: "203.0.113.60", Family: "any", Protocol: "any", DestRaw: "any",
+				SourceObj: &networkModels.Object{ID: 62, Type: "List", Resolutions: []networkModels.ObjectResolution{
+					{ResolvedValue: "10.62.0.0/24"}, {ResolvedValue: "2001:db8:62::/64"},
+				}},
+			}},
+			want:    []string{"nat log on em0 inet from <sylve_obj_62_inet> to any tag sylve_nat_61 -> 203.0.113.60"},
+			notWant: []string{"nat log on em0 inet6", "skipped"},
+		},
+	}
+
 	svc := &Service{}
-	rules := []networkModels.FirewallTrafficRule{
-		{
-			Enabled:   true,
-			Log:       true,
-			Quick:     true,
-			Priority:  1000,
-			Action:    "block",
-			Direction: "in",
-			Protocol:  "any",
-			Family:    "inet6",
-			SourceRaw: "2001:db8::1",
-			DestRaw:   "any",
-		},
-	}
-
-	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "block in log quick inet6 from 2001:db8::1 to any") {
-		t.Fatalf("expected quick keyword in rendered rule, got:\n%s", rendered)
-	}
-}
-
-func TestRenderTrafficRulesOmitsLogKeywordWhenLogDisabled(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallTrafficRule{
-		{
-			Enabled:   true,
-			Log:       false,
-			Quick:     true,
-			Priority:  1000,
-			Action:    "pass",
-			Direction: "in",
-			Protocol:  "any",
-			Family:    "inet",
-			SourceRaw: "198.51.100.11",
-			DestRaw:   "any",
-		},
-	}
-
-	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if strings.Contains(rendered, " pass in log ") {
-		t.Fatalf("did not expect log keyword for log-disabled traffic rule, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, "pass in quick inet from 198.51.100.11 to any") {
-		t.Fatalf("expected traffic rule rendering without log keyword, got:\n%s", rendered)
-	}
-}
-
-func TestRenderTrafficRulesUsesIngressAndEgressInterfaces(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallTrafficRule{
-		{
-			Enabled:           true,
-			Log:               true,
-			Quick:             true,
-			Priority:          1000,
-			Action:            "pass",
-			Direction:         "in",
-			Protocol:          "tcp",
-			Family:            "inet",
-			IngressInterfaces: []string{"em0"},
-			SourceRaw:         "192.0.2.10",
-			DestRaw:           "any",
-			DstPortsRaw:       "443",
-		},
-		{
-			Enabled:          true,
-			Log:              true,
-			Quick:            false,
-			Priority:         1010,
-			Action:           "pass",
-			Direction:        "out",
-			Protocol:         "tcp",
-			Family:           "inet",
-			EgressInterfaces: []string{"bridge0"},
-			SourceRaw:        "192.0.2.10",
-			DestRaw:          "any",
-			DstPortsRaw:      "443",
-		},
-	}
-
-	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	expectedInbound := "pass in log quick on em0 inet proto tcp from 192.0.2.10 to any port 443"
-	if !strings.Contains(rendered, expectedInbound) {
-		t.Fatalf("expected ingress interface rendering for inbound rule, got:\n%s", rendered)
-	}
-	expectedOutbound := "pass out log on bridge0 inet proto tcp from 192.0.2.10 to any port 443"
-	if !strings.Contains(rendered, expectedOutbound) {
-		t.Fatalf("expected egress interface rendering for outbound rule, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, `label "sylve_trf_`) {
-		t.Fatalf("expected rendered traffic rules to include deterministic labels, got:\n%s", rendered)
-	}
-}
-
-func TestRenderTrafficRulesUsesPFProtocolListForTCPUDP(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallTrafficRule{
-		{
-			ID:               88,
-			Name:             "DNS over TCP and UDP",
-			Enabled:          true,
-			Action:           "pass",
-			Direction:        "out",
-			Protocol:         "tcp_udp",
-			Family:           "inet",
-			EgressInterfaces: []string{"em0"},
-			SourceRaw:        "192.0.2.0/24",
-			DestRaw:          "any",
-			DstPortsRaw:      "53",
-		},
-	}
-
-	rendered, err := svc.renderTrafficRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-	expected := `pass out on em0 inet proto { tcp, udp } from 192.0.2.0/24 to any port 53 label "sylve_trf_88"`
-	if !strings.Contains(rendered, expected) {
-		t.Fatalf("expected combined protocol PF syntax, got:\n%s", rendered)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, err := svc.renderNATRules(tt.rules, buildFirewallObjectTables(nil, tt.rules))
+			if err != nil {
+				t.Fatalf("unexpected render error: %v", err)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(rendered, want) {
+					t.Fatalf("expected %q in rendered rules, got:\n%s", want, rendered)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(rendered, notWant) {
+					t.Fatalf("did not expect %q in rendered rules, got:\n%s", notWant, rendered)
+				}
+			}
+		})
 	}
 }
 
@@ -1546,128 +1544,112 @@ func TestRenderTrafficRulesRejectsEnabledRuleWhenObjectTableEmpty(t *testing.T) 
 	}
 }
 
-func TestRenderNATRulesUsesObjectTables(t *testing.T) {
+func TestValidateFirewallNATRuleRequestRejects(t *testing.T) {
+	enabled := true
+	tests := []struct {
+		name    string
+		req     networkServiceInterfaces.UpsertFirewallNATRuleRequest
+		wantErr string
+	}{
+		{"snat with dnat-only fields", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10",
+		}, "snat_rejects_dnat_only_fields"},
+		{"snat without egress", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any",
+		}, "snat_requires_egress_interface"},
+		{"snat ingress without policy routing", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0"}, IngressInterfaces: []string{"em1"},
+		}, "snat_ingress_interfaces_require_policy_routing"},
+		{"dnat without ingress", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", DNATTargetRaw: "10.0.0.10",
+		}, "dnat_requires_ingress_interface"},
+		{"dnat without target", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"},
+		}, "dnat_requires_target_host"},
+		{"dnat with egress", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"}, EgressInterfaces: []string{"em1"}, DNATTargetRaw: "10.0.0.10",
+		}, "dnat_rejects_egress_interfaces"},
+		{"dnat with translate mode", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10", TranslateMode: "interface",
+		}, "dnat_rejects_translate_mode"},
+		{"dnat ports without transport protocol", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "any", Family: "inet", IngressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10", DstPortsRaw: "443",
+		}, "dnat_ports_require_tcp_or_udp_protocol"},
+		{"dnat redirect without destination port", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10", RedirectPortsRaw: "8443",
+		}, "redirect_port_requires_destination_port_match"},
+		{"dnat malformed ports", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10", DstPortsRaw: "https",
+		}, "invalid_dst_ports_raw_port_selector"},
+		{"snat address mode without target", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0"}, TranslateMode: "address",
+		}, "translate_mode_address_requires_translate_target"},
+		{"snat interface mode with target", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0"}, TranslateMode: "interface", TranslateToRaw: "203.0.113.50",
+		}, "translate_to_fields_not_allowed_for_translate_mode_interface"},
+		{"dnat with policy routing", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "dnat", Protocol: "tcp", Family: "inet", IngressInterfaces: []string{"em0"}, DNATTargetRaw: "10.0.0.10", PolicyRoutingEnabled: &enabled,
+		}, "dnat_rejects_policy_routing"},
+		{"policy routing without egress", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", TranslateMode: "interface", PolicyRoutingEnabled: &enabled,
+		}, "policy_routing_requires_exactly_one_egress_interface"},
+		{"policy routing without gateway", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "inet", EgressInterfaces: []string{"em0"}, TranslateMode: "interface", PolicyRoutingEnabled: &enabled,
+		}, "policy_route_gateway_required_when_policy_routing_enabled"},
+		{"policy routing with multiple egress", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0", "em1"}, TranslateMode: "interface", PolicyRoutingEnabled: &enabled,
+		}, "policy_routing_requires_exactly_one_egress_interface"},
+		{"policy gateway with family any", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "any", EgressInterfaces: []string{"em0"}, TranslateMode: "interface", PolicyRoutingEnabled: &enabled, PolicyRouteGateway: "198.51.100.1",
+		}, "policy_route_gateway_requires_explicit_family"},
+		{"policy gateway family mismatch", networkServiceInterfaces.UpsertFirewallNATRuleRequest{
+			NATType: "snat", Protocol: "any", Family: "inet", EgressInterfaces: []string{"em0"}, TranslateMode: "interface", PolicyRoutingEnabled: &enabled, PolicyRouteGateway: "2001:db8::1",
+		}, "incompatible_family_for_policy_route_gateway"},
+	}
+
 	svc := &Service{}
-	rules := []networkModels.FirewallNATRule{
-		{
-			ID:               31,
-			Name:             "nat-v4",
-			Enabled:          true,
-			Log:              true,
-			Priority:         1000,
-			NATType:          "snat",
-			EgressInterfaces: []string{"em0"},
-			TranslateMode:    "interface",
-			Family:           "any",
-			Protocol:         "any",
-			SourceObj: &networkModels.Object{
-				ID:   99,
-				Type: "List",
-				Resolutions: []networkModels.ObjectResolution{
-					{ResolvedValue: "10.10.0.0/16"},
-				},
-			},
-			DestRaw: "any",
-		},
-	}
-
-	tables := buildFirewallObjectTables(nil, rules)
-	rendered, err := svc.renderNATRules(rules, tables)
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "nat log on em0 inet from <sylve_obj_99_inet> to any tag sylve_nat_31 -> (em0)") {
-		t.Fatalf("expected nat rule to reference object table, got:\n%s", rendered)
-	}
-	if strings.Contains(rendered, `label "sylve_nat_31"`) {
-		t.Fatalf("did not expect nat label syntax in rendered output, got:\n%s", rendered)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := tt.req
+			req.Name = "nat-validation"
+			err := svc.validateFirewallNATRuleRequest(&req)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
-func TestRenderNATRulesRendersDNATWithPortRewrite(t *testing.T) {
+func TestValidateFirewallTrafficRuleRequestRejects(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     networkServiceInterfaces.UpsertFirewallTrafficRuleRequest
+		wantErr string
+	}{
+		{"ports for icmp", networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
+			Direction: "in", Protocol: "icmp", SrcPortsRaw: "80",
+		}, "ports_require_tcp_or_udp_protocol"},
+		{"malformed raw ports", networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
+			Direction: "in", Protocol: "tcp", SrcPortsRaw: "abc",
+		}, "invalid_src_ports_raw_port_selector"},
+		{"inbound with egress", networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
+			Direction: "in", Protocol: "any", EgressInterfaces: []string{"bridge0"},
+		}, "in_direction_rejects_egress_interfaces"},
+		{"outbound with ingress", networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
+			Direction: "out", Protocol: "any", IngressInterfaces: []string{"bridge0"},
+		}, "out_direction_rejects_ingress_interfaces"},
+	}
+
 	svc := &Service{}
-	rules := []networkModels.FirewallNATRule{
-		{
-			ID:                41,
-			Name:              "rdr-https",
-			Enabled:           true,
-			Log:               true,
-			Priority:          1000,
-			NATType:           "dnat",
-			IngressInterfaces: []string{"em0"},
-			Family:            "inet",
-			Protocol:          "tcp",
-			SourceRaw:         "any",
-			DestRaw:           "198.51.100.10",
-			DNATTargetRaw:     "10.0.0.10",
-			DstPortsRaw:       "443",
-			RedirectPortsRaw:  "8443",
-		},
-	}
-
-	rendered, err := svc.renderNATRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "rdr log on em0 inet proto tcp from any to 198.51.100.10 port 443 tag sylve_nat_41 -> 10.0.0.10 port 8443") {
-		t.Fatalf("expected dnat/rdr line with port rewrite, got:\n%s", rendered)
-	}
-	if strings.Contains(rendered, `label "sylve_nat_41"`) {
-		t.Fatalf("did not expect dnat label syntax in rendered output, got:\n%s", rendered)
-	}
-}
-
-func TestRenderNATRulesOmitsLogKeywordWhenLogDisabled(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallNATRule{
-		{
-			ID:               42,
-			Name:             "snat-no-log",
-			Enabled:          true,
-			Log:              false,
-			Priority:         1000,
-			NATType:          "snat",
-			EgressInterfaces: []string{"em0"},
-			TranslateMode:    "interface",
-			Family:           "inet",
-			Protocol:         "any",
-			SourceRaw:        "10.42.0.0/24",
-			DestRaw:          "any",
-		},
-	}
-
-	rendered, err := svc.renderNATRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if strings.Contains(rendered, "nat log on") {
-		t.Fatalf("did not expect nat log keyword for log-disabled nat rule, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, "nat on em0 inet from 10.42.0.0/24 to any tag sylve_nat_42 -> (em0)") {
-		t.Fatalf("expected nat rendering without log keyword, got:\n%s", rendered)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestRejectsInvalidTypeSpecificFields(t *testing.T) {
-	svc := &Service{}
-	req := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:             "invalid",
-		NATType:          "snat",
-		Protocol:         "any",
-		Family:           "any",
-		EgressInterfaces: []string{"em0"},
-		DNATTargetRaw:    "10.0.0.10",
-	}
-
-	err := svc.validateFirewallNATRuleRequest(req)
-	if err == nil {
-		t.Fatal("expected strict nat field validation error")
-	}
-	if !strings.Contains(err.Error(), "snat_rejects_dnat_only_fields") {
-		t.Fatalf("unexpected validation error: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := tt.req
+			req.Name, req.Action, req.Family = "traffic-validation", "pass", "any"
+			err := svc.validateFirewallTrafficRuleRequest(&req)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %s, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -1704,274 +1686,6 @@ func TestBuildFirewallObjectTablesIgnoresDisabledRules(t *testing.T) {
 	}
 }
 
-func TestValidateFirewallTrafficRuleRequestRejectsPortsForICMP(t *testing.T) {
-	svc := &Service{}
-	req := &networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
-		Name:        "icmp-with-port",
-		Action:      "pass",
-		Direction:   "in",
-		Protocol:    "icmp",
-		Family:      "any",
-		SrcPortsRaw: "80",
-	}
-
-	err := svc.validateFirewallTrafficRuleRequest(req)
-	if err == nil {
-		t.Fatal("expected traffic validation to reject ports for icmp")
-	}
-	if !strings.Contains(err.Error(), "ports_require_tcp_or_udp_protocol") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallTrafficRuleRequestRejectsMalformedRawPorts(t *testing.T) {
-	svc := &Service{}
-	req := &networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
-		Name:        "tcp-bad-port",
-		Action:      "pass",
-		Direction:   "in",
-		Protocol:    "tcp",
-		Family:      "any",
-		SrcPortsRaw: "abc",
-	}
-
-	err := svc.validateFirewallTrafficRuleRequest(req)
-	if err == nil {
-		t.Fatal("expected traffic validation to reject malformed raw port selector")
-	}
-	if !strings.Contains(err.Error(), "invalid_src_ports_raw_port_selector") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallTrafficRuleRequestRejectsIrrelevantDirectionalInterfaces(t *testing.T) {
-	svc := &Service{}
-	inboundWithEgress := &networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
-		Name:             "inbound-with-egress",
-		Action:           "pass",
-		Direction:        "in",
-		Protocol:         "any",
-		Family:           "any",
-		EgressInterfaces: []string{"bridge0"},
-	}
-
-	err := svc.validateFirewallTrafficRuleRequest(inboundWithEgress)
-	if err == nil {
-		t.Fatal("expected inbound traffic rule validation to reject egress interfaces")
-	}
-	if !strings.Contains(err.Error(), "in_direction_rejects_egress_interfaces") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	outboundWithIngress := &networkServiceInterfaces.UpsertFirewallTrafficRuleRequest{
-		Name:              "outbound-with-ingress",
-		Action:            "pass",
-		Direction:         "out",
-		Protocol:          "any",
-		Family:            "any",
-		IngressInterfaces: []string{"bridge0"},
-	}
-
-	err = svc.validateFirewallTrafficRuleRequest(outboundWithIngress)
-	if err == nil {
-		t.Fatal("expected outbound traffic rule validation to reject ingress interfaces")
-	}
-	if !strings.Contains(err.Error(), "out_direction_rejects_ingress_interfaces") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestSNATRequiresEgress(t *testing.T) {
-	svc := &Service{}
-	req := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:     "snat-no-egress",
-		NATType:  "snat",
-		Protocol: "any",
-		Family:   "any",
-	}
-
-	err := svc.validateFirewallNATRuleRequest(req)
-	if err == nil {
-		t.Fatal("expected snat rule validation to fail without egress interface")
-	}
-	if !strings.Contains(err.Error(), "snat_requires_egress_interface") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	rejectIngress := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "snat-reject-ingress",
-		NATType:           "snat",
-		Protocol:          "any",
-		Family:            "any",
-		EgressInterfaces:  []string{"em0"},
-		IngressInterfaces: []string{"em1"},
-	}
-	err = svc.validateFirewallNATRuleRequest(rejectIngress)
-	if err == nil {
-		t.Fatal("expected snat rule validation to require policy routing for ingress interface selectors")
-	}
-	if !strings.Contains(err.Error(), "snat_ingress_interfaces_require_policy_routing") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestDNATRequiresIngressAndTarget(t *testing.T) {
-	svc := &Service{}
-	noIngress := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:          "dnat-no-ingress",
-		NATType:       "dnat",
-		Protocol:      "tcp",
-		Family:        "inet",
-		DNATTargetRaw: "10.0.0.10",
-	}
-	err := svc.validateFirewallNATRuleRequest(noIngress)
-	if err == nil {
-		t.Fatal("expected dnat rule validation to fail without ingress interface")
-	}
-	if !strings.Contains(err.Error(), "dnat_requires_ingress_interface") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	noTarget := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-no-target",
-		NATType:           "dnat",
-		Protocol:          "tcp",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-	}
-	err = svc.validateFirewallNATRuleRequest(noTarget)
-	if err == nil {
-		t.Fatal("expected dnat rule validation to fail without target")
-	}
-	if !strings.Contains(err.Error(), "dnat_requires_target_host") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	rejectEgress := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-reject-egress",
-		NATType:           "dnat",
-		Protocol:          "tcp",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-		EgressInterfaces:  []string{"em1"},
-		DNATTargetRaw:     "10.0.0.10",
-	}
-	err = svc.validateFirewallNATRuleRequest(rejectEgress)
-	if err == nil {
-		t.Fatal("expected dnat rule validation to reject egress interface selectors")
-	}
-	if !strings.Contains(err.Error(), "dnat_rejects_egress_interfaces") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestDNATRejectsTranslateFieldsAndInvalidPorts(t *testing.T) {
-	svc := &Service{}
-	rejectsTranslateMode := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-translate-mode",
-		NATType:           "dnat",
-		Protocol:          "tcp",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-		DNATTargetRaw:     "10.0.0.10",
-		TranslateMode:     "interface",
-	}
-	err := svc.validateFirewallNATRuleRequest(rejectsTranslateMode)
-	if err == nil {
-		t.Fatal("expected dnat to reject translateMode")
-	}
-	if !strings.Contains(err.Error(), "dnat_rejects_translate_mode") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	portsNeedTransport := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-port-any-proto",
-		NATType:           "dnat",
-		Protocol:          "any",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-		DNATTargetRaw:     "10.0.0.10",
-		DstPortsRaw:       "443",
-	}
-	err = svc.validateFirewallNATRuleRequest(portsNeedTransport)
-	if err == nil {
-		t.Fatal("expected dnat to reject port match with non tcp/udp protocol")
-	}
-	if !strings.Contains(err.Error(), "dnat_ports_require_tcp_or_udp_protocol") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	redirectNeedsMatch := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-redirect-no-match",
-		NATType:           "dnat",
-		Protocol:          "tcp",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-		DNATTargetRaw:     "10.0.0.10",
-		RedirectPortsRaw:  "8443",
-	}
-	err = svc.validateFirewallNATRuleRequest(redirectNeedsMatch)
-	if err == nil {
-		t.Fatal("expected dnat to reject redirect port without destination match port")
-	}
-	if !strings.Contains(err.Error(), "redirect_port_requires_destination_port_match") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	rejectMalformedPorts := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:              "dnat-bad-port",
-		NATType:           "dnat",
-		Protocol:          "tcp",
-		Family:            "inet",
-		IngressInterfaces: []string{"em0"},
-		DNATTargetRaw:     "10.0.0.10",
-		DstPortsRaw:       "https",
-	}
-	err = svc.validateFirewallNATRuleRequest(rejectMalformedPorts)
-	if err == nil {
-		t.Fatal("expected dnat to reject malformed raw port selector")
-	}
-	if !strings.Contains(err.Error(), "invalid_dst_ports_raw_port_selector") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestSNATTranslateModes(t *testing.T) {
-	svc := &Service{}
-	addressNeedsTarget := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:             "snat-address-missing-target",
-		NATType:          "snat",
-		Protocol:         "any",
-		Family:           "any",
-		EgressInterfaces: []string{"em0"},
-		TranslateMode:    "address",
-	}
-	err := svc.validateFirewallNATRuleRequest(addressNeedsTarget)
-	if err == nil {
-		t.Fatal("expected snat translateMode=address to require translate target")
-	}
-	if !strings.Contains(err.Error(), "translate_mode_address_requires_translate_target") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-
-	interfaceRejectsTarget := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:             "snat-interface-with-target",
-		NATType:          "snat",
-		Protocol:         "any",
-		Family:           "any",
-		EgressInterfaces: []string{"em0"},
-		TranslateMode:    "interface",
-		TranslateToRaw:   "203.0.113.50",
-	}
-	err = svc.validateFirewallNATRuleRequest(interfaceRejectsTarget)
-	if err == nil {
-		t.Fatal("expected snat translateMode=interface to reject explicit translate target")
-	}
-	if !strings.Contains(err.Error(), "translate_to_fields_not_allowed_for_translate_mode_interface") {
-		t.Fatalf("unexpected validation error: %v", err)
-	}
-}
-
 func TestValidateFirewallNATRuleRequestPolicyRoutingAcceptsValidSNATAndBINAT(t *testing.T) {
 	svc := &Service{}
 
@@ -2004,114 +1718,6 @@ func TestValidateFirewallNATRuleRequestPolicyRoutingAcceptsValidSNATAndBINAT(t *
 	}
 	if err := svc.validateFirewallNATRuleRequest(binat); err != nil {
 		t.Fatalf("expected binat policy routing request with gateway to pass validation, got: %v", err)
-	}
-}
-
-func TestValidateFirewallNATRuleRequestPolicyRoutingRejectsInvalidCombinations(t *testing.T) {
-	svc := &Service{}
-	enablePolicyRouting := true
-
-	dnat := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "dnat-policy",
-		NATType:              "dnat",
-		Protocol:             "tcp",
-		Family:               "inet",
-		IngressInterfaces:    []string{"em0"},
-		DNATTargetRaw:        "10.0.0.10",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-	}
-	err := svc.validateFirewallNATRuleRequest(dnat)
-	if err == nil {
-		t.Fatal("expected dnat with policy routing to fail validation")
-	}
-	if !strings.Contains(err.Error(), "dnat_rejects_policy_routing") {
-		t.Fatalf("unexpected validation error for dnat policy routing: %v", err)
-	}
-
-	noEgress := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "snat-policy-no-egress",
-		NATType:              "snat",
-		Protocol:             "any",
-		Family:               "any",
-		TranslateMode:        "interface",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-	}
-	err = svc.validateFirewallNATRuleRequest(noEgress)
-	if err == nil {
-		t.Fatal("expected policy routing to reject zero egress interfaces")
-	}
-	if !strings.Contains(err.Error(), "policy_routing_requires_exactly_one_egress_interface") {
-		t.Fatalf("unexpected validation error for zero egress interfaces: %v", err)
-	}
-
-	noGateway := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "snat-policy-no-gateway",
-		NATType:              "snat",
-		Protocol:             "any",
-		Family:               "inet",
-		EgressInterfaces:     []string{"em0"},
-		TranslateMode:        "interface",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-	}
-	err = svc.validateFirewallNATRuleRequest(noGateway)
-	if err == nil {
-		t.Fatal("expected policy routing to require explicit gateway")
-	}
-	if !strings.Contains(err.Error(), "policy_route_gateway_required_when_policy_routing_enabled") {
-		t.Fatalf("unexpected validation error for missing policy gateway: %v", err)
-	}
-
-	multiEgress := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "snat-policy-multi-egress",
-		NATType:              "snat",
-		Protocol:             "any",
-		Family:               "any",
-		EgressInterfaces:     []string{"em0", "em1"},
-		TranslateMode:        "interface",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-	}
-	err = svc.validateFirewallNATRuleRequest(multiEgress)
-	if err == nil {
-		t.Fatal("expected policy routing to reject multiple egress interfaces")
-	}
-	if !strings.Contains(err.Error(), "policy_routing_requires_exactly_one_egress_interface") {
-		t.Fatalf("unexpected validation error for multiple egress interfaces: %v", err)
-	}
-
-	gatewayWithAnyFamily := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "snat-policy-gateway-any",
-		NATType:              "snat",
-		Protocol:             "any",
-		Family:               "any",
-		EgressInterfaces:     []string{"em0"},
-		TranslateMode:        "interface",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-		PolicyRouteGateway:   "198.51.100.1",
-	}
-	err = svc.validateFirewallNATRuleRequest(gatewayWithAnyFamily)
-	if err == nil {
-		t.Fatal("expected policy routing gateway to reject family=any")
-	}
-	if !strings.Contains(err.Error(), "policy_route_gateway_requires_explicit_family") {
-		t.Fatalf("unexpected validation error for gateway + family any: %v", err)
-	}
-
-	familyMismatch := &networkServiceInterfaces.UpsertFirewallNATRuleRequest{
-		Name:                 "snat-policy-gateway-mismatch",
-		NATType:              "snat",
-		Protocol:             "any",
-		Family:               "inet",
-		EgressInterfaces:     []string{"em0"},
-		TranslateMode:        "interface",
-		PolicyRoutingEnabled: &enablePolicyRouting,
-		PolicyRouteGateway:   "2001:db8::1",
-	}
-	err = svc.validateFirewallNATRuleRequest(familyMismatch)
-	if err == nil {
-		t.Fatal("expected policy route gateway family mismatch to fail validation")
-	}
-	if !strings.Contains(err.Error(), "incompatible_family_for_policy_route_gateway") {
-		t.Fatalf("unexpected validation error for policy route gateway family mismatch: %v", err)
 	}
 }
 
@@ -2194,53 +1800,6 @@ func TestCreateAndEditFirewallNATRulePolicyRoutingPersistence(t *testing.T) {
 	}
 	if disabled.PolicyRouteGateway != "" {
 		t.Fatalf("expected policy route gateway to be cleared on disable, got %q", disabled.PolicyRouteGateway)
-	}
-}
-
-func TestRenderNATRulesRendersSNATAddressAndBINATInterface(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallNATRule{
-		{
-			ID:               51,
-			Name:             "snat-address",
-			Enabled:          true,
-			Log:              true,
-			Priority:         1000,
-			NATType:          "snat",
-			EgressInterfaces: []string{"em0"},
-			TranslateMode:    "address",
-			TranslateToRaw:   "203.0.113.50",
-			Family:           "inet",
-			Protocol:         "any",
-			SourceRaw:        "10.0.0.0/24",
-			DestRaw:          "any",
-		},
-		{
-			ID:               52,
-			Name:             "binat-interface",
-			Enabled:          true,
-			Log:              true,
-			Priority:         1010,
-			NATType:          "binat",
-			EgressInterfaces: []string{"em0"},
-			TranslateMode:    "interface",
-			Family:           "inet",
-			Protocol:         "any",
-			SourceRaw:        "10.0.1.10",
-			DestRaw:          "any",
-		},
-	}
-
-	rendered, err := svc.renderNATRules(rules, map[uint]firewallObjectTable{})
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "nat log on em0 inet from 10.0.0.0/24 to any tag sylve_nat_51 -> 203.0.113.50") {
-		t.Fatalf("expected snat address translation line, got:\n%s", rendered)
-	}
-	if !strings.Contains(rendered, "binat log on em0 inet from 10.0.1.10 to any tag sylve_nat_52 -> (em0:0)") {
-		t.Fatalf("expected binat interface translation line, got:\n%s", rendered)
 	}
 }
 
@@ -2416,50 +1975,6 @@ func TestNATPolicyRoutingRulesPrependTrafficRules(t *testing.T) {
 	}
 	if policyIdx > trafficIdx {
 		t.Fatalf("expected policy routing companion rules before normal traffic rules, got:\n%s", combined)
-	}
-}
-
-func TestRenderNATRulesSkipsIncompatibleFamilyForRawTranslateTarget(t *testing.T) {
-	svc := &Service{}
-	rules := []networkModels.FirewallNATRule{
-		{
-			ID:               61,
-			Name:             "snat-mixed-family",
-			Enabled:          true,
-			Log:              true,
-			Priority:         1000,
-			NATType:          "snat",
-			EgressInterfaces: []string{"em0"},
-			TranslateMode:    "address",
-			TranslateToRaw:   "203.0.113.60",
-			Family:           "any",
-			Protocol:         "any",
-			SourceObj: &networkModels.Object{
-				ID:   62,
-				Type: "List",
-				Resolutions: []networkModels.ObjectResolution{
-					{ResolvedValue: "10.62.0.0/24"},
-					{ResolvedValue: "2001:db8:62::/64"},
-				},
-			},
-			DestRaw: "any",
-		},
-	}
-
-	tables := buildFirewallObjectTables(nil, rules)
-	rendered, err := svc.renderNATRules(rules, tables)
-	if err != nil {
-		t.Fatalf("unexpected render error: %v", err)
-	}
-
-	if !strings.Contains(rendered, "nat log on em0 inet from <sylve_obj_62_inet> to any tag sylve_nat_61 -> 203.0.113.60") {
-		t.Fatalf("expected inet line for compatible target family, got:\n%s", rendered)
-	}
-	if strings.Contains(rendered, "nat log on em0 inet6") {
-		t.Fatalf("did not expect inet6 line with ipv4 translation target, got:\n%s", rendered)
-	}
-	if strings.Contains(rendered, "skipped") {
-		t.Fatalf("expected family intersection without silently skipped rules, got:\n%s", rendered)
 	}
 }
 
@@ -2921,85 +2436,52 @@ func TestEnsurePFAutostartDisabledInRCConfUpsertsPFEnableNo(t *testing.T) {
 	}
 }
 
-func TestEnsurePFKernelModuleLoadedSkipsLoadWhenPresent(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	calls := []string{}
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		calls = append(calls, command+" "+strings.Join(args, " "))
-		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pf" {
-			return "pf loaded", nil
-		}
-		t.Fatalf("unexpected command call: %s %v", command, args)
-		return "", nil
+func TestEnsurePFKernelModuleLoaded(t *testing.T) {
+	tests := []struct {
+		name       string
+		kldstatErr error
+		kldloadErr error
+		wantCalls  []string
+		wantErr    string
+	}{
+		{name: "skips load when present", wantCalls: []string{"/sbin/kldstat -m pf"}},
+		{name: "loads when missing", kldstatErr: errors.New("not found"), wantCalls: []string{"/sbin/kldstat -m pf", "/sbin/kldload -n pf"}},
+		{
+			name: "load failure", kldstatErr: errors.New("not found"), kldloadErr: errors.New("permission denied"),
+			wantCalls: []string{"/sbin/kldstat -m pf", "/sbin/kldload -n pf"}, wantErr: "failed_to_load_pf_kernel_module",
+		},
 	}
 
-	svc := &Service{}
-	if err := svc.ensurePFKernelModuleLoaded(); err != nil {
-		t.Fatalf("expected module check to succeed when loaded, got: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := firewallRunCommand
+			t.Cleanup(func() { firewallRunCommand = original })
 
-	if len(calls) != 1 {
-		t.Fatalf("expected only kldstat call, got %d calls: %v", len(calls), calls)
-	}
-}
+			var calls []string
+			firewallRunCommand = func(command string, args ...string) (string, error) {
+				call := command + " " + strings.Join(args, " ")
+				calls = append(calls, call)
+				switch call {
+				case "/sbin/kldstat -m pf":
+					return "", tt.kldstatErr
+				case "/sbin/kldload -n pf":
+					return "", tt.kldloadErr
+				}
+				t.Fatalf("unexpected command call: %s", call)
+				return "", nil
+			}
 
-func TestEnsurePFKernelModuleLoadedLoadsWhenMissing(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	calls := []string{}
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		calls = append(calls, command+" "+strings.Join(args, " "))
-		if command == "/sbin/kldstat" && len(args) == 2 && args[0] == "-m" && args[1] == "pf" {
-			return "", errors.New("not found")
-		}
-		if command == "/sbin/kldload" && len(args) == 2 && args[0] == "-n" && args[1] == "pf" {
-			return "", nil
-		}
-		t.Fatalf("unexpected command call: %s %v", command, args)
-		return "", nil
-	}
-
-	svc := &Service{}
-	if err := svc.ensurePFKernelModuleLoaded(); err != nil {
-		t.Fatalf("expected module load to succeed, got: %v", err)
-	}
-
-	if len(calls) != 2 {
-		t.Fatalf("expected kldstat + kldload calls, got %d calls: %v", len(calls), calls)
-	}
-}
-
-func TestEnsurePFKernelModuleLoadedReturnsErrorOnLoadFailure(t *testing.T) {
-	original := firewallRunCommand
-	t.Cleanup(func() {
-		firewallRunCommand = original
-	})
-
-	firewallRunCommand = func(command string, args ...string) (string, error) {
-		if command == "/sbin/kldstat" {
-			return "", errors.New("not found")
-		}
-		if command == "/sbin/kldload" {
-			return "", errors.New("permission denied")
-		}
-		t.Fatalf("unexpected command call: %s %v", command, args)
-		return "", nil
-	}
-
-	svc := &Service{}
-	err := svc.ensurePFKernelModuleLoaded()
-	if err == nil {
-		t.Fatal("expected module load failure to return an error")
-	}
-	if !strings.Contains(err.Error(), "failed_to_load_pf_kernel_module") {
-		t.Fatalf("expected wrapped load error, got: %v", err)
+			err := (&Service{}).ensurePFKernelModuleLoaded()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("expected %q, got %v", tt.wantErr, err)
+			}
+			if !slices.Equal(calls, tt.wantCalls) {
+				t.Fatalf("calls = %v, want %v", calls, tt.wantCalls)
+			}
+		})
 	}
 }
 

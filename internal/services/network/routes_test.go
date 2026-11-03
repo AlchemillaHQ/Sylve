@@ -228,49 +228,51 @@ func TestValidateStaticRouteRequestRejectsInvalidShapes(t *testing.T) {
 	}
 }
 
-func TestAddManagedRouteBuildsSetfibNetInterfaceCommand(t *testing.T) {
-	mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
-		got := strings.Join(append([]string{command}, args...), " ")
-		expected := "/usr/sbin/setfib -F 1 /sbin/route -n add -net 192.168.180.0/24 -iface bridge0"
-		if got != expected {
-			t.Fatalf("unexpected command: got %q want %q", got, expected)
-		}
-		return "", nil
-	})
-
-	route := &networkModels.StaticRoute{
-		FIB:             1,
-		DestinationType: staticRouteDestinationNetwork,
-		Destination:     "192.168.180.0/24",
-		Family:          staticRouteFamilyINET,
-		NextHopMode:     staticRouteNextHopInterface,
-		Interface:       "bridge0",
+func TestAddManagedRouteBuildsCommand(t *testing.T) {
+	tests := []struct {
+		name  string
+		route networkModels.StaticRoute
+		want  string
+	}{
+		{
+			name: "setfib network via interface",
+			route: networkModels.StaticRoute{
+				FIB: 1, DestinationType: staticRouteDestinationNetwork, Destination: "192.168.180.0/24",
+				Family: staticRouteFamilyINET, NextHopMode: staticRouteNextHopInterface, Interface: "bridge0",
+			},
+			want: "/usr/sbin/setfib -F 1 /sbin/route -n add -net 192.168.180.0/24 -iface bridge0",
+		},
+		{
+			name: "setfib host via gateway",
+			route: networkModels.StaticRoute{
+				FIB: 2, DestinationType: staticRouteDestinationHost, Destination: "203.0.113.10",
+				Family: staticRouteFamilyINET, NextHopMode: staticRouteNextHopGateway, Gateway: "198.51.100.1",
+			},
+			want: "/usr/sbin/setfib -F 2 /sbin/route -n add -host 203.0.113.10 198.51.100.1",
+		},
+		{
+			name: "scoped link-local gateway",
+			route: networkModels.StaticRoute{
+				DestinationType: staticRouteDestinationNetwork, Destination: "::/0", Family: staticRouteFamilyINET6,
+				NextHopMode: staticRouteNextHopGateway, Gateway: "fe80::200:17ff:fe44:663a", GatewayZone: "dSkxOdFn",
+			},
+			want: "/sbin/route -n -6 add -net ::/0 fe80::200:17ff:fe44:663a%dSkxOdFn",
+		},
 	}
-	if err := addManagedRoute(route); err != nil {
-		t.Fatalf("expected add route success, got: %v", err)
-	}
-}
 
-func TestAddManagedRouteBuildsSetfibHostGatewayCommand(t *testing.T) {
-	mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
-		got := strings.Join(append([]string{command}, args...), " ")
-		expected := "/usr/sbin/setfib -F 2 /sbin/route -n add -host 203.0.113.10 198.51.100.1"
-		if got != expected {
-			t.Fatalf("unexpected command: got %q want %q", got, expected)
-		}
-		return "", nil
-	})
-
-	route := &networkModels.StaticRoute{
-		FIB:             2,
-		DestinationType: staticRouteDestinationHost,
-		Destination:     "203.0.113.10",
-		Family:          staticRouteFamilyINET,
-		NextHopMode:     staticRouteNextHopGateway,
-		Gateway:         "198.51.100.1",
-	}
-	if err := addManagedRoute(route); err != nil {
-		t.Fatalf("expected add route success, got: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
+				if got := strings.Join(append([]string{command}, args...), " "); got != tt.want {
+					t.Fatalf("unexpected command: got %q want %q", got, tt.want)
+				}
+				return "", nil
+			})
+			route := tt.route
+			if err := addManagedRoute(&route); err != nil {
+				t.Fatalf("expected add route success, got: %v", err)
+			}
+		})
 	}
 }
 
@@ -402,30 +404,6 @@ func TestValidateStaticRouteRequestAcceptsLinkLocalGatewayWithZone(t *testing.T)
 	}
 	if strings.Contains(route.Gateway, "%") {
 		t.Fatalf("expected gateway without zone, got %q", route.Gateway)
-	}
-}
-
-func TestAddManagedRouteBuildsScopedGatewayCommand(t *testing.T) {
-	mockStaticRouteRunCommand(t, func(command string, args ...string) (string, error) {
-		got := strings.Join(append([]string{command}, args...), " ")
-		expected := "/sbin/route -n -6 add -net ::/0 fe80::200:17ff:fe44:663a%dSkxOdFn"
-		if got != expected {
-			t.Fatalf("unexpected command: got %q want %q", got, expected)
-		}
-		return "", nil
-	})
-
-	route := &networkModels.StaticRoute{
-		FIB:             0,
-		DestinationType: staticRouteDestinationNetwork,
-		Destination:     "::/0",
-		Family:          staticRouteFamilyINET6,
-		NextHopMode:     staticRouteNextHopGateway,
-		Gateway:         "fe80::200:17ff:fe44:663a",
-		GatewayZone:     "dSkxOdFn",
-	}
-	if err := addManagedRoute(route); err != nil {
-		t.Fatalf("expected add route success, got: %v", err)
 	}
 }
 

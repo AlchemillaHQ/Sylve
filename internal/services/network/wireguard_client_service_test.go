@@ -18,108 +18,50 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestCreateWireGuardClientRequiresPrivateKey(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
-	seedWireGuardServiceEnabled(t, db)
-
-	enabled := false
-	peerKey := mustGenerateWireGuardPrivateKey(t).PublicKey().String()
-	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
-		Name:          "client-no-private-key",
-		Enabled:       &enabled,
-		EndpointHost:  "198.51.100.10",
-		EndpointPort:  51820,
-		PrivateKey:    "",
-		PeerPublicKey: peerKey,
-		AllowedIPs:    []string{"10.10.0.0/16"},
-		Addresses:     []string{"10.210.1.2/32"},
-	})
-	if !errors.Is(err, ErrWireGuardClientPrivateKeyReq) {
-		t.Fatalf("expected missing private key error, got: %v", err)
-	}
-}
-
-func TestCreateWireGuardClientRejectsInvalidPrivateKey(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
-	seedWireGuardServiceEnabled(t, db)
-
-	enabled := false
-	_, err := svc.CreateWireGuardClient(&WireGuardClientRequest{
-		Name:          "client-invalid-private-key",
-		Enabled:       &enabled,
-		EndpointHost:  "198.51.100.10",
-		EndpointPort:  51820,
-		PrivateKey:    "invalid-key",
-		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
-		AllowedIPs:    []string{"10.10.0.0/16"},
-		Addresses:     []string{"10.210.1.2/32"},
-	})
-	if err == nil {
-		t.Fatal("expected invalid private key error")
-	}
-	if !strings.Contains(err.Error(), "invalid_wireguard_private_key") {
-		t.Fatalf("expected invalid private key error, got: %v", err)
-	}
-}
-
-func TestEditWireGuardClientRequiresPrivateKey(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
-	seedWireGuardServiceEnabled(t, db)
-
-	privateKey := mustGenerateWireGuardPrivateKey(t)
-	client := networkModels.WireGuardClient{
-		Enabled:       false,
-		Name:          "client-edit-no-key",
-		EndpointHost:  "198.51.100.10",
-		EndpointPort:  51820,
-		PrivateKey:    privateKey.String(),
-		PublicKey:     privateKey.PublicKey().String(),
-		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
-		AllowedIPs:    []string{"10.10.0.0/16"},
-		Addresses:     []string{"10.210.1.2/32"},
-	}
-	if err := db.Create(&client).Error; err != nil {
-		t.Fatalf("failed to seed client: %v", err)
+func TestWireGuardClientValidatesPrivateKey(t *testing.T) {
+	tests := []struct {
+		name       string
+		edit       bool
+		privateKey string
+		wantErr    string
+	}{
+		{"create requires key", false, "", ErrWireGuardClientPrivateKeyReq.Error()},
+		{"create rejects invalid key", false, "invalid-key", "invalid_wireguard_private_key"},
+		{"edit requires key", true, "", ErrWireGuardClientPrivateKeyReq.Error()},
+		{"edit rejects invalid key", true, "invalid-key", "invalid_wireguard_private_key"},
 	}
 
-	err := svc.EditWireGuardClient(&WireGuardClientRequest{
-		ID:         &client.ID,
-		PrivateKey: "",
-	})
-	if !errors.Is(err, ErrWireGuardClientPrivateKeyReq) {
-		t.Fatalf("expected missing private key error, got: %v", err)
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
+			seedWireGuardServiceEnabled(t, db)
 
-func TestEditWireGuardClientRejectsInvalidPrivateKey(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t, &models.BasicSettings{}, &networkModels.WireGuardClient{})
-	seedWireGuardServiceEnabled(t, db)
-
-	privateKey := mustGenerateWireGuardPrivateKey(t)
-	client := networkModels.WireGuardClient{
-		Enabled:       false,
-		Name:          "client-edit-invalid-key",
-		EndpointHost:  "198.51.100.10",
-		EndpointPort:  51820,
-		PrivateKey:    privateKey.String(),
-		PublicKey:     privateKey.PublicKey().String(),
-		PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
-		AllowedIPs:    []string{"10.10.0.0/16"},
-		Addresses:     []string{"10.210.1.2/32"},
-	}
-	if err := db.Create(&client).Error; err != nil {
-		t.Fatalf("failed to seed client: %v", err)
-	}
-
-	err := svc.EditWireGuardClient(&WireGuardClientRequest{
-		ID:         &client.ID,
-		PrivateKey: "invalid-key",
-	})
-	if err == nil {
-		t.Fatal("expected invalid private key error")
-	}
-	if !strings.Contains(err.Error(), "invalid_wireguard_private_key") {
-		t.Fatalf("expected invalid private key error, got: %v", err)
+			var err error
+			if tt.edit {
+				privateKey := mustGenerateWireGuardPrivateKey(t)
+				client := networkModels.WireGuardClient{
+					Name:          "client-edit-key",
+					EndpointHost:  "198.51.100.10",
+					EndpointPort:  51820,
+					PrivateKey:    privateKey.String(),
+					PublicKey:     privateKey.PublicKey().String(),
+					PeerPublicKey: mustGenerateWireGuardPrivateKey(t).PublicKey().String(),
+					AllowedIPs:    []string{"10.10.0.0/16"},
+					Addresses:     []string{"10.210.1.2/32"},
+				}
+				if err := db.Create(&client).Error; err != nil {
+					t.Fatalf("failed to seed client: %v", err)
+				}
+				err = svc.EditWireGuardClient(&WireGuardClientRequest{ID: &client.ID, PrivateKey: tt.privateKey})
+			} else {
+				req := validWireGuardClientRequest(t, "client-create-key", false)
+				req.PrivateKey = tt.privateKey
+				_, err = svc.CreateWireGuardClient(&req)
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %q, got %v", tt.wantErr, err)
+			}
+		})
 	}
 }
 

@@ -31,15 +31,7 @@ import (
 )
 
 func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("sie%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
 	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
@@ -95,15 +87,7 @@ func TestIntegrationStandardSwitchEditRecreatesMissingBridge(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchVLANFilteringModeTransitions(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch VLAN-filtering transition integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch VLAN-filtering transition integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("sft%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
 	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
@@ -222,15 +206,7 @@ func TestIntegrationStandardSwitchVLANFilteringModeTransitions(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchSLAACAcceptsDefaultRouter(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch SLAAC integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch SLAAC integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("sis%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
 	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
@@ -268,15 +244,7 @@ func TestIntegrationStandardSwitchSLAACAcceptsDefaultRouter(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchSLAACNonOwnerSuppressesDefaultRouter(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch SLAAC integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch SLAAC integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("sin%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
 	if _, err := iface.Get(bridgeName); err == nil || !isInterfaceMissingError(err) {
@@ -313,15 +281,7 @@ func TestIntegrationStandardSwitchSLAACNonOwnerSuppressesDefaultRouter(t *testin
 }
 
 func TestIntegrationStandardSwitchPortMACIdentity(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch MAC integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch MAC integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("sim%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
 	createPort := func(label string) string {
@@ -395,15 +355,7 @@ func TestIntegrationStandardSwitchPortMACIdentity(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchFilteredHostVLANLifecycle(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping filtered host VLAN integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("filtered host VLAN integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 
 	bridgeName := fmt.Sprintf("svh%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
 	hostVLAN := 123
@@ -486,17 +438,7 @@ func TestIntegrationStandardSwitchFilteredHostVLANLifecycle(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchRebindsExistingDefaultRouteToBridge(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch integration test requires root")
-	}
-	for _, command := range []string{"/sbin/ifconfig", "/sbin/route", "/sbin/sysctl", "/usr/bin/netstat", "/usr/sbin/setfib"} {
-		if _, err := exec.LookPath(command); err != nil {
-			t.Skipf("required command %s is unavailable: %v", command, err)
-		}
-	}
+	requireStandardSwitchIntegration(t, "/sbin/route", "/sbin/sysctl", "/usr/bin/netstat", "/usr/sbin/setfib")
 
 	const (
 		networkAddress = "198.18.254.2/24"
@@ -656,17 +598,7 @@ func unusedStandardSwitchIntegrationFIB(t *testing.T, network string) int {
 }
 
 func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping dhclient integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("dhclient integration test requires root")
-	}
-	for _, command := range []string{"/bin/pgrep", "/bin/pkill", "/sbin/dhclient", "/sbin/ifconfig"} {
-		if _, err := exec.LookPath(command); err != nil {
-			t.Skipf("required command %s is unavailable: %v", command, err)
-		}
-	}
+	requireStandardSwitchIntegration(t, "/bin/pgrep", "/bin/pkill", "/sbin/dhclient")
 
 	bridgeName := fmt.Sprintf("sid%04x%04x", os.Getpid()&0xffff, time.Now().UnixNano()&0xffff)
 	leasePath := "/var/db/dhclient.leases." + bridgeName
@@ -747,15 +679,7 @@ func TestIntegrationStandardSwitchDHClientLifecycle(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchMultipleStaticAddresses(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping standard switch address integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("standard switch address integration test requires root")
-	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
-	}
+	requireStandardSwitchIntegration(t)
 	for _, filtered := range []bool{false, true} {
 		t.Run(fmt.Sprintf("filtered=%t", filtered), func(t *testing.T) {
 			bridgeName := fmt.Sprintf("sma%03x%03x", os.Getpid()&0xfff, time.Now().UnixNano()&0xfff)
@@ -846,17 +770,7 @@ func TestIntegrationStandardSwitchMultipleStaticAddresses(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchBootstrapMissingPort(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping bootstrap switch integration test in short mode")
-	}
-	if os.Geteuid() != 0 {
-		t.Skip("bootstrap switch integration test requires root")
-	}
-	for _, command := range []string{"/sbin/ifconfig", "/sbin/dhclient", "/bin/pgrep", "/bin/pkill"} {
-		if _, err := exec.LookPath(command); err != nil {
-			t.Skipf("required command %s is unavailable: %v", command, err)
-		}
-	}
+	requireStandardSwitchIntegration(t, "/sbin/dhclient", "/bin/pgrep", "/bin/pkill")
 	for _, dhcp := range []bool{false, true} {
 		t.Run(fmt.Sprintf("dhcp=%t", dhcp), func(t *testing.T) {
 			useTestDhclientRuntimeDir(t)

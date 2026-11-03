@@ -1001,83 +1001,135 @@ func TestIsInterfaceMissingError(t *testing.T) {
 	}
 }
 
-func TestSyncStandardSwitchesSyncReturnsUnexpectedIfaceError(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s4", BridgeName: "vm-s4"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
+func TestSyncStandardSwitchesReturnsErrors(t *testing.T) {
+	members := func(names ...string) []iface.BridgeMember {
+		out := make([]iface.BridgeMember, 0, len(names))
+		for _, name := range names {
+			out = append(out, iface.BridgeMember{Name: name})
+		}
+		return out
+	}
+	// first lookup sees an extra tap0 member, later lookups return after (or fail)
+	reconciled := func(after []iface.BridgeMember, afterErr error) func(int, string) (*iface.Interface, error) {
+		return func(call int, name string) (*iface.Interface, error) {
+			if call == 1 {
+				return &iface.Interface{Name: name, BridgeMembers: members("em0", "tap0")}, nil
+			}
+			if afterErr != nil {
+				return nil, afterErr
+			}
+			return &iface.Interface{Name: name, BridgeMembers: after}, nil
+		}
+	}
+	tests := []struct {
+		name          string
+		bridge        string
+		withPort      bool
+		ifaceGet      func(call int, name string) (*iface.Interface, error)
+		createErr     error
+		editErr       error
+		failCommand   string
+		commandErr    error
+		wantErr       string
+		noBridgeCalls bool
+	}{
+		{
+			name:   "unexpected iface error",
+			bridge: "vm-s4",
+			ifaceGet: func(int, string) (*iface.Interface, error) {
+				return nil, errors.New("permission denied")
+			},
+			wantErr:       "sync_standard_switches: get vm-s4: permission denied",
+			noBridgeCalls: true,
+		},
+		{
+			name:   "create error",
+			bridge: "vm-s5",
+			ifaceGet: func(int, string) (*iface.Interface, error) {
+				return nil, errors.New("interface not found")
+			},
+			createErr: errors.New("create failed"),
+			wantErr:   "sync_standard_switches: failed_to_create vm-s5: create failed",
+		},
+		{
+			name:   "edit error",
+			bridge: "vm-s6",
+			ifaceGet: func(_ int, name string) (*iface.Interface, error) {
+				return &iface.Interface{Name: name}, nil
+			},
+			editErr: errors.New("edit failed"),
+			wantErr: "sync_standard_switches: failed_to_reconcile vm-s6: edit failed",
+		},
+		{
+			name:     "post-reconcile lookup fails",
+			bridge:   "vm-s9",
+			withPort: true,
+			ifaceGet: reconciled(nil, errors.New("lookup failed")),
+			wantErr:  "sync_standard_switches: get vm-s9 after reconcile: lookup failed",
+		},
+		{
+			name:        "member reattach fails",
+			bridge:      "vm-s10",
+			withPort:    true,
+			ifaceGet:    reconciled(members("em0"), nil),
+			failCommand: "/sbin/ifconfig vm-s10 addm tap0 up",
+			commandErr:  errors.New("addm failed"),
+			wantErr:     "sync_standard_switches: add member tap0 to vm-s10: addm failed",
+		},
+		{
+			name:        "member bring-up fails",
+			bridge:      "vm-s11",
+			withPort:    true,
+			ifaceGet:    reconciled(members("em0"), nil),
+			failCommand: "/sbin/ifconfig tap0 up",
+			commandErr:  errors.New("up failed"),
+			wantErr:     "sync_standard_switches: bring up member tap0: up failed",
+		},
 	}
 
-	createCalls := 0
-	editCalls := 0
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return nil, errors.New("permission denied")
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			createCalls++
-			return nil
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			editCalls++
-			return nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			return "", nil
-		},
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, db := newNetworkServiceForTest(t, &networkModels.StandardSwitch{}, &networkModels.NetworkPort{})
+			sw := networkModels.StandardSwitch{Name: strings.TrimPrefix(tt.bridge, "vm-"), BridgeName: tt.bridge}
+			if err := db.Create(&sw).Error; err != nil {
+				t.Fatalf("failed to seed switch: %v", err)
+			}
+			if tt.withPort {
+				if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: sw.ID}).Error; err != nil {
+					t.Fatalf("failed to seed switch port: %v", err)
+				}
+			}
 
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: get vm-s4: permission denied") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if createCalls != 0 {
-		t.Fatalf("expected no create calls, got %d", createCalls)
-	}
-	if editCalls != 0 {
-		t.Fatalf("expected no edit calls, got %d", editCalls)
-	}
-}
+			getCalls, bridgeCalls := 0, 0
+			stubSyncFunctions(t, syncStubSet{
+				ifaceGet: func(name string) (*iface.Interface, error) {
+					getCalls++
+					return tt.ifaceGet(getCalls, name)
+				},
+				createBridge: func(networkModels.StandardSwitch) error {
+					bridgeCalls++
+					return tt.createErr
+				},
+				editBridge: func(_, _ networkModels.StandardSwitch) error {
+					bridgeCalls++
+					return tt.editErr
+				},
+				runCommand: func(command string, args ...string) (string, error) {
+					if strings.Join(append([]string{command}, args...), " ") == tt.failCommand {
+						return "", tt.commandErr
+					}
+					return "", nil
+				},
+			})
 
-func TestSyncStandardSwitchesSyncReturnsCreateError(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s5", BridgeName: "vm-s5"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return nil, errors.New("interface not found")
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			return errors.New("create failed")
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			return nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			return "", nil
-		},
-	})
-
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: failed_to_create vm-s5: create failed") {
-		t.Fatalf("unexpected error: %v", err)
+			err := svc.SyncStandardSwitches()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected %q, got %v", tt.wantErr, err)
+			}
+			if tt.noBridgeCalls && bridgeCalls != 0 {
+				t.Fatalf("expected no create/edit calls, got %d", bridgeCalls)
+			}
+		})
 	}
 }
 
@@ -1121,41 +1173,6 @@ func TestSyncStandardSwitchesContinuesAfterOneSwitchFails(t *testing.T) {
 	}
 	if len(created) != 2 || !createdSet["vm-broken"] || !createdSet["vm-healthy"] {
 		t.Fatalf("created bridges = %v, want both switches attempted", created)
-	}
-}
-
-func TestSyncStandardSwitchesSyncReturnsEditError(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s6", BridgeName: "vm-s6"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			return nil
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			return errors.New("edit failed")
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			return "", nil
-		},
-	})
-
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: failed_to_reconcile vm-s6: edit failed") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -1276,179 +1293,8 @@ func TestSyncStandardSwitchesSyncTreatsVLANSubinterfaceAsDBMember(t *testing.T) 
 		}
 	}
 
-	var sawTapAttach bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-s8 addm tap0 up" {
-			sawTapAttach = true
-		}
-	}
-	if !sawTapAttach {
+	if !slices.Contains(commands, "/sbin/ifconfig vm-s8 addm tap0 up") {
 		t.Fatalf("expected non-db tap member to be reattached, commands: %v", commands)
-	}
-}
-
-func TestSyncStandardSwitchesSyncReturnsErrorWhenPostReconcileLookupFails(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s9", BridgeName: "vm-s9"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-	if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: sw.ID}).Error; err != nil {
-		t.Fatalf("failed to seed switch port: %v", err)
-	}
-
-	getCalls := 0
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			getCalls++
-			if getCalls == 1 {
-				return &iface.Interface{
-					Name: name,
-					BridgeMembers: []iface.BridgeMember{
-						{Name: "em0"},
-						{Name: "tap0"},
-					},
-				}, nil
-			}
-			return nil, errors.New("lookup failed")
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			return nil
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			return nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			return "", nil
-		},
-	})
-
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: get vm-s9 after reconcile: lookup failed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSyncStandardSwitchesSyncReturnsErrorOnMemberReattachFailure(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s10", BridgeName: "vm-s10"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-	if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: sw.ID}).Error; err != nil {
-		t.Fatalf("failed to seed switch port: %v", err)
-	}
-
-	getCalls := 0
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			getCalls++
-			if getCalls == 1 {
-				return &iface.Interface{
-					Name: name,
-					BridgeMembers: []iface.BridgeMember{
-						{Name: "em0"},
-						{Name: "tap0"},
-					},
-				}, nil
-			}
-			return &iface.Interface{
-				Name: name,
-				BridgeMembers: []iface.BridgeMember{
-					{Name: "em0"},
-				},
-			}, nil
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			return nil
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			return nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			if full == "/sbin/ifconfig vm-s10 addm tap0 up" {
-				return "", errors.New("addm failed")
-			}
-			return "", nil
-		},
-	})
-
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: add member tap0 to vm-s10: addm failed") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestSyncStandardSwitchesSyncReturnsErrorOnMemberBringUpFailure(t *testing.T) {
-	svc, db := newNetworkServiceForTest(t,
-		&networkModels.StandardSwitch{},
-		&networkModels.NetworkPort{},
-	)
-
-	sw := networkModels.StandardSwitch{Name: "s11", BridgeName: "vm-s11"}
-	if err := db.Create(&sw).Error; err != nil {
-		t.Fatalf("failed to seed switch: %v", err)
-	}
-	if err := db.Create(&networkModels.NetworkPort{Name: "em0", SwitchID: sw.ID}).Error; err != nil {
-		t.Fatalf("failed to seed switch port: %v", err)
-	}
-
-	getCalls := 0
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			getCalls++
-			if getCalls == 1 {
-				return &iface.Interface{
-					Name: name,
-					BridgeMembers: []iface.BridgeMember{
-						{Name: "em0"},
-						{Name: "tap0"},
-					},
-				}, nil
-			}
-			return &iface.Interface{
-				Name: name,
-				BridgeMembers: []iface.BridgeMember{
-					{Name: "em0"},
-				},
-			}, nil
-		},
-		createBridge: func(sw networkModels.StandardSwitch) error {
-			return nil
-		},
-		editBridge: func(oldSw, newSw networkModels.StandardSwitch) error {
-			return nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			if full == "/sbin/ifconfig tap0 up" {
-				return "", errors.New("up failed")
-			}
-			return "", nil
-		},
-	})
-
-	err := svc.SyncStandardSwitches()
-	if err == nil {
-		t.Fatal("expected sync error, got nil")
-	}
-	if !strings.Contains(err.Error(), "sync_standard_switches: bring up member tap0: up failed") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -1985,381 +1831,132 @@ func TestRestoreStandardSwitchEditRuntimeRepairsPartiallyRemovedDHCPMemberInPlac
 	}
 }
 
-func TestCreateStandardBridgeAssignsHostLikeIPv4WithoutGateway(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			if full == "/sbin/ifconfig bridge create" {
-				return "bridge42\n", nil
+func TestStandardBridgeAddressCommands(t *testing.T) {
+	obj := func(value string) *networkModels.Object {
+		return &networkModels.Object{Entries: []networkModels.ObjectEntry{{Value: value}}}
+	}
+	tests := []struct {
+		name        string
+		create      bool
+		runtimeIPv6 []iface.IPv6
+		oldSw       networkModels.StandardSwitch
+		newSw       networkModels.StandardSwitch
+		want        []string
+		ordered     bool // want must also appear in this order
+		notWant     []string
+	}{
+		{
+			name:   "create assigns host-like IPv4 without gateway",
+			create: true,
+			newSw:  networkModels.StandardSwitch{BridgeName: "vm-host-create", DisableIPv6: true, NetworkObj: obj("10.80.0.254/24")},
+			want:   []string{"/sbin/ifconfig vm-host-create inet 10.80.0.254/24"},
+		},
+		{
+			name:    "create skips subnet-base IPv4 without gateway",
+			create:  true,
+			newSw:   networkModels.StandardSwitch{BridgeName: "vm-subnet-create", DisableIPv6: true, NetworkObj: obj("10.80.0.0/24")},
+			notWant: []string{"/sbin/ifconfig vm-subnet-create inet 10.80.0.0/24"},
+		},
+		{
+			name:  "edit assigns host-like IPv4 without gateway",
+			oldSw: networkModels.StandardSwitch{BridgeName: "vm-edit-host", DisableIPv6: true},
+			newSw: networkModels.StandardSwitch{BridgeName: "vm-edit-host", DisableIPv6: true, NetworkObj: obj("10.90.0.254/24")},
+			want:  []string{"/sbin/ifconfig vm-edit-host inet 10.90.0.254/24"},
+		},
+		{
+			name:    "edit skips subnet-base IPv4 without gateway",
+			oldSw:   networkModels.StandardSwitch{BridgeName: "vm-edit-subnet", DisableIPv6: true},
+			newSw:   networkModels.StandardSwitch{BridgeName: "vm-edit-subnet", DisableIPv6: true, NetworkObj: obj("10.90.0.0/24")},
+			notWant: []string{"/sbin/ifconfig vm-edit-subnet inet 10.90.0.0/24"},
+		},
+		{
+			name:  "edit enables IPv6 before assigning it",
+			oldSw: networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-flip-on", DisableIPv6: true},
+			newSw: networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-flip-on", Network6Obj: obj("2001:db8:1::1/64")},
+			want: []string{
+				"/sbin/ifconfig vm-edit-ipv6-flip-on inet6 auto_linklocal -ifdisabled no_radr -accept_rtadv",
+				"/sbin/ifconfig vm-edit-ipv6-flip-on inet6 2001:db8:1::1/64",
+			},
+			ordered: true,
+		},
+		{
+			name:        "edit disables IPv6 and removes its address and route",
+			runtimeIPv6: []iface.IPv6{{IP: net.ParseIP("2001:db8:2::1"), PrefixLength: 64}},
+			oldSw: networkModels.StandardSwitch{
+				BridgeName: "vm-edit-ipv6-flip-off", Network6Obj: obj("2001:db8:2::1/64"), Gateway6AddressObj: obj("2001:db8:2::ff"),
+			},
+			newSw: networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-flip-off", DisableIPv6: true},
+			want: []string{
+				"/sbin/ifconfig vm-edit-ipv6-flip-off inet6 2001:db8:2::1 delete",
+				"/sbin/route -6 delete -net 2001:db8:2::1/64 2001:db8:2::ff",
+				"/sbin/ifconfig vm-edit-ipv6-flip-off inet6 no_radr -accept_rtadv ifdisabled",
+			},
+		},
+		{
+			name:    "edit skips IPv6 while still disabled",
+			oldSw:   networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-still-off", DisableIPv6: true},
+			newSw:   networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-still-off", DisableIPv6: true, Network6Obj: obj("2001:db8:3::1/64")},
+			notWant: []string{"/sbin/ifconfig vm-edit-ipv6-still-off inet6 2001:db8:3::1/64"},
+		},
+		{
+			name:        "edit replaces IPv6 when network changes",
+			runtimeIPv6: []iface.IPv6{{IP: net.ParseIP("2001:db8:4::1"), PrefixLength: 64}},
+			oldSw:       networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-replace", Network6Obj: obj("2001:db8:4::1/64")},
+			newSw:       networkModels.StandardSwitch{BridgeName: "vm-edit-ipv6-replace", Network6Obj: obj("2001:db8:5::1/64")},
+			want: []string{
+				"/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:4::1/64 delete",
+				"/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:5::1/64",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var commands []string
+			stubs := syncStubSet{
+				runCommand: func(command string, args ...string) (string, error) {
+					full := strings.Join(append([]string{command}, args...), " ")
+					commands = append(commands, full)
+					if full == "/sbin/ifconfig bridge create" {
+						return "bridge42\n", nil
+					}
+					return "", nil
+				},
 			}
-			return "", nil
-		},
-	})
-
-	sw := networkModels.StandardSwitch{
-		Name:        "host-like-create",
-		BridgeName:  "vm-host-create",
-		DisableIPv6: true,
-		NetworkObj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "10.80.0.254/24"}},
-		},
-	}
-
-	sw = withTestStandardSwitchMAC(sw)
-	if err := createStandardBridge(sw); err != nil {
-		t.Fatalf("expected create bridge success, got %v", err)
-	}
-
-	var sawAssign bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-host-create inet 10.80.0.254/24" {
-			sawAssign = true
-			break
-		}
-	}
-	if !sawAssign {
-		t.Fatalf("expected IPv4 assignment command, got commands: %v", commands)
-	}
-}
-
-func TestCreateStandardBridgeSkipsSubnetBaseIPv4WithoutGateway(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			if full == "/sbin/ifconfig bridge create" {
-				return "bridge43\n", nil
+			if !tt.create {
+				stubs.ifaceGet = func(name string) (*iface.Interface, error) {
+					return &iface.Interface{Name: name, IPv6: tt.runtimeIPv6}, nil
+				}
 			}
-			return "", nil
-		},
-	})
+			stubSyncFunctions(t, stubs)
 
-	sw := networkModels.StandardSwitch{
-		Name:        "subnet-base-create",
-		BridgeName:  "vm-subnet-create",
-		DisableIPv6: true,
-		NetworkObj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "10.80.0.0/24"}},
-		},
-	}
+			var err error
+			if tt.create {
+				err = createStandardBridge(withTestStandardSwitchMAC(tt.newSw))
+			} else {
+				err = editStandardBridge(withTestStandardSwitchMAC(tt.oldSw), withTestStandardSwitchMAC(tt.newSw))
+			}
+			if err != nil {
+				t.Fatalf("unexpected bridge error: %v", err)
+			}
 
-	sw = withTestStandardSwitchMAC(sw)
-	if err := createStandardBridge(sw); err != nil {
-		t.Fatalf("expected create bridge success, got %v", err)
-	}
-
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-subnet-create inet 10.80.0.0/24" {
-			t.Fatalf("expected no IPv4 assignment for subnet-base CIDR, got commands: %v", commands)
-		}
-	}
-}
-
-func TestEditStandardBridgeAssignsHostLikeIPv4WithoutGateway(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-host",
-		BridgeName:  "vm-edit-host",
-		DisableIPv6: true,
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-host",
-		BridgeName:  "vm-edit-host",
-		DisableIPv6: true,
-		NetworkObj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "10.90.0.254/24"}},
-		},
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	var sawAssign bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-host inet 10.90.0.254/24" {
-			sawAssign = true
-			break
-		}
-	}
-	if !sawAssign {
-		t.Fatalf("expected IPv4 assignment command, got commands: %v", commands)
-	}
-}
-
-func TestEditStandardBridgeSkipsSubnetBaseIPv4WithoutGateway(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-subnet",
-		BridgeName:  "vm-edit-subnet",
-		DisableIPv6: true,
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-subnet",
-		BridgeName:  "vm-edit-subnet",
-		DisableIPv6: true,
-		NetworkObj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "10.90.0.0/24"}},
-		},
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-subnet inet 10.90.0.0/24" {
-			t.Fatalf("expected no IPv4 assignment for subnet-base CIDR, got commands: %v", commands)
-		}
-	}
-}
-
-func TestEditStandardBridgeAddsIPv6WhenDisableIPv6FlipsFalse(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-ipv6-flip-on",
-		BridgeName:  "vm-edit-ipv6-flip-on",
-		DisableIPv6: true,
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-ipv6-flip-on",
-		BridgeName:  "vm-edit-ipv6-flip-on",
-		DisableIPv6: false,
-		Network6Obj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:1::1/64"}},
-		},
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	var sawIfDisabledClear, sawAssign bool
-	var clearIdx, assignIdx int = -1, -1
-	for i, cmd := range commands {
-		if strings.Contains(cmd, "auto_linklocal") && strings.Contains(cmd, "-ifdisabled") {
-			sawIfDisabledClear = true
-			clearIdx = i
-		}
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-on inet6 2001:db8:1::1/64" {
-			sawAssign = true
-			assignIdx = i
-		}
-	}
-	if !sawIfDisabledClear {
-		t.Fatalf("expected -ifdisabled clear, got commands: %v", commands)
-	}
-	if !sawAssign {
-		t.Fatalf("expected IPv6 assignment, got commands: %v", commands)
-	}
-	if clearIdx >= assignIdx {
-		t.Fatalf("-ifdisabled must be cleared BEFORE IPv6 address assignment, got commands: %v", commands)
-	}
-}
-
-func TestEditStandardBridgeDisablesIPv6WhenFlagFlipsTrue(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{
-				Name: name,
-				IPv6: []iface.IPv6{{
-					IP:           net.ParseIP("2001:db8:2::1"),
-					PrefixLength: 64,
-				}},
-			}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-ipv6-flip-off",
-		BridgeName:  "vm-edit-ipv6-flip-off",
-		DisableIPv6: false,
-		Network6Obj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:2::1/64"}},
-		},
-		Gateway6AddressObj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:2::ff"}},
-		},
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-ipv6-flip-off",
-		BridgeName:  "vm-edit-ipv6-flip-off",
-		DisableIPv6: true,
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	var sawDelAddr, sawDelRoute, sawIfDisabled bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 2001:db8:2::1 delete" {
-			sawDelAddr = true
-		}
-		if cmd == "/sbin/route -6 delete -net 2001:db8:2::1/64 2001:db8:2::ff" {
-			sawDelRoute = true
-		}
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-flip-off inet6 no_radr -accept_rtadv ifdisabled" {
-			sawIfDisabled = true
-		}
-	}
-	if !sawDelAddr {
-		t.Fatalf("expected old IPv6 address deletion, got commands: %v", commands)
-	}
-	if !sawDelRoute {
-		t.Fatalf("expected old IPv6 route deletion, got commands: %v", commands)
-	}
-	if !sawIfDisabled {
-		t.Fatalf("expected ifdisabled flag set, got commands: %v", commands)
-	}
-}
-
-func TestEditStandardBridgeSkipsIPv6WhenStillDisabled(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{Name: name}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-ipv6-still-off",
-		BridgeName:  "vm-edit-ipv6-still-off",
-		DisableIPv6: true,
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-ipv6-still-off",
-		BridgeName:  "vm-edit-ipv6-still-off",
-		DisableIPv6: true,
-		Network6Obj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:3::1/64"}},
-		},
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-still-off inet6 2001:db8:3::1/64" {
-			t.Fatalf("expected no IPv6 assignment when disabled, got commands: %v", commands)
-		}
-	}
-}
-
-func TestEditStandardBridgeReplacesIPv6WhenNetworkChanges(t *testing.T) {
-	var commands []string
-	stubSyncFunctions(t, syncStubSet{
-		ifaceGet: func(name string) (*iface.Interface, error) {
-			return &iface.Interface{
-				Name: name,
-				IPv6: []iface.IPv6{{
-					IP:           net.ParseIP("2001:db8:4::1"),
-					PrefixLength: 64,
-				}},
-			}, nil
-		},
-		runCommand: func(command string, args ...string) (string, error) {
-			full := strings.Join(append([]string{command}, args...), " ")
-			commands = append(commands, full)
-			return "", nil
-		},
-	})
-
-	oldSw := networkModels.StandardSwitch{
-		Name:        "old-edit-ipv6-replace",
-		BridgeName:  "vm-edit-ipv6-replace",
-		DisableIPv6: false,
-		Network6Obj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:4::1/64"}},
-		},
-	}
-	newSw := networkModels.StandardSwitch{
-		Name:        "new-edit-ipv6-replace",
-		BridgeName:  "vm-edit-ipv6-replace",
-		DisableIPv6: false,
-		Network6Obj: &networkModels.Object{
-			Entries: []networkModels.ObjectEntry{{Value: "2001:db8:5::1/64"}},
-		},
-	}
-
-	oldSw = withTestStandardSwitchMAC(oldSw)
-	newSw = withTestStandardSwitchMAC(newSw)
-	if err := editStandardBridge(oldSw, newSw); err != nil {
-		t.Fatalf("expected edit bridge success, got %v", err)
-	}
-
-	var sawDel, sawAdd bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:4::1/64 delete" {
-			sawDel = true
-		}
-		if cmd == "/sbin/ifconfig vm-edit-ipv6-replace inet6 2001:db8:5::1/64" {
-			sawAdd = true
-		}
-	}
-	if !sawDel {
-		t.Fatalf("expected old IPv6 deletion, got commands: %v", commands)
-	}
-	if !sawAdd {
-		t.Fatalf("expected new IPv6 assignment, got commands: %v", commands)
+			next := 0
+			for _, command := range commands {
+				if tt.ordered && next < len(tt.want) && command == tt.want[next] {
+					next++
+				}
+			}
+			for i, want := range tt.want {
+				if !slices.Contains(commands, want) || (tt.ordered && i >= next) {
+					t.Fatalf("missing %q (ordered=%v), got commands: %v", want, tt.ordered, commands)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if slices.Contains(commands, notWant) {
+					t.Fatalf("unexpected %q, got commands: %v", notWant, commands)
+				}
+			}
+		})
 	}
 }
 
@@ -2830,14 +2427,7 @@ func TestCreateStandardBridgeAppliesManualIPv4(t *testing.T) {
 		t.Fatalf("expected create bridge success, got %v", err)
 	}
 
-	var sawAssign bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-manual-apply4 inet 10.81.0.254/24" {
-			sawAssign = true
-			break
-		}
-	}
-	if !sawAssign {
+	if !slices.Contains(commands, "/sbin/ifconfig vm-manual-apply4 inet 10.81.0.254/24") {
 		t.Fatalf("expected manual IPv4 assignment, got commands: %v", commands)
 	}
 }
@@ -2867,14 +2457,7 @@ func TestCreateStandardBridgeAppliesManualIPv6ScopedLinkLocalGateway(t *testing.
 		t.Fatalf("expected create bridge success, got %v", err)
 	}
 
-	var sawScopedRoute bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/route -6 add -net 2001:db8::1/64 fe80::1%vm-manual-apply6" {
-			sawScopedRoute = true
-			break
-		}
-	}
-	if !sawScopedRoute {
+	if !slices.Contains(commands, "/sbin/route -6 add -net 2001:db8::1/64 fe80::1%vm-manual-apply6") {
 		t.Fatalf("expected scoped manual link-local IPv6 route, got commands: %v", commands)
 	}
 }
@@ -2917,14 +2500,7 @@ func TestEditStandardBridgePreservesNonDatabaseMembers(t *testing.T) {
 		t.Fatalf("expected edit bridge success, got %v", err)
 	}
 
-	var sawMemberAttach bool
-	for _, cmd := range commands {
-		if cmd == "/sbin/ifconfig vm-svm-vlan-preserve addm custom0 up" {
-			sawMemberAttach = true
-			break
-		}
-	}
-	if !sawMemberAttach {
+	if !slices.Contains(commands, "/sbin/ifconfig vm-svm-vlan-preserve addm custom0 up") {
 		t.Fatalf("expected non-database member to be reattached, got commands: %v", commands)
 	}
 }

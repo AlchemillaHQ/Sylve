@@ -24,16 +24,20 @@ import (
 	"gorm.io/gorm"
 )
 
-func requireStandardSwitchAdoptionIntegration(t *testing.T) {
+// requireStandardSwitchIntegration skips unless running as root, outside -short,
+// with /sbin/ifconfig and any extra commands available.
+func requireStandardSwitchIntegration(t *testing.T, commands ...string) {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("skipping standard switch adoption integration test in short mode")
+		t.Skip("skipping standard switch integration test in short mode")
 	}
 	if os.Geteuid() != 0 {
-		t.Skip("standard switch adoption integration test requires root")
+		t.Skip("standard switch integration test requires root")
 	}
-	if _, err := exec.LookPath("/sbin/ifconfig"); err != nil {
-		t.Skipf("required command /sbin/ifconfig is unavailable: %v", err)
+	for _, command := range append([]string{"/sbin/ifconfig"}, commands...) {
+		if _, err := exec.LookPath(command); err != nil {
+			t.Skipf("required command %s is unavailable: %v", command, err)
+		}
 	}
 }
 
@@ -84,7 +88,7 @@ func orphanModel(
 }
 
 func TestIntegrationStandardSwitchAdoptsStaticOrphanRuntime(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-static")
 	bridgeName := adoptionBridgeName(name)
@@ -171,7 +175,7 @@ func TestIntegrationStandardSwitchAdoptsStaticOrphanRuntime(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchAdoptionRejectsForeignMemberWithoutMutation(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-foreign")
 	bridgeName := adoptionBridgeName(name)
@@ -239,7 +243,7 @@ func TestIntegrationStandardSwitchAdoptionRejectsForeignMemberWithoutMutation(t 
 }
 
 func TestIntegrationStandardSwitchAdoptsLegacyVLANOrphan(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-vlan")
 	bridgeName := adoptionBridgeName(name)
@@ -315,7 +319,7 @@ func TestIntegrationStandardSwitchAdoptsLegacyVLANOrphan(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchAdoptsFilteredHostVLANOrphan(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-host-vlan")
 	bridgeName := adoptionBridgeName(name)
@@ -422,7 +426,7 @@ func TestIntegrationStandardSwitchAdoptsFilteredHostVLANOrphan(t *testing.T) {
 }
 
 func TestIntegrationStandardSwitchAdoptionPersistenceFailureKeepsBridge(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-keep")
 	bridgeName := adoptionBridgeName(name)
@@ -480,7 +484,7 @@ func TestIntegrationStandardSwitchAdoptionPersistenceFailureKeepsBridge(t *testi
 }
 
 func TestIntegrationStandardSwitchAdoptsRawLegacyMemberAndConverges(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-legacy-raw")
 	bridgeName := adoptionBridgeName(name)
@@ -563,7 +567,7 @@ func TestIntegrationStandardSwitchAdoptsRawLegacyMemberAndConverges(t *testing.T
 }
 
 func TestIntegrationStandardSwitchAdoptionRejectsForeignLegacyVLANDerivedInterface(t *testing.T) {
-	requireStandardSwitchAdoptionIntegration(t)
+	requireStandardSwitchIntegration(t)
 
 	name := uniqueAdoptionName("adopt-legacy-negative")
 	bridgeName := adoptionBridgeName(name)
