@@ -900,6 +900,7 @@ func (e *Engine) zfsFstab() string {
 func (e *Engine) stepConfigure() error {
 	rc := fmt.Sprintf("hostname=%q\n", e.plan.Hostname)
 	rc += "sshd_enable=\"YES\"\nzfs_enable=\"YES\"\ndbus_enable=\"YES\"\nsylve_enable=\"YES\"\ndumpdev=\"NO\"\n"
+	rc += "ntpd_enable=\"YES\"\nntpd_sync_on_start=\"YES\"\n"
 	rc += "sendmail_enable=\"NONE\"\nsendmail_submit_enable=\"NO\"\nsendmail_outbound_enable=\"NO\"\nsendmail_msp_queue_enable=\"NO\"\n"
 	if !e.ufsMode() && e.encryptEnabled() {
 		rc += "bootpool_enable=\"YES\"\n"
