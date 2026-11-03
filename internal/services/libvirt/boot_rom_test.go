@@ -177,51 +177,6 @@ func TestHostLibvirtArch(t *testing.T) {
 	}
 }
 
-func TestAvailableBootROMs(t *testing.T) {
-	bootROMs := availableBootROMs()
-
-	expected := 2
-	if runtime.GOARCH == "amd64" {
-		expected = 3
-	}
-	if len(bootROMs) != expected {
-		t.Fatalf("expected %d available boot ROMs, got %d", expected, len(bootROMs))
-	}
-
-	hasNone := false
-	for _, br := range bootROMs {
-		if br == vmModels.VMBootROMNone {
-			hasNone = true
-		}
-	}
-	if !hasNone {
-		t.Fatal("expected 'none' in available boot ROMs")
-	}
-
-	switch runtime.GOARCH {
-	case "amd64":
-		hasUEFI := false
-		for _, br := range bootROMs {
-			if br == vmModels.VMBootROMUEFI {
-				hasUEFI = true
-			}
-		}
-		if !hasUEFI {
-			t.Fatal("expected 'uefi' in available boot ROMs on amd64")
-		}
-	case "arm64":
-		hasUBoot := false
-		for _, br := range bootROMs {
-			if br == vmModels.VMBootROMUBoot {
-				hasUBoot = true
-			}
-		}
-		if !hasUBoot {
-			t.Fatal("expected 'uboot' in available boot ROMs on arm64")
-		}
-	}
-}
-
 func TestHostUsesSplitFirmware(t *testing.T) {
 	got := hostUsesSplitFirmware()
 

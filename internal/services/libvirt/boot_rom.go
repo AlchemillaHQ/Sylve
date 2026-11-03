@@ -37,27 +37,8 @@ func hostLibvirtArch() string {
 	}
 }
 
-func hostFirmwarePath() string {
-	switch runtime.GOARCH {
-	case "arm64":
-		return ubootFirmwarePath
-	default:
-		return uefiFirmwarePath
-	}
-}
-
 func hostUsesSplitFirmware() bool {
 	return runtime.GOARCH != "arm64"
-}
-
-func availableBootROMs() []vmModels.VMBootROM {
-	if runtime.GOARCH == "arm64" {
-		return []vmModels.VMBootROM{vmModels.VMBootROMUBoot, vmModels.VMBootROMNone}
-	}
-	if runtime.GOARCH == "amd64" {
-		return []vmModels.VMBootROM{vmModels.VMBootROMUEFI, vmModels.VMBootROMUEFICSMWrap, vmModels.VMBootROMNone}
-	}
-	return []vmModels.VMBootROM{vmModels.VMBootROMUEFI, vmModels.VMBootROMNone}
 }
 
 func normalizeBootROMValue(value vmModels.VMBootROM) vmModels.VMBootROM {

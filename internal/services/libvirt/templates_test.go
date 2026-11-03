@@ -413,25 +413,6 @@ func TestResolveVMTemplateStoragePools(t *testing.T) {
 	})
 }
 
-func TestSourceVMStoragesForTemplate(t *testing.T) {
-	svc := &Service{}
-	vm := vmModels.VM{
-		Storages: []vmModels.Storage{
-			{ID: 1, Type: vmModels.VMStorageTypeRaw, BootOrder: 4},
-			{ID: 2, Type: vmModels.VMStorageTypeDiskImage, BootOrder: 1},
-			{ID: 3, Type: vmModels.VMStorageTypeZVol, BootOrder: 2},
-		},
-	}
-
-	out := svc.sourceVMStoragesForTemplate(vm)
-	if len(out) != 2 {
-		t.Fatalf("expected 2 cloneable storages, got %d", len(out))
-	}
-	if out[0].ID != 3 || out[1].ID != 1 {
-		t.Fatalf("expected zvol/raw sorted by boot order, got %#v", out)
-	}
-}
-
 func TestBuildVMFromTemplate_PropagatesExtraBhyveOptions(t *testing.T) {
 	template := vmModels.VMTemplate{
 		ExtraBhyveOptions: []string{

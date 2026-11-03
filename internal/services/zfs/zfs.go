@@ -102,19 +102,6 @@ func (s *Service) notifyDatasetsDeleted(ctx context.Context, guids []string) err
 	return nil
 }
 
-func (s *Service) PoolFromDataset(ctx context.Context, name string) (string, error) {
-	if name == "" {
-		return "", fmt.Errorf("dataset_name_cannot_be_empty")
-	}
-
-	dataset, err := s.GZFS.ZFS.Get(ctx, name, false)
-	if err != nil {
-		return "", fmt.Errorf("error_getting_dataset_%s: %w", name, err)
-	}
-
-	return dataset.Pool, nil
-}
-
 func (s *Service) GetUsablePools(ctx context.Context) ([]*gzfs.ZPool, error) {
 	scope, err := s.loadManagedPoolScope(ctx)
 	if err != nil {

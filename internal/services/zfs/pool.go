@@ -488,40 +488,6 @@ func (s *Service) ReplaceDevice(ctx context.Context, guid, old, latest string) e
 	})
 }
 
-func (s *Service) GetZpoolHistoricalStats(intervalMinutes int, limit int) (map[string][]zfsServiceInterfaces.PoolStatPoint, int, error) {
-	if intervalMinutes <= 0 || intervalMinutes > 525600 {
-		return nil, 0, fmt.Errorf("invalid_interval: must be between 1 and 525600 minutes")
-	}
-	if limit < 0 || limit > 10000 {
-		return nil, 0, fmt.Errorf("invalid_limit: must be between 0 and 10000")
-	}
-	if s.TelemetryDB == nil {
-		return nil, 0, fmt.Errorf("telemetry_database_unavailable")
-	}
-
-	var records []infoModels.ZPoolHistorical
-	if err := s.TelemetryDB.Order("guid ASC, created_at ASC").Find(&records).Error; err != nil {
-		return nil, 0, fmt.Errorf("load_zpool_history: %w", err)
-	}
-
-	series := downsamplePoolRows(records, time.Duration(intervalMinutes)*time.Minute)
-	result := make(map[string][]zfsServiceInterfaces.PoolStatPoint, len(series))
-	for _, history := range series {
-		points := history.Points
-		if limit > 0 && len(points) > limit {
-			points = points[len(points)-limit:]
-		}
-		// A destroyed pool can briefly overlap a newly-created pool with the
-		// same name until the cleanup cron runs. Expose the newest identity.
-		existing := result[history.Name]
-		if len(existing) == 0 || (len(points) > 0 && points[len(points)-1].Time > existing[len(existing)-1].Time) {
-			result[history.Name] = points
-		}
-	}
-
-	return result, len(records), nil
-}
-
 func (s *Service) DetachDevice(ctx context.Context, guid, device string) error {
 	return s.withPoolScrubMutation(ctx, guid, func(ctx context.Context) error {
 		s.syncMutex.Lock()

@@ -1520,16 +1520,3 @@ func (s *Service) DeleteVMTemplate(ctx context.Context, templateID uint) error {
 	s.emitLeftPanelRefresh(fmt.Sprintf("vm_template_delete_%d", templateID))
 	return nil
 }
-
-func (s *Service) sourceVMStoragesForTemplate(vm vmModels.VM) []vmModels.Storage {
-	out := make([]vmModels.Storage, 0, len(vm.Storages))
-	for _, storage := range vm.Storages {
-		if storage.Type == vmModels.VMStorageTypeRaw || storage.Type == vmModels.VMStorageTypeZVol {
-			out = append(out, storage)
-		}
-	}
-	slices.SortFunc(out, func(a, b vmModels.Storage) int {
-		return a.BootOrder - b.BootOrder
-	})
-	return out
-}

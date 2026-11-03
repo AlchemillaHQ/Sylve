@@ -791,58 +791,6 @@ func (s *Service) InitSecret(name string, shaRounds int) error {
 	return nil
 }
 
-func (s *Service) GetSecret(name string) (string, error) {
-	var count int64
-	if err := s.DB.Model(&models.SystemSecrets{}).Where("name = ?", name).Count(&count).Error; err != nil {
-		return "", fmt.Errorf("failed_to_get_secret")
-	}
-	if count == 0 {
-		return "", fmt.Errorf("secret_not_found")
-	}
-
-	var secret models.SystemSecrets
-	result := s.DB.Where("name = ?", name).Limit(1).Find(&secret)
-	if result.Error != nil || result.RowsAffected == 0 {
-		return "", fmt.Errorf("failed_to_get_secret")
-	}
-
-	return secret.Data, nil
-}
-
-func (s *Service) UpsertSecret(name string, data string) error {
-	var count int64
-	if err := s.DB.Model(&models.SystemSecrets{}).Where("name = ?", name).Count(&count).Error; err != nil {
-		return fmt.Errorf("failed_to_fetch")
-	}
-
-	if count == 0 {
-		newSecret := models.SystemSecrets{
-			Name: name,
-			Data: data,
-		}
-		if err := s.DB.Create(&newSecret).Error; err != nil {
-			return fmt.Errorf("failed_to_create")
-		}
-		return nil
-	}
-
-	var secret models.SystemSecrets
-	result := s.DB.Where("name = ?", name).Limit(1).Find(&secret)
-	if result.Error != nil || result.RowsAffected == 0 {
-		return fmt.Errorf("failed_to_fetch")
-	}
-
-	if secret.Data != data {
-		if err := s.DB.Model(&secret).Update("data", data).Error; err != nil {
-			return fmt.Errorf("failed_to_update")
-		}
-	} else {
-		return fmt.Errorf("already_upto_date")
-	}
-
-	return nil
-}
-
 func (s *Service) ClearExpiredJWTTokens(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

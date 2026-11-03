@@ -32,27 +32,6 @@ func newAuthTestService(t *testing.T) *Service {
 	return newAuthService(db, fakePasswordHasher{})
 }
 
-func TestGetOrCreatePAMIdentityReuse(t *testing.T) {
-	svc := newAuthTestService(t)
-
-	first, err := svc.getOrCreatePAMIdentity("root")
-	if err != nil {
-		t.Fatalf("expected_no_error_got: %v", err)
-	}
-	if first.ID == 0 {
-		t.Fatalf("expected_non_zero_identity_id")
-	}
-
-	second, err := svc.getOrCreatePAMIdentity("root")
-	if err != nil {
-		t.Fatalf("expected_no_error_got: %v", err)
-	}
-
-	if first.ID != second.ID {
-		t.Fatalf("expected_same_identity_id_%d_got: %d", first.ID, second.ID)
-	}
-}
-
 func TestVerifyTokenInDbForPAMIdentity(t *testing.T) {
 	svc := newAuthTestService(t)
 

@@ -981,32 +981,6 @@ func TestGetFirewallNATRuleCountersParsesPFOutput(t *testing.T) {
 	}
 }
 
-func TestParseFirewallLogLineExtractsRuleMetadata(t *testing.T) {
-	line := `1712400566.123456 rule 31/0(match): pass in on bridge0: 203.0.113.10.12345 > 198.51.100.20.443: Flags [S], length 64`
-	parsed, ok := parseFirewallLogLine(line)
-	if !ok {
-		t.Fatal("expected firewall log line to parse")
-	}
-	if parsed.RuleNumber != 31 {
-		t.Fatalf("expected rule number 31, got %d", parsed.RuleNumber)
-	}
-	if parsed.SubruleNumber != 0 {
-		t.Fatalf("expected subrule number 0, got %d", parsed.SubruleNumber)
-	}
-	if parsed.Ruleset != "match" {
-		t.Fatalf("expected ruleset match, got %q", parsed.Ruleset)
-	}
-	if parsed.Interface != "bridge0" {
-		t.Fatalf("expected interface bridge0, got %q", parsed.Interface)
-	}
-	if parsed.Action != "pass" || parsed.Direction != "in" {
-		t.Fatalf("unexpected action/direction: action=%q direction=%q", parsed.Action, parsed.Direction)
-	}
-	if parsed.Bytes != 64 {
-		t.Fatalf("expected length 64 bytes, got %d", parsed.Bytes)
-	}
-}
-
 func TestResolveFirewallRuleReferencePrefersSubruleForAnchorRuleset(t *testing.T) {
 	svc, _ := newNetworkServiceForTest(t)
 	runtime := svc.getFirewallTelemetryRuntime()

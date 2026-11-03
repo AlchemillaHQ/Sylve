@@ -28,7 +28,6 @@ type LibvirtServiceInterface interface {
 	NetworkAttach(req NetworkAttachRequest, ctx context.Context) (*vmModels.Network, error)
 	NetworkUpdate(req NetworkUpdateRequest, ctx context.Context) (*vmModels.Network, error)
 	FindAndChangeMAC(rid uint, oldMac string, newMac string) error
-	FindVmByMac(mac string) (vmModels.VM, error)
 
 	ModifyWakeOnLan(rid uint, enabled bool) error
 	ModifyBootOrder(rid uint, startAtBoot bool, bootOrder int) error
@@ -52,7 +51,6 @@ type LibvirtServiceInterface interface {
 
 	CreateVMDisk(rid uint, storage vmModels.Storage, ctx context.Context) error
 	SyncVMDisks(rid uint) error
-	RemoveStorageXML(rid uint, storage vmModels.Storage) error
 	StorageDetach(req StorageDetachRequest, ctx context.Context) error
 	GetNextBootOrderIndex(vmId int) (int, error)
 	ValidateBootOrderIndex(vmId int, bootOrder int) (bool, error)
@@ -64,9 +62,7 @@ type LibvirtServiceInterface interface {
 	FindISOByUUID(uuid string, includeImg bool) (string, error)
 	GetDomainStates() ([]DomainState, error)
 	IsDomainShutOff(rid uint) (bool, error)
-	IsDomainShutOffByID(id uint) (bool, error)
 	CreateVMDirectory(rid uint) (string, error)
-	ResetUEFIVars(rid uint) error
 	ValidateCPUPins(rid uint, pins []CPUPinning, hostLogicalPerSocket int) error
 	GetVMConfigDirectory(rid uint) (string, error)
 	CreateCloudInitISO(vm vmModels.VM) error

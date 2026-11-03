@@ -49,10 +49,6 @@ const (
 
 var (
 	pfVerboseRuleNumberPattern = regexp.MustCompile(`^@([0-9]+)\b`)
-	firewallLogRulePattern     = regexp.MustCompile(`\brule\s+([0-9]+)\/([0-9]+)(?:\(([^)]*)\))?`)
-	firewallLogIfacePattern    = regexp.MustCompile(`\bon\s+([^:\s]+):`)
-	firewallLogActionPattern   = regexp.MustCompile(`\):\s*([a-z]+)(?:\s+([a-z]+))?\s+on\s+`)
-	firewallLogLengthPattern   = regexp.MustCompile(`\blength\s+([0-9]+)\b`)
 	firewallPFLogRetryWait     = func(ctx context.Context, delay time.Duration) error {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
@@ -598,57 +594,6 @@ func (s *Service) flushFirewallCounterDeltasLocked() {
 	rt.mu.Unlock()
 }
 
-func parseFirewallLogLine(line string) (parsedFirewallLogLine, bool) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return parsedFirewallLogLine{}, false
-	}
-
-	ruleMatch := firewallLogRulePattern.FindStringSubmatch(trimmed)
-	if len(ruleMatch) < 3 {
-		return parsedFirewallLogLine{}, false
-	}
-	ruleNumber, err := strconv.Atoi(ruleMatch[1])
-	if err != nil {
-		return parsedFirewallLogLine{}, false
-	}
-
-	parsed := parsedFirewallLogLine{
-		RuleNumber:    ruleNumber,
-		SubruleNumber: -1,
-	}
-	if len(ruleMatch) >= 3 {
-		subruleNumber, convErr := strconv.Atoi(ruleMatch[2])
-		if convErr == nil {
-			parsed.SubruleNumber = subruleNumber
-		}
-	}
-	if len(ruleMatch) >= 4 {
-		parsed.Ruleset = strings.ToLower(strings.TrimSpace(ruleMatch[3]))
-	}
-
-	if ifaceMatch := firewallLogIfacePattern.FindStringSubmatch(trimmed); len(ifaceMatch) == 2 {
-		parsed.Interface = ifaceMatch[1]
-	}
-	if actionMatch := firewallLogActionPattern.FindStringSubmatch(trimmed); len(actionMatch) >= 2 {
-		parsed.Action = strings.TrimSpace(strings.ToLower(actionMatch[1]))
-		if len(actionMatch) >= 3 {
-			direction := strings.TrimSpace(strings.ToLower(actionMatch[2]))
-			if direction == "in" || direction == "out" {
-				parsed.Direction = direction
-			}
-		}
-	}
-	if lengthMatch := firewallLogLengthPattern.FindStringSubmatch(trimmed); len(lengthMatch) == 2 {
-		n, convErr := strconv.ParseUint(lengthMatch[1], 10, 64)
-		if convErr == nil {
-			parsed.Bytes = n
-		}
-	}
-
-	return parsed, true
-}
-
 func resolveRuleIDByNumbers(mapping map[int]uint, primary int, secondary int) (uint, bool) {
 	if primary >= 0 {
 		if ruleID, ok := mapping[primary]; ok {
@@ -840,14 +785,6 @@ func (s *Service) ingestFirewallLiveHitParsed(parsed parsedFirewallLogLine, rawL
 	}
 	runtime.liveUpdatedAt = now
 	runtime.mu.Unlock()
-}
-
-func (s *Service) ingestFirewallLiveHit(line string) {
-	parsed, ok := parseFirewallLogLine(line)
-	if !ok {
-		return
-	}
-	s.ingestFirewallLiveHitParsed(parsed, line)
 }
 
 func (s *Service) ingestFirewallLivePacket(packet gopacket.Packet) {

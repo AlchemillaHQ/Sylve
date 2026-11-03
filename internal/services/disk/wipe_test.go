@@ -13,10 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 
-	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	diskUtils "github.com/alchemillahq/sylve/pkg/disk"
 )
 
@@ -252,124 +250,6 @@ func TestWipeDiskEdgesPropagatesSyncFailure(t *testing.T) {
 	}
 	if writer.syncCalls != 1 {
 		t.Fatalf("sync calls = %d; want 1", writer.syncCalls)
-	}
-}
-
-func TestResolveWholeDiskSize(t *testing.T) {
-	const mediaSize = int64(4 * diskEdgeWipeSize)
-
-	tests := []struct {
-		name           string
-		device         string
-		disks          []diskServiceInterfaces.DiskInfo
-		checkErr       error
-		listErr        error
-		wantSize       uint64
-		wantErrContain string
-		wantCheckCalls int
-		wantListCalls  int
-	}{
-		{
-			name:   "primary device name",
-			device: "/dev/nda0",
-			disks: []diskServiceInterfaces.DiskInfo{
-				{Name: "nda0", MediaSize: mediaSize},
-			},
-			wantSize:       uint64(mediaSize),
-			wantCheckCalls: 1,
-			wantListCalls:  1,
-		},
-		{
-			name:   "GEOM alias",
-			device: "/dev/diskid/DISK-example",
-			disks: []diskServiceInterfaces.DiskInfo{
-				{Name: "nda0", Aliases: []string{"diskid/DISK-example"}, MediaSize: mediaSize},
-			},
-			wantSize:       uint64(mediaSize),
-			wantCheckCalls: 1,
-			wantListCalls:  1,
-		},
-		{
-			name:           "malformed path",
-			device:         "/dev/../etc/passwd",
-			wantErrContain: "invalid disk device path",
-		},
-		{
-			name:           "relative path",
-			device:         "nda0",
-			wantErrContain: "invalid disk device path",
-		},
-		{
-			name:   "partition is not a whole disk",
-			device: "/dev/nda0p1",
-			disks: []diskServiceInterfaces.DiskInfo{
-				{Name: "nda0", MediaSize: mediaSize},
-			},
-			wantErrContain: "not a top-level disk provider",
-			wantCheckCalls: 1,
-			wantListCalls:  1,
-		},
-		{
-			name:           "device validation fails",
-			device:         "/dev/nda0",
-			checkErr:       errors.New("not a device"),
-			wantErrContain: "not a device",
-			wantCheckCalls: 1,
-		},
-		{
-			name:           "inventory fails",
-			device:         "/dev/nda0",
-			listErr:        errors.New("GEOM unavailable"),
-			wantErrContain: "failed to list disk providers",
-			wantCheckCalls: 1,
-			wantListCalls:  1,
-		},
-		{
-			name:   "invalid media size",
-			device: "/dev/nda0",
-			disks: []diskServiceInterfaces.DiskInfo{
-				{Name: "nda0", MediaSize: 0},
-			},
-			wantErrContain: "invalid media size",
-			wantCheckCalls: 1,
-			wantListCalls:  1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			checkCalls := 0
-			listCalls := 0
-
-			size, err := resolveWholeDiskSize(
-				tt.device,
-				func(string) error {
-					checkCalls++
-					return tt.checkErr
-				},
-				func() ([]diskServiceInterfaces.DiskInfo, error) {
-					listCalls++
-					return tt.disks, tt.listErr
-				},
-			)
-
-			if size != tt.wantSize {
-				t.Fatalf("size = %d; want %d", size, tt.wantSize)
-			}
-			if tt.wantErrContain == "" {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			} else if err == nil || !strings.Contains(err.Error(), tt.wantErrContain) {
-				t.Fatalf("error = %v; want error containing %q", err, tt.wantErrContain)
-			}
-			if checkCalls != tt.wantCheckCalls {
-				t.Fatalf("device validation calls = %d; want %d", checkCalls, tt.wantCheckCalls)
-			}
-			if listCalls != tt.wantListCalls {
-				t.Fatalf("inventory calls = %d; want %d", listCalls, tt.wantListCalls)
-			}
-		})
 	}
 }
 

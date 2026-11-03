@@ -765,120 +765,6 @@ func (s *Service) reconcileVMStorageDocument(ctx context.Context, db *gorm.DB, r
 	return addressCSMWrapDocumentDevices(doc)
 }
 
-func (s *Service) RemoveStorageXML(rid uint, storage vmModels.Storage) error {
-	if err := s.requireConnection(); err != nil {
-		return err
-	}
-
-	domain, err := s.conn().DomainLookupByName(strconv.Itoa(int(rid)))
-	if err != nil {
-		return fmt.Errorf("failed_to_lookup_domain_by_name: %w", err)
-	}
-
-	xml, err := s.conn().DomainGetXMLDesc(domain, 0)
-	if err != nil {
-		return fmt.Errorf("failed_to_get_domain_xml_desc: %w", err)
-	}
-
-	doc := etree.NewDocument()
-	if err := doc.ReadFromString(xml); err != nil {
-		return fmt.Errorf("failed_to_parse_xml: %w", err)
-	}
-
-	bhyveCommandline := doc.FindElement("//commandline")
-	if bhyveCommandline == nil || bhyveCommandline.Space != "bhyve" {
-		root := doc.Root()
-		if root.SelectAttr("xmlns:bhyve") == nil {
-			root.CreateAttr("xmlns:bhyve", "http://libvirt.org/schemas/domain/bhyve/1.0")
-		}
-		bhyveCommandline = root.CreateElement("bhyve:commandline")
-	}
-
-	var filePath string
-
-	if storage.Type == vmModels.VMStorageTypeDiskImage &&
-		storage.DownloadUUID != "" {
-		filePath, err = s.FindISOByUUID(storage.DownloadUUID, true)
-		if err != nil {
-			return fmt.Errorf("failed_to_find_iso_by_uuid: %w", err)
-		}
-	} else if storage.Type == vmModels.VMStorageTypeRaw {
-		filePath, err = s.resolveRawStorageImagePath(
-			context.Background(),
-			s.DB,
-			rid,
-			storage,
-		)
-		if err != nil {
-			return fmt.Errorf("failed_to_resolve_raw_storage_path: %w", err)
-		}
-	} else if storage.Type == vmModels.VMStorageTypeZVol {
-		filePath = fmt.Sprintf("%s/sylve/virtual-machines/%d/zvol-%d",
-			storage.Pool,
-			rid,
-			storage.ID,
-		)
-	} else if storage.Type == vmModels.VMStorageTypeFilesystem {
-		filePath = strings.TrimSpace(storage.FilesystemTarget) + "="
-	}
-
-	if filePath == "" {
-		return fmt.Errorf("unable_to_determine_storage_path")
-	}
-
-	for _, arg := range bhyveCommandline.ChildElements() {
-		valAttr := arg.SelectAttr("value")
-		if valAttr == nil {
-			continue
-		}
-
-		val := valAttr.Value
-		if val == "" {
-			continue
-		}
-
-		if (storage.Type == vmModels.VMStorageTypeDiskImage ||
-			storage.Type == vmModels.VMStorageTypeRaw ||
-			storage.Type == vmModels.VMStorageTypeZVol) &&
-			strings.Contains(val, filePath) {
-			bhyveCommandline.RemoveChild(arg)
-		}
-
-		if storage.Type == vmModels.VMStorageTypeFilesystem &&
-			strings.Contains(val, ",virtio-9p,") &&
-			strings.Contains(val, filePath) {
-			bhyveCommandline.RemoveChild(arg)
-		}
-	}
-
-	if storage.Type == vmModels.VMStorageTypeFilesystem {
-		root := doc.Root()
-		devicesEl := root.FindElement("devices")
-		if devicesEl != nil {
-			targetName := strings.TrimSpace(storage.FilesystemTarget)
-			for _, el := range devicesEl.FindElements("filesystem") {
-				tgtEl := el.FindElement("target")
-				if tgtEl != nil {
-					if tgtEl.SelectAttrValue("dir", "") == targetName {
-						devicesEl.RemoveChild(el)
-					}
-				}
-			}
-		}
-	}
-
-	out, err := doc.WriteToString()
-	if err != nil {
-		return fmt.Errorf("failed_to_serialize_xml: %w", err)
-	}
-
-	if _, err := s.conn().DomainDefineXML(out); err != nil {
-		return fmt.Errorf("failed_to_define_domain_with_modified_xml: %w", err)
-	}
-
-	return nil
-}
-
 type storageRuntimeHooks struct {
 	createVMDisk func(
 		rid uint,
@@ -1352,17 +1238,6 @@ func baseStorageForAttach(
 	return storage
 }
 
-func (s *Service) StorageImport(
-	req libvirtServiceInterfaces.StorageAttachRequest,
-	vm vmModels.VM,
-	ctx context.Context,
-) error {
-	req.RID = vm.RID
-	req.AttachType = libvirtServiceInterfaces.StorageAttachTypeImport
-	_, err := s.StorageAttach(req, ctx)
-	return err
-}
-
 func (s *Service) storageImport(
 	req libvirtServiceInterfaces.StorageAttachRequest,
 	vm vmModels.VM,
@@ -1553,17 +1428,6 @@ func (s *Service) storageImport(
 	}
 
 	return nil
-}
-
-func (s *Service) StorageNew(
-	req libvirtServiceInterfaces.StorageAttachRequest,
-	vm vmModels.VM,
-	ctx context.Context,
-) error {
-	req.RID = vm.RID
-	req.AttachType = libvirtServiceInterfaces.StorageAttachTypeNew
-	_, err := s.StorageAttach(req, ctx)
-	return err
 }
 
 func (s *Service) storageNew(

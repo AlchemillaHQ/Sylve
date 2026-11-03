@@ -13,10 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
-	diskServiceInterfaces "github.com/alchemillahq/sylve/internal/interfaces/services/disk"
 	diskUtils "github.com/alchemillahq/sylve/pkg/disk"
 )
 
@@ -90,68 +87,6 @@ func wipeDiskEdges(writer diskEdgeWriter, diskSize uint64) error {
 	}
 
 	return nil
-}
-
-func relativeDiskDeviceName(device string) (string, error) {
-	const devicePrefix = "/dev/"
-
-	if filepath.Clean(device) != device || !strings.HasPrefix(device, devicePrefix) {
-		return "", fmt.Errorf("invalid disk device path: %s", device)
-	}
-
-	name := strings.TrimPrefix(device, devicePrefix)
-	if name == "" {
-		return "", fmt.Errorf("invalid disk device path: %s", device)
-	}
-
-	return name, nil
-}
-
-func diskInfoMatchesDevice(disk diskServiceInterfaces.DiskInfo, deviceName string) bool {
-	if strings.TrimPrefix(disk.Name, "/dev/") == deviceName {
-		return true
-	}
-
-	for _, alias := range disk.Aliases {
-		if strings.TrimPrefix(alias, "/dev/") == deviceName {
-			return true
-		}
-	}
-
-	return false
-}
-
-func resolveWholeDiskSize(
-	device string,
-	checkDevice func(string) error,
-	listDisks func() ([]diskServiceInterfaces.DiskInfo, error),
-) (uint64, error) {
-	deviceName, err := relativeDiskDeviceName(device)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := checkDevice(device); err != nil {
-		return 0, err
-	}
-
-	disks, err := listDisks()
-	if err != nil {
-		return 0, fmt.Errorf("failed to list disk providers: %w", err)
-	}
-
-	for _, disk := range disks {
-		if !diskInfoMatchesDevice(disk, deviceName) {
-			continue
-		}
-		if disk.MediaSize <= 0 {
-			return 0, fmt.Errorf("disk %s has an invalid media size: %d", device, disk.MediaSize)
-		}
-
-		return uint64(disk.MediaSize), nil
-	}
-
-	return 0, fmt.Errorf("device is not a top-level disk provider: %s", device)
 }
 
 func openDiskForWrite(device string) (diskWriteCloser, error) {

@@ -1201,23 +1201,6 @@ func (s *Service) RequireVMStorageTopologyMutable(rid uint) error {
 	return s.requireVMStorageTopologyMutable(rid)
 }
 
-// RequireVMStorageRecordTopologyMutable resolves an update request's storage
-// row to its guest before applying the same protection guard.
-func (s *Service) RequireVMStorageRecordTopologyMutable(storageID int) error {
-	if storageID <= 0 {
-		return fmt.Errorf("invalid_storage_id")
-	}
-	var storage vmModels.Storage
-	if err := s.DB.Select("vm_id").First(&storage, storageID).Error; err != nil {
-		return fmt.Errorf("failed_to_find_storage_record: %w", err)
-	}
-	var vm vmModels.VM
-	if err := s.DB.Select("rid").First(&vm, storage.VMID).Error; err != nil {
-		return fmt.Errorf("failed_to_find_vm_record: %w", err)
-	}
-	return s.requireVMStorageTopologyMutable(vm.RID)
-}
-
 func (s *Service) startVM(domain *libvirt.Domain, vm vmModels.VM) error {
 	state, _, err := s.conn().DomainGetState(*domain, 0)
 	if err != nil {

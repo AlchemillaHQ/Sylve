@@ -80,8 +80,6 @@ type AuthServiceInterface interface {
 	ValidateToken(tokenString string) (CustomClaims, error)
 	ValidateScopedJWT(tokenString, expectedScope string) (ScopedValidationResult, error)
 	InitSecret(name string, shaRounds int) error
-	GetSecret(name string) (string, error)
-	UpsertSecret(name string, data string) error
 	ClearExpiredJWTTokens(ctx context.Context)
 	GetTokenBySHA256(hash string) (string, error)
 	IsValidClusterKey(clusterKey string) bool

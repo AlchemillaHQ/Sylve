@@ -1050,35 +1050,3 @@ func (s *Service) RollbackSnapshot(ctx context.Context, guid, name string, destr
 
 	return nil
 }
-
-func (s *Service) RollbackSnapshotByName(ctx context.Context, snapshotName string, destroyMoreRecent bool) error {
-	s.syncMutex.Lock()
-	defer s.syncMutex.Unlock()
-
-	dataset, err := s.GZFS.ZFS.Get(ctx, snapshotName, false)
-	if err != nil || dataset == nil || dataset.Type != gzfs.DatasetTypeSnapshot {
-		if err != nil {
-			return datasetLookupError(err, "snapshot_not_found: %v", err)
-		}
-		return datasetLookupError(nil, "snapshot_not_found: %s", snapshotName)
-	}
-	release, err := s.guardDownloadStorageMutation(ctx, dataset.Name)
-	if err != nil {
-		return err
-	}
-	defer release()
-
-	releaseTopology, err := s.guardStorageTopologyMutation(ctx, dataset)
-	if err != nil {
-		return err
-	}
-	defer releaseTopology()
-	err = dataset.Rollback(ctx, destroyMoreRecent)
-	if err != nil {
-		return fmt.Errorf("failed_to_rollback_snapshot: %v", err)
-	}
-
-	s.SignalDSChange(dataset.Pool, dataset.Name, "snapshot", "rollback")
-
-	return nil
-}

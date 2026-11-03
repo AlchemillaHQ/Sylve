@@ -408,18 +408,6 @@ func (s *Service) isDomainShutOff(rid uint) (bool, error) {
 	return s.IsDomainShutOff(rid)
 }
 
-func (s *Service) IsDomainShutOffByID(id uint) (bool, error) {
-	var rid uint
-	if err := s.DB.Model(&vmModels.VM{}).
-		Where("id = ?", id).
-		Select("rid").
-		Scan(&rid).Error; err != nil {
-		return false, fmt.Errorf("failed_to_get_vm_rid: %w", err)
-	}
-
-	return s.IsDomainShutOff(rid)
-}
-
 func (s *Service) CreateVMDirectory(rid uint) (string, error) {
 	vmDir, err := config.GetVMsPath()
 
@@ -440,25 +428,6 @@ func (s *Service) CreateVMDirectory(rid uint) (string, error) {
 	}
 
 	return vmPath, nil
-}
-
-func (s *Service) ResetUEFIVars(rid uint) error {
-	// u-boot on ARM64 is a single firmware binary — no VARS file to reset
-	if !hostUsesSplitFirmware() {
-		return nil
-	}
-
-	unlocked := s.lockVMOptionMutation()
-	defer unlocked()
-	vm, err := s.prepareVMOptionMutation(rid, true)
-	if err != nil {
-		return err
-	}
-	vmPath, err := s.GetVMConfigDirectory(rid)
-	if err != nil {
-		return err
-	}
-	return writeVMBootVars(rid, vm.BootROM, vmPath)
 }
 
 func (s *Service) ValidateCPUPins(rid uint, pins []libvirtServiceInterfaces.CPUPinning, hostLogicalPerSocket int) error {
