@@ -31,6 +31,7 @@ INTEGRATION_PACKAGES := \
 	./internal/services/utilities \
 	./internal/services/zfs \
 	./pkg/network/bridgevlan \
+	./pkg/network/iface \
 	./pkg/pkgmanager \
 	./pkg/network/mdns \
 	./pkg/storage/mount \
@@ -109,7 +110,6 @@ csmwrap-assets:
 
 frontend:
 	npm ci --prefix web
-	npm run check --prefix web
 	npm run build --prefix web
 	mkdir -p internal/assets/web-files
 	cp -rf web/build/* internal/assets/web-files/

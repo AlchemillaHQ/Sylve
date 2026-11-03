@@ -2,6 +2,8 @@ module github.com/alchemillahq/sylve
 
 go 1.25.0
 
+toolchain go1.27.3
+
 ignore docs
 
 ignore web

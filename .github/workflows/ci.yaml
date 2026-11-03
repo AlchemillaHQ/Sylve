@@ -108,7 +108,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.x"
+          go-version-file: go.mod
           cache: false
 
       - name: Setup Node
@@ -121,11 +121,15 @@ jobs:
       - name: Run quality checks
         run: make quality
 
+      # Only checks that the website demo builds; tip and release publish it.
+      - name: Build demo web assets
+        run: npm run build:demo --prefix web
+
+  # Tests and builds don't wait for quality; CI Success still requires it.
   test:
     name: Test (${{ matrix.label }})
     needs:
       - changes
-      - quality
       - build-csmwrap
     if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
@@ -162,21 +166,22 @@ jobs:
       - name: Verify and stage CSMWrap embeds before FreeBSD checks
         run: ./scripts/build-csmwrap.sh --verify --stage
 
-      - name: Cache FreeBSD Go files
+      # One cache for all lanes, saved by the unit lane since it compiles every package.
+      - name: Restore FreeBSD Go files
         id: freebsd_go_cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             .cache/freebsd-go/build
             .cache/freebsd-go/mod
-          key: freebsd-15-go-${{ matrix.lane }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
+          key: freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}-${{ github.sha }}
           restore-keys: |
-            freebsd-15-go-${{ matrix.lane }}-${{ hashFiles('go.mod', 'go.sum') }}-
-            freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}
+            freebsd-15-go-${{ hashFiles('go.mod', 'go.sum') }}-
+            freebsd-15-go-
 
       - name: Run FreeBSD test suite
         env:
-          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-hit != '' }}
+          GO_CACHE_RESTORED: ${{ steps.freebsd_go_cache.outputs.cache-matched-key != '' }}
         uses: vmactions/freebsd-vm@83b151f58c6047089f4c80eb5ba2039d158ce093 # v1.5.3
         with:
           release: "15"
@@ -198,6 +203,9 @@ jobs:
           run: |
             setup_started="$(date +%s)"
             mkdir -p test-results
+            # Test with the toolchain release builds use, not whatever pkg ships.
+            GOTOOLCHAIN="$(awk '$1 == "toolchain" { print $2 }' go.mod)"
+            export GOTOOLCHAIN
             set +e
             (
               set -e
@@ -212,6 +220,14 @@ jobs:
                   kldstat -q -m "$module" || kldload "$module"
                 done
                 kldstat -q -m nvmf/tcp || kldload nvmf_tcp
+
+                if [ "$TEST_LANE" = acceptance ]; then
+                  # Some runner hosts don't pass virtualization through; CI Retry re-runs those.
+                  bhyvectl --vm=ci-nested-probe --create && bhyvectl --vm=ci-nested-probe --destroy || {
+                    echo "nested virtualization unavailable on this runner" > test-results/setup.reason
+                    exit 1
+                  }
+                fi
 
                 egress="$(route -n get default | awk '/interface:/ { print $2 }')"
                 printf 'table <cni-nat> persist\nnat on %s inet from <cni-nat> to any -> (%s)\nnat-anchor "cni-rdr/*"\nrdr-anchor "cni-rdr/*"\n' \
@@ -286,7 +302,19 @@ jobs:
             echo "FreeBSD host setup did not produce a result"
             exit 1
           fi
+          if [ -f test-results/setup.reason ]; then
+            echo "::error::$(cat test-results/setup.reason)"
+          fi
           exit "$(cat test-results/setup.rc)"
+
+      - name: Save FreeBSD Go files
+        if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success' && steps.freebsd_go_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            .cache/freebsd-go/build
+            .cache/freebsd-go/mod
+          key: ${{ steps.freebsd_go_cache.outputs.cache-primary-key }}
 
       - name: Upload vet report
         if: always() && matrix.lane == 'unit' && steps.setup_result.outcome == 'success'
@@ -352,7 +380,6 @@ jobs:
 
   build-web:
     name: Build Web
-    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -365,11 +392,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Check and Build Web Assets
+      - name: Build Web Assets
         run: make frontend
-
-      - name: Build Demo Web Assets
-        run: npm run build:demo --prefix web
 
       - name: Upload Web Assets
         uses: actions/upload-artifact@v7
@@ -399,7 +423,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.x"
+          go-version-file: go.mod
 
       - name: Install cross-build toolchain
         run: |
